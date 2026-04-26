@@ -24,9 +24,12 @@ export function usePageContent(projectId: string, doc: Document): ReturnShape {
     return localStorage.getItem(key) ?? doc.defaultMd;
   });
 
-  // Re-load when the project / doc changes.
+  // Re-load when the project / doc changes. setState-in-effect is the
+  // standard pattern for "re-initialize state from a prop"; React 19's
+  // eslint plugin flags it but the alternatives are noisier here.
   useEffect(() => {
     const stored = localStorage.getItem(key);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContentState(stored ?? doc.defaultMd);
   }, [doc.id, doc.defaultMd, key]);
 

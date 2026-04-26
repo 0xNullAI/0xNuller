@@ -12,39 +12,44 @@ The visual identity matches DG-Agent and DG-Chat: white + sky-cyan in light mode
 
 ```
 src/
-  App.tsx                 main shell: Sidebar + Header + content/edit panel
+  App.tsx                 main shell: Header + DocTabs + content/edit panel
   main.tsx                React entry
   components/
-    Sidebar.tsx           project nav, modified-state indicators
-    Header.tsx            page meta, edit toggle, theme toggle, GitHub link
+    Header.tsx            wordmark + project picker dropdown + actions
+    ProjectPicker.tsx     dropdown that switches between the 4 projects
+    DocTabs.tsx           secondary tabs (manual / developer / faq)
     MarkdownView.tsx      react-markdown + remark-gfm
     EditPanel.tsx         split-screen Markdown editor with live preview
+    PublishDialog.tsx     GitHub PAT-backed PR submission flow
+    TableOfContents.tsx   auto-generated TOC from h2/h3 of current md
     Waveform.tsx          decorative animated SVG path
-  content/                Markdown sources (one per page)
-    home.md
-    kit.md
-    agent.md
-    chat.md
-    mcp.md
-    about.md
+  content/                Markdown sources organised by project / doc type
+    kit/{overview,developer,api}.md
+    agent/{manual,developer,faq}.md
+    chat/{manual,developer,faq}.md
+    mcp/{manual,developer,faq}.md
   hooks/
     use-theme.ts          dark/light persisted to localStorage
     use-page-content.ts   per-page content with localStorage override
   lib/
-    pages.ts              PAGES array (id, label, accent, default md, source path)
+    projects.ts           Project + Document data model
+    github.ts             GitHub REST helpers for PR submission
   styles/
     index.css             tokens (DG family palette) + markdown styling
-public/
-  favicon.svg
 .github/workflows/
-  deploy.yml              GitHub Pages build + deploy on push to main
+  ci.yml                  lint + build on PR + push
+  deploy.yml              GitHub Pages on push to main
 ```
 
 ## Branch & PR Convention
 
+DG-Wiki uses a **single-branch model** (different from the other 4 DG repos):
+
 - Default branch: `main`
-- Small project, all changes go directly on `main`
-- Push to `main` → GitHub Pages workflow auto-deploys to `https://0xnullai.github.io/DG-Wiki/`
+- All PRs base to `main`
+- Push to `main` → GitHub Pages auto-deploy
+
+There is no `dev` branch, no release-guard, no version-bump discipline. Pure docs site, low blast radius — keep it simple.
 
 ## Commands
 
@@ -61,16 +66,18 @@ npm run lint
 Before commits:
 
 1. `npm run lint` — must pass
-2. `npm run build` — Vite must succeed (TypeScript strict mode is on)
+2. `npm run build` — Vite must succeed (TypeScript strict)
 
-Conventional commit style (`type(scope): subject`). Most edits are `docs(content): update X.md`.
+No vitest suite — content-heavy pages don't benefit from unit tests. Bigger refactors still get visual verification via `npm run dev`.
+
+Conventional commit style (`type(scope): subject`). Most edits are `docs(content): update X.md` or `fix(ui): ...`.
 
 ## Editing Content
 
-- The Markdown sources live in `src/content/<id>.md` and are imported via `?raw` (Vite raw imports)
-- Each page's metadata (label, accent color, GitHub edit link) lives in `src/lib/pages.ts`
-- To add a new page: create `src/content/<id>.md`, append to `PAGES` in `pages.ts`
-- To rename: keep the file name the same as the `id` so `localStorage` keys keep mapping to the same content
+- The Markdown sources live in `src/content/<project>/<doc>.md` and are imported via `?raw`
+- Each project's metadata + document list lives in `src/lib/projects.ts`
+- To add a new doc to an existing project: write `src/content/<project>/<id>.md`, append to that project's `documents` in `projects.ts`
+- To rename: keep the file's `id` stable so `localStorage` keys keep mapping to the same content
 
 ## Visual Identity
 
@@ -82,12 +89,13 @@ Conventional commit style (`type(scope): subject`). Most edits are `docs(content
 
 ## Sister Projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop |
+| Project | Branch model | Purpose |
+|---|---|---|
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | dev → main | Shared TypeScript runtime |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | dev → main + dev mirror | Browser AI controller |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | dev → main | Multi-user P2P room |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | dev → main | MCP server for Claude Desktop |
+| **DG-Wiki** | **single main** | Documentation hub (this repo) |
 
 When updating wiki pages, also keep the four sister-project READMEs (in their own repos) in sync with significant feature changes.
 
