@@ -1,4 +1,4 @@
-# DG-MCP 使用手册
+# DG-MCP · 使用手册
 
 让 Claude Desktop 等 MCP 客户端直接控制 DG-Lab 郊狼 2.0 / 3.0。
 
@@ -8,7 +8,7 @@
 
 DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具。任何 MCP 兼容的 LLM 客户端（Claude Desktop / Continue / Cline / Cursor 等）配置一行就能驱动你的设备——`scan` / `connect` / `start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` 全套都是普通的工具调用。
 
-跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](#/kit) 中台。
+跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](#/kit/overview) 中台。
 
 ## 状态
 
@@ -74,9 +74,7 @@ nano ~/.config/Claude/claude_desktop_config.json
 sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 ```
 
-不加这一步会得到 `Operation not permitted`。
-
-> 系统升级 Node 后需要重新执行 setcap。
+不加这一步会得到 `Operation not permitted`。系统升级 Node 后需要重新执行。
 
 ## 验证安装
 
@@ -197,60 +195,19 @@ Claude 应该会调 `scan` 工具，几秒后列出找到的设备。
 - 设备物理拨轮可以独立加强度——MCP 只是输入源
 - 任何时候说「紧急停止」/「停一下」AI 都会调 `emergency_stop` 立即响应
 
-## 多个客户端怎么办
+## 升级
 
-DG-MCP 启动时会独占设备连接。如果你想：
+```bash
+npx -y dg-mcp@latest
+```
 
-| 场景 | 方案 |
-|---|---|
-| 同时用 Claude Desktop + DG-Agent | 不行，断开一个再连另一个 |
-| Claude Desktop 与 DG-Chat 互动 | 同上 |
-| 多个 Claude Desktop 实例同时控制 | 不行，shell stdin/out 是独占的 |
+或者全局装的话：
 
-## 常见问题
+```bash
+npm i -g dg-mcp@latest
+```
 
-**Q：Claude Desktop 看不到工具图标**
-
-- 配置文件 JSON 格式错了？用 [JSONLint](https://jsonlint.com) 校验
-- Claude Desktop 没完全重启？退出（不是关窗口）再开
-- 看 Claude Desktop 的开发者工具：菜单栏 → Claude → 切到 Developer Mode → Inspect
-
-**Q：scan 找不到设备**
-
-- 设备没开机
-- 已被别的程序连着（DG-Agent / DG-Chat / 官方 App）
-- BLE 权限：mac 看系统设置；linux 看 `setcap`；windows 看驱动
-
-**Q：connect 失败：`Operation not permitted` (Linux)**
-
-- 没跑 setcap：`sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))`
-- node 升级后失效，重新执行
-
-**Q：connect 失败：Bluetooth 未授权 (macOS)**
-
-- 系统设置 → 隐私与安全性 → 蓝牙
-- 找到 Claude（或 Node 进程），勾选
-
-**Q：connect 之后立刻断开**
-
-- 设备电量低，重连前充电
-- 距离太远 / 干扰
-
-**Q：调强度不动 / 波形听不到**
-
-- 通道是否已 `start`？
-- 撞到软上限了？`get_status` 看 limitA / limitB
-- 设备物理拨轮位置
-
-**Q：`design_wave` 设计的波形保存到哪了？**
-
-- 默认放内存，进程退出就丢
-- 想保留：启动加 `--library-dir <path>`
-
-**Q：升级 dg-mcp 怎么搞**
-
-- `npx -y dg-mcp@latest`，npx 自动拉最新版
-- 或者全局装 `npm i -g dg-mcp@latest`
+Claude Desktop 用 `npx -y dg-mcp` 默认每次都会拉最新版本（`-y` 跳过 prompt）。
 
 ## 在其他 MCP 客户端里用
 

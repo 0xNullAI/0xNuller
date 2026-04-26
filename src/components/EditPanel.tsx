@@ -1,26 +1,25 @@
 import { useState } from 'react';
 import { MarkdownView } from './MarkdownView';
 import { PublishDialog } from './PublishDialog';
-import type { PageMeta } from '../lib/pages';
+import type { Document } from '../lib/projects';
 
 interface Props {
-  page: PageMeta;
+  doc: Document;
   content: string;
   onChange: (next: string) => void;
 }
 
 /**
- * Split-screen Markdown editor: textarea on the left, live preview on the
- * right. The wrapper component owns the localStorage write — this is just
- * the UI plus the "Publish to GitHub" entry point.
+ * Split-screen Markdown editor. Left = textarea; right = live preview.
+ * The "↗ publish" button opens a modal that pushes the change to GitHub
+ * as a PR using a personal access token saved in localStorage.
  */
-export function EditPanel({ page, content, onChange }: Props) {
+export function EditPanel({ doc, content, onChange }: Props) {
   const lineCount = content.split('\n').length;
   const [showPublish, setShowPublish] = useState(false);
 
   return (
     <div className="grid grid-cols-2 gap-0 border-t border-[var(--surface-border)] reveal">
-      {/* Left: textarea */}
       <div className="border-r border-[var(--surface-border)] flex flex-col">
         <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--surface-border)] bg-[var(--bg-strong)]">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
@@ -50,7 +49,6 @@ export function EditPanel({ page, content, onChange }: Props) {
         />
       </div>
 
-      {/* Right: preview */}
       <div className="flex flex-col">
         <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--surface-border)] bg-[var(--bg-strong)]">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
@@ -69,7 +67,7 @@ export function EditPanel({ page, content, onChange }: Props) {
       </div>
 
       {showPublish ? (
-        <PublishDialog page={page} content={content} onClose={() => setShowPublish(false)} />
+        <PublishDialog doc={doc} content={content} onClose={() => setShowPublish(false)} />
       ) : null}
     </div>
   );

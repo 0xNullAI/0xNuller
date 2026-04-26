@@ -1,8 +1,8 @@
-import type { PageMeta } from '../lib/pages';
-import { githubEditUrl, REPO_BASE } from '../lib/pages';
+import type { Document } from '../lib/projects';
+import { githubEditUrl, REPO_BASE } from '../lib/projects';
 
 interface HeaderProps {
-  page: PageMeta;
+  doc: Document;
   isModified: boolean;
   isEditing: boolean;
   onToggleEdit: () => void;
@@ -12,7 +12,7 @@ interface HeaderProps {
 }
 
 export function Header({
-  page,
+  doc,
   isModified,
   isEditing,
   onToggleEdit,
@@ -23,14 +23,17 @@ export function Header({
   return (
     <header className="border-b border-[var(--surface-border)] bg-[var(--bg)] sticky top-0 z-30 backdrop-blur">
       <div className="flex items-center justify-between px-8 py-3 gap-4">
-        {/* Breadcrumb */}
+        {/* Brand + tagline */}
         <div className="flex items-center gap-3 min-w-0">
+          <span className="font-display text-2xl font-extrabold tracking-tight text-[var(--text)] leading-none">
+            DG·WIKI
+          </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
-            dg·wiki / {page.id}
+            documentation hub
           </span>
           {isModified ? (
             <span
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--danger)] flex items-center gap-1.5"
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--danger)] flex items-center gap-1.5 ml-2"
               title="本地浏览器存档了你的修改"
             >
               <span
@@ -39,11 +42,7 @@ export function Header({
               />
               local-edit
             </span>
-          ) : (
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--text-faint)]">
-              read-only · localStorage 未启用
-            </span>
-          )}
+          ) : null}
         </div>
 
         {/* Actions */}
@@ -52,7 +51,7 @@ export function Header({
             <button
               type="button"
               onClick={onReset}
-              className="font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 border border-[var(--surface-border)] text-[var(--text-soft)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors"
+              className="dg-button"
               title="把本地修改丢弃，恢复随构建发布的原文"
             >
               ↺ reset
@@ -60,10 +59,10 @@ export function Header({
           ) : null}
 
           <a
-            href={githubEditUrl(page)}
+            href={githubEditUrl(doc)}
             target="_blank"
             rel="noreferrer"
-            className="font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 border border-[var(--surface-border)] text-[var(--text-soft)] hover:text-[var(--accent-strong)] hover:border-[var(--accent-strong)] transition-colors"
+            className="dg-button"
             title="在 GitHub 上修改这一页（提交 PR）"
           >
             ↗ pr
@@ -72,12 +71,7 @@ export function Header({
           <button
             type="button"
             onClick={onToggleEdit}
-            className={[
-              'font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 border transition-colors',
-              isEditing
-                ? 'bg-[var(--accent-strong)] text-[var(--bg)] border-[var(--accent-strong)]'
-                : 'border-[var(--surface-border)] text-[var(--text-soft)] hover:text-[var(--accent-strong)] hover:border-[var(--accent-strong)]',
-            ].join(' ')}
+            className={['dg-button', isEditing ? 'is-active' : ''].join(' ')}
           >
             {isEditing ? '✕ close' : '✎ edit'}
           </button>
@@ -86,17 +80,13 @@ export function Header({
             type="button"
             onClick={onToggleTheme}
             aria-label="切换主题"
-            className="font-mono text-xs px-3 py-1.5 border border-[var(--surface-border)] text-[var(--text-soft)] hover:text-[var(--accent-strong)] hover:border-[var(--accent-strong)] transition-colors w-8 flex items-center justify-center"
+            className="dg-button w-9"
+            style={{ padding: '0.55em 0' }}
           >
-            {theme === 'dark' ? '☾' : '☀'}
+            <span className="block w-full text-center">{theme === 'dark' ? '☾' : '☀'}</span>
           </button>
 
-          <a
-            href={REPO_BASE}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 bg-[var(--text)] text-[var(--bg)] hover:bg-[var(--accent-strong)] transition-colors"
-          >
+          <a href={REPO_BASE} target="_blank" rel="noreferrer" className="dg-button is-primary">
             github
           </a>
         </div>
