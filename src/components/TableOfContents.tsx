@@ -7,16 +7,18 @@ interface TocEntry {
 }
 
 /**
- * Auto-generated table of contents from the rendered Markdown's `<h2>` and
- * `<h3>` headings. Live-updates as the user scrolls to highlight the
- * currently visible section.
+ * Desktop-only left rail. Auto-generated from the rendered Markdown's
+ * `<h2>` and `<h3>` headings; live-highlights the current section.
+ * Mobile uses `MobileTocButton` (header popover) instead.
+ *
+ * This component is also the one that attaches `id` attributes to the
+ * rendered headings so anchor jumps work — it stays mounted on mobile via
+ * `hidden lg:block` (CSS) so the side-effect runs everywhere.
  */
 export function TableOfContents({ content }: { content: string }) {
   const entries = useMemo(() => extract(content), [content]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // After the markdown re-renders, attach `id` attributes to the headings so
-  // anchor jumps work, then watch which one is in view.
   useEffect(() => {
     const root = document.querySelector('.markdown-body');
     if (!root) return;
@@ -43,12 +45,10 @@ export function TableOfContents({ content }: { content: string }) {
     return () => observer.disconnect();
   }, [content, entries]);
 
-  if (entries.length === 0) {
-    return null;
-  }
+  if (entries.length === 0) return null;
 
   return (
-    <aside className="hidden lg:block w-[220px] shrink-0 sticky top-[120px] self-start max-h-[calc(100vh-200px)] overflow-y-auto pr-3">
+    <aside className="hidden lg:block w-[220px] shrink-0 sticky top-[110px] self-start max-h-[calc(100vh-160px)] overflow-y-auto pr-3">
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)] mb-3 pl-2">
         ── 目录
       </div>

@@ -37,16 +37,16 @@ export function ProjectPicker({ activeId, onSelect, isModified }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-colors"
+        className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-colors"
       >
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
+        <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
           project
         </span>
-        <span className="font-display text-base font-bold tracking-tight text-[var(--text)] leading-none">
+        <span className="font-display text-sm sm:text-base font-bold tracking-tight text-[var(--text)] leading-none">
           {active.label}
         </span>
         <span
-          className={`text-[10px] text-[var(--text-faint)] transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`text-[9px] sm:text-[10px] text-[var(--text-faint)] transition-transform ${open ? 'rotate-180' : ''}`}
         >
           ▼
         </span>
@@ -54,7 +54,7 @@ export function ProjectPicker({ activeId, onSelect, isModified }: Props) {
 
       {open ? (
         <div
-          className="absolute top-full mt-1 left-0 min-w-[280px] z-40 dg-card overflow-hidden"
+          className="absolute top-full mt-1 left-0 min-w-[260px] sm:min-w-[280px] z-40 dg-card overflow-hidden"
           style={{ boxShadow: 'var(--shadow-panel)' }}
         >
           {PROJECTS.map((p) => {

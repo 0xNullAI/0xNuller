@@ -110,13 +110,27 @@ body {
 @keyframes reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .reveal { animation: reveal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
+/* Hide scrollbar on the doc-tabs row while keeping scroll behavior */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+
 /* Markdown */
 .markdown-body { font-family: var(--font-body); line-height: 1.78; color: var(--text); max-width: 72ch; font-size: 15.5px; }
-.markdown-body h1, .markdown-body h2, .markdown-body h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.015em; color: var(--text); scroll-margin-top: 120px; }
-.markdown-body h1 { font-size: clamp(2.6rem, 5vw, 3.6rem); line-height: 1; margin: 0 0 0.6em; padding-bottom: 0.5em; border-bottom: 1px solid var(--surface-border); }
-.markdown-body h2 { font-size: 1.85rem; margin: 2.2em 0 0.65em; display: flex; align-items: baseline; gap: 0.55em; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.015em; color: var(--text); scroll-margin-top: 110px; }
+.markdown-body h1 { font-size: clamp(2.1rem, 6vw, 3.6rem); line-height: 1.05; margin: 0 0 0.6em; padding-bottom: 0.5em; border-bottom: 1px solid var(--surface-border); }
+.markdown-body h2 { font-size: clamp(1.4rem, 4vw, 1.85rem); margin: 2em 0 0.6em; display: flex; align-items: baseline; gap: 0.55em; }
 .markdown-body h2::before { content: '§'; color: var(--accent); font-family: var(--font-mono); font-size: 0.65em; font-weight: 400; }
-.markdown-body h3 { font-size: 1.2rem; letter-spacing: 0.02em; margin: 1.7em 0 0.5em; color: var(--accent-strong); }
+.markdown-body h3 { font-size: clamp(1.05rem, 3vw, 1.2rem); letter-spacing: 0.02em; margin: 1.6em 0 0.5em; color: var(--accent-strong); }
+@media (max-width: 640px) {
+  .markdown-body { font-size: 14.5px; line-height: 1.72; }
+  .markdown-body pre { padding: 0.9em 1em; font-size: 0.82em; border-radius: var(--radius-sm); }
+  .markdown-body pre::before { display: none; }
+  .markdown-body table { font-size: 0.86em; display: block; overflow-x: auto; }
+  .markdown-body th, .markdown-body td { padding: 0.5em 0.75em; }
+  .markdown-body blockquote { padding: 0.45em 0.9em; }
+  .markdown-body ul, .markdown-body ol { padding-left: 1.25em; }
+}
 .markdown-body p { margin: 0 0 1.15em; color: var(--text); }
 .markdown-body a { color: var(--accent-strong); border-bottom: 1px dashed var(--accent-strong); text-decoration: none; transition: color 0.15s, border-color 0.15s, border-style 0.15s; }
 .markdown-body a:hover { color: var(--text); border-bottom-color: var(--accent); border-bottom-style: solid; }
