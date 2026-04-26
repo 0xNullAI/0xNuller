@@ -1,8 +1,13 @@
 name: Release
 
+# Branch flow:
+#   - on push to dev:  changesets bot opens "Version Packages" PR (base=dev)
+#                      that consumes .changeset/*.md and bumps packages/*/package.json
+#   - on push to main: no .changeset/*.md left; packages/* versions are higher
+#                      than npm; bot runs `changeset publish` to push to npm
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: release-${{ github.ref }}

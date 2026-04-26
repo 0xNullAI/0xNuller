@@ -1,5 +1,17 @@
 # @dg-kit/protocol
 
+## 1.0.1
+
+### Patch Changes
+
+- b189d86: CI / infrastructure release — no API or behaviour changes.
+  - Unified PR / issue templates + dependabot config
+  - release-guard workflow gates main entry on version bump
+  - npm provenance enabled on publish
+
+- Updated dependencies [b189d86]
+  - @dg-kit/core@1.0.1
+
 ## 1.0.0
 
 ### Major Changes

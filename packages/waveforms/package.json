@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/waveforms",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Built-in waveforms, design compiler, and .pulse parser for DG-Lab Coyote",
   "license": "MIT",
   "author": "0xNullAI",
@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@dg-kit/core": "1.0.0"
+    "@dg-kit/core": "1.0.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
