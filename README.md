@@ -1,54 +1,89 @@
+<div align="center">
+
 # DG-Kit
 
-Shared TypeScript runtime for DG-Lab Coyote 2.0 / 3.0 control surfaces.
+**DG-Lab 郊狼 2.0 / 3.0 的共享 TypeScript 中台**
 
-`@dg-kit/*` packages contain everything that's shared across DG-Agent, DG-MCP and DG-Chat: device protocol, waveform library, tool definitions, and a Web Bluetooth transport. Browser-only or Node-only adapters live in the consumer projects (DG-Agent / DG-MCP) — this repo stays runtime-agnostic where it can.
+[![npm: @dg-kit/core](https://img.shields.io/npm/v/@dg-kit/core?label=%40dg-kit%2Fcore&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/core)
+[![npm: @dg-kit/protocol](https://img.shields.io/npm/v/@dg-kit/protocol?label=%40dg-kit%2Fprotocol&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/protocol)
+[![npm: @dg-kit/waveforms](https://img.shields.io/npm/v/@dg-kit/waveforms?label=%40dg-kit%2Fwaveforms&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/waveforms)
+[![npm: @dg-kit/tools](https://img.shields.io/npm/v/@dg-kit/tools?label=%40dg-kit%2Ftools&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/tools)
+[![npm: @dg-kit/transport-webbluetooth](https://img.shields.io/npm/v/@dg-kit/transport-webbluetooth?label=%40dg-kit%2Ftransport-webbluetooth&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/transport-webbluetooth)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![CI](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml/badge.svg)](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml)
 
-## Packages
+中文 | [English](./README.en.md)
 
-| Package                                                               | Purpose                                                                                                                                 |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@dg-kit/core`](./packages/core)                                     | Types, interfaces, command shapes                                                                                                       |
-| [`@dg-kit/protocol`](./packages/protocol)                             | Coyote V2 / V3 BLE protocol adapters (transport-agnostic)                                                                               |
-| [`@dg-kit/waveforms`](./packages/waveforms)                           | Built-in waveforms, design compiler, `.pulse` parser                                                                                    |
-| [`@dg-kit/tools`](./packages/tools)                                   | LLM tool definitions (`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave`) with injectable rate-limit policy |
-| [`@dg-kit/transport-webbluetooth`](./packages/transport-webbluetooth) | Browser-side `DeviceClient` over Web Bluetooth                                                                                          |
+</div>
 
-## Repo layout
+## 这是什么
+
+DG-Kit 是 [DG-Agent](https://github.com/0xNullAI/DG-Agent)、[DG-Chat](https://github.com/0xNullAI/DG-Chat)、[DG-MCP](https://github.com/0xNullAI/DG-MCP) 三个项目共用的核心代码库。把蓝牙协议、波形数据、工具定义这些会在浏览器和 Node 都需要的部分抽出来发到 npm，三个项目各自只写自己独有的 UI / MCP 服务 / P2P 房间逻辑。
+
+简单说：**一份协议代码，三个产品共用**。改一次，三个项目同步受益。
+
+## 五个包
+
+| 包 | 用途 |
+|---|---|
+| **`@dg-kit/core`** | 基础类型与抽象接口（`DeviceState` / `DeviceCommand` / `WaveformDefinition` / `DeviceClient` 等） |
+| **`@dg-kit/protocol`** | 郊狼 V2 / V3 蓝牙协议适配器（与传输层解耦） |
+| **`@dg-kit/waveforms`** | 内置波形、`ramp / hold / pulse / silence` 段落编译器、`.pulse` 文件解析器 |
+| **`@dg-kit/tools`** | LLM 工具定义（`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave`），可注入限速策略 |
+| **`@dg-kit/transport-webbluetooth`** | 浏览器侧 `DeviceClient` 实现，基于 Web Bluetooth |
+
+## 安装
+
+```bash
+npm install @dg-kit/core @dg-kit/protocol @dg-kit/waveforms
+```
+
+按需取用。三个下游项目分别使用了不同子集。
+
+## 架构
 
 ```
-packages/
-  core/                      @dg-kit/core
-  protocol/                  @dg-kit/protocol         depends on: core
-  waveforms/                 @dg-kit/waveforms        depends on: core
-  tools/                     @dg-kit/tools            depends on: core, waveforms
-  transport-webbluetooth/    @dg-kit/transport-webbluetooth  depends on: core, protocol
+                  @dg-kit/core
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+ @dg-kit/protocol  @dg-kit/waveforms  @dg-kit/tools
+        │
+        ▼
+ @dg-kit/transport-webbluetooth         (其他传输如 noble 由消费者实现)
 ```
 
-## Development
+设备协议层（`@dg-kit/protocol`）只依赖一个抽象的 `BluetoothRemoteGATTCharacteristicLike` 接口，所以浏览器和 Node 都能复用——浏览器走 `@dg-kit/transport-webbluetooth`，Node 走 [DG-MCP](https://github.com/0xNullAI/DG-MCP) 内部的 noble 适配。
+
+## 开发
 
 ```bash
 npm install
+npm run build
 npm run typecheck
 npm run test
-npm run build
 ```
 
-## Releasing
+26 个单元测试覆盖协议帧打包、波形编译、`.pulse` 解析、限速策略。
 
-`@dg-kit/*` packages share a single version (pinned via changesets `fixed`). To cut a release:
+## 发布
 
-1. Make code changes on a feature branch.
-2. `npx changeset` — write a release note.
-3. PR to `main`. CI runs lint / typecheck / test / build.
-4. After merge, the release workflow opens a "Version Packages" PR. Merging that PR publishes to npm.
+走 [changesets](https://github.com/changesets/changesets) 自动化：
 
-## Consumers
+1. 改完代码 → `npx changeset` 写一份 release note
+2. PR 合并到 `main`，机器人自动开"Version Packages" PR
+3. 合并那个 PR → CI 自动 `npm publish`
 
-- [DG-Agent](https://github.com/0xNullAI/DG-Agent) — browser AI controller
-- [DG-MCP](https://github.com/0xNullAI/DG-MCP) — Model Context Protocol server (Node)
-- [DG-Chat](https://github.com/0xNullAI/DG-Chat) — P2P multi-user room
+五个包通过 changesets 的 `fixed` 设置同步版本，永远是同一个版本号。
 
-## License
+## 相关项目
 
-MIT
+| 项目 | 用途 |
+|---|---|
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动设备 |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | 多人 P2P 房间，可远程控制队友设备 |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | Model Context Protocol 服务器，接入 Claude Desktop 等 MCP 客户端 |
+
+## 协议
+
+[MIT](./LICENSE)
