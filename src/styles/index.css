@@ -1,0 +1,147 @@
+@import 'tailwindcss';
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Design tokens — aligned with DG-Agent / DG-Chat
+   light: white + sky-cyan accent
+   dark:  near-black + warm-amber accent
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-strong: #f8fafb;
+  --bg-soft: rgba(88, 200, 242, 0.08);
+  --surface-border: #e8eef2;
+  --surface-border-strong: #d0dbe3;
+
+  --text: #1a1a1a;
+  --text-soft: #5a6872;
+  --text-faint: #94a3b0;
+
+  --accent: #58c8f2;
+  --accent-soft: rgba(88, 200, 242, 0.1);
+  --accent-strong: #3ab5e6;
+  --accent-hover: rgba(88, 200, 242, 0.16);
+  --highlight: #3ab5e6;
+
+  --danger: #f0a2b2;
+  --danger-soft: rgba(240, 162, 178, 0.12);
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.1);
+
+  --ring: rgba(88, 200, 242, 0.2);
+  --glass: rgba(255, 255, 255, 0.85);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+
+  --scrollbar-thumb: #d0dbe3;
+  --scrollbar-thumb-hover: #b8c8d4;
+
+  --grid: rgba(88, 200, 242, 0.05);
+}
+
+:root[data-theme='dark'] {
+  --bg: #080808;
+  --bg-elevated: #141414;
+  --bg-strong: #141414;
+  --bg-soft: rgba(255, 233, 157, 0.08);
+  --surface-border: #222222;
+  --surface-border-strong: #333333;
+
+  --text: #ececec;
+  --text-soft: #999999;
+  --text-faint: #666666;
+
+  --accent: #ffe99d;
+  --accent-soft: rgba(255, 233, 157, 0.1);
+  --accent-strong: #ffb800;
+  --accent-hover: rgba(255, 233, 157, 0.18);
+  --highlight: #ffb800;
+
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.14);
+  --success: #22c55e;
+  --success-soft: rgba(52, 211, 153, 0.14);
+
+  --ring: rgba(255, 233, 157, 0.12);
+  --glass: rgba(14, 14, 14, 0.85);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.6);
+
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-thumb-hover: #525252;
+
+  --grid: rgba(255, 233, 157, 0.045);
+}
+
+@theme {
+  --font-display: 'Big Shoulders Display', 'PingFang SC', 'HarmonyOS_Regular', sans-serif;
+  --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+}
+
+html, body, #root { height: 100%; margin: 0; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  letter-spacing: -0.005em;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 88px 88px;
+}
+::selection { background: var(--accent); color: var(--bg); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+@keyframes pulse-flow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -200; } }
+@keyframes glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes scan-blink { 0%, 92%, 100% { opacity: 1; } 94% { opacity: 0.4; } 96% { opacity: 1; } 98% { opacity: 0.7; } }
+@keyframes reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.reveal { animation: reveal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Markdown */
+.markdown-body { font-family: var(--font-body); line-height: 1.78; color: var(--text); max-width: 72ch; font-size: 15.5px; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.015em; color: var(--text); }
+.markdown-body h1 { font-size: clamp(2.6rem, 5vw, 3.6rem); line-height: 1; margin: 0 0 0.6em; padding-bottom: 0.5em; border-bottom: 1px solid var(--surface-border); }
+.markdown-body h2 { font-size: 1.85rem; margin: 2.2em 0 0.65em; display: flex; align-items: baseline; gap: 0.55em; }
+.markdown-body h2::before { content: '§'; color: var(--accent); font-family: var(--font-mono); font-size: 0.65em; font-weight: 400; }
+.markdown-body h3 { font-size: 1.2rem; letter-spacing: 0.02em; margin: 1.7em 0 0.5em; color: var(--accent-strong); }
+.markdown-body p { margin: 0 0 1.15em; color: var(--text); }
+.markdown-body a { color: var(--accent-strong); border-bottom: 1px dashed var(--accent-strong); text-decoration: none; transition: color 0.15s, border-color 0.15s, border-style 0.15s; }
+.markdown-body a:hover { color: var(--text); border-bottom-color: var(--accent); border-bottom-style: solid; }
+.markdown-body strong { color: var(--text); font-weight: 600; background: linear-gradient(transparent 60%, var(--accent-soft) 60%); padding: 0 0.15em; }
+.markdown-body em { font-style: italic; color: var(--text-soft); }
+.markdown-body code { font-family: var(--font-mono); font-size: 0.88em; background: var(--bg-strong); border: 1px solid var(--surface-border); padding: 0.1em 0.45em; border-radius: var(--radius-sm); color: var(--accent-strong); }
+.markdown-body pre { background: var(--bg-strong); border: 1px solid var(--surface-border); padding: 1.1em 1.3em; margin: 1.4em 0; overflow-x: auto; font-size: 0.88em; border-radius: var(--radius-md); position: relative; }
+.markdown-body pre::before { content: '◉ output'; position: absolute; top: 0.5em; right: 0.85em; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-faint); letter-spacing: 0.1em; }
+.markdown-body pre code { background: transparent; border: none; padding: 0; color: var(--text); font-size: inherit; }
+.markdown-body ul, .markdown-body ol { margin: 0 0 1.2em; padding-left: 1.5em; }
+.markdown-body li { margin: 0.32em 0; }
+.markdown-body ul li::marker { content: '▸ '; color: var(--accent); }
+.markdown-body blockquote { border-left: 3px solid var(--accent); margin: 1.4em 0; padding: 0.55em 1.2em; background: var(--bg-soft); font-style: italic; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.markdown-body table { width: 100%; border-collapse: collapse; margin: 1.5em 0; font-size: 0.94em; border: 1px solid var(--surface-border); border-radius: var(--radius-md); overflow: hidden; }
+.markdown-body th, .markdown-body td { border-bottom: 1px solid var(--surface-border); padding: 0.65em 1em; text-align: left; }
+.markdown-body tr:last-child td { border-bottom: none; }
+.markdown-body th { background: var(--bg-strong); font-family: var(--font-mono); font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-strong); font-weight: 500; }
+.markdown-body hr { border: none; height: 1px; background: var(--surface-border); margin: 2.4em 0; }
+.markdown-body img { max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--surface-border); }
+
+/* Surface utilities */
+.dg-card { background: var(--bg-elevated); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
+.dg-pill { display: inline-flex; align-items: center; gap: 0.4em; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35em 0.75em; border-radius: 999px; border: 1px solid var(--surface-border); color: var(--text-soft); background: var(--bg-elevated); }
+.dg-button { display: inline-flex; align-items: center; gap: 0.4em; font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.55em 0.95em; border-radius: var(--radius-sm); border: 1px solid var(--surface-border); color: var(--text-soft); background: var(--bg-elevated); transition: color 0.15s, border-color 0.15s, background 0.15s; cursor: pointer; }
+.dg-button:hover { color: var(--accent-strong); border-color: var(--accent); background: var(--accent-soft); }
+.dg-button.is-active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.dg-button.is-primary { color: var(--bg); background: var(--text); border-color: var(--text); }
+.dg-button.is-primary:hover { background: var(--accent); border-color: var(--accent); }
