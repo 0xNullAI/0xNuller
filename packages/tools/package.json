@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/tools",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "LLM tool definitions and execution-plan resolver for DG-Lab Coyote control",
   "license": "MIT",
   "author": "0xNullAI",
@@ -35,8 +35,8 @@
     }
   },
   "dependencies": {
-    "@dg-kit/core": "0.0.0",
-    "@dg-kit/waveforms": "0.0.0",
+    "@dg-kit/core": "0.1.0",
+    "@dg-kit/waveforms": "0.1.0",
     "zod": "^3.23.8"
   },
   "scripts": {

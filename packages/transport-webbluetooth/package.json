@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/transport-webbluetooth",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Web Bluetooth DeviceClient for DG-Lab Coyote (browser-only)",
   "license": "MIT",
   "author": "0xNullAI",
@@ -35,8 +35,8 @@
     }
   },
   "dependencies": {
-    "@dg-kit/core": "0.0.0",
-    "@dg-kit/protocol": "0.0.0"
+    "@dg-kit/core": "0.1.0",
+    "@dg-kit/protocol": "0.1.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
