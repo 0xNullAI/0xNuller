@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/protocol",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "DG-Lab Coyote V2 / V3 BLE protocol adapters (transport-agnostic)",
   "license": "MIT",
   "author": "0xNullAI",
@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@dg-kit/core": "0.1.1"
+    "@dg-kit/core": "0.2.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

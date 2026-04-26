@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Shared types and contract interfaces for DG-Lab Coyote control libraries",
   "license": "MIT",
   "author": "0xNullAI",

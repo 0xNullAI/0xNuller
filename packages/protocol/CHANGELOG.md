@@ -1,5 +1,16 @@
 # @dg-kit/protocol
 
+## 0.2.0
+
+### Minor Changes
+
+- 55017d6: Add `setLimits(limitA, limitB)` to `BaseCoyoteProtocolAdapter` (and the V2 / V3 / facade implementations). On V3 it re-sends the BF init packet so the device enforces the new soft-limit; on V2 it updates state for the next tick to clamp against. Reducing a limit also clamps the current strength downward immediately. This unblocks DG-Chat's per-channel safety cap UI in Phase 4b.
+
+### Patch Changes
+
+- Updated dependencies [55017d6]
+  - @dg-kit/core@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
