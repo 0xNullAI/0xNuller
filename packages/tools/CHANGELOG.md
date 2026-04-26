@@ -1,5 +1,17 @@
 # @dg-kit/tools
 
+## 1.0.0
+
+### Major Changes
+
+- 340e495: First stable release. Three downstream consumers — DG-Agent (browser AI controller), DG-Chat (P2P multi-user room), and DG-MCP (Model Context Protocol server) — have all migrated onto the published `@dg-kit/*` packages and verified end-to-end against real Coyote 2.0 / 3.0 hardware. The public API (DeviceCommand shape, BaseCoyoteProtocolAdapter / WebBluetoothProtocolAdapter interfaces, ToolRegistry, RateLimitPolicy, WaveformLibrary, design-segment primitives, .pulse parser) is now considered stable; breaking changes will only ship as 2.x.
+
+### Patch Changes
+
+- Updated dependencies [340e495]
+  - @dg-kit/core@1.0.0
+  - @dg-kit/waveforms@1.0.0
+
 ## 0.2.0
 
 ### Patch Changes
