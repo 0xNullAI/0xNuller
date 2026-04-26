@@ -147,20 +147,38 @@ PeerJS 默认走 `0.peerjs.com` 公共 signaling server。如果想自托管：
 
 ## 测试
 
-DG-Chat 没有 vitest 套件——回归测试依赖上游 DG-Kit 的协议测试。
-
-本地测试流程：
-
 ```bash
 npm install
-npm run build
 npm run lint
+npm run test         # vitest, 11 个测试
+npm run build
 npm run dev          # 在两个浏览器（或一个浏览器两个窗口）打开同一房间号联调
 ```
 
-## 部署
+vitest 套件覆盖：
 
-GitHub Pages，自动 deploy。`vite.config.ts` 的 `base` 是 `/DG-Chat/`，要 fork 改 base 字段。
+- `BUILTIN_WAVEFORMS` 形状 + 强度钳制
+- `parsePulseFile` 各种合法 / 非法输入
+- localStorage 自定义波形持久化往返
+
+协议层（V2 / V3 字节）测试在上游 [DG-Kit](#/kit/developer) 里跑，DG-Chat 不重复。
+
+## 分支约定 + 发布
+
+跟 DG 家族一致：
+
+| 分支 | 用途 |
+|---|---|
+| `main` | 默认查看 / 已发布版（GitHub Pages 上线版本） |
+| `dev` | 日常开发，所有 PR base 到这里 |
+
+发布动作：
+
+1. dev 上 `npm version patch` 改 root `package.json`
+2. PR base=main → `release-guard.yml` 校验版本已 bump
+3. 合并到 main → `deploy.yml` 推到 GitHub Pages + `auto-tag.yml` 打 `vX.Y.Z` tag
+
+`vite.config.ts` 的 `base` 是 `/DG-Chat/`，fork 部署需要改这个字段。
 
 ## 二次开发
 

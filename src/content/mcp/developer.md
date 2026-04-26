@@ -12,9 +12,16 @@ DG-MCP/
 │   ├── coyote-device.ts        DeviceClient 实现：noble scan/connect → @dg-kit/protocol
 │   ├── noble-shim.ts           noble Characteristic → @dg-kit/protocol 的 CharacteristicLike
 │   └── waveform-library.ts     fs-backed WaveformLibrary（built-ins + .pulse/.zip + JSON 持久化）
-├── .github/workflows/
-│   ├── ci.yml                  typecheck + build on PR
-│   └── publish.yml             npm publish on git tag (v*)
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml              typecheck + test + build (PR + push to dev/main)
+│   │   ├── publish.yml         npm publish on push to main (with --provenance)
+│   │   ├── release-guard.yml   PR-to-main 必须 bump version
+│   │   └── auto-tag.yml        push to main 后自动打 vX.Y.Z 标签
+│   ├── pull_request_template.md
+│   ├── ISSUE_TEMPLATE/
+│   ├── CODEOWNERS
+│   └── dependabot.yml
 └── package.json                bin: { dg-mcp: dist/cli.js }
 ```
 
@@ -152,32 +159,52 @@ case 'my_new_tool': {
 
 ## 测试
 
-DG-MCP 没有 vitest 套件——回归测试依赖：
-
-1. 上游 `@dg-kit/protocol` 的协议测试
-2. CLI 烟测：`node dist/cli.js --version` / `--help`
-3. 真机 smoke test：在 Claude Desktop 里跑一遍 scan / connect / start / stop
-
 ```bash
 npm install
 npm run typecheck
+npm run test         # vitest, 9 个测试
 npm run build
 npm run dev          # tsx 热重载（直接跑 src/cli.ts）
 ```
 
-## 发布
+vitest 套件覆盖 `src/waveform-library.ts`：内置波形列表、`getById()` 退路、`save()` 往返、`importPath()` 处理 `.pulse` / `.zip` / 损坏文件、`persistDir` 跨实例持久化。
+
+协议层（V2 / V3 字节）测试在上游 [DG-Kit](#/kit/developer)。CLI / Claude Desktop 集成靠真机 smoke test。
+
+## 分支约定
+
+跟 DG 家族一致：
+
+| 分支 | 用途 |
+|---|---|
+| `main` | 默认查看 / 发布版（已发布到 npm 的版本对应这里） |
+| `dev` | 日常开发，PR 全部 base 到这里 |
+
+**注意**：发布机制变了——以前是手动 `git tag v*`，现在改成 **push 到 main 自动 publish**（幂等：如果 npm 已有该版本会跳过）。
+
+## 发布流程
 
 ```bash
-# 1. 改 src/cli.ts + src/server.ts 的版本字符串到新版本
-# 2. 改 package.json version
-# 3. 提交、push
-git add -A && git commit -m "chore: bump dg-mcp to 1.x.x" && git push
-# 4. 打 tag
-git tag v1.x.x && git push origin v1.x.x
-# 5. .github/workflows/publish.yml 自动 npm publish
+# 1. 在 dev 上：bump 版本号
+git checkout dev
+npm version patch    # 同时改 package.json 和 src/cli.ts / src/server.ts 的版本字符串
+                     # （实际现在版本字符串还是手动同步，未来可写脚本自动同步）
+
+# 2. 提交、push 到 dev
+git push
+
+# 3. PR 从 dev → main
+gh pr create --base main --head dev --title "chore: release v1.x.x"
+
+# 4. release-guard.yml 校验 package.json version 已 bump → ✓
+# 5. 合并到 main
+# 6. 自动跑：
+#    - publish.yml: npm publish --access public --provenance
+#    - auto-tag.yml: 创建 vX.Y.Z 标签
+#    - ci.yml: 跑回归测试
 ```
 
-需要 `NPM_TOKEN` secret 在 repo Settings 配好。
+需要 `NPM_TOKEN` secret 在 repo Settings 配好。npm provenance 让发布的包带 GitHub Actions 签名，npmjs.com 上每个版本页面会显示「Built and signed via GitHub Actions」徽章。
 
 ## 自托管
 

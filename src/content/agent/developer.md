@@ -138,7 +138,14 @@ npm run lint         # eslint zero-warning 政策
 2. 改 → push → PR 到 `0xNullAI/DG-Agent` 的 **`dev` 分支**（**不是 `main`**）
 3. CI 自动跑 lint / typecheck / test / build
 4. Review 后合入 `dev`
-5. `dev` 自动同步镜像到 [`DG-Agent-dev`](https://github.com/0xNullAI/DG-Agent-dev) 仓库的 `main` 分支（CI 触发）
+5. dev 推送自动通过 `.github/workflows/mirror-dev.yml` 镜像到 [`DG-Agent-dev`](https://github.com/0xNullAI/DG-Agent-dev) 的 `main` 分支
+6. 镜像仓库自己的 `deploy.yml` 触发 → 大约 45 秒后 dev 内容上线 [https://0xnullai.github.io/DG-Agent-dev/](https://0xnullai.github.io/DG-Agent-dev/)（**dev 实时预览站**）
+
+发布到生产线则是另一个动作：
+
+7. 准备发版时：在 dev 上 `npm version patch`（或 minor / major）→ commit
+8. PR 从 dev → main → `release-guard.yml` 校验 `package.json` version 已 bump
+9. 合并到 main → `deploy.yml` 部署到 [https://0xnullai.github.io/DG-Agent/](https://0xnullai.github.io/DG-Agent/) + `auto-tag.yml` 推 `vX.Y.Z` 标签
 
 ## 二次开发
 
@@ -162,12 +169,17 @@ npm run lint         # eslint zero-warning 政策
 - 不引入新依赖前先看现有的能不能复用
 - 改 UI 之前看 `CLAUDE.md` 的「UI Maintenance Notes」（用户已确认的行为不要改）
 
-## 部署
+## 部署 / 双站点
 
-GitHub Pages，自动 deploy 走 `main` 分支：
+DG-Agent 有两个 GitHub Pages 站点同时运行：
 
-1. 把 `dev` 合到 `main`（手动，作者操作）
-2. `.github/workflows/deploy.yml` 触发 → Vite build → 推到 `gh-pages` 分支
-3. 访问 https://0xnullai.github.io/DG-Agent/
+| 站点 | URL | 来源 | 触发 |
+|---|---|---|---|
+| 生产 | https://0xnullai.github.io/DG-Agent/ | DG-Agent 本仓 main 分支 | 合 PR 到 main 时（必须带 version bump） |
+| 开发预览 | https://0xnullai.github.io/DG-Agent-dev/ | [DG-Agent-dev 镜像仓](https://github.com/0xNullAI/DG-Agent-dev) main 分支 | dev push 后自动镜像 + deploy |
 
-如果你 fork 了，要改 `vite.config.ts` 的 `base` 字段为你 fork 的仓库名。
+镜像通过 `.github/workflows/mirror-dev.yml` 实现：每次 push 到 dev，用 PAT 把 dev 强推到 DG-Agent-dev/main，然后镜像仓自己的 deploy.yml 跑构建+发布。
+
+`vite.config.ts` 用 `base: './'`（相对路径），同一份代码部署到不同子路径都行。如果你自己 fork 部署到第三个 URL，不需要改 base。
+
+镜像 PAT 配置在 DG-Agent 的 secrets 里（`MIRROR_PAT`），权限范围：`Contents: read+write` + `Workflows: read+write` 仅对 DG-Agent-dev 仓。
