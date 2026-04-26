@@ -5,6 +5,12 @@ PR 标题请用 conventional-commit 风格：type(scope): subject
   scope  ::= 包名 / 子目录 / 'release' 等
   subject::= 祈使句、简体中文或英文均可、不带句号
 
+📍 分支约定：
+  - 日常 PR 一律 base 到 dev
+  - main 仅接收发布 — 进入 main 必须带版本号 bump，否则 release-guard 会拦截
+  - DG-Kit 走 changesets：写 .changeset/*.md → PR 到 dev → 合并 → 机器人自动开发布 PR 到 main
+  - 其它仓库：dev 上手动 bump version 后 → PR 到 main → release-guard 校验 → 合并 → auto-tag
+
 例：feat(protocol): add setLimits() to update strength caps
     fix(web): bluetooth chooser auto-trigger regression
     docs(agent): clarify cold-start strength cap
