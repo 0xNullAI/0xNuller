@@ -31,6 +31,16 @@ export interface WebBluetoothProtocolAdapter {
   execute(command: DeviceCommand): Promise<DeviceCommandResult>;
   emergencyStop(): Promise<void>;
   subscribe(listener: StateListener): () => void;
+  /**
+   * Update the per-channel strength soft-limits.
+   *
+   * V3: re-sends a BF init packet so the device enforces the new limits.
+   * V2: limits are clamped client-side at each tick (V2 protocol has no
+   * device-side limit command).
+   *
+   * Limits also clamp current strength downward if reduced.
+   */
+  setLimits(limitA: number, limitB: number): Promise<void>;
 }
 
 export interface ChannelWaveState {
@@ -151,6 +161,27 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
 
     this.emit();
     return { state: this.getState() };
+  }
+
+  async setLimits(limitA: number, limitB: number): Promise<void> {
+    const nextA = this.clamp(limitA, 0, 200);
+    const nextB = this.clamp(limitB, 0, 200);
+    this.state.limitA = nextA;
+    this.state.limitB = nextB;
+
+    // Reducing the limit must immediately clamp current strength so the next
+    // tick can't write a value above the new ceiling.
+    if (this.state.strengthA > nextA) {
+      this.setAbsoluteStrength('A', nextA);
+    }
+    if (this.state.strengthB > nextB) {
+      this.setAbsoluteStrength('B', nextB);
+    }
+
+    if (this.state.connected) {
+      await this.writeLimitsToDevice();
+    }
+    this.emit();
   }
 
   async emergencyStop(): Promise<void> {
@@ -446,4 +477,9 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
   protected abstract adjustStrength(channel: Channel, delta: number): void;
   protected abstract performTick(): Promise<void>;
   protected abstract writeEmergencyStopPacket(): Promise<void>;
+  /**
+   * Push the current `state.limitA` / `state.limitB` to the device.
+   * V3 sends a BF packet; V2 is a no-op (limits enforced via clamp at tick).
+   */
+  protected abstract writeLimitsToDevice(): Promise<void>;
 }

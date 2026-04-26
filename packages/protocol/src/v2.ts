@@ -159,6 +159,12 @@ export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     }
   }
 
+  protected async writeLimitsToDevice(): Promise<void> {
+    // V2 has no device-side limit command. The next tick's performTick will
+    // clamp pendingStrA/B against state.limitA/B, which the base class has
+    // already updated.
+  }
+
   protected async writeEmergencyStopPacket(): Promise<void> {
     if (!this.v2StrengthChar) return;
     try {

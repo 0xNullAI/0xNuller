@@ -200,6 +200,10 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     await this.writeCharacteristicValue(this.writeChar, this.buildBF(limitA, limitB));
   }
 
+  protected async writeLimitsToDevice(): Promise<void> {
+    await this.writeBF(this.state.limitA, this.state.limitB);
+  }
+
   private nextSeq(): number {
     return this.seq >= 15 ? 1 : this.seq + 1;
   }

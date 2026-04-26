@@ -66,6 +66,10 @@ export class CoyoteProtocolAdapter implements WebBluetoothProtocolAdapter {
     await this.activeProtocol.emergencyStop();
   }
 
+  async setLimits(limitA: number, limitB: number): Promise<void> {
+    await this.activeProtocol.setLimits(limitA, limitB);
+  }
+
   private createProtocol(context: WebBluetoothConnectionContext): WebBluetoothProtocolAdapter {
     const name = context.device.name ?? '';
     return name.startsWith(V2_DEVICE_NAME_PREFIX)

@@ -207,6 +207,64 @@ describe('CoyoteV3ProtocolAdapter', () => {
   });
 });
 
+describe('setLimits', () => {
+  it('writes a BF packet on V3 with the new limit values', async () => {
+    const writes: number[][] = [];
+    const characteristic = new MockCharacteristic(async (value) => {
+      writes.push(Array.from(value));
+    });
+
+    const protocol = new CoyoteV3ProtocolAdapter();
+    const protocolInternal = protocol as unknown as {
+      state: ReturnType<typeof createEmptyDeviceState>;
+      writeChar: MockCharacteristic | null;
+    };
+
+    protocolInternal.state = {
+      ...createEmptyDeviceState(),
+      connected: true,
+      limitA: 200,
+      limitB: 200,
+    };
+    protocolInternal.writeChar = characteristic;
+
+    await protocol.setLimits(80, 60);
+
+    expect(protocol.getState().limitA).toBe(80);
+    expect(protocol.getState().limitB).toBe(60);
+    // Last write must be the BF packet (0xBF, limitA, limitB, …)
+    const lastWrite = writes.at(-1);
+    expect(lastWrite?.[0]).toBe(0xbf);
+    expect(lastWrite?.[1]).toBe(80);
+    expect(lastWrite?.[2]).toBe(60);
+  });
+
+  it('clamps current strength downward when the limit is reduced', async () => {
+    const protocol = new CoyoteV3ProtocolAdapter();
+    const protocolInternal = protocol as unknown as {
+      state: ReturnType<typeof createEmptyDeviceState>;
+      writeChar: { writeValueWithoutResponse(): Promise<void> } | null;
+    };
+
+    protocolInternal.state = {
+      ...createEmptyDeviceState(),
+      connected: true,
+      strengthA: 90,
+      strengthB: 30,
+      limitA: 200,
+      limitB: 200,
+    };
+    protocolInternal.writeChar = {
+      writeValueWithoutResponse: async () => undefined,
+    };
+
+    await protocol.setLimits(50, 50);
+
+    expect(protocol.getState().strengthA).toBe(50);
+    expect(protocol.getState().strengthB).toBe(30);
+  });
+});
+
 describe('CoyoteV2ProtocolAdapter', () => {
   it('connects and initializes when V2 characteristics only support write with response', async () => {
     const strengthWrites: number[][] = [];
