@@ -1,5 +1,13 @@
 # @dg-kit/protocol
 
+## 0.1.1
+
+### Patch Changes
+
+- 39d6853: Fix published `package.json` so `main` / `types` / `exports` point to `dist/`. The previous 0.1.0 tarballs had `main: src/index.ts` from the unsupported `publishConfig.main` override pattern, which broke `import` resolution for downstream consumers. Local dev now requires `npm run build` before `typecheck` / `test` (wired automatically via `pretypecheck` / `pretest`).
+- Updated dependencies [39d6853]
+  - @dg-kit/core@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

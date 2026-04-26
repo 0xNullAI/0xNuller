@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DG-Lab Coyote V2 / V3 BLE protocol adapters (transport-agnostic)",
   "license": "MIT",
   "author": "0xNullAI",
@@ -19,17 +19,26 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@dg-kit/core": "0.1.0"
+    "@dg-kit/core": "0.1.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["dg-lab", "coyote", "ble", "bluetooth", "protocol"]
+  "keywords": [
+    "dg-lab",
+    "coyote",
+    "ble",
+    "bluetooth",
+    "protocol"
+  ]
 }
