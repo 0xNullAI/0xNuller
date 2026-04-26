@@ -48,7 +48,7 @@ export function TableOfContents({ content }: { content: string }) {
   }
 
   return (
-    <aside className="hidden lg:block w-[220px] shrink-0 sticky top-[160px] self-start max-h-[calc(100vh-200px)] overflow-y-auto pr-3">
+    <aside className="hidden lg:block w-[220px] shrink-0 sticky top-[120px] self-start max-h-[calc(100vh-200px)] overflow-y-auto pr-3">
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)] mb-3 pl-2">
         ── 目录
       </div>

@@ -18,7 +18,7 @@ const audienceLabel: Record<Document['audience'], string> = {
  */
 export function DocTabs({ project, activeDocId, onNavigate, isModified }: Props) {
   return (
-    <div className="border-b border-[var(--surface-border)] bg-[var(--bg-strong)]">
+    <div className="border-b border-[var(--surface-border)] bg-[var(--bg-strong)] sticky top-[57px] z-20 backdrop-blur">
       <div className="flex items-stretch px-8 gap-1 overflow-x-auto">
         {project.documents.map((doc) => {
           const isActive = doc.id === activeDocId;
