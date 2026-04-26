@@ -1,3 +1,4 @@
+import { ProjectPicker } from './ProjectPicker';
 import type { Document } from '../lib/projects';
 import { githubEditUrl, REPO_BASE } from '../lib/projects';
 
@@ -9,6 +10,10 @@ interface HeaderProps {
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onReset: () => void;
+  // Project picker hooks
+  activeProjectId: string;
+  onSelectProject: (id: string) => void;
+  isProjectModified: (projectId: string) => boolean;
 }
 
 export function Header({
@@ -19,21 +24,35 @@ export function Header({
   theme,
   onToggleTheme,
   onReset,
+  activeProjectId,
+  onSelectProject,
+  isProjectModified,
 }: HeaderProps) {
   return (
     <header className="border-b border-[var(--surface-border)] bg-[var(--bg)] sticky top-0 z-30 backdrop-blur">
-      <div className="flex items-center justify-between px-8 py-3 gap-4">
-        {/* Brand + tagline */}
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="font-display text-2xl font-extrabold tracking-tight text-[var(--text)] leading-none">
-            DG·WIKI
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
-            documentation hub
-          </span>
+      <div className="flex items-center justify-between px-8 py-3 gap-6">
+        {/* Brand + project picker */}
+        <div className="flex items-center gap-5 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-2xl font-extrabold tracking-tight text-[var(--text)] leading-none">
+              DG·WIKI
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
+              docs hub
+            </span>
+          </div>
+
+          <span className="text-[var(--text-faint)] text-sm">/</span>
+
+          <ProjectPicker
+            activeId={activeProjectId}
+            onSelect={onSelectProject}
+            isModified={isProjectModified}
+          />
+
           {isModified ? (
             <span
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--danger)] flex items-center gap-1.5 ml-2"
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--danger)] flex items-center gap-1.5"
               title="本地浏览器存档了你的修改"
             >
               <span

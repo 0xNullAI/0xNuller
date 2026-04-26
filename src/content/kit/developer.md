@@ -13,9 +13,15 @@ DG-Kit/
 │   ├── tools/                      @dg-kit/tools            (deps: core, waveforms)
 │   └── transport-webbluetooth/     @dg-kit/transport-webbluetooth (deps: core, protocol)
 ├── .changeset/                     changesets release notes
-└── .github/workflows/
-    ├── ci.yml                      lint + typecheck + test + build
-    └── release.yml                 changesets publish
+└── .github/
+    ├── workflows/
+    │   ├── ci.yml                  lint + typecheck + test + build (PR + push to dev/main)
+    │   ├── release.yml             changesets publish on push to main
+    │   └── release-guard.yml       PR-to-main 必须 bump 版本
+    ├── pull_request_template.md    PR 模板（conventional-commit 风格）
+    ├── ISSUE_TEMPLATE/             bug + feature 表单
+    ├── CODEOWNERS                  @0xNullAI 自动 review
+    └── dependabot.yml              每周一 9:00 (Asia/Shanghai) 扫 npm + Actions
 ```
 
 每个包独立 `package.json`、独立 `tsconfig`、各自暴露 `dist/`。CI 跑 typecheck + 26 个单元测试 + 构建。
@@ -190,15 +196,37 @@ npm run lint
 - `.pulse` 解析器
 - 限速策略
 
+## 分支约定
+
+跟整个 DG 家族一致的两层分支模型：
+
+```
+develop on dev (PR base = dev)
+  ↓
+release: dev → main (release-guard 校验版本必须 bump)
+  ↓
+push to main → npm publish + auto-tag
+```
+
+- **`main`**：默认浏览分支，对应**最新发布版**。每次 push 都对应一个版本号
+- **`dev`**：开发分支，所有日常 PR 都 base 到这里
+- **release-guard.yml**：PR 到 main 时自动检查任一 `package.json` 的 version 是否 bumped。没 bump → ❌ 拦截
+- **default branch = `main`**：用户访问仓库默认看到的是发布版
+
 ## 发布流程（changesets）
 
-1. 改完代码 → `npx changeset` 写 release note
-2. 选 packages、选 patch / minor / major、写一句话
-3. 提 PR 合并到 `main`
-4. 机器人自动开 "Version Packages" PR，里面 bump 版本 + 生成 CHANGELOG
-5. 合并那个 PR → `release.yml` workflow 自动 `npm publish`
+1. 改完代码 → `npx changeset` 写 release note（选 packages + patch/minor/major）
+2. PR base=dev → 合并到 dev
+3. 在 dev 上推送时，changesets bot 检测到 `.changeset/*.md` → 开 "chore: release @dg-kit/*" PR base=dev（含版本 bump + 生成的 CHANGELOG）
+4. 合并那个 PR → dev 上版本号已 bump，`.changeset/*.md` 已消费
+5. PR 从 dev → main → release-guard 校验通过 → 合并
+6. push 到 main 触发 `release.yml` → `changeset publish` → 5 个包同时 npm publish（带 **provenance** 签名）
 
 五个包通过 changesets `fixed` 同步版本——bump 一个全部 bump。
+
+### npm provenance
+
+`NPM_CONFIG_PROVENANCE=true` 让 publish 出来的包带 GitHub Actions 的签名。npmjs.com 上每个包页面会显示「Built and signed via GitHub Actions」徽章，消费者可 `npm audit signatures` 验证包跟源码的对应关系。
 
 ## 代码规范
 

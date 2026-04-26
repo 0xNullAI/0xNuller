@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { TabBar } from './components/TabBar';
 import { DocTabs } from './components/DocTabs';
 import { Header } from './components/Header';
 import { MarkdownView } from './components/MarkdownView';
@@ -73,12 +72,9 @@ export function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onReset={reset}
-      />
-
-      <TabBar
-        active={route.projectId}
-        onNavigate={navigateProject}
-        isModified={projectIsModified}
+        activeProjectId={route.projectId}
+        onSelectProject={navigateProject}
+        isProjectModified={projectIsModified}
       />
 
       <DocTabs
@@ -119,7 +115,13 @@ export function App() {
   );
 }
 
-function DocHero({ project, docLabel }: { project: import('./lib/projects').Project; docLabel: string }) {
+function DocHero({
+  project,
+  docLabel,
+}: {
+  project: import('./lib/projects').Project;
+  docLabel: string;
+}) {
   return (
     <div className="mb-10 reveal">
       <div className="flex items-center justify-between mb-3">
