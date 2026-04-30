@@ -16,10 +16,13 @@
 |---|---|---|
 | **Chrome / Edge** | ✅ 推荐 | ✅ Android |
 | **Bluefy** | — | ✅ iOS |
+| **Kiwi Browser** | — | ✅ 鸿蒙 / HarmonyOS |
 | Safari | ❌ 不支持 | ❌ 不支持 |
 | Firefox | ❌ 不支持 | ❌ 不支持 |
 
 iOS 用户需要装 **Bluefy** 浏览器（App Store 免费），Safari 不支持 Web Bluetooth。
+
+鸿蒙（HarmonyOS / HarmonyOS NEXT）用户推荐装 **Kiwi Browser**（基于 Chromium，支持 Web Bluetooth），花瓣 / 夸克等系统自带浏览器目前对 Web Bluetooth 支持不稳定。
 
 ## 第一次使用：5 步上手
 
@@ -176,21 +179,138 @@ DashScope 模式需要 API key（在阿里云控制台开通）。手机端推�
 
 ## 桥接 IM
 
-让群友通过 QQ / Telegram 文字驱动你的设备。
+让你或群友通过 QQ / Telegram 文字驱动你的设备。浏览器仍然是控制中枢——桥接只是把消息转发进来，AI 在你的浏览器里执行工具调用，BLE 写入还是从你的电脑发出。
 
-### QQ（NapCat / OneBot）
+> 桥接消息使用统一的 LLM 上下文，群友的话和你自己的话在 AI 看来是同一个会话。这意味着群友能看到你之前问 AI 的内容——慎用。
 
-1. 在你的服务器跑 [NapCat](https://github.com/NapNeko/NapCatQQ)
-2. DG-Agent 设置 → **桥接** → 选 QQ → 填 WebSocket URL（带 `?access_token=xxx`）
-3. 群里 @机器人发送指令，路由到本地 DG-Agent
+### QQ（NapCat / OneBot v11）
+
+QQ 桥接走 [NapCat](https://github.com/NapNeko/NapCatQQ)：一个 OneBot v11 实现，DG-Agent 通过 WebSocket 与它通讯，从而读取/发送 QQ 消息。
+
+#### 前置条件
+
+- 一台运行 DG-Agent 网页的电脑（Chrome / Edge）
+- 一个**做机器人用的 QQ 账号**（强烈建议小号，主号有风控风险）
+- 你自己手机 QQ 的号码（用于发指令的那个号）
+
+#### 第一步：装并启动 NapCat
+
+**Windows（最简单）**
+
+1. 去 [NapCat Releases](https://github.com/NapNeko/NapCatQQ/releases) 下 `NapCat.Shell.Windows.OneKey.zip`
+2. 解压后双击 `NapCatInstaller.exe` 安装运行库（首次需几分钟），等到 `press any key to continue`
+3. 进入 `NapCat.<版本>.Shell` 目录，双击 `napcat.bat`
+4. 启动后弹出登录二维码，**用机器人 QQ 号**在手机上扫码
+
+**Linux / macOS**
+
+参考 [NapCat 官方文档](https://napneko.github.io/) 的 Docker 或源码方案。
+
+#### 第二步：在 NapCat WebUI 配置 WebSocket
+
+NapCat 启动后，控制台会打印：
+
+```
+WebUI: http://localhost:6099
+Token: xxxxxxxxxxxxxxxx
+```
+
+浏览器打开那个地址，用 Token 登录 → **网络配置** → 添加一个**正向 WebSocket** 服务：
+
+| 配置项 | 建议值 | 说明 |
+|---|---|---|
+| WebSocket 服务 | 启用 | 必须开 |
+| WS 监听端口 | `3001` | DG-Agent 默认连这个 |
+| 消息格式 | `array` | 不要用 `string` |
+| 上报自身消息 | 关闭 | 否则机器人回自己会无限循环 |
+| Token | 留空 | 仅本机用可以不设；公网环境务必设一个 |
+| 心跳 | 默认 | 不用动 |
+
+保存后回控制台，应该能看到 `WebSocket 服务已启动`。
+
+#### 第三步：在 DG-Agent 里配桥接
+
+1. DG-Agent 网页 → 右上角 **⚙️ 设置** → 切到 **桥接**
+2. 打开 **启用社交平台桥接**
+3. 在 **QQ** 子标签里：
+   - 打开 **启用 QQ**
+   - **NapCat WebSocket 地址**：`ws://localhost:3001`（NapCat 设了 Token 时写 `ws://localhost:3001?access_token=你的token`）
+   - **允许的 QQ 用户号**：填**你自己手机 QQ 号**，多个用逗号分隔。**只有这里写过的 QQ 号发消息才会被路由到 AI**
+   - **允许的 QQ 群号**（可选）：要在群里使用就填群号，不填就只能私聊机器人
+   - **权限模式**：
+     - `每次确认` — AI 每次要操作设备前都在 QQ 里发确认，30 秒不回复自动拒绝
+     - `总是允许` — AI 直接执行工具，不打扰你
+4. 点 **保存并重新连接**
+
+连上之后主页面顶部会出现「桥接模式已开启」横条 + 实时消息日志。
+
+#### 第四步：用起来
+
+**私聊机器人**——直接发消息：
+
+```
+你 → 机器人：轻轻试一下 A 通道
+机器人 → 你：好的，我先用最低强度让你感受一下~
+```
+
+**群聊**——必须 **@机器人**才会触发：
+
+```
+你（在群里）：@机器人 把 A 通道强度调到 10
+机器人：好的，已将 A 通道强度调整为 10
+```
+
+非 @ 的群消息一律忽略，机器人不会插嘴。
+
+#### 权限确认（每次确认模式）
+
+权限模式选了「每次确认」时，AI 调工具前会在 QQ 里发：
+
+```
+机器人：
+  AI 请求操作设备
+  工具：start
+  说明：启动 A 通道，呼吸波形，强度 15
+
+  回复数字：
+  1. 允许本次
+  2. 5 分钟内都允许
+  3. 总是允许（本会话）
+  4. 拒绝
+```
+
+回复对应数字即可。30 秒不回复 = 自动拒绝。选「2」「3」之后这段时间内同类工具不再问。
+
+#### 常见问题
+
+**连不上 NapCat**
+- 确认 NapCat 已登录、控制台没报错
+- 端口对得上（默认 `3001`）
+- 浏览器 F12 开发者工具，找 `[QQ] Connected` 日志；看不到就是 WS 没握上手
+- 如果设了 Token，URL 里 `?access_token=…` 必须带
+
+**机器人不回复**
+- 「允许的 QQ 用户号」里有没有你的号
+- 群聊有没有 @ 机器人
+- 群号在「允许的 QQ 群号」里没？没填的话群消息一概不路由
+- NapCat 里「上报自身消息」一定要关，否则机器人答自己 → 死循环
+
+**设备没动**
+- 浏览器已经蓝牙连上郊狼了吗？桥接只转发文字，BLE 还是从浏览器出去
+- 权限模式如果是「每次确认」，是不是没回复数字
+- DG-Agent 标签页不能关，关了就断了
+
+**断线重连**
+- 内置自动重连：3 秒起步，最长 30 秒间隔
+- NapCat 重启后会自动恢复，无需手动操作
+
+完整文档见 [DG-Agent docs/qq-bridge.md](https://github.com/0xNullAI/DG-Agent/blob/main/docs/qq-bridge.md)。
 
 ### Telegram
 
 1. 找 [@BotFather](https://t.me/botfather) 创建 bot，拿 token
 2. 设置 → **桥接** → 选 Telegram → 填 token
 3. 私聊或群聊 bot
-
-> 桥接消息使用统一的 LLM 上下文，群友的话和你自己的话在 AI 看来是同一个会话。这意味着群友能看到你之前问 AI 的内容——慎用。
 
 ## 安全设置
 

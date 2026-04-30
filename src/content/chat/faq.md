@@ -4,7 +4,7 @@
 
 ### 我能加入吗？
 
-- 浏览器是 Chrome / Edge / Bluefy？
+- 浏览器是 Chrome / Edge / Bluefy（iOS）/ Kiwi Browser（鸿蒙）？
 - HTTPS 或 localhost？
 - 房间号对吗？
 - 网络能通：PeerJS signaling 走 wss://；某些公司/学校/咖啡厅网络可能屏蔽 WebRTC

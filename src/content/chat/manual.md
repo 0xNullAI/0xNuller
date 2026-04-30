@@ -12,7 +12,7 @@ DG-Chat 是浏览器端的多人聊天房间。聊天本身用 P2P 协议直连�
 
 ## 浏览器要求
 
-跟 [DG-Agent](#/agent/manual) 一样：Chrome / Edge（桌面）或 Bluefy（iOS）。Safari / Firefox 不支持 Web Bluetooth。
+跟 [DG-Agent](#/agent/manual) 一样：Chrome / Edge（桌面 + Android）、Bluefy（iOS）、Kiwi Browser（鸿蒙）。Safari / Firefox 不支持 Web Bluetooth。
 
 ## 三步上手
 
