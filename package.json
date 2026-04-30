@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/tools -w @dg-kit/transport-webbluetooth",
+    "build": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",
     "typecheck": "npm run typecheck --workspaces --if-present --include-workspace-root=false",
     "pretypecheck": "npm run build",
     "test": "vitest run",

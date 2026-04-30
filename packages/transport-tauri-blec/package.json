@@ -1,0 +1,37 @@
+{
+  "name": "@dg-kit/transport-tauri-blec",
+  "version": "1.0.0",
+  "description": "Tauri Android/iOS DeviceClient for DG-Lab Coyote (BLE via @mnlphlp/plugin-blec)",
+  "license": "MIT",
+  "author": "0xNullAI",
+  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/transport-tauri-blec",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
+    "directory": "packages/transport-tauri-blec"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@dg-kit/core": "1.0.0",
+    "@dg-kit/protocol": "1.0.0",
+    "@mnlphlp/plugin-blec": "^0.8.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["dg-lab", "coyote", "ble", "tauri", "android"]
+}

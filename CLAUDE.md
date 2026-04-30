@@ -25,10 +25,13 @@ Build is **dist-first**: each package's `package.json` `main`/`types`/`exports` 
 
 ## Branch & PR Convention
 
-- Default branch: `main`
-- Develop on feature branches → PR to `main`
-- Add a `.changeset/<name>.md` for any user-visible change
-- After merge, the changesets bot opens a "Version Packages" PR that bumps versions and writes per-package CHANGELOGs. Merging that PR triggers `npm publish` via `.github/workflows/release.yml`
+- `dev` — day-to-day development. **All PRs target `dev`**, never `main` directly. Dependabot is also pinned to `dev` (see `.github/dependabot.yml`).
+- `main` — releases only. Periodically synced from `dev` via a "sync main → dev" / release flow.
+- Develop on feature branches branched off `dev` → PR to `dev`.
+- Add a `.changeset/<name>.md` for any user-visible change.
+- After a release sync into `main`, the changesets bot opens a "Version Packages" PR that bumps versions and writes per-package CHANGELOGs. Merging that PR triggers `npm publish` via `.github/workflows/release.yml`.
+
+This mirrors DG-Agent's dev → main flow so contributors can move between the two repos with the same mental model.
 
 ## Commands
 
