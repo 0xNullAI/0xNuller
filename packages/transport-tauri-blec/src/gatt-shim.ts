@@ -41,12 +41,20 @@ export function createGattShim(args: {
     },
   };
 
+  let fireDisconnect: () => void = () => undefined;
   const gatt: BluetoothRemoteGATTLike = {
     connected: true,
     async connect() {
       return server;
     },
     disconnect() {
+      // Web Bluetooth's gatt.disconnect() is synchronous in observable effect:
+      // the gattserverdisconnected event fires immediately. plugin-blec's
+      // disconnect() is async and may not invoke its onDisconnect callback at
+      // all on a user-initiated tear-down, so we have to fire the event from
+      // here to keep parity with the protocol layer's expectations.
+      if (!gatt.connected) return;
+      fireDisconnect();
       void args.api.disconnect().catch(() => undefined);
     },
   };
@@ -57,7 +65,8 @@ export function createGattShim(args: {
     enumerable: true,
   });
 
-  const fireDisconnect = () => {
+  fireDisconnect = () => {
+    if (!gatt.connected && !server.connected) return;
     server.connected = false;
     gatt.connected = false;
     device.dispatchEvent(new Event('gattserverdisconnected'));

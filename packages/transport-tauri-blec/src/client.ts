@@ -87,7 +87,7 @@ export class TauriBlecDeviceClient implements DeviceClient {
       for (const d of devices) {
         if (prefixes && !prefixes.some((p) => d.name.startsWith(p))) continue;
         const prev = seen.get(d.address);
-        if (!prev || prev.rssi !== d.rssi) changed = true;
+        if (!prev || hasMaterialChange(prev, d)) changed = true;
         seen.set(d.address, d);
       }
       if (changed) {
@@ -151,6 +151,10 @@ export class TauriBlecDeviceClient implements DeviceClient {
 
   async disconnect(): Promise<void> {
     if (!this.connected) return;
+    // Mirror transport-webbluetooth: zero the device before tearing down
+    // BLE so a user-initiated disconnect never leaves the Coyote running
+    // at its last commanded strength (V3 is state-retentive across drops).
+    await this.options.protocol.emergencyStop().catch(() => undefined);
     const api = await resolvePluginBlec();
     await api.disconnect().catch(() => undefined);
     this.connected = false;
@@ -177,4 +181,15 @@ export class TauriBlecDeviceClient implements DeviceClient {
       this.listeners.delete(listener);
     };
   }
+}
+
+function hasMaterialChange(prev: BleDeviceInfo, next: BleDeviceInfo): boolean {
+  if (prev.rssi !== next.rssi) return true;
+  if (prev.isConnected !== next.isConnected) return true;
+  if (prev.name !== next.name) return true;
+  if (prev.services.length !== next.services.length) return true;
+  for (let i = 0; i < prev.services.length; i += 1) {
+    if (prev.services[i] !== next.services[i]) return true;
+  }
+  return false;
 }

@@ -8,7 +8,8 @@
       "@dg-kit/protocol",
       "@dg-kit/waveforms",
       "@dg-kit/tools",
-      "@dg-kit/transport-webbluetooth"
+      "@dg-kit/transport-webbluetooth",
+      "@dg-kit/transport-tauri-blec"
     ]
   ],
   "linked": [],

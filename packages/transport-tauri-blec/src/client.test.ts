@@ -194,6 +194,46 @@ describe('TauriBlecDeviceClient.connect', () => {
     expect(captured.map((d) => d.address).sort()).toEqual(['A', 'C']);
   });
 
+  it('disconnect() zeroes the device via emergencyStop before tearing down BLE', async () => {
+    const protocolEmergencyStop = vi.fn().mockResolvedValue(undefined);
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(
+        async (handler: (devices: BleDeviceInfo[]) => void) => {
+          setTimeout(() => handler([makeDevice()]), 5);
+        },
+      ),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    protocol.emergencyStop = protocolEmergencyStop;
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: async (controller) => {
+        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+          if (controller.initial.length) return resolve(controller.initial);
+          const off = controller.subscribe((next) => {
+            if (next.length) {
+              off();
+              resolve(next);
+            }
+          });
+        });
+        return devices[0]!.address;
+      },
+      scanDurationMs: 50,
+    });
+    await client.connect();
+
+    await client.disconnect();
+    expect(protocolEmergencyStop).toHaveBeenCalledTimes(1);
+    expect(api.disconnect).toHaveBeenCalled();
+    // emergencyStop must run before plugin-blec.disconnect.
+    const stopOrder = protocolEmergencyStop.mock.invocationCallOrder[0]!;
+    const disconnectOrder = (api.disconnect as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]!;
+    expect(stopOrder).toBeLessThan(disconnectOrder);
+  });
+
   it('disconnect callback from plugin-blec triggers protocol.onDisconnected', async () => {
     let onDisc: (() => void) | null = null;
     const api = makeApi({
