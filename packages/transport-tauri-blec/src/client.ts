@@ -1,9 +1,4 @@
-import type {
-  DeviceClient,
-  DeviceCommand,
-  DeviceCommandResult,
-  DeviceState,
-} from '@dg-kit/core';
+import type { DeviceClient, DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
 import type { WebBluetoothProtocolAdapter } from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
 import { resolvePluginBlec, type BleDeviceInfo } from './plugin-blec.js';
@@ -46,11 +41,47 @@ export interface TauriBlecDeviceClientOptions {
   namePrefixes?: string[];
   /** Scan window in milliseconds. Defaults to 8000. */
   scanDurationMs?: number;
+  /**
+   * Grace period after `plugin-blec.connect()` resolves, before the first
+   * `protocol.onConnected()` attempt. Android's `BluetoothGatt` service
+   * discovery is async and may not be visible to plugin-blec the instant
+   * `connect()` returns; the first `send`/`subscribe` then fails with
+   * "No services matching UUID". Defaults to 300ms.
+   */
+  gattReadyInitialDelayMs?: number;
+  /**
+   * Total budget for retrying `protocol.onConnected()` when it fails with
+   * a service/characteristic-not-found error. Defaults to 3000ms.
+   */
+  gattReadyTimeoutMs?: number;
+  /** Delay between retry attempts. Defaults to 250ms. */
+  gattReadyIntervalMs?: number;
+  /**
+   * Substrings (case-insensitive) that identify a transient
+   * GATT-not-ready error from plugin-blec / btleplug. Override only if
+   * the underlying transport surfaces a non-default message. Defaults
+   * cover known wording: "no services matching", "service not found",
+   * "characteristic not found", "no such characteristic", "not connected".
+   */
+  gattReadyErrorPatterns?: string[];
 }
+
+const DEFAULT_GATT_READY_INITIAL_DELAY_MS = 300;
+const DEFAULT_GATT_READY_TIMEOUT_MS = 3000;
+const DEFAULT_GATT_READY_INTERVAL_MS = 250;
+const DEFAULT_GATT_READY_ERROR_PATTERNS = [
+  'no services matching',
+  'service not found',
+  'no such service',
+  'characteristic not found',
+  'no such characteristic',
+  'not connected',
+];
 
 export class TauriBlecDeviceClient implements DeviceClient {
   private readonly listeners = new Set<(state: DeviceState) => void>();
   private connected = false;
+  private connecting = false;
   private fireDisconnect: (() => void) | null = null;
 
   constructor(private readonly options: TauriBlecDeviceClientOptions) {
@@ -60,6 +91,26 @@ export class TauriBlecDeviceClient implements DeviceClient {
   }
 
   async connect(): Promise<void> {
+    // Reentrancy guard: double-tap on the connect button must not start
+    // two parallel scans or two plugin-blec.connect() calls. plugin-blec
+    // holds a single active peripheral internally, so concurrent calls
+    // produce undefined behaviour (two device pickers, ghost subscribers,
+    // mismatched onDisconnect callbacks).
+    if (this.connected) {
+      throw new Error('设备已连接');
+    }
+    if (this.connecting) {
+      throw new Error('正在连接中，请稍候');
+    }
+    this.connecting = true;
+    try {
+      await this.connectInner();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private async connectInner(): Promise<void> {
     const api = await resolvePluginBlec();
 
     const granted = await api.checkPermissions(true);
@@ -138,15 +189,51 @@ export class TauriBlecDeviceClient implements DeviceClient {
     this.fireDisconnect = shim.fireDisconnect;
 
     try {
-      await this.options.protocol.onConnected({
-        device: shim.device,
-        server: shim.server,
-      });
+      await this.runWithGattReadyRetry(() =>
+        this.options.protocol.onConnected({
+          device: shim!.device,
+          server: shim!.server,
+        }),
+      );
       this.connected = true;
     } catch (error) {
       await api.disconnect().catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Drive `protocol.onConnected()` through Android's async GATT discovery.
+   *
+   * plugin-blec's `connect()` resolves before `BluetoothGatt.discoverServices`
+   * is guaranteed visible. The first send/subscribe inside `onConnected()`
+   * then fails with "No services matching UUID". `protocol.onConnected()`
+   * resets its own state on failure, so retrying it is safe.
+   */
+  private async runWithGattReadyRetry(attempt: () => Promise<void>): Promise<void> {
+    const opts = this.options;
+    const initialDelay = opts.gattReadyInitialDelayMs ?? DEFAULT_GATT_READY_INITIAL_DELAY_MS;
+    const totalTimeout = opts.gattReadyTimeoutMs ?? DEFAULT_GATT_READY_TIMEOUT_MS;
+    const interval = opts.gattReadyIntervalMs ?? DEFAULT_GATT_READY_INTERVAL_MS;
+    const patterns = opts.gattReadyErrorPatterns ?? DEFAULT_GATT_READY_ERROR_PATTERNS;
+
+    if (initialDelay > 0) await delay(initialDelay);
+
+    const deadline = Date.now() + Math.max(0, totalTimeout);
+    let lastError: unknown;
+    // First try after the grace delay; if it works, we're done with one pass.
+    while (true) {
+      try {
+        await attempt();
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!isGattNotReadyError(error, patterns)) throw error;
+        if (Date.now() >= deadline) break;
+        await delay(interval);
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('GATT 服务发现超时，请重新连接');
   }
 
   async disconnect(): Promise<void> {
@@ -181,6 +268,17 @@ export class TauriBlecDeviceClient implements DeviceClient {
       this.listeners.delete(listener);
     };
   }
+}
+
+function isGattNotReadyError(error: unknown, patterns: string[]): boolean {
+  const msg =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
+  const lower = msg.toLowerCase();
+  return patterns.some((p) => lower.includes(p.toLowerCase()));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function hasMaterialChange(prev: BleDeviceInfo, next: BleDeviceInfo): boolean {

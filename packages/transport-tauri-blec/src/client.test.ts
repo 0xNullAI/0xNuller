@@ -1,13 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  TauriBlecDeviceClient,
-  type DiscoveredDevice,
-} from './client.js';
-import {
-  __setPluginBlecForTests,
-  type BleDeviceInfo,
-  type PluginBlecApi,
-} from './plugin-blec.js';
+import { TauriBlecDeviceClient, type DiscoveredDevice } from './client.js';
+import { __setPluginBlecForTests, type BleDeviceInfo, type PluginBlecApi } from './plugin-blec.js';
 
 class FakeProtocol {
   public connectedContext: { deviceName: string } | null = null;
@@ -76,33 +69,36 @@ afterEach(() => __setPluginBlecForTests(undefined));
 describe('TauriBlecDeviceClient.connect', () => {
   it('checks permissions, scans, lets UI pick, then connects', async () => {
     const api = makeApi({
-      startScan: vi.fn().mockImplementation(
-        async (handler: (devices: BleDeviceInfo[]) => void) => {
-          // simulate plugin-blec emitting device immediately
-          setTimeout(() => handler([makeDevice()]), 5);
-        },
-      ),
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        // simulate plugin-blec emitting device immediately
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
     });
     __setPluginBlecForTests(api);
 
     const protocol = new FakeProtocol();
-    const selectDevice = vi.fn().mockImplementation(
-      async (controller: { initial: DiscoveredDevice[]; subscribe: (h: (d: DiscoveredDevice[]) => void) => () => void }) => {
-        // wait for the scan handler to push at least one device
-        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
-          if (controller.initial.length) return resolve(controller.initial);
-          const off = controller.subscribe((next) => {
-            if (next.length) {
-              off();
-              resolve(next);
-            }
+    const selectDevice = vi
+      .fn()
+      .mockImplementation(
+        async (controller: {
+          initial: DiscoveredDevice[];
+          subscribe: (h: (d: DiscoveredDevice[]) => void) => () => void;
+        }) => {
+          // wait for the scan handler to push at least one device
+          const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+            if (controller.initial.length) return resolve(controller.initial);
+            const off = controller.subscribe((next) => {
+              if (next.length) {
+                off();
+                resolve(next);
+              }
+            });
           });
-        });
-        expect(devices).toHaveLength(1);
-        expect(devices[0]?.name).toBe('47L1210000XX');
-        return devices[0]!.address;
-      },
-    );
+          expect(devices).toHaveLength(1);
+          expect(devices[0]?.name).toBe('47L1210000XX');
+          return devices[0]!.address;
+        },
+      );
 
     const client = new TauriBlecDeviceClient({
       protocol: protocol as never,
@@ -135,11 +131,9 @@ describe('TauriBlecDeviceClient.connect', () => {
 
   it('aborts cleanly when selectDevice returns null', async () => {
     const api = makeApi({
-      startScan: vi.fn().mockImplementation(
-        async (handler: (devices: BleDeviceInfo[]) => void) => {
-          setTimeout(() => handler([makeDevice()]), 5);
-        },
-      ),
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
     });
     __setPluginBlecForTests(api);
     const protocol = new FakeProtocol();
@@ -155,19 +149,17 @@ describe('TauriBlecDeviceClient.connect', () => {
 
   it('filters devices by namePrefixes', async () => {
     const api = makeApi({
-      startScan: vi.fn().mockImplementation(
-        async (handler: (devices: BleDeviceInfo[]) => void) => {
-          setTimeout(
-            () =>
-              handler([
-                makeDevice({ address: 'A', name: '47L1210000XX' }),
-                makeDevice({ address: 'B', name: 'AirPods' }),
-                makeDevice({ address: 'C', name: 'D-LAB ESTIM01' }),
-              ]),
-            5,
-          );
-        },
-      ),
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(
+          () =>
+            handler([
+              makeDevice({ address: 'A', name: '47L1210000XX' }),
+              makeDevice({ address: 'B', name: 'AirPods' }),
+              makeDevice({ address: 'C', name: 'D-LAB ESTIM01' }),
+            ]),
+          5,
+        );
+      }),
     });
     __setPluginBlecForTests(api);
     const protocol = new FakeProtocol();
@@ -197,11 +189,9 @@ describe('TauriBlecDeviceClient.connect', () => {
   it('disconnect() zeroes the device via emergencyStop before tearing down BLE', async () => {
     const protocolEmergencyStop = vi.fn().mockResolvedValue(undefined);
     const api = makeApi({
-      startScan: vi.fn().mockImplementation(
-        async (handler: (devices: BleDeviceInfo[]) => void) => {
-          setTimeout(() => handler([makeDevice()]), 5);
-        },
-      ),
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
     });
     __setPluginBlecForTests(api);
     const protocol = new FakeProtocol();
@@ -234,14 +224,191 @@ describe('TauriBlecDeviceClient.connect', () => {
     expect(stopOrder).toBeLessThan(disconnectOrder);
   });
 
+  it('rejects a second connect() while the first is still running', async () => {
+    let releaseFirstSelect: ((address: string | null) => void) | null = null;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: () =>
+        new Promise<string | null>((resolve) => {
+          releaseFirstSelect = resolve;
+        }),
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+
+    const first = client.connect();
+    // Yield so the first call enters selectDevice and parks.
+    await new Promise((r) => setTimeout(r, 10));
+
+    await expect(client.connect()).rejects.toThrow(/连接中/);
+
+    // Release the first call so the test cleans up tidily.
+    releaseFirstSelect!(null);
+    await expect(first).rejects.toThrow(/取消/);
+  });
+
+  it('rejects connect() when the client is already connected', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: async (controller) => {
+        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+          if (controller.initial.length) return resolve(controller.initial);
+          const off = controller.subscribe((next) => {
+            if (next.length) {
+              off();
+              resolve(next);
+            }
+          });
+        });
+        return devices[0]!.address;
+      },
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connect();
+    await expect(client.connect()).rejects.toThrow(/已连接/);
+  });
+
+  it('retries protocol.onConnected through a transient GATT-not-ready error', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocol = new FakeProtocol();
+    let calls = 0;
+    protocol.onConnected = async (context: { device: { name?: string } }) => {
+      calls += 1;
+      if (calls < 3) {
+        throw new Error('No services matching UUID 0000180c-0000-1000-8000-00805f9b34fb');
+      }
+      (protocol as FakeProtocol).connectedContext = { deviceName: context.device.name ?? '' };
+    };
+
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: async (controller) => {
+        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+          if (controller.initial.length) return resolve(controller.initial);
+          const off = controller.subscribe((next) => {
+            if (next.length) {
+              off();
+              resolve(next);
+            }
+          });
+        });
+        return devices[0]!.address;
+      },
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      gattReadyIntervalMs: 5,
+      gattReadyTimeoutMs: 500,
+    });
+    await client.connect();
+
+    expect(calls).toBe(3);
+    expect(protocol.connectedContext?.deviceName).toBe('47L1210000XX');
+  });
+
+  it('does not retry non-GATT errors from protocol.onConnected', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocol = new FakeProtocol();
+    let calls = 0;
+    protocol.onConnected = async () => {
+      calls += 1;
+      throw new Error('protocol handshake invalid');
+    };
+
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: async (controller) => {
+        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+          if (controller.initial.length) return resolve(controller.initial);
+          const off = controller.subscribe((next) => {
+            if (next.length) {
+              off();
+              resolve(next);
+            }
+          });
+        });
+        return devices[0]!.address;
+      },
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      gattReadyIntervalMs: 5,
+      gattReadyTimeoutMs: 500,
+    });
+    await expect(client.connect()).rejects.toThrow(/protocol handshake invalid/);
+    expect(calls).toBe(1);
+    expect(api.disconnect).toHaveBeenCalled();
+  });
+
+  it('surfaces the last GATT-not-ready error when the retry budget elapses', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocol = new FakeProtocol();
+    protocol.onConnected = async () => {
+      throw new Error('Service not found: 0000180c');
+    };
+
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: async (controller) => {
+        const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+          if (controller.initial.length) return resolve(controller.initial);
+          const off = controller.subscribe((next) => {
+            if (next.length) {
+              off();
+              resolve(next);
+            }
+          });
+        });
+        return devices[0]!.address;
+      },
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      gattReadyIntervalMs: 5,
+      gattReadyTimeoutMs: 25,
+    });
+    await expect(client.connect()).rejects.toThrow(/Service not found/);
+    expect(api.disconnect).toHaveBeenCalled();
+  });
+
   it('disconnect callback from plugin-blec triggers protocol.onDisconnected', async () => {
     let onDisc: (() => void) | null = null;
     const api = makeApi({
-      startScan: vi.fn().mockImplementation(
-        async (handler: (devices: BleDeviceInfo[]) => void) => {
-          setTimeout(() => handler([makeDevice()]), 5);
-        },
-      ),
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(() => handler([makeDevice()]), 5);
+      }),
       connect: vi.fn().mockImplementation(async (_a, cb: () => void) => {
         onDisc = cb;
       }),
