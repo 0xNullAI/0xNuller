@@ -1,5 +1,12 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.3.0
+
+### Patch Changes
+
+- @dg-kit/core@1.3.0
+- @dg-kit/protocol@1.3.0
+
 ## 1.2.1
 
 ### Patch Changes
