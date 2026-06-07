@@ -20,8 +20,8 @@ database_id = "cf5f0c37-5b39-44f9-ab68-430849f9a4f6"
 
 [vars]
 # Turnstile 站点公钥（公开，可放前端）。下面是 Cloudflare 官方"始终通过"测试公钥，
-# 上线前在 Cloudflare 控制台创建真实的 Turnstile 小组件并替换。
-TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+# 0xNullAI 账户下 DG-Market Turnstile 小组件的站点公钥（绑定 dg-market.0xnullai.workers.dev）。
+TURNSTILE_SITE_KEY = "0x4AAAAAADgaHZdgqk-jgxLj"
 
 # 以下为机密，请用命令设置，勿写进文件：
 #   wrangler secret put TURNSTILE_SECRET   # Turnstile 私钥（测试值 1x0000000000000000000000000000000AA）
