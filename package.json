@@ -14,6 +14,7 @@
     "db:init:remote": "wrangler d1 execute dg-market --remote --file=./schema.sql"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^3.23.8"

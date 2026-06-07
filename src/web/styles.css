@@ -398,6 +398,27 @@ select {
 .icon-field {
   flex: 0 0 80px;
 }
+.file-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  border: 1px dashed var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 1rem;
+  color: var(--text-soft);
+  font-size: 13px;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+.file-drop:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.file-input-hidden {
+  display: none;
+}
+
 .preview-wrap {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { unzipSync, strFromU8 } from 'fflate';
 import type { ItemType, UploadPayload } from '../../shared/schema';
 import { parsePulseText } from '../../shared/pulse';
 import { uploadItem } from '../api';
@@ -6,6 +7,20 @@ import { Turnstile } from './Turnstile';
 import { WaveformPreview } from './WaveformPreview';
 
 type Frame = [number, number];
+
+// 从上传的文件里取出 .pulse 文本：.pulse 直接读，.zip 取第一个 .pulse 条目。
+async function readPulseFromFile(file: File): Promise<{ text: string; embeddedName: string }> {
+  if (/\.zip$/i.test(file.name)) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const entries = unzipSync(buf);
+    const pulseName = Object.keys(entries).find((n) => /\.pulse$/i.test(n) && !n.startsWith('__'));
+    if (!pulseName) throw new Error('压缩包里没有找到 .pulse 文件');
+    const text = strFromU8(entries[pulseName]!);
+    return { text, embeddedName: pulseName.replace(/.*\//, '').replace(/\.pulse$/i, '') };
+  }
+  const text = await file.text();
+  return { text, embeddedName: file.name.replace(/\.pulse$/i, '') };
+}
 
 interface Props {
   siteKey: string;
@@ -40,6 +55,25 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<Frame[] | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      const { text, embeddedName } = await readPulseFromFile(file);
+      const { name: pulseName } = parsePulseText(text); // 校验并取内嵌名
+      tryPreview(text);
+      // 名称为空时用波形内嵌名 / 文件名自动填充
+      if (!name.trim()) setName(pulseName || embeddedName);
+    } catch (e) {
+      setPreview(null);
+      setError(`文件解析失败：${(e as Error).message}`);
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   const tryPreview = (text: string) => {
     setWaveInput(text);
@@ -157,12 +191,22 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
         {type === 'waveform' ? (
           <>
             <label className="field">
-              <span>波形数据 *（粘贴 .pulse 文本，或 frames JSON）</span>
+              <span>波形数据 *</span>
+              <label className="file-drop">
+                <span>📁 选择 .pulse / .zip 文件</span>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pulse,.zip"
+                  className="file-input-hidden"
+                  onChange={(e) => void handleFile(e.target.files)}
+                />
+              </label>
               <textarea
                 rows={4}
                 value={waveInput}
                 onChange={(e) => tryPreview(e.target.value)}
-                placeholder="Dungeonlab+pulse:..."
+                placeholder="或在此粘贴 Dungeonlab+pulse:... 文本 / frames JSON"
               />
             </label>
             {preview && (
