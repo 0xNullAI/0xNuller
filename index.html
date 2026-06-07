@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
     <title>DG-Market · 波形与场景社区</title>
     <meta name="description" content="上传与交换 DG-Agent 波形和场景" />
+    <script>
+      // 跟随系统配色，与 DG-Agent 主站一致（auto 模式）。
+      (function () {
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var root = document.documentElement;
+        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = dark ? '#080808' : '#ffffff';
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+          root.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+          root.style.colorScheme = e.matches ? 'dark' : 'light';
+          if (meta) meta.content = e.matches ? '#080808' : '#ffffff';
+        });
+      })();
+    </script>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body>

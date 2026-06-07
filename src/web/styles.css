@@ -1,38 +1,115 @@
-:root {
-  --bg: #0e0e12;
-  --surface: #1a1a22;
-  --surface-2: #232330;
-  --border: #2e2e3c;
-  --text: #e8e8ef;
-  --muted: #9a9ab0;
-  --accent: #7c5cff;
-  --accent-2: #ff5c8a;
-  --radius: 12px;
-  color-scheme: dark;
+/* 设计 token 与 DG-Agent 主站完全一致（apps/web/src/styles/tokens.css 原样搬运）。 */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }
 
-* {
+:root {
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-strong: #f8fafb;
+  --bg-soft: rgba(88, 200, 242, 0.08);
+  --surface-border: #e8eef2;
+  --surface-border-strong: #d0dbe3;
+  --text: #1a1a1a;
+  --text-soft: #5a6872;
+  --text-faint: #94a3b0;
+  --accent: #58c8f2;
+  --accent-soft: rgba(88, 200, 242, 0.1);
+  --accent-strong: #3ab5e6;
+  --accent-hover: rgba(88, 200, 242, 0.16);
+  --highlight: #3ab5e6;
+  --danger: #f0a2b2;
+  --danger-button: #ef4444;
+  --danger-button-hover: #dc2626;
+  --danger-soft: rgba(240, 162, 178, 0.12);
+  --danger-surface: #fef2f5;
+  --danger-border: #f0c8d2;
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.1);
+  --glass: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(232, 238, 242, 0.6);
+  --ring: rgba(88, 200, 242, 0.2);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --button-text: #ffffff;
+  --scrollbar-thumb: #d0dbe3;
+  --scrollbar-thumb-hover: #b8c8d4;
+}
+
+:root[data-theme='dark'] {
+  --bg: #080808;
+  --bg-elevated: #141414;
+  --bg-strong: #141414;
+  --bg-soft: rgba(255, 233, 157, 0.08);
+  --surface-border: #222222;
+  --surface-border-strong: #333333;
+  --text: #ececec;
+  --text-soft: #999999;
+  --text-faint: #666666;
+  --accent: #ffe99d;
+  --accent-soft: rgba(255, 233, 157, 0.1);
+  --accent-strong: #ffb800;
+  --accent-hover: rgba(255, 233, 157, 0.18);
+  --highlight: #ffb800;
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.14);
+  --danger-surface: #1f0a0a;
+  --danger-border: #4b1515;
+  --success: #22c55e;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --glass: rgba(14, 14, 14, 0.85);
+  --glass-border: rgba(34, 34, 34, 0.6);
+  --ring: rgba(255, 233, 157, 0.12);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --button-text: #080808;
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-thumb-hover: #525252;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  min-height: 100%;
 }
 
+body {
+  font-family:
+    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* 整页置底布局：内容撑开，页脚永远贴底 */
 .app {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 20px 16px 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0 20px;
+  padding: 4px 0 24px;
 }
 
 .brand {
@@ -46,62 +123,69 @@ body {
 .brand h1 {
   margin: 0;
   font-size: 22px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 .brand small {
-  color: var(--muted);
+  color: var(--text-faint);
 }
 
 .controls {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
   flex-wrap: wrap;
 }
 
 .seg {
   display: inline-flex;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--bg-strong);
+  border: 1px solid var(--surface-border);
   border-radius: 999px;
   padding: 3px;
 }
 .seg button {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-soft);
   padding: 7px 18px;
   border-radius: 999px;
-  cursor: pointer;
   font-size: 14px;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 .seg button.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--button-text);
 }
 
+input,
+textarea,
+select {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-strong);
+  color: var(--text);
+  padding: 0.7rem 0.9rem;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--ring);
+}
 .search {
   flex: 1;
   min-width: 160px;
 }
-input,
-textarea,
 select {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 9px 12px;
-  font: inherit;
-  outline: none;
-}
-input:focus,
-textarea:focus {
-  border-color: var(--accent);
+  width: auto;
 }
 
 .grid {
@@ -112,19 +196,20 @@ textarea:focus {
 
 .card {
   text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
   padding: 14px;
-  cursor: pointer;
   color: var(--text);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: border-color 0.15s, transform 0.1s;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
 }
 .card:hover {
   border-color: var(--accent);
+  box-shadow: var(--shadow-panel);
   transform: translateY(-2px);
 }
 .card-head {
@@ -143,7 +228,7 @@ textarea:focus {
 }
 .card-desc {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 13px;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -155,13 +240,13 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-faint);
 }
 .wave-canvas {
   width: 100%;
   display: block;
-  background: var(--surface-2);
-  border-radius: 8px;
+  background: var(--bg-strong);
+  border-radius: var(--radius-sm);
 }
 
 .tags {
@@ -171,28 +256,28 @@ textarea:focus {
 }
 .tag {
   font-size: 11px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border: 1px solid var(--surface-border);
   padding: 2px 8px;
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--text-soft);
 }
 
 .empty {
   grid-column: 1 / -1;
   text-align: center;
-  color: var(--muted);
+  color: var(--text-faint);
   padding: 60px 0;
 }
 
 .btn {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-strong);
   color: var(--text);
-  padding: 9px 18px;
-  border-radius: 8px;
-  cursor: pointer;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
   font: inherit;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 .btn:hover {
   border-color: var(--accent);
@@ -200,27 +285,34 @@ textarea:focus {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--button-text);
+}
+.btn.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 .btn.ghost {
   background: transparent;
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .icon-btn {
   background: transparent;
   border: 0;
-  color: var(--muted);
+  color: var(--text-faint);
   font-size: 18px;
-  cursor: pointer;
+}
+.icon-btn:hover {
+  color: var(--text);
 }
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -228,10 +320,10 @@ textarea:focus {
   z-index: 10;
 }
 .modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
   width: 100%;
   max-width: 560px;
   max-height: 88vh;
@@ -239,6 +331,7 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: var(--shadow-panel);
 }
 .modal-head {
   display: flex;
@@ -248,21 +341,23 @@ textarea:focus {
 .modal-head h2 {
   margin: 0;
   font-size: 18px;
+  letter-spacing: -0.02em;
 }
 .modal-meta,
 .modal-hint {
-  color: var(--muted);
+  color: var(--text-faint);
   font-size: 12px;
   margin: 0;
 }
 .modal-desc {
   margin: 0;
   font-size: 14px;
+  color: var(--text-soft);
 }
 .prompt-box {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bg-strong);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
   padding: 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -270,6 +365,7 @@ textarea:focus {
   max-height: 320px;
   overflow-y: auto;
   margin: 0;
+  color: var(--text-soft);
 }
 .modal-actions {
   display: flex;
@@ -284,7 +380,7 @@ textarea:focus {
   font-size: 13px;
 }
 .field > span {
-  color: var(--muted);
+  color: var(--text-soft);
 }
 .row {
   display: flex;
@@ -302,20 +398,21 @@ textarea:focus {
   gap: 4px;
 }
 .preview-wrap small {
-  color: var(--muted);
+  color: var(--text-faint);
 }
 .error {
-  color: var(--accent-2);
+  color: var(--danger);
   font-size: 13px;
   margin: 0;
 }
 
 .foot {
+  margin-top: auto;
   text-align: center;
-  color: var(--muted);
+  color: var(--text-faint);
   font-size: 12px;
   padding: 40px 0 20px;
 }
 .foot a {
-  color: var(--accent);
+  color: var(--accent-strong);
 }

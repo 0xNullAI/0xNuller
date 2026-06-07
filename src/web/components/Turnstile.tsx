@@ -34,7 +34,7 @@ export function Turnstile({ siteKey, onToken }: Props): JSX.Element {
       }
       widgetId = window.turnstile.render(el, {
         sitekey: siteKey,
-        theme: 'dark',
+        theme: 'auto',
         callback: onToken,
         'expired-callback': () => onToken(''),
       });
