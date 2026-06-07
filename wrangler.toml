@@ -8,14 +8,15 @@ compatibility_date = "2025-01-01"
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+# Worker 先行：所有请求进 Worker，非 /api 路径由 Worker 回退到 env.ASSETS。
+run_worker_first = true
 
 # D1 数据库（免费额度：5GB 存储 / 每天 500 万行读 / 10 万行写）。
 # database_id 在执行 `wrangler d1 create dg-market` 后填入。
 [[d1_databases]]
 binding = "DB"
 database_name = "dg-market"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "cf5f0c37-5b39-44f9-ab68-430849f9a4f6"
 
 [vars]
 # Turnstile 站点公钥（公开，可放前端）。下面是 Cloudflare 官方"始终通过"测试公钥，
