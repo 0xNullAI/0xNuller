@@ -3,6 +3,7 @@ import {
   adminDelete,
   getItem,
   incrementDownloads,
+  incrementViews,
   insertItem,
   listItems,
   recentUploadCount,
@@ -95,6 +96,13 @@ export default {
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
         await incrementDownloads(env.DB, dlMatch[1]!);
+        return json({ ok: true });
+      }
+
+      // POST /api/items/:id/view —— 浏览计数
+      const viewMatch = pathname.match(/^\/api\/items\/([\w-]+)\/view$/);
+      if (viewMatch && request.method === 'POST') {
+        await incrementViews(env.DB, viewMatch[1]!);
         return json({ ok: true });
       }
 

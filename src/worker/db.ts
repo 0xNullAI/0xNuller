@@ -11,6 +11,7 @@ interface ItemRow {
   tags: string | null;
   content: string;
   downloads: number;
+  views: number;
   created_at: number;
 }
 
@@ -25,6 +26,7 @@ export function rowToItem(row: ItemRow): MarketItem {
     tags: row.tags ? row.tags.split(',').filter(Boolean) : [],
     content: JSON.parse(row.content),
     downloads: row.downloads,
+    views: row.views,
     createdAt: row.created_at,
   };
 }
@@ -106,6 +108,10 @@ export async function insertItem(db: D1Database, item: InsertItem): Promise<void
 
 export async function incrementDownloads(db: D1Database, id: string): Promise<void> {
   await db.prepare('UPDATE items SET downloads = downloads + 1 WHERE id = ?').bind(id).run();
+}
+
+export async function incrementViews(db: D1Database, id: string): Promise<void> {
+  await db.prepare('UPDATE items SET views = views + 1 WHERE id = ?').bind(id).run();
 }
 
 export async function reportItem(db: D1Database, id: string): Promise<void> {

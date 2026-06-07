@@ -65,8 +65,8 @@ export function ItemDetail({ item, onClose }: Props): JSX.Element {
         </header>
 
         <p className="modal-meta">
-          {item.type === 'waveform' ? '波形' : '场景'} · {item.author ? `@${item.author}` : '匿名'} · ↓{' '}
-          {item.downloads}
+          {item.type === 'waveform' ? '波形' : '场景'} · {item.author ? `@${item.author}` : '匿名'} · 👁{' '}
+          {item.views} · ↓ {item.downloads}
         </p>
 
         {item.description && <p className="modal-desc">{item.description}</p>}

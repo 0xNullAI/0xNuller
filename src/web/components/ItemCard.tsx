@@ -22,7 +22,9 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
 
       <div className="card-foot">
         <span className="card-author">{item.author ? `@${item.author}` : '匿名'}</span>
-        <span className="card-dl">↓ {item.downloads}</span>
+        <span className="card-stats">
+          👁 {item.views} · ↓ {item.downloads}
+        </span>
       </div>
       {item.tags.length > 0 && (
         <div className="tags">

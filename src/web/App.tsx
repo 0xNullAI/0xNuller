@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ItemType, MarketItem } from '../shared/schema';
-import { fetchConfig, fetchItems } from './api';
+import { fetchConfig, fetchItems, markViewed } from './api';
+import { applyTheme, getStoredMode, setMode, subscribeSystem, type ThemeMode } from './theme';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
+
+const THEME_LABEL: Record<ThemeMode, string> = { auto: '🌗 跟随系统', light: '☀️ 浅色', dark: '🌙 深色' };
+const THEME_NEXT: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' };
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<ItemType>('waveform');
@@ -14,6 +18,24 @@ export function App(): JSX.Element {
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
   const [siteKey, setSiteKey] = useState('');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredMode());
+
+  // auto 模式下跟随系统配色变化。
+  useEffect(() => subscribeSystem(themeMode, () => applyTheme(themeMode)), [themeMode]);
+
+  function cycleTheme() {
+    const next = THEME_NEXT[themeMode];
+    setThemeMode(next);
+    setMode(next);
+  }
+
+  function openItem(item: MarketItem) {
+    // 乐观自增浏览量，避免重新拉取
+    const bumped = { ...item, views: item.views + 1 };
+    setActive(bumped);
+    void markViewed(item.id);
+    setItems((prev) => prev.map((it) => (it.id === item.id ? bumped : it)));
+  }
 
   useEffect(() => {
     fetchConfig()
@@ -44,9 +66,14 @@ export function App(): JSX.Element {
             <small>波形与场景社区 · 配合 DG-Agent 使用</small>
           </div>
         </div>
-        <button className="btn primary" onClick={() => setUploading(true)}>
-          上传
-        </button>
+        <div className="topbar-actions">
+          <button className="btn ghost" onClick={cycleTheme} title="切换主题">
+            {THEME_LABEL[themeMode]}
+          </button>
+          <button className="btn primary" onClick={() => setUploading(true)}>
+            上传
+          </button>
+        </div>
       </header>
 
       <nav className="controls">
@@ -76,7 +103,7 @@ export function App(): JSX.Element {
         ) : items.length === 0 ? (
           <p className="empty">还没有内容，来上传第一个吧！</p>
         ) : (
-          items.map((item) => <ItemCard key={item.id} item={item} onOpen={setActive} />)
+          items.map((item) => <ItemCard key={item.id} item={item} onOpen={openItem} />)
         )}
       </main>
 

@@ -47,6 +47,10 @@ export async function markDownloaded(id: string): Promise<void> {
   await fetch(`/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
 }
 
+export async function markViewed(id: string): Promise<void> {
+  await fetch(`/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
+}
+
 export async function reportItem(id: string): Promise<void> {
   await req(`/api/items/${id}/report`, { method: 'POST' });
 }

@@ -59,5 +59,6 @@ export interface MarketItem {
   tags: string[];
   content: WaveformContent | ScenarioContent;
   downloads: number;
+  views: number;
   createdAt: number;
 }

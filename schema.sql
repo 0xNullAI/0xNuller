@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS items (
   tags        TEXT,                       -- 逗号分隔
   content     TEXT NOT NULL,              -- JSON：波形 {frames,pulse?} 或场景 {prompt}
   downloads   INTEGER NOT NULL DEFAULT 0,
+  views       INTEGER NOT NULL DEFAULT 0,
   reports     INTEGER NOT NULL DEFAULT 0,
   hidden      INTEGER NOT NULL DEFAULT 0, -- 1=管理员隐藏
   ip_hash     TEXT,                        -- 上传来源哈希，用于限流与溯源
