@@ -1,0 +1,203 @@
+import { useState } from 'react';
+import type { ItemType, UploadPayload } from '../../shared/schema';
+import { parsePulseText } from '../../shared/pulse';
+import { uploadItem } from '../api';
+import { Turnstile } from './Turnstile';
+import { WaveformPreview } from './WaveformPreview';
+
+type Frame = [number, number];
+
+interface Props {
+  siteKey: string;
+  onClose: () => void;
+  onUploaded: () => void;
+}
+
+// 从用户输入解析出波形 frames：支持 .pulse 文本，或直接粘贴 frames JSON 数组。
+function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
+  const trimmed = text.trim();
+  if (/^Dungeonlab\+pulse:/i.test(trimmed)) {
+    const { frames } = parsePulseText(trimmed);
+    return { frames: frames as Frame[], pulse: trimmed };
+  }
+  // 尝试当作 JSON：可能是 {frames:[...]} 或裸 [[f,s],...]
+  const data = JSON.parse(trimmed) as unknown;
+  const frames = Array.isArray(data) ? data : (data as { frames?: unknown }).frames;
+  if (!Array.isArray(frames)) throw new Error('JSON 中找不到 frames 数组');
+  return { frames: frames as Frame[] };
+}
+
+export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Element {
+  const [type, setType] = useState<ItemType>('waveform');
+  const [name, setName] = useState('');
+  const [author, setAuthor] = useState('');
+  const [description, setDescription] = useState('');
+  const [icon, setIcon] = useState('🎭');
+  const [tagsText, setTagsText] = useState('');
+  const [waveInput, setWaveInput] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [preview, setPreview] = useState<Frame[] | null>(null);
+
+  const tryPreview = (text: string) => {
+    setWaveInput(text);
+    setError('');
+    if (!text.trim()) {
+      setPreview(null);
+      return;
+    }
+    try {
+      setPreview(parseWaveInput(text).frames);
+    } catch (e) {
+      setPreview(null);
+      setError(`波形解析失败：${(e as Error).message}`);
+    }
+  };
+
+  const submit = async () => {
+    setError('');
+    if (!name.trim()) return setError('请填写名称');
+    if (!token) return setError('请先完成人机验证');
+
+    const tags = tagsText
+      .split(/[,，\s]+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    let payload: UploadPayload;
+    try {
+      if (type === 'waveform') {
+        const { frames, pulse } = parseWaveInput(waveInput);
+        payload = {
+          type: 'waveform',
+          name: name.trim(),
+          description: description.trim() || undefined,
+          author: author.trim() || undefined,
+          tags,
+          content: { frames, pulse },
+          turnstileToken: token,
+        };
+      } else {
+        if (!prompt.trim()) return setError('请填写场景提示词');
+        payload = {
+          type: 'scenario',
+          name: name.trim(),
+          description: description.trim() || undefined,
+          author: author.trim() || undefined,
+          icon: icon.trim() || undefined,
+          tags,
+          content: { prompt: prompt.trim() },
+          turnstileToken: token,
+        };
+      }
+    } catch (e) {
+      return setError((e as Error).message);
+    }
+
+    setBusy(true);
+    try {
+      await uploadItem(payload);
+      onUploaded();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>上传到市场</h2>
+          <button className="icon-btn" onClick={onClose}>
+            ✕
+          </button>
+        </header>
+
+        <div className="seg">
+          <button className={type === 'waveform' ? 'active' : ''} onClick={() => setType('waveform')}>
+            波形
+          </button>
+          <button className={type === 'scenario' ? 'active' : ''} onClick={() => setType('scenario')}>
+            场景
+          </button>
+        </div>
+
+        <label className="field">
+          <span>名称 *</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+        </label>
+
+        <div className="row">
+          <label className="field">
+            <span>昵称（可选）</span>
+            <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={30} placeholder="匿名" />
+          </label>
+          {type === 'scenario' && (
+            <label className="field icon-field">
+              <span>图标</span>
+              <input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={8} />
+            </label>
+          )}
+        </div>
+
+        <label className="field">
+          <span>简介（可选）</span>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+        </label>
+
+        <label className="field">
+          <span>标签（逗号分隔，可选）</span>
+          <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="温柔, 节奏感" />
+        </label>
+
+        {type === 'waveform' ? (
+          <>
+            <label className="field">
+              <span>波形数据 *（粘贴 .pulse 文本，或 frames JSON）</span>
+              <textarea
+                rows={4}
+                value={waveInput}
+                onChange={(e) => tryPreview(e.target.value)}
+                placeholder="Dungeonlab+pulse:..."
+              />
+            </label>
+            {preview && (
+              <div className="preview-wrap">
+                <WaveformPreview frames={preview} />
+                <small>{preview.length} 帧 · {(preview.length * 25) / 1000}s</small>
+              </div>
+            )}
+          </>
+        ) : (
+          <label className="field">
+            <span>场景提示词 *</span>
+            <textarea
+              rows={8}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              maxLength={12000}
+              placeholder="粘贴你的自定义场景设定…"
+            />
+          </label>
+        )}
+
+        {error && <p className="error">{error}</p>}
+
+        <Turnstile siteKey={siteKey} onToken={setToken} />
+
+        <div className="modal-actions">
+          <button className="btn primary" onClick={submit} disabled={busy}>
+            {busy ? '上传中…' : '上传'}
+          </button>
+          <button className="btn" onClick={onClose}>
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

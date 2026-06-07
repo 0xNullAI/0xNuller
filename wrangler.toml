@@ -1,0 +1,27 @@
+name = "dg-market"
+main = "src/worker/index.ts"
+compatibility_date = "2025-01-01"
+
+# 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
+# run_worker_first 确保 /api/* 先进入 Worker，不被 SPA 回退页面拦截。
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+# D1 数据库（免费额度：5GB 存储 / 每天 500 万行读 / 10 万行写）。
+# database_id 在执行 `wrangler d1 create dg-market` 后填入。
+[[d1_databases]]
+binding = "DB"
+database_name = "dg-market"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+# Turnstile 站点公钥（公开，可放前端）。下面是 Cloudflare 官方"始终通过"测试公钥，
+# 上线前在 Cloudflare 控制台创建真实的 Turnstile 小组件并替换。
+TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+
+# 以下为机密，请用命令设置，勿写进文件：
+#   wrangler secret put TURNSTILE_SECRET   # Turnstile 私钥（测试值 1x0000000000000000000000000000000AA）
+#   wrangler secret put ADMIN_KEY          # 管理员删除接口的口令
