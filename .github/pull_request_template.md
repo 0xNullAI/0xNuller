@@ -6,7 +6,7 @@ PR 标题用 conventional-commit 风格：type(scope): subject
 
 DG-Wiki 走单 main 分支模式（区别于 DG-Kit / DG-Agent / DG-Chat / DG-MCP
 那种 dev → main 的两层流程）：所有 PR 直接 base=main，CI 跑 lint + build，
-合到 main 后自动部署到 https://0xnullai.github.io/DG-Wiki/。
+合到 main 后由 Cloudflare 自动部署到 https://wiki.0xnullai.com。
 -->
 
 ## 概述

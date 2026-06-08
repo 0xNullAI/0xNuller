@@ -14,6 +14,7 @@ DG-Chat/
 │   │   ├── MemberControl.tsx   成员设备控制面板（点击卡片进入）
 │   │   ├── ControlPanel.tsx    自己的设备控制
 │   │   ├── WaveformPanel.tsx   波形库 UI
+│   │   ├── MarketImportDialog.tsx  从 DG-Market 市场导入波形
 │   │   ├── RoomEntry.tsx       房间号 + 二维码
 │   │   └── SafetyNotice.tsx    安全声明
 │   ├── hooks/
@@ -24,6 +25,7 @@ DG-Chat/
 │   │   ├── bluetooth.ts        DGLabDevice — @dg-kit/protocol 的薄封装
 │   │   ├── protocol.ts         P2P 消息协议（不是 BLE 协议）
 │   │   ├── commands.ts         房间命令分发器
+│   │   ├── market.ts           DG-Market 市场客户端（搜索 + 导入波形）
 │   │   └── waveforms.ts        内置波形 + .pulse 导入（基于 @dg-kit/waveforms）
 │   ├── styles/
 │   ├── types/
@@ -145,6 +147,10 @@ PeerJS 默认走 `0.peerjs.com` 公共 signaling server。如果想自托管：
 
 注意自托管 signaling 后，跟用公共 server 的客户端无法互通——所有人都得连同一个 signaling。
 
+### 从 DG-Market 市场导入波形
+
+DG-Chat 已支持从 [DG-Market](https://market.0xnullai.com) 市场导入波形：`lib/market.ts` 是市场客户端（搜索 + 拉取波形），`components/MarketImportDialog.tsx` 是导入 UI（搜索市场 → 一键导入到本地波形库）。导入后的波形跟本地 `.pulse` 导入走同一条落地路径（`use-waveforms.ts` → `localStorage`），只对当前客户端可见。
+
 ## 测试
 
 ```bash
@@ -169,16 +175,16 @@ vitest 套件覆盖：
 
 | 分支 | 用途 |
 |---|---|
-| `main` | 默认查看 / 已发布版（GitHub Pages 上线版本） |
+| `main` | 默认查看 / 已发布版（Cloudflare 上线版本，chat.0xnullai.com） |
 | `dev` | 日常开发，所有 PR base 到这里 |
 
 发布动作：
 
 1. dev 上 `npm version patch` 改 root `package.json`
 2. PR base=main → `release-guard.yml` 校验版本已 bump
-3. 合并到 main → `deploy.yml` 推到 GitHub Pages + `auto-tag.yml` 打 `vX.Y.Z` tag
+3. 合并到 main → Cloudflare 自动构建并部署到 chat.0xnullai.com + `auto-tag.yml` 打 `vX.Y.Z` tag
 
-`vite.config.ts` 的 `base` 是 `/DG-Chat/`，fork 部署需要改这个字段。
+`vite.config.ts` 的 `base` 现在是 `/`（迁 Cloudflare 子域 chat.0xnullai.com 后从 `/DG-Chat/` 改为根路径）。只有 fork 后想部署到某个子路径时才需要改这个字段。
 
 ## 二次开发
 
@@ -186,7 +192,7 @@ vitest 套件覆盖：
 
 1. `package.json` 改 `name` / `version`
 2. `vite.config.ts` 改 `base` 为你的仓库名
-3. `src/lib/waveforms.ts` `STORAGE_KEY` 改成 `<your-app>-custom-waveforms`，避免跟 DG-Chat 同 origin 冲突（如果你也部到 github.io 同子域）
+3. `src/lib/waveforms.ts` `STORAGE_KEY` 改成 `<your-app>-custom-waveforms`，避免跟 DG-Chat 同 origin 冲突（如果你也部到同一域名下的子路径，例如同一个 Cloudflare Pages 项目）
 4. UI 文案 / 主题色按需改
 
 ## 代码规范

@@ -27,7 +27,7 @@ DG-Agent/
 │   ├── storage-browser/              IndexedDB sessions + localStorage settings
 │   ├── audio-browser/                DashScope ASR/TTS + 浏览器 SpeechRecognition
 │   └── waveforms/                    IndexedDB 波形库（基于 @dg-kit/waveforms）
-└── aliyun-fc/                        阿里云函数计算的免费代理（CommonJS，独立）
+└── workers/llm-proxy/                "免费体验"模式的 LLM 代理（Cloudflare Worker，独立）
 ```
 
 ## 数据流
@@ -139,13 +139,13 @@ npm run lint         # eslint zero-warning 政策
 3. CI 自动跑 lint / typecheck / test / build
 4. Review 后合入 `dev`
 5. dev 推送自动通过 `.github/workflows/mirror-dev.yml` 镜像到 [`DG-Agent-dev`](https://github.com/0xNullAI/DG-Agent-dev) 的 `main` 分支
-6. 镜像仓库自己的 `deploy.yml` 触发 → 大约 45 秒后 dev 内容上线 [https://0xnullai.github.io/DG-Agent-dev/](https://0xnullai.github.io/DG-Agent-dev/)（**dev 实时预览站**）
+6. 镜像仓库自己的部署触发 → 大约 45 秒后 dev 内容上线 **dev 实时预览站**
 
 发布到生产线则是另一个动作：
 
 7. 准备发版时：在 dev 上 `npm version patch`（或 minor / major）→ commit
 8. PR 从 dev → main → `release-guard.yml` 校验 `package.json` version 已 bump
-9. 合并到 main → `deploy.yml` 部署到 [https://0xnullai.github.io/DG-Agent/](https://0xnullai.github.io/DG-Agent/) + `auto-tag.yml` 推 `vX.Y.Z` 标签
+9. 合并到 main → Cloudflare Pages（连 GitHub 自动构建）部署到 [https://agent.0xnullai.com](https://agent.0xnullai.com) + `auto-tag.yml` 推 `vX.Y.Z` 标签
 
 ## 二次开发
 
@@ -171,14 +171,14 @@ npm run lint         # eslint zero-warning 政策
 
 ## 部署 / 双站点
 
-DG-Agent 有两个 GitHub Pages 站点同时运行：
+DG-Agent 有两个站点同时运行，均由 Cloudflare Pages（连 GitHub 自动构建）部署：
 
 | 站点 | URL | 来源 | 触发 |
 |---|---|---|---|
-| 生产 | https://0xnullai.github.io/DG-Agent/ | DG-Agent 本仓 main 分支 | 合 PR 到 main 时（必须带 version bump） |
-| 开发预览 | https://0xnullai.github.io/DG-Agent-dev/ | [DG-Agent-dev 镜像仓](https://github.com/0xNullAI/DG-Agent-dev) main 分支 | dev push 后自动镜像 + deploy |
+| 生产 | https://agent.0xnullai.com | DG-Agent 本仓 main 分支 | 合 PR 到 main 时（必须带 version bump） |
+| 开发预览 | [DG-Agent-dev 镜像仓](https://github.com/0xNullAI/DG-Agent-dev) 的预览站 | [DG-Agent-dev 镜像仓](https://github.com/0xNullAI/DG-Agent-dev) main 分支 | dev push 后自动镜像 + 部署 |
 
-镜像通过 `.github/workflows/mirror-dev.yml` 实现：每次 push 到 dev，用 PAT 把 dev 强推到 DG-Agent-dev/main，然后镜像仓自己的 deploy.yml 跑构建+发布。
+镜像通过 `.github/workflows/mirror-dev.yml` 实现：每次 push 到 dev，用 PAT 把 dev 强推到 DG-Agent-dev/main，然后镜像仓自动触发构建+发布。
 
 `vite.config.ts` 用 `base: './'`（相对路径），同一份代码部署到不同子路径都行。如果你自己 fork 部署到第三个 URL，不需要改 base。
 

@@ -2,7 +2,7 @@
 
 用自然语言控制 DG-Lab 郊狼 2.0 / 3.0 的浏览器版 AI 控制器。
 
-> [GitHub](https://github.com/0xNullAI/DG-Agent) · [在线 demo](https://0xnullai.github.io/DG-Agent/) · 交流 QQ 群 **628954471**
+> [GitHub](https://github.com/0xNullAI/DG-Agent) · [在线 demo](https://agent.0xnullai.com) · 交流 QQ 群 **628954471**
 
 ## 这是什么
 
@@ -28,7 +28,7 @@ iOS 用户需要装 **Bluefy** 浏览器（App Store 免费），Safari 不支�
 
 ### 1. 打开页面
 
-在线版：https://0xnullai.github.io/DG-Agent/
+在线版：https://agent.0xnullai.com
 
 要本地跑：
 
@@ -175,7 +175,7 @@ DG-Agent 支持导入 Dungeonlab 格式的 `.pulse` 文件（单文件或 `.zip`
 | **DashScope** | 阿里云通义千问 ASR | 阿里云 TTS |
 | **关闭** | — | — |
 
-DashScope 模式需要 API key（在阿里云控制台开通）。手机端推荐用 DashScope，浏览器原生在中文识别上准确率较低。
+DashScope 已无免费额度，需自行登记 DashScope 取得 key 并自建代理（仓库 `workers/speech-proxy` 为自助模板）。默认推荐免费的「浏览器原生」语音（零配置、即开即用）；浏览器原生在中文识别上准确率略低，但无需任何 key。
 
 ## 桥接 IM
 
@@ -348,14 +348,14 @@ Token: xxxxxxxxxxxxxxxx
 - **LLM 调用**：直接从你浏览器到 provider 端点，**不经过中转**
 - **桥接消息**：直接从 NapCat/Telegram 服务器到你浏览器，作者不参与
 
-唯一例外：「免费体验」模式会走作者维护的 LLM 代理（`ai.071129.xyz`），调用记录保留 7 天用于排错。如果在意请用自己的 provider key。
+唯一例外：「免费体验」模式会走作者维护的 LLM 代理（现运行在 Cloudflare Worker，上游网关仍是 `ai.071129.xyz`），调用记录保留 7 天用于排错。如果在意请用自己的 provider key。
 
 ## 致谢
 
 - [DG-LAB-OPENSOURCE](https://github.com/DG-LAB-OPENSOURCE/DG-LAB-OPENSOURCE) — 官方开源 BLE 协议
 - [openclaw-plugin-dg-lab](https://github.com/FengYing1314/openclaw-plugin-dg-lab) — 波形解析器参考
 - [sse-dg-lab](https://github.com/admilkjs/sse-dg-lab) — Dungeonlab+pulse 波形解析引擎
-- [MapleLeaf API](https://ai.071129.xyz) — "免费体验"模式的模型代理
+- [MapleLeaf API](https://ai.071129.xyz) — "免费体验"模式的上游模型网关（代理现运行在 Cloudflare）
 
 ## 免责声明
 

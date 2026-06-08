@@ -58,13 +58,13 @@
 ### iOS 怎么用？
 
 - App Store 装 [Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055)
-- 在 Bluefy 里打开 https://0xnullai.github.io/DG-Agent/
+- 在 Bluefy 里打开 https://agent.0xnullai.com
 - Safari 不支持 Web Bluetooth，无解
 
 ### 鸿蒙（HarmonyOS / HarmonyOS NEXT）怎么用？
 
 - 应用市场装 **Kiwi Browser**（基于 Chromium 的浏览器，支持 Web Bluetooth）
-- 在 Kiwi 里打开 https://0xnullai.github.io/DG-Agent/
+- 在 Kiwi 里打开 https://agent.0xnullai.com
 - 花瓣浏览器、夸克浏览器对 Web Bluetooth 支持不稳定，不推荐
 
 ### 后台标签页输出停了

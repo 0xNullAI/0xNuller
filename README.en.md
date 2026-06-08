@@ -5,7 +5,7 @@
 **Unified documentation hub for the DG-Lab Coyote project family**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Deploy](https://github.com/0xNullAI/DG-Wiki/actions/workflows/deploy.yml/badge.svg)](https://github.com/0xNullAI/DG-Wiki/actions/workflows/deploy.yml)
+[![Site](https://img.shields.io/badge/site-wiki.0xnullai.com-58c8f2)](https://wiki.0xnullai.com)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-58c8f2)](https://github.com/0xNullAI/DG-Kit)
 
 [中文](./README.md) | English
@@ -20,13 +20,13 @@ Includes **in-browser editing**: hit ✎ in the top bar to open a split-screen M
 
 ## Live
 
-https://0xnullai.github.io/DG-Wiki/
+https://wiki.0xnullai.com
 
 ## Local development
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173/DG-Wiki/
+npm run dev          # http://localhost:5173/
 ```
 
 ## Build
@@ -36,7 +36,7 @@ npm run build
 npm run preview
 ```
 
-`dist/` is the output. GitHub Actions auto-deploys on every push to `main`.
+`dist/` is the output. Cloudflare auto-builds and deploys on every push to `main` (wiki.0xnullai.com).
 
 ## Editing content
 

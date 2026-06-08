@@ -5,7 +5,7 @@
 **DG-Lab 郊狼系列项目的统一文档站**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Deploy](https://github.com/0xNullAI/DG-Wiki/actions/workflows/deploy.yml/badge.svg)](https://github.com/0xNullAI/DG-Wiki/actions/workflows/deploy.yml)
+[![Site](https://img.shields.io/badge/site-wiki.0xnullai.com-58c8f2)](https://wiki.0xnullai.com)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-58c8f2)](https://github.com/0xNullAI/DG-Kit)
 
 中文 | [English](./README.en.md)
@@ -20,13 +20,13 @@ DG-Wiki 是 [DG-Kit](https://github.com/0xNullAI/DG-Kit) / [DG-Agent](https://gi
 
 ## 在线访问
 
-https://0xnullai.github.io/DG-Wiki/
+https://wiki.0xnullai.com
 
 ## 本地开发
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173/DG-Wiki/
+npm run dev          # http://localhost:5173/
 ```
 
 ## 构建
@@ -36,7 +36,7 @@ npm run build
 npm run preview
 ```
 
-构建产物在 `dist/`。GitHub Actions 在 push 到 `main` 时自动部署。
+构建产物在 `dist/`。Cloudflare 在 push 到 `main` 时自动构建并部署到 wiki.0xnullai.com。
 
 ## 编辑内容
 

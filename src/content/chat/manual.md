@@ -2,13 +2,13 @@
 
 自带郊狼控制功能的多人 P2P 房间，无需服务器。
 
-> [GitHub](https://github.com/0xNullAI/DG-Chat) · [在线 demo](https://0xnullai.github.io/DG-Chat/)
+> [GitHub](https://github.com/0xNullAI/DG-Chat) · [在线 demo](https://chat.0xnullai.com)
 
 ## 这是什么
 
 DG-Chat 是浏览器端的多人聊天房间。聊天本身用 P2P 协议直连，无需服务器存储；除此之外，**每个成员可以把自己的郊狼设备授权给房间里其他人远程控制**——发"现在让谁谁谁来"，对方点你头像就能调强度、换波形、发短脉冲。
 
-打开网页就能用，跑在 GitHub Pages 免费托管的 HTTPS 上。聊天与设备控制流量都不经过任何中转服务器。
+打开网页就能用，部署在 Cloudflare 的 HTTPS 上。聊天与设备控制流量都不经过任何中转服务器。
 
 ## 浏览器要求
 
@@ -18,7 +18,7 @@ DG-Chat 是浏览器端的多人聊天房间。聊天本身用 P2P 协议直连�
 
 ### 1. 创建或加入房间
 
-打开 [demo](https://0xnullai.github.io/DG-Chat/) → 输入昵称 → 选择：
+打开 [demo](https://chat.0xnullai.com) → 输入昵称 → 选择：
 
 - **创建房间**：系统生成房间号，分享给朋友
 - **加入房间**：粘贴朋友给你的房间号，点加入
@@ -27,7 +27,7 @@ DG-Chat 是浏览器端的多人聊天房间。聊天本身用 P2P 协议直连�
 
 ### 2. 邀请朋友
 
-房间号顶部有 **二维码** 按钮——展开后让朋友扫码或复制房间号。链接形式 `https://0xnullai.github.io/DG-Chat/?room=XXXX` 直接打开就进。
+房间号顶部有 **二维码** 按钮——展开后让朋友扫码或复制房间号。链接形式 `https://chat.0xnullai.com/?room=XXXX` 直接打开就进。
 
 ### 3. 连接郊狼（可选）
 
@@ -82,6 +82,10 @@ DG-Chat 是浏览器端的多人聊天房间。聊天本身用 P2P 协议直连�
 ### 导入第三方波形
 
 右下角浮动按钮 **波形库** → 点「导入」→ 选 `.pulse` 或 `.zip`（Dungeonlab 格式）。波形保存到你浏览器 `localStorage`，**只对你可见**。
+
+### 从 DG-Market 市场导入波形
+
+除了导入本地文件，还可以在波形库里 **从 [DG-Market](https://market.0xnullai.com) 市场导入波形**：搜索市场上的波形 → 一键导入到本地波形库。导入后的波形跟本地波形一样保存在你浏览器 `localStorage`，**只对你可见**。
 
 > **波形不会自动同步到其他成员**。如果你想让某个朋友用你导入的波形控制你，可以先选好那个波形再交出控制权。
 

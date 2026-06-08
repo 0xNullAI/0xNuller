@@ -4,7 +4,7 @@ Guidance for Claude Code working in **DG-Wiki** — the user-facing documentatio
 
 ## Project Overview
 
-DG-Wiki is a single-page React + Vite + Tailwind v4 SPA hosted on GitHub Pages. It renders Markdown content for the four sister projects (DG-Kit / DG-Agent / DG-Chat / DG-MCP) with an in-browser editor that persists local edits to `localStorage` and offers a one-click "open PR on GitHub" link to contribute back.
+DG-Wiki is a single-page React + Vite + Tailwind v4 SPA hosted on Cloudflare Pages (wiki.0xnullai.com). It renders Markdown content for the four sister projects (DG-Kit / DG-Agent / DG-Chat / DG-MCP) with an in-browser editor that persists local edits to `localStorage` and offers a one-click "open PR on GitHub" link to contribute back.
 
 The visual identity matches DG-Agent and DG-Chat: white + sky-cyan in light mode, near-black + warm amber in dark mode. Big Shoulders Display for headings, system Chinese-friendly stack for body, JetBrains Mono for code.
 
@@ -38,7 +38,7 @@ src/
     index.css             tokens (DG family palette) + markdown styling
 .github/workflows/
   ci.yml                  lint + build on PR + push
-  deploy.yml              GitHub Pages on push to main
+  (deploy.yml removed)    deploys now run on Cloudflare, which builds from GitHub automatically on push to main
 ```
 
 ## Branch & PR Convention
@@ -47,7 +47,7 @@ DG-Wiki uses a **single-branch model** (different from the other 4 DG repos):
 
 - Default branch: `main`
 - All PRs base to `main`
-- Push to `main` → GitHub Pages auto-deploy
+- Push to `main` → Cloudflare auto-deploy (wiki.0xnullai.com)
 
 There is no `dev` branch, no release-guard, no version-bump discipline. Pure docs site, low blast radius — keep it simple.
 
@@ -55,7 +55,7 @@ There is no `dev` branch, no release-guard, no version-bump discipline. Pure doc
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173/DG-Wiki/
+npm run dev          # http://localhost:5173/
 npm run build        # tsc -b + Vite build
 npm run preview      # preview the production build
 npm run lint
