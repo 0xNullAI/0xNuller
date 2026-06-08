@@ -84,6 +84,9 @@ export function App(): JSX.Element {
           <button className={tab === 'scenario' ? 'active' : ''} onClick={() => setTab('scenario')}>
             场景
           </button>
+          <button className={tab === 'multi-scene' ? 'active' : ''} onClick={() => setTab('multi-scene')}>
+            多人场景
+          </button>
         </div>
         <input
           className="search"

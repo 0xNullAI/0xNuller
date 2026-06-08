@@ -20,6 +20,28 @@ export const ScenarioContentSchema = z.object({
   prompt: z.string().min(1).max(12000),
 });
 
+// 多人场景：世界观 + 一组角色 + 玩法元数据（人数、AI 参与方式）。
+export const MultiSceneRoleSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(300).optional(),
+  // 该角色是否可由 AI 扮演。
+  aiPlayable: z.boolean().optional(),
+});
+
+export const MultiSceneContentSchema = z.object({
+  setting: z.string().trim().min(1).max(8000), // 世界观 / 背景
+  roles: z.array(MultiSceneRoleSchema).min(1).max(12),
+  // 建议玩家人数。
+  playerCount: z
+    .object({
+      min: z.number().int().min(1).max(50),
+      max: z.number().int().min(1).max(50),
+    })
+    .optional(),
+  // AI 参与方式：none 纯人 / solo 单个 AI / multi 多个 AI 角色。
+  aiMode: z.enum(['none', 'solo', 'multi']).optional(),
+});
+
 const baseFields = {
   name: z.string().trim().min(1).max(60),
   description: z.string().trim().max(500).optional(),
@@ -41,11 +63,19 @@ export const UploadSchema = z.discriminatedUnion('type', [
     content: ScenarioContentSchema,
     turnstileToken: z.string().min(1),
   }),
+  z.object({
+    type: z.literal('multi-scene'),
+    ...baseFields,
+    icon: z.string().trim().max(8).optional(),
+    content: MultiSceneContentSchema,
+    turnstileToken: z.string().min(1),
+  }),
 ]);
 
-export type ItemType = 'waveform' | 'scenario';
+export type ItemType = 'waveform' | 'scenario' | 'multi-scene';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;
 export type ScenarioContent = z.infer<typeof ScenarioContentSchema>;
+export type MultiSceneContent = z.infer<typeof MultiSceneContentSchema>;
 export type UploadPayload = z.infer<typeof UploadSchema>;
 
 // 列表/详情接口返回给前端的形状。
@@ -57,7 +87,7 @@ export interface MarketItem {
   author?: string;
   icon?: string;
   tags: string[];
-  content: WaveformContent | ScenarioContent;
+  content: WaveformContent | ScenarioContent | MultiSceneContent;
   downloads: number;
   views: number;
   createdAt: number;

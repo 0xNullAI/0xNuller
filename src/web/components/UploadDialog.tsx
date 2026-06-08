@@ -55,7 +55,20 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<Frame[] | null>(null);
+  // —— 多人场景字段 ——
+  const [setting, setSetting] = useState('');
+  const [playerMin, setPlayerMin] = useState('2');
+  const [playerMax, setPlayerMax] = useState('4');
+  const [aiMode, setAiMode] = useState<'none' | 'solo' | 'multi'>('none');
+  const [roles, setRoles] = useState<{ name: string; description: string; aiPlayable: boolean }[]>([
+    { name: '', description: '', aiPlayable: false },
+  ]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const updateRole = (i: number, patch: Partial<{ name: string; description: string; aiPlayable: boolean }>) =>
+    setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
+  const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
 
   const handleFile = async (files: FileList | null) => {
     const file = files?.[0];
@@ -114,7 +127,7 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           content: { frames, pulse },
           turnstileToken: token,
         };
-      } else {
+      } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
         payload = {
           type: 'scenario',
@@ -124,6 +137,28 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           icon: icon.trim() || undefined,
           tags,
           content: { prompt: prompt.trim() },
+          turnstileToken: token,
+        };
+      } else {
+        if (!setting.trim()) return setError('请填写世界观');
+        const cleanRoles = roles
+          .filter((r) => r.name.trim())
+          .map((r) => ({
+            name: r.name.trim(),
+            description: r.description.trim() || undefined,
+            aiPlayable: r.aiPlayable || undefined,
+          }));
+        if (cleanRoles.length === 0) return setError('至少填写一个角色');
+        const mn = Math.max(1, Number(playerMin) || 1);
+        const mx = Math.max(mn, Number(playerMax) || mn);
+        payload = {
+          type: 'multi-scene',
+          name: name.trim(),
+          description: description.trim() || undefined,
+          author: author.trim() || undefined,
+          icon: icon.trim() || undefined,
+          tags,
+          content: { setting: setting.trim(), roles: cleanRoles, playerCount: { min: mn, max: mx }, aiMode },
           turnstileToken: token,
         };
       }
@@ -158,6 +193,9 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           <button className={type === 'scenario' ? 'active' : ''} onClick={() => setType('scenario')}>
             场景
           </button>
+          <button className={type === 'multi-scene' ? 'active' : ''} onClick={() => setType('multi-scene')}>
+            多人场景
+          </button>
         </div>
 
         <label className="field">
@@ -170,7 +208,7 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
             <span>昵称（可选）</span>
             <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={30} placeholder="匿名" />
           </label>
-          {type === 'scenario' && (
+          {(type === 'scenario' || type === 'multi-scene') && (
             <label className="field icon-field">
               <span>图标</span>
               <input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={8} />
@@ -216,7 +254,7 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
               </div>
             )}
           </>
-        ) : (
+        ) : type === 'scenario' ? (
           <label className="field">
             <span>场景提示词 *</span>
             <textarea
@@ -227,6 +265,70 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
               placeholder="粘贴你的自定义场景设定…"
             />
           </label>
+        ) : (
+          <>
+            <label className="field">
+              <span>世界观 / 背景 *</span>
+              <textarea
+                rows={5}
+                value={setting}
+                onChange={(e) => setSetting(e.target.value)}
+                maxLength={8000}
+                placeholder="描述这个多人场景的世界观、氛围、规则…"
+              />
+            </label>
+            <div className="row">
+              <label className="field">
+                <span>人数（最少）</span>
+                <input type="number" min={1} max={50} value={playerMin} onChange={(e) => setPlayerMin(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>人数（最多）</span>
+                <input type="number" min={1} max={50} value={playerMax} onChange={(e) => setPlayerMax(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>AI 参与</span>
+                <select value={aiMode} onChange={(e) => setAiMode(e.target.value as 'none' | 'solo' | 'multi')}>
+                  <option value="none">纯人（无 AI）</option>
+                  <option value="solo">单个 AI</option>
+                  <option value="multi">多个 AI</option>
+                </select>
+              </label>
+            </div>
+            <div className="field">
+              <span>角色 * — 每人扮演一个</span>
+              <div className="role-list">
+                {roles.map((r, i) => (
+                  <div key={i} className="role-row">
+                    <input
+                      className="role-name"
+                      value={r.name}
+                      onChange={(e) => updateRole(i, { name: e.target.value })}
+                      maxLength={40}
+                      placeholder={`角色 ${i + 1}`}
+                    />
+                    <input
+                      className="role-desc"
+                      value={r.description}
+                      onChange={(e) => updateRole(i, { description: e.target.value })}
+                      maxLength={300}
+                      placeholder="角色描述（可选）"
+                    />
+                    <label className="role-ai" title="该角色可由 AI 扮演">
+                      <input type="checkbox" checked={r.aiPlayable} onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })} />
+                      AI
+                    </label>
+                    <button type="button" className="icon-btn" onClick={() => removeRole(i)} disabled={roles.length <= 1}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn add-role" onClick={addRole}>
+                + 加角色
+              </button>
+            </div>
+          </>
         )}
 
         {error && <p className="error">{error}</p>}

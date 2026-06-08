@@ -1,4 +1,4 @@
-import type { MarketItem, WaveformContent } from '../../shared/schema';
+import type { MarketItem, WaveformContent, MultiSceneContent } from '../../shared/schema';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -10,12 +10,27 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
   return (
     <button className="card" onClick={() => onOpen(item)}>
       <div className="card-head">
-        <span className="card-icon">{item.type === 'scenario' ? item.icon || '🎭' : '〰️'}</span>
+        <span className="card-icon">
+          {item.type === 'waveform' ? '〰️' : item.icon || (item.type === 'multi-scene' ? '🎬' : '🎭')}
+        </span>
         <span className="card-name">{item.name}</span>
       </div>
 
       {item.type === 'waveform' ? (
         <WaveformPreview frames={(item.content as WaveformContent).frames} />
+      ) : item.type === 'multi-scene' ? (
+        <div className="card-scene">
+          <p className="card-desc">{item.description || '（无简介）'}</p>
+          <div className="scene-meta">
+            <span>🎭 {(item.content as MultiSceneContent).roles.length} 角色</span>
+            {(item.content as MultiSceneContent).playerCount && (
+              <span>
+                👥 {(item.content as MultiSceneContent).playerCount!.min}-
+                {(item.content as MultiSceneContent).playerCount!.max} 人
+              </span>
+            )}
+          </div>
+        </div>
       ) : (
         <p className="card-desc">{item.description || '（无简介）'}</p>
       )}

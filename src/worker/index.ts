@@ -70,7 +70,10 @@ export default {
       // GET /api/items —— 列表 / 搜索
       if (pathname === '/api/items' && request.method === 'GET') {
         const typeParam = url.searchParams.get('type');
-        const type = typeParam === 'waveform' || typeParam === 'scenario' ? typeParam : undefined;
+        const type =
+          typeParam === 'waveform' || typeParam === 'scenario' || typeParam === 'multi-scene'
+            ? typeParam
+            : undefined;
         const q = url.searchParams.get('q')?.trim() || undefined;
         const sort = url.searchParams.get('sort') === 'popular' ? 'popular' : 'new';
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
@@ -161,7 +164,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     name: payload.name,
     description: payload.description,
     author: payload.author,
-    icon: payload.type === 'scenario' ? payload.icon : undefined,
+    icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
     tags: payload.tags,
     content: payload.content,
     ipHash,
