@@ -123,7 +123,7 @@ export async function submitEdit(options: SubmitEditOptions): Promise<SubmitEdit
       head: branchName,
       base: BASE_BRANCH,
       body: [
-        '_Submitted via the in-browser editor at_ https://0xnullai.github.io/DG-Wiki/',
+        '_Submitted via the in-browser editor at_ https://wiki.0xnullai.com/',
         '',
         `Page: \`${pageId}\` (\`${filePath}\`)`,
         `Author: @${me.login}`,
