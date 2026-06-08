@@ -7,6 +7,7 @@
 [![npm](https://img.shields.io/npm/v/dg-mcp?color=0a84ff)](https://www.npmjs.com/package/dg-mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
+[![Site](https://img.shields.io/badge/site-0xnullai.com-58c8f2)](https://0xnullai.com)
 
 [中文](./README.md) | English
 
