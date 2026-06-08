@@ -1,0 +1,325 @@
+---
+import '../styles/global.css';
+
+const projects = [
+  {
+    name: 'DG-Agent',
+    tag: 'AI 设备控制器',
+    desc: '在浏览器里用自然语言对话，AI 自动调用工具控制 DG-Lab 设备。',
+    href: 'https://agent.0xnullai.com',
+    cta: '打开应用',
+  },
+  {
+    name: 'DG-Chat',
+    tag: 'P2P 多人房间',
+    desc: '无服务器的点对点房间，把设备的远程控制权安全地交给房间里的伙伴。',
+    href: 'https://chat.0xnullai.com',
+    cta: '进入房间',
+  },
+  {
+    name: 'DG-Market',
+    tag: '波形 / 场景市场',
+    desc: '分享与导入社区创作的波形和场景，一键带进 DG-Agent 与 DG-Chat。',
+    href: 'https://market.0xnullai.com',
+    cta: '逛市场',
+  },
+  {
+    name: 'DG-Wiki',
+    tag: '文档中枢',
+    desc: '贯穿全系列的统一文档，支持浏览器内编辑并一键提交 PR。',
+    href: 'https://wiki.0xnullai.com',
+    cta: '读文档',
+  },
+  {
+    name: 'DG-MCP',
+    tag: 'MCP 服务器',
+    desc: '把设备暴露为 Model Context Protocol 工具，接入 Claude Desktop 等客户端。',
+    href: 'https://github.com/0xNullAI/DG-MCP',
+    cta: 'npm: dg-mcp',
+  },
+  {
+    name: 'DG-Kit',
+    tag: '共享运行时',
+    desc: 'BLE 协议、波形、工具定义的 TypeScript 中台，被全系列复用。',
+    href: 'https://github.com/0xNullAI/DG-Kit',
+    cta: 'npm: @dg-kit/*',
+  },
+];
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080808" />
+    <meta
+      name="description"
+      content="0xNullAi — 娱乐和智能的边界结合。DG-Agent / DG-Chat / DG-Market / DG-Wiki / DG-MCP / DG-Kit 一个系列。"
+    />
+    <title>0xNullAi — 娱乐和智能的边界结合</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script is:inline>
+      // Apply saved theme before paint to avoid a flash.
+      (function () {
+        try {
+          var t = localStorage.getItem('dg-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="grid-bg" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <span class="wordmark">0xNullAi</span>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">0xNullAi</p>
+        <h1>娱乐和智能的<span class="accent">边界结合</span></h1>
+        <p class="lede">
+          一个把游玩体验与 AI 智能揉到一起的开源系列。设备控制、多人协作、社区市场、文档与协议——全部互通。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://agent.0xnullai.com">开始体验 DG-Agent</a>
+          <a class="btn btn-ghost" href="https://github.com/0xNullAI">GitHub</a>
+        </div>
+      </section>
+
+      <section class="grid" aria-label="项目">
+        {
+          projects.map((p) => (
+            <a class="card" href={p.href}>
+              <div class="card-top">
+                <span class="card-name">{p.name}</span>
+                <span class="card-tag">{p.tag}</span>
+              </div>
+              <p class="card-desc">{p.desc}</p>
+              <span class="card-cta">
+                {p.cta}
+                <span class="arrow">→</span>
+              </span>
+            </a>
+          ))
+        }
+      </section>
+    </main>
+
+    <footer>
+      <span>© 0xNullAi</span>
+      <span class="dot">·</span>
+      <span>娱乐和智能的边界结合</span>
+    </footer>
+
+    <script is:inline>
+      (function () {
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var next = cur === 'light' ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', next);
+          try {
+            localStorage.setItem('dg-theme', next);
+          } catch (e) {}
+        });
+      })();
+    </script>
+
+    <style>
+      .grid-bg {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background-image:
+          linear-gradient(var(--border) 1px, transparent 1px),
+          linear-gradient(90deg, var(--border) 1px, transparent 1px);
+        background-size: 88px 88px;
+        opacity: 0.35;
+        mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px 24px 0;
+      }
+      .wordmark {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        font-size: 18px;
+      }
+      .theme-toggle {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 999px;
+        width: 38px;
+        height: 38px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease;
+      }
+      .theme-toggle:hover {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 24px 80px;
+      }
+
+      .hero {
+        padding: 92px 0 72px;
+        max-width: 760px;
+      }
+      .eyebrow {
+        font-family: var(--font-mono);
+        color: var(--accent-strong);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-size: 13px;
+        margin: 0 0 18px;
+      }
+      .hero h1 {
+        font-size: clamp(40px, 7vw, 68px);
+        line-height: 1.12;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin: 0 0 22px;
+      }
+      .hero h1 .accent {
+        color: var(--accent);
+      }
+      .lede {
+        font-size: clamp(16px, 2.4vw, 19px);
+        line-height: 1.7;
+        color: var(--text-soft);
+        margin: 0 0 32px;
+      }
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 13px 22px;
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        font-size: 15px;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #080808;
+        box-shadow: var(--shadow-soft);
+      }
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-panel);
+      }
+      .btn-ghost {
+        border: 1px solid var(--border-strong);
+        color: var(--text);
+      }
+      .btn-ghost:hover {
+        border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 18px;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 24px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-soft);
+        transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.2s ease;
+      }
+      .card:hover {
+        transform: translateY(-3px);
+        border-color: var(--accent);
+        box-shadow: var(--shadow-panel);
+      }
+      .card-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .card-name {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 18px;
+      }
+      .card-tag {
+        font-size: 12px;
+        color: var(--accent-strong);
+        background: var(--accent-soft);
+        padding: 4px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .card-desc {
+        margin: 0;
+        flex: 1;
+        color: var(--text-soft);
+        line-height: 1.65;
+        font-size: 14.5px;
+      }
+      .card-cta {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent-strong);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .card:hover .arrow {
+        transform: translateX(3px);
+      }
+      .arrow {
+        transition: transform 0.18s ease;
+      }
+
+      footer {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 28px 24px 48px;
+        color: var(--text-faint);
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .dot {
+        opacity: 0.5;
+      }
+    </style>
+  </body>
+</html>
