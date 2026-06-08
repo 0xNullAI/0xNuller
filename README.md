@@ -5,6 +5,8 @@
 全免费栈：**Cloudflare Workers**（前端静态资源 + `/api` 接口）+ **D1**（SQLite）。
 匿名上传，Cloudflare Turnstile 人机验证，按来源限流（每小时 10 条），举报满 5 次自动隐藏，管理员口令可删除。
 
+**在线**：[market.0xnullai.com](https://market.0xnullai.com) ｜ 官网 [0xnullai.com](https://0xnullai.com)
+
 ## 技术栈
 
 - 前端：React 18 + Vite，构建到 `dist/`，由 Workers Static Assets 托管
