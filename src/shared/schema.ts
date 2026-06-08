@@ -23,11 +23,10 @@ export const ScenarioContentSchema = z.object({
 // 多人场景：世界观 + 一组角色 + 玩法元数据（人数、AI 参与方式）。
 export const MultiSceneRoleSchema = z.object({
   name: z.string().trim().min(1).max(40),
-  description: z.string().trim().max(300).optional(),
+  // 角色描述 / 人设：展示给成员，也作为该角色交给 AI 时的人设（导入 DG-Chat 用）。
+  description: z.string().trim().max(2000).optional(),
   // 该角色是否可由 AI 扮演。
   aiPlayable: z.boolean().optional(),
-  // 给 AI 的详细人设（身份/口吻/动机），导入 DG-Chat 做 AI 扮演用。
-  aiPersona: z.string().max(2000).optional(),
 });
 
 export const MultiSceneContentSchema = z.object({
