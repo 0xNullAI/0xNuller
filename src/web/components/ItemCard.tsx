@@ -14,6 +14,13 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
           {item.type === 'waveform' ? '〰️' : item.icon || (item.type === 'multi-scene' ? '🎬' : '🎭')}
         </span>
         <span className="card-name">{item.name}</span>
+        {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
+        {item.type === 'multi-scene' && (item.content as MultiSceneContent).playerCount && (
+          <span className="player-badge">
+            👥 {(item.content as MultiSceneContent).playerCount!.min}-
+            {(item.content as MultiSceneContent).playerCount!.max} 人
+          </span>
+        )}
       </div>
 
       {item.type === 'waveform' ? (

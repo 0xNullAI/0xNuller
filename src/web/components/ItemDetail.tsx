@@ -67,8 +67,9 @@ export function ItemDetail({ item, onClose }: Props): JSX.Element {
         </header>
 
         <p className="modal-meta">
-          {item.type === 'waveform' ? '波形' : item.type === 'multi-scene' ? '多人场景' : '场景'} ·{' '}
+          {item.type === 'waveform' ? '波形' : item.type === 'multi-scene' ? '多人场景' : '单人场景'} ·{' '}
           {item.author ? `@${item.author}` : '匿名'} · 👁 {item.views} · ↓ {item.downloads}
+          {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
         </p>
 
         {item.description && <p className="modal-desc">{item.description}</p>}
@@ -94,6 +95,7 @@ export function ItemDetail({ item, onClose }: Props): JSX.Element {
                         {r.aiPlayable && <span className="ai-tag">AI 可</span>}
                       </strong>
                       {r.description && <p>{r.description}</p>}
+                      {r.aiPersona && <p className="role-persona-view">AI 人设：{r.aiPersona}</p>}
                     </div>
                   ))}
                 </div>
@@ -123,8 +125,10 @@ export function ItemDetail({ item, onClose }: Props): JSX.Element {
 
         <p className="modal-hint">
           {item.type === 'multi-scene'
-            ? '在 DG-Chat 房间里点「场景 → 从市场导入」即可应用为房间场景。'
-            : `在 DG-Agent 的「${item.type === 'waveform' ? '波形库' : '场景'}」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。`}
+            ? '在 DG-Chat 房间『场景 → 从市场导入』即可使用。'
+            : item.type === 'scenario'
+              ? '在 DG-Agent 点『从市场导入』即可使用；或复制 JSON 手动导入。'
+              : '在 DG-Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
         </p>
       </div>
     </div>

@@ -26,6 +26,8 @@ export const MultiSceneRoleSchema = z.object({
   description: z.string().trim().max(300).optional(),
   // 该角色是否可由 AI 扮演。
   aiPlayable: z.boolean().optional(),
+  // 给 AI 的详细人设（身份/口吻/动机），导入 DG-Chat 做 AI 扮演用。
+  aiPersona: z.string().max(2000).optional(),
 });
 
 export const MultiSceneContentSchema = z.object({

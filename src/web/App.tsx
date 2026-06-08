@@ -9,8 +9,12 @@ import { UploadDialog } from './components/UploadDialog';
 const THEME_LABEL: Record<ThemeMode, string> = { auto: '🌗 跟随系统', light: '☀️ 浅色', dark: '🌙 深色' };
 const THEME_NEXT: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' };
 
+type TopTab = 'scene' | 'waveform';
+type SceneSub = 'scenario' | 'multi-scene';
+
 export function App(): JSX.Element {
-  const [tab, setTab] = useState<ItemType>('waveform');
+  const [tab, setTab] = useState<TopTab>('scene');
+  const [sceneSub, setSceneSub] = useState<SceneSub>('scenario');
   const [sort, setSort] = useState<'new' | 'popular'>('new');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<MarketItem[]>([]);
@@ -43,13 +47,16 @@ export function App(): JSX.Element {
       .catch(() => {});
   }, []);
 
+  // 由顶层标签 + 场景子筛选共同决定要拉取的内容类型字符串。
+  const activeType: ItemType = tab === 'waveform' ? 'waveform' : sceneSub;
+
   const load = useCallback(() => {
     setLoading(true);
-    fetchItems({ type: tab, sort, q: q.trim() || undefined, limit: 50 })
+    fetchItems({ type: activeType, sort, q: q.trim() || undefined, limit: 50 })
       .then(setItems)
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, [tab, sort, q]);
+  }, [activeType, sort, q]);
 
   useEffect(() => {
     const id = window.setTimeout(load, q ? 300 : 0);
@@ -77,16 +84,25 @@ export function App(): JSX.Element {
       </header>
 
       <nav className="controls">
-        <div className="seg">
-          <button className={tab === 'waveform' ? 'active' : ''} onClick={() => setTab('waveform')}>
-            波形
-          </button>
-          <button className={tab === 'scenario' ? 'active' : ''} onClick={() => setTab('scenario')}>
-            场景
-          </button>
-          <button className={tab === 'multi-scene' ? 'active' : ''} onClick={() => setTab('multi-scene')}>
-            多人场景
-          </button>
+        <div className="tab-group">
+          <div className="seg">
+            <button className={tab === 'scene' ? 'active' : ''} onClick={() => setTab('scene')}>
+              场景
+            </button>
+            <button className={tab === 'waveform' ? 'active' : ''} onClick={() => setTab('waveform')}>
+              波形
+            </button>
+          </div>
+          {tab === 'scene' && (
+            <div className="seg seg-sub">
+              <button className={sceneSub === 'scenario' ? 'active' : ''} onClick={() => setSceneSub('scenario')}>
+                单人
+              </button>
+              <button className={sceneSub === 'multi-scene' ? 'active' : ''} onClick={() => setSceneSub('multi-scene')}>
+                多人
+              </button>
+            </div>
+          )}
         </div>
         <input
           className="search"

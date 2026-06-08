@@ -60,14 +60,16 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const [playerMin, setPlayerMin] = useState('2');
   const [playerMax, setPlayerMax] = useState('4');
   const [aiMode, setAiMode] = useState<'none' | 'solo' | 'multi'>('none');
-  const [roles, setRoles] = useState<{ name: string; description: string; aiPlayable: boolean }[]>([
-    { name: '', description: '', aiPlayable: false },
+  const [roles, setRoles] = useState<{ name: string; description: string; aiPlayable: boolean; aiPersona: string }[]>([
+    { name: '', description: '', aiPlayable: false, aiPersona: '' },
   ]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const updateRole = (i: number, patch: Partial<{ name: string; description: string; aiPlayable: boolean }>) =>
-    setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
+  const updateRole = (
+    i: number,
+    patch: Partial<{ name: string; description: string; aiPlayable: boolean; aiPersona: string }>,
+  ) => setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false, aiPersona: '' }]);
   const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
 
   const handleFile = async (files: FileList | null) => {
@@ -129,13 +131,15 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
         };
       } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
+        // 单人场景始终带「DG Agent」标签（去重、限 6 个）。
+        const scenarioTags = tags.includes('DG Agent') ? tags : ['DG Agent', ...tags].slice(0, 6);
         payload = {
           type: 'scenario',
           name: name.trim(),
           description: description.trim() || undefined,
           author: author.trim() || undefined,
           icon: icon.trim() || undefined,
-          tags,
+          tags: scenarioTags,
           content: { prompt: prompt.trim() },
           turnstileToken: token,
         };
@@ -147,6 +151,7 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
             name: r.name.trim(),
             description: r.description.trim() || undefined,
             aiPlayable: r.aiPlayable || undefined,
+            aiPersona: (r.aiPlayable && r.aiPersona.trim()) || undefined,
           }));
         if (cleanRoles.length === 0) return setError('至少填写一个角色');
         const mn = Math.max(1, Number(playerMin) || 1);
@@ -186,17 +191,32 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           </button>
         </header>
 
-        <div className="seg">
-          <button className={type === 'waveform' ? 'active' : ''} onClick={() => setType('waveform')}>
-            波形
-          </button>
-          <button className={type === 'scenario' ? 'active' : ''} onClick={() => setType('scenario')}>
-            场景
-          </button>
-          <button className={type === 'multi-scene' ? 'active' : ''} onClick={() => setType('multi-scene')}>
-            多人场景
-          </button>
+        <div className="tab-group">
+          <div className="seg">
+            <button
+              className={type === 'scenario' || type === 'multi-scene' ? 'active' : ''}
+              onClick={() => setType((t) => (t === 'waveform' ? 'scenario' : t))}
+            >
+              场景
+            </button>
+            <button className={type === 'waveform' ? 'active' : ''} onClick={() => setType('waveform')}>
+              波形
+            </button>
+          </div>
+          {(type === 'scenario' || type === 'multi-scene') && (
+            <div className="seg seg-sub">
+              <button className={type === 'scenario' ? 'active' : ''} onClick={() => setType('scenario')}>
+                单人
+              </button>
+              <button className={type === 'multi-scene' ? 'active' : ''} onClick={() => setType('multi-scene')}>
+                多人
+              </button>
+            </div>
+          )}
         </div>
+        {type === 'scenario' && (
+          <p className="upload-note">单人场景将自动标记 DG Agent，供 DG-Agent 导入。</p>
+        )}
 
         <label className="field">
           <span>名称 *</span>
@@ -277,13 +297,14 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
                 placeholder="描述这个多人场景的世界观、氛围、规则…"
               />
             </label>
+            <p className="upload-note">推荐人数会显著影响匹配，建议认真填写。</p>
             <div className="row">
               <label className="field">
-                <span>人数（最少）</span>
+                <span>推荐人数（最少）★</span>
                 <input type="number" min={1} max={50} value={playerMin} onChange={(e) => setPlayerMin(e.target.value)} />
               </label>
               <label className="field">
-                <span>人数（最多）</span>
+                <span>推荐人数（最多）★</span>
                 <input type="number" min={1} max={50} value={playerMax} onChange={(e) => setPlayerMax(e.target.value)} />
               </label>
               <label className="field">
@@ -299,28 +320,40 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
               <span>角色 * — 每人扮演一个</span>
               <div className="role-list">
                 {roles.map((r, i) => (
-                  <div key={i} className="role-row">
-                    <input
-                      className="role-name"
-                      value={r.name}
-                      onChange={(e) => updateRole(i, { name: e.target.value })}
-                      maxLength={40}
-                      placeholder={`角色 ${i + 1}`}
-                    />
-                    <input
-                      className="role-desc"
-                      value={r.description}
-                      onChange={(e) => updateRole(i, { description: e.target.value })}
-                      maxLength={300}
-                      placeholder="角色描述（可选）"
-                    />
-                    <label className="role-ai" title="该角色可由 AI 扮演">
-                      <input type="checkbox" checked={r.aiPlayable} onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })} />
-                      AI
-                    </label>
-                    <button type="button" className="icon-btn" onClick={() => removeRole(i)} disabled={roles.length <= 1}>
-                      ✕
-                    </button>
+                  <div key={i} className="role-item">
+                    <div className="role-row">
+                      <input
+                        className="role-name"
+                        value={r.name}
+                        onChange={(e) => updateRole(i, { name: e.target.value })}
+                        maxLength={40}
+                        placeholder={`角色 ${i + 1}`}
+                      />
+                      <input
+                        className="role-desc"
+                        value={r.description}
+                        onChange={(e) => updateRole(i, { description: e.target.value })}
+                        maxLength={300}
+                        placeholder="角色描述（可选）"
+                      />
+                      <label className="role-ai" title="该角色可由 AI 扮演">
+                        <input type="checkbox" checked={r.aiPlayable} onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })} />
+                        AI
+                      </label>
+                      <button type="button" className="icon-btn" onClick={() => removeRole(i)} disabled={roles.length <= 1}>
+                        ✕
+                      </button>
+                    </div>
+                    {r.aiPlayable && (
+                      <textarea
+                        className="role-persona"
+                        rows={3}
+                        value={r.aiPersona}
+                        onChange={(e) => updateRole(i, { aiPersona: e.target.value })}
+                        maxLength={2000}
+                        placeholder="AI 人设（给 AI 的详细身份/口吻/动机，可选）"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
