@@ -71,6 +71,82 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   ) => setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
   const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
+  const tplRef = useRef<HTMLInputElement>(null);
+
+  // 触发浏览器下载一段文本。
+  const downloadText = (filename: string, text: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 当前类型的 JSON 模板（含字段占位与说明）。
+  const templateFor = (t: ItemType): unknown => {
+    if (t === 'waveform')
+      return { type: 'waveform', name: '', icon: '〰️', tags: [], content: { frames: [[10, 50], [20, 60]], pulse: '' } };
+    if (t === 'scenario')
+      return { type: 'scenario', name: '', icon: '🎭', tags: ['DG Agent'], content: { prompt: '在这里写场景提示词…' } };
+    return {
+      type: 'multi-scene',
+      name: '',
+      icon: '🎬',
+      tags: [],
+      content: {
+        setting: '世界观 / 背景描述…',
+        playerCount: { min: 2, max: 4 },
+        aiMode: 'none',
+        roles: [{ name: '角色名', description: '角色描述 / AI 人设', aiPlayable: false }],
+      },
+    };
+  };
+
+  const downloadTemplate = () => {
+    const fn = type === 'waveform' ? '波形模板.json' : type === 'scenario' ? '单人场景模板.json' : '多人场景模板.json';
+    downloadText(fn, JSON.stringify(templateFor(type), null, 2));
+  };
+
+  // 导入填好的 JSON 模板，回填整个表单（仍需在表单点「上传」完成人机校验）。
+  const importTemplate = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const j = JSON.parse(await file.text()) as Record<string, unknown>;
+      const c = (j.content ?? {}) as Record<string, unknown>;
+      const t = (j.type as ItemType) ?? type;
+      setType(t);
+      if (typeof j.name === 'string') setName(j.name);
+      if (typeof j.icon === 'string') setIcon(j.icon);
+      if (typeof j.description === 'string') setDescription(j.description);
+      if (Array.isArray(j.tags)) setTagsText((j.tags as string[]).join(', '));
+      if (t === 'waveform') {
+        setWaveInput(typeof c.pulse === 'string' && c.pulse ? c.pulse : JSON.stringify(c.frames ?? []));
+      } else if (t === 'scenario') {
+        if (typeof c.prompt === 'string') setPrompt(c.prompt);
+      } else {
+        if (typeof c.setting === 'string') setSetting(c.setting);
+        const pc = (c.playerCount ?? {}) as { min?: number; max?: number };
+        if (pc.min != null) setPlayerMin(String(pc.min));
+        if (pc.max != null) setPlayerMax(String(pc.max));
+        if (c.aiMode === 'none' || c.aiMode === 'solo' || c.aiMode === 'multi') setAiMode(c.aiMode);
+        if (Array.isArray(c.roles))
+          setRoles(
+            (c.roles as Record<string, unknown>[]).map((r) => ({
+              name: String(r.name ?? ''),
+              description: String(r.description ?? ''),
+              aiPlayable: !!r.aiPlayable,
+            })),
+          );
+      }
+      setError('');
+    } catch (e) {
+      setError(`模板解析失败：${(e as Error).message}`);
+    } finally {
+      if (tplRef.current) tplRef.current.value = '';
+    }
+  };
 
   const handleFile = async (files: FileList | null) => {
     const file = files?.[0];
@@ -216,6 +292,23 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
         {type === 'scenario' && (
           <p className="upload-note">单人场景将自动标记 DG Agent，供 DG-Agent 导入。</p>
         )}
+
+        {/* 模板：下载 → 离线填好 → 导入回填表单 */}
+        <div className="tpl-row">
+          <button type="button" className="btn tpl-btn" onClick={downloadTemplate}>
+            ⬇ 下载模板
+          </button>
+          <button type="button" className="btn tpl-btn" onClick={() => tplRef.current?.click()}>
+            ⬆ 导入填好的模板
+          </button>
+          <input
+            ref={tplRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={(e) => importTemplate(e.target.files)}
+          />
+        </div>
 
         <label className="field">
           <span>名称 *</span>

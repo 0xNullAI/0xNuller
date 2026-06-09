@@ -613,3 +613,7 @@ select {
     flex: 1 1 100%;
   }
 }
+
+/* 上传：模板下载 / 导入行 */
+.tpl-row { display: flex; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
+.tpl-btn { font-size: 13px; padding: 6px 12px; }
