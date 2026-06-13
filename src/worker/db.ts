@@ -106,6 +106,31 @@ export async function insertItem(db: D1Database, item: InsertItem): Promise<void
     .run();
 }
 
+// 批量插入：一次 D1 batch，原子提交（全部成功或全部回滚）。
+export async function insertItems(db: D1Database, items: InsertItem[]): Promise<void> {
+  if (items.length === 0) return;
+  const stmt = db.prepare(
+    `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  await db.batch(
+    items.map((item) =>
+      stmt.bind(
+        item.id,
+        item.type,
+        item.name,
+        item.description ?? null,
+        item.author ?? null,
+        item.icon ?? null,
+        item.tags && item.tags.length ? item.tags.join(',') : null,
+        JSON.stringify(item.content),
+        item.ipHash,
+        item.createdAt,
+      ),
+    ),
+  );
+}
+
 export async function incrementDownloads(db: D1Database, id: string): Promise<void> {
   await db.prepare('UPDATE items SET downloads = downloads + 1 WHERE id = ?').bind(id).run();
 }

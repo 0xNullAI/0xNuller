@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ItemType, MarketItem } from '../shared/schema';
-import { fetchConfig, fetchItems, markViewed } from './api';
+import { fetchItems, markViewed } from './api';
 import { applyTheme, getStoredMode, setMode, subscribeSystem, type ThemeMode } from './theme';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
@@ -21,7 +21,6 @@ export function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [siteKey, setSiteKey] = useState('');
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredMode());
 
   // auto 模式下跟随系统配色变化。
@@ -40,12 +39,6 @@ export function App(): JSX.Element {
     void markViewed(item.id);
     setItems((prev) => prev.map((it) => (it.id === item.id ? bumped : it)));
   }
-
-  useEffect(() => {
-    fetchConfig()
-      .then((c) => setSiteKey(c.turnstileSiteKey))
-      .catch(() => {});
-  }, []);
 
   // 由顶层标签 + 场景子筛选共同决定要拉取的内容类型字符串。
   const activeType: ItemType = tab === 'waveform' ? 'waveform' : sceneSub;
@@ -138,7 +131,6 @@ export function App(): JSX.Element {
       )}
       {uploading && (
         <UploadDialog
-          siteKey={siteKey}
           onClose={() => setUploading(false)}
           onUploaded={() => {
             setUploading(false);

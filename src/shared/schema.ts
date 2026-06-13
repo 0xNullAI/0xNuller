@@ -55,23 +55,24 @@ export const UploadSchema = z.discriminatedUnion('type', [
     type: z.literal('waveform'),
     ...baseFields,
     content: WaveformContentSchema,
-    turnstileToken: z.string().min(1),
   }),
   z.object({
     type: z.literal('scenario'),
     ...baseFields,
     icon: z.string().trim().max(8).optional(),
     content: ScenarioContentSchema,
-    turnstileToken: z.string().min(1),
   }),
   z.object({
     type: z.literal('multi-scene'),
     ...baseFields,
     icon: z.string().trim().max(8).optional(),
     content: MultiSceneContentSchema,
-    turnstileToken: z.string().min(1),
   }),
 ]);
+
+// 批量上传：一次提交多条（最多 50）。公开可用，不再有人机验证。
+export const BatchUploadSchema = z.array(UploadSchema).min(1).max(50);
+export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 
 // 管理员编辑：仅元数据，全部可选；传空串/空数组表示清空该字段。
 export const AdminPatchSchema = z

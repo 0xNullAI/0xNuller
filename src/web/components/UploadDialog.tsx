@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react';
 import { unzipSync, strFromU8 } from 'fflate';
-import type { ItemType, UploadPayload } from '../../shared/schema';
+import type { BatchUploadPayload, ItemType, UploadPayload } from '../../shared/schema';
 import { parsePulseText } from '../../shared/pulse';
-import { uploadItem } from '../api';
-import { Turnstile } from './Turnstile';
+import { batchUploadItems, uploadItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 type Frame = [number, number];
@@ -23,7 +22,6 @@ async function readPulseFromFile(file: File): Promise<{ text: string; embeddedNa
 }
 
 interface Props {
-  siteKey: string;
   onClose: () => void;
   onUploaded: () => void;
 }
@@ -42,7 +40,7 @@ function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
   return { frames: frames as Frame[] };
 }
 
-export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Element {
+export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
   const [type, setType] = useState<ItemType>('waveform');
   const [name, setName] = useState('');
   const [author, setAuthor] = useState('');
@@ -51,9 +49,9 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const [tagsText, setTagsText] = useState('');
   const [waveInput, setWaveInput] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [batchMsg, setBatchMsg] = useState('');
   const [preview, setPreview] = useState<Frame[] | null>(null);
   // —— 多人场景字段 ——
   const [setting, setSetting] = useState('');
@@ -72,6 +70,7 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
   const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
   const tplRef = useRef<HTMLInputElement>(null);
+  const batchRef = useRef<HTMLInputElement>(null);
 
   // 触发浏览器下载一段文本。
   const downloadText = (filename: string, text: string) => {
@@ -211,6 +210,45 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
     tryPreview(text);
   };
 
+  // 把一份 JSON 文本解析成条目数组：支持「单条对象」或「数组」。
+  const parseItemsJson = (text: string): unknown[] => {
+    const data = JSON.parse(text) as unknown;
+    return Array.isArray(data) ? data : [data];
+  };
+
+  // 批量上传：一个 .json（数组/单条）或 .zip（内含多个 .json，每个可为数组）。
+  const batchUpload = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setError('');
+    setBatchMsg('');
+    try {
+      let items: unknown[] = [];
+      if (/\.zip$/i.test(file.name)) {
+        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+        for (const n of Object.keys(entries)) {
+          if (n.startsWith('__') || !/\.json$/i.test(n)) continue;
+          items.push(...parseItemsJson(strFromU8(entries[n]!)));
+        }
+        if (items.length === 0) throw new Error('压缩包里没有找到 .json 文件');
+      } else {
+        items = parseItemsJson(await file.text());
+      }
+      if (items.length === 0) throw new Error('没有可上传的条目');
+      if (items.length > 50) throw new Error(`一次最多 50 条，当前 ${items.length} 条`);
+
+      setBusy(true);
+      const { inserted } = await batchUploadItems(items as BatchUploadPayload);
+      setBatchMsg(`✅ 已成功上传 ${inserted} 条`);
+      onUploaded();
+    } catch (e) {
+      setError(`批量上传失败：${(e as Error).message}`);
+      setBusy(false);
+    } finally {
+      if (batchRef.current) batchRef.current.value = '';
+    }
+  };
+
   const handleFile = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
@@ -247,7 +285,6 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
   const submit = async () => {
     setError('');
     if (!name.trim()) return setError('请填写名称');
-    if (!token) return setError('请先完成人机验证');
 
     const tags = tagsText
       .split(/[,，\s]+/)
@@ -266,7 +303,6 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           author: author.trim() || undefined,
           tags,
           content: { frames, pulse },
-          turnstileToken: token,
         };
       } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
@@ -280,7 +316,6 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           icon: icon.trim() || undefined,
           tags: scenarioTags,
           content: { prompt: prompt.trim() },
-          turnstileToken: token,
         };
       } else {
         if (!setting.trim()) return setError('请填写世界观');
@@ -302,7 +337,6 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           icon: icon.trim() || undefined,
           tags,
           content: { setting: setting.trim(), roles: cleanRoles, playerCount: { min: mn, max: mx }, aiMode },
-          turnstileToken: token,
         };
       }
     } catch (e) {
@@ -376,7 +410,27 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
             style={{ display: 'none' }}
             onChange={(e) => importTemplate(e.target.files)}
           />
+          <button
+            type="button"
+            className="btn tpl-btn"
+            onClick={() => batchRef.current?.click()}
+            disabled={busy}
+            title="一个 .json（数组/单条）或 .zip（内含多个 .json），一次最多 50 条，直接上传"
+          >
+            📦 批量上传
+          </button>
+          <input
+            ref={batchRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            style={{ display: 'none' }}
+            onChange={(e) => batchUpload(e.target.files)}
+          />
         </div>
+        <p className="upload-note">
+          批量上传：选一个 JSON 数组或含多个 JSON 的压缩包，校验通过即直接发布（最多 50 条）。
+        </p>
+        {batchMsg && <p className="upload-ok">{batchMsg}</p>}
 
         <label className="field">
           <span>名称 *</span>
@@ -515,8 +569,6 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
         )}
 
         {error && <p className="error">{error}</p>}
-
-        <Turnstile siteKey={siteKey} onToken={setToken} />
 
         <div className="modal-actions">
           <button className="btn primary" onClick={submit} disabled={busy}>

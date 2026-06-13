@@ -204,6 +204,12 @@ body {
   font-size: 12px;
   color: var(--text-soft);
 }
+.upload-ok {
+  margin: -2px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #2e7d32);
+}
 
 input,
 textarea,

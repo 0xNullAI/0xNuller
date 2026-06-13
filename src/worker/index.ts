@@ -1,5 +1,5 @@
-import { AdminPatchSchema, UploadSchema } from '../shared/schema';
-import type { AdminPatchRow } from './db';
+import { AdminPatchSchema, BatchUploadSchema, UploadSchema } from '../shared/schema';
+import type { AdminPatchRow, InsertItem } from './db';
 import {
   adminDelete,
   adminUpdate,
@@ -7,17 +7,15 @@ import {
   incrementDownloads,
   incrementViews,
   insertItem,
+  insertItems,
   listItems,
   recentUploadCount,
   reportItem,
 } from './db';
-import { verifyTurnstile } from './turnstile';
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  TURNSTILE_SITE_KEY: string;
-  TURNSTILE_SECRET: string;
   ADMIN_KEY: string;
 }
 
@@ -47,7 +45,7 @@ async function hashIp(ip: string, salt: string): Promise<string> {
 }
 
 const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 小时
-const UPLOAD_LIMIT = 10; // 每来源每小时最多 10 条
+const UPLOAD_LIMIT = 50; // 每来源每小时最多 50 条（含批量，按条数计）
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -64,11 +62,6 @@ export default {
     }
 
     try {
-      // GET /api/config —— 给前端的公开配置
-      if (pathname === '/api/config' && request.method === 'GET') {
-        return json({ turnstileSiteKey: env.TURNSTILE_SITE_KEY });
-      }
-
       // GET /api/items —— 列表 / 搜索
       if (pathname === '/api/items' && request.method === 'GET') {
         const typeParam = url.searchParams.get('type');
@@ -95,6 +88,11 @@ export default {
       // POST /api/items —— 上传
       if (pathname === '/api/items' && request.method === 'POST') {
         return await handleUpload(request, env);
+      }
+
+      // POST /api/items/batch —— 批量上传（一次多条）
+      if (pathname === '/api/items/batch' && request.method === 'POST') {
+        return await handleBatchUpload(request, env);
       }
 
       // POST /api/items/:id/download —— 下载计数
@@ -136,6 +134,24 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+type UploadOne = ReturnType<typeof UploadSchema.parse>;
+
+// 校验通过的单条 payload → 入库行。
+function toInsert(payload: UploadOne, ipHash: string, createdAt: number): InsertItem {
+  return {
+    id: crypto.randomUUID(),
+    type: payload.type,
+    name: payload.name,
+    description: payload.description,
+    author: payload.author,
+    icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
+    tags: payload.tags,
+    content: payload.content,
+    ipHash,
+    createdAt,
+  };
+}
+
 async function handleUpload(request: Request, env: Env): Promise<Response> {
   let body: unknown;
   try {
@@ -148,7 +164,6 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   if (!parsed.success) {
     return err(`数据校验失败：${parsed.error.issues[0]?.message ?? '未知字段错误'}`, 400);
   }
-  const payload = parsed.data;
 
   const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
   const ipHash = await hashIp(ip, env.ADMIN_KEY || 'dg-market');
@@ -156,27 +171,46 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const recent = await recentUploadCount(env.DB, ipHash, now - UPLOAD_WINDOW_MS);
   if (recent >= UPLOAD_LIMIT) {
-    return err('上传过于频繁，请稍后再试（每小时最多 10 条）', 429);
+    return err(`上传过于频繁，请稍后再试（每小时最多 ${UPLOAD_LIMIT} 条）`, 429);
   }
 
-  const ok = await verifyTurnstile(payload.turnstileToken, env.TURNSTILE_SECRET, ip);
-  if (!ok) return err('人机验证未通过', 403);
+  const row = toInsert(parsed.data, ipHash, now);
+  await insertItem(env.DB, row);
+  return json({ ok: true, id: row.id }, 201);
+}
 
-  const id = crypto.randomUUID();
-  await insertItem(env.DB, {
-    id,
-    type: payload.type,
-    name: payload.name,
-    description: payload.description,
-    author: payload.author,
-    icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
-    tags: payload.tags,
-    content: payload.content,
-    ipHash,
-    createdAt: now,
-  });
+async function handleBatchUpload(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('请求体不是合法 JSON', 400);
+  }
 
-  return json({ ok: true, id }, 201);
+  const parsed = BatchUploadSchema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue?.path?.[0] != null ? `第 ${Number(issue.path[0]) + 1} 条：` : '';
+    return err(`数据校验失败：${where}${issue?.message ?? '未知字段错误'}`, 400);
+  }
+  const payloads = parsed.data;
+
+  const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
+  const ipHash = await hashIp(ip, env.ADMIN_KEY || 'dg-market');
+
+  const now = Date.now();
+  const recent = await recentUploadCount(env.DB, ipHash, now - UPLOAD_WINDOW_MS);
+  if (recent + payloads.length > UPLOAD_LIMIT) {
+    return err(
+      `本批 ${payloads.length} 条会超出每小时上限（${UPLOAD_LIMIT} 条，已用 ${recent}），请减少数量或稍后再试`,
+      429,
+    );
+  }
+
+  // 同一批次共用一个时间戳基准，按序错开 1ms 以保留上传顺序。
+  const rows = payloads.map((p, i) => toInsert(p, ipHash, now + i));
+  await insertItems(env.DB, rows);
+  return json({ ok: true, inserted: rows.length, ids: rows.map((r) => r.id) }, 201);
 }
 
 // 管理员改元数据：空串/空数组 → null（清空字段）。

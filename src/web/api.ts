@@ -1,4 +1,4 @@
-import type { AdminPatch, ItemType, MarketItem, UploadPayload } from '../shared/schema';
+import type { AdminPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -7,9 +7,6 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export async function fetchConfig(): Promise<{ turnstileSiteKey: string }> {
-  return req('/api/config');
-}
 
 export interface ListQuery {
   type?: ItemType;
@@ -40,6 +37,15 @@ export async function uploadItem(payload: UploadPayload): Promise<{ id: string }
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+// 批量上传：一次提交多条，返回成功条数。
+export async function batchUploadItems(items: BatchUploadPayload): Promise<{ inserted: number }> {
+  return req('/api/items/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(items),
   });
 }
 
