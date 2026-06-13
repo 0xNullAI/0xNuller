@@ -73,6 +73,18 @@ export const UploadSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+// 管理员编辑：仅元数据，全部可选；传空串/空数组表示清空该字段。
+export const AdminPatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    description: z.string().trim().max(500).optional(),
+    author: z.string().trim().max(30).optional(),
+    icon: z.string().trim().max(8).optional(),
+    tags: z.array(z.string().trim().min(1).max(20)).max(6).optional(),
+  })
+  .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
+export type AdminPatch = z.infer<typeof AdminPatchSchema>;
+
 export type ItemType = 'waveform' | 'scenario' | 'multi-scene';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;
 export type ScenarioContent = z.infer<typeof ScenarioContentSchema>;

@@ -1,4 +1,4 @@
-import type { ItemType, MarketItem, UploadPayload } from '../shared/schema';
+import type { AdminPatch, ItemType, MarketItem, UploadPayload } from '../shared/schema';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -53,4 +53,13 @@ export async function markViewed(id: string): Promise<void> {
 
 export async function reportItem(id: string): Promise<void> {
   await req(`/api/items/${id}/report`, { method: 'POST' });
+}
+
+// 管理员改元数据（口令走 X-Admin-Key 头）。
+export async function adminUpdateItem(id: string, patch: AdminPatch, adminKey: string): Promise<void> {
+  await req(`/api/admin/items/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+    body: JSON.stringify(patch),
+  });
 }

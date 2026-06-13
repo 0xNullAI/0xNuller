@@ -126,7 +126,16 @@ export function App(): JSX.Element {
         )}
       </main>
 
-      {active && <ItemDetail item={active} onClose={() => setActive(null)} />}
+      {active && (
+        <ItemDetail
+          item={active}
+          onClose={() => setActive(null)}
+          onUpdated={(updated) => {
+            setActive(updated);
+            setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+          }}
+        />
+      )}
       {uploading && (
         <UploadDialog
           siteKey={siteKey}

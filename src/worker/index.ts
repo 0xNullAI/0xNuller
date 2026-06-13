@@ -1,6 +1,8 @@
-import { UploadSchema } from '../shared/schema';
+import { AdminPatchSchema, UploadSchema } from '../shared/schema';
+import type { AdminPatchRow } from './db';
 import {
   adminDelete,
+  adminUpdate,
   getItem,
   incrementDownloads,
   incrementViews,
@@ -22,7 +24,7 @@ interface Env {
 // DG-Agent 部署在 GitHub Pages（不同源），需要开放 CORS 供其拉取/导入。
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Key',
 };
 
@@ -116,12 +118,15 @@ export default {
         return json({ ok: true });
       }
 
-      // DELETE /api/admin/items/:id —— 管理员删除
+      // 管理员改 / 删 /api/admin/items/:id（口令 X-Admin-Key）
       const adminMatch = pathname.match(/^\/api\/admin\/items\/([\w-]+)$/);
-      if (adminMatch && request.method === 'DELETE') {
+      if (adminMatch && (request.method === 'DELETE' || request.method === 'PATCH')) {
         if (request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return err('无权限', 403);
-        await adminDelete(env.DB, adminMatch[1]!);
-        return json({ ok: true });
+        if (request.method === 'DELETE') {
+          await adminDelete(env.DB, adminMatch[1]!);
+          return json({ ok: true });
+        }
+        return await handleAdminPatch(request, env, adminMatch[1]!);
       }
 
       return err('接口不存在', 404);
@@ -172,4 +177,31 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   });
 
   return json({ ok: true, id }, 201);
+}
+
+// 管理员改元数据：空串/空数组 → null（清空字段）。
+async function handleAdminPatch(request: Request, env: Env, id: string): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('请求体不是合法 JSON', 400);
+  }
+
+  const parsed = AdminPatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return err(`数据校验失败：${parsed.error.issues[0]?.message ?? '未知字段错误'}`, 400);
+  }
+  const p = parsed.data;
+
+  const row: AdminPatchRow = {};
+  if (p.name !== undefined) row.name = p.name;
+  if (p.description !== undefined) row.description = p.description || null;
+  if (p.author !== undefined) row.author = p.author || null;
+  if (p.icon !== undefined) row.icon = p.icon || null;
+  if (p.tags !== undefined) row.tags = p.tags.length ? p.tags.join(',') : null;
+
+  const ok = await adminUpdate(env.DB, id, row);
+  if (!ok) return err('未找到该条目', 404);
+  return json({ ok: true });
 }

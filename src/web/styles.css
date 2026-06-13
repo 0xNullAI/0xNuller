@@ -419,6 +419,22 @@ select {
   flex-wrap: wrap;
 }
 
+.admin-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-strong);
+}
+.admin-edit-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
 .field {
   display: flex;
   flex-direction: column;

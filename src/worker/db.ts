@@ -126,6 +126,33 @@ export async function adminDelete(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
 }
 
+// 管理员仅改元数据：列名取自固定白名单，值已规整（空 → null）。
+export interface AdminPatchRow {
+  name?: string;
+  description?: string | null;
+  author?: string | null;
+  icon?: string | null;
+  tags?: string | null;
+}
+
+export async function adminUpdate(db: D1Database, id: string, patch: AdminPatchRow): Promise<boolean> {
+  const cols: (keyof AdminPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  for (const col of cols) {
+    if (patch[col] === undefined) continue;
+    sets.push(`${col} = ?`);
+    binds.push(patch[col]);
+  }
+  if (sets.length === 0) return false;
+  binds.push(id);
+  const res = await db
+    .prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...binds)
+    .run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
 // 限流：统计同一来源近 windowMs 内的上传数。
 export async function recentUploadCount(
   db: D1Database,

@@ -83,22 +83,51 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
     URL.revokeObjectURL(url);
   };
 
-  // 当前类型的 JSON 模板（含字段占位与说明）。
+  // 当前类型的 JSON 模板：用一份可直接上传的示例内容填好，照着改字段即可。
+  // 公共可填字段：name 名称(必填) / author 上传者昵称 / description 简介 / tags 标签。
   const templateFor = (t: ItemType): unknown => {
     if (t === 'waveform')
-      return { type: 'waveform', name: '', icon: '〰️', tags: [], content: { frames: [[10, 50], [20, 60]], pulse: '' } };
+      return {
+        type: 'waveform',
+        name: '示例波形 · 渐强脉冲',
+        author: '你的昵称（可选，留空则匿名）',
+        description: '由弱到强再回落的循环脉冲，适合作为前戏铺垫。',
+        tags: ['渐强', '节奏感'],
+        // frames：[编码频率(10..240), 强度(0..100)]，一帧约 25ms。也可改填 pulse 文本。
+        content: {
+          frames: [[10, 20], [15, 40], [20, 60], [25, 80], [20, 60], [15, 40]],
+          pulse: '',
+        },
+      };
     if (t === 'scenario')
-      return { type: 'scenario', name: '', icon: '🎭', tags: ['DG Agent'], content: { prompt: '在这里写场景提示词…' } };
+      return {
+        type: 'scenario',
+        name: '示例场景 · 雨夜便利店',
+        author: '你的昵称（可选，留空则匿名）',
+        description: '深夜值班的便利店店员，与一位常客之间的暧昧拉扯。',
+        icon: '🎭',
+        tags: ['DG Agent', '日常', '都市'],
+        content: {
+          prompt:
+            '你是一家深夜便利店的店员，店里只剩你和一位每晚都来的熟客。外面下着大雨，气氛安静而暧昧。请以第一人称展开这段相遇…',
+        },
+      };
     return {
       type: 'multi-scene',
-      name: '',
+      name: '示例多人场景 · 末日避难所',
+      author: '你的昵称（可选，留空则匿名）',
+      description: '资源枯竭的地下避难所里，幸存者们为生存与权力博弈。',
       icon: '🎬',
-      tags: [],
+      tags: ['末日', '生存', '权谋'],
       content: {
-        setting: '世界观 / 背景描述…',
+        setting:
+          '一座末日后的地下避难所，物资濒临耗尽，外面是被污染的废土。幸存者必须在猜疑与合作之间做出选择。',
         playerCount: { min: 2, max: 4 },
-        aiMode: 'none',
-        roles: [{ name: '角色名', description: '角色描述 / AI 人设', aiPlayable: false }],
+        aiMode: 'none', // none 纯人 / solo 单个 AI / multi 多个 AI
+        roles: [
+          { name: '避难所主管', description: '掌握物资分配权的冷静领袖，信奉秩序高于一切。', aiPlayable: false },
+          { name: '流浪医生', description: '唯一懂医术的外来者，立场暧昧、动机成谜。', aiPlayable: true },
+        ],
       },
     };
   };
@@ -108,37 +137,63 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
     downloadText(fn, JSON.stringify(templateFor(type), null, 2));
   };
 
-  // 导入填好的 JSON 模板，回填整个表单（仍需在表单点「上传」完成人机校验）。
+  // 把一份模板对象回填到表单，返回解析出的类型。
+  const applyTemplate = (j: Record<string, unknown>): ItemType => {
+    const c = (j.content ?? {}) as Record<string, unknown>;
+    const t = (j.type as ItemType) ?? type;
+    setType(t);
+    if (typeof j.name === 'string') setName(j.name);
+    if (typeof j.author === 'string') setAuthor(j.author);
+    if (typeof j.icon === 'string') setIcon(j.icon);
+    if (typeof j.description === 'string') setDescription(j.description);
+    if (Array.isArray(j.tags)) setTagsText((j.tags as string[]).join(', '));
+    if (t === 'waveform') {
+      setWaveInput(typeof c.pulse === 'string' && c.pulse ? c.pulse : JSON.stringify(c.frames ?? []));
+    } else if (t === 'scenario') {
+      if (typeof c.prompt === 'string') setPrompt(c.prompt);
+    } else {
+      if (typeof c.setting === 'string') setSetting(c.setting);
+      const pc = (c.playerCount ?? {}) as { min?: number; max?: number };
+      if (pc.min != null) setPlayerMin(String(pc.min));
+      if (pc.max != null) setPlayerMax(String(pc.max));
+      if (c.aiMode === 'none' || c.aiMode === 'solo' || c.aiMode === 'multi') setAiMode(c.aiMode);
+      if (Array.isArray(c.roles))
+        setRoles(
+          (c.roles as Record<string, unknown>[]).map((r) => ({
+            name: String(r.name ?? ''),
+            description: String(r.description ?? ''),
+            aiPlayable: !!r.aiPlayable,
+          })),
+        );
+    }
+    return t;
+  };
+
+  // 导入填好的模板，回填整个表单（仍需在表单点「上传」完成人机校验）。
+  // 支持：.json 模板、.pulse 波形文件，以及含 .json/.pulse 的 .zip 压缩包。
   const importTemplate = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
     try {
-      const j = JSON.parse(await file.text()) as Record<string, unknown>;
-      const c = (j.content ?? {}) as Record<string, unknown>;
-      const t = (j.type as ItemType) ?? type;
-      setType(t);
-      if (typeof j.name === 'string') setName(j.name);
-      if (typeof j.icon === 'string') setIcon(j.icon);
-      if (typeof j.description === 'string') setDescription(j.description);
-      if (Array.isArray(j.tags)) setTagsText((j.tags as string[]).join(', '));
-      if (t === 'waveform') {
-        setWaveInput(typeof c.pulse === 'string' && c.pulse ? c.pulse : JSON.stringify(c.frames ?? []));
-      } else if (t === 'scenario') {
-        if (typeof c.prompt === 'string') setPrompt(c.prompt);
+      if (/\.zip$/i.test(file.name)) {
+        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+        const names = Object.keys(entries).filter((n) => !n.startsWith('__'));
+        const jsonName = names.find((n) => /\.json$/i.test(n));
+        const pulseName = names.find((n) => /\.pulse$/i.test(n));
+        if (jsonName) {
+          const t = applyTemplate(JSON.parse(strFromU8(entries[jsonName]!)) as Record<string, unknown>);
+          // 同包内若另带 .pulse，且是波形，用原始 pulse 文本覆盖并预览
+          if (pulseName && t === 'waveform') tryPreview(strFromU8(entries[pulseName]!));
+        } else if (pulseName) {
+          // 只有 .pulse：按波形导入
+          importPulseText(strFromU8(entries[pulseName]!), pulseName.replace(/.*\//, '').replace(/\.pulse$/i, ''));
+        } else {
+          throw new Error('压缩包里没有 .json 模板或 .pulse 文件');
+        }
+      } else if (/\.pulse$/i.test(file.name)) {
+        importPulseText(await file.text(), file.name.replace(/\.pulse$/i, ''));
       } else {
-        if (typeof c.setting === 'string') setSetting(c.setting);
-        const pc = (c.playerCount ?? {}) as { min?: number; max?: number };
-        if (pc.min != null) setPlayerMin(String(pc.min));
-        if (pc.max != null) setPlayerMax(String(pc.max));
-        if (c.aiMode === 'none' || c.aiMode === 'solo' || c.aiMode === 'multi') setAiMode(c.aiMode);
-        if (Array.isArray(c.roles))
-          setRoles(
-            (c.roles as Record<string, unknown>[]).map((r) => ({
-              name: String(r.name ?? ''),
-              description: String(r.description ?? ''),
-              aiPlayable: !!r.aiPlayable,
-            })),
-          );
+        applyTemplate(JSON.parse(await file.text()) as Record<string, unknown>);
       }
       setError('');
     } catch (e) {
@@ -146,6 +201,14 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
     } finally {
       if (tplRef.current) tplRef.current.value = '';
     }
+  };
+
+  // 把一段 .pulse 文本当作波形回填（名称留空时用内嵌名 / 文件名）。
+  const importPulseText = (text: string, fallbackName: string) => {
+    setType('waveform');
+    const { name: pulseName } = parsePulseText(text);
+    if (!name.trim()) setName(pulseName || fallbackName);
+    tryPreview(text);
   };
 
   const handleFile = async (files: FileList | null) => {
@@ -298,13 +361,18 @@ export function UploadDialog({ siteKey, onClose, onUploaded }: Props): JSX.Eleme
           <button type="button" className="btn tpl-btn" onClick={downloadTemplate}>
             ⬇ 下载模板
           </button>
-          <button type="button" className="btn tpl-btn" onClick={() => tplRef.current?.click()}>
-            ⬆ 导入填好的模板
+          <button
+            type="button"
+            className="btn tpl-btn"
+            onClick={() => tplRef.current?.click()}
+            title="支持 .json 模板 / .pulse 波形 / 含两者的 .zip 压缩包"
+          >
+            ⬆ 导入模板 / 压缩包
           </button>
           <input
             ref={tplRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.zip,.pulse,application/json,application/zip"
             style={{ display: 'none' }}
             onChange={(e) => importTemplate(e.target.files)}
           />
