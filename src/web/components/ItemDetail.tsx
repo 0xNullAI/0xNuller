@@ -88,7 +88,7 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
       .split(/[,，\s]+/)
       .map((t) => t.trim())
       .filter(Boolean)
-      .slice(0, 6);
+      .slice(0, 20);
     const patch: AdminPatch = {
       name: eName.trim(),
       author: eAuthor.trim(),

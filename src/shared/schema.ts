@@ -47,7 +47,7 @@ const baseFields = {
   name: z.string().trim().min(1).max(60),
   description: z.string().trim().max(500).optional(),
   author: z.string().trim().max(30).optional(),
-  tags: z.array(z.string().trim().min(1).max(20)).max(6).optional(),
+  tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
 };
 
 export const UploadSchema = z.discriminatedUnion('type', [
@@ -81,7 +81,7 @@ export const AdminPatchSchema = z
     description: z.string().trim().max(500).optional(),
     author: z.string().trim().max(30).optional(),
     icon: z.string().trim().max(8).optional(),
-    tags: z.array(z.string().trim().min(1).max(20)).max(6).optional(),
+    tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
   })
   .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
 export type AdminPatch = z.infer<typeof AdminPatchSchema>;

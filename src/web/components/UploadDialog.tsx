@@ -269,7 +269,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
       .split(/[,，\s]+/)
       .map((t) => t.trim())
       .filter(Boolean)
-      .slice(0, 6);
+      .slice(0, 20);
 
     let payload: UploadPayload;
     try {
@@ -285,8 +285,8 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         };
       } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
-        // 单人场景始终带「DG Agent」标签（去重、限 6 个）。
-        const scenarioTags = tags.includes('DG Agent') ? tags : ['DG Agent', ...tags].slice(0, 6);
+        // 单人场景始终带「DG Agent」标签（去重、限 20 个）。
+        const scenarioTags = tags.includes('DG Agent') ? tags : ['DG Agent', ...tags].slice(0, 20);
         payload = {
           type: 'scenario',
           name: name.trim(),
