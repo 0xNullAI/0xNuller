@@ -23,7 +23,8 @@ async function readPulseFromFile(file: File): Promise<{ text: string; embeddedNa
 
 interface Props {
   onClose: () => void;
-  onUploaded: () => void;
+  onUploaded: () => void; // 手动单条上传成功 → 关闭并刷新
+  onChanged: () => void; // 文件批量上传成功 → 刷新列表（不关闭，便于看结果/继续传）
 }
 
 // 从用户输入解析出波形 frames：支持 .pulse 文本，或直接粘贴 frames JSON 数组。
@@ -40,7 +41,7 @@ function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
   return { frames: frames as Frame[] };
 }
 
-export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
+export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Element {
   const [type, setType] = useState<ItemType>('waveform');
   const [name, setName] = useState('');
   const [author, setAuthor] = useState('');
@@ -52,6 +53,7 @@ export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [batchMsg, setBatchMsg] = useState('');
+  const [manual, setManual] = useState(false); // 是否展开手动填写表单（高级选项）
   const [preview, setPreview] = useState<Frame[] | null>(null);
   // —— 多人场景字段 ——
   const [setting, setSetting] = useState('');
@@ -69,8 +71,7 @@ export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
   ) => setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
   const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
-  const tplRef = useRef<HTMLInputElement>(null);
-  const batchRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   // 触发浏览器下载一段文本。
   const downloadText = (filename: string, text: string) => {
@@ -136,116 +137,94 @@ export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
     downloadText(fn, JSON.stringify(templateFor(type), null, 2));
   };
 
-  // 把一份模板对象回填到表单，返回解析出的类型。
-  const applyTemplate = (j: Record<string, unknown>): ItemType => {
-    const c = (j.content ?? {}) as Record<string, unknown>;
-    const t = (j.type as ItemType) ?? type;
-    setType(t);
-    if (typeof j.name === 'string') setName(j.name);
-    if (typeof j.author === 'string') setAuthor(j.author);
-    if (typeof j.icon === 'string') setIcon(j.icon);
-    if (typeof j.description === 'string') setDescription(j.description);
-    if (Array.isArray(j.tags)) setTagsText((j.tags as string[]).join(', '));
-    if (t === 'waveform') {
-      setWaveInput(typeof c.pulse === 'string' && c.pulse ? c.pulse : JSON.stringify(c.frames ?? []));
-    } else if (t === 'scenario') {
-      if (typeof c.prompt === 'string') setPrompt(c.prompt);
-    } else {
-      if (typeof c.setting === 'string') setSetting(c.setting);
-      const pc = (c.playerCount ?? {}) as { min?: number; max?: number };
-      if (pc.min != null) setPlayerMin(String(pc.min));
-      if (pc.max != null) setPlayerMax(String(pc.max));
-      if (c.aiMode === 'none' || c.aiMode === 'solo' || c.aiMode === 'multi') setAiMode(c.aiMode);
-      if (Array.isArray(c.roles))
-        setRoles(
-          (c.roles as Record<string, unknown>[]).map((r) => ({
-            name: String(r.name ?? ''),
-            description: String(r.description ?? ''),
-            aiPlayable: !!r.aiPlayable,
-          })),
-        );
-    }
-    return t;
+  // —— 上传：压缩包 / 单 JSON / 单 .pulse 全自动识别，统一批量发布 ——
+
+  const baseName = (n: string) => n.replace(/.*\//, '');
+
+  // 一段 .pulse 文本 → 一条波形条目（名称用内嵌名 / 文件名兜底）。
+  const pulseToItem = (text: string, fallbackName: string): unknown => {
+    const { frames, name: embedded } = parsePulseText(text);
+    return { type: 'waveform', name: embedded || fallbackName, content: { frames, pulse: text } };
   };
 
-  // 导入填好的模板，回填整个表单（仍需在表单点「上传」完成人机校验）。
-  // 支持：.json 模板、.pulse 波形文件，以及含 .json/.pulse 的 .zip 压缩包。
-  const importTemplate = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    try {
-      if (/\.zip$/i.test(file.name)) {
-        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
-        const names = Object.keys(entries).filter((n) => !n.startsWith('__'));
-        const jsonName = names.find((n) => /\.json$/i.test(n));
-        const pulseName = names.find((n) => /\.pulse$/i.test(n));
-        if (jsonName) {
-          const t = applyTemplate(JSON.parse(strFromU8(entries[jsonName]!)) as Record<string, unknown>);
-          // 同包内若另带 .pulse，且是波形，用原始 pulse 文本覆盖并预览
-          if (pulseName && t === 'waveform') tryPreview(strFromU8(entries[pulseName]!));
-        } else if (pulseName) {
-          // 只有 .pulse：按波形导入
-          importPulseText(strFromU8(entries[pulseName]!), pulseName.replace(/.*\//, '').replace(/\.pulse$/i, ''));
-        } else {
-          throw new Error('压缩包里没有 .json 模板或 .pulse 文件');
-        }
-      } else if (/\.pulse$/i.test(file.name)) {
-        importPulseText(await file.text(), file.name.replace(/\.pulse$/i, ''));
-      } else {
-        applyTemplate(JSON.parse(await file.text()) as Record<string, unknown>);
-      }
-      setError('');
-    } catch (e) {
-      setError(`模板解析失败：${(e as Error).message}`);
-    } finally {
-      if (tplRef.current) tplRef.current.value = '';
-    }
-  };
-
-  // 把一段 .pulse 文本当作波形回填（名称留空时用内嵌名 / 文件名）。
-  const importPulseText = (text: string, fallbackName: string) => {
-    setType('waveform');
-    const { name: pulseName } = parsePulseText(text);
-    if (!name.trim()) setName(pulseName || fallbackName);
-    tryPreview(text);
-  };
-
-  // 把一份 JSON 文本解析成条目数组：支持「单条对象」或「数组」。
+  // 一段 JSON 文本 → 条目数组（单个对象 → [对象]，数组 → 原样）。
   const parseItemsJson = (text: string): unknown[] => {
     const data = JSON.parse(text) as unknown;
     return Array.isArray(data) ? data : [data];
   };
 
-  // 批量上传：一个 .json（数组/单条）或 .zip（内含多个 .json，每个可为数组）。
-  const batchUpload = async (files: FileList | null) => {
+  // 波形条目若用文件名引用包内 .pulse（content.pulse / pulse / file），
+  // 或直接给了 pulse 文本，自动解析出 frames 填好；否则原样交后端校验。
+  const resolveWaveItem = (
+    it: Record<string, unknown>,
+    pulseMap: Record<string, string>,
+    used: Set<string>,
+  ): unknown => {
+    if (it.type !== 'waveform') return it;
+    const c = (it.content ?? {}) as Record<string, unknown>;
+    if (Array.isArray(c.frames) && c.frames.length) return it; // 已内联 frames
+    const candidates = [c.pulse, (it as { file?: unknown }).file, (c as { file?: unknown }).file];
+    for (const cand of candidates) {
+      if (typeof cand !== 'string') continue;
+      const key = baseName(cand);
+      if (pulseMap[key]) {
+        used.add(key);
+        const text = pulseMap[key]!;
+        return { ...it, content: { ...c, frames: parsePulseText(text).frames, pulse: text } };
+      }
+      if (/^Dungeonlab\+pulse:/i.test(cand)) {
+        return { ...it, content: { ...c, frames: parsePulseText(cand).frames, pulse: cand } };
+      }
+    }
+    return it;
+  };
+
+  // 任意上传文件 → 待发布条目数组。
+  const parseUploadFile = async (file: File): Promise<unknown[]> => {
+    if (/\.zip$/i.test(file.name)) {
+      const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+      const names = Object.keys(entries).filter((n) => !baseName(n).startsWith('__') && !n.endsWith('/'));
+      const pulseMap: Record<string, string> = {};
+      for (const n of names) if (/\.pulse$/i.test(n)) pulseMap[baseName(n)] = strFromU8(entries[n]!);
+      const used = new Set<string>();
+      const items: unknown[] = [];
+      for (const n of names) {
+        if (!/\.json$/i.test(n)) continue;
+        for (const it of parseItemsJson(strFromU8(entries[n]!)))
+          items.push(resolveWaveItem((it ?? {}) as Record<string, unknown>, pulseMap, used));
+      }
+      // 没被任何 JSON 引用的 .pulse 各自成为一条波形
+      for (const [key, text] of Object.entries(pulseMap))
+        if (!used.has(key)) items.push(pulseToItem(text, key.replace(/\.pulse$/i, '')));
+      return items;
+    }
+    if (/\.pulse$/i.test(file.name)) {
+      return [pulseToItem(await file.text(), file.name.replace(/\.pulse$/i, ''))];
+    }
+    return parseItemsJson(await file.text()).map((it) =>
+      resolveWaveItem((it ?? {}) as Record<string, unknown>, {}, new Set()),
+    );
+  };
+
+  // 「上传」按钮：选文件 → 自动解析 → 批量发布（单条/多条都走这里）。
+  const smartUpload = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
     setError('');
     setBatchMsg('');
     try {
-      let items: unknown[] = [];
-      if (/\.zip$/i.test(file.name)) {
-        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
-        for (const n of Object.keys(entries)) {
-          if (n.startsWith('__') || !/\.json$/i.test(n)) continue;
-          items.push(...parseItemsJson(strFromU8(entries[n]!)));
-        }
-        if (items.length === 0) throw new Error('压缩包里没有找到 .json 文件');
-      } else {
-        items = parseItemsJson(await file.text());
-      }
-      if (items.length === 0) throw new Error('没有可上传的条目');
+      const items = await parseUploadFile(file);
+      if (items.length === 0) throw new Error('文件里没有可上传的条目');
       if (items.length > 50) throw new Error(`一次最多 50 条，当前 ${items.length} 条`);
-
       setBusy(true);
       const { inserted } = await batchUploadItems(items as BatchUploadPayload);
       setBatchMsg(`✅ 已成功上传 ${inserted} 条`);
-      onUploaded();
+      onChanged();
     } catch (e) {
-      setError(`批量上传失败：${(e as Error).message}`);
-      setBusy(false);
+      setError(`上传失败：${(e as Error).message}`);
     } finally {
-      if (batchRef.current) batchRef.current.value = '';
+      setBusy(false);
+      if (uploadRef.current) uploadRef.current.value = '';
     }
   };
 
@@ -386,52 +365,42 @@ export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
             </div>
           )}
         </div>
-        {type === 'scenario' && (
-          <p className="upload-note">单人场景将自动标记 DG Agent，供 DG-Agent 导入。</p>
-        )}
-
-        {/* 模板：下载 → 离线填好 → 导入回填表单 */}
+        {/* 主流程：下载最新模板 → 离线填好 → 上传（单文件或压缩包，自动识别批量） */}
         <div className="tpl-row">
           <button type="button" className="btn tpl-btn" onClick={downloadTemplate}>
             ⬇ 下载模板
           </button>
           <button
             type="button"
-            className="btn tpl-btn"
-            onClick={() => tplRef.current?.click()}
-            title="支持 .json 模板 / .pulse 波形 / 含两者的 .zip 压缩包"
+            className="btn primary tpl-btn"
+            onClick={() => uploadRef.current?.click()}
+            disabled={busy}
+            title="选单个 JSON 文件或压缩包，自动识别单条 / 多条并直接发布（最多 50 条）"
           >
-            ⬆ 导入模板 / 压缩包
+            {busy ? '上传中…' : '⬆ 上传（JSON / 压缩包）'}
           </button>
           <input
-            ref={tplRef}
+            ref={uploadRef}
             type="file"
             accept=".json,.zip,.pulse,application/json,application/zip"
             style={{ display: 'none' }}
-            onChange={(e) => importTemplate(e.target.files)}
-          />
-          <button
-            type="button"
-            className="btn tpl-btn"
-            onClick={() => batchRef.current?.click()}
-            disabled={busy}
-            title="一个 .json（数组/单条）或 .zip（内含多个 .json），一次最多 50 条，直接上传"
-          >
-            📦 批量上传
-          </button>
-          <input
-            ref={batchRef}
-            type="file"
-            accept=".json,.zip,application/json,application/zip"
-            style={{ display: 'none' }}
-            onChange={(e) => batchUpload(e.target.files)}
+            onChange={(e) => smartUpload(e.target.files)}
           />
         </div>
         <p className="upload-note">
-          批量上传：选一个 JSON 数组或含多个 JSON 的压缩包，校验通过即直接发布（最多 50 条）。
+          下载模板填好后点「上传」选文件即可：单个 JSON、JSON 数组、或含多个 JSON / .pulse 的压缩包都自动识别，校验通过直接发布（最多 50 条）。
         </p>
         {batchMsg && <p className="upload-ok">{batchMsg}</p>}
 
+        <button type="button" className="btn ghost manual-toggle" onClick={() => setManual((m) => !m)}>
+          {manual ? '收起手动填写' : '✏️ 或手动填写一条'}
+        </button>
+
+        {manual && (
+        <>
+        {type === 'scenario' && (
+          <p className="upload-note">单人场景将自动标记 DG Agent，供 DG-Agent 导入。</p>
+        )}
         <label className="field">
           <span>名称 *</span>
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
@@ -567,15 +536,19 @@ export function UploadDialog({ onClose, onUploaded }: Props): JSX.Element {
             </div>
           </>
         )}
+        </>
+        )}
 
         {error && <p className="error">{error}</p>}
 
         <div className="modal-actions">
-          <button className="btn primary" onClick={submit} disabled={busy}>
-            {busy ? '上传中…' : '上传'}
-          </button>
+          {manual && (
+            <button className="btn primary" onClick={submit} disabled={busy}>
+              {busy ? '上传中…' : '上传这一条'}
+            </button>
+          )}
           <button className="btn" onClick={onClose}>
-            取消
+            {manual ? '取消' : '关闭'}
           </button>
         </div>
       </div>

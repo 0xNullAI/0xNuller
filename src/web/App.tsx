@@ -136,6 +136,7 @@ export function App(): JSX.Element {
             setUploading(false);
             load();
           }}
+          onChanged={load}
         />
       )}
 

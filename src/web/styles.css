@@ -210,6 +210,11 @@ body {
   font-weight: 600;
   color: var(--accent, #2e7d32);
 }
+.manual-toggle {
+  align-self: flex-start;
+  font-size: 13px;
+  padding: 4px 8px;
+}
 
 input,
 textarea,
