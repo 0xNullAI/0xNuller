@@ -13,6 +13,7 @@ interface ItemRow {
   downloads: number;
   views: number;
   created_at: number;
+  edit_key_hash: string | null;
 }
 
 export function rowToItem(row: ItemRow): MarketItem {
@@ -28,6 +29,8 @@ export function rowToItem(row: ItemRow): MarketItem {
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
+    // 不外泄哈希本身，仅告诉前端这条是否被口令保护。
+    locked: !!row.edit_key_hash,
   };
 }
 
@@ -83,52 +86,38 @@ export interface InsertItem {
   content: unknown;
   ipHash: string;
   createdAt: number;
+  // 上传时设的编辑口令哈希；未设则 undefined（条目公开可编辑）。
+  editKeyHash?: string;
+}
+
+const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at, edit_key_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+function insertBinds(item: InsertItem): unknown[] {
+  return [
+    item.id,
+    item.type,
+    item.name,
+    item.description ?? null,
+    item.author ?? null,
+    item.icon ?? null,
+    item.tags && item.tags.length ? item.tags.join(',') : null,
+    JSON.stringify(item.content),
+    item.ipHash,
+    item.createdAt,
+    item.editKeyHash ?? null,
+  ];
 }
 
 export async function insertItem(db: D1Database, item: InsertItem): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      item.id,
-      item.type,
-      item.name,
-      item.description ?? null,
-      item.author ?? null,
-      item.icon ?? null,
-      item.tags && item.tags.length ? item.tags.join(',') : null,
-      JSON.stringify(item.content),
-      item.ipHash,
-      item.createdAt,
-    )
-    .run();
+  await db.prepare(INSERT_SQL).bind(...insertBinds(item)).run();
 }
 
 // 批量插入：一次 D1 batch，原子提交（全部成功或全部回滚）。
 export async function insertItems(db: D1Database, items: InsertItem[]): Promise<void> {
   if (items.length === 0) return;
-  const stmt = db.prepare(
-    `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  await db.batch(
-    items.map((item) =>
-      stmt.bind(
-        item.id,
-        item.type,
-        item.name,
-        item.description ?? null,
-        item.author ?? null,
-        item.icon ?? null,
-        item.tags && item.tags.length ? item.tags.join(',') : null,
-        JSON.stringify(item.content),
-        item.ipHash,
-        item.createdAt,
-      ),
-    ),
-  );
+  const stmt = db.prepare(INSERT_SQL);
+  await db.batch(items.map((item) => stmt.bind(...insertBinds(item))));
 }
 
 export async function incrementDownloads(db: D1Database, id: string): Promise<void> {
@@ -151,8 +140,21 @@ export async function adminDelete(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
 }
 
-// 管理员仅改元数据：列名取自固定白名单，值已规整（空 → null）。
-export interface AdminPatchRow {
+// 取条目的编辑口令哈希用于鉴权：返回 null 表示条目不存在；
+// { hash: null } 表示存在但未设口令（公开可编辑）。
+export async function getEditKeyHash(
+  db: D1Database,
+  id: string,
+): Promise<{ hash: string | null } | null> {
+  const row = await db
+    .prepare('SELECT edit_key_hash FROM items WHERE id = ? AND hidden = 0')
+    .bind(id)
+    .first<{ edit_key_hash: string | null }>();
+  return row ? { hash: row.edit_key_hash } : null;
+}
+
+// 改条目元数据：列名取自固定白名单，值已规整（空 → null）。
+export interface ItemPatchRow {
   name?: string;
   description?: string | null;
   author?: string | null;
@@ -160,8 +162,8 @@ export interface AdminPatchRow {
   tags?: string | null;
 }
 
-export async function adminUpdate(db: D1Database, id: string, patch: AdminPatchRow): Promise<boolean> {
-  const cols: (keyof AdminPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
+export async function updateItemMeta(db: D1Database, id: string, patch: ItemPatchRow): Promise<boolean> {
+  const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
   const sets: string[] = [];
   const binds: unknown[] = [];
   for (const col of cols) {

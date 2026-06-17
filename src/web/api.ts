@@ -1,4 +1,4 @@
-import type { AdminPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
+import type { ItemPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -61,11 +61,18 @@ export async function reportItem(id: string): Promise<void> {
   await req(`/api/items/${id}/report`, { method: 'POST' });
 }
 
-// 管理员改元数据（口令走 X-Admin-Key 头）。
-export async function adminUpdateItem(id: string, patch: AdminPatch, adminKey: string): Promise<void> {
-  await req(`/api/admin/items/${id}`, {
+// 改条目元数据。未设口令的条目无需 key；设了口令则传上传时的口令。
+// 同一值同时作 X-Edit-Key 与 X-Admin-Key 发送：普通用户走条目口令，
+// 管理员输入 ADMIN_KEY 即可覆盖编辑任何条目。
+export async function updateItem(id: string, patch: ItemPatch, key?: string): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) {
+    headers['X-Edit-Key'] = key;
+    headers['X-Admin-Key'] = key;
+  }
+  await req(`/api/items/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+    headers,
     body: JSON.stringify(patch),
   });
 }

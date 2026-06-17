@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { AdminPatch, MarketItem, ScenarioContent, WaveformContent, MultiSceneContent } from '../../shared/schema';
-import { adminUpdateItem, markDownloaded, reportItem } from '../api';
+import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent, MultiSceneContent } from '../../shared/schema';
+import { updateItem, markDownloaded, reportItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -9,7 +9,8 @@ interface Props {
   onUpdated?: (item: MarketItem) => void;
 }
 
-const ADMIN_KEY_STORE = 'dg-market-admin-key';
+// 记住每条曾用过的编辑口令，避免重复编辑时反复输入。
+const EDIT_KEY_STORE = 'dg-market-edit-key';
 
 function download(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -27,9 +28,9 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   // 当前展示的（可被管理员编辑覆盖的）元数据快照。
   const [view, setView] = useState<MarketItem>(item);
 
-  // —— 管理员编辑态 ——
+  // —— 编辑态 ——
   const [editing, setEditing] = useState(false);
-  const [adminKey, setAdminKey] = useState(() => localStorage.getItem(ADMIN_KEY_STORE) ?? '');
+  const [editKey, setEditKey] = useState(() => localStorage.getItem(`${EDIT_KEY_STORE}:${item.id}`) ?? '');
   const [eName, setEName] = useState(item.name);
   const [eAuthor, setEAuthor] = useState(item.author ?? '');
   const [eDesc, setEDesc] = useState(item.description ?? '');
@@ -82,14 +83,14 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   const saveEdit = async () => {
     setEditErr('');
     if (!eName.trim()) return setEditErr('名称不能为空');
-    if (!adminKey.trim()) return setEditErr('请填写管理员口令');
+    if (view.locked && !editKey.trim()) return setEditErr('此条目已设编辑口令，请输入口令');
 
     const tags = eTags
       .split(/[,，\s]+/)
       .map((t) => t.trim())
       .filter(Boolean)
       .slice(0, 20);
-    const patch: AdminPatch = {
+    const patch: ItemPatch = {
       name: eName.trim(),
       author: eAuthor.trim(),
       description: eDesc.trim(),
@@ -99,8 +100,8 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
     setSaving(true);
     try {
-      await adminUpdateItem(item.id, patch, adminKey.trim());
-      localStorage.setItem(ADMIN_KEY_STORE, adminKey.trim());
+      await updateItem(item.id, patch, editKey.trim() || undefined);
+      if (editKey.trim()) localStorage.setItem(`${EDIT_KEY_STORE}:${item.id}`, editKey.trim());
       const updated: MarketItem = {
         ...view,
         name: patch.name!,
@@ -144,7 +145,7 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
         {editing && (
           <div className="admin-edit">
-            <p className="admin-edit-title">🛠 管理员编辑（仅元数据）</p>
+            <p className="admin-edit-title">✏️ 编辑（仅元数据）</p>
             <label className="field">
               <span>名称 *</span>
               <input value={eName} onChange={(e) => setEName(e.target.value)} maxLength={60} />
@@ -169,15 +170,19 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
               <span>标签（逗号分隔）</span>
               <input value={eTags} onChange={(e) => setETags(e.target.value)} placeholder="温柔, 节奏感" />
             </label>
-            <label className="field">
-              <span>管理员口令</span>
-              <input
-                type="password"
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                placeholder="X-Admin-Key"
-              />
-            </label>
+            {view.locked ? (
+              <label className="field">
+                <span>编辑口令</span>
+                <input
+                  type="password"
+                  value={editKey}
+                  onChange={(e) => setEditKey(e.target.value)}
+                  placeholder="上传时设置的口令"
+                />
+              </label>
+            ) : (
+              <p className="modal-hint">此条目未设口令，任何人都可编辑。</p>
+            )}
             {editErr && <p className="error">{editErr}</p>}
             <div className="modal-actions">
               <button className="btn primary" onClick={saveEdit} disabled={saving}>
@@ -237,8 +242,8 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
             {reported ? '已举报' : '举报'}
           </button>
           {!editing && (
-            <button className="btn ghost" onClick={startEdit} title="需要管理员口令">
-              ✏️ 编辑
+            <button className="btn ghost" onClick={startEdit} title={view.locked ? '需要编辑口令' : '任何人可编辑'}>
+              {view.locked ? '🔒 编辑' : '✏️ 编辑'}
             </button>
           )}
         </div>

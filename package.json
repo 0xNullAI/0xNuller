@@ -11,7 +11,9 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
     "db:init": "wrangler d1 execute dg-market --file=./schema.sql",
-    "db:init:remote": "wrangler d1 execute dg-market --remote --file=./schema.sql"
+    "db:init:remote": "wrangler d1 execute dg-market --remote --file=./schema.sql",
+    "db:migrate": "wrangler d1 execute dg-market --file=./migrations/0001_add_edit_key.sql",
+    "db:migrate:remote": "wrangler d1 execute dg-market --remote --file=./migrations/0001_add_edit_key.sql"
   },
   "dependencies": {
     "fflate": "^0.8.3",

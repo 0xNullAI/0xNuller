@@ -48,6 +48,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('🎭');
   const [tagsText, setTagsText] = useState('');
+  const [editKey, setEditKey] = useState('');
   const [waveInput, setWaveInput] = useState('');
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
@@ -281,6 +282,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           description: description.trim() || undefined,
           author: author.trim() || undefined,
           tags,
+          editKey: editKey.trim() || undefined,
           content: { frames, pulse },
         };
       } else if (type === 'scenario') {
@@ -294,6 +296,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           author: author.trim() || undefined,
           icon: icon.trim() || undefined,
           tags: scenarioTags,
+          editKey: editKey.trim() || undefined,
           content: { prompt: prompt.trim() },
         };
       } else {
@@ -315,6 +318,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           author: author.trim() || undefined,
           icon: icon.trim() || undefined,
           tags,
+          editKey: editKey.trim() || undefined,
           content: { setting: setting.trim(), roles: cleanRoles, playerCount: { min: mn, max: mx }, aiMode },
         };
       }
@@ -428,6 +432,18 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           <span>标签（逗号分隔，可选）</span>
           <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="温柔, 节奏感" />
         </label>
+
+        <label className="field">
+          <span>编辑口令（可选）</span>
+          <input
+            type="password"
+            value={editKey}
+            onChange={(e) => setEditKey(e.target.value)}
+            maxLength={100}
+            placeholder="留空则任何人都能编辑这一条"
+          />
+        </label>
+        <p className="upload-note">设了口令后，只有知道口令的人才能再编辑这一条；留空则公开可编辑。</p>
 
         {type === 'waveform' ? (
           <>

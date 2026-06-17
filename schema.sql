@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS items (
   reports     INTEGER NOT NULL DEFAULT 0,
   hidden      INTEGER NOT NULL DEFAULT 0, -- 1=管理员隐藏
   ip_hash     TEXT,                        -- 上传来源哈希，用于限流与溯源
-  created_at  INTEGER NOT NULL            -- epoch ms
+  created_at  INTEGER NOT NULL,           -- epoch ms
+  edit_key_hash TEXT                       -- 上传时所设编辑口令的哈希，空=公开可编辑
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_browse

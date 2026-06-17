@@ -3,7 +3,8 @@
 社区市场：上传与交换 [DG-Agent](https://github.com/0xNullAI/DG-Agent) 的**波形**和**场景**。
 
 全免费栈：**Cloudflare Workers**（前端静态资源 + `/api` 接口）+ **D1**（SQLite）。
-匿名上传（单条 / 批量），按来源限流（每小时 50 条），举报满 5 次自动隐藏，管理员口令可删除与编辑。
+匿名上传（单条 / 批量），按来源限流（每小时 50 条），举报满 5 次自动隐藏。
+编辑：上传时可设「编辑口令」，之后改这条需对上口令；未设口令则公开可编辑。删除仍由管理员口令把关。
 
 **在线**：[market.0xnullai.com](https://market.0xnullai.com) ｜ 官网 [0xnullai.com](https://0xnullai.com)
 
@@ -35,9 +36,11 @@ ADMIN_KEY=任意本地口令
 
 1. **创建 D1**：`wrangler d1 create dg-market`，把返回的 `database_id` 填进 `wrangler.toml`。
 2. **初始化远程表**：`npm run db:init:remote`。
+   - 若是从旧版本升级（库已存在），改跑一次性迁移补 `edit_key_hash` 列：`npm run db:migrate:remote`。
+     **务必在部署新版 Worker 之前执行**，否则上传会因缺列而失败。
 3. **设置机密**：
    ```bash
-   wrangler secret put ADMIN_KEY          # 管理员删除 / 编辑口令
+   wrangler secret put ADMIN_KEY          # 管理员删除口令，同时用作编辑口令哈希的 pepper
    ```
 4. **连接 GitHub 自动部署**：Cloudflare 控制台 → Workers & Pages → 选中本 Worker → Settings → Builds → Connect to Git，选择本仓库。
    - Build command：`npm run build`
@@ -50,24 +53,37 @@ ADMIN_KEY=任意本地口令
 
 一次提交多条（最多 50），无需人机验证：把多条 JSON 放进一个数组 `POST /api/items/batch`，
 或在前端「上传」弹窗点「📦 批量上传」，选一个 JSON 数组文件或含多个 `.json` 的 `.zip`。
+每条可选带 `"editKey":"…"` 设置该条的编辑口令（留空 / 不带则公开可编辑）。
 
 ```bash
 curl -X POST https://<your-worker>.workers.dev/api/items/batch \
   -H "Content-Type: application/json" \
-  -d '[{"type":"scenario","name":"场景A","content":{"prompt":"…"}}, {"type":"scenario","name":"场景B","content":{"prompt":"…"}}]'
+  -d '[{"type":"scenario","name":"场景A","content":{"prompt":"…"}}, {"type":"scenario","name":"场景B","editKey":"我的口令","content":{"prompt":"…"}}]'
 ```
 
-## 管理员删除 / 编辑内容
+## 编辑与删除内容
+
+编辑改的是元数据（名称/简介/昵称/图标/标签，空值清空）。鉴权规则：
+
+- 上传该条时**未设** `editKey` → 任何人都能编辑，无需口令。
+- 上传该条时**设了** `editKey` → 编辑需带匹配的 `X-Edit-Key`。
+- 管理员带 `X-Admin-Key: <ADMIN_KEY>` 可编辑任何条目（覆盖上述口令）。
+- 删除始终只认管理员口令 `X-Admin-Key`。
 
 ```bash
-# 删除
+# 编辑（条目设了口令时）
+curl -X PATCH https://<your-worker>.workers.dev/api/items/<id> \
+  -H "Content-Type: application/json" -H "X-Edit-Key: <上传时所设口令>" \
+  -d '{"name":"新名称","tags":["标签1","标签2"]}'
+
+# 编辑（管理员覆盖）
+curl -X PATCH https://<your-worker>.workers.dev/api/items/<id> \
+  -H "Content-Type: application/json" -H "X-Admin-Key: <你的 ADMIN_KEY>" \
+  -d '{"name":"新名称"}'
+
+# 删除（仅管理员）
 curl -X DELETE https://<your-worker>.workers.dev/api/admin/items/<id> \
   -H "X-Admin-Key: <你的 ADMIN_KEY>"
-
-# 编辑元数据（名称/简介/昵称/图标/标签，空值清空）
-curl -X PATCH https://<your-worker>.workers.dev/api/admin/items/<id> \
-  -H "Content-Type: application/json" -H "X-Admin-Key: <你的 ADMIN_KEY>" \
-  -d '{"name":"新名称","tags":["标签1","标签2"]}'
 ```
 
 ## 数据格式（与 DG-Agent 互通）

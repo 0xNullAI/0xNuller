@@ -48,6 +48,9 @@ const baseFields = {
   description: z.string().trim().max(500).optional(),
   author: z.string().trim().max(30).optional(),
   tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
+  // 可选「编辑口令」：上传时设置后，仅知道该口令者（或管理员）能再编辑此条目；
+  // 留空（或不传）则该条目公开可编辑。仅在上传时使用，不会随条目返回给前端。
+  editKey: z.string().trim().max(100).optional(),
 };
 
 export const UploadSchema = z.discriminatedUnion('type', [
@@ -74,8 +77,9 @@ export const UploadSchema = z.discriminatedUnion('type', [
 export const BatchUploadSchema = z.array(UploadSchema).min(1).max(50);
 export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 
-// 管理员编辑：仅元数据，全部可选；传空串/空数组表示清空该字段。
-export const AdminPatchSchema = z
+// 编辑条目：仅元数据，全部可选；传空串/空数组表示清空该字段。
+// 鉴权在传输层（上传口令哈希 / 管理员口令），不在 payload 里。
+export const ItemPatchSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
     description: z.string().trim().max(500).optional(),
@@ -84,7 +88,7 @@ export const AdminPatchSchema = z
     tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
   })
   .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
-export type AdminPatch = z.infer<typeof AdminPatchSchema>;
+export type ItemPatch = z.infer<typeof ItemPatchSchema>;
 
 export type ItemType = 'waveform' | 'scenario' | 'multi-scene';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;
@@ -105,4 +109,6 @@ export interface MarketItem {
   downloads: number;
   views: number;
   createdAt: number;
+  // true = 上传时设了编辑口令，再编辑需口令；false/缺省 = 公开可编辑。
+  locked?: boolean;
 }
