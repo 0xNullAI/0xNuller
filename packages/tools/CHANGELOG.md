@@ -1,5 +1,19 @@
 # @dg-kit/tools
 
+## 1.4.0
+
+### Minor Changes
+
+- 9f49180: Add `vibrate_start`/`vibrate_stop`/`vibrate_adjust` (Opossum vibrate controller) and `set_indicator_color` (paw-prints/civet-edging/opossum) tools to `createDefaultToolRegistry`. New `OpossumCommand` type and two additive `ToolExecutionPlan` variants (`'opossum'`, `'setIndicatorColor'`) in `@dg-kit/core`. `isDeviceToolName()` now also recognizes the four new tool names. Deliberately does not add `get_sensor_state`/`list_connected_devices` — those need live device-manager state the tools package doesn't have, so they're left as consumer-specific tools (same pattern DG-MCP already uses for `scan`/`connect`/`get_status`).
+
+### Patch Changes
+
+- Updated dependencies [9f49180]
+- Updated dependencies [9f49180]
+- Updated dependencies [3cc9922]
+  - @dg-kit/core@1.4.0
+  - @dg-kit/waveforms@1.4.0
+
 ## 1.3.0
 
 ### Patch Changes

@@ -31,6 +31,12 @@ export interface BluetoothRemoteGATTServiceLike {
 export interface BluetoothRemoteGATTServerLike {
   connected: boolean;
   getPrimaryService(service: string): Promise<BluetoothRemoteGATTServiceLike>;
+  /**
+   * Negotiate a larger ATT MTU. Optional: Web Bluetooth negotiates MTU
+   * automatically with no JS-facing control, so browser transports never
+   * implement this. Native transports (Tauri, Node) may.
+   */
+  requestMTU?(mtu: number): Promise<number>;
 }
 
 export interface BluetoothRemoteGATTLike {

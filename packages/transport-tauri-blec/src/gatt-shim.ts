@@ -39,6 +39,29 @@ export function createGattShim(args: {
         },
       };
     },
+    // No `requestMTU` here on purpose. `BluetoothRemoteGATTServerLike.requestMTU`
+    // is optional and protocol adapters (e.g. CoyoteV3's connect-time handshake)
+    // call it as `context.server.requestMTU?.(...)`, so omitting it is a safe,
+    // silent no-op — the device falls back to whatever MTU the OS/BLE stack
+    // negotiates by default.
+    //
+    // `@mnlphlp/plugin-blec@0.8.0` (the version this package is pinned to)
+    // exposes no MTU control at all: no `requestMtu`/`setMtu`/equivalent in its
+    // JS API surface. Faking this method (e.g. resolving with the requested
+    // value without ever touching the real MTU) would be worse than omitting
+    // it — callers would believe the negotiation happened when it silently
+    // didn't.
+    //
+    // plugin-blec 0.12.0 *does* add MTU control (`getMtu(): Promise<number>`
+    // and `setAndroidMtu(mtu: number): Promise<void>`), but its shape doesn't
+    // map directly onto this hook: `setAndroidMtu` must be called *before*
+    // `connect()` (it configures the MTU plugin-blec will request while
+    // establishing the link), whereas `requestMTU` is invoked post-connect as
+    // part of the protocol handshake. Wiring this up for real needs a bump
+    // past the pinned `^0.8.0` range plus a shim-level change to request the
+    // MTU pre-connect and have `requestMTU` here just read back `getMtu()`
+    // (rather than actively renegotiating) — deferred until that dependency
+    // bump happens.
   };
 
   let fireDisconnect: () => void = () => undefined;

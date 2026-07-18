@@ -102,9 +102,23 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
+/**
+ * Commands for the Opossum vibrate controller. Separate from `DeviceCommand`
+ * because Opossum's intensity model (0-200 direct set, no frequency/waveform
+ * concept) doesn't fit the Coyote-shaped `DeviceCommand` union — forcing it
+ * in would mean either lying about waveform/frequency fields or making them
+ * optional everywhere, both worse than a small parallel type.
+ */
+export type OpossumCommand =
+  | { type: 'vibrateStart'; channel: Channel; intensity: number }
+  | { type: 'vibrateStop'; channel?: Channel }
+  | { type: 'vibrateAdjust'; channel: Channel; delta: number };
+
 export type ToolExecutionPlan =
   | { type: 'device'; command: DeviceCommand }
   | { type: 'timer'; command: TimerCommand }
+  | { type: 'opossum'; command: OpossumCommand }
+  | { type: 'setIndicatorColor'; deviceKind: DeviceKind; color: number }
   | { type: 'inline'; output: string; summary?: string };
 
 export function isDeviceToolName(name: string): boolean {
@@ -113,7 +127,11 @@ export function isDeviceToolName(name: string): boolean {
     name === 'stop' ||
     name === 'adjust_strength' ||
     name === 'change_wave' ||
-    name === 'burst'
+    name === 'burst' ||
+    name === 'vibrate_start' ||
+    name === 'vibrate_stop' ||
+    name === 'vibrate_adjust' ||
+    name === 'set_indicator_color'
   );
 }
 
@@ -145,4 +163,28 @@ export interface Logger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-device kind support
+// ---------------------------------------------------------------------------
+
+/** Every DG-Lab BLE device family this runtime knows how to talk to. */
+export type DeviceKind = 'coyote' | 'paw-prints' | 'civet-edging' | 'opossum';
+
+/**
+ * Sensor devices (paw-prints, civet-edging) push event/telemetry streams
+ * rather than exposing a two-channel strength+waveform state. They get a
+ * narrower contract instead of being forced into the stim-shaped
+ * `DeviceState`/`DeviceCommand` types, which stay Coyote-only.
+ */
+export interface SensorState {
+  connected: boolean;
+  deviceName?: string;
+  address?: string;
+  battery?: number;
+}
+
+export function createEmptySensorState(): SensorState {
+  return { connected: false, battery: 0 };
 }

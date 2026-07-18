@@ -12,6 +12,7 @@ import {
   INACTIVE_INT,
   type WebBluetoothConnectionContext,
 } from './base.js';
+import { performV3FamilyConnectHandshake } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
@@ -34,6 +35,8 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
       this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
       await this.notifyChar.startNotifications();
       this.notifyChar.addEventListener('characteristicvaluechanged', this.handleV3Notification);
+
+      await performV3FamilyConnectHandshake(context.server, this.writeChar);
 
       try {
         const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);

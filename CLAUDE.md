@@ -4,7 +4,7 @@ Guidance for Claude Code working in **DG-Kit** — the shared TypeScript runtime
 
 ## Project Overview
 
-DG-Kit is a public npm-published monorepo (`@dg-kit/*`). Five packages, all pinned to a single version via changesets. The downstream consumers (`DG-Agent`, `DG-Chat`, `DG-MCP`) reuse this code rather than duplicating it.
+DG-Kit is a public npm-published monorepo (`@dg-kit/*`). Six packages, all pinned to a single version via changesets. The downstream consumers (`DG-Agent`, `DG-Chat`, `DG-MCP`) reuse this code rather than duplicating it.
 
 When making changes here, the principle is: **breaking the public API is a major bump and forces three downstream PRs**. Prefer additive changes; reserve breaking changes for genuine architectural fixes.
 
@@ -17,9 +17,12 @@ packages/
   waveforms/                 @dg-kit/waveforms        (deps: core)
   tools/                     @dg-kit/tools            (deps: core, waveforms)
   transport-webbluetooth/    @dg-kit/transport-webbluetooth (deps: core, protocol)
+  transport-tauri-blec/      @dg-kit/transport-tauri-blec   (deps: core, protocol; Tauri/Android BLE via @mnlphlp/plugin-blec)
 .changeset/                  changesets release notes
 .github/workflows/           ci.yml + release.yml
 ```
+
+`packages/protocol` covers four device families sharing the same GATT skeleton (service `0x180C`, write `0x150A`, notify `0x150B`): Coyote (`v2.ts`/`v3.ts`/`facade.ts`, the stim pulse host — V2 has its own distinct GATT layout), and three newer additions each in their own flat file — `paw-prints.ts` (button/motion sensor), `civet-edging.ts` (pressure sensor), `opossum.ts` (dual-channel vibration + buttons). `constants.ts`'s `detectDeviceKind()` is the single source of truth for classifying a scanned device name into a `DeviceKind` — don't re-implement prefix matching in a consumer, import this instead.
 
 Build is **dist-first**: each package's `package.json` `main`/`types`/`exports` point to `dist/`. `pretypecheck` and `pretest` automatically build. Don't switch back to `src` paths — that pattern broke 0.1.0 publishing.
 
@@ -85,9 +88,10 @@ Squash-merge into `main`. The squashed commit subject becomes the changelog line
 
 ## Architecture Notes
 
-- **Protocol layer is transport-agnostic**: `@dg-kit/protocol` operates on the abstract `BluetoothRemoteGATTCharacteristicLike` interface. Browsers use `@dg-kit/transport-webbluetooth`; Node uses the `noble-shim.ts` inside DG-MCP. Adding a new transport means writing the shim, not touching protocol code.
+- **Protocol layer is transport-agnostic**: `@dg-kit/protocol` operates on the abstract `BluetoothRemoteGATTCharacteristicLike` interface. Browsers use `@dg-kit/transport-webbluetooth`; Tauri (Android/desktop/iOS) uses `@dg-kit/transport-tauri-blec`; Node uses the `noble-shim.ts` inside DG-MCP. Adding a new transport means writing the shim, not touching protocol code.
 - **Frame grid is 25 ms**: every `WaveFrame` represents 25 ms. V3 packs four frames per 100 ms write; V2 consumes one frame per 100 ms tick (with precision loss). Don't change the grid without coordinating with both consumers.
 - **Tool definitions are runtime-injectable**: `createDefaultToolRegistry({ rateLimitPolicy })` accepts a `RateLimitPolicy`. DG-Agent injects `createTurnRateLimitPolicy()`; DG-MCP injects `createSlidingWindowRateLimitPolicy()`. Don't bake either policy into the registry itself.
+- **Multi-device support**: `DeviceState`/`DeviceCommand`/`CoyoteProtocolAdapter` stay Coyote-only and stable. Other device families get their own narrow types instead of being forced into the stim-shaped Coyote contract — see `SensorState`/`WebBluetoothSensorAdapter<TReading>` in core/protocol for event-pushing sensors (paw-prints, civet-edging), and `opossum.ts`'s standalone `OpossumState`/`OpossumVibrateAdapter` for the vibration controller (commands + strength, but no waveform/frequency concept, so it doesn't reuse `DeviceCommand` either).
 
 ## Sister Projects
 

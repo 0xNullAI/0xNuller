@@ -1,5 +1,31 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.4.0
+
+### Minor Changes
+
+- 9f49180: Add opt-in auto-reconnect to `TauriBlecDeviceClient`, mirroring `transport-webbluetooth` 1.3.0. New options on `TauriBlecDeviceClientOptions`: `autoReconnect?: boolean` (default false — when true, an unexpected disconnect signalled by plugin-blec triggers a silent reconnect to the last-connected device address, skipping the scan/selectDevice picker), `reconnectAttempts?: number` (default 3), `reconnectBackoffMs?: number[]` (default `[500, 1500, 4000]`), and `onReconnectStateChange?: (state: 'reconnecting' | 'reconnected' | 'failed') => void`. A user-initiated `disconnect()` always cancels any pending or in-flight reconnect and is never followed by one. Reconnect attempts reuse the existing GATT-ready retry logic and the manual-connect reentrancy guard, so they can't race a concurrent `connect()` call. New `ReconnectState` type is exported.
+
+  Also investigated MTU negotiation to support `@dg-kit/protocol`'s new optional `BluetoothRemoteGATTServerLike.requestMTU` hook (used by the Coyote V3 connect-time handshake). The pinned `@mnlphlp/plugin-blec@^0.8.0` exposes no MTU control API at all, so `requestMTU` is intentionally left unimplemented on this package's GATT shim rather than faked — protocol adapters optional-chain on it, so omitting it is a safe no-op and the transport falls back to whatever MTU the OS negotiates by default. `gatt-shim.ts` documents this along with what a real implementation would need (plugin-blec 0.12.0's `setAndroidMtu`/`getMtu`, which would also require restructuring since `setAndroidMtu` must be called pre-connect rather than during the post-connect handshake this hook is invoked from).
+
+### Patch Changes
+
+- 3cc9922: Multi-agent code review of the paw-prints/civet-edging/opossum/handshake work found and fixed several real bugs before publish:
+  - **The three new device adapters never ran the connect-time handshake** PR #3 added for Coyote V3 — since they share the exact same 47L12x GATT skeleton, this reproduced the same "device won't respond" symptom for newer firmware on paw-prints/civet-edging/opossum too. Extracted the handshake (and the write-fallback-chain helper, previously copy-pasted four times) into a shared `gatt-utils.ts` module all four adapters now use.
+  - **`CoyoteProtocolAdapter` (the facade) silently routed non-Coyote devices to the V3 adapter** — a scanned paw-prints/civet-edging/opossum device fed through the facade would get Coyote-shaped B0/BF writes. Now throws a clear error via `detectDeviceKind()` instead of misrouting.
+  - **`transport-webbluetooth`'s default scan filter** still only listed Coyote name prefixes, so civet-edging/opossum devices wouldn't appear in the Web Bluetooth chooser unless a caller explicitly passed `DG_LAB_REQUEST_DEVICE_OPTIONS`. Now defaults to the broader filter.
+  - **`transport-tauri-blec`'s `forceTeardown()` (disconnect racing an in-flight reconnect) skipped the emergency-stop-before-disconnect safety step** that a normal `disconnect()` does — a user disconnecting mid-reconnect could leave the device running at its last commanded strength with no way to remotely stop it.
+  - Civet-edging's `set_indicator_color` tool support had no way to change the LED color without forcing the pressure stream on or off as a side effect (there's no separate color-only opcode) — added `setIndicatorColor()`, which preserves the current streaming state.
+  - Opossum's connect-failure cleanup path left a live GATT notification subscription dangling if a step after `startNotifications()` threw. Added `adjustIntensity()` so `vibrate_adjust`-style callers get an atomic read-modify-write instead of composing `getState()` + `setIntensity()` themselves (avoids a lost-update race between two concurrent adjusts).
+
+- Updated dependencies [9f49180]
+- Updated dependencies [d14a78a]
+- Updated dependencies [9f49180]
+- Updated dependencies [3cc9922]
+- Updated dependencies [4af7814]
+  - @dg-kit/core@1.4.0
+  - @dg-kit/protocol@1.4.0
+
 ## 1.3.0
 
 ### Patch Changes

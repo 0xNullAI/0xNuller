@@ -4,8 +4,10 @@ import {
   type DeviceCommand,
   type DeviceCommandResult,
   type DeviceState,
+  type SensorState,
   type WaveFrame,
 } from '@dg-kit/core';
+import { writeCharacteristicValue as writeCharacteristicValueShared } from './gatt-utils.js';
 import type {
   BluetoothDeviceLike,
   BluetoothRemoteGATTCharacteristicLike,
@@ -41,6 +43,23 @@ export interface WebBluetoothProtocolAdapter {
    * Limits also clamp current strength downward if reduced.
    */
   setLimits(limitA: number, limitB: number): Promise<void>;
+}
+
+/**
+ * Contract for sensor-family devices (paw-prints, civet-edging): they push
+ * event/telemetry streams instead of exposing a two-channel strength state,
+ * so they get a narrower adapter shape than `WebBluetoothProtocolAdapter`
+ * rather than being forced into the stim-specific `DeviceState`/
+ * `DeviceCommand` types. `TReading` is the device-specific parsed event
+ * union (e.g. a button trigger, a pressure sample).
+ */
+export interface WebBluetoothSensorAdapter<TReading> {
+  onConnected(context: WebBluetoothConnectionContext): Promise<void>;
+  onDisconnected(): Promise<void>;
+  getState(): SensorState;
+  /** Subscribe to parsed device readings/events. */
+  subscribe(listener: (reading: TReading) => void): () => void;
+  onStateChanged(listener: (state: SensorState) => void): () => void;
 }
 
 export interface ChannelWaveState {
@@ -398,30 +417,7 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
     value: ArrayBufferView | ArrayBuffer,
     options: { preferResponse?: boolean } = {},
   ): Promise<void> {
-    const attempts = options.preferResponse
-      ? [
-          characteristic.writeValueWithResponse?.bind(characteristic),
-          characteristic.writeValueWithoutResponse?.bind(characteristic),
-          characteristic.writeValue?.bind(characteristic),
-        ]
-      : [
-          characteristic.writeValueWithoutResponse?.bind(characteristic),
-          characteristic.writeValueWithResponse?.bind(characteristic),
-          characteristic.writeValue?.bind(characteristic),
-        ];
-
-    let lastError: unknown = null;
-    for (const attempt of attempts) {
-      if (!attempt) continue;
-      try {
-        await attempt(value);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error('Bluetooth characteristic is not writable');
+    return writeCharacteristicValueShared(characteristic, value, options);
   }
 
   protected emit(): void {

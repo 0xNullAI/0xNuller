@@ -1,7 +1,7 @@
 import type { DeviceClient } from '@dg-kit/core';
 import type { DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
 import {
-  COYOTE_REQUEST_DEVICE_OPTIONS,
+  DG_LAB_REQUEST_DEVICE_OPTIONS,
   type BluetoothDeviceLike,
   type NavigatorBluetoothLike,
   type RequestDeviceOptionsLike,
@@ -71,7 +71,7 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     }
 
     const nextDevice = await bluetooth.requestDevice(
-      this.options.requestDeviceOptions ?? COYOTE_REQUEST_DEVICE_OPTIONS,
+      this.options.requestDeviceOptions ?? DG_LAB_REQUEST_DEVICE_OPTIONS,
     );
     const gatt = nextDevice.gatt;
 

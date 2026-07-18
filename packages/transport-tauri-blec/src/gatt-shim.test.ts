@@ -77,4 +77,19 @@ describe('createGattShim', () => {
     shim.device.gatt!.disconnect();
     expect(seen).toHaveLength(1);
   });
+
+  it('does not implement requestMTU, since plugin-blec@0.8.0 has no MTU API', () => {
+    // Intentional: see the comment above the `server` literal in gatt-shim.ts.
+    // Faking a `requestMTU` that doesn't actually change the negotiated MTU
+    // would be worse than omitting it (protocol adapters optional-chain on
+    // it, so omitting is a safe no-op; a fake would silently lie).
+    const shim = createGattShim({
+      address: 'AA:BB',
+      name: 'Coyote',
+      api: makeApi(),
+      onDisconnect: vi.fn(),
+    });
+
+    expect('requestMTU' in shim.server).toBe(false);
+  });
 });
