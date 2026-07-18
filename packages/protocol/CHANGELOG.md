@@ -1,5 +1,28 @@
 # @dg-kit/protocol
 
+## 1.4.0
+
+### Minor Changes
+
+- 9f49180: Add `DeviceKind`, `SensorState`, and `detectDeviceKind()` — the shared foundation for supporting the other 47L12x-family devices (paw-prints sensor, civet-edging sensor, opossum vibrate controller) alongside Coyote. Also adds `WebBluetoothSensorAdapter<TReading>`, a narrower adapter contract for event/telemetry-pushing sensor devices, and `DG_LAB_REQUEST_DEVICE_OPTIONS`, a scan filter covering all known device prefixes. All additive — existing Coyote-only `DeviceState`/`DeviceCommand`/`CoyoteProtocolAdapter` are unchanged.
+
+### Patch Changes
+
+- d14a78a: Clamp the 47L12x-family indicator LED color byte to the documented 0-7 discrete enum (0=off, 1=yellow, 2=red, 3=purple, 4=blue, 5=cyan, 6=green, 7=white) in `paw-prints.setLedSolid`/`setLedBlink`, `civet-edging.setIndicatorColor`/`startPressureReporting`/`stopPressureReporting`, and `opossum.setLed`. Previously these accepted any 0-255 byte with no defined meaning past 7, which let a naive 0-255 color picker (or a malformed remote-control message) send an undefined value to real hardware.
+- 3cc9922: Multi-agent code review of the paw-prints/civet-edging/opossum/handshake work found and fixed several real bugs before publish:
+  - **The three new device adapters never ran the connect-time handshake** PR #3 added for Coyote V3 — since they share the exact same 47L12x GATT skeleton, this reproduced the same "device won't respond" symptom for newer firmware on paw-prints/civet-edging/opossum too. Extracted the handshake (and the write-fallback-chain helper, previously copy-pasted four times) into a shared `gatt-utils.ts` module all four adapters now use.
+  - **`CoyoteProtocolAdapter` (the facade) silently routed non-Coyote devices to the V3 adapter** — a scanned paw-prints/civet-edging/opossum device fed through the facade would get Coyote-shaped B0/BF writes. Now throws a clear error via `detectDeviceKind()` instead of misrouting.
+  - **`transport-webbluetooth`'s default scan filter** still only listed Coyote name prefixes, so civet-edging/opossum devices wouldn't appear in the Web Bluetooth chooser unless a caller explicitly passed `DG_LAB_REQUEST_DEVICE_OPTIONS`. Now defaults to the broader filter.
+  - **`transport-tauri-blec`'s `forceTeardown()` (disconnect racing an in-flight reconnect) skipped the emergency-stop-before-disconnect safety step** that a normal `disconnect()` does — a user disconnecting mid-reconnect could leave the device running at its last commanded strength with no way to remotely stop it.
+  - Civet-edging's `set_indicator_color` tool support had no way to change the LED color without forcing the pressure stream on or off as a side effect (there's no separate color-only opcode) — added `setIndicatorColor()`, which preserves the current streaming state.
+  - Opossum's connect-failure cleanup path left a live GATT notification subscription dangling if a step after `startNotifications()` threw. Added `adjustIntensity()` so `vibrate_adjust`-style callers get an atomic read-modify-write instead of composing `getState()` + `setIntensity()` themselves (avoids a lost-update race between two concurrent adjusts).
+
+- 4af7814: Fix Coyote V3 devices failing to respond after an official-app firmware update. Devices now receive the same connect-time handshake the official app sends (init packet on the write characteristic, best-effort subscription to legacy/OTA notify channels, MTU bump to 140) before normal B0/BF control writes begin. Adds an optional `requestMTU` hook to `BluetoothRemoteGATTServerLike` for transports that support MTU negotiation.
+- Updated dependencies [9f49180]
+- Updated dependencies [9f49180]
+- Updated dependencies [3cc9922]
+  - @dg-kit/core@1.4.0
+
 ## 1.3.0
 
 ### Patch Changes
