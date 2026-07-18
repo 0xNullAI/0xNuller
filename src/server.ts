@@ -1,6 +1,6 @@
 /**
  * MCP server: turns `@dg-kit/tools` tool definitions into MCP tools and
- * routes their execution plans through `NobleCoyoteDevice`.
+ * routes their execution plans through the `DeviceManager`.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -15,12 +15,13 @@ import {
   createSlidingWindowRateLimitPolicy,
   type ToolRegistry,
 } from '@dg-kit/tools';
-import type { ToolCall, ToolExecutionPlan } from '@dg-kit/core';
-import type { NobleCoyoteDevice } from './coyote-device.js';
+import type { OpossumCommand, ToolCall, ToolExecutionPlan } from '@dg-kit/core';
+import type { OpossumVibrateAdapter } from '@dg-kit/protocol';
+import { DeviceManager, type ConnectedDevice } from './device-manager.js';
 import type { NodeWaveformLibrary } from './waveform-library.js';
 
 export interface DgMcpServerOptions {
-  device: NobleCoyoteDevice;
+  deviceManager: DeviceManager;
   waveformLibrary: NodeWaveformLibrary;
   /** Sliding-window cap (ms) for per-tool rate limits. Default 5000. */
   rateLimitWindowMs?: number;
@@ -33,6 +34,7 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       adjust_strength: 2,
       burst: 1,
       design_wave: 1,
+      vibrate_adjust: 2,
     },
   });
 
@@ -40,6 +42,8 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
     waveformLibrary: options.waveformLibrary,
     rateLimitPolicy: policy,
   });
+
+  const deviceManager = options.deviceManager;
 
   const server = new Server(
     {
@@ -65,7 +69,8 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
     builtIn.push(
       {
         name: 'scan',
-        description: '扫描附近的 Coyote 设备。返回包含 address / name / version 的列表。',
+        description:
+          '扫描附近的 DG-Lab 设备（郊狼 / 爪印 / 灵猫边缘控制 / 负鼠）。返回包含 address / name / rssi / deviceKind 的列表。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -80,7 +85,8 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       },
       {
         name: 'connect',
-        description: '连接到指定的 Coyote 设备。需先调用 scan 获取地址。',
+        description:
+          '连接到指定的 DG-Lab 设备。需先调用 scan 获取地址。可多次调用以连接多台不同设备；对已连接地址重复调用会报错。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -94,12 +100,39 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       },
       {
         name: 'disconnect',
-        description: '断开当前 Coyote 连接。',
-        inputSchema: { type: 'object', properties: {} },
+        description: '断开设备连接。指定 address 则只断开该设备，省略则断开全部已连接设备。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            address: {
+              type: 'string',
+              description: '要断开的 BLE 地址，省略则断开全部。',
+            },
+          },
+        },
       },
       {
         name: 'get_status',
-        description: '查询当前设备状态：连接状态 / 强度 / 波形 / 电池。',
+        description: '查询所有已连接设备的状态（连接状态 / 强度或振动 / 波形 / 电池等，按设备类型而定）。',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'get_sensor_state',
+        description:
+          '查询已连接的爪印 / 灵猫边缘控制传感器的最新读数（事件流缓存的最近一次上报）。可选 address 只查询单个设备。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            address: {
+              type: 'string',
+              description: '要查询的 BLE 地址，省略则返回全部传感器设备。',
+            },
+          },
+        },
+      },
+      {
+        name: 'list_connected_devices',
+        description: '列出当前已连接的全部设备：{ address, deviceKind, connected }。',
         inputSchema: { type: 'object', properties: {} },
       },
       {
@@ -120,7 +153,7 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       },
       {
         name: 'emergency_stop',
-        description: '紧急停止：强度归零，所有波形停止。',
+        description: '紧急停止：所有已连接设备的强度/振动输出归零。',
         inputSchema: { type: 'object', properties: {} },
       },
     );
@@ -137,23 +170,35 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       switch (name) {
         case 'scan': {
           const timeoutMs = typeof safeArgs.timeoutMs === 'number' ? safeArgs.timeoutMs : 5_000;
-          const results = await options.device.scan(timeoutMs);
+          const results = await deviceManager.scan(timeoutMs);
           return jsonResult({ devices: results });
         }
         case 'connect': {
           const address = String(safeArgs.address ?? '');
           if (!address) throw new Error('connect 需要 address 参数');
-          await options.device.connect(address);
-          const state = await options.device.getState();
-          return jsonResult({ ok: true, state });
+          const result = await deviceManager.connect(address);
+          return jsonResult({ ok: true, ...result });
         }
         case 'disconnect': {
-          await options.device.disconnect();
+          const address =
+            typeof safeArgs.address === 'string' && safeArgs.address.length > 0
+              ? safeArgs.address
+              : undefined;
+          await deviceManager.disconnect(address);
           return jsonResult({ ok: true });
         }
         case 'get_status': {
-          const state = await options.device.getState();
-          return jsonResult(state);
+          return jsonResult({ devices: deviceManager.getStatuses() });
+        }
+        case 'get_sensor_state': {
+          const address =
+            typeof safeArgs.address === 'string' && safeArgs.address.length > 0
+              ? safeArgs.address
+              : undefined;
+          return jsonResult({ sensors: deviceManager.getSensorSnapshots(address) });
+        }
+        case 'list_connected_devices': {
+          return jsonResult({ devices: deviceManager.list() });
         }
         case 'list_waveforms': {
           const waveforms = await options.waveformLibrary.list();
@@ -173,12 +218,13 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
           return jsonResult(result);
         }
         case 'emergency_stop': {
-          await options.device.emergencyStop();
+          await deviceManager.emergencyStopAll();
           return jsonResult({ ok: true });
         }
       }
 
-      // Registry-backed tools (start / stop / adjust_strength / change_wave / burst / design_wave / timer).
+      // Registry-backed tools (start / stop / adjust_strength / change_wave /
+      // burst / design_wave / vibrate_* / set_indicator_color / timer).
       const toolCall: ToolCall = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
@@ -187,17 +233,38 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       const plan: ToolExecutionPlan = await registry.resolve(toolCall);
 
       if (plan.type === 'device') {
-        const result = await options.device.execute(plan.command);
+        const entry = deviceManager.findSingleByKind('coyote');
+        const result = await entry.adapter.execute(plan.command);
         return jsonResult({ ok: true, state: result.state });
       }
+
+      if (plan.type === 'opossum') {
+        const entry = deviceManager.findSingleByKind('opossum');
+        await applyOpossumCommand(entry.adapter, plan.command);
+        return jsonResult({ ok: true, state: entry.adapter.getState() });
+      }
+
+      if (plan.type === 'setIndicatorColor') {
+        const entry = deviceManager.findSingleByKind(plan.deviceKind);
+        return jsonResult(await applyIndicatorColor(entry, plan.color));
+      }
+
       if (plan.type === 'inline') {
         return { content: [{ type: 'text', text: plan.output }] };
       }
-      // 'timer' isn't applicable to a stateless MCP server — surface a hint.
-      return jsonResult({
-        ok: false,
-        reason: 'timer 工具在 MCP 模式下不受支持，请改用客户端侧的延时机制',
-      });
+
+      if (plan.type === 'timer') {
+        // Stateless MCP server has no notion of "turns" to resume into.
+        return jsonResult({
+          ok: false,
+          reason: 'timer 工具在 MCP 模式下不受支持，请改用客户端侧的延时机制',
+        });
+      }
+
+      // Exhaustiveness guard: fails to typecheck if @dg-kit/core adds a new
+      // ToolExecutionPlan variant we haven't handled above.
+      const _exhaustive: never = plan;
+      throw new Error(`未知的执行计划类型：${JSON.stringify(_exhaustive)}`);
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       return {
@@ -208,6 +275,71 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
   });
 
   return server;
+}
+
+/**
+ * `OpossumVibrateAdapter` only exposes `setIntensity` (absolute set) --
+ * `vibrateStop` and `vibrateAdjust` are composed from that plus `getState()`
+ * since the adapter has no relative-adjust method of its own.
+ */
+async function applyOpossumCommand(
+  adapter: OpossumVibrateAdapter,
+  command: OpossumCommand,
+): Promise<void> {
+  switch (command.type) {
+    case 'vibrateStart': {
+      const a = command.channel === 'A' ? command.intensity : 'unchanged';
+      const b = command.channel === 'B' ? command.intensity : 'unchanged';
+      await adapter.setIntensity(a, b);
+      return;
+    }
+    case 'vibrateStop': {
+      const a = !command.channel || command.channel === 'A' ? 0 : 'unchanged';
+      const b = !command.channel || command.channel === 'B' ? 0 : 'unchanged';
+      await adapter.setIntensity(a, b);
+      return;
+    }
+    case 'vibrateAdjust': {
+      const state = adapter.getState();
+      const current = command.channel === 'A' ? state.intensityA : state.intensityB;
+      const next = clamp(current + command.delta, 0, 200);
+      const a = command.channel === 'A' ? next : 'unchanged';
+      const b = command.channel === 'B' ? next : 'unchanged';
+      await adapter.setIntensity(a, b);
+      return;
+    }
+  }
+}
+
+/**
+ * `set_indicator_color` is pure appearance ("不影响任何强度/振动输出，纯外观" per
+ * the registry tool description). Paw-prints has a dedicated solid-color
+ * command. Opossum's LED command packet also carries a button-state-
+ * reporting toggle; we default that to `true` (keep button events flowing)
+ * since the tool is only supposed to change color, not silently disable
+ * button reporting. Civet-edging has no LED command at all -- handled
+ * gracefully with an `ok:false` result rather than throwing.
+ */
+async function applyIndicatorColor(
+  entry: ConnectedDevice,
+  color: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  switch (entry.kind) {
+    case 'paw-prints':
+      await entry.adapter.setLedSolid(color);
+      return { ok: true };
+    case 'opossum':
+      await entry.adapter.setLed(color, true);
+      return { ok: true };
+    case 'civet-edging':
+      return { ok: false, reason: '灵猫边缘控制传感器不支持指示灯颜色设置' };
+    case 'coyote':
+      return { ok: false, reason: '郊狼设备没有可设置的指示灯' };
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function jsonResult(payload: unknown): { content: Array<{ type: 'text'; text: string }> } {

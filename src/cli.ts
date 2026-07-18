@@ -11,7 +11,7 @@
 import { readdir } from 'node:fs/promises';
 import { join, isAbsolute, resolve, extname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { NobleCoyoteDevice } from './coyote-device.js';
+import { DeviceManager } from './device-manager.js';
 import { NodeWaveformLibrary } from './waveform-library.js';
 import { runStdioServer } from './server.js';
 
@@ -143,9 +143,9 @@ async function main(): Promise<void> {
     }
   }
 
-  const device = new NobleCoyoteDevice();
+  const deviceManager = new DeviceManager();
 
-  await runStdioServer({ device, waveformLibrary });
+  await runStdioServer({ deviceManager, waveformLibrary });
 }
 
 main().catch((err) => {
