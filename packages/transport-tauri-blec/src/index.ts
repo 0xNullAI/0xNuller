@@ -11,5 +11,6 @@ export {
   TauriBlecDeviceClient,
   type DeviceSelectionController,
   type DiscoveredDevice,
+  type ReconnectState,
   type TauriBlecDeviceClientOptions,
 } from './client.js';

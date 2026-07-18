@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TauriBlecDeviceClient, type DiscoveredDevice } from './client.js';
 import { __setPluginBlecForTests, type BleDeviceInfo, type PluginBlecApi } from './plugin-blec.js';
 
@@ -436,5 +436,255 @@ describe('TauriBlecDeviceClient.connect', () => {
     onDisc!();
     await Promise.resolve();
     expect(protocol.disconnectedCount).toBe(1);
+  });
+});
+
+describe('TauriBlecDeviceClient auto-reconnect', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Scan handlers fire synchronously (no setTimeout) in this block so
+  // client.connect() resolves without needing to advance fake timers —
+  // only the reconnect backoff below is timer-driven.
+  function selectFirstDevice(controller: {
+    initial: DiscoveredDevice[];
+    subscribe: (h: (d: DiscoveredDevice[]) => void) => () => void;
+  }): Promise<string | null> {
+    return Promise.resolve(controller.initial[0]?.address ?? null);
+  }
+
+  it('without autoReconnect, a passive plugin-blec disconnect does not retry', async () => {
+    let onDisc: (() => void) | null = null;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        onDisc = cb;
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+
+    await client.connect();
+    expect(api.connect).toHaveBeenCalledTimes(1);
+
+    onDisc!();
+    await vi.runAllTimersAsync();
+
+    expect(protocol.disconnectedCount).toBe(1);
+    expect(api.connect).toHaveBeenCalledTimes(1); // no reconnect attempt
+  });
+
+  it('with autoReconnect, silently reconnects to the last address after a passive disconnect', async () => {
+    let onDisc: (() => void) | null = null;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        onDisc = cb;
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const reconnectStates: string[] = [];
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      autoReconnect: true,
+      reconnectBackoffMs: [100],
+      onReconnectStateChange: (s) => reconnectStates.push(s),
+    });
+
+    await client.connect();
+    expect(api.connect).toHaveBeenCalledTimes(1);
+    expect(api.connect).toHaveBeenCalledWith('AA:BB:CC', expect.any(Function));
+
+    onDisc!();
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(reconnectStates).toEqual(['reconnecting', 'reconnected']);
+    expect(api.connect).toHaveBeenCalledTimes(2);
+    expect(api.connect).toHaveBeenLastCalledWith('AA:BB:CC', expect.any(Function));
+    // Reconnect must skip scanning / the chooser flow entirely.
+    expect(api.startScan).toHaveBeenCalledTimes(1);
+  });
+
+  it('after exhausting reconnect attempts, emits failed and stops retrying', async () => {
+    let onDisc: (() => void) | null = null;
+    let connectCalls = 0;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        connectCalls += 1;
+        onDisc = cb;
+        if (connectCalls > 1) {
+          throw new Error('connect refused');
+        }
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const reconnectStates: string[] = [];
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      autoReconnect: true,
+      reconnectAttempts: 2,
+      reconnectBackoffMs: [10, 10],
+      onReconnectStateChange: (s) => reconnectStates.push(s),
+    });
+
+    await client.connect();
+    onDisc!();
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(reconnectStates).toEqual(['reconnecting', 'reconnecting', 'failed']);
+    expect(connectCalls).toBe(3); // initial connect + 2 retries
+  });
+
+  it('a user-initiated disconnect() cancels a scheduled reconnect and is never followed by one', async () => {
+    let onDisc: (() => void) | null = null;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        onDisc = cb;
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const reconnectStates: string[] = [];
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      autoReconnect: true,
+      reconnectBackoffMs: [50],
+      onReconnectStateChange: (s) => reconnectStates.push(s),
+    });
+
+    await client.connect();
+    // Simulate an unexpected drop; this schedules (but doesn't yet run) a
+    // reconnect attempt.
+    onDisc!();
+    expect(reconnectStates).toEqual(['reconnecting']);
+
+    await client.disconnect();
+    await vi.advanceTimersByTimeAsync(200);
+
+    // The scheduled attempt must never fire after a manual disconnect.
+    expect(reconnectStates).toEqual(['reconnecting']);
+    expect(api.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a manual connect() while a reconnect attempt is actively in flight', async () => {
+    let onDisc: (() => void) | null = null;
+    let resolveSecondConnect: (() => void) | null = null;
+    let connectCalls = 0;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        connectCalls += 1;
+        onDisc = cb;
+        if (connectCalls === 2) {
+          // Hold the reconnect's plugin-blec.connect() open so we can
+          // exercise the reentrancy guard while it's mid-flight.
+          await new Promise<void>((resolve) => {
+            resolveSecondConnect = resolve;
+          });
+        }
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      autoReconnect: true,
+      reconnectBackoffMs: [10],
+    });
+
+    await client.connect();
+    onDisc!();
+    // Let the reconnect timer fire and enter plugin-blec.connect(), where
+    // it's now held open by the mock.
+    await vi.advanceTimersByTimeAsync(20);
+
+    await expect(client.connect()).rejects.toThrow(/连接中/);
+
+    resolveSecondConnect!();
+    await vi.advanceTimersByTimeAsync(50);
+  });
+
+  it('disconnect() during an in-flight reconnect tears the freshly-reconnected link back down', async () => {
+    let onDisc: (() => void) | null = null;
+    let resolveSecondConnect: (() => void) | null = null;
+    let connectCalls = 0;
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice()]);
+      }),
+      connect: vi.fn().mockImplementation(async (_addr: string, cb: () => void) => {
+        connectCalls += 1;
+        onDisc = cb;
+        if (connectCalls === 2) {
+          await new Promise<void>((resolve) => {
+            resolveSecondConnect = resolve;
+          });
+        }
+      }),
+    });
+    __setPluginBlecForTests(api);
+    const protocol = new FakeProtocol();
+    const reconnectStates: string[] = [];
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: selectFirstDevice,
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+      autoReconnect: true,
+      reconnectBackoffMs: [10],
+      onReconnectStateChange: (s) => reconnectStates.push(s),
+    });
+
+    await client.connect();
+    onDisc!();
+    await vi.advanceTimersByTimeAsync(20); // reconnect attempt now in flight
+
+    await client.disconnect();
+    // disconnect() can't abort the already-started plugin-blec.connect()
+    // call, only cancel a pending timer — so 'reconnected' must never be
+    // emitted, and once the held connect() resolves, tryReconnect must
+    // detect the manual disconnect and tear the link back down itself.
+    resolveSecondConnect!();
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(reconnectStates).toEqual(['reconnecting']);
+    expect(api.disconnect).toHaveBeenCalled();
   });
 });

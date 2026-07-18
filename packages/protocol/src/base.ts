@@ -4,6 +4,7 @@ import {
   type DeviceCommand,
   type DeviceCommandResult,
   type DeviceState,
+  type SensorState,
   type WaveFrame,
 } from '@dg-kit/core';
 import type {
@@ -41,6 +42,23 @@ export interface WebBluetoothProtocolAdapter {
    * Limits also clamp current strength downward if reduced.
    */
   setLimits(limitA: number, limitB: number): Promise<void>;
+}
+
+/**
+ * Contract for sensor-family devices (paw-prints, civet-edging): they push
+ * event/telemetry streams instead of exposing a two-channel strength state,
+ * so they get a narrower adapter shape than `WebBluetoothProtocolAdapter`
+ * rather than being forced into the stim-specific `DeviceState`/
+ * `DeviceCommand` types. `TReading` is the device-specific parsed event
+ * union (e.g. a button trigger, a pressure sample).
+ */
+export interface WebBluetoothSensorAdapter<TReading> {
+  onConnected(context: WebBluetoothConnectionContext): Promise<void>;
+  onDisconnected(): Promise<void>;
+  getState(): SensorState;
+  /** Subscribe to parsed device readings/events. */
+  subscribe(listener: (reading: TReading) => void): () => void;
+  onStateChanged(listener: (state: SensorState) => void): () => void;
 }
 
 export interface ChannelWaveState {

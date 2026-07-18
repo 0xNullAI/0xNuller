@@ -1,6 +1,7 @@
 import { createEmptyDeviceState } from '@dg-kit/core';
 import { describe, expect, it } from 'vitest';
 import {
+  detectDeviceKind,
   V3_HANDSHAKE_MTU,
   V3_INIT_PACKET,
   V3_NOTIFY_CHAR,
@@ -14,6 +15,23 @@ import {
 import { CoyoteProtocolAdapter } from './facade.js';
 import { CoyoteV2ProtocolAdapter } from './v2.js';
 import { CoyoteV3ProtocolAdapter } from './v3.js';
+
+describe('detectDeviceKind', () => {
+  it('classifies every known 47L12x-family prefix and the legacy V2 name', () => {
+    expect(detectDeviceKind('47L121000')).toBe('coyote');
+    expect(detectDeviceKind('D-LAB ESTIM01')).toBe('coyote');
+    expect(detectDeviceKind('47L120300')).toBe('paw-prints');
+    expect(detectDeviceKind('47L124000')).toBe('civet-edging');
+    expect(detectDeviceKind('47L127000')).toBe('opossum');
+  });
+
+  it('returns unknown for unrecognized or empty names', () => {
+    expect(detectDeviceKind('some other device')).toBe('unknown');
+    expect(detectDeviceKind(undefined)).toBe('unknown');
+    expect(detectDeviceKind(null)).toBe('unknown');
+    expect(detectDeviceKind('')).toBe('unknown');
+  });
+});
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

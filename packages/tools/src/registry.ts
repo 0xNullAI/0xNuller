@@ -1,5 +1,6 @@
 import type {
   DeviceCommand,
+  DeviceKind,
   ToolCall,
   ToolDefinition,
   ToolExecutionPlan,
@@ -81,6 +82,16 @@ const MAX_START_STRENGTH_HINT = 10;
 const MAX_ADJUST_STEP_HINT = 10;
 const MAX_BURST_DURATION_HINT_MS = 5_000;
 const DEFAULT_START_WAVEFORM_ID = 'pulse_mid';
+const MAX_VIBRATE_START_INTENSITY_HINT = 20;
+const MAX_VIBRATE_ADJUST_STEP_HINT = 20;
+
+const ledCapableDeviceKindSchema = z.enum(['paw-prints', 'civet-edging', 'opossum']);
+const indicatorColorParameter = {
+  type: 'integer',
+  minimum: 0,
+  maximum: 7,
+  description: '指示灯颜色：0 关闭，1 黄，2 红，3 紫，4 蓝，5 青，6 绿，7 白',
+} as const;
 
 export interface ToolDefinitionHints {
   maxColdStartStrength?: number;
@@ -88,6 +99,9 @@ export interface ToolDefinitionHints {
   maxAdjustStrengthCallsPerTurn?: number;
   maxBurstDurationMs?: number;
   maxBurstCallsPerTurn?: number;
+  maxVibrateStartIntensity?: number;
+  maxVibrateAdjustStep?: number;
+  maxVibrateAdjustCallsPerTurn?: number;
 }
 
 export interface DefaultToolRegistryDeps {
@@ -120,6 +134,21 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
     100,
   );
   const maxBurstCallsHint = normalizeHint(deps.toolDefinitionHints?.maxBurstCallsPerTurn, 1, 1);
+  const maxVibrateStartIntensityHint = normalizeHint(
+    deps.toolDefinitionHints?.maxVibrateStartIntensity,
+    MAX_VIBRATE_START_INTENSITY_HINT,
+    0,
+  );
+  const maxVibrateAdjustStepHint = normalizeHint(
+    deps.toolDefinitionHints?.maxVibrateAdjustStep,
+    MAX_VIBRATE_ADJUST_STEP_HINT,
+    1,
+  );
+  const maxVibrateAdjustCallsHint = normalizeHint(
+    deps.toolDefinitionHints?.maxVibrateAdjustCallsPerTurn,
+    2,
+    1,
+  );
 
   registry.register({
     name: 'start',
@@ -637,6 +666,146 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
           ...summary,
           _hint: '波形已保存。可在下一回合用 start / change_wave 引用此 waveformId 播放。',
         }),
+      };
+    },
+  });
+
+  registry.register({
+    name: 'vibrate_start',
+    displayName: '启动振动',
+    definition: {
+      name: 'vibrate_start',
+      description: [
+        '【启动振动】启动负鼠振动控制器一个通道，设置初始强度。仅适用于负鼠设备，不适用于郊狼。',
+        '触发：负鼠通道当前停止，需要从零开始时使用。',
+        '不用：通道已运行 → 想加强用 vibrate_adjust，想结束用 vibrate_stop。郊狼设备请用 start。',
+        `约束：单次启动强度上限 ${maxVibrateStartIntensityHint}（0-200 量程），完成后先描述结果再继续。`,
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: channelParameter,
+          intensity: {
+            type: 'integer',
+            minimum: 0,
+            maximum: maxVibrateStartIntensityHint,
+            description: `启动时的初始强度，范围 [0, ${maxVibrateStartIntensityHint}]。`,
+          },
+        },
+        required: ['channel', 'intensity'],
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z
+        .object({
+          channel: channelSchema,
+          intensity: z.coerce.number().int().min(0).max(200),
+        })
+        .parse(args);
+
+      return {
+        type: 'opossum',
+        command: { type: 'vibrateStart', channel: parsed.channel, intensity: parsed.intensity },
+      };
+    },
+  });
+
+  registry.register({
+    name: 'vibrate_stop',
+    displayName: '停止振动',
+    definition: {
+      name: 'vibrate_stop',
+      description: [
+        '【停止振动】停止负鼠振动控制器一个通道，省略 channel 则停止全部。仅适用于负鼠设备。',
+        '触发：需要结束振动输出时。',
+        '约束：无次数上限。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: {
+            ...channelParameter,
+            description: '要停止的通道，省略则停止全部。',
+          },
+        },
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z.object({ channel: channelSchema.optional() }).parse(args);
+      return { type: 'opossum', command: { type: 'vibrateStop', channel: parsed.channel } };
+    },
+  });
+
+  registry.register({
+    name: 'vibrate_adjust',
+    displayName: '调节振动强度',
+    definition: {
+      name: 'vibrate_adjust',
+      description: [
+        '【调节振动强度】相对调整负鼠振动控制器一个通道的强度。仅适用于负鼠设备。',
+        '触发：通道运行中，需要小步推进或回落时使用。',
+        '不用：通道未启动 → vibrate_start。',
+        `约束：本回合最多调用 ${maxVibrateAdjustCallsHint} 次，单步幅度 ±${maxVibrateAdjustStepHint}。`,
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: channelParameter,
+          delta: {
+            type: 'integer',
+            minimum: -maxVibrateAdjustStepHint,
+            maximum: maxVibrateAdjustStepHint,
+            description: `本次变化量（正增负减），范围 [-${maxVibrateAdjustStepHint}, ${maxVibrateAdjustStepHint}]。`,
+          },
+        },
+        required: ['channel', 'delta'],
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z
+        .object({ channel: channelSchema, delta: z.coerce.number().int().min(-200).max(200) })
+        .parse(args);
+      return {
+        type: 'opossum',
+        command: { type: 'vibrateAdjust', channel: parsed.channel, delta: parsed.delta },
+      };
+    },
+  });
+
+  registry.register({
+    name: 'set_indicator_color',
+    displayName: '设置指示灯颜色',
+    definition: {
+      name: 'set_indicator_color',
+      description: [
+        '【设置指示灯颜色】设置一个已连接设备的指示灯颜色。适用于爪印、灵猫、负鼠——郊狼没有可设置的指示灯，不适用。',
+        '触发：用户明确要求改变某个设备的灯光颜色时。',
+        '约束：不影响任何强度/振动输出，纯外观。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceKind: {
+            type: 'string',
+            enum: ['paw-prints', 'civet-edging', 'opossum'],
+            description: '目标设备种类',
+          },
+          color: indicatorColorParameter,
+        },
+        required: ['deviceKind', 'color'],
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z
+        .object({
+          deviceKind: ledCapableDeviceKindSchema,
+          color: z.coerce.number().int().min(0).max(7),
+        })
+        .parse(args);
+      return {
+        type: 'setIndicatorColor',
+        deviceKind: parsed.deviceKind as DeviceKind,
+        color: parsed.color,
       };
     },
   });

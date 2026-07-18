@@ -9,6 +9,7 @@
 [![npm: @dg-kit/waveforms](https://img.shields.io/npm/v/@dg-kit/waveforms?label=%40dg-kit%2Fwaveforms&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/waveforms)
 [![npm: @dg-kit/tools](https://img.shields.io/npm/v/@dg-kit/tools?label=%40dg-kit%2Ftools&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/tools)
 [![npm: @dg-kit/transport-webbluetooth](https://img.shields.io/npm/v/@dg-kit/transport-webbluetooth?label=%40dg-kit%2Ftransport-webbluetooth&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/transport-webbluetooth)
+[![npm: @dg-kit/transport-tauri-blec](https://img.shields.io/npm/v/@dg-kit/transport-tauri-blec?label=%40dg-kit%2Ftransport-tauri-blec&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/transport-tauri-blec)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![CI](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml/badge.svg)](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml)
 [![Site](https://img.shields.io/badge/site-0xnullai.com-58c8f2)](https://0xnullai.com)
@@ -23,15 +24,16 @@ DG-Kit is the shared core consumed by [DG-Agent](https://github.com/0xNullAI/DG-
 
 In short: **one protocol implementation, three products**. Fix once, every project benefits.
 
-## The five packages
+## The six packages
 
 | Package | Purpose |
 |---|---|
-| **`@dg-kit/core`** | Base types and contract interfaces (`DeviceState` / `DeviceCommand` / `WaveformDefinition` / `DeviceClient` / …) |
-| **`@dg-kit/protocol`** | Coyote V2 / V3 BLE protocol adapters, transport-agnostic |
+| **`@dg-kit/core`** | Base types and contract interfaces (`DeviceState` / `DeviceCommand` / `SensorState` / `DeviceKind` / `DeviceClient` / …) |
+| **`@dg-kit/protocol`** | BLE protocol adapters for the four 47L12x-family devices (Coyote V2/V3, the paw-prints sensor, the civet-edging pressure sensor, the opossum vibrate controller), transport-agnostic |
 | **`@dg-kit/waveforms`** | Built-ins, `ramp / hold / pulse / silence` design compiler, `.pulse` parser |
-| **`@dg-kit/tools`** | LLM tool definitions (`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave`) with injectable rate-limit policy |
+| **`@dg-kit/tools`** | LLM tool definitions (`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `set_indicator_color`) with injectable rate-limit policy |
 | **`@dg-kit/transport-webbluetooth`** | Browser-side `DeviceClient` over Web Bluetooth |
+| **`@dg-kit/transport-tauri-blec`** | Tauri (Android/desktop/iOS) `DeviceClient` over `@mnlphlp/plugin-blec` |
 
 ## Install
 
@@ -39,7 +41,7 @@ In short: **one protocol implementation, three products**. Fix once, every proje
 npm install @dg-kit/core @dg-kit/protocol @dg-kit/waveforms
 ```
 
-Pick the subset you need. The three downstream projects each consume a different slice.
+Pick the subset you need. Downstream projects each consume a different slice.
 
 ## Architecture
 
@@ -50,11 +52,12 @@ Pick the subset you need. The three downstream projects each consume a different
         ▼              ▼              ▼
  @dg-kit/protocol  @dg-kit/waveforms  @dg-kit/tools
         │
-        ▼
- @dg-kit/transport-webbluetooth        (other transports e.g. noble — see DG-MCP)
+        ├──────────────────────┐
+        ▼                      ▼
+ @dg-kit/transport-webbluetooth  @dg-kit/transport-tauri-blec   (a Node/noble transport is implemented by consumers — see DG-MCP)
 ```
 
-The protocol layer only depends on an abstract `BluetoothRemoteGATTCharacteristicLike` interface. Browsers plug in `@dg-kit/transport-webbluetooth`; Node uses the noble shim inside [DG-MCP](https://github.com/0xNullAI/DG-MCP). Same V2/V3 code path either way.
+The protocol layer only depends on an abstract `BluetoothRemoteGATTCharacteristicLike` interface. Browsers plug in `@dg-kit/transport-webbluetooth`; Tauri plugs in `@dg-kit/transport-tauri-blec`; Node uses the noble shim inside [DG-MCP](https://github.com/0xNullAI/DG-MCP). All four device families share the same code path; `detectDeviceKind()` tells them apart by BLE name.
 
 ## Development
 
@@ -75,7 +78,7 @@ Automated via [changesets](https://github.com/changesets/changesets):
 2. PR merged to `main` → bot opens a "Version Packages" PR
 3. Merging that PR → CI runs `npm publish`
 
-All five packages share a single version (pinned via the `fixed` setting).
+All six packages share a single version (pinned via the `fixed` setting).
 
 ## Sister projects
 
