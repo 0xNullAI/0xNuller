@@ -1,6 +1,8 @@
 import { createEmptyDeviceState } from '@dg-kit/core';
 import { describe, expect, it } from 'vitest';
 import {
+  V3_HANDSHAKE_MTU,
+  V3_INIT_PACKET,
   V3_NOTIFY_CHAR,
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
@@ -364,6 +366,133 @@ describe('CoyoteV3ProtocolAdapter rollback', () => {
 
     expect(protocol.getState().connected).toBe(false);
     expect(protocol.getState().deviceName).toBe('47L121000');
+  });
+});
+
+describe('CoyoteV3ProtocolAdapter connect handshake', () => {
+  it('writes the init packet before BF, and tolerates missing legacy/OTA services', async () => {
+    const writes: number[][] = [];
+    const writeChar = new MockCharacteristic(async (value) => {
+      writes.push(Array.from(value));
+    });
+    const notifyChar = new MockCharacteristic(async () => undefined);
+
+    const protocol = new CoyoteV3ProtocolAdapter();
+
+    await protocol.onConnected({
+      device: { name: '47L121000', id: 'handshake-device' } as unknown as EventTarget & {
+        id?: string;
+        name?: string;
+      },
+      server: {
+        connected: true,
+        async getPrimaryService(service: string) {
+          if (service !== V3_PRIMARY_SERVICE) {
+            // Legacy/OTA/battery services are absent on this mock device —
+            // the handshake must not treat that as fatal.
+            throw new Error(`service unavailable: ${service}`);
+          }
+          return {
+            async getCharacteristic(characteristic: string) {
+              if (characteristic === V3_WRITE_CHAR) return writeChar;
+              if (characteristic === V3_NOTIFY_CHAR) return notifyChar;
+              throw new Error(`unknown characteristic: ${characteristic}`);
+            },
+          };
+        },
+      },
+    });
+
+    expect(protocol.getState().connected).toBe(true);
+    expect(writes[0]).toEqual(Array.from(V3_INIT_PACKET));
+    expect(writes[1]?.[0]).toBe(0xbf);
+
+    await protocol.onDisconnected();
+  });
+
+  it('still connects and writes BF/B0 normally if the init packet write itself is rejected', async () => {
+    // Guards backward compatibility with firmware that, for whatever reason,
+    // doesn't accept the init write — the connection must not be treated as
+    // failed just because this best-effort step didn't go through.
+    const writes: number[][] = [];
+    let writeCount = 0;
+    const writeChar = new MockCharacteristic(async (value) => {
+      writeCount += 1;
+      if (writeCount === 1) {
+        throw new Error('unsupported by this firmware');
+      }
+      writes.push(Array.from(value));
+    });
+    const notifyChar = new MockCharacteristic(async () => undefined);
+
+    const protocol = new CoyoteV3ProtocolAdapter();
+
+    await protocol.onConnected({
+      device: { name: '47L121000', id: 'old-firmware-device' } as unknown as EventTarget & {
+        id?: string;
+        name?: string;
+      },
+      server: {
+        connected: true,
+        async getPrimaryService(service: string) {
+          if (service !== V3_PRIMARY_SERVICE) {
+            throw new Error(`service unavailable: ${service}`);
+          }
+          return {
+            async getCharacteristic(characteristic: string) {
+              if (characteristic === V3_WRITE_CHAR) return writeChar;
+              if (characteristic === V3_NOTIFY_CHAR) return notifyChar;
+              throw new Error(`unknown characteristic: ${characteristic}`);
+            },
+          };
+        },
+      },
+    });
+
+    expect(protocol.getState().connected).toBe(true);
+    // The rejected init write doesn't produce a recorded write, but the
+    // subsequent BF write still goes through.
+    expect(writes[0]?.[0]).toBe(0xbf);
+
+    await protocol.onDisconnected();
+  });
+
+  it('requests the handshake MTU when the transport supports it', async () => {
+    const writeChar = new MockCharacteristic(async () => undefined);
+    const notifyChar = new MockCharacteristic(async () => undefined);
+    const requestedMtu: number[] = [];
+
+    const protocol = new CoyoteV3ProtocolAdapter();
+
+    await protocol.onConnected({
+      device: { name: '47L121000', id: 'mtu-device' } as unknown as EventTarget & {
+        id?: string;
+        name?: string;
+      },
+      server: {
+        connected: true,
+        async getPrimaryService(service: string) {
+          if (service !== V3_PRIMARY_SERVICE) {
+            throw new Error(`service unavailable: ${service}`);
+          }
+          return {
+            async getCharacteristic(characteristic: string) {
+              if (characteristic === V3_WRITE_CHAR) return writeChar;
+              if (characteristic === V3_NOTIFY_CHAR) return notifyChar;
+              throw new Error(`unknown characteristic: ${characteristic}`);
+            },
+          };
+        },
+        async requestMTU(mtu: number) {
+          requestedMtu.push(mtu);
+          return mtu;
+        },
+      },
+    });
+
+    expect(requestedMtu).toEqual([V3_HANDSHAKE_MTU]);
+
+    await protocol.onDisconnected();
   });
 });
 
