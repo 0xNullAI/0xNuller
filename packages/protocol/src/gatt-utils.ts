@@ -96,3 +96,19 @@ export async function performV3FamilyConnectHandshake(
     // Transport may not support MTU negotiation — non-fatal.
   }
 }
+
+/**
+ * The 47L12x-family indicator LED is a discrete 8-color enum, not a
+ * continuous byte — confirmed against the community protocol doc's
+ * paw-prints color table (0=熄灭/off, 1=黄, 2=红, 3=紫, 4=蓝, 5=青, 6=绿,
+ * 7=白) and consistent with civet-edging's one documented example
+ * ("01为黄色" — matches index 1 in that same table). Values 8-255 have no
+ * defined meaning on real hardware, so every adapter clamps here rather
+ * than trusting the caller (a stray remote-control byte or a naive 0-255
+ * color picker would otherwise reach the wire unclamped).
+ */
+export function clampIndicatorColor(color: number): number {
+  const value = Number(color);
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(7, Math.round(value)));
+}

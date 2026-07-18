@@ -263,6 +263,27 @@ describe('CivetPressureSensorAdapter command bytes', () => {
     await adapter.setIndicatorColor(0x05);
     expect(writes[0]).toEqual([0x50, 0x05, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
+
+  it('clamps the indicator color byte to the documented 0-7 enum', async () => {
+    const writes: number[][] = [];
+    const writeChar = new MockCharacteristic((value) => {
+      writes.push(Array.from(value));
+    });
+    const notifyChar = new MockCharacteristic();
+    const adapter = new CivetPressureSensorAdapter();
+
+    await adapter.onConnected({
+      device: createMockDevice(),
+      server: createMockServer({ writeChar, notifyChar }),
+    });
+    writes.length = 0;
+
+    await adapter.setIndicatorColor(255);
+    expect(writes[0]?.[1]).toBe(7);
+
+    await adapter.setIndicatorColor(-5);
+    expect(writes[1]?.[1]).toBe(0);
+  });
 });
 
 describe('CivetPressureSensorAdapter connect/disconnect round trip', () => {

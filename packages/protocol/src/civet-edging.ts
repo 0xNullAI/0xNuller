@@ -7,7 +7,11 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
-import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
+import {
+  clampIndicatorColor,
+  performV3FamilyConnectHandshake,
+  writeCharacteristicValue,
+} from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 /**
@@ -158,7 +162,7 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
   private buildPressureReportingPacket(color: number, startStopByte: number): Uint8Array {
     const buffer = new Uint8Array(17);
     buffer[0] = 0x50;
-    buffer[1] = color & 0xff;
+    buffer[1] = clampIndicatorColor(color);
     buffer[2] = startStopByte;
     // Remaining 14 bytes are zero padding (Uint8Array is zero-initialized).
     return buffer;

@@ -33,7 +33,11 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
-import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
+import {
+  clampIndicatorColor,
+  performV3FamilyConnectHandshake,
+  writeCharacteristicValue,
+} from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export interface OpossumState {
@@ -237,7 +241,7 @@ export class OpossumVibrateAdapter {
   async setLed(color: number, enableButtonReporting: boolean): Promise<void> {
     const packet = new Uint8Array([
       0x50,
-      this.clamp(color, 0, 255),
+      clampIndicatorColor(color),
       enableButtonReporting ? 0x01 : 0x00,
     ]);
     await this.write(packet);

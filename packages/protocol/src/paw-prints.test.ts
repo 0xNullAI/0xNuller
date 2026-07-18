@@ -277,6 +277,17 @@ describe('PawPrintsSensorAdapter command writes', () => {
     const adapter = new PawPrintsSensorAdapter();
     await expect(adapter.resetParameters()).rejects.toThrow('not connected');
   });
+
+  it('clamps LED color bytes to the documented 0-7 enum', async () => {
+    const { adapter, writes } = await connectWithWriteChar();
+
+    await adapter.setLedSolid(255);
+    expect(writes).toEqual([[0x70, 7]]);
+
+    writes.length = 0;
+    await adapter.setLedBlink(-1, 255, 0x01);
+    expect(writes).toEqual([[0x70, 0, 7, 0x01]]);
+  });
 });
 
 describe('PawPrintsSensorAdapter connect/disconnect round trip', () => {

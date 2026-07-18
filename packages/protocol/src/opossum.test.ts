@@ -240,6 +240,17 @@ describe('OpossumVibrateAdapter packet builders', () => {
     expect(writes.at(-1)).toEqual([0x50, 7, 0x00]);
   });
 
+  it('clamps the LED color byte to the documented 0-7 enum', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+
+    await adapter.setLed(255, true);
+    expect(writes.at(-1)).toEqual([0x50, 7, 0x01]);
+
+    await adapter.setLed(-3, true);
+    expect(writes.at(-1)).toEqual([0x50, 0, 0x01]);
+  });
+
   it('emergencyStop drives both channels to zero and swallows write failures', async () => {
     const failingWriteChar = new MockCharacteristic(() => {
       throw new Error('gatt write failed');

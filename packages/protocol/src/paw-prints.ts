@@ -21,7 +21,11 @@ import {
   V3_WRITE_CHAR,
 } from './constants.js';
 import type { WebBluetoothConnectionContext, WebBluetoothSensorAdapter } from './base.js';
-import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
+import {
+  clampIndicatorColor,
+  performV3FamilyConnectHandshake,
+  writeCharacteristicValue,
+} from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export type PawPrintsReading =
@@ -158,11 +162,18 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
   }
 
   async setLedSolid(color: number): Promise<void> {
-    await this.writeCommand(Uint8Array.of(CMD_LED_CONTROL, color));
+    await this.writeCommand(Uint8Array.of(CMD_LED_CONTROL, clampIndicatorColor(color)));
   }
 
   async setLedBlink(color1: number, color2: number, speed: number): Promise<void> {
-    await this.writeCommand(Uint8Array.of(CMD_LED_CONTROL, color1, color2, speed));
+    await this.writeCommand(
+      Uint8Array.of(
+        CMD_LED_CONTROL,
+        clampIndicatorColor(color1),
+        clampIndicatorColor(color2),
+        speed,
+      ),
+    );
   }
 
   private async resetConnection(emit: boolean): Promise<void> {
