@@ -7,6 +7,7 @@ import {
   CoyoteProtocolAdapter,
   OpossumVibrateAdapter,
   PawPrintsSensorAdapter,
+  V3_DEVICE_NAME_PREFIX,
   type BluetoothDeviceLike,
   type BluetoothRemoteGATTCharacteristicLike,
   type WebBluetoothConnectionContext,
@@ -92,7 +93,12 @@ async function injectConnectedDevice(
   kind: ConnectedDevice['kind'],
   address: string,
 ): Promise<{ entry: ConnectedDevice; charsByUuid: Map<string, FakeGattCharacteristic> }> {
-  const { context, charsByUuid } = createFakeContext(address, `fake-${kind}`);
+  // CoyoteProtocolAdapter routes through detectDeviceKind() and rejects
+  // names it can't classify (see facade.ts), so the fake device name must
+  // carry a real prefix for the kind under test — a plain `fake-${kind}`
+  // string only worked before that validation was added.
+  const fakeName = kind === 'coyote' ? `${V3_DEVICE_NAME_PREFIX}000` : `fake-${kind}`;
+  const { context, charsByUuid } = createFakeContext(address, fakeName);
   const peripheral = { disconnectAsync: async () => undefined } as unknown as Peripheral;
 
   let entry: ConnectedDevice;
@@ -127,6 +133,15 @@ async function injectConnectedDevice(
     address.toLowerCase(),
     entry,
   );
+
+  // onConnected() runs the shared 47L12x-family connect handshake (an init
+  // packet write, on the same write characteristic real commands use)
+  // before returning. Callers assert on "the write this tool call produced"
+  // by index, so clear handshake writes here rather than making every
+  // assertion account for a leading handshake packet.
+  for (const characteristic of charsByUuid.values()) {
+    characteristic.writes.length = 0;
+  }
   return { entry, charsByUuid };
 }
 
@@ -309,9 +324,9 @@ describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")'
     expect(writeChar?.writes[0]?.[2]).toBe(0x01);
   });
 
-  it('handles civet-edging gracefully since it has no LED command (ok:false, not a thrown error)', async () => {
+  it('sends the LED color via the 0x50 pressure-reporting packet for civet-edging, preserving streaming state', async () => {
     const { client, deviceManager } = await createHarness();
-    await injectConnectedDevice(deviceManager, 'civet-edging', 'F4:F4:F4:F4:F4:03');
+    const { charsByUuid } = await injectConnectedDevice(deviceManager, 'civet-edging', 'F4:F4:F4:F4:F4:03');
 
     const result = await client.callTool({
       name: 'set_indicator_color',
@@ -320,8 +335,12 @@ describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")'
 
     expect(result.isError).toBeFalsy();
     const payload = parseToolResult(result);
-    expect(payload.ok).toBe(false);
-    expect(payload.reason).toContain('不支持指示灯颜色设置');
+    expect(payload.ok).toBe(true);
+
+    const writeChar = [...charsByUuid.values()].find((c) => c.writes.length > 0);
+    const lastWrite = writeChar?.writes.at(-1);
+    expect(lastWrite?.[0]).toBe(0x50);
+    expect(lastWrite?.[1]).toBe(2);
   });
 });
 

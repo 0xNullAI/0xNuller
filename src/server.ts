@@ -317,8 +317,12 @@ async function applyOpossumCommand(
  * command. Opossum's LED command packet also carries a button-state-
  * reporting toggle; we default that to `true` (keep button events flowing)
  * since the tool is only supposed to change color, not silently disable
- * button reporting. Civet-edging has no LED command at all -- handled
- * gracefully with an `ok:false` result rather than throwing.
+ * button reporting. Civet-edging has no dedicated "set color" opcode --
+ * color rides along with the pressure-reporting toggle packet -- so its
+ * adapter exposes `setIndicatorColor()`, which re-sends that packet with
+ * the current streaming state preserved (unlike calling
+ * `startPressureReporting`/`stopPressureReporting` directly, which would
+ * force streaming on/off as a side effect of a purely cosmetic change).
  */
 async function applyIndicatorColor(
   entry: ConnectedDevice,
@@ -332,7 +336,8 @@ async function applyIndicatorColor(
       await entry.adapter.setLed(color, true);
       return { ok: true };
     case 'civet-edging':
-      return { ok: false, reason: '灵猫边缘控制传感器不支持指示灯颜色设置' };
+      await entry.adapter.setIndicatorColor(color);
+      return { ok: true };
     case 'coyote':
       return { ok: false, reason: '郊狼设备没有可设置的指示灯' };
   }
