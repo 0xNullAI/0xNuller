@@ -7,6 +7,7 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
+import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 /**
@@ -39,6 +40,8 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
   private state: SensorState = createEmptySensorState();
   private writeChar: BluetoothRemoteGATTCharacteristicLike | null = null;
   private notifyChar: BluetoothRemoteGATTCharacteristicLike | null = null;
+  /** Tracks whether pressure streaming is currently on, so `setIndicatorColor` can re-send the `0x50` packet without flipping it. */
+  private streaming = false;
 
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     try {
@@ -47,6 +50,8 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
       this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
       await this.notifyChar.startNotifications();
       this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
+
+      await performV3FamilyConnectHandshake(context.server, this.writeChar);
 
       let battery = 0;
       try {
@@ -90,6 +95,7 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
 
     this.writeChar = null;
     this.notifyChar = null;
+    this.streaming = false;
     this.state = createEmptySensorState();
     this.emitState();
   }
@@ -115,11 +121,26 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
   /** `0x50` pressure-reporting toggle: start streaming pressure notifications. */
   async startPressureReporting(color = 0x00): Promise<void> {
     await this.write(this.buildPressureReportingPacket(color, 0xd0));
+    this.streaming = true;
   }
 
   /** `0x50` pressure-reporting toggle: stop streaming pressure notifications. */
   async stopPressureReporting(color = 0x00): Promise<void> {
     await this.write(this.buildPressureReportingPacket(color, 0x00));
+    this.streaming = false;
+  }
+
+  /**
+   * Change only the indicator color. There is no dedicated "set color"
+   * opcode in the documented protocol — `0x50` always carries both the
+   * color and the streaming on/off byte together — so this re-sends `0x50`
+   * with the current streaming state preserved, rather than the caller
+   * having to guess by calling `startPressureReporting`/`stopPressureReporting`
+   * (which would unintentionally start or stop the pressure stream as a
+   * side effect of what's meant to be a purely cosmetic change).
+   */
+  async setIndicatorColor(color: number): Promise<void> {
+    await this.write(this.buildPressureReportingPacket(color, this.streaming ? 0xd0 : 0x00));
   }
 
   /** `0x66` calibration: reset the pressure baseline to the current reading. */
@@ -147,37 +168,7 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
     if (!this.writeChar) {
       throw new Error('设备未连接');
     }
-    await this.writeCharacteristicValue(this.writeChar, value);
-  }
-
-  /**
-   * Same writeValueWithoutResponse/writeValueWithResponse/writeValue
-   * fallback chain as BaseCoyoteProtocolAdapter.writeCharacteristicValue in
-   * base.ts, reimplemented here since that method is protected on a class
-   * this adapter doesn't extend.
-   */
-  private async writeCharacteristicValue(
-    characteristic: BluetoothRemoteGATTCharacteristicLike,
-    value: ArrayBufferView | ArrayBuffer,
-  ): Promise<void> {
-    const attempts = [
-      characteristic.writeValueWithoutResponse?.bind(characteristic),
-      characteristic.writeValueWithResponse?.bind(characteristic),
-      characteristic.writeValue?.bind(characteristic),
-    ];
-
-    let lastError: unknown = null;
-    for (const attempt of attempts) {
-      if (!attempt) continue;
-      try {
-        await attempt(value);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error('Bluetooth characteristic is not writable');
+    await writeCharacteristicValue(this.writeChar, value);
   }
 
   private emitState(): void {

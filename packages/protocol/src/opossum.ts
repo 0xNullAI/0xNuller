@@ -24,6 +24,7 @@
  * this device family. That's a transport-layer concern (the caller's BLE
  * connect step), out of scope here — this file only builds/parses packets.
  */
+import type { Channel } from '@dg-kit/core';
 import type { WebBluetoothConnectionContext } from './base.js';
 import {
   V3_BATTERY_CHAR,
@@ -32,6 +33,7 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
+import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export interface OpossumState {
@@ -100,6 +102,8 @@ export class OpossumVibrateAdapter {
       await this.notifyChar.startNotifications();
       this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
 
+      await performV3FamilyConnectHandshake(context.server, this.writeChar);
+
       let battery = 0;
       try {
         const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
@@ -122,9 +126,12 @@ export class OpossumVibrateAdapter {
       };
       this.emitState();
     } catch (error) {
-      this.writeChar = null;
-      this.notifyChar = null;
-      this.batteryChar = null;
+      // Tear down the same way onDisconnected() does — if startNotifications()
+      // and addEventListener() above already succeeded before a later step
+      // threw (e.g. the handshake or battery read), leaving the subscription
+      // live here would leak it silently, since nothing else will ever call
+      // stopNotifications()/removeEventListener() for this failed attempt.
+      await this.onDisconnected();
       throw error;
     }
   }
@@ -181,6 +188,25 @@ export class OpossumVibrateAdapter {
     if (channelA !== 'unchanged') this.state.intensityA = byteA;
     if (channelB !== 'unchanged') this.state.intensityB = byteB;
     this.emitState();
+  }
+
+  /**
+   * Relative adjust for one channel, e.g. for a `vibrate_adjust` tool call.
+   * Reads the current intensity and writes the new absolute value in one
+   * call so a caller never has to do `getState()` + `setIntensity()` as two
+   * separate steps — doing it as two steps would let two concurrent adjust
+   * calls (an LLM tool call racing a manual UI tweak, say) both read the
+   * same stale value and the second write silently clobber the first's
+   * delta instead of compounding.
+   */
+  async adjustIntensity(channel: Channel, delta: number): Promise<void> {
+    const current = channel === 'A' ? this.state.intensityA : this.state.intensityB;
+    const next = this.clamp(current + delta, 0, 200);
+    if (channel === 'A') {
+      await this.setIntensity(next, 'unchanged');
+    } else {
+      await this.setIntensity('unchanged', next);
+    }
   }
 
   /**
@@ -277,36 +303,7 @@ export class OpossumVibrateAdapter {
     if (!this.writeChar) {
       throw new Error('Opossum device is not connected');
     }
-    await this.writeCharacteristicValue(this.writeChar, packet);
-  }
-
-  /**
-   * Same fallback-chain pattern as `BaseCoyoteProtocolAdapter.writeCharacteristicValue`
-   * in ./base.ts, reimplemented here since that method is protected on a
-   * class this adapter doesn't (and shouldn't) extend.
-   */
-  private async writeCharacteristicValue(
-    characteristic: BluetoothRemoteGATTCharacteristicLike,
-    value: ArrayBufferView | ArrayBuffer,
-  ): Promise<void> {
-    const attempts = [
-      characteristic.writeValueWithoutResponse?.bind(characteristic),
-      characteristic.writeValueWithResponse?.bind(characteristic),
-      characteristic.writeValue?.bind(characteristic),
-    ];
-
-    let lastError: unknown = null;
-    for (const attempt of attempts) {
-      if (!attempt) continue;
-      try {
-        await attempt(value);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error('Bluetooth characteristic is not writable');
+    await writeCharacteristicValue(this.writeChar, packet);
   }
 
   private clamp(value: number, min: number, max: number): number {

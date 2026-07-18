@@ -33,7 +33,9 @@ class MockCharacteristic extends EventTarget {
     return this;
   }
 
+  stopNotificationsCallCount = 0;
   async stopNotifications(): Promise<MockCharacteristic> {
+    this.stopNotificationsCallCount += 1;
     return this;
   }
 
@@ -396,5 +398,58 @@ describe('OpossumVibrateAdapter connection lifecycle', () => {
   it('writing commands before connecting throws', async () => {
     const adapter = new OpossumVibrateAdapter();
     await expect(adapter.setIntensity(10, 10)).rejects.toThrow();
+  });
+
+  it('tears down the notify subscription on a connect failure that happens after it was established', async () => {
+    // Regression: onConnected's catch block used to only null the
+    // characteristic references, leaving a live GATT notification
+    // subscription (startNotifications + addEventListener already
+    // succeeded) dangling with nothing left to ever call
+    // stopNotifications()/removeEventListener() for it.
+    const adapter = new OpossumVibrateAdapter();
+    const writeChar = new MockCharacteristic();
+    const notifyChar = new MockCharacteristic();
+    const server = createMockServer({ writeChar, notifyChar });
+
+    adapter.onStateChanged(() => {
+      throw new Error('boom — simulates any failure after notify subscription succeeds');
+    });
+
+    await expect(
+      adapter.onConnected({
+        device: { name: '47L127000', id: 'opossum-device' } as unknown as EventTarget & {
+          id?: string;
+          name?: string;
+        },
+        server,
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(notifyChar.stopNotificationsCallCount).toBe(1);
+    expect(adapter.getState().connected).toBe(false);
+  });
+
+  it('adjustIntensity reads-then-writes the new absolute value atomically', async () => {
+    const { adapter, writes } = await (async () => {
+      const adapter = new OpossumVibrateAdapter();
+      const result = await connectAdapter(adapter);
+      result.writes.length = 0;
+      return { adapter, writes: result.writes };
+    })();
+
+    await adapter.setIntensity(50, 80);
+    writes.length = 0;
+
+    await adapter.adjustIntensity('A', 15);
+    expect(adapter.getState().intensityA).toBe(65);
+    expect(adapter.getState().intensityB).toBe(80);
+    expect(writes[0]).toEqual([0xb3, 65, 0xff]);
+
+    await adapter.adjustIntensity('B', -20);
+    expect(adapter.getState().intensityB).toBe(60);
+
+    // Clamps at the range boundary rather than under/overflowing.
+    await adapter.adjustIntensity('A', 1000);
+    expect(adapter.getState().intensityA).toBe(200);
   });
 });

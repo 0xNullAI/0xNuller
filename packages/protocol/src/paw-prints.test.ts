@@ -213,6 +213,11 @@ describe('PawPrintsSensorAdapter command writes', () => {
       server: buildServer({ writeChar, notifyChar, batteryThrows: true }),
     });
 
+    // onConnected() now also sends the shared connect-time handshake's init
+    // packet on this same characteristic — clear it here so these tests keep
+    // asserting only the specific command byte layout under test.
+    writes.length = 0;
+
     return { adapter, writes };
   }
 

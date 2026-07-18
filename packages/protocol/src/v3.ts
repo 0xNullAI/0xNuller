@@ -2,12 +2,6 @@ import type { Channel } from '@dg-kit/core';
 import {
   V3_BATTERY_CHAR,
   V3_BATTERY_SERVICE,
-  V3_HANDSHAKE_MTU,
-  V3_INIT_PACKET,
-  V3_LEGACY_NOTIFY_CHAR,
-  V3_LEGACY_SERVICE,
-  V3_NORDIC_OTA_CHAR,
-  V3_NORDIC_OTA_SERVICE,
   V3_NOTIFY_CHAR,
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
@@ -18,6 +12,7 @@ import {
   INACTIVE_INT,
   type WebBluetoothConnectionContext,
 } from './base.js';
+import { performV3FamilyConnectHandshake } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
@@ -41,7 +36,7 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
       await this.notifyChar.startNotifications();
       this.notifyChar.addEventListener('characteristicvaluechanged', this.handleV3Notification);
 
-      await this.performConnectHandshake(context);
+      await performV3FamilyConnectHandshake(context.server, this.writeChar);
 
       try {
         const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
@@ -63,55 +58,6 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     } catch (error) {
       await this.resetConnectionState({ emit: false });
       throw error;
-    }
-  }
-
-  /**
-   * Newer firmware (flashed via the official app) ignores B0/BF control
-   * writes until it has seen the same connect-time sequence the app always
-   * sends: an init packet on the write characteristic, best-effort
-   * subscription to two legacy/OTA notify channels, and an MTU bump to 140.
-   *
-   * The official app sends this exact same init packet unconditionally to
-   * every 47L12x-family device it connects to, old and new firmware alike —
-   * it has no firmware-version detection gating it — so this write should be
-   * harmless on older firmware (a GATT write generally succeeds regardless
-   * of whether the receiving firmware's application layer recognizes the
-   * opcode; it just gets ignored if not). Every step here is still
-   * best-effort/non-fatal, including the init write itself: if any step
-   * fails on some real device we haven't tested against, the rest of
-   * onConnected() falls back to the pre-handshake behavior (write BF/B0
-   * directly) rather than refusing to connect at all.
-   */
-  private async performConnectHandshake(context: WebBluetoothConnectionContext): Promise<void> {
-    if (!this.writeChar) return;
-
-    try {
-      await this.writeCharacteristicValue(this.writeChar, V3_INIT_PACKET);
-    } catch {
-      // Best-effort — see class comment above. Fall through to BF/B0 as before.
-    }
-
-    try {
-      const legacyService = await context.server.getPrimaryService(V3_LEGACY_SERVICE);
-      const legacyChar = await legacyService.getCharacteristic(V3_LEGACY_NOTIFY_CHAR);
-      await legacyChar.startNotifications();
-    } catch {
-      // Not present on this firmware/hardware — non-fatal.
-    }
-
-    try {
-      const otaService = await context.server.getPrimaryService(V3_NORDIC_OTA_SERVICE);
-      const otaChar = await otaService.getCharacteristic(V3_NORDIC_OTA_CHAR);
-      await otaChar.startNotifications();
-    } catch {
-      // Only present on OTA-capable firmware — non-fatal.
-    }
-
-    try {
-      await context.server.requestMTU?.(V3_HANDSHAKE_MTU);
-    } catch {
-      // Transport may not support MTU negotiation — non-fatal.
     }
   }
 

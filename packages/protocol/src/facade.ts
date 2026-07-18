@@ -1,4 +1,4 @@
-import { V2_DEVICE_NAME_PREFIX } from './constants.js';
+import { detectDeviceKind, V2_DEVICE_NAME_PREFIX } from './constants.js';
 import type { DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
 import {
   type StateListener,
@@ -9,8 +9,20 @@ import { CoyoteV2ProtocolAdapter } from './v2.js';
 import { CoyoteV3ProtocolAdapter } from './v3.js';
 
 /**
- * Auto-routing protocol adapter. Picks the V2 or V3 implementation based on
- * the connecting device's name prefix; defaults to V3.
+ * Auto-routing protocol adapter — Coyote only. Picks the V2 or V3
+ * implementation based on the connecting device's name prefix.
+ *
+ * This does NOT route paw-prints/civet-edging/opossum devices, even though
+ * `DG_LAB_REQUEST_DEVICE_OPTIONS`'s broader scan filter will surface them in
+ * the same chooser as Coyote units. Those three device kinds share Coyote
+ * V3's exact GATT skeleton but speak a completely different command
+ * vocabulary — silently defaulting an unrecognized device to
+ * `CoyoteV3ProtocolAdapter` (the previous behavior) would send Coyote B0/BF
+ * stim frames to, say, a pressure sensor. `createProtocol()` now throws
+ * instead: callers that scan with the broader filter must classify the
+ * result with `detectDeviceKind()` first and only hand Coyote-kind devices
+ * to this facade, using `PawPrintsSensorAdapter`/`CivetPressureSensorAdapter`/
+ * `OpossumVibrateAdapter` directly for the other three kinds.
  */
 export class CoyoteProtocolAdapter implements WebBluetoothProtocolAdapter {
   private readonly listeners = new Set<StateListener>();
@@ -72,6 +84,14 @@ export class CoyoteProtocolAdapter implements WebBluetoothProtocolAdapter {
 
   private createProtocol(context: WebBluetoothConnectionContext): WebBluetoothProtocolAdapter {
     const name = context.device.name ?? '';
+    const kind = detectDeviceKind(name);
+    if (kind !== 'coyote') {
+      throw new Error(
+        `CoyoteProtocolAdapter only supports Coyote devices, but "${name}" was classified as ` +
+          `"${kind}". Use PawPrintsSensorAdapter/CivetPressureSensorAdapter/OpossumVibrateAdapter ` +
+          'directly for that device kind instead of routing it through this facade.',
+      );
+    }
     return name.startsWith(V2_DEVICE_NAME_PREFIX)
       ? new CoyoteV2ProtocolAdapter()
       : new CoyoteV3ProtocolAdapter();

@@ -27,8 +27,9 @@ class FakeProtocol {
     this.executed.push(command);
     return { ok: true };
   }
+  public emergencyStopCount = 0;
   async emergencyStop(): Promise<void> {
-    return;
+    this.emergencyStopCount += 1;
   }
   async setLimits(_a: number, _b: number): Promise<void> {
     return;
@@ -686,5 +687,10 @@ describe('TauriBlecDeviceClient auto-reconnect', () => {
 
     expect(reconnectStates).toEqual(['reconnecting']);
     expect(api.disconnect).toHaveBeenCalled();
+    // forceTeardown() must zero the device before severing the link — same
+    // safety requirement as a normal disconnect() — otherwise a user who
+    // disconnects mid-reconnect could leave the device running at its last
+    // commanded strength with no way to remotely stop it.
+    expect(protocol.emergencyStopCount).toBeGreaterThan(0);
   });
 });

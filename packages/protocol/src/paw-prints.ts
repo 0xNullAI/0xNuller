@@ -21,6 +21,7 @@ import {
   V3_WRITE_CHAR,
 } from './constants.js';
 import type { WebBluetoothConnectionContext, WebBluetoothSensorAdapter } from './base.js';
+import { performV3FamilyConnectHandshake, writeCharacteristicValue } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export type PawPrintsReading =
@@ -88,6 +89,8 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
       this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
       await this.notifyChar.startNotifications();
       this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
+
+      await performV3FamilyConnectHandshake(context.server, this.writeChar);
 
       // Battery read is best-effort: some firmware/pairing states expose the
       // service but reject the read, so a failure here shouldn't fail the
@@ -200,37 +203,7 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
     if (!this.writeChar) {
       throw new Error('Paw-Prints sensor is not connected');
     }
-    await this.writeCharacteristicValue(this.writeChar, bytes);
-  }
-
-  /**
-   * Same fallback chain as `BaseCoyoteProtocolAdapter.writeCharacteristicValue`
-   * in base.ts, reimplemented locally since this class doesn't extend that
-   * (protected) helper — this adapter is a standalone
-   * `WebBluetoothSensorAdapter`, not a `BaseCoyoteProtocolAdapter`.
-   */
-  private async writeCharacteristicValue(
-    characteristic: BluetoothRemoteGATTCharacteristicLike,
-    value: Uint8Array,
-  ): Promise<void> {
-    const attempts = [
-      characteristic.writeValueWithoutResponse?.bind(characteristic),
-      characteristic.writeValueWithResponse?.bind(characteristic),
-      characteristic.writeValue?.bind(characteristic),
-    ];
-
-    let lastError: unknown = null;
-    for (const attempt of attempts) {
-      if (!attempt) continue;
-      try {
-        await attempt(value);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error('Bluetooth characteristic is not writable');
+    await writeCharacteristicValue(this.writeChar, bytes);
   }
 
   private readonly handleNotification = (event: Event): void => {

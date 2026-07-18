@@ -345,6 +345,15 @@ export class TauriBlecDeviceClient implements DeviceClient {
   }
 
   private async forceTeardown(): Promise<void> {
+    // Reached when disconnect() was called while a reconnect attempt was
+    // actively re-establishing the link, and that attempt then succeeded —
+    // the freshly-reconnected device needs the exact same "zero it before
+    // tearing down BLE" treatment disconnect()'s own `if (this.connected)`
+    // branch gives a normal disconnect (V3 is state-retentive across BLE
+    // drops), otherwise a user who disconnected mid-reconnect could be left
+    // with the device still running at its last commanded strength and no
+    // way to remotely stop it until reconnecting again.
+    await this.options.protocol.emergencyStop().catch(() => undefined);
     this.connected = false;
     this.lastAddress = null;
     this.fireDisconnect?.();

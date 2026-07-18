@@ -595,4 +595,26 @@ describe('CoyoteProtocolAdapter facade', () => {
       false,
     );
   });
+
+  it('rejects a non-Coyote device instead of silently routing it to the V3 adapter', async () => {
+    // Paw-prints/civet-edging/opossum share Coyote V3's exact GATT skeleton,
+    // so without this check a device of one of those kinds would silently
+    // get CoyoteV3ProtocolAdapter and receive Coyote-shaped B0/BF writes.
+    const facade = new CoyoteProtocolAdapter();
+
+    await expect(
+      facade.onConnected({
+        device: { name: '47L120300', id: 'paw-prints-device' } as unknown as EventTarget & {
+          id?: string;
+          name?: string;
+        },
+        server: {
+          connected: true,
+          async getPrimaryService() {
+            throw new Error('should never be reached — createProtocol should throw first');
+          },
+        },
+      }),
+    ).rejects.toThrow(/paw-prints/);
+  });
 });

@@ -7,6 +7,7 @@ import {
   type SensorState,
   type WaveFrame,
 } from '@dg-kit/core';
+import { writeCharacteristicValue as writeCharacteristicValueShared } from './gatt-utils.js';
 import type {
   BluetoothDeviceLike,
   BluetoothRemoteGATTCharacteristicLike,
@@ -416,30 +417,7 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
     value: ArrayBufferView | ArrayBuffer,
     options: { preferResponse?: boolean } = {},
   ): Promise<void> {
-    const attempts = options.preferResponse
-      ? [
-          characteristic.writeValueWithResponse?.bind(characteristic),
-          characteristic.writeValueWithoutResponse?.bind(characteristic),
-          characteristic.writeValue?.bind(characteristic),
-        ]
-      : [
-          characteristic.writeValueWithoutResponse?.bind(characteristic),
-          characteristic.writeValueWithResponse?.bind(characteristic),
-          characteristic.writeValue?.bind(characteristic),
-        ];
-
-    let lastError: unknown = null;
-    for (const attempt of attempts) {
-      if (!attempt) continue;
-      try {
-        await attempt(value);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error('Bluetooth characteristic is not writable');
+    return writeCharacteristicValueShared(characteristic, value, options);
   }
 
   protected emit(): void {

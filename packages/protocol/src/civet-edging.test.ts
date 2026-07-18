@@ -238,6 +238,31 @@ describe('CivetPressureSensorAdapter command bytes', () => {
     const adapter = new CivetPressureSensorAdapter();
     await expect(adapter.calibrateZero()).rejects.toThrow('设备未连接');
   });
+
+  it('setIndicatorColor preserves the current streaming state instead of forcing it on or off', async () => {
+    const writes: number[][] = [];
+    const writeChar = new MockCharacteristic((value) => {
+      writes.push(Array.from(value));
+    });
+    const notifyChar = new MockCharacteristic();
+    const adapter = new CivetPressureSensorAdapter();
+
+    await adapter.onConnected({
+      device: createMockDevice(),
+      server: createMockServer({ writeChar, notifyChar }),
+    });
+    // onConnected() auto-starts streaming — setIndicatorColor while still
+    // streaming must not stop it, unlike calling stopPressureReporting(color)
+    // would.
+    writes.length = 0;
+    await adapter.setIndicatorColor(0x03);
+    expect(writes[0]).toEqual([0x50, 0x03, 0xd0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+    await adapter.stopPressureReporting();
+    writes.length = 0;
+    await adapter.setIndicatorColor(0x05);
+    expect(writes[0]).toEqual([0x50, 0x05, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
 });
 
 describe('CivetPressureSensorAdapter connect/disconnect round trip', () => {
@@ -263,9 +288,11 @@ describe('CivetPressureSensorAdapter connect/disconnect round trip', () => {
     expect(state.address).toBe('civet-addr');
     expect(state.battery).toBe(88);
 
-    // Auto-start-on-connect: exactly one 0x50/start packet was written.
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.slice(0, 3)).toEqual([0x50, 0x00, 0xd0]);
+    // onConnected() now also sends the shared connect-time handshake's init
+    // packet before civet-edging's own auto-start write.
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.slice(0, 2)).toEqual([0x50, 0x02]);
+    expect(writes[1]?.slice(0, 3)).toEqual([0x50, 0x00, 0xd0]);
 
     expect(states.length).toBeGreaterThan(0);
     expect(states[states.length - 1]?.connected).toBe(true);
