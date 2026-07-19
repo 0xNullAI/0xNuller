@@ -1,33 +1,15 @@
 import type { DeviceClient, DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
 import type { WebBluetoothProtocolAdapter } from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
-import { resolvePluginBlec, type BleDeviceInfo } from './plugin-blec.js';
+import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.js';
+import { resolvePluginBlec } from './plugin-blec.js';
+import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
 
-export interface DiscoveredDevice {
-  address: string;
-  name: string;
-  rssi: number;
-  isConnected: boolean;
-  services: string[];
-}
+export type { DeviceSelectionController, DiscoveredDevice } from './scan.js';
 
 export type ReconnectState = 'reconnecting' | 'reconnected' | 'failed';
 
-/**
- * Live controller passed to `selectDevice`. The picker UI subscribes for
- * incremental device updates while the scan is still in progress.
- */
-export interface DeviceSelectionController {
-  /** Snapshot of devices already discovered when the picker opens. */
-  initial: DiscoveredDevice[];
-  /**
-   * Receive each subsequent batch of discovered devices. Returns an
-   * unsubscribe function the picker should call before resolving.
-   */
-  subscribe(handler: (devices: DiscoveredDevice[]) => void): () => void;
-}
-
-export interface TauriBlecDeviceClientOptions {
+export interface TauriBlecDeviceClientOptions extends GattReadyRetryOptions {
   protocol: WebBluetoothProtocolAdapter;
   /**
    * Called immediately after scan starts. The host UI opens the device picker
@@ -43,29 +25,6 @@ export interface TauriBlecDeviceClientOptions {
   namePrefixes?: string[];
   /** Scan window in milliseconds. Defaults to 8000. */
   scanDurationMs?: number;
-  /**
-   * Grace period after `plugin-blec.connect()` resolves, before the first
-   * `protocol.onConnected()` attempt. Android's `BluetoothGatt` service
-   * discovery is async and may not be visible to plugin-blec the instant
-   * `connect()` returns; the first `send`/`subscribe` then fails with
-   * "No services matching UUID". Defaults to 300ms.
-   */
-  gattReadyInitialDelayMs?: number;
-  /**
-   * Total budget for retrying `protocol.onConnected()` when it fails with
-   * a service/characteristic-not-found error. Defaults to 3000ms.
-   */
-  gattReadyTimeoutMs?: number;
-  /** Delay between retry attempts. Defaults to 250ms. */
-  gattReadyIntervalMs?: number;
-  /**
-   * Substrings (case-insensitive) that identify a transient
-   * GATT-not-ready error from plugin-blec / btleplug. Override only if
-   * the underlying transport surfaces a non-default message. Defaults
-   * cover known wording: "no services matching", "service not found",
-   * "characteristic not found", "no such characteristic", "not connected".
-   */
-  gattReadyErrorPatterns?: string[];
   /**
    * When true, an unexpected disconnect signalled by plugin-blec (device
    * out of range, OS killed the link, etc.) triggers a silent reconnect
@@ -88,27 +47,29 @@ export interface TauriBlecDeviceClientOptions {
   onReconnectStateChange?: (state: ReconnectState) => void;
 }
 
-const DEFAULT_GATT_READY_INITIAL_DELAY_MS = 300;
-const DEFAULT_GATT_READY_TIMEOUT_MS = 3000;
-const DEFAULT_GATT_READY_INTERVAL_MS = 250;
-const DEFAULT_GATT_READY_ERROR_PATTERNS = [
-  'no services matching',
-  'service not found',
-  'no such service',
-  'characteristic not found',
-  'no such characteristic',
-  'not connected',
-];
 const DEFAULT_RECONNECT_ATTEMPTS = 3;
 const DEFAULT_RECONNECT_BACKOFF_MS = [500, 1500, 4000];
 
+/**
+ * A `DeviceClient` scoped to ONE Coyote connection, identified by BLE
+ * address once connected. The multi-connection fork this package is pinned
+ * to (`0xNullAI/tauri-plugin-blec-multi`) lets several `TauriBlecDeviceClient`
+ * (and Opossum/sensor client) instances stay connected at the same time —
+ * this class never assumes it's the only connection, so it always passes
+ * its own `address` to plugin-blec instead of relying on the address-less
+ * "sole connected device" overloads (which now throw `AmbiguousDevice` once
+ * a second device connects).
+ */
 export class TauriBlecDeviceClient implements DeviceClient {
   private readonly listeners = new Set<(state: DeviceState) => void>();
   private connected = false;
   private connecting = false;
   private disconnecting = false;
   private fireDisconnect: (() => void) | null = null;
-  /** Address/name of the last successful connection, kept only for auto-reconnect. */
+  /**
+   * Address of the currently-connected device, or (while disconnected) the
+   * last-connected address kept only for auto-reconnect.
+   */
   private lastAddress: string | null = null;
   private lastDeviceName = '';
   private reconnecting = false;
@@ -120,15 +81,21 @@ export class TauriBlecDeviceClient implements DeviceClient {
     });
   }
 
+  /** The BLE address of the currently-connected device, or `null` if disconnected. */
+  get address(): string | null {
+    return this.connected ? this.lastAddress : null;
+  }
+
   async connect(): Promise<void> {
     // Reentrancy guard: double-tap on the connect button must not start
-    // two parallel scans or two plugin-blec.connect() calls. plugin-blec
-    // holds a single active peripheral internally, so concurrent calls
-    // produce undefined behaviour (two device pickers, ghost subscribers,
-    // mismatched onDisconnect callbacks). A reconnect attempt sets
-    // `connecting` for the same reason while it's actually inside
-    // plugin-blec.connect(), so this guard also rejects a manual connect()
-    // that lands mid-attempt instead of racing it.
+    // two parallel scans or two plugin-blec.connect() calls for THIS
+    // client. A reconnect attempt sets `connecting` for the same reason
+    // while it's actually inside plugin-blec.connect(), so this guard also
+    // rejects a manual connect() that lands mid-attempt instead of racing
+    // it. Other `TauriBlecDeviceClient`/aux-client instances connecting to
+    // their own addresses concurrently are unaffected — this guard is
+    // per-instance, not global (plugin-blec itself supports concurrent
+    // connects to different addresses).
     if (this.connected) {
       throw new Error('设备已连接');
     }
@@ -154,62 +121,17 @@ export class TauriBlecDeviceClient implements DeviceClient {
       throw new Error('未授予蓝牙权限');
     }
 
-    const seen = new Map<string, BleDeviceInfo>();
-    const scanDuration = this.options.scanDurationMs ?? 8000;
-    const prefixes = this.options.namePrefixes;
-    const updateListeners = new Set<(devices: DiscoveredDevice[]) => void>();
+    const picked = await scanAndSelectDevice(api, {
+      selectDevice: this.options.selectDevice,
+      namePrefixes: this.options.namePrefixes,
+      scanDurationMs: this.options.scanDurationMs,
+    });
 
-    const toDiscovered = (): DiscoveredDevice[] =>
-      [...seen.values()].map((d) => ({
-        address: d.address,
-        name: d.name,
-        rssi: d.rssi,
-        isConnected: d.isConnected,
-        services: d.services,
-      }));
-
-    // Kick off the scan; handler appends devices and notifies listeners.
-    const scanPromise = api.startScan((devices) => {
-      let changed = false;
-      for (const d of devices) {
-        if (prefixes && !prefixes.some((p) => d.name.startsWith(p))) continue;
-        const prev = seen.get(d.address);
-        if (!prev || hasMaterialChange(prev, d)) changed = true;
-        seen.set(d.address, d);
-      }
-      if (changed) {
-        const snapshot = toDiscovered();
-        for (const fn of updateListeners) fn(snapshot);
-      }
-    }, scanDuration);
-
-    let address: string | null;
-    try {
-      address = await this.options.selectDevice({
-        get initial() {
-          return toDiscovered();
-        },
-        subscribe(handler) {
-          updateListeners.add(handler);
-          return () => {
-            updateListeners.delete(handler);
-          };
-        },
-      });
-    } finally {
-      // Always stop the scan once the user has chosen / cancelled.
-      await scanPromise.catch(() => undefined);
-      await api.stopScan().catch(() => undefined);
-    }
-
-    if (!address) {
+    if (!picked) {
       throw new Error('用户取消了设备选择');
     }
 
-    const chosen = seen.get(address);
-    const deviceName = chosen?.name ?? '';
-
-    await this.establishConnection(address, deviceName);
+    await this.establishConnection(picked.address, picked.name);
   }
 
   /**
@@ -237,17 +159,19 @@ export class TauriBlecDeviceClient implements DeviceClient {
     this.fireDisconnect = shim.fireDisconnect;
 
     try {
-      await this.runWithGattReadyRetry(() =>
-        this.options.protocol.onConnected({
-          device: shim!.device,
-          server: shim!.server,
-        }),
+      await runWithGattReadyRetry(
+        () =>
+          this.options.protocol.onConnected({
+            device: shim!.device,
+            server: shim!.server,
+          }),
+        this.options,
       );
       this.connected = true;
       this.lastAddress = address;
       this.lastDeviceName = name;
     } catch (error) {
-      await api.disconnect().catch(() => undefined);
+      await api.disconnect(address).catch(() => undefined);
       throw error;
     }
   }
@@ -353,13 +277,14 @@ export class TauriBlecDeviceClient implements DeviceClient {
     // drops), otherwise a user who disconnected mid-reconnect could be left
     // with the device still running at its last commanded strength and no
     // way to remotely stop it until reconnecting again.
+    const address = this.lastAddress;
     await this.options.protocol.emergencyStop().catch(() => undefined);
     this.connected = false;
     this.lastAddress = null;
     this.fireDisconnect?.();
     this.fireDisconnect = null;
     const api = await resolvePluginBlec();
-    await api.disconnect().catch(() => undefined);
+    await api.disconnect(address ?? undefined).catch(() => undefined);
     await this.options.protocol.onDisconnected().catch(() => undefined);
   }
 
@@ -371,46 +296,18 @@ export class TauriBlecDeviceClient implements DeviceClient {
     this.reconnecting = false;
   }
 
-  /**
-   * Drive `protocol.onConnected()` through Android's async GATT discovery.
-   *
-   * plugin-blec's `connect()` resolves before `BluetoothGatt.discoverServices`
-   * is guaranteed visible. The first send/subscribe inside `onConnected()`
-   * then fails with "No services matching UUID". `protocol.onConnected()`
-   * resets its own state on failure, so retrying it is safe.
-   */
-  private async runWithGattReadyRetry(attempt: () => Promise<void>): Promise<void> {
-    const opts = this.options;
-    const initialDelay = opts.gattReadyInitialDelayMs ?? DEFAULT_GATT_READY_INITIAL_DELAY_MS;
-    const totalTimeout = opts.gattReadyTimeoutMs ?? DEFAULT_GATT_READY_TIMEOUT_MS;
-    const interval = opts.gattReadyIntervalMs ?? DEFAULT_GATT_READY_INTERVAL_MS;
-    const patterns = opts.gattReadyErrorPatterns ?? DEFAULT_GATT_READY_ERROR_PATTERNS;
-
-    if (initialDelay > 0) await delay(initialDelay);
-
-    const deadline = Date.now() + Math.max(0, totalTimeout);
-    let lastError: unknown;
-    // First try after the grace delay; if it works, we're done with one pass.
-    while (true) {
-      try {
-        await attempt();
-        return;
-      } catch (error) {
-        lastError = error;
-        if (!isGattNotReadyError(error, patterns)) throw error;
-        if (Date.now() >= deadline) break;
-        await delay(interval);
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('GATT 服务发现超时，请重新连接');
-  }
-
   async disconnect(): Promise<void> {
     // A reconnect attempt may be scheduled or actively in flight even while
     // `connected` is false (it flips true only once establishConnection
     // succeeds) — still run the teardown machinery below so we cancel it.
     const hadReconnectPending = this.reconnecting;
     if (!this.connected && !hadReconnectPending) return;
+
+    // Capture the address before it's forgotten below — plugin-blec's
+    // `disconnect()` needs it explicitly now that other devices may be
+    // connected concurrently (the address-less overload only works when
+    // this is the sole connected device, which is no longer guaranteed).
+    const address = this.lastAddress;
 
     this.disconnecting = true;
     this.cancelReconnect();
@@ -428,7 +325,7 @@ export class TauriBlecDeviceClient implements DeviceClient {
         // across drops).
         await this.options.protocol.emergencyStop().catch(() => undefined);
         const api = await resolvePluginBlec();
-        await api.disconnect().catch(() => undefined);
+        await api.disconnect(address ?? undefined).catch(() => undefined);
         this.connected = false;
         this.fireDisconnect?.();
         this.fireDisconnect = null;
@@ -468,26 +365,4 @@ export class TauriBlecDeviceClient implements DeviceClient {
       this.listeners.delete(listener);
     };
   }
-}
-
-function isGattNotReadyError(error: unknown, patterns: string[]): boolean {
-  const msg =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-  const lower = msg.toLowerCase();
-  return patterns.some((p) => lower.includes(p.toLowerCase()));
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function hasMaterialChange(prev: BleDeviceInfo, next: BleDeviceInfo): boolean {
-  if (prev.rssi !== next.rssi) return true;
-  if (prev.isConnected !== next.isConnected) return true;
-  if (prev.name !== next.name) return true;
-  if (prev.services.length !== next.services.length) return true;
-  for (let i = 0; i < prev.services.length; i += 1) {
-    if (prev.services[i] !== next.services[i]) return true;
-  }
-  return false;
 }

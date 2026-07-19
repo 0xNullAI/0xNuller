@@ -9,13 +9,17 @@ import type { PluginBlecApi } from './plugin-blec.js';
 
 /**
  * Synthesizes BluetoothDevice/Server/Service shapes from plugin-blec's flat API
- * so the Coyote protocol layer receives the same `(device, server)` context it
- * does in a browser.
+ * so protocol adapters (Coyote, and now the sensor/Opossum adapters too)
+ * receive the same `(device, server)` context they do in a browser.
  *
- * plugin-blec keeps a single active device internally; we don't track per-device
- * state here. Disconnection is signalled via the `connect()` `onDisconnect`
- * callback, which fires the `gattserverdisconnected` event on `device` to mirror
- * the Web Bluetooth event model.
+ * One shim per device address. The multi-connection fork this package is
+ * pinned to (`0xNullAI/tauri-plugin-blec-multi`) can hold several devices
+ * connected concurrently, each tracked independently by address — every
+ * plugin-blec call this shim's characteristics make is scoped to
+ * `args.address` so two shims (e.g. a Coyote and an Opossum) never step on
+ * each other. Disconnection is signalled via the `connect()` `onDisconnect`
+ * callback, which fires the `gattserverdisconnected` event on `device` to
+ * mirror the Web Bluetooth event model.
  */
 export function createGattShim(args: {
   address: string;
@@ -35,7 +39,12 @@ export function createGattShim(args: {
     async getPrimaryService(serviceUuid: string): Promise<BluetoothRemoteGATTServiceLike> {
       return {
         async getCharacteristic(characteristicUuid: string) {
-          return new PluginBlecCharacteristic(characteristicUuid, args.api, serviceUuid);
+          return new PluginBlecCharacteristic(
+            characteristicUuid,
+            args.api,
+            serviceUuid,
+            args.address,
+          );
         },
       };
     },
@@ -45,23 +54,17 @@ export function createGattShim(args: {
     // silent no-op — the device falls back to whatever MTU the OS/BLE stack
     // negotiates by default.
     //
-    // `@mnlphlp/plugin-blec@0.8.0` (the version this package is pinned to)
-    // exposes no MTU control at all: no `requestMtu`/`setMtu`/equivalent in its
-    // JS API surface. Faking this method (e.g. resolving with the requested
-    // value without ever touching the real MTU) would be worse than omitting
-    // it — callers would believe the negotiation happened when it silently
-    // didn't.
-    //
-    // plugin-blec 0.12.0 *does* add MTU control (`getMtu(): Promise<number>`
-    // and `setAndroidMtu(mtu: number): Promise<void>`), but its shape doesn't
-    // map directly onto this hook: `setAndroidMtu` must be called *before*
-    // `connect()` (it configures the MTU plugin-blec will request while
-    // establishing the link), whereas `requestMTU` is invoked post-connect as
-    // part of the protocol handshake. Wiring this up for real needs a bump
-    // past the pinned `^0.8.0` range plus a shim-level change to request the
-    // MTU pre-connect and have `requestMTU` here just read back `getMtu()`
-    // (rather than actively renegotiating) — deferred until that dependency
-    // bump happens.
+    // The fork does add per-device MTU control (`getMtu(address?)` and
+    // `setAndroidMtu(mtu)`), but its shape still doesn't map directly onto
+    // this hook: `setAndroidMtu` is global (not per-address) and must be
+    // called *before* `connect()`, whereas `requestMTU` is invoked
+    // post-connect as part of the protocol handshake and is expected to be
+    // per-device. Wiring this up for real needs `TauriBlecDeviceClient` (or
+    // whichever caller owns the pre-connect sequencing) to call
+    // `setAndroidMtu()` ahead of `connect()`, with `requestMTU` here reading
+    // back `getMtu(args.address)` rather than actively renegotiating —
+    // deferred, same as before, now blocked on multi-device MTU semantics
+    // rather than on the dependency bump (which has landed).
   };
 
   let fireDisconnect: () => void = () => undefined;
@@ -78,7 +81,7 @@ export function createGattShim(args: {
       // here to keep parity with the protocol layer's expectations.
       if (!gatt.connected) return;
       fireDisconnect();
-      void args.api.disconnect().catch(() => undefined);
+      void args.api.disconnect(args.address).catch(() => undefined);
     },
   };
 
