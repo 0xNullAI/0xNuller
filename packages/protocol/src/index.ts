@@ -14,6 +14,14 @@ export {
   type WebBluetoothProtocolAdapter,
   type WebBluetoothSensorAdapter,
 } from './base.js';
+export {
+  runWithGattReadyRetry,
+  DEFAULT_GATT_READY_INITIAL_DELAY_MS,
+  DEFAULT_GATT_READY_TIMEOUT_MS,
+  DEFAULT_GATT_READY_INTERVAL_MS,
+  DEFAULT_GATT_READY_ERROR_PATTERNS,
+  type GattReadyRetryOptions,
+} from './gatt-ready.js';
 export { CoyoteV2ProtocolAdapter } from './v2.js';
 export { CoyoteV3ProtocolAdapter } from './v3.js';
 export { CoyoteProtocolAdapter } from './facade.js';
