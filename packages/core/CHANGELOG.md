@@ -1,5 +1,7 @@
 # @dg-kit/core
 
+## 1.5.0
+
 ## 1.4.0
 
 ### Minor Changes
