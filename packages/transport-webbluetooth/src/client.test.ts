@@ -75,6 +75,7 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
       protocol: protocol as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigatorRef: nav as any,
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0 },
     });
 
     await client.connect();
@@ -98,6 +99,7 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
       autoReconnect: true,
       reconnectBackoffMs: [100],
       onReconnectStateChange: (s) => reconnectStates.push(s),
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0 },
     });
 
     await client.connect();
@@ -128,6 +130,7 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
       reconnectAttempts: 2,
       reconnectBackoffMs: [10, 10],
       onReconnectStateChange: (s) => reconnectStates.push(s),
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0 },
     });
 
     // First connect manually (real connect path); restore working connect.
@@ -172,6 +175,7 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
       autoReconnect: true,
       reconnectBackoffMs: [50],
       onReconnectStateChange: (s) => reconnectStates.push(s),
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0 },
     });
 
     await client.connect();
@@ -188,6 +192,47 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
     // 'reconnected' must not be appended after manual disconnect, even if
     // the in-flight gatt.connect resolves later.
     expect(reconnectStates).toEqual(['reconnecting']);
+    expect(protocol.onConnected).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WebBluetoothDeviceClient GATT-ready retry', () => {
+  // Real timers here (not the fake-timer describe block above) — retry
+  // delays are zeroed via gattReadyRetryOptions instead, keeping these
+  // tests fast without interacting with the reconnect suite's fake timers.
+
+  it('retries onConnected when it fails with a transient "no services matching" error', async () => {
+    const { nav, protocol } = setup();
+    protocol.onConnected
+      .mockRejectedValueOnce(new Error('No services matching UUID 0000180c... found in Device'))
+      .mockResolvedValueOnce(undefined);
+
+    const client = new WebBluetoothDeviceClient({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      protocol: protocol as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      navigatorRef: nav as any,
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0, gattReadyIntervalMs: 0 },
+    });
+
+    await client.connect();
+
+    expect(protocol.onConnected).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry and surfaces a non-transient onConnected error immediately', async () => {
+    const { nav, protocol } = setup();
+    protocol.onConnected.mockRejectedValue(new Error('未授予蓝牙权限'));
+
+    const client = new WebBluetoothDeviceClient({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      protocol: protocol as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      navigatorRef: nav as any,
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0, gattReadyIntervalMs: 0 },
+    });
+
+    await expect(client.connect()).rejects.toThrow('未授予蓝牙权限');
     expect(protocol.onConnected).toHaveBeenCalledTimes(1);
   });
 });

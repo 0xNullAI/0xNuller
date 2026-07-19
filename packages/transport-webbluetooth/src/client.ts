@@ -2,8 +2,10 @@ import type { DeviceClient } from '@dg-kit/core';
 import type { DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
 import {
   DG_LAB_REQUEST_DEVICE_OPTIONS,
+  runWithGattReadyRetry,
   type BluetoothDeviceLike,
   type BluetoothRemoteGATTServerLike,
+  type GattReadyRetryOptions,
   type NavigatorBluetoothLike,
   type RequestDeviceOptionsLike,
   type WebBluetoothProtocolAdapter,
@@ -36,6 +38,12 @@ export interface WebBluetoothDeviceClientOptions {
   reconnectBackoffMs?: number[];
   /** Notified when entering/leaving the reconnecting state. */
   onReconnectStateChange?: (state: ReconnectState) => void;
+  /**
+   * Tuning for the GATT-not-ready retry wrapped around the protocol
+   * adapter's `onConnected()` — see `runWithGattReadyRetry`'s doc. Defaults
+   * are fine for normal use; exposed mainly for tests.
+   */
+  gattReadyRetryOptions?: GattReadyRetryOptions;
 }
 
 export class WebBluetoothDeviceClient implements DeviceClient {
@@ -109,7 +117,10 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     }
 
     try {
-      await this.options.protocol.onConnected({ device: nextDevice, server });
+      await runWithGattReadyRetry(
+        () => this.options.protocol.onConnected({ device: nextDevice, server }),
+        this.options.gattReadyRetryOptions ?? {},
+      );
     } catch (error) {
       if (shouldReplacePrevious && isGattConnected(previousDevice)) {
         previousDevice.addEventListener('gattserverdisconnected', this.onDisconnected);
