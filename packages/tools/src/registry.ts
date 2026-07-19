@@ -1,6 +1,7 @@
 import type {
   DeviceCommand,
   DeviceKind,
+  OpossumVibrationPatternName,
   ToolCall,
   ToolDefinition,
   ToolExecutionPlan,
@@ -76,6 +77,24 @@ const channelParameter = {
   type: 'string',
   enum: ['A', 'B'],
   description: '通道 A 或 B',
+} as const;
+
+// `as const satisfies` keeps the zod-facing literal tuple while still
+// erroring here if `@dg-kit/core`'s OpossumVibrationPatternName union ever
+// gains/renames a member this list doesn't know about.
+const OPOSSUM_PATTERN_NAMES = [
+  'constant',
+  'pulse',
+  'wave',
+  'ramp',
+  'heartbeat',
+] as const satisfies readonly OpossumVibrationPatternName[];
+const opossumPatternSchema = z.enum(OPOSSUM_PATTERN_NAMES);
+const opossumPatternParameter = {
+  type: 'string',
+  enum: OPOSSUM_PATTERN_NAMES,
+  description:
+    '振动节奏预设，省略则保持当前节奏（初始默认 constant）。constant 恒定持续；pulse 脉冲（满强度/停止交替）；wave 正弦式渐强渐弱；ramp 锯齿式持续增强后归零重来；heartbeat 双跳心跳节奏。',
 } as const;
 
 const MAX_START_STRENGTH_HINT = 10;
@@ -680,6 +699,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
         '触发：负鼠通道当前停止，需要从零开始时使用。',
         '不用：通道已运行 → 想加强用 vibrate_adjust，想结束用 vibrate_stop。郊狼设备请用 start。',
         `约束：单次启动强度上限 ${maxVibrateStartIntensityHint}（0-200 量程），完成后先描述结果再继续。`,
+        '改变节奏：通道运行中想换节奏，以当前强度重新调用本工具并指定新的 pattern 即可，无需先 stop。',
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -691,6 +711,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
             maximum: maxVibrateStartIntensityHint,
             description: `启动时的初始强度，范围 [0, ${maxVibrateStartIntensityHint}]。`,
           },
+          pattern: opossumPatternParameter,
         },
         required: ['channel', 'intensity'],
       },
@@ -700,12 +721,18 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
         .object({
           channel: channelSchema,
           intensity: z.coerce.number().int().min(0).max(200),
+          pattern: opossumPatternSchema.optional(),
         })
         .parse(args);
 
       return {
         type: 'opossum',
-        command: { type: 'vibrateStart', channel: parsed.channel, intensity: parsed.intensity },
+        command: {
+          type: 'vibrateStart',
+          channel: parsed.channel,
+          intensity: parsed.intensity,
+          ...(parsed.pattern ? { pattern: parsed.pattern } : {}),
+        },
       };
     },
   });

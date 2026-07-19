@@ -122,6 +122,19 @@ describe('PawPrintsSensorAdapter notification parsing', () => {
     expect(readings).toEqual([{ type: 'status', color: 0x06, deviceType: 0x03, battery: 88 }]);
   });
 
+  it('folds a 0x51 status notification battery byte into state (no dedicated battery service exists)', async () => {
+    const { adapter, notifyChar } = await connectWithNotifyChar();
+    expect(adapter.getState().battery).toBe(0);
+
+    const states: ReturnType<PawPrintsSensorAdapter['getState']>[] = [];
+    adapter.onStateChanged((state) => states.push(state));
+
+    notifyChar.notify([0x51, 0x06, 0x03, 88]);
+
+    expect(adapter.getState().battery).toBe(88);
+    expect(states.at(-1)?.battery).toBe(88);
+  });
+
   it('parses a 0x5A trigger notification', async () => {
     const { notifyChar, readings } = await connectWithNotifyChar();
     notifyChar.notify([0x5a, 0x02, 12, 200]);
@@ -214,8 +227,9 @@ describe('PawPrintsSensorAdapter command writes', () => {
     });
 
     // onConnected() now also sends the shared connect-time handshake's init
-    // packet on this same characteristic — clear it here so these tests keep
-    // asserting only the specific command byte layout under test.
+    // packet plus a paw-prints-specific no-trigger-mode 0x50 write on this
+    // same characteristic — clear it here so these tests keep asserting only
+    // the specific command byte layout under test.
     writes.length = 0;
 
     return { adapter, writes };
@@ -227,9 +241,7 @@ describe('PawPrintsSensorAdapter command writes', () => {
     await adapter.configureTrigger(0x0f, 0x02, Uint8Array.of(1, 2, 3));
 
     expect(writes).toHaveLength(1);
-    expect(writes[0]).toEqual([
-      0x50, 0x02, 0x0f, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ]);
+    expect(writes[0]).toEqual([0x50, 0x02, 0x0f, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     expect(writes[0]).toHaveLength(17);
   });
 
@@ -313,6 +325,22 @@ describe('PawPrintsSensorAdapter connect/disconnect round trip', () => {
       battery: 77,
     });
     expect(states.at(-1)).toEqual(adapter.getState());
+  });
+
+  it("writes a 17-byte no-trigger-mode 0x50 packet immediately on connect, per the doc's auto-disconnect warning", async () => {
+    const writes: number[][] = [];
+    const writeChar = new MockCharacteristic(async (value) => {
+      writes.push(Array.from(value));
+    });
+    const notifyChar = new MockCharacteristic();
+    const adapter = new PawPrintsSensorAdapter();
+
+    await adapter.onConnected({
+      device: buildDevice('47L120009', 'paw-prints-9'),
+      server: buildServer({ writeChar, notifyChar, batteryThrows: true }),
+    });
+
+    expect(writes).toContainEqual([0x50, 0x01, 0x00, ...new Array(14).fill(0)]);
   });
 
   it('defaults battery to 0 when the battery service read fails', async () => {

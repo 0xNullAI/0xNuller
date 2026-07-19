@@ -103,6 +103,15 @@ export interface ToolDefinition {
 }
 
 /**
+ * Named vibration-rhythm presets for the Opossum (see `@dg-kit/protocol`'s
+ * `OPOSSUM_VIBRATION_PATTERNS` for the actual envelope data) — named here
+ * rather than in `protocol` so `OpossumCommand` (a `core` type, since
+ * `protocol` depends on `core` and not the reverse) can reference it
+ * without a circular package dependency.
+ */
+export type OpossumVibrationPatternName = 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat';
+
+/**
  * Commands for the Opossum vibrate controller. Separate from `DeviceCommand`
  * because Opossum's intensity model (0-200 direct set, no frequency/waveform
  * concept) doesn't fit the Coyote-shaped `DeviceCommand` union — forcing it
@@ -110,7 +119,13 @@ export interface ToolDefinition {
  * optional everywhere, both worse than a small parallel type.
  */
 export type OpossumCommand =
-  | { type: 'vibrateStart'; channel: Channel; intensity: number }
+  | {
+      type: 'vibrateStart';
+      channel: Channel;
+      intensity: number;
+      /** Rhythm envelope to run at this intensity. Omitted = leave whichever pattern is already set (defaults to 'constant' on connect). */
+      pattern?: OpossumVibrationPatternName;
+    }
   | { type: 'vibrateStop'; channel?: Channel }
   | { type: 'vibrateAdjust'; channel: Channel; delta: number };
 

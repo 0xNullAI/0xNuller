@@ -176,6 +176,14 @@ export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     }
   }
 
+  // NOTE (unverified, do not "fix" without a real V2 device): the V3 doc's
+  // own migration note says "与 V2 协议不同的是，数据无需进行大小端转换"
+  // ("unlike V2, this data needs no endian conversion"), implying V2's
+  // 3-byte packed values are expected little-endian on the wire. Both
+  // encoders below emit big-endian (most-significant byte first). This is
+  // long-standing, presumably-working behavior with no V2 hardware
+  // available this session to confirm either reading against — flagged
+  // here rather than changed.
   private encodeV2Strength(a: number, b: number): Uint8Array {
     const valueA = Math.round((this.clamp(a, 0, 200) * 2047) / 200);
     const valueB = Math.round((this.clamp(b, 0, 200) * 2047) / 200);

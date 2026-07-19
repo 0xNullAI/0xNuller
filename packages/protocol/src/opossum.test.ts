@@ -6,7 +6,11 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
-import { createEmptyOpossumState, OpossumVibrateAdapter } from './opossum.js';
+import {
+  createEmptyOpossumState,
+  OPOSSUM_VIBRATION_PATTERNS,
+  OpossumVibrateAdapter,
+} from './opossum.js';
 
 // Minimal duplicate of protocol.test.ts's MockCharacteristic — kept local so
 // this test file doesn't import across test files.
@@ -135,17 +139,21 @@ describe('createEmptyOpossumState', () => {
 
 describe('OpossumVibrateAdapter packet builders', () => {
   it('builds 0xB3 direct-intensity packets matching the doc worked examples', async () => {
+    // setIntensity() also syncs the B0 tick loop and writes a B2
+    // display-sync packet after the B3 write, so the B3 packet itself is no
+    // longer necessarily the last write — filter for it specifically.
     const adapter = new OpossumVibrateAdapter();
     const { writes } = await connectAdapter(adapter);
+    const b3Writes = () => writes.filter((w) => w[0] === 0xb3);
 
     await adapter.setIntensity(160, 'unchanged');
-    expect(writes.at(-1)).toEqual([0xb3, 0xa0, 0xff]);
+    expect(b3Writes().at(-1)).toEqual([0xb3, 0xa0, 0xff]);
 
     await adapter.setIntensity('unchanged', 200);
-    expect(writes.at(-1)).toEqual([0xb3, 0xff, 0xc8]);
+    expect(b3Writes().at(-1)).toEqual([0xb3, 0xff, 0xc8]);
 
     await adapter.setIntensity(10, 20);
-    expect(writes.at(-1)).toEqual([0xb3, 0x0a, 0x14]);
+    expect(b3Writes().at(-1)).toEqual([0xb3, 0x0a, 0x14]);
   });
 
   it('clamps out-of-range 0xB3 intensities to 0-200', async () => {
@@ -153,7 +161,7 @@ describe('OpossumVibrateAdapter packet builders', () => {
     const { writes } = await connectAdapter(adapter);
 
     await adapter.setIntensity(999, -5);
-    expect(writes.at(-1)).toEqual([0xb3, 200, 0]);
+    expect(writes.filter((w) => w[0] === 0xb3).at(-1)).toEqual([0xb3, 200, 0]);
   });
 
   it('optimistically updates local state for numeric channels only', async () => {
@@ -252,13 +260,97 @@ describe('OpossumVibrateAdapter packet builders', () => {
   });
 
   it('emergencyStop drives both channels to zero and swallows write failures', async () => {
+    // onConnected() itself now writes a button-reporting-enable 0x50 packet,
+    // so the mock must let that connect-time write through and only start
+    // failing once the test is ready to exercise emergencyStop's own
+    // failure-swallowing behavior.
+    let shouldFail = false;
     const failingWriteChar = new MockCharacteristic(() => {
-      throw new Error('gatt write failed');
+      if (shouldFail) throw new Error('gatt write failed');
     });
     const adapter = new OpossumVibrateAdapter();
     await connectAdapter(adapter, { writeChar: failingWriteChar });
 
+    shouldFail = true;
     await expect(adapter.emergencyStop()).resolves.toBeUndefined();
+  });
+});
+
+describe('OpossumVibrateAdapter B0 tick loop and vibration patterns', () => {
+  it('streams a B0 frame at full intensity using the default constant pattern', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+
+    await adapter.setIntensity(200, 'unchanged');
+    writes.length = 0;
+
+    // Reach past the public API to fire one tick synchronously rather than
+    // waiting on the real ~100ms Worker/setInterval loop, mirroring how
+    // protocol.test.ts drives CoyoteV3ProtocolAdapter's onTick() directly.
+    const adapterInternal = adapter as unknown as { performTick(): Promise<void> };
+    await adapterInternal.performTick();
+
+    const packet = writes.at(-1);
+    expect(packet?.[0]).toBe(0xb0);
+    expect(packet?.slice(8, 12)).toEqual([100, 100, 100, 100]);
+    expect(packet?.slice(16, 20)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('writes one final all-zero B0 frame and does not keep ticking once both channels are back at zero', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+
+    await adapter.setIntensity(200, 200);
+    writes.length = 0;
+
+    await adapter.setIntensity(0, 0);
+
+    const b0Writes = writes.filter((w) => w[0] === 0xb0);
+    expect(b0Writes).toHaveLength(1);
+    expect(b0Writes[0]).toEqual([0xb0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it('setVibrationPattern switches the tick envelope, restarting the phase for an already-running channel', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+    const adapterInternal = adapter as unknown as { performTick(): Promise<void> };
+
+    await adapter.setIntensity(200, 'unchanged');
+    adapter.setVibrationPattern('A', OPOSSUM_VIBRATION_PATTERNS.pulse);
+    writes.length = 0;
+
+    // pulse = 20×100 followed by 20×0; each tick consumes 4 samples, so 5
+    // ticks (20 samples) exhaust the "on" half right at the boundary and
+    // the 6th tick's first sample is the first "off" element.
+    for (let i = 0; i < 5; i++) {
+      await adapterInternal.performTick();
+    }
+    expect(writes.at(-1)?.slice(8, 12)).toEqual([100, 100, 100, 100]);
+
+    await adapterInternal.performTick();
+    expect(writes.at(-1)?.slice(8, 12)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('onConnected writes a 0x50 button-reporting-enable packet so D0 notifications start arriving', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+
+    expect(writes).toContainEqual([0x50, 0x01, 0x01]);
+  });
+
+  it('writes a B2 display-sync packet after an incoming 0xB3 notification', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes, notifyChar } = await connectAdapter(adapter);
+    writes.length = 0;
+
+    notifyChar.emitNotification([0xb3, 42, 99]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const b2Writes = writes.filter((w) => w[0] === 0xb2);
+    expect(b2Writes.length).toBeGreaterThan(0);
+    expect(b2Writes.at(-1)?.[22]).toBe(42);
+    expect(b2Writes.at(-1)?.[23]).toBe(99);
   });
 });
 

@@ -12,7 +12,10 @@ import {
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
 } from './constants.js';
-import type { BluetoothRemoteGATTCharacteristicLike, BluetoothRemoteGATTServerLike } from './types.js';
+import type {
+  BluetoothRemoteGATTCharacteristicLike,
+  BluetoothRemoteGATTServerLike,
+} from './types.js';
 
 /**
  * Shared GATT write with a fallback chain across the three write methods a
@@ -117,6 +120,18 @@ export function clampIndicatorColor(color: number): number {
   const value = Number(color);
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(7, Math.round(value)));
+}
+
+/**
+ * Generic clamp-to-integer-range, non-finite input falling back to `min`.
+ * Shared by `BaseCoyoteProtocolAdapter` and `OpossumVibrateAdapter` — both
+ * clamp raw strength/waveform bytes the identical way before they reach the
+ * wire.
+ */
+export function clampNumber(value: number, min: number, max: number): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, Math.round(number)));
 }
 
 export interface SensorGattConnection {
