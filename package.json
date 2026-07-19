@@ -35,10 +35,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@dg-kit/core": "file:/Users/chengaoshen/Downloads/Project/DG/DG-Kit/packages/core",
-    "@dg-kit/protocol": "file:/Users/chengaoshen/Downloads/Project/DG/DG-Kit/packages/protocol",
-    "@dg-kit/tools": "file:/Users/chengaoshen/Downloads/Project/DG/DG-Kit/packages/tools",
-    "@dg-kit/waveforms": "file:/Users/chengaoshen/Downloads/Project/DG/DG-Kit/packages/waveforms",
+    "@dg-kit/core": "^1.4.0",
+    "@dg-kit/protocol": "^1.4.0",
+    "@dg-kit/tools": "^1.4.0",
+    "@dg-kit/waveforms": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@stoprocent/noble": "^2.3.0",
     "fflate": "^0.8.2",
