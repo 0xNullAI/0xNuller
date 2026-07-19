@@ -95,6 +95,16 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
         battery: connection.battery,
       };
       this.emitState();
+
+      // The doc requires this write immediately after connecting ("建议先设置
+      // 无任何触发模式") — without it the device may proactively drop the BLE
+      // connection on its own. Deliberately not best-effort like the V3
+      // handshake steps: if this fails, the connection genuinely isn't in
+      // the state the device requires, so surfacing the failure (rolling
+      // back via the catch block below, like any other step here) is more
+      // honest than reporting a successful connection the device is about
+      // to drop anyway.
+      await this.configureTrigger(0x00, 0x01);
     } catch (error) {
       await this.resetConnection(false);
       throw error;
@@ -202,6 +212,15 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
 
     const reading = this.parseReading(value);
     if (!reading) return;
+
+    // The device has no dedicated battery service (0x180A read at connect
+    // time is best-effort and often unavailable) — 0x51 status messages are
+    // the actual ongoing battery source, so fold them into state here or the
+    // UI's battery reading stays frozen at whatever connect-time guessed.
+    if (reading.type === 'status') {
+      this.state = { ...this.state, battery: reading.battery };
+      this.emitState();
+    }
 
     for (const listener of this.readingListeners) {
       listener(reading);

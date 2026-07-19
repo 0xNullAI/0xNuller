@@ -42,7 +42,10 @@ export const V3_LEGACY_SERVICE = '0000ff0a-0000-1000-8000-00805f9b34fb';
 export const V3_LEGACY_NOTIFY_CHAR = '0000ff00-0000-1000-8000-00805f9b34fb';
 export const V3_NORDIC_OTA_SERVICE = 'f000ffc0-0451-4000-b000-000000000000';
 export const V3_NORDIC_OTA_CHAR = 'f000ffc2-0451-4000-b000-000000000000';
-export const V3_HANDSHAKE_MTU = 140;
+// The opossum doc recommends 144 specifically (vs. the 140 this library
+// previously used); harmless to apply to the whole 47L12x family since
+// requestMTU is a best-effort negotiation, not a hard requirement.
+export const V3_HANDSHAKE_MTU = 144;
 
 export const COYOTE_REQUEST_DEVICE_OPTIONS: RequestDeviceOptionsLike = {
   filters: [
@@ -74,7 +77,12 @@ export const DG_LAB_REQUEST_DEVICE_OPTIONS: RequestDeviceOptionsLike = {
     { namePrefix: OPOSSUM_DEVICE_NAME_PREFIX },
     { namePrefix: V2_DEVICE_NAME_PREFIX },
   ],
-  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE, V2_PRIMARY_SERVICE, V2_BATTERY_SERVICE],
+  optionalServices: [
+    V3_PRIMARY_SERVICE,
+    V3_BATTERY_SERVICE,
+    V2_PRIMARY_SERVICE,
+    V2_BATTERY_SERVICE,
+  ],
 };
 
 /**

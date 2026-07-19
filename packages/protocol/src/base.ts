@@ -7,12 +7,17 @@ import {
   type SensorState,
   type WaveFrame,
 } from '@dg-kit/core';
-import { writeCharacteristicValue as writeCharacteristicValueShared } from './gatt-utils.js';
+import {
+  clampNumber,
+  writeCharacteristicValue as writeCharacteristicValueShared,
+} from './gatt-utils.js';
+import { ProtocolTickLoop } from './tick-loop.js';
 import type {
   BluetoothDeviceLike,
   BluetoothRemoteGATTCharacteristicLike,
   BluetoothRemoteGATTServerLike,
 } from './types.js';
+import { WaveCursor, type WaveCursorState } from './wave-cursor.js';
 
 export type StateListener = (state: DeviceState) => void;
 
@@ -88,9 +93,11 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
   protected state: DeviceState = createEmptyDeviceState();
   protected batteryChar: BluetoothRemoteGATTCharacteristicLike | null = null;
 
-  private tickWorker: Worker | null = null;
-  private tickInterval: ReturnType<typeof setInterval> | null = null;
-  private tickInFlight = false;
+  private readonly tickLoop = new ProtocolTickLoop();
+  private readonly waveCursor = new WaveCursor<WaveFrame, WaveStep>((frame) => ({
+    freq: this.clamp(frame[0], SILENT_WAVE_STEP.freq, 240),
+    int: this.clamp(frame[1], 0, 100),
+  }));
 
   protected tickPaused = false;
   protected suppressStaleStopStrengthNotifications = false;
@@ -300,65 +307,29 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
   }
 
   protected async onTick(): Promise<void> {
-    if (this.tickPaused || this.tickInFlight || !this.state.connected) {
+    // Reentrancy (never overlap two in-flight ticks) is handled by
+    // `this.tickLoop` itself; this only needs the adapter-specific
+    // pause/connected gate.
+    if (this.tickPaused || !this.state.connected) {
       return;
     }
 
-    this.tickInFlight = true;
     try {
-      if (this.tickPaused || !this.state.connected) {
-        return;
-      }
-
       await this.performTick();
       if (!this.tickPaused) {
         this.emit();
       }
     } catch {
       // GATT disconnected mid-tick; suppress and let disconnect handler clean up.
-    } finally {
-      this.tickInFlight = false;
     }
   }
 
   protected async waitForTickIdle(): Promise<void> {
-    while (this.tickInFlight) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+    await this.tickLoop.waitForIdle();
   }
 
   protected advanceWaveStep(channel: Channel): WaveStep | null {
-    const current = this.waveState[channel];
-    if (!current.active || !current.frames || current.frames.length === 0) {
-      return null;
-    }
-
-    const length = current.frames.length;
-    if (current.index >= length) {
-      if (current.loop) {
-        current.index = 0;
-      } else {
-        current.active = false;
-        return null;
-      }
-    }
-
-    const frame = current.frames[current.index];
-    if (!frame) {
-      current.active = false;
-      return null;
-    }
-
-    current.index += 1;
-    if (current.index >= length && !current.loop) {
-      current.active = false;
-    }
-
-    const [rawFreq, rawInt] = frame;
-    return {
-      freq: this.clamp(rawFreq, SILENT_WAVE_STEP.freq, 240),
-      int: this.clamp(rawInt, 0, 100),
-    };
+    return this.waveCursor.advanceStep(this.waveState[channel] as WaveCursorState<WaveFrame>);
   }
 
   protected advanceWavePacket(channel: Channel): { freq: Quad; int: Quad } {
@@ -384,9 +355,7 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
   }
 
   protected clamp(value: number, min: number, max: number): number {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return min;
-    return Math.max(min, Math.min(max, Math.round(number)));
+    return clampNumber(value, min, max);
   }
 
   protected toInt(value: unknown, fallback = 0): number {
@@ -428,41 +397,11 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
   }
 
   private startTickLoop(): void {
-    if (this.tickWorker || this.tickInterval) {
-      return;
-    }
-
-    try {
-      this.tickWorker = this.createTickWorker();
-      this.tickWorker.onmessage = () => {
-        void this.onTick();
-      };
-      this.tickWorker.postMessage('start');
-    } catch {
-      this.tickInterval = setInterval(() => {
-        void this.onTick();
-      }, 100);
-    }
+    this.tickLoop.start(() => this.onTick());
   }
 
   private stopTickLoop(): void {
-    if (this.tickWorker) {
-      this.tickWorker.postMessage('stop');
-      this.tickWorker.terminate();
-      this.tickWorker = null;
-    }
-
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
-    }
-  }
-
-  private createTickWorker(): Worker {
-    const code =
-      'let timer;onmessage=(event)=>{if(event.data==="start"){if(timer)return;timer=setInterval(()=>postMessage(1),100);}else{clearInterval(timer);timer=null;}};';
-    const blob = new Blob([code], { type: 'application/javascript' });
-    return new Worker(URL.createObjectURL(blob));
+    this.tickLoop.stop();
   }
 
   protected abstract disconnectProtocol(): Promise<void>;

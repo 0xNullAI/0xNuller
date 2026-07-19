@@ -20,25 +20,33 @@
  * advertised BLE name is assumed to be just `47L127000`
  * (`OPOSSUM_DEVICE_NAME_PREFIX`), not literally starting with "Opossum".
  *
- * Android side note from the doc: MTU should be negotiated up to 144 for
- * this device family. That's a transport-layer concern (the caller's BLE
- * connect step), out of scope here — this file only builds/parses packets.
+ * ## Why intensity alone never made the motor spin (fixed here)
+ *
+ * The doc's B3 command only sets a *displayed* "channel strength" (0-200,
+ * same scale as Coyote's strength) — the actual motor drive comes from B0,
+ * a 20-byte packet carrying 4×25ms amplitude samples (0-100) per channel
+ * that **must be re-sent every 100ms** to keep vibrating; the moment the
+ * stream stops, so does the motor. `setIntensity`/`vibrate_start` used to
+ * write B3 once and never touch B0 at all — the device updated its
+ * strength *state* but the motor never actually received a waveform to
+ * play. This adapter now drives an internal 100ms `ProtocolTickLoop`
+ * (started/stopped by `setIntensity`/`adjustIntensity`/`emergencyStop`
+ * whenever either channel's intensity crosses 0) that streams `writeWaveformFrame()`
+ * itself — `vibrate_start`'s external contract (fire-and-forget, no caller
+ * tick loop) is unchanged, it just actually works now.
  */
-import type { Channel } from '@dg-kit/core';
+import type { Channel, OpossumVibrationPatternName } from '@dg-kit/core';
 import type { WebBluetoothConnectionContext } from './base.js';
 import {
-  V3_BATTERY_CHAR,
-  V3_BATTERY_SERVICE,
-  V3_NOTIFY_CHAR,
-  V3_PRIMARY_SERVICE,
-  V3_WRITE_CHAR,
-} from './constants.js';
-import {
   clampIndicatorColor,
-  performV3FamilyConnectHandshake,
+  clampNumber,
+  connectSensorGatt,
+  disconnectSensorGatt,
   writeCharacteristicValue,
 } from './gatt-utils.js';
+import { ProtocolTickLoop } from './tick-loop.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
+import { WaveCursor, type WaveCursorState, createEmptyWaveCursorState } from './wave-cursor.js';
 
 export interface OpossumState {
   connected: boolean;
@@ -86,6 +94,33 @@ const BUTTON_BITS: ReadonlyArray<readonly [OpossumButton, number]> = [
   ['D', 15],
 ];
 
+/**
+ * Named vibration-rhythm envelopes, each element a 0-100 amplitude sample
+ * covering 25ms (so a 40-element pattern spans one second), looped forever
+ * while a channel is running. Each B0 tick's actual byte is this envelope
+ * value scaled by the channel's current intensity (0-200 → 0-100 ceiling),
+ * so `pattern` (rhythm/shape) and `intensity` (how strong) compose
+ * independently — switching pattern doesn't change perceived peak strength.
+ * Kept as named presets rather than letting the LLM submit an arbitrary
+ * array: an LLM-generated envelope has no guardrail against e.g. a rapid
+ * 0↔100 alternation that reads as "intense" in the abstract but is
+ * unpleasant/startling on real skin.
+ */
+export const OPOSSUM_VIBRATION_PATTERNS: Record<OpossumVibrationPatternName, readonly number[]> = {
+  constant: [100],
+  pulse: [...Array(20).fill(100), ...Array(20).fill(0)],
+  wave: Array.from({ length: 40 }, (_, i) =>
+    Math.round(50 + 50 * Math.sin((i / 40) * 2 * Math.PI)),
+  ),
+  ramp: Array.from({ length: 40 }, (_, i) => Math.round(((i + 1) / 40) * 100)),
+  heartbeat: [
+    ...Array(6).fill(100),
+    ...Array(6).fill(0),
+    ...Array(6).fill(80),
+    ...Array(30).fill(0),
+  ],
+};
+
 type OpossumStateListener = (state: OpossumState) => void;
 type OpossumButtonListener = (event: OpossumButtonEvent) => void;
 
@@ -93,42 +128,47 @@ export class OpossumVibrateAdapter {
   private state: OpossumState = createEmptyOpossumState();
   private writeChar: BluetoothRemoteGATTCharacteristicLike | null = null;
   private notifyChar: BluetoothRemoteGATTCharacteristicLike | null = null;
-  private batteryChar: BluetoothRemoteGATTCharacteristicLike | null = null;
 
   private readonly stateListeners = new Set<OpossumStateListener>();
   private readonly buttonListeners = new Set<OpossumButtonListener>();
 
+  private readonly tickLoop = new ProtocolTickLoop();
+  private readonly patternCursor = new WaveCursor<number, number>((frame) =>
+    clampNumber(frame, 0, 100),
+  );
+  private readonly patterns: Record<Channel, readonly number[]> = {
+    A: OPOSSUM_VIBRATION_PATTERNS.constant,
+    B: OPOSSUM_VIBRATION_PATTERNS.constant,
+  };
+  private readonly patternState: Record<Channel, WaveCursorState<number>> = {
+    A: createEmptyWaveCursorState<number>(),
+    B: createEmptyWaveCursorState<number>(),
+  };
+
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     try {
-      const primaryService = await context.server.getPrimaryService(V3_PRIMARY_SERVICE);
-      this.writeChar = await primaryService.getCharacteristic(V3_WRITE_CHAR);
-      this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
-      await this.notifyChar.startNotifications();
-      this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
-
-      await performV3FamilyConnectHandshake(context.server, this.writeChar);
-
-      let battery = 0;
-      try {
-        const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
-        this.batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
-        const value = await this.batteryChar.readValue();
-        battery = value.getUint8(0);
-      } catch {
-        // Best-effort: some units don't expose (or fail to read) battery.
-        this.batteryChar = null;
-        battery = 0;
-      }
+      const connection = await connectSensorGatt(context, this.handleNotification);
+      this.writeChar = connection.writeChar;
+      this.notifyChar = connection.notifyChar;
 
       this.state = {
         connected: true,
-        deviceName: context.device.name ?? '',
-        address: context.device.id ?? '',
-        battery,
+        deviceName: connection.deviceName,
+        address: connection.address,
+        battery: connection.battery,
         intensityA: 0,
         intensityB: 0,
       };
+      this.patterns.A = OPOSSUM_VIBRATION_PATTERNS.constant;
+      this.patterns.B = OPOSSUM_VIBRATION_PATTERNS.constant;
+      this.patternState.A = createEmptyWaveCursorState<number>();
+      this.patternState.B = createEmptyWaveCursorState<number>();
       this.emitState();
+
+      // Connect-time handshake writes an LED-color+button-reporting packet
+      // that defaults button reporting OFF — without this, D0 (button)
+      // notifications never arrive at all.
+      await this.setLed(0x01, true);
     } catch (error) {
       // Tear down the same way onDisconnected() does — if startNotifications()
       // and addEventListener() above already succeeded before a later step
@@ -141,18 +181,16 @@ export class OpossumVibrateAdapter {
   }
 
   async onDisconnected(): Promise<void> {
-    if (this.notifyChar) {
-      this.notifyChar.removeEventListener('characteristicvaluechanged', this.handleNotification);
-      try {
-        await this.notifyChar.stopNotifications();
-      } catch {
-        // ignore best effort
-      }
-    }
+    this.tickLoop.stop();
+    await this.tickLoop.waitForIdle();
+    await disconnectSensorGatt(this.notifyChar, this.handleNotification);
 
     this.writeChar = null;
     this.notifyChar = null;
-    this.batteryChar = null;
+    this.patterns.A = OPOSSUM_VIBRATION_PATTERNS.constant;
+    this.patterns.B = OPOSSUM_VIBRATION_PATTERNS.constant;
+    this.patternState.A = createEmptyWaveCursorState<number>();
+    this.patternState.B = createEmptyWaveCursorState<number>();
     this.state = createEmptyOpossumState();
     this.emitState();
   }
@@ -177,7 +215,9 @@ export class OpossumVibrateAdapter {
 
   /**
    * 0xB3 direct intensity: A/B in 0-200, or 'unchanged' to leave that
-   * channel as-is (mapped to the 0xFF sentinel byte).
+   * channel as-is (mapped to the 0xFF sentinel byte). Starts/stops the
+   * internal B0 tick loop so the motor actually follows — see the file
+   * doc comment for why that's necessary.
    */
   async setIntensity(
     channelA: number | 'unchanged',
@@ -189,9 +229,12 @@ export class OpossumVibrateAdapter {
     const packet = new Uint8Array([0xb3, byteA, byteB]);
     await this.write(packet);
 
-    if (channelA !== 'unchanged') this.state.intensityA = byteA;
-    if (channelB !== 'unchanged') this.state.intensityB = byteB;
+    if (channelA !== 'unchanged') this.applyIntensity('A', byteA);
+    if (channelB !== 'unchanged') this.applyIntensity('B', byteB);
     this.emitState();
+
+    await this.syncTickLoop();
+    await this.updateDisplay(this.state.intensityA, this.state.intensityB).catch(() => undefined);
   }
 
   /**
@@ -214,11 +257,28 @@ export class OpossumVibrateAdapter {
   }
 
   /**
+   * Sets which named rhythm envelope a channel's B0 stream follows (see
+   * `OPOSSUM_VIBRATION_PATTERNS`). If the channel is currently running
+   * (intensity > 0), the new pattern takes over from its own beginning on
+   * the next tick — changing rhythm restarts the phase rather than
+   * splicing into wherever the old pattern's cursor happened to be, so the
+   * new rhythm is predictable. Does not touch intensity.
+   */
+  setVibrationPattern(channel: Channel, pattern: readonly number[]): void {
+    this.patterns[channel] = pattern.length > 0 ? pattern : OPOSSUM_VIBRATION_PATTERNS.constant;
+    const running = (channel === 'A' ? this.state.intensityA : this.state.intensityB) > 0;
+    if (running) {
+      this.resetPatternCursor(channel);
+    }
+  }
+
+  /**
    * 0xB0 vibration waveform. This is a single packet builder/writer — the
-   * device expects it re-sent (~every 100ms) by the CALLER to sustain a
-   * waveform effect, but that re-send loop is the caller's responsibility;
-   * this device doesn't need (and this adapter doesn't run) a tick loop
-   * the way Coyote does, since 0xB3 is a direct "set now" command.
+   * device expects it re-sent (~every 100ms) to sustain a waveform effect.
+   * `setIntensity`/`adjustIntensity`/`emergencyStop` already drive this
+   * automatically via an internal tick loop; call this directly only for
+   * advanced one-off frames, and never concurrently with a running channel
+   * (intensity > 0) or writes will interleave/race with the internal loop.
    */
   async writeWaveformFrame(
     channelA: [number, number, number, number],
@@ -253,6 +313,11 @@ export class OpossumVibrateAdapter {
    * enumerates exactly 21 fixed preamble bytes; 1 (opcode) + 21 + 2 (A/B)
    * is actually 24. Trusting the literal, unambiguous byte enumeration over
    * the (likely miscounted) total-length label.
+   *
+   * The doc states the on-device screen only updates when the host
+   * actively pushes this after a B3 change — `setIntensity()` and the B3
+   * notification handler both call this so the screen and our own state
+   * never drift apart regardless of which side initiated the change.
    */
   async updateDisplay(channelA: number, channelB: number): Promise<void> {
     const preamble = [
@@ -277,6 +342,71 @@ export class OpossumVibrateAdapter {
     }
   }
 
+  private applyIntensity(channel: Channel, next: number): void {
+    const wasStopped = (channel === 'A' ? this.state.intensityA : this.state.intensityB) <= 0;
+    if (channel === 'A') {
+      this.state.intensityA = next;
+    } else {
+      this.state.intensityB = next;
+    }
+    // Only a genuine stopped→running transition restarts the pattern phase
+    // — an adjustIntensity() call while already running must not stutter
+    // the rhythm back to its start on every small step.
+    if (wasStopped && next > 0) {
+      this.resetPatternCursor(channel);
+    }
+  }
+
+  private resetPatternCursor(channel: Channel): void {
+    this.patternState[channel] = {
+      frames: [...this.patterns[channel]],
+      index: 0,
+      loop: true,
+      active: true,
+    };
+  }
+
+  private buildQuad(channel: Channel): [number, number, number, number] {
+    const intensity = channel === 'A' ? this.state.intensityA : this.state.intensityB;
+    if (intensity <= 0) return [0, 0, 0, 0];
+
+    // Intensity (0-200, same scale as Coyote strength) becomes the B0
+    // ceiling (0-100); the pattern's 0-100 envelope value is a percentage
+    // of that ceiling, so pattern and intensity compose independently.
+    const ceiling = intensity / 2;
+    const state = this.patternState[channel];
+    const quad: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const envelope = this.patternCursor.advanceStep(state) ?? 0;
+      quad.push(clampNumber((envelope / 100) * ceiling, 0, 100));
+    }
+    return quad as [number, number, number, number];
+  }
+
+  private async performTick(): Promise<void> {
+    if (!this.writeChar) return;
+    await this.writeWaveformFrame(this.buildQuad('A'), this.buildQuad('B'));
+  }
+
+  /**
+   * Starts the B0 tick loop the moment either channel has intensity > 0,
+   * stops it (and writes one final explicit all-zero B0 frame — the same
+   * "don't just cease ticking, say stop" principle as Coyote's
+   * `emergencyStop`) once both channels are back at 0.
+   */
+  private async syncTickLoop(): Promise<void> {
+    const shouldRun = this.state.intensityA > 0 || this.state.intensityB > 0;
+    if (shouldRun) {
+      this.tickLoop.start(() => this.performTick());
+      return;
+    }
+    this.tickLoop.stop();
+    await this.tickLoop.waitForIdle();
+    if (this.writeChar) {
+      await this.writeWaveformFrame([0, 0, 0, 0], [0, 0, 0, 0]).catch(() => undefined);
+    }
+  }
+
   private readonly handleNotification = (event: Event): void => {
     const target = event.target as BluetoothRemoteGATTCharacteristicLike | null;
     const value = target?.value;
@@ -287,6 +417,8 @@ export class OpossumVibrateAdapter {
       this.state.intensityA = value.getUint8(1);
       this.state.intensityB = value.getUint8(2);
       this.emitState();
+      void this.syncTickLoop();
+      void this.updateDisplay(this.state.intensityA, this.state.intensityB).catch(() => undefined);
       return;
     }
 
@@ -311,9 +443,7 @@ export class OpossumVibrateAdapter {
   }
 
   private clamp(value: number, min: number, max: number): number {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return min;
-    return Math.max(min, Math.min(max, Math.round(number)));
+    return clampNumber(value, min, max);
   }
 
   private emitState(): void {
