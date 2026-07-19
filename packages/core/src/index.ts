@@ -138,6 +138,14 @@ export type ToolExecutionPlan =
 
 export function isDeviceToolName(name: string): boolean {
   return (
+    name === 'shock_start' ||
+    name === 'shock_stop' ||
+    name === 'shock_adjust' ||
+    name === 'shock_change_wave' ||
+    name === 'shock_burst' ||
+    // Pre-1.9.0 Coyote tool names — still resolvable via ToolRegistry
+    // aliases, so calls arriving under them must still count as device
+    // tools (connection gating, permission flow) too.
     name === 'start' ||
     name === 'stop' ||
     name === 'adjust_strength' ||

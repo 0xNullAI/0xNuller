@@ -100,3 +100,51 @@ describe('opossum + LED tools', () => {
     );
   });
 });
+
+describe('shock_* tool renames', () => {
+  it('advertises only the shock_* names, never the pre-1.9.0 ones', async () => {
+    const registry = createDefaultToolRegistry({});
+    const names = (await registry.listDefinitions()).map((d) => d.name);
+
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'shock_start',
+        'shock_stop',
+        'shock_adjust',
+        'shock_change_wave',
+        'shock_burst',
+      ]),
+    );
+    for (const legacy of ['start', 'stop', 'adjust_strength', 'change_wave', 'burst']) {
+      expect(names).not.toContain(legacy);
+    }
+  });
+
+  it('resolves shock_adjust to a device adjustStrength plan', async () => {
+    const registry = createDefaultToolRegistry({});
+    const plan = await registry.resolve({
+      id: '1',
+      name: 'shock_adjust',
+      args: { channel: 'A', delta: 5 },
+    });
+    expect(plan).toEqual({
+      type: 'device',
+      command: { type: 'adjustStrength', channel: 'A', delta: 5 },
+    });
+  });
+
+  it('still resolves the pre-rename alias names to the same plans', async () => {
+    const registry = createDefaultToolRegistry({});
+    const plan = await registry.resolve({
+      id: '1',
+      name: 'adjust_strength',
+      args: { channel: 'A', delta: 5 },
+    });
+    expect(plan).toEqual({
+      type: 'device',
+      command: { type: 'adjustStrength', channel: 'A', delta: 5 },
+    });
+    expect(registry.getDisplayName('adjust_strength')).toBe('调节电击强度');
+    expect(registry.getDisplayName('shock_adjust')).toBe('调节电击强度');
+  });
+});

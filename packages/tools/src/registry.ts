@@ -14,6 +14,14 @@ import { createNoOpRateLimitPolicy, type RateLimitPolicy } from './policy.js';
 export interface ToolHandler {
   name: string;
   displayName?: string;
+  /**
+   * Former names this tool still answers to. Aliased calls resolve and
+   * execute normally (rate-limited under the primary name), but
+   * `listDefinitions()` only advertises the primary name — so LLMs and MCP
+   * clients only ever see the current name, while callers that hard-coded a
+   * pre-rename name (older DG-MCP builds, replayed sessions) keep working.
+   */
+  aliases?: readonly string[];
   definition: ToolDefinition | (() => Promise<ToolDefinition> | ToolDefinition);
   summarizeCommand?: (command: DeviceCommand) => string;
   toExecutionPlan(args: Record<string, unknown>): Promise<ToolExecutionPlan> | ToolExecutionPlan;
@@ -21,26 +29,36 @@ export interface ToolHandler {
 
 export class ToolRegistry {
   private readonly handlers = new Map<string, ToolHandler>();
+  private readonly aliasToPrimary = new Map<string, string>();
 
   constructor(private readonly rateLimitPolicy: RateLimitPolicy = createNoOpRateLimitPolicy()) {}
 
   register(handler: ToolHandler): void {
     this.handlers.set(handler.name, handler);
+    for (const alias of handler.aliases ?? []) {
+      this.aliasToPrimary.set(alias, handler.name);
+    }
+  }
+
+  /** Primary name for `name`, following one alias hop if needed. */
+  private resolveName(name: string): string {
+    return this.aliasToPrimary.get(name) ?? name;
   }
 
   async resolve(toolCall: ToolCall): Promise<ToolExecutionPlan> {
-    const handler = this.handlers.get(toolCall.name);
+    const name = this.resolveName(toolCall.name);
+    const handler = this.handlers.get(name);
     if (!handler) {
       throw new Error(`未知工具：${toolCall.name}`);
     }
 
-    const decision = this.rateLimitPolicy.shouldAllow(toolCall.name);
+    const decision = this.rateLimitPolicy.shouldAllow(name);
     if (!decision.allow) {
       throw new Error(decision.reason);
     }
 
     const plan = await handler.toExecutionPlan(toolCall.args);
-    this.rateLimitPolicy.recordCall(toolCall.name);
+    this.rateLimitPolicy.recordCall(name);
     return plan;
   }
 
@@ -59,11 +77,11 @@ export class ToolRegistry {
   }
 
   getDisplayName(name: string): string | undefined {
-    return this.handlers.get(name)?.displayName;
+    return this.handlers.get(this.resolveName(name))?.displayName;
   }
 
   summarizeCommand(name: string, command: DeviceCommand): string | undefined {
-    return this.handlers.get(name)?.summarizeCommand?.(command);
+    return this.handlers.get(this.resolveName(name))?.summarizeCommand?.(command);
   }
 
   /** Reset turn-scoped counters (no-op for non-turn policies). */
@@ -170,20 +188,21 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   );
 
   registry.register({
-    name: 'start',
-    displayName: '启动通道',
+    name: 'shock_start',
+    aliases: ['start'],
+    displayName: '启动电击',
     summarizeCommand(command) {
-      if (command.type !== 'start') return '启动通道';
-      return `启动 ${command.channel} 通道，强度 ${command.strength}，波形 ${command.waveform.id}`;
+      if (command.type !== 'start') return '启动电击';
+      return `启动 ${command.channel} 通道电击，强度 ${command.strength}，波形 ${command.waveform.id}`;
     },
     async definition() {
       const waveformDescription = await buildWaveformDescriptionText(deps.waveformLibrary);
       return {
-        name: 'start',
+        name: 'shock_start',
         description: [
-          '【启动通道】启动一个通道，同时设置初始强度和波形。',
+          '【启动电击】启动郊狼电击设备的一个通道，同时设置初始强度和波形。仅适用于郊狼设备，不适用于负鼠。',
           '触发：通道当前停止，需要从零开始时使用。',
-          '不用：通道已运行 → 想加点强度用 adjust_strength，想换波形用 change_wave，想结束用 stop。',
+          '不用：通道已运行 → 想加点强度用 shock_adjust，想换波形用 shock_change_wave，想结束用 shock_stop。负鼠设备请用 vibrate_start。',
           `约束：单次启动强度上限 ${maxColdStartStrengthHint}（受安全设置约束），完成后先描述结果并询问感受，不要在同一回合连续追加多次强度。`,
           waveformDescription ? `可用波形：${waveformDescription}。` : '',
         ]
@@ -242,18 +261,19 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   });
 
   registry.register({
-    name: 'stop',
-    displayName: '停止通道',
+    name: 'shock_stop',
+    aliases: ['stop'],
+    displayName: '停止电击',
     summarizeCommand(command) {
-      if (command.type !== 'stop') return '停止通道';
-      return command.channel ? `停止 ${command.channel} 通道` : '停止全部通道';
+      if (command.type !== 'stop') return '停止电击';
+      return command.channel ? `停止 ${command.channel} 通道电击` : '停止全部电击通道';
     },
     definition: {
-      name: 'stop',
+      name: 'shock_stop',
       description: [
-        '【停止通道】停止一个通道，省略 channel 则停止全部通道。',
-        '触发：用户表达"停一下/够了/关掉"，或需要结束输出时。',
-        '不用：start(strength=0) 或其他变通方式不能代替 stop。',
+        '【停止电击】停止郊狼电击设备的一个通道，省略 channel 则停止全部通道。仅适用于郊狼设备。',
+        '触发：用户表达"停一下/够了/关掉"，或需要结束电击输出时。',
+        '不用：shock_start(strength=0) 或其他变通方式不能代替 shock_stop。负鼠设备请用 vibrate_stop。',
         '约束：无次数上限。',
       ].join('\n'),
       parameters: {
@@ -284,18 +304,19 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   });
 
   registry.register({
-    name: 'adjust_strength',
-    displayName: '调节强度',
+    name: 'shock_adjust',
+    aliases: ['adjust_strength'],
+    displayName: '调节电击强度',
     summarizeCommand(command) {
-      if (command.type !== 'adjustStrength') return '调节强度';
-      return `调整 ${command.channel} 通道强度 ${command.delta > 0 ? '+' : ''}${command.delta}`;
+      if (command.type !== 'adjustStrength') return '调节电击强度';
+      return `调整 ${command.channel} 通道电击强度 ${command.delta > 0 ? '+' : ''}${command.delta}`;
     },
     definition: {
-      name: 'adjust_strength',
+      name: 'shock_adjust',
       description: [
-        '【调节强度】在不改变波形的前提下相对调整一个通道的强度。',
+        '【调节电击强度】在不改变波形的前提下相对调整郊狼一个通道的电击强度。仅适用于郊狼设备。',
         '触发：通道运行中，需要小步推进、轻微回落、边缘控制时使用。',
-        '不用：想换波形 → change_wave；通道未启动 → start。',
+        '不用：想换波形 → shock_change_wave；通道未启动 → shock_start。负鼠设备请用 vibrate_adjust。',
         `约束：本回合最多调用 ${maxAdjustCallsHint} 次，单步幅度 ±${maxAdjustStrengthStepHint}，优先选小幅度（约 1/3 上限）做平稳推进，每次调整后停下来观察反馈。`,
       ].join('\n'),
       parameters: {
@@ -332,20 +353,21 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   });
 
   registry.register({
-    name: 'change_wave',
-    displayName: '切换波形',
+    name: 'shock_change_wave',
+    aliases: ['change_wave'],
+    displayName: '切换电击波形',
     summarizeCommand(command) {
-      if (command.type !== 'changeWave') return '切换波形';
-      return `切换 ${command.channel} 通道波形为 ${command.waveform.id}`;
+      if (command.type !== 'changeWave') return '切换电击波形';
+      return `切换 ${command.channel} 通道电击波形为 ${command.waveform.id}`;
     },
     async definition() {
       const waveformDescription = await buildWaveformDescriptionText(deps.waveformLibrary);
       return {
-        name: 'change_wave',
+        name: 'shock_change_wave',
         description: [
-          '【切换波形】在不改变强度的前提下更换一个通道的波形。',
+          '【切换电击波形】在不改变强度的前提下更换郊狼一个通道的电击波形。仅适用于郊狼设备。',
           '触发：已启动后想换节奏、换触感时使用。',
-          '不用：想加强 → adjust_strength；通道未启动 → start。',
+          '不用：想加强 → shock_adjust；通道未启动 → shock_start。负鼠没有波形概念，换节奏请用 vibrate_start 的 pattern 参数。',
           '约束：仅切波形不动强度，切换后停下来描述新感觉。',
           waveformDescription ? `可用波形：${waveformDescription}。` : '',
         ]
@@ -380,7 +402,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
 
       const waveformId = parsed.waveformId ?? parsed.waveform;
       if (!waveformId) {
-        throw new Error('change_wave 缺少 waveformId 参数');
+        throw new Error('shock_change_wave 缺少 waveformId 参数');
       }
 
       const waveform = await resolveWaveform(deps.waveformLibrary, waveformId);
@@ -398,18 +420,19 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   });
 
   registry.register({
-    name: 'burst',
-    displayName: '脉冲增强',
+    name: 'shock_burst',
+    aliases: ['burst'],
+    displayName: '电击脉冲',
     summarizeCommand(command) {
-      if (command.type !== 'burst') return '脉冲增强';
-      return `对 ${command.channel} 通道执行脉冲，强度 ${command.strength}，持续 ${command.durationMs}ms`;
+      if (command.type !== 'burst') return '电击脉冲';
+      return `对 ${command.channel} 通道执行电击脉冲，强度 ${command.strength}，持续 ${command.durationMs}ms`;
     },
     definition: {
-      name: 'burst',
+      name: 'shock_burst',
       description: [
-        '【短时脉冲】把一个正在运行的通道短暂拉到目标强度，持续一段时间后自动回落。',
+        '【电击脉冲】把郊狼一个正在运行的通道短暂拉到目标电击强度，持续一段时间后自动回落。仅适用于郊狼设备。',
         '触发：制造短促峰值、强烈点射感时使用。',
-        '不用：通道未启动 → 先 start；想长期提升强度 → adjust_strength。',
+        '不用：通道未启动 → 先 shock_start；想长期提升强度 → shock_adjust。',
         `约束：本回合最多调用 ${maxBurstCallsHint} 次，单次时长 100-${maxBurstDurationMsHint}ms，完成后先停下来观察反馈。`,
       ].join('\n'),
       parameters: {
@@ -444,7 +467,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
 
       const durationMs = parsed.durationMs ?? parsed.duration_ms;
       if (durationMs == null) {
-        throw new Error('burst 缺少 durationMs 参数');
+        throw new Error('shock_burst 缺少 durationMs 参数');
       }
 
       return {
@@ -520,7 +543,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
       description: [
         '【设计波形】组合一组段落生成新的自定义波形，保存到波形库后可立即播放或留待后用。',
         '触发：用户描述的体感无法用现有波形组合表达时使用（如 "先慢慢渐入再变成连续敲击"）。',
-        '不用：内置或已导入的波形够用 → 直接 start / change_wave；只想加减强度 → adjust_strength。',
+        '不用：内置或已导入的波形够用 → 直接 shock_start / shock_change_wave；只想加减强度 → shock_adjust。',
         '约束：单回合最多调用 1 次；总时长 100-30000ms（建议 1-10s）；保存的波形会出现在用户的自定义波形列表里。',
         '段落原语：ramp（强度线性变化）、hold（恒定强度）、pulse（高低交替节拍）、silence（静默间隔）。',
       ].join('\n'),
@@ -683,7 +706,8 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
         type: 'inline',
         output: JSON.stringify({
           ...summary,
-          _hint: '波形已保存。可在下一回合用 start / change_wave 引用此 waveformId 播放。',
+          _hint:
+            '波形已保存。可在下一回合用 shock_start / shock_change_wave 引用此 waveformId 播放。',
         }),
       };
     },
@@ -697,7 +721,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
       description: [
         '【启动振动】启动负鼠振动控制器一个通道，设置初始强度。仅适用于负鼠设备，不适用于郊狼。',
         '触发：负鼠通道当前停止，需要从零开始时使用。',
-        '不用：通道已运行 → 想加强用 vibrate_adjust，想结束用 vibrate_stop。郊狼设备请用 start。',
+        '不用：通道已运行 → 想加强用 vibrate_adjust，想结束用 vibrate_stop。郊狼设备请用 shock_start。',
         `约束：单次启动强度上限 ${maxVibrateStartIntensityHint}（0-200 量程），完成后先描述结果再继续。`,
         '改变节奏：通道运行中想换节奏，以当前强度重新调用本工具并指定新的 pattern 即可，无需先 stop。',
       ].join('\n'),
