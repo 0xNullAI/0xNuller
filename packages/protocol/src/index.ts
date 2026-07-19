@@ -35,6 +35,7 @@ export { CivetPressureSensorAdapter, type CivetPressureReading } from './civet-e
 export {
   OpossumVibrateAdapter,
   createEmptyOpossumState,
+  OPOSSUM_VIBRATION_PATTERNS,
   type OpossumState,
   type OpossumButton,
   type OpossumButtonEvent,
