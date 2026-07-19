@@ -3,6 +3,7 @@ import type { DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/co
 import {
   DG_LAB_REQUEST_DEVICE_OPTIONS,
   type BluetoothDeviceLike,
+  type BluetoothRemoteGATTServerLike,
   type NavigatorBluetoothLike,
   type RequestDeviceOptionsLike,
   type WebBluetoothProtocolAdapter,
@@ -80,6 +81,26 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     }
 
     const server = await gatt.connect();
+    await this.connectDevice(nextDevice, server);
+  }
+
+  /**
+   * Attach to an already-obtained `(device, server)` pair instead of running
+   * this client's own `bluetooth.requestDevice()` chooser prompt.
+   *
+   * Lets a caller that already ran ONE shared chooser scoped to every DG-Lab
+   * device kind (Coyote + sensors + Opossum — see `DG_LAB_REQUEST_DEVICE_OPTIONS`)
+   * and identified the picked device as a Coyote via `detectDeviceKind()`
+   * hand the device straight to this client, rather than needing a second,
+   * Coyote-only chooser prompt. `gatt.connect()` must already have been
+   * called by the caller; this method only runs the protocol handshake and
+   * the same replace-previous-device bookkeeping `connect()` does.
+   */
+  async connectDevice(
+    nextDevice: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<void> {
+    this.cancelReconnect();
     const previousDevice = this.device as BluetoothDeviceLike | null;
     const shouldReplacePrevious = !!previousDevice && previousDevice !== nextDevice;
 
@@ -93,8 +114,8 @@ export class WebBluetoothDeviceClient implements DeviceClient {
       if (shouldReplacePrevious && isGattConnected(previousDevice)) {
         previousDevice.addEventListener('gattserverdisconnected', this.onDisconnected);
       }
-      if (gatt.connected) {
-        gatt.disconnect();
+      if (nextDevice.gatt?.connected) {
+        nextDevice.gatt.disconnect();
       }
       throw error;
     }
