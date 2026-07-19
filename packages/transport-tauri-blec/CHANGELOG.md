@@ -1,5 +1,13 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.6.1
+
+### Patch Changes
+
+- Updated dependencies [fad835c]
+  - @dg-kit/protocol@1.6.1
+  - @dg-kit/core@1.6.1
+
 ## 1.6.0
 
 ### Minor Changes

@@ -1,15 +1,9 @@
 import { createEmptySensorState, type SensorState } from '@dg-kit/core';
 import type { WebBluetoothConnectionContext, WebBluetoothSensorAdapter } from './base.js';
 import {
-  V3_BATTERY_CHAR,
-  V3_BATTERY_SERVICE,
-  V3_NOTIFY_CHAR,
-  V3_PRIMARY_SERVICE,
-  V3_WRITE_CHAR,
-} from './constants.js';
-import {
   clampIndicatorColor,
-  performV3FamilyConnectHandshake,
+  connectSensorGatt,
+  disconnectSensorGatt,
   writeCharacteristicValue,
 } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
@@ -49,29 +43,15 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
 
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     try {
-      const primaryService = await context.server.getPrimaryService(V3_PRIMARY_SERVICE);
-      this.writeChar = await primaryService.getCharacteristic(V3_WRITE_CHAR);
-      this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
-      await this.notifyChar.startNotifications();
-      this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
-
-      await performV3FamilyConnectHandshake(context.server, this.writeChar);
-
-      let battery = 0;
-      try {
-        const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
-        const batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
-        const value = await batteryChar.readValue();
-        battery = value.getUint8(0);
-      } catch {
-        battery = 0;
-      }
+      const connection = await connectSensorGatt(context, this.handleNotification);
+      this.writeChar = connection.writeChar;
+      this.notifyChar = connection.notifyChar;
 
       this.state = {
         connected: true,
-        deviceName: context.device.name ?? '',
-        address: context.device.id ?? '',
-        battery,
+        deviceName: connection.deviceName,
+        address: connection.address,
+        battery: connection.battery,
       };
       this.emitState();
 
@@ -88,14 +68,7 @@ export class CivetPressureSensorAdapter implements WebBluetoothSensorAdapter<Civ
   }
 
   async onDisconnected(): Promise<void> {
-    if (this.notifyChar) {
-      this.notifyChar.removeEventListener('characteristicvaluechanged', this.handleNotification);
-      try {
-        await this.notifyChar.stopNotifications();
-      } catch {
-        // best-effort: device may already be gone.
-      }
-    }
+    await disconnectSensorGatt(this.notifyChar, this.handleNotification);
 
     this.writeChar = null;
     this.notifyChar = null;
