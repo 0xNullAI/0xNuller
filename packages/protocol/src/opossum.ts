@@ -144,6 +144,7 @@ export class OpossumVibrateAdapter {
     A: createEmptyWaveCursorState<number>(),
     B: createEmptyWaveCursorState<number>(),
   };
+  private readonly burstRestores = new Map<Channel, ReturnType<typeof setTimeout>>();
 
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     try {
@@ -181,6 +182,8 @@ export class OpossumVibrateAdapter {
   }
 
   async onDisconnected(): Promise<void> {
+    this.cancelBurstRestore('A');
+    this.cancelBurstRestore('B');
     this.tickLoop.stop();
     await this.tickLoop.waitForIdle();
     await disconnectSensorGatt(this.notifyChar, this.handleNotification);
@@ -253,6 +256,51 @@ export class OpossumVibrateAdapter {
       await this.setIntensity(next, 'unchanged');
     } else {
       await this.setIntensity('unchanged', next);
+    }
+  }
+
+  /**
+   * Briefly drive one channel to `intensity`, then restore it after
+   * `durationMs` — the vibrate counterpart of Coyote's `runBurst`, with the
+   * identical stale-restore guard: the restore target is
+   * `min(current, previous)`, so an intervening stop or manual decrease is
+   * never pushed back *up* by a late-firing restore timer.
+   */
+  async vibrateBurst(channel: Channel, intensity: number, durationMs: number): Promise<void> {
+    this.cancelBurstRestore(channel);
+    const previous = channel === 'A' ? this.state.intensityA : this.state.intensityB;
+
+    if (channel === 'A') {
+      await this.setIntensity(intensity, 'unchanged');
+    } else {
+      await this.setIntensity('unchanged', intensity);
+    }
+
+    const timer = setTimeout(
+      () => {
+        this.burstRestores.delete(channel);
+        const current = channel === 'A' ? this.state.intensityA : this.state.intensityB;
+        const target = Math.min(current, previous);
+        const restore =
+          channel === 'A'
+            ? this.setIntensity(target, 'unchanged')
+            : this.setIntensity('unchanged', target);
+        // Best-effort: the device may have disconnected while the timer was
+        // pending; a failed restore write must not surface as an unhandled
+        // rejection.
+        void restore.catch(() => undefined);
+      },
+      Math.max(100, durationMs),
+    );
+
+    this.burstRestores.set(channel, timer);
+  }
+
+  private cancelBurstRestore(channel: Channel): void {
+    const timer = this.burstRestores.get(channel);
+    if (timer) {
+      clearTimeout(timer);
+      this.burstRestores.delete(channel);
     }
   }
 
@@ -335,6 +383,10 @@ export class OpossumVibrateAdapter {
 
   /** Best-effort safety call: drive both channels to zero, ignore failures. */
   async emergencyStop(): Promise<void> {
+    // A pending burst restore firing after the stop would re-raise the
+    // channel to its pre-burst intensity — cancel first, same as Coyote.
+    this.cancelBurstRestore('A');
+    this.cancelBurstRestore('B');
     try {
       await this.setIntensity(0, 0);
     } catch {

@@ -127,7 +127,11 @@ export type OpossumCommand =
       pattern?: OpossumVibrationPatternName;
     }
   | { type: 'vibrateStop'; channel?: Channel }
-  | { type: 'vibrateAdjust'; channel: Channel; delta: number };
+  | { type: 'vibrateAdjust'; channel: Channel; delta: number }
+  /** Change a channel's rhythm envelope without touching its intensity — the vibrate counterpart of Coyote's changeWave. */
+  | { type: 'vibrateSetPattern'; channel: Channel; pattern: OpossumVibrationPatternName }
+  /** Briefly raise a channel to `intensity` for `durationMs`, then auto-restore — the vibrate counterpart of Coyote's burst. */
+  | { type: 'vibrateBurst'; channel: Channel; intensity: number; durationMs: number };
 
 export type ToolExecutionPlan =
   | { type: 'device'; command: DeviceCommand }
@@ -154,6 +158,8 @@ export function isDeviceToolName(name: string): boolean {
     name === 'vibrate_start' ||
     name === 'vibrate_stop' ||
     name === 'vibrate_adjust' ||
+    name === 'vibrate_change_pattern' ||
+    name === 'vibrate_burst' ||
     name === 'set_indicator_color'
   );
 }

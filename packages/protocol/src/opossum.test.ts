@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   V3_BATTERY_CHAR,
   V3_BATTERY_SERVICE,
@@ -351,6 +351,84 @@ describe('OpossumVibrateAdapter B0 tick loop and vibration patterns', () => {
     expect(b2Writes.length).toBeGreaterThan(0);
     expect(b2Writes.at(-1)?.[22]).toBe(42);
     expect(b2Writes.at(-1)?.[23]).toBe(99);
+  });
+});
+
+describe('OpossumVibrateAdapter vibrateBurst', () => {
+  it('raises the channel for the duration, then restores the previous intensity', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new OpossumVibrateAdapter();
+      await connectAdapter(adapter);
+
+      await adapter.setIntensity(40, 'unchanged');
+      await adapter.vibrateBurst('A', 120, 500);
+      expect(adapter.getState().intensityA).toBe(120);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(adapter.getState().intensityA).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('restore never re-raises a channel that was lowered mid-burst (min semantics)', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new OpossumVibrateAdapter();
+      await connectAdapter(adapter);
+
+      await adapter.setIntensity(40, 'unchanged');
+      await adapter.vibrateBurst('A', 120, 500);
+      // The user (or a stop) lowers the channel while the burst is running.
+      await adapter.setIntensity(0, 'unchanged');
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(adapter.getState().intensityA).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('emergencyStop cancels a pending burst restore', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new OpossumVibrateAdapter();
+      await connectAdapter(adapter);
+
+      await adapter.setIntensity(40, 'unchanged');
+      await adapter.vibrateBurst('A', 120, 500);
+      await adapter.emergencyStop();
+      expect(adapter.getState().intensityA).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(adapter.getState().intensityA).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a second burst on the same channel supersedes the first restore rather than stacking', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new OpossumVibrateAdapter();
+      await connectAdapter(adapter);
+
+      await adapter.setIntensity(40, 'unchanged');
+      await adapter.vibrateBurst('A', 120, 500);
+      await vi.advanceTimersByTimeAsync(300);
+      // Second burst before the first restore fires: the first timer is
+      // cancelled; the second's "previous" was captured at 120 — min()
+      // semantics restore to min(current, previous) once it fires.
+      await adapter.vibrateBurst('A', 150, 500);
+
+      await vi.advanceTimersByTimeAsync(499);
+      expect(adapter.getState().intensityA).toBe(150);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(adapter.getState().intensityA).toBe(120);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -139,6 +139,7 @@ export interface ToolDefinitionHints {
   maxVibrateStartIntensity?: number;
   maxVibrateAdjustStep?: number;
   maxVibrateAdjustCallsPerTurn?: number;
+  maxVibrateBurstCallsPerTurn?: number;
 }
 
 export interface DefaultToolRegistryDeps {
@@ -184,6 +185,11 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
   const maxVibrateAdjustCallsHint = normalizeHint(
     deps.toolDefinitionHints?.maxVibrateAdjustCallsPerTurn,
     2,
+    1,
+  );
+  const maxVibrateBurstCallsHint = normalizeHint(
+    deps.toolDefinitionHints?.maxVibrateBurstCallsPerTurn,
+    1,
     1,
   );
 
@@ -367,7 +373,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
         description: [
           '【切换电击波形】在不改变强度的前提下更换郊狼一个通道的电击波形。仅适用于郊狼设备。',
           '触发：已启动后想换节奏、换触感时使用。',
-          '不用：想加强 → shock_adjust；通道未启动 → shock_start。负鼠没有波形概念，换节奏请用 vibrate_start 的 pattern 参数。',
+          '不用：想加强 → shock_adjust；通道未启动 → shock_start。负鼠设备请用 vibrate_change_pattern。',
           '约束：仅切波形不动强度，切换后停下来描述新感觉。',
           waveformDescription ? `可用波形：${waveformDescription}。` : '',
         ]
@@ -723,7 +729,7 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
         '触发：负鼠通道当前停止，需要从零开始时使用。',
         '不用：通道已运行 → 想加强用 vibrate_adjust，想结束用 vibrate_stop。郊狼设备请用 shock_start。',
         `约束：单次启动强度上限 ${maxVibrateStartIntensityHint}（0-200 量程），完成后先描述结果再继续。`,
-        '改变节奏：通道运行中想换节奏，以当前强度重新调用本工具并指定新的 pattern 即可，无需先 stop。',
+        '改变节奏：通道运行中请用 vibrate_change_pattern 直接切换，无需重新启动。',
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -819,6 +825,99 @@ export function createDefaultToolRegistry(deps: DefaultToolRegistryDeps): ToolRe
       return {
         type: 'opossum',
         command: { type: 'vibrateAdjust', channel: parsed.channel, delta: parsed.delta },
+      };
+    },
+  });
+
+  registry.register({
+    name: 'vibrate_change_pattern',
+    displayName: '切换振动节奏',
+    definition: {
+      name: 'vibrate_change_pattern',
+      description: [
+        '【切换振动节奏】在不改变强度的前提下更换负鼠一个通道的振动节奏。仅适用于负鼠设备。',
+        '触发：已启动后想换节奏、换触感时使用。',
+        '不用：想加强 → vibrate_adjust；通道未启动 → vibrate_start（可直接带 pattern）。郊狼设备请用 shock_change_wave。',
+        '约束：仅换节奏不动强度，切换后停下来描述新感觉。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: channelParameter,
+          pattern: {
+            ...opossumPatternParameter,
+            description:
+              '要切换到的振动节奏预设。constant 恒定持续；pulse 脉冲（满强度/停止交替）；wave 正弦式渐强渐弱；ramp 锯齿式持续增强后归零重来；heartbeat 双跳心跳节奏。',
+          },
+        },
+        required: ['channel', 'pattern'],
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z
+        .object({ channel: channelSchema, pattern: opossumPatternSchema })
+        .parse(args);
+      return {
+        type: 'opossum',
+        command: { type: 'vibrateSetPattern', channel: parsed.channel, pattern: parsed.pattern },
+      };
+    },
+  });
+
+  registry.register({
+    name: 'vibrate_burst',
+    displayName: '振动脉冲',
+    definition: {
+      name: 'vibrate_burst',
+      description: [
+        '【振动脉冲】把负鼠一个正在运行的通道短暂拉到目标振动强度，持续一段时间后自动回落。仅适用于负鼠设备。',
+        '触发：制造短促峰值、强烈点射感时使用。',
+        '不用：通道未启动 → 先 vibrate_start；想长期提升强度 → vibrate_adjust。郊狼设备请用 shock_burst。',
+        `约束：本回合最多调用 ${maxVibrateBurstCallsHint} 次，单次时长 100-${maxBurstDurationMsHint}ms，完成后先停下来观察反馈。`,
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: channelParameter,
+          intensity: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 200,
+            description: '脉冲期间的目标振动强度（受负鼠通道上限约束）。',
+          },
+          durationMs: {
+            type: 'integer',
+            minimum: 100,
+            maximum: maxBurstDurationMsHint,
+            description: `脉冲持续时间（毫秒），范围 [100, ${maxBurstDurationMsHint}]。`,
+          },
+        },
+        required: ['channel', 'intensity', 'durationMs'],
+      },
+    },
+    toExecutionPlan(args) {
+      const parsed = z
+        .object({
+          channel: channelSchema,
+          intensity: z.coerce.number().int().min(0).max(200),
+          durationMs: z.coerce.number().int().min(100).max(20_000).optional(),
+          duration_ms: z.coerce.number().int().min(100).max(20_000).optional(),
+        })
+        .parse(args);
+
+      const durationMs = parsed.durationMs ?? parsed.duration_ms;
+      if (durationMs == null) {
+        throw new Error('vibrate_burst 缺少 durationMs 参数');
+      }
+
+      return {
+        type: 'opossum',
+        command: {
+          type: 'vibrateBurst',
+          channel: parsed.channel,
+          intensity: parsed.intensity,
+          durationMs,
+        },
       };
     },
   });

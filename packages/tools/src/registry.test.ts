@@ -99,6 +99,59 @@ describe('opossum + LED tools', () => {
       ]),
     );
   });
+
+  it('resolves vibrate_change_pattern to an opossum vibrateSetPattern plan', async () => {
+    const registry = createDefaultToolRegistry({});
+    const plan = await registry.resolve({
+      id: '1',
+      name: 'vibrate_change_pattern',
+      args: { channel: 'A', pattern: 'heartbeat' },
+    });
+    expect(plan).toEqual({
+      type: 'opossum',
+      command: { type: 'vibrateSetPattern', channel: 'A', pattern: 'heartbeat' },
+    });
+  });
+
+  it('rejects vibrate_change_pattern with an unrecognized pattern name', async () => {
+    const registry = createDefaultToolRegistry({});
+    await expect(
+      registry.resolve({
+        id: '1',
+        name: 'vibrate_change_pattern',
+        args: { channel: 'A', pattern: 'sparkle' },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('resolves vibrate_burst to an opossum vibrateBurst plan, accepting the legacy duration_ms arg name', async () => {
+    const registry = createDefaultToolRegistry({});
+    const plan = await registry.resolve({
+      id: '1',
+      name: 'vibrate_burst',
+      args: { channel: 'B', intensity: 80, durationMs: 1500 },
+    });
+    expect(plan).toEqual({
+      type: 'opossum',
+      command: { type: 'vibrateBurst', channel: 'B', intensity: 80, durationMs: 1500 },
+    });
+
+    const legacy = await registry.resolve({
+      id: '2',
+      name: 'vibrate_burst',
+      args: { channel: 'A', intensity: 50, duration_ms: 800 },
+    });
+    expect(legacy).toEqual({
+      type: 'opossum',
+      command: { type: 'vibrateBurst', channel: 'A', intensity: 50, durationMs: 800 },
+    });
+  });
+
+  it('lists the vibrate pattern/burst tools among the definitions', async () => {
+    const registry = createDefaultToolRegistry({});
+    const names = (await registry.listDefinitions()).map((d) => d.name);
+    expect(names).toEqual(expect.arrayContaining(['vibrate_change_pattern', 'vibrate_burst']));
+  });
 });
 
 describe('shock_* tool renames', () => {
