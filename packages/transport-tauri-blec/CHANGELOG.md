@@ -1,5 +1,13 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.10.0
+
+### Patch Changes
+
+- Updated dependencies [0e6657b]
+  - @dg-kit/core@1.10.0
+  - @dg-kit/protocol@1.10.0
+
 ## 1.9.0
 
 ### Patch Changes
