@@ -4,3 +4,8 @@ export {
   type WebBluetoothDeviceClientOptions,
   type ReconnectState,
 } from './client.js';
+export {
+  requestDgLabDevice,
+  type RequestDgLabDeviceOptions,
+  type RequestedDgLabDevice,
+} from './picker.js';
