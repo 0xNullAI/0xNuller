@@ -1,5 +1,9 @@
 import type { DeviceClient, DeviceCommand, DeviceCommandResult, DeviceState } from '@dg-kit/core';
-import type { WebBluetoothProtocolAdapter } from '@dg-kit/protocol';
+import type {
+  BluetoothDeviceLike,
+  BluetoothRemoteGATTServerLike,
+  WebBluetoothProtocolAdapter,
+} from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
 import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.js';
 import { resolvePluginBlec } from './plugin-blec.js';
@@ -74,6 +78,18 @@ export class TauriBlecDeviceClient implements DeviceClient {
   private lastDeviceName = '';
   private reconnecting = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Set only while connected via `connectDevice()` (the unified-picker
+   * passthrough) instead of this client's own `connect()`. Tracked
+   * separately from `lastAddress`/`fireDisconnect` so `disconnect()` can
+   * tear down through the device's own `gatt.disconnect()` — the shim
+   * `connectDevice()` was handed already wires `fireDisconnect` +
+   * `api.disconnect()` together, so replaying both here would double up.
+   * A reconnect always re-establishes through `establishConnection()`
+   * (fresh `api.connect()` + a brand-new shim), which clears this back to
+   * `null`, so it's stale exactly never past the first passive drop.
+   */
+  private passthroughDevice: BluetoothDeviceLike | null = null;
 
   constructor(private readonly options: TauriBlecDeviceClientOptions) {
     this.options.protocol.subscribe((state) => {
@@ -135,6 +151,95 @@ export class TauriBlecDeviceClient implements DeviceClient {
   }
 
   /**
+   * Attach to an already-obtained, already-plugin-blec-connected
+   * `(device, server)` pair instead of running this client's own scan +
+   * `selectDevice()` + `api.connect()`. Lets a caller that already ran ONE
+   * shared scan+picker across every DG-Lab device kind
+   * (`requestDgLabDeviceTauri()`) and identified the picked device as a
+   * Coyote via `detectDeviceKind()` hand the device straight to this
+   * client, rather than needing a second, Coyote-only scan+picker. Mirrors
+   * `@dg-kit/transport-webbluetooth`'s `WebBluetoothDeviceClient.connectDevice()`.
+   */
+  async connectDevice(
+    device: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<void> {
+    if (this.connected) {
+      throw new Error('设备已连接');
+    }
+    if (this.connecting) {
+      throw new Error('正在连接中，请稍候');
+    }
+    this.cancelReconnect();
+    this.connecting = true;
+    try {
+      await this.attachConnection(device, server);
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  /**
+   * The `connectDevice()` counterpart to `establishConnection()`: runs the
+   * GATT-ready-retried protocol handshake against an already-connected
+   * `(device, server)` pair instead of driving `api.connect()` itself.
+   * `device`'s `gattserverdisconnected` event (fired by the shim the caller
+   * built via `createGattShim()`) is this client's only signal of an
+   * unexpected drop, since the plugin-blec-level `onDisconnect` callback was
+   * already claimed by whoever called `api.connect()` — wiring a DOM
+   * listener here reaches the same `handlePluginDisconnectSignal()` path
+   * `establishConnection()`'s direct callback reaches, so autoReconnect
+   * behaves identically regardless of which path made the connection.
+   */
+  private async attachConnection(
+    device: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<void> {
+    const address = device.id ?? '';
+    try {
+      await runWithGattReadyRetry(
+        () => this.options.protocol.onConnected({ device, server }),
+        this.options,
+      );
+    } catch (error) {
+      if (device.gatt?.connected) {
+        device.gatt.disconnect();
+      } else {
+        const api = await resolvePluginBlec();
+        await api.disconnect(address).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    this.connected = true;
+    this.lastAddress = address;
+    this.lastDeviceName = device.name ?? '';
+    this.passthroughDevice = device;
+    // `device.gatt.disconnect()` is the shim's own teardown method: it fires
+    // `gattserverdisconnected` AND calls `api.disconnect()`. `disconnect()`
+    // below already calls `api.disconnect()` explicitly before invoking
+    // `fireDisconnect()`, so the second call this triggers is a harmless,
+    // already-caught no-op — same tolerance every plugin-blec call in this
+    // file has for a repeat teardown of an address that's already gone.
+    this.fireDisconnect = () => {
+      device.gatt?.disconnect();
+    };
+    device.addEventListener('gattserverdisconnected', this.handlePassthroughDisconnect);
+  }
+
+  private readonly handlePassthroughDisconnect = (): void => {
+    this.connected = false;
+    if (this.passthroughDevice) {
+      this.passthroughDevice.removeEventListener(
+        'gattserverdisconnected',
+        this.handlePassthroughDisconnect,
+      );
+      this.passthroughDevice = null;
+    }
+    this.handlePluginDisconnectSignal();
+  };
+
+  /**
    * Drives plugin-blec's connect flow plus the GATT-ready retry for a known
    * device address. Shared by the initial `connect()` (after scan +
    * selectDevice) and by `tryReconnect()` (which skips straight here with
@@ -170,6 +275,10 @@ export class TauriBlecDeviceClient implements DeviceClient {
       this.connected = true;
       this.lastAddress = address;
       this.lastDeviceName = name;
+      // A previous `connectDevice()` passthrough's listener is now moot —
+      // this establishConnection() call owns `fireDisconnect`/state going
+      // forward (see the field's doc comment).
+      this.passthroughDevice = null;
     } catch (error) {
       await api.disconnect(address).catch(() => undefined);
       throw error;
@@ -324,6 +433,19 @@ export class TauriBlecDeviceClient implements DeviceClient {
         // running at its last commanded strength (V3 is state-retentive
         // across drops).
         await this.options.protocol.emergencyStop().catch(() => undefined);
+        // A `connectDevice()` passthrough's listener must come off BEFORE
+        // `fireDisconnect()` below (which, for a passthrough connection,
+        // calls the shim's own `gatt.disconnect()` and so fires this same
+        // event) — otherwise `handlePassthroughDisconnect` would reach
+        // `protocol.onDisconnected()` a second time, mirroring
+        // `disconnectTauriAuxDevice()`'s identical ordering requirement.
+        if (this.passthroughDevice) {
+          this.passthroughDevice.removeEventListener(
+            'gattserverdisconnected',
+            this.handlePassthroughDisconnect,
+          );
+          this.passthroughDevice = null;
+        }
         const api = await resolvePluginBlec();
         await api.disconnect(address ?? undefined).catch(() => undefined);
         this.connected = false;
