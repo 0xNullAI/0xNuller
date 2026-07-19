@@ -13,17 +13,11 @@
  * authoritative.
  */
 import { createEmptySensorState, type SensorState } from '@dg-kit/core';
-import {
-  V3_BATTERY_CHAR,
-  V3_BATTERY_SERVICE,
-  V3_NOTIFY_CHAR,
-  V3_PRIMARY_SERVICE,
-  V3_WRITE_CHAR,
-} from './constants.js';
 import type { WebBluetoothConnectionContext, WebBluetoothSensorAdapter } from './base.js';
 import {
   clampIndicatorColor,
-  performV3FamilyConnectHandshake,
+  connectSensorGatt,
+  disconnectSensorGatt,
   writeCharacteristicValue,
 } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
@@ -72,7 +66,6 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
   private state: SensorState = createEmptySensorState();
   private writeChar: BluetoothRemoteGATTCharacteristicLike | null = null;
   private notifyChar: BluetoothRemoteGATTCharacteristicLike | null = null;
-  private batteryChar: BluetoothRemoteGATTCharacteristicLike | null = null;
 
   private readonly readingListeners = new Set<PawPrintsReadingListener>();
   private readonly stateListeners = new Set<PawPrintsStateListener>();
@@ -80,34 +73,27 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     await this.resetConnection(false);
 
+    // Set the attempted device's name/address optimistically, before GATT
+    // connect even starts — if connectSensorGatt() below throws partway
+    // through, resetConnection() still has a name/address to preserve, so a
+    // failed attempt is distinguishable from "never tried" rather than
+    // silently reverting to blank.
+    this.state = {
+      ...createEmptySensorState(),
+      deviceName: context.device.name ?? '',
+      address: context.device.id ?? '',
+    };
+
     try {
+      const connection = await connectSensorGatt(context, this.handleNotification);
+      this.writeChar = connection.writeChar;
+      this.notifyChar = connection.notifyChar;
       this.state = {
-        ...createEmptySensorState(),
         connected: true,
-        deviceName: context.device.name ?? '',
-        address: context.device.id ?? '',
+        deviceName: connection.deviceName,
+        address: connection.address,
+        battery: connection.battery,
       };
-
-      const primaryService = await context.server.getPrimaryService(V3_PRIMARY_SERVICE);
-      this.writeChar = await primaryService.getCharacteristic(V3_WRITE_CHAR);
-      this.notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
-      await this.notifyChar.startNotifications();
-      this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
-
-      await performV3FamilyConnectHandshake(context.server, this.writeChar);
-
-      // Battery read is best-effort: some firmware/pairing states expose the
-      // service but reject the read, so a failure here shouldn't fail the
-      // whole connection.
-      try {
-        const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
-        this.batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
-        const value = await this.batteryChar.readValue();
-        this.state = { ...this.state, battery: value.getUint8(0) };
-      } catch {
-        this.state = { ...this.state, battery: 0 };
-      }
-
       this.emitState();
     } catch (error) {
       await this.resetConnection(false);
@@ -177,18 +163,10 @@ export class PawPrintsSensorAdapter implements WebBluetoothSensorAdapter<PawPrin
   }
 
   private async resetConnection(emit: boolean): Promise<void> {
-    if (this.notifyChar) {
-      this.notifyChar.removeEventListener('characteristicvaluechanged', this.handleNotification);
-      try {
-        await this.notifyChar.stopNotifications();
-      } catch {
-        // best effort — device may already be gone
-      }
-    }
+    await disconnectSensorGatt(this.notifyChar, this.handleNotification);
 
     this.writeChar = null;
     this.notifyChar = null;
-    this.batteryChar = null;
 
     const previousDeviceName = this.state.deviceName;
     const previousAddress = this.state.address;

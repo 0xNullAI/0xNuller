@@ -1,10 +1,16 @@
+import type { WebBluetoothConnectionContext } from './base.js';
 import {
+  V3_BATTERY_CHAR,
+  V3_BATTERY_SERVICE,
   V3_HANDSHAKE_MTU,
   V3_INIT_PACKET,
   V3_LEGACY_NOTIFY_CHAR,
   V3_LEGACY_SERVICE,
   V3_NORDIC_OTA_CHAR,
   V3_NORDIC_OTA_SERVICE,
+  V3_NOTIFY_CHAR,
+  V3_PRIMARY_SERVICE,
+  V3_WRITE_CHAR,
 } from './constants.js';
 import type { BluetoothRemoteGATTCharacteristicLike, BluetoothRemoteGATTServerLike } from './types.js';
 
@@ -111,4 +117,76 @@ export function clampIndicatorColor(color: number): number {
   const value = Number(color);
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(7, Math.round(value)));
+}
+
+export interface SensorGattConnection {
+  writeChar: BluetoothRemoteGATTCharacteristicLike;
+  notifyChar: BluetoothRemoteGATTCharacteristicLike;
+  deviceName: string;
+  address: string;
+  battery: number;
+}
+
+/**
+ * Shared connect sequence for the sensor-family adapters (paw-prints,
+ * civet-edging): open the shared 0x180C write/notify characteristics, wire
+ * the notification listener, run the V3-family handshake, then a
+ * best-effort battery read. Both adapters had this exact sequence
+ * byte-for-byte duplicated before this was extracted — kept as a plain
+ * function (not a base class) so each adapter's own `onConnected` keeps
+ * full control over how/when it constructs and emits its `SensorState`,
+ * which differs subtly between them (e.g. paw-prints resets stale chars
+ * before a fresh attempt; civet-edging auto-starts pressure streaming right
+ * after) and shouldn't be forced into a shared shape.
+ */
+export async function connectSensorGatt(
+  context: WebBluetoothConnectionContext,
+  onNotification: (event: Event) => void,
+): Promise<SensorGattConnection> {
+  const primaryService = await context.server.getPrimaryService(V3_PRIMARY_SERVICE);
+  const writeChar = await primaryService.getCharacteristic(V3_WRITE_CHAR);
+  const notifyChar = await primaryService.getCharacteristic(V3_NOTIFY_CHAR);
+  await notifyChar.startNotifications();
+  notifyChar.addEventListener('characteristicvaluechanged', onNotification);
+
+  await performV3FamilyConnectHandshake(context.server, writeChar);
+
+  let battery = 0;
+  try {
+    const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
+    const batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
+    const value = await batteryChar.readValue();
+    battery = value.getUint8(0);
+  } catch {
+    // Best-effort — some firmware/pairing states expose the service but
+    // reject the read; a failure here shouldn't fail the whole connection.
+    // `battery` already defaults to 0 above.
+  }
+
+  return {
+    writeChar,
+    notifyChar,
+    deviceName: context.device.name ?? '',
+    address: context.device.id ?? '',
+    battery,
+  };
+}
+
+/**
+ * Shared teardown counterpart to `connectSensorGatt` — removes the
+ * notification listener and best-effort stops notifications. Safe to call
+ * with `notifyChar: null` (e.g. disconnecting before a connection attempt
+ * ever got this far).
+ */
+export async function disconnectSensorGatt(
+  notifyChar: BluetoothRemoteGATTCharacteristicLike | null,
+  onNotification: (event: Event) => void,
+): Promise<void> {
+  if (!notifyChar) return;
+  notifyChar.removeEventListener('characteristicvaluechanged', onNotification);
+  try {
+    await notifyChar.stopNotifications();
+  } catch {
+    // best-effort: device may already be gone.
+  }
 }
