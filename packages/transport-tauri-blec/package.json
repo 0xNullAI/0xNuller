@@ -29,7 +29,7 @@
   "dependencies": {
     "@dg-kit/core": "1.5.0",
     "@dg-kit/protocol": "1.5.0",
-    "@mnlphlp/plugin-blec": "^0.8.0"
+    "@mnlphlp/plugin-blec": "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git#main"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TauriBlecDeviceClient, type DiscoveredDevice } from './client.js';
-import { __setPluginBlecForTests, type BleDeviceInfo, type PluginBlecApi } from './plugin-blec.js';
+import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
+import { makeApi, makeDevice } from './test-utils.js';
 
 class FakeProtocol {
   public connectedContext: { deviceName: string } | null = null;
@@ -34,35 +35,6 @@ class FakeProtocol {
   async setLimits(_a: number, _b: number): Promise<void> {
     return;
   }
-}
-
-function makeApi(overrides: Partial<PluginBlecApi> = {}): PluginBlecApi {
-  return {
-    checkPermissions: vi.fn().mockResolvedValue(true),
-    startScan: vi.fn().mockResolvedValue(undefined),
-    stopScan: vi.fn().mockResolvedValue(undefined),
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    send: vi.fn().mockResolvedValue(undefined),
-    read: vi.fn().mockResolvedValue([]),
-    subscribe: vi.fn().mockResolvedValue(undefined),
-    unsubscribe: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
-
-function makeDevice(over: Partial<BleDeviceInfo> = {}): BleDeviceInfo {
-  return {
-    address: 'AA:BB:CC',
-    name: '47L1210000XX',
-    rssi: -60,
-    isConnected: false,
-    isBonded: false,
-    services: [],
-    manufacturerData: {},
-    serviceData: {},
-    ...over,
-  };
 }
 
 afterEach(() => __setPluginBlecForTests(undefined));
@@ -217,7 +189,9 @@ describe('TauriBlecDeviceClient.connect', () => {
 
     await client.disconnect();
     expect(protocolEmergencyStop).toHaveBeenCalledTimes(1);
-    expect(api.disconnect).toHaveBeenCalled();
+    // Address must be passed explicitly — the address-less overload now
+    // throws AmbiguousDevice once a second device is connected elsewhere.
+    expect(api.disconnect).toHaveBeenCalledWith('AA:BB:CC');
     // emergencyStop must run before plugin-blec.disconnect.
     const stopOrder = protocolEmergencyStop.mock.invocationCallOrder[0]!;
     const disconnectOrder = (api.disconnect as ReturnType<typeof vi.fn>).mock
@@ -692,5 +666,109 @@ describe('TauriBlecDeviceClient auto-reconnect', () => {
     // disconnects mid-reconnect could leave the device running at its last
     // commanded strength with no way to remotely stop it.
     expect(protocol.emergencyStopCount).toBeGreaterThan(0);
+  });
+});
+
+describe('TauriBlecDeviceClient concurrent multi-device connections', () => {
+  // Both clients share the same underlying plugin-blec stub — realistic,
+  // since the native plugin is a single module tracking several addresses
+  // concurrently, not one instance per JS client.
+  function selectAddress(address: string) {
+    return async (controller: {
+      initial: DiscoveredDevice[];
+      subscribe: (h: (d: DiscoveredDevice[]) => void) => () => void;
+    }) => {
+      const devices = await new Promise<DiscoveredDevice[]>((resolve) => {
+        if (controller.initial.length) return resolve(controller.initial);
+        const off = controller.subscribe((next) => {
+          if (next.length) {
+            off();
+            resolve(next);
+          }
+        });
+      });
+      const match = devices.find((d) => d.address === address);
+      return match?.address ?? null;
+    };
+  }
+
+  it('two clients connect to different addresses concurrently without stepping on each other', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        setTimeout(
+          () =>
+            handler([
+              makeDevice({ address: 'COYOTE-ADDR', name: '47L1210000XX' }),
+              makeDevice({ address: 'OPOSSUM-ADDR', name: '47L1270000XX' }),
+            ]),
+          5,
+        );
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocolA = new FakeProtocol();
+    const protocolB = new FakeProtocol();
+    const clientA = new TauriBlecDeviceClient({
+      protocol: protocolA as never,
+      selectDevice: selectAddress('COYOTE-ADDR'),
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+    const clientB = new TauriBlecDeviceClient({
+      protocol: protocolB as never,
+      selectDevice: selectAddress('OPOSSUM-ADDR'),
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+
+    await Promise.all([clientA.connect(), clientB.connect()]);
+
+    expect(clientA.address).toBe('COYOTE-ADDR');
+    expect(clientB.address).toBe('OPOSSUM-ADDR');
+    expect(protocolA.connectedContext?.deviceName).toBe('47L1210000XX');
+    expect(protocolB.connectedContext?.deviceName).toBe('47L1270000XX');
+    expect(api.connect).toHaveBeenCalledWith('COYOTE-ADDR', expect.any(Function));
+    expect(api.connect).toHaveBeenCalledWith('OPOSSUM-ADDR', expect.any(Function));
+  });
+
+  it('disconnecting one client does not disconnect or affect the other', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([
+          makeDevice({ address: 'COYOTE-ADDR', name: '47L1210000XX' }),
+          makeDevice({ address: 'OPOSSUM-ADDR', name: '47L1270000XX' }),
+        ]);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const protocolA = new FakeProtocol();
+    const protocolB = new FakeProtocol();
+    const clientA = new TauriBlecDeviceClient({
+      protocol: protocolA as never,
+      selectDevice: selectAddress('COYOTE-ADDR'),
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+    const clientB = new TauriBlecDeviceClient({
+      protocol: protocolB as never,
+      selectDevice: selectAddress('OPOSSUM-ADDR'),
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+
+    await clientA.connect();
+    await clientB.connect();
+
+    await clientA.disconnect();
+
+    expect(api.disconnect).toHaveBeenCalledTimes(1);
+    expect(api.disconnect).toHaveBeenCalledWith('COYOTE-ADDR');
+    expect(protocolA.disconnectedCount).toBe(1);
+    // clientB was never touched: no disconnect call for its address, no
+    // onDisconnected() signal to its protocol.
+    expect(protocolB.disconnectedCount).toBe(0);
+    expect(clientB.address).toBe('OPOSSUM-ADDR');
   });
 });

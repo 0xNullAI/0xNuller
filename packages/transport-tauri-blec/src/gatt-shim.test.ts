@@ -1,29 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGattShim } from './gatt-shim.js';
-import type { PluginBlecApi } from './plugin-blec.js';
-
-function makeApi(overrides: Partial<PluginBlecApi> = {}): PluginBlecApi {
-  return {
-    checkPermissions: vi.fn().mockResolvedValue(true),
-    startScan: vi.fn().mockResolvedValue(undefined),
-    stopScan: vi.fn().mockResolvedValue(undefined),
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    send: vi.fn().mockResolvedValue(undefined),
-    read: vi.fn().mockResolvedValue([]),
-    subscribe: vi.fn().mockResolvedValue(undefined),
-    unsubscribe: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
+import { makeApi } from './test-utils.js';
 
 describe('createGattShim', () => {
-  it('gatt.disconnect() synchronously fires gattserverdisconnected', () => {
+  it('gatt.disconnect() synchronously fires gattserverdisconnected and calls api.disconnect(address)', () => {
     const onDisconnect = vi.fn();
+    const api = makeApi();
     const shim = createGattShim({
       address: 'AA:BB',
       name: 'Coyote',
-      api: makeApi(),
+      api,
       onDisconnect,
     });
 
@@ -35,6 +21,7 @@ describe('createGattShim', () => {
     expect(shim.server.connected).toBe(false);
     expect(shim.device.gatt!.connected).toBe(false);
     expect(onDisconnect).toHaveBeenCalledTimes(1);
+    expect(api.disconnect).toHaveBeenCalledWith('AA:BB');
   });
 
   it('repeated disconnects do not double-fire the event', () => {
@@ -78,7 +65,7 @@ describe('createGattShim', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('does not implement requestMTU, since plugin-blec@0.8.0 has no MTU API', () => {
+  it('does not implement requestMTU, since the fork has no per-hook MTU mapping yet', () => {
     // Intentional: see the comment above the `server` literal in gatt-shim.ts.
     // Faking a `requestMTU` that doesn't actually change the negotiated MTU
     // would be worse than omitting it (protocol adapters optional-chain on
@@ -91,5 +78,35 @@ describe('createGattShim', () => {
     });
 
     expect('requestMTU' in shim.server).toBe(false);
+  });
+
+  it('scopes every characteristic read/write/subscribe/unsubscribe call to its own address', async () => {
+    const api = makeApi();
+    const shimA = createGattShim({ address: 'AA:AA', name: 'DeviceA', api, onDisconnect: vi.fn() });
+    const shimB = createGattShim({ address: 'BB:BB', name: 'DeviceB', api, onDisconnect: vi.fn() });
+
+    const serviceA = await shimA.server.getPrimaryService('svc');
+    const charA = await serviceA.getCharacteristic('char');
+    const serviceB = await shimB.server.getPrimaryService('svc');
+    const charB = await serviceB.getCharacteristic('char');
+
+    await charA.writeValue!(new Uint8Array([1]));
+    await charB.writeValue!(new Uint8Array([2]));
+
+    expect(api.send).toHaveBeenNthCalledWith(1, 'char', [1], 'withResponse', 'svc', 'AA:AA');
+    expect(api.send).toHaveBeenNthCalledWith(2, 'char', [2], 'withResponse', 'svc', 'BB:BB');
+  });
+
+  it('disconnecting one shim does not touch the other device', () => {
+    const api = makeApi();
+    const shimA = createGattShim({ address: 'AA:AA', name: 'DeviceA', api, onDisconnect: vi.fn() });
+    const shimB = createGattShim({ address: 'BB:BB', name: 'DeviceB', api, onDisconnect: vi.fn() });
+
+    shimA.device.gatt!.disconnect();
+
+    expect(api.disconnect).toHaveBeenCalledTimes(1);
+    expect(api.disconnect).toHaveBeenCalledWith('AA:AA');
+    expect(shimA.server.connected).toBe(false);
+    expect(shimB.server.connected).toBe(true);
   });
 });

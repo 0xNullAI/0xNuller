@@ -25,25 +25,52 @@ export interface PluginBlecApi {
    * not already have the bluetooth permissions.
    */
   checkPermissions: (askIfDenied?: boolean) => Promise<boolean>;
-  startScan: (
-    handler: (devices: BleDeviceInfo[]) => void,
-    timeoutMs: number,
-  ) => Promise<void>;
+  startScan: (handler: (devices: BleDeviceInfo[]) => void, timeoutMs: number) => Promise<void>;
   stopScan: () => Promise<void>;
+  /**
+   * Connect to a device. Connecting to a new address does not disconnect any
+   * other address that's already connected — the fork this package is
+   * pinned to (`0xNullAI/tauri-plugin-blec-multi`) tracks each connection
+   * independently, so a Coyote client and an Opossum/sensor client can stay
+   * connected at the same time.
+   */
   connect: (address: string, onDisconnect: (() => void) | null) => Promise<void>;
-  disconnect: () => Promise<void>;
+  /**
+   * `address` is optional only for backward compatibility with the
+   * upstream single-connection API — it rejects with `AmbiguousDevice` if
+   * omitted while 2+ devices are connected. Every call in this package
+   * passes it explicitly (each `PluginBlecCharacteristic`/`TauriBlecDeviceClient`
+   * instance is scoped to one address) so that never happens here.
+   */
+  disconnect: (address?: string) => Promise<void>;
+  /** List every currently-connected device, across all addresses. */
+  connectedDevices: () => Promise<BleDeviceInfo[]>;
+  /**
+   * Per-device connection state stream. Unlike a hypothetical aggregate
+   * "connected" flag, this only fires for `address`, so it stays correct
+   * when multiple devices are connected concurrently.
+   */
+  getDeviceConnectionUpdates: (
+    address: string,
+    handler: (connected: boolean) => void,
+  ) => Promise<void>;
   send: (
     characteristic: string,
     data: number[],
     writeType?: WriteType,
     service?: string,
+    address?: string,
   ) => Promise<void>;
-  read: (characteristic: string, service?: string) => Promise<number[]>;
+  read: (characteristic: string, service?: string, address?: string) => Promise<number[]>;
   subscribe: (
     characteristic: string,
+    service: string | null,
     handler: (data: number[]) => void,
+    address?: string,
   ) => Promise<void>;
-  unsubscribe: (characteristic: string) => Promise<void>;
+  unsubscribe: (characteristic: string, service?: string, address?: string) => Promise<void>;
+  /** MTU of a connected device, in bytes. */
+  getMtu: (address?: string) => Promise<number>;
 }
 
 let injected: PluginBlecApi | undefined;
@@ -56,9 +83,7 @@ export async function resolvePluginBlec(): Promise<PluginBlecApi> {
   if (injected) return injected;
   const win = (globalThis as { window?: { __TAURI_INTERNALS__?: unknown } }).window;
   if (!win?.__TAURI_INTERNALS__) {
-    throw new Error(
-      '@mnlphlp/plugin-blec 不可用：当前未运行在已注册 blec 插件的 Tauri 壳中',
-    );
+    throw new Error('@mnlphlp/plugin-blec 不可用：当前未运行在已注册 blec 插件的 Tauri 壳中');
   }
   try {
     const mod = await import('@mnlphlp/plugin-blec');
@@ -79,11 +104,17 @@ function mapModule(mod: PluginBlecModule): PluginBlecApi {
     startScan: (handler, timeoutMs) => mod.startScan(handler, timeoutMs),
     stopScan: () => mod.stopScan(),
     connect: (address, onDisconnect) => mod.connect(address, onDisconnect),
-    disconnect: () => mod.disconnect(),
-    send: (characteristic, data, writeType, service) =>
-      mod.send(characteristic, data, writeType, service),
-    read: (characteristic, service) => mod.read(characteristic, service),
-    subscribe: (characteristic, handler) => mod.subscribe(characteristic, handler),
-    unsubscribe: (characteristic) => mod.unsubscribe(characteristic),
+    disconnect: (address) => mod.disconnect(address),
+    connectedDevices: () => mod.connectedDevices(),
+    getDeviceConnectionUpdates: (address, handler) =>
+      mod.getDeviceConnectionUpdates(address, handler),
+    send: (characteristic, data, writeType, service, address) =>
+      mod.send(characteristic, data, writeType, service, address),
+    read: (characteristic, service, address) => mod.read(characteristic, service, address),
+    subscribe: (characteristic, service, handler, address) =>
+      mod.subscribe(characteristic, service, handler, address),
+    unsubscribe: (characteristic, service, address) =>
+      mod.unsubscribe(characteristic, service, address),
+    getMtu: (address) => mod.getMtu(address),
   };
 }
