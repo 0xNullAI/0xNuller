@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TauriBlecOpossumClient } from './opossum-client.js';
 import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
+import { requestDgLabDeviceTauri } from './request-device.js';
 import { makeApi, makeDevice } from './test-utils.js';
 
 function scanHandlerWith(devices: BleDeviceInfo[]) {
@@ -73,6 +74,31 @@ describe('TauriBlecOpossumClient', () => {
     expect(api.disconnect).toHaveBeenCalledWith('OPO-1');
     const state = await client.getState();
     expect(state.connected).toBe(false);
+  });
+
+  it('connectDevice() attaches an already-connected pair from a unified picker instead of scanning', async () => {
+    const api = makeApi({
+      startScan: scanHandlerWith([makeDevice({ address: 'OPO-1', name: '47L1270000XX' })]),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+    expect(picked.kind).toBe('opossum');
+    (api.startScan as ReturnType<typeof vi.fn>).mockClear();
+
+    const client = new TauriBlecOpossumClient({
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    expect(client.address).toBe('OPO-1');
+    expect(api.startScan).not.toHaveBeenCalled();
+    const state = await client.getState();
+    expect(state.connected).toBe(true);
   });
 
   it('a plugin-signalled disconnect (gattserverdisconnected) resets state without a manual disconnect() call', async () => {

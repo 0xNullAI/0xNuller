@@ -20,7 +20,11 @@
  * concurrently (e.g. a Coyote via `TauriBlecDeviceClient` plus an Opossum
  * via `TauriBlecOpossumClient`) without one interfering with another.
  */
-import type { BluetoothDeviceLike, WebBluetoothConnectionContext } from '@dg-kit/protocol';
+import type {
+  BluetoothDeviceLike,
+  BluetoothRemoteGATTServerLike,
+  WebBluetoothConnectionContext,
+} from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
 import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.js';
 import { resolvePluginBlec } from './plugin-blec.js';
@@ -81,17 +85,50 @@ export async function connectTauriAuxDevice(
     shim?.fireDisconnect();
   });
   shim = createGattShim({ address, name, api, onDisconnect: () => undefined });
-  const nextDevice = shim.device;
-  const server = shim.server;
 
-  const shouldReplacePrevious = !!previousDevice && previousDevice.id !== address;
+  return attachTauriAuxDevice(
+    shim.device,
+    shim.server,
+    adapter,
+    previousDevice,
+    onGattDisconnected,
+    options,
+  );
+}
+
+/**
+ * Attaches to an already-obtained `(device, server)` pair instead of running
+ * this helper's own scan + `selectDevice()` + plugin-blec connect — the
+ * Tauri counterpart to `@dg-kit/transport-webbluetooth`'s
+ * `WebBluetoothDeviceClient.connectDevice()`. Lets a caller that already ran
+ * ONE shared scan+picker across every DG-Lab device kind (see
+ * `requestDgLabDeviceTauri()`) and identified the picked device's kind via
+ * `detectDeviceKind()` hand it straight to the matching aux client, instead
+ * of needing a second, kind-scoped scan+picker. `api.connect()` must already
+ * have been called (i.e. `device`/`server` came from `createGattShim()`
+ * after a successful plugin-blec connect); this only runs the adapter
+ * handshake and the same replace-previous-device bookkeeping
+ * `connectTauriAuxDevice()` does.
+ */
+export async function attachTauriAuxDevice(
+  nextDevice: BluetoothDeviceLike,
+  server: BluetoothRemoteGATTServerLike,
+  adapter: ConnectableAdapter,
+  previousDevice: BluetoothDeviceLike | null,
+  onGattDisconnected: (event: Event) => void,
+  retryOptions: GattReadyRetryOptions = {},
+): Promise<BluetoothDeviceLike> {
+  const shouldReplacePrevious = !!previousDevice && previousDevice.id !== nextDevice.id;
 
   if (shouldReplacePrevious) {
     previousDevice!.removeEventListener('gattserverdisconnected', onGattDisconnected);
   }
 
   try {
-    await runWithGattReadyRetry(() => adapter.onConnected({ device: nextDevice, server }), options);
+    await runWithGattReadyRetry(
+      () => adapter.onConnected({ device: nextDevice, server }),
+      retryOptions,
+    );
   } catch (error) {
     if (shouldReplacePrevious && isGattConnected(previousDevice)) {
       previousDevice!.addEventListener('gattserverdisconnected', onGattDisconnected);
@@ -99,7 +136,8 @@ export async function connectTauriAuxDevice(
     if (nextDevice.gatt?.connected) {
       nextDevice.gatt.disconnect();
     } else {
-      await api.disconnect(address).catch(() => undefined);
+      const api = await resolvePluginBlec();
+      await api.disconnect(nextDevice.id).catch(() => undefined);
     }
     throw error;
   }

@@ -20,11 +20,18 @@ export {
   type TauriBlecDeviceClientOptions,
 } from './client.js';
 export {
+  attachTauriAuxDevice,
   connectTauriAuxDevice,
   disconnectTauriAuxDevice,
   type ConnectableAdapter,
   type TauriAuxDeviceConnectOptions,
 } from './aux-connect.js';
+export {
+  requestDgLabDeviceTauri,
+  DG_LAB_TAURI_NAME_PREFIXES,
+  type RequestDgLabDeviceTauriOptions,
+  type RequestedDgLabDeviceTauri,
+} from './request-device.js';
 export {
   TauriBlecOpossumClient,
   type OpossumCommandResult,

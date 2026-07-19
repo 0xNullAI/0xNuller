@@ -16,8 +16,12 @@ import {
   type OpossumButtonEvent,
   type OpossumState,
 } from '@dg-kit/protocol';
-import type { BluetoothDeviceLike } from '@dg-kit/protocol';
-import { connectTauriAuxDevice, disconnectTauriAuxDevice } from './aux-connect.js';
+import type { BluetoothDeviceLike, BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
+import {
+  attachTauriAuxDevice,
+  connectTauriAuxDevice,
+  disconnectTauriAuxDevice,
+} from './aux-connect.js';
 import type { GattReadyRetryOptions } from './gatt-ready.js';
 import type { DeviceSelectionController } from './scan.js';
 
@@ -60,6 +64,27 @@ export class TauriBlecOpossumClient {
       this.adapter,
       this.device,
       this.handleGattDisconnected,
+    );
+  }
+
+  /**
+   * Attach to an already-obtained `(device, server)` pair instead of
+   * running this client's own scan + picker — see `aux-connect.ts`'s
+   * `attachTauriAuxDevice()` doc comment. Lets a unified cross-kind picker
+   * (`requestDgLabDeviceTauri()`) hand a picked+connected Opossum straight
+   * to this client once `detectDeviceKind()` identifies it.
+   */
+  async connectDevice(
+    device: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<void> {
+    this.device = await attachTauriAuxDevice(
+      device,
+      server,
+      this.adapter,
+      this.device,
+      this.handleGattDisconnected,
+      this.options,
     );
   }
 

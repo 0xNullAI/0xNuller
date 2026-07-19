@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
+import { requestDgLabDeviceTauri } from './request-device.js';
 import { TauriBlecCivetEdgingClient, TauriBlecPawPrintsClient } from './sensor-client.js';
 import { makeApi, makeDevice } from './test-utils.js';
 
@@ -87,6 +88,65 @@ describe('TauriBlecPawPrintsClient', () => {
     expect(civet.address).toBe('CIVET-1');
     const civetState = await civet.getState();
     expect(civetState.connected).toBe(true);
+  });
+});
+
+describe('TauriBlecPawPrintsClient.connectDevice', () => {
+  it('attaches an already-connected (device, server) pair from a unified picker instead of scanning', async () => {
+    const api = makeApi({
+      startScan: scanHandlerWith([makeDevice({ address: 'PAW-1', name: '47L1200000XX' })]),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+    expect(picked.kind).toBe('paw-prints');
+    (api.startScan as ReturnType<typeof vi.fn>).mockClear();
+
+    const client = new TauriBlecPawPrintsClient({
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    expect(client.address).toBe('PAW-1');
+    expect(api.startScan).not.toHaveBeenCalled();
+    const state = await client.getState();
+    expect(state.connected).toBe(true);
+  });
+
+  it('replaces a previously-attached device only after the new one connects', async () => {
+    const api = makeApi({
+      startScan: scanHandlerWith([
+        makeDevice({ address: 'PAW-1', name: '47L1200000XX' }),
+        makeDevice({ address: 'PAW-2', name: '47L1200001XX' }),
+      ]),
+    });
+    __setPluginBlecForTests(api);
+
+    const client = new TauriBlecPawPrintsClient({
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+
+    const first = await requestDgLabDeviceTauri({
+      selectDevice: async () => 'PAW-1',
+      scanDurationMs: 50,
+    });
+    await client.connectDevice(first.device, first.server);
+    expect(client.address).toBe('PAW-1');
+
+    const second = await requestDgLabDeviceTauri({
+      selectDevice: async () => 'PAW-2',
+      scanDurationMs: 50,
+    });
+    await client.connectDevice(second.device, second.server);
+
+    expect(client.address).toBe('PAW-2');
+    expect(first.device.gatt!.connected).toBe(false);
+    expect(api.disconnect).toHaveBeenCalledWith('PAW-1');
   });
 });
 

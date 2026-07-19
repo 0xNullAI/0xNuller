@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TauriBlecDeviceClient, type DiscoveredDevice } from './client.js';
 import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
+import { requestDgLabDeviceTauri } from './request-device.js';
 import { makeApi, makeDevice } from './test-utils.js';
 
 class FakeProtocol {
@@ -770,5 +771,124 @@ describe('TauriBlecDeviceClient concurrent multi-device connections', () => {
     // onDisconnected() signal to its protocol.
     expect(protocolB.disconnectedCount).toBe(0);
     expect(clientB.address).toBe('OPOSSUM-ADDR');
+  });
+});
+
+describe('TauriBlecDeviceClient.connectDevice', () => {
+  it('attaches an already-connected (device, server) pair from a unified picker instead of scanning', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice({ address: 'COYOTE-1', name: '47L1210000XX' })]);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+    expect(picked.kind).toBe('coyote');
+    (api.startScan as ReturnType<typeof vi.fn>).mockClear();
+    (api.connect as ReturnType<typeof vi.fn>).mockClear();
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    expect(client.address).toBe('COYOTE-1');
+    expect(api.startScan).not.toHaveBeenCalled();
+    // Attaching must not re-dial plugin-blec's connect(): the device is
+    // already connected via the picker's own api.connect() call.
+    expect(api.connect).not.toHaveBeenCalled();
+    expect(protocol.connectedContext?.deviceName).toBe('47L1210000XX');
+  });
+
+  it('rejects connectDevice() when already connected or a connect is in flight', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice({ address: 'COYOTE-1', name: '47L1210000XX' })]);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    await expect(client.connectDevice(picked.device, picked.server)).rejects.toThrow(/已连接/);
+  });
+
+  it('disconnect() after connectDevice() tears down cleanly, calling onDisconnected exactly once', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice({ address: 'COYOTE-1', name: '47L1210000XX' })]);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    await client.disconnect();
+
+    expect(client.address).toBeNull();
+    expect(picked.device.gatt!.connected).toBe(false);
+    // The passthrough listener wiring must not cause onDisconnected() to
+    // fire twice (once from disconnect()'s own call, once more from the
+    // gattserverdisconnected event disconnect() itself triggers via the
+    // shim's gatt.disconnect()).
+    expect(protocol.disconnectedCount).toBe(1);
+  });
+
+  it('an unexpected drop after connectDevice() (gattserverdisconnected fired externally) reaches protocol.onDisconnected()', async () => {
+    const api = makeApi({
+      startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
+        handler([makeDevice({ address: 'COYOTE-1', name: '47L1210000XX' })]);
+      }),
+    });
+    __setPluginBlecForTests(api);
+
+    const picked = await requestDgLabDeviceTauri({
+      selectDevice: async (c) => c.initial[0]?.address ?? null,
+      scanDurationMs: 50,
+    });
+
+    const protocol = new FakeProtocol();
+    const client = new TauriBlecDeviceClient({
+      protocol: protocol as never,
+      selectDevice: vi.fn(),
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connectDevice(picked.device, picked.server);
+
+    // Simulate an out-of-range drop: the picker's own shim fires the DOM
+    // event when plugin-blec signals a disconnect for this address.
+    picked.device.gatt!.disconnect();
+
+    expect(client.address).toBeNull();
+    expect(protocol.disconnectedCount).toBe(1);
   });
 });
