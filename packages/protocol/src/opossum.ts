@@ -55,6 +55,16 @@ export interface OpossumState {
   battery?: number;
   intensityA: number;
   intensityB: number;
+  /**
+   * Named rhythm preset each channel's B0 stream currently follows.
+   * Optional (not part of the pre-1.11.0 shape, and a caller-supplied raw
+   * envelope via `setVibrationPattern(channel, number[])` has no name) —
+   * absent means "unknown/custom", present means the named preset. Set to
+   * 'constant' on connect, so in practice it's always present while
+   * connected unless an advanced caller installed a custom envelope.
+   */
+  patternA?: OpossumVibrationPatternName;
+  patternB?: OpossumVibrationPatternName;
 }
 
 export function createEmptyOpossumState(): OpossumState {
@@ -159,6 +169,8 @@ export class OpossumVibrateAdapter {
         battery: connection.battery,
         intensityA: 0,
         intensityB: 0,
+        patternA: 'constant',
+        patternB: 'constant',
       };
       this.patterns.A = OPOSSUM_VIBRATION_PATTERNS.constant;
       this.patterns.B = OPOSSUM_VIBRATION_PATTERNS.constant;
@@ -305,19 +317,34 @@ export class OpossumVibrateAdapter {
   }
 
   /**
-   * Sets which named rhythm envelope a channel's B0 stream follows (see
-   * `OPOSSUM_VIBRATION_PATTERNS`). If the channel is currently running
-   * (intensity > 0), the new pattern takes over from its own beginning on
-   * the next tick — changing rhythm restarts the phase rather than
-   * splicing into wherever the old pattern's cursor happened to be, so the
-   * new rhythm is predictable. Does not touch intensity.
+   * Sets which rhythm envelope a channel's B0 stream follows. Pass a preset
+   * name (see `OPOSSUM_VIBRATION_PATTERNS`) and the name is also surfaced in
+   * `OpossumState.patternA/patternB` so UIs and the LLM status block can show
+   * which rhythm is running; pass a raw envelope array (advanced callers)
+   * and the state field goes blank — "custom", not a known preset. If the
+   * channel is currently running (intensity > 0), the new pattern takes
+   * over from its own beginning on the next tick — changing rhythm restarts
+   * the phase rather than splicing into wherever the old pattern's cursor
+   * happened to be, so the new rhythm is predictable. Does not touch
+   * intensity.
    */
-  setVibrationPattern(channel: Channel, pattern: readonly number[]): void {
-    this.patterns[channel] = pattern.length > 0 ? pattern : OPOSSUM_VIBRATION_PATTERNS.constant;
+  setVibrationPattern(
+    channel: Channel,
+    pattern: OpossumVibrationPatternName | readonly number[],
+  ): void {
+    const isNamed = typeof pattern === 'string';
+    const envelope = isNamed ? OPOSSUM_VIBRATION_PATTERNS[pattern] : pattern;
+    this.patterns[channel] = envelope.length > 0 ? envelope : OPOSSUM_VIBRATION_PATTERNS.constant;
+    if (channel === 'A') {
+      this.state.patternA = isNamed ? pattern : undefined;
+    } else {
+      this.state.patternB = isNamed ? pattern : undefined;
+    }
     const running = (channel === 'A' ? this.state.intensityA : this.state.intensityB) > 0;
     if (running) {
       this.resetPatternCursor(channel);
     }
+    this.emitState();
   }
 
   /**

@@ -531,7 +531,26 @@ describe('OpossumVibrateAdapter connection lifecycle', () => {
       battery: 77,
       intensityA: 0,
       intensityB: 0,
+      patternA: 'constant',
+      patternB: 'constant',
     });
+  });
+
+  it('surfaces the named pattern in state, blanking it for raw custom envelopes', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+
+    adapter.setVibrationPattern('A', 'heartbeat');
+    expect(adapter.getState().patternA).toBe('heartbeat');
+    expect(adapter.getState().patternB).toBe('constant');
+
+    // Advanced caller installs a raw envelope — no preset name to report.
+    adapter.setVibrationPattern('A', [10, 20, 30]);
+    expect(adapter.getState().patternA).toBeUndefined();
+
+    await adapter.onDisconnected();
+    expect(adapter.getState().patternA).toBeUndefined();
+    expect(adapter.getState().connected).toBe(false);
   });
 
   it('best-effort defaults battery to 0 when the battery service is unavailable', async () => {
