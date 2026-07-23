@@ -35,7 +35,7 @@
  * itself — `vibrate_start`'s external contract (fire-and-forget, no caller
  * tick loop) is unchanged, it just actually works now.
  */
-import type { Channel, OpossumVibrationPatternName } from '@dg-kit/core';
+import type { Channel, OpossumCommand, OpossumVibrationPatternName } from '@dg-kit/core';
 import type { WebBluetoothConnectionContext } from './base.js';
 import {
   clampIndicatorColor,
@@ -226,6 +226,53 @@ export class OpossumVibrateAdapter {
     return () => {
       this.stateListeners.delete(listener);
     };
+  }
+
+  /**
+   * Single entry point for `OpossumCommand` — the counterpart of
+   * `CoyoteProtocolAdapter.execute()`. Exists so every consumer (DG-Agent,
+   * DG-MCP, ...) shares one command→method mapping instead of each hand-
+   * rolling its own switch, which is what let `vibrateBurst`/
+   * `vibrateSetPattern` silently no-op in a consumer that predated them.
+   * The `never` check below makes a future `OpossumCommand` variant a
+   * compile error here rather than a silent no-op downstream.
+   */
+  async execute(command: OpossumCommand): Promise<OpossumState> {
+    switch (command.type) {
+      case 'vibrateStart':
+        if (command.pattern) {
+          this.setVibrationPattern(command.channel, command.pattern);
+        }
+        await this.setIntensity(
+          command.channel === 'A' ? command.intensity : 'unchanged',
+          command.channel === 'B' ? command.intensity : 'unchanged',
+        );
+        break;
+      case 'vibrateStop':
+        if (command.channel) {
+          await this.setIntensity(
+            command.channel === 'A' ? 0 : 'unchanged',
+            command.channel === 'B' ? 0 : 'unchanged',
+          );
+        } else {
+          await this.emergencyStop();
+        }
+        break;
+      case 'vibrateAdjust':
+        await this.adjustIntensity(command.channel, command.delta);
+        break;
+      case 'vibrateSetPattern':
+        this.setVibrationPattern(command.channel, command.pattern);
+        break;
+      case 'vibrateBurst':
+        await this.vibrateBurst(command.channel, command.intensity, command.durationMs);
+        break;
+      default: {
+        const exhaustive: never = command;
+        throw new Error(`Unknown OpossumCommand: ${JSON.stringify(exhaustive)}`);
+      }
+    }
+    return this.getState();
   }
 
   /**

@@ -432,6 +432,92 @@ describe('OpossumVibrateAdapter vibrateBurst', () => {
   });
 });
 
+describe('OpossumVibrateAdapter execute', () => {
+  it('vibrateStart sets intensity and applies the pattern when given', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+
+    const state = await adapter.execute({
+      type: 'vibrateStart',
+      channel: 'A',
+      intensity: 80,
+      pattern: 'pulse',
+    });
+
+    expect(state.intensityA).toBe(80);
+    expect(state.patternA).toBe('pulse');
+  });
+
+  it('vibrateStop with no channel calls emergencyStop (zeroes both channels)', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+    await adapter.setIntensity(40, 60);
+
+    const state = await adapter.execute({ type: 'vibrateStop' });
+
+    expect(state.intensityA).toBe(0);
+    expect(state.intensityB).toBe(0);
+  });
+
+  it('vibrateStop with a channel only zeroes that channel', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+    await adapter.setIntensity(40, 60);
+
+    const state = await adapter.execute({ type: 'vibrateStop', channel: 'A' });
+
+    expect(state.intensityA).toBe(0);
+    expect(state.intensityB).toBe(60);
+  });
+
+  it('vibrateAdjust applies a relative delta to the requested channel', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+    await adapter.setIntensity(40, 'unchanged');
+
+    const state = await adapter.execute({ type: 'vibrateAdjust', channel: 'A', delta: 10 });
+
+    expect(state.intensityA).toBe(50);
+  });
+
+  it('vibrateSetPattern changes the pattern without touching intensity', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    await connectAdapter(adapter);
+    await adapter.setIntensity(40, 'unchanged');
+
+    const state = await adapter.execute({
+      type: 'vibrateSetPattern',
+      channel: 'A',
+      pattern: 'heartbeat',
+    });
+
+    expect(state.patternA).toBe('heartbeat');
+    expect(state.intensityA).toBe(40);
+  });
+
+  it('vibrateBurst raises the channel then restores after durationMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new OpossumVibrateAdapter();
+      await connectAdapter(adapter);
+      await adapter.setIntensity(40, 'unchanged');
+
+      const state = await adapter.execute({
+        type: 'vibrateBurst',
+        channel: 'A',
+        intensity: 120,
+        durationMs: 500,
+      });
+      expect(state.intensityA).toBe(120);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(adapter.getState().intensityA).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('OpossumVibrateAdapter incoming notifications', () => {
   it('parses a 0xB3 notification and updates intensityA/intensityB', async () => {
     const adapter = new OpossumVibrateAdapter();
