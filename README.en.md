@@ -15,7 +15,7 @@
 
 ## What it is
 
-DG-MCP exposes a Coyote device as a set of [Model Context Protocol](https://modelcontextprotocol.io) tools so any MCP-compatible LLM client (Claude Desktop, Continue, etc.) can drive it over Bluetooth — `scan`, `connect`, `start`, `stop`, `adjust_strength`, `change_wave`, `burst`, `design_wave`, `emergency_stop`, and more, all surfaced as ordinary tool calls.
+DG-MCP exposes a Coyote device as a set of [Model Context Protocol](https://modelcontextprotocol.io) tools so any MCP-compatible LLM client (Claude Desktop, Continue, etc.) can drive it over Bluetooth — `scan`, `connect`, `shock_start`, `shock_stop`, `shock_adjust`, `shock_change_wave`, `shock_burst`, `design_wave`, `emergency_stop`, and more, all surfaced as ordinary tool calls. (The pre-1.9.0 names `start` / `stop` / `adjust_strength` / `change_wave` / `burst` still work as aliases — the tool list just no longer advertises them.)
 
 Runs in Node.js, talks to the client over stdio. Built on [`@dg-kit/*`](https://github.com/0xNullAI/DG-Kit), so it shares its protocol implementation with DG-Agent and DG-Chat.
 
@@ -93,12 +93,18 @@ dg-mcp [options]
 
 | Tool | Purpose |
 |---|---|
-| `start` | Cold-start a channel: set strength + waveform in one go |
-| `stop` | Stop one channel, or both if `channel` omitted |
-| `adjust_strength` | Relative change, ±10/step (rate-limited 2× / 5 s) |
-| `change_wave` | Swap waveform without touching strength |
-| `burst` | Briefly spike to a target strength, auto-restore (1× / 5 s) |
+| `shock_start` | Cold-start a channel: set strength + waveform in one go (was `start`) |
+| `shock_stop` | Stop one channel, or both if `channel` omitted (was `stop`) |
+| `shock_adjust` | Relative change, ±10/step (rate-limited 2× / 5 s) (was `adjust_strength`) |
+| `shock_change_wave` | Swap waveform without touching strength (was `change_wave`) |
+| `shock_burst` | Briefly spike to a target strength, auto-restore (1× / 5 s) (was `burst`) |
 | `design_wave` | Compose a new waveform from `ramp / hold / pulse / silence` segments |
+| `vibrate_start` | Start a channel on the Opossum vibration controller, optional rhythm `pattern` |
+| `vibrate_stop` | Stop one channel, or both if `channel` omitted |
+| `vibrate_adjust` | Relative intensity change (rate-limited 2× / 5 s) |
+| `vibrate_change_pattern` | Swap the rhythm preset without touching intensity |
+| `vibrate_burst` | Briefly spike a channel's intensity, auto-restore (1× / 5 s) |
+| `set_indicator_color` | Set the LED color on paw-prints / civet-edging / opossum — cosmetic only |
 
 ### MCP-only
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -231,6 +231,60 @@ describe('opossum tool dispatch (plan.type === "opossum")', () => {
     expect(adapter?.getState().intensityB).toBe(50);
   });
 
+  it('vibrate_start with a pattern sets both intensity and the vibration pattern', async () => {
+    const { client, deviceManager } = await createHarness();
+    const { entry } = await injectConnectedDevice(deviceManager, 'opossum', 'F1:F1:F1:F1:F1:05');
+
+    const result = await client.callTool({
+      name: 'vibrate_start',
+      arguments: { channel: 'A', intensity: 20, pattern: 'pulse' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const adapter = entry.kind === 'opossum' ? entry.adapter : null;
+    expect(adapter?.getState().intensityA).toBe(20);
+    expect(adapter?.getState().patternA).toBe('pulse');
+  });
+
+  it('vibrate_change_pattern maps to setVibrationPattern without touching intensity — this is the tool @dg-kit/tools@1.10.0 added and DG-MCP@1.0.x could list but never execute', async () => {
+    const { client, deviceManager } = await createHarness();
+    const { entry } = await injectConnectedDevice(deviceManager, 'opossum', 'F1:F1:F1:F1:F1:06');
+    if (entry.kind === 'opossum') await entry.adapter.setIntensity(40, 'unchanged');
+
+    const result = await client.callTool({
+      name: 'vibrate_change_pattern',
+      arguments: { channel: 'A', pattern: 'heartbeat' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const adapter = entry.kind === 'opossum' ? entry.adapter : null;
+    expect(adapter?.getState().patternA).toBe('heartbeat');
+    expect(adapter?.getState().intensityA).toBe(40);
+  });
+
+  it('vibrate_burst raises the channel then restores after durationMs — also added in @dg-kit/tools@1.10.0 and previously unexecuted', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, deviceManager } = await createHarness();
+      const { entry } = await injectConnectedDevice(deviceManager, 'opossum', 'F1:F1:F1:F1:F1:07');
+      if (entry.kind === 'opossum') await entry.adapter.setIntensity(30, 'unchanged');
+
+      const result = await client.callTool({
+        name: 'vibrate_burst',
+        arguments: { channel: 'A', intensity: 100, durationMs: 500 },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const adapter = entry.kind === 'opossum' ? entry.adapter : null;
+      expect(adapter?.getState().intensityA).toBe(100);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(adapter?.getState().intensityA).toBe(30);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('returns a clear Chinese error when no opossum device is connected', async () => {
     const { client } = await createHarness();
 
@@ -275,6 +329,20 @@ describe('coyote "device" tool dispatch (plan.type === "device")', () => {
     expect(adapter?.getState().strengthA).toBe(5);
   });
 
+  it('shock_start (post-1.9.0 name) targets the single connected coyote device', async () => {
+    const { client, deviceManager } = await createHarness();
+    const { entry } = await injectConnectedDevice(deviceManager, 'coyote', 'F3:F3:F3:F3:F3:02');
+
+    const result = await client.callTool({
+      name: 'shock_start',
+      arguments: { channel: 'A', strength: 5, waveformId: 'pulse_mid' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const adapter = entry.kind === 'coyote' ? entry.adapter : null;
+    expect(adapter?.getState().strengthA).toBe(5);
+  });
+
   it('returns a clear error when no coyote device is connected', async () => {
     const { client } = await createHarness();
 
@@ -286,6 +354,38 @@ describe('coyote "device" tool dispatch (plan.type === "device")', () => {
     expect(result.isError).toBe(true);
     const payload = parseToolResult(result);
     expect(payload.reason).toContain('没有已连接的郊狼设备');
+  });
+});
+
+describe('rate-limit caps track post-1.9.0 tool names', () => {
+  it('shock_adjust is capped at 2 calls per window — the caps table used to key on the pre-rename "adjust_strength" and silently stop limiting anything', async () => {
+    const { client, deviceManager } = await createHarness();
+    await injectConnectedDevice(deviceManager, 'coyote', 'F9:F9:F9:F9:F9:01');
+
+    const args = { channel: 'A', delta: 5 };
+    const first = await client.callTool({ name: 'shock_adjust', arguments: args });
+    const second = await client.callTool({ name: 'shock_adjust', arguments: args });
+    const third = await client.callTool({ name: 'shock_adjust', arguments: args });
+
+    expect(first.isError).toBeFalsy();
+    expect(second.isError).toBeFalsy();
+    expect(third.isError).toBe(true);
+    const payload = parseToolResult(third);
+    expect(payload.reason).toContain('上限');
+  });
+
+  it('vibrate_burst is capped at 1 call per window', async () => {
+    const { client, deviceManager } = await createHarness();
+    await injectConnectedDevice(deviceManager, 'opossum', 'F9:F9:F9:F9:F9:02');
+
+    const args = { channel: 'A', intensity: 50, durationMs: 200 };
+    const first = await client.callTool({ name: 'vibrate_burst', arguments: args });
+    const second = await client.callTool({ name: 'vibrate_burst', arguments: args });
+
+    expect(first.isError).toBeFalsy();
+    expect(second.isError).toBe(true);
+    const payload = parseToolResult(second);
+    expect(payload.reason).toContain('上限');
   });
 });
 

@@ -41,7 +41,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       printHelp();
       process.exit(0);
     } else if (arg === '--version' || arg === '-v') {
-      console.log('dg-mcp 1.0.1');
+      console.log('dg-mcp 1.1.0');
       process.exit(0);
     } else if (arg && arg.startsWith('--')) {
       console.error(`unknown flag: ${arg}`);

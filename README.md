@@ -15,7 +15,7 @@
 
 ## 这是什么
 
-DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具，让任何 MCP 兼容的 LLM 客户端（Claude Desktop、Continue 等）能通过蓝牙直接驱动你的设备——`scan` / `connect` / `start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `emergency_stop` 全套都是普通的工具调用。
+DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具，让任何 MCP 兼容的 LLM 客户端（Claude Desktop、Continue 等）能通过蓝牙直接驱动你的设备——`scan` / `connect` / `shock_start` / `shock_stop` / `shock_adjust` / `shock_change_wave` / `shock_burst` / `design_wave` / `emergency_stop` 全套都是普通的工具调用（旧版 `start` / `stop` / `adjust_strength` / `change_wave` / `burst` 名字仍可调用，但工具列表只展示新名）。
 
 跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](https://github.com/0xNullAI/DG-Kit) 中台，跟 DG-Agent / DG-Chat 共享一份协议代码。
 
@@ -93,12 +93,18 @@ dg-mcp [options]
 
 | 工具 | 用途 |
 |---|---|
-| `start` | 冷启动通道，一次设强度 + 波形 |
-| `stop` | 停止通道；省略 `channel` 停全部 |
-| `adjust_strength` | 相对调整强度（±10/步，5s 内最多 2 次） |
-| `change_wave` | 不动强度，仅换波形 |
-| `burst` | 短时拉到目标强度后自动回落（5s 内最多 1 次） |
+| `shock_start` | 冷启动通道，一次设强度 + 波形（旧名 `start`） |
+| `shock_stop` | 停止通道；省略 `channel` 停全部（旧名 `stop`） |
+| `shock_adjust` | 相对调整强度（±10/步，5s 内最多 2 次）（旧名 `adjust_strength`） |
+| `shock_change_wave` | 不动强度，仅换波形（旧名 `change_wave`） |
+| `shock_burst` | 短时拉到目标强度后自动回落（5s 内最多 1 次）（旧名 `burst`） |
 | `design_wave` | 用 `ramp / hold / pulse / silence` 段落组合新波形 |
+| `vibrate_start` | 负鼠设备启动通道振动，可选带 `pattern` 节奏预设 |
+| `vibrate_stop` | 停止负鼠振动；省略 `channel` 停全部 |
+| `vibrate_adjust` | 相对调整负鼠振动强度（5s 内最多 2 次） |
+| `vibrate_change_pattern` | 不动强度，仅切换负鼠振动节奏预设 |
+| `vibrate_burst` | 负鼠短时脉冲后自动回落（5s 内最多 1 次） |
+| `set_indicator_color` | 设置爪印 / 灵猫边缘控制 / 负鼠的指示灯颜色，纯外观 |
 
 ### MCP 专属
 

@@ -1,6 +1,6 @@
 {
   "name": "dg-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Model Context Protocol server for DG-Lab Coyote 2.0/3.0 — exposes the device as MCP tools (start, stop, adjust_strength, change_wave, burst, design_wave, ...) for any MCP-compatible LLM client",
   "license": "MIT",
   "author": "0xNullAI",
@@ -35,10 +35,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@dg-kit/core": "^1.4.0",
-    "@dg-kit/protocol": "^1.4.0",
-    "@dg-kit/tools": "^1.4.0",
-    "@dg-kit/waveforms": "^1.4.0",
+    "@dg-kit/core": "^1.12.0",
+    "@dg-kit/protocol": "^1.12.0",
+    "@dg-kit/tools": "^1.12.0",
+    "@dg-kit/waveforms": "^1.12.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@stoprocent/noble": "^2.3.0",
     "fflate": "^0.8.2",

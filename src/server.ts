@@ -15,8 +15,7 @@ import {
   createSlidingWindowRateLimitPolicy,
   type ToolRegistry,
 } from '@dg-kit/tools';
-import type { OpossumCommand, ToolCall, ToolExecutionPlan } from '@dg-kit/core';
-import type { OpossumVibrateAdapter } from '@dg-kit/protocol';
+import type { ToolCall, ToolExecutionPlan } from '@dg-kit/core';
 import { DeviceManager, type ConnectedDevice } from './device-manager.js';
 import type { NodeWaveformLibrary } from './waveform-library.js';
 
@@ -31,10 +30,11 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
   const policy = createSlidingWindowRateLimitPolicy({
     windowMs: options.rateLimitWindowMs ?? 5_000,
     caps: {
-      adjust_strength: 2,
-      burst: 1,
+      shock_adjust: 2,
+      shock_burst: 1,
       design_wave: 1,
       vibrate_adjust: 2,
+      vibrate_burst: 1,
     },
   });
 
@@ -48,7 +48,7 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
   const server = new Server(
     {
       name: 'dg-mcp',
-      version: '1.0.1',
+      version: '1.1.0',
     },
     {
       capabilities: {
@@ -223,8 +223,10 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
         }
       }
 
-      // Registry-backed tools (start / stop / adjust_strength / change_wave /
-      // burst / design_wave / vibrate_* / set_indicator_color / timer).
+      // Registry-backed tools (shock_start / shock_stop / shock_adjust /
+      // shock_change_wave / shock_burst / design_wave / vibrate_* /
+      // set_indicator_color / timer). Old pre-1.9.0 Coyote names still
+      // resolve via the registry's alias mechanism.
       const toolCall: ToolCall = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
@@ -240,8 +242,8 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
 
       if (plan.type === 'opossum') {
         const entry = deviceManager.findSingleByKind('opossum');
-        await applyOpossumCommand(entry.adapter, plan.command);
-        return jsonResult({ ok: true, state: entry.adapter.getState() });
+        const state = await entry.adapter.execute(plan.command);
+        return jsonResult({ ok: true, state });
       }
 
       if (plan.type === 'setIndicatorColor') {
@@ -278,40 +280,6 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
 }
 
 /**
- * `OpossumVibrateAdapter` only exposes `setIntensity` (absolute set) --
- * `vibrateStop` and `vibrateAdjust` are composed from that plus `getState()`
- * since the adapter has no relative-adjust method of its own.
- */
-async function applyOpossumCommand(
-  adapter: OpossumVibrateAdapter,
-  command: OpossumCommand,
-): Promise<void> {
-  switch (command.type) {
-    case 'vibrateStart': {
-      const a = command.channel === 'A' ? command.intensity : 'unchanged';
-      const b = command.channel === 'B' ? command.intensity : 'unchanged';
-      await adapter.setIntensity(a, b);
-      return;
-    }
-    case 'vibrateStop': {
-      const a = !command.channel || command.channel === 'A' ? 0 : 'unchanged';
-      const b = !command.channel || command.channel === 'B' ? 0 : 'unchanged';
-      await adapter.setIntensity(a, b);
-      return;
-    }
-    case 'vibrateAdjust': {
-      const state = adapter.getState();
-      const current = command.channel === 'A' ? state.intensityA : state.intensityB;
-      const next = clamp(current + command.delta, 0, 200);
-      const a = command.channel === 'A' ? next : 'unchanged';
-      const b = command.channel === 'B' ? next : 'unchanged';
-      await adapter.setIntensity(a, b);
-      return;
-    }
-  }
-}
-
-/**
  * `set_indicator_color` is pure appearance ("不影响任何强度/振动输出，纯外观" per
  * the registry tool description). Paw-prints has a dedicated solid-color
  * command. Opossum's LED command packet also carries a button-state-
@@ -341,10 +309,6 @@ async function applyIndicatorColor(
     case 'coyote':
       return { ok: false, reason: '郊狼设备没有可设置的指示灯' };
   }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function jsonResult(payload: unknown): { content: Array<{ type: 'text'; text: string }> } {
