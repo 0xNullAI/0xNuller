@@ -1,5 +1,13 @@
 # @dg-kit/transport-webbluetooth
 
+## 1.12.0
+
+### Patch Changes
+
+- Updated dependencies [88b2d46]
+  - @dg-kit/protocol@1.12.0
+  - @dg-kit/core@1.12.0
+
 ## 1.11.0
 
 ### Patch Changes
