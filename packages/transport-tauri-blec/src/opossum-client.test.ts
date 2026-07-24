@@ -56,6 +56,55 @@ describe('TauriBlecOpossumClient', () => {
     );
   });
 
+  it('execute() vibrateSetPattern actually changes the pattern (regression: was a silent no-op)', async () => {
+    const api = makeApi({
+      startScan: scanHandlerWith([makeDevice({ address: 'OPO-1', name: '47L1270000XX' })]),
+    });
+    __setPluginBlecForTests(api);
+
+    const client = new TauriBlecOpossumClient({
+      selectDevice: async () => 'OPO-1',
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connect();
+
+    const result = await client.execute({
+      type: 'vibrateSetPattern',
+      channel: 'A',
+      pattern: 'pulse',
+    });
+    expect(result.state.patternA).toBe('pulse');
+  });
+
+  it('execute() vibrateBurst raises intensity then restores it (regression: was a silent no-op)', async () => {
+    vi.useFakeTimers();
+    const api = makeApi({
+      startScan: scanHandlerWith([makeDevice({ address: 'OPO-1', name: '47L1270000XX' })]),
+    });
+    __setPluginBlecForTests(api);
+
+    const client = new TauriBlecOpossumClient({
+      selectDevice: async () => 'OPO-1',
+      scanDurationMs: 50,
+      gattReadyInitialDelayMs: 0,
+    });
+    await client.connect();
+
+    const result = await client.execute({
+      type: 'vibrateBurst',
+      channel: 'A',
+      intensity: 200,
+      durationMs: 500,
+    });
+    expect(result.state.intensityA).toBe(200);
+
+    await vi.advanceTimersByTimeAsync(500);
+    const state = await client.getState();
+    expect(state.intensityA).toBe(0);
+    vi.useRealTimers();
+  });
+
   it('disconnect() tears down without touching a differently-addressed device', async () => {
     const api = makeApi({
       startScan: scanHandlerWith([makeDevice({ address: 'OPO-1', name: '47L1270000XX' })]),

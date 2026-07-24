@@ -1,19 +1,20 @@
 /**
- * Tauri-backed Opossum vibrate-controller client. Mirrors DG-Agent's
- * `WebBluetoothOpossumClient` (`packages/device-webbluetooth/src/opossum-client.ts`)
- * — same wrapping of `@dg-kit/protocol`'s `OpossumVibrateAdapter`, same
- * `execute(OpossumCommand)` translation (both `OpossumCommand` and
- * `OpossumState` are plain `@dg-kit/*` types, not agent-specific, so this
- * class can implement the full surface here rather than leaving `execute()`
- * to a downstream composition layer) — only the connection mechanism
- * differs: `connectTauriAuxDevice()` (scan + host picker + plugin-blec)
- * instead of `navigator.bluetooth.requestDevice()`.
+ * Tauri-backed Opossum vibrate-controller client. Mirrors
+ * `@dg-kit/transport-webbluetooth`'s `WebBluetoothOpossumClient` — same
+ * wrapping of `@dg-kit/protocol`'s `OpossumVibrateAdapter`, same
+ * `execute(OpossumCommand)` delegation straight to the adapter (both
+ * `OpossumCommand` and `OpossumState` are plain `@dg-kit/*` types, not
+ * consumer-specific, so this class can implement the full surface here
+ * rather than leaving `execute()` to a downstream composition layer) — only
+ * the connection mechanism differs: `connectTauriAuxDevice()` (scan + host
+ * picker + plugin-blec) instead of `navigator.bluetooth.requestDevice()`.
  */
 import type { OpossumCommand } from '@dg-kit/core';
 import {
   OPOSSUM_DEVICE_NAME_PREFIX,
   OpossumVibrateAdapter,
   type OpossumButtonEvent,
+  type OpossumCommandResult,
   type OpossumState,
 } from '@dg-kit/protocol';
 import type { BluetoothDeviceLike, BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
@@ -25,9 +26,7 @@ import {
 import type { GattReadyRetryOptions } from './gatt-ready.js';
 import type { DeviceSelectionController } from './scan.js';
 
-export interface OpossumCommandResult {
-  state: OpossumState;
-}
+export type { OpossumCommandResult } from '@dg-kit/protocol';
 
 export interface TauriBlecOpossumClientOptions extends GattReadyRetryOptions {
   selectDevice: (controller: DeviceSelectionController) => Promise<string | null>;
@@ -99,28 +98,8 @@ export class TauriBlecOpossumClient {
   }
 
   async execute(command: OpossumCommand): Promise<OpossumCommandResult> {
-    switch (command.type) {
-      case 'vibrateStart':
-        await this.adapter.setIntensity(
-          command.channel === 'A' ? command.intensity : 'unchanged',
-          command.channel === 'B' ? command.intensity : 'unchanged',
-        );
-        break;
-      case 'vibrateStop':
-        if (command.channel) {
-          await this.adapter.setIntensity(
-            command.channel === 'A' ? 0 : 'unchanged',
-            command.channel === 'B' ? 0 : 'unchanged',
-          );
-        } else {
-          await this.adapter.emergencyStop();
-        }
-        break;
-      case 'vibrateAdjust':
-        await this.adapter.adjustIntensity(command.channel, command.delta);
-        break;
-    }
-    return { state: this.adapter.getState() };
+    const state = await this.adapter.execute(command);
+    return { state };
   }
 
   async emergencyStop(): Promise<void> {
