@@ -122,6 +122,11 @@ export class GlmRealtimeSession implements RealtimeSession {
     return this.playback.whenDrained();
   }
 
+  updateInstructions(instructions: string): void {
+    this.options.instructions = instructions;
+    this.sendSessionUpdate();
+  }
+
   private sendSessionUpdate(): void {
     this.send({
       type: 'session.update',

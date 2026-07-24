@@ -14,20 +14,41 @@ This is a **single-package Vite + React 19 SPA**, not a monorepo — unlike DG-A
 consumed by an external repo (its `packages/*` are all `private: true`). DG-Voice consumes the
 published `@dg-kit/*` packages directly, the same way DG-Chat does.
 
-## Status (v0.2.0)
+## Status (v0.3.0)
 
-**Working today**: device layer (all four DG-Lab kinds, one connect button), the full safety chain
-(policy engine, permission service, serial command queue), the realtime voice connection layer
-(`RealtimeSession` for xAI/OpenAI/Azure, `GlmRealtimeSession` for Zhipu, `VoiceToolBridge`), a
-settings sheet and call panel, design system parity with DG-Agent. 59 unit tests.
+**Working today**: device layer (all four DG-Lab kinds, one connect button, now transport-injectable
+via `DeviceSessionTransport` — see Architecture Notes), the full safety chain (policy engine,
+permission service, serial command queue), the realtime voice connection layer (`RealtimeSession`
+for xAI/OpenAI/Azure, `GlmRealtimeSession` for Zhipu, `VoiceToolBridge`), the persona system
+(`src/lib/prompts/` — 7 built-in presets + custom + Market import, assembled by
+`build-voice-instructions.ts` with live device-status injection), a settings sheet and call panel,
+design system parity with DG-Agent. 70 unit tests.
 
-**Not live-verified**: no code path in `src/lib/realtime/` has been exercised against a real
-provider account (no API key was available while writing it). The exact `session.update` payload
-shape, the `openai-insecure-api-key.` WebSocket-subprotocol auth scheme, and the ephemeral-token
-endpoint paths in `ephemeral-token.ts` are transcribed from public docs — search for
+**Not live-verified**: no code path in `src/lib/realtime/` has been exercised end-to-end against a
+real provider account (no API key was available while writing it). The exact `session.update`
+payload shape, the `openai-insecure-api-key.` WebSocket-subprotocol auth scheme, and the
+ephemeral-token endpoint paths in `ephemeral-token.ts` are transcribed from public docs — search for
 `NOT LIVE-VERIFIED` comments before trusting any of those details, and expect to adjust them once
 someone tests against a real key. Do not remove those comments until the corresponding code path
-has actually been confirmed working end-to-end.
+has actually been confirmed working end-to-end. One partial confirmation so far: a browser-side
+`fetch` to `https://api.x.ai/v1/tts/voices` with a fake key returned a real HTTP 400 (not a CORS
+failure), confirming the endpoint is browser-reachable — the auth format itself is still unverified.
+
+## Persona / instructions model
+
+`promptPresetId` + `savedPromptPresets` in `VoiceSettings` (not a free-text `instructions` field —
+that was tried and replaced) mirror DG-Agent's preset model: built-in presets
+(`src/lib/prompts/presets/*.ts`, rewritten for spoken brevity vs. DG-Agent's chat-oriented originals)
+are selectable and hideable but never editable; only `custom-*`/`market-*` ids in
+`savedPromptPresets` are user-editable. `build-voice-instructions.ts` is the only place that turns a
+preset into the actual `instructions` string sent to the provider — it always appends code-owned
+device-capability, story-mapping, and safety-rule blocks the user can't remove, then a live
+device-status block. `use-realtime-call.ts` rebuilds and re-pushes that status block via
+`RealtimeSession.updateInstructions()` (debounced 1.5s) whenever `DeviceSession.onChanged()` fires
+mid-call, so the model's picture of current strength/connection state doesn't go stale over a long
+call. If you add a new settings field that affects instructions (e.g. a new safety cap), thread it
+through `VoiceInstructionSettings` in `build-voice-instructions.ts`, not by hand-editing a stored
+prompt string.
 
 **Not built yet**: Android shell, sensor-event injection into the voice session (paw-prints/
 civet-edging only support `set_indicator_color` today, not push events), custom voice upload, a

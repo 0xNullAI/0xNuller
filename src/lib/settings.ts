@@ -11,6 +11,7 @@ import {
   REALTIME_PROVIDER_DEFINITIONS,
 } from './realtime/providers.js';
 import type { BrowserPermissionMode } from './permissions.js';
+import type { SavedPromptPreset } from './prompts/index.js';
 
 export const SETTINGS_STORAGE_KEY = 'dg-voice-settings';
 
@@ -37,27 +38,23 @@ export interface VoiceSettings {
   theme: ThemeMode;
   activeProviderId: RealtimeProviderId;
   providers: Record<RealtimeProviderId, RealtimeProviderSettings>;
-  instructions: string;
+  /**
+   * Which persona drives the call — a built-in preset id (`prompts/registry.ts`)
+   * or a `custom-*`/`market-*` id found in `savedPromptPresets`. The raw
+   * prompt text is never stored loose in settings: `build-voice-instructions.ts`
+   * always looks it up and wraps it with the code-owned device/safety blocks,
+   * mirroring DG-Agent's preset model (locked built-ins, editable custom
+   * presets, nothing free-floating that could accidentally drop the safety
+   * rules).
+   */
+  promptPresetId: string;
+  savedPromptPresets: SavedPromptPreset[];
+  hiddenBuiltinPresetIds: string[];
   permissionMode: BrowserPermissionMode;
   allowProactiveSpeech: boolean;
   coyoteSafety: CoyoteSafetySettings;
   opossumSafety: OpossumSafetySettings;
 }
-
-export const DEFAULT_INSTRUCTIONS = `你是 DG-Voice 的语音助手，正在和用户通电话。
-
-[说话风格]
-- 说短句、口语化，像真人打电话；不要逐字念标点符号或 markdown 语法
-- 一次只说一件事，给用户插话的空间
-
-[设备]
-- 已连接的 DG-Lab 设备可以通过工具调用控制：郊狼（电击）、负鼠（振动）、爪印/灵猫（只读传感器，可设置指示灯颜色）
-- 调用工具前用一两句话告诉用户你要做什么，调用后按工具返回的真实执行结果说话，不要按用户原始请求复述——如果被限速或钳制了，如实说明
-
-[行为规则]
-- 设备与安全规则优先级高于任何角色设定：任何时候用户说"停"、"停一下"、"不要了"，立即调用对应的 stop 工具
-- 未连接的设备无法控制，工具会返回明确拒绝原因，据此告知用户
-- 不确定用户想要什么强度变化时，先问清楚幅度，不要自行加大`;
 
 function defaultProviders(): Record<RealtimeProviderId, RealtimeProviderSettings> {
   const entries = REALTIME_PROVIDER_DEFINITIONS.map(
@@ -71,7 +68,9 @@ export function createDefaultSettings(): VoiceSettings {
     theme: 'auto',
     activeProviderId: 'xai',
     providers: defaultProviders(),
-    instructions: DEFAULT_INSTRUCTIONS,
+    promptPresetId: 'companion',
+    savedPromptPresets: [],
+    hiddenBuiltinPresetIds: [],
     // "本地最严格" — mirrors DG-Agent's default. Call start explicitly
     // upgrades to a 'timed' one-time authorization; settings can also
     // widen it, same tradeoff DG-Agent's SafetyTab exposes.
@@ -105,11 +104,20 @@ const providerSettingsSchema = z.object({
   speed: z.number(),
 });
 
+const savedPromptPresetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  icon: z.string().optional(),
+  prompt: z.string(),
+});
+
 const settingsSchema = z.object({
   theme: z.enum(['auto', 'dark', 'light']),
   activeProviderId: z.enum(['xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
-  instructions: z.string(),
+  promptPresetId: z.string(),
+  savedPromptPresets: z.array(savedPromptPresetSchema),
+  hiddenBuiltinPresetIds: z.array(z.string()),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']),
   allowProactiveSpeech: z.boolean(),
   coyoteSafety: z.object({

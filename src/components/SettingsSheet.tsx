@@ -1,11 +1,12 @@
 import { Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { HelpTip } from '@/components/HelpTip';
+import { PresetSelector } from '@/components/PresetSelector';
+import { useProviderVoices } from '@/hooks/use-provider-voices';
 import {
   getRealtimeProviderDefinition,
   REALTIME_PROVIDER_DEFINITIONS,
@@ -106,26 +107,13 @@ export function SettingsSheet({ settings, updateSettings, disabled }: SettingsSh
                 </div>
               ))}
 
-              <div className="space-y-1.5">
-                <label className="text-sm text-[var(--text-soft)]">音色</label>
-                <Select value={providerSettings.voice} onValueChange={(value) => setProviderField('voice', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(provider?.staticVoices ?? []).map((voice) => (
-                      <SelectItem key={voice} value={voice}>
-                        {voice}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {provider?.voiceSource === 'api' && (
-                  <p className="text-xs text-[var(--text-faint)]">
-                    该 provider 支持更多音色，可直接输入音色 ID 覆盖上方选择。
-                  </p>
-                )}
-              </div>
+              <VoiceField
+                providerId={settings.activeProviderId}
+                apiKey={providerSettings.apiKey}
+                staticVoices={provider?.staticVoices ?? []}
+                value={providerSettings.voice}
+                onChange={(value) => setProviderField('voice', value)}
+              />
 
               <div className="space-y-1.5">
                 <label className="text-sm text-[var(--text-soft)]">语速（0.7 - 1.5）</label>
@@ -140,17 +128,7 @@ export function SettingsSheet({ settings, updateSettings, disabled }: SettingsSh
               </div>
             </section>
 
-            <section className="settings-row-card space-y-3">
-              <h3 className="settings-card-legend">人设 / 系统指令</h3>
-              <Textarea
-                rows={10}
-                value={settings.instructions}
-                onChange={(e) =>
-                  updateSettings((prev) => ({ ...prev, instructions: e.target.value }))
-                }
-              />
-            </section>
-
+            <PresetSelector settings={settings} updateSettings={updateSettings} />
             <section className="settings-row-card space-y-3">
               <h3 className="settings-card-legend">权限</h3>
               <div className="space-y-1.5">
@@ -223,6 +201,50 @@ export function SettingsSheet({ settings, updateSettings, disabled }: SettingsSh
         </ScrollArea>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function VoiceField({
+  providerId,
+  apiKey,
+  staticVoices,
+  value,
+  onChange,
+}: {
+  providerId: RealtimeProviderId;
+  apiKey: string;
+  staticVoices: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { voices, loading, error } = useProviderVoices(providerId, apiKey, staticVoices);
+  // The currently-selected voice might not be in the freshly-fetched list
+  // (e.g. a custom voice id typed in previously) — keep it selectable
+  // rather than silently falling back to something else.
+  const options = value && !voices.includes(value) ? [value, ...voices] : voices;
+
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-sm text-[var(--text-soft)]">
+        音色
+        {loading && <span className="text-xs text-[var(--text-faint)]">加载中…</span>}
+      </label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((voice) => (
+            <SelectItem key={voice} value={voice}>
+              {voice}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && (
+        <p className="text-xs text-[var(--danger)]">音色列表获取失败，已回退到内置列表：{error}</p>
+      )}
+    </div>
   );
 }
 

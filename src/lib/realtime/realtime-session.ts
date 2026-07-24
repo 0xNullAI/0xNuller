@@ -46,6 +46,14 @@ export interface RealtimeSession {
   /** Resolves once all currently-queued assistant audio has finished playing. */
   whenAudioDrained(): Promise<void>;
   isConnected(): boolean;
+  /**
+   * Re-sends `session.update` with fresh instructions (same tools/voice,
+   * just the instructions text) — used to keep the live device-status block
+   * in `build-voice-instructions.ts` current as strength/connection state
+   * changes mid-call. Both dialects support updating `instructions` after
+   * connect; safe to call as often as the debounced caller wants.
+   */
+  updateInstructions(instructions: string): void;
 }
 
 export interface RealtimeSessionOptions {

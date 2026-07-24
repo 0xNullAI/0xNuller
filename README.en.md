@@ -24,26 +24,37 @@ Sister project to [DG-Agent](https://github.com/0xNullAI/DG-Agent) (text chat) �
 completely different agent loop: there is no "turn" concept here, the provider drives scheduling
 itself.
 
-## ⚠️ Current status: v0.2.0, core features implemented but not verified against a real account
+## ⚠️ Current status: v0.3.0, core features implemented but not verified against a real account
 
 **Working today, with test coverage**:
 
-- Unified connect for all four DG-Lab device kinds (one button)
+- Unified connect for all four DG-Lab device kinds (one button); the device layer now takes an
+  injectable transport (paving the way for the Android/Tauri BLE shell)
 - Full safety chain: policy engine (strength caps, cold-start clamp, burst caps), permission
   confirmation, serial command queue, emergency stop
 - The realtime voice connection layer: `RealtimeSession` (openai-realtime dialect, covering
   xAI/OpenAI/Azure) + `GlmRealtimeSession` (Zhipu's variant) + `VoiceToolBridge` (tool-call bridging,
-  including parallel-call waiting and audio-drain sequencing), backed by 59 unit tests
-- A settings panel (provider selection, key/model/voice/speed, persona, permissions, safety caps)
+  including parallel-call waiting and audio-drain sequencing)
+- **Persona system**: 7 built-in scenarios + custom scenarios + import from DG-Market — all locked,
+  persisted presets, not a free-text box. The actual `instructions` sent to the model is assembled
+  in code (persona + device capabilities + story-to-device mapping + safety rules + live device
+  status); users can't edit the safety-rule portion, and the live-status block auto-refreshes and
+  gets re-pushed mid-call as devices connect/disconnect or strength changes
+- xAI's voice list is fetched live via `GET /v1/tts/voices` when a key is present, falling back to
+  a static list on failure
+- A settings panel (provider selection, key/model/voice/speed, scenario, permissions, safety caps)
   and a call panel
 - Visual parity with DG-Agent (palette, radii, light/dark theme)
+- 70 unit tests
 
 **Not done yet**:
 
 - **No end-to-end test against a real API key** — the exact `session.update` payload shape, the
   WebSocket subprotocol used for auth, and the token-minting endpoint paths were written from
   public docs, not exercised live. Anywhere in the code marked `NOT LIVE-VERIFIED` is the most
-  likely place to need adjustment once a real error comes back.
+  likely place to need adjustment once a real error comes back. (Confirmed so far: `api.x.ai/v1/tts/voices`
+  is reachable directly from the browser with CORS allowed — a fake key got back an HTTP 400, not a
+  CORS failure — but the real auth format still needs verifying against a real key.)
 - No Android shell yet
 - Sensor events (paw-prints button presses, civet-edging pressure) aren't wired into the voice
   session yet — only indicator-color control works today

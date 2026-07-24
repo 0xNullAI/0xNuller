@@ -11,6 +11,7 @@ function createFakeSession(overrides: Partial<RealtimeSession> = {}): RealtimeSe
     requestResponse: vi.fn(),
     whenAudioDrained: vi.fn().mockResolvedValue(undefined),
     isConnected: vi.fn().mockReturnValue(true),
+    updateInstructions: vi.fn(),
     ...overrides,
   };
 }

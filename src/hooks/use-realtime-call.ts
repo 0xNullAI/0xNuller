@@ -7,6 +7,8 @@ import { ToolExecutor } from '@/lib/tool-executor';
 import { createVoiceToolRegistry } from '@/lib/tool-registry';
 import { BrowserWaveformLibrary } from '@/lib/waveform-library';
 import type { DeviceSession } from '@/lib/device-session';
+import { buildVoiceInstructions } from '@/lib/build-voice-instructions';
+import { getAnyPromptPresetById } from '@/lib/prompts';
 import { normalizeRealtimeProviderSettings } from '@/lib/realtime/providers';
 import { createRealtimeSession } from '@/lib/realtime/realtime-session';
 import type { RealtimeSession, RealtimeSessionEvents } from '@/lib/realtime/realtime-session';
@@ -50,11 +52,14 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
 
   const sessionRef = useRef<RealtimeSession | null>(null);
   const guardStopRef = useRef<(() => void) | null>(null);
+  const deviceWatchStopRef = useRef<(() => void) | null>(null);
   const [waveformLibrary] = useState(() => new BrowserWaveformLibrary());
 
   const hangUp = useCallback(async (reason?: string) => {
     guardStopRef.current?.();
     guardStopRef.current = null;
+    deviceWatchStopRef.current?.();
+    deviceWatchStopRef.current = null;
     sessionRef.current?.disconnect();
     sessionRef.current = null;
     await deviceSession.emergencyStop();
@@ -104,12 +109,19 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       onUserTranscript: (text) => setState((prev) => ({ ...prev, userText: text })),
     };
 
+    const preset = getAnyPromptPresetById(settings.promptPresetId, settings.savedPromptPresets);
+    const buildInstructions = async () =>
+      buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
+        coyoteSafety: settings.coyoteSafety,
+        opossumSafety: settings.opossumSafety,
+      });
+
     try {
       const tools = await registry.listDefinitions();
       const session = await createRealtimeSession({
         settings: providerSettings,
         tools,
-        instructions: settings.instructions,
+        instructions: await buildInstructions(),
         events,
       });
 
@@ -119,6 +131,17 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       await session.connect();
       sessionRef.current = session;
       guardStopRef.current = new CallSafetyGuard({ onHangup: () => hangUp('页面已离开或切至后台，通话已自动挂断') }).start();
+
+      // Keep the model's [当前设备状态] block current as strength/connection
+      // state changes mid-call — debounced so a burst of rapid state changes
+      // (e.g. a fast adjust_strength sequence) doesn't flood session.update.
+      let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+      deviceWatchStopRef.current = deviceSession.onChanged(() => {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+          void buildInstructions().then((text) => sessionRef.current?.updateInstructions(text));
+        }, 1500);
+      });
     } catch (error) {
       setState((prev) => ({
         ...prev,

@@ -1,24 +1,34 @@
 /**
  * Unified device layer: holds one client per DG-Lab device kind (all four
  * can be connected simultaneously and independently) and exposes a single
- * "connect a device" entry point that opens ONE Web Bluetooth chooser
- * scoped to every kind, auto-detects which kind was picked via
- * `requestDgLabDevice()`, and routes it to the matching client.
+ * "connect a device" entry point that opens ONE chooser scoped to every
+ * kind, auto-detects which kind was picked, and routes it to the matching
+ * client.
  *
- * Everything here comes straight from `@dg-kit/*` — the browser client
- * implementations (`WebBluetoothDeviceClient`, `WebBluetoothOpossumClient`,
- * `WebBluetoothPawPrintsClient`, `WebBluetoothCivetEdgingClient`) and the
- * unified picker (`requestDgLabDevice`) were extracted there in 1.13.0
- * specifically so a new consumer like this one doesn't need to hand-roll
- * per-kind connect logic the way DG-Chat's `DeviceSession` does.
+ * Transport-injectable so the same class serves both the web app
+ * (`createWebBluetoothTransport()`, the default) and the Android shell
+ * (`@dg-kit/transport-tauri-blec`'s classes, wired up in
+ * `apps/tauri-android`) — `requestDgLabDeviceTauri()` was deliberately built
+ * to return the exact same `{kind, device, server}` shape as
+ * `requestDgLabDevice()` (see that package's `request-device.ts`), and
+ * every Tauri client exposes the same `connectDevice(device, server)`
+ * passthrough as its Web Bluetooth counterpart, so no branching is needed
+ * inside `connectDevice()` below — only which concrete clients and which
+ * picker function get constructed differs, and that's exactly what
+ * `DeviceSessionTransport` isolates.
  */
 import {
   CoyoteProtocolAdapter,
+  type BluetoothDeviceLike,
+  type BluetoothRemoteGATTServerLike,
+  type CivetEdgingClient,
   type CivetPressureReading,
+  type OpossumClient,
   type OpossumState,
+  type PawPrintsClient,
   type PawPrintsReading,
 } from '@dg-kit/protocol';
-import type { DeviceKind, DeviceState, SensorState } from '@dg-kit/core';
+import type { DeviceClient, DeviceKind, DeviceState, SensorState } from '@dg-kit/core';
 import {
   WebBluetoothCivetEdgingClient,
   WebBluetoothDeviceClient,
@@ -39,25 +49,56 @@ export interface ConnectedDeviceInfo {
   name: string;
 }
 
+/** What every concrete client (Web Bluetooth or Tauri BLE) additionally exposes beyond its formal `@dg-kit/*` interface — the "already scanned and connected, just wire me up" passthrough `requestDevice()`'s result routes to. */
+export interface GattConnectable {
+  connectDevice(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void>;
+}
+
+export interface RequestedDevice {
+  kind: DeviceKind;
+  device: BluetoothDeviceLike;
+  server: BluetoothRemoteGATTServerLike;
+}
+
+export interface DeviceSessionTransport {
+  coyote: DeviceClient & GattConnectable;
+  opossum: OpossumClient & GattConnectable;
+  pawPrints: PawPrintsClient & GattConnectable;
+  civetEdging: CivetEdgingClient & GattConnectable;
+  requestDevice(): Promise<RequestedDevice>;
+}
+
+/** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
+export function createWebBluetoothTransport(): DeviceSessionTransport {
+  return {
+    coyote: new WebBluetoothDeviceClient({ protocol: new CoyoteProtocolAdapter(), autoReconnect: true }),
+    opossum: new WebBluetoothOpossumClient(),
+    pawPrints: new WebBluetoothPawPrintsClient(),
+    civetEdging: new WebBluetoothCivetEdgingClient(),
+    requestDevice: () => requestDgLabDevice(),
+  };
+}
+
 /**
  * Owns exactly one client per kind and lets any number of them be connected
- * at once. Coyote's client is created fresh per `DeviceSession` instance
- * (it owns a `CoyoteProtocolAdapter`); the other three are the plain
- * `@dg-kit/transport-webbluetooth` classes with no extra wrapping needed.
+ * at once.
  */
 export class DeviceSession {
-  readonly coyote: WebBluetoothDeviceClient;
-  readonly opossum: WebBluetoothOpossumClient = new WebBluetoothOpossumClient();
-  readonly pawPrints: WebBluetoothPawPrintsClient = new WebBluetoothPawPrintsClient();
-  readonly civetEdging: WebBluetoothCivetEdgingClient = new WebBluetoothCivetEdgingClient();
+  readonly coyote: DeviceSessionTransport['coyote'];
+  readonly opossum: DeviceSessionTransport['opossum'];
+  readonly pawPrints: DeviceSessionTransport['pawPrints'];
+  readonly civetEdging: DeviceSessionTransport['civetEdging'];
 
+  private readonly requestDevice: DeviceSessionTransport['requestDevice'];
   private readonly listeners = new Set<() => void>();
 
-  constructor() {
-    this.coyote = new WebBluetoothDeviceClient({
-      protocol: new CoyoteProtocolAdapter(),
-      autoReconnect: true,
-    });
+  constructor(transport: DeviceSessionTransport = createWebBluetoothTransport()) {
+    this.coyote = transport.coyote;
+    this.opossum = transport.opossum;
+    this.pawPrints = transport.pawPrints;
+    this.civetEdging = transport.civetEdging;
+    this.requestDevice = transport.requestDevice;
+
     this.coyote.onStateChanged(() => this.emit());
     this.opossum.onStateChanged(() => this.emit());
     this.pawPrints.onStateChanged(() => this.emit());
@@ -79,7 +120,7 @@ export class DeviceSession {
    * additional devices — each call opens a fresh chooser.
    */
   async connectDevice(): Promise<ConnectedDeviceInfo> {
-    const { kind, device, server } = await requestDgLabDevice();
+    const { kind, device, server } = await this.requestDevice();
 
     switch (kind) {
       case 'coyote':
