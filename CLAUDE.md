@@ -10,29 +10,44 @@ OpenAI Realtime, 智谱 GLM-Realtime) and decides on its own when to speak and w
 tools; DG-Voice's job is connecting the audio, enforcing the safety chain around every tool call,
 and getting out of the way otherwise.
 
+**Device scope: Coyote + Opossum only, by design.** Unlike DG-Agent (which also wires up the
+paw-prints/civet-edging sensor kinds), DG-Voice deliberately does not support them — see
+`device-session.ts`'s doc comment. A read-only sensor whose events aren't even wired into the
+realtime session isn't worth the complexity here. Don't add them back without a concrete plan for
+getting sensor events into the conversation (that's real, unbuilt work, not a small addition).
+
 This is a **single-package Vite + React 19 SPA**, not a monorepo — unlike DG-Agent, which can't be
 consumed by an external repo (its `packages/*` are all `private: true`). DG-Voice consumes the
 published `@dg-kit/*` packages directly, the same way DG-Chat does.
 
-## Status (v0.3.0)
+## Status (v0.4.0)
 
-**Working today**: device layer (all four DG-Lab kinds, one connect button, now transport-injectable
-via `DeviceSessionTransport` — see Architecture Notes), the full safety chain (policy engine,
+**Working today**: device layer (Coyote + Opossum, one connect button, transport-injectable via
+`DeviceSessionTransport` — see Architecture Notes), the full safety chain (policy engine,
 permission service, serial command queue), the realtime voice connection layer (`RealtimeSession`
 for xAI/OpenAI/Azure, `GlmRealtimeSession` for Zhipu, `VoiceToolBridge`), the persona system
 (`src/lib/prompts/` — 7 built-in presets + custom + Market import, assembled by
-`build-voice-instructions.ts` with live device-status injection), a settings sheet and call panel,
-design system parity with DG-Agent. 70 unit tests.
+`build-voice-instructions.ts` with live device-status injection), a settings sheet, a call panel
+that transforms into a centered in-call view (timer, live captions) once connected, and a
+persistent device status bar with live strength meters (`DeviceStatusBar.tsx`, ported from
+DG-Agent's `ChatPanel.tsx` status chip pattern). Design system parity with DG-Agent. 70 unit tests.
 
-**Not live-verified**: no code path in `src/lib/realtime/` has been exercised end-to-end against a
-real provider account (no API key was available while writing it). The exact `session.update`
-payload shape, the `openai-insecure-api-key.` WebSocket-subprotocol auth scheme, and the
-ephemeral-token endpoint paths in `ephemeral-token.ts` are transcribed from public docs — search for
-`NOT LIVE-VERIFIED` comments before trusting any of those details, and expect to adjust them once
-someone tests against a real key. Do not remove those comments until the corresponding code path
-has actually been confirmed working end-to-end. One partial confirmation so far: a browser-side
-`fetch` to `https://api.x.ai/v1/tts/voices` with a fake key returned a real HTTP 400 (not a CORS
-failure), confirming the endpoint is browser-reachable — the auth format itself is still unverified.
+**Not live-verified, but partially corrected by a real test**: a live connection attempt against
+xAI came back `"Invalid event received"` for the original `session.update` shape (a newer/GA-shaped
+schema with `audio.input`/`audio.output` nesting) — that was wrong. Both dialects now use the
+classic/stable flat `session.update` shape (`voice`/`input_audio_format`/`turn_detection` at the
+top level of `session`, event names like `response.audio.delta` not `response.output_audio.delta`)
+which is far more likely correct given xAI's own "OpenAI Realtime compatible" claim predates any
+newer schema. This has NOT yet been re-verified end-to-end (including an actual tool call) against
+a real account — do that before trusting it fully. The `openai-insecure-api-key.` WebSocket-
+subprotocol auth scheme and the ephemeral-token endpoint paths in `ephemeral-token.ts` remain
+unverified. Search for `NOT LIVE-VERIFIED` comments before trusting any remaining detail, and don't
+remove them until the corresponding code path is actually confirmed working. `handleMessage()`'s
+`'error'` case now `console.error`s the full raw payload (not just `.message`) specifically so the
+next live test surfaces enough detail (`code`/`param`/`event_id`) to pinpoint the next fix quickly.
+One partial confirmation so far: a browser-side `fetch` to `https://api.x.ai/v1/tts/voices` with a
+fake key returned a real HTTP 400 (not a CORS failure), confirming the endpoint is browser-reachable
+— the auth format itself is still unverified.
 
 ## Persona / instructions model
 
@@ -50,9 +65,8 @@ call. If you add a new settings field that affects instructions (e.g. a new safe
 through `VoiceInstructionSettings` in `build-voice-instructions.ts`, not by hand-editing a stored
 prompt string.
 
-**Not built yet**: Android shell, sensor-event injection into the voice session (paw-prints/
-civet-edging only support `set_indicator_color` today, not push events), custom voice upload, a
-connection-test button, a running cost timer.
+**Not built yet**: Android shell (Coyote + Opossum only there too, no sensors), custom voice
+upload, a connection-test button, a running cost timer.
 
 ## Repo Layout
 

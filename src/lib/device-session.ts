@@ -1,9 +1,17 @@
 /**
- * Unified device layer: holds one client per DG-Lab device kind (all four
- * can be connected simultaneously and independently) and exposes a single
- * "connect a device" entry point that opens ONE chooser scoped to every
- * kind, auto-detects which kind was picked, and routes it to the matching
- * client.
+ * Unified device layer: holds one client per supported DG-Lab device kind
+ * (Coyote + Opossum, connectable simultaneously and independently) and
+ * exposes a single "connect a device" entry point that opens ONE chooser,
+ * auto-detects which kind was picked, and routes it to the matching client.
+ *
+ * DG-Voice deliberately does not support the two read-only sensor kinds
+ * (paw-prints, civet-edging) — there is no output tool for them and no
+ * event-stream-into-realtime-session wiring, so a connected sensor would
+ * just sit there doing nothing useful. `requestDgLabDevice()`'s underlying
+ * scan filter still matches every DG-Lab kind (that's baked into the kit),
+ * so a user could still pick one in the browser's Bluetooth chooser —
+ * `connectDevice()` rejects that pick with a clear message instead of
+ * silently wiring up something nothing in this app knows how to use.
  *
  * Transport-injectable so the same class serves both the web app
  * (`createWebBluetoothTransport()`, the default) and the Android shell
@@ -21,27 +29,15 @@ import {
   CoyoteProtocolAdapter,
   type BluetoothDeviceLike,
   type BluetoothRemoteGATTServerLike,
-  type CivetEdgingClient,
-  type CivetPressureReading,
   type OpossumClient,
   type OpossumState,
-  type PawPrintsClient,
-  type PawPrintsReading,
 } from '@dg-kit/protocol';
-import type { DeviceClient, DeviceKind, DeviceState, SensorState } from '@dg-kit/core';
-import {
-  WebBluetoothCivetEdgingClient,
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  WebBluetoothPawPrintsClient,
-  requestDgLabDevice,
-} from '@dg-kit/transport-webbluetooth';
+import type { DeviceClient, DeviceKind, DeviceState } from '@dg-kit/core';
+import { WebBluetoothDeviceClient, WebBluetoothOpossumClient, requestDgLabDevice } from '@dg-kit/transport-webbluetooth';
 
 export interface DeviceSessionState {
   coyote: DeviceState;
   opossum: OpossumState;
-  pawPrints: SensorState;
-  civetEdging: SensorState;
 }
 
 export interface ConnectedDeviceInfo {
@@ -63,8 +59,6 @@ export interface RequestedDevice {
 export interface DeviceSessionTransport {
   coyote: DeviceClient & GattConnectable;
   opossum: OpossumClient & GattConnectable;
-  pawPrints: PawPrintsClient & GattConnectable;
-  civetEdging: CivetEdgingClient & GattConnectable;
   requestDevice(): Promise<RequestedDevice>;
 }
 
@@ -73,21 +67,19 @@ export function createWebBluetoothTransport(): DeviceSessionTransport {
   return {
     coyote: new WebBluetoothDeviceClient({ protocol: new CoyoteProtocolAdapter(), autoReconnect: true }),
     opossum: new WebBluetoothOpossumClient(),
-    pawPrints: new WebBluetoothPawPrintsClient(),
-    civetEdging: new WebBluetoothCivetEdgingClient(),
     requestDevice: () => requestDgLabDevice(),
   };
 }
 
-/**
- * Owns exactly one client per kind and lets any number of them be connected
- * at once.
- */
+const SENSOR_KIND_DISPLAY_NAME: Partial<Record<DeviceKind, string>> = {
+  'paw-prints': '爪印',
+  'civet-edging': '灵猫',
+};
+
+/** Owns exactly one client per supported kind and lets both be connected at once. */
 export class DeviceSession {
   readonly coyote: DeviceSessionTransport['coyote'];
   readonly opossum: DeviceSessionTransport['opossum'];
-  readonly pawPrints: DeviceSessionTransport['pawPrints'];
-  readonly civetEdging: DeviceSessionTransport['civetEdging'];
 
   private readonly requestDevice: DeviceSessionTransport['requestDevice'];
   private readonly listeners = new Set<() => void>();
@@ -95,14 +87,10 @@ export class DeviceSession {
   constructor(transport: DeviceSessionTransport = createWebBluetoothTransport()) {
     this.coyote = transport.coyote;
     this.opossum = transport.opossum;
-    this.pawPrints = transport.pawPrints;
-    this.civetEdging = transport.civetEdging;
     this.requestDevice = transport.requestDevice;
 
     this.coyote.onStateChanged(() => this.emit());
     this.opossum.onStateChanged(() => this.emit());
-    this.pawPrints.onStateChanged(() => this.emit());
-    this.civetEdging.onStateChanged(() => this.emit());
   }
 
   onChanged(listener: () => void): () => void {
@@ -115,9 +103,9 @@ export class DeviceSession {
   }
 
   /**
-   * Opens one chooser scoped to every DG-Lab device kind and routes the
-   * picked device to the matching client. Call repeatedly to connect
-   * additional devices — each call opens a fresh chooser.
+   * Opens one chooser and routes the picked device to the matching client.
+   * Call repeatedly to connect the other device kind — each call opens a
+   * fresh chooser.
    */
   async connectDevice(): Promise<ConnectedDeviceInfo> {
     const { kind, device, server } = await this.requestDevice();
@@ -130,11 +118,8 @@ export class DeviceSession {
         await this.opossum.connectDevice(device, server);
         break;
       case 'paw-prints':
-        await this.pawPrints.connectDevice(device, server);
-        break;
       case 'civet-edging':
-        await this.civetEdging.connectDevice(device, server);
-        break;
+        throw new Error(`DG-Voice 暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
     }
 
     return { kind, name: device.name ?? '' };
@@ -148,15 +133,7 @@ export class DeviceSession {
     await this.opossum.disconnect();
   }
 
-  async disconnectPawPrints(): Promise<void> {
-    await this.pawPrints.disconnect();
-  }
-
-  async disconnectCivetEdging(): Promise<void> {
-    await this.civetEdging.disconnect();
-  }
-
-  /** Panic button: stop the two output-capable devices immediately. */
+  /** Panic button: stop both devices immediately. */
   async emergencyStop(): Promise<void> {
     await Promise.all([
       this.coyote.emergencyStop().catch(() => undefined),
@@ -165,20 +142,7 @@ export class DeviceSession {
   }
 
   async getState(): Promise<DeviceSessionState> {
-    const [coyote, opossum, pawPrints, civetEdging] = await Promise.all([
-      this.coyote.getState(),
-      this.opossum.getState(),
-      this.pawPrints.getState(),
-      this.civetEdging.getState(),
-    ]);
-    return { coyote, opossum, pawPrints, civetEdging };
-  }
-
-  subscribePawPrints(listener: (reading: PawPrintsReading) => void): () => void {
-    return this.pawPrints.subscribe(listener);
-  }
-
-  subscribeCivetEdging(listener: (reading: CivetPressureReading) => void): () => void {
-    return this.civetEdging.subscribe(listener);
+    const [coyote, opossum] = await Promise.all([this.coyote.getState(), this.opossum.getState()]);
+    return { coyote, opossum };
   }
 }

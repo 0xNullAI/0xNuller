@@ -4,12 +4,18 @@
  * class serves all three; only `buildWsUrl`/`mintCredential` branch on
  * provider id.
  *
- * NOT LIVE-VERIFIED end-to-end (no API key was available to test against a
- * real account in the session this was written in). The event names and
- * `session.update` shape follow OpenAI's current (GA, non-beta) Realtime API
- * docs as best transcribed at write time. If a provider rejects the
- * `session.update` payload or a message type doesn't match, that's the
- * first place to check.
+ * Uses the classic/stable OpenAI Realtime "beta" event vocabulary (flat
+ * `session.update` fields — `voice`/`input_audio_format`/`turn_detection` at
+ * the top level of `session`, not nested under an `audio` object; event
+ * names like `response.audio.delta`/`response.audio_transcript.delta`, not
+ * `response.output_audio.*`) rather than a newer/GA-shaped schema this file
+ * originally guessed at — a live test against a real xAI key came back
+ * "Invalid event received" for the newer nested-`audio` shape, which is
+ * strong evidence xAI mirrors the classic schema (matching their own
+ * "OpenAI Realtime compatible" claim, which predates any nested-audio GA
+ * schema). Still not fully live-verified end-to-end — if you get a new
+ * server-side rejection, log the raw `error` event payload and check this
+ * file's `sendSessionUpdate()`/`handleMessage()` first.
  */
 import type { ToolDefinition } from '@dg-kit/core';
 import { AudioPlayback, MicCapture, base64ToInt16, float32ToInt16, int16ToBase64 } from './audio.js';
@@ -165,13 +171,27 @@ export class OpenAiRealtimeSession implements RealtimeSession {
   }
 
   private sendSessionUpdate(): void {
+    // Classic/stable Realtime session shape — flat fields, no `audio.input`/
+    // `audio.output` nesting, no `model` inside `session` (the model is
+    // already pinned via the `?model=` query param at connect time). `speed`
+    // isn't part of this schema at all — there is no known mechanism for it
+    // here, so the setting is currently not applied for this dialect; see
+    // CLAUDE.md before re-adding it without live verification.
     this.send({
       type: 'session.update',
       session: {
-        type: 'realtime',
-        // Azure resolves the model from the `deployment` query param instead.
-        ...(this.providerId === 'azure' ? {} : { model: this.options.settings.model }),
+        modalities: ['text', 'audio'],
         instructions: this.options.instructions,
+        voice: this.options.settings.voice,
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
+        input_audio_transcription: { model: 'whisper-1' },
+        turn_detection: {
+          type: 'server_vad',
+          threshold: VAD_THRESHOLD,
+          prefix_padding_ms: VAD_PREFIX_PADDING_MS,
+          silence_duration_ms: SILENCE_DURATION_MS,
+        },
         tools: this.options.tools.map((tool) => ({
           type: 'function',
           name: tool.name,
@@ -179,23 +199,6 @@ export class OpenAiRealtimeSession implements RealtimeSession {
           parameters: tool.parameters,
         })),
         tool_choice: 'auto',
-        audio: {
-          input: {
-            format: 'pcm16',
-            turn_detection: {
-              type: 'server_vad',
-              threshold: VAD_THRESHOLD,
-              prefix_padding_ms: VAD_PREFIX_PADDING_MS,
-              silence_duration_ms: SILENCE_DURATION_MS,
-            },
-            transcription: { model: 'whisper-1' },
-          },
-          output: {
-            format: 'pcm16',
-            voice: this.options.settings.voice,
-            speed: this.options.settings.speed,
-          },
-        },
       },
     });
   }
@@ -227,7 +230,7 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         this.setSpeaking(false);
         break;
 
-      case 'response.output_audio.delta': {
+      case 'response.audio.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
           this.playback.enqueuePcm16(base64ToInt16(delta));
@@ -236,7 +239,7 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         break;
       }
 
-      case 'response.output_audio_transcript.delta': {
+      case 'response.audio_transcript.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
           this.assistantTranscript += delta;
@@ -244,7 +247,7 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         }
         break;
       }
-      case 'response.output_audio_transcript.done': {
+      case 'response.audio_transcript.done': {
         const transcript = typeof message.transcript === 'string' ? message.transcript : this.assistantTranscript;
         this.options.events.onAssistantTranscript?.(transcript, true);
         this.assistantTranscript = '';
@@ -284,6 +287,10 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         break;
 
       case 'error': {
+        // Log the full payload (not just `.message`) — `code`/`param`/`event_id`
+        // are what actually pin down which field of a rejected session.update
+        // (or other client event) the server didn't like.
+        console.error('[dg-voice] realtime error event:', message);
         const error = message.error as { message?: string } | undefined;
         this.options.events.onError?.(new Error(error?.message ?? '服务端返回未知错误'));
         break;

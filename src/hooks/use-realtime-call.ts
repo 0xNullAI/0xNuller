@@ -24,6 +24,8 @@ export interface RealtimeCallState {
   speaking: boolean;
   assistantText: string;
   userText: string;
+  /** `Date.now()` timestamp when the call became active — drives the elapsed-time display in `CallPanel`. */
+  startedAt: number | null;
 }
 
 function createSessionId(): string {
@@ -48,6 +50,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     speaking: false,
     assistantText: '',
     userText: '',
+    startedAt: null,
   });
 
   const sessionRef = useRef<RealtimeSession | null>(null);
@@ -67,7 +70,14 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
   }, [deviceSession]);
 
   const startCall = useCallback(async () => {
-    setState({ status: 'connecting', error: null, speaking: false, assistantText: '', userText: '' });
+    setState({
+      status: 'connecting',
+      error: null,
+      speaking: false,
+      assistantText: '',
+      userText: '',
+      startedAt: null,
+    });
 
     const providerSettings = normalizeRealtimeProviderSettings({
       ...settings.providers[settings.activeProviderId],
@@ -100,10 +110,11 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     });
 
     const events: RealtimeSessionEvents = {
-      onOpen: () => setState((prev) => ({ ...prev, status: 'active' })),
+      onOpen: () => setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() })),
       onClose: (reason) =>
         setState((prev) => (prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason })),
-      onError: (error) => setState((prev) => ({ ...prev, error: error.message })),
+      onError: (error) =>
+        setState((prev) => ({ ...prev, error: `服务端返回错误：${error.message}` })),
       onSpeakingChange: (speaking) => setState((prev) => ({ ...prev, speaking })),
       onAssistantTranscript: (text) => setState((prev) => ({ ...prev, assistantText: text })),
       onUserTranscript: (text) => setState((prev) => ({ ...prev, userText: text })),

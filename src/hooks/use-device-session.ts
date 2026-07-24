@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createEmptyDeviceState, createEmptySensorState } from '@dg-kit/core';
+import { createEmptyDeviceState } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { DeviceSession, type DeviceSessionState } from '@/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
   coyote: createEmptyDeviceState(),
   opossum: createEmptyOpossumState(),
-  pawPrints: createEmptySensorState(),
-  civetEdging: createEmptySensorState(),
 };
 
 export function useDeviceSession() {
@@ -47,5 +45,15 @@ export function useDeviceSession() {
     refresh();
   }, [session, refresh]);
 
-  return { session, state, error, connectDevice, emergencyStop };
+  const disconnectCoyote = useCallback(async () => {
+    await session.disconnectCoyote();
+    refresh();
+  }, [session, refresh]);
+
+  const disconnectOpossum = useCallback(async () => {
+    await session.disconnectOpossum();
+    refresh();
+  }, [session, refresh]);
+
+  return { session, state, error, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum };
 }

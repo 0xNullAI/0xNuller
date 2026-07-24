@@ -2,8 +2,10 @@
  * `RealtimeSession` implementation for Zhipu's `glm-realtime` dialect.
  *
  * NOT LIVE-VERIFIED (lower confidence than the openai-realtime dialect — no
- * account was available to test against). Differences from openai-realtime,
- * per the plan this was scaffolded from:
+ * account was available to test against). Uses the same classic/flat
+ * `session.update` shape as `openai-realtime-session.ts` (see that file's
+ * doc comment for why — a live xAI test rejected the nested-`audio` shape
+ * this originally used) plus GLM's own documented differences:
  *  - audio is wav-framed, not raw pcm16 (`wrapPcm16AsWav`)
  *  - auth is a `?Authorization=<jwt>` query param, not a WS subprotocol —
  *    the JWT is signed locally (`signZhipuJwt`), so there is no ephemeral-
@@ -128,11 +130,19 @@ export class GlmRealtimeSession implements RealtimeSession {
   }
 
   private sendSessionUpdate(): void {
+    // Flat session shape (see the same note in openai-realtime-session.ts) —
+    // plus GLM's own documented extras (`tts_source`, `chat_mode`) and wav
+    // audio formats instead of pcm16.
     this.send({
       type: 'session.update',
       session: {
+        modalities: ['text', 'audio'],
         model: this.options.settings.model,
         instructions: this.options.instructions,
+        voice: this.options.settings.voice,
+        input_audio_format: 'wav',
+        output_audio_format: 'wav',
+        turn_detection: { type: 'server_vad' },
         tools: this.options.tools.map((tool) => ({
           type: 'function',
           name: tool.name,
@@ -142,16 +152,6 @@ export class GlmRealtimeSession implements RealtimeSession {
         tool_choice: 'auto',
         tts_source: 'e2e',
         chat_mode: 'audio',
-        audio: {
-          input: {
-            format: 'wav',
-            turn_detection: { type: 'server_vad' },
-          },
-          output: {
-            format: 'wav',
-            voice: this.options.settings.voice,
-          },
-        },
       },
     });
   }
@@ -207,7 +207,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         this.setSpeaking(false);
         break;
 
-      case 'response.output_audio.delta': {
+      case 'response.audio.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
           // GLM sends wav-framed output too; strip the 44-byte header before
@@ -219,7 +219,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         break;
       }
 
-      case 'response.output_audio_transcript.delta': {
+      case 'response.audio_transcript.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
           this.assistantTranscript += delta;
@@ -227,7 +227,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         }
         break;
       }
-      case 'response.output_audio_transcript.done': {
+      case 'response.audio_transcript.done': {
         const transcript = typeof message.transcript === 'string' ? message.transcript : this.assistantTranscript;
         this.options.events.onAssistantTranscript?.(transcript, true);
         this.assistantTranscript = '';
@@ -257,6 +257,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         break;
 
       case 'error': {
+        console.error('[dg-voice] glm-realtime error event:', message);
         const error = message.error as { message?: string } | undefined;
         this.options.events.onError?.(new Error(error?.message ?? '服务端返回未知错误'));
         break;

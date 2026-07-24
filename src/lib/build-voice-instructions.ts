@@ -14,7 +14,7 @@
  * — see `use-realtime-call.ts` for the debounced refresh wiring.
  */
 import type { OpossumState } from '@dg-kit/protocol';
-import type { DeviceState, SensorState } from '@dg-kit/core';
+import type { DeviceState } from '@dg-kit/core';
 import type { DeviceSessionState } from './device-session.js';
 import type { CoyoteSafetySettings, OpossumSafetySettings } from './settings.js';
 
@@ -52,7 +52,7 @@ function buildStyleBlock(): string {
 function buildDeviceBlock(): string {
   return [
     '[设备]',
-    '已连接的 DG-Lab 设备可以通过工具调用控制：郊狼（电击，A/B 双通道）、负鼠（振动，A/B 双通道，可选设备）。爪印（按键/姿态传感器）和灵猫（压力传感器）是只读传感器，无法被工具驱动输出，只能通过事件了解状态，指示灯颜色除外（可用 set_indicator_color 更换）。',
+    '已连接的 DG-Lab 设备可以通过工具调用控制：郊狼（电击，A/B 双通道）、负鼠（振动，A/B 双通道，可选设备）。',
     '任何真实设备操作都必须通过工具完成；只靠语言描述不会改变设备状态，也不要在没调用工具的情况下声称已经执行。',
   ].join('\n');
 }
@@ -85,8 +85,6 @@ function buildDeviceStatusBlock(
     '[当前设备状态]',
     ...buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety),
     ...buildOpossumStatusLines(deviceState.opossum, settings.opossumSafety),
-    ...buildSensorStatusLines('爪印', deviceState.pawPrints),
-    ...buildSensorStatusLines('灵猫', deviceState.civetEdging),
   ].join('\n');
 }
 
@@ -129,10 +127,4 @@ function buildOpossumStatusLines(o: OpossumState, safety: OpossumSafetySettings)
     `  A 通道：强度 ${o.intensityA} / 上限 ${safety.maxIntensityA}，节奏 ${formatOpossumPattern(o.patternA)}`,
     `  B 通道：强度 ${o.intensityB} / 上限 ${safety.maxIntensityB}，节奏 ${formatOpossumPattern(o.patternB)}`,
   ];
-}
-
-function buildSensorStatusLines(label: string, state: SensorState): string[] {
-  const connection = state.connected ? `已连接${state.deviceName ? `（${state.deviceName}）` : ''}` : '未连接';
-  const battery = typeof state.battery === 'number' ? `${state.battery}%` : '未知';
-  return [`${label}：`, `  连接：${connection}`, `  电量：${battery}`];
 }

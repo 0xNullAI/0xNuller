@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptyDeviceState, createEmptySensorState } from '@dg-kit/core';
+import { createEmptyDeviceState } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { buildVoiceInstructions } from './build-voice-instructions.js';
 import type { DeviceSessionState } from './device-session.js';
@@ -9,8 +9,6 @@ function baseState(): DeviceSessionState {
   return {
     coyote: createEmptyDeviceState(),
     opossum: createEmptyOpossumState(),
-    pawPrints: createEmptySensorState(),
-    civetEdging: createEmptySensorState(),
   };
 }
 
@@ -33,8 +31,6 @@ describe('buildVoiceInstructions', () => {
     expect(text).toContain('[当前设备状态]');
     expect(text).toContain('郊狼');
     expect(text).toContain('负鼠');
-    expect(text).toContain('爪印');
-    expect(text).toContain('灵猫');
   });
 
   it('reports the safety-priority rule so it survives regardless of preset content', () => {

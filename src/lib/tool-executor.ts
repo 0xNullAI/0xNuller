@@ -74,12 +74,18 @@ const VIBRATE_TOOL_NAMES = new Set([
   'vibrate_burst',
 ]);
 
+/**
+ * DG-Voice only wires up Coyote + Opossum (see `device-session.ts` for why
+ * the sensor kinds aren't supported) — `set_indicator_color` targeting
+ * `paw-prints`/`civet-edging` falls through to `null` here, which
+ * `executeSetIndicatorColor` denies with a clear reason rather than
+ * crashing on a client that doesn't exist.
+ */
 function resolveRequiredDeviceKind(toolName: string, args: Record<string, unknown>): DeviceKind | null {
   if (SHOCK_TOOL_NAMES.has(toolName)) return 'coyote';
   if (VIBRATE_TOOL_NAMES.has(toolName)) return 'opossum';
   if (toolName === 'set_indicator_color') {
-    const kind = args.deviceKind;
-    return kind === 'paw-prints' || kind === 'civet-edging' || kind === 'opossum' ? kind : null;
+    return args.deviceKind === 'opossum' ? 'opossum' : null;
   }
   return null;
 }
@@ -137,9 +143,8 @@ export class ToolExecutor {
       case 'opossum':
         return state.opossum.connected;
       case 'paw-prints':
-        return state.pawPrints.connected;
       case 'civet-edging':
-        return state.civetEdging.connected;
+        return false;
     }
   }
 
@@ -216,17 +221,13 @@ export class ToolExecutor {
   }
 
   private async executeSetIndicatorColor(deviceKind: DeviceKind, color: number): Promise<string> {
-    const client =
-      deviceKind === 'opossum'
-        ? this.options.session.opossum
-        : deviceKind === 'paw-prints'
-          ? this.options.session.pawPrints
-          : deviceKind === 'civet-edging'
-            ? this.options.session.civetEdging
-            : null;
-    if (!client?.setIndicatorColor) {
-      return this.deny(`${DEVICE_KIND_DISPLAY_NAME[deviceKind]}未连接`);
+    if (deviceKind !== 'opossum') {
+      // paw-prints/civet-edging aren't wired up in DG-Voice at all (see
+      // device-session.ts) — deny with a clear reason instead of touching a
+      // client that doesn't exist.
+      return this.deny(`DG-Voice 不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
     }
+    const client = this.options.session.opossum;
     try {
       await client.setIndicatorColor(color);
       return JSON.stringify({
