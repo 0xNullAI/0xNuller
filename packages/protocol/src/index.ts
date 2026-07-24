@@ -40,3 +40,9 @@ export {
   type OpossumButton,
   type OpossumButtonEvent,
 } from './opossum.js';
+export {
+  type OpossumClient,
+  type OpossumCommandResult,
+  type PawPrintsClient,
+  type CivetEdgingClient,
+} from './device-clients.js';

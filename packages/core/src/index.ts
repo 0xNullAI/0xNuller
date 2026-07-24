@@ -214,6 +214,32 @@ export interface SensorState {
   battery?: number;
 }
 
+/** Chinese display name for each device kind, used in user-facing denial/guidance text. */
+export const DEVICE_KIND_DISPLAY_NAME: Record<DeviceKind, string> = {
+  coyote: '郊狼',
+  'paw-prints': '爪印',
+  'civet-edging': '灵猫',
+  opossum: '负鼠',
+};
+
+/**
+ * Contract for sensor-family clients (paw-prints, civet-edging): read-only
+ * event streams plus an optional LED setter (civet-edging's indicator color
+ * is set via the same packet as its pressure-reporting toggle; paw-prints
+ * has a dedicated LED command — both satisfy this optional method).
+ *
+ * Runtime-level contract, not a concrete implementation — actual Web
+ * Bluetooth/Tauri-backed instances live in the transport packages.
+ */
+export interface SensorDeviceClient<TReading> {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  getState(): Promise<SensorState>;
+  subscribe(listener: (reading: TReading) => void): () => void;
+  onStateChanged(listener: (state: SensorState) => void): () => void;
+  setIndicatorColor?(color: number): Promise<void>;
+}
+
 export function createEmptySensorState(): SensorState {
   return { connected: false, battery: 0 };
 }
