@@ -64,6 +64,9 @@ export class GlmRealtimeSession implements RealtimeSession {
 
   async connect(): Promise<void> {
     await this.mic.start();
+    // Must happen inside the "开始通话" click's transient user-activation
+    // window, not lazily on the first audio delta — see AudioPlayback.prepare().
+    await this.playback.prepare();
 
     const jwt = await signZhipuJwt(this.options.settings.apiKey);
     const ws = new WebSocket(`${GLM_REALTIME_WS_URL}?Authorization=${encodeURIComponent(jwt)}`);

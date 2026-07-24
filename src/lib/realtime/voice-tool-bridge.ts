@@ -27,18 +27,31 @@ export class VoiceToolBridge {
     private readonly executor: ToolExecutorLike,
   ) {}
 
-  /** Registers this bridge as the session's function-call / response-done handler. Call once after constructing the session. */
+  /**
+   * Registers this bridge as the session's function-call / response-done
+   * handler. Call once after constructing the session.
+   *
+   * Destructures the two callbacks out of `events` immediately rather than
+   * closing over the `events` object itself — the standard call pattern is
+   * `Object.assign(events, bridge.attach(events))`, which mutates
+   * `events.onFunctionCall`/`events.onResponseDone` to point at the wrapper
+   * functions returned here. Closing over the live object instead of copied
+   * references would make each wrapper call itself through
+   * `events.onResponseDone?.()`, infinitely recursing until the stack
+   * overflows the moment a response without any tool call ever completes.
+   */
   attach(events: { onFunctionCall?(call: RealtimeFunctionCall): void; onResponseDone?(): void }): {
     onFunctionCall(call: RealtimeFunctionCall): void;
     onResponseDone(): void;
   } {
+    const { onFunctionCall: originalOnFunctionCall, onResponseDone: originalOnResponseDone } = events;
     return {
       onFunctionCall: (call) => {
-        events.onFunctionCall?.(call);
+        originalOnFunctionCall?.(call);
         this.handleFunctionCall(call);
       },
       onResponseDone: () => {
-        events.onResponseDone?.();
+        originalOnResponseDone?.();
         this.handleResponseDone();
       },
     };

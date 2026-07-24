@@ -143,6 +143,34 @@ describe('VoiceToolBridge', () => {
     await flushMicrotasks();
     expect(session.requestResponse).toHaveBeenCalledTimes(2);
   });
+
+  it('regression: attach() wired via Object.assign(events, bridge.attach(events)) must not self-recurse', () => {
+    // This is the exact pattern use-realtime-call.ts uses. Wiring it up used
+    // to make the wrapper call itself through a live reference to `events`
+    // (since Object.assign mutates events.onResponseDone to point at the
+    // wrapper right after attach() returns it), causing every response with
+    // no tool call — the common case, plain speech turns — to blow the
+    // stack the instant onResponseDone fired.
+    const session = createFakeSession();
+    const executor: ToolExecutorLike = { execute: vi.fn() };
+    const bridge = new VoiceToolBridge(session, executor);
+
+    const originalOnFunctionCall = vi.fn();
+    const originalOnResponseDone = vi.fn();
+    const events: { onFunctionCall?(call: unknown): void; onResponseDone?(): void } = {
+      onFunctionCall: originalOnFunctionCall,
+      onResponseDone: originalOnResponseDone,
+    };
+    Object.assign(events, bridge.attach(events));
+
+    expect(() => events.onResponseDone?.()).not.toThrow();
+    expect(originalOnResponseDone).toHaveBeenCalledTimes(1);
+
+    // A second call must still only invoke the original handler once more —
+    // not recurse or accumulate extra calls.
+    expect(() => events.onResponseDone?.()).not.toThrow();
+    expect(originalOnResponseDone).toHaveBeenCalledTimes(2);
+  });
 });
 
 async function flushMicrotasks(): Promise<void> {

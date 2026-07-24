@@ -107,6 +107,9 @@ export class OpenAiRealtimeSession implements RealtimeSession {
     // `MicCapture` until `onFrame` is attached in `onopen` below, per xAI's
     // own recommendation not to wait on the WS before capturing audio.
     await this.mic.start();
+    // Must happen inside the "开始通话" click's transient user-activation
+    // window, not lazily on the first audio delta — see AudioPlayback.prepare().
+    await this.playback.prepare();
 
     const credential = await resolveCredential(this.providerId, this.options.settings);
     const wsUrl = buildWsUrl(this.providerId, this.options.settings);

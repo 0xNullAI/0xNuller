@@ -223,8 +223,29 @@ export class AudioPlayback {
     return this.audioContext;
   }
 
+  /**
+   * Creates (if needed) and resumes the output `AudioContext` while still
+   * inside the "开始通话" click's transient user-activation window — call
+   * this from `connect()`, not lazily on the first `response.audio.delta`.
+   * A context created later, from a WebSocket message handler with no
+   * gesture behind it, is born `suspended` under Chrome's autoplay policy:
+   * audio gets scheduled and decoded correctly but never actually plays,
+   * with no error anywhere — the exact "I can talk but hear nothing back"
+   * symptom. `enqueuePcm16()` also resumes defensively in case the context
+   * reverts to suspended (e.g. after a tab is backgrounded and returns).
+   */
+  async prepare(): Promise<void> {
+    const ctx = this.ensureContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => undefined);
+    }
+  }
+
   enqueuePcm16(int16: Int16Array): void {
     const ctx = this.ensureContext();
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => undefined);
+    }
     const float32 = int16ToFloat32(int16);
     const buffer = ctx.createBuffer(1, float32.length, SAMPLE_RATE);
     buffer.getChannelData(0).set(float32);
