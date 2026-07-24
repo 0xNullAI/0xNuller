@@ -7,13 +7,23 @@ import {
 } from './providers.js';
 
 describe('REALTIME_PROVIDER_DEFINITIONS', () => {
-  it('has exactly the four providers cleared by the no-relay / small-adapter filter', () => {
+  it('has the four self-BYO-key providers plus the Worker-proxied trial edition', () => {
     expect(REALTIME_PROVIDER_DEFINITIONS.map((p) => p.id).sort()).toEqual([
       'azure',
       'openai',
+      'trial',
       'xai',
       'zhipu',
     ]);
+  });
+
+  it('trial rides the same openai-realtime (xAI flat) dialect, proxied through the Worker', () => {
+    const trial = getRealtimeProviderDefinition('trial');
+    expect(trial?.dialect).toBe('openai-realtime');
+    // Only the activation key — the model is pinned server-side, so no model field.
+    expect(trial?.fields.map((f) => f.key)).toEqual(['apiKey']);
+    // Cost is borne by the provider, so it carries no per-minute price tag.
+    expect(trial?.pricePerMinuteUsd).toBeUndefined();
   });
 
   it('xai/openai/azure share the openai-realtime dialect; zhipu is the lone glm-realtime variant', () => {

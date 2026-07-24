@@ -17,7 +17,8 @@ describe('signZhipuJwt', () => {
     expect(segments).toHaveLength(3);
 
     const header = base64UrlDecodeJson(segments[0]!) as Record<string, unknown>;
-    expect(header).toEqual({ alg: 'HS256', sign_type: 'SIGN' });
+    // Must match Zhipu's canonical PyJWT header exactly, including typ:JWT.
+    expect(header).toEqual({ alg: 'HS256', typ: 'JWT', sign_type: 'SIGN' });
 
     const payload = base64UrlDecodeJson(segments[1]!) as Record<string, unknown>;
     expect(payload.api_key).toBe('my-id');

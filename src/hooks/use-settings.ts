@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { loadSettings, saveSettings, type VoiceSettings } from '@/lib/settings';
+import { createDefaultSettings, loadSettings, saveSettings, type VoiceSettings } from '@/lib/settings';
 
 /**
- * Settings save on every change (there is no drawer-close gesture to hook
- * like DG-Agent's `use-settings-manager` — DG-Voice's settings live in a
- * `Sheet`, and the call screen needs the latest value the instant it opens).
+ * Settings save on every change (the call screen needs the latest value the
+ * instant it opens, and — unlike DG-Agent's `use-settings-manager` — DG-Voice
+ * has no close gesture to flush on, since the settings panel and the call
+ * screen coexist in the same shell).
  */
 export function useSettings() {
   const [settings, setSettingsState] = useState<VoiceSettings>(() => loadSettings());
@@ -17,5 +18,11 @@ export function useSettings() {
     });
   }, []);
 
-  return { settings, updateSettings };
+  const resetSettings = useCallback(() => {
+    const defaults = createDefaultSettings();
+    saveSettings(defaults);
+    setSettingsState(defaults);
+  }, []);
+
+  return { settings, updateSettings, resetSettings };
 }

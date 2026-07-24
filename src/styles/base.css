@@ -64,25 +64,4 @@ textarea:focus {
   box-shadow: 0 0 0 4px var(--ring);
 }
 
-/* Settings "legend card" — ported from DG-Agent's SafetyTab visual language:
-   each settings group is a bordered card whose title sits on top of the
-   border, like a form <fieldset>/<legend>. */
-.settings-row-card {
-  position: relative;
-  padding: 1.25rem 1.15rem 1.05rem;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: transparent;
-}
-
-.settings-card-legend {
-  position: absolute;
-  top: 0;
-  left: 1rem;
-  padding: 0 0.65rem;
-  transform: translateY(-50%);
-  background: var(--bg-elevated);
-  color: var(--accent);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
+/* Settings layout + legend cards live in styles/settings.css. */

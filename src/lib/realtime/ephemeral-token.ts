@@ -4,15 +4,13 @@
  * browser) so the long-lived BYO key never touches the WebSocket URL or
  * subprotocol string directly.
  *
- * NOT LIVE-VERIFIED: the exact endpoint path and request/response shape for
- * xAI and Azure are transcribed from public docs at write time, not
- * exercised against a real account (no API key was available in this
- * session). OpenAI's shape is the one most likely to be exactly right. If a
- * provider's mint call 404s or CORS-fails in practice, the fallback is to
- * skip minting and use `settings.apiKey` directly as the WebSocket
- * subprotocol credential (see `buildAuthSubprotocol` in
- * `openai-realtime-session.ts`) — the plan this was scaffolded from
- * documents that as the intended retreat.
+ * Endpoint paths + CORS were verified by live probes (all three return a
+ * proper auth error to a bad key and send `Access-Control-Allow-Origin: *`,
+ * so a browser fetch works). xAI is confirmed working end-to-end. OpenAI and
+ * Azure use the GA `/v1/realtime/client_secrets` shape (flat `value` in the
+ * response). If a mint call fails at runtime, `resolveCredential` in
+ * `openai-realtime-session.ts` falls back to using `settings.apiKey` directly
+ * as the WebSocket subprotocol credential.
  */
 import type { RealtimeProviderSettings } from './providers.js';
 
@@ -63,22 +61,27 @@ export async function mintAzureRealtimeEphemeralToken(
   if (!settings.baseUrl) {
     throw new Error('Azure 需要先填写资源地址');
   }
-  const url = `${settings.baseUrl}/openai/realtimeapi/sessions?api-version=2025-04-01-preview`;
+  // GA endpoint: /openai/v1/realtime/client_secrets (no api-version param).
+  // We previously used the DEPRECATED preview path
+  // /openai/realtimeapi/sessions?api-version=2025-04-01-preview and parsed a
+  // `client_secret.value` field — GA returns the token as a flat `value`,
+  // same as OpenAI. Both were wrong. (learn.microsoft.com Azure OpenAI
+  // realtime GA migration notes.)
+  const url = `${settings.baseUrl}/openai/v1/realtime/client_secrets`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'api-key': settings.apiKey,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model: settings.deployment || settings.model }),
+    // On Azure `session.model` is the model DEPLOYMENT name.
+    body: JSON.stringify({ session: { type: 'realtime', model: settings.deployment || settings.model } }),
   });
   if (!response.ok) {
     throw new Error(`Azure 换票失败（${response.status}）：${await safeText(response)}`);
   }
-  const data = (await response.json()) as {
-    client_secret: { value: string; expires_at: number };
-  };
-  return { value: data.client_secret.value, expiresAt: data.client_secret.expires_at * 1000 };
+  const data = (await response.json()) as { value: string; expires_at: number };
+  return { value: data.value, expiresAt: data.expires_at * 1000 };
 }
 
 async function safeText(response: Response): Promise<string> {

@@ -1,61 +1,31 @@
 /**
- * `RealtimeSession` implementation for Zhipu's `glm-realtime` dialect.
+ * `glm-realtime` dialect — Zhipu GLM-Realtime. Verified against
+ * docs.bigmodel.cn/cn/guide/models/sound-and-video/glm-realtime. Shares all
+ * lifecycle/event handling with `BaseRealtimeSession`; overrides only where
+ * GLM differs from the OpenAI family:
  *
- * NOT LIVE-VERIFIED (lower confidence than the openai-realtime dialect — no
- * account was available to test against). Uses the same classic/flat
- * `session.update` shape as `openai-realtime-session.ts` (see that file's
- * doc comment for why — a live xAI test rejected the nested-`audio` shape
- * this originally used) plus GLM's own documented differences:
- *  - audio is wav-framed, not raw pcm16 (`wrapPcm16AsWav`)
- *  - auth is a `?Authorization=<jwt>` query param, not a WS subprotocol —
- *    the JWT is signed locally (`signZhipuJwt`), so there is no ephemeral-
- *    token round trip at all for this provider
- *  - extra top-level session fields: `tts_source: 'e2e'`, `chat_mode: 'audio'`
- *  - a `heartbeat` server event arrives roughly every 30s and must be
- *    tolerated (ignored) rather than treated as an error
- *  - function-call arguments arrive only as `.done` events (no `.delta`
- *    streaming) — handled identically to how the openai dialect treats its
- *    own `.done` event, so no extra aggregation code is needed here
- *  - an extra `response.function_call.simple_browser` event (GLM's built-in
- *    web search) is explicitly ignored
- * Every other event name matches openai-realtime.
+ *   - auth: a locally-signed HS256 JWT in a `?Authorization=` query param
+ *     (browsers can't set the header GLM's docs describe; a live probe
+ *     confirmed the server also reads the query param). No network round trip.
+ *   - input audio: wav-framed (`wrapPcm16AsWav`); output is raw pcm 24kHz.
+ *   - `chat_mode`/`tts_source` live inside `beta_fields`, not at the top level.
+ *   - a `heartbeat` server event (~30s) and a `response.function_call.simple_browser`
+ *     event (built-in web search) must be tolerated.
+ *   - the function-call event carries `name`/`arguments`/`response_id` with NO
+ *     `call_id`, and `function_call_output` takes no `call_id`.
  */
-import type { ToolDefinition } from '@dg-kit/core';
-import { AudioPlayback, MicCapture, base64ToInt16, float32ToInt16, wrapPcm16AsWav } from './audio.js';
-import type { RealtimeProviderSettings } from './providers.js';
-import type { RealtimeSession, RealtimeSessionEvents } from './realtime-session.js';
+import {
+  BaseRealtimeSession,
+  type RealtimeConnection,
+  type RealtimeSessionOptions,
+} from './base-realtime-session.js';
+import { wrapPcm16AsWav } from './audio.js';
 import { signZhipuJwt } from './zhipu-jwt.js';
 
 const GLM_REALTIME_WS_URL = 'wss://open.bigmodel.cn/api/paas/v4/realtime';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** See openai-realtime-session.ts for why both event-name families are normalized. */
-const EVENT_ALIASES: Record<string, string> = {
-  'response.output_audio.delta': 'response.audio.delta',
-  'response.output_audio_transcript.delta': 'response.audio_transcript.delta',
-  'response.output_audio_transcript.done': 'response.audio_transcript.done',
-};
-
-function canonicalEventType(type: unknown): string {
-  return typeof type === 'string' ? (EVENT_ALIASES[type] ?? type) : '';
-}
-
-/** Every canonical event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
-const KNOWN_EVENT_TYPES = new Set([
-  'heartbeat',
-  'response.function_call.simple_browser',
-  'input_audio_buffer.speech_started',
-  'response.audio.delta',
-  'response.audio_transcript.delta',
-  'response.audio_transcript.done',
-  'conversation.item.input_audio_transcription.completed',
-  'response.function_call_arguments.done',
-  'response.done',
-  'error',
-]);
-
-function wavToBase64(wav: ArrayBuffer): string {
-  const bytes = new Uint8Array(wav);
+function toBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -64,138 +34,72 @@ function wavToBase64(wav: ArrayBuffer): string {
   return btoa(binary);
 }
 
-export class GlmRealtimeSession implements RealtimeSession {
-  private ws: WebSocket | null = null;
-  private readonly mic = new MicCapture();
-  private readonly playback = new AudioPlayback();
+export class GlmRealtimeSession extends BaseRealtimeSession {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly assistantTranscripts = new Map<string, string>();
-  private userTranscript = '';
-  private speaking = false;
-  private connected = false;
 
-  constructor(
-    private readonly options: {
-      settings: RealtimeProviderSettings;
-      tools: ToolDefinition[];
-      instructions: string;
-      events: RealtimeSessionEvents;
-    },
-  ) {}
-
-  isConnected(): boolean {
-    return this.connected;
+  constructor(options: RealtimeSessionOptions) {
+    super(options);
   }
 
-  async connect(): Promise<void> {
-    await this.mic.start();
-    // Must happen inside the "开始通话" click's transient user-activation
-    // window, not lazily on the first audio delta — see AudioPlayback.prepare().
-    await this.playback.prepare();
-
+  protected async buildConnection(): Promise<RealtimeConnection> {
     const jwt = await signZhipuJwt(this.options.settings.apiKey);
-    const ws = new WebSocket(`${GLM_REALTIME_WS_URL}?Authorization=${encodeURIComponent(jwt)}`);
-    this.ws = ws;
-
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => {
-        this.connected = true;
-        this.sendSessionUpdate();
-        this.mic.onFrame((frame) => this.sendAudioFrame(frame));
-        this.startHeartbeat();
-        this.options.events.onOpen?.();
-        resolve();
-      };
-      ws.onmessage = (event) => {
-        if (typeof event.data === 'string') this.handleMessage(event.data);
-      };
-      ws.onerror = () => {
-        const error = new Error('实时语音连接出错');
-        this.options.events.onError?.(error);
-        if (!this.connected) reject(error);
-      };
-      ws.onclose = (event) => {
-        this.connected = false;
-        this.stopHeartbeat();
-        this.options.events.onClose?.(event.reason || '连接已关闭');
-      };
-    });
+    return { url: `${GLM_REALTIME_WS_URL}?Authorization=${encodeURIComponent(jwt)}` };
   }
 
-  disconnect(): void {
-    this.connected = false;
-    this.stopHeartbeat();
-    this.mic.stop();
-    this.playback.close();
-    if (this.ws) {
-      this.ws.onopen = null;
-      this.ws.onmessage = null;
-      this.ws.onerror = null;
-      this.ws.onclose = null;
-      this.ws.close();
-      this.ws = null;
-    }
+  protected encodeAudioFrame(int16: Int16Array): string {
+    // GLM input is wav (self-describes its 24kHz rate in the header).
+    return toBase64(new Uint8Array(wrapPcm16AsWav(int16)));
   }
 
-  sendFunctionCallOutput(callId: string, output: string): void {
-    this.send({
-      type: 'conversation.item.create',
-      item: { type: 'function_call_output', call_id: callId, output },
-    });
-  }
-
-  requestResponse(): void {
-    this.send({ type: 'response.create' });
-  }
-
-  whenAudioDrained(): Promise<void> {
-    return this.playback.whenDrained();
-  }
-
-  updateInstructions(instructions: string): void {
-    this.options.instructions = instructions;
-    this.sendSessionUpdate();
-  }
-
-  private sendSessionUpdate(): void {
-    // Flat session shape (see the same note in openai-realtime-session.ts) —
-    // plus GLM's own documented extras (`tts_source`, `chat_mode`) and wav
-    // audio formats instead of pcm16.
-    this.send({
+  protected buildSessionUpdate(): Record<string, unknown> {
+    return {
       type: 'session.update',
       session: {
-        modalities: ['text', 'audio'],
         model: this.options.settings.model,
         instructions: this.options.instructions,
         voice: this.options.settings.voice,
         input_audio_format: 'wav',
-        output_audio_format: 'wav',
+        output_audio_format: 'pcm', // pcm-only per docs; NOT wav (was corrupting output)
         turn_detection: { type: 'server_vad', create_response: true },
-        tools: this.options.tools.map((tool) => ({
-          type: 'function',
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters,
-        })),
+        tools: this.mappedTools(),
         tool_choice: 'auto',
-        tts_source: 'e2e',
-        chat_mode: 'audio',
+        beta_fields: { chat_mode: 'audio', tts_source: 'e2e' },
       },
-    });
+    };
   }
 
-  private sendAudioFrame(frame: Float32Array): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-    const int16 = float32ToInt16(frame);
-    const wav = wrapPcm16AsWav(int16);
-    this.send({ type: 'input_audio_buffer.append', audio: wavToBase64(wav) });
+  protected functionCallId(message: Record<string, unknown>): string {
+    // GLM's event has no `call_id` — fall back to `response_id`, then a synth
+    // id, so requiring call_id doesn't silently drop the call.
+    if (typeof message.call_id === 'string') return message.call_id;
+    if (typeof message.response_id === 'string') return message.response_id;
+    return `glm-call-${typeof message.name === 'string' ? message.name : 'x'}`;
   }
 
-  private startHeartbeat(): void {
+  protected functionCallOutputItem(_callId: string, output: string): Record<string, unknown> {
+    // GLM's documented function_call_output is just `{type, output}` — the
+    // server associates it with the pending call by response context.
+    return { type: 'function_call_output', output };
+  }
+
+  protected handleDialectEvent(message: Record<string, unknown>): boolean {
+    switch (message.type) {
+      case 'heartbeat':
+        return true; // server keepalive — ignore
+      case 'response.function_call.simple_browser':
+        return true; // GLM's built-in web search — DG-Voice doesn't expose browsing
+      default:
+        return false;
+    }
+  }
+
+  protected onConnected(): void {
     this.stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'heartbeat' });
-    }, HEARTBEAT_INTERVAL_MS);
+    this.heartbeatTimer = setInterval(() => this.send({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS);
+  }
+
+  protected onClosed(): void {
+    this.stopHeartbeat();
   }
 
   private stopHeartbeat(): void {
@@ -203,133 +107,5 @@ export class GlmRealtimeSession implements RealtimeSession {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-  }
-
-  private send(payload: Record<string, unknown>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload));
-    }
-  }
-
-  private handleMessage(raw: string): void {
-    let message: Record<string, unknown>;
-    try {
-      message = JSON.parse(raw);
-    } catch {
-      return;
-    }
-
-    // Same temporary unconditional logging as openai-realtime-session.ts —
-    // remove once a real call has been confirmed working end-to-end.
-    const type = canonicalEventType(message.type);
-    if (!KNOWN_EVENT_TYPES.has(type)) {
-      console.log('[dg-voice] unhandled glm-realtime event:', message.type, message);
-    } else {
-      console.debug('[dg-voice] glm-realtime event:', message.type);
-    }
-
-    const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
-
-    switch (type) {
-      case 'heartbeat':
-        // Server keepalive ping — no action needed.
-        break;
-
-      case 'response.function_call.simple_browser':
-        // GLM's built-in web search tool call — DG-Voice doesn't expose
-        // browsing, so this is intentionally ignored rather than surfaced
-        // as an unknown function call.
-        break;
-
-      case 'input_audio_buffer.speech_started':
-        this.playback.clear();
-        this.setSpeaking(false);
-        break;
-
-      case 'response.audio.delta': {
-        const delta = message.delta ?? message.audio;
-        if (typeof delta === 'string') {
-          // GLM sends wav-framed output too; strip the 44-byte header before
-          // decoding as raw pcm16 for playback.
-          const wavBytes = base64ToInt16(delta);
-          this.playback.enqueuePcm16(wavBytes.subarray(22));
-          this.setSpeaking(true);
-        }
-        break;
-      }
-
-      case 'response.audio_transcript.delta': {
-        const delta = message.delta;
-        if (typeof delta === 'string') {
-          const key = itemId ?? 'assistant-pending';
-          const text = (this.assistantTranscripts.get(key) ?? '') + delta;
-          this.assistantTranscripts.set(key, text);
-          this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: false });
-        }
-        break;
-      }
-      case 'response.audio_transcript.done': {
-        const key = itemId ?? 'assistant-pending';
-        const text =
-          typeof message.transcript === 'string'
-            ? message.transcript
-            : (this.assistantTranscripts.get(key) ?? '');
-        this.assistantTranscripts.delete(key);
-        if (text) {
-          this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
-        }
-        break;
-      }
-
-      case 'conversation.item.input_audio_transcription.completed': {
-        const transcript =
-          typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
-        this.options.events.onTranscript?.({
-          id: itemId ?? 'user-pending',
-          role: 'user',
-          text: transcript,
-          done: true,
-        });
-        this.userTranscript = '';
-        break;
-      }
-
-      case 'response.function_call_arguments.done': {
-        const callId = message.call_id;
-        const name = message.name;
-        const args = message.arguments;
-        if (typeof callId === 'string' && typeof name === 'string' && typeof args === 'string') {
-          this.options.events.onFunctionCall?.({ callId, name, argsJson: args });
-        }
-        break;
-      }
-
-      case 'response.done':
-        for (const [key, text] of [...this.assistantTranscripts]) {
-          this.assistantTranscripts.delete(key);
-          if (text) {
-            this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
-          }
-        }
-        void this.playback.whenDrained().then(() => this.setSpeaking(false));
-        this.options.events.onResponseDone?.();
-        break;
-
-      case 'error': {
-        console.error('[dg-voice] glm-realtime error event:', message);
-        const error = message.error as { message?: string } | undefined;
-        this.options.events.onError?.(new Error(error?.message ?? '服务端返回未知错误'));
-        break;
-      }
-
-      default:
-        break;
-    }
-  }
-
-  private setSpeaking(speaking: boolean): void {
-    if (this.speaking === speaking) return;
-    this.speaking = speaking;
-    this.options.events.onSpeakingChange?.(speaking);
   }
 }

@@ -10,13 +10,31 @@
   // 保留 workers.dev 预发地址作为备用/调试入口。
   "workers_dev": true,
 
-  // 纯静态托管：前端直连 xAI/OpenAI/Azure/智谱 的 realtime 接口（均已验证支持浏览器 CORS
-  // 直连，含临时票据签发端点），不需要任何服务端中转。Worker 只做 SPA 静态资源托管。
+  // 静态托管 + 体验版代理。自带 Key 的 provider（xAI/OpenAI/Azure/智谱）仍浏览器直连、不经过
+  // Worker；只有体验版（trial）的 /api/realtime 走 Worker：`run_worker_first` 让该前缀先进
+  // Worker 代码，其余路径直接由 ASSETS 提供。
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": false
+    "run_worker_first": ["/api/*"]
+  },
+
+  // 体验版计量 Durable Object：每个激活密钥一个实例，管并发 / 单次时长 / 每日总量。
+  "durable_objects": {
+    "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }]
+  },
+  "migrations": [{ "tag": "v1", "new_classes": ["TrialSession"] }],
+
+  // 非机密配置。机密（真 xAI Key、激活密钥表）用 `wrangler secret put` 设置：
+  //   wrangler secret put XAI_API_KEY
+  //   wrangler secret put TRIAL_KEYS   # JSON：{"dgv-trial-xxx":{"dailyCapMinutes":30}}
+  "vars": {
+    "TRIAL_MODEL": "grok-voice-think-fast-1.0",
+    "TRIAL_MAX_SESSION_MINUTES": "20",
+    "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
+    "TRIAL_DISABLED": "0",
+    "TRIAL_ALLOWED_ORIGINS": "https://voice.0xnullai.com"
   },
 
   "observability": {

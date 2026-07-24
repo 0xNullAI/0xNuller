@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Radio } from 'lucide-react';
+import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,11 +12,19 @@ interface CallPanelProps {
   providerId: RealtimeProviderId;
   onStart: () => void;
   onHangUp: () => void;
+  onEmergencyStop: () => void;
 }
 
-export function CallPanel({ call, providerId, onStart, onHangUp }: CallPanelProps) {
+export function CallPanel({ call, providerId, onStart, onHangUp, onEmergencyStop }: CallPanelProps) {
   if (call.status === 'active' || call.status === 'connecting') {
-    return <ActiveCallView call={call} providerId={providerId} onHangUp={onHangUp} />;
+    return (
+      <ActiveCallView
+        call={call}
+        providerId={providerId}
+        onHangUp={onHangUp}
+        onEmergencyStop={onEmergencyStop}
+      />
+    );
   }
   return <IdleCallView call={call} providerId={providerId} onStart={onStart} />;
 }
@@ -65,10 +73,12 @@ function ActiveCallView({
   call,
   providerId,
   onHangUp,
+  onEmergencyStop,
 }: {
   call: RealtimeCallState;
   providerId: RealtimeProviderId;
   onHangUp: () => void;
+  onEmergencyStop: () => void;
 }) {
   const provider = getRealtimeProviderDefinition(providerId);
   const elapsed = useElapsedSeconds(call.startedAt);
@@ -107,10 +117,21 @@ function ActiveCallView({
 
       {call.transcript.length > 0 && <TranscriptLog transcript={call.transcript} />}
 
-      <Button variant="destructive" className="h-12 w-full max-w-xs text-base" onClick={onHangUp}>
-        <PhoneOff className="h-4 w-4" />
-        结束通话
-      </Button>
+      <div className="flex w-full max-w-sm gap-3">
+        <Button
+          variant="secondary"
+          className="h-12 flex-1 border-[var(--danger-border)] text-base text-[var(--danger-button)] hover:bg-[var(--danger-soft)]"
+          onClick={onEmergencyStop}
+        >
+          <ShieldAlert className="h-4 w-4" />
+          紧急停止
+        </Button>
+        <Button variant="destructive" className="h-12 flex-1 text-base" onClick={onHangUp}>
+          <PhoneOff className="h-4 w-4" />
+          结束通话
+        </Button>
+      </div>
+      <p className="-mt-3 text-[11px] text-[var(--text-faint)]">紧急停止只把设备归零，不挂断通话</p>
     </section>
   );
 }

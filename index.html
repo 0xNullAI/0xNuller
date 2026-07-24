@@ -10,6 +10,27 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>DG-Voice</title>
+    <script>
+      // No-flash theme bootstrap: resolve the saved theme before first paint
+      // so the page never renders in the wrong scheme. The `data-theme="dark"`
+      // above is only the fallback if this fails. The app's theme service
+      // owns every runtime change after mount.
+      (function () {
+        try {
+          var raw = localStorage.getItem('dg-voice-settings');
+          var mode = raw ? JSON.parse(raw).theme : 'auto';
+          if (mode !== 'dark' && mode !== 'light') {
+            mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', mode);
+          document.documentElement.style.colorScheme = mode;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.content = mode === 'dark' ? '#080808' : '#ffffff';
+        } catch (e) {
+          /* keep the fallback data-theme */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

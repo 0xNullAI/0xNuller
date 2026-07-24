@@ -25,7 +25,15 @@ export async function signZhipuJwt(apiKey: string, expireSeconds = 3600): Promis
   const secret = apiKey.slice(separatorIndex + 1);
 
   const now = Date.now();
-  const header = { alg: 'HS256', sign_type: 'SIGN' };
+  // Field order matches Zhipu's official SDK's PyJWT output exactly
+  // ({alg, typ, sign_type}) so a token we sign is byte-identical to what
+  // their own examples produce for the same inputs. `typ: 'JWT'` in
+  // particular is PyJWT's default and was missing before; a validator that
+  // requires it would reject a token without it. (Signature validity itself
+  // doesn't depend on this — the server recomputes HMAC over whatever bytes
+  // we send — but matching the reference removes it as a variable while the
+  // provider is still unverified against a real key.)
+  const header = { alg: 'HS256', typ: 'JWT', sign_type: 'SIGN' };
   const payload = { api_key: id, exp: now + expireSeconds * 1000, timestamp: now };
   const signingInput = `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(payload)}`;
 

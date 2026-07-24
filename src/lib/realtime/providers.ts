@@ -14,7 +14,16 @@
  * hardcoded snapshot — the others don't expose an equivalent endpoint.
  */
 
-export type RealtimeProviderId = 'xai' | 'openai' | 'azure' | 'zhipu';
+/**
+ * `trial` (体验版) is xAI Grok reached through DG-Voice's own Cloudflare
+ * Worker (`/api/realtime`) instead of `api.x.ai` directly: the real xAI key
+ * lives only as a Worker secret, and the user pastes an "activation key" that
+ * the Worker validates + meters (session-length / daily caps) before opening
+ * the upstream connection with the real key. On the wire past the Worker it
+ * is plain `openai-realtime` (xAI flat shape), so the frontend adapter is a
+ * two-line branch — see `openai-realtime-session.ts`.
+ */
+export type RealtimeProviderId = 'trial' | 'xai' | 'openai' | 'azure' | 'zhipu';
 
 /**
  * Which wire dialect a provider's realtime WebSocket speaks:
@@ -64,6 +73,9 @@ export interface RealtimeProviderSettings {
 }
 
 const XAI_STATIC_VOICES = ['ara', 'eve', 'leo', 'rex', 'sal'];
+// Trial can't hit `GET /v1/tts/voices` from the browser (no real key there),
+// so it ships a fixed subset of xAI's legacy voices; `eve` is xAI's default.
+const TRIAL_STATIC_VOICES = ['eve', 'ara', 'leo', 'rex', 'sal'];
 const OPENAI_STATIC_VOICES = [
   'alloy',
   'ash',
@@ -76,19 +88,35 @@ const OPENAI_STATIC_VOICES = [
   'shimmer',
   'verse',
 ];
-// Zhipu voice ids are not independently verified against a live account —
-// confirm against console.bigmodel.cn before shipping a default that isn't 'tongtong'.
+// Verified against Zhipu's GLM-Realtime docs:
+// https://docs.bigmodel.cn/cn/guide/models/sound-and-video/glm-realtime
+// The previous list had several Azure-style names (xiaoxiao/xiaoyun/yunyang/
+// yunxi/yunfeng) that don't exist on Zhipu — a call would fail as soon as one
+// was selected. `tongtong` is Zhipu's documented default.
 const ZHIPU_STATIC_VOICES = [
   'tongtong',
   'xiaochen',
-  'xiaoxiao',
-  'xiaoyun',
-  'yunyang',
-  'yunxi',
-  'yunfeng',
+  'female-tianmei',
+  'female-shaonv',
+  'male-qn-daxuesheng',
+  'male-qn-jingying',
+  'lovely_girl',
 ];
 
 export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
+  {
+    id: 'trial',
+    name: '体验版（免自带 Key）',
+    hint: '额度由 0xNullAI 提供：填入拿到的激活密钥即可试用 Grok，单次通话有时长上限、每日有总量上限。',
+    dialect: 'openai-realtime',
+    // Pinned by the Worker upstream; the trial user can't change it.
+    defaultModel: 'grok-voice-think-fast-1.0',
+    voiceSource: 'static',
+    staticVoices: TRIAL_STATIC_VOICES,
+    fields: [
+      { key: 'apiKey', label: '激活密钥', type: 'password', placeholder: 'dgv-trial-...' },
+    ],
+  },
   {
     id: 'xai',
     name: 'xAI Grok',

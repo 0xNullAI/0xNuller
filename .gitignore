@@ -10,3 +10,6 @@ coverage
 .wrangler
 *.local
 .DS_Store
+
+# Cloudflare Worker local secrets
+.dev.vars

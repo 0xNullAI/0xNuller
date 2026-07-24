@@ -95,7 +95,7 @@ export function createDefaultSettings(): VoiceSettings {
 }
 
 const providerSettingsSchema = z.object({
-  providerId: z.enum(['xai', 'openai', 'azure', 'zhipu']),
+  providerId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
   apiKey: z.string(),
   model: z.string(),
   baseUrl: z.string(),
@@ -113,7 +113,7 @@ const savedPromptPresetSchema = z.object({
 
 const settingsSchema = z.object({
   theme: z.enum(['auto', 'dark', 'light']),
-  activeProviderId: z.enum(['xai', 'openai', 'azure', 'zhipu']),
+  activeProviderId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
   promptPresetId: z.string(),
   savedPromptPresets: z.array(savedPromptPresetSchema),

@@ -32,22 +32,44 @@ that transforms into a centered in-call view (timer, live captions) once connect
 persistent device status bar with live strength meters (`DeviceStatusBar.tsx`, ported from
 DG-Agent's `ChatPanel.tsx` status chip pattern). Design system parity with DG-Agent. 70 unit tests.
 
-**Not live-verified, but partially corrected by a real test**: a live connection attempt against
-xAI came back `"Invalid event received"` for the original `session.update` shape (a newer/GA-shaped
-schema with `audio.input`/`audio.output` nesting) — that was wrong. Both dialects now use the
-classic/stable flat `session.update` shape (`voice`/`input_audio_format`/`turn_detection` at the
-top level of `session`, event names like `response.audio.delta` not `response.output_audio.delta`)
-which is far more likely correct given xAI's own "OpenAI Realtime compatible" claim predates any
-newer schema. This has NOT yet been re-verified end-to-end (including an actual tool call) against
-a real account — do that before trusting it fully. The `openai-insecure-api-key.` WebSocket-
-subprotocol auth scheme and the ephemeral-token endpoint paths in `ephemeral-token.ts` remain
-unverified. Search for `NOT LIVE-VERIFIED` comments before trusting any remaining detail, and don't
-remove them until the corresponding code path is actually confirmed working. `handleMessage()`'s
-`'error'` case now `console.error`s the full raw payload (not just `.message`) specifically so the
-next live test surfaces enough detail (`code`/`param`/`event_id`) to pinpoint the next fix quickly.
-One partial confirmation so far: a browser-side `fetch` to `https://api.x.ai/v1/tts/voices` with a
-fake key returned a real HTTP 400 (not a CORS failure), confirming the endpoint is browser-reachable
-— the auth format itself is still unverified.
+### Realtime provider verification status (as of the doc-verification pass)
+
+**xAI Grok** — confirmed working end-to-end by the user. It uses the CLASSIC/flat `session.update`
+shape (`voice`/`input_audio_format`/`turn_detection` flat under `session`, `modalities`) and classic
+event names (`response.audio.delta`). It REJECTS the nested shape ("Invalid event received").
+
+**OpenAI GA and xAI have DIVERGED — this is the key gotcha.** Despite xAI advertising "OpenAI
+Realtime compatible", OpenAI GA moved to a NESTED shape (`session.audio.input`/`session.audio.output`,
+audio `format` as an object `{type:'audio/pcm', rate}`, `output_modalities`) and NEW event names
+(`response.output_audio.delta`). So `OpenAiRealtimeSession.sendSessionUpdate()` branches on
+`providerId`: `xai` → flat, `openai`/`azure` → nested GA. The RECEIVE side normalises both event-name
+families via `EVENT_ALIASES`, so only the send path branches. Verified against
+developers.openai.com/api/docs. OpenAI/Azure nested path is NOT live-verified.
+
+**Azure** tracks OpenAI GA. Its mint endpoint was migrated from the DEPRECATED preview
+`/openai/realtimeapi/sessions?api-version=...` (which returned `client_secret.value`) to GA
+`/openai/v1/realtime/client_secrets` (flat `value`), and the WS URL from
+`/openai/realtime?api-version=...&deployment=...` to `/openai/v1/realtime`. `session.model` carries
+the DEPLOYMENT name. Least-verified provider; GA docs are WebRTC-first so even WS support is assumed.
+
+**Zhipu GLM** — verified against docs.bigmodel.cn. Endpoint `wss://open.bigmodel.cn/api/paas/v4/realtime`;
+model `glm-realtime-flash`/`glm-realtime`/`glm-realtime-air` (no activation needed, just account
+tier V0–V3 for concurrency). Fixes from the doc pass: (1) JWT header now `{alg,typ,sign_type}`,
+byte-identical to Zhipu's PyJWT reference (was missing `typ`); (2) `output_audio_format` is `pcm`
+not `wav` — the old code stripped a nonexistent 44-byte wav header off every output chunk, dropping
+real samples; (3) `chat_mode`/`tts_source` moved into `beta_fields` (were flat, so ignored — the
+e2e voice path never engaged); (4) function-call event carries `name`/`arguments`/`response_id` with
+NO `call_id`, so requiring call_id silently dropped every GLM tool call — now falls back to
+response_id; (5) `function_call_output` sends only `{type,output}` (no call_id); (6) voice list
+corrected (had Azure-style names that don't exist on Zhipu). Auth is `?Authorization=<jwt>` query
+param — the browser can't set the header GLM's docs describe, but a live probe confirmed the server
+reads the query param. NOT confirmed working end-to-end against a real key.
+
+`scripts/glm-connftest.mjs` signs a JWT with the app's exact algorithm and does a plain HTTPS GET
+(not a WS upgrade) so the server's real error body is visible — a browser WS handshake 401 hides
+its body from JS, making a rejected token indistinguishable from any other failure in-app. Both
+sessions' `handleMessage()` also log every unrecognised event's full payload (temporary, remove once
+a real call is confirmed working). Search `NOT LIVE-VERIFIED` before trusting any unverified detail.
 
 ## Permission model — read before touching
 
