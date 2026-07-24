@@ -79,6 +79,19 @@ const SILENCE_DURATION_MS = 500;
 const VAD_THRESHOLD = 0.85;
 const VAD_PREFIX_PADDING_MS = 333;
 
+/** Every event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
+const KNOWN_EVENT_TYPES = new Set([
+  'input_audio_buffer.speech_started',
+  'response.audio.delta',
+  'response.audio_transcript.delta',
+  'response.audio_transcript.done',
+  'conversation.item.input_audio_transcription.delta',
+  'conversation.item.input_audio_transcription.completed',
+  'response.function_call_arguments.done',
+  'response.done',
+  'error',
+]);
+
 export class OpenAiRealtimeSession implements RealtimeSession {
   private ws: WebSocket | null = null;
   private readonly mic = new MicCapture();
@@ -194,6 +207,12 @@ export class OpenAiRealtimeSession implements RealtimeSession {
           threshold: VAD_THRESHOLD,
           prefix_padding_ms: VAD_PREFIX_PADDING_MS,
           silence_duration_ms: SILENCE_DURATION_MS,
+          // Explicit rather than relying on a default — if the server
+          // defaults this to false, VAD would detect end-of-speech and
+          // commit the audio buffer but never actually generate a spoken
+          // reply, which matches the exact "transcribed but no answer"
+          // symptom seen in the first live test after the crash fix.
+          create_response: true,
         },
         tools: this.options.tools.map((tool) => ({
           type: 'function',
@@ -224,6 +243,18 @@ export class OpenAiRealtimeSession implements RealtimeSession {
       message = JSON.parse(raw);
     } catch {
       return;
+    }
+
+    // Temporary, deliberately unconditional (not gated behind a debug flag)
+    // while the wire protocol is still NOT LIVE-VERIFIED — every event this
+    // dialect doesn't explicitly recognize logs its full payload so the next
+    // real test tells us exactly what the server actually sent, instead of
+    // silently falling through `default`. Remove once a real call has been
+    // confirmed working end-to-end (audio + at least one tool call).
+    if (!KNOWN_EVENT_TYPES.has(message.type as string)) {
+      console.log('[dg-voice] unhandled realtime event:', message.type, message);
+    } else {
+      console.debug('[dg-voice] realtime event:', message.type);
     }
 
     switch (message.type) {

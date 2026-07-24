@@ -29,6 +29,20 @@ import { signZhipuJwt } from './zhipu-jwt.js';
 const GLM_REALTIME_WS_URL = 'wss://open.bigmodel.cn/api/paas/v4/realtime';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+/** Every event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
+const KNOWN_EVENT_TYPES = new Set([
+  'heartbeat',
+  'response.function_call.simple_browser',
+  'input_audio_buffer.speech_started',
+  'response.audio.delta',
+  'response.audio_transcript.delta',
+  'response.audio_transcript.done',
+  'conversation.item.input_audio_transcription.completed',
+  'response.function_call_arguments.done',
+  'response.done',
+  'error',
+]);
+
 function wavToBase64(wav: ArrayBuffer): string {
   const bytes = new Uint8Array(wav);
   let binary = '';
@@ -145,7 +159,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         voice: this.options.settings.voice,
         input_audio_format: 'wav',
         output_audio_format: 'wav',
-        turn_detection: { type: 'server_vad' },
+        turn_detection: { type: 'server_vad', create_response: true },
         tools: this.options.tools.map((tool) => ({
           type: 'function',
           name: tool.name,
@@ -192,6 +206,14 @@ export class GlmRealtimeSession implements RealtimeSession {
       message = JSON.parse(raw);
     } catch {
       return;
+    }
+
+    // Same temporary unconditional logging as openai-realtime-session.ts —
+    // remove once a real call has been confirmed working end-to-end.
+    if (!KNOWN_EVENT_TYPES.has(message.type as string)) {
+      console.log('[dg-voice] unhandled glm-realtime event:', message.type, message);
+    } else {
+      console.debug('[dg-voice] glm-realtime event:', message.type);
     }
 
     switch (message.type) {
