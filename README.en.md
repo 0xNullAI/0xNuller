@@ -24,20 +24,35 @@ Sister project to [DG-Agent](https://github.com/0xNullAI/DG-Agent) (text chat) �
 completely different agent loop: there is no "turn" concept here, the provider drives scheduling
 itself.
 
-## ⚠️ Current status: v0.1.0, voice not wired up yet
+## ⚠️ Current status: v0.2.0, core features implemented but not verified against a real account
 
 **Working today, with test coverage**:
 
 - Unified connect for all four DG-Lab device kinds (one button)
 - Full safety chain: policy engine (strength caps, cold-start clamp, burst caps), permission
   confirmation, serial command queue, emergency stop
+- The realtime voice connection layer: `RealtimeSession` (openai-realtime dialect, covering
+  xAI/OpenAI/Azure) + `GlmRealtimeSession` (Zhipu's variant) + `VoiceToolBridge` (tool-call bridging,
+  including parallel-call waiting and audio-drain sequencing), backed by 59 unit tests
+- A settings panel (provider selection, key/model/voice/speed, persona, permissions, safety caps)
+  and a call panel
 - Visual parity with DG-Agent (palette, radii, light/dark theme)
 
-**Not built yet**: the realtime voice connection itself (`RealtimeSession`/tool bridge), the
-settings UI, the Android shell, deployment. The "realtime voice call" section on the home screen
-is currently a placeholder. If you're looking for a working voice assistant, it isn't time yet.
+**Not done yet**:
 
-## Features (target shape)
+- **No end-to-end test against a real API key** — the exact `session.update` payload shape, the
+  WebSocket subprotocol used for auth, and the token-minting endpoint paths were written from
+  public docs, not exercised live. Anywhere in the code marked `NOT LIVE-VERIFIED` is the most
+  likely place to need adjustment once a real error comes back.
+- No Android shell yet
+- Sensor events (paw-prints button presses, civet-edging pressure) aren't wired into the voice
+  session yet — only indicator-color control works today
+- Custom voice upload, a "test connection" button, and a running cost timer are still missing
+
+If you have an API key for one of the supported providers, testing it and reporting back what
+breaks is the most useful thing you can do for this project right now.
+
+## Features
 
 - **Multi-provider** — one client works unmodified across xAI/OpenAI/Azure; Zhipu GLM needs no
   server relay at all, signing its JWT locally in the browser
@@ -47,7 +62,7 @@ is currently a placeholder. If you're looking for a working voice assistant, it 
   emergency stop always available
 - **Fully local** — no server relay, no database; settings in localStorage, bring your own API key
 - **No reinvented wheels** — the device layer comes from `@dg-kit/*` 1.13.0, the same
-  implementation shared by every downstream consumer
+  implementation shared by all four downstream consumers
 
 ## Local development
 

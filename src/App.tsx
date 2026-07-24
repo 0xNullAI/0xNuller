@@ -1,8 +1,12 @@
-import { Bluetooth, Radio, ShieldAlert } from 'lucide-react';
+import { Bluetooth, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDeviceSession } from '@/hooks/use-device-session';
+import { useSettings } from '@/hooks/use-settings';
+import { useRealtimeCall } from '@/hooks/use-realtime-call';
+import { CallPanel } from '@/components/CallPanel';
+import { SettingsSheet } from '@/components/SettingsSheet';
 
 const DEVICE_ROWS: Array<{
   key: 'coyote' | 'opossum' | 'pawPrints' | 'civetEdging';
@@ -15,16 +19,22 @@ const DEVICE_ROWS: Array<{
 ];
 
 export function App() {
-  const { state, error, connectDevice, emergencyStop } = useDeviceSession();
+  const { session, state, error, connectDevice, emergencyStop } = useDeviceSession();
+  const { settings, updateSettings } = useSettings();
+  const call = useRealtimeCall(session, settings);
+  const callIsBusy = call.state.status === 'connecting' || call.state.status === 'active';
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--text)]">
       <header className="flex items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
         <h1 className="text-lg font-semibold">DG-Voice</h1>
-        <Button variant="ghost" size="sm" onClick={connectDevice}>
-          <Bluetooth className="h-4 w-4" />
-          连接设备
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" onClick={connectDevice} disabled={callIsBusy}>
+            <Bluetooth className="h-4 w-4" />
+            连接设备
+          </Button>
+          <SettingsSheet settings={settings} updateSettings={updateSettings} disabled={callIsBusy} />
+        </div>
       </header>
 
       <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-4 py-6">
@@ -54,15 +64,12 @@ export function App() {
           </div>
         </section>
 
-        <section className="rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-soft)]">
-            <Radio className="h-4 w-4" />
-            实时语音通话
-          </h2>
-          <p className="text-sm text-[var(--text-faint)]">
-            实时语音连接（xAI / OpenAI / Azure / 智谱 GLM）尚在开发中，即将上线。
-          </p>
-        </section>
+        <CallPanel
+          call={call.state}
+          providerId={settings.activeProviderId}
+          onStart={() => void call.startCall()}
+          onHangUp={() => void call.hangUp()}
+        />
 
         <Button
           variant="destructive"

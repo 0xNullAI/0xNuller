@@ -14,15 +14,24 @@ This is a **single-package Vite + React 19 SPA**, not a monorepo — unlike DG-A
 consumed by an external repo (its `packages/*` are all `private: true`). DG-Voice consumes the
 published `@dg-kit/*` packages directly, the same way DG-Chat does.
 
-## Status (v0.1.0)
+## Status (v0.2.0)
 
 **Working today**: device layer (all four DG-Lab kinds, one connect button), the full safety chain
-(policy engine, permission service, serial command queue), design system parity with DG-Agent.
+(policy engine, permission service, serial command queue), the realtime voice connection layer
+(`RealtimeSession` for xAI/OpenAI/Azure, `GlmRealtimeSession` for Zhipu, `VoiceToolBridge`), a
+settings sheet and call panel, design system parity with DG-Agent. 59 unit tests.
 
-**Not yet wired up**: the realtime voice connection itself (`RealtimeSession` /
-`VoiceToolBridge`), settings UI, Android shell. The call screen in `App.tsx` is a placeholder. See
-`docs/` (once written) or the project board for the actual build sequence — do not assume voice
-calling works yet just because the repo exists.
+**Not live-verified**: no code path in `src/lib/realtime/` has been exercised against a real
+provider account (no API key was available while writing it). The exact `session.update` payload
+shape, the `openai-insecure-api-key.` WebSocket-subprotocol auth scheme, and the ephemeral-token
+endpoint paths in `ephemeral-token.ts` are transcribed from public docs — search for
+`NOT LIVE-VERIFIED` comments before trusting any of those details, and expect to adjust them once
+someone tests against a real key. Do not remove those comments until the corresponding code path
+has actually been confirmed working end-to-end.
+
+**Not built yet**: Android shell, sensor-event injection into the voice session (paw-prints/
+civet-edging only support `set_indicator_color` today, not push events), custom voice upload, a
+connection-test button, a running cost timer.
 
 ## Repo Layout
 
