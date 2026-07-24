@@ -24,9 +24,14 @@ Sister project to [DG-Agent](https://github.com/0xNullAI/DG-Agent) (text chat) �
 completely different agent loop: there is no "turn" concept here, the provider drives scheduling
 itself.
 
-## ⚠️ Current status: v0.5.0, core features implemented but not verified against a real account
+## ⚠️ Current status: v0.6.0, core features implemented but not verified against a real account
 
 **Working today, with test coverage**:
+
+- **Android build**: `apps/tauri-android` (Tauri + the multi-device tauri-plugin-blec fork), signed
+  APK published to GitHub Releases. The entire UI and safety chain reuse the same `../../src` as the
+  web build — the only Android-specific device code is one transport-injection file. Mic permission
+  and screen-off-stops-everything are wired up. Coyote + Opossum only, no sensors.
 
 - Unified connect for both supported DG-Lab device kinds — Coyote and Opossum — one button. **The
   two sensor kinds (paw-prints, civet-edging) are explicitly out of scope**, not a TODO: a read-only
@@ -60,8 +65,6 @@ itself.
   version hasn't yet been verified end to end (including an actual tool call) against a real
   account. Anywhere in the code marked `NOT LIVE-VERIFIED` is the next most likely place to need
   adjustment.
-- No Android shell yet (the device layer's transport injection is ready; the Android build will
-  also be Coyote + Opossum only, no sensors)
 - Custom voice upload, a "test connection" button, and a running cost timer are still missing
 
 If you have an API key for one of the supported providers, testing it and reporting back what

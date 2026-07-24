@@ -20,7 +20,7 @@ This is a **single-package Vite + React 19 SPA**, not a monorepo — unlike DG-A
 consumed by an external repo (its `packages/*` are all `private: true`). DG-Voice consumes the
 published `@dg-kit/*` packages directly, the same way DG-Chat does.
 
-## Status (v0.5.0)
+## Status (v0.6.0)
 
 **Working today**: device layer (Coyote + Opossum, one connect button, transport-injectable via
 `DeviceSessionTransport` — see Architecture Notes), the full safety chain (policy engine,
@@ -87,8 +87,17 @@ call. If you add a new settings field that affects instructions (e.g. a new safe
 through `VoiceInstructionSettings` in `build-voice-instructions.ts`, not by hand-editing a stored
 prompt string.
 
-**Not built yet**: Android shell (Coyote + Opossum only there too, no sensors), custom voice
-upload, a connection-test button, a running cost timer.
+**Not built yet**: custom voice upload, a connection-test button, a running cost timer.
+
+**Android**: `apps/tauri-android` is a Tauri shell reusing `../../src` unchanged. The ONLY
+Android-specific device code is `tauri-transport.ts` (the `DeviceSessionTransport` injected into
+`<App transport={...}>`); everything else — UI, safety chain, realtime layer — is shared. Three
+things must be re-applied by hand after every `tauri android init` (it regenerates `gen/android`
+from scratch): the manifest permissions from `AndroidManifest.template.xml` (RECORD_AUDIO **and**
+MODIFY_AUDIO_SETTINGS together — wry's all-or-nothing getUserMedia grant), `minSdk = 26` (plugin-blec
+requirement), and the `signingConfigs`/`buildTypes` release block from `signing.gradle.kts.template`
+(reads `DG_VOICE_*` env). `lifecycle-safety.ts` emergency-stops both output devices on any suspend
+signal regardless of call state — screen-off-stops is the only safe mobile default for a stim device.
 
 ## Repo Layout
 
