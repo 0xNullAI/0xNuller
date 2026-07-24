@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createEmptyDeviceState } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
-import { DeviceSession, type DeviceSessionState } from '@/lib/device-session';
+import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
   coyote: createEmptyDeviceState(),
   opossum: createEmptyOpossumState(),
 };
 
-export function useDeviceSession() {
+/**
+ * `transport` is only passed by the Android shell (which injects the
+ * `@dg-kit/transport-tauri-blec` clients); the web build omits it and gets
+ * the Web Bluetooth default from `DeviceSession`'s own constructor.
+ */
+export function useDeviceSession(transport?: DeviceSessionTransport) {
   // Lazy `useState` initializer (not a ref) — it runs exactly once and is
   // the pattern the stricter react-hooks/refs rule actually wants for
-  // "construct once, keep stable across re-renders" values.
-  const [session] = useState(() => new DeviceSession());
+  // "construct once, keep stable across re-renders" values. `transport` is
+  // read once at construction; changing it later has no effect by design.
+  const [session] = useState(() => new DeviceSession(transport));
 
   const [state, setState] = useState<DeviceSessionState>(EMPTY_STATE);
   const [error, setError] = useState<string | null>(null);

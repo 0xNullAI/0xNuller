@@ -8,10 +8,20 @@ import { CallPanel } from '@/components/CallPanel';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { DeviceStatusBar } from '@/components/DeviceStatusBar';
 import { PermissionModal } from '@/components/PermissionModal';
+import type { DeviceSessionTransport } from '@/lib/device-session';
 
-export function App() {
+interface AppProps {
+  /**
+   * Only supplied by the Android shell (`apps/tauri-android`), which injects
+   * the `@dg-kit/transport-tauri-blec` clients. The web build omits it and
+   * falls through to the Web Bluetooth default.
+   */
+  transport?: DeviceSessionTransport;
+}
+
+export function App({ transport }: AppProps = {}) {
   const { session, state, error, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
-    useDeviceSession();
+    useDeviceSession(transport);
   const { settings, updateSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   const callIsBusy = call.state.status === 'connecting' || call.state.status === 'active';

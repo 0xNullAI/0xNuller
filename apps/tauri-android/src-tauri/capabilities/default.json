@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions: core + tauri-plugin-blec BLE access",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "blec:default",
+    "blec:allow-check-permissions",
+    "blec:allow-disconnect",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}
