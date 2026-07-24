@@ -1,0 +1,12 @@
+.claude/settings.local.json
+.claude/projects/
+.claude/worktrees/
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.vite
+.tmp
+.wrangler
+*.local
+.DS_Store

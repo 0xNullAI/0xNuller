@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dg-voice",
+  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-01-01",
+
+  // 生产自定义域：voice.0xnullai.com。
+  "routes": [{ "pattern": "voice.0xnullai.com", "custom_domain": true }],
+  // 保留 workers.dev 预发地址作为备用/调试入口。
+  "workers_dev": true,
+
+  // 纯静态托管：前端直连 xAI/OpenAI/Azure/智谱 的 realtime 接口（均已验证支持浏览器 CORS
+  // 直连，含临时票据签发端点），不需要任何服务端中转。Worker 只做 SPA 静态资源托管。
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": false
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

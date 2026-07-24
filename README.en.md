@@ -1,0 +1,94 @@
+<div align="center">
+
+# DG-Voice
+
+**A realtime, phone-call-style voice AI that controls DG-Lab devices**
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
+
+[中文](./README.md) | English
+
+</div>
+
+## What it is
+
+DG-Voice keeps a live connection to an LLM the moment you open the page — like a phone call, no
+push-to-talk, no typing. The model runs on a realtime speech-to-speech provider (xAI Grok, OpenAI
+Realtime, Azure OpenAI Realtime, Zhipu GLM-Realtime) and decides on its own when to speak and
+when to call device tools; DG-Voice wires the audio and guards every tool call with the safety
+chain, staying out of the way otherwise.
+
+Sister project to [DG-Agent](https://github.com/0xNullAI/DG-Agent) (text chat) — same
+[`@dg-kit/*`](https://github.com/0xNullAI/DG-Kit) protocol layer, same design language, but a
+completely different agent loop: there is no "turn" concept here, the provider drives scheduling
+itself.
+
+## ⚠️ Current status: v0.1.0, voice not wired up yet
+
+**Working today, with test coverage**:
+
+- Unified connect for all four DG-Lab device kinds (one button)
+- Full safety chain: policy engine (strength caps, cold-start clamp, burst caps), permission
+  confirmation, serial command queue, emergency stop
+- Visual parity with DG-Agent (palette, radii, light/dark theme)
+
+**Not built yet**: the realtime voice connection itself (`RealtimeSession`/tool bridge), the
+settings UI, the Android shell, deployment. The "realtime voice call" section on the home screen
+is currently a placeholder. If you're looking for a working voice assistant, it isn't time yet.
+
+## Features (target shape)
+
+- **Multi-provider** — one client works unmodified across xAI/OpenAI/Azure; Zhipu GLM needs no
+  server relay at all, signing its JWT locally in the browser
+- **Full tool set** — the same 13 device tools as DG-Agent, all called at the model's own
+  discretion
+- **Safety** — strength caps, cold-start clamp, burst caps, one-time pre-call authorization,
+  emergency stop always available
+- **Fully local** — no server relay, no database; settings in localStorage, bring your own API key
+- **No reinvented wheels** — the device layer comes from `@dg-kit/*` 1.13.0, the same
+  implementation shared by every downstream consumer
+
+## Local development
+
+```bash
+git clone https://github.com/0xNullAI/DG-Voice.git
+cd DG-Voice
+npm install
+npm run dev
+```
+
+Open http://localhost:5173/. Web Bluetooth requires **Chrome or Edge**.
+
+## Architecture
+
+```
+src/
+  lib/            Plain TS — device layer, safety chain, realtime client (no React)
+  hooks/          React bindings
+  components/     UI (ui/ = shadcn primitives copied verbatim from DG-Agent)
+  styles/         Design tokens, shared with DG-Agent/DG-Chat
+worker/           Cloudflare Worker, pure static-asset hosting
+```
+
+See [CLAUDE.md](./CLAUDE.md) for the device-layer and safety-chain breakdown.
+
+## Safety
+
+- Strength range 0-200; cold-start automatically clamps to a low ceiling
+- One-time authorization before a call starts — no per-call popups interrupting the "phone call"
+  feel, but the hard caps and policy engine stay in effect and the model can't bypass them
+- A persistent "hang up and stop" button zeroes everything immediately
+
+## Sister Projects
+
+| Project | Purpose |
+|---|---|
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime (consumed by this project) |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller (text chat) |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room with remote-control |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop and other MCP clients |
+
+## License
+
+[MIT](./LICENSE)

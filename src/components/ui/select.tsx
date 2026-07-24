@@ -1,0 +1,93 @@
+import * as React from 'react';
+import * as SelectPrimitive from '@radix-ui/react-select';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+const Select = SelectPrimitive.Root;
+const SelectValue = SelectPrimitive.Value;
+
+const SelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      '!text-sm flex h-10 w-full items-center justify-between rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-2 text-[var(--text)] ring-offset-[var(--bg-strong)] placeholder:text-[var(--text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+      className,
+    )}
+    {...props}
+  >
+    {children}
+    <SelectPrimitive.Icon asChild>
+      <ChevronDown className="h-4 w-4 opacity-60" />
+    </SelectPrimitive.Icon>
+  </SelectPrimitive.Trigger>
+));
+SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
+
+const SelectContent = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+>(({ className, children, position = 'popper', ...props }, ref) => (
+  <SelectPrimitive.Portal>
+    <SelectPrimitive.Content
+      ref={ref}
+      className={cn(
+        'relative z-50 min-w-[8rem] overflow-hidden rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text)] shadow-lg',
+        position === 'popper' &&
+          'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
+        className,
+      )}
+      position={position}
+      collisionPadding={12}
+      {...props}
+    >
+      <SelectPrimitive.ScrollUpButton className="flex h-8 cursor-default items-center justify-center bg-[var(--bg-strong)] text-[var(--text-soft)]">
+        <ChevronUp className="h-4 w-4" />
+      </SelectPrimitive.ScrollUpButton>
+      <SelectPrimitive.Viewport
+        className={cn(
+          'select-scrollbar overflow-y-auto overscroll-contain p-1 [scrollbar-gutter:stable] max-h-[min(24rem,var(--radix-select-content-available-height,24rem))]',
+          position === 'popper' &&
+            'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]',
+        )}
+      >
+        {children}
+      </SelectPrimitive.Viewport>
+      <SelectPrimitive.ScrollDownButton className="flex h-8 cursor-default items-center justify-center bg-[var(--bg-strong)] text-[var(--text-soft)]">
+        <ChevronDown className="h-4 w-4" />
+      </SelectPrimitive.ScrollDownButton>
+    </SelectPrimitive.Content>
+  </SelectPrimitive.Portal>
+));
+SelectContent.displayName = SelectPrimitive.Content.displayName;
+
+const SelectItem = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Item
+    ref={ref}
+    className={cn(
+      // `cursor-pointer` (not `cursor-default`) is load-bearing on touch:
+      // Radix selects an item on the synthesized `click` for non-mouse pointers,
+      // and iOS Safari only fires that click on elements it considers clickable
+      // (cursor: pointer). With cursor-default, tapping a list item does nothing.
+      'relative flex w-full cursor-pointer select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm outline-none focus:bg-[var(--bg-soft)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      className,
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <SelectPrimitive.ItemIndicator>
+        <Check className="h-4 w-4" />
+      </SelectPrimitive.ItemIndicator>
+    </span>
+
+    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+  </SelectPrimitive.Item>
+));
+SelectItem.displayName = SelectPrimitive.Item.displayName;
+
+export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
