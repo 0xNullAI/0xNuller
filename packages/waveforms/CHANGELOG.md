@@ -1,5 +1,12 @@
 # @dg-kit/waveforms
 
+## 1.13.0
+
+### Patch Changes
+
+- Updated dependencies [249673d]
+  - @dg-kit/core@1.13.0
+
 ## 1.12.0
 
 ### Patch Changes
