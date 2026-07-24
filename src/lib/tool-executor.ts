@@ -90,6 +90,44 @@ function resolveRequiredDeviceKind(toolName: string, args: Record<string, unknow
   return null;
 }
 
+/**
+ * Human-readable one-liners for the permission modal. The dialog is the
+ * user's last checkpoint before a device actually moves, so it describes
+ * the POST-policy command (what will really run, after any clamp), not the
+ * model's original request.
+ */
+function describeDeviceCommand(command: DeviceCommand): string {
+  switch (command.type) {
+    case 'start':
+      return `启动郊狼 ${command.channel} 通道，强度 ${command.strength}，波形「${command.waveform.name}」`;
+    case 'stop':
+      return command.channel ? `停止郊狼 ${command.channel} 通道` : '停止郊狼全部通道';
+    case 'adjustStrength':
+      return `${command.delta >= 0 ? '调高' : '调低'}郊狼 ${command.channel} 通道强度 ${Math.abs(command.delta)}`;
+    case 'changeWave':
+      return `切换郊狼 ${command.channel} 通道波形为「${command.waveform.name}」`;
+    case 'burst':
+      return `郊狼 ${command.channel} 通道短促加强到 ${command.strength}，持续 ${command.durationMs}ms`;
+    case 'emergencyStop':
+      return '紧急停止郊狼';
+  }
+}
+
+function describeOpossumCommand(command: OpossumCommand): string {
+  switch (command.type) {
+    case 'vibrateStart':
+      return `启动负鼠 ${command.channel} 通道振动，强度 ${command.intensity}`;
+    case 'vibrateStop':
+      return command.channel ? `停止负鼠 ${command.channel} 通道振动` : '停止负鼠全部振动';
+    case 'vibrateAdjust':
+      return `${command.delta >= 0 ? '调高' : '调低'}负鼠 ${command.channel} 通道强度 ${Math.abs(command.delta)}`;
+    case 'vibrateSetPattern':
+      return `切换负鼠 ${command.channel} 通道振动节奏`;
+    case 'vibrateBurst':
+      return `负鼠 ${command.channel} 通道短促加强到 ${command.intensity}，持续 ${command.durationMs}ms`;
+  }
+}
+
 export class ToolExecutor {
   constructor(private readonly options: ToolExecutorOptions) {}
 
@@ -157,8 +195,8 @@ export class ToolExecutor {
       const decision = await this.options.permission.request({
         context: this.options.context,
         toolName: command.type,
-        summary: `执行 ${command.type}`,
-        args: command as unknown as Record<string, unknown>,
+        summary: describeDeviceCommand(resolved.command),
+        args: resolved.command as unknown as Record<string, unknown>,
       });
       if (decision.type === 'deny') {
         return this.deny(decision.reason ?? '用户拒绝了本次操作');
@@ -193,8 +231,8 @@ export class ToolExecutor {
       const decision = await this.options.permission.request({
         context: this.options.context,
         toolName: command.type,
-        summary: `执行 ${command.type}`,
-        args: command as unknown as Record<string, unknown>,
+        summary: describeOpossumCommand(resolved.command),
+        args: resolved.command as unknown as Record<string, unknown>,
       });
       if (decision.type === 'deny') {
         return this.deny(decision.reason ?? '用户拒绝了本次操作');

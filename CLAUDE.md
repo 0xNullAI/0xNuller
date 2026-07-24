@@ -20,7 +20,7 @@ This is a **single-package Vite + React 19 SPA**, not a monorepo — unlike DG-A
 consumed by an external repo (its `packages/*` are all `private: true`). DG-Voice consumes the
 published `@dg-kit/*` packages directly, the same way DG-Chat does.
 
-## Status (v0.4.0)
+## Status (v0.5.0)
 
 **Working today**: device layer (Coyote + Opossum, one connect button, transport-injectable via
 `DeviceSessionTransport` — see Architecture Notes), the full safety chain (policy engine,
@@ -48,6 +48,28 @@ next live test surfaces enough detail (`code`/`param`/`event_id`) to pinpoint th
 One partial confirmation so far: a browser-side `fetch` to `https://api.x.ai/v1/tts/voices` with a
 fake key returned a real HTTP 400 (not a CORS failure), confirming the endpoint is browser-reachable
 — the auth format itself is still unverified.
+
+## Permission model — read before touching
+
+`use-realtime-call.ts` passes `settings.permissionMode` to
+`BrowserPermissionService` **verbatim**. It previously rewrote `'confirm'`
+(the strictest option *and* the default) to `'timed'` and pre-seeded the timed
+grant as already-valid, which meant no confirmation prompt could appear in any
+mode — the setting was decorative while its own label read "最严格". A code
+comment described this as "one-time pre-call authorization", but no such
+authorization step existed anywhere; consent was simply skipped. On a device
+that delivers electrical stimulation this is a safety defect, not a UX
+shortcut. If a smoother in-call flow is wanted later, it must be an actual
+consent gate the user passes through — never a grant assumed on their behalf.
+
+The prompt UI is `PermissionModal.tsx`, ported verbatim from DG-Agent so both
+apps behave identically: four scopes, with the two wide grants (5 分钟 /
+本会话) folded behind "高级选项" because mobile users kept mis-tapping them
+(DG-Agent issue #69). `tool-executor.ts` passes the **post-policy** command to
+the modal (`describeDeviceCommand`/`describeOpossumCommand`), so what the user
+confirms is what actually runs after clamping — not the model's raw request.
+`hangUp()` resolves any still-open request as denied; otherwise the executor
+would await a promise that never settles.
 
 ## Persona / instructions model
 

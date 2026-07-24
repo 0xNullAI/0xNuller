@@ -24,7 +24,7 @@ Sister project to [DG-Agent](https://github.com/0xNullAI/DG-Agent) (text chat) �
 completely different agent loop: there is no "turn" concept here, the provider drives scheduling
 itself.
 
-## ⚠️ Current status: v0.4.0, core features implemented but not verified against a real account
+## ⚠️ Current status: v0.5.0, core features implemented but not verified against a real account
 
 **Working today, with test coverage**:
 

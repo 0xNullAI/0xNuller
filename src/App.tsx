@@ -7,6 +7,7 @@ import { useRealtimeCall } from '@/hooks/use-realtime-call';
 import { CallPanel } from '@/components/CallPanel';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { DeviceStatusBar } from '@/components/DeviceStatusBar';
+import { PermissionModal } from '@/components/PermissionModal';
 
 export function App() {
   const { session, state, error, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
@@ -55,6 +56,19 @@ export function App() {
           紧急停止（不挂断通话，仅归零设备）
         </Button>
       </main>
+
+      {call.pendingPermission && (
+        <PermissionModal
+          summary={call.pendingPermission.input.summary}
+          args={call.pendingPermission.input.args}
+          onDeny={() => call.resolvePermission({ type: 'deny' })}
+          onAllowOnce={() => call.resolvePermission({ type: 'approve-once' })}
+          onAllowTimed={() =>
+            call.resolvePermission({ type: 'approve-scoped', expiresAt: Date.now() + 5 * 60_000 })
+          }
+          onAllowSession={() => call.resolvePermission({ type: 'approve-scoped' })}
+        />
+      )}
     </div>
   );
 }

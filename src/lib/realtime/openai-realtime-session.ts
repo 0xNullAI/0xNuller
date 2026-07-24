@@ -79,10 +79,31 @@ const SILENCE_DURATION_MS = 500;
 const VAD_THRESHOLD = 0.85;
 const VAD_PREFIX_PADDING_MS = 333;
 
-/** Every event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
+/**
+ * The Realtime API exists in the wild under two event-name families: the
+ * classic/beta `response.audio.*` names and the newer `response.output_audio.*`
+ * ones. Which family a given provider emits is NOT reliably predictable from
+ * which `session.update` shape it accepts — xAI accepts the classic flat
+ * `session.update` but was observed emitting reply events this client didn't
+ * recognize. Rather than keep guessing one family at a time, normalize both
+ * to a single canonical name and handle that.
+ */
+const EVENT_ALIASES: Record<string, string> = {
+  'response.output_audio.delta': 'response.audio.delta',
+  'response.output_audio_transcript.delta': 'response.audio_transcript.delta',
+  'response.output_audio_transcript.done': 'response.audio_transcript.done',
+  'response.audio.done': 'response.audio.done',
+};
+
+function canonicalEventType(type: unknown): string {
+  return typeof type === 'string' ? (EVENT_ALIASES[type] ?? type) : '';
+}
+
+/** Every canonical event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
 const KNOWN_EVENT_TYPES = new Set([
   'input_audio_buffer.speech_started',
   'response.audio.delta',
+  'response.audio.done',
   'response.audio_transcript.delta',
   'response.audio_transcript.done',
   'conversation.item.input_audio_transcription.delta',
@@ -96,7 +117,12 @@ export class OpenAiRealtimeSession implements RealtimeSession {
   private ws: WebSocket | null = null;
   private readonly mic = new MicCapture();
   private readonly playback = new AudioPlayback();
-  private assistantTranscript = '';
+  /**
+   * Assistant transcript accumulated per `item_id`, not as one shared
+   * string — a single string meant a second turn overwrote the first
+   * instead of appending, and interleaved items clobbered each other.
+   */
+  private readonly assistantTranscripts = new Map<string, string>();
   private userTranscript = '';
   private speaking = false;
   private connected = false;
@@ -251,13 +277,16 @@ export class OpenAiRealtimeSession implements RealtimeSession {
     // real test tells us exactly what the server actually sent, instead of
     // silently falling through `default`. Remove once a real call has been
     // confirmed working end-to-end (audio + at least one tool call).
-    if (!KNOWN_EVENT_TYPES.has(message.type as string)) {
+    const type = canonicalEventType(message.type);
+    if (!KNOWN_EVENT_TYPES.has(type)) {
       console.log('[dg-voice] unhandled realtime event:', message.type, message);
     } else {
       console.debug('[dg-voice] realtime event:', message.type);
     }
 
-    switch (message.type) {
+    const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
+
+    switch (type) {
       case 'input_audio_buffer.speech_started':
         // Barge-in: the user started talking over the assistant — cut audio now.
         this.playback.clear();
@@ -265,7 +294,7 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         break;
 
       case 'response.audio.delta': {
-        const delta = message.delta;
+        const delta = message.delta ?? message.audio;
         if (typeof delta === 'string') {
           this.playback.enqueuePcm16(base64ToInt16(delta));
           this.setSpeaking(true);
@@ -276,15 +305,15 @@ export class OpenAiRealtimeSession implements RealtimeSession {
       case 'response.audio_transcript.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
-          this.assistantTranscript += delta;
-          this.options.events.onAssistantTranscript?.(this.assistantTranscript, false);
+          this.emitAssistantDelta(itemId, delta);
         }
         break;
       }
       case 'response.audio_transcript.done': {
-        const transcript = typeof message.transcript === 'string' ? message.transcript : this.assistantTranscript;
-        this.options.events.onAssistantTranscript?.(transcript, true);
-        this.assistantTranscript = '';
+        this.emitAssistantDone(
+          itemId,
+          typeof message.transcript === 'string' ? message.transcript : undefined,
+        );
         break;
       }
 
@@ -292,13 +321,24 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         const delta = message.delta;
         if (typeof delta === 'string') {
           this.userTranscript += delta;
-          this.options.events.onUserTranscript?.(this.userTranscript, false);
+          this.options.events.onTranscript?.({
+            id: itemId ?? 'user-pending',
+            role: 'user',
+            text: this.userTranscript,
+            done: false,
+          });
         }
         break;
       }
       case 'conversation.item.input_audio_transcription.completed': {
-        const transcript = typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
-        this.options.events.onUserTranscript?.(transcript, true);
+        const transcript =
+          typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
+        this.options.events.onTranscript?.({
+          id: itemId ?? 'user-pending',
+          role: 'user',
+          text: transcript,
+          done: true,
+        });
         this.userTranscript = '';
         break;
       }
@@ -313,7 +353,11 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         break;
       }
 
+      case 'response.audio.done':
+        break;
+
       case 'response.done':
+        this.flushAssistantTranscripts();
         // Audio for this response may still be draining out of the playback
         // queue — flip the "speaking" indicator off only once it actually is.
         void this.playback.whenDrained().then(() => this.setSpeaking(false));
@@ -334,6 +378,31 @@ export class OpenAiRealtimeSession implements RealtimeSession {
         // Unhandled event types (session.created, response.done, rate_limits.updated, ...)
         // carry no action DG-Voice needs to take.
         break;
+    }
+  }
+
+  private emitAssistantDelta(itemId: string | undefined, delta: string): void {
+    const key = itemId ?? 'assistant-pending';
+    const text = (this.assistantTranscripts.get(key) ?? '') + delta;
+    this.assistantTranscripts.set(key, text);
+    this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: false });
+  }
+
+  private emitAssistantDone(itemId: string | undefined, finalText?: string): void {
+    const key = itemId ?? 'assistant-pending';
+    const text = finalText ?? this.assistantTranscripts.get(key) ?? '';
+    this.assistantTranscripts.delete(key);
+    if (!text) return;
+    this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
+  }
+
+  /** Marks any still-streaming assistant lines complete — a response can end without a per-item `.done`. */
+  private flushAssistantTranscripts(): void {
+    for (const [key, text] of [...this.assistantTranscripts]) {
+      this.assistantTranscripts.delete(key);
+      if (text) {
+        this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
+      }
     }
   }
 

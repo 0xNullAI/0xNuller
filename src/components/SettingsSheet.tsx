@@ -23,7 +23,7 @@ interface SettingsSheetProps {
 
 const PERMISSION_MODE_LABELS: Record<BrowserPermissionMode, string> = {
   confirm: '每次确认（默认，最严格）',
-  timed: '通话期间免确认（5 分钟一续）',
+  timed: '首次确认后 5 分钟内免确认',
   'allow-all': '完全放行（不推荐）',
 };
 
@@ -134,7 +134,7 @@ export function SettingsSheet({ settings, updateSettings, disabled }: SettingsSh
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-sm text-[var(--text-soft)]">
                   确认模式
-                  <HelpTip text="通话开始时会用一次性授权覆盖为『通话期间免确认』，这里改的是默认档位。" />
+                  <HelpTip text="这里选什么，通话中就是什么行为。「每次确认」会在每个改变设备状态的工具调用前弹窗确认；「5 分钟内免确认」第一次仍会弹窗，同意后 5 分钟内不再打断。无论哪一档，强度上限、冷启动钳制这些硬性限制都始终生效、模型绕不过。" />
                 </label>
                 <Select
                   value={settings.permissionMode}

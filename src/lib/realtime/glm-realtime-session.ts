@@ -29,7 +29,18 @@ import { signZhipuJwt } from './zhipu-jwt.js';
 const GLM_REALTIME_WS_URL = 'wss://open.bigmodel.cn/api/paas/v4/realtime';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** Every event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
+/** See openai-realtime-session.ts for why both event-name families are normalized. */
+const EVENT_ALIASES: Record<string, string> = {
+  'response.output_audio.delta': 'response.audio.delta',
+  'response.output_audio_transcript.delta': 'response.audio_transcript.delta',
+  'response.output_audio_transcript.done': 'response.audio_transcript.done',
+};
+
+function canonicalEventType(type: unknown): string {
+  return typeof type === 'string' ? (EVENT_ALIASES[type] ?? type) : '';
+}
+
+/** Every canonical event type `handleMessage()` explicitly branches on — see the temporary logging note there. */
 const KNOWN_EVENT_TYPES = new Set([
   'heartbeat',
   'response.function_call.simple_browser',
@@ -58,7 +69,7 @@ export class GlmRealtimeSession implements RealtimeSession {
   private readonly mic = new MicCapture();
   private readonly playback = new AudioPlayback();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private assistantTranscript = '';
+  private readonly assistantTranscripts = new Map<string, string>();
   private userTranscript = '';
   private speaking = false;
   private connected = false;
@@ -210,13 +221,16 @@ export class GlmRealtimeSession implements RealtimeSession {
 
     // Same temporary unconditional logging as openai-realtime-session.ts —
     // remove once a real call has been confirmed working end-to-end.
-    if (!KNOWN_EVENT_TYPES.has(message.type as string)) {
+    const type = canonicalEventType(message.type);
+    if (!KNOWN_EVENT_TYPES.has(type)) {
       console.log('[dg-voice] unhandled glm-realtime event:', message.type, message);
     } else {
       console.debug('[dg-voice] glm-realtime event:', message.type);
     }
 
-    switch (message.type) {
+    const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
+
+    switch (type) {
       case 'heartbeat':
         // Server keepalive ping — no action needed.
         break;
@@ -233,7 +247,7 @@ export class GlmRealtimeSession implements RealtimeSession {
         break;
 
       case 'response.audio.delta': {
-        const delta = message.delta;
+        const delta = message.delta ?? message.audio;
         if (typeof delta === 'string') {
           // GLM sends wav-framed output too; strip the 44-byte header before
           // decoding as raw pcm16 for playback.
@@ -247,21 +261,35 @@ export class GlmRealtimeSession implements RealtimeSession {
       case 'response.audio_transcript.delta': {
         const delta = message.delta;
         if (typeof delta === 'string') {
-          this.assistantTranscript += delta;
-          this.options.events.onAssistantTranscript?.(this.assistantTranscript, false);
+          const key = itemId ?? 'assistant-pending';
+          const text = (this.assistantTranscripts.get(key) ?? '') + delta;
+          this.assistantTranscripts.set(key, text);
+          this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: false });
         }
         break;
       }
       case 'response.audio_transcript.done': {
-        const transcript = typeof message.transcript === 'string' ? message.transcript : this.assistantTranscript;
-        this.options.events.onAssistantTranscript?.(transcript, true);
-        this.assistantTranscript = '';
+        const key = itemId ?? 'assistant-pending';
+        const text =
+          typeof message.transcript === 'string'
+            ? message.transcript
+            : (this.assistantTranscripts.get(key) ?? '');
+        this.assistantTranscripts.delete(key);
+        if (text) {
+          this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
+        }
         break;
       }
 
       case 'conversation.item.input_audio_transcription.completed': {
-        const transcript = typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
-        this.options.events.onUserTranscript?.(transcript, true);
+        const transcript =
+          typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
+        this.options.events.onTranscript?.({
+          id: itemId ?? 'user-pending',
+          role: 'user',
+          text: transcript,
+          done: true,
+        });
         this.userTranscript = '';
         break;
       }
@@ -277,6 +305,12 @@ export class GlmRealtimeSession implements RealtimeSession {
       }
 
       case 'response.done':
+        for (const [key, text] of [...this.assistantTranscripts]) {
+          this.assistantTranscripts.delete(key);
+          if (text) {
+            this.options.events.onTranscript?.({ id: key, role: 'assistant', text, done: true });
+          }
+        }
         void this.playback.whenDrained().then(() => this.setSpeaking(false));
         this.options.events.onResponseDone?.();
         break;

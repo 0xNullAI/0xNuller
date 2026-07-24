@@ -7,13 +7,24 @@ export interface RealtimeFunctionCall {
   argsJson: string;
 }
 
+/**
+ * One line of the running conversation. `id` is the provider's `item_id`
+ * where available so streaming deltas accumulate into the same entry
+ * instead of replacing the previous turn — the UI keeps a list keyed on it.
+ */
+export interface RealtimeTranscriptEntry {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  done: boolean;
+}
+
 export interface RealtimeSessionEvents {
   onOpen?(): void;
   onClose?(reason: string): void;
   onError?(error: Error): void;
   onFunctionCall?(call: RealtimeFunctionCall): void;
-  onAssistantTranscript?(text: string, done: boolean): void;
-  onUserTranscript?(text: string, done: boolean): void;
+  onTranscript?(entry: RealtimeTranscriptEntry): void;
   /** Assistant audio started/stopped playing — drives the call UI's "speaking" indicator. */
   onSpeakingChange?(speaking: boolean): void;
   /**

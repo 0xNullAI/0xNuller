@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Phone, PhoneOff, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { RealtimeCallState } from '@/hooks/use-realtime-call';
+import type { RealtimeTranscriptEntry } from '@/lib/realtime/realtime-session';
 import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@/lib/realtime/providers';
 
 interface CallPanelProps {
@@ -104,28 +105,37 @@ function ActiveCallView({
         </p>
       </div>
 
-      {(call.userText || call.assistantText) && (
-        <div className="w-full space-y-1.5 rounded-[10px] bg-[var(--bg-soft)] px-4 py-3 text-left text-sm">
-          {call.userText && (
-            <p className="text-[var(--text-soft)]">
-              <span className="text-[var(--text-faint)]">你：</span>
-              {call.userText}
-            </p>
-          )}
-          {call.assistantText && (
-            <p className="text-[var(--text)]">
-              <span className="text-[var(--text-faint)]">AI：</span>
-              {call.assistantText}
-            </p>
-          )}
-        </div>
-      )}
+      {call.transcript.length > 0 && <TranscriptLog transcript={call.transcript} />}
 
       <Button variant="destructive" className="h-12 w-full max-w-xs text-base" onClick={onHangUp}>
         <PhoneOff className="h-4 w-4" />
         结束通话
       </Button>
     </section>
+  );
+}
+
+/** Running conversation log — auto-scrolls to the newest line as turns stream in. */
+function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }) {
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [transcript]);
+
+  return (
+    <div className="max-h-56 w-full space-y-2 overflow-y-auto rounded-[10px] bg-[var(--bg-soft)] px-4 py-3 text-left text-sm">
+      {transcript.map((entry) => (
+        <p
+          key={entry.id}
+          className={entry.role === 'assistant' ? 'text-[var(--text)]' : 'text-[var(--text-soft)]'}
+        >
+          <span className="text-[var(--text-faint)]">{entry.role === 'assistant' ? 'AI：' : '你：'}</span>
+          {entry.text}
+        </p>
+      ))}
+      <div ref={endRef} />
+    </div>
   );
 }
 
