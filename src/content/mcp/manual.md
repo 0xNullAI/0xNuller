@@ -1,25 +1,25 @@
 # DG-MCP · 使用手册
 
-让 Claude Desktop 等 MCP 客户端直接控制 DG-Lab 郊狼 2.0 / 3.0。
+让 Claude Desktop 等 MCP 客户端直接控制 DG-Lab 全系设备：郊狼 2.0 / 3.0、爪印传感器、灵猫边缘控制传感器、负鼠振动控制器，可同时连接多台不同设备。
 
 > [GitHub](https://github.com/0xNullAI/DG-MCP) · [npm](https://www.npmjs.com/package/dg-mcp)
 
 ## 这是什么
 
-DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具。任何 MCP 兼容的 LLM 客户端（Claude Desktop / Continue / Cline / Cursor 等）配置一行就能驱动你的设备——`scan` / `connect` / `start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` 全套都是普通的工具调用。
+DG-MCP 把 DG-Lab 设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具。任何 MCP 兼容的 LLM 客户端（Claude Desktop / Continue / Cline / Cursor 等）配置一行就能驱动你的设备——郊狼的 `shock_start` / `shock_stop` / `shock_adjust` / `shock_change_wave` / `shock_burst` / `design_wave`、负鼠的 `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `vibrate_change_pattern` / `vibrate_burst`，加上 `scan` / `connect` 等设备管理工具，全套都是普通的工具调用。
 
-跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](#/kit/overview) 中台。
+跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](#/kit/overview) 中台，`DeviceManager` 用 `Map<address, ConnectedDevice>` 同时持有多台不同类型的已连接设备。
 
 ## 状态
 
-- `1.0.0` 正式版，已发布到 [npm](https://www.npmjs.com/package/dg-mcp)
+- `1.1.0`，已发布到 [npm](https://www.npmjs.com/package/dg-mcp)
 - v0.1.x 的 Python 实现归档在 [`archive/0.x-py`](https://github.com/0xNullAI/DG-MCP/tree/archive/0.x-py) 分支，PyPI 上仍可下载但不再更新
 
 ## 系统要求
 
 - **Node.js ≥ 20**（[官方下载](https://nodejs.org)）
 - BLE 蓝牙适配器
-- DG-Lab 郊狼 2.0 / 3.0
+- DG-Lab 郊狼 2.0 / 3.0，或爪印 / 灵猫边缘控制 / 负鼠（可选，任意组合）
 - 一个 MCP 兼容客户端（推荐 Claude Desktop）
 
 ## Claude Desktop 配置
@@ -81,7 +81,7 @@ sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 终端跑：
 
 ```bash
-npx -y dg-mcp --version    # 应输出 dg-mcp 1.0.0
+npx -y dg-mcp --version    # 应输出 dg-mcp 1.1.0
 npx -y dg-mcp --help        # 显示帮助
 ```
 
@@ -89,7 +89,7 @@ npx -y dg-mcp --help        # 显示帮助
 
 ## 第一次跟 Claude 对话
 
-打开 Claude Desktop。聊天框右下角应该出现 **🛠️ 工具图标**——点开能看到 dg-lab 的工具列表（scan / connect / start / ...）。
+打开 Claude Desktop。聊天框右下角应该出现 **🛠️ 工具图标**——点开能看到 dg-lab 的工具列表（scan / connect / shock_start / ...）。
 
 试试这些指令：
 
@@ -162,38 +162,62 @@ Claude 应该会调 `scan` 工具，几秒后列出找到的设备。
 
 ## 工具详解
 
-### 设备控制（来自 `@dg-kit/tools`）
+### 郊狼（来自 `@dg-kit/tools`）
 
 | 工具 | 用途 | 限制 |
 |---|---|---|
-| `start` | 冷启动通道，一次设强度 + 波形 | 初始强度 ≤10 |
-| `stop` | 停止通道；省略 `channel` 停全部 | 无 |
-| `adjust_strength` | 相对调整强度 | ±10/步，5s 内最多 2 次 |
-| `change_wave` | 不动强度，仅换波形 | 无 |
-| `burst` | 短时拉到目标强度后自动回落 | 5s 内最多 1 次 |
+| `shock_start` | 冷启动通道，一次设强度 + 波形 | 初始强度 ≤10 |
+| `shock_stop` | 停止通道；省略 `channel` 停全部 | 无 |
+| `shock_adjust` | 相对调整强度 | ±10/步，5s 内最多 2 次 |
+| `shock_change_wave` | 不动强度，仅换波形 | 无 |
+| `shock_burst` | 短时拉到目标强度后自动回落 | 5s 内最多 1 次 |
 | `design_wave` | 用 ramp/hold/pulse/silence 段落组合新波形 | 5s 内最多 1 次 |
 
-### MCP 专属
+> 旧名字（`start` / `stop` / `adjust_strength` / `change_wave` / `burst`，`@dg-kit/tools` 1.9.0 前的命名）仍能通过注册表的别名机制被调用，只是不再出现在 `listDefinitions()` 返回的工具列表里——如果你在别处文档或旧配置里看到这些名字，它们对应的正是上面这几个。
+
+### 负鼠（振动控制器）
+
+| 工具 | 用途 | 限制 |
+|---|---|---|
+| `vibrate_start` | 启动振动，可带强度和/或 pattern | 初始强度受限（同冷启动逻辑） |
+| `vibrate_stop` | 停止振动；省略 `channel` 停全部 | 无 |
+| `vibrate_adjust` | 相对调整强度 | ±10/步，5s 内最多 2 次 |
+| `vibrate_change_pattern` | 不动强度，仅换振动模式 | 无 |
+| `vibrate_burst` | 短时拉高强度后自动回落 | 5s 内最多 1 次 |
+
+### 传感器（爪印 / 灵猫边缘控制）
 
 | 工具 | 用途 |
 |---|---|
-| `scan` | 扫描附近设备，返回 `[{address, name, rssi, version}]` |
-| `connect` | 用 `address` 连接 |
-| `disconnect` | 断开 |
-| `get_status` | 当前状态：连接、强度、波形、电池、上限 |
+| `set_indicator_color` | 设置设备指示灯颜色 |
+
+传感器本身只读不可控——按键/压力事件走 `get_sensor_state` 轮询获取，而非推送。
+
+### MCP 专属（设备管理，不经过 `@dg-kit/tools` 注册表）
+
+| 工具 | 用途 |
+|---|---|
+| `scan` | 扫描附近的 DG-Lab 设备（郊狼/爪印/灵猫边缘控制/负鼠），返回 `[{address, name, rssi, deviceKind}]` |
+| `connect` | 用 `address` 连接指定设备；可多次调用连接多台不同设备 |
+| `disconnect` | 断开设备连接；指定 `address` 只断该设备，省略则断开全部 |
+| `get_status` | 查询所有已连接设备的状态（连接状态/强度或振动/波形/电池，按设备类型而定） |
+| `get_sensor_state` | 查询已连接的爪印/灵猫传感器最新读数（事件流缓存的最近一次上报） |
+| `list_connected_devices` | 列出当前已连接的全部设备：`{address, deviceKind, connected}` |
 | `list_waveforms` | 列出所有波形（内置 + 已导入 + AI 设计） |
 | `load_waveforms` | 运行时再加载一个 `.pulse` / `.zip` 文件 |
-| `emergency_stop` | 立即归零所有通道 |
+| `emergency_stop` | 立即归零所有已连接设备的强度/振动输出 |
 
-> **`timer` 工具在 MCP 模式下不可用**。MCP 没有「主动唤起 LLM」的能力，定时跟进需要客户端支持，目前没有。
+> **`timer` 工具在 MCP 模式下不可用**。MCP 没有「主动唤起 LLM」的能力，调用它会得到一个「不支持」的提示而不是报错。
+>
+> **设备定位靠"类型 + 唯一"，不靠 `deviceId`**：`shock_start` / `vibrate_start` 等工具还没有设备 ID 参数，会自动找当前唯一一台对应类型的已连接设备；如果同类型连了 0 台或 ≥2 台，会得到一条清晰的中文报错。想同时管理多台同类型设备（比如两个负鼠），用 `list_connected_devices` / `get_status` 配合 `disconnect` 手动取舍。
 
 ## 安全约束
 
 - 强度量程 **0-200**。冷启动工具自动钳制初始强度 ≤10
-- **回合 ≠ 单次工具调用**：MCP 用 5 秒滑动窗口，每个工具有自己的窗口上限
+- **回合 ≠ 单次工具调用**：MCP 用 5 秒滑动窗口，`shock_adjust≤2` / `shock_burst≤1` / `design_wave≤1` / `vibrate_adjust≤2` / `vibrate_burst≤1`，各工具独立计数
 - 软上限默认 200。如果要更严格，让 LLM 客户端在 system prompt 里加约束（例如「调强度不要超过 50」）
 - 设备物理拨轮可以独立加强度——MCP 只是输入源
-- 任何时候说「紧急停止」/「停一下」AI 都会调 `emergency_stop` 立即响应
+- 任何时候说「紧急停止」/「停一下」AI 都会调 `emergency_stop` 立即响应所有已连接设备
 
 ## 升级
 

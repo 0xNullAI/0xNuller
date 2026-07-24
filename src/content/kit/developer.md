@@ -11,7 +11,8 @@ DG-Kit/
 │   ├── protocol/                   @dg-kit/protocol         (deps: core)
 │   ├── waveforms/                  @dg-kit/waveforms        (deps: core)
 │   ├── tools/                      @dg-kit/tools            (deps: core, waveforms)
-│   └── transport-webbluetooth/     @dg-kit/transport-webbluetooth (deps: core, protocol)
+│   ├── transport-webbluetooth/     @dg-kit/transport-webbluetooth (deps: core, protocol)
+│   └── transport-tauri-blec/       @dg-kit/transport-tauri-blec   (deps: core, protocol; Tauri/安卓 BLE)
 ├── .changeset/                     changesets release notes
 └── .github/
     ├── workflows/
@@ -24,25 +25,28 @@ DG-Kit/
     └── dependabot.yml              每周一 9:00 (Asia/Shanghai) 扫 npm + Actions
 ```
 
-每个包独立 `package.json`、独立 `tsconfig`、各自暴露 `dist/`。CI 跑 typecheck + 26 个单元测试 + 构建。
+每个包独立 `package.json`、独立 `tsconfig`、各自暴露 `dist/`。CI 跑 typecheck + 230 个单元测试 + 构建。
 
 ## 各包责任
 
 ### `@dg-kit/core`
 
-只放**纯类型**：`Channel`、`WaveFrame`、`DeviceState`、`DeviceCommand`、`WaveformDefinition`、`DeviceClient`、`WaveformLibrary`、`Logger`、`createEmptyDeviceState()`、`isDeviceToolName()`。
+只放**纯类型**：`Channel`、`WaveFrame`、`DeviceState`、`DeviceCommand`、`WaveformDefinition`、`DeviceClient`、`WaveformLibrary`、`Logger`、`createEmptyDeviceState()`、`isDeviceToolName()`，以及四设备通用的 `SensorDeviceClient<TReading>` 接口和 `DEVICE_KIND_DISPLAY_NAME` 常量。
 
 零依赖、零运行时代码。任何环境（浏览器 / Node / Deno / Bun）都能 import。
 
 ### `@dg-kit/protocol`
 
-蓝牙字节级协议——这是中台最复杂也最重要的部分。
+蓝牙字节级协议——这是中台最复杂也最重要的部分，覆盖四个设备家族，共用同一套 GATT 骨架（service `0x180C`、write `0x150A`、notify `0x150B`）。
 
 - `BaseCoyoteProtocolAdapter`：抽象基类，跑 100ms tick 循环、波形播放状态机、burst 自动回落、紧急停止
 - `CoyoteV2ProtocolAdapter`：V2 实现（D-LAB ESTIM 设备）
 - `CoyoteV3ProtocolAdapter`：V3 实现（47L121 设备）
 - `CoyoteProtocolAdapter`（facade）：根据连接设备名前缀自动路由 V2 / V3
 - 25ms 帧栅格：每个 `WaveFrame` = 25ms。V3 一个 BLE 包打 4 帧；V2 一个 tick 取一帧（精度损失但代码统一）
+- `OpossumClient` / `OpossumCommandResult`：负鼠（双通道振动 + 按键），命令与状态都不复用郊狼的 `DeviceCommand`/`DeviceState`——没有波形/频率概念
+- `PawPrintsClient` / `CivetEdgingClient`：爪印（按键/动作传感器）、灵猫边缘（压力传感器），均为 `SensorDeviceClient<TReading>` 的具体别名，只读事件推送
+- `detectDeviceKind()`（`constants.ts`）：扫描到的设备名 → `DeviceKind` 分类的唯一实现，下游不要自己重新实现前缀匹配
 
 蓝牙 I/O 抽象在 `BluetoothRemoteGATTCharacteristicLike` 接口里——只描述「能写值、能监听通知、能读值」这种语义，不绑定 Web Bluetooth 或 noble 任何一方。
 
@@ -57,7 +61,7 @@ DG-Kit/
 
 ### `@dg-kit/tools`
 
-LLM 工具定义。导出 `createDefaultToolRegistry({ waveformLibrary, rateLimitPolicy })`，注册 `start / stop / adjust_strength / change_wave / burst / design_wave / timer` 七个工具。
+LLM 工具定义。导出 `createDefaultToolRegistry({ waveformLibrary, rateLimitPolicy })`，注册 13 个工具：郊狼 `shock_start / shock_stop / shock_adjust / shock_change_wave / shock_burst / design_wave / timer`，负鼠 `vibrate_start / vibrate_stop / vibrate_adjust / vibrate_change_pattern / vibrate_burst`，传感器（爪印/灵猫）`set_indicator_color`。
 
 每个工具：
 
@@ -68,14 +72,18 @@ LLM 工具定义。导出 `createDefaultToolRegistry({ waveformLibrary, rateLimi
 限速策略是**注入式**的：
 
 - `createNoOpRateLimitPolicy()` — 不限速（测试用）
-- `createTurnRateLimitPolicy({ caps })` — 回合制（DG-Agent 用，每回合 burst≤1 / adjust≤2）
-- `createSlidingWindowRateLimitPolicy({ windowMs, caps })` — 滑动窗口（DG-MCP 用，5 秒内 burst≤1）
+- `createTurnRateLimitPolicy({ caps })` — 回合制（DG-Agent 用，每回合 shock_burst≤1 / shock_adjust≤2）
+- `createSlidingWindowRateLimitPolicy({ windowMs, caps })` — 滑动窗口（DG-MCP / DG-Voice 用，5 秒内 shock_burst≤1）
 
 ### `@dg-kit/transport-webbluetooth`
 
-浏览器侧的 `DeviceClient` 实现：弹蓝牙选择器、连 GATT、把 characteristic 喂给 protocol adapter。
+浏览器侧四种设备的 `DeviceClient` 实现：弹蓝牙选择器、连 GATT、把 characteristic 喂给 protocol adapter。除郊狼的 `WebBluetoothDeviceClient` 外，还有 `WebBluetoothOpossumClient`、`WebBluetoothSensorClient<T>`（`WebBluetoothPawPrintsClient` / `WebBluetoothCivetEdgingClient` 的泛型基类）和 `connectAuxDevice` / `attachAuxDevice` 辅助函数。
 
-只在浏览器有用。Node 端走自己的 noble 适配（在 DG-MCP 里）。
+只在浏览器有用。Tauri/安卓走 `@dg-kit/transport-tauri-blec`；Node 端走自己的 noble 适配（在 DG-MCP 里）。
+
+### `@dg-kit/transport-tauri-blec`
+
+Tauri（安卓/桌面/iOS）侧四种设备的 `DeviceClient` 实现，基于 `@mnlphlp/plugin-blec`。`TauriBlecDeviceClient` / `TauriBlecOpossumClient` / `TauriBlecPawPrintsClient` / `TauriBlecCivetEdgingClient`，接口与 web-bluetooth 版本对齐——同一份消费方代码只需换一个 import 就能在浏览器和 Tauri 壳之间切换。
 
 ## 怎么用 `@dg-kit/*`
 
@@ -108,7 +116,7 @@ import { createDefaultToolRegistry, createTurnRateLimitPolicy } from '@dg-kit/to
 const registry = createDefaultToolRegistry({
   waveformLibrary,
   rateLimitPolicy: createTurnRateLimitPolicy({
-    caps: { burst: 1, adjust_strength: 2 },
+    caps: { shock_burst: 1, shock_adjust: 2 },
   }),
 });
 
@@ -185,7 +193,7 @@ npm run test         # vitest, 自动先 build
 npm run lint
 ```
 
-26 个单元测试覆盖：
+230 个单元测试覆盖：
 
 - 协议帧打包（B0 / BF / B1）
 - emergencyStop 等待 in-flight tick
@@ -195,6 +203,7 @@ npm run lint
 - waveform 段落编译
 - `.pulse` 解析器
 - 限速策略
+- 负鼠 / 爪印 / 灵猫的 web-bluetooth 与 tauri-blec 双端 client（含 `vibrateSetPattern` / `vibrateBurst` 的回归测试）
 
 ## 分支约定
 
@@ -220,9 +229,9 @@ push to main → npm publish + auto-tag
 3. 在 dev 上推送时，changesets bot 检测到 `.changeset/*.md` → 开 "chore: release @dg-kit/*" PR base=dev（含版本 bump + 生成的 CHANGELOG）
 4. 合并那个 PR → dev 上版本号已 bump，`.changeset/*.md` 已消费
 5. PR 从 dev → main → release-guard 校验通过 → 合并
-6. push 到 main 触发 `release.yml` → `changeset publish` → 5 个包同时 npm publish（带 **provenance** 签名）
+6. push 到 main 触发 `release.yml` → `changeset publish` → 6 个包同时 npm publish（带 **provenance** 签名）
 
-五个包通过 changesets `fixed` 同步版本——bump 一个全部 bump。
+六个包通过 changesets `fixed` 同步版本——bump 一个全部 bump。
 
 ### npm provenance
 

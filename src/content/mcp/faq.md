@@ -36,7 +36,7 @@ sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 
 ### 调强度不动 / 波形听不到
 
-- 通道是否已 `start`？
+- 通道是否已 `shock_start`（或负鼠 `vibrate_start`）？
 - 撞到软上限了？`get_status` 看 limitA / limitB
 - 设备物理拨轮位置
 
@@ -95,8 +95,8 @@ node dist/cli.js --waveforms-dir /tmp/test 2>&1 | tee dg-mcp.log
 
 下面这些不是 bug：
 
-- **每 5 秒最多 1 次 burst**：滑动窗口限速
-- **每 5 秒最多 2 次 adjust_strength**：同上
+- **每 5 秒最多 1 次 shock_burst / vibrate_burst**：滑动窗口限速
+- **每 5 秒最多 2 次 shock_adjust / vibrate_adjust**：同上
 - **冷启动强度 ≤ 10**：协议层强制
 - **`timer` 工具不可用**：MCP 没有"主动唤起 LLM"机制
 - **不能跨机器**：MCP 走 stdio

@@ -25,16 +25,18 @@
 
 | 名字 | 用途 |
 |---|---|
-| `DeviceClient` | 设备客户端契约：connect / disconnect / getState / execute / emergencyStop / onStateChanged |
+| `DeviceClient` | 郊狼设备客户端契约：connect / disconnect / getState / execute / emergencyStop / onStateChanged |
+| `SensorDeviceClient<TReading>` | 只读传感器设备契约（爪印/灵猫通用）：connect / disconnect / getState / subscribe / onStateChanged，可选 `setIndicatorColor` |
 | `WaveformLibrary` | 波形库契约：getById / list / save? |
 | `Logger` | info / warn / error |
 
-### 函数
+### 函数 / 常量
 
 | 名字 | 签名 |
 |---|---|
 | `createEmptyDeviceState()` | `() => DeviceState` |
 | `isDeviceToolName(name)` | `(string) => boolean` |
+| `DEVICE_KIND_DISPLAY_NAME` | `Record<DeviceKind, string>`，四设备的中文展示名 |
 
 ## `@dg-kit/protocol`
 
@@ -91,6 +93,27 @@ RequestDeviceOptionsLike                // filters + optionalServices
 
 写新传输（noble、Capacitor、Tauri、…）时实现这套接口即可，协议代码无需改。
 
+### 负鼠 / 传感器接口
+
+```ts
+interface OpossumClient {
+  connect(): Promise<...>
+  disconnect(): void
+  getState(): OpossumState
+  execute(command: OpossumCommand): Promise<OpossumCommandResult>   // { state: OpossumState }
+  onStateChanged(cb): () => void
+}
+type OpossumCommand =
+  | { type: 'vibrateStart', ... } | { type: 'vibrateStop' }
+  | { type: 'vibrateAdjust', ... } | { type: 'vibrateSetPattern', ... }
+  | { type: 'vibrateBurst', ... }
+
+type PawPrintsClient = SensorDeviceClient<PawPrintsReading>
+type CivetEdgingClient = SensorDeviceClient<CivetPressureReading>
+```
+
+`detectDeviceKind(name: string): DeviceKind | null` —— 唯一的设备名前缀分类实现，写新消费者时导入它，不要重新实现匹配逻辑。
+
 ## `@dg-kit/waveforms`
 
 ```ts
@@ -144,7 +167,13 @@ createSlidingWindowRateLimitPolicy({ windowMs, caps, now? }): RateLimitPolicy
 createTurnRateLimitPolicy({ caps }): RateLimitPolicy
 ```
 
-七个内置工具：`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `timer`。
+13 个内置工具：
+
+- 郊狼：`shock_start` / `shock_stop` / `shock_adjust` / `shock_change_wave` / `shock_burst` / `design_wave` / `timer`
+- 负鼠：`vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `vibrate_change_pattern` / `vibrate_burst`
+- 传感器（爪印/灵猫）：`set_indicator_color`
+
+限速策略的 `caps` 必须以这些主名为 key（不是历史名 `adjust_strength`/`burst`）——用错 key 会静默失效，而不是报错。
 
 ## `@dg-kit/transport-webbluetooth`
 
@@ -159,11 +188,35 @@ class WebBluetoothDeviceClient implements DeviceClient {
   })
   // 实现完整 DeviceClient 接口
 }
+
+class WebBluetoothOpossumClient implements OpossumClient { /* ... */ }
+class WebBluetoothSensorClient<TReading> implements SensorDeviceClient<TReading> { /* ... */ }
+class WebBluetoothPawPrintsClient extends WebBluetoothSensorClient<PawPrintsReading> {}
+class WebBluetoothCivetEdgingClient extends WebBluetoothSensorClient<CivetPressureReading> {}
+
+connectAuxDevice(kind, navigatorRef?): Promise<ConnectableAdapter>
+attachAuxDevice(adapter, kind): OpossumClient | PawPrintsClient | CivetEdgingClient
+disconnectAuxDevice(adapter): void
+
+PAW_PRINTS_REQUEST_DEVICE_OPTIONS
+CIVET_EDGING_REQUEST_DEVICE_OPTIONS
+OPOSSUM_REQUEST_DEVICE_OPTIONS
+```
+
+## `@dg-kit/transport-tauri-blec`
+
+Tauri（安卓/桌面/iOS）侧的镜像实现，基于 `@mnlphlp/plugin-blec`，接口与 web-bluetooth 版本对齐：
+
+```ts
+class TauriBlecDeviceClient implements DeviceClient { /* ... */ }
+class TauriBlecOpossumClient implements OpossumClient { /* ... */ }
+class TauriBlecPawPrintsClient implements PawPrintsClient { /* ... */ }
+class TauriBlecCivetEdgingClient implements CivetEdgingClient { /* ... */ }
 ```
 
 ## 版本
 
-当前 `1.0.0`。Major 版本号变化才有破坏性 API 改动。Minor 加新功能、保持向后兼容。Patch 修 bug。
+当前 `1.13.0`。Major 版本号变化才有破坏性 API 改动。Minor 加新功能、保持向后兼容。Patch 修 bug。六个包通过 changesets 的 `fixed` 锁步同步版本号。
 
 完整 CHANGELOG 见各包：
 
@@ -172,3 +225,4 @@ class WebBluetoothDeviceClient implements DeviceClient {
 - [@dg-kit/waveforms CHANGELOG](https://github.com/0xNullAI/DG-Kit/blob/main/packages/waveforms/CHANGELOG.md)
 - [@dg-kit/tools CHANGELOG](https://github.com/0xNullAI/DG-Kit/blob/main/packages/tools/CHANGELOG.md)
 - [@dg-kit/transport-webbluetooth CHANGELOG](https://github.com/0xNullAI/DG-Kit/blob/main/packages/transport-webbluetooth/CHANGELOG.md)
+- [@dg-kit/transport-tauri-blec CHANGELOG](https://github.com/0xNullAI/DG-Kit/blob/main/packages/transport-tauri-blec/CHANGELOG.md)

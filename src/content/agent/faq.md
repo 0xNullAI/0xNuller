@@ -18,7 +18,7 @@
 
 ### 调强度没反应
 
-- 通道是否已启动？没启动状态下 `adjust_strength` 没意义，AI 会先 `start`
+- 通道是否已启动？没启动状态下 `shock_adjust`/`vibrate_adjust` 没意义，AI 会先 `shock_start`/`vibrate_start`
 - 是否撞到了软上限？看顶部状态条
 - 设备物理拨轮的位置会与软件叠加，调到最低再操作
 
@@ -85,7 +85,7 @@
 强度已到上限，AI 还想加       → 安全设置里手动放开上限
 后台标签页输出停了           → 浏览器节流；切回前台或调「后台行为」
 LLM 不停问问题不调工具       → system prompt 没引导住；换更强的模型
-换波形要用 start 而不是 change → AI 没意识到通道已启动；告诉它「不用启动，只换」
+换波形要用 shock_start 而不是 shock_change_wave → AI 没意识到通道已启动；告诉它「不用启动，只换」
 ```
 
 ## 调试技巧
@@ -131,7 +131,7 @@ LLM 不停问问题不调工具       → system prompt 没引导住；换更强
 下面这些不是 bug 而是有意为之：
 
 - **冷启动强度 ≤ 10**：第一次给某通道供电时强度被钳制
-- **adjust_strength 单步 ≤ 10**：避免 AI 一次拉太狠
+- **shock_adjust/vibrate_adjust 单步 ≤ 10**：避免 AI 一次拉太狠
 - **每回合 burst ≤ 1 次**：避免连续猛击
 - **每回合 design_wave ≤ 1 次**：避免 LLM 失控乱设计
 - **timer 不会自动操作设备**：到期回合 AI 只能简短问候

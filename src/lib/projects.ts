@@ -14,6 +14,10 @@ import mcpManual from '../content/mcp/manual.md?raw';
 import mcpDeveloper from '../content/mcp/developer.md?raw';
 import mcpFaq from '../content/mcp/faq.md?raw';
 
+import voiceManual from '../content/voice/manual.md?raw';
+import voiceDeveloper from '../content/voice/developer.md?raw';
+import voiceFaq from '../content/voice/faq.md?raw';
+
 export type Audience = 'user' | 'developer';
 export type Accent = 'cyan' | 'magenta' | 'amber';
 
@@ -163,6 +167,36 @@ export const PROJECTS: Project[] = [
         audience: 'user',
         defaultMd: mcpFaq,
         sourcePath: 'src/content/mcp/faq.md',
+      },
+    ],
+  },
+  {
+    id: 'voice',
+    label: 'DG-Voice',
+    tagline: '实时语音 Agent · 打开即通话，AI 自主决定何时调用工具',
+    accent: 'amber',
+    repo: 'DG-Voice',
+    documents: [
+      {
+        id: 'manual',
+        label: '使用手册',
+        audience: 'user',
+        defaultMd: voiceManual,
+        sourcePath: 'src/content/voice/manual.md',
+      },
+      {
+        id: 'developer',
+        label: '开发者文档',
+        audience: 'developer',
+        defaultMd: voiceDeveloper,
+        sourcePath: 'src/content/voice/developer.md',
+      },
+      {
+        id: 'faq',
+        label: 'FAQ / 故障排查',
+        audience: 'user',
+        defaultMd: voiceFaq,
+        sourcePath: 'src/content/voice/faq.md',
       },
     ],
   },
