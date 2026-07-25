@@ -27,6 +27,15 @@ export const VAD_PREFIX_PADDING_MS = 333;
 export const VAD_SILENCE_DURATION_MS = 500;
 
 /**
+ * How long to wait for the WebSocket handshake before giving up. Without this a
+ * hung connection (no open/error/close ever fires — common when a flaky network
+ * silently blackholes the socket, e.g. mainland China reaching an overseas
+ * endpoint) leaves the caller awaiting forever, so the UI stays stuck on
+ * "连接中" with no error and no way out.
+ */
+export const CONNECT_TIMEOUT_MS = 15000;
+
+/**
  * The Realtime API exists in the wild under two event-name families — the
  * classic/beta `response.audio.*` and the newer GA `response.output_audio.*`.
  * Which one a provider emits is NOT predictable from which `session.update`
@@ -90,29 +99,68 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     const ws = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
     this.ws = ws;
 
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => {
-        this.connected = true;
-        this.send(this.buildSessionUpdate());
-        this.mic.onFrame((frame) => this.sendAudioFrame(frame));
-        this.onConnected();
-        this.options.events.onOpen?.();
-        resolve();
-      };
-      ws.onmessage = (event) => {
-        if (typeof event.data === 'string') this.handleMessage(event.data);
-      };
-      ws.onerror = () => {
-        const error = new Error('实时语音连接出错');
-        this.options.events.onError?.(error);
-        if (!this.connected) reject(error);
-      };
-      ws.onclose = (event) => {
-        this.connected = false;
-        this.onClosed();
-        this.options.events.onClose?.(event.reason || '连接已关闭');
-      };
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+
+        const fail = (error: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          // Drop the handlers so the close we trigger below doesn't re-enter
+          // onClose and stomp the error state the caller is about to set.
+          ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+          try {
+            ws.close();
+          } catch {
+            /* already closing */
+          }
+          reject(error);
+        };
+
+        const timer = setTimeout(
+          () =>
+            fail(
+              new Error(
+                '连接超时。网络可能不稳定（中国大陆访问海外服务时较常见），请检查网络或使用加速工具后重试。',
+              ),
+            ),
+          CONNECT_TIMEOUT_MS,
+        );
+
+        ws.onopen = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          this.connected = true;
+          this.send(this.buildSessionUpdate());
+          this.mic.onFrame((frame) => this.sendAudioFrame(frame));
+          this.onConnected();
+          this.options.events.onOpen?.();
+          resolve();
+        };
+        ws.onmessage = (event) => {
+          if (typeof event.data === 'string') this.handleMessage(event.data);
+        };
+        ws.onerror = () => {
+          this.options.events.onError?.(new Error('实时语音连接出错'));
+          if (!this.connected) fail(new Error('实时语音连接出错'));
+        };
+        ws.onclose = (event) => {
+          this.connected = false;
+          this.onClosed();
+          this.options.events.onClose?.(event.reason || '连接已关闭');
+          if (!this.connected) fail(new Error(event.reason || '连接已关闭'));
+        };
+      });
+    } catch (error) {
+      // A failed handshake must not leave the mic hot / the output context open —
+      // both were started before the socket (xAI's "don't wait on the socket"
+      // guidance), so tear them down here instead of leaking them.
+      this.mic.stop();
+      this.playback.close();
+      throw error;
+    }
   }
 
   disconnect(): void {

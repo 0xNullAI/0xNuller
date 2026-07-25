@@ -27,11 +27,15 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
-  const { session, state, error, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
+  const { session, state, error, connecting: connectingDevice, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
     useDeviceSession(transport);
   const { settings, updateSettings, resetSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
-  const callIsBusy = call.state.status === 'connecting' || call.state.status === 'active';
+  // Only an *active* call locks the settings entry (reconfiguring mid-call is
+  // disruptive). A call that's merely dialing must NOT lock the header — a
+  // hung 'connecting' used to latch these buttons disabled forever. Connecting
+  // a device is always allowed; it gates on its own in-flight flag instead.
+  const callIsActive = call.state.status === 'active';
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
@@ -56,15 +60,15 @@ export function App({ transport }: AppProps = {}) {
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
         <h1 className="text-lg font-semibold">DG-Voice</h1>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={connectDevice} disabled={callIsBusy}>
+          <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
             <Bluetooth className="h-4 w-4" />
-            连接设备
+            {connectingDevice ? '连接中…' : '连接设备'}
           </Button>
           <Button
             variant={settingsOpen ? 'secondary' : 'ghost'}
             size="icon"
             onClick={settingsOpen ? closeSettings : openSettings}
-            disabled={callIsBusy}
+            disabled={callIsActive}
             aria-label={settingsOpen ? '关闭设置' : '设置'}
           >
             {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}

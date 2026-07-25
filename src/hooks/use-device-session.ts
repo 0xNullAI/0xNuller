@@ -22,6 +22,11 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
 
   const [state, setState] = useState<DeviceSessionState>(EMPTY_STATE);
   const [error, setError] = useState<string | null>(null);
+  // In-flight flag for the connect flow. On Android `connectDevice()` runs an
+  // ~8s BLE scan before the picker resolves; without visible feedback the
+  // button looks dead ("点了没反应"). Also guards against a second tap kicking
+  // off a concurrent scan.
+  const [connecting, setConnecting] = useState(false);
 
   const refresh = useCallback(() => {
     void session.getState().then(setState);
@@ -34,6 +39,7 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
 
   const connectDevice = useCallback(async () => {
     setError(null);
+    setConnecting(true);
     try {
       await session.connectDevice();
       refresh();
@@ -43,6 +49,8 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
       if (!/cancelled|user gesture/i.test(message)) {
         setError(message);
       }
+    } finally {
+      setConnecting(false);
     }
   }, [session, refresh]);
 
@@ -61,5 +69,5 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
-  return { session, state, error, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum };
+  return { session, state, error, connecting, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum };
 }
