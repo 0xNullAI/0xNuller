@@ -7,8 +7,6 @@
 //  2. 其余路径 —— SPA 静态资源托管（各自带 Key 的 provider 仍走浏览器直连，不经过这里）。
 import type { Env } from './env.js';
 import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-keys.js';
-import { aoeDate, currentDailyKey, resolveDailyKey } from './daily-key.js';
-import { emailDailyKey } from './notify.js';
 
 export { TrialSession } from './trial-session.js';
 
@@ -20,20 +18,7 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-
-  // Cron `0 12 * * *` = 00:00 AOE (UTC-12): a new AOE day, a new daily key.
-  // The key is deterministic, so this only NOTIFIES — it isn't what rotates it.
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(rotateAndNotify(env));
-  },
 };
-
-async function rotateAndNotify(env: Env): Promise<void> {
-  const now = Date.now();
-  const key = await currentDailyKey(env, now);
-  if (!key) return; // no seed configured → daily key feature is off
-  await emailDailyKey(env, key, aoeDate(now));
-}
 
 async function handleTrialRealtime(request: Request, env: Env): Promise<Response> {
   if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
@@ -50,10 +35,7 @@ async function handleTrialRealtime(request: Request, env: Env): Promise<Response
   if (!activationKey) {
     return new Response('缺少激活密钥', { status: 401 });
   }
-  // Daily rotating key first, then the static hand-out registry.
-  const now = Date.now();
-  const config =
-    (await resolveDailyKey(env, activationKey, now)) ?? resolveTrialKey(env, activationKey, now);
+  const config = resolveTrialKey(env, activationKey, Date.now());
   if (!config) {
     return new Response('激活密钥无效或已过期', { status: 401 });
   }

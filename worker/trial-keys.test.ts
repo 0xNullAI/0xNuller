@@ -6,7 +6,6 @@ function env(overrides: Partial<Env> = {}): Env {
   return {
     ASSETS: {} as Fetcher,
     TRIAL_SESSION: {} as DurableObjectNamespace,
-    EMAIL: {} as Env['EMAIL'],
     XAI_API_KEY: 'xai-real-secret',
     TRIAL_KEYS: JSON.stringify({
       'dgv-trial-ok': { dailyCapMinutes: 30 },

@@ -29,25 +29,13 @@
   // TrialSession only uses storage.get/put + alarms, all supported here.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TrialSession"] }],
 
-  // Cloudflare Email Sending — mails the daily rotating key. Onboard the sender
-  // domain once: `wrangler email sending enable 0xnullai.com` (adds SPF+DKIM DNS).
-  "send_email": [{ "name": "EMAIL" }],
-
-  // 每天 12:00 UTC = 00:00 AOE（UTC-12）：轮换并邮寄当日体验版密钥。
-  "triggers": { "crons": ["0 12 * * *"] },
-
-  // 非机密配置。机密用 `wrangler secret put` 设置：
+  // 非机密配置。机密（真 xAI Key、激活密钥表）用 `wrangler secret put` 设置：
   //   wrangler secret put XAI_API_KEY
-  //   wrangler secret put TRIAL_KEYS         # 静态密钥表 JSON（可选，与每日密钥并存）
-  //   wrangler secret put TRIAL_DAILY_SEED   # 每日密钥的 HMAC 种子（openssl rand -base64 32）
-  //   wrangler secret put TRIAL_KEY_EMAIL_TO # 收件邮箱（个人地址，仓库公开，故走 secret）
+  //   wrangler secret put TRIAL_KEYS   # JSON：{"dgv-trial-xxx":{"dailyCapMinutes":30}}
   "vars": {
     "TRIAL_MODEL": "grok-voice-think-fast-1.0",
     "TRIAL_MAX_SESSION_MINUTES": "20",
     "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
-    "TRIAL_DAILY_CAP_MINUTES": "60",
-    "TRIAL_DAILY_GRACE_MINUTES": "180",
-    "TRIAL_KEY_EMAIL_FROM": "trial@0xnullai.com",
     "TRIAL_DISABLED": "0",
     "TRIAL_ALLOWED_ORIGINS": "https://voice.0xnullai.com"
   },

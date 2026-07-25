@@ -28,16 +28,6 @@ browser ──WS── /api/realtime ──(validate key + meter)── TrialSes
   Object (one per activation key).
 - `worker/trial-session.ts` (the DO) enforces the caps and does the piping.
 
-## Two kinds of activation key
-
-- **Static keys** — the `TRIAL_KEYS` registry below. Long-lived hand-out tokens
-  with individual caps/expiry, revocable one by one.
-- **Daily rotating key** — a single key that changes every AOE day and is
-  emailed to you automatically. See [Daily rotating key](#daily-rotating-key).
-
-Both are accepted at once: `/api/realtime` tries the daily key first, then the
-static registry.
-
 ## Money-safety caps
 
 Everything the frontend can't be trusted with lives in the DO:
@@ -87,46 +77,6 @@ Prints a fresh `dgv-trial-…` key and the JSON entry. Merge it into the full
 keys are bearer tokens** — anyone holding one spends your xAI credit up to its
 caps. Hand them out privately; revoke by removing the entry or setting
 `"enabled": false`.
-
-## Daily rotating key
-
-A single key of the form `dgv-daily-<AOE date>-<hmac>` that rotates every day
-and is emailed to you. It's **deterministic** — `HMAC-SHA256(TRIAL_DAILY_SEED,
-<AOE date>)` — so the Worker derives and validates it on demand; nothing is
-stored, and the key is valid whether or not the cron/email ran. The cron
-(`0 12 * * *` = 00:00 AOE, UTC-12) only mails it to you.
-
-Grace: after each rollover, yesterday's key keeps working for
-`TRIAL_DAILY_GRACE_MINUTES` (default 180) so a call in progress at 12:00 UTC —
-and anyone handed the key shortly before — isn't cut off mid-use.
-
-### One-time setup
-
-```sh
-# 1. Seed for the HMAC (set once, keep it stable — changing it invalidates all keys):
-openssl rand -base64 32 | wrangler secret put TRIAL_DAILY_SEED
-
-# 2. Where to email the daily key (secret: personal address, public repo):
-wrangler secret put TRIAL_KEY_EMAIL_TO      # e.g. you@icloud.com
-
-# 3. Onboard the sender domain for Email Sending (adds SPF+DKIM DNS, once):
-wrangler email sending enable 0xnullai.com
-wrangler email sending dns get 0xnullai.com # verify records propagated
-```
-
-`TRIAL_KEY_EMAIL_FROM` (default `trial@0xnullai.com`), `TRIAL_DAILY_CAP_MINUTES`
-and `TRIAL_DAILY_GRACE_MINUTES` are non-secret `vars` in `wrangler.jsonc`.
-
-### Get today's key without waiting for the email
-
-```sh
-TRIAL_DAILY_SEED='…' node scripts/daily-key.mjs            # today (AOE)
-TRIAL_DAILY_SEED='…' node scripts/daily-key.mjs --date 2026-07-25
-```
-
-Same derivation as the Worker. To fire the cron manually and send the email now,
-use the **Trigger** button on the Worker's Cron Triggers page in the dashboard,
-or in `wrangler dev`: `curl "http://localhost:8787/__scheduled?cron=0+12+*+*+*"`.
 
 ## Run locally
 
