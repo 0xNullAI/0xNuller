@@ -24,7 +24,10 @@
   "durable_objects": {
     "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }]
   },
-  "migrations": [{ "tag": "v1", "new_classes": ["TrialSession"] }],
+  // SQLite-backed DO (`new_sqlite_classes`, not `new_classes`): required on the
+  // free Workers plan, and the only variant that supports the free tier. Our
+  // TrialSession only uses storage.get/put + alarms, all supported here.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TrialSession"] }],
 
   // 非机密配置。机密（真 xAI Key、激活密钥表）用 `wrangler secret put` 设置：
   //   wrangler secret put XAI_API_KEY
