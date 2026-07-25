@@ -52,7 +52,7 @@ function buildStyleBlock(): string {
 function buildDeviceBlock(): string {
   return [
     '[设备]',
-    '已连接的 DG-Lab 设备可以通过工具调用控制：郊狼（电击，A/B 双通道）、负鼠（振动，A/B 双通道，可选设备）。',
+    'DG-Voice 支持两类 DG-Lab 设备：郊狼（电击，A/B 双通道）、负鼠（振动，A/B 双通道）。但"支持"不等于"现在就有"——真实可用的设备以下方[当前设备状态]为准：只有在那里标记为"已连接"的设备才存在；未连接的设备一律当作不存在，既不能控制，也不要提及或假装拥有。',
     '任何真实设备操作都必须通过工具完成；只靠语言描述不会改变设备状态，也不要在没调用工具的情况下声称已经执行。',
   ].join('\n');
 }
@@ -81,11 +81,34 @@ function buildDeviceStatusBlock(
   deviceState: DeviceSessionState,
   settings: VoiceInstructionSettings,
 ): string {
-  return [
+  const coyoteConnected = deviceState.coyote.connected;
+  const opossumConnected = deviceState.opossum.connected;
+
+  const lines: string[] = [
     '[当前设备状态]',
-    ...buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety),
-    ...buildOpossumStatusLines(deviceState.opossum, settings.opossumSafety),
-  ].join('\n');
+    // The single most important rule for avoiding "phantom device" behaviour:
+    // an unconnected device is not a device. Without this the model reads a
+    // "连接：未连接" line buried in a full status dump as "device present but
+    // idle" and happily narrates/controls it.
+    '判定规则：只有下面明确标记为"已连接"的设备才真实存在、才可控制。任何"未连接"的设备一律当作不存在——不要提及它、不要声称在用它、不要为它调用任何工具，也不要假设它稍后会出现。',
+  ];
+
+  if (!coyoteConnected && !opossumConnected) {
+    lines.push(
+      '当前没有任何已连接的设备：你现在没有任何可控制的设备，不要调用任何设备工具，也不要在剧情里让电击或振动"真的发生"；需要用到时先请对方连接设备。',
+    );
+  }
+
+  lines.push(
+    ...(coyoteConnected
+      ? buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety)
+      : ['郊狼：未连接（视为不存在，当前不可用）']),
+    ...(opossumConnected
+      ? buildOpossumStatusLines(deviceState.opossum, settings.opossumSafety)
+      : ['负鼠：未连接（视为不存在，当前不可用）']),
+  );
+
+  return lines.join('\n');
 }
 
 function buildCoyoteStatusLines(device: DeviceState, safety: CoyoteSafetySettings): string[] {

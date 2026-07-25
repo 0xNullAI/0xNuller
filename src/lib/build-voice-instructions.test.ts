@@ -58,4 +58,29 @@ describe('buildVoiceInstructions', () => {
     const text = buildVoiceInstructions('人设', state, settings);
     expect(text).toContain('A 通道：强度 0 / 上限 15');
   });
+
+  it('treats an unconnected device as nonexistent, not as an idle device', () => {
+    const settings = createDefaultSettings();
+    // Only the coyote is connected; the opossum is not.
+    const state = baseState();
+    state.coyote = { ...state.coyote, connected: true, strengthA: 3 };
+
+    const text = buildVoiceInstructions('人设', state, settings);
+    // The framing rule is present.
+    expect(text).toContain('当作不存在');
+    // The unconnected device collapses to a single "视为不存在" line...
+    expect(text).toContain('负鼠：未连接（视为不存在');
+    // ...and does NOT get a full status dump (the opossum per-channel status
+    // line format `上限 X，节奏 Y` must be absent — note "节奏" alone also
+    // appears in the mapping block, so match the status-line comma form).
+    expect(text).not.toContain('，节奏');
+  });
+
+  it('states plainly when no device is connected at all', () => {
+    const settings = createDefaultSettings();
+    const text = buildVoiceInstructions('人设', baseState(), settings);
+    expect(text).toContain('当前没有任何已连接的设备');
+    expect(text).toContain('郊狼：未连接（视为不存在');
+    expect(text).toContain('负鼠：未连接（视为不存在');
+  });
 });
