@@ -43,6 +43,9 @@ class ProbeGlm extends GlmRealtimeSession {
   outputItem(id: string, out: string) {
     return this['functionCallOutputItem'](id, out);
   }
+  feed(msg: Record<string, unknown>) {
+    this['handleMessage'](JSON.stringify(msg));
+  }
 }
 
 const EXPECTED_TOOL = {
@@ -72,13 +75,60 @@ describe('every dialect declares tools for tool calling', () => {
     expect(session.input_audio_format).toBeUndefined();
   });
 
-  it('GLM includes tools, beta_fields, and pcm output', () => {
+  it('GLM includes tools + beta_fields but OMITS tool_choice, and uses pcm output', () => {
     const { session } = new ProbeGlm(options('zhipu')).session();
     expect(session.tools).toEqual([EXPECTED_TOOL]);
-    expect(session.tool_choice).toBe('auto');
+    // GLM-Realtime rejects the ENTIRE session.update with 400 if tool_choice is
+    // present (verified against a live key). It must be absent, not 'auto'.
+    expect('tool_choice' in session).toBe(false);
     expect(session.beta_fields).toEqual({ chat_mode: 'audio', tts_source: 'e2e' });
     // Output must be pcm, not wav (the old bug corrupted output audio).
     expect(session.output_audio_format).toBe('pcm');
+  });
+
+  it('GLM forces a non-empty required for optional-only tools; other dialects leave it untouched', () => {
+    // Real shape of shock_stop/vibrate_stop: one optional property, no `required`.
+    const optionalOnly: ToolDefinition = {
+      name: 'shock_stop',
+      description: '停止',
+      parameters: { type: 'object', properties: { channel: { type: 'string', enum: ['A', 'B'] } } },
+    };
+    const withTool = (id: RealtimeProviderId): RealtimeSessionOptions => ({
+      settings: { ...createDefaultRealtimeProviderSettings(id), apiKey: 'k.k' },
+      tools: [optionalOnly],
+      instructions: '你是助手',
+      events: {},
+    });
+    // GLM: 422s on an empty/absent required, so every property becomes required.
+    const glmTools = new ProbeGlm(withTool('zhipu')).session().session.tools as Array<{
+      parameters: { required?: unknown };
+    }>;
+    expect(glmTools[0]?.parameters.required).toEqual(['channel']);
+    // xAI/OpenAI: untouched — `channel` stays optional (no `required` key).
+    const xaiTools = new ProbeOpenAi('xai', withTool('xai')).session().session.tools as Array<{
+      parameters: { required?: unknown };
+    }>;
+    expect(xaiTools[0]?.parameters.required).toBeUndefined();
+  });
+
+  it('keeps user and assistant transcripts distinct when GLM reuses one item_id for the turn', () => {
+    const entries: Array<{ id: string; role: string; text: string }> = [];
+    const probe = new ProbeGlm({
+      settings: { ...createDefaultRealtimeProviderSettings('zhipu'), apiKey: 'k.k' },
+      tools: [],
+      instructions: 'x',
+      events: { onTranscript: (e) => entries.push(e) },
+    });
+    const ITEM = 'item-shared-abc'; // GLM sends the SAME item_id for both roles
+    probe.feed({ type: 'conversation.item.input_audio_transcription.completed', item_id: ITEM, transcript: '你好' });
+    probe.feed({ type: 'response.audio_transcript.done', item_id: ITEM, transcript: '你好呀' });
+
+    const user = entries.find((e) => e.role === 'user');
+    const assistant = entries.find((e) => e.role === 'assistant');
+    expect(user?.text).toBe('你好');
+    expect(assistant?.text).toBe('你好呀');
+    // Distinct ids → the reply can't overwrite the user's line in the UI.
+    expect(user?.id).not.toBe(assistant?.id);
   });
 });
 

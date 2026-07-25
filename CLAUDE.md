@@ -63,7 +63,35 @@ NO `call_id`, so requiring call_id silently dropped every GLM tool call — now 
 response_id; (5) `function_call_output` sends only `{type,output}` (no call_id); (6) voice list
 corrected (had Azure-style names that don't exist on Zhipu). Auth is `?Authorization=<jwt>` query
 param — the browser can't set the header GLM's docs describe, but a live probe confirmed the server
-reads the query param. NOT confirmed working end-to-end against a real key.
+reads the query param. (7) **`tool_choice` must be OMITTED** — a live-key probe (v0.7.3) found GLM
+400s the ENTIRE `session.update` ("API 调用参数有误") whenever `tool_choice` is present; every variant
+with it errored, every one without it returned `session.updated`. The tool *shape* (flat
+`{type:'function',name,description,parameters}`) is accepted. (8) **Do NOT send a client heartbeat** —
+GLM's `heartbeat` is server→client only; sending `{type:'heartbeat'}` 400s and used to kill the
+session ~30s in (the old `onConnected` interval did exactly this). (9) **GLM server_vad never ends a
+turn** — it emits `input_audio_buffer.speech_started` but never `speech_stopped`, so a server_vad-only
+session gets audio but never replies ("说话没反应"), regardless of format/pacing/threshold params.
+Fixed with client-side turn detection (`usesClientTurnDetection()` → RMS silence detector in
+base-realtime-session that sends `input_audio_buffer.commit` + `response.create`); xAI/OpenAI keep
+server_vad. (10) **Every tool needs a NON-EMPTY `required`** — argless/optional-only tools
+(shock_stop/vibrate_stop, whose only param `channel` is optional) omit `required`; GLM's generation
+backend coerces the falsy value to null (`[] or None`) and 422s ("Input should be a valid list",
+`tools[1]`/`tools[8]`) once it engages tools. `[]` does NOT help (also falsy). `GlmRealtimeSession`
+overrides `mappedTools()` to mark every property of an otherwise-empty-required object as required
+(GLM-only; xAI/OpenAI keep `channel` optional). Trade-off: on GLM the model must name a `channel` to
+stop; the 紧急停止 button (emergencyStop) still zeroes everything. (11) **GLM reuses ONE `item_id`
+for the whole turn** — the user's input transcription and the assistant's reply share it, AND the
+reply streams BEFORE the late input-transcription arrives. So transcript ids are role-namespaced
+(`user:`/`assistant:`) to stop the reply overwriting the user's line, and the user's line is reserved
+on `conversation.item.created` (which fires first) to keep it above the reply. (12) GLM wraps a tool
+call in `response.function_call.inner_tool` / `.inner_tool.result` around the real
+`response.function_call_arguments.done` — tolerated in `handleDialectEvent`.
+
+**GLM is now confirmed working end-to-end against a real key (v0.7.3)**: session, audio round-trip,
+transcripts (correct order), and a real tool call all verified. Tool calls need a device connected
+(the instructions tell GLM there's none otherwise) and GLM is more conservative than xAI, so it wants
+the device-context + "call, don't ask" nudge the connected-device instructions provide. Real-mic
+client-VAD thresholds (CLIENT_VAD_* in base-realtime-session) may still want tuning.
 
 `scripts/glm-connftest.mjs` signs a JWT with the app's exact algorithm and does a plain HTTPS GET
 (not a WS upgrade) so the server's real error body is visible — a browser WS handshake 401 hides

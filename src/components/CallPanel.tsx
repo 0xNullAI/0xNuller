@@ -144,9 +144,13 @@ function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [transcript]);
 
+  // Skip placeholder entries reserved for ordering (e.g. the user's line, held
+  // in place before GLM sends its late input transcription) until they fill in.
+  const visible = transcript.filter((entry) => entry.text.trim() !== '');
+
   return (
     <div className="max-h-56 w-full space-y-2 overflow-y-auto rounded-[10px] bg-[var(--bg-soft)] px-4 py-3 text-left text-sm">
-      {transcript.map((entry) => (
+      {visible.map((entry) => (
         <p
           key={entry.id}
           className={entry.role === 'assistant' ? 'text-[var(--text)]' : 'text-[var(--text-soft)]'}
