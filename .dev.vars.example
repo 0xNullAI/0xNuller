@@ -8,3 +8,11 @@ XAI_API_KEY="xai-REPLACE_ME"
 # Activation-key registry (compact JSON, no spaces). Generate keys with
 # `node scripts/gen-trial-key.mjs`.
 TRIAL_KEYS={"dgv-trial-LOCALTEST":{"dailyCapMinutes":30}}
+
+# Seed for the deterministic daily key. Get the day's key with
+# `TRIAL_DAILY_SEED=... node scripts/daily-key.mjs`.
+TRIAL_DAILY_SEED="local-dev-seed-not-for-prod"
+
+# Recipient of the daily-key email (only needed to test the cron/email locally,
+# and only with `send_email` binding `"remote": true`).
+TRIAL_KEY_EMAIL_TO="you@example.com"
