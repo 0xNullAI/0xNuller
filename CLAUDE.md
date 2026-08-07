@@ -24,7 +24,7 @@ workers/*             llm-proxy（免费 provider，产品承诺的一部分）�
 加新东西之前先想清楚它属于哪一层：发布给外部（kit）、四个模块都要用（platform）、
 还是只有 Agent 用（agent）。放错层的代价是它迟早会被复制第二份。
 
-`packages` 下是两层结构，因为 `@dg-kit/core` 和 `@dg-agent/core` 同名。
+目录多套一层还有个附带好处：`@dg-kit/core` 与 `@dg-agent/core` 同名也能共存。
 
 ## 命令
 
