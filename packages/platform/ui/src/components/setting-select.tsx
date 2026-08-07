@@ -1,4 +1,4 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@0xnullai/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 
 export interface SelectOption {
   value: string;

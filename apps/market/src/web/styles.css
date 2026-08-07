@@ -31,43 +31,32 @@ body {
   flex-direction: column;
 }
 
+/* 单条横栏。参照 DG-Agent 的顶栏：细、贴边、下边框分隔，不占垂直空间。 */
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 0 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.topbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 320px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.logo {
-  font-size: 28px;
-}
-.brand h1 {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-.brand small {
-  color: var(--text-faint);
-}
-
-.controls {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 22px;
-  flex-wrap: wrap;
+  margin-left: auto;
+  flex: none;
 }
 
 .seg {

@@ -1,16 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { PromptPreset, SavedPromptPreset } from '@dg-agent/runtime';
 import {
   ArrowUp,
   AudioLines,
-  Battery,
-  BatteryFull,
-  BatteryLow,
-  BatteryMedium,
-  BatteryWarning,
   Bluetooth,
   ChevronDown,
   Check,
@@ -23,7 +17,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { AppSwitcher, Button, Input, Meter } from '@0xnullai/ui';
+import { ChannelStrengthBar, DeviceStatusChip, AppSwitcher, Button, Input } from '@0xnullai/ui';
 import { cn } from '@agent/lib/utils';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
@@ -66,16 +60,7 @@ interface ChatPanelProps {
   onPresetChange: (id: string) => void;
 }
 
-function BatteryIcon({ level }: { level: number | null | undefined }) {
-  if (level == null) return <Battery className="h-3.5 w-3.5 text-[var(--text-faint)]" />;
-  if (level <= 10) return <BatteryWarning className="h-3.5 w-3.5 text-[var(--danger)]" />;
-  if (level <= 30) return <BatteryLow className="h-3.5 w-3.5 text-[var(--warning)]" />;
-  if (level <= 70) return <BatteryMedium className="h-3.5 w-3.5 text-[var(--text-soft)]" />;
-  return <BatteryFull className="h-3.5 w-3.5 text-[var(--success)]" />;
-}
-
 const MESSAGE_BATCH_SIZE = 120;
-const DEVICE_STRENGTH_CAP = 200;
 
 // 蓝牙配对提示：浏览器原生选择器无法注入文案，所以在未连接时常驻展示，
 // 兼作蓝牙按钮的 title，帮助用户在搜索不到设备时进入配对模式。
@@ -692,69 +677,7 @@ export function ChatPanel({
   );
 }
 
-interface DeviceStatusChipProps {
-  icon: ReactNode;
-  battery: number | undefined;
-  onClick: () => void;
-  title: string;
-  /** Strength/intensity bars for control-type devices (Coyote, Opossum) — omitted for sensing-type devices. */
-  children?: ReactNode;
-}
 
-/**
- * Shared status-bar chip for all 4 device kinds: icon + battery, click to
- * reconnect/disconnect. Control-type devices (Coyote, Opossum) pass channel
- * strength bars as `children`; sensing-type devices (paw-prints,
- * civet-edging) omit them — the wrapping div still renders identically with
- * a single child.
- */
-function DeviceStatusChip({ icon, battery, onClick, title, children }: DeviceStatusChipProps) {
-  return (
-    <div className="flex items-center gap-1.5 sm:gap-2">
-      <button
-        type="button"
-        className="flex shrink-0 items-center gap-1 rounded-[8px] px-1.5 py-1 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] sm:gap-1.5 sm:px-2"
-        onClick={onClick}
-        title={title}
-      >
-        {icon}
-        <BatteryIcon level={battery} />
-        <span className="hidden text-[11px] tabular-nums sm:inline">
-          {typeof battery === 'number' ? `${battery}%` : '--'}
-        </span>
-      </button>
-      {children}
-    </div>
-  );
-}
-
-interface ChannelStrengthBarProps {
-  channel: 'A' | 'B';
-  value: number;
-  max: number;
-}
-
-function ChannelStrengthBar({ channel, value, max }: ChannelStrengthBarProps) {
-  const normalizedValue = clampPercentage((value / DEVICE_STRENGTH_CAP) * 100);
-  const normalizedMax = clampPercentage((max / DEVICE_STRENGTH_CAP) * 100);
-
-  return (
-    <div className="grid flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 sm:gap-1.5">
-      <span className="text-[10px] font-semibold leading-none tracking-wide text-[var(--accent)]">
-        {channel}
-      </span>
-      <Meter value={normalizedValue} marker={normalizedMax} />
-      <span className="text-[10px] font-medium tabular-nums leading-none text-[var(--text-soft)]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function clampPercentage(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, value));
-}
 
 type TimelineItem =
   | (SessionSnapshot['messages'][number] & { kind: 'message' })

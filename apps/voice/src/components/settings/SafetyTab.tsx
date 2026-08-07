@@ -1,6 +1,5 @@
 import { Input } from '@0xnullai/ui';
-import { SettingLabel } from './SettingLabel';
-import { SettingToggle } from './SettingToggle';
+import { SettingLabel, SettingToggle } from '@0xnullai/ui';
 import type { VoiceSettings } from '@voice/lib/settings';
 
 interface SafetyTabProps {

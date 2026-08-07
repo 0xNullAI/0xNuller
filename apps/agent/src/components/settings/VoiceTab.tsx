@@ -3,10 +3,8 @@ import { PROXY_TTS_SPEAKERS, getBrowserSpeechSynthesisVoices } from '@dg-agent/a
 import { Input } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
-import { SettingLabel } from './SettingLabel.js';
-import { SettingSelect } from './SettingSelect.js';
+import { SettingLabel, SettingSelect, SettingToggle } from '@0xnullai/ui';
 import { SettingSegmented } from './SettingSegmented.js';
-import { SettingToggle } from './SettingToggle.js';
 
 const VOICE_LANGUAGE_OPTIONS = [
   { value: 'zh-CN', label: '中文（普通话）' },

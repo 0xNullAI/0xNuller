@@ -3,6 +3,12 @@
 
 export * from './components/alert';
 export * from './components/app-switcher';
+export * from './components/permission-modal';
+export * from './components/setting-toggle';
+export * from './components/setting-label';
+export * from './components/setting-select';
+export * from './components/help-tip';
+export * from './components/device-status';
 export * from './components/badge';
 export * from './components/button';
 export * from './components/card';

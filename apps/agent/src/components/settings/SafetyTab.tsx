@@ -4,8 +4,7 @@ import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { cn } from '@agent/lib/utils';
-import { SettingLabel } from './SettingLabel.js';
-import { SettingToggle } from './SettingToggle.js';
+import { SettingLabel, SettingToggle } from '@0xnullai/ui';
 import styles from './SafetyTab.module.css';
 
 interface SafetyTabProps {

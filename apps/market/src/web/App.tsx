@@ -59,26 +59,12 @@ export function App(): JSX.Element {
 
   return (
     <div className="app">
+      {/* 单条横栏：左侧应用切换器，中间分类与搜索，右侧主题与上传。
+          合并前这里是「品牌块 + 独立筛选行」两行重头部，与 DG-Agent 的细横栏差别很大。 */}
       <header className="topbar">
-        <div className="brand">
-          <span className="logo">⚡</span>
-          <div>
-            <AppSwitcher current="market" label="DG-Market" />
-            <small>波形与场景社区 · 配合 DG-Agent 使用</small>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <button className="btn ghost" onClick={cycleTheme} title="切换主题">
-            {THEME_LABEL[themeMode]}
-          </button>
-          <button className="btn primary" onClick={() => setUploading(true)}>
-            上传
-          </button>
-        </div>
-      </header>
+        <AppSwitcher current="market" label="DG-Market" />
 
-      <nav className="controls">
-        <div className="tab-group">
+        <div className="topbar-filters">
           <div className="seg">
             <button className={tab === 'scene' ? 'active' : ''} onClick={() => setTab('scene')}>
               场景
@@ -89,26 +75,45 @@ export function App(): JSX.Element {
           </div>
           {tab === 'scene' && (
             <div className="seg seg-sub">
-              <button className={sceneSub === 'scenario' ? 'active' : ''} onClick={() => setSceneSub('scenario')}>
+              <button
+                className={sceneSub === 'scenario' ? 'active' : ''}
+                onClick={() => setSceneSub('scenario')}
+              >
                 单人
               </button>
-              <button className={sceneSub === 'multi-scene' ? 'active' : ''} onClick={() => setSceneSub('multi-scene')}>
+              <button
+                className={sceneSub === 'multi-scene' ? 'active' : ''}
+                onClick={() => setSceneSub('multi-scene')}
+              >
                 多人
               </button>
             </div>
           )}
+          <input
+            className="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索名称 / 简介 / 标签"
+          />
+          <select
+            className="sort"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'new' | 'popular')}
+          >
+            <option value="new">最新</option>
+            <option value="popular">最热</option>
+          </select>
         </div>
-        <input
-          className="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索名称 / 简介 / 标签"
-        />
-        <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'popular')}>
-          <option value="new">最新</option>
-          <option value="popular">最热</option>
-        </select>
-      </nav>
+
+        <div className="topbar-actions">
+          <button className="btn ghost" onClick={cycleTheme} title="切换主题">
+            {THEME_LABEL[themeMode]}
+          </button>
+          <button className="btn primary" onClick={() => setUploading(true)}>
+            上传
+          </button>
+        </div>
+      </header>
 
       <main className="grid">
         {loading ? (

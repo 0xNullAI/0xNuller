@@ -6,7 +6,7 @@ import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
 import { CallPanel } from '@voice/components/CallPanel';
 import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
-import { PermissionModal } from '@voice/components/PermissionModal';
+import { PermissionModal } from '@0xnullai/ui';
 import {
   SettingsSidebar,
   SettingsWorkspace,

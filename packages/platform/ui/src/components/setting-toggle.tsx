@@ -1,4 +1,4 @@
-import { SettingLabel } from './SettingLabel';
+import { SettingLabel } from './setting-label';
 
 interface SettingToggleProps {
   checked: boolean;
@@ -7,12 +7,19 @@ interface SettingToggleProps {
   description?: string;
 }
 
-export function SettingToggle({ checked, onCheckedChange, label, description }: SettingToggleProps) {
+export function SettingToggle({
+  checked,
+  onCheckedChange,
+  label,
+  description,
+}: SettingToggleProps) {
   return (
-    <label className="setting-toggle-row !flex cursor-pointer items-center justify-between gap-3 py-1">
+    <label className="setting-toggle-row !flex items-center justify-between gap-3 py-1 cursor-pointer">
       <div className="min-w-0">
         <SettingLabel>{label}</SettingLabel>
-        {description && <div className="mt-0.5 text-xs text-[var(--text-faint)]">{description}</div>}
+        {description && (
+          <div className="text-xs text-[var(--text-faint)] mt-0.5">{description}</div>
+        )}
       </div>
       <button
         type="button"

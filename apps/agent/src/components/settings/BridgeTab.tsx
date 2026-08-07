@@ -5,8 +5,7 @@ import { cn } from '@agent/lib/utils';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { parseCommaSeparated } from '../../utils/ui-formatters.js';
-import { SettingLabel } from './SettingLabel.js';
-import { SettingSelect } from './SettingSelect.js';
+import { SettingLabel, SettingSelect } from '@0xnullai/ui';
 
 function formatCommaSeparatedInput(values: string[]): string {
   return values.join(', ');

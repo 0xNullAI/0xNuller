@@ -20,7 +20,7 @@ import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
-import { PermissionModal } from './components/PermissionModal.js';
+import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNoticeModal } from './components/SafetyNoticeModal.js';
 import { SessionPanel } from './components/SessionPanel.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';

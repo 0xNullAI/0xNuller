@@ -1,7 +1,5 @@
 import { Input } from '@0xnullai/ui';
-import { HelpTip } from '@voice/components/HelpTip';
-import { SettingLabel } from './SettingLabel';
-import { SettingSelect } from './SettingSelect';
+import { HelpTip, SettingLabel, SettingSelect } from '@0xnullai/ui';
 import {
   getRealtimeProviderDefinition,
   REALTIME_PROVIDER_DEFINITIONS,

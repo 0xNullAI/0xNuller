@@ -32,10 +32,7 @@ import {
   type PiAiModelInfo,
   type PiAiProviderKey,
 } from '@dg-agent/providers-pi-http';
-import { HelpTip } from '../HelpTip.js';
-import { SettingLabel } from './SettingLabel.js';
-import { SettingSelect } from './SettingSelect.js';
-import { SettingToggle } from './SettingToggle.js';
+import { HelpTip, SettingLabel, SettingSelect, SettingToggle } from '@0xnullai/ui';
 import strengthStyles from './SafetyTab.module.css';
 
 // '自定义' pinned last — every other provider stays in catalog order, both

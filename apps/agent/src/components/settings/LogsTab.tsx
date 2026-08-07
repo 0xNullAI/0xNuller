@@ -4,7 +4,7 @@ import type { ModelLogTurn } from '../../services/model-log-store.js';
 import { Badge, Button } from '@0xnullai/ui';
 import { formatTimestamp } from '../../utils/ui-formatters.js';
 import { JsonTree } from '../JsonTree.js';
-import { SettingToggle } from './SettingToggle.js';
+import { SettingToggle } from '@0xnullai/ui';
 
 interface BridgeLogsTabProps {
   bridgeLogs: BridgeLogEntry[];

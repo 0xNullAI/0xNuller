@@ -1,6 +1,6 @@
 import type { ComponentPropsWithoutRef } from 'react';
 
-import { cn } from '@agent/lib/utils';
+import { cn } from '../utils';
 
 export function SettingLabel({ className, ...props }: ComponentPropsWithoutRef<'span'>) {
   return <span className={cn('text-sm font-semibold text-[var(--text)]', className)} {...props} />;

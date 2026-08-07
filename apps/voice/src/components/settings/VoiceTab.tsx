@@ -1,6 +1,5 @@
 import { Input } from '@0xnullai/ui';
-import { SettingLabel } from './SettingLabel';
-import { SettingSelect } from './SettingSelect';
+import { SettingLabel, SettingSelect } from '@0xnullai/ui';
 import { useProviderVoices } from '@voice/hooks/use-provider-voices';
 import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
 import type { VoiceSettings } from '@voice/lib/settings';

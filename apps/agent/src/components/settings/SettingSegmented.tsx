@@ -1,4 +1,4 @@
-import { SettingLabel } from './SettingLabel.js';
+import { SettingLabel } from '@0xnullai/ui';
 
 export interface SegmentOption {
   value: string;

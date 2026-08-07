@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from '@0xnullai/ui';
+import { Button } from './button';
 
 interface PermissionModalProps {
   summary: string;
