@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DeviceClient, DeviceCommand, DeviceCommandResult, DeviceState, OpossumCommand } from '@dg-kit/core';
 import { createEmptyDeviceState } from '@dg-kit/core';
 import type { OpossumClient, OpossumCommandResult, OpossumState } from '@dg-kit/protocol';
-import { DeviceCommandQueue, OpossumCommandQueue } from './device-command-queue.js';
+import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 
 const BREATH_WAVEFORM = { id: 'breath', name: '呼吸', frames: [[100, 50]] as [number, number][] };
 

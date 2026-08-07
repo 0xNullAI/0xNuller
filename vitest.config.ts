@@ -35,6 +35,18 @@ export default defineConfig({
           include: ['packages/agent/*/src/**/*.test.ts'],
         },
       },
+
+      // @0xnullai/*：平台层共享包。漏了这一条的失败形态是「测试静默少跑」——
+      // 数量对不上但不会红，所以这里显式列出。
+      {
+        test: {
+          name: 'platform',
+          environment: 'jsdom',
+          globals: true,
+          setupFiles: ['./test/setup/localstorage.ts'],
+          include: ['packages/platform/*/src/**/*.test.{ts,tsx}'],
+        },
+      },
     ],
     coverage: {
       provider: 'v8',

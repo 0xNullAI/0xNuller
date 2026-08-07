@@ -26,12 +26,12 @@ import {
   type RuntimeTraceEntry,
   type SessionSnapshot,
 } from '@dg-agent/core';
-import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from './default-policies.js';
+import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
-import { DeviceCommandQueue, OpossumCommandQueue } from './device-command-queue.js';
+import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import { InMemoryEventBus, type RuntimeListener } from './event-bus.js';
 import { InMemorySessionStore } from './in-memory-session-store.js';
-import { OpossumPolicyEngine, PolicyEngine } from './policy-engine.js';
+import { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 import {
   isAbortError,
   normalizeAssistantErrorMessage,

@@ -1,4 +1,5 @@
-import type { PermissionDecision, PermissionRequest, PermissionService } from './types.js';
+import type { PermissionService, PermissionRequest } from '@dg-kit/safety';
+import type { PermissionDecision } from '@dg-kit/safety';
 
 export type BrowserPermissionMode = 'confirm' | 'timed' | 'allow-all';
 

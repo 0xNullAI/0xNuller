@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { DeviceCommand, DeviceState } from '@dg-kit/core';
 import type { OpossumCommand } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
-import type { ActionContext } from './types.js';
-import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from './default-policies.js';
-import { OpossumPolicyEngine, PolicyEngine } from './policy-engine.js';
+import type { ActionContext } from '@dg-kit/safety';
+import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
+import { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 
-const context: ActionContext = { sessionId: 's1' };
+const context: ActionContext = { sessionId: 's1', sourceType: 'web', traceId: 't1' };
 
 function coyoteState(overrides: Partial<DeviceState> = {}): DeviceState {
   return {

@@ -1,4 +1,4 @@
-import type { DeviceCommand, OpossumCommand } from '@dg-agent/core';
+import type { DeviceCommand, OpossumCommand } from '@dg-kit/core';
 import type { OpossumPolicyRule } from './policy-engine.js';
 import type { PolicyRule } from './policy-engine.js';
 

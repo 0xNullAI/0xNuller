@@ -23,7 +23,7 @@ import type {
 } from '@dg-agent/core';
 import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
 import { WebBluetoothCivetEdgingClient, WebBluetoothDeviceClient, WebBluetoothOpossumClient, WebBluetoothPawPrintsClient } from '@dg-kit/transport-webbluetooth';
-import { BrowserPermissionService } from '@dg-agent/permissions-browser';
+import { BrowserPermissionService } from '@0xnullai/permissions';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import {
   BrowserSessionStore,

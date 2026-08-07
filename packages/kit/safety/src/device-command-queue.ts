@@ -1,4 +1,5 @@
-import type { DeviceClient, DeviceCommand, DeviceCommandResult, OpossumCommand } from '@dg-kit/core';
+import type { DeviceClient, OpossumCommand } from '@dg-kit/core';
+import type { DeviceCommand, DeviceCommandResult } from '@dg-kit/core';
 import type { OpossumClient, OpossumCommandResult } from '@dg-kit/protocol';
 
 export interface PriorityInterrupt<TCommand, TResult> {
@@ -25,7 +26,10 @@ export interface SerialCommandQueueOptions<TCommand, TResult> {
  * `emergencyStop`) skip the line entirely: it bumps a generation counter
  * and runs immediately via `run()` rather than `execute()`, and any
  * already-queued-but-not-yet-run task notices its generation is stale and
- * resolves with `skippedResult()` instead of actually executing.
+ * resolves with `skippedResult()` instead of actually executing. Extracted
+ * from `DeviceCommandQueue` (which needs the interrupt) and reused as a
+ * plain FIFO by `OpossumCommandQueue` (which doesn't — see its own doc
+ * comment for why).
  */
 export class SerialCommandQueue<TCommand, TResult> {
   private tail: Promise<void> = Promise.resolve();
@@ -89,11 +93,13 @@ export class DeviceCommandQueue {
 
 /**
  * Serializes Opossum vibration commands the same way `DeviceCommandQueue`
- * serializes Coyote commands. No `emergencyStop`-style generation bump is
+ * serializes Coyote commands, so concurrent `vibrate_*` tool calls can't
+ * race each other's writes. No `emergencyStop`-style generation bump is
  * needed here: Opossum has no command analogous to Coyote's `emergencyStop`
  * variant in its own command union (`vibrate_stop` already exists for that),
- * and a runtime-wide panic button calls `OpossumClient.emergencyStop()`
- * directly, bypassing the queue exactly like Coyote's does.
+ * and the runtime-wide panic button calls `OpossumClient.emergencyStop()`
+ * directly (see `AgentRuntime.emergencyStop`), bypassing the queue exactly
+ * like Coyote's does.
  */
 export class OpossumCommandQueue {
   private readonly queue: SerialCommandQueue<OpossumCommand, OpossumCommandResult>;

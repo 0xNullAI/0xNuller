@@ -1,10 +1,5 @@
-import type {
-  ActionContext,
-  DeviceCommand,
-  DeviceState,
-  OpossumCommand,
-  PolicyDecision,
-} from '@dg-agent/core';
+import type { ActionContext, PolicyDecision } from './contracts.js';
+import type { DeviceCommand, DeviceState, OpossumCommand } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
 
 export interface EvaluatePolicyInput {

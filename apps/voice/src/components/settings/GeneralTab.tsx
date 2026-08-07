@@ -8,7 +8,7 @@ import {
   type RealtimeProviderId,
 } from '@/lib/realtime/providers';
 import type { ThemeMode, VoiceSettings } from '@/lib/settings';
-import type { BrowserPermissionMode } from '@/lib/permissions';
+import type { BrowserPermissionMode } from '@0xnullai/permissions';
 
 interface GeneralTabProps {
   settings: VoiceSettings;

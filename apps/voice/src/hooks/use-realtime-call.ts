@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { BrowserPermissionService } from '@/lib/permissions';
-import { PolicyEngine, OpossumPolicyEngine } from '@/lib/policy-engine';
-import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@/lib/default-policies';
-import { DeviceCommandQueue, OpossumCommandQueue } from '@/lib/device-command-queue';
+import { BrowserPermissionService } from '@0xnullai/permissions';
+import { PolicyEngine, OpossumPolicyEngine } from '@dg-kit/safety';
+import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
+import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import { ToolExecutor } from '@/lib/tool-executor';
 import { createVoiceToolRegistry } from '@/lib/tool-registry';
 import { BrowserWaveformLibrary } from '@/lib/waveform-library';
@@ -19,7 +19,7 @@ import type {
 import { VoiceToolBridge } from '@/lib/realtime/voice-tool-bridge';
 import { CallSafetyGuard } from '@/services/call-safety-guard';
 import type { VoiceSettings } from '@/lib/settings';
-import type { PermissionDecision, PermissionRequest } from '@/lib/types';
+import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 
 export interface PendingPermissionRequest {
   input: PermissionRequest;
@@ -112,7 +112,15 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       return;
     }
 
-    const context = { sessionId: createSessionId() };
+    // ActionContext 现在来自 @dg-kit/safety（与 DG-Agent 同一份契约）。
+    // DG-Voice 是网页客户端，sourceType 如实填 'web'；traceId 让这一通电话的
+    // 每条设备指令能在日志里串起来。
+    const sessionId = createSessionId();
+    const context: ActionContext = {
+      sessionId,
+      sourceType: 'web',
+      traceId: `voice-${sessionId}`,
+    };
     // Honor `permissionMode` exactly as the user set it. This previously
     // silently rewrote 'confirm' (the strictest option AND the default) to
     // 'timed' and pre-seeded the timed grant as already-valid, so no

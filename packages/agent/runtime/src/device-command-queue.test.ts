@@ -8,7 +8,7 @@ import type {
 } from '@dg-agent/core';
 import { createEmptyDeviceState } from '@dg-agent/core';
 import type { OpossumClient, OpossumCommandResult } from './device-clients.js';
-import { DeviceCommandQueue, OpossumCommandQueue } from './device-command-queue.js';
+import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import type { OpossumState } from '@dg-kit/protocol';
 
 function createState(overrides: Partial<DeviceState> = {}): DeviceState {

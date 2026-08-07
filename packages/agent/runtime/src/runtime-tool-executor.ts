@@ -12,10 +12,10 @@ import {
   type ToolExecutionPlan,
 } from '@dg-agent/core';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
-import type { DeviceCommandQueue, OpossumCommandQueue } from './device-command-queue.js';
+import type { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import { throwIfAborted } from './runtime-errors.js';
 import { consumeTurnQuota, type TurnState } from './runtime-turn-state.js';
-import type { OpossumPolicyEngine, PolicyEngine } from './policy-engine.js';
+import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 import type { ToolCallConfig } from './tool-call-config.js';
 import type { ToolRegistry } from './tool-registry.js';
 

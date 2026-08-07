@@ -19,7 +19,7 @@
     "android/*"
   ],
   "scripts": {
-    "build:kit": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",
+    "build:kit": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/safety -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",
     "build": "npm run build:kit && npm run build --workspaces --if-present --include-workspace-root=false",
     "typecheck": "npm run build:kit && npm run typecheck --workspaces --if-present --include-workspace-root=false",
     "test": "npm run build:kit && vitest run",

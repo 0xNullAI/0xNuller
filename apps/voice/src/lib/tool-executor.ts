@@ -23,10 +23,10 @@ import type {
 } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { ToolRegistry } from '@dg-kit/tools';
-import type { OpossumPolicyEngine, PolicyEngine } from './policy-engine.js';
-import type { DeviceCommandQueue, OpossumCommandQueue } from './device-command-queue.js';
+import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
+import type { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import type { DeviceSession } from './device-session.js';
-import type { ActionContext, PermissionService } from './types.js';
+import type { ActionContext, PermissionService } from '@dg-kit/safety';
 
 const POLICY_RESOLVE_MAX_ITERATIONS = 4;
 

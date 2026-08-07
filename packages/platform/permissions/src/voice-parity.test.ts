@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BrowserPermissionService, TIMED_PERMISSION_WINDOW_MS } from './browser.js';
-import type { PermissionRequest } from '@dg-agent/core';
+import { BrowserPermissionService, TIMED_PERMISSION_WINDOW_MS } from '@0xnullai/permissions';
+import type { PermissionRequest } from '@dg-kit/safety';
 
-function makeRequest(toolName = 'adjust_strength'): PermissionRequest {
+function makeRequest(toolName = 'shock_adjust'): PermissionRequest {
   return {
-    context: { sessionId: 's1', sourceType: 'web', traceId: 't1' },
+    context: { sessionId: 's1' },
     toolName,
     toolDisplayName: toolName,
     summary: 'test',
@@ -71,10 +71,10 @@ describe('BrowserPermissionService', () => {
       const requestFn = vi.fn().mockResolvedValue({ type: 'approve-scoped' });
       const svc = new BrowserPermissionService({ mode: 'confirm', requestFn });
 
-      await svc.request(makeRequest('adjust_strength'));
+      await svc.request(makeRequest('shock_adjust'));
       expect(requestFn).toHaveBeenCalledTimes(1);
 
-      await svc.request(makeRequest('adjust_strength'));
+      await svc.request(makeRequest('shock_adjust'));
       expect(requestFn).toHaveBeenCalledTimes(1); // cached
     });
 
@@ -82,12 +82,12 @@ describe('BrowserPermissionService', () => {
       const requestFn = vi.fn().mockResolvedValue({ type: 'approve-scoped' });
       const svc = new BrowserPermissionService({ mode: 'confirm', requestFn });
 
-      await svc.request(makeRequest('adjust_strength'));
-      await svc.request(makeRequest('burst'));
+      await svc.request(makeRequest('shock_adjust'));
+      await svc.request(makeRequest('shock_burst'));
       expect(requestFn).toHaveBeenCalledTimes(2);
 
-      await svc.request(makeRequest('adjust_strength'));
-      await svc.request(makeRequest('burst'));
+      await svc.request(makeRequest('shock_adjust'));
+      await svc.request(makeRequest('shock_burst'));
       expect(requestFn).toHaveBeenCalledTimes(2); // both cached
     });
 
@@ -128,14 +128,14 @@ describe('BrowserPermissionService', () => {
       const requestFn = vi.fn().mockResolvedValue({ type: 'approve-scoped' });
       const svc = new BrowserPermissionService({ mode: 'confirm', requestFn });
 
-      await svc.request(makeRequest('adjust_strength'));
-      await svc.request(makeRequest('burst'));
+      await svc.request(makeRequest('shock_adjust'));
+      await svc.request(makeRequest('shock_burst'));
       expect(requestFn).toHaveBeenCalledTimes(2);
 
       svc.clearGrants();
 
-      await svc.request(makeRequest('adjust_strength'));
-      await svc.request(makeRequest('burst'));
+      await svc.request(makeRequest('shock_adjust'));
+      await svc.request(makeRequest('shock_burst'));
       expect(requestFn).toHaveBeenCalledTimes(4);
     });
   });

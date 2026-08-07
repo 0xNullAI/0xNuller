@@ -10,7 +10,7 @@ import {
   createDefaultRealtimeProviderSettings,
   REALTIME_PROVIDER_DEFINITIONS,
 } from './realtime/providers.js';
-import type { BrowserPermissionMode } from './permissions.js';
+import type { BrowserPermissionMode } from '@0xnullai/permissions';
 import type { SavedPromptPreset } from './prompts/index.js';
 
 export const SETTINGS_STORAGE_KEY = 'dg-voice-settings';

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { ActionContext, OpossumCommand } from '@dg-agent/core';
-import { createDefaultOpossumPolicyRules } from './default-policies.js';
-import { OpossumPolicyEngine } from './policy-engine.js';
+import { createDefaultOpossumPolicyRules } from '@dg-kit/safety';
+import { OpossumPolicyEngine } from '@dg-kit/safety';
 
 const context: ActionContext = {
   sessionId: 's1',

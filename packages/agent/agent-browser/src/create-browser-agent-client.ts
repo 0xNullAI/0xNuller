@@ -10,7 +10,7 @@ import type {
   WaveformLibrary,
 } from '@dg-agent/core';
 import { getWebBluetoothAvailability } from '@dg-kit/transport-webbluetooth';
-import { BrowserPermissionService } from '@dg-agent/permissions-browser';
+import { BrowserPermissionService } from '@0xnullai/permissions';
 import {
   createFreeProxyHmacHeaders,
   resolveProviderRuntimeSettings,
