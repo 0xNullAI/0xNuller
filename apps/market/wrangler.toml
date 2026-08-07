@@ -3,13 +3,15 @@ main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
 
 # 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
-# run_worker_first 确保 /api/* 先进入 Worker，不被 SPA 回退页面拦截。
+# run_worker_first 只列 Worker 真正处理的前缀（src/worker/index.ts 只有 /api/*）。
+# 设成 true 会让每个静态资源请求都变成计费的 Worker 调用，而免费额度耗尽时
+# Cloudflare 返回 429 而不是回退到资源服务，等于整站挂掉。
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 # Worker 先行：所有请求进 Worker，非 /api 路径由 Worker 回退到 env.ASSETS。
-run_worker_first = true
+run_worker_first = ["/api/*"]
 
 # D1 数据库（免费额度：5GB 存储 / 每天 500 万行读 / 10 万行写）。
 # database_id 在执行 `wrangler d1 create dg-market` 后填入。
