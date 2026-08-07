@@ -1,13 +1,13 @@
 import { Input } from '@0xnullai/ui';
-import { HelpTip } from '@/components/HelpTip';
+import { HelpTip } from '@voice/components/HelpTip';
 import { SettingLabel } from './SettingLabel';
 import { SettingSelect } from './SettingSelect';
 import {
   getRealtimeProviderDefinition,
   REALTIME_PROVIDER_DEFINITIONS,
   type RealtimeProviderId,
-} from '@/lib/realtime/providers';
-import type { ThemeMode, VoiceSettings } from '@/lib/settings';
+} from '@voice/lib/realtime/providers';
+import type { ThemeMode, VoiceSettings } from '@voice/lib/settings';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
 
 interface GeneralTabProps {

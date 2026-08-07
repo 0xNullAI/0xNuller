@@ -3,22 +3,22 @@ import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
-import { ToolExecutor } from '@/lib/tool-executor';
-import { createVoiceToolRegistry } from '@/lib/tool-registry';
-import { BrowserWaveformLibrary } from '@/lib/waveform-library';
-import type { DeviceSession } from '@/lib/device-session';
-import { buildVoiceInstructions } from '@/lib/build-voice-instructions';
-import { getAnyPromptPresetById } from '@/lib/prompts';
-import { normalizeRealtimeProviderSettings } from '@/lib/realtime/providers';
-import { createRealtimeSession } from '@/lib/realtime/realtime-session';
+import { ToolExecutor } from '@voice/lib/tool-executor';
+import { createVoiceToolRegistry } from '@voice/lib/tool-registry';
+import { BrowserWaveformLibrary } from '@voice/lib/waveform-library';
+import type { DeviceSession } from '@voice/lib/device-session';
+import { buildVoiceInstructions } from '@voice/lib/build-voice-instructions';
+import { getAnyPromptPresetById } from '@voice/lib/prompts';
+import { normalizeRealtimeProviderSettings } from '@voice/lib/realtime/providers';
+import { createRealtimeSession } from '@voice/lib/realtime/realtime-session';
 import type {
   RealtimeSession,
   RealtimeSessionEvents,
   RealtimeTranscriptEntry,
-} from '@/lib/realtime/realtime-session';
-import { VoiceToolBridge } from '@/lib/realtime/voice-tool-bridge';
-import { CallSafetyGuard } from '@/services/call-safety-guard';
-import type { VoiceSettings } from '@/lib/settings';
+} from '@voice/lib/realtime/realtime-session';
+import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
+import { CallSafetyGuard } from '@voice/services/call-safety-guard';
+import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 
 export interface PendingPermissionRequest {

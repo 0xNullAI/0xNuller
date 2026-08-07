@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Search, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 import { formatTimestamp, getSessionPreview, getSessionTitle } from '../utils/ui-formatters.js';
 
 interface SessionSearchDialogProps {

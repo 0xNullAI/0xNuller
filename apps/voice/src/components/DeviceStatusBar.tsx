@@ -1,7 +1,7 @@
 import { Battery, BatteryFull, BatteryLow, BatteryMedium, BatteryWarning, Vibrate, Zap } from 'lucide-react';
 import { Meter } from '@0xnullai/ui';
-import type { DeviceSessionState } from '@/lib/device-session';
-import type { CoyoteSafetySettings, OpossumSafetySettings } from '@/lib/settings';
+import type { DeviceSessionState } from '@voice/lib/device-session';
+import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/settings';
 
 const DEVICE_STRENGTH_CAP = 200;
 

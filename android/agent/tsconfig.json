@@ -5,7 +5,7 @@
     "rootDir": ".",
     "outDir": "dist",
     "paths": {
-      "@/*": ["../../apps/agent/src/*"],
+      "@agent/*": ["../../apps/agent/src/*"],
       "@dg-agent/web-app/*": ["../../apps/agent/src/*"]
     },
     "types": ["node", "vite/client"]

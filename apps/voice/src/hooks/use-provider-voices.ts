@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { fetchXaiVoices } from '@/lib/realtime/voice-catalog';
-import type { RealtimeProviderId } from '@/lib/realtime/providers';
+import { fetchXaiVoices } from '@voice/lib/realtime/voice-catalog';
+import type { RealtimeProviderId } from '@voice/lib/realtime/providers';
 
 const DEBOUNCE_MS = 500;
 

@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+/* 外壳自身的类要被扫描；共享设计系统在本 app 源码树之外，同样需要显式声明。 */
+@source './';
+@source '../../../packages/platform/ui/src';
+@import '@0xnullai/ui/styles/tokens.css';
+@import '@0xnullai/ui/styles/scrollbar.css';
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}

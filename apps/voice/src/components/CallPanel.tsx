@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
-import type { RealtimeCallState } from '@/hooks/use-realtime-call';
-import type { RealtimeTranscriptEntry } from '@/lib/realtime/realtime-session';
-import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@/lib/realtime/providers';
+import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
+import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
+import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
 
 interface CallPanelProps {
   call: RealtimeCallState;

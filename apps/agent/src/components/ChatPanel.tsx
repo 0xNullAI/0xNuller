@@ -24,7 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button, Input, Meter } from '@0xnullai/ui';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
 

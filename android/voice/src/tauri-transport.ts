@@ -17,7 +17,7 @@ import {
   TauriBlecOpossumClient,
   requestDgLabDeviceTauri,
 } from '@dg-kit/transport-tauri-blec';
-import type { DeviceSessionTransport } from '@/lib/device-session';
+import type { DeviceSessionTransport } from '@voice/lib/device-session';
 import { showDevicePicker } from './components/show-device-picker';
 import { withBlePermissionHelp } from './android-shell';
 

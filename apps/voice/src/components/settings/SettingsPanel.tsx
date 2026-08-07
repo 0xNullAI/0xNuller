@@ -1,8 +1,8 @@
 import { ArrowLeft, LayoutTemplate, RotateCcw, Settings2, ShieldCheck, Volume2, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@0xnullai/ui';
-import { PresetSelector } from '@/components/PresetSelector';
-import type { VoiceSettings } from '@/lib/settings';
+import { PresetSelector } from '@voice/components/PresetSelector';
+import type { VoiceSettings } from '@voice/lib/settings';
 import { GeneralTab } from './GeneralTab';
 import { VoiceTab } from './VoiceTab';
 import { SafetyTab } from './SafetyTab';

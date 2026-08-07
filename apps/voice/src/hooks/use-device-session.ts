@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createEmptyDeviceState } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
-import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@/lib/device-session';
+import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
   coyote: createEmptyDeviceState(),

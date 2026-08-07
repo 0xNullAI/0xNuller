@@ -1,9 +1,9 @@
 import { Input } from '@0xnullai/ui';
 import { SettingLabel } from './SettingLabel';
 import { SettingSelect } from './SettingSelect';
-import { useProviderVoices } from '@/hooks/use-provider-voices';
-import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@/lib/realtime/providers';
-import type { VoiceSettings } from '@/lib/settings';
+import { useProviderVoices } from '@voice/hooks/use-provider-voices';
+import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
+import type { VoiceSettings } from '@voice/lib/settings';
 
 interface VoiceTabProps {
   settings: VoiceSettings;

@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     projects: [
       // 自带配置的 workspace
+      'apps/web',
       'apps/agent',
       'apps/chat',
       'apps/voice',
@@ -43,7 +44,7 @@ export default defineConfig({
           name: 'platform',
           environment: 'jsdom',
           globals: true,
-          setupFiles: ['./test/setup/localstorage.ts'],
+          setupFiles: ['./test/setup/jsdom-gaps.ts'],
           include: ['packages/platform/*/src/**/*.test.{ts,tsx}'],
         },
       },

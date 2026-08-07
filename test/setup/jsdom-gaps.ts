@@ -59,3 +59,27 @@ function install(name: 'localStorage' | 'sessionStorage'): void {
 
 install('localStorage');
 install('sessionStorage');
+
+/**
+ * jsdom 不实现 `window.matchMedia`。任何走「跟随系统配色」分支的代码在测试里都会
+ * 直接抛 TypeError——和上面的 localStorage 是同一类环境缺口，所以放在一起处理。
+ *
+ * 默认回答「不匹配」，也就是浅色。需要测深色的用例可以自行 mock 覆盖。
+ */
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  });
+}

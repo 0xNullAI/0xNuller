@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 import { SettingLabel } from './SettingLabel.js';
 import { SettingToggle } from './SettingToggle.js';
 import styles from './SafetyTab.module.css';

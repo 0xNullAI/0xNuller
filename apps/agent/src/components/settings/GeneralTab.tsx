@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { Check, ChevronDown, RefreshCw } from 'lucide-react';
 import { Input } from '@0xnullai/ui';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import {

@@ -3,7 +3,7 @@ import { BUILTIN_PROMPT_PRESETS, type SavedPromptPreset } from '@dg-agent/runtim
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
 import { Button, Input, Textarea } from '@0xnullai/ui';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 import { MarketImportDialog } from './MarketImportDialog.js';
 

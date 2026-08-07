@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
 import { Alert, AlertDescription, Button } from '@0xnullai/ui';
-import { useDeviceSession } from '@/hooks/use-device-session';
-import { useSettings } from '@/hooks/use-settings';
-import { useRealtimeCall } from '@/hooks/use-realtime-call';
-import { CallPanel } from '@/components/CallPanel';
-import { DeviceStatusBar } from '@/components/DeviceStatusBar';
-import { PermissionModal } from '@/components/PermissionModal';
+import { useDeviceSession } from '@voice/hooks/use-device-session';
+import { useSettings } from '@voice/hooks/use-settings';
+import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
+import { CallPanel } from '@voice/components/CallPanel';
+import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
+import { PermissionModal } from '@voice/components/PermissionModal';
 import {
   SettingsSidebar,
   SettingsWorkspace,
   type SettingsTab,
-} from '@/components/settings/SettingsPanel';
-import { ResetSettingsDialog } from '@/components/settings/ResetSettingsDialog';
+} from '@voice/components/settings/SettingsPanel';
+import { ResetSettingsDialog } from '@voice/components/settings/ResetSettingsDialog';
 import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
-import type { DeviceSessionTransport } from '@/lib/device-session';
+import type { DeviceSessionTransport } from '@voice/lib/device-session';
 
 interface AppProps {
   /**

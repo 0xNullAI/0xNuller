@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import { PanelLeftClose, PanelLeftOpen, Search, Settings, SquarePen, Trash2 } from 'lucide-react';
 import { Button, ScrollArea } from '@0xnullai/ui';
-import { cn } from '@/lib/utils';
+import { cn } from '@agent/lib/utils';
 import { formatTimestamp, getSessionTitle } from '../utils/ui-formatters.js';
 import { SessionSearchDialog } from './SessionSearchDialog.js';
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { App } from '@/App';
+import { App } from '@voice/App';
 import './styles.css';
 import { createTauriTransport } from './tauri-transport';
 import { attachLifecycleSafety } from './lifecycle-safety';

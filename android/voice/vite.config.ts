@@ -19,7 +19,7 @@ export default defineConfig({
   root: __dirname,
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, '../../apps/voice/src'),
+      '@voice': path.resolve(__dirname, '../../apps/voice/src'),
     },
   },
   plugins: [react(), tailwindcss()],
