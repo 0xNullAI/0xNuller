@@ -56,6 +56,22 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
   /* 背景网格，用于落地页与文档站的氛围层。 */
   --grid: rgba(88, 200, 242, 0.05);
+
+  /* ── z 层级。合并前四个模块各写各的数字（60 安全确认 > 50 权限/抽屉/对话框 >
+     40 浮动状态条 > 20 供应商下拉 > 10 场景下拉），跨模块无法推理谁该压谁。
+     统一成令牌之后，层级关系写在一处。 */
+  --z-module-overlay: 100;
+  --z-shell: 200;
+  --z-toast: 300;
+  --z-stop: 900;
+
+  /* 遮罩。三个模块现在各用各的黑（bg-black/40 · bg-black/50 · rgba 手写）。 */
+  --overlay-scrim: rgba(0, 0, 0, 0.4);
+  --overlay-scrim-strong: rgba(0, 0, 0, 0.55);
+
+  /* 动效时长。散落在各处的 120/140/150/160/200ms 收敛成两档。 */
+  --dur-fast: 120ms;
+  --dur: 160ms;
 }
 
 :root[data-theme='dark'] {
@@ -95,4 +111,7 @@
   --scrollbar-thumb: #3a3a3a;
   --scrollbar-thumb-hover: #525252;
   --grid: rgba(255, 233, 157, 0.045);
+
+  --overlay-scrim: rgba(0, 0, 0, 0.6);
+  --overlay-scrim-strong: rgba(0, 0, 0, 0.72);
 }
