@@ -23,8 +23,11 @@ export async function fetchItems(query: ListQuery): Promise<MarketItem[]> {
   if (query.sort) params.set('sort', query.sort);
   if (query.limit) params.set('limit', String(query.limit));
   if (query.offset) params.set('offset', String(query.offset));
-  const { items } = await req<{ items: MarketItem[] }>(`/api/items?${params}`);
-  return items;
+  // req() 在「HTTP 200 但响应不是预期 JSON」时会返回空对象（例如被某个前端路由
+  // 兜底成了 index.html），解构出的 items 就是 undefined，下游 items.length 直接
+  // 抛错整页白屏。这里兜底成空数组——列表拿不到就显示「还没有内容」，而不是崩掉。
+  const { items } = await req<{ items?: MarketItem[] }>(`/api/items?${params}`);
+  return items ?? [];
 }
 
 export async function fetchItem(id: string): Promise<MarketItem> {

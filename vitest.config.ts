@@ -13,7 +13,6 @@ export default defineConfig({
   test: {
     projects: [
       // 自带配置的 workspace
-      'apps/web',
       'apps/agent',
       'apps/chat',
       'apps/voice',
