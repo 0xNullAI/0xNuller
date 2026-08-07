@@ -10,8 +10,12 @@ name: Release
 # 这里拆成两个 job 并用 `if` 按分支分工，红叉不再是"正常现象"。
 
 on:
-  push:
-    branches: [dev, main]
+  # 迁移期间只允许手动触发。旧的 DG-Kit 仓库仍然在线且它的 release.yml 依然武装，
+  # 两个仓库同时具备发布 @dg-kit/* 的能力会直接撞车。等 npm 发布正式切到本仓、
+  # 旧仓下线之后，恢复下面被注释掉的 push 触发。
+  workflow_dispatch:
+  # push:
+  #   branches: [dev, main]
 
 concurrency:
   group: release-${{ github.ref }}
