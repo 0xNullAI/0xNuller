@@ -1,0 +1,77 @@
+name: Publish to npm
+
+# Triggered when a versioned commit lands on main (release-guard already
+# verified the bump). The publish step is idempotent — npm publish will
+# reject if the version already exists, so re-runs are safe.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Read version
+        id: ver
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if version already on npm
+        id: skip
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          if npm view "dg-mcp@$v" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::dg-mcp@$v already on npm; skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.skip.outputs.exists == 'false'
+        run: npm ci
+
+      - if: steps.skip.outputs.exists == 'false'
+        run: npm run typecheck
+
+      - if: steps.skip.outputs.exists == 'false'
+        run: npm run build
+
+      - if: steps.skip.outputs.exists == 'false'
+        name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - if: steps.skip.outputs.exists == 'false'
+        name: Release summary
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          {
+            echo "## ✅ Released to npm"
+            echo ""
+            echo "**Package:** \`dg-mcp@${v}\`"
+            echo ""
+            echo "**npm:** https://www.npmjs.com/package/dg-mcp/v/${v}"
+            echo ""
+            echo "**Install:**"
+            echo ""
+            echo '```bash'
+            echo "npx -y dg-mcp@${v}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
