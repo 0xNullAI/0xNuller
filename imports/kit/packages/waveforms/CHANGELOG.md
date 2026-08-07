@@ -1,0 +1,173 @@
+# @dg-kit/waveforms
+
+## 1.13.0
+
+### Patch Changes
+
+- Updated dependencies [249673d]
+  - @dg-kit/core@1.13.0
+
+## 1.12.0
+
+### Patch Changes
+
+- @dg-kit/core@1.12.0
+
+## 1.11.0
+
+### Patch Changes
+
+- @dg-kit/core@1.11.0
+
+## 1.10.0
+
+### Patch Changes
+
+- Updated dependencies [0e6657b]
+  - @dg-kit/core@1.10.0
+
+## 1.9.0
+
+### Patch Changes
+
+- Updated dependencies [5909ca0]
+  - @dg-kit/core@1.9.0
+
+## 1.8.1
+
+### Patch Changes
+
+- @dg-kit/core@1.8.1
+
+## 1.8.0
+
+### Patch Changes
+
+- Updated dependencies [500648d]
+  - @dg-kit/core@1.8.0
+
+## 1.7.1
+
+### Patch Changes
+
+- @dg-kit/core@1.7.1
+
+## 1.7.0
+
+### Patch Changes
+
+- @dg-kit/core@1.7.0
+
+## 1.6.1
+
+### Patch Changes
+
+- @dg-kit/core@1.6.1
+
+## 1.6.0
+
+### Patch Changes
+
+- @dg-kit/core@1.6.0
+
+## 1.5.0
+
+### Patch Changes
+
+- @dg-kit/core@1.5.0
+
+## 1.4.0
+
+### Patch Changes
+
+- Updated dependencies [9f49180]
+- Updated dependencies [9f49180]
+- Updated dependencies [3cc9922]
+  - @dg-kit/core@1.4.0
+
+## 1.3.0
+
+### Patch Changes
+
+- @dg-kit/core@1.3.0
+
+## 1.2.1
+
+### Patch Changes
+
+- @dg-kit/core@1.2.1
+
+## 1.2.0
+
+### Patch Changes
+
+- ea1d12d: Harden `@dg-kit/transport-tauri-blec` for Android shell consumers. Three behaviour fixes; all are additive and require no consumer code changes.
+  - **`TauriBlecDeviceClient.disconnect()` now zeroes the device before tearing down BLE.** Mirrors `transport-webbluetooth`'s flow: `protocol.emergencyStop()` runs first so a user-initiated disconnect never leaves Coyote V3 running at its last commanded strength (V3 retains state across drops). Previously a `disconnect()` would just close the GATT link.
+  - **GATT-shim `gatt.disconnect()` now fires `gattserverdisconnected` synchronously.** Matches Web Bluetooth observable behaviour. plugin-blec's `disconnect()` is async and not all platforms invoke its `onDisconnect` callback on a user-initiated tear-down, so the shim now fires the event itself and dedupes against a later plugin callback.
+  - **Scan result change detection covers name / connection state / services**, not only RSSI. Picker UIs now refresh when devices flip `isConnected` mid-scan or surface late service UUIDs.
+
+  No public API additions; existing test suite extended from 43 to 47 tests.
+
+- Updated dependencies [ea1d12d]
+  - @dg-kit/core@1.2.0
+
+## 1.1.0
+
+### Minor Changes
+
+- 22de7a5: Add `@dg-kit/transport-tauri-blec` — Tauri 2 BLE `DeviceClient` backed by `@mnlphlp/plugin-blec`. Mirrors `transport-webbluetooth` for non-browser runtimes (Tauri Android primary target). Synthesizes `BluetoothRemoteGATT*Like` shapes from plugin-blec's flat API so the Coyote protocol layer is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [22de7a5]
+  - @dg-kit/core@1.1.0
+
+## 1.0.1
+
+### Patch Changes
+
+- b189d86: CI / infrastructure release — no API or behaviour changes.
+  - Unified PR / issue templates + dependabot config
+  - release-guard workflow gates main entry on version bump
+  - npm provenance enabled on publish
+
+- Updated dependencies [b189d86]
+  - @dg-kit/core@1.0.1
+
+## 1.0.0
+
+### Major Changes
+
+- 340e495: First stable release. Three downstream consumers — DG-Agent (browser AI controller), DG-Chat (P2P multi-user room), and DG-MCP (Model Context Protocol server) — have all migrated onto the published `@dg-kit/*` packages and verified end-to-end against real Coyote 2.0 / 3.0 hardware. The public API (DeviceCommand shape, BaseCoyoteProtocolAdapter / WebBluetoothProtocolAdapter interfaces, ToolRegistry, RateLimitPolicy, WaveformLibrary, design-segment primitives, .pulse parser) is now considered stable; breaking changes will only ship as 2.x.
+
+### Patch Changes
+
+- Updated dependencies [340e495]
+  - @dg-kit/core@1.0.0
+
+## 0.2.0
+
+### Patch Changes
+
+- 55017d6: Add `setLimits(limitA, limitB)` to `BaseCoyoteProtocolAdapter` (and the V2 / V3 / facade implementations). On V3 it re-sends the BF init packet so the device enforces the new soft-limit; on V2 it updates state for the next tick to clamp against. Reducing a limit also clamps the current strength downward immediately. This unblocks DG-Chat's per-channel safety cap UI in Phase 4b.
+- Updated dependencies [55017d6]
+  - @dg-kit/core@0.2.0
+
+## 0.1.1
+
+### Patch Changes
+
+- 39d6853: Fix published `package.json` so `main` / `types` / `exports` point to `dist/`. The previous 0.1.0 tarballs had `main: src/index.ts` from the unsupported `publishConfig.main` override pattern, which broke `import` resolution for downstream consumers. Local dev now requires `npm run build` before `typecheck` / `test` (wired automatically via `pretypecheck` / `pretest`).
+- Updated dependencies [39d6853]
+  - @dg-kit/core@0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- 85c5805: Initial public release. Carved out from DG-Agent's internal packages and made runtime-agnostic so DG-Agent, DG-MCP, and DG-Chat can share a single source of truth for the device protocol, waveforms, and tool definitions.
+
+### Patch Changes
+
+- Updated dependencies [85c5805]
+  - @dg-kit/core@0.1.0

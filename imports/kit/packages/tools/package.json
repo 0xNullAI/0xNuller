@@ -1,0 +1,46 @@
+{
+  "name": "@dg-kit/tools",
+  "version": "1.13.0",
+  "description": "LLM tool definitions and execution-plan resolver for DG-Lab Coyote control",
+  "license": "MIT",
+  "author": "0xNullAI",
+  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/tools",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
+    "directory": "packages/tools"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@dg-kit/core": "1.13.0",
+    "@dg-kit/waveforms": "1.13.0",
+    "zod": "^4.3.6"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "dg-lab",
+    "coyote",
+    "llm",
+    "tools",
+    "agent"
+  ]
+}

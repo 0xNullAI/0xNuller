@@ -1,0 +1,44 @@
+{
+  "name": "dg-kit-root",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",
+    "typecheck": "npm run typecheck --workspaces --if-present --include-workspace-root=false",
+    "pretypecheck": "npm run build",
+    "test": "vitest run",
+    "pretest": "npm run build",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.9",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.16.0",
+    "vitest": "^4.1.5"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "semi": true,
+    "singleQuote": true,
+    "trailingComma": "all"
+  }
+}
