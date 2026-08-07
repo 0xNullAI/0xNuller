@@ -1,0 +1,10 @@
+# Local secrets for `wrangler dev` (体验版 / trial). Copy to `.dev.vars` and fill
+# in. `.dev.vars` is gitignored — never commit real values. In production these
+# are set with `wrangler secret put <NAME>` instead.
+
+# The real xAI key. Only ever used on the Worker→xAI upstream leg.
+XAI_API_KEY="xai-REPLACE_ME"
+
+# Activation-key registry (compact JSON, no spaces). Generate keys with
+# `node scripts/gen-trial-key.mjs`.
+TRIAL_KEYS={"dgv-trial-LOCALTEST":{"dailyCapMinutes":30}}

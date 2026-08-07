@@ -1,0 +1,18 @@
+/* Pulls in the shared web app's stylesheet (design tokens + Tailwind root).
+   Importing it from here rather than from main.tsx keeps a single Tailwind
+   root with the @source scan paths intact — a second import would split it
+   into a separate root with no @source and break utility extraction. */
+@import '../../../src/styles.css';
+
+/* Tailwind v4 auto-detects content relative to the CSS file's project root,
+   which for this build is apps/tauri-android — so the shared UI in ../../src
+   is invisible to it and its utilities get dropped from the bundle (the
+   symptom is an Android CSS bundle a fraction the size of the web one, and a
+   visibly unstyled app). Declaring it explicitly is required, not optional. */
+@source '../../../src';
+
+/* Android-only: respect the display cutout / gesture bar. */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
