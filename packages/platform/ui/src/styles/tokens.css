@@ -48,6 +48,14 @@
   --button-text: #ffffff;
   --scrollbar-thumb: #d0dbe3;
   --scrollbar-thumb-hover: #b8c8d4;
+  /* 排版身份。合并前这三个只存在于 DG-Wiki，共享层反而没有——
+     所以「统一字体」这件事在其余应用里从来没生效过。 */
+  --font-display: 'Big Shoulders Display', 'PingFang SC', 'HarmonyOS_Regular', sans-serif;
+  --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei',
+    system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  /* 背景网格，用于落地页与文档站的氛围层。 */
+  --grid: rgba(88, 200, 242, 0.05);
 }
 
 :root[data-theme='dark'] {
@@ -86,4 +94,5 @@
   --button-text: #080808;
   --scrollbar-thumb: #3a3a3a;
   --scrollbar-thumb-hover: #525252;
+  --grid: rgba(255, 233, 157, 0.045);
 }

@@ -1,54 +1,6 @@
-/*
- * DG family design tokens — single source mirrored from DG-Agent's
- * apps/web/src/styles/tokens.css. Light = sky cyan, Dark = warm amber.
- * Keep these values in sync with the sister sites.
- */
-
-:root {
-  --bg: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-strong: #f8fafb;
-  --bg-soft: rgba(88, 200, 242, 0.08);
-  --text: #1a1a1a;
-  --text-soft: #5a6872;
-  --text-faint: #94a3b0;
-  --accent: #58c8f2;
-  --accent-soft: rgba(88, 200, 242, 0.1);
-  --accent-strong: #3ab5e6;
-  --accent-hover: rgba(88, 200, 242, 0.16);
-  --border: #e8eef2;
-  --border-strong: #d0dbe3;
-  --glass: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(232, 238, 242, 0.6);
-  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.08);
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 22px;
-  --radius-xl: 28px;
-  --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
-}
-
-:root[data-theme='dark'] {
-  --bg: #080808;
-  --bg-elevated: #141414;
-  --bg-strong: #141414;
-  --bg-soft: rgba(255, 233, 157, 0.08);
-  --text: #ececec;
-  --text-soft: #999999;
-  --text-faint: #666666;
-  --accent: #ffe99d;
-  --accent-soft: rgba(255, 233, 157, 0.1);
-  --accent-strong: #ffb800;
-  --accent-hover: rgba(255, 233, 157, 0.18);
-  --border: #222222;
-  --border-strong: #333333;
-  --glass: rgba(14, 14, 14, 0.85);
-  --glass-border: rgba(34, 34, 34, 0.6);
-  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.6);
-}
+/* 设计令牌来自 @0xnullai/ui —— 合并前这里是第五份副本，且命名已漂移
+   （用 --border 而共享层是 --surface-border）。 */
+@import '@0xnullai/ui/styles/tokens.css';
 
 * {
   box-sizing: border-box;

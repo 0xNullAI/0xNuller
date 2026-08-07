@@ -9,6 +9,7 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@0xnullai/ui": "0.1.0",
     "astro": "^4.15.4"
   }
 }
