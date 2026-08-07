@@ -7,13 +7,8 @@ import {
 } from '@dg-agent/agent-browser';
 import type { MessageOrigin } from '@dg-agent/bridge';
 import type { DeviceClient, PermissionDecision } from '@dg-agent/core';
-import {
-  CoyoteProtocolAdapter,
-  WebBluetoothCivetEdgingClient,
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  WebBluetoothPawPrintsClient,
-} from '@dg-agent/device-webbluetooth';
+import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
+import { WebBluetoothCivetEdgingClient, WebBluetoothDeviceClient, WebBluetoothOpossumClient, WebBluetoothPawPrintsClient } from '@dg-kit/transport-webbluetooth';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { BrowserUpdateChecker } from '../services/update-checker.js';

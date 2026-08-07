@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { DiscoveredDevice } from '@dg-agent/device-tauri-ble';
+import type { DiscoveredDevice } from '@dg-kit/transport-tauri-blec';
 import './DevicePicker.css';
 
 interface Props {

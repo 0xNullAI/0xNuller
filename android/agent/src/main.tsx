@@ -1,12 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from '@dg-agent/web-app/App';
-import {
-  TauriBlecDeviceClient,
-  TauriBlecOpossumClient,
-  TauriBlecPawPrintsClient,
-  TauriBlecCivetEdgingClient,
-} from '@dg-agent/device-tauri-ble';
+import { TauriBlecDeviceClient, TauriBlecOpossumClient, TauriBlecPawPrintsClient, TauriBlecCivetEdgingClient } from '@dg-kit/transport-tauri-blec';
 import { showDevicePicker } from './components/show-device-picker';
 import { UpdateBanner } from './components/UpdateBanner';
 import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';

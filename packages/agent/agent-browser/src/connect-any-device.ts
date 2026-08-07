@@ -13,12 +13,8 @@
  * caller-supplied client that genuinely doesn't implement `connectDevice()`.
  */
 import type { DeviceClient, DeviceKind } from '@dg-agent/core';
-import {
-  requestDgLabDevice,
-  type BluetoothDeviceLike,
-  type BluetoothRemoteGATTServerLike,
-  type RequestDgLabDeviceOptions,
-} from '@dg-agent/device-webbluetooth';
+import { type BluetoothDeviceLike, type BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
+import { requestDgLabDevice, type RequestDgLabDeviceOptions } from '@dg-kit/transport-webbluetooth';
 import {
   DEVICE_KIND_DISPLAY_NAME,
   type CivetEdgingClient,

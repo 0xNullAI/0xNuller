@@ -9,7 +9,7 @@ import type {
   SessionTraceStore,
   WaveformLibrary,
 } from '@dg-agent/core';
-import { getWebBluetoothAvailability } from '@dg-agent/device-webbluetooth';
+import { getWebBluetoothAvailability } from '@dg-kit/transport-webbluetooth';
 import { BrowserPermissionService } from '@dg-agent/permissions-browser';
 import {
   createFreeProxyHmacHeaders,

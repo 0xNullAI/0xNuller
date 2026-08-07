@@ -22,10 +22,7 @@
  */
 
 import type { DeviceClient } from '@dg-agent/core';
-import type {
-  BluetoothDeviceLike,
-  BluetoothRemoteGATTServerLike,
-} from '@dg-agent/device-tauri-ble';
+import type { BluetoothDeviceLike, BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
 
 interface LifecycleListener {
   detach(): void;

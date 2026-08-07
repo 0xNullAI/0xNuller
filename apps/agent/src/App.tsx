@@ -12,7 +12,7 @@ import {
   type PermissionDecision,
 } from '@dg-agent/core';
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
-import { createEmptyOpossumState } from '@dg-agent/device-webbluetooth';
+import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
 import { applyTheme, subscribeThemeChanges } from './services/theme.js';

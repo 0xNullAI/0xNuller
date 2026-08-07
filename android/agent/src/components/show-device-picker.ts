@@ -1,6 +1,6 @@
 import { createElement, Fragment } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { DeviceSelectionController, DiscoveredDevice } from '@dg-agent/device-tauri-ble';
+import type { DeviceSelectionController, DiscoveredDevice } from '@dg-kit/transport-tauri-blec';
 import { DevicePicker } from './DevicePicker';
 
 let host: HTMLDivElement | null = null;

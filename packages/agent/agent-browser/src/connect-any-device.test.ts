@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { NavigatorBluetoothLike } from '@dg-agent/device-webbluetooth';
+import type { NavigatorBluetoothLike } from '@dg-kit/protocol';
 import { connectAnyDgLabDevice, type ConnectAnyDeviceClients } from './connect-any-device.js';
 
 class FakeGatt {

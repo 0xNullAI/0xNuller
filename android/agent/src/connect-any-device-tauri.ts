@@ -15,12 +15,8 @@
  * `connectDevice()` now).
  */
 import type { DeviceClient, DeviceKind } from '@dg-agent/core';
-import {
-  requestDgLabDeviceTauri,
-  type BluetoothDeviceLike,
-  type BluetoothRemoteGATTServerLike,
-  type RequestDgLabDeviceTauriOptions,
-} from '@dg-agent/device-tauri-ble';
+import { type BluetoothDeviceLike, type BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
+import { requestDgLabDeviceTauri, type RequestDgLabDeviceTauriOptions } from '@dg-kit/transport-tauri-blec';
 import {
   DEVICE_KIND_DISPLAY_NAME,
   type CivetEdgingClient,

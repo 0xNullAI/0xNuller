@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
-import type { OpossumState } from '@dg-agent/device-webbluetooth';
+import type { OpossumState } from '@dg-kit/protocol';
 import type { PromptPreset, SavedPromptPreset } from '@dg-agent/runtime';
 import {
   ArrowUp,
