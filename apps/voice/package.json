@@ -20,10 +20,11 @@
     "android:init": "npm run tauri:android:init -w @dg-voice/tauri-android"
   },
   "dependencies": {
+    "@0xnullai/ui": "0.1.0",
     "@dg-kit/core": "^1.13.0",
     "@dg-kit/protocol": "^1.13.0",
-    "@dg-kit/transport-webbluetooth": "^1.13.0",
     "@dg-kit/tools": "^1.13.0",
+    "@dg-kit/transport-webbluetooth": "^1.13.0",
     "@dg-kit/waveforms": "^1.13.0",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",

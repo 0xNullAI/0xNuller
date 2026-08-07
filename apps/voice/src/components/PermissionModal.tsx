@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@0xnullai/ui';
 
 /**
  * Ported verbatim from DG-Agent's `apps/web/src/components/PermissionModal.tsx`

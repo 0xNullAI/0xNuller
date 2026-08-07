@@ -1,4 +1,4 @@
-import { Input } from '@/components/ui/input';
+import { Input } from '@0xnullai/ui';
 import { SettingLabel } from './SettingLabel';
 import { SettingSelect } from './SettingSelect';
 import { useProviderVoices } from '@/hooks/use-provider-voices';

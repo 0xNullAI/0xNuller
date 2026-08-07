@@ -1,6 +1,8 @@
 @import 'tailwindcss';
-@import './styles/tokens.css';
+/* 共享设计系统的组件在本 app 源码树之外，必须显式让 Tailwind 扫描，否则类会被 tree-shake */
+@source '../../../packages/platform/ui/src';
+@import '@0xnullai/ui/styles/tokens.css';
 @import './styles/base.css';
-@import './styles/scrollbar.css';
+@import '@0xnullai/ui/styles/scrollbar.css';
 @import './styles/app.css';
 @import './styles/animations.css';

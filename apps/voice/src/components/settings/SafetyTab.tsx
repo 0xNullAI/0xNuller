@@ -1,4 +1,4 @@
-import { Input } from '@/components/ui/input';
+import { Input } from '@0xnullai/ui';
 import { SettingLabel } from './SettingLabel';
 import { SettingToggle } from './SettingToggle';
 import type { VoiceSettings } from '@/lib/settings';

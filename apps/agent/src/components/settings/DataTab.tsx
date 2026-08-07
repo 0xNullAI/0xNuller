@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Button, Checkbox } from '@0xnullai/ui';
 import { formatTimestamp } from '../../utils/ui-formatters.js';
 
 export interface ExportableSession {

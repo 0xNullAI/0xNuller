@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Button, Checkbox } from '@0xnullai/ui';
 import styles from './SafetyNoticeModal.module.css';
 
 const SAFETY_NOTICE_SECTIONS = [

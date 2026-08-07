@@ -1,7 +1,4 @@
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input, Textarea } from '@0xnullai/ui';
 import type { EditingWaveformState } from '../hooks/use-waveform-manager.js';
 
 interface WaveformEditorDialogProps {

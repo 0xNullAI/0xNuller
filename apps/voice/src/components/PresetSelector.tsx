@@ -1,8 +1,6 @@
 import { useRef, useState } from 'react';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Button, Input, Textarea } from '@0xnullai/ui';
 import { cn } from '@/lib/utils';
 import { BUILTIN_PROMPT_PRESETS, type SavedPromptPreset } from '@/lib/prompts';
 import type { MarketItem, MarketScenarioContent } from '@/lib/market';

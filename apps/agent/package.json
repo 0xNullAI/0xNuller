@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@0xnullai/ui": "0.1.0",
     "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/audio-browser": "0.1.0",
     "@dg-agent/bridge": "0.1.0",

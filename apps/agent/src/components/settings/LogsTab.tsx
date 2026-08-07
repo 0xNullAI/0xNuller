@@ -1,8 +1,7 @@
 import type { BridgeLogEntry, BridgeManagerStatus } from '@dg-agent/bridge';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { ModelLogTurn } from '../../services/model-log-store.js';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Badge, Button } from '@0xnullai/ui';
 import { formatTimestamp } from '../../utils/ui-formatters.js';
 import { JsonTree } from '../JsonTree.js';
 import { SettingToggle } from './SettingToggle.js';

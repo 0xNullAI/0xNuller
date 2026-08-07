@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, Button } from '@0xnullai/ui';
 import { TauriUpdateChecker, type AndroidUpdateStatus } from '../services/update-checker.js';
 
 // Module-level singleton: one poll loop for the app's lifetime, independent

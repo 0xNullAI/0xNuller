@@ -1,5 +1,5 @@
 import * as Progress from '@radix-ui/react-progress';
-import { cn } from '@/lib/utils';
+import { cn } from '../utils';
 
 interface MeterProps {
   value: number;

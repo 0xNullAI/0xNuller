@@ -15,7 +15,7 @@ import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { applyTheme, subscribeThemeChanges } from './services/theme.js';
+import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
@@ -31,14 +31,7 @@ import {
   SettingsWorkspace,
   type SettingsModalTab,
 } from './components/SettingsDrawer.js';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@0xnullai/ui';
 import {
   useBrowserAppServices,
   type PendingPermissionRequest,

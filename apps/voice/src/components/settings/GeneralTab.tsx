@@ -1,4 +1,4 @@
-import { Input } from '@/components/ui/input';
+import { Input } from '@0xnullai/ui';
 import { HelpTip } from '@/components/HelpTip';
 import { SettingLabel } from './SettingLabel';
 import { SettingSelect } from './SettingSelect';

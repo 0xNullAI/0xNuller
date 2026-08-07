@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Search } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input } from '@0xnullai/ui';
 import {
   fetchMarketItems,
   markMarketDownloaded,

@@ -18,7 +18,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@0xnullai/ui';
 import { GeneralTab } from './settings/GeneralTab.js';
 import { SafetyTab } from './settings/SafetyTab.js';
 import { BridgeTab } from './settings/BridgeTab.js';

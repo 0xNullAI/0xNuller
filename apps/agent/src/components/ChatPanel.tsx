@@ -23,9 +23,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Meter } from '@/components/ui/meter';
+import { Button, Input, Meter } from '@0xnullai/ui';
 import { cn } from '@/lib/utils';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';

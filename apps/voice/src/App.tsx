@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, Button } from '@0xnullai/ui';
 import { useDeviceSession } from '@/hooks/use-device-session';
 import { useSettings } from '@/hooks/use-settings';
 import { useRealtimeCall } from '@/hooks/use-realtime-call';
@@ -14,7 +13,7 @@ import {
   type SettingsTab,
 } from '@/components/settings/SettingsPanel';
 import { ResetSettingsDialog } from '@/components/settings/ResetSettingsDialog';
-import { applyTheme, subscribeThemeChanges } from '@/services/theme';
+import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@/lib/device-session';
 
 interface AppProps {

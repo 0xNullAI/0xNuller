@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { PROXY_TTS_SPEAKERS, getBrowserSpeechSynthesisVoices } from '@dg-agent/audio-browser';
-import { Input } from '@/components/ui/input';
+import { Input } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { SettingLabel } from './SettingLabel.js';

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@/hooks/use-realtime-call';
 import type { RealtimeTranscriptEntry } from '@/lib/realtime/realtime-session';
 import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@/lib/realtime/providers';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { WaveformDefinition } from '@dg-agent/core';
 import { Pencil, Store, Trash2, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@0xnullai/ui';
 import type { MarketItem, MarketWaveformContent } from '@/lib/market';
 import { MarketImportDialog } from './MarketImportDialog.js';
 

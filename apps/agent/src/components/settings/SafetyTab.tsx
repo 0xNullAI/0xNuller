@@ -1,16 +1,8 @@
 import React, { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ChevronDown } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { SettingLabel } from './SettingLabel.js';
 import { SettingToggle } from './SettingToggle.js';

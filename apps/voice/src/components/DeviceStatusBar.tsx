@@ -1,5 +1,5 @@
 import { Battery, BatteryFull, BatteryLow, BatteryMedium, BatteryWarning, Vibrate, Zap } from 'lucide-react';
-import { Meter } from '@/components/ui/meter';
+import { Meter } from '@0xnullai/ui';
 import type { DeviceSessionState } from '@/lib/device-session';
 import type { CoyoteSafetySettings, OpossumSafetySettings } from '@/lib/settings';
 
