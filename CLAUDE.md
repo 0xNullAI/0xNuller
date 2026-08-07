@@ -16,7 +16,8 @@ packages/kit/*        @dg-kit/*，发布到 npm。dist-first：main/types 指向
 packages/platform/*   @0xnullai/*，跨模块共用、不发布
                       ui · llm-providers · market-client · permissions
 packages/agent/*      @dg-agent/*，Agent 模块专属
-apps/*                agent chat voice market landing wiki mcp
+apps/web              ★ 统一外壳：常驻导航 + 四模块按路由挂载，唯一的网页产物
+apps/*                agent chat voice market landing wiki mcp（被外壳挂载的源码树）
 android/*             agent chat voice，三个 Tauri 壳
 workers/*             llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
 ```
@@ -57,6 +58,16 @@ npm run changeset    # 改了 packages/kit/* 就要写
 3. **安全逻辑不得出现第二份可独立演化的副本**——要复用就上提到共享包
 
 DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
+
+## 外壳与模块
+
+`apps/web` 是唯一的网页产物。四个模块**一旦打开就保持挂载**，切走只是隐藏——这样
+BLE 连接不会因为切模块而断开，是把它们合进同一个 origin 唯一无法被替代的收益。
+`apps/web/src/Shell.test.tsx` 里有一条测试专门守着这个行为：它一旦被改坏，构建和
+类型检查都不会报错，用户却会遇到「切个标签设备就掉线」。
+
+各模块内部的别名是 `@agent` / `@voice`（不是 `@`）——单一构建里只能有一个 `@`。
+外壳的 build 只跑 vite，模块的类型检查在各自的 build 里做。
 
 ## 已知的坑
 

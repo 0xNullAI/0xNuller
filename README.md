@@ -34,7 +34,7 @@ git clone https://github.com/0xNullAI/0xNuller.git
 cd 0xNuller
 npm install
 npm run build:kit        # 共享层是 dist-first，其余包依赖它的构建产物
-npm run dev -w dg-chat   # 或 -w @dg-agent/web / dg-voice / dg-market
+npm run dev -w @0xnullai/web   # 统一外壳，四个模块都在里面
 ```
 
 Web Bluetooth 需要 **Chrome 或 Edge**。
@@ -54,7 +54,8 @@ packages/
   agent/                   @dg-agent/*，Agent 模块专属
     runtime/ agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/
 apps/
-  agent/ chat/ voice/ market/     四个功能模块
+  web/                     ★ 统一外壳：常驻导航 + 四模块按路由挂载（0xnullai.com）
+  agent/ chat/ voice/ market/     四个功能模块的源码树
   landing/                 落地页（Astro）
   wiki/                    文档站（只读，贡献走 PR）
   mcp/                     MCP 服务端，发布为 npm 包 dg-mcp
@@ -67,6 +68,8 @@ docs/legacy/               各仓合并前的 CLAUDE.md 与 README 存档
 ```
 
 `packages/*/*` 的两层结构一是为了让 `@dg-kit/core` 与 `@dg-agent/core` 这类同名包共存，二是让「发布到 npm」「跨模块共用」「模块专属」三种性质在目录上一眼可辨。
+
+`apps/web` 是唯一的网页产物；`apps/{agent,chat,voice,market}` 现在是被它按路由挂载的源码树（各自仍可独立 `npm run dev -w` 调试）。模块一旦打开就保持挂载，所以切模块不会断开设备连接。
 
 ## 命令
 
