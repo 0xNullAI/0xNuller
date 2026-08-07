@@ -38,7 +38,7 @@ PR 标题用 conventional-commit 风格：type(scope): subject
 
 <!--
 - 是否破坏 API？是 → 加 `breaking-change` 标签，PR 标题改 `feat!` 或 `fix!`
-- 是否需要 changeset / changelog？(DG-Kit 必加；其它项目按需)
+- 是否需要 changeset / changelog？（改动 packages/kit/* 必加）
 - 是否影响下游消费者？列举一下
 -->
 

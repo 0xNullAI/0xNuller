@@ -125,7 +125,11 @@ export default tseslint.config(
 
   // 构建配置跑在 node 上
   {
-    files: ['*.config.{ts,js,mjs}', 'apps/*/*.config.{ts,js,mjs}', 'android/*/*.config.{ts,js,mjs}'],
+    files: [
+      '*.config.{ts,js,mjs}',
+      'apps/*/*.config.{ts,js,mjs}',
+      'android/*/*.config.{ts,js,mjs}',
+    ],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

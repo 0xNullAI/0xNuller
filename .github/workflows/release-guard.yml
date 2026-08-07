@@ -55,7 +55,7 @@ jobs:
           }
 
           check "package.json"
-          for f in packages/*/package.json; do
+          for f in packages/*/*/package.json; do
             [ -e "$f" ] && check "$f"
           done
 
@@ -65,7 +65,7 @@ jobs:
             echo ""
             echo "If this is a release PR:"
             echo "  - For single-package repos: bump root package.json (e.g. npm version patch)"
-            echo "  - For monorepo (DG-Kit / DG-Agent): use changesets or bump packages/*/package.json"
+            echo "  - For @dg-kit/*: use changesets (npm run changeset)"
             echo ""
             echo "If this is NOT a release PR: retarget the base branch to 'dev'."
             exit 1
