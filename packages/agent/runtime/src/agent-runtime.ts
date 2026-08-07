@@ -484,7 +484,7 @@ export class AgentRuntime {
           message: abortedMessage,
           sourceType: input.context.sourceType,
         });
-        throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
+        throw new Error(REPLY_ABORTED_ERROR_MESSAGE, { cause: error });
       }
 
       const assistantErrorMessage = appendAssistantMessage(

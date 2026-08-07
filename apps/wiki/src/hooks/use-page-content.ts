@@ -1,64 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import type { Document } from '../lib/projects';
 
-const STORAGE_PREFIX = 'dg-wiki:content:';
-
-interface ReturnShape {
-  content: string;
-  isModified: boolean;
-  setContent: (next: string) => void;
-  reset: () => void;
-}
-
 /**
- * Reads the document content, preferring localStorage if the user has
- * edited it. Falls back to the markdown shipped with the build.
+ * 读取文档正文。
  *
- * Storage key is `<projectId>/<docId>` so the same key keeps mapping if the
- * doc is renamed or moved between projects (rare but cheap insurance).
+ * 原先这里还有一层 localStorage 覆盖，用于网页端的在线编辑器——编辑器已下线，
+ * 文档改为只走官方发布（正文随构建打包，贡献走仓库 PR）。保留这个 hook 是为了
+ * 让调用方形态不变，同时给未来的按需加载留一个收口。
  */
-export function usePageContent(projectId: string, doc: Document): ReturnShape {
-  const key = `${STORAGE_PREFIX}${projectId}/${doc.id}`;
-  const [content, setContentState] = useState(() => {
-    if (typeof window === 'undefined') return doc.defaultMd;
-    return localStorage.getItem(key) ?? doc.defaultMd;
-  });
-
-  // Re-load when the project / doc changes. setState-in-effect is the
-  // standard pattern for "re-initialize state from a prop"; React 19's
-  // eslint plugin flags it but the alternatives are noisier here.
-  useEffect(() => {
-    const stored = localStorage.getItem(key);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setContentState(stored ?? doc.defaultMd);
-  }, [doc.id, doc.defaultMd, key]);
-
-  const setContent = useCallback(
-    (next: string) => {
-      setContentState(next);
-      if (next === doc.defaultMd) {
-        localStorage.removeItem(key);
-      } else {
-        localStorage.setItem(key, next);
-      }
-    },
-    [key, doc.defaultMd],
-  );
-
-  const reset = useCallback(() => {
-    localStorage.removeItem(key);
-    setContentState(doc.defaultMd);
-  }, [key, doc.defaultMd]);
-
-  return {
-    content,
-    isModified: content !== doc.defaultMd,
-    setContent,
-    reset,
-  };
-}
-
-export function isContentModified(projectId: string, docId: string): boolean {
-  if (typeof window === 'undefined') return false;
-  return localStorage.getItem(`${STORAGE_PREFIX}${projectId}/${docId}`) !== null;
+export function usePageContent(_projectId: string, doc: Document): { content: string } {
+  return useMemo(() => ({ content: doc.defaultMd }), [doc.defaultMd]);
 }

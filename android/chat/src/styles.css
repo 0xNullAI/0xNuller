@@ -7,17 +7,17 @@
  * zero and the app renders unstyled. Re-declares the scan paths before
  * re-importing the web entry so utility extraction sees both trees.
  */
-@source "../../../src";
+@source "../../../apps/chat/src";
 @source "./";
 
 /*
  * Pull in the web app's full stylesheet — crucially the one carrying
  * `@import 'tailwindcss'`. The @source directives above MUST live in the same
- * CSS bundle as that import, or Tailwind v4 scans nothing under ../../../src
+ * CSS bundle as that import, or Tailwind v4 scans nothing under ../../../apps/chat/src
  * and tree-shakes every utility to zero (the app renders unstyled on Android).
  * main.tsx therefore imports ONLY this file, never @chat/index.css separately.
  */
-@import '../../../src/index.css';
+@import '../../../apps/chat/src/index.css';
 
 /*
  * Safe-area insets for Android edge-to-edge display.
@@ -40,7 +40,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  /* Background intentionally NOT set here — ../../../src/styles/app.css
+  /* Background intentionally NOT set here — ../../../apps/chat/src/styles/app.css
      drives `body { background: var(--bg) }` which flips with the
      light/dark theme tokens. Hardcoding it would override theme switching. */
   box-sizing: border-box;

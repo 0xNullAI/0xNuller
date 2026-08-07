@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { DocTabs } from './components/DocTabs';
 import { Header } from './components/Header';
 import { MarkdownView } from './components/MarkdownView';
-import { EditPanel } from './components/EditPanel';
 import { TableOfContents } from './components/TableOfContents';
 import { Waveform } from './components/Waveform';
 import {
@@ -14,7 +13,7 @@ import {
   type Document,
   type Project,
 } from './lib/projects';
-import { isContentModified, usePageContent } from './hooks/use-page-content';
+import { usePageContent } from './hooks/use-page-content';
 import { useTheme } from './hooks/use-theme';
 
 interface Route {
@@ -33,13 +32,12 @@ function readRouteFromHash(): Route {
 
 export function App() {
   const [route, setRoute] = useState<Route>(readRouteFromHash);
-  const [isEditing, setIsEditing] = useState(false);
 
   const project = useMemo(() => findProject(route.projectId), [route.projectId]);
   const doc = useMemo(() => findDocument(project, route.docId), [project, route.docId]);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { content, isModified, setContent, reset } = usePageContent(project.id, doc);
+  const { content } = usePageContent(project.id, doc);
 
   useEffect(() => {
     const sync = () => setRoute(readRouteFromHash());
@@ -52,53 +50,35 @@ export function App() {
     const docId = next.documents[0]!.id;
     window.location.hash = `/${projectId}/${docId}`;
     setRoute({ projectId, docId });
-    setIsEditing(false);
     window.scrollTo({ top: 0 });
   };
 
   const navigateDoc = (docId: string) => {
     window.location.hash = `/${route.projectId}/${docId}`;
     setRoute({ projectId: route.projectId, docId });
-    setIsEditing(false);
     window.scrollTo({ top: 0 });
   };
 
-  const projectIsModified = (projectId: string) =>
-    PROJECTS.find((p) => p.id === projectId)?.documents.some((d) =>
-      isContentModified(projectId, d.id),
-    ) ?? false;
 
-  const docIsModified = (docId: string) => isContentModified(route.projectId, docId);
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
       {/* Single sticky shell so the two bars always travel together — no gap. */}
       <div className="sticky top-0 z-30 bg-[var(--bg)]/85 backdrop-blur border-b border-[var(--surface-border)]">
         <Header
-          isModified={isModified}
           theme={theme}
           onToggleTheme={toggleTheme}
           activeProjectId={route.projectId}
           onSelectProject={navigateProject}
-          isProjectModified={projectIsModified}
           tocContent={content}
         />
         <DocTabs
           project={project}
           activeDocId={route.docId}
           onNavigate={navigateDoc}
-          isModified={docIsModified}
         />
       </div>
 
-      {isEditing ? (
-        <EditPanel
-          doc={doc}
-          content={content}
-          onChange={setContent}
-          onClose={() => setIsEditing(false)}
-        />
-      ) : (
         <main className="flex-1 flex gap-8 lg:gap-12 px-4 sm:px-6 lg:px-12 xl:px-16 py-6 sm:py-10 max-w-[1400px] w-full mx-auto">
           <TableOfContents content={content} />
 
@@ -106,16 +86,9 @@ export function App() {
             <DocHero project={project} docLabel={doc.label} />
             <MarkdownView content={content} />
 
-            <PageActions
-              doc={doc}
-              project={project}
-              isModified={isModified}
-              onEdit={() => setIsEditing(true)}
-              onReset={reset}
-            />
+            <PageActions doc={doc} project={project} />
           </div>
         </main>
-      )}
     </div>
   );
 }
@@ -140,21 +113,15 @@ function DocHero({ project, docLabel }: { project: Project; docLabel: string }) 
 
 /**
  * Bottom action bar — replaces the header's button cluster. Centralizes
- * page-level actions (edit / open PR / view repo / reset local edits) so
+ * page-level actions（在仓库里改这一页 / 看源码）so
  * the top bar stays clean and the layout works on narrow screens.
  */
 function PageActions({
   doc,
   project,
-  isModified,
-  onEdit,
-  onReset,
 }: {
   doc: Document;
   project: Project;
-  isModified: boolean;
-  onEdit: () => void;
-  onReset: () => void;
 }) {
   return (
     <section className="mt-16 sm:mt-20 pt-8 border-t border-[var(--surface-border)]">
@@ -165,23 +132,10 @@ function PageActions({
           </div>
           <div className="font-mono text-[12px] text-[var(--text-soft)] truncate">
             {project.id}/{doc.id}.md
-            {isModified ? (
-              <span className="ml-2 text-[var(--danger)]">· local-edit</span>
-            ) : null}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isModified ? (
-            <button
-              type="button"
-              onClick={onReset}
-              className="dg-button"
-              title="把本地修改丢弃，恢复随构建发布的原文"
-            >
-              ↺ reset
-            </button>
-          ) : null}
           <a
             href={githubEditUrl(doc)}
             target="_blank"
@@ -194,9 +148,6 @@ function PageActions({
           <a href={REPO_BASE} target="_blank" rel="noreferrer" className="dg-button">
             ↗ github
           </a>
-          <button type="button" onClick={onEdit} className="dg-button is-primary">
-            ✎ edit
-          </button>
         </div>
       </div>
 

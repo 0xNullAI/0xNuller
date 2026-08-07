@@ -8,6 +8,9 @@ function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval 
   const timerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const actionRef = useRef(action);
+  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
+  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // eslint-disable-next-line react-hooks/refs
   actionRef.current = action;
 
   const stop = useCallback(() => {

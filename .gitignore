@@ -1,3 +1,9 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+# 工具缓存
 .claude/settings.local.json
 .claude/projects/
 .claude/worktrees/
@@ -7,8 +13,18 @@
 .playwright-mcp
 .vite
 .tmp
-node_modules
-dist
-coverage
-*.tsbuildinfo
+.astro
+
+# Cloudflare
+.wrangler
+.dev.vars
+!.dev.vars.example
+
+# Tauri / Rust（android/*）
+target
+gen
+*.jks
+*.keystore
+
+# 构建产物截图等
 /*.png

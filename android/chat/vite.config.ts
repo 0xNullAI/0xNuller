@@ -19,7 +19,7 @@ export default defineConfig({
   // Resolve back to the web app source so JSX / CSS modules / hooks just work.
   resolve: {
     alias: {
-      '@chat': path.resolve(__dirname, '../../src'),
+      '@chat': path.resolve(__dirname, '../../apps/chat/src'),
     },
   },
   plugins: [react(), tailwindcss()],

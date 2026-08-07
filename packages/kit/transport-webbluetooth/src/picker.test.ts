@@ -31,7 +31,7 @@ function setupNav(deviceName: string): {
 describe('requestDgLabDevice', () => {
   it('detects a Coyote V3 pick and connects its GATT server', async () => {
     const { nav, device } = setupNav('47L121000');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const result = await requestDgLabDevice({ navigatorRef: nav as any });
 
     expect(result.kind).toBe('coyote');
@@ -48,7 +48,7 @@ describe('requestDgLabDevice', () => {
     ];
     for (const [name, kind] of cases) {
       const { nav } = setupNav(name);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const result = await requestDgLabDevice({ navigatorRef: nav as any });
       expect(result.kind).toBe(kind);
     }
@@ -57,7 +57,7 @@ describe('requestDgLabDevice', () => {
   it('rejects and disconnects an unrecognized device name', async () => {
     const { nav, device } = setupNav('some-other-ble-thing');
     await expect(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       requestDgLabDevice({ navigatorRef: nav as any }),
     ).rejects.toThrow('未识别的设备');
     // Never got far enough to connect GATT at all — nothing to disconnect.
@@ -66,11 +66,11 @@ describe('requestDgLabDevice', () => {
 
   it('throws when the picked device exposes no GATT', async () => {
     const device = new FakeBluetoothDevice('47L121000');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (device as any).gatt = undefined;
     const requestDevice = vi.fn(async () => device);
     const result = requestDgLabDevice({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: { bluetooth: { requestDevice } } as any,
     });
     await expect(result).rejects.toThrow('不支持 GATT');
@@ -84,7 +84,7 @@ describe('requestDgLabDevice', () => {
     });
 
     await expect(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       requestDgLabDevice({ navigatorRef: nav as any }),
     ).rejects.toThrow('connect refused');
     expect(device.gatt.disconnect).toHaveBeenCalledTimes(1);

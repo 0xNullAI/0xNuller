@@ -4,7 +4,6 @@ interface Props {
   project: Project;
   activeDocId: string;
   onNavigate: (docId: string) => void;
-  isModified: (docId: string) => boolean;
 }
 
 const audienceLabel: Record<Document['audience'], string> = {
@@ -17,13 +16,13 @@ const audienceLabel: Record<Document['audience'], string> = {
  * (manual / developer / faq). Lives in the same sticky shell as the header
  * so there is no gap between the two bars.
  */
-export function DocTabs({ project, activeDocId, onNavigate, isModified }: Props) {
+export function DocTabs({ project, activeDocId, onNavigate }: Props) {
   return (
     <nav className="border-t border-[var(--surface-border)] bg-[var(--bg-strong)]/60">
       <div className="flex items-stretch px-4 sm:px-6 lg:px-8 gap-0 overflow-x-auto no-scrollbar">
         {project.documents.map((doc) => {
           const isActive = doc.id === activeDocId;
-          const dirty = isModified(doc.id);
+    const dirty = false;
           return (
             <button
               type="button"

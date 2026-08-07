@@ -17,8 +17,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@chat/*": ["../../src/*"]
+      "@chat/*": ["../../apps/chat/src/*"]
     }
   },
-  "include": ["src", "../../src"]
+  "include": ["src", "../../apps/chat/src"]
 }

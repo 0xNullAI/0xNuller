@@ -7,10 +7,10 @@
  * utilities to zero — the app renders unstyled. Re-declares the scan paths
  * before re-importing the web entry so utility extraction sees both trees.
  */
-@source "../../web/src";
+@source "../../../apps/agent/src";
 @source "./";
 
-@import '../../web/src/styles.css';
+@import '../../../apps/agent/src/styles.css';
 
 /*
  * Safe-area insets for Android edge-to-edge display.

@@ -4,14 +4,13 @@ import { PROJECTS } from '../lib/projects';
 interface Props {
   activeId: string;
   onSelect: (id: string) => void;
-  isModified: (projectId: string) => boolean;
 }
 
 /**
  * Compact dropdown that replaces the old top-level project tabs. Lives in
  * the header so the wiki has a single horizontal bar instead of two.
  */
-export function ProjectPicker({ activeId, onSelect, isModified }: Props) {
+export function ProjectPicker({ activeId, onSelect }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const active = PROJECTS.find((p) => p.id === activeId) ?? PROJECTS[0]!;
@@ -59,7 +58,7 @@ export function ProjectPicker({ activeId, onSelect, isModified }: Props) {
         >
           {PROJECTS.map((p) => {
             const isActive = p.id === activeId;
-            const dirty = isModified(p.id);
+    const dirty = false;
             return (
               <button
                 key={p.id}

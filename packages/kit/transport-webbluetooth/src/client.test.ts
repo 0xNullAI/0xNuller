@@ -71,9 +71,9 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
   it('without autoReconnect, a passive disconnect clears the device and does not retry', async () => {
     const { nav, device, protocol } = setup();
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       gattReadyRetryOptions: { gattReadyInitialDelayMs: 0 },
     });
@@ -92,9 +92,9 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
   it('with autoReconnect, silently reconnects on passive disconnect using the cached device', async () => {
     const { nav, device, protocol, reconnectStates } = setup();
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       autoReconnect: true,
       reconnectBackoffMs: [100],
@@ -122,9 +122,9 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
     });
 
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       autoReconnect: true,
       reconnectAttempts: 2,
@@ -168,9 +168,9 @@ describe('WebBluetoothDeviceClient auto-reconnect', () => {
     });
 
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       autoReconnect: true,
       reconnectBackoffMs: [50],
@@ -208,9 +208,9 @@ describe('WebBluetoothDeviceClient GATT-ready retry', () => {
       .mockResolvedValueOnce(undefined);
 
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       gattReadyRetryOptions: { gattReadyInitialDelayMs: 0, gattReadyIntervalMs: 0 },
     });
@@ -225,9 +225,9 @@ describe('WebBluetoothDeviceClient GATT-ready retry', () => {
     protocol.onConnected.mockRejectedValue(new Error('未授予蓝牙权限'));
 
     const client = new WebBluetoothDeviceClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       protocol: protocol as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       navigatorRef: nav as any,
       gattReadyRetryOptions: { gattReadyInitialDelayMs: 0, gattReadyIntervalMs: 0 },
     });

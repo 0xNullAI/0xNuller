@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const webSrc = path.resolve(here, '../web/src');
+const webSrc = path.resolve(here, '../../apps/agent/src');
 
 const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? `tauri-${Date.now()}`;
 

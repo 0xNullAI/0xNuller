@@ -569,7 +569,7 @@ class DashscopeProxySpeechSynthesisSession implements SpeechSynthesisSession {
     const pending = accumulatedText.slice(this.sentLength);
     if (!pending) return;
 
-    let cutoff = 0;
+    let cutoff: number;
     if (final) {
       cutoff = pending.length;
     } else {

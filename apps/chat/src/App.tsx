@@ -139,8 +139,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   // 保持引用最新，避免闭包过时
   const deviceRef = useRef(device);
+  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
+  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // eslint-disable-next-line react-hooks/refs
   deviceRef.current = device;
   const waveformsRef = useRef(waveforms);
+  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
+  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // eslint-disable-next-line react-hooks/refs
   waveformsRef.current = waveforms;
 
   const callApplyFire = useCallback((channel: 'A' | 'B') => {

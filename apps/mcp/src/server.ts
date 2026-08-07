@@ -16,7 +16,8 @@ import {
   type ToolRegistry,
 } from '@dg-kit/tools';
 import type { ToolCall, ToolExecutionPlan } from '@dg-kit/core';
-import { DeviceManager, type ConnectedDevice } from './device-manager.js';
+import type { DeviceManager} from './device-manager.js';
+import { type ConnectedDevice } from './device-manager.js';
 import type { NodeWaveformLibrary } from './waveform-library.js';
 
 export interface DgMcpServerOptions {

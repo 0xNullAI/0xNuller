@@ -2,28 +2,24 @@ import { MobileTocButton } from './MobileTocButton';
 import { ProjectPicker } from './ProjectPicker';
 
 interface HeaderProps {
-  isModified: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   activeProjectId: string;
   onSelectProject: (id: string) => void;
-  isProjectModified: (projectId: string) => boolean;
   /** Markdown source used to build the mobile TOC popover. */
   tocContent: string;
 }
 
 /**
  * Top bar — intentionally minimal: wordmark + project picker + theme toggle.
- * All page-level actions (edit / pr / github / reset) live in the bottom
+ * 页面级操作（在仓库里改这一页 / 看源码）放在底部操作栏
  * action bar so the header stays clean on mobile.
  */
 export function Header({
-  isModified,
   theme,
   onToggleTheme,
   activeProjectId,
   onSelectProject,
-  isProjectModified,
   tocContent,
 }: HeaderProps) {
   return (
@@ -44,21 +40,8 @@ export function Header({
           <ProjectPicker
             activeId={activeProjectId}
             onSelect={onSelectProject}
-            isModified={isProjectModified}
           />
 
-          {isModified ? (
-            <span
-              className="hidden sm:flex font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--danger)] items-center gap-1.5"
-              title="本地浏览器存档了你的修改"
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-[var(--danger)]"
-                style={{ animation: 'glow 1.4s ease-in-out infinite' }}
-              />
-              local-edit
-            </span>
-          ) : null}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">

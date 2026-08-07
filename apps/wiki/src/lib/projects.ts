@@ -202,7 +202,7 @@ export const PROJECTS: Project[] = [
   },
 ];
 
-export const REPO_BASE = 'https://github.com/0xNullAI/DG-Wiki';
+export const REPO_BASE = 'https://github.com/0xNullAI/0xNuller';
 
 export function findProject(id: string | null): Project {
   return PROJECTS.find((p) => p.id === id) ?? PROJECTS[1]!; // default = DG-Agent
@@ -217,5 +217,5 @@ export function pageKey(projectId: string, docId: string): string {
 }
 
 export function githubEditUrl(doc: Document): string {
-  return `${REPO_BASE}/edit/main/${doc.sourcePath}`;
+  return `${REPO_BASE}/edit/main/apps/wiki/${doc.sourcePath}`;
 }
