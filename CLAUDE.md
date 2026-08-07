@@ -11,12 +11,18 @@ Claude Code 在 **0xNullAI** 平台仓库工作时的指引。
 ## 结构
 
 ```
-packages/kit/*      @dg-kit/*，发布到 npm。dist-first：main/types 指向 dist/
-packages/agent/*    @dg-agent/*，平台内部包。runtime/ 是设备安全链的唯一真身
-apps/*              agent chat voice market landing wiki mcp
-android/*           agent chat voice，三个 Tauri 壳
-workers/*           llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
+packages/kit/*        @dg-kit/*，发布到 npm。dist-first：main/types 指向 dist/
+                      safety/ 是设备安全链的唯一真身
+packages/platform/*   @0xnullai/*，跨模块共用、不发布
+                      ui · llm-providers · market-client · permissions
+packages/agent/*      @dg-agent/*，Agent 模块专属
+apps/*                agent chat voice market landing wiki mcp
+android/*             agent chat voice，三个 Tauri 壳
+workers/*             llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
 ```
+
+加新东西之前先想清楚它属于哪一层：发布给外部（kit）、四个模块都要用（platform）、
+还是只有 Agent 用（agent）。放错层的代价是它迟早会被复制第二份。
 
 `packages` 下是两层结构，因为 `@dg-kit/core` 和 `@dg-agent/core` 同名。
 
@@ -37,9 +43,10 @@ npm run changeset    # 改了 packages/kit/* 就要写
 
 这些位置决定强度、时长和谁能下指令：
 
-- `packages/agent/runtime/src/default-policies.ts` — 强度上限、冷启动钳制、单回合调用上限
-- `packages/agent/runtime/src/device-command-queue.ts` — 串行队列与急停插队
-- `packages/agent/permissions-browser/` — 限时权限授予
+- `packages/kit/safety/src/default-policies.ts` — 强度上限、冷启动钳制、单回合调用上限
+- `packages/kit/safety/src/policy-engine.ts` — 策略求值
+- `packages/kit/safety/src/device-command-queue.ts` — 串行队列与急停插队
+- `packages/platform/permissions/` — 限时权限授予
 - `apps/chat/src/App.tsx` 的 `handleCommand` — 房间内他人指令的落地钳制
 - `android/*/src/lifecycle-safety.ts` — 切后台/被杀时自动停止
 
@@ -49,7 +56,7 @@ npm run changeset    # 改了 packages/kit/* 就要写
 2. **上限在设备持有者一侧执行**，不信任来自房间、AI 或游戏逻辑的数值
 3. **安全逻辑不得出现第二份可独立演化的副本**——要复用就上提到共享包
 
-DG-Voice 曾整份复制 DG-Agent 的安全链（`default-policies` 差 23 行、`device-command-queue` 差 26 行）。合并的意义之一就是消灭这种副本，不要再制造新的。
+DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
 
 ## 已知的坑
 

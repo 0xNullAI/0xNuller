@@ -45,9 +45,14 @@ Web Bluetooth 需要 **Chrome 或 Edge**。
 packages/
   kit/                     @dg-kit/*，发布到 npm
     core protocol waveforms tools transport-webbluetooth transport-tauri-blec
-  agent/                   @dg-agent/*，平台内部包
-    runtime/               ★ 设备安全链真身：策略引擎 · 权限 · 串行命令队列
-    agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/ ...
+    safety/                ★ 设备安全链唯一真身：策略引擎 · 默认上限 · 串行命令队列
+  platform/                @0xnullai/*，跨模块共用（不发布）
+    ui/                    设计系统单一真源：令牌 · 主题 · 12 个 Radix 原子组件
+    llm-providers/         LLM 供应商注册表与免费体验代理常量
+    market-client/         DG-Market 客户端
+    permissions/           浏览器侧限时权限授予
+  agent/                   @dg-agent/*，Agent 模块专属
+    runtime/ agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/
 apps/
   agent/ chat/ voice/ market/     四个功能模块
   landing/                 落地页（Astro）
@@ -61,7 +66,7 @@ workers/
 docs/legacy/               各仓合并前的 CLAUDE.md 与 README 存档
 ```
 
-`packages/*/*` 的两层结构是为了让 `@dg-kit/core` 与 `@dg-agent/core` 这类同名包共存。
+`packages/*/*` 的两层结构一是为了让 `@dg-kit/core` 与 `@dg-agent/core` 这类同名包共存，二是让「发布到 npm」「跨模块共用」「模块专属」三种性质在目录上一眼可辨。
 
 ## 命令
 
