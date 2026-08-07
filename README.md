@@ -34,7 +34,7 @@ git clone https://github.com/0xNullAI/0xNuller.git
 cd 0xNuller
 npm install
 npm run build:kit        # 共享层是 dist-first，其余包依赖它的构建产物
-npm run dev -w @0xnullai/web   # 统一外壳，四个模块都在里面
+npm run dev -w dg-chat   # 或 -w @dg-agent/web / dg-voice / dg-market
 ```
 
 Web Bluetooth 需要 **Chrome 或 Edge**。
@@ -54,8 +54,7 @@ packages/
   agent/                   @dg-agent/*，Agent 模块专属
     runtime/ agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/
 apps/
-  web/                     ★ 统一外壳：常驻导航 + 四模块按路由挂载（0xnullai.com）
-  agent/ chat/ voice/ market/     四个功能模块的源码树
+  agent/ chat/ voice/ market/     四个独立应用，各自部署、各自的设置与主题
   landing/                 落地页（Astro）
   wiki/                    文档站（只读，贡献走 PR）
   mcp/                     MCP 服务端，发布为 npm 包 dg-mcp
@@ -69,7 +68,9 @@ docs/legacy/               各仓合并前的 CLAUDE.md 与 README 存档
 
 `packages/*/*` 的两层结构一是为了让 `@dg-kit/core` 与 `@dg-agent/core` 这类同名包共存，二是让「发布到 npm」「跨模块共用」「模块专属」三种性质在目录上一眼可辨。
 
-`apps/web` 是唯一的网页产物；`apps/{agent,chat,voice,market}` 现在是被它按路由挂载的源码树（各自仍可独立 `npm run dev -w` 调试）。模块一旦打开就保持挂载，所以切模块不会断开设备连接。
+**网页端四个应用保持独立**——各自的域名、设置、主题、部署互不影响；收拢只发生在代码层（共享包）。曾经试过把它们挂进同一个外壳，结果是 Market 白屏、Chat 弹窗逃逸、Agent 布局塌陷：四套完整的 CSS 体系和各自的全屏布局假设塞进同一个文档必然互相覆盖，要共存等于把四个应用重写一遍。
+
+**移动端相反**：安卓上四个模块合成单一「0xNullAI」应用，那里的布局是重新设计的，不存在「把四套现成的桌面布局塞进一个文档」这个问题。
 
 ## 命令
 

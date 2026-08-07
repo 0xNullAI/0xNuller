@@ -16,8 +16,7 @@ packages/kit/*        @dg-kit/*，发布到 npm。dist-first：main/types 指向
 packages/platform/*   @0xnullai/*，跨模块共用、不发布
                       ui · llm-providers · market-client · permissions
 packages/agent/*      @dg-agent/*，Agent 模块专属
-apps/web              ★ 统一外壳：常驻导航 + 四模块按路由挂载，唯一的网页产物
-apps/*                agent chat voice market landing wiki mcp（被外壳挂载的源码树）
+apps/*                agent chat voice market landing wiki mcp（四个应用各自独立部署）
 android/*             agent chat voice，三个 Tauri 壳
 workers/*             llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
 ```
@@ -59,15 +58,19 @@ npm run changeset    # 改了 packages/kit/* 就要写
 
 DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
 
-## 外壳与模块
+## 软件分开，代码收拢
 
-`apps/web` 是唯一的网页产物。四个模块**一旦打开就保持挂载**，切走只是隐藏——这样
-BLE 连接不会因为切模块而断开，是把它们合进同一个 origin 唯一无法被替代的收益。
-`apps/web/src/Shell.test.tsx` 里有一条测试专门守着这个行为：它一旦被改坏，构建和
-类型检查都不会报错，用户却会遇到「切个标签设备就掉线」。
+**网页端四个应用保持独立**，各自部署、各自的设置与主题。收拢只发生在代码层：
+共享包（@dg-kit/safety、@0xnullai/ui 等）+ 统一的构建、测试、lint 配置。
 
-各模块内部的别名是 `@agent` / `@voice`（不是 `@`）——单一构建里只能有一个 `@`。
-外壳的 build 只跑 vite，模块的类型检查在各自的 build 里做。
+试过把四个模块挂进同一个网页外壳，结果是 Market 白屏、Chat 的安全弹窗逃出外壳、
+Agent 布局塌陷。根因是结构性的：四套完整 CSS 体系（Market 那套用 .app/.topbar
+这类通用类名）加各自的全屏布局假设，塞进同一个文档必然互相覆盖。**不要再试。**
+
+**移动端相反**：安卓上四个模块合成单一「0xNullAI」应用，布局重新设计，不存在把
+四套现成桌面布局塞一起的问题。
+
+各模块内部别名是 `@agent` / `@voice`（不是 `@`），保留这个命名以免将来再撞车。
 
 ## 已知的坑
 
