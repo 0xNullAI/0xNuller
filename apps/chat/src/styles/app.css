@@ -1,21 +1,7 @@
-/* 全局基础样式 */
-body {
-  margin: 0;
-  font-family: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  transition: background-color 0.2s, color 0.2s;
-}
+/* 基础样式（reset / 排版 / 表单 / 滚动条 / 动画）来自 @0xnullai/ui。
+   这里原本重造了一份 body reset、第三套滚动条（6px 常显）和一个位移 8px 的
+   fade-up——后者与共享的 10px 同名，keyframes 名全局唯一，谁后加载谁通吃，
+   入场动画的位移会随加载顺序变化。 */
 
 /* 页面抖动动画 */
 @keyframes shake {
@@ -32,12 +18,9 @@ html {
 }
 .animate-msg-in { animation: msg-in 0.25s ease-out; }
 
-/* 淡入 */
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-up { animation: fade-up 0.32s ease both; }
+/* fade-up 与 .animate-fade-up 来自 @0xnullai/ui/styles/animations.css。
+   这里原本另有一份同名 keyframes（位移 8px vs 共享的 10px）——keyframes 名是
+   全局唯一的，谁后加载谁通吃，入场动画的位移会随加载顺序变化。 */
 
 /* 手机 Tab 栏 */
 .mobile-tab {
@@ -198,17 +181,3 @@ input[type='range']::-moz-range-thumb {
   max-width: 100%;
 }
 
-/* 滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--surface-border);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--surface-border-strong);
-}

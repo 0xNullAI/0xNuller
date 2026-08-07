@@ -1,8 +1,13 @@
-/* 全局层序声明必须在最前。合并前 base.css 落在所有层之外，无条件压过每一个
-   Tailwind utility——这正是 DG-Chat 至今不敢引它的原因：引了之后安全上限滑条
-   会被 input{padding:.92rem 1rem;width:100%} 包成 38px 的盒子。归层之后「谁赢」
-   由声明顺序决定，与加载顺序无关，lazy chunk 的随机故障也随之消失。 */
-@layer tw-theme, tw-base, ui-base, tw-components, tw-utilities, module, shell;
+/* 全局层序声明必须在最前，且**层名必须与 Tailwind v4 内部一致**（theme / base /
+   components / utilities）——写成 tw-base 这类自造名字，Tailwind 的真实层会被追加
+   到声明列表之后，preflight 的 input{padding:0;border-width:0} 反过来压过 ui-base，
+   共享 base 的表单样式会静默失效。
+
+   合并前 base.css 落在所有层之外，无条件压过每一个 Tailwind utility——这正是
+   DG-Chat 至今不敢引它的原因：引了之后安全上限滑条会被
+   input{padding:.92rem 1rem;width:100%} 包成 38px 的盒子。归层之后「谁赢」由声明
+   顺序决定，与加载顺序无关，lazy chunk 的随机故障也随之消失。 */
+@layer theme, base, ui-base, components, utilities, module, shell;
 
 @import 'tailwindcss';
 /* 自持扫描：外壳的 Vite root 会顶掉 Tailwind 的自动扫描根，缺这行会静默丢类 */
