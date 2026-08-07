@@ -1,3 +1,4 @@
+import { AppSwitcher } from '@0xnullai/ui';
 import { useCallback, useEffect, useState } from 'react';
 import type { ItemType, MarketItem } from '../shared/schema';
 import { fetchItems, markViewed } from './api';
@@ -62,7 +63,7 @@ export function App(): JSX.Element {
         <div className="brand">
           <span className="logo">⚡</span>
           <div>
-            <h1>DG-Market</h1>
+            <AppSwitcher current="market" label="DG-Market" />
             <small>波形与场景社区 · 配合 DG-Agent 使用</small>
           </div>
         </div>

@@ -23,7 +23,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { Button, Input, Meter } from '@0xnullai/ui';
+import { AppSwitcher, Button, Input, Meter } from '@0xnullai/ui';
 import { cn } from '@agent/lib/utils';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
@@ -267,7 +267,7 @@ export function ChatPanel({
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-semibold text-[var(--text)]">DG-Agent</span>
+            <AppSwitcher current="agent" label="DG-Agent" className="text-sm font-semibold text-[var(--text)]" />
             <Button
               variant="ghost"
               size="icon"

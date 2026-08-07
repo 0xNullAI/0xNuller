@@ -1,3 +1,4 @@
+import { AppSwitcher } from '@0xnullai/ui';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
@@ -421,7 +422,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       {/* 顶部栏 */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <h1 className="text-base font-bold text-[var(--text)]">DG-Chat</h1>
+          <AppSwitcher current="chat" label="DG-Chat" className="text-base font-bold text-[var(--text)]" />
           {peerRoom.roomId && (
             <span className="hidden rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
               {peerRoom.roomId}

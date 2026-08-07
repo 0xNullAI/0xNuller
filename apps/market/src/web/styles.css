@@ -1,3 +1,4 @@
+@import '@0xnullai/ui/styles/app-switcher.css';
 /* 设计 token 与 DG-Agent 主站完全一致（apps/web/src/styles/tokens.css 原样搬运）。 */
 .theme-switching,
 .theme-switching *,

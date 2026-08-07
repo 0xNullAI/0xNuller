@@ -16,6 +16,7 @@
     "db:migrate:remote": "wrangler d1 execute dg-market --remote --file=./migrations/0001_add_edit_key.sql"
   },
   "dependencies": {
+    "@0xnullai/ui": "0.1.0",
     "fflate": "^0.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

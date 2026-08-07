@@ -2,4 +2,5 @@
 /* 共享设计系统的组件在本 app 源码树之外，必须显式让 Tailwind 扫描，否则类会被 tree-shake */
 @source '../../../packages/platform/ui/src';
 @import '@0xnullai/ui/styles/tokens.css';
+@import '@0xnullai/ui/styles/app-switcher.css';
 @import './styles/app.css';

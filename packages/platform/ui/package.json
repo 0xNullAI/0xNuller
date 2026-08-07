@@ -7,7 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles/tokens.css": "./src/styles/tokens.css",
-    "./styles/scrollbar.css": "./src/styles/scrollbar.css"
+    "./styles/scrollbar.css": "./src/styles/scrollbar.css",
+    "./styles/animations.css": "./src/styles/animations.css",
+    "./styles/base.css": "./src/styles/base.css",
+    "./styles/app-switcher.css": "./src/styles/app-switcher.css"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

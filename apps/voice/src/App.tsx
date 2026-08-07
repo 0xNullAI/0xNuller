@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
-import { Alert, AlertDescription, Button } from '@0xnullai/ui';
+import { AppSwitcher, Alert, AlertDescription, Button } from '@0xnullai/ui';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -57,7 +57,7 @@ export function App({ transport }: AppProps = {}) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
-        <h1 className="text-lg font-semibold">DG-Voice</h1>
+        <AppSwitcher current="voice" label="DG-Voice" className="text-lg font-semibold" />
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
             <Bluetooth className="h-4 w-4" />
