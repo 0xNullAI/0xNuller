@@ -1,0 +1,33 @@
+{
+  "name": "dg-market",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "社区市场：上传与交换 DG-Agent 波形和场景，部署在 Cloudflare Workers + D1（全免费）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc -b --noEmit",
+    "db:init": "wrangler d1 execute dg-market --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute dg-market --remote --file=./schema.sql",
+    "db:migrate": "wrangler d1 execute dg-market --file=./migrations/0001_add_edit_key.sql",
+    "db:migrate:remote": "wrangler d1 execute dg-market --remote --file=./migrations/0001_add_edit_key.sql"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "wrangler": "^4.98.0"
+  }
+}

@@ -1,0 +1,23 @@
+name = "dg-market"
+main = "src/worker/index.ts"
+compatibility_date = "2025-01-01"
+
+# 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
+# run_worker_first 确保 /api/* 先进入 Worker，不被 SPA 回退页面拦截。
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# Worker 先行：所有请求进 Worker，非 /api 路径由 Worker 回退到 env.ASSETS。
+run_worker_first = true
+
+# D1 数据库（免费额度：5GB 存储 / 每天 500 万行读 / 10 万行写）。
+# database_id 在执行 `wrangler d1 create dg-market` 后填入。
+[[d1_databases]]
+binding = "DB"
+database_name = "dg-market"
+database_id = "cf5f0c37-5b39-44f9-ab68-430849f9a4f6"
+
+# 机密用命令设置，勿写进文件：
+#   wrangler secret put ADMIN_KEY          # 管理员删除 / 编辑接口的口令
+# 说明：已移除 Cloudflare Turnstile 人机验证，上传/批量上传均无需令牌。
