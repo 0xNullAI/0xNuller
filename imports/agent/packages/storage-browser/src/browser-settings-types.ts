@@ -1,0 +1,89 @@
+import type { BridgeSettings } from '@dg-agent/bridge';
+import type { ModelContextStrategy } from '@dg-agent/core';
+import type { BrowserPermissionMode } from '@dg-agent/permissions-browser';
+import type { SavedPromptPreset } from '@dg-agent/runtime';
+import type { ProviderId, ProviderSettings } from '@dg-agent/providers-catalog';
+
+export type ThemeMode = 'auto' | 'dark' | 'light';
+
+export interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export type ProviderConfigMap = Partial<Record<ProviderId, ProviderSettings>>;
+export type BrowserVoiceMode = 'browser' | 'dashscope-proxy';
+
+export interface BrowserVoiceSettings {
+  mode: BrowserVoiceMode;
+  speaker: string;
+  browserVoiceUri: string;
+  apiKey: string;
+  proxyUrl: string;
+  autoStopEnabled: boolean;
+}
+
+export interface BrowserAppSettings {
+  version: 1;
+  themeMode: ThemeMode;
+  showSafetyNoticeOnStartup: boolean;
+  deviceMode: 'fake' | 'web-bluetooth';
+  llmMode: 'fake' | 'provider-http';
+  modelContextStrategy: ModelContextStrategy;
+  temperature: number;
+  permissionMode: BrowserPermissionMode;
+  permissionModeExpiresAt?: number;
+  backgroundBehavior: 'stop' | 'keep';
+  maxStrengthA: number;
+  maxStrengthB: number;
+  maxColdStartStrength: number;
+  maxToolIterations: number;
+  maxToolCallsPerTurn: number;
+  maxAdjustStrengthCallsPerTurn: number;
+  maxAdjustStrengthStep: number;
+  maxBurstCallsPerTurn: number;
+  maxBurstDurationMs: number;
+  // Absolute cap on the strength value of a burst (independent of channel
+  // cap). 0 = disabled — defer to maxStrengthA/B. See issue #68.
+  maxBurstStrengthAbsolute: number;
+  // Relative cap: burst.strength must not exceed currentStrength + this.
+  // 0 = disabled. Both caps may be enabled and the tighter one wins.
+  maxBurstStrengthRelative: number;
+  burstRequiresActiveChannel: boolean;
+  // —— Opossum（负鼠双通道振动控制器）安全设置，与郊狼的同名字段同构 ——
+  maxOpossumIntensityA: number;
+  maxOpossumIntensityB: number;
+  maxOpossumColdStartIntensity: number;
+  maxOpossumAdjustStep: number;
+  maxVibrateAdjustCallsPerTurn: number;
+  maxVibrateBurstCallsPerTurn: number;
+  // —— 传感器触发引擎（爪印 / 灵猫）阈值 ——
+  civetPressureDeltaThresholdKPa: number;
+  sensorTriggerDebounceMs: number;
+  safetyStopOnLeave: boolean;
+  rememberApiKey: boolean;
+  modelLogEnabled: boolean;
+  speechRecognitionEnabled: boolean;
+  speechSynthesisEnabled: boolean;
+  speechRecognitionLanguage: string;
+  speechSynthesisLanguage: string;
+  bridge: BridgeSettings;
+  promptPresetId: string;
+  savedPromptPresets: SavedPromptPreset[];
+  // Builtin preset ids the user has hidden from the picker. Hidden presets stay
+  // in code and remain usable if still selected; "恢复默认" clears this list.
+  hiddenBuiltinPresetIds: string[];
+  provider: ProviderSettings;
+  providerConfigs: ProviderConfigMap;
+  voice: BrowserVoiceSettings;
+}
+
+export interface BrowserAppEnvLike {
+  VITE_DEVICE_MODE?: 'fake' | 'web-bluetooth';
+  VITE_LLM_MODE?: 'fake' | 'provider-http';
+  VITE_PROVIDER_ID?: ProviderId;
+  VITE_OPENAI_API_KEY?: string;
+  VITE_OPENAI_BASE_URL?: string;
+  VITE_OPENAI_MODEL?: string;
+}

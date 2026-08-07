@@ -1,0 +1,106 @@
+import { DEFAULT_BRIDGE_SETTINGS } from '@dg-agent/bridge';
+import {
+  createDefaultProviderSettings,
+  normalizeProviderSettings,
+  type ProviderId,
+} from '@dg-agent/providers-catalog';
+import {
+  createDefaultToolCallConfig,
+  DEFAULT_CIVET_PRESSURE_DELTA_KPA,
+  DEFAULT_MAX_ADJUST_STEP,
+  DEFAULT_MAX_BURST_DURATION_MS,
+  DEFAULT_MAX_COLD_START_STRENGTH,
+  DEFAULT_MAX_OPOSSUM_ADJUST_STEP,
+  DEFAULT_MAX_OPOSSUM_COLD_START_INTENSITY,
+  DEFAULT_SENSOR_TRIGGER_DEBOUNCE_MS,
+  DEFAULT_USER_MAX_OPOSSUM_INTENSITY,
+} from '@dg-agent/runtime';
+import type {
+  BrowserAppEnvLike,
+  BrowserAppSettings,
+  BrowserVoiceSettings,
+} from './browser-settings-types.js';
+
+export const DEFAULT_VOICE_SETTINGS: BrowserVoiceSettings = {
+  mode: 'browser',
+  speaker: 'longxiaochun_v2',
+  browserVoiceUri: '',
+  apiKey: '',
+  proxyUrl: '',
+  autoStopEnabled: true,
+};
+
+export function normalizeVoiceSettings(
+  input: Partial<BrowserVoiceSettings> = {},
+): BrowserVoiceSettings {
+  return {
+    mode: input.mode === 'dashscope-proxy' ? 'dashscope-proxy' : 'browser',
+    speaker: input.speaker?.trim() || DEFAULT_VOICE_SETTINGS.speaker,
+    browserVoiceUri: input.browserVoiceUri?.trim() ?? '',
+    apiKey: input.apiKey?.trim() ?? '',
+    proxyUrl: input.proxyUrl?.trim() ?? '',
+    autoStopEnabled: input.autoStopEnabled ?? true,
+  };
+}
+
+export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserAppSettings {
+  const toolCallConfig = createDefaultToolCallConfig();
+  const provider = normalizeProviderSettings({
+    ...createDefaultProviderSettings(),
+    providerId: (env.VITE_PROVIDER_ID ?? 'free') as ProviderId,
+    apiKey: env.VITE_OPENAI_API_KEY ?? '',
+    baseUrl: env.VITE_OPENAI_BASE_URL ?? '',
+    model: env.VITE_OPENAI_MODEL ?? '',
+    endpoint: 'chat/completions',
+    useStrict: false,
+  });
+
+  return {
+    version: 1,
+    themeMode: 'auto',
+    showSafetyNoticeOnStartup: true,
+    deviceMode: 'web-bluetooth',
+    llmMode: 'provider-http',
+    modelContextStrategy: 'last-user-turn',
+    temperature: 0.3,
+    permissionMode: 'confirm',
+    backgroundBehavior: 'stop',
+    maxStrengthA: 50,
+    maxStrengthB: 50,
+    maxColdStartStrength: DEFAULT_MAX_COLD_START_STRENGTH,
+    maxToolIterations: toolCallConfig.maxToolIterations,
+    maxToolCallsPerTurn: toolCallConfig.maxToolCallsPerTurn,
+    maxAdjustStrengthCallsPerTurn: toolCallConfig.maxAdjustStrengthCallsPerTurn,
+    maxAdjustStrengthStep: DEFAULT_MAX_ADJUST_STEP,
+    maxBurstCallsPerTurn: toolCallConfig.maxBurstCallsPerTurn,
+    maxBurstDurationMs: DEFAULT_MAX_BURST_DURATION_MS,
+    // 0 = the cap is disabled; user opts in by typing a value.
+    maxBurstStrengthAbsolute: 0,
+    maxBurstStrengthRelative: 0,
+    burstRequiresActiveChannel: toolCallConfig.burstRequiresActiveChannel,
+    maxOpossumIntensityA: DEFAULT_USER_MAX_OPOSSUM_INTENSITY,
+    maxOpossumIntensityB: DEFAULT_USER_MAX_OPOSSUM_INTENSITY,
+    maxOpossumColdStartIntensity: DEFAULT_MAX_OPOSSUM_COLD_START_INTENSITY,
+    maxOpossumAdjustStep: DEFAULT_MAX_OPOSSUM_ADJUST_STEP,
+    maxVibrateAdjustCallsPerTurn: toolCallConfig.maxVibrateAdjustCallsPerTurn,
+    maxVibrateBurstCallsPerTurn: toolCallConfig.maxVibrateBurstCallsPerTurn,
+    civetPressureDeltaThresholdKPa: DEFAULT_CIVET_PRESSURE_DELTA_KPA,
+    sensorTriggerDebounceMs: DEFAULT_SENSOR_TRIGGER_DEBOUNCE_MS,
+    safetyStopOnLeave: true,
+    rememberApiKey: false,
+    modelLogEnabled: false,
+    speechRecognitionEnabled: false,
+    speechSynthesisEnabled: false,
+    speechRecognitionLanguage: 'zh-CN',
+    speechSynthesisLanguage: 'zh-CN',
+    bridge: DEFAULT_BRIDGE_SETTINGS,
+    promptPresetId: 'gentle',
+    savedPromptPresets: [],
+    hiddenBuiltinPresetIds: [],
+    provider,
+    providerConfigs: {
+      [provider.providerId]: provider,
+    },
+    voice: DEFAULT_VOICE_SETTINGS,
+  };
+}

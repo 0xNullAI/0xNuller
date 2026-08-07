@@ -1,0 +1,259 @@
+import type { LlmConversationItem } from '@dg-agent/core';
+import type { ModelContextStrategy, SessionSnapshot, ToolCall } from '@dg-agent/core';
+import { REPLY_ABORTED_NOTE, TOOL_LOOP_EXHAUSTED_MESSAGE } from './runtime-errors.js';
+import type { ToolCallConfig } from './tool-call-config.js';
+
+export interface TurnState {
+  workingItems: LlmConversationItem[];
+  totalToolCalls: number;
+  adjustStrengthCalls: number;
+  vibrateAdjustCalls: number;
+  burstCallsByChannel: { A: number; B: number };
+  vibrateBurstCallsByChannel: { A: number; B: number };
+  narrations: string[];
+}
+
+export interface TurnToolCallSummary {
+  name: string;
+  argsJson: string;
+}
+
+export function createTurnState(): TurnState {
+  return {
+    workingItems: [],
+    totalToolCalls: 0,
+    adjustStrengthCalls: 0,
+    vibrateAdjustCalls: 0,
+    burstCallsByChannel: { A: 0, B: 0 },
+    vibrateBurstCallsByChannel: { A: 0, B: 0 },
+    narrations: [],
+  };
+}
+
+export function buildConversationItems(
+  session: SessionSnapshot,
+  turnState: TurnState,
+  currentInput?: LlmConversationItem | null,
+  modelContextStrategy: ModelContextStrategy = 'last-user-turn',
+): LlmConversationItem[] {
+  const persistedMessages = selectModelContextMessages(
+    session.messages,
+    modelContextStrategy,
+  ).filter((message) => shouldIncludePersistedMessage(message, turnState));
+
+  return [
+    ...persistedMessages.map<LlmConversationItem>((message) => ({
+      kind: 'message',
+      role: message.role,
+      content: message.content,
+      reasoningContent: message.reasoningContent,
+      // toolCalls intentionally omitted: tool results are not persisted to session.messages,
+      // so including tool_calls here would produce an assistant message with tool_calls
+      // but no following tool result messages, causing 400 on strict providers (e.g. DeepSeek).
+    })),
+    ...(currentInput ? [currentInput] : []),
+    ...turnState.workingItems,
+  ];
+}
+
+export function safeStringify(value: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '{}';
+  }
+}
+
+export function collectTurnToolCalls(turnState: TurnState): TurnToolCallSummary[] {
+  return turnState.workingItems.flatMap((item) => {
+    if (item.kind === 'function_call') {
+      return [
+        {
+          name: item.name,
+          argsJson: item.argumentsJson,
+        },
+      ];
+    }
+
+    if (item.kind === 'message' && item.role === 'assistant' && item.toolCalls?.length) {
+      return item.toolCalls.map((toolCall) => ({
+        name: toolCall.name,
+        argsJson: safeStringify(toolCall.args),
+      }));
+    }
+
+    return [];
+  });
+}
+
+// Quotas must catch both the current shock_* names and the pre-1.9.0 ones —
+// the registry's aliases still execute old-name calls, so a quota keyed only
+// on the new name would let an aliased call bypass its per-turn cap.
+function isShockAdjustTool(toolName: string): boolean {
+  return toolName === 'shock_adjust' || toolName === 'adjust_strength';
+}
+
+function isShockBurstTool(toolName: string): boolean {
+  return toolName === 'shock_burst' || toolName === 'burst';
+}
+
+export function consumeTurnQuota(
+  toolName: string,
+  turnState: TurnState,
+  config: ToolCallConfig,
+  toolArgs?: Record<string, unknown>,
+): string | null {
+  if (turnState.totalToolCalls >= config.maxToolCallsPerTurn) {
+    return `本回合工具调用总数已达上限 (${config.maxToolCallsPerTurn})，本次调用被拒绝。请直接回复用户，不要再发起工具调用。`;
+  }
+
+  if (
+    isShockAdjustTool(toolName) &&
+    turnState.adjustStrengthCalls >= config.maxAdjustStrengthCallsPerTurn
+  ) {
+    return `shock_adjust 本回合调用已达上限 (${config.maxAdjustStrengthCallsPerTurn} 次)，本次调用被拒绝。本回合已经调整过足够多次了，请直接回复用户，不要再继续爬升强度。`;
+  }
+
+  if (
+    toolName === 'vibrate_adjust' &&
+    turnState.vibrateAdjustCalls >= config.maxVibrateAdjustCallsPerTurn
+  ) {
+    return `vibrate_adjust 本回合调用已达上限 (${config.maxVibrateAdjustCallsPerTurn} 次)，本次调用被拒绝。本回合已经调整过足够多次了，请直接回复用户，不要再继续爬升强度。`;
+  }
+
+  if (isShockBurstTool(toolName)) {
+    if (config.maxBurstCallsPerTurn === 0) {
+      return 'shock_burst 已被用户在设置中关闭（单轮突增次数上限为 0），本次调用被拒绝。请改用 shock_adjust 逐步推进强度，不要再尝试 shock_burst。';
+    }
+    const channel = normalizeBurstChannel(toolArgs);
+    if (turnState.burstCallsByChannel[channel] >= config.maxBurstCallsPerTurn) {
+      return `shock_burst 通道 ${channel} 本回合调用已达上限 (${config.maxBurstCallsPerTurn} 次)，本次调用被拒绝。同一通道的短时突增每回合只允许一次，请直接回复用户，不要重复触发。`;
+    }
+  }
+
+  if (toolName === 'vibrate_burst') {
+    if (config.maxVibrateBurstCallsPerTurn === 0) {
+      return 'vibrate_burst 已被用户在设置中关闭（单轮振动脉冲次数上限为 0），本次调用被拒绝。请改用 vibrate_adjust 逐步推进强度，不要再尝试 vibrate_burst。';
+    }
+    const channel = normalizeBurstChannel(toolArgs);
+    if (turnState.vibrateBurstCallsByChannel[channel] >= config.maxVibrateBurstCallsPerTurn) {
+      return `vibrate_burst 通道 ${channel} 本回合调用已达上限 (${config.maxVibrateBurstCallsPerTurn} 次)，本次调用被拒绝。同一通道的振动脉冲每回合只允许一次，请直接回复用户，不要重复触发。`;
+    }
+  }
+
+  turnState.totalToolCalls += 1;
+  if (isShockAdjustTool(toolName)) {
+    turnState.adjustStrengthCalls += 1;
+  }
+  if (toolName === 'vibrate_adjust') {
+    turnState.vibrateAdjustCalls += 1;
+  }
+  if (isShockBurstTool(toolName)) {
+    const channel = normalizeBurstChannel(toolArgs);
+    turnState.burstCallsByChannel[channel] += 1;
+  }
+  if (toolName === 'vibrate_burst') {
+    const channel = normalizeBurstChannel(toolArgs);
+    turnState.vibrateBurstCallsByChannel[channel] += 1;
+  }
+
+  return null;
+}
+
+function selectModelContextMessages(
+  messages: SessionSnapshot['messages'],
+  strategy: ModelContextStrategy,
+): SessionSnapshot['messages'] {
+  const filteredMessages = messages.filter((message) => !shouldSkipModelContextMessage(message));
+  if (filteredMessages.length <= 1 || strategy === 'full-history') {
+    return filteredMessages;
+  }
+
+  const userMessageIndices = filteredMessages.flatMap((message, index) =>
+    message.role === 'user' ? [index] : [],
+  );
+  if (userMessageIndices.length === 0) {
+    return filteredMessages;
+  }
+
+  if (strategy === 'last-five-user-turns') {
+    return filteredMessages.slice(
+      userMessageIndices[Math.max(userMessageIndices.length - 5, 0)] ?? 0,
+    );
+  }
+
+  if (userMessageIndices.length === 1) {
+    return filteredMessages.slice(userMessageIndices[0] ?? 0);
+  }
+
+  return filteredMessages.slice(userMessageIndices[userMessageIndices.length - 2] ?? 0);
+}
+
+function normalizeBurstChannel(args?: Record<string, unknown>): 'A' | 'B' {
+  const raw = args?.channel;
+  if (typeof raw === 'string' && (raw === 'B' || raw.toUpperCase() === 'B')) return 'B';
+  return 'A';
+}
+
+function shouldSkipModelContextMessage(message: SessionSnapshot['messages'][number]): boolean {
+  if (message.role === 'user') return false;
+
+  const content = message.content.trim();
+  if (!content) return true;
+
+  if (message.role === 'system') {
+    return true;
+  }
+
+  if (content === REPLY_ABORTED_NOTE) return true;
+  if (content === TOOL_LOOP_EXHAUSTED_MESSAGE) return true;
+  if (content.startsWith('出错了：')) return true;
+
+  return [
+    '网络连接失败，请检查网络、代理或服务状态后重试',
+    '还没有配置 API Key，请先在设置里填写',
+    'API Key 无效或已过期，请检查设置',
+    '当前接口访问被拒绝，请检查账户权限、地区限制或代理',
+    '请求过于频繁，已被限流，请稍后再试',
+    '请求被服务端拒绝，请检查模型、参数或接口兼容性',
+    'AI 服务暂时不可用，请稍后重试',
+    '当前模型服务还没有配置完成，请先在设置里选择服务提供方并补全凭证',
+  ].includes(content);
+}
+
+function shouldIncludePersistedMessage(
+  message: SessionSnapshot['messages'][number],
+  turnState: TurnState,
+): boolean {
+  if (message.role !== 'assistant' || !message.toolCalls?.length) {
+    return true;
+  }
+
+  return !turnState.workingItems.some(
+    (item) =>
+      item.kind === 'message' &&
+      item.role === 'assistant' &&
+      item.content.trim() === message.content.trim() &&
+      (item.reasoningContent?.trim() ?? '') === (message.reasoningContent?.trim() ?? '') &&
+      sameToolCallSequence(item.toolCalls, message.toolCalls),
+  );
+}
+
+function sameToolCallSequence(left?: ToolCall[], right?: ToolCall[]): boolean {
+  const leftCalls = Array.isArray(left) ? left : [];
+  const rightCalls = Array.isArray(right) ? right : [];
+
+  if (leftCalls.length !== rightCalls.length) {
+    return false;
+  }
+
+  return leftCalls.every((toolCall, index) => {
+    const other = rightCalls[index];
+    return (
+      other &&
+      toolCall.id === other.id &&
+      toolCall.name === other.name &&
+      safeStringify(toolCall.args) === safeStringify(other.args)
+    );
+  });
+}

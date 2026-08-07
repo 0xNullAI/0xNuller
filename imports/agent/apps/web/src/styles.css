@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/scrollbar.css';
+@import './styles/app.css';
+@import './styles/animations.css';

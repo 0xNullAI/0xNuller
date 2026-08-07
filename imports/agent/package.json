@@ -1,0 +1,54 @@
+{
+  "name": "dg-agent",
+  "version": "5.5.2",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @dg-agent/web",
+    "typecheck": "npm run typecheck --workspaces --if-present --include-workspace-root=false",
+    "build": "npm run build --workspaces --if-present --include-workspace-root=false",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.7.0",
+    "@types/node": "^25.6.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.3",
+    "prettier": "^3.8.3",
+    "shadcn": "^4.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.11",
+    "vitest": "^4.1.4"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "semi": true,
+    "singleQuote": true,
+    "trailingComma": "all"
+  },
+  "lint-staged": {
+    "**/*.{js,jsx,ts,tsx,css,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "overrides": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  }
+}

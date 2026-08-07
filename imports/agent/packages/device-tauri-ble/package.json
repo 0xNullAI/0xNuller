@@ -1,0 +1,17 @@
+{
+  "name": "@dg-agent/device-tauri-ble",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@dg-agent/core": "0.1.0",
+    "@dg-kit/protocol": "^1.13.0",
+    "@dg-kit/transport-tauri-blec": "^1.13.0",
+    "@dg-kit/transport-webbluetooth": "^1.13.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
