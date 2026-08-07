@@ -75,7 +75,10 @@ const STORAGE_KEY = 'dg-chat-ai-config';
 
 /** 免费预设作为默认配置（永远可用，无需配置）。 */
 function defaultConfig(): AiConfig {
-  const free = AI_PROVIDER_PRESETS[0];
+  // 免费预设必须始终存在——它是「无需任何配置就能用」这个产品承诺的载体。
+  // 这里显式断言而不是依赖下标一定有值，坏掉时会立刻炸而不是悄悄给出 undefined。
+  const free = AI_PROVIDER_PRESETS.find((p) => p.id === 'free') ?? AI_PROVIDER_PRESETS[0];
+  if (!free) throw new Error('AI_PROVIDER_PRESETS 为空：免费预设是必须项');
   return {
     providerId: free.id,
     baseUrl: free.baseUrl,

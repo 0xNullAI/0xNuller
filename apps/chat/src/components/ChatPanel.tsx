@@ -7,7 +7,11 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string, mentions?: ChatMention[]) => void;
   /** 上传并发送媒体（图片/语音）。房间未就绪时上层应忽略。 */
-  onSendMedia: (blob: Blob, kind: 'image' | 'audio', meta?: { durationMs?: number; w?: number; h?: number }) => Promise<void>;
+  onSendMedia: (
+    blob: Blob,
+    kind: 'image' | 'audio',
+    meta?: { durationMs?: number; w?: number; h?: number },
+  ) => Promise<void>;
   /** 可 @ 提及的成员（其他成员 + 自己）。 */
   members?: { peerId: string; name: string }[];
   /** 自己的 peerId（用于「@到我」高亮）。 */
@@ -19,15 +23,25 @@ function escapeRegExp(s: string): string {
 }
 
 /** 把文本里的 @角色名/昵称高亮。自己气泡是 accent 底色，@ 改用下划线+加粗以保证可读。 */
-function renderMessageText(text: string, mentions?: ChatMention[], isSelf = false): React.ReactNode {
-  const names = (mentions ?? []).map(m => m.displayName).filter(Boolean);
+function renderMessageText(
+  text: string,
+  mentions?: ChatMention[],
+  isSelf = false,
+): React.ReactNode {
+  const names = (mentions ?? []).map((m) => m.displayName).filter(Boolean);
   if (names.length === 0) return text;
   const re = new RegExp(`(@(?:${names.map(escapeRegExp).join('|')}))`, 'g');
-  const cls = isSelf ? 'font-semibold underline underline-offset-2' : 'font-medium text-[var(--accent)]';
+  const cls = isSelf
+    ? 'font-semibold underline underline-offset-2'
+    : 'font-medium text-[var(--accent)]';
   return text.split(re).map((part, i) =>
-    part.startsWith('@') && names.includes(part.slice(1))
-      ? <span key={i} className={cls}>{part}</span>
-      : part,
+    part.startsWith('@') && names.includes(part.slice(1)) ? (
+      <span key={i} className={cls}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 
@@ -44,19 +58,22 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   const fileRef = useRef<HTMLInputElement>(null);
   const recStartRef = useRef(0);
 
-  const mentionCandidates = mentionQuery !== null
-    ? members.filter(m => m.name && m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
-    : [];
+  const mentionCandidates =
+    mentionQuery !== null
+      ? members
+          .filter((m) => m.name && m.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .slice(0, 6)
+      : [];
 
   function handleInputChange(value: string) {
     setDraft(value);
     const m = /@([^\s@]*)$/.exec(value);
-    setMentionQuery(m ? m[1] : null);
+    setMentionQuery(m?.[1] ?? null);
   }
 
   function selectMention(member: { peerId: string; name: string }) {
-    setDraft(prev => prev.replace(/@([^\s@]*)$/, `@${member.name} `));
-    if (!pendingMentionsRef.current.some(x => x.peerId === member.peerId)) {
+    setDraft((prev) => prev.replace(/@([^\s@]*)$/, `@${member.name} `));
+    if (!pendingMentionsRef.current.some((x) => x.peerId === member.peerId)) {
       pendingMentionsRef.current.push({ peerId: member.peerId, displayName: member.name });
     }
     setMentionQuery(null);
@@ -77,7 +94,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
     const text = draft.trim();
     if (!text) return;
     // 只保留文本里仍出现的 @ 提及。
-    const mentions = pendingMentionsRef.current.filter(m => text.includes(`@${m.displayName}`));
+    const mentions = pendingMentionsRef.current.filter((m) => text.includes(`@${m.displayName}`));
     onSend(text, mentions.length ? mentions : undefined);
     setDraft('');
     pendingMentionsRef.current = [];
@@ -151,7 +168,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           const isSelf = msg.fromSelf;
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
           const sameSender = prevMsg?.senderId === msg.senderId;
-          const closeInTime = prevMsg && (msg.timestamp - prevMsg.timestamp) < 60000;
+          const closeInTime = prevMsg && msg.timestamp - prevMsg.timestamp < 60000;
           const grouped = sameSender && closeInTime;
           const hasMedia = !!msg.media;
 
@@ -194,7 +211,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                   >
                     <audio controls src={msg.media.url} className="max-w-[220px]" />
                     {msg.media.durationMs != null && (
-                      <p className={`mt-0.5 text-[10px] ${isSelf ? 'text-[var(--button-text)]' : 'text-[var(--text-faint)]'}`}>
+                      <p
+                        className={`mt-0.5 text-[10px] ${isSelf ? 'text-[var(--button-text)]' : 'text-[var(--text-faint)]'}`}
+                      >
                         语音 {formatDuration(msg.media.durationMs)}
                       </p>
                     )}
@@ -208,7 +227,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                       (isSelf
                         ? 'rounded-[14px] rounded-br-[4px] bg-[var(--accent)] px-3 py-2 text-sm text-[var(--button-text)]'
                         : 'rounded-[14px] rounded-bl-[4px] border px-3 py-2 text-sm text-[var(--text)] ' +
-                          (selfId && msg.mentions?.some(m => m.peerId === selfId)
+                          (selfId && msg.mentions?.some((m) => m.peerId === selfId)
                             ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'))
                     }
@@ -241,10 +260,13 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         {/* @ 提及候选 */}
         {mentionCandidates.length > 0 && (
           <div className="absolute bottom-full left-3 right-3 mb-1 max-h-44 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]">
-            {mentionCandidates.map(m => (
+            {mentionCandidates.map((m) => (
               <button
                 key={m.peerId}
-                onMouseDown={e => { e.preventDefault(); selectMention(m); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectMention(m);
+                }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text)] hover:bg-[var(--bg-soft)]"
               >
                 <AtSign size={13} className="shrink-0 text-[var(--text-faint)]" />
@@ -288,13 +310,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={handlePickImage}
-            />
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={handlePickImage} />
             <button
               onClick={() => fileRef.current?.click()}
               disabled={busy}
@@ -314,8 +330,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
             <input
               type="text"
               value={draft}
-              onChange={e => handleInputChange(e.target.value)}
-              onKeyDown={e => {
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={(e) => {
                 if (e.key === 'Escape') setMentionQuery(null);
                 else if (e.key === 'Enter') handleSend();
               }}
@@ -341,7 +357,11 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           onClick={() => setLightbox(null)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
         >
-          <img src={lightbox} alt="图片" className="max-h-full max-w-full rounded-[var(--radius-sm)]" />
+          <img
+            src={lightbox}
+            alt="图片"
+            className="max-h-full max-w-full rounded-[var(--radius-sm)]"
+          />
           <button
             onClick={() => setLightbox(null)}
             className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
