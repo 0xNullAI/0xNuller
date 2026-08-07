@@ -2,7 +2,7 @@ import type { BridgeSettings } from '@dg-agent/bridge';
 import type { ModelContextStrategy } from '@dg-agent/core';
 import type { BrowserPermissionMode } from '@dg-agent/permissions-browser';
 import type { SavedPromptPreset } from '@dg-agent/runtime';
-import type { ProviderId, ProviderSettings } from '@dg-agent/providers-catalog';
+import type { ProviderId, ProviderSettings } from '@0xnullai/llm-providers';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
 

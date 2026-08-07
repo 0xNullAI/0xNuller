@@ -1,6 +1,10 @@
+import { FREE_TRIAL_PROXY_URL, FREE_TRIAL_MODEL } from '@0xnullai/llm-providers';
+
 // AI / LLM 供应商配置：房主选择房间内 AI 代理使用的大模型。
-// 改编自 DG-Agent 的 providers-catalog（packages/providers-catalog/src/index.ts），
-// 但裁剪为 DG-Chat 自用的最小集合，且不依赖 React / zod，供 agent loop 直接 import。
+//
+// 供应商清单与免费体验代理地址来自 @0xnullai/llm-providers（全平台单一注册表），
+// 这里只保留 DG-Chat 自己的持久化形态 AiConfig。合并前这份文件维护着一套独立的
+// provider 列表和第二个硬编码的 llm.0xnullai.com——改一个地址要记得改两处。
 
 /** 当前生效的 AI 配置（持久化到 localStorage）。 */
 export interface AiConfig {
@@ -19,15 +23,15 @@ export interface AiProviderPreset {
   needsKey: boolean;
 }
 
-/** 免费代理地址（0xNullAI 提供，无需 API Key）。 */
-export const FREE_PROXY_URL = 'https://llm.0xnullai.com';
+/** 免费代理地址。单一真源在 @0xnullai/llm-providers，这里只做转发以保持既有导入不变。 */
+export const FREE_PROXY_URL = FREE_TRIAL_PROXY_URL;
 
 export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
   {
     id: 'free',
     label: '免费代理（0xNullAI）',
     baseUrl: FREE_PROXY_URL,
-    defaultModel: 'openrouter/free',
+    defaultModel: FREE_TRIAL_MODEL,
     needsKey: false,
   },
   {

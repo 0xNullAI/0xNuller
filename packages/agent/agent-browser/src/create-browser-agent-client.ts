@@ -15,7 +15,7 @@ import {
   createFreeProxyHmacHeaders,
   resolveProviderRuntimeSettings,
   type ProviderDialect,
-} from '@dg-agent/providers-catalog';
+} from '@0xnullai/llm-providers';
 import { OpenAiHttpLlmClient } from '@dg-agent/providers-openai-http';
 import {
   PI_AI_PROVIDER_KEYS,

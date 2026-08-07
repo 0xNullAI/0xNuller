@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Mirrors @dg-agent/providers-catalog's ProviderId. Duplicated here (rather
+// Mirrors @0xnullai/llm-providers's ProviderId. Duplicated here (rather
 // than imported) because this schema only needs the string literals for
 // persisted-settings validation — widening this list is purely additive, so
 // old persisted configs for the original six providers keep parsing

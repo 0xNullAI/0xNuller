@@ -20,7 +20,7 @@ import {
   type ProviderDefinition,
   type ProviderFieldDefinition,
   type ProviderId,
-} from '@dg-agent/providers-catalog';
+} from '@0xnullai/llm-providers';
 import {
   ConnectionTestError,
   ListModelsError,

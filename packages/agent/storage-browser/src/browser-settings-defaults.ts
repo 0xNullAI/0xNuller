@@ -3,7 +3,7 @@ import {
   createDefaultProviderSettings,
   normalizeProviderSettings,
   type ProviderId,
-} from '@dg-agent/providers-catalog';
+} from '@0xnullai/llm-providers';
 import {
   createDefaultToolCallConfig,
   DEFAULT_CIVET_PRESSURE_DELTA_KPA,

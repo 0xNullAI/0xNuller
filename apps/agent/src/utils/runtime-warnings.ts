@@ -3,7 +3,7 @@ import {
   getProviderDefinition,
   isProviderUsableInBrowser,
   providerRequiresUserApiKey,
-} from '@dg-agent/providers-catalog';
+} from '@0xnullai/llm-providers';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { describeBrowserModes } from '@dg-agent/agent-browser';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProviderSettings } from '@dg-agent/providers-catalog';
+import { createProviderSettings } from '@0xnullai/llm-providers';
 import { BrowserAppSettingsStore } from './index.js';
 
 const SETTINGS_KEY = 'dg-agent.browser-settings';

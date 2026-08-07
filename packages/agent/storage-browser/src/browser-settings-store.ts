@@ -2,7 +2,7 @@ import {
   createProviderSettings,
   normalizeProviderSettings,
   type ProviderId,
-} from '@dg-agent/providers-catalog';
+} from '@0xnullai/llm-providers';
 import type {
   BrowserAppSettings,
   BrowserAppEnvLike,

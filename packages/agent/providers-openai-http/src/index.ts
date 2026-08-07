@@ -1,6 +1,6 @@
 import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import type { ToolCall } from '@dg-agent/core';
-import type { ProviderEndpoint } from '@dg-agent/providers-catalog';
+import type { ProviderEndpoint } from '@0xnullai/llm-providers';
 import { z } from 'zod';
 import {
   toChatMessages,

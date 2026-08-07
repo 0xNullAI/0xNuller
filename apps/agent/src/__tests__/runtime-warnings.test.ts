@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProviderSettings, normalizeProviderSettings } from '@dg-agent/providers-catalog';
+import { createProviderSettings, normalizeProviderSettings } from '@0xnullai/llm-providers';
 import { defaultBrowserAppSettings } from '@dg-agent/storage-browser';
 import { buildWarnings } from '../utils/runtime-warnings.js';
 
