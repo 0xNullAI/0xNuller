@@ -1,0 +1,86 @@
+/*
+ * Tauri Android entry stylesheet.
+ *
+ * Tailwind v4 auto-scans the Vite project root for class usage; here that
+ * root is apps/tauri-android/, but the React components live in ../../src/.
+ * Without these @source directives Tailwind tree-shakes all utilities to
+ * zero and the app renders unstyled. Re-declares the scan paths before
+ * re-importing the web entry so utility extraction sees both trees.
+ */
+@source "../../../src";
+@source "./";
+
+/*
+ * Pull in the web app's full stylesheet — crucially the one carrying
+ * `@import 'tailwindcss'`. The @source directives above MUST live in the same
+ * CSS bundle as that import, or Tailwind v4 scans nothing under ../../../src
+ * and tree-shakes every utility to zero (the app renders unstyled on Android).
+ * main.tsx therefore imports ONLY this file, never @chat/index.css separately.
+ */
+@import '../../../src/index.css';
+
+/*
+ * Safe-area insets for Android edge-to-edge display.
+ *
+ * Tauri 2 Android draws behind the status bar / nav bar / cutout by default.
+ * Without this padding the top-of-app chrome (header with room id + member
+ * count + bluetooth button) hides under the system clock / battery indicator,
+ * and the bottom footer / soft keyboard region overlaps the gesture bar.
+ *
+ * The web build at index.html doesn't apply this — desktop browsers have no
+ * system bars, and env() resolves to 0 so the rule is a no-op there. iPhone
+ * Safari with a notch DOES return non-zero values, which is the correct
+ * behaviour we want anyway.
+ *
+ * Requires `<meta name="viewport" content="viewport-fit=cover">` in
+ * index.html (already set).
+ */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  /* Background intentionally NOT set here — ../../../src/styles/app.css
+     drives `body { background: var(--bg) }` which flips with the
+     light/dark theme tokens. Hardcoding it would override theme switching. */
+  box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/*
+ * Suppress Android WebView quirks that don't exist on desktop web.
+ * Each rule is here only because Chrome desktop already behaves the way we
+ * want by default.
+ */
+html {
+  /* Stop Android from rescaling text when system font-size is bumped — UI
+     density would otherwise drift from the web build. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Disable native pull-to-refresh + horizontal swipe-back, both of which
+     conflict with the chat panel's internal scrolling and the room/control
+     tab swipe. */
+  overscroll-behavior: none;
+}
+
+* {
+  /* Kill the blue tap-flash WebView paints over every clickable element. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Long-press on plain UI chrome shouldn't expose the text-selection
+   toolbar. Inputs, message bubbles, and anything that opts in via
+   `.allow-select` still allows selection. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+[contenteditable='true'],
+.allow-select,
+.allow-select * {
+  -webkit-user-select: text;
+  user-select: text;
+}

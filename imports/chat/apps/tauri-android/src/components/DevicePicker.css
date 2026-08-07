@@ -1,0 +1,95 @@
+.dgch-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 10000;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.dgch-picker-panel {
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-elevated, #18181b);
+  color: var(--text, #f4f4f5);
+  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  box-shadow: var(--shadow-panel, 0 -8px 24px rgba(0, 0, 0, 0.4));
+}
+
+.dgch-picker-header {
+  padding: 14px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  border-bottom: 1px solid var(--surface-border, #27272a);
+}
+
+.dgch-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dgch-picker-empty {
+  padding: 24px 18px;
+  text-align: center;
+  color: var(--text-faint, #71717a);
+  font-size: 13px;
+}
+
+.dgch-picker-row {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 10px);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dgch-picker-row:active {
+  background: var(--bg-soft, #27272a);
+}
+
+.dgch-picker-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dgch-picker-meta {
+  font-size: 11px;
+  color: var(--text-faint, #71717a);
+  font-variant-numeric: tabular-nums;
+}
+
+.dgch-picker-footer {
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid var(--surface-border, #27272a);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dgch-picker-cancel {
+  background: transparent;
+  border: 1px solid var(--surface-border, #27272a);
+  color: var(--text, #f4f4f5);
+  padding: 8px 18px;
+  border-radius: var(--radius-md, 10px);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dgch-picker-cancel:active {
+  background: var(--bg-soft, #27272a);
+}

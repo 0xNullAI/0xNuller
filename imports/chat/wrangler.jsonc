@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dg-chat",
+  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-01-01",
+
+  // 生产自定义域：chat.0xnullai.com 由本 Worker 接管（从原 Pages 项目迁移而来）。
+  "routes": [
+    { "pattern": "chat.0xnullai.com", "custom_domain": true }
+  ],
+  // 保留 workers.dev 预发地址（dg-chat.0xnullai.workers.dev）作为备用/调试入口。
+  "workers_dev": true,
+
+  // 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
+  // run_worker_first: 所有请求先进 Worker；非 /ws、/api 路径由 Worker 回退到 env.ASSETS（SPA）。
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+
+  // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 清理。
+  // 单例 LobbyDO（idFromName("v1")）：公开房间注册表 + 实时推送。
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOM", "class_name": "RoomDO" },
+      { "name": "LOBBY", "class_name": "LobbyDO" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RoomDO", "LobbyDO"]
+    }
+  ],
+
+  // 图片/语音对象存储。key = room/{code}/{msgId}.{ext}，随房间清理按前缀删除。
+  // 首次部署前：wrangler r2 bucket create dg-chat-media
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "dg-chat-media" }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

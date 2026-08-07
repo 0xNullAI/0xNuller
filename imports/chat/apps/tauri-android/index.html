@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0"
+    />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>DG-Chat</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: #0a0a0a;
+        color: #f4f4f5;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+          'Segoe UI', sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-text-size-adjust: 100%;
+        overscroll-behavior: none;
+      }
+      /* Splash overlay — fades once React commits. Avoids the white flash on
+         Android WebView before the dark theme tokens load. */
+      #dgch-splash {
+        position: fixed;
+        inset: 0;
+        background: #0a0a0a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #71717a;
+        font-size: 14px;
+        z-index: 9999;
+        transition: opacity 200ms ease;
+      }
+      #dgch-splash.dgch-splash-loaded {
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="dgch-splash">DG-Chat</div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

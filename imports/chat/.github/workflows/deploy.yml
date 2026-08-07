@@ -1,0 +1,32 @@
+name: Deploy to production
+
+# main 是生产分支：合并到 main 后构建并部署 Worker 到 Cloudflare（chat.0xnullai.com）。
+# 需要仓库 Secret：CLOUDFLARE_API_TOKEN（Workers Scripts:Edit + Workers R2 Storage + Workers Routes 权限）。
+# 未配置该 Secret 时部署步骤自动跳过（不会让 workflow 失败），便于先合并、后配密钥。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy Worker
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
