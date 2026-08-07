@@ -1,6 +1,10 @@
-// DG-Market 社区市场客户端：拉取他人上传的波形，供「从市场导入」使用。
-// 改编自 DG-Agent 的 apps/web/src/lib/market.ts，DG-Chat 仅需要波形条目。
-// 默认指向官方市场地址，可通过 VITE_MARKET_BASE_URL 覆盖（部署私有 DG-Market 时）。
+// DG-Market 社区市场客户端 —— 平台单一真源。
+//
+// 合并前 agent / chat / voice 各有一份：agent 覆盖 waveform+scenario、voice 只用
+// scenario、chat 额外支持 multi-scene 与 AbortSignal。这里以 chat 那份（严格超集）
+// 为基准，三个模块共用。
+//
+// 部署自己的 DG-Market 时用 VITE_MARKET_BASE_URL 覆盖，或直接改下面的兜底常量。
 
 const FALLBACK_BASE_URL = 'https://market.0xnullai.com';
 

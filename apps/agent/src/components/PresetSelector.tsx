@@ -4,7 +4,7 @@ import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
 import { Button, Input, Textarea } from '@0xnullai/ui';
 import { cn } from '@/lib/utils';
-import type { MarketItem, MarketScenarioContent } from '@/lib/market';
+import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 import { MarketImportDialog } from './MarketImportDialog.js';
 
 const DEFAULT_CUSTOM_ICON = '📝';

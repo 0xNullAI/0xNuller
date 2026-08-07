@@ -1,0 +1,8 @@
+{
+  "name": "@0xnullai/market-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DG-Market 社区市场客户端，四个模块共用",
+  "exports": { ".": "./src/index.ts" }
+}

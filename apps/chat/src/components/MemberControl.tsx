@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ArrowLeft, Bluetooth, BatteryMedium, Play, Pause, RotateCcw, Upload, Store, Trash2, Zap, Repeat, Repeat1, Shuffle, Timer } from 'lucide-react';
 import type { CmdAction, DeviceCommand, MemberState, WaveformTransfer } from '../lib/protocol';
-import type { MarketItem } from '../lib/market';
+import type { MarketItem } from '@0xnullai/market-client';
 import { MarketImportDialog } from './MarketImportDialog';
 
 function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval = 100) {

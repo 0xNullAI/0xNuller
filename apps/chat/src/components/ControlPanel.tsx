@@ -3,7 +3,7 @@ import { Copy, Check, ChevronRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { MemberState, CmdAction, DeviceCommand, WaveformTransfer } from '../lib/protocol';
 import type { WaveformDefinition } from '../lib/waveforms';
-import type { MarketItem } from '../lib/market';
+import type { MarketItem } from '@0xnullai/market-client';
 import { BUILTIN_WAVEFORMS } from '../lib/waveforms';
 import { MemberCard } from './MemberCard';
 import { MemberControl } from './MemberControl';

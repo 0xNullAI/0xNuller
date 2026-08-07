@@ -6,7 +6,7 @@ import {
   markMarketDownloaded,
   type MarketItem,
   type MarketItemType,
-} from '@/lib/market';
+} from '@0xnullai/market-client';
 
 interface MarketImportDialogProps {
   open: boolean;

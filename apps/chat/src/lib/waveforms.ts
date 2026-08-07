@@ -15,7 +15,7 @@ import {
   pulseToWaveformDefinition,
 } from '@dg-kit/waveforms';
 import type { WaveFrame as KitWaveFrame } from '@dg-kit/core';
-import type { MarketItem, MarketWaveformContent } from './market';
+import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 
 export type WaveFrame = KitWaveFrame;
 

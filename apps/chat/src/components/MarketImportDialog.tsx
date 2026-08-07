@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Search, X } from 'lucide-react';
-import { fetchMarketItems, markMarketDownloaded, type MarketItem } from '../lib/market';
+import { fetchMarketItems, markMarketDownloaded, type MarketItem } from '@0xnullai/market-client';
 
 interface MarketImportDialogProps {
   open: boolean;

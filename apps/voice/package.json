@@ -20,6 +20,7 @@
     "android:init": "npm run tauri:android:init -w @dg-voice/tauri-android"
   },
   "dependencies": {
+    "@0xnullai/market-client": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@dg-kit/core": "^1.13.0",
     "@dg-kit/protocol": "^1.13.0",

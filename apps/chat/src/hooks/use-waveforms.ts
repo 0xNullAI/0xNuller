@@ -7,7 +7,7 @@ import {
   marketItemToWaveform,
   type WaveformDefinition,
 } from '../lib/waveforms';
-import type { MarketItem } from '../lib/market';
+import type { MarketItem } from '@0xnullai/market-client';
 
 const HIDDEN_KEY = 'dg-chat-hidden-builtins';
 

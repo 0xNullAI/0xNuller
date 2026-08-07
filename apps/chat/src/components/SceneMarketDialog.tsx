@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search, X, Download } from 'lucide-react';
-import { fetchMarketItems, markMarketDownloaded, type MarketItem, type MarketMultiSceneContent } from '../lib/market';
+import { fetchMarketItems, markMarketDownloaded, type MarketItem, type MarketMultiSceneContent } from '@0xnullai/market-client';
 import type { Scene } from '../lib/protocol';
 
 function genId(): string {
