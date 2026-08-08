@@ -75,7 +75,6 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
   },
 ];
 
-
 /** 免费预设作为默认配置（永远可用，无需配置）。 */
 
 export function getPreset(id: string): AiProviderPreset | undefined {

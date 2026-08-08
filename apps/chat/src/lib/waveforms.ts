@@ -9,11 +9,7 @@
  */
 
 import { strFromU8, unzipSync } from 'fflate';
-import {
-  listBuiltinWaveforms,
-  parsePulseText,
-  pulseToWaveformDefinition,
-} from '@dg-kit/waveforms';
+import { listBuiltinWaveforms, parsePulseText, pulseToWaveformDefinition } from '@dg-kit/waveforms';
 import type { WaveFrame as KitWaveFrame } from '@dg-kit/core';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 

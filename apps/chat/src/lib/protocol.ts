@@ -42,7 +42,7 @@ export interface ChatMessage {
 }
 
 export type CmdAction =
-  | 'adjust_strength'  // v=signed delta；owner 端 prev+delta 累加并 clamp 到 [0, limit]，多控制者安全
+  | 'adjust_strength' // v=signed delta；owner 端 prev+delta 累加并 clamp 到 [0, limit]，多控制者安全
   | 'change_wave'
   | 'start'
   | 'stop'
@@ -56,15 +56,15 @@ export type CmdAction =
   | 'set_queue'
   | 'set_play_mode'
   | 'set_interval'
-  | 'fire_active'     // 心跳：控制者按住期间每 300ms 一次，v=boost；owner 端 800ms 没刷新即视作松开
-  | 'fire_release'    // 快速松开（非必需）：控制者松开瞬间发一次，让 owner 立即回落而不必等心跳过期
+  | 'fire_active' // 心跳：控制者按住期间每 300ms 一次，v=boost；owner 端 800ms 没刷新即视作松开
+  | 'fire_release' // 快速松开（非必需）：控制者松开瞬间发一次，让 owner 立即回落而不必等心跳过期
   // —— 新设备家族（Opossum / 灵猫边缘 / 爪印），见 kind 字段 ——
   // 以下几个新 action 只对 Opossum 负鼠振动控制器有意义。不复用 adjust_strength /
   // burst / stop，因为那三个隐含目标是 Coyote（历史包袱），重载它们会让所有既有
   // 消费者都要多一层 kind 判断；新增独立 action 反而更简单、向后兼容成本为零。
-  | 'vibrate_adjust'  // v=signed delta（同 adjust_strength 语义，但作用于 Opossum intensity）
-  | 'vibrate_stop'    // 停止 Opossum 振动（c 缺省 = 两通道都归零）
-  | 'vibrate_burst'   // 一次性脉冲：v=目标强度，ms=持续时间（缺省 500ms），之后自动回落
+  | 'vibrate_adjust' // v=signed delta（同 adjust_strength 语义，但作用于 Opossum intensity）
+  | 'vibrate_stop' // 停止 Opossum 振动（c 缺省 = 两通道都归零）
+  | 'vibrate_burst' // 一次性脉冲：v=目标强度，ms=持续时间（缺省 500ms），之后自动回落
   // set_led 对 paw-prints / civet-edging / opossum 都有意义，用 kind 区分目标设备。
   | 'set_led';
 

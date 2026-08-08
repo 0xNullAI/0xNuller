@@ -29,7 +29,10 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
   const dev = ctx?.device;
   switch (cmd.action) {
     case 'vibrate':
-      if (navigator.vibrate) { navigator.vibrate(500); return '已振动'; }
+      if (navigator.vibrate) {
+        navigator.vibrate(500);
+        return '已振动';
+      }
       return '当前设备不支持振动';
 
     case 'alert':
@@ -37,7 +40,10 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       return '已弹窗';
 
     case 'bg':
-      if (cmd.d) { document.body.style.backgroundColor = cmd.d; return `背景已改为 ${cmd.d}`; }
+      if (cmd.d) {
+        document.body.style.backgroundColor = cmd.d;
+        return `背景已改为 ${cmd.d}`;
+      }
       return '缺少颜色参数';
 
     case 'shake':
@@ -57,7 +63,9 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
         osc.start();
         osc.stop(a.currentTime + 0.2);
         return '已蜂鸣';
-      } catch { return '无法播放蜂鸣'; }
+      } catch {
+        return '无法播放蜂鸣';
+      }
     }
 
     case 'change_wave':

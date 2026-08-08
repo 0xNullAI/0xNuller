@@ -48,7 +48,7 @@ export async function compressImage(file: File): Promise<{ blob: Blob; w: number
   }
   ctx.drawImage(img, 0, 0, w, h);
   const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.82),
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.82),
   );
   URL.revokeObjectURL(img.src);
   return { blob, w, h };
@@ -71,7 +71,8 @@ export interface Recorder {
 /** 选一个浏览器支持的录音 MIME（iOS Safari 回退到 mp4/aac）。 */
 function pickAudioMime(): string {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
-  const supported = (window as { MediaRecorder?: { isTypeSupported?: (m: string) => boolean } }).MediaRecorder;
+  const supported = (window as { MediaRecorder?: { isTypeSupported?: (m: string) => boolean } })
+    .MediaRecorder;
   for (const c of candidates) {
     if (supported?.isTypeSupported?.(c)) return c;
   }
@@ -84,17 +85,17 @@ export async function startRecording(): Promise<Recorder> {
   const mime = pickAudioMime();
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   const chunks: Blob[] = [];
-  rec.ondataavailable = e => {
+  rec.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data);
   };
   const startedAt = Date.now();
   rec.start();
 
-  const cleanup = () => stream.getTracks().forEach(t => t.stop());
+  const cleanup = () => stream.getTracks().forEach((t) => t.stop());
 
   return {
     stop() {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         rec.onstop = () => {
           cleanup();
           resolve({

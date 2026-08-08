@@ -23,6 +23,7 @@ import {
   type OpossumButtonEvent,
 } from '@dg-kit/protocol';
 import { WebBluetoothDeviceClient, requestDgLabDevice } from '@dg-kit/transport-webbluetooth';
+import { DeviceCommandQueue } from '@dg-kit/safety';
 import type {
   DeviceClient,
   DeviceState as KitDeviceState,
@@ -82,6 +83,15 @@ interface ChannelLocalState {
 export class DGLabDevice {
   private readonly protocol = new CoyoteProtocolAdapter();
   private readonly client: DeviceClient;
+  /**
+   * 所有写入都必须经过它。
+   *
+   * 合并前这个类是全仓唯一绕开队列直写 `client.execute()` 的地方。后果是
+   * `SerialCommandQueue` 的急停插队（靠 generation 计数作废在途命令）对它完全无效——
+   * 急停之后已经排在路上的旧指令仍会落到设备上。设备所有权上提之后，同一台设备会
+   * 同时有「过队列的写」和「不过队列的写」，那是最危险的组合。
+   */
+  private readonly queue: DeviceCommandQueue;
   private onStateChange: (() => void) | null = null;
 
   private version: DeviceVersion = 'v3';
@@ -110,6 +120,7 @@ export class DGLabDevice {
     this.client = clientFactory
       ? clientFactory(this.protocol)
       : new WebBluetoothDeviceClient({ protocol: this.protocol });
+    this.queue = new DeviceCommandQueue(this.client);
     this.protocol.subscribe(() => {
       this.onStateChange?.();
     });
@@ -152,10 +163,10 @@ export class DGLabDevice {
     this.deviceName = state.deviceName ?? '';
     this.version = this.deviceName.startsWith(V2_DEVICE_NAME_PREFIX) ? 'v2' : 'v3';
 
-    // DG-Chat ships with a per-channel safety cap of 50 (0~200 protocol range).
-    await this.protocol.setLimits(DEFAULT_LIMIT, DEFAULT_LIMIT);
-    this.limitA = DEFAULT_LIMIT;
-    this.limitB = DEFAULT_LIMIT;
+    // 不再往设备写硬件上限。这里原本 setLimits(50,50) 是全仓唯一改写设备侧状态的
+    // 地方（V3 的 BF 包是持久的设备状态），于是同一台郊狼被 Chat 连过之后硬件上限
+    // 就是 50、被 Agent 连过之后是 200——谁最后连谁说了算，用户在别处调高的上限会
+    // 被这里静默压回去。上限改为纯软件钳制，取「设备上报值」与「用户设置」的较小者。
 
     return {
       version: this.version,
@@ -181,14 +192,17 @@ export class DGLabDevice {
    */
   setStrength(channel: 'A' | 'B', value: number): void {
     const state = this.protocol.getState();
-    const limit = channel === 'A' ? state.limitA : state.limitB;
+    // 取两者较小：设备自己上报的上限（可能是别处遗留的硬件值）与本地的软件上限。
+    // 不再写硬件，所以软件这一侧是唯一由用户控制的闸门，绝不能省。
+    const limit = Math.min(
+      channel === 'A' ? state.limitA : state.limitB,
+      channel === 'A' ? this.limitA : this.limitB,
+    );
     const target = clamp(Math.round(value), 0, limit);
     const current = channel === 'A' ? state.strengthA : state.strengthB;
     const delta = target - current;
     if (delta === 0) return;
-    void this.client
-      .execute({ type: 'adjustStrength', channel, delta })
-      .catch(() => undefined);
+    void this.queue.enqueue({ type: 'adjustStrength', channel, delta }).catch(() => undefined);
   }
 
   setWave(channel: 'A' | 'B', frames: WaveFrame[], waveformId: string, loop = true): void {
@@ -197,7 +211,7 @@ export class DGLabDevice {
       local.waveformId = null;
       local.frames = null;
       local.loop = loop;
-      void this.client.execute({ type: 'stop', channel }).catch(() => undefined);
+      void this.queue.enqueue({ type: 'stop', channel }).catch(() => undefined);
       return;
     }
 
@@ -205,8 +219,8 @@ export class DGLabDevice {
     local.frames = frames.map((f) => [f[0], f[1]] as WaveFrame);
     local.loop = loop;
 
-    void this.client
-      .execute({
+    void this.queue
+      .enqueue({
         type: 'changeWave',
         channel,
         waveform: {
@@ -223,22 +237,24 @@ export class DGLabDevice {
     const local = channel === 'A' ? this.channelA : this.channelB;
     local.waveformId = null;
     local.frames = null;
-    void this.client.execute({ type: 'stop', channel }).catch(() => undefined);
+    void this.queue.enqueue({ type: 'stop', channel }).catch(() => undefined);
   }
 
-  /** Emergency stop: zero both channels, kill all waves. */
+  /** 急停：双通道归零、停掉所有波形。 */
   stopAll(): void {
     this.channelA = { waveformId: null, frames: null, loop: true };
     this.channelB = { waveformId: null, frames: null, loop: true };
-    void this.client.emergencyStop().catch(() => undefined);
+    // 走队列而不是直接 client.emergencyStop()：队列的插队会 bump generation，
+    // 把已经排在路上的旧指令一并作废。直接调 client 只停当下，排队中的下一条
+    // 强度指令随后照样执行——急停之后设备又动起来。
+    void this.queue.enqueue({ type: 'emergencyStop' }).catch(() => undefined);
   }
 
-  /** Update one channel's strength soft-limit (the other channel is preserved). */
+  /** 更新某个通道的强度上限。只改软件侧，不写设备。 */
   setLimit(channel: 'A' | 'B', value: number): void {
     const next = clamp(Math.round(value), 0, 200);
     this.limitA = channel === 'A' ? next : this.limitA;
     this.limitB = channel === 'B' ? next : this.limitB;
-    void this.protocol.setLimits(this.limitA, this.limitB).catch(() => undefined);
   }
 
   getState(): {
@@ -292,9 +308,7 @@ function clamp(value: number, min: number, max: number): number {
  * 1.7.0+); false only for a custom `DeviceClientFactory` that doesn't
  * implement it.
  */
-function hasConnectDevice(
-  client: DeviceClient,
-): client is DeviceClient & {
+function hasConnectDevice(client: DeviceClient): client is DeviceClient & {
   connectDevice(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void>;
 } {
   return typeof (client as { connectDevice?: unknown }).connectDevice === 'function';
@@ -331,10 +345,15 @@ export interface OpossumSummary {
 }
 
 /** Turn a raw paw-prints notification into a short human-readable summary + optional numeric value. */
-function describePawPrintsReading(reading: PawPrintsReading): { text: string; value: number | null } | null {
+function describePawPrintsReading(
+  reading: PawPrintsReading,
+): { text: string; value: number | null } | null {
   switch (reading.type) {
     case 'trigger':
-      return { text: `触发事件 #${reading.eventId}（参数 ${reading.parameterValue}）`, value: reading.parameterValue };
+      return {
+        text: `触发事件 #${reading.eventId}（参数 ${reading.parameterValue}）`,
+        value: reading.parameterValue,
+      };
     case 'triggerCancel':
       return { text: `事件 #${reading.eventId} 已取消`, value: null };
     case 'parameterChange':
@@ -351,7 +370,10 @@ function describePawPrintsReading(reading: PawPrintsReading): { text: string; va
   }
 }
 
-function describeCivetReading(reading: CivetPressureReading): { text: string; value: number | null } {
+function describeCivetReading(reading: CivetPressureReading): {
+  text: string;
+  value: number | null;
+} {
   return { text: `压力 ${reading.kPa.toFixed(1)} kPa`, value: reading.kPa };
 }
 
@@ -508,28 +530,30 @@ export class DeviceSession {
       this.sensorState = state;
       this.emit();
     });
-    this.unsubscribeSensorReading = adapter.subscribe((reading: PawPrintsReading | CivetPressureReading) => {
-      const described =
-        kind === 'paw-prints'
-          ? describePawPrintsReading(reading as PawPrintsReading)
-          : describeCivetReading(reading as CivetPressureReading);
-      if (!described) return;
-      this.sensorLastEvent = described.text;
-      this.sensorLastValue = described.value;
-      this.sensorLastEventAt = Date.now();
-      this.emit();
+    this.unsubscribeSensorReading = adapter.subscribe(
+      (reading: PawPrintsReading | CivetPressureReading) => {
+        const described =
+          kind === 'paw-prints'
+            ? describePawPrintsReading(reading as PawPrintsReading)
+            : describeCivetReading(reading as CivetPressureReading);
+        if (!described) return;
+        this.sensorLastEvent = described.text;
+        this.sensorLastValue = described.value;
+        this.sensorLastEventAt = Date.now();
+        this.emit();
 
-      // TODO(cross-device consent): a sensor event like this is exactly the
-      // kind of signal a user might eventually want to wire into "my
-      // button press nudges someone else's device" — but doing that
-      // automatically, without the *receiving* member explicitly opting
-      // in, would let one person's sensor silently drive another person's
-      // hardware. That needs its own consent/permission UI (mirroring the
-      // existing `allowAi` opt-in toggle for AI control) before it can be
-      // built safely. Until that exists, sensor events stay strictly
-      // informational: surfaced in the room UI via MemberState.sensorLastEvent,
-      // never used here to construct/send a DeviceCommand automatically.
-    });
+        // TODO(cross-device consent): a sensor event like this is exactly the
+        // kind of signal a user might eventually want to wire into "my
+        // button press nudges someone else's device" — but doing that
+        // automatically, without the *receiving* member explicitly opting
+        // in, would let one person's sensor silently drive another person's
+        // hardware. That needs its own consent/permission UI (mirroring the
+        // existing `allowAi` opt-in toggle for AI control) before it can be
+        // built safely. Until that exists, sensor events stay strictly
+        // informational: surfaced in the room UI via MemberState.sensorLastEvent,
+        // never used here to construct/send a DeviceCommand automatically.
+      },
+    );
 
     this.emit();
   }
@@ -540,7 +564,10 @@ export class DeviceSession {
 
   disconnectSensor(): void {
     if (this.sensorDevice) {
-      this.sensorDevice.removeEventListener('gattserverdisconnected', this.handleSensorGattDisconnected);
+      this.sensorDevice.removeEventListener(
+        'gattserverdisconnected',
+        this.handleSensorGattDisconnected,
+      );
       const gatt = this.sensorDevice.gatt;
       if (gatt?.connected) gatt.disconnect();
     }
@@ -559,7 +586,10 @@ export class DeviceSession {
     this.emit();
   }
 
-  private async attachOpossum(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void> {
+  private async attachOpossum(
+    device: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<void> {
     const adapter = new OpossumVibrateAdapter();
     // Same ordering fix as attachSensor(): connect first, tear down the old
     // Opossum only once the new one has actually succeeded. Same GATT-ready
@@ -573,7 +603,10 @@ export class DeviceSession {
    * resolved — factored out of `attachOpossum()` (the only caller), mirroring
    * `attachConnectedSensor()`.
    */
-  private attachConnectedOpossum(adapter: OpossumVibrateAdapter, device: BluetoothDeviceLike): void {
+  private attachConnectedOpossum(
+    adapter: OpossumVibrateAdapter,
+    device: BluetoothDeviceLike,
+  ): void {
     this.disconnectOpossum();
 
     this.opossumAdapter = adapter;
@@ -603,7 +636,10 @@ export class DeviceSession {
 
   disconnectOpossum(): void {
     if (this.opossumDevice) {
-      this.opossumDevice.removeEventListener('gattserverdisconnected', this.handleOpossumGattDisconnected);
+      this.opossumDevice.removeEventListener(
+        'gattserverdisconnected',
+        this.handleOpossumGattDisconnected,
+      );
       const gatt = this.opossumDevice.gatt;
       if (gatt?.connected) gatt.disconnect();
     }
@@ -645,10 +681,13 @@ export class DeviceSession {
     // the restore below only fires if nothing else touched this channel in
     // the meantime (a stop, another burst, a manual adjustment).
     const generation = this.opossumIntensityGeneration[channel];
-    setTimeout(() => {
-      if (this.opossumIntensityGeneration[channel] !== generation) return;
-      this.setOpossumIntensity(channel, Math.min(previous, limit), limit);
-    }, Math.max(100, durationMs));
+    setTimeout(
+      () => {
+        if (this.opossumIntensityGeneration[channel] !== generation) return;
+        this.setOpossumIntensity(channel, Math.min(previous, limit), limit);
+      },
+      Math.max(100, durationMs),
+    );
   }
 
   /** Stop one or both Opossum channels immediately (no restore). */

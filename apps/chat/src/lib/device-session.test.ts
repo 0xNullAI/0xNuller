@@ -55,7 +55,11 @@ class MockCharacteristic extends EventTarget {
   }
 }
 
-function createMockServer(writeChar: MockCharacteristic, notifyChar: MockCharacteristic, batteryChar: MockCharacteristic) {
+function createMockServer(
+  writeChar: MockCharacteristic,
+  notifyChar: MockCharacteristic,
+  batteryChar: MockCharacteristic,
+) {
   return {
     connected: true,
     async getPrimaryService(service: string) {
@@ -83,7 +87,11 @@ function createMockServer(writeChar: MockCharacteristic, notifyChar: MockCharact
 
 /** A fake `BluetoothDevice` — real EventTarget so gattserverdisconnected wiring is exercised for real. */
 class MockDevice extends EventTarget {
-  readonly gatt: { connected: boolean; connect: () => Promise<unknown>; disconnect: ReturnType<typeof vi.fn> };
+  readonly gatt: {
+    connected: boolean;
+    connect: () => Promise<unknown>;
+    disconnect: ReturnType<typeof vi.fn>;
+  };
   name: string;
   id: string;
   writeChar = new MockCharacteristic((bytes) => this.writes.push(Array.from(bytes)));
@@ -216,7 +224,10 @@ describe('DeviceSession — multi-device routing', () => {
   it('replaces the previous sensor when a second sensor is added (v1: one sensor at a time)', async () => {
     const first = new MockDevice(`${PAW_PRINTS_DEVICE_NAME_PREFIX}000`, 'paw-1');
     const second = new MockDevice(`${CIVET_DEVICE_NAME_PREFIX}000`, 'civet-1');
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([first, second]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      first,
+      second,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
@@ -230,7 +241,10 @@ describe('DeviceSession — multi-device routing', () => {
   it('disconnectSensor() clears the sensor slot without touching opossum', async () => {
     const sensor = new MockDevice(`${PAW_PRINTS_DEVICE_NAME_PREFIX}000`, 'paw-1');
     const opossum = new MockDevice(`${OPOSSUM_DEVICE_NAME_PREFIX}000`, 'opossum-1');
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([sensor, opossum]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      sensor,
+      opossum,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
@@ -324,7 +338,10 @@ describe('DeviceSession — multi-device routing', () => {
         throw new Error('service discovery failed');
       },
     });
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([good, broken]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      good,
+      broken,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
