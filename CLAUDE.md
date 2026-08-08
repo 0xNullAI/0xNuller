@@ -89,7 +89,7 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
 ## 已知的坑
 
 - **Kit 是 dist-first。** `main`/`types` 指向 `dist/`，不要改回 `src`——那个模式当年弄坏过 0.1.0 的发布。所以任何 typecheck/test 之前必须先 `build:kit`。
-- **Node 26 的内置 `localStorage` 会遮蔽 jsdom 的。** `test/setup/localstorage.ts` 已处理，不要加 `--localstorage-file`（实验性标志，且文件持久化会让测试互相串状态）。
+- **Node 26 的内置 `localStorage` 会遮蔽 jsdom 的。** `test/setup/jsdom-gaps.ts` 已处理，不要加 `--localstorage-file`（实验性标志，且文件持久化会让测试互相串状态）。
 - **`run_worker_first: true` 会让静态资源变成计费的 Worker 调用。** 免费额度耗尽时 Cloudflare 返回 429 而不是回退到资源服务——整站挂掉。只对 `/api/*` 与 `/ws/*` 开。
 - **DO migration tag 按 Worker script 计。** 不要把已有的 DO 类挪进别的 Worker。
 - **安卓端没有热更新**，前端修复都要重新打 APK，老版本会长期存在于用户手机上。
