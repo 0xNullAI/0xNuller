@@ -7,7 +7,6 @@ import { Button, Input, Textarea, MarketImportDialog } from '@0xnullai/ui';
 import { cn } from '@agent/lib/utils';
 import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 
-
 const DEFAULT_CUSTOM_ICON = '📝';
 
 // 沉浸式角色扮演场景的写作骨架，结构参照「地狱岛冒险」。点击「使用模板」

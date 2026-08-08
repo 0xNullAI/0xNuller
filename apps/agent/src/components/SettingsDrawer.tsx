@@ -11,33 +11,27 @@ import {
   LayoutTemplate,
   Logs,
   RotateCcw,
-  Settings2,
-  ShieldCheck,
-  Volume2,
   Waves,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@0xnullai/ui';
-import { GeneralTab } from './settings/GeneralTab.js';
-import { SafetyTab } from './settings/SafetyTab.js';
 import { BridgeTab } from './settings/BridgeTab.js';
 import { BridgeLogsTab, ModelLogsTab } from './settings/LogsTab.js';
-import { VoiceTab } from './settings/VoiceTab.js';
 import { DataTab, type ExportableSession } from './settings/DataTab.js';
 import { PresetSelector } from './PresetSelector.js';
+import { SensorsTab } from './settings/SensorsTab.js';
 import { WaveformsPanel } from './WaveformsPanel.js';
 
+/**
+ * Agent 自己的抽屉里只剩**内容管理**：场景、波形、Bot、数据、日志。
+ *
+ * 主题、模型供应商、设备安全、语音这四组已经搬到统一设置面板
+ * （侧边栏底部头像 → 软件设置）。留两个入口意味着同一件事在两处能改，
+ * 而改哪一处生效取决于用户当时打开的是哪个——那正是合并要消掉的东西。
+ */
 export type SettingsModalTab =
-  | 'general'
-  | 'preset'
-  | 'safety'
-  | 'waveforms'
-  | 'bridge'
-  | 'voice'
-  | 'data'
-  | 'bridge-logs'
-  | 'model-tool-logs';
+  'preset' | 'sensors' | 'waveforms' | 'bridge' | 'data' | 'bridge-logs' | 'model-tool-logs';
 
 export const SETTINGS_NAV_ITEMS: Array<{
   value: SettingsModalTab;
@@ -46,16 +40,6 @@ export const SETTINGS_NAV_ITEMS: Array<{
   icon: LucideIcon;
   sections: Record<string, string>;
 }> = [
-  {
-    value: 'general',
-    label: '基础',
-    description: '主题、上下文和模型供应商',
-    icon: Settings2,
-    sections: {
-      基本设置: '调整界面主题和会话上下文策略。',
-      模型选择: '搜索并选择模型供应商，配置该供应商需要的参数。',
-    },
-  },
   {
     value: 'preset',
     label: '场景',
@@ -67,15 +51,11 @@ export const SETTINGS_NAV_ITEMS: Array<{
     },
   },
   {
-    value: 'safety',
-    label: '安全',
-    description: '强度上限、权限和离开保护',
-    icon: ShieldCheck,
+    value: 'sensors',
+    label: '传感器',
+    description: '爪印与灵猫驱动 AI 主动响应',
+    icon: Waves,
     sections: {
-      郊狼最大强度上限: '限制郊狼每个通道允许输出的最高强度。',
-      负鼠最大强度上限: '限制负鼠每个通道允许输出的最高强度。',
-      工具调用确认模式: '决定 AI 控制设备前需要怎样确认。',
-      后台行为: '设置切换后台和启动安全确认行为。',
       传感器触发: '爪印、灵猫传感器作为输入驱动 AI 响应的开关与阈值。',
     },
   },
@@ -93,15 +73,6 @@ export const SETTINGS_NAV_ITEMS: Array<{
     icon: Bot,
     sections: {
       桥接: '配置远程消息入口和允许访问的用户。',
-    },
-  },
-  {
-    value: 'voice',
-    label: '语音',
-    description: '语音识别和语音合成配置',
-    icon: Volume2,
-    sections: {
-      语音: '配置语音识别、语音合成和相关后端。',
     },
   },
   {
@@ -131,8 +102,9 @@ export const SETTINGS_NAV_GROUPS: Array<{
   label: string;
   values: SettingsModalTab[];
 }> = [
-  { label: '配置', values: ['general', 'preset', 'safety', 'waveforms'] },
-  { label: '扩展', values: ['bridge', 'voice', 'data'] },
+  { label: '内容', values: ['preset', 'waveforms'] },
+  { label: '传感器', values: ['sensors'] },
+  { label: '扩展', values: ['bridge', 'data'] },
   { label: '日志', values: ['model-tool-logs', 'bridge-logs'] },
 ];
 
@@ -190,13 +162,11 @@ function SettingsTabContent({
   'mobileNavOpen' | 'onMobileNavOpenChange' | 'onClose' | 'onRequestReset' | 'onTabChange'
 >) {
   switch (tab) {
-    case 'general':
-      return <GeneralTab settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} />;
     case 'preset':
       return <PresetSelector onNotify={onNotify} />;
-    case 'safety':
+    case 'sensors':
       return (
-        <SafetyTab
+        <SensorsTab
           settingsDraft={settingsDraft}
           setSettingsDraft={setSettingsDraft}
           sensorTriggersEnabled={sensorTriggersEnabled}
@@ -216,8 +186,6 @@ function SettingsTabContent({
       );
     case 'bridge':
       return <BridgeTab settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} />;
-    case 'voice':
-      return <VoiceTab settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} />;
     case 'data':
       return (
         <DataTab

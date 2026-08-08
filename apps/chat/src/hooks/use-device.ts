@@ -213,16 +213,30 @@ export function useDevice(options: UseDeviceOptions = {}) {
     localStorage.setItem('dg-fire-policy', p);
   }, []);
 
-  // 后台行为：切换至后台时按设置停止输出（Coyote + Opossum）
+  // 后台行为：页面切到后台时按设置停止输出（Coyote + Opossum）。
+  //
+  // 注意这里管的**只是浏览器层面的前后台**（切标签页、锁屏、切到别的 App）。
+  // 「切到别的模块」不走这条路——统一外壳里切模块只是 DOM hidden，页面本身仍然可见，
+  // 这个 handler 根本不触发。那条路径由设备控制权的租约撤销负责（见 onRevoke）。
   useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === 'hidden' && bgBehaviorRef.current === 'stop') {
-        sessionRef.current?.stopAllOutputs();
-        syncState();
-      }
+    const stopIfConfigured = () => {
+      if (bgBehaviorRef.current !== 'stop') return;
+      sessionRef.current?.stopAllOutputs();
+      syncState();
     };
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') stopIfConfigured();
+    };
+    // pagehide 兜住 visibilitychange 不触发的情形：iOS Safari 与 WebView 被系统
+    // 回收时可能直接走 pagehide。漏掉它意味着应用被杀掉后设备还在输出，而用户
+    // 已经没有任何界面可以停它了。
+    const onPageHide = () => stopIfConfigured();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    };
   }, [syncState]);
 
   return {

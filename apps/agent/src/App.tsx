@@ -139,7 +139,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   );
   const [text, setText] = useState('');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab>('general');
+  const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab>('preset');
   const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(false);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -760,7 +760,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     });
   }
 
-  function openSettingsModal(tab: SettingsModalTab = 'general'): void {
+  function openSettingsModal(tab: SettingsModalTab = 'preset'): void {
     setSettingsModalTab(tab);
     setSettingsModalOpen(true);
     setSettingsMobileNavOpen(true);
@@ -984,7 +984,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 onDisconnectCivetEdging={() => void disconnectCivetEdging()}
                 onEmergencyStop={() => void stop()}
                 onOpenSidebar={() => setSidebarOpen(true)}
-                onOpenSettings={() => openSettingsModal('general')}
+                onOpenSettings={() => openSettingsModal('preset')}
                 promptPresetId={sceneLib.selectedId}
                 builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
                   (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),

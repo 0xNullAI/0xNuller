@@ -4,7 +4,6 @@ import { Pencil, Store, Trash2, Upload } from 'lucide-react';
 import { Button, MarketImportDialog } from '@0xnullai/ui';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 
-
 interface WaveformsPanelProps {
   waveforms: WaveformDefinition[];
   customWaveforms: WaveformDefinition[];
