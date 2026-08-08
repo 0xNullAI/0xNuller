@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { registerSafetySession } from '@dg-kit/safety';
+import { registerSafetySession, type DeviceSummary } from '@dg-kit/safety';
 
 /**
  * 把一个模块的设备会话注册到全局安全总线。
@@ -21,6 +21,8 @@ export interface SafetySessionSpec {
   isActive: () => boolean;
   /** 把本模块的设备输出全部归零。必须幂等。 */
   stop: () => void | Promise<void>;
+  /** 本模块当前持有的设备，供外壳的设备栏展示。 */
+  devices?: () => DeviceSummary[];
 }
 
 export function useSafetySession(spec: SafetySessionSpec): void {
@@ -35,6 +37,7 @@ export function useSafetySession(spec: SafetySessionSpec): void {
       label: spec.label,
       isActive: () => latest.current.isActive(),
       stop: () => latest.current.stop(),
+      devices: () => latest.current.devices?.() ?? [],
     });
   }, [spec.id, spec.label]);
 }

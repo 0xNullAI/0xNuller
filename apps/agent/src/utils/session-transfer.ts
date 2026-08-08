@@ -207,7 +207,7 @@ export function parseSessionsFromJson(json: string): SessionSnapshot[] {
   }
 
   if (!isRecord(parsed)) {
-    throw new Error('文件不是 DG-Agent 聊天记录文件');
+    throw new Error('文件不是 0xNuller 聊天记录文件');
   }
 
   // Legacy v1: one document holding a `sessions` array.
@@ -223,5 +223,5 @@ export function parseSessionsFromJson(json: string): SessionSnapshot[] {
     return [reconstructSession(parsed)];
   }
 
-  throw new Error('文件不是 DG-Agent 聊天记录文件');
+  throw new Error('文件不是 0xNuller 聊天记录文件');
 }

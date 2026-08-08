@@ -16,6 +16,29 @@
  *    也不能因为状态判断失误漏停一个。
  */
 
+/**
+ * 一台已连接设备的摘要，供外壳的设备栏展示。
+ *
+ * 放在安全总线而不是另起一个注册表：设备栏和停止按钮是同一件事的两面——列出设备
+ * 是为了让用户知道有什么在身上，而停止必须就在旁边。拆成两个注册表意味着它们可能
+ * 显示不一致，而不一致的那一刻恰好是最危险的。
+ */
+export interface DeviceSummary {
+  /** 同一模块内稳定唯一。 */
+  id: string;
+  /** 设备种类：郊狼 / 负鼠 / 爪印 / 灵狐。 */
+  kind: string;
+  /** 面向用户的名字，通常是 BLE 广播名。 */
+  name: string;
+  connected: boolean;
+  /** 电量百分比，未知时省略。 */
+  battery?: number;
+  /** 当前是否有输出。用于视觉强调，**不用于决定停止按钮是否显示**。 */
+  active?: boolean;
+  /** 通道强度，用于设备栏上的即时读数。 */
+  channels?: { label: string; value: number; max: number }[];
+}
+
 export interface SafetySession {
   /** 模块 id，用于覆盖注册与诊断。 */
   id: string;
@@ -31,6 +54,8 @@ export interface SafetySession {
   isActive: () => boolean;
   /** 把这个模块的设备输出全部归零。必须幂等——可能被重复调用。 */
   stop: () => void | Promise<void>;
+  /** 本模块当前持有的设备。外壳用它渲染设备栏。 */
+  devices?: () => DeviceSummary[];
 }
 
 export interface StopAllResult {
@@ -74,6 +99,25 @@ export function activeSafetySessions(): SafetySession[] {
 
 export function hasActiveSafetySession(): boolean {
   return activeSafetySessions().length > 0;
+}
+
+/**
+ * 所有模块当前持有的设备，按模块归组。
+ *
+ * 判断本身抛错时跳过该模块而不是中断——一个模块的状态读取出问题不该让设备栏整个
+ * 消失，那会连带藏掉旁边的停止按钮。
+ */
+export function allConnectedDevices(): { sessionId: string; label: string; devices: DeviceSummary[] }[] {
+  const out: { sessionId: string; label: string; devices: DeviceSummary[] }[] = [];
+  for (const s of sessions.values()) {
+    try {
+      const devices = s.devices?.().filter((d) => d.connected) ?? [];
+      if (devices.length) out.push({ sessionId: s.id, label: s.label, devices });
+    } catch {
+      // 跳过这一个，其余照常。
+    }
+  }
+  return out;
 }
 
 /**

@@ -33,4 +33,5 @@ export * from './use-safety-session';
 export * from './shell-context';
 export * from './shell-nav';
 export * from './module-actions';
+export * from './sidebar-sections';
 export * from './overlay';

@@ -167,6 +167,24 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     label: 'Chat',
     isActive: () => deviceRef.current.connected,
     stop: () => deviceRef.current.stopAll(),
+    devices: () => {
+      const d = deviceRef.current;
+      if (!d.connected) return [];
+      return [
+        {
+          id: 'coyote',
+          kind: 'coyote',
+          name: d.deviceInfo?.name ?? '郊狼',
+          connected: true,
+          ...(typeof d.battery === 'number' ? { battery: d.battery } : {}),
+          active: d.strengthA > 0 || d.strengthB > 0,
+          channels: [
+            { label: 'A', value: d.strengthA, max: d.limitA },
+            { label: 'B', value: d.strengthB, max: d.limitB },
+          ],
+        },
+      ];
+    },
   });
   const waveformsRef = useRef(waveforms);
   // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
@@ -311,7 +329,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         const media = await uploadMedia(room, blob, kind, meta);
         peerRoom.sendMessage('', media);
       } catch (err) {
-        console.error('[DG-Chat] media upload failed', err);
+        console.error('[Chat] media upload failed', err);
       }
     },
     [peerRoom.roomId, peerRoom.sendMessage],
@@ -532,7 +550,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         <div className="flex items-center gap-2">
           <AppSwitcher
             current="chat"
-            label="DG-Chat"
+            label="Chat"
             className="text-base font-bold text-[var(--text)]"
           />
           {peerRoom.roomId && (

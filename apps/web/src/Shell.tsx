@@ -1,36 +1,35 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
 import {
   useTheme,
   ShellChromeProvider,
   ModuleActionsProvider,
   useModuleActionsContainer,
-  SafetyNotice,
+  SidebarSectionsProvider,
   OverlayProvider,
   useOverlayRoot,
   useModuleOverlayLayer,
-  EmergencyStopButton,
 } from '@0xnullai/ui';
-import { MODULES, moduleIdFromPath } from './routes';
+import { me, type AuthUser } from '@0xnullai/auth';
+import { ALL_ROUTES, MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
-import { AccountMenu } from './AccountMenu';
+import { Sidebar } from './Sidebar';
+import { DeviceBar } from './DeviceBar';
+import { AccountDialog } from './AccountDialog';
+import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
-import { isSafetyNoticeAccepted, rememberSafetyNoticeAccepted } from '@dg-kit/safety';
 
 /**
- * 统一外壳。
+ * 统一外壳。**两列**：左侧边栏 + 右内容区，没有顶部横栏。
  *
- * 上一次的外壳失败在三个地方，这次全部在契约层面解决：
+ * 顶栏取消的理由不只是省一条：模块自己也各有一条 header，两条上下叠着，模块名还和
+ * 外壳导航里高亮的那一项重复。现在应用切换在侧边栏顶部（点名字弹出），模块自己的
+ * 按钮投到内容区顶部，屏幕高度全部还给内容。
  *
- * 1. **Tailwind 扫描根被顶掉** —— 外壳的 Vite root 是 apps/web，模块源码树不在扫描
- *    范围内，Agent 的候选类从 2199 掉到 409，整条高度锁与 min-h-0 消失。修法是
- *    shell.css 里为每个模块显式 @source，见那里的注释。
- * 2. **覆盖层逃逸** —— 模块弹窗用裸 fixed，盖住外壳顶栏；而外壳一旦给槽位加
- *    transform 又会翻转成「关不住模态」。修法是 overlay 容器挂在外壳根的**兄弟**
- *    位置，模块弹窗全部 portal 过去。
- * 3. **模块根写死 100dvh** —— 在外壳里比槽位高出一个导航条，被 body{overflow:hidden}
- *    裁掉且滚不到。修法是模块根一律 h-full，独立运行时由 base.css 的
- *    html,body,#root{height:100%} 解析成视口高度。
+ * 上一次外壳失败在三个地方，都已在契约层解决：
+ * 1. **Tailwind 扫描根被顶掉** —— shell.css 里为每个模块显式 @source。加新模块必须
+ *    同步加一行，漏掉表现为该模块工具类被静默 tree-shake 而构建全绿。
+ * 2. **覆盖层逃逸** —— overlay 容器挂在外壳根的兄弟位置，模块弹窗全部 portal 过去。
+ * 3. **模块根写死 100dvh** —— 模块根一律 h-full。
  *
  * 模块**一旦打开就保持挂载**，切走只是隐藏——BLE 连接与模块状态都活着。这是把它们
  * 放进同一个 origin 唯一无法被替代的收益。
@@ -72,102 +71,147 @@ function useHistoryRoute(): [RouteState, (path: string) => void] {
   return [state, navigate];
 }
 
+/** 窄屏的判定。侧边栏在这个宽度以下变成抽屉而不是压扁成一条。 */
+const NARROW_QUERY = '(max-width: 767px)';
+
+function useIsNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(NARROW_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_QUERY);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
 export function Shell() {
   const [{ pathname, opened }, navigate] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
   const overlayRoot = useOverlayRoot();
-  // 主题由 @0xnullai/ui 的共享 store 唯一持有——外壳和四个模块看到同一个值，
-  // 切模块不会把它顶回去。
-  const { effective, toggle: toggleTheme } = useTheme();
-  // 全系统唯一的一道安全门：进主界面时确认一次，之后所有模块都算已确认。
-  // 各模块**不再**各设一道——同一份协议确认三遍只会训练用户无脑点掉它。
-  const [safetyAccepted, setSafetyAccepted] = useState(isSafetyNoticeAccepted);
-  // 模块把自己的顶栏按钮投进这个容器——全局只有一条横栏。
+  const narrow = useIsNarrow();
+  // 主题由 @0xnullai/ui 的共享 store 唯一持有——外壳和模块看到同一个值。
+  useTheme();
+
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // 窄屏下侧边栏默认收起（抽屉关着），宽屏默认展开。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   const [actionsRef, actionsContainer] = useModuleActionsContainer();
 
+  useEffect(() => {
+    // 账号服务不可用时当作未登录——不能因为它抖动就挡住匿名使用。
+    me()
+      .then(setUser)
+      .catch(() => setUser(null));
+  }, []);
+
+  // 路由或断点一变就关抽屉，否则切走之后它还盖在内容上。
+  //
+  // 用「渲染期调整状态」而不是 effect：effect 里同步 setState 会多跑一次渲染+提交，
+  // 用户能看到抽屉闪一下才关。这个写法 React 会在提交前就地重渲，没有中间帧。
+  const [lastRoute, setLastRoute] = useState<{ id: string | null; narrow: boolean }>({
+    id: activeId,
+    narrow,
+  });
+  if (lastRoute.id !== activeId || lastRoute.narrow !== narrow) {
+    setLastRoute({ id: activeId, narrow });
+    if (drawerOpen) setDrawerOpen(false);
+  }
+
+  const go = useCallback(
+    (moduleId: string | null) => {
+      navigate(moduleId ? `/${moduleId}` : '/');
+      setDrawerOpen(false);
+    },
+    [navigate],
+  );
+
+  const sidebar = (
+    <Sidebar
+      activeId={activeId}
+      onNavigate={go}
+      user={user}
+      onOpenAccount={() => setAccountOpen(true)}
+      onOpenSettings={() => setSettingsOpen(true)}
+      collapsed={!narrow && sidebarCollapsed}
+      onToggleCollapsed={() => (narrow ? setDrawerOpen(false) : setSidebarCollapsed((v) => !v))}
+    />
+  );
+
   return (
-    <div id="shl-root">
-      <header className="flex shrink-0 items-center gap-1 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="mr-2 shrink-0 rounded-[10px] px-2 py-1 font-semibold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          0xNullAI
-        </button>
+    <SidebarSectionsProvider>
+      <div
+        id="shl-root"
+        data-narrow={narrow || undefined}
+        data-collapsed={(!narrow && sidebarCollapsed) || undefined}
+      >
+        {/* 宽屏：侧边栏是布局的一列。窄屏：它是覆盖在内容上的抽屉，不占布局宽度。 */}
+        {!narrow && <div id="shl-side">{sidebar}</div>}
 
-        <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-          {MODULES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              title={m.blurb}
-              aria-current={activeId === m.id ? 'page' : undefined}
-              onClick={() => navigate(`/${m.id}`)}
-              className={
-                'shrink-0 rounded-[10px] px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
-                (activeId === m.id
-                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                  : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
-              }
-            >
-              {m.label}
-            </button>
-          ))}
-        </nav>
+        <main id="shl-slot">
+          <DeviceBar />
 
-        {/* 当前模块的按钮落在这里。模块自己不再画 header，所以全局只有这一条栏。 */}
-        <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+          {/* 模块自己的按钮落在这里。窄屏时抽屉开关也在这一行。 */}
+          <div id="shl-actions">
+            {narrow && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="打开侧边栏"
+                className="shrink-0 rounded-[10px] px-2 py-1.5 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)]"
+              >
+                {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+              </button>
+            )}
+            <div className="min-w-0 flex-1" />
+            <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+          </div>
 
-        {/* 全局停止锚点。模块被切走后会隐藏，它自己的停止按钮就点不到了，但设备
-              仍在输出——这个按钮不随模块显隐而消失。没有活动会话时它不渲染。 */}
-        <EmergencyStopButton className="mx-1 shrink-0" />
+          <div id="shl-content">
+            {activeId === null ? <Home onOpen={go} /> : null}
+            {opened.map((id) => {
+              const mod = ALL_ROUTES.find((m) => m.id === id);
+              if (!mod) return null;
+              return (
+                <ModuleSlot
+                  key={id}
+                  mod={mod}
+                  active={id === activeId}
+                  overlayRoot={overlayRoot}
+                  actionsContainer={id === activeId ? actionsContainer : null}
+                />
+              );
+            })}
+          </div>
+        </main>
 
-        <AccountMenu />
-
-        <button
-          type="button"
-          onClick={toggleTheme}
-          title={effective === 'dark' ? '切换到浅色' : '切换到深色'}
-          className="ml-1 shrink-0 rounded-[10px] p-2 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          {effective === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
-      </header>
-
-      <main id="shl-slot">
-        {activeId === null ? <Home onOpen={(id) => navigate(`/${id}`)} /> : null}
-
-        {opened.map((id) => {
-          const mod = MODULES.find((m) => m.id === id);
-          if (!mod) return null;
-          return (
-            <ModuleSlot
-              key={id}
-              mod={mod}
-              active={id === activeId}
-              overlayRoot={overlayRoot}
-              // 只有当前模块把按钮投上去——否则后台模块的按钮也会挤进那条栏。
-              actionsContainer={id === activeId ? actionsContainer : null}
+        {narrow && drawerOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-[var(--z-shell)] bg-[var(--overlay-scrim)]"
+              onClick={() => setDrawerOpen(false)}
+              aria-hidden
             />
-          );
-        })}
-      </main>
+            <div className="fixed inset-y-0 left-0 z-[calc(var(--z-shell)+1)] w-[min(280px,80vw)]">
+              {sidebar}
+            </div>
+          </>
+        )}
 
-      {/* 安全门挂在外壳根，用外壳自己的覆盖层容器——它必须盖住顶栏，而且不属于任何
-          一个模块（模块可能都还没打开）。 */}
-      {!safetyAccepted && (
         <OverlayProvider container={overlayRoot}>
-          <SafetyNotice
-            moduleId={activeId ?? undefined}
-            onAccept={({ dontShowAgain }) => {
-              if (dontShowAgain) rememberSafetyNoticeAccepted();
-              setSafetyAccepted(true);
-            }}
-          />
+          {accountOpen && (
+            <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
+          )}
+          {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
         </OverlayProvider>
-      )}
-    </div>
+      </div>
+    </SidebarSectionsProvider>
   );
 }
 
@@ -175,7 +219,7 @@ export function Shell() {
  * 一个模块的槽位。
  *
  * 覆盖层用**每个模块独立的子层**，跟着模块一起显隐——弹窗 portal 出模块子树之后，
- * 模块容器上的 hidden 管不到它。实测症状：在 Chat 里打开安全确认再切到 Market，
+ * 模块容器上的 hidden 管不到它。实测症状：在 Chat 里打开弹窗再切到 Market，
  * Chat 的弹窗仍浮在 Market 上面且被挤成窄列。
  */
 function ModuleSlot({
@@ -184,40 +228,38 @@ function ModuleSlot({
   overlayRoot,
   actionsContainer,
 }: {
-  mod: (typeof MODULES)[number];
+  mod: (typeof ALL_ROUTES)[number];
   active: boolean;
   overlayRoot: HTMLElement | undefined;
   actionsContainer: HTMLElement | null;
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
-    // ShellChromeProvider 让模块知道自己不是独立运行，于是隐藏与外壳顶栏重复的
-    // 应用切换器和主题按钮。独立部署时没有这个 Provider，模块的顶栏原样保留。
     <ShellChromeProvider>
       <ModuleActionsProvider container={actionsContainer}>
         <OverlayProvider container={layer}>
-        <div
-          hidden={!active}
-          // 非当前模块留在 DOM 里但不可见——连接与状态都保住。
-          // 不要在这里加 transform/filter 做切换动画：那会把模块内部依赖视口包含块的
-          // 固定定位元素的基准翻转掉。要动就动 opacity。
-          className={active ? 'h-full min-h-0' : 'hidden'}
-          aria-hidden={!active}
-        >
-          {/* 边界在 Suspense 之内、模块之外：模块渲染期抛错只烧掉这一个槽位，
-              外壳顶栏（连同全局急停按钮）必须活下来。 */}
-          <ModuleErrorBoundary moduleId={mod.id} label={mod.label}>
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
-                  正在加载 {mod.label}…
-                </div>
-              }
-            >
-              <mod.Component />
-            </Suspense>
-          </ModuleErrorBoundary>
-        </div>
+          <div
+            hidden={!active}
+            // 非当前模块留在 DOM 里但不可见——连接与状态都保住。
+            // 不要在这里加 transform/filter 做切换动画：那会把模块内部依赖视口包含块
+            // 的固定定位元素的基准翻转掉。要动就动 opacity。
+            className={active ? 'h-full min-h-0' : 'hidden'}
+            aria-hidden={!active}
+          >
+            {/* 边界在 Suspense 之内、模块之外：模块渲染期抛错只烧掉这一个槽位，
+                外壳（连同设备栏上的停止按钮）必须活下来。 */}
+            <ModuleErrorBoundary moduleId={mod.id} label={mod.label}>
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
+                    正在加载 {mod.label}…
+                  </div>
+                }
+              >
+                <mod.Component />
+              </Suspense>
+            </ModuleErrorBoundary>
+          </div>
         </OverlayProvider>
       </ModuleActionsProvider>
     </ShellChromeProvider>

@@ -61,11 +61,14 @@ export function App(): JSX.Element {
   }, [load, q]);
 
   return (
-    <div className="app">
+    // mkt-scope 是这份样式表的作用域根。它用的全是通用类名（.app / .grid / .btn），
+    // 而 module 层排在 utilities 之后——不加作用域的话它的 .grid 会压过 Tailwind 的
+    // grid-cols-*，把别的模块的布局改掉。
+    <div className="mkt-scope app h-full overflow-y-auto">
       {/* 单条横栏：左侧应用切换器，中间分类与搜索，右侧主题与上传。
-          合并前这里是「品牌块 + 独立筛选行」两行重头部，与 DG-Agent 的细横栏差别很大。 */}
+          合并前这里是「品牌块 + 独立筛选行」两行重头部，与 Agent 的细横栏差别很大。 */}
       <header className="topbar">
-        <AppSwitcher current="market" label="DG-Market" />
+        <AppSwitcher current="market" label="Market" />
 
         <div className="topbar-filters">
           <div className="seg">
@@ -156,9 +159,9 @@ export function App(): JSX.Element {
       )}
 
       <footer className="foot">
-        DG-Market · 内容由社区上传，请遵守当地法律法规 ·{' '}
+        Market · 内容由社区上传，请遵守当地法律法规 ·{' '}
         <a href="https://github.com/0xNullAI/DG-Agent" target="_blank" rel="noreferrer">
-          DG-Agent
+          Agent
         </a>
       </footer>
     </div>

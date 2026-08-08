@@ -95,7 +95,7 @@ export function MarketImportDialog({
               <div className="py-8 text-center text-sm text-[var(--danger)]">
                 {error}
                 <div className="mt-1 text-[12px] text-[var(--text-faint)]">
-                  请确认已部署 DG-Market 并配置了市场地址
+                  请确认已部署 Market 并配置了市场地址
                 </div>
               </div>
             )}

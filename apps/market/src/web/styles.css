@@ -1,6 +1,19 @@
 @import '@0xnullai/ui/styles/app-switcher.css';
-/* 设计令牌来自 @0xnullai/ui（实测本文件原有的令牌是共享层的严格子集，零独有）。 */
 @import '@0xnullai/ui/styles/tokens.css';
+
+
+/* 全部规则包在 .mkt-scope 之下。
+ *
+ * 这份样式表用的全是通用类名——.app / .grid / .btn / .card / .tag / .empty。
+ * 它归 module 层，而 module 排在 utilities 之后，于是它的 .grid 会压过 Tailwind 的
+ * grid-cols-*。实测后果：打开 Market 之后再看 Agent，Agent 的主布局被改成四列
+ * （gridTemplateColumns 变成 "291px 291px 291px 291px"），内容挤在左边一条。
+ *
+ * 用 CSS 嵌套包一层而不是逐条改前缀：改前缀要同时动 561 行 CSS 和所有 JSX 的
+ * className，任何一处漏改都是静默失效；包一层只需要在根元素加一个类。
+ */
+.mkt-scope {
+/* 设计令牌来自 @0xnullai/ui（实测本文件原有的令牌是共享层的严格子集，零独有）。 */
 
 *,
 *::before,
@@ -559,3 +572,4 @@ select {
 /* 上传：模板下载 / 导入行 */
 .tpl-row { display: flex; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
 .tpl-btn { font-size: 13px; padding: 6px 12px; }
+}

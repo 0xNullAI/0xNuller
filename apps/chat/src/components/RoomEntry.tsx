@@ -36,7 +36,7 @@ export function RoomEntry({ displayName, onNameChange, onJoin, status, error }: 
   return (
     <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-[var(--bg)] px-4">
       <div className="w-full max-w-sm animate-fade-up rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow)]">
-        <h1 className="mb-6 text-center text-2xl font-bold text-[var(--text)]">DG-Chat</h1>
+        <h1 className="mb-6 text-center text-2xl font-bold text-[var(--text)]">Chat</h1>
         <p className="mb-4 text-center text-sm text-[var(--text-soft)]">多人聊天 &amp; 远程控制</p>
 
         {error && (

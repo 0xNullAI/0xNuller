@@ -112,7 +112,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       const { blob, w, h } = await compressImage(file);
       await onSendMedia(blob, 'image', { w, h });
     } catch (err) {
-      console.error('[DG-Chat] image send failed', err);
+      console.error('[Chat] image send failed', err);
       setMediaError('图片发送失败，请重试');
     } finally {
       setBusy(false);
@@ -127,7 +127,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       setRecElapsed(0);
       setRecorder(rec);
     } catch (err) {
-      console.error('[DG-Chat] mic access failed', err);
+      console.error('[Chat] mic access failed', err);
       setMediaError('无法访问麦克风，请检查权限设置');
     }
   }
@@ -141,7 +141,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       const { blob, durationMs } = await rec.stop();
       if (blob.size > 0) await onSendMedia(blob, 'audio', { durationMs });
     } catch (err) {
-      console.error('[DG-Chat] voice send failed', err);
+      console.error('[Chat] voice send failed', err);
       setMediaError('语音发送失败，请重试');
     } finally {
       setBusy(false);

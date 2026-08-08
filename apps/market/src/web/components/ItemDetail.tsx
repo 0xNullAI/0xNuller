@@ -41,7 +41,7 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
   const hasIcon = view.type !== 'waveform';
 
-  // DG-Agent 可直接导入的 JSON 形状。
+  // Agent 可直接导入的 JSON 形状。
   const exportJson = JSON.stringify(
     view.type === 'waveform'
       ? { name: view.name, description: view.description, frames: (item.content as WaveformContent).frames }
@@ -250,10 +250,10 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
         <p className="modal-hint">
           {view.type === 'multi-scene'
-            ? '在 DG-Chat 房间『场景 → 从市场导入』即可使用。'
+            ? '在 Chat 房间『场景 → 从市场导入』即可使用。'
             : view.type === 'scenario'
-              ? '在 DG-Agent 点『从市场导入』即可使用；或复制 JSON 手动导入。'
-              : '在 DG-Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
+              ? '在 Agent 点『从市场导入』即可使用；或复制 JSON 手动导入。'
+              : '在 Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
         </p>
       </div>
     </div>

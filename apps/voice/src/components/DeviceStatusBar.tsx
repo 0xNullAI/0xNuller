@@ -5,10 +5,10 @@ import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/set
 
 /**
  * 设备状态条。显示用的内核（电量档位 / 强度条刻度 / chip 交互）来自
- * @0xnullai/ui —— 合并前它们在这里和 DG-Agent 的 ChatPanel 里各存一份逐字复制。
- * 这里只负责编排 DG-Voice 支持的两种设备（郊狼 + 负鼠）。
+ * @0xnullai/ui —— 合并前它们在这里和 Agent 的 ChatPanel 里各存一份逐字复制。
+ * 这里只负责编排 Voice 支持的两种设备（郊狼 + 负鼠）。
  *
- * 两台都没连时不渲染任何东西，与 DG-Agent 行为一致：那个状态下的行动号召是
+ * 两台都没连时不渲染任何东西，与 Agent 行为一致：那个状态下的行动号召是
  * 顶栏常驻的「连接设备」按钮，而不是一条空状态条。
  */
 interface DeviceStatusBarProps {

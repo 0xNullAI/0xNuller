@@ -115,7 +115,7 @@ export function SessionPanel({
       {/* Header: title + collapse */}
       {!detached && (
         <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2">
-          <h1 className="text-[16px] font-bold tracking-tight text-[var(--text)]">DG-Agent</h1>
+          <h1 className="text-[16px] font-bold tracking-tight text-[var(--text)]">Agent</h1>
           {onToggleCollapsed && (
             <Button
               variant="ghost"

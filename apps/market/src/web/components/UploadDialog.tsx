@@ -403,7 +403,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         {manual && (
         <>
         {type === 'scenario' && (
-          <p className="upload-note">单人场景将自动标记 DG Agent，供 DG-Agent 导入。</p>
+          <p className="upload-note">单人场景会自动标记，供 Agent 导入。</p>
         )}
         <label className="field">
           <span>名称 *</span>

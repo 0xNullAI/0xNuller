@@ -15,7 +15,7 @@ interface MarketImportDialogProps {
   onImport: (item: MarketItem) => Promise<void> | void;
 }
 
-/** Ported from DG-Agent's MarketImportDialog.tsx — DG-Voice only ever opens it with `type="scenario"`. */
+/** Ported from Agent's MarketImportDialog.tsx — Voice only ever opens it with `type="scenario"`. */
 export function MarketImportDialog({
   open,
   onOpenChange,
@@ -91,7 +91,7 @@ export function MarketImportDialog({
               <div className="py-8 text-center text-sm text-[var(--danger)]">
                 {error}
                 <div className="mt-1 text-[12px] text-[var(--text-faint)]">
-                  请确认已部署 DG-Market 并配置了市场地址
+                  请确认已部署 Market 并配置了市场地址
                 </div>
               </div>
             )}

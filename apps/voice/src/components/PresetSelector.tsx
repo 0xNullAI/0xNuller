@@ -66,8 +66,8 @@ interface PresetSelectorProps {
 }
 
 /**
- * Ported from DG-Agent's `PresetSelector.tsx`, adapted from its
- * draft/commit settings model to DG-Voice's save-on-change one. Built-in
+ * Ported from Agent's `PresetSelector.tsx`, adapted from its
+ * draft/commit settings model to Voice's save-on-change one. Built-in
  * presets are selectable and hideable but never editable — only
  * user-created (`custom-*`) or market-imported (`market-*`) presets go
  * through `savedPromptPresets`, matching the "locked persona, code-owned

@@ -50,6 +50,27 @@ export function App({ transport }: AppProps = {}) {
     label: 'Voice',
     isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
     stop: emergencyStop,
+    devices: () => [
+      ...(state.coyote?.connected
+        ? [
+            {
+              id: 'coyote',
+              kind: 'coyote',
+              name: state.coyote.deviceName ?? '郊狼',
+              connected: true,
+              battery: state.coyote.battery,
+              active: state.coyote.strengthA > 0 || state.coyote.strengthB > 0,
+              channels: [
+                { label: 'A', value: state.coyote.strengthA, max: state.coyote.limitA },
+                { label: 'B', value: state.coyote.strengthB, max: state.coyote.limitB },
+              ],
+            },
+          ]
+        : []),
+      ...(state.opossum?.connected
+        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        : []),
+    ],
   });
   const { settings, updateSettings, resetSettings } = useSettings();
   const call = useRealtimeCall(session, settings);

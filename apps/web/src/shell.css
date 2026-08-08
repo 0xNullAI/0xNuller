@@ -48,16 +48,56 @@
     margin: 0;
   }
 
-  /* 外壳根禁止 transform / filter / contain —— 它们会把固定定位后代的包含块从视口
-     翻转成外壳盒子。覆盖层容器虽然是外壳根的兄弟（不受影响），但模块内部仍有依赖
-     视口包含块的元素。做切换动画请动模块槽位的 opacity，不要动 transform。 */
+  /* 两列。侧边栏宽度走变量，收起态与展开态只差这一个值——没有第二处需要同步的地方。
+     外壳根禁止 transform / filter / contain：它们会把固定定位后代的包含块从视口翻转
+     成外壳盒子。覆盖层容器虽是外壳根的兄弟（不受影响），但模块内部仍有依赖视口
+     包含块的元素。做切换动画请动 opacity。 */
   #shl-root {
     height: 100%;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  /* 窄屏：侧边栏变抽屉，不占布局列。内容区拿到全部宽度——把两列压扁成一条窄的
+     侧栏加一条更窄的内容区，比没有侧栏更难用。 */
+  #shl-root[data-collapsed] {
+    grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
+  }
+
+  #shl-root[data-narrow] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #shl-side {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
   }
 
   #shl-slot {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* 模块按钮那一行。没有按钮时高度塌成 0，不留空白条。 */
+  #shl-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    padding: 0 0.5rem;
+    min-height: 0;
+  }
+
+  #shl-actions:not(:empty) {
+    padding-block: 0.375rem;
+  }
+
+  #shl-content {
     flex: 1 1 0;
     min-height: 0;
     position: relative;

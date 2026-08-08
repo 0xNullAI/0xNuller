@@ -254,7 +254,7 @@ export function ChatPanel({
             </Button>
             <AppSwitcher
               current="agent"
-              label="DG-Agent"
+              label="Agent"
               className="text-sm font-semibold text-[var(--text)]"
             />
             <Button
@@ -387,7 +387,7 @@ export function ChatPanel({
         <>
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 overflow-y-auto px-4 py-6 sm:py-8">
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 DG-Agent</h2>
+              <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 Agent</h2>
             </div>
 
             <div className="flex w-full max-w-[480px] flex-col sm:max-w-[560px] lg:max-w-[620px]">

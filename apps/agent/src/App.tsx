@@ -15,7 +15,8 @@ import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { SidebarSection, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
@@ -232,6 +233,34 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
+    // 供外壳的设备栏展示。每台设备各占一格，用户要能一眼看到身上连着什么。
+    devices: () => [
+      ...(deviceState.connected
+        ? [
+            {
+              id: 'coyote',
+              kind: 'coyote',
+              name: deviceState.deviceName ?? '郊狼',
+              connected: true,
+              battery: deviceState.battery,
+              active: deviceState.strengthA > 0 || deviceState.strengthB > 0,
+              channels: [
+                { label: 'A', value: deviceState.strengthA, max: settings.maxStrengthA },
+                { label: 'B', value: deviceState.strengthB, max: settings.maxStrengthB },
+              ],
+            },
+          ]
+        : []),
+      ...(opossumState.connected
+        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        : []),
+      ...(pawPrintsState.connected
+        ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
+        : []),
+      ...(civetEdgingState.connected
+        ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵狐', connected: true }]
+        : []),
+    ],
   });
 
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
@@ -815,16 +844,32 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         </Sheet>
 
         {/* ===== Main layout ===== */}
+        {/* 外壳里只剩单列：侧边栏由外壳统一持有，会话列表通过 useRegisterSidebarSection
+            注册到「对话」分区。模块自己再画一条侧栏就是两条并排。 */}
         <section
-          className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-300 ease-out lg:grid-cols-[var(--sidebar-w)_minmax(0,1fr)]"
+          className={
+            inShell
+              ? 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden'
+              : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-300 ease-out lg:grid-cols-[var(--sidebar-w-agent)_minmax(0,1fr)]'
+          }
           style={
             {
-              '--sidebar-w': settingsModalOpen ? '272px' : sidebarCollapsed ? '65px' : '272px',
+              '--sidebar-w-agent': settingsModalOpen
+                ? '272px'
+                : sidebarCollapsed
+                  ? '65px'
+                  : '272px',
             } as React.CSSProperties
           }
         >
           {/* Desktop sidebar */}
-          <aside className="dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block">
+          <aside
+            className={
+              inShell
+                ? 'hidden'
+                : 'dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block'
+            }
+          >
             {settingsModalOpen ? (
               <SettingsSidebar
                 tab={settingsModalTab}
@@ -939,6 +984,17 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       </main>
 
       {/* 外壳里由外壳统一把门——同一份协议不该在进 Agent 时再确认一遍。 */}
+      {/* 会话列表投进外壳侧边栏的「对话」分区。模块不再画自己那条侧栏。 */}
+      <SidebarSection id="conversations" title="对话">
+        <ShellSessionList
+          sessions={savedSessions}
+          activeId={activeSessionId}
+          onSelect={selectSession}
+          onDelete={(id) => void deleteSession(id)}
+          onCreate={() => void createNewSession()}
+        />
+      </SidebarSection>
+
       {!inShell && !safetyNoticeAccepted && (
         <SafetyNotice moduleId="agent" onAccept={handleSafetyNoticeAccept} />
       )}
