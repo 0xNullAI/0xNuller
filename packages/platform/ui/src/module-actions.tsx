@@ -25,7 +25,9 @@ export function ModuleActionsProvider({
   children: ReactNode;
 }) {
   return (
-    <ActionsContainerContext.Provider value={container}>{children}</ActionsContainerContext.Provider>
+    <ActionsContainerContext.Provider value={container}>
+      {children}
+    </ActionsContainerContext.Provider>
   );
 }
 

@@ -29,6 +29,7 @@ export * from './utils';
 // 把它们公开出去就等于邀请模块再各写各的 data-theme，那正是刚清掉的那个 bug。
 export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';
+export * from './use-safety-session';
 export * from './shell-context';
 export * from './shell-nav';
 export * from './module-actions';

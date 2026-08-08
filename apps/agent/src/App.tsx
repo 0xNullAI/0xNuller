@@ -15,7 +15,7 @@ import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { useInShell, useTheme } from '@0xnullai/ui';
+import { useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
 import { isSafetyNoticeAccepted } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
@@ -213,6 +213,22 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const opossumState = useAuxDeviceState(opossum, createEmptyOpossumState());
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
+
+  // 注册到全局安全总线——这是外壳那个全局停止按钮唯一的数据来源。
+  // 之前全仓零注册方，按钮永远渲染成 null，等于根本不存在。
+  useSafetySession({
+    id: 'agent',
+    label: 'Agent',
+    // 「持有已连接设备」而不是「正在输出」：见 useSafetySession 的注释。
+    isActive: () =>
+      deviceState.connected ||
+      opossumState.connected ||
+      pawPrintsState.connected ||
+      civetEdgingState.connected,
+    stop: async () => {
+      if (activeSessionId) await client.emergencyStop(activeSessionId);
+    },
+  });
 
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
   useEffect(() => {

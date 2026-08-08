@@ -1,4 +1,4 @@
-import { AppSwitcher, useInShell, useTheme } from '@0xnullai/ui';
+import { AppSwitcher, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
@@ -159,6 +159,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
   // eslint-disable-next-line react-hooks/refs
   deviceRef.current = device;
+
+  // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
+  // Chat 尤其重要：房间里其他人可以下指令，而本模块被切走后自己的停止按钮点不到。
+  useSafetySession({
+    id: 'chat',
+    label: 'Chat',
+    isActive: () => deviceRef.current.connected,
+    stop: () => deviceRef.current.stopAll(),
+  });
   const waveformsRef = useRef(waveforms);
   // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
   // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。

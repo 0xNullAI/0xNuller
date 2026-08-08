@@ -50,7 +50,7 @@ export function PermissionModal({
         aria-modal="true"
         aria-label="权限请求"
         ref={panelRef}
-        className="w-[320px] rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
+        className="w-[min(320px,calc(100vw-2rem))] rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
         tabIndex={-1}
       >
         <div className="text-center text-xs font-medium text-[var(--accent)]">权限请求</div>

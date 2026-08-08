@@ -35,6 +35,10 @@
 @import '../../voice/src/styles/settings.css' layer(module);
 @import '../../chat/src/styles/app.css' layer(module);
 @import '../../wiki/src/styles/wiki.css' layer(module);
+/* Market 的 561 行必须走这里而不是模块入口的 JS import：通过 JS import 的 CSS 无法
+   指定层，会落在所有层之外从而无条件压过全部 Tailwind。实测后果是它那条通用的
+   `.grid` 接管了权限弹窗与安全须知的栅格——安全 UI 的布局被一个商店样式表决定。 */
+@import '../../market/src/web/styles.css' layer(module);
 
 @layer shell {
   html,

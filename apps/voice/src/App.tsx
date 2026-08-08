@@ -6,6 +6,7 @@ import {
   Button,
   HeaderBar,
   ModuleActions,
+  useSafetySession,
 } from '@0xnullai/ui';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -32,8 +33,24 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
-  const { session, state, error, connecting: connectingDevice, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
-    useDeviceSession(transport);
+  const {
+    session,
+    state,
+    error,
+    connecting: connectingDevice,
+    connectDevice,
+    emergencyStop,
+    disconnectCoyote,
+    disconnectOpossum,
+  } = useDeviceSession(transport);
+
+  // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
+  useSafetySession({
+    id: 'voice',
+    label: 'Voice',
+    isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
+    stop: emergencyStop,
+  });
   const { settings, updateSettings, resetSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
@@ -143,7 +160,11 @@ export function App({ transport }: AppProps = {}) {
         />
       )}
 
-      <ResetSettingsDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen} onConfirm={resetSettings} />
+      <ResetSettingsDialog
+        open={resetDialogOpen}
+        onOpenChange={setResetDialogOpen}
+        onConfirm={resetSettings}
+      />
     </div>
   );
 }
