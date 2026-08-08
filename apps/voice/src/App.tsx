@@ -46,6 +46,12 @@ export function App({ transport }: AppProps = {}) {
     label: 'Voice',
     isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
     stop: emergencyStop,
+    onRevoke: async () => {
+      // 切走 Voice 时挂断通话再停输出。只停输出的话通话还连着，模型继续说话、
+      // 继续下工具调用——用户以为自己已经离开了。
+      await call.hangUp('切换到其他模块').catch(() => undefined);
+      await emergencyStop();
+    },
     devices: () => [
       ...(state.coyote?.connected
         ? [

@@ -1,4 +1,5 @@
 import { ModuleActions, SidebarSection, useSafetySession } from '@0xnullai/ui';
+import { hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { me } from '@0xnullai/auth';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -126,6 +127,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // 不该把人挡在房间外面，所以这里始终有可用值。
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  /** 已交出设备控制权（切到别的模块）。对房间而言等同于「设备不可控」。 */
+  const [deviceReleased, setDeviceReleased] = useState(false);
   useEffect(() => {
     me()
       .then((u) => {
@@ -184,11 +187,35 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
   // Chat 尤其重要：房间里其他人可以下指令，而本模块被切走后自己的停止按钮点不到。
+  // 重新拿到控制权时恢复可控状态。
+  useEffect(() => {
+    const sync = () => setDeviceReleased(!hasDeviceLease('chat'));
+    sync();
+    return subscribeSafetySessions(sync);
+  }, []);
+
   useSafetySession({
     id: 'chat',
     label: 'Chat',
     isActive: () => deviceRef.current.connected,
     stop: () => deviceRef.current.stopAll(),
+    onRevoke: () => {
+      // 三件事缺一不可。
+      // 1) 停输出。
+      deviceRef.current.stopAll();
+      // 2) 清掉开火聚合。它在「从空到非空」的边沿抓 baseline 快照，有人按住开火时
+      //    被撤权的话，对应的 fire_release 永远不会到达，map 不清空，强度会停在
+      //    baseline+加成 不回落——通用的 stop 覆盖不到这条清理路径。
+      fireBoostsA.current.clear();
+      fireBoostsB.current.clear();
+      baselineARef.current = 0;
+      baselineBRef.current = 0;
+      // 3) 告诉房间。不广播的话，房主看到指令已发送却没反应，本能反应是加大力度重发。
+      // 3) 告诉房间。复用已有的 deviceConnected 字段而不是加新消息类型——新类型
+      //    老客户端会静默忽略，而这个字段对方已经在渲染成「未连接设备」。
+      //    不广播的话，房主看到指令已发送却没反应，本能反应是加大力度重发。
+      setDeviceReleased(true);
+    },
     devices: () => {
       const d = deviceRef.current;
       if (!d.connected) return [];
@@ -232,6 +259,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // 注册远程指令处理器
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
+      // 没有设备控制权时硬拒绝。**必须在这里挡**而不是只禁用 UI 按钮：房间里其他人
+      // 和 AI 的指令走的是 WebRTC 数据通道，根本不经过界面。
+      //
+      // 停止类指令是例外——交出控制权不该让别人失去停下你设备的能力。
+      if (!hasDeviceLease('chat') && cmd.action !== 'fire_release' && cmd.action !== 'stop') {
+        return;
+      }
       // 队列意图：更新本机权威状态。由 broadcastStateSlow 在 effect 里同步给所有人。
       // 队列变更后若当前在播波形仍在新队列里，把 index 对齐到它，避免 index 与播放短暂不一致。
       if (cmd.action === 'set_queue' && cmd.c && cmd.q) {
@@ -421,7 +455,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     const send = () => {
       peerRoom.broadcastStateSlow({
         displayName,
-        deviceConnected: device.connected,
+        deviceConnected: device.connected && !deviceReleased,
         battery: device.battery,
         waveformCatalog: waveformsRef.current.allWaveforms.map((w) => ({
           id: w.id,

@@ -56,6 +56,20 @@ export interface SafetySession {
   stop: () => void | Promise<void>;
   /** 本模块当前持有的设备。外壳用它渲染设备栏。 */
   devices?: () => DeviceSummary[];
+  /**
+   * 失去设备控制权时调用。
+   *
+   * **必须做三件事**：停止输出、清掉一切「按住不放」的聚合状态、拒绝后续指令。
+   * 只做第一件是不够的——例如 Chat 的开火聚合在「从空到非空」的边沿抓 baseline
+   * 快照，有人按住开火时被撤权，对应的 release 消息永远不会到达，强度会停在
+   * baseline+加成 不回落。
+   *
+   * **绝不能实现成 disconnect()。** Agent 与 Voice 的客户端开了 autoReconnect，
+   * 用断连来交出控制权，后台模块会在 GATT 断开事件里静默重连把设备抢回去
+   * （客户端还缓存着 BluetoothDevice 引用，重连不需要用户手势），而此时新持有者
+   * 以为自己独占。
+   */
+  onRevoke?: () => void | Promise<void>;
 }
 
 export interface StopAllResult {
@@ -67,6 +81,14 @@ export interface StopAllResult {
 
 const sessions = new Map<string, SafetySession>();
 const listeners = new Set<() => void>();
+
+/**
+ * 当前持有设备控制权的模块。
+ *
+ * `null` 表示没有任何模块持有——例如停在首页时。这时**没有任何模块可以下指令**，
+ * 但设备仍然连着，停止按钮仍然可用。这一点很重要：交出控制权不等于断开设备。
+ */
+let leaseHolder: string | null = null;
 
 function notify(): void {
   for (const l of listeners) l();
@@ -107,7 +129,11 @@ export function hasActiveSafetySession(): boolean {
  * 判断本身抛错时跳过该模块而不是中断——一个模块的状态读取出问题不该让设备栏整个
  * 消失，那会连带藏掉旁边的停止按钮。
  */
-export function allConnectedDevices(): { sessionId: string; label: string; devices: DeviceSummary[] }[] {
+export function allConnectedDevices(): {
+  sessionId: string;
+  label: string;
+  devices: DeviceSummary[];
+}[] {
   const out: { sessionId: string; label: string; devices: DeviceSummary[] }[] = [];
   for (const s of sessions.values()) {
     try {
@@ -140,7 +166,51 @@ export async function stopAllSafetySessions(): Promise<StopAllResult> {
   return { attempted: list.length, failed };
 }
 
-/** 订阅注册表变化（模块挂载/卸载）。用于外壳刷新停止锚点的显隐。 */
+/**
+ * 把设备控制权交给某个模块。其余模块立刻失去控制权并被要求停止。
+ *
+ * 撤权是**尽最大努力**的：某个模块的 onRevoke 抛错不能中断其余模块的撤权，
+ * 那正是最危险的情形（一个模块出错，另一个还在被远程控制）。
+ */
+export async function grantDeviceLease(moduleId: string | null): Promise<void> {
+  if (leaseHolder === moduleId) return;
+  const previous = leaseHolder;
+  leaseHolder = moduleId;
+  notify();
+
+  if (!previous) return;
+  const losing = sessions.get(previous);
+  if (!losing?.onRevoke) return;
+  try {
+    // `try { await f() }` 已经能接住同步抛错——调用本身就在 try 里。
+    // （stopAllSafetySessions 那边需要额外包一层，是因为调用发生在 `map` 内、
+    //   在 allSettled 之外，那是另一回事。）
+    await losing.onRevoke();
+  } catch {
+    // 撤权失败时至少把它停掉——控制权已经不在它手里，但设备可能还在输出。
+    try {
+      await losing.stop();
+    } catch {
+      // 两条路都失败：全局停止按钮仍然可达，那是最后一道。
+    }
+  }
+}
+
+/**
+ * 该模块当前有没有设备控制权。
+ *
+ * 模块在**每一条**设备指令之前检查它，不是只在 UI 上禁用按钮——远程指令
+ * （房间里其他人、AI）根本不经过 UI。
+ */
+export function hasDeviceLease(moduleId: string): boolean {
+  return leaseHolder === moduleId;
+}
+
+export function currentDeviceLease(): string | null {
+  return leaseHolder;
+}
+
+/** 订阅注册表变化（模块挂载/卸载、控制权转移）。 */
 export function subscribeSafetySessions(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

@@ -240,6 +240,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
+    onRevoke: async () => {
+      // 切走 Agent 时把在途的回复也中止掉，不只是停输出——一个还在跑的工具调用
+      // 序列会在后台继续下指令，而用户以为自己已经离开了这个模块。
+      if (!activeSessionId) return;
+      await client.abortCurrentReply(activeSessionId).catch(() => undefined);
+      await client.emergencyStop(activeSessionId).catch(() => undefined);
+    },
     // 供外壳的设备栏展示。每台设备各占一格，用户要能一眼看到身上连着什么。
     devices: () => [
       ...(deviceState.connected

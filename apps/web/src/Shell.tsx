@@ -19,6 +19,7 @@ import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 import { FirstConnectionNotice } from './FirstConnectionNotice';
 import { DocsDialog } from './DocsDialog';
+import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
  * 统一外壳。**两列**：左侧边栏 + 右内容区，没有顶部横栏。
@@ -106,6 +107,14 @@ export function Shell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [actionsRef, actionsContainer] = useModuleActionsContainer();
+
+  // 设备控制权跟着当前模块走。切走的模块立刻失去控制权——房间里其他人的指令、
+  // 后台 AI 的指令都会被硬拒绝，而不只是 UI 上看不到按钮。
+  //
+  // **交出控制权不等于断开设备**：设备栏与停止按钮照常显示，只是没有模块能下指令。
+  useEffect(() => {
+    void grantDeviceLease(activeId);
+  }, [activeId]);
 
   useEffect(() => {
     // 账号服务不可用时当作未登录——不能因为它抖动就挡住匿名使用。

@@ -23,6 +23,11 @@ export interface SafetySessionSpec {
   stop: () => void | Promise<void>;
   /** 本模块当前持有的设备，供外壳的设备栏展示。 */
   devices?: () => DeviceSummary[];
+  /**
+   * 失去设备控制权时调用。必须停输出、清掉「按住不放」的聚合状态、拒绝后续指令。
+   * 见 @dg-kit/safety 的 SafetySession.onRevoke 注释。
+   */
+  onRevoke?: () => void | Promise<void>;
 }
 
 export function useSafetySession(spec: SafetySessionSpec): void {
@@ -38,6 +43,7 @@ export function useSafetySession(spec: SafetySessionSpec): void {
       isActive: () => latest.current.isActive(),
       stop: () => latest.current.stop(),
       devices: () => latest.current.devices?.() ?? [],
+      onRevoke: () => latest.current.onRevoke?.(),
     });
   }, [spec.id, spec.label]);
 }
