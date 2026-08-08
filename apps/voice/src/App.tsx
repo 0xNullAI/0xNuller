@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
 import { Alert, AlertDescription, Button, ModuleActions, useSafetySession } from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -26,6 +27,8 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
+  // 同 Chat：props 优先，否则从 NativeBridge 取。
+  const native = useNativeBridge();
   const {
     session,
     state,
@@ -35,7 +38,7 @@ export function App({ transport }: AppProps = {}) {
     emergencyStop,
     disconnectCoyote,
     disconnectOpossum,
-  } = useDeviceSession(transport);
+  } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
 
   // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
   useSafetySession({

@@ -1,0 +1,13 @@
+{
+  "name": "@0xnullai/native",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "原生外壳（Tauri）向模块注入蓝牙等能力的单一接口。",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "peerDependencies": {
+    "react": "^19.2.5"
+  }
+}

@@ -1,0 +1,19 @@
+/* 安卓壳直接复用统一外壳的样式表——同一套 CSS，同一份层序、同一批 @source。
+   合并前三个壳各有一份 styles.css，各自 @import 自己那个模块的 CSS。 */
+@import '@0xnullai/web/shell.css';
+
+/* 安卓专属：启动图。React 提交首帧后由 main.tsx 淡出。 */
+#nx-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity 250ms ease;
+}
+
+#nx-splash.nx-splash-loaded {
+  opacity: 0;
+  pointer-events: none;
+}

@@ -59,8 +59,6 @@ export function App() {
     window.scrollTo({ top: 0 });
   };
 
-
-
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
       {/* Single sticky shell so the two bars always travel together — no gap. */}
@@ -72,23 +70,19 @@ export function App() {
           onSelectProject={navigateProject}
           tocContent={content}
         />
-        <DocTabs
-          project={project}
-          activeDocId={route.docId}
-          onNavigate={navigateDoc}
-        />
+        <DocTabs project={project} activeDocId={route.docId} onNavigate={navigateDoc} />
       </div>
 
-        <main className="flex-1 flex gap-8 lg:gap-12 px-4 sm:px-6 lg:px-12 xl:px-16 py-6 sm:py-10 max-w-[1400px] w-full mx-auto">
-          <TableOfContents content={content} />
+      <main className="flex-1 flex gap-8 lg:gap-12 px-4 sm:px-6 lg:px-12 xl:px-16 py-6 sm:py-10 max-w-[1400px] w-full mx-auto">
+        <TableOfContents content={content} />
 
-          <div className="flex-1 min-w-0">
-            <DocHero project={project} docLabel={doc.label} />
-            <MarkdownView content={content} />
+        <div className="flex-1 min-w-0">
+          <DocHero project={project} docLabel={doc.label} />
+          <MarkdownView content={content} />
 
-            <PageActions doc={doc} project={project} />
-          </div>
-        </main>
+          <PageActions doc={doc} project={project} />
+        </div>
+      </main>
     </div>
   );
 }
@@ -116,13 +110,7 @@ function DocHero({ project, docLabel }: { project: Project; docLabel: string }) 
  * page-level actions（在仓库里改这一页 / 看源码）so
  * the top bar stays clean and the layout works on narrow screens.
  */
-function PageActions({
-  doc,
-  project,
-}: {
-  doc: Document;
-  project: Project;
-}) {
+function PageActions({ doc, project }: { doc: Document; project: Project }) {
   return (
     <section className="mt-16 sm:mt-20 pt-8 border-t border-[var(--surface-border)]">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5">

@@ -15,8 +15,6 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "android:dev": "npm run tauri:android:dev -w @dg-voice/tauri-android",
-    "android:build": "npm run tauri:android:build -w @dg-voice/tauri-android",
     "android:init": "npm run tauri:android:init -w @dg-voice/tauri-android"
   },
   "dependencies": {
@@ -45,7 +43,8 @@
     "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3",
     "@0xnullai/scenes": "0.1.0",
-    "@0xnullai/settings": "0.1.0"
+    "@0xnullai/settings": "0.1.0",
+    "@0xnullai/native": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",

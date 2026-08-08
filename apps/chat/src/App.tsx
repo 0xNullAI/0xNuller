@@ -1,4 +1,5 @@
 import { ModuleActions, SidebarSection, useSafetySession } from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
 import { me } from '@0xnullai/auth';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
@@ -117,6 +118,10 @@ function applyFire(d: FireApplyDeps) {
 }
 
 export default function App({ deviceClientFactory, requestDeviceTauri }: AppProps = {}) {
+  // 原生能力优先取自 props（独立挂载时），否则从 NativeBridge 取（统一外壳里）。
+  // 两条路并存是因为安卓没有热更新：改错注入接口会让三个模块同时哑掉，而坏掉的
+  // 版本会长期留在用户手机上，所以旧的注入点保留到确认新路径稳定为止。
+  const native = useNativeBridge();
   // 昵称取自统一账号；未登录时回落到本地保存的名字，再回落到匿名。账号服务抖动
   // 不该把人挡在房间外面，所以这里始终有可用值。
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
@@ -164,8 +169,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerRoom.connected, peerRoom.status]);
   const device = useDevice({
-    clientFactory: deviceClientFactory,
-    requestDevice: requestDeviceTauri,
+    clientFactory:
+      deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
+    requestDevice: requestDeviceTauri ?? (native.chat?.requestDevice as typeof requestDeviceTauri),
   });
   const waveforms = useWaveforms();
 

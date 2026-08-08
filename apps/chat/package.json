@@ -15,8 +15,6 @@
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "android:dev": "npm run dev -w @dg-chat/tauri-android",
-    "android:build": "npm run build -w @dg-chat/tauri-android",
     "tauri:android:init": "npm run tauri:android:init -w @dg-chat/tauri-android",
     "tauri:android:dev": "npm run tauri:android:dev -w @dg-chat/tauri-android",
     "tauri:android:build": "npm run tauri:android:build -w @dg-chat/tauri-android"
@@ -35,7 +33,8 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "@dg-kit/safety": "1.13.0",
-    "@0xnullai/settings": "0.1.0"
+    "@0xnullai/settings": "0.1.0",
+    "@0xnullai/native": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",

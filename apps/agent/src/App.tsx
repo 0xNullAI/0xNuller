@@ -16,6 +16,7 @@ import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
 import { SidebarSection, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
 import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted } from '@dg-kit/safety';
@@ -97,6 +98,12 @@ export interface AppProps {
 }
 
 export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
+  // 原生能力优先取自 props（独立挂载时），否则从 NativeBridge 取（统一外壳里）。
+  const native = useNativeBridge();
+  const nativeOverrides = (native.agent?.servicesOverrides ??
+    servicesOverrides) as typeof servicesOverrides;
+  const nativeConnect = (native.agent?.connectDevice ??
+    connectDeviceTauri) as typeof connectDeviceTauri;
   const activeSessionIdRef = useRef<string | null>(null);
   const bridgeSessionResolverRef = useRef<
     (origin: MessageOrigin) => Promise<string | null> | string | null
@@ -158,7 +165,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     settings,
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
-    servicesOverrides,
+    servicesOverrides: nativeOverrides,
   });
 
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckerStatus>(() =>
@@ -291,8 +298,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   );
   const warnings = [
     ...buildWarnings(settings, modes, speechCapabilities, {
-      suppressBridge: servicesOverrides?.disableBridge,
-      suppressSpeech: servicesOverrides?.disableSpeech,
+      suppressBridge: nativeOverrides?.disableBridge,
+      suppressSpeech: nativeOverrides?.disableSpeech,
     }),
     ...serviceInitWarnings,
   ];
@@ -451,7 +458,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
     try {
       setErrorMessage(null);
-      const pickDevice = connectDeviceTauri ?? connectAnyDgLabDevice;
+      const pickDevice = nativeConnect ?? connectAnyDgLabDevice;
       const { kind } = await pickDevice({ device, opossum, pawPrints, civetEdging });
       setStatusMessage(`${DEVICE_KIND_DISPLAY_NAME[kind]}已连接`);
       await refreshCurrentSession(activeSessionId);
@@ -475,7 +482,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     opossum,
     pawPrints,
     civetEdging,
-    connectDeviceTauri,
+    nativeConnect,
     liveDeviceState.connected,
     refreshCurrentSession,
   ]);
