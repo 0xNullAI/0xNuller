@@ -58,17 +58,31 @@ npm run changeset    # 改了 packages/kit/* 就要写
 
 DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
 
-## 软件分开，代码收拢
+## 统一外壳
 
-**网页端四个应用保持独立**，各自部署、各自的设置与主题。收拢只发生在代码层：
-共享包（@dg-kit/safety、@0xnullai/ui 等）+ 统一的构建、测试、lint 配置。
+`apps/web` 是统一入口，四个模块 + 文档站按路由挂载在同一个文档里。各模块**同时**
+仍然可以独立构建部署，两种形态共用同一份代码。
 
-试过把四个模块挂进同一个网页外壳，结果是 Market 白屏、Chat 的安全弹窗逃出外壳、
-Agent 布局塌陷。根因是结构性的：四套完整 CSS 体系（Market 那套用 .app/.topbar
-这类通用类名）加各自的全屏布局假设，塞进同一个文档必然互相覆盖。**不要再试。**
+第一次尝试失败过（Market 白屏、Chat 弹窗逃出外壳、Agent 布局塌陷），当时判断是
+「四套 CSS 体系不可能共存」。**那个判断是错的。** 真正的根因是三件具体的事，都已修复：
 
-**移动端相反**：安卓上四个模块合成单一「0xNullAI」应用，布局重新设计，不存在把
-四套现成桌面布局塞一起的问题。
+1. **Tailwind 的扫描根取自 Vite 的 `config.root`。** 外壳的 root 是 `apps/web`，
+   模块源码树不在其下，候选类从 2199 掉到 409，高度锁与断点整片消失——而构建不报错。
+   修法是 `shell.css` 里逐个 `@source`，**加新模块必须同时加一行**。
+2. **级联层名必须与 Tailwind v4 内部一致**（theme/base/components/utilities）。
+   自造名字会让 Tailwind 的真实层排到后面，preflight 反压过共享 base，且构建、
+   测试、lint、截图全绿——只有读注入元素的计算样式才看得出来。
+3. **弹窗必须 portal 到外壳的覆盖层容器。** 留在模块子树里，祖先有没有 transform
+   决定它是「盖住外壳」还是「关不住模态」。见 `@0xnullai/ui` 的 `overlay.tsx`；
+   `useModuleOverlayLayer` 还负责让被切走模块的弹窗跟着隐藏。
+
+外壳级的东西只有一份，模块不要再各写各的：**主题**在 `@0xnullai/ui` 的
+`theme-store`（唯一写 `data-theme` 的地方），**LLM 配置**在
+`@0xnullai/llm-providers` 的 `config-store`，**急停**在 `@dg-kit/safety` 的
+`safety-bus`。模块想隐藏与外壳重复的顶栏控件就用 `useInShell()`——只用于隐藏，
+不要拿它给模块加分支逻辑，那会让两种运行形态悄悄分叉。
+
+**移动端**：安卓上四个模块合成单一「0xNullAI」应用，布局重新设计。
 
 各模块内部别名是 `@agent` / `@voice`（不是 `@`），保留这个命名以免将来再撞车。
 
