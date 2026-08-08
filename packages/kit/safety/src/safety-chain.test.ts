@@ -4,6 +4,7 @@ import { PolicyEngine } from './policy-engine.js';
 import { createDefaultPolicyRules } from './default-policies.js';
 import { DeviceCommandQueue } from './device-command-queue.js';
 import {
+  allConnectedDevices,
   grantDeviceLease,
   hasDeviceLease,
   registerSafetySession,
@@ -220,5 +221,90 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     expect(good).toHaveBeenCalled();
     // 失败必须被报出来而不是吞掉——用户需要知道有一台没停下。
     expect(result.failed.map((f) => f.id)).toEqual(['agent']);
+  });
+});
+
+describe('多设备同时连接', () => {
+  it('停止会覆盖每一种设备，不只是郊狼', async () => {
+    const stopped: string[] = [];
+    cleanups.push(
+      registerSafetySession({
+        id: 'agent',
+        label: 'agent',
+        isActive: () => true,
+        stop: () => {
+          // 一个模块可以同时持有四种设备。它的 stop 必须把每一种都归零——
+          // 只停郊狼的话，负鼠还在振动，而用户已经按过停止了。
+          stopped.push('coyote', 'opossum', 'paw-prints', 'civet-edging');
+        },
+        devices: () => [
+          { id: 'c', kind: 'coyote', name: '郊狼', connected: true },
+          { id: 'o', kind: 'opossum', name: '负鼠', connected: true },
+          { id: 'p', kind: 'paw-prints', name: '爪印', connected: true },
+          { id: 'v', kind: 'civet-edging', name: '灵狐', connected: true },
+        ],
+      }),
+    );
+
+    await stopAllSafetySessions();
+    expect(stopped).toEqual(['coyote', 'opossum', 'paw-prints', 'civet-edging']);
+  });
+
+  it('两个模块各持一台郊狼时，设备清单不混淆来源', async () => {
+    cleanups.push(
+      registerSafetySession({
+        id: 'agent',
+        label: 'agent',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => [{ id: 'c', kind: 'coyote', name: '我的郊狼', connected: true }],
+      }),
+    );
+    cleanups.push(
+      registerSafetySession({
+        id: 'chat',
+        label: 'chat',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => [{ id: 'c', kind: 'coyote', name: '搭档的郊狼', connected: true }],
+      }),
+    );
+
+    const groups = allConnectedDevices();
+    // 两台设备的 id 都是 'c'——设备栏用 `sessionId:deviceId` 做 key，只用 deviceId
+    // 会让 React 把两台设备当成同一个，第二台根本不显示。
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.sessionId).sort()).toEqual(['agent', 'chat']);
+    expect(groups.flatMap((g) => g.devices.map((d) => d.name)).sort()).toEqual([
+      '我的郊狼',
+      '搭档的郊狼',
+    ]);
+  });
+
+  it('一个模块的设备读取抛错时，其余模块的设备照常列出', () => {
+    cleanups.push(
+      registerSafetySession({
+        id: 'agent',
+        label: 'agent',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => {
+          throw new Error('状态读取失败');
+        },
+      }),
+    );
+    cleanups.push(
+      registerSafetySession({
+        id: 'chat',
+        label: 'chat',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => [{ id: 'c', kind: 'coyote', name: '还在的', connected: true }],
+      }),
+    );
+
+    // 一个模块状态读取出错不该让设备栏整个消失——那会连带藏掉旁边的停止按钮。
+    const groups = allConnectedDevices();
+    expect(groups.map((g) => g.sessionId)).toEqual(['chat']);
   });
 });
