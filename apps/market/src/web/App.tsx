@@ -2,12 +2,16 @@ import { AppSwitcher } from '@0xnullai/ui';
 import { useCallback, useEffect, useState } from 'react';
 import type { ItemType, MarketItem } from '../shared/schema';
 import { fetchItems, markViewed } from './api';
-import { applyTheme, getStoredMode, setMode, subscribeSystem, type ThemeMode } from './theme';
+import { useInShell, useTheme, type ThemeMode } from '@0xnullai/ui';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
 
-const THEME_LABEL: Record<ThemeMode, string> = { auto: '🌗 跟随系统', light: '☀️ 浅色', dark: '🌙 深色' };
+const THEME_LABEL: Record<ThemeMode, string> = {
+  auto: '🌗 跟随系统',
+  light: '☀️ 浅色',
+  dark: '🌙 深色',
+};
 const THEME_NEXT: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' };
 
 type TopTab = 'scene' | 'waveform';
@@ -22,15 +26,14 @@ export function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredMode());
-
-  // auto 模式下跟随系统配色变化。
-  useEffect(() => subscribeSystem(themeMode, () => applyTheme(themeMode)), [themeMode]);
+  // 主题走共享 store。这里原本有一份与 @0xnullai/ui 完全重复的 applyTheme——
+  // 两份实现各自往 data-theme 写，挂进统一外壳后互相顶掉。
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
+  const inShell = useInShell();
 
   function cycleTheme() {
-    const next = THEME_NEXT[themeMode];
-    setThemeMode(next);
-    setMode(next);
+    // 跟随系统的订阅、DOM 写入与持久化都在 useTheme 里，这里只管选哪个模式。
+    setThemeMode(THEME_NEXT[themeMode]);
   }
 
   function openItem(item: MarketItem) {
@@ -69,7 +72,10 @@ export function App(): JSX.Element {
             <button className={tab === 'scene' ? 'active' : ''} onClick={() => setTab('scene')}>
               场景
             </button>
-            <button className={tab === 'waveform' ? 'active' : ''} onClick={() => setTab('waveform')}>
+            <button
+              className={tab === 'waveform' ? 'active' : ''}
+              onClick={() => setTab('waveform')}
+            >
               波形
             </button>
           </div>
@@ -106,9 +112,12 @@ export function App(): JSX.Element {
         </div>
 
         <div className="topbar-actions">
-          <button className="btn ghost" onClick={cycleTheme} title="切换主题">
-            {THEME_LABEL[themeMode]}
-          </button>
+          {/* 外壳顶栏已经有主题按钮，挂进外壳时不再重复。 */}
+          {!inShell && (
+            <button className="btn ghost" onClick={cycleTheme} title="切换主题">
+              {THEME_LABEL[themeMode]}
+            </button>
+          )}
           <button className="btn primary" onClick={() => setUploading(true)}>
             上传
           </button>

@@ -1,4 +1,4 @@
-import { AppSwitcher } from '@0xnullai/ui';
+import { AppSwitcher, useInShell, useTheme } from '@0xnullai/ui';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
@@ -16,7 +16,13 @@ import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
 import { LogOut, Sun, Moon, Drama, Bot } from 'lucide-react';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
-import type { DeviceCommand, MemberState, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
+import type {
+  DeviceCommand,
+  MemberState,
+  CmdAction,
+  PlayMode,
+  WaveformTransfer,
+} from './lib/protocol';
 import type { WaveFrame } from './lib/waveforms';
 
 export interface AppProps {
@@ -58,10 +64,9 @@ function useChannelRotation(
   useEffect(() => {
     if (waveId == null || queue.length <= 1 || mode === 'single') return;
     const t = window.setInterval(() => {
-      setIndex(prev => {
-        const next = mode === 'random'
-          ? Math.floor(Math.random() * queue.length)
-          : (prev + 1) % queue.length;
+      setIndex((prev) => {
+        const next =
+          mode === 'random' ? Math.floor(Math.random() * queue.length) : (prev + 1) % queue.length;
         const wf = waveformsRef.current.getWaveform(queue[next]!);
         const dev = deviceRef.current;
         if (wf && dev.connected) dev.setWave(channel, wf.frames, wf.id, true);
@@ -76,7 +81,7 @@ type FirePolicy = 'sum' | 'max' | 'avg';
 
 function aggregate(boosts: Map<string, { boost: number; ts: number }>, policy: FirePolicy): number {
   if (boosts.size === 0) return 0;
-  const arr = Array.from(boosts.values()).map(x => x.boost);
+  const arr = Array.from(boosts.values()).map((x) => x.boost);
   if (policy === 'sum') return arr.reduce((a, b) => a + b, 0);
   if (policy === 'max') return Math.max(...arr);
   return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
@@ -86,7 +91,12 @@ interface FireApplyDeps {
   channel: 'A' | 'B';
   boosts: Map<string, { boost: number; ts: number }>;
   baseline: number;
-  device: { connected: boolean; limitA: number; limitB: number; setStrength: (c: 'A' | 'B', v: number) => void };
+  device: {
+    connected: boolean;
+    limitA: number;
+    limitB: number;
+    setStrength: (c: 'A' | 'B', v: number) => void;
+  };
   policy: FirePolicy;
   setFiring: (v: boolean) => void;
 }
@@ -105,17 +115,16 @@ function applyFire(d: FireApplyDeps) {
 }
 
 export default function App({ deviceClientFactory, requestDeviceTauri }: AppProps = {}) {
-  const [displayName, setDisplayName] = useState(() =>
-    localStorage.getItem('dg-chat-name') ?? ''
-  );
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [sceneOpen, setSceneOpen] = useState(false);
   const [sceneMarketOpen, setSceneMarketOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
-  const [theme, setTheme] = useState(() =>
-    document.documentElement.getAttribute('data-theme') ?? 'dark'
-  );
+  // 主题走 @0xnullai/ui 的共享 store。以前这里读 DOM 当初始值、切换时直接 setAttribute，
+  // 既不持久化，也会跟外壳和其它模块抢同一个属性。
+  const { effective: theme, toggle: toggleTheme } = useTheme();
+  const inShell = useInShell();
 
   const [queueA, setQueueA] = useState<string[]>([]);
   const [queueB, setQueueB] = useState<string[]>([]);
@@ -135,7 +144,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   const safety = useSafetyAccepted();
   const peerRoom = usePeerRoom(displayName);
-  const device = useDevice({ clientFactory: deviceClientFactory, requestDevice: requestDeviceTauri });
+  const device = useDevice({
+    clientFactory: deviceClientFactory,
+    requestDevice: requestDeviceTauri,
+  });
   const waveforms = useWaveforms();
 
   // 保持引用最新，避免闭包过时
@@ -166,125 +178,145 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }, [displayName]);
 
   // 注册远程指令处理器
-  const handleCommand = useCallback((cmd: DeviceCommand, peerId: string) => {
-    // 队列意图：更新本机权威状态。由 broadcastStateSlow 在 effect 里同步给所有人。
-    // 队列变更后若当前在播波形仍在新队列里，把 index 对齐到它，避免 index 与播放短暂不一致。
-    if (cmd.action === 'set_queue' && cmd.c && cmd.q) {
-      const q = cmd.q;
-      const playing = cmd.c === 'A' ? deviceRef.current.waveIdA : deviceRef.current.waveIdB;
-      const aligned = playing ? q.indexOf(playing) : -1;
-      const nextIdx = aligned >= 0 ? aligned : 0;
-      if (cmd.c === 'A') { setQueueA(q); setCurrentIndexA(nextIdx); }
-      else               { setQueueB(q); setCurrentIndexB(nextIdx); }
-      return;
-    }
-    if (cmd.action === 'set_play_mode' && cmd.c && cmd.mode) {
-      if (cmd.c === 'A') setPlayModeA(cmd.mode);
-      else               setPlayModeB(cmd.mode);
-      return;
-    }
-    if (cmd.action === 'set_interval' && cmd.c && cmd.iv != null) {
-      if (cmd.c === 'A') setIntervalASec(cmd.iv);
-      else               setIntervalBSec(cmd.iv);
-      return;
-    }
-    if (cmd.action === 'fire_active' && cmd.c && cmd.v != null) {
-      const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
-      if (map.size === 0) {
-        // 从空到非空的边沿：抓 baseline 快照
+  const handleCommand = useCallback(
+    (cmd: DeviceCommand, peerId: string) => {
+      // 队列意图：更新本机权威状态。由 broadcastStateSlow 在 effect 里同步给所有人。
+      // 队列变更后若当前在播波形仍在新队列里，把 index 对齐到它，避免 index 与播放短暂不一致。
+      if (cmd.action === 'set_queue' && cmd.c && cmd.q) {
+        const q = cmd.q;
+        const playing = cmd.c === 'A' ? deviceRef.current.waveIdA : deviceRef.current.waveIdB;
+        const aligned = playing ? q.indexOf(playing) : -1;
+        const nextIdx = aligned >= 0 ? aligned : 0;
+        if (cmd.c === 'A') {
+          setQueueA(q);
+          setCurrentIndexA(nextIdx);
+        } else {
+          setQueueB(q);
+          setCurrentIndexB(nextIdx);
+        }
+        return;
+      }
+      if (cmd.action === 'set_play_mode' && cmd.c && cmd.mode) {
+        if (cmd.c === 'A') setPlayModeA(cmd.mode);
+        else setPlayModeB(cmd.mode);
+        return;
+      }
+      if (cmd.action === 'set_interval' && cmd.c && cmd.iv != null) {
+        if (cmd.c === 'A') setIntervalASec(cmd.iv);
+        else setIntervalBSec(cmd.iv);
+        return;
+      }
+      if (cmd.action === 'fire_active' && cmd.c && cmd.v != null) {
+        const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
+        if (map.size === 0) {
+          // 从空到非空的边沿：抓 baseline 快照
+          const dev = deviceRef.current;
+          if (cmd.c === 'A') baselineARef.current = dev.strengthA;
+          else baselineBRef.current = dev.strengthB;
+        }
+        map.set(peerId, { boost: cmd.v, ts: Date.now() });
+        callApplyFire(cmd.c);
+        return;
+      }
+      if (cmd.action === 'fire_release' && cmd.c) {
+        const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
+        map.delete(peerId);
+        callApplyFire(cmd.c);
+        return;
+      }
+      // 强度增量：v=signed delta，owner 累加并 clamp。多控制者并发安全（每条消息都加上）。
+      // 若当前在烧，同步把 baseline 也加上，否则松开时这部分增量会被冲掉。
+      if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
-        if (cmd.c === 'A') baselineARef.current = dev.strengthA;
-        else               baselineBRef.current = dev.strengthB;
+        const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
+        const boosts = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
+        if (boosts.size > 0) {
+          const baseRef = cmd.c === 'A' ? baselineARef : baselineBRef;
+          baseRef.current = Math.max(0, Math.min(limit, baseRef.current + cmd.v));
+          callApplyFire(cmd.c); // 重算 baseline+agg → setStrength
+        } else {
+          const current = cmd.c === 'A' ? dev.strengthA : dev.strengthB;
+          dev.setStrength(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
+        }
+        return;
       }
-      map.set(peerId, { boost: cmd.v, ts: Date.now() });
-      callApplyFire(cmd.c);
-      return;
-    }
-    if (cmd.action === 'fire_release' && cmd.c) {
-      const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
-      map.delete(peerId);
-      callApplyFire(cmd.c);
-      return;
-    }
-    // 强度增量：v=signed delta，owner 累加并 clamp。多控制者并发安全（每条消息都加上）。
-    // 若当前在烧，同步把 baseline 也加上，否则松开时这部分增量会被冲掉。
-    if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
-      const dev = deviceRef.current;
-      const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
-      const boosts = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
-      if (boosts.size > 0) {
-        const baseRef = cmd.c === 'A' ? baselineARef : baselineBRef;
-        baseRef.current = Math.max(0, Math.min(limit, baseRef.current + cmd.v));
-        callApplyFire(cmd.c); // 重算 baseline+agg → setStrength
-      } else {
-        const current = cmd.c === 'A' ? dev.strengthA : dev.strengthB;
-        dev.setStrength(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
+      // Opossum 强度增量：同 adjust_strength 语义，但作用于 Opossum intensity，
+      // 复用同一套 limitA/limitB 安全上限（v1 简化：不做多控制者 fire 聚合）。
+      if (cmd.action === 'vibrate_adjust' && cmd.c && cmd.v != null) {
+        const dev = deviceRef.current;
+        const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
+        const current =
+          cmd.c === 'A' ? (dev.opossum?.intensityA ?? 0) : (dev.opossum?.intensityB ?? 0);
+        dev.setOpossumIntensity(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
+        return;
       }
-      return;
-    }
-    // Opossum 强度增量：同 adjust_strength 语义，但作用于 Opossum intensity，
-    // 复用同一套 limitA/limitB 安全上限（v1 简化：不做多控制者 fire 聚合）。
-    if (cmd.action === 'vibrate_adjust' && cmd.c && cmd.v != null) {
-      const dev = deviceRef.current;
-      const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
-      const current = cmd.c === 'A' ? (dev.opossum?.intensityA ?? 0) : (dev.opossum?.intensityB ?? 0);
-      dev.setOpossumIntensity(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
-      return;
-    }
 
-    const ctx: CommandContext = {
-      device: deviceRef.current.connected ? (deviceRef.current as unknown as CommandContext['device']) : null,
-      getWaveform: waveformsRef.current.getWaveform,
-      session: {
-        opossumConnected: !!deviceRef.current.opossum?.connected,
-        sensorConnected: !!deviceRef.current.sensor?.connected,
-        setOpossumIntensity: deviceRef.current.setOpossumIntensity,
-        opossumBurst: deviceRef.current.opossumBurst,
-        opossumStop: deviceRef.current.opossumStop,
-        setLedColor: deviceRef.current.setLedColor,
-      },
-    };
-    executeCommand(cmd, ctx);
-  }, [callApplyFire]);
+      const ctx: CommandContext = {
+        device: deviceRef.current.connected
+          ? (deviceRef.current as unknown as CommandContext['device'])
+          : null,
+        getWaveform: waveformsRef.current.getWaveform,
+        session: {
+          opossumConnected: !!deviceRef.current.opossum?.connected,
+          sensorConnected: !!deviceRef.current.sensor?.connected,
+          setOpossumIntensity: deviceRef.current.setOpossumIntensity,
+          opossumBurst: deviceRef.current.opossumBurst,
+          opossumStop: deviceRef.current.opossumStop,
+          setLedColor: deviceRef.current.setLedColor,
+        },
+      };
+      executeCommand(cmd, ctx);
+    },
+    [callApplyFire],
+  );
 
   useEffect(() => {
     peerRoom.setCommandHandler(handleCommand);
   }, [peerRoom.setCommandHandler, handleCommand]);
 
   // 场景角色头衔派生（peerId → 角色名）。
-  const roleNameFor = useCallback((peerId: string): string | undefined => {
-    const sc = peerRoom.scene;
-    if (!sc) return undefined;
-    const entry = Object.entries(peerRoom.roleAssignments).find(([, p]) => p === peerId);
-    return entry ? sc.roles.find(r => r.id === entry[0])?.name : undefined;
-  }, [peerRoom.scene, peerRoom.roleAssignments]);
+  const roleNameFor = useCallback(
+    (peerId: string): string | undefined => {
+      const sc = peerRoom.scene;
+      if (!sc) return undefined;
+      const entry = Object.entries(peerRoom.roleAssignments).find(([, p]) => p === peerId);
+      return entry ? sc.roles.find((r) => r.id === entry[0])?.name : undefined;
+    },
+    [peerRoom.scene, peerRoom.roleAssignments],
+  );
   const selfRoleName = roleNameFor(peerRoom.selfId);
 
   // 上传媒体到 R2 后作为一条聊天消息发出。
-  const sendMedia = useCallback(async (
-    blob: Blob,
-    kind: 'image' | 'audio',
-    meta?: { durationMs?: number; w?: number; h?: number },
-  ) => {
-    const room = peerRoom.roomId;
-    if (!room) return;
-    try {
-      const media = await uploadMedia(room, blob, kind, meta);
-      peerRoom.sendMessage('', media);
-    } catch (err) {
-      console.error('[DG-Chat] media upload failed', err);
-    }
-  }, [peerRoom.roomId, peerRoom.sendMessage]);
+  const sendMedia = useCallback(
+    async (
+      blob: Blob,
+      kind: 'image' | 'audio',
+      meta?: { durationMs?: number; w?: number; h?: number },
+    ) => {
+      const room = peerRoom.roomId;
+      if (!room) return;
+      try {
+        const media = await uploadMedia(room, blob, kind, meta);
+        peerRoom.sendMessage('', media);
+      } catch (err) {
+        console.error('[DG-Chat] media upload failed', err);
+      }
+    },
+    [peerRoom.roomId, peerRoom.sendMessage],
+  );
 
-  const handleWaveform = useCallback((transfer: WaveformTransfer, _peerId: string) => {
-    waveforms.addRemoteWaveform({
-      id: transfer.wid,
-      name: transfer.wn,
-      description: '',
-      frames: transfer.fr,
-      custom: true,
-    });
-  }, [waveforms.addRemoteWaveform]);
+  const handleWaveform = useCallback(
+    (transfer: WaveformTransfer, _peerId: string) => {
+      waveforms.addRemoteWaveform({
+        id: transfer.wid,
+        name: transfer.wn,
+        description: '',
+        frames: transfer.fr,
+        custom: true,
+      });
+    },
+    [waveforms.addRemoteWaveform],
+  );
 
   useEffect(() => {
     peerRoom.setWaveformHandler(handleWaveform);
@@ -315,11 +347,21 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       sensorLastValue: device.sensor?.lastValue ?? null,
       sensorLastEventAt: device.sensor?.lastEventAt ?? null,
     });
-  }, [peerRoom.connected, peerRoom.broadcastStateFast,
-      device.strengthA, device.strengthB, device.waveIdA, device.waveIdB,
-      firingA, firingB,
-      device.opossum?.intensityA, device.opossum?.intensityB,
-      device.sensor?.lastEvent, device.sensor?.lastValue, device.sensor?.lastEventAt]);
+  }, [
+    peerRoom.connected,
+    peerRoom.broadcastStateFast,
+    device.strengthA,
+    device.strengthB,
+    device.waveIdA,
+    device.waveIdB,
+    firingA,
+    firingB,
+    device.opossum?.intensityA,
+    device.opossum?.intensityB,
+    device.sensor?.lastEvent,
+    device.sensor?.lastValue,
+    device.sensor?.lastEventAt,
+  ]);
 
   // 低频状态：5 秒心跳 + 名字/电量/连接/目录变化时即时同步
   useEffect(() => {
@@ -329,13 +371,19 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         displayName,
         deviceConnected: device.connected,
         battery: device.battery,
-        waveformCatalog: waveformsRef.current.allWaveforms.map(w => ({
-          id: w.id, name: w.name, custom: !!w.custom,
+        waveformCatalog: waveformsRef.current.allWaveforms.map((w) => ({
+          id: w.id,
+          name: w.name,
+          custom: !!w.custom,
         })),
-        queueA, queueB,
-        playModeA, playModeB,
-        intervalA: intervalASec, intervalB: intervalBSec,
-        currentIndexA, currentIndexB,
+        queueA,
+        queueB,
+        playModeA,
+        playModeB,
+        intervalA: intervalASec,
+        intervalB: intervalBSec,
+        currentIndexA,
+        currentIndexB,
         allowAi,
         opossumConnected: device.opossum?.connected ?? false,
         opossumBattery: device.opossum?.battery ?? null,
@@ -351,13 +399,28 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     send();
     const t = setInterval(send, 5000);
     return () => clearInterval(t);
-  }, [peerRoom.connected, peerRoom.broadcastStateSlow,
-      displayName, device.connected, device.battery,
-      waveforms.allWaveforms.length,
-      queueA, queueB, playModeA, playModeB,
-      intervalASec, intervalBSec, currentIndexA, currentIndexB, allowAi,
-      device.opossum?.connected, device.opossum?.battery,
-      device.sensor?.kind, device.sensor?.connected, device.sensor?.battery]);
+  }, [
+    peerRoom.connected,
+    peerRoom.broadcastStateSlow,
+    displayName,
+    device.connected,
+    device.battery,
+    waveforms.allWaveforms.length,
+    queueA,
+    queueB,
+    playModeA,
+    playModeB,
+    intervalASec,
+    intervalBSec,
+    currentIndexA,
+    currentIndexB,
+    allowAi,
+    device.opossum?.connected,
+    device.opossum?.battery,
+    device.sensor?.kind,
+    device.sensor?.connected,
+    device.sensor?.battery,
+  ]);
 
   // 持久化「允许 AI 控制」开关。
   useEffect(() => {
@@ -366,8 +429,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   // AI 角色大脑（仅房主浏览器实际运行；@AI 角色触发）。
   const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()]
-    .filter(m => !m.isAi && m.deviceConnected && m.allowAi)
-    .map(m => ({ peerId: m.peerId, name: m.displayName || m.peerId.slice(0, 6) }));
+    .filter((m) => !m.isAi && m.deviceConnected && m.allowAi)
+    .map((m) => ({ peerId: m.peerId, name: m.displayName || m.peerId.slice(0, 6) }));
   useRoomAgents({
     isHost: peerRoom.isHost,
     scene: peerRoom.scene,
@@ -380,20 +443,45 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   });
 
   // A/B 通道：被控方权威定时切换（自己持有真值）
-  useChannelRotation('A', device.waveIdA, queueA, playModeA, intervalASec, setCurrentIndexA, deviceRef, waveformsRef);
-  useChannelRotation('B', device.waveIdB, queueB, playModeB, intervalBSec, setCurrentIndexB, deviceRef, waveformsRef);
+  useChannelRotation(
+    'A',
+    device.waveIdA,
+    queueA,
+    playModeA,
+    intervalASec,
+    setCurrentIndexA,
+    deviceRef,
+    waveformsRef,
+  );
+  useChannelRotation(
+    'B',
+    device.waveIdB,
+    queueB,
+    playModeB,
+    intervalBSec,
+    setCurrentIndexB,
+    deviceRef,
+    waveformsRef,
+  );
 
   // 心跳过期 reaper：fire_active 每 300ms 一次，超过 800ms 没刷新即视作松开。
   // 正常松开走 fire_release QoS 1 立即回落；任何异常路径（页面关闭/丢包/崩溃）由这里兜底，最坏 ~1s 内归零。
   useEffect(() => {
     const t = window.setInterval(() => {
       const now = Date.now();
-      let dirtyA = false, dirtyB = false;
+      let dirtyA = false,
+        dirtyB = false;
       fireBoostsA.current.forEach((v, k) => {
-        if (now - v.ts > 800) { fireBoostsA.current.delete(k); dirtyA = true; }
+        if (now - v.ts > 800) {
+          fireBoostsA.current.delete(k);
+          dirtyA = true;
+        }
       });
       fireBoostsB.current.forEach((v, k) => {
-        if (now - v.ts > 800) { fireBoostsB.current.delete(k); dirtyB = true; }
+        if (now - v.ts > 800) {
+          fireBoostsB.current.delete(k);
+          dirtyB = true;
+        }
       });
       if (dirtyA) callApplyFire('A');
       if (dirtyB) callApplyFire('B');
@@ -422,7 +510,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       {/* 顶部栏 */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <AppSwitcher current="chat" label="DG-Chat" className="text-base font-bold text-[var(--text)]" />
+          <AppSwitcher
+            current="chat"
+            label="DG-Chat"
+            className="text-base font-bold text-[var(--text)]"
+          />
           {peerRoom.roomId && (
             <span className="hidden rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
               {peerRoom.roomId}
@@ -460,7 +552,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               </button>
               {device.connected && (
                 <button
-                  onClick={() => setAllowAi(v => !v)}
+                  onClick={() => setAllowAi((v) => !v)}
                   className={`flex h-9 items-center gap-1 rounded-[10px] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
                   title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许房间内 AI 控制你的设备'}
                 >
@@ -470,18 +562,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               )}
             </>
           )}
-          {/* 主题切换 */}
-          <button
-            onClick={() => {
-              const next = theme === 'dark' ? 'light' : 'dark';
-              setTheme(next);
-              document.documentElement.setAttribute('data-theme', next);
-            }}
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-            title={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
-          >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
+          {/* 主题切换。外壳顶栏已经有一个，挂进外壳时就不再重复渲染。 */}
+          {!inShell && (
+            <button
+              onClick={toggleTheme}
+              className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+              title={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+          )}
           {/* 蓝牙 + 个人安全设置（合并面板） */}
           <DeviceSafetyButton
             connected={device.connected}
@@ -511,12 +601,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               className="flex h-9 items-center gap-1 rounded-[10px] bg-[var(--danger-soft)] px-2.5 text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80"
               title="紧急停止"
             >
-              <span aria-hidden>⏹</span><span className="hidden sm:inline">停止</span>
+              <span aria-hidden>⏹</span>
+              <span className="hidden sm:inline">停止</span>
             </button>
           )}
           {/* 离开房间 */}
           <button
-            onClick={() => { device.disconnect(); peerRoom.leave(); }}
+            onClick={() => {
+              device.disconnect();
+              peerRoom.leave();
+            }}
             className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
             title="离开房间"
           >
@@ -549,16 +643,21 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             onSend={(text, mentions) => peerRoom.sendMessage(text, undefined, mentions)}
             onSendMedia={sendMedia}
             members={[
-              ...peerRoom.peers.map(p => ({ peerId: p, name: peerRoom.members.get(p)?.displayName || p.slice(0, 6) })),
+              ...peerRoom.peers.map((p) => ({
+                peerId: p,
+                name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),
+              })),
               // AI 托管角色作为可 @ 的伪成员（peerId = "ai:<roleId>"）。
               ...[...peerRoom.members.values()]
-                .filter(m => m.isAi)
-                .map(m => ({ peerId: m.peerId, name: m.displayName })),
+                .filter((m) => m.isAi)
+                .map((m) => ({ peerId: m.peerId, name: m.displayName })),
             ]}
             selfId={peerRoom.selfId}
           />
         </div>
-        <div className={`${activeTab !== 'control' ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-l border-[var(--surface-border)]`}>
+        <div
+          className={`${activeTab !== 'control' ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-l border-[var(--surface-border)]`}
+        >
           <ControlPanel
             members={peerRoom.members}
             peers={peerRoom.peers}
@@ -569,32 +668,38 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             onImportWaveform={waveforms.importFile}
             onImportMarketWaveform={waveforms.addMarketWaveform}
             onRemoveWaveform={waveforms.removeWaveform}
-            selfState={{
-              peerId: 'self',
-              displayName,
-              deviceConnected: device.connected,
-              strengthA: device.strengthA,
-              strengthB: device.strengthB,
-              waveA: device.waveIdA,
-              waveB: device.waveIdB,
-              battery: device.battery,
-              queueA, queueB,
-              playModeA, playModeB,
-              intervalA: intervalASec, intervalB: intervalBSec,
-              currentIndexA, currentIndexB,
-              firingA,
-              firingB,
-              opossumConnected: device.opossum?.connected ?? false,
-              opossumIntensityA: device.opossum?.intensityA ?? 0,
-              opossumIntensityB: device.opossum?.intensityB ?? 0,
-              opossumBattery: device.opossum?.battery ?? null,
-              sensorKind: device.sensor?.kind,
-              sensorConnected: device.sensor?.connected ?? false,
-              sensorBattery: device.sensor?.battery ?? null,
-              sensorLastEvent: device.sensor?.lastEvent ?? null,
-              sensorLastValue: device.sensor?.lastValue ?? null,
-              sensorLastEventAt: device.sensor?.lastEventAt ?? null,
-            } satisfies MemberState}
+            selfState={
+              {
+                peerId: 'self',
+                displayName,
+                deviceConnected: device.connected,
+                strengthA: device.strengthA,
+                strengthB: device.strengthB,
+                waveA: device.waveIdA,
+                waveB: device.waveIdB,
+                battery: device.battery,
+                queueA,
+                queueB,
+                playModeA,
+                playModeB,
+                intervalA: intervalASec,
+                intervalB: intervalBSec,
+                currentIndexA,
+                currentIndexB,
+                firingA,
+                firingB,
+                opossumConnected: device.opossum?.connected ?? false,
+                opossumIntensityA: device.opossum?.intensityA ?? 0,
+                opossumIntensityB: device.opossum?.intensityB ?? 0,
+                opossumBattery: device.opossum?.battery ?? null,
+                sensorKind: device.sensor?.kind,
+                sensorConnected: device.sensor?.connected ?? false,
+                sensorBattery: device.sensor?.battery ?? null,
+                sensorLastEvent: device.sensor?.lastEvent ?? null,
+                sensorLastValue: device.sensor?.lastValue ?? null,
+                sensorLastEventAt: device.sensor?.lastEventAt ?? null,
+              } satisfies MemberState
+            }
             selfLimitA={device.limitA}
             selfLimitB={device.limitB}
             selfRoleName={selfRoleName}
@@ -603,7 +708,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         </div>
       </div>
       <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] py-1.5 text-center text-[10px] text-[var(--text-faint)]">
-        本项目仅供学习交流使用，请遵守当地法律法规。<a href="https://github.com/0xNullAI/DG-Chat" target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--accent)]">GitHub</a>
+        本项目仅供学习交流使用，请遵守当地法律法规。
+        <a
+          href="https://github.com/0xNullAI/DG-Chat"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-[var(--accent)]"
+        >
+          GitHub
+        </a>
       </footer>
 
       <SceneDialog
@@ -625,7 +738,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       <SceneMarketDialog
         open={sceneMarketOpen}
         onClose={() => setSceneMarketOpen(false)}
-        onImport={(s) => { peerRoom.setScene(s); setSceneMarketOpen(false); setSceneOpen(true); }}
+        onImport={(s) => {
+          peerRoom.setScene(s);
+          setSceneMarketOpen(false);
+          setSceneOpen(true);
+        }}
       />
       <AiSettingsDialog open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
     </div>

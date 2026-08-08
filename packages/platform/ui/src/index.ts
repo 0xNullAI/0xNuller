@@ -24,4 +24,6 @@ export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
 export * from './theme';
+export * from './theme-store';
+export * from './shell-context';
 export * from './overlay';

@@ -1,7 +1,13 @@
 export type ThemeMode = 'auto' | 'dark' | 'light';
-type EffectiveTheme = 'dark' | 'light';
+export type EffectiveTheme = 'dark' | 'light';
 
-function getEffectiveTheme(mode: ThemeMode): EffectiveTheme {
+/**
+ * 模式解析成实际生效的深/浅。
+ *
+ * 切换按钮必须基于**这个**取反，而不是基于 mode。基于 mode 的话，从 'auto' 出发的
+ * 第一次点击会得到 'light'——在浅色系统上等于什么都没发生，按钮看起来是坏的。
+ */
+export function getEffectiveTheme(mode: ThemeMode): EffectiveTheme {
   if (mode === 'auto') {
     if (
       typeof window !== 'undefined' &&

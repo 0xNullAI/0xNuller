@@ -1,3 +1,4 @@
+import { useInShell } from '@0xnullai/ui';
 import { MobileTocButton } from './MobileTocButton';
 import { ProjectPicker } from './ProjectPicker';
 
@@ -22,6 +23,7 @@ export function Header({
   onSelectProject,
   tocContent,
 }: HeaderProps) {
+  const inShell = useInShell();
   return (
     <header>
       <div className="flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-3">
@@ -37,24 +39,23 @@ export function Header({
 
           <span className="hidden sm:inline text-[var(--text-faint)] text-sm">/</span>
 
-          <ProjectPicker
-            activeId={activeProjectId}
-            onSelect={onSelectProject}
-          />
-
+          <ProjectPicker activeId={activeProjectId} onSelect={onSelectProject} />
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <MobileTocButton content={tocContent} />
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            aria-label="切换主题"
-            className="dg-button w-9"
-            style={{ padding: '0.55em 0' }}
-          >
-            <span className="block w-full text-center">{theme === 'dark' ? '☾' : '☀'}</span>
-          </button>
+          {/* 外壳顶栏已经有主题按钮，挂进外壳时不再重复。 */}
+          {!inShell && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label="切换主题"
+              className="dg-button w-9"
+              style={{ padding: '0.55em 0' }}
+            >
+              <span className="block w-full text-center">{theme === 'dark' ? '☾' : '☀'}</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

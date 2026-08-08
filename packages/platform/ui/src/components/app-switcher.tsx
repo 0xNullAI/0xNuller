@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useInShell } from '../shell-context';
 
 /**
  * 应用切换器。
  *
- * 四个应用在软件层面是分开的（各自的域名、设置、主题、部署），所以这里是**真跳转**
- * 而不是共享文档——曾经试过把它们挂进同一个外壳，四套 CSS 体系互相覆盖，Market 白屏、
- * Chat 弹窗逃逸、Agent 布局塌陷。切换器只占标题这一个位置，风险收敛在一个组件里。
+ * 独立部署时这里是**真跳转**——四个应用各有自己的域名。挂进统一外壳后外壳顶栏已经
+ * 提供了模块导航，再放一个下拉就是两个切换器，所以这时它退化成一个纯标题。
  *
  * 样式不用 Tailwind，只用设计令牌写普通 CSS：Market 那套 646 行的独立体系里没有
  * Tailwind，组件必须在四种 CSS 环境下都长得对。
@@ -47,6 +47,7 @@ export function AppSwitcher({ current, urls, label, className }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const currentApp = APP_TARGETS.find((a) => a.id === current);
+  const inShell = useInShell();
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +64,15 @@ export function AppSwitcher({ current, urls, label, className }: Props) {
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
+
+  // 外壳里退化成纯标题：保留模块名（用户仍需知道自己在哪），去掉重复的下拉。
+  if (inShell) {
+    return (
+      <div className={`dgx-switcher${className ? ` ${className}` : ''}`}>
+        <span className="dgx-switcher-static">{label ?? currentApp?.label ?? current}</span>
+      </div>
+    );
+  }
 
   return (
     <div className={`dgx-switcher${className ? ` ${className}` : ''}`} ref={rootRef}>

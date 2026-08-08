@@ -32,7 +32,7 @@ import {
   type PiAiModelInfo,
   type PiAiProviderKey,
 } from '@dg-agent/providers-pi-http';
-import { HelpTip, SettingLabel, SettingSelect, SettingToggle } from '@0xnullai/ui';
+import { HelpTip, SettingLabel, SettingSelect, SettingToggle, useTheme } from '@0xnullai/ui';
 import strengthStyles from './SafetyTab.module.css';
 
 // '自定义' pinned last — every other provider stays in catalog order, both
@@ -49,6 +49,9 @@ interface GeneralTabProps {
 }
 
 export function GeneralTab({ settingsDraft, setSettingsDraft }: GeneralTabProps) {
+  // 主题是跨模块共享的全局设置，所以不走本面板的 draft/save 流程——点了立刻生效，
+  // 且四个模块与外壳看到的是同一个值。
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const selectedProviderDef = getProviderDefinition(settingsDraft.provider.providerId);
 
   function updateProviderField<K extends keyof BrowserAppSettings['provider']>(
@@ -219,16 +222,11 @@ export function GeneralTab({ settingsDraft, setSettingsDraft }: GeneralTabProps)
                 key={option.value}
                 type="button"
                 className={`flex-1 rounded-full px-3.5 py-1 text-xs font-medium transition-all duration-150 ${
-                  settingsDraft.themeMode === option.value
+                  themeMode === option.value
                     ? 'bg-[var(--accent)] text-[var(--button-text)]'
                     : 'text-[var(--text-soft)] hover:text-[var(--text)]'
                 }`}
-                onClick={() =>
-                  setSettingsDraft((current) => ({
-                    ...current,
-                    themeMode: option.value as BrowserAppSettings['themeMode'],
-                  }))
-                }
+                onClick={() => setThemeMode(option.value)}
               >
                 {option.label}
               </button>

@@ -108,3 +108,13 @@
     transition: none;
   }
 }
+
+/* 外壳内的退化形态：只剩标题。内边距与 trigger 保持一致，避免切换运行形态时
+   模块标题的位置发生跳动。 */
+.dgx-switcher-static {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  color: inherit;
+  padding: 0.25em 0.4em;
+}

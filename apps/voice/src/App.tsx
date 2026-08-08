@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
 import { AppSwitcher, Alert, AlertDescription, Button } from '@0xnullai/ui';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
@@ -13,7 +13,7 @@ import {
   type SettingsTab,
 } from '@voice/components/settings/SettingsPanel';
 import { ResetSettingsDialog } from '@voice/components/settings/ResetSettingsDialog';
-import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
+import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
 
 interface AppProps {
@@ -41,12 +41,10 @@ export function App({ transport }: AppProps = {}) {
   const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(true);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-  // Theme is applied here (and re-applied when the OS scheme flips in `auto`
-  // mode). Nothing else touches `data-theme` at runtime.
-  useEffect(() => {
-    applyTheme(settings.theme);
-    return subscribeThemeChanges(settings.theme, () => applyTheme(settings.theme));
-  }, [settings.theme]);
+  // 主题由 @0xnullai/ui 的共享 store 唯一持有（跨模块共用一个键、一个 DOM 写入点）。
+  // 这里只订阅。原先的注释说「运行时没有别处碰 data-theme」——独立部署时成立，
+  // 挂进统一外壳后就不成立了，那正是要收拢它的原因。
+  useTheme();
 
   const openSettings = () => {
     setSettingsMobileNavOpen(true);

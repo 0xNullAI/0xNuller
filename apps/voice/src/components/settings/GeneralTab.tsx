@@ -1,5 +1,5 @@
 import { Input } from '@0xnullai/ui';
-import { HelpTip, SettingLabel, SettingSelect } from '@0xnullai/ui';
+import { HelpTip, SettingLabel, SettingSelect, useTheme } from '@0xnullai/ui';
 import {
   getRealtimeProviderDefinition,
   REALTIME_PROVIDER_DEFINITIONS,
@@ -26,6 +26,8 @@ const PERMISSION_MODE_OPTIONS: Array<{ value: BrowserPermissionMode; label: stri
 ];
 
 export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
+  // 主题是跨模块共享的全局设置，不再存进 VoiceSettings——四个模块与外壳共用一个值。
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const provider = getRealtimeProviderDefinition(settings.activeProviderId);
   const providerSettings = settings.providers[settings.activeProviderId];
 
@@ -52,11 +54,11 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
               key={option.value}
               type="button"
               className={`flex-1 rounded-full px-3.5 py-1 text-xs font-medium transition-all duration-150 ${
-                settings.theme === option.value
+                themeMode === option.value
                   ? 'bg-[var(--accent)] text-[var(--button-text)]'
                   : 'text-[var(--text-soft)] hover:text-[var(--text)]'
               }`}
-              onClick={() => updateSettings((prev) => ({ ...prev, theme: option.value }))}
+              onClick={() => setThemeMode(option.value)}
             >
               {option.label}
             </button>

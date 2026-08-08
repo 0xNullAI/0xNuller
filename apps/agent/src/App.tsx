@@ -15,7 +15,7 @@ import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
+import { useTheme } from '@0xnullai/ui';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
@@ -303,12 +303,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     [settings.backgroundBehavior],
   );
 
-  useEffect(() => {
-    applyTheme(settings.themeMode);
-    return subscribeThemeChanges(settings.themeMode, () => {
-      applyTheme(settings.themeMode);
-    });
-  }, [settings.themeMode]);
+  // 主题不再由本模块施加——它是跨模块共享的全局设置，由 @0xnullai/ui 的 store
+  // 唯一持有。这里只订阅，让本模块跟着变；写入在设置面板里直接走 store。
+  // 保留本地施加的话，切回本模块时它会用自己的旧值把外壳的选择顶掉。
+  useTheme();
 
   useEffect(() => {
     if (!safetyNoticeAccepted) return;
