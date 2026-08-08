@@ -51,7 +51,21 @@ export class SerialCommandQueue<TCommand, TResult> {
         return interrupt.skippedResult();
       }
 
-      return this.options.execute(command);
+      const startedAt = this.generation;
+      const result = await this.options.execute(command);
+
+      // 命令**执行期间**发生了急停：这条已经在途，generation 检查拦不住它——检查
+      // 发生在 execute 之前，而急停是并发跑的。它的写入会落在急停之后，设备于是
+      // 停住又回到刚才的强度。实测就是这个顺序（急停 → 在途的 +10 落地 → 强度 10）。
+      //
+      // 无法撤回一个已经发出的包，能做的是紧接着再停一次。急停必须幂等，所以重复
+      // 停是安全的；漏停不是。
+      if (interrupt && startedAt !== this.generation) {
+        await interrupt.run(command);
+        return interrupt.skippedResult();
+      }
+
+      return result;
     });
 
     this.tail = task.then(

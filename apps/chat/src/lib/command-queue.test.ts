@@ -87,10 +87,14 @@ describe('Chat 的设备命令队列', () => {
 
     await gated.drain();
 
-    expect(gated.stopped).toBe(1);
     // 关键断言：急停之后，队列里那条还没跑的强度指令必须被丢弃。
     // 它要是执行了，用户看到的就是「停住了又自己动起来」。
     expect(gated.executed.filter((c) => c.type === 'adjustStrength')).toHaveLength(1);
+
+    // 停了几次不重要，「最终是停着的」才重要。已经在 execute() 里的那条撤不回来
+    // （generation 检查发生在 execute 之前，急停是并发跑的），队列会在它落地后补停
+    // 一次，所以这里是 ≥1 而不是 ==1。
+    expect(gated.stopped).toBeGreaterThanOrEqual(1);
   });
 
   it('急停不排队等待，立即执行', async () => {
