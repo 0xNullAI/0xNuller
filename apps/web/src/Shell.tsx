@@ -6,6 +6,7 @@ import {
   OverlayProvider,
   useOverlayRoot,
   useModuleOverlayLayer,
+  EmergencyStopButton,
 } from '@0xnullai/ui';
 import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
@@ -109,6 +110,10 @@ export function Shell() {
               </button>
             ))}
           </nav>
+
+          {/* 全局停止锚点。模块被切走后会隐藏，它自己的停止按钮就点不到了，但设备
+              仍在输出——这个按钮不随模块显隐而消失。没有活动会话时它不渲染。 */}
+          <EmergencyStopButton className="mr-1 shrink-0" />
 
           <button
             type="button"

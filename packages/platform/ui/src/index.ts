@@ -10,6 +10,7 @@ export * from './components/setting-label';
 export * from './components/setting-select';
 export * from './components/help-tip';
 export * from './components/device-status';
+export * from './components/emergency-stop';
 export * from './components/badge';
 export * from './components/button';
 export * from './components/card';

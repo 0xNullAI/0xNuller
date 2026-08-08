@@ -7,3 +7,4 @@ export * from './contracts.js';
 export * from './policy-engine.js';
 export * from './default-policies.js';
 export * from './device-command-queue.js';
+export * from './safety-bus.js';
