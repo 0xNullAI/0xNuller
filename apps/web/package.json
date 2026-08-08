@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "description": "统一外壳：常驻导航 + 四模块按路由挂载",
-  "scripts": { "dev": "vite", "build": "vite build", "typecheck": "tsc -b", "preview": "vite preview" },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -b",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@0xnullai/ui": "0.1.0",
     "@dg-agent/web": "5.0.0",
@@ -14,6 +19,7 @@
     "dg-wiki": "0.0.0",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "@0xnullai/auth": "*"
   }
 }

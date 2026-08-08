@@ -17,6 +17,7 @@ export default defineConfig({
       'apps/chat',
       'apps/voice',
       'apps/mcp',
+      'workers/auth',
       'android/agent',
 
       // @dg-kit/*：沿用 DG-Kit 原根配置的 node 环境与 include 范围

@@ -16,7 +16,8 @@
   "workspaces": [
     "packages/*/*",
     "apps/*",
-    "android/*"
+    "android/*",
+    "workers/*"
   ],
   "scripts": {
     "build:kit": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/safety -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",

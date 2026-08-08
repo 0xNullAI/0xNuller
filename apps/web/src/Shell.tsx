@@ -1,8 +1,8 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import {
-  applyTheme,
-  subscribeThemeChanges,
+  useTheme,
+  ShellChromeProvider,
   OverlayProvider,
   useOverlayRoot,
   useModuleOverlayLayer,
@@ -10,6 +10,7 @@ import {
 } from '@0xnullai/ui';
 import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
+import { AccountMenu } from './AccountMenu';
 
 /**
  * 统一外壳。
@@ -70,77 +71,68 @@ export function Shell() {
   const [{ pathname, opened }, navigate] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
   const overlayRoot = useOverlayRoot();
-  const [theme, setTheme] = useState<'dark' | 'light' | 'auto'>(
-    () => (localStorage.getItem('0xnullai-theme') as 'dark' | 'light' | 'auto') ?? 'auto',
-  );
-
-  useEffect(() => {
-    applyTheme(theme);
-    localStorage.setItem('0xnullai-theme', theme);
-    return subscribeThemeChanges(theme, () => applyTheme(theme));
-  }, [theme]);
+  // 主题由 @0xnullai/ui 的共享 store 唯一持有——外壳和四个模块看到同一个值，
+  // 切模块不会把它顶回去。
+  const { effective, toggle: toggleTheme } = useTheme();
 
   return (
     <div id="shl-root">
-        <header className="flex shrink-0 items-center gap-1 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="mr-2 shrink-0 rounded-[10px] px-2 py-1 font-semibold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            0xNullAI
-          </button>
+      <header className="flex shrink-0 items-center gap-1 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="mr-2 shrink-0 rounded-[10px] px-2 py-1 font-semibold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          0xNullAI
+        </button>
 
-          <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-            {MODULES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                title={m.blurb}
-                aria-current={activeId === m.id ? 'page' : undefined}
-                onClick={() => navigate(`/${m.id}`)}
-                className={
-                  'shrink-0 rounded-[10px] px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
-                  (activeId === m.id
-                    ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                    : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
-                }
-              >
-                {m.label}
-              </button>
-            ))}
-          </nav>
+        <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+          {MODULES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              title={m.blurb}
+              aria-current={activeId === m.id ? 'page' : undefined}
+              onClick={() => navigate(`/${m.id}`)}
+              className={
+                'shrink-0 rounded-[10px] px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
+                (activeId === m.id
+                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
+                  : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
+              }
+            >
+              {m.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* 全局停止锚点。模块被切走后会隐藏，它自己的停止按钮就点不到了，但设备
+        {/* 全局停止锚点。模块被切走后会隐藏，它自己的停止按钮就点不到了，但设备
               仍在输出——这个按钮不随模块显隐而消失。没有活动会话时它不渲染。 */}
-          <EmergencyStopButton className="mr-1 shrink-0" />
+        <EmergencyStopButton className="mr-1 shrink-0" />
 
-          <button
-            type="button"
-            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-            title={theme === 'light' ? '切换到深色' : '切换到浅色'}
-            className="ml-1 shrink-0 rounded-[10px] p-2 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          </button>
-        </header>
+        <AccountMenu />
 
-        <main id="shl-slot">
-          {activeId === null ? <Home onOpen={(id) => navigate(`/${id}`)} /> : null}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={effective === 'dark' ? '切换到浅色' : '切换到深色'}
+          className="ml-1 shrink-0 rounded-[10px] p-2 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          {effective === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+      </header>
 
-          {opened.map((id) => {
-            const mod = MODULES.find((m) => m.id === id);
-            if (!mod) return null;
-            return (
-              <ModuleSlot
-                key={id}
-                mod={mod}
-                active={id === activeId}
-                overlayRoot={overlayRoot}
-              />
-            );
-          })}
-        </main>
+      <main id="shl-slot">
+        {activeId === null ? <Home onOpen={(id) => navigate(`/${id}`)} /> : null}
+
+        {opened.map((id) => {
+          const mod = MODULES.find((m) => m.id === id);
+          if (!mod) return null;
+          return (
+            <ModuleSlot key={id} mod={mod} active={id === activeId} overlayRoot={overlayRoot} />
+          );
+        })}
+      </main>
     </div>
   );
 }
@@ -163,25 +155,29 @@ function ModuleSlot({
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
-    <OverlayProvider container={layer}>
-      <div
-        hidden={!active}
-        // 非当前模块留在 DOM 里但不可见——连接与状态都保住。
-        // 不要在这里加 transform/filter 做切换动画：那会把模块内部依赖视口包含块的
-        // 固定定位元素的基准翻转掉。要动就动 opacity。
-        className={active ? 'h-full min-h-0' : 'hidden'}
-        aria-hidden={!active}
-      >
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
-              正在加载 {mod.label}…
-            </div>
-          }
+    // ShellChromeProvider 让模块知道自己不是独立运行，于是隐藏与外壳顶栏重复的
+    // 应用切换器和主题按钮。独立部署时没有这个 Provider，模块的顶栏原样保留。
+    <ShellChromeProvider>
+      <OverlayProvider container={layer}>
+        <div
+          hidden={!active}
+          // 非当前模块留在 DOM 里但不可见——连接与状态都保住。
+          // 不要在这里加 transform/filter 做切换动画：那会把模块内部依赖视口包含块的
+          // 固定定位元素的基准翻转掉。要动就动 opacity。
+          className={active ? 'h-full min-h-0' : 'hidden'}
+          aria-hidden={!active}
         >
-          <mod.Component />
-        </Suspense>
-      </div>
-    </OverlayProvider>
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
+                正在加载 {mod.label}…
+              </div>
+            }
+          >
+            <mod.Component />
+          </Suspense>
+        </div>
+      </OverlayProvider>
+    </ShellChromeProvider>
   );
 }

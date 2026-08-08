@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "0xnullai-auth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+
+  // 首次部署前：wrangler d1 create 0xnullai-auth，把返回的 id 填进来，
+  // 再执行 wrangler d1 migrations apply 0xnullai-auth --remote
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "0xnullai-auth",
+      "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "vars": {
+    // 允许携带凭据的来源。带凭据的请求不能用通配 origin，必须逐个列出。
+    "ALLOWED_ORIGINS": "https://0xnullai.com,https://agent.0xnullai.com,https://chat.0xnullai.com,https://voice.0xnullai.com,https://market.0xnullai.com"
+  },
+
+  // 机密用命令设置，勿写进文件：
+  //   wrangler secret put IP_PEPPER   # 限流哈希的 pepper，**必须永不轮换**
+  //                                   # ——轮换会让全部限流记录失效
+  "observability": { "enabled": true }
+}
