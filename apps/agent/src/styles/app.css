@@ -10,14 +10,6 @@
   background: color-mix(in srgb, var(--bg-elevated) 72%, var(--bg) 28%);
 }
 
-.topbar-device-dot {
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 50%;
-  background: var(--text-faint);
-  box-shadow: 0 0 0 4px rgba(233, 30, 122, 0.08);
-}
-
 .topbar-device-dot.online {
   background: var(--success);
   box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
@@ -36,50 +28,6 @@
   text-transform: uppercase;
   color: var(--accent);
   font-weight: 700;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.2rem;
-  padding: 0.42rem 0.72rem;
-  border-radius: 12px;
-  border: 1px solid var(--surface-border);
-  background: var(--bg-elevated);
-  color: var(--text-soft);
-  backdrop-filter: blur(18px);
-}
-
-.status-pill.is-online {
-  color: var(--success);
-  border-color: rgba(5, 150, 105, 0.24);
-  background: var(--success-soft);
-}
-
-.status-pill.is-offline {
-  color: var(--text-soft);
-}
-
-.topbar-actions > button,
-.topbar-actions > .status-pill {
-  min-height: 2.2rem;
-  padding-top: 0.65rem;
-  padding-bottom: 0.65rem;
-}
-
-.mobile-workspace-nav {
-  display: none;
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-.mobile-workspace-nav button {
-  flex: 1;
-  background: var(--bg-elevated);
-  color: var(--text);
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
 }
 
 .mobile-workspace-nav button.active,
@@ -120,23 +68,16 @@
 }
 
 .events,
-.state-list,
-.settings,
-.saved-prompt-list {
+.settings {
   padding-left: 1.25rem;
   padding-right: 1.25rem;
 }
 
-.history-list,
 .events,
-.state-list,
-.saved-prompt-list,
 .settings {
   padding-top: 1rem;
 }
 
-.history-list,
-.saved-prompt-list,
 .events {
   display: grid;
   gap: 0.75rem;
@@ -161,48 +102,16 @@
   margin-top: -0.1em;
 }
 
-.history-item,
-.saved-prompt-item {
-  display: flex;
-  align-items: stretch;
-  gap: 0.75rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-border);
-  background: var(--bg-strong);
-  overflow: hidden;
-}
-
 .history-item.active {
   border-color: rgba(233, 30, 122, 0.28);
   box-shadow: 0 0 0 1px rgba(233, 30, 122, 0.12) inset;
 }
 
-.history-preview,
-.history-meta,
-.waveform-summary,
 .provider-hint {
   color: var(--text-soft);
 }
 
-.state-list {
-  display: grid;
-  gap: 0.72rem;
-  margin: 0;
-  list-style: none;
-  padding-top: 1rem;
-  padding-left: 0;
-}
-
-.state-list li {
-  padding: 0.82rem 0.95rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-border);
-  background: var(--bg-strong);
-  line-height: 1.55;
-}
-
-.events pre,
-.permission-args {
+.events pre {
   margin: 0;
   padding: 0.92rem 1rem;
   border-radius: var(--radius-md);
@@ -212,20 +121,6 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
-}
-
-.inspector-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-
-.inspector-tabs button {
-  background: var(--bg-strong);
-  color: var(--text);
-  border: 1px solid var(--surface-border);
-  padding-inline: 0.92rem;
-  border-radius: 10px;
 }
 
 .inspector-panel > .panel {
@@ -267,56 +162,6 @@
 .settings label {
   display: grid;
   gap: 0.48rem;
-}
-
-.checkbox-row {
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.checkbox-row input {
-  width: 1.05rem;
-  height: 1.05rem;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.custom-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  cursor: pointer;
-}
-
-.custom-checkbox input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.custom-checkbox-box {
-  width: 1.08rem;
-  height: 1.08rem;
-  flex: 0 0 auto;
-  margin-top: 0.22rem;
-  border-radius: 0.35rem;
-  border: 1.5px solid var(--surface-border-strong);
-  background: var(--bg-strong);
-  color: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    border-color 160ms ease,
-    background-color 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.custom-checkbox-box svg {
-  width: 0.82rem;
-  height: 0.82rem;
 }
 
 .custom-checkbox.checked .custom-checkbox-box {
@@ -393,8 +238,7 @@
   font-weight: 600;
 }
 
-.bridge-connector-copy small,
-.bridge-config-status {
+.bridge-connector-copy small {
   color: var(--text-faint);
   font-size: 0.75rem;
   line-height: 1.35;
@@ -410,29 +254,8 @@
   color: var(--accent);
 }
 
-.bridge-connector-switch {
-  position: relative;
-  display: inline-flex;
-  width: 2.25rem;
-  height: 1.25rem;
-  flex: 0 0 auto;
-  align-items: center;
-  border-radius: 9999px;
-  background: var(--surface-border-strong);
-  transition: background-color 160ms ease;
-}
-
 .bridge-connector-switch.enabled {
   background: var(--accent);
-}
-
-.bridge-connector-switch span {
-  width: 1rem;
-  height: 1rem;
-  margin-left: 0.125rem;
-  border-radius: 9999px;
-  background: #fff;
-  transition: transform 160ms ease;
 }
 
 .bridge-connector-switch.enabled span {
@@ -447,22 +270,6 @@
 .settings .saved-prompt-item {
   border-radius: var(--radius-sm);
 }
-
-.saved-prompt-list {
-  gap: 0.7rem;
-}
-
-.saved-prompt-item.waveform-item {
-  justify-content: space-between;
-  align-items: center;
-}
-
-.waveform-summary {
-  flex: 1;
-  padding: 0.95rem 1rem;
-}
-
-.waveform-actions,
 
 .waveform-modal {
   width: min(680px, 100%);
