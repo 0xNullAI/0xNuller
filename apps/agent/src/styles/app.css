@@ -37,10 +37,6 @@
   border-color: transparent;
 }
 
-.workspace-main {
-  min-width: 0;
-}
-
 .panel {
   border-radius: var(--radius-xl);
   border: 1px solid var(--surface-border);
@@ -107,10 +103,6 @@
   box-shadow: 0 0 0 1px rgba(233, 30, 122, 0.12) inset;
 }
 
-.provider-hint {
-  color: var(--text-soft);
-}
-
 .events pre {
   margin: 0;
   padding: 0.92rem 1rem;
@@ -136,7 +128,6 @@
 
 .settings-mobile-directory-footer button:hover,
 
-.settings-row-section,
 
 .settings-workspace .settings-panel-tab-content > .pb-3,
 .settings-workspace .settings-panel-tab-content > .py-2,
@@ -169,14 +160,6 @@
   background: var(--accent);
   color: var(--button-text);
   box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.provider-hint {
-  padding: 0.92rem 1rem;
-  border-radius: var(--radius-sm);
-  background: var(--bg-soft);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
 }
 
 .bridge-connector-list {
@@ -271,22 +254,8 @@
   border-radius: var(--radius-sm);
 }
 
-.waveform-modal {
-  width: min(680px, 100%);
-}
-
 .waveform-modal-actions {
   padding: 0.5rem 1.25rem 0;
-}
-
-@media (max-width: 1180px) {
-  .workspace-layout {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  }
-
-  .workspace-layout-chat-first {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  }
 }
 
 /* Settings switches from the two-pane desktop layout (sidebar + workspace) to
@@ -296,46 +265,15 @@
    user is stranded in settings with no way back to chat. */
 
 @media (max-width: 900px) {
-  .app-shell {
-    padding-inline: 0.9rem;
-  }
 
   .settings-workspace {
     margin: 0;
     border: 0;
     border-radius: 0;
   }
-
-  .app-topbar {
-    grid-template-columns: 1fr;
-    display: grid;
-  }
-
-  .topbar-status {
-    justify-content: flex-start;
-  }
-
-  .workspace-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-sidebar {
-    display: none;
-  }
-
-  .topbar-toggle {
-    display: inline-flex;
-  }
-
-  .topbar-actions {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 680px) {
-  .app-shell {
-    padding-inline: 0.7rem;
-  }
 
   .settings-workspace-title span,
   .settings-workspace-title p {
@@ -344,10 +282,6 @@
 
   .settings-workspace-title {
     display: none;
-  }
-
-  .settings-row-section {
-    display: block;
   }
 
   .settings-workspace .settings-row-card.grid-cols-\[1fr_auto\] {
@@ -394,29 +328,9 @@
     padding: 0 0.8rem 1rem;
   }
 
-  .topbar-actions {
-    gap: 0.55rem;
-  }
-
-  .topbar-actions > button,
-  .topbar-actions > .status-pill {
-    width: 100%;
-    justify-content: center;
-  }
-
   .panel-header,
   .column-heading {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .runtime-metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .control-drawer,
-  .session-drawer {
-    width: 100vw;
-    padding: 0.85rem;
   }
 }

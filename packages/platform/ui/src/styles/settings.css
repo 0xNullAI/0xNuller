@@ -323,19 +323,7 @@
   box-shadow: none;
 }
 
-.settings-row-section {
-  display: block;
-}
-
 .settings-panel-tab-content > .settings-row-card {
-  margin-top: var(--settings-card-gap);
-}
-
-.settings-row-section > .settings-row-card {
-  margin-top: 0;
-}
-
-.settings-panel-tab-content > .settings-row-card + .settings-row-card {
   margin-top: var(--settings-card-gap);
 }
 
