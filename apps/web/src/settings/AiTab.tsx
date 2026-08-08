@@ -11,13 +11,19 @@ import {
   type LlmConfig,
   type ProviderId,
 } from '@0xnullai/llm-providers';
+import { VoiceProviderSection } from './VoiceProviderSection';
+import { ProxySection } from './ProxySection';
 
 /**
- * AI 配置。Agent 与 Chat 共用同一份——合并前两边各存各的，用户在一处配好，
- * 到另一处还得再配一遍。
+ * AI 配置。文本与语音都在这里。
  *
- * Voice 的 realtime provider 不并进来：它是另一个领域（语音会话的端点与鉴权方式
- * 都不同），形态也不同。硬凑只会让两边都别扭。
+ * 文本这份 Agent 与 Chat 共用——合并前两边各存各的，用户在一处配好到另一处还得
+ * 再配一遍。语音那份是另一套端点与鉴权（realtime 协议），所以是并列的一节而不是
+ * 混进同一组字段里：硬凑成一组会让两边的必填项互相污染。
+ *
+ * 代理也放这里：它影响的正是这些模型请求。**网页端只有 HTTP 反代可行**——浏览器
+ * 不允许页面自行选择 SOCKS 代理，那是操作系统层的设置。给网页端一个 SOCKS 开关等于
+ * 给一个看起来能用、实际永不生效的按钮，所以这里按运行时把它禁掉并说明原因。
  */
 export function AiTab() {
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
@@ -97,6 +103,9 @@ export function AiTab() {
         API Key 存在本机浏览器里，不加密——同源脚本与浏览器扩展都读得到。真正需要保密的
         部署应该自建代理，让密钥只存在于服务端。
       </p>
+
+      <VoiceProviderSection />
+      <ProxySection />
     </div>
   );
 }

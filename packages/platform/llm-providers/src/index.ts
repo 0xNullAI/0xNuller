@@ -1,3 +1,4 @@
+import { applyHttpProxy } from '@0xnullai/settings';
 import { z } from 'zod';
 
 export type ProviderId =
@@ -496,6 +497,9 @@ export function providerRequiresUserApiKey(settingsOrId: ProviderSettings | Prov
 
 export function resolveProviderRuntimeSettings(input: ProviderSettings): ProviderRuntimeSettings {
   const normalized = normalizeProviderSettings(input);
+  // 代理在这里生效，而不是在每个调用点各接一次——那样迟早会漏掉某条路径，
+  // 而漏掉的表现是「设了代理但某些请求还是直连」，用户很难发现。
+  const proxied = (url: string) => applyHttpProxy(url);
   const definition = getProviderDefinition(normalized.providerId);
   const dialect: ProviderDialect = definition?.dialect ?? 'openai-compat';
 
@@ -504,7 +508,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
       ...normalized,
       apiKey: 'free',
       model: FREE_TRIAL_MODEL,
-      baseUrl: FREE_TRIAL_PROXY_URL + '/v1',
+      baseUrl: proxied(FREE_TRIAL_PROXY_URL + '/v1'),
       endpoint: 'chat/completions',
       useStrict: false,
       browserSupported: true,
@@ -514,6 +518,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
 
   return {
     ...normalized,
+    baseUrl: normalized.baseUrl ? proxied(normalized.baseUrl) : normalized.baseUrl,
     browserSupported: isProviderUsableInBrowser(normalized),
     dialect,
     piProviderKey: definition?.piProviderKey,
