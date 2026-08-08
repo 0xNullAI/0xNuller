@@ -41,7 +41,8 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.5.0",
     "@dg-kit/safety": "1.13.0",
-    "@0xnullai/scenes": "0.1.0"
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

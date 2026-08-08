@@ -9,7 +9,14 @@
 //    AI 只能作用于 deviceTargets（已把控制权授予该 AI 的成员）。
 //  - 每角色一次只跑一轮；工具循环封顶，防失控。
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Scene, MemberState, ChatMention, CmdAction, DeviceCommand, ChatMessage } from '../lib/protocol';
+import type {
+  Scene,
+  MemberState,
+  ChatMention,
+  CmdAction,
+  DeviceCommand,
+  ChatMessage,
+} from '../lib/protocol';
 import { loadAiConfig, isAiConfigured } from '../lib/ai-config';
 import { callLlm, type LlmMessage, type LlmTool, type LlmToolCall } from '../lib/llm-client';
 
@@ -54,11 +61,12 @@ function buildSystemPrompt(
   for (const r of scene.roles) {
     const holder = roleAssignments[r.id];
     let who = '（无人扮演）';
-    if (holder?.startsWith('ai:')) who = holder === `ai:${selfRoleId}` ? '由你(AI)扮演 ★' : '由 AI 扮演';
+    if (holder?.startsWith('ai:'))
+      who = holder === `ai:${selfRoleId}` ? '由你(AI)扮演 ★' : '由 AI 扮演';
     else if (holder) who = `由 ${members.get(holder)?.displayName || '某成员'} 扮演`;
     lines.push(`- ${r.name}：${r.description || '（无描述）'} —— ${who}`);
   }
-  const self = scene.roles.find(r => r.id === selfRoleId);
+  const self = scene.roles.find((r) => r.id === selfRoleId);
   lines.push('');
   lines.push('【你的身份】');
   lines.push(`你是「${self?.name ?? '未知角色'}」。`);
@@ -66,19 +74,24 @@ function buildSystemPrompt(
   lines.push('始终以这个角色的身份和口吻发言，不要跳出角色，不要承认自己是 AI。');
   lines.push('');
   const roster = [...members.values()]
-    .filter(m => m.displayName)
-    .map(m => `${m.displayName}${m.roleId ? `(${scene.roles.find(r => r.id === m.roleId)?.name ?? ''})` : ''}`)
+    .filter((m) => m.displayName)
+    .map(
+      (m) =>
+        `${m.displayName}${m.roleId ? `(${scene.roles.find((r) => r.id === m.roleId)?.name ?? ''})` : ''}`,
+    )
     .join('、');
   if (roster) lines.push(`【在场成员】${roster}`);
-  lines.push('【规则】用中文、简短自然、符合场景氛围；只在被 @ 时回应；如需对设备施加效果，调用提供的工具。');
+  lines.push(
+    '【规则】用中文、简短自然、符合场景氛围；只在被 @ 时回应；如需对设备施加效果，调用提供的工具。',
+  );
   return lines.join('\n');
 }
 
 /** 设备工具定义（仅当有授权目标时提供）。 */
 function buildTools(targets: AgentDeviceTarget[]): LlmTool[] {
   if (targets.length === 0) return [];
-  const targetEnum = targets.map(t => t.peerId);
-  const targetDesc = targets.map(t => `${t.peerId}=${t.name}`).join('，');
+  const targetEnum = targets.map((t) => t.peerId);
+  const targetDesc = targets.map((t) => `${t.peerId}=${t.name}`).join('，');
   return [
     {
       type: 'function',
@@ -132,7 +145,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
   const runTurn = useCallback(async (roleId: string, triggerId: string) => {
     if (busyRef.current.has(roleId)) return;
     busyRef.current.add(roleId);
-    setThinking(s => new Set(s).add(roleId));
+    setThinking((s) => new Set(s).add(roleId));
     try {
       const cfg = loadAiConfig();
       if (!isAiConfigured(cfg)) return;
@@ -140,7 +153,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
       if (!cur.scene) return;
       const sys = buildSystemPrompt(cur.scene, roleId, cur.members, cur.roleAssignments);
       const recent = cur.messages.slice(-HISTORY_LIMIT);
-      const convo: LlmMessage[] = recent.map(m =>
+      const convo: LlmMessage[] = recent.map((m) =>
         m.senderId === `ai:${roleId}`
           ? { role: 'assistant', content: m.text }
           : {
@@ -153,7 +166,10 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
 
       let rounds = 0;
       while (rounds <= MAX_TOOL_ROUNDS) {
-        const res = await callLlm(cfg, llmMessages, { tools: tools.length ? tools : undefined, maxTokens: 800 });
+        const res = await callLlm(cfg, llmMessages, {
+          tools: tools.length ? tools : undefined,
+          maxTokens: 800,
+        });
         if (res.toolCalls.length === 0 || rounds === MAX_TOOL_ROUNDS) {
           const text = res.text.trim();
           if (text) cur.sendChatAs(roleId, text);
@@ -163,7 +179,12 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
         llmMessages.push({ role: 'assistant', content: res.text || '' });
         for (const call of res.toolCalls) {
           const result = applyTool(roleId, call, cur.deviceTargets, cur.sendCommandAs);
-          llmMessages.push({ role: 'tool', content: result, tool_call_id: call.id, name: call.name });
+          llmMessages.push({
+            role: 'tool',
+            content: result,
+            tool_call_id: call.id,
+            name: call.name,
+          });
         }
         rounds++;
       }
@@ -171,7 +192,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
       console.warn('[DG-Chat] agent turn failed', err);
     } finally {
       busyRef.current.delete(roleId);
-      setThinking(s => {
+      setThinking((s) => {
         const next = new Set(s);
         next.delete(roleId);
         return next;
@@ -201,7 +222,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
         processedRef.current.add(m.id);
         continue; // 防自触发
       }
-      const mentioned = m.mentions?.map(x => x.peerId) ?? [];
+      const mentioned = m.mentions?.map((x) => x.peerId) ?? [];
       let handled = false;
       for (const roleId of aiRoleIds) {
         if (mentioned.includes(`ai:${roleId}`)) {
@@ -224,8 +245,9 @@ function applyTool(
   sendCommandAs: RoomAgentsOptions['sendCommandAs'],
 ): string {
   const target = String(call.arguments.target ?? '');
-  if (!targets.some(t => t.peerId === target)) return `错误：目标 ${target} 未授权或不存在`;
-  const channel = call.arguments.channel === 'B' ? 'B' : call.arguments.channel === 'A' ? 'A' : undefined;
+  if (!targets.some((t) => t.peerId === target)) return `错误：目标 ${target} 未授权或不存在`;
+  const channel =
+    call.arguments.channel === 'B' ? 'B' : call.arguments.channel === 'A' ? 'A' : undefined;
   if (call.name === 'adjust_strength') {
     const delta = Math.max(-50, Math.min(50, Number(call.arguments.delta) || 0));
     sendCommandAs(roleId, target, 'adjust_strength', { c: channel ?? 'A', v: delta });

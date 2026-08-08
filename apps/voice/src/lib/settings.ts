@@ -1,3 +1,4 @@
+import { effectivePermissionMode, loadDeviceSafety, updateDeviceSafety } from '@0xnullai/settings';
 /**
  * localStorage-backed settings, namespaced `dg-voice-*` per DG-Chat's
  * CLAUDE.md convention (avoid key collisions between the DG family's
@@ -113,25 +114,64 @@ export function loadSettings(): VoiceSettings {
   if (typeof window === 'undefined') return createDefaultSettings();
 
   const defaults = createDefaultSettings();
+  // 设备安全设置的真源在 @0xnullai/settings，全应用共用一份。**在任何返回路径上都要
+  // 铺**——早期版本在「本模块还没有本地存储」时提前 return defaults，于是新用户在
+  // Agent 里调的上限在 Voice 这边完全看不到，而且默认值恰好是合理的，很难被发现。
+  const shared = loadDeviceSafety();
+  const withShared = (base: VoiceSettings): VoiceSettings => ({
+    ...base,
+    coyoteSafety: {
+      maxStrengthA: shared.maxStrengthA,
+      maxStrengthB: shared.maxStrengthB,
+      maxColdStartStrength: shared.maxColdStartStrength,
+      maxAdjustStep: shared.maxAdjustStep,
+      maxBurstDurationMs: shared.maxBurstDurationMs,
+      maxBurstStrengthAbsolute: shared.maxBurstStrengthAbsolute,
+      maxBurstStrengthRelative: shared.maxBurstStrengthRelative,
+    },
+    opossumSafety: {
+      maxColdStartIntensity: shared.maxColdStartIntensity,
+      maxAdjustStep: shared.maxOpossumAdjustStep,
+      maxIntensityA: shared.maxIntensityA,
+      maxIntensityB: shared.maxIntensityB,
+    },
+    permissionMode: effectivePermissionMode(shared),
+  });
+
   try {
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return defaults;
+    if (!raw) return withShared(defaults);
     const parsed = settingsSchema.partial().safeParse(JSON.parse(raw));
-    if (!parsed.success) return defaults;
+    if (!parsed.success) return withShared(defaults);
 
-    return {
+    return withShared({
       ...defaults,
       ...parsed.data,
       providers: { ...defaults.providers, ...parsed.data.providers },
-      coyoteSafety: { ...defaults.coyoteSafety, ...parsed.data.coyoteSafety },
-      opossumSafety: { ...defaults.opossumSafety, ...parsed.data.opossumSafety },
-    } as VoiceSettings;
+    } as VoiceSettings);
   } catch {
-    return defaults;
+    return withShared(defaults);
   }
 }
 
 export function saveSettings(settings: VoiceSettings): void {
   if (typeof window === 'undefined') return;
+  // 安全部分写回共享真源。本模块的 blob 里仍会留一份副本（形状不变、无害），但读取
+  // 时一律以共享值为准——两边不一致时以真源为准，而不是以谁最后写为准。
+  updateDeviceSafety((prev) => ({
+    ...prev,
+    maxStrengthA: settings.coyoteSafety.maxStrengthA,
+    maxStrengthB: settings.coyoteSafety.maxStrengthB,
+    maxColdStartStrength: settings.coyoteSafety.maxColdStartStrength,
+    maxAdjustStep: settings.coyoteSafety.maxAdjustStep,
+    maxBurstDurationMs: settings.coyoteSafety.maxBurstDurationMs,
+    maxBurstStrengthAbsolute: settings.coyoteSafety.maxBurstStrengthAbsolute,
+    maxBurstStrengthRelative: settings.coyoteSafety.maxBurstStrengthRelative,
+    maxColdStartIntensity: settings.opossumSafety.maxColdStartIntensity,
+    maxOpossumAdjustStep: settings.opossumSafety.maxAdjustStep,
+    maxIntensityA: settings.opossumSafety.maxIntensityA,
+    maxIntensityB: settings.opossumSafety.maxIntensityB,
+    permissionMode: settings.permissionMode,
+  }));
   window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }

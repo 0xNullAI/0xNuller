@@ -1,3 +1,4 @@
+import { loadDeviceSafety, saveDeviceSafety } from '@0xnullai/settings';
 import {
   createProviderSettings,
   normalizeProviderSettings,
@@ -48,6 +49,9 @@ export class BrowserAppSettingsStore {
 
   load(): BrowserAppSettings {
     const persisted = this.normalizePersistedSettings(this.readPersistedSettings());
+    // 设备安全设置的真源在 @0xnullai/settings，全应用共用一份——用户在 Agent 里把
+    // 上限调到 30，切到 Chat / Voice 不该变回 50。这里只是把它铺进本模块的设置视图。
+    const safety = loadDeviceSafety();
     const activeProviderId = persisted?.provider?.providerId ?? this.defaults.provider.providerId;
     const apiKeys = this.readApiKeys(activeProviderId);
     const voiceApiKey = this.readVoiceApiKey();
@@ -58,6 +62,26 @@ export class BrowserAppSettingsStore {
     return {
       ...this.defaults,
       ...persisted,
+      // 共享的安全设置覆盖本模块曾经持久化的那份（迁移后旧字段不再被写入）。
+      maxStrengthA: safety.maxStrengthA,
+      maxStrengthB: safety.maxStrengthB,
+      maxColdStartStrength: safety.maxColdStartStrength,
+      maxAdjustStrengthStep: safety.maxAdjustStep,
+      maxBurstDurationMs: safety.maxBurstDurationMs,
+      maxBurstStrengthAbsolute: safety.maxBurstStrengthAbsolute,
+      maxBurstStrengthRelative: safety.maxBurstStrengthRelative,
+      burstRequiresActiveChannel: safety.burstRequiresActiveChannel,
+      maxOpossumIntensityA: safety.maxIntensityA,
+      maxOpossumIntensityB: safety.maxIntensityB,
+      maxOpossumColdStartIntensity: safety.maxColdStartIntensity,
+      maxOpossumAdjustStep: safety.maxOpossumAdjustStep,
+      maxToolIterations: safety.maxToolIterations,
+      maxToolCallsPerTurn: safety.maxToolCallsPerTurn,
+      maxAdjustStrengthCallsPerTurn: safety.maxAdjustStrengthCallsPerTurn,
+      maxBurstCallsPerTurn: safety.maxBurstCallsPerTurn,
+      maxVibrateAdjustCallsPerTurn: safety.maxVibrateAdjustCallsPerTurn,
+      maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
+      backgroundBehavior: safety.backgroundBehavior,
       permissionMode: effectivePermissionState.permissionMode,
       permissionModeExpiresAt: effectivePermissionState.permissionModeExpiresAt,
       bridge: {
@@ -94,6 +118,31 @@ export class BrowserAppSettingsStore {
 
     this.sessionPermissionModeOverride =
       settings.permissionMode === 'allow-all' ? 'allow-all' : null;
+
+    // 安全设置写回共享真源，不再进本模块的 blob。
+    saveDeviceSafety({
+      maxStrengthA: settings.maxStrengthA,
+      maxStrengthB: settings.maxStrengthB,
+      maxColdStartStrength: settings.maxColdStartStrength,
+      maxAdjustStep: settings.maxAdjustStrengthStep,
+      maxBurstDurationMs: settings.maxBurstDurationMs,
+      maxBurstStrengthAbsolute: settings.maxBurstStrengthAbsolute,
+      maxBurstStrengthRelative: settings.maxBurstStrengthRelative,
+      burstRequiresActiveChannel: settings.burstRequiresActiveChannel,
+      maxIntensityA: settings.maxOpossumIntensityA,
+      maxIntensityB: settings.maxOpossumIntensityB,
+      maxColdStartIntensity: settings.maxOpossumColdStartIntensity,
+      maxOpossumAdjustStep: settings.maxOpossumAdjustStep,
+      maxToolIterations: settings.maxToolIterations,
+      maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
+      maxAdjustStrengthCallsPerTurn: settings.maxAdjustStrengthCallsPerTurn,
+      maxBurstCallsPerTurn: settings.maxBurstCallsPerTurn,
+      maxVibrateAdjustCallsPerTurn: settings.maxVibrateAdjustCallsPerTurn,
+      maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
+      permissionMode: persistedPermissionMode,
+      permissionModeExpiresAt: persistedPermissionModeExpiresAt,
+      backgroundBehavior: settings.backgroundBehavior,
+    });
 
     const sanitized = {
       version: 1 as const,

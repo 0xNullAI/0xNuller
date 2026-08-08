@@ -34,7 +34,8 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "@dg-kit/safety": "1.13.0"
+    "@dg-kit/safety": "1.13.0",
+    "@0xnullai/settings": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",

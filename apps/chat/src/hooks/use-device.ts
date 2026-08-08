@@ -1,3 +1,4 @@
+import { loadDeviceSafety, updateDeviceSafety } from '@0xnullai/settings';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   DeviceSession,
@@ -44,11 +45,12 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [limitB, setLimitB] = useState(50);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
   const [opossum, setOpossum] = useState<OpossumSummary | null>(null);
+  // 后台行为归共享的设备安全设置——三个模块共用一份，切换应用不会变。
   const [backgroundBehavior, setBackgroundBehaviorState] = useState<'stop' | 'keep'>(
-    () => (localStorage.getItem('dg-bg-behavior') as 'stop' | 'keep') ?? 'stop'
+    () => loadDeviceSafety().backgroundBehavior,
   );
   const [firePolicy, setFirePolicyState] = useState<'sum' | 'max' | 'avg'>(
-    () => (localStorage.getItem('dg-fire-policy') as 'sum' | 'max' | 'avg' | null) ?? 'max'
+    () => (localStorage.getItem('dg-fire-policy') as 'sum' | 'max' | 'avg' | null) ?? 'max',
   );
   const firePolicyRef = useRef(firePolicy);
   firePolicyRef.current = firePolicy;
@@ -202,7 +204,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
   /** 设置后台行为 */
   const setBackgroundBehavior = useCallback((mode: 'stop' | 'keep') => {
     setBackgroundBehaviorState(mode);
-    localStorage.setItem('dg-bg-behavior', mode);
+    updateDeviceSafety((prev) => ({ ...prev, backgroundBehavior: mode }));
   }, []);
 
   /** 设置多人开火聚合策略 */

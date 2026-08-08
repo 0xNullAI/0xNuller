@@ -22,6 +22,7 @@
     "react-dom": "^19.2.5",
     "@0xnullai/auth": "*",
     "@dg-kit/safety": "1.13.0",
-    "@0xnullai/scenes": "0.1.0"
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0"
   }
 }
