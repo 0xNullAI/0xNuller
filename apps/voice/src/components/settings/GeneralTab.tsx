@@ -79,11 +79,16 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
             <SettingSelect
               value={settings.activeProviderId}
               onValueChange={(value) =>
-                updateSettings((prev) => ({ ...prev, activeProviderId: value as RealtimeProviderId }))
+                updateSettings((prev) => ({
+                  ...prev,
+                  activeProviderId: value as RealtimeProviderId,
+                }))
               }
               options={REALTIME_PROVIDER_DEFINITIONS.map((def) => ({
                 value: def.id,
-                label: def.pricePerMinuteUsd ? `${def.name} · $${def.pricePerMinuteUsd}/分钟` : def.name,
+                label: def.pricePerMinuteUsd
+                  ? `${def.name} · $${def.pricePerMinuteUsd}/分钟`
+                  : def.name,
               }))}
             />
           </div>
@@ -118,7 +123,10 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
             <SettingSelect
               value={settings.permissionMode}
               onValueChange={(value) =>
-                updateSettings((prev) => ({ ...prev, permissionMode: value as BrowserPermissionMode }))
+                updateSettings((prev) => ({
+                  ...prev,
+                  permissionMode: value as BrowserPermissionMode,
+                }))
               }
               options={PERMISSION_MODE_OPTIONS}
             />

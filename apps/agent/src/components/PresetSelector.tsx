@@ -1,6 +1,7 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { BUILTIN_PROMPT_PRESETS, type SavedPromptPreset } from '@dg-agent/runtime';
-import type { BrowserAppSettings } from '@dg-agent/storage-browser';
+import { useRef, useState } from 'react';
+import { BUILTIN_PROMPT_PRESETS } from '@dg-agent/runtime';
+import { newSceneId, type SavedScene } from '@0xnullai/scenes';
+import { useScenes } from '@0xnullai/scenes/react';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
 import { Button, Input, Textarea } from '@0xnullai/ui';
 import { cn } from '@agent/lib/utils';
@@ -80,16 +81,14 @@ const EMOJI_OPTIONS = [
 ];
 
 interface PresetSelectorProps {
-  settingsDraft: BrowserAppSettings;
-  setSettingsDraft: Dispatch<SetStateAction<BrowserAppSettings>>;
-  onDeleteSavedPromptPreset: (presetId: string) => void;
+  /** 删除成功后的提示。删除本身由本组件直接对共享场景库执行。 */
+  onNotify?: (message: string) => void;
 }
 
-export function PresetSelector({
-  settingsDraft,
-  setSettingsDraft,
-  onDeleteSavedPromptPreset,
-}: PresetSelectorProps) {
+export function PresetSelector({ onNotify }: PresetSelectorProps) {
+  // 场景库从 Agent 的设置 blob 里搬走了：跨模块共享（Voice 看得到同一批），而且
+  // 一条写坏的场景不再会连累整份设置回落默认值——那个 blob 里还住着强度上限。
+  const [scenes, updateScenes] = useScenes();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState(DEFAULT_CUSTOM_ICON);
@@ -100,33 +99,31 @@ export function PresetSelector({
   const [newPrompt, setNewPrompt] = useState('');
   const [marketOpen, setMarketOpen] = useState(false);
 
-  const hiddenIds = settingsDraft.hiddenBuiltinPresetIds ?? [];
+  const hiddenIds = scenes.hiddenBuiltinIds;
   const visibleBuiltins = BUILTIN_PROMPT_PRESETS.filter((p) => !hiddenIds.includes(p.id));
 
   function selectPreset(id: string) {
-    setSettingsDraft((current) => ({ ...current, promptPresetId: id }));
+    updateScenes((current) => ({ ...current, selectedId: id }));
   }
 
   function hideBuiltin(id: string) {
-    setSettingsDraft((current) => {
-      const nextHidden = [...(current.hiddenBuiltinPresetIds ?? []), id];
-      // If we're hiding the currently selected preset, fall back to the first
-      // remaining visible builtin, then the first saved preset, else keep it.
-      let nextSelected = current.promptPresetId;
-      if (current.promptPresetId === id) {
+    updateScenes((current) => {
+      const nextHidden = [...current.hiddenBuiltinIds, id];
+      // 隐藏的正好是当前选中项时，依次回落到第一个仍可见的内置、第一个自定义场景。
+      let nextSelected = current.selectedId;
+      if (current.selectedId === id) {
         const remaining = BUILTIN_PROMPT_PRESETS.filter((p) => !nextHidden.includes(p.id));
-        nextSelected =
-          remaining[0]?.id ?? current.savedPromptPresets[0]?.id ?? current.promptPresetId;
+        nextSelected = remaining[0]?.id ?? current.scenes[0]?.id ?? current.selectedId;
       }
-      return { ...current, hiddenBuiltinPresetIds: nextHidden, promptPresetId: nextSelected };
+      return { ...current, hiddenBuiltinIds: nextHidden, selectedId: nextSelected };
     });
   }
 
   function restoreBuiltins() {
-    setSettingsDraft((current) => ({ ...current, hiddenBuiltinPresetIds: [] }));
+    updateScenes((current) => ({ ...current, hiddenBuiltinIds: [] }));
   }
 
-  function startEdit(preset: SavedPromptPreset) {
+  function startEdit(preset: SavedScene) {
     setEditingId(preset.id);
     setEditName(preset.name);
     setEditIcon(preset.icon ?? DEFAULT_CUSTOM_ICON);
@@ -136,9 +133,9 @@ export function PresetSelector({
 
   function saveEdit() {
     if (!editingId || !editName.trim()) return;
-    setSettingsDraft((current) => ({
+    updateScenes((current) => ({
       ...current,
-      savedPromptPresets: current.savedPromptPresets.map((p) =>
+      scenes: current.scenes.map((p) =>
         p.id === editingId
           ? { ...p, name: editName.trim(), icon: editIcon, prompt: editPrompt }
           : p,
@@ -157,14 +154,13 @@ export function PresetSelector({
 
   function confirmCreate() {
     if (!newName.trim()) return;
-    const id = `custom-${Date.now()}`;
-    setSettingsDraft((current) => ({
+    // 不用 `custom-${Date.now()}`：两个模块的库合并时同一毫秒建的会撞 id，
+    // 而查找是 find()——撞了是静默遮蔽，表现为某个场景「点了没反应」。
+    const id = newSceneId();
+    updateScenes((current) => ({
       ...current,
-      promptPresetId: id,
-      savedPromptPresets: [
-        ...current.savedPromptPresets,
-        { id, name: newName.trim(), icon: newIcon, prompt: newPrompt },
-      ],
+      selectedId: id,
+      scenes: [...current.scenes, { id, name: newName.trim(), icon: newIcon, prompt: newPrompt }],
     }));
     setCreating(false);
     setNewName('');
@@ -172,18 +168,28 @@ export function PresetSelector({
     setNewPrompt('');
   }
 
+  function deletePreset(id: string) {
+    updateScenes((current) => ({
+      ...current,
+      scenes: current.scenes.filter((p) => p.id !== id),
+      // 删掉的正好是选中项时回落到第一个内置人设。
+      selectedId: current.selectedId === id ? 'gentle' : current.selectedId,
+    }));
+    onNotify?.('已删除该自定义场景');
+  }
+
   function importFromMarket(item: MarketItem) {
     const id = `market-${item.id}`;
     const prompt = (item.content as MarketScenarioContent).prompt;
-    setSettingsDraft((current) => {
-      if (current.savedPromptPresets.some((p) => p.id === id)) {
-        return { ...current, promptPresetId: id };
+    updateScenes((current) => {
+      if (current.scenes.some((p) => p.id === id)) {
+        return { ...current, selectedId: id };
       }
       return {
         ...current,
-        promptPresetId: id,
-        savedPromptPresets: [
-          ...current.savedPromptPresets,
+        selectedId: id,
+        scenes: [
+          ...current.scenes,
           { id, name: item.name, icon: item.icon || DEFAULT_CUSTOM_ICON, prompt },
         ],
       };
@@ -209,7 +215,7 @@ export function PresetSelector({
         </div>
         <div className="space-y-1.5">
           {visibleBuiltins.map((preset) => {
-            const active = settingsDraft.promptPresetId === preset.id;
+            const active = scenes.selectedId === preset.id;
             return (
               <div
                 key={preset.id}
@@ -260,14 +266,14 @@ export function PresetSelector({
 
       <section className="settings-row-card">
         <h3 className="settings-card-legend">自定义场景</h3>
-        {settingsDraft.savedPromptPresets.length === 0 && !creating && (
+        {scenes.scenes.length === 0 && !creating && (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">
             还没有自定义场景，点击下方按钮创建
           </div>
         )}
 
         <div className="space-y-1.5">
-          {settingsDraft.savedPromptPresets.map((preset) => {
+          {scenes.scenes.map((preset) => {
             if (editingId === preset.id) {
               return (
                 <div
@@ -302,7 +308,7 @@ export function PresetSelector({
               );
             }
 
-            const active = settingsDraft.promptPresetId === preset.id;
+            const active = scenes.selectedId === preset.id;
 
             return (
               <div
@@ -338,7 +344,7 @@ export function PresetSelector({
                   size="icon"
                   className="h-7 w-7 shrink-0 rounded-full text-[var(--text-faint)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
                   aria-label={`删除 ${preset.name}`}
-                  onClick={() => onDeleteSavedPromptPreset(preset.id)}
+                  onClick={() => deletePreset(preset.id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

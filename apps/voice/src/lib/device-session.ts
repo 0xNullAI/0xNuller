@@ -33,7 +33,11 @@ import {
   type OpossumState,
 } from '@dg-kit/protocol';
 import type { DeviceClient, DeviceKind, DeviceState } from '@dg-kit/core';
-import { WebBluetoothDeviceClient, WebBluetoothOpossumClient, requestDgLabDevice } from '@dg-kit/transport-webbluetooth';
+import {
+  WebBluetoothDeviceClient,
+  WebBluetoothOpossumClient,
+  requestDgLabDevice,
+} from '@dg-kit/transport-webbluetooth';
 
 export interface DeviceSessionState {
   coyote: DeviceState;
@@ -65,7 +69,10 @@ export interface DeviceSessionTransport {
 /** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
 export function createWebBluetoothTransport(): DeviceSessionTransport {
   return {
-    coyote: new WebBluetoothDeviceClient({ protocol: new CoyoteProtocolAdapter(), autoReconnect: true }),
+    coyote: new WebBluetoothDeviceClient({
+      protocol: new CoyoteProtocolAdapter(),
+      autoReconnect: true,
+    }),
     opossum: new WebBluetoothOpossumClient(),
     requestDevice: () => requestDgLabDevice(),
   };

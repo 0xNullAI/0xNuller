@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input } from '@0xnullai/ui';
-import { fetchMarketItems, markMarketDownloaded, type MarketItem, type MarketItemType } from '@0xnullai/market-client';
+import {
+  fetchMarketItems,
+  markMarketDownloaded,
+  type MarketItem,
+  type MarketItemType,
+} from '@0xnullai/market-client';
 
 interface MarketImportDialogProps {
   open: boolean;
@@ -11,7 +16,12 @@ interface MarketImportDialogProps {
 }
 
 /** Ported from DG-Agent's MarketImportDialog.tsx — DG-Voice only ever opens it with `type="scenario"`. */
-export function MarketImportDialog({ open, onOpenChange, type, onImport }: MarketImportDialogProps) {
+export function MarketImportDialog({
+  open,
+  onOpenChange,
+  type,
+  onImport,
+}: MarketImportDialogProps) {
   const [items, setItems] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +61,15 @@ export function MarketImportDialog({ open, onOpenChange, type, onImport }: Marke
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent overlayClassName="bg-black/18 backdrop-blur-[2px]" className="max-w-[560px] p-0">
+      <DialogContent
+        overlayClassName="bg-black/18 backdrop-blur-[2px]"
+        className="max-w-[560px] p-0"
+      >
         <div className="border-b border-[var(--surface-border)] px-5 py-4">
           <DialogTitle className="text-[1.1rem] tracking-[-0.03em]">从市场导入{label}</DialogTitle>
-          <DialogDescription className="mt-1">浏览社区上传的{label}，一键加入本地库</DialogDescription>
+          <DialogDescription className="mt-1">
+            浏览社区上传的{label}，一键加入本地库
+          </DialogDescription>
         </div>
 
         <div className="px-5 pb-5 pt-4">
@@ -69,15 +84,21 @@ export function MarketImportDialog({ open, onOpenChange, type, onImport }: Marke
           </div>
 
           <div className="max-h-[52vh] space-y-1.5 overflow-y-auto">
-            {loading && <div className="py-8 text-center text-sm text-[var(--text-faint)]">加载中…</div>}
+            {loading && (
+              <div className="py-8 text-center text-sm text-[var(--text-faint)]">加载中…</div>
+            )}
             {error && (
               <div className="py-8 text-center text-sm text-[var(--danger)]">
                 {error}
-                <div className="mt-1 text-[12px] text-[var(--text-faint)]">请确认已部署 DG-Market 并配置了市场地址</div>
+                <div className="mt-1 text-[12px] text-[var(--text-faint)]">
+                  请确认已部署 DG-Market 并配置了市场地址
+                </div>
               </div>
             )}
             {!loading && !error && items.length === 0 && (
-              <div className="py-8 text-center text-sm text-[var(--text-faint)]">市场里还没有{label}</div>
+              <div className="py-8 text-center text-sm text-[var(--text-faint)]">
+                市场里还没有{label}
+              </div>
             )}
             {!loading &&
               !error &&

@@ -115,7 +115,9 @@ function buildCoyoteStatusLines(device: DeviceState, safety: CoyoteSafetySetting
   const effectiveCapA = Math.min(device.limitA, safety.maxStrengthA);
   const effectiveCapB = Math.min(device.limitB, safety.maxStrengthB);
   const battery = typeof device.battery === 'number' ? `${device.battery}%` : '未知';
-  const connection = device.connected ? `已连接${device.deviceName ? `（${device.deviceName}）` : ''}` : '未连接';
+  const connection = device.connected
+    ? `已连接${device.deviceName ? `（${device.deviceName}）` : ''}`
+    : '未连接';
 
   return [
     '郊狼：',

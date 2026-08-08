@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { DeviceClient, DeviceCommand, DeviceCommandResult, DeviceState, OpossumCommand } from '@dg-kit/core';
+import type {
+  DeviceClient,
+  DeviceCommand,
+  DeviceCommandResult,
+  DeviceState,
+  OpossumCommand,
+} from '@dg-kit/core';
 import { createEmptyDeviceState } from '@dg-kit/core';
 import type { OpossumClient, OpossumCommandResult, OpossumState } from '@dg-kit/protocol';
 import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';

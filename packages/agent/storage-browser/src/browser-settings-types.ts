@@ -1,7 +1,6 @@
 import type { BridgeSettings } from '@dg-agent/bridge';
 import type { ModelContextStrategy } from '@dg-agent/core';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
-import type { SavedPromptPreset } from '@dg-agent/runtime';
 import type { ProviderId, ProviderSettings } from '@0xnullai/llm-providers';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
@@ -68,11 +67,6 @@ export interface BrowserAppSettings {
   speechRecognitionLanguage: string;
   speechSynthesisLanguage: string;
   bridge: BridgeSettings;
-  promptPresetId: string;
-  savedPromptPresets: SavedPromptPreset[];
-  // Builtin preset ids the user has hidden from the picker. Hidden presets stay
-  // in code and remain usable if still selected; "恢复默认" clears this list.
-  hiddenBuiltinPresetIds: string[];
   provider: ProviderSettings;
   providerConfigs: ProviderConfigMap;
   voice: BrowserVoiceSettings;

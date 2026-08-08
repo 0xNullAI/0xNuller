@@ -100,7 +100,10 @@ describe('登录', () => {
     expect(res.status).toBe(429);
   });
 
-  it('换用户名继续撞库时按 IP 限流', async () => {
+  // 这两条各做 30 次失败登录。为了让「用户不存在」与「密码错误」的响应时间不可区分，
+  // 用户不存在时也会走一遍 210k 轮 PBKDF2——30 次就逼近 vitest 默认的 5s 超时。
+  // 给足时间，而不是为了测试跑得快去削弱生产配置。
+  it('换用户名继续撞库时按 IP 限流', { timeout: 30_000 }, async () => {
     for (let i = 0; i < 30; i++) {
       await post('/api/auth/login', { username: `user${i}`, password: 'wrong-but-long-enough' });
     }
@@ -108,7 +111,7 @@ describe('登录', () => {
     expect(res.status).toBe(429);
   });
 
-  it('另一个 IP 不受该用户名之外的限流影响', async () => {
+  it('另一个 IP 不受该用户名之外的限流影响', { timeout: 30_000 }, async () => {
     await registerUser();
     for (let i = 0; i < 30; i++) {
       await post('/api/auth/login', { username: `user${i}`, password: 'wrong-but-long-enough' });

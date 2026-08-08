@@ -1,4 +1,12 @@
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@0xnullai/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@0xnullai/ui';
 
 interface ResetSettingsDialogProps {
   open: boolean;
@@ -13,7 +21,8 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
         <DialogHeader>
           <DialogTitle>恢复默认设置？</DialogTitle>
           <DialogDescription>
-            这会把所有设置——语音供应商、API Key、音色、场景、安全上限——恢复为出厂默认值，且无法撤销。
+            这会把所有设置——语音供应商、API
+            Key、音色、场景、安全上限——恢复为出厂默认值，且无法撤销。
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

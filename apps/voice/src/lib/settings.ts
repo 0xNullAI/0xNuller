@@ -11,7 +11,6 @@ import {
   REALTIME_PROVIDER_DEFINITIONS,
 } from './realtime/providers.js';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
-import type { SavedPromptPreset } from './prompts/index.js';
 
 export const SETTINGS_STORAGE_KEY = 'dg-voice-settings';
 
@@ -37,18 +36,6 @@ export interface OpossumSafetySettings {
 export interface VoiceSettings {
   activeProviderId: RealtimeProviderId;
   providers: Record<RealtimeProviderId, RealtimeProviderSettings>;
-  /**
-   * Which persona drives the call — a built-in preset id (`prompts/registry.ts`)
-   * or a `custom-*`/`market-*` id found in `savedPromptPresets`. The raw
-   * prompt text is never stored loose in settings: `build-voice-instructions.ts`
-   * always looks it up and wraps it with the code-owned device/safety blocks,
-   * mirroring DG-Agent's preset model (locked built-ins, editable custom
-   * presets, nothing free-floating that could accidentally drop the safety
-   * rules).
-   */
-  promptPresetId: string;
-  savedPromptPresets: SavedPromptPreset[];
-  hiddenBuiltinPresetIds: string[];
   permissionMode: BrowserPermissionMode;
   allowProactiveSpeech: boolean;
   coyoteSafety: CoyoteSafetySettings;
@@ -66,9 +53,6 @@ export function createDefaultSettings(): VoiceSettings {
   return {
     activeProviderId: 'xai',
     providers: defaultProviders(),
-    promptPresetId: 'companion',
-    savedPromptPresets: [],
-    hiddenBuiltinPresetIds: [],
     // "本地最严格" — mirrors DG-Agent's default. Call start explicitly
     // upgrades to a 'timed' one-time authorization; settings can also
     // widen it, same tradeoff DG-Agent's SafetyTab exposes.
@@ -102,19 +86,9 @@ const providerSettingsSchema = z.object({
   speed: z.number(),
 });
 
-const savedPromptPresetSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  icon: z.string().optional(),
-  prompt: z.string(),
-});
-
 const settingsSchema = z.object({
   activeProviderId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
-  promptPresetId: z.string(),
-  savedPromptPresets: z.array(savedPromptPresetSchema),
-  hiddenBuiltinPresetIds: z.array(z.string()),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']),
   allowProactiveSpeech: z.boolean(),
   coyoteSafety: z.object({

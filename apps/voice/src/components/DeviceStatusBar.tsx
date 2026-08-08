@@ -1,12 +1,7 @@
 import { Vibrate, Zap } from 'lucide-react';
-import {
-  ChannelStrengthBar,
-  DeviceStatusChip,
-  DeviceStatusRow,
-} from '@0xnullai/ui';
+import { ChannelStrengthBar, DeviceStatusChip, DeviceStatusRow } from '@0xnullai/ui';
 import type { DeviceSessionState } from '@voice/lib/device-session';
 import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/settings';
-
 
 /**
  * 设备状态条。显示用的内核（电量档位 / 强度条刻度 / chip 交互）来自
@@ -43,8 +38,16 @@ export function DeviceStatusBar({
           title="断开郊狼"
         >
           <div className="flex gap-3 sm:gap-4">
-            <ChannelStrengthBar channel="A" value={state.coyote.strengthA} max={Math.min(state.coyote.limitA, coyoteSafety.maxStrengthA)} />
-            <ChannelStrengthBar channel="B" value={state.coyote.strengthB} max={Math.min(state.coyote.limitB, coyoteSafety.maxStrengthB)} />
+            <ChannelStrengthBar
+              channel="A"
+              value={state.coyote.strengthA}
+              max={Math.min(state.coyote.limitA, coyoteSafety.maxStrengthA)}
+            />
+            <ChannelStrengthBar
+              channel="B"
+              value={state.coyote.strengthB}
+              max={Math.min(state.coyote.limitB, coyoteSafety.maxStrengthB)}
+            />
           </div>
         </DeviceStatusChip>
       )}
@@ -57,8 +60,16 @@ export function DeviceStatusBar({
           title="断开负鼠"
         >
           <div className="flex gap-3 sm:gap-4">
-            <ChannelStrengthBar channel="A" value={state.opossum.intensityA} max={opossumSafety.maxIntensityA} />
-            <ChannelStrengthBar channel="B" value={state.opossum.intensityB} max={opossumSafety.maxIntensityB} />
+            <ChannelStrengthBar
+              channel="A"
+              value={state.opossum.intensityA}
+              max={opossumSafety.maxIntensityA}
+            />
+            <ChannelStrengthBar
+              channel="B"
+              value={state.opossum.intensityB}
+              max={opossumSafety.maxIntensityB}
+            />
           </div>
         </DeviceStatusChip>
       )}

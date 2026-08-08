@@ -1,3 +1,4 @@
+import { loadScenes } from '@0xnullai/scenes';
 import { useCallback, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine } from '@dg-kit/safety';
@@ -176,7 +177,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
         }),
     };
 
-    const preset = getAnyPromptPresetById(settings.promptPresetId, settings.savedPromptPresets);
+    // 场景来自跨模块共享的库，不再从 VoiceSettings 取——Agent 里写的人设在这里也能用。
+    const sceneLib = loadScenes();
+    const preset = getAnyPromptPresetById(sceneLib.selectedId, sceneLib.scenes);
     const buildInstructions = async () =>
       buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
         coyoteSafety: settings.coyoteSafety,

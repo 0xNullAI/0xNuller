@@ -1,4 +1,3 @@
-
 import type { RuntimeEvent, RuntimeTraceEntry, SessionSnapshot } from '@dg-agent/core';
 import {
   AgentRuntime,

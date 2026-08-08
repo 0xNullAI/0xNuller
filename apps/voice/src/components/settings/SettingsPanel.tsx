@@ -1,4 +1,12 @@
-import { ArrowLeft, LayoutTemplate, RotateCcw, Settings2, ShieldCheck, Volume2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  LayoutTemplate,
+  RotateCcw,
+  Settings2,
+  ShieldCheck,
+  Volume2,
+  X,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@0xnullai/ui';
 import { PresetSelector } from '@voice/components/PresetSelector';
@@ -124,10 +132,15 @@ export function SettingsSidebar({
 
 export function SettingsWorkspace(props: SettingsPanelProps) {
   const { tab, onTabChange, mobileNavOpen, onMobileNavOpenChange, onClose, onRequestReset } = props;
-  const currentItem = SETTINGS_NAV_ITEMS.find((item) => item.value === tab) ?? SETTINGS_NAV_ITEMS[0]!;
+  const currentItem =
+    SETTINGS_NAV_ITEMS.find((item) => item.value === tab) ?? SETTINGS_NAV_ITEMS[0]!;
 
   return (
-    <section className={mobileNavOpen ? 'settings-workspace settings-mobile-nav-open' : 'settings-workspace'}>
+    <section
+      className={
+        mobileNavOpen ? 'settings-workspace settings-mobile-nav-open' : 'settings-workspace'
+      }
+    >
       {/* Mobile fullscreen directory */}
       <section className="settings-mobile-directory lg:hidden">
         <header className="settings-mobile-directory-header">
@@ -177,11 +190,20 @@ export function SettingsWorkspace(props: SettingsPanelProps) {
 
       {/* Mobile top bar */}
       <header className="settings-mobile-header lg:hidden">
-        <button type="button" className="settings-mobile-back" onClick={() => onMobileNavOpenChange(true)}>
+        <button
+          type="button"
+          className="settings-mobile-back"
+          onClick={() => onMobileNavOpenChange(true)}
+        >
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span>{currentItem.label}</span>
-        <button type="button" className="settings-mobile-back" onClick={onClose} aria-label="关闭设置">
+        <button
+          type="button"
+          className="settings-mobile-back"
+          onClick={onClose}
+          aria-label="关闭设置"
+        >
           <X className="h-4 w-4" />
         </button>
       </header>

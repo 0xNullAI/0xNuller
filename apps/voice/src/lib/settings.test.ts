@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createDefaultSettings, loadSettings, saveSettings, SETTINGS_STORAGE_KEY } from './settings.js';
+import {
+  createDefaultSettings,
+  loadSettings,
+  saveSettings,
+  SETTINGS_STORAGE_KEY,
+} from './settings.js';
 
 describe('settings persistence', () => {
   beforeEach(() => {

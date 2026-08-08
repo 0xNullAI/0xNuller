@@ -1,7 +1,10 @@
 import { Input } from '@0xnullai/ui';
 import { SettingLabel, SettingSelect } from '@0xnullai/ui';
 import { useProviderVoices } from '@voice/hooks/use-provider-voices';
-import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
+import {
+  getRealtimeProviderDefinition,
+  type RealtimeProviderId,
+} from '@voice/lib/realtime/providers';
 import type { VoiceSettings } from '@voice/lib/settings';
 
 interface VoiceTabProps {
@@ -94,7 +97,9 @@ function VoiceField({
           options={options.map((voice) => ({ value: voice, label: voice }))}
         />
         {error && (
-          <p className="text-xs text-[var(--danger)]">音色列表获取失败，已回退到内置列表：{error}</p>
+          <p className="text-xs text-[var(--danger)]">
+            音色列表获取失败，已回退到内置列表：{error}
+          </p>
         )}
       </div>
     </label>

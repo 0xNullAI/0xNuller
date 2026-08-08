@@ -43,7 +43,8 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "tailwind-merge": "^3.5.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@0xnullai/scenes": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",

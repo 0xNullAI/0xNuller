@@ -58,7 +58,9 @@ export class BrowserWaveformLibrary implements WaveformLibrary {
     try {
       const raw = await get<unknown>(CUSTOM_WAVEFORMS_KEY, this.store);
       if (!Array.isArray(raw)) return [];
-      return raw.filter((item): item is WaveformDefinition => waveformSchema.safeParse(item).success);
+      return raw.filter(
+        (item): item is WaveformDefinition => waveformSchema.safeParse(item).success,
+      );
     } catch {
       return [];
     }

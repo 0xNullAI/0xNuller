@@ -145,7 +145,7 @@ export interface SettingsDrawerProps {
   onRequestReset: () => void;
   settingsDraft: BrowserAppSettings;
   setSettingsDraft: React.Dispatch<React.SetStateAction<BrowserAppSettings>>;
-  onDeleteSavedPromptPreset: (id: string) => void;
+  onNotify?: (message: string) => void;
   waveforms: WaveformDefinition[];
   customWaveforms: WaveformDefinition[];
   onImportWaveforms: (files: FileList | null) => void;
@@ -168,7 +168,7 @@ function SettingsTabContent({
   tab,
   settingsDraft,
   setSettingsDraft,
-  onDeleteSavedPromptPreset,
+  onNotify,
   waveforms,
   customWaveforms,
   onImportWaveforms,
@@ -193,13 +193,7 @@ function SettingsTabContent({
     case 'general':
       return <GeneralTab settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} />;
     case 'preset':
-      return (
-        <PresetSelector
-          settingsDraft={settingsDraft}
-          setSettingsDraft={setSettingsDraft}
-          onDeleteSavedPromptPreset={onDeleteSavedPromptPreset}
-        />
-      );
+      return <PresetSelector onNotify={onNotify} />;
     case 'safety':
       return (
         <SafetyTab

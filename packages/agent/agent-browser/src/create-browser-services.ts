@@ -22,9 +22,19 @@ import type {
   SessionSnapshot,
 } from '@dg-agent/core';
 import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
-import { WebBluetoothCivetEdgingClient, WebBluetoothDeviceClient, WebBluetoothOpossumClient, WebBluetoothPawPrintsClient } from '@dg-kit/transport-webbluetooth';
+import {
+  WebBluetoothCivetEdgingClient,
+  WebBluetoothDeviceClient,
+  WebBluetoothOpossumClient,
+  WebBluetoothPawPrintsClient,
+} from '@dg-kit/transport-webbluetooth';
 import { BrowserPermissionService } from '@0xnullai/permissions';
-import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
+import type {
+  CivetEdgingClient,
+  OpossumClient,
+  PawPrintsClient,
+  SavedPromptPreset,
+} from '@dg-agent/runtime';
 import {
   BrowserSessionStore,
   BrowserSessionTraceStore,
@@ -42,6 +52,12 @@ export interface PermissionRequestInput {
 
 export interface BrowserServicesOptions {
   settings: BrowserAppSettings;
+  /**
+   * 当前场景（人设）。**不再从 settings 里取**——场景库已经搬到跨模块共享的
+   * `@0xnullai/scenes`，和强度上限不再住在同一个 blob 里（那个 blob 一处校验失败
+   * 会静默重置全部安全设置）。调用方从共享库取了传进来。
+   */
+  scenes: { selectedId: string; saved: SavedPromptPreset[] };
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**
@@ -176,7 +192,7 @@ function formatInitError(prefix: string, error: unknown): string {
 }
 
 export function createBrowserServices(options: BrowserServicesOptions): BrowserServices {
-  const { settings, onPermissionRequest, resolveBridgeSessionId } = options;
+  const { settings, scenes, onPermissionRequest, resolveBridgeSessionId } = options;
 
   const warnings: string[] = [];
 
@@ -243,6 +259,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
   try {
     client = createBrowserAgentClient({
       settings,
+      scenes,
       device,
       opossum,
       pawPrints,

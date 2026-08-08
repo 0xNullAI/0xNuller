@@ -81,7 +81,10 @@ const VIBRATE_TOOL_NAMES = new Set([
  * `executeSetIndicatorColor` denies with a clear reason rather than
  * crashing on a client that doesn't exist.
  */
-function resolveRequiredDeviceKind(toolName: string, args: Record<string, unknown>): DeviceKind | null {
+function resolveRequiredDeviceKind(
+  toolName: string,
+  args: Record<string, unknown>,
+): DeviceKind | null {
   if (SHOCK_TOOL_NAMES.has(toolName)) return 'coyote';
   if (VIBRATE_TOOL_NAMES.has(toolName)) return 'opossum';
   if (toolName === 'set_indicator_color') {
@@ -319,7 +322,11 @@ export class ToolExecutor {
     command: OpossumCommand,
   ): Promise<
     | { type: 'deny'; reason: string }
-    | { type: 'ok' | 'require-confirm'; command: OpossumCommand; clampedFrom?: { command: OpossumCommand; reason: string } }
+    | {
+        type: 'ok' | 'require-confirm';
+        command: OpossumCommand;
+        clampedFrom?: { command: OpossumCommand; reason: string };
+      }
   > {
     let current = command;
     let clampedFrom: { command: OpossumCommand; reason: string } | undefined;

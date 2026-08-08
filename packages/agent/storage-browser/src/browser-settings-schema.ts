@@ -103,18 +103,6 @@ export const settingsSchema = z.object({
       }),
     })
     .optional(),
-  promptPresetId: z.string().min(1).optional(),
-  savedPromptPresets: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        name: z.string().min(1),
-        icon: z.string().optional(),
-        prompt: z.string().min(1),
-      }),
-    )
-    .optional(),
-  hiddenBuiltinPresetIds: z.array(z.string().min(1)).optional(),
   provider: z
     .object({
       providerId: z.enum(providerIds),

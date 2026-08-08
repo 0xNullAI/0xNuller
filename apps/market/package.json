@@ -20,7 +20,8 @@
     "fflate": "^0.8.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@0xnullai/scenes": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",

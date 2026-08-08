@@ -17,14 +17,20 @@ export function SafetyTab({ settings, updateSettings }: SafetyTabProps) {
             label="A 通道强度上限"
             value={settings.coyoteSafety.maxStrengthA}
             onChange={(v) =>
-              updateSettings((prev) => ({ ...prev, coyoteSafety: { ...prev.coyoteSafety, maxStrengthA: v } }))
+              updateSettings((prev) => ({
+                ...prev,
+                coyoteSafety: { ...prev.coyoteSafety, maxStrengthA: v },
+              }))
             }
           />
           <NumberField
             label="B 通道强度上限"
             value={settings.coyoteSafety.maxStrengthB}
             onChange={(v) =>
-              updateSettings((prev) => ({ ...prev, coyoteSafety: { ...prev.coyoteSafety, maxStrengthB: v } }))
+              updateSettings((prev) => ({
+                ...prev,
+                coyoteSafety: { ...prev.coyoteSafety, maxStrengthB: v },
+              }))
             }
           />
           <NumberField
@@ -41,7 +47,10 @@ export function SafetyTab({ settings, updateSettings }: SafetyTabProps) {
             label="单次调节幅度"
             value={settings.coyoteSafety.maxAdjustStep}
             onChange={(v) =>
-              updateSettings((prev) => ({ ...prev, coyoteSafety: { ...prev.coyoteSafety, maxAdjustStep: v } }))
+              updateSettings((prev) => ({
+                ...prev,
+                coyoteSafety: { ...prev.coyoteSafety, maxAdjustStep: v },
+              }))
             }
           />
         </div>
@@ -54,14 +63,20 @@ export function SafetyTab({ settings, updateSettings }: SafetyTabProps) {
             label="A 通道强度上限"
             value={settings.opossumSafety.maxIntensityA}
             onChange={(v) =>
-              updateSettings((prev) => ({ ...prev, opossumSafety: { ...prev.opossumSafety, maxIntensityA: v } }))
+              updateSettings((prev) => ({
+                ...prev,
+                opossumSafety: { ...prev.opossumSafety, maxIntensityA: v },
+              }))
             }
           />
           <NumberField
             label="B 通道强度上限"
             value={settings.opossumSafety.maxIntensityB}
             onChange={(v) =>
-              updateSettings((prev) => ({ ...prev, opossumSafety: { ...prev.opossumSafety, maxIntensityB: v } }))
+              updateSettings((prev) => ({
+                ...prev,
+                opossumSafety: { ...prev.opossumSafety, maxIntensityB: v },
+              }))
             }
           />
         </div>
@@ -94,7 +109,13 @@ function NumberField({
   return (
     <label className="space-y-1.5">
       <SettingLabel className="text-[var(--text-soft)]">{label}</SettingLabel>
-      <Input type="number" min={0} max={200} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <Input
+        type="number"
+        min={0}
+        max={200}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
     </label>
   );
 }

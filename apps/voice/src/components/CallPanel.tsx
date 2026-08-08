@@ -3,7 +3,10 @@ import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
-import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
+import {
+  getRealtimeProviderDefinition,
+  type RealtimeProviderId,
+} from '@voice/lib/realtime/providers';
 
 interface CallPanelProps {
   call: RealtimeCallState;
@@ -13,7 +16,13 @@ interface CallPanelProps {
   onEmergencyStop: () => void;
 }
 
-export function CallPanel({ call, providerId, onStart, onHangUp, onEmergencyStop }: CallPanelProps) {
+export function CallPanel({
+  call,
+  providerId,
+  onStart,
+  onHangUp,
+  onEmergencyStop,
+}: CallPanelProps) {
   if (call.status === 'active' || call.status === 'connecting') {
     return (
       <ActiveCallView
@@ -153,7 +162,9 @@ function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }
           key={entry.id}
           className={entry.role === 'assistant' ? 'text-[var(--text)]' : 'text-[var(--text-soft)]'}
         >
-          <span className="text-[var(--text-faint)]">{entry.role === 'assistant' ? 'AI：' : '你：'}</span>
+          <span className="text-[var(--text-faint)]">
+            {entry.role === 'assistant' ? 'AI：' : '你：'}
+          </span>
           {entry.text}
         </p>
       ))}

@@ -16,6 +16,7 @@ import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
 import { useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
@@ -111,7 +112,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setSettings,
     settingsStore,
     resetSettings: resetSettingsManager,
-    deleteSavedPromptPreset: deleteSavedPromptPresetManager,
     flushSettingsDraft,
     clearSessionPermissionOverride,
   } = useSettingsManager();
@@ -123,6 +123,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const inShell = useInShell();
+  // 场景库已从设置 blob 搬到跨模块共享存储——Voice 看到的是同一批，而且一条写坏的
+  // 场景不再会连累整份设置回落默认值（那个 blob 里还住着强度上限）。
+  const [sceneLib, updateSceneLib] = useScenes();
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
     () => !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
@@ -152,6 +155,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   } = useBrowserAppServices({
     resolveBridgeSessionId,
     settings,
+    scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
     servicesOverrides,
   });
@@ -713,10 +717,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     });
   }
 
-  function deleteSavedPromptPreset(presetId: string): void {
-    deleteSavedPromptPresetManager(presetId, setStatusMessage);
-  }
-
   function openSettingsModal(tab: SettingsModalTab = 'general'): void {
     setSettingsModalTab(tab);
     setSettingsModalOpen(true);
@@ -871,7 +871,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 onRequestReset={() => setResetSettingsDialogOpen(true)}
                 settingsDraft={settingsDraft}
                 setSettingsDraft={setSettingsDraft}
-                onDeleteSavedPromptPreset={deleteSavedPromptPreset}
+                onNotify={setStatusMessage}
                 waveforms={waveforms}
                 customWaveforms={customWaveforms}
                 onImportWaveforms={(files) => void importWaveformFiles(files)}
@@ -926,15 +926,12 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 onEmergencyStop={() => void stop()}
                 onOpenSidebar={() => setSidebarOpen(true)}
                 onOpenSettings={() => openSettingsModal('general')}
-                promptPresetId={settings.promptPresetId}
+                promptPresetId={sceneLib.selectedId}
                 builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
-                  (p) => !settings.hiddenBuiltinPresetIds.includes(p.id),
+                  (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
                 )}
-                savedPresets={settings.savedPromptPresets}
-                onPresetChange={(id) => {
-                  setSettingsDraft((prev) => ({ ...prev, promptPresetId: id }));
-                  flushSettingsDraft();
-                }}
+                savedPresets={sceneLib.scenes}
+                onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
               />
             )}
           </section>

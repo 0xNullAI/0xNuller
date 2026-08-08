@@ -133,9 +133,6 @@ export class BrowserAppSettingsStore {
       speechRecognitionLanguage: settings.speechRecognitionLanguage,
       speechSynthesisLanguage: settings.speechSynthesisLanguage,
       bridge: settings.bridge,
-      promptPresetId: settings.promptPresetId,
-      savedPromptPresets: settings.savedPromptPresets,
-      hiddenBuiltinPresetIds: settings.hiddenBuiltinPresetIds,
       provider: {
         providerId: settings.provider.providerId,
         baseUrl: settings.provider.baseUrl,

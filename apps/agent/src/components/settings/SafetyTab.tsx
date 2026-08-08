@@ -1,6 +1,14 @@
 import React, { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input } from '@0xnullai/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { cn } from '@agent/lib/utils';

@@ -252,7 +252,11 @@ export function ChatPanel({
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <AppSwitcher current="agent" label="DG-Agent" className="text-sm font-semibold text-[var(--text)]" />
+            <AppSwitcher
+              current="agent"
+              label="DG-Agent"
+              className="text-sm font-semibold text-[var(--text)]"
+            />
             <Button
               variant="ghost"
               size="icon"
@@ -676,8 +680,6 @@ export function ChatPanel({
     </div>
   );
 }
-
-
 
 type TimelineItem =
   | (SessionSnapshot['messages'][number] & { kind: 'message' })
