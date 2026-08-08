@@ -1,3 +1,4 @@
+import { MarketImportDialog } from '@0xnullai/ui';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -17,7 +18,6 @@ import {
 } from 'lucide-react';
 import type { CmdAction, DeviceCommand, MemberState, WaveformTransfer } from '../lib/protocol';
 import type { MarketItem } from '@0xnullai/market-client';
-import { MarketImportDialog } from './MarketImportDialog';
 
 function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval = 100) {
   const timerRef = useRef<number | null>(null);
@@ -712,7 +712,8 @@ export function MemberControl({
 
       <MarketImportDialog
         open={marketOpen}
-        onClose={() => setMarketOpen(false)}
+        onOpenChange={setMarketOpen}
+        type="waveform"
         onImport={onImportMarketWaveform}
       />
 

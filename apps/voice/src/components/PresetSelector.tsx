@@ -1,13 +1,12 @@
 import { useRef, useState } from 'react';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
-import { Button, Input, Textarea } from '@0xnullai/ui';
+import { Button, Input, Textarea, MarketImportDialog } from '@0xnullai/ui';
 import { cn } from '@voice/lib/utils';
 import { BUILTIN_PROMPT_PRESETS } from '@voice/lib/prompts';
 import { newSceneId, type SavedScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 import type { VoiceSettings } from '@voice/lib/settings';
-import { MarketImportDialog } from './MarketImportDialog';
 
 const DEFAULT_CUSTOM_ICON = '📝';
 

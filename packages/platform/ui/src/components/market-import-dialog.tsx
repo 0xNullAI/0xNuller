@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Search } from 'lucide-react';
-import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input } from '@0xnullai/ui';
+import { Button } from './button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
+import { Input } from './input';
 import {
   fetchMarketItems,
   markMarketDownloaded,
@@ -8,14 +10,23 @@ import {
   type MarketItemType,
 } from '@0xnullai/market-client';
 
-interface MarketImportDialogProps {
+/**
+ * 从市场导入。全应用唯一的一份。
+ *
+ * 合并前 Agent / Voice / Chat 各有一份（144 / 138 / 177 行），逻辑相同，差别只在
+ * 弹窗宽度和标题排版——三份会各自漂移，而它们做的是同一件事。取 Agent 那份最完整的
+ * 作为基准。
+ *
+ * 导入落到共享场景库（`@0xnullai/scenes`）：Agent 里导入的场景，Voice 里立刻能用。
+ */
+export interface MarketImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: MarketItemType;
+  // 返回 true 表示导入成功，对话框据此给出反馈。
   onImport: (item: MarketItem) => Promise<void> | void;
 }
 
-/** Ported from Agent's MarketImportDialog.tsx — Voice only ever opens it with `type="scenario"`. */
 export function MarketImportDialog({
   open,
   onOpenChange,
@@ -63,16 +74,20 @@ export function MarketImportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         overlayClassName="bg-black/18 backdrop-blur-[2px]"
-        className="max-w-[560px] p-0"
+        className="max-w-[680px] overflow-hidden p-0"
       >
-        <div className="border-b border-[var(--surface-border)] px-5 py-4">
-          <DialogTitle className="text-[1.1rem] tracking-[-0.03em]">从市场导入{label}</DialogTitle>
-          <DialogDescription className="mt-1">
-            浏览社区上传的{label}，一键加入本地库
-          </DialogDescription>
+        <div className="panel-header">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-[1.1rem] tracking-[-0.03em]">
+              从市场导入{label}
+            </DialogTitle>
+            <DialogDescription className="mt-1">
+              浏览社区上传的{label}，一键加入本地库
+            </DialogDescription>
+          </div>
         </div>
 
-        <div className="px-5 pb-5 pt-4">
+        <div className="px-5 pb-5">
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
             <Input
@@ -109,7 +124,9 @@ export function MarketImportDialog({
                     key={item.id}
                     className="group flex items-center gap-3 rounded-[10px] px-3 py-2.5 hover:bg-[var(--bg-soft)]"
                   >
-                    <span className="shrink-0 text-lg">{item.icon || '🎭'}</span>
+                    <span className="shrink-0 text-lg">
+                      {type === 'scenario' ? item.icon || '🎭' : '〰️'}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-[var(--text)]">{item.name}</div>
                       <div className="mt-0.5 truncate text-[12px] text-[var(--text-faint)]">

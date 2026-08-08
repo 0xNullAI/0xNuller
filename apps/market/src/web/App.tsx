@@ -1,18 +1,10 @@
-import { AppSwitcher } from '@0xnullai/ui';
 import { useCallback, useEffect, useState } from 'react';
 import type { ItemType, MarketItem } from '../shared/schema';
 import { fetchItems, markViewed } from './api';
-import { useInShell, useTheme, type ThemeMode } from '@0xnullai/ui';
+import { ModuleActions } from '@0xnullai/ui';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
-
-const THEME_LABEL: Record<ThemeMode, string> = {
-  auto: '🌗 跟随系统',
-  light: '☀️ 浅色',
-  dark: '🌙 深色',
-};
-const THEME_NEXT: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' };
 
 type TopTab = 'scene' | 'waveform';
 type SceneSub = 'scenario' | 'multi-scene';
@@ -28,13 +20,6 @@ export function App(): JSX.Element {
   const [uploading, setUploading] = useState(false);
   // 主题走共享 store。这里原本有一份与 @0xnullai/ui 完全重复的 applyTheme——
   // 两份实现各自往 data-theme 写，挂进统一外壳后互相顶掉。
-  const { mode: themeMode, setMode: setThemeMode } = useTheme();
-  const inShell = useInShell();
-
-  function cycleTheme() {
-    // 跟随系统的订阅、DOM 写入与持久化都在 useTheme 里，这里只管选哪个模式。
-    setThemeMode(THEME_NEXT[themeMode]);
-  }
 
   function openItem(item: MarketItem) {
     // 乐观自增浏览量，避免重新拉取
@@ -67,9 +52,8 @@ export function App(): JSX.Element {
     <div className="mkt-scope app h-full overflow-y-auto">
       {/* 单条横栏：左侧应用切换器，中间分类与搜索，右侧主题与上传。
           合并前这里是「品牌块 + 独立筛选行」两行重头部，与 Agent 的细横栏差别很大。 */}
+      {/* 模块名由外壳侧边栏顶部表达，这里不再重复；筛选是内容不是 chrome，留在原地。 */}
       <header className="topbar">
-        <AppSwitcher current="market" label="Market" />
-
         <div className="topbar-filters">
           <div className="seg">
             <button className={tab === 'scene' ? 'active' : ''} onClick={() => setTab('scene')}>
@@ -114,17 +98,12 @@ export function App(): JSX.Element {
           </select>
         </div>
 
-        <div className="topbar-actions">
-          {/* 外壳顶栏已经有主题按钮，挂进外壳时不再重复。 */}
-          {!inShell && (
-            <button className="btn ghost" onClick={cycleTheme} title="切换主题">
-              {THEME_LABEL[themeMode]}
-            </button>
-          )}
+        {/* 上传投到外壳的按钮插槽，和别的模块的按钮落在同一条线上。 */}
+        <ModuleActions>
           <button className="btn primary" onClick={() => setUploading(true)}>
             上传
           </button>
-        </div>
+        </ModuleActions>
       </header>
 
       <main className="grid">

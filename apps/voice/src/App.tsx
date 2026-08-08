@@ -1,13 +1,6 @@
 import { useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  HeaderBar,
-  ModuleActions,
-  useSafetySession,
-} from '@0xnullai/ui';
+import { Alert, AlertDescription, Button, ModuleActions, useSafetySession } from '@0xnullai/ui';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -100,23 +93,22 @@ export function App({ transport }: AppProps = {}) {
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
       {/* 外壳里不画自己的 header——全局只有一条横栏，按钮通过 ModuleActions 投上去。
           独立部署时 ModuleActions 原地渲染，这条 header 照旧。 */}
-      <HeaderBar moduleId="voice" label="Voice">
-        <ModuleActions>
-          <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
-            <Bluetooth className="h-4 w-4" />
-            <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
-          </Button>
-          <Button
-            variant={settingsOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={settingsOpen ? closeSettings : openSettings}
-            disabled={callIsActive}
-            aria-label={settingsOpen ? '关闭设置' : '设置'}
-          >
-            {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-          </Button>
-        </ModuleActions>
-      </HeaderBar>
+      {/* 模块名由外壳侧边栏顶部表达；这两个按钮投到外壳的按钮插槽。 */}
+      <ModuleActions>
+        <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
+          <Bluetooth className="h-4 w-4" />
+          <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
+        </Button>
+        <Button
+          variant={settingsOpen ? 'secondary' : 'ghost'}
+          size="icon"
+          onClick={settingsOpen ? closeSettings : openSettings}
+          disabled={callIsActive}
+          aria-label={settingsOpen ? '关闭设置' : '设置'}
+        >
+          {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
+        </Button>
+      </ModuleActions>
 
       {settingsOpen ? (
         <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)]">

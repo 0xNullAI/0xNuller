@@ -6,7 +6,7 @@ export * from './components/app-switcher';
 export * from './components/overlay-surface';
 export * from './components/permission-modal';
 export * from './components/safety-notice';
-export * from './components/header-bar';
+export * from './components/market-import-dialog';
 export * from './components/setting-toggle';
 export * from './components/setting-label';
 export * from './components/setting-select';

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { WaveformDefinition } from '@dg-agent/core';
 import { Pencil, Store, Trash2, Upload } from 'lucide-react';
-import { Button } from '@0xnullai/ui';
+import { Button, MarketImportDialog } from '@0xnullai/ui';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
-import { MarketImportDialog } from './MarketImportDialog.js';
+
 
 interface WaveformsPanelProps {
   waveforms: WaveformDefinition[];
