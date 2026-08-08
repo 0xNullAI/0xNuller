@@ -149,9 +149,20 @@ export function Shell() {
       activeId={activeId}
       onNavigate={go}
       user={user}
-      onOpenAccount={() => setAccountOpen(true)}
-      onOpenSettings={() => setSettingsOpen(true)}
-      onOpenDocs={() => setDocsOpen(true)}
+      // 打开弹窗时顺手关抽屉。抽屉是导航面，弹窗一开就说明导航结束了；留着它会
+      // 盖在弹窗上面（抽屉在 --z-shell，弹窗在 --z-module-overlay，抽屉更高）。
+      onOpenAccount={() => {
+        setDrawerOpen(false);
+        setAccountOpen(true);
+      }}
+      onOpenSettings={() => {
+        setDrawerOpen(false);
+        setSettingsOpen(true);
+      }}
+      onOpenDocs={() => {
+        setDrawerOpen(false);
+        setDocsOpen(true);
+      }}
       collapsed={!narrow && sidebarCollapsed}
       onToggleCollapsed={() => (narrow ? setDrawerOpen(false) : setSidebarCollapsed((v) => !v))}
     />

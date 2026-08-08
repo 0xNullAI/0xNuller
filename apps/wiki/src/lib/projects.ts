@@ -47,27 +47,27 @@ export const PROJECTS: Project[] = [
   {
     id: 'guide',
     label: '0xNuller',
-    tagline: '一个软件，四个模块 · 上手 / 安全 / 使用说明',
+    tagline: '从连上设备到第一次使用',
     accent: 'amber',
     repo: '0xNuller',
     documents: [
       {
         id: 'start',
-        label: '快速开始',
+        label: '第一次使用',
         audience: 'user',
         defaultMd: guideStart,
         sourcePath: 'src/content/guide/start.md',
       },
       {
         id: 'safety',
-        label: '安全模型',
+        label: '安全须知',
         audience: 'user',
         defaultMd: guideSafety,
         sourcePath: 'src/content/guide/safety.md',
       },
       {
         id: 'modules',
-        label: '四个模块',
+        label: '怎么用',
         audience: 'user',
         defaultMd: guideModules,
         sourcePath: 'src/content/guide/modules.md',
