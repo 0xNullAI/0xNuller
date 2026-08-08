@@ -1,61 +1,99 @@
+import guideStart from '../content/guide/start.md?raw';
+import guideSafety from '../content/guide/safety.md?raw';
+import guideModules from '../content/guide/modules.md?raw';
+import guideFaq from '../content/guide/faq.md?raw';
+import guideDeveloper from '../content/guide/developer.md?raw';
+
 import kitOverview from '../content/kit/overview.md?raw';
 import kitDeveloper from '../content/kit/developer.md?raw';
 import kitApi from '../content/kit/api.md?raw';
-
-import agentManual from '../content/agent/manual.md?raw';
-import agentDeveloper from '../content/agent/developer.md?raw';
-import agentFaq from '../content/agent/faq.md?raw';
-
-import chatManual from '../content/chat/manual.md?raw';
-import chatDeveloper from '../content/chat/developer.md?raw';
-import chatFaq from '../content/chat/faq.md?raw';
 
 import mcpManual from '../content/mcp/manual.md?raw';
 import mcpDeveloper from '../content/mcp/developer.md?raw';
 import mcpFaq from '../content/mcp/faq.md?raw';
 
-import voiceManual from '../content/voice/manual.md?raw';
-import voiceDeveloper from '../content/voice/developer.md?raw';
-import voiceFaq from '../content/voice/faq.md?raw';
+/**
+ * 说明文档的结构。
+ *
+ * 合并前是「五个仓 × 三篇」（DG-Kit / DG-Agent / DG-Chat / DG-Voice / DG-MCP），
+ * 那是仓库结构的投影而不是用户的心智模型——用户面对的是一个软件，不是五个项目。
+ * 现在主线是一套连贯的说明（上手 / 安全 / 模块 / FAQ / 开发），另外保留 Kit 与 MCP
+ * 两组：它们确实是给外部开发者用的独立产物，不属于「这个软件怎么用」。
+ */
 
 export type Audience = 'user' | 'developer';
 export type Accent = 'cyan' | 'magenta' | 'amber';
 
 export interface Document {
-  /** Slug used in URL: #/<project>/<doc> */
+  /** URL 里的 slug：#/<project>/<doc> */
   id: string;
-  /** Tab label */
   label: string;
-  /** "user" 或 "developer"，用于 UI 上加角标 */
   audience: Audience;
-  /** Markdown shipped with build */
   defaultMd: string;
-  /** Path of the source .md inside DG-Wiki repo (for the GitHub edit link) */
+  /** 源文件路径，用于 GitHub 编辑链接。 */
   sourcePath: string;
 }
 
 export interface Project {
-  /** URL slug */
   id: string;
-  /** Display name (used as tab label) */
   label: string;
-  /** Tagline shown on the active tab */
   tagline: string;
-  /** Accent color used to tint hover/active states for this project */
   accent: Accent;
-  /** Linked GitHub repo */
   repo: string;
-  /** Sub-documents */
   documents: Document[];
 }
 
 export const PROJECTS: Project[] = [
   {
+    id: 'guide',
+    label: '0xNuller',
+    tagline: '一个软件，四个模块 · 上手 / 安全 / 使用说明',
+    accent: 'amber',
+    repo: '0xNuller',
+    documents: [
+      {
+        id: 'start',
+        label: '快速开始',
+        audience: 'user',
+        defaultMd: guideStart,
+        sourcePath: 'src/content/guide/start.md',
+      },
+      {
+        id: 'safety',
+        label: '安全模型',
+        audience: 'user',
+        defaultMd: guideSafety,
+        sourcePath: 'src/content/guide/safety.md',
+      },
+      {
+        id: 'modules',
+        label: '四个模块',
+        audience: 'user',
+        defaultMd: guideModules,
+        sourcePath: 'src/content/guide/modules.md',
+      },
+      {
+        id: 'faq',
+        label: '常见问题',
+        audience: 'user',
+        defaultMd: guideFaq,
+        sourcePath: 'src/content/guide/faq.md',
+      },
+      {
+        id: 'developer',
+        label: '开发者文档',
+        audience: 'developer',
+        defaultMd: guideDeveloper,
+        sourcePath: 'src/content/guide/developer.md',
+      },
+    ],
+  },
+  {
     id: 'kit',
-    label: 'DG-Kit',
+    label: 'Kit',
     tagline: '共享 TypeScript 中台 · 协议 / 波形 / 工具定义',
     accent: 'cyan',
-    repo: 'DG-Kit',
+    repo: '0xNuller',
     documents: [
       {
         id: 'overview',
@@ -81,71 +119,11 @@ export const PROJECTS: Project[] = [
     ],
   },
   {
-    id: 'agent',
-    label: 'DG-Agent',
-    tagline: '浏览器版 AI 控制器 · 自然语言驱动设备',
-    accent: 'magenta',
-    repo: 'DG-Agent',
-    documents: [
-      {
-        id: 'manual',
-        label: '使用手册',
-        audience: 'user',
-        defaultMd: agentManual,
-        sourcePath: 'src/content/agent/manual.md',
-      },
-      {
-        id: 'developer',
-        label: '开发者文档',
-        audience: 'developer',
-        defaultMd: agentDeveloper,
-        sourcePath: 'src/content/agent/developer.md',
-      },
-      {
-        id: 'faq',
-        label: 'FAQ / 故障排查',
-        audience: 'user',
-        defaultMd: agentFaq,
-        sourcePath: 'src/content/agent/faq.md',
-      },
-    ],
-  },
-  {
-    id: 'chat',
-    label: 'DG-Chat',
-    tagline: '多人 P2P 房间 · 远程控制队友设备',
-    accent: 'magenta',
-    repo: 'DG-Chat',
-    documents: [
-      {
-        id: 'manual',
-        label: '使用手册',
-        audience: 'user',
-        defaultMd: chatManual,
-        sourcePath: 'src/content/chat/manual.md',
-      },
-      {
-        id: 'developer',
-        label: '开发者文档',
-        audience: 'developer',
-        defaultMd: chatDeveloper,
-        sourcePath: 'src/content/chat/developer.md',
-      },
-      {
-        id: 'faq',
-        label: 'FAQ / 故障排查',
-        audience: 'user',
-        defaultMd: chatFaq,
-        sourcePath: 'src/content/chat/faq.md',
-      },
-    ],
-  },
-  {
     id: 'mcp',
-    label: 'DG-MCP',
-    tagline: 'MCP 服务器 · 接 Claude Desktop 等客户端',
-    accent: 'amber',
-    repo: 'DG-MCP',
+    label: 'MCP',
+    tagline: '把设备接进任意 MCP 客户端',
+    accent: 'magenta',
+    repo: '0xNuller',
     documents: [
       {
         id: 'manual',
@@ -170,42 +148,13 @@ export const PROJECTS: Project[] = [
       },
     ],
   },
-  {
-    id: 'voice',
-    label: 'DG-Voice',
-    tagline: '实时语音 Agent · 打开即通话，AI 自主决定何时调用工具',
-    accent: 'amber',
-    repo: 'DG-Voice',
-    documents: [
-      {
-        id: 'manual',
-        label: '使用手册',
-        audience: 'user',
-        defaultMd: voiceManual,
-        sourcePath: 'src/content/voice/manual.md',
-      },
-      {
-        id: 'developer',
-        label: '开发者文档',
-        audience: 'developer',
-        defaultMd: voiceDeveloper,
-        sourcePath: 'src/content/voice/developer.md',
-      },
-      {
-        id: 'faq',
-        label: 'FAQ / 故障排查',
-        audience: 'user',
-        defaultMd: voiceFaq,
-        sourcePath: 'src/content/voice/faq.md',
-      },
-    ],
-  },
 ];
 
 export const REPO_BASE = 'https://github.com/0xNullAI/0xNuller';
 
 export function findProject(id: string | null): Project {
-  return PROJECTS.find((p) => p.id === id) ?? PROJECTS[1]!; // default = DG-Agent
+  // 缺省是主线说明，不是某个子项目——用户打开「说明」想看的是这个软件怎么用。
+  return PROJECTS.find((p) => p.id === id) ?? PROJECTS[0]!;
 }
 
 export function findDocument(project: Project, docId: string | null): Document {

@@ -22,10 +22,14 @@ interface Route {
 }
 
 function readRouteFromHash(): Route {
-  if (typeof window === 'undefined') return { projectId: 'agent', docId: 'manual' };
+  // 缺省是主线说明（PROJECTS[0]），不是某个子项目——用户点开「说明」想看的是
+  // 这个软件怎么用。合并前默认落在 DG-Agent 的手册上，那是仓库结构的投影。
+  const fallback = PROJECTS[0]!;
+  if (typeof window === 'undefined')
+    return { projectId: fallback.id, docId: fallback.documents[0]!.id };
   const cleaned = window.location.hash.replace(/^#\/?/, '');
-  const [projectId = 'agent', docId = ''] = cleaned.split('/');
-  const project = PROJECTS.find((p) => p.id === projectId) ?? PROJECTS[1]!;
+  const [projectId = '', docId = ''] = cleaned.split('/');
+  const project = PROJECTS.find((p) => p.id === projectId) ?? fallback;
   const doc = project.documents.find((d) => d.id === docId) ?? project.documents[0]!;
   return { projectId: project.id, docId: doc.id };
 }

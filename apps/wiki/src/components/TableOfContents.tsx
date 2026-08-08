@@ -59,7 +59,9 @@ export function TableOfContents({ content }: { content: string }) {
               href={`#${e.id}`}
               onClick={(ev) => {
                 ev.preventDefault();
-                document.getElementById(e.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document
+                  .getElementById(e.id)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 setActiveId(e.id);
               }}
               className={[

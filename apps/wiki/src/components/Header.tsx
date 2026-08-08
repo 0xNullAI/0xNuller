@@ -30,10 +30,10 @@ export function Header({
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <div className="flex items-baseline gap-2 shrink-0">
             <span className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-[var(--text)] leading-none">
-              DG·WIKI
+              说明
             </span>
             <span className="hidden md:inline font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
-              docs hub
+              0xNuller
             </span>
           </div>
 

@@ -12,7 +12,12 @@ export function MarkdownView({ content }: Props) {
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ href, ...rest }) => (
-            <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer" {...rest} />
+            <a
+              href={href}
+              target={href?.startsWith('http') ? '_blank' : undefined}
+              rel="noreferrer"
+              {...rest}
+            />
           ),
         }}
       >

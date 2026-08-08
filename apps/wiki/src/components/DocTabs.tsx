@@ -22,7 +22,7 @@ export function DocTabs({ project, activeDocId, onNavigate }: Props) {
       <div className="flex items-stretch px-4 sm:px-6 lg:px-8 gap-0 overflow-x-auto no-scrollbar">
         {project.documents.map((doc) => {
           const isActive = doc.id === activeDocId;
-    const dirty = false;
+          const dirty = false;
           return (
             <button
               type="button"

@@ -58,7 +58,7 @@ export function ProjectPicker({ activeId, onSelect }: Props) {
         >
           {PROJECTS.map((p) => {
             const isActive = p.id === activeId;
-    const dirty = false;
+            const dirty = false;
             return (
               <button
                 key={p.id}
