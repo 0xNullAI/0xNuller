@@ -14,6 +14,7 @@ export default defineConfig({
     projects: [
       // 自带配置的 workspace
       'apps/agent',
+      'apps/web',
       'apps/chat',
       'apps/voice',
       'apps/mcp',
