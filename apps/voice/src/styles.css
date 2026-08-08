@@ -19,4 +19,5 @@
 @import '@0xnullai/ui/styles/base.css' layer(ui-base);
 @import './styles/settings.css' layer(module);
 @import '@0xnullai/ui/styles/scrollbar.css' layer(ui-base);
+@import '@0xnullai/ui/styles/settings.css' layer(module);
 @import '@0xnullai/ui/styles/animations.css';

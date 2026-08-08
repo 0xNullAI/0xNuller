@@ -23,6 +23,7 @@
 @import '@0xnullai/ui/styles/app-switcher.css';
 @import '@0xnullai/ui/styles/base.css' layer(ui-base);
 @import '@0xnullai/ui/styles/scrollbar.css' layer(ui-base);
+@import '@0xnullai/ui/styles/settings.css' layer(module);
 @import '@0xnullai/ui/styles/animations.css';
 
 /* 各模块自己的 CSS 统一归 module 层。
