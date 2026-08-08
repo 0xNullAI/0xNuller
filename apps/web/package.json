@@ -20,6 +20,7 @@
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "@0xnullai/auth": "*"
+    "@0xnullai/auth": "*",
+    "@dg-kit/safety": "1.13.0"
   }
 }

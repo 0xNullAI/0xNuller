@@ -44,7 +44,11 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
         ) : null}
 
         <footer className="text-sm text-[var(--text-faint)]">
-          <button type="button" onClick={() => onOpen('wiki')} className="underline underline-offset-2 hover:text-[var(--text-soft)]">
+          <button
+            type="button"
+            onClick={() => onOpen('wiki')}
+            className="underline underline-offset-2 hover:text-[var(--text-soft)]"
+          >
             查看文档
           </button>
         </footer>

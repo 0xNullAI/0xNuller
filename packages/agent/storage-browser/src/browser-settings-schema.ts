@@ -33,7 +33,6 @@ const providerIds = [
 
 export const settingsSchema = z.object({
   version: z.literal(1),
-  themeMode: z.enum(['auto', 'dark', 'light']).optional(),
   showSafetyNoticeOnStartup: z.boolean().optional(),
   deviceMode: z.enum(['fake', 'web-bluetooth']).optional(),
   llmMode: z.enum(['fake', 'provider-http']).optional(),

@@ -57,7 +57,6 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
 
   return {
     version: 1,
-    themeMode: 'auto',
     showSafetyNoticeOnStartup: true,
     deviceMode: 'web-bluetooth',
     llmMode: 'provider-http',

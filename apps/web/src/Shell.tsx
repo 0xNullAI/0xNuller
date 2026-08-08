@@ -3,6 +3,7 @@ import { Moon, Sun } from 'lucide-react';
 import {
   useTheme,
   ShellChromeProvider,
+  SafetyNotice,
   OverlayProvider,
   useOverlayRoot,
   useModuleOverlayLayer,
@@ -11,6 +12,8 @@ import {
 import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { AccountMenu } from './AccountMenu';
+import { ModuleErrorBoundary } from './ModuleErrorBoundary';
+import { isSafetyNoticeAccepted, rememberSafetyNoticeAccepted } from '@dg-kit/safety';
 
 /**
  * 统一外壳。
@@ -74,6 +77,9 @@ export function Shell() {
   // 主题由 @0xnullai/ui 的共享 store 唯一持有——外壳和四个模块看到同一个值，
   // 切模块不会把它顶回去。
   const { effective, toggle: toggleTheme } = useTheme();
+  // 全系统唯一的一道安全门：进主界面时确认一次，之后所有模块都算已确认。
+  // 各模块**不再**各设一道——同一份协议确认三遍只会训练用户无脑点掉它。
+  const [safetyAccepted, setSafetyAccepted] = useState(isSafetyNoticeAccepted);
 
   return (
     <div id="shl-root">
@@ -133,6 +139,20 @@ export function Shell() {
           );
         })}
       </main>
+
+      {/* 安全门挂在外壳根，用外壳自己的覆盖层容器——它必须盖住顶栏，而且不属于任何
+          一个模块（模块可能都还没打开）。 */}
+      {!safetyAccepted && (
+        <OverlayProvider container={overlayRoot}>
+          <SafetyNotice
+            moduleId={activeId ?? undefined}
+            onAccept={({ dontShowAgain }) => {
+              if (dontShowAgain) rememberSafetyNoticeAccepted();
+              setSafetyAccepted(true);
+            }}
+          />
+        </OverlayProvider>
+      )}
     </div>
   );
 }
@@ -167,15 +187,19 @@ function ModuleSlot({
           className={active ? 'h-full min-h-0' : 'hidden'}
           aria-hidden={!active}
         >
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
-                正在加载 {mod.label}…
-              </div>
-            }
-          >
-            <mod.Component />
-          </Suspense>
+          {/* 边界在 Suspense 之内、模块之外：模块渲染期抛错只烧掉这一个槽位，
+              外壳顶栏（连同全局急停按钮）必须活下来。 */}
+          <ModuleErrorBoundary moduleId={mod.id} label={mod.label}>
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
+                  正在加载 {mod.label}…
+                </div>
+              }
+            >
+              <mod.Component />
+            </Suspense>
+          </ModuleErrorBoundary>
         </div>
       </OverlayProvider>
     </ShellChromeProvider>

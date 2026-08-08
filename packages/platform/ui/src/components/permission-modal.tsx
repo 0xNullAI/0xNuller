@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useOverlayContainer } from '../overlay';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Overlay } from './overlay-surface';
 import { Button } from './button';
 
 interface PermissionModalProps {
@@ -43,16 +42,13 @@ export function PermissionModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onDeny]);
 
-  const overlayContainer = useOverlayContainer();
-
-  const node = (
-    <section
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
-      role="dialog"
-      aria-modal="true"
-      aria-label="权限请求"
-    >
+  return (
+    // 权限请求必须显式回答，所以不传 onDismiss——点遮罩关不掉。
+    <Overlay>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="权限请求"
         ref={panelRef}
         className="w-[320px] rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
         tabIndex={-1}
@@ -112,13 +108,8 @@ export function PermissionModal({
           )}
         </div>
       </div>
-    </section>
+    </Overlay>
   );
-
-  // 必须 portal 出模块子树：留在原地时，祖先有无 transform 决定了它是「盖住外壳」
-  // 还是「关不住模态」，两种都不能接受。无外壳时容器为 undefined，回落 document.body，
-  // 与独立运行时行为一致。
-  return overlayContainer ? createPortal(node, overlayContainer) : node;
 }
 
 function ArgsCollapsible({ args }: { args: Record<string, unknown> }) {

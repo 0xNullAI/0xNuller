@@ -5,7 +5,8 @@ import { useDevice } from './hooks/use-device';
 import { useWaveforms } from './hooks/use-waveforms';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { RoomEntry } from './components/RoomEntry';
-import { SafetyNotice, useSafetyAccepted } from './components/SafetyNotice';
+import { SafetyNotice } from '@0xnullai/ui';
+import { isSafetyNoticeAccepted, rememberSafetyNoticeAccepted } from '@dg-kit/safety';
 import { ChatPanel } from './components/ChatPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { SceneDialog } from './components/SceneDialog';
@@ -142,7 +143,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [firingA, setFiringA] = useState(false);
   const [firingB, setFiringB] = useState(false);
 
-  const safety = useSafetyAccepted();
+  // 安全确认全系统一份。外壳里由外壳统一把门（同一份协议不该确认两遍）；
+  // 独立部署时这里仍然是入口处的那道门。
+  const [safetyAccepted, setSafetyAccepted] = useState(isSafetyNoticeAccepted);
   const peerRoom = usePeerRoom(displayName);
   const device = useDevice({
     clientFactory: deviceClientFactory,
@@ -489,8 +492,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     return () => clearInterval(t);
   }, [callApplyFire]);
 
-  if (!safety.accepted) {
-    return <SafetyNotice onAccept={({ dontShowAgain }) => safety.accept(dontShowAgain)} />;
+  if (!inShell && !safetyAccepted) {
+    return (
+      <SafetyNotice
+        moduleId="chat"
+        onAccept={({ dontShowAgain }) => {
+          if (dontShowAgain) rememberSafetyNoticeAccepted();
+          setSafetyAccepted(true);
+        }}
+      />
+    );
   }
 
   if (!peerRoom.connected) {

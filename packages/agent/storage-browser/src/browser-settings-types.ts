@@ -26,7 +26,6 @@ export interface BrowserVoiceSettings {
 
 export interface BrowserAppSettings {
   version: 1;
-  themeMode: ThemeMode;
   showSafetyNoticeOnStartup: boolean;
   deviceMode: 'fake' | 'web-bluetooth';
   llmMode: 'fake' | 'provider-http';

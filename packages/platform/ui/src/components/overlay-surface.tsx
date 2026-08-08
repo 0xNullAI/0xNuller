@@ -44,9 +44,9 @@ export function Overlay({
     <div
       className={cn('fixed inset-0 flex items-center justify-center p-4', className)}
       style={{
-        background:
-          scrim === 'strong' ? 'var(--overlay-scrim-strong)' : 'var(--overlay-scrim)',
-        zIndex: level === 'stacked' ? 'calc(var(--z-module-overlay) + 10)' : 'var(--z-module-overlay)',
+        background: scrim === 'strong' ? 'var(--overlay-scrim-strong)' : 'var(--overlay-scrim)',
+        zIndex:
+          level === 'stacked' ? 'calc(var(--z-module-overlay) + 10)' : 'var(--z-module-overlay)',
         pointerEvents: 'auto',
       }}
       onMouseDown={handleMouseDown}

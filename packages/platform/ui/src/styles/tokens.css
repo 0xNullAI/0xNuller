@@ -26,10 +26,13 @@
   --danger-soft: rgba(240, 162, 178, 0.12);
   --danger-surface: #fef2f5;
   --danger-border: #f0c8d2;
-  --warning: #f0a2b2;
-  --warning-soft: rgba(240, 162, 178, 0.12);
-  --warning-surface: #fef2f5;
-  --warning-border: #f0c8d2;
+  /* warning 必须与 danger 区分开。合并前两组是逐字相同的粉红，于是「请仔细阅读」
+     的提示框长得跟「删除不可恢复」一模一样——两种完全不同的意思用同一个视觉信号，
+     用户就学不会哪个该停下来看。warning 走琥珀，danger 留给破坏性操作。 */
+  --warning: #b45309;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --warning-surface: #fffbeb;
+  --warning-border: #fcd34d;
   --success: #10b981;
   --success-soft: rgba(16, 185, 129, 0.1);
   --success-surface: #ecfdf5;
@@ -93,10 +96,10 @@
   --danger-soft: rgba(220, 38, 38, 0.14);
   --danger-surface: #1f0a0a;
   --danger-border: #4b1515;
-  --warning: #dc2626;
-  --warning-soft: rgba(220, 38, 38, 0.14);
-  --warning-surface: #1f0a0a;
-  --warning-border: #4b1515;
+  --warning: #ffb800;
+  --warning-soft: rgba(255, 184, 0, 0.1);
+  --warning-surface: #1c1505;
+  --warning-border: rgba(255, 184, 0, 0.26);
   --success: #22c55e;
   --success-soft: rgba(52, 211, 153, 0.14);
   --success-surface: #102019;

@@ -15,13 +15,14 @@ import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { useTheme } from '@0xnullai/ui';
+import { useInShell, useTheme } from '@0xnullai/ui';
+import { isSafetyNoticeAccepted } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
-import { SafetyNoticeModal } from './components/SafetyNoticeModal.js';
+import { SafetyNotice } from '@0xnullai/ui';
 import { SessionPanel } from './components/SessionPanel.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
@@ -31,7 +32,14 @@ import {
   SettingsWorkspace,
   type SettingsModalTab,
 } from './components/SettingsDrawer.js';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@0xnullai/ui';
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@0xnullai/ui';
 import {
   useBrowserAppServices,
   type PendingPermissionRequest,
@@ -114,8 +122,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const inShell = useInShell();
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
-    () => !settings.showSafetyNoticeOnStartup,
+    () => !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
   const [text, setText] = useState('');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -916,7 +925,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         </section>
       </main>
 
-      {!safetyNoticeAccepted && <SafetyNoticeModal onAccept={handleSafetyNoticeAccept} />}
+      {/* 外壳里由外壳统一把门——同一份协议不该在进 Agent 时再确认一遍。 */}
+      {!inShell && !safetyNoticeAccepted && (
+        <SafetyNotice moduleId="agent" onAccept={handleSafetyNoticeAccept} />
+      )}
     </>
   );
 }

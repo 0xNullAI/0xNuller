@@ -40,7 +40,13 @@ export interface DeviceStatusChipProps {
 }
 
 /** 一台设备的状态块：图标 + 电量（点击断开）+ 右侧自定义内容（通常是强度条）。 */
-export function DeviceStatusChip({ icon, battery, onClick, title, children }: DeviceStatusChipProps) {
+export function DeviceStatusChip({
+  icon,
+  battery,
+  onClick,
+  title,
+  children,
+}: DeviceStatusChipProps) {
   return (
     <div className="flex items-center gap-1.5 sm:gap-2">
       <button
@@ -82,7 +88,11 @@ export function ChannelStrengthBar({ channel, value, max, className }: ChannelSt
       <span className="text-[10px] font-semibold leading-none tracking-wide text-[var(--accent)]">
         {channel}
       </span>
-      <Meter value={normalizedValue} marker={normalizedMax} className={className ?? 'w-16 sm:w-20'} />
+      <Meter
+        value={normalizedValue}
+        marker={normalizedMax}
+        className={className ?? 'w-16 sm:w-20'}
+      />
       <span className="text-[10px] font-medium tabular-nums leading-none text-[var(--text-soft)]">
         {value}
       </span>

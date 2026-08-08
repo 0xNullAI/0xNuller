@@ -64,7 +64,7 @@ export function SessionSearchDialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal container={useOverlayContainer()}>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/38 backdrop-blur-[1.5px] animate-in fade-in-0 duration-150" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[1.5px] animate-in fade-in-0 duration-150" />
         <DialogPrimitive.Content
           className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9vh)] z-50 mx-auto max-w-[500px] overflow-hidden rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-200"
           onOpenAutoFocus={(e) => {

@@ -5,6 +5,7 @@ export * from './components/alert';
 export * from './components/app-switcher';
 export * from './components/overlay-surface';
 export * from './components/permission-modal';
+export * from './components/safety-notice';
 export * from './components/setting-toggle';
 export * from './components/setting-label';
 export * from './components/setting-select';
@@ -23,7 +24,9 @@ export * from './components/select';
 export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
-export * from './theme';
+// 只导出类型。applyTheme / subscribeThemeChanges 是 theme-store 的内部实现——
+// 把它们公开出去就等于邀请模块再各写各的 data-theme，那正是刚清掉的那个 bug。
+export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';
 export * from './shell-context';
 export * from './overlay';

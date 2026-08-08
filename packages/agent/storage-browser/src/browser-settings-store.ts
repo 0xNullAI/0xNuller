@@ -97,7 +97,6 @@ export class BrowserAppSettingsStore {
 
     const sanitized = {
       version: 1 as const,
-      themeMode: settings.themeMode,
       showSafetyNoticeOnStartup: settings.showSafetyNoticeOnStartup,
       deviceMode: settings.deviceMode,
       llmMode: settings.llmMode,

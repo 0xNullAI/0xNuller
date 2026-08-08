@@ -35,7 +35,6 @@ export interface OpossumSafetySettings {
 }
 
 export interface VoiceSettings {
-  theme: ThemeMode;
   activeProviderId: RealtimeProviderId;
   providers: Record<RealtimeProviderId, RealtimeProviderSettings>;
   /**
@@ -65,7 +64,6 @@ function defaultProviders(): Record<RealtimeProviderId, RealtimeProviderSettings
 
 export function createDefaultSettings(): VoiceSettings {
   return {
-    theme: 'auto',
     activeProviderId: 'xai',
     providers: defaultProviders(),
     promptPresetId: 'companion',
@@ -112,7 +110,6 @@ const savedPromptPresetSchema = z.object({
 });
 
 const settingsSchema = z.object({
-  theme: z.enum(['auto', 'dark', 'light']),
   activeProviderId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
   promptPresetId: z.string(),

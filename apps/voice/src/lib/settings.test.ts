@@ -34,10 +34,15 @@ describe('settings persistence', () => {
   });
 
   it('merges a partial/older-shaped stored object over defaults without crashing', () => {
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ theme: 'dark' }));
+    // `theme` 是已经移除的字段（主题上提到 @0xnullai/ui 的共享 store）。老用户的
+    // 存储里还留着它——多出来的键必须被无视，而不是让整份设置回落默认值。
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ theme: 'dark', activeProviderId: 'zhipu' }),
+    );
     const settings = loadSettings();
-    expect(settings.theme).toBe('dark');
-    expect(settings.activeProviderId).toBe('xai');
+    expect(settings.activeProviderId).toBe('zhipu');
     expect(settings.coyoteSafety.maxStrengthA).toBe(50);
+    expect(settings).not.toHaveProperty('theme');
   });
 });
