@@ -2,6 +2,15 @@ name = "dg-market"
 main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
 
+# 统一外壳占据根域，本 Worker 只接管市场的 API。静态资源不再由它托管。
+[[routes]]
+pattern = "0xnullai.com/api/items*"
+zone_name = "0xnullai.com"
+
+[[routes]]
+pattern = "0xnullai.com/api/admin/*"
+zone_name = "0xnullai.com"
+
 # 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
 # run_worker_first 只列 Worker 真正处理的前缀（src/worker/index.ts 只有 /api/*）。
 # 设成 true 会让每个静态资源请求都变成计费的 Worker 调用，而免费额度耗尽时

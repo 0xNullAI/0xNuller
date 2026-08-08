@@ -20,7 +20,6 @@
 @source '../../wiki/src';
 
 @import '@0xnullai/ui/styles/tokens.css';
-@import '@0xnullai/ui/styles/app-switcher.css';
 @import '@0xnullai/ui/styles/base.css' layer(ui-base);
 @import '@0xnullai/ui/styles/scrollbar.css' layer(ui-base);
 @import '@0xnullai/ui/styles/settings.css' layer(module);

@@ -2,7 +2,6 @@
 // 令牌与滚动条样式通过 '@0xnullai/ui/styles/*.css' 引入（CSS 不走 JS 导出）。
 
 export * from './components/alert';
-export * from './components/app-switcher';
 export * from './components/overlay-surface';
 export * from './components/permission-modal';
 export * from './components/safety-notice';

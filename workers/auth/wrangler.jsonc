@@ -2,6 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "0xnullai-auth",
   "main": "src/index.ts",
+  // 账号服务挂在根域的 /api/auth/* 下。同源意味着会话 cookie 不需要跨站配置，
+  // Tauri 壳仍然走 Bearer（它的 origin 是本地 scheme，永远拿不到网页域的 cookie）。
+  "routes": [{ "pattern": "0xnullai.com/api/auth/*", "zone_name": "0xnullai.com" }],
+
   "compatibility_date": "2026-01-01",
 
   // 首次部署前：wrangler d1 create 0xnullai-auth，把返回的 id 填进来，
@@ -17,7 +21,7 @@
 
   "vars": {
     // 允许携带凭据的来源。带凭据的请求不能用通配 origin，必须逐个列出。
-    "ALLOWED_ORIGINS": "https://0xnullai.com,https://agent.0xnullai.com,https://chat.0xnullai.com,https://voice.0xnullai.com,https://market.0xnullai.com"
+    "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost"
   },
 
   // 机密用命令设置，勿写进文件：

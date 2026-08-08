@@ -1,24 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // script 名字保持 `dg-voice` 不能改：TrialSession 的 migration tag 按 script 计，
+  // 改名等于新建一组空 DO，所有激活密钥的用量计数会归零——那是花钱的方向。
   "name": "dg-voice",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
   "compatibility_date": "2026-01-01",
 
-  // 生产自定义域：voice.0xnullai.com。
-  "routes": [{ "pattern": "voice.0xnullai.com", "custom_domain": true }],
+  // 统一域下只认领体验版这一条路径。独立部署形态已不再保留，静态资源由统一外壳
+  // （0xnuller）提供，所以这里不再挂 assets——也就不需要 run_worker_first。
+  "routes": [{ "pattern": "0xnullai.com/api/realtime", "zone_name": "0xnullai.com" }],
   // 保留 workers.dev 预发地址作为备用/调试入口。
   "workers_dev": true,
-
-  // 静态托管 + 体验版代理。自带 Key 的 provider（xAI/OpenAI/Azure/智谱）仍浏览器直连、不经过
-  // Worker；只有体验版（trial）的 /api/realtime 走 Worker：`run_worker_first` 让该前缀先进
-  // Worker 代码，其余路径直接由 ASSETS 提供。
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  },
 
   // 体验版计量 Durable Object：每个激活密钥一个实例，管并发 / 单次时长 / 每日总量。
   "durable_objects": {
@@ -37,7 +30,8 @@
     "TRIAL_MAX_SESSION_MINUTES": "20",
     "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
     "TRIAL_DISABLED": "0",
-    "TRIAL_ALLOWED_ORIGINS": "https://voice.0xnullai.com"
+    // 统一域。漏掉的话体验版一律 403，而前端只会显示「连接失败」。
+    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com"
   },
 
   "observability": {

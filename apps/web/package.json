@@ -9,7 +9,9 @@
     "build": "vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run"
   },
   "dependencies": {
     "@0xnullai/ui": "0.1.0",

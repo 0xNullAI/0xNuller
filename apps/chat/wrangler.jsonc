@@ -5,9 +5,20 @@
   "main": "worker/index.ts",
   "compatibility_date": "2025-01-01",
 
-  // 生产自定义域：chat.0xnullai.com 由本 Worker 接管（从原 Pages 项目迁移而来）。
+  // 统一外壳占据根域，本 Worker 只接管它真正处理的那几条路径。
+  //
+  // **Durable Object 留在这个 script 里，绝不能挪走。** migration tag 按 Worker
+  // script 计——把 RoomDO / LobbyDO 搬进别的 script 等于新建一组空的 DO，
+  // 所有房间和聊天历史会变成永远访问不到的孤儿。这也是不把四个 Worker 合并成
+  // 一个 script 的唯一原因。
+  //
+  // 静态资源不再由本 Worker 托管（外壳接管了），所以 assets 只留一个占位——
+  // 路由只命中 /ws/* 与 /api/*，不会有请求落到静态资源上。
   "routes": [
-    { "pattern": "chat.0xnullai.com", "custom_domain": true }
+    { "pattern": "0xnullai.com/ws/*", "zone_name": "0xnullai.com" },
+    { "pattern": "0xnullai.com/api/lobby/*", "zone_name": "0xnullai.com" },
+    { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
+    { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" }
   ],
   // 保留 workers.dev 预发地址（dg-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,

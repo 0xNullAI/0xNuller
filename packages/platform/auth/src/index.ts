@@ -10,15 +10,16 @@
  * ——Tauri WebView 的 origin 是本地 scheme，永远拿不到网页域的 cookie。
  */
 
+import { apiBaseUrl } from '@0xnullai/settings';
+
 export interface AuthUser {
   id: string;
   username: string;
   displayName: string;
 }
 
-const FALLBACK_BASE = 'https://auth.0xnullai.com';
-export const AUTH_BASE_URL: string =
-  (import.meta.env?.VITE_AUTH_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? FALLBACK_BASE;
+// 账号接口挂在统一域的 `/api/auth` 下（路径写在各个调用点），所以这里只要 origin：
+// 网页端是空串走同源，Tauri 壳拿不到同源、由 apiBaseUrl() 给出绝对地址。
 
 /** 安卓端把 token 存这里；网页端为空，靠 cookie。 */
 const TOKEN_KEY = '0xnullai.auth-token';
@@ -42,7 +43,7 @@ function setStoredToken(token: string | null): void {
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = storedToken();
-  const res = await fetch(`${AUTH_BASE_URL}${path}`, {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     credentials: 'include',
     headers: {

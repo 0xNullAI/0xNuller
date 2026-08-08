@@ -34,7 +34,8 @@
     "version": "changeset version",
     "release": "npm run build:kit && changeset publish",
     "android:dev": "npm run android:dev -w @0xnullai/android",
-    "android:build": "npm run android:build -w @0xnullai/android"
+    "android:build": "npm run android:build -w @0xnullai/android",
+    "check:routes": "node scripts/check-routes.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

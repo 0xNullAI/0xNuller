@@ -1,10 +1,11 @@
-// DG-Voice Worker 入口。
+// 体验版语音 Worker。
 //
-// 两个职责：
-//  1. `/api/realtime` —— 体验版（trial）语音代理。前端用「激活密钥」连到这里，Worker
-//     校验密钥、按 TrialSession Durable Object 计量（并发/单次时长/每日总量），再用只存在
-//     服务端 secret 里的真 xAI Key 打开上游连接、双向转发。真 Key 永不下发前端。
-//  2. 其余路径 —— SPA 静态资源托管（各自带 Key 的 provider 仍走浏览器直连，不经过这里）。
+// 只有一个职责：`/api/realtime` —— 体验版（trial）语音代理。前端用「激活密钥」连到
+// 这里，Worker 校验密钥、按 TrialSession Durable Object 计量（并发/单次时长/每日总量），
+// 再用只存在服务端 secret 里的真 xAI Key 打开上游连接、双向转发。真 Key 永不下发前端。
+//
+// 自带 Key 的 provider（xAI / OpenAI / Azure / 智谱）走浏览器直连，不经过这里。
+// 静态资源由统一外壳提供——这个 Worker 不再托管任何页面。
 import type { Env } from './env.js';
 import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-keys.js';
 
@@ -16,7 +17,9 @@ export default {
     if (url.pathname === '/api/realtime') {
       return handleTrialRealtime(request, env);
     }
-    return env.ASSETS.fetch(request);
+    // 生产上路由只把 /api/realtime 交给这个 Worker，走不到这里；workers.dev 预发
+    // 地址会。返回 404 而不是打 env.ASSETS——那个 binding 已经不存在了。
+    return new Response('not found', { status: 404 });
   },
 };
 

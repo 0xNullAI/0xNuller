@@ -4,5 +4,10 @@
   "private": true,
   "type": "module",
   "description": "账号客户端。只管身份与数据归属，不提供任何设备接口。",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@0xnullai/settings": "0.1.0"
+  }
 }

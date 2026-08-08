@@ -1,16 +1,15 @@
-// DG-Market 社区市场客户端 —— 平台单一真源。
+// 社区市场客户端 —— 平台单一真源。
 //
 // 合并前 agent / chat / voice 各有一份：agent 覆盖 waveform+scenario、voice 只用
 // scenario、chat 额外支持 multi-scene 与 AbortSignal。这里以 chat 那份（严格超集）
 // 为基准，三个模块共用。
 //
-// 部署自己的 DG-Market 时用 VITE_MARKET_BASE_URL 覆盖，或直接改下面的兜底常量。
+// 市场接口挂在统一域的 `/api/items` 下，所以这里只要 origin：网页端空串走同源，
+// Tauri 壳由 apiBaseUrl() 给出绝对地址。自建部署用 VITE_API_BASE_URL 覆盖。
 
-const FALLBACK_BASE_URL = 'https://market.0xnullai.com';
+import { apiBaseUrl } from '@0xnullai/settings';
 
-export const MARKET_BASE_URL: string =
-  (import.meta.env.VITE_MARKET_BASE_URL as string | undefined)?.replace(/\/$/, '') ??
-  FALLBACK_BASE_URL;
+export const marketBaseUrl = (): string => apiBaseUrl();
 
 export type MarketItemType = 'waveform' | 'scenario' | 'multi-scene';
 
@@ -60,7 +59,7 @@ export async function fetchMarketItems(params: FetchMarketParams): Promise<Marke
   if (params.sort) search.set('sort', params.sort);
   search.set('limit', String(params.limit ?? 50));
 
-  const res = await fetch(`${MARKET_BASE_URL}/api/items?${search.toString()}`, {
+  const res = await fetch(`${marketBaseUrl()}/api/items?${search.toString()}`, {
     signal: params.signal,
   });
   if (!res.ok) throw new Error(`市场请求失败 (${res.status})`);
@@ -70,5 +69,5 @@ export async function fetchMarketItems(params: FetchMarketParams): Promise<Marke
 }
 
 export async function markMarketDownloaded(id: string): Promise<void> {
-  await fetch(`${MARKET_BASE_URL}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${marketBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
 }

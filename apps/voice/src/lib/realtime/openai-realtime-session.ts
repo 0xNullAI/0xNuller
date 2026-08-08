@@ -28,6 +28,7 @@ import {
   mintXaiRealtimeEphemeralToken,
 } from './ephemeral-token.js';
 import type { RealtimeProviderId, RealtimeProviderSettings } from './providers.js';
+import { apiWsUrl } from '@0xnullai/settings';
 
 const TURN_DETECTION = {
   type: 'server_vad',
@@ -43,14 +44,12 @@ const TURN_DETECTION = {
 function buildWsUrl(providerId: RealtimeProviderId, settings: RealtimeProviderSettings): string {
   switch (providerId) {
     case 'trial': {
-      // Same-origin Worker route (`/api/realtime`); the Worker pins the model
-      // and swaps the activation key for the real xAI key on the upstream leg.
-      // Works on voice.0xnullai.com, the workers.dev preview, and `wrangler dev`.
-      if (typeof location !== 'undefined') {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${proto}//${location.host}/api/realtime`;
-      }
-      return 'wss://voice.0xnullai.com/api/realtime';
+      // 统一域下的 Worker 路由（`/api/realtime`）；Worker 固定模型，并在上游那一段
+      // 把激活密钥换成真正的 xAI Key。
+      //
+      // **不要在这里直接用 `location.host` 拼同源地址。** 网页上没问题，但 Tauri 壳的
+      // origin 是本地 scheme，那样会连到 `wss://tauri.localhost/api/realtime`。
+      return apiWsUrl('/api/realtime');
     }
     case 'xai':
       return `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(settings.model)}`;

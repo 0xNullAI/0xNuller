@@ -17,7 +17,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { ChannelStrengthBar, DeviceStatusChip, AppSwitcher, Button, Input } from '@0xnullai/ui';
+import { ChannelStrengthBar, DeviceStatusChip, Button, Input, useInShell } from '@0xnullai/ui';
 import { cn } from '@agent/lib/utils';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
@@ -233,12 +233,16 @@ export function ChatPanel({
     stickToBottomRef.current = distanceFromBottom < 48;
   }
 
+  const inShell = useInShell();
   const showVoiceAsPrimary = !hasText && !busy;
 
   return (
     <div className="relative flex w-full flex-1 flex-col overflow-hidden">
-      {/* ===== Top bar — only visible on non-lg when no device is connected ===== */}
-      {!deviceState.connected &&
+      {/* ===== 窄屏顶栏 —— 只在独立运行、且没有设备连着时出现 =====
+          外壳里不画：侧边栏开关、模块名、设置都由外壳提供，这里再画一份，窄屏上就是
+          两个汉堡按钮和两个齿轮并排。 */}
+      {!inShell &&
+        !deviceState.connected &&
         !opossumState.connected &&
         !pawPrintsState.connected &&
         !civetEdgingState.connected && (
@@ -252,11 +256,7 @@ export function ChatPanel({
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <AppSwitcher
-              current="agent"
-              label="Agent"
-              className="text-sm font-semibold text-[var(--text)]"
-            />
+            <span className="text-sm font-semibold text-[var(--text)]">Agent</span>
             <Button
               variant="ghost"
               size="icon"

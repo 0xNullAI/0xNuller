@@ -60,11 +60,20 @@ describe('isAllowedOrigin', () => {
   });
 
   it('enforces membership when configured, but always allows localhost', () => {
-    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://voice.0xnullai.com' });
-    expect(isAllowedOrigin('https://voice.0xnullai.com', e)).toBe(true);
+    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://0xnullai.com' });
+    expect(isAllowedOrigin('https://0xnullai.com', e)).toBe(true);
     expect(isAllowedOrigin('http://localhost:5173', e)).toBe(true);
     expect(isAllowedOrigin('http://127.0.0.1:8787', e)).toBe(true);
     expect(isAllowedOrigin('https://evil.example', e)).toBe(false);
     expect(isAllowedOrigin(null, e)).toBe(false);
+  });
+
+  it('allows the Tauri WebView origin — otherwise trial voice 403s on Android', () => {
+    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://0xnullai.com' });
+    // 安卓上没有热更新：这一条挂了，坏掉的 APK 会长期留在用户手机上。
+    expect(isAllowedOrigin('http://tauri.localhost', e)).toBe(true);
+    expect(isAllowedOrigin('https://tauri.localhost', e)).toBe(true);
+    // 但仅限这一个主机名，不是「凡是 .localhost 结尾都放行」。
+    expect(isAllowedOrigin('https://evil.localhost', e)).toBe(false);
   });
 });

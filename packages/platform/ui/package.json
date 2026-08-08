@@ -10,7 +10,6 @@
     "./styles/scrollbar.css": "./src/styles/scrollbar.css",
     "./styles/animations.css": "./src/styles/animations.css",
     "./styles/base.css": "./src/styles/base.css",
-    "./styles/app-switcher.css": "./src/styles/app-switcher.css",
     "./styles/settings.css": "./src/styles/settings.css"
   },
   "dependencies": {
