@@ -12,13 +12,15 @@ Claude Code 在 **0xNullAI** 平台仓库工作时的指引。
 
 ```
 packages/kit/*        @dg-kit/*，发布到 npm。dist-first：main/types 指向 dist/
-                      safety/ 是设备安全链的唯一真身
+                      safety/ 是设备安全链的唯一真身（含租约与设备清单）
 packages/platform/*   @0xnullai/*，跨模块共用、不发布
-                      ui · llm-providers · market-client · permissions
+                      ui · settings · scenes · auth · native
+                      llm-providers · market-client · permissions
 packages/agent/*      @dg-agent/*，Agent 模块专属
-apps/*                agent chat voice market landing wiki mcp（四个应用各自独立部署）
-android/*             agent chat voice，三个 Tauri 壳
-workers/*             llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
+apps/web              统一外壳。唯一的入口
+apps/*                agent chat voice market（模块）· landing wiki mcp
+android/app           单一 Tauri 壳，四个模块一个 APK
+workers/*             auth · llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
 ```
 
 加新东西之前先想清楚它属于哪一层：发布给外部（kit）、四个模块都要用（platform）、
@@ -58,6 +60,13 @@ npm run changeset    # 改了 packages/kit/* 就要写
 
 DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
 
+## 一个软件
+
+软件名 **0xNuller**，四个模块：Agent / Chat / Voice / Market。说明与设置是弹窗，
+不占模块槽位。界面文案里不出现 DG 前缀（「郊狼」是 DG-Lab 的设备型号，那个不能改）。
+
+**独立部署形态已经不再保留。** 模块只在统一外壳里跑。
+
 ## 统一外壳
 
 `apps/web` 是统一入口，四个模块 + 文档站按路由挂载在同一个文档里。各模块**同时**
@@ -76,15 +85,33 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
    决定它是「盖住外壳」还是「关不住模态」。见 `@0xnullai/ui` 的 `overlay.tsx`；
    `useModuleOverlayLayer` 还负责让被切走模块的弹窗跟着隐藏。
 
-外壳级的东西只有一份，模块不要再各写各的：**主题**在 `@0xnullai/ui` 的
-`theme-store`（唯一写 `data-theme` 的地方），**LLM 配置**在
-`@0xnullai/llm-providers` 的 `config-store`，**急停**在 `@dg-kit/safety` 的
-`safety-bus`。模块想隐藏与外壳重复的顶栏控件就用 `useInShell()`——只用于隐藏，
-不要拿它给模块加分支逻辑，那会让两种运行形态悄悄分叉。
+外壳级的状态只有一份，模块不要再各写各的：
 
-**移动端**：安卓上四个模块合成单一「0xNullAI」应用，布局重新设计。
+| 东西 | 真源 |
+|---|---|
+| 主题 | `@0xnullai/ui` 的 `theme-store`（唯一写 `data-theme` 的地方） |
+| 设备安全设置 | `@0xnullai/settings` 的 `device-safety` |
+| 场景（人设） | `@0xnullai/scenes` |
+| LLM 配置 | `@0xnullai/llm-providers` 的 `config-store` |
+| 代理 | `@0xnullai/settings` 的 `proxy` |
+| 急停 / 设备清单 / 控制权租约 | `@dg-kit/safety` 的 `safety-bus` |
 
-各模块内部别名是 `@agent` / `@voice`（不是 `@`），保留这个命名以免将来再撞车。
+模块与外壳之间只有四个接口：`useSafetySession`（注册设备会话——**这是全局停止按钮和
+设备栏唯一的数据来源**）、`SidebarSection`（投列表项到侧边栏）、`ModuleActions`
+（投按钮到外壳按钮插槽）、`useNativeBridge`（取安卓的蓝牙注入）。
+
+**设备控制权是可撤销的租约**，跟着当前模块走。切走的模块必须停输出、清掉「按住不放」
+的聚合状态、硬拒绝后续指令（远程指令不经过 UI，只禁用按钮没用）。**撤权绝不能实现成
+disconnect()** —— Agent 与 Voice 开了 autoReconnect，断连会让后台模块静默重连抢回设备。
+
+**安卓**：`android/app` 是唯一的 Tauri 壳，四个模块一个 APK。原生蓝牙注入走
+`@0xnullai/native` 的 `NativeBridge`——**三条缝的形状原样保留**（Agent 用
+servicesOverrides + connectDevice，Chat 用 deviceClientFactory + requestDevice，
+Voice 用 transport），只是注入点合并成一个。不去重塑它们是刻意的：安卓没有热更新，
+改错会让三个模块同时哑掉，而坏掉的版本会长期留在用户手机上。
+
+各模块内部别名是 `@agent` / `@voice` / `@chat`（不是 `@`），保留这个命名以免将来再
+撞车。`apps/web` 与 `android/app` 两个 vite 配置里的 alias 必须保持一致。
 
 ## 已知的坑
 
@@ -94,6 +121,9 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
 - **DO migration tag 按 Worker script 计。** 不要把已有的 DO 类挪进别的 Worker。
 - **安卓端没有热更新**，前端修复都要重新打 APK，老版本会长期存在于用户手机上。
 - **`@mnlphlp/plugin-blec` 是 git 依赖**，指向 0xNullAI 的 fork。上游 force-push 会让它漂移。
+- **React 必须全仓只有一份实例。** 曾经 Market 声明 react@18 而其余是 19，npm 无法提升，它的 chunk 拿到第二个实例、`useState` 读到 null dispatcher 直接崩。各 vite 配置都加了 `resolve.dedupe`。
+- **通用类名会跨模块污染。** `module` 层排在 `utilities` 之后，所以模块 CSS 里的 `.grid` / `.app` / `.btn` 会压过 Tailwind 工具类。Market 的样式表整份包在 `.mkt-scope` 之下——注意作用域类要放在**外层**元素，和 `.app` 放同一个元素上会让后代选择器匹配不到自己。
+- **`erasableSyntaxOnly`**：Chat 与安卓壳开了它，共享包里不能用构造器参数属性（`constructor(private x)`）。typecheck 发现不了，只有构建会报 TS1294。
 
 ## 提交与分支
 
