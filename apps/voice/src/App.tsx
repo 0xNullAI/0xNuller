@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { Bluetooth, Settings, X } from 'lucide-react';
-import { Alert, AlertDescription, Button, ModuleActions, useSafetySession } from '@0xnullai/ui';
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  ModuleActions,
+  useInShell,
+  useSafetySession,
+} from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -74,6 +81,7 @@ export function App({ transport }: AppProps = {}) {
         : []),
     ],
   });
+  const inShell = useInShell();
   const { settings, updateSettings, resetSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
@@ -108,15 +116,21 @@ export function App({ transport }: AppProps = {}) {
           <Bluetooth className="h-4 w-4" />
           <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
         </Button>
-        <Button
-          variant={settingsOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          onClick={settingsOpen ? closeSettings : openSettings}
-          disabled={callIsActive}
-          aria-label={settingsOpen ? '关闭设置' : '设置'}
-        >
-          {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-        </Button>
+        {/* 外壳里没有这个按钮：设置只有一个入口，在侧边栏底部的账户菜单里。
+            这套面板的四页在那边都有对应（主题→外观、供应商与音色→AI、场景→场景、
+            强度上限→设备安全），留着就是同一件事两处能改，改哪处生效取决于当时
+            开着哪个模块——那正是合并要消掉的东西。 */}
+        {!inShell && (
+          <Button
+            variant={settingsOpen ? 'secondary' : 'ghost'}
+            size="icon"
+            onClick={settingsOpen ? closeSettings : openSettings}
+            disabled={callIsActive}
+            aria-label={settingsOpen ? '关闭设置' : '设置'}
+          >
+            {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
+          </Button>
+        )}
       </ModuleActions>
 
       {settingsOpen ? (

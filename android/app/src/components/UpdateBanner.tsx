@@ -6,7 +6,7 @@ import { TauriUpdateChecker, type AndroidUpdateStatus } from '../services/update
 // Module-level singleton: one poll loop for the app's lifetime, independent
 // of this component's own mount/unmount (React.StrictMode double-mounts in
 // dev, and re-subscribing must not restart the check schedule).
-const checker = new TauriUpdateChecker({ repo: '0xNullAI/DG-Agent' });
+const checker = new TauriUpdateChecker({ repo: '0xNullAI/0xNuller' });
 
 // Rendered as a sibling of <App/>, not inside it — App's `<main>` is a fixed
 // `h-[100dvh]` block designed to be reused verbatim across shells, so an

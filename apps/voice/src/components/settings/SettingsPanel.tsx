@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@0xnullai/ui';
-import { PresetSelector } from '@voice/components/PresetSelector';
+import { SceneLibrary } from '@0xnullai/scenes/library';
+import { BUILTIN_PROMPT_PRESETS } from '@voice/lib/prompts';
 import type { VoiceSettings } from '@voice/lib/settings';
 import { GeneralTab } from './GeneralTab';
 import { VoiceTab } from './VoiceTab';
@@ -34,7 +35,7 @@ export const SETTINGS_NAV_GROUPS: Array<{ label: string; values: SettingsTab[] }
   { label: '安全', values: ['safety'] },
 ];
 
-const PROJECT_URL = 'https://github.com/0xNullAI/DG-Voice';
+const PROJECT_URL = 'https://github.com/0xNullAI/0xNuller';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -60,7 +61,7 @@ function TabContent({
     case 'preset':
       return (
         <div className="settings-panel-tab-content">
-          <PresetSelector settings={settings} updateSettings={updateSettings} />
+          <SceneLibrary builtins={BUILTIN_PROMPT_PRESETS} />
         </div>
       );
     case 'safety':

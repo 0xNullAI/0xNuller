@@ -354,6 +354,11 @@
   min-width: 0;
 }
 
+/* 分区标题骑在卡片边框上，所以要用自己的底色把那一段边框盖住。
+   底色必须跟着**所在容器**走：模块独立运行时设置铺在 --bg 上，外壳里它是弹窗、
+   铺在 --bg-elevated 上。写死一个的结果是另一种场合下露出一块深浅不同的方块
+   ——浅色主题两个值接近所以看不出来，深色下非常明显。
+   容器覆盖 --settings-surface 即可，默认仍是 --bg。 */
 .settings-card-legend {
   position: absolute;
   top: 0;
@@ -361,7 +366,7 @@
   margin: 0;
   padding: 0 0.65rem;
   transform: translateY(-50%);
-  background: var(--bg);
+  background: var(--settings-surface, var(--bg));
   color: var(--accent);
   font-size: 0.875rem;
   font-weight: 700;

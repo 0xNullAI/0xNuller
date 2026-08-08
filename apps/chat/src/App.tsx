@@ -1,4 +1,10 @@
-import { ModuleActions, SidebarSection, useSafetySession } from '@0xnullai/ui';
+import {
+  ModuleActions,
+  SidebarSection,
+  useInShell,
+  useOpenShellSettings,
+  useSafetySession,
+} from '@0xnullai/ui';
 import { hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { me } from '@0xnullai/auth';
@@ -139,6 +145,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [sceneOpen, setSceneOpen] = useState(false);
   const [sceneMarketOpen, setSceneMarketOpen] = useState(false);
+  const inShell = useInShell();
+  const openShellSettings = useOpenShellSettings();
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
   // 主题由外壳统一持有（@0xnullai/ui 的共享 store），本模块不再有自己的切换入口。
@@ -627,8 +635,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 <Drama className="h-4 w-4" />
               </button>
               {/* AI 设置（房主配置模型）+ 允许 AI 控制本机设备开关 */}
+              {/* 外壳里点开的是那个唯一的设置面板（AI 页），不是 Chat 自己的对话框：
+                  两边写的是同一份 provider 配置，两套界面只会让人不知道该改哪个。
+                  按钮留在原位——房主要配 AI 的时候手就在这里。 */}
               <button
-                onClick={() => setAiSettingsOpen(true)}
+                onClick={() => (inShell ? openShellSettings('ai') : setAiSettingsOpen(true))}
                 className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
                 title="AI 设置"
               >
@@ -784,7 +795,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] py-1.5 text-center text-[10px] text-[var(--text-faint)]">
         本项目仅供学习交流使用，请遵守当地法律法规。
         <a
-          href="https://github.com/0xNullAI/DG-Chat"
+          href="https://github.com/0xNullAI/0xNuller"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-[var(--accent)]"

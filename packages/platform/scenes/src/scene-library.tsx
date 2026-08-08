@@ -1,10 +1,8 @@
 import { useRef, useState } from 'react';
-import { BUILTIN_PROMPT_PRESETS } from '@dg-agent/runtime';
-import { newSceneId, type SavedScene } from '@0xnullai/scenes';
-import { useScenes } from '@0xnullai/scenes/react';
+import { newSceneId, type SavedScene } from './index.js';
+import { useScenes } from './use-scenes.js';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
-import { Button, Input, Textarea, MarketImportDialog } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { Button, Input, Textarea, MarketImportDialog, cn } from '@0xnullai/ui';
 import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 
 const DEFAULT_CUSTOM_ICON = '📝';
@@ -79,12 +77,28 @@ const EMOJI_OPTIONS = [
   '🎪',
 ];
 
-interface PresetSelectorProps {
+/** 内置场景在库里只能选和隐藏，不能改——它们的正文由代码持有。 */
+export interface BuiltinScene {
+  id: string;
+  name: string;
+  icon?: string;
+  description?: string;
+}
+
+interface SceneLibraryProps {
+  /**
+   * 各模块自己的内置场景。
+   *
+   * 七个人设在 Agent 与 Voice 里是同一批（id / 名字 / 图标一致），只有正文不同
+   * ——Voice 那份为口语重写过。所以这里收一个 prop 而不是从某一边硬引：硬引会让
+   * 另一边显示错误的内置列表，而那种错只有对着两个模块逐条比才看得出来。
+   */
+  builtins: BuiltinScene[];
   /** 删除成功后的提示。删除本身由本组件直接对共享场景库执行。 */
   onNotify?: (message: string) => void;
 }
 
-export function PresetSelector({ onNotify }: PresetSelectorProps) {
+export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
   // 场景库从 Agent 的设置 blob 里搬走了：跨模块共享（Voice 看得到同一批），而且
   // 一条写坏的场景不再会连累整份设置回落默认值——那个 blob 里还住着强度上限。
   const [scenes, updateScenes] = useScenes();
@@ -99,7 +113,7 @@ export function PresetSelector({ onNotify }: PresetSelectorProps) {
   const [marketOpen, setMarketOpen] = useState(false);
 
   const hiddenIds = scenes.hiddenBuiltinIds;
-  const visibleBuiltins = BUILTIN_PROMPT_PRESETS.filter((p) => !hiddenIds.includes(p.id));
+  const visibleBuiltins = builtins.filter((p) => !hiddenIds.includes(p.id));
 
   function selectPreset(id: string) {
     updateScenes((current) => ({ ...current, selectedId: id }));
@@ -111,7 +125,7 @@ export function PresetSelector({ onNotify }: PresetSelectorProps) {
       // 隐藏的正好是当前选中项时，依次回落到第一个仍可见的内置、第一个自定义场景。
       let nextSelected = current.selectedId;
       if (current.selectedId === id) {
-        const remaining = BUILTIN_PROMPT_PRESETS.filter((p) => !nextHidden.includes(p.id));
+        const remaining = builtins.filter((p) => !nextHidden.includes(p.id));
         nextSelected = remaining[0]?.id ?? current.scenes[0]?.id ?? current.selectedId;
       }
       return { ...current, hiddenBuiltinIds: nextHidden, selectedId: nextSelected };

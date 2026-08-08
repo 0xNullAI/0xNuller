@@ -3,7 +3,9 @@ import { Input, SettingSelect } from '@0xnullai/ui';
 import {
   REALTIME_PROVIDER_DEFINITIONS,
   getRealtimeProviderDefinition,
+  type RealtimeProviderId,
 } from '../../../voice/src/lib/realtime/providers';
+import { useProviderVoices } from '../../../voice/src/hooks/use-provider-voices';
 import { loadSettings, saveSettings, type VoiceSettings } from '../../../voice/src/lib/settings';
 
 /**
@@ -30,7 +32,10 @@ export function VoiceProviderSection() {
   const def = getRealtimeProviderDefinition(settings.activeProviderId);
   const current = settings.providers[settings.activeProviderId];
 
-  function setField(key: 'apiKey' | 'model' | 'baseUrl' | 'deployment', value: string) {
+  function setField(
+    key: 'apiKey' | 'model' | 'baseUrl' | 'deployment' | 'voice' | 'speed',
+    value: string | number,
+  ) {
     update((prev) => ({
       ...prev,
       providers: {
@@ -76,7 +81,63 @@ export function VoiceProviderSection() {
             />
           </label>
         ))}
+
+        {/* 音色与语速跟着 provider 走（每个 provider 的音色表都不一样），所以留在
+            这一组里而不是另起一节——换 provider 时它们必须一起变。 */}
+        <VoiceField
+          providerId={settings.activeProviderId}
+          apiKey={current?.apiKey ?? ''}
+          staticVoices={def?.staticVoices ?? []}
+          value={current?.voice ?? ''}
+          onChange={(value) => setField('voice', value)}
+        />
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--text-soft)]">语速（0.7 – 1.5）</span>
+          <Input
+            type="number"
+            min={0.7}
+            max={1.5}
+            step={0.1}
+            value={current?.speed ?? 1}
+            onChange={(e) => setField('speed', Number(e.target.value))}
+          />
+        </label>
       </div>
     </section>
+  );
+}
+
+function VoiceField({
+  providerId,
+  apiKey,
+  staticVoices,
+  value,
+  onChange,
+}: {
+  providerId: RealtimeProviderId;
+  apiKey: string;
+  staticVoices: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { voices, loading, error } = useProviderVoices(providerId, apiKey, staticVoices);
+  // 当前选中的音色即使不在刚拉回来的列表里也要保留（比如自定义音色 id），
+  // 否则打开一次设置就会把用户选的音色悄悄换掉。
+  const options = value && !voices.includes(value) ? [value, ...voices] : voices;
+
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="flex items-center gap-1.5 text-xs text-[var(--text-soft)]">
+        音色
+        {loading && <span className="text-[var(--text-faint)]">加载中…</span>}
+      </span>
+      <SettingSelect
+        value={value}
+        onValueChange={onChange}
+        options={options.map((voice) => ({ value: voice, label: voice }))}
+      />
+      {error && <p className="text-xs text-[var(--danger)]">音色列表获取失败，已回退到内置列表</p>}
+    </label>
   );
 }

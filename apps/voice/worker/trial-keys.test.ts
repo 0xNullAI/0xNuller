@@ -4,7 +4,6 @@ import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-ke
 
 function env(overrides: Partial<Env> = {}): Env {
   return {
-    ASSETS: {} as Fetcher,
     TRIAL_SESSION: {} as DurableObjectNamespace,
     XAI_API_KEY: 'xai-real-secret',
     TRIAL_KEYS: JSON.stringify({

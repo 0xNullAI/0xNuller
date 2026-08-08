@@ -13,8 +13,18 @@ export interface UpdateStorage {
 }
 
 export interface TauriUpdateCheckerOptions {
-  /** GitHub `owner/repo` to poll `releases/latest` on, e.g. "0xNullAI/DG-Agent". */
+  /** GitHub `owner/repo` to poll releases on, e.g. "0xNullAI/0xNuller". */
   repo: string;
+  /**
+   * 只认这个前缀的 release tag，默认 `android-v`。
+   *
+   * **不能用 `releases/latest`。** 合并后这一个仓库同时发布 `@dg-kit/*`（changesets
+   * 打出 `@dg-kit/core@1.14.0` 这种 tag）和平台自身的 `v0.1.0`，`releases/latest`
+   * 返回的多半不是 APK。那些 tag 用点号切开后第一段是非数字，会被当成 0，于是
+   * 比较结果恒为「没有更新」——安卓端的更新提示就此静默失效，而安卓没有热更新，
+   * 用户会一直留在旧版本上，不会有任何报错提示这件事出了问题。
+   */
+  tagPrefix?: string;
   pollIntervalMs?: number;
   firstCheckDelayMs?: number;
   storage?: UpdateStorage;
@@ -23,6 +33,7 @@ export interface TauriUpdateCheckerOptions {
 }
 
 const DISMISSED_KEY = 'dg-agent-android-update-dismissed-version';
+const DEFAULT_TAG_PREFIX = 'android-v';
 
 function inMemoryStorage(): UpdateStorage {
   const store = new Map<string, string>();
@@ -30,6 +41,21 @@ function inMemoryStorage(): UpdateStorage {
     getItem: (key) => store.get(key) ?? null,
     setItem: (key, value) => void store.set(key, value),
   };
+}
+
+/** 纯数字点分版本号，如 `5.4.2`。 */
+const VERSION_RE = /^\d+(\.\d+)*$/;
+
+/**
+ * 把 release tag 还原成版本号；不是本应用的 tag 就返回 null。
+ *
+ * 宁可漏也不能错认：认错一个 tag 的后果是弹出指向别的产物的更新提示，
+ * 用户点进去下到的不是 APK。
+ */
+export function versionFromTag(tag: string, prefix: string): string | null {
+  if (!tag.startsWith(prefix)) return null;
+  const version = tag.slice(prefix.length);
+  return VERSION_RE.test(version) ? version : null;
 }
 
 /** Compares dotted numeric version strings (e.g. "5.4.2"); true iff `remote` is strictly newer than `current`. */
@@ -129,19 +155,41 @@ export class TauriUpdateChecker {
         this.currentVersion = await getCurrentVersion();
       }
 
+      // 列表而不是 `releases/latest`：同一个仓库还发布 @dg-kit/* 与平台版本，
+      // 「最新的那个 release」经常不是 APK。
       const response = await fetchImpl(
-        `https://api.github.com/repos/${this.options.repo}/releases/latest`,
+        `https://api.github.com/repos/${this.options.repo}/releases?per_page=30`,
         { headers: { Accept: 'application/vnd.github+json' } },
       );
       if (!response.ok) return;
 
-      const data = (await response.json()) as { tag_name?: string; html_url?: string };
-      const tag = typeof data.tag_name === 'string' ? data.tag_name.replace(/^v/, '') : null;
-      if (!tag) return;
+      const releases = (await response.json()) as {
+        tag_name?: string;
+        html_url?: string;
+        draft?: boolean;
+        prerelease?: boolean;
+      }[];
+      if (!Array.isArray(releases)) return;
 
-      this.latestVersion = tag;
-      this.releaseUrl = typeof data.html_url === 'string' ? data.html_url : null;
-      this.dismissed = this.storage.getItem(DISMISSED_KEY) === tag;
+      const prefix = this.options.tagPrefix ?? DEFAULT_TAG_PREFIX;
+      // GitHub 按创建时间倒序返回，所以第一条匹配的就是最新的 APK 发布。
+      // 草稿与预发布跳过：它们的 APK 要么还不存在，要么不该推给普通用户。
+      let version: string | null = null;
+      let url: string | null = null;
+      for (const release of releases) {
+        if (release.draft || release.prerelease) continue;
+        const parsed =
+          typeof release.tag_name === 'string' ? versionFromTag(release.tag_name, prefix) : null;
+        if (!parsed) continue;
+        version = parsed;
+        url = typeof release.html_url === 'string' ? release.html_url : null;
+        break;
+      }
+      if (!version) return;
+
+      this.latestVersion = version;
+      this.releaseUrl = url;
+      this.dismissed = this.storage.getItem(DISMISSED_KEY) === version;
       this.emit();
     } catch {
       // ignore transient update-check failures — same policy as the web

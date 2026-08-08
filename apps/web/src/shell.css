@@ -72,11 +72,16 @@
     margin: 0;
   }
 
-  /* 全局网格质感。原本藏在文档站的 wiki.css 里，靠 module 层排在 ui-base 之后
-     无条件泄漏到所有模块——看起来一致是巧合。挪到这里成为有意为之的一层，
-     并且只画在外壳根上，模块想盖掉自己那块只需要设自己的背景。 */
   #shl-root {
     background-color: var(--bg);
+  }
+
+  /* 网格质感是**首页自己的**表面，不是全局背景。
+     原本藏在文档站的 wiki.css 里泄漏到所有模块，挪到外壳根上之后仍然不对：
+     Chat / Voice / Market 各自铺了不透明底色把它盖掉，Agent 没铺所以留着，
+     顶部那条按钮行又是透明的——于是同一套 CSS 长出三种样子，还多一条漏出来的
+     网格带。归到首页就没有这个问题：模块区一律是平的。 */
+  .shl-home {
     background-image:
       linear-gradient(var(--grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid) 1px, transparent 1px);

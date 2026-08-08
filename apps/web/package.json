@@ -29,7 +29,8 @@
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "@dg-agent/runtime": "0.1.0"
   },
   "exports": {
     "./Shell": "./src/Shell.tsx",

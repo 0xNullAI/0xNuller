@@ -6,9 +6,14 @@
   "description": "跨模块共享的场景库（人设）。Agent 与 Voice 共用，Market 一键导入落到这里。",
   "exports": {
     ".": "./src/index.ts",
-    "./react": "./src/use-scenes.ts"
+    "./react": "./src/use-scenes.ts",
+    "./library": "./src/scene-library.tsx"
   },
   "peerDependencies": {
     "react": "^19.2.5"
+  },
+  "dependencies": {
+    "@0xnullai/ui": "0.1.0",
+    "@0xnullai/market-client": "0.1.0"
   }
 }

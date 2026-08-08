@@ -9,7 +9,7 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
   localStorage.setItem('0xnullai-visited', '1');
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="shl-home h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-10 px-5 py-12 sm:py-16">
         <header className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">

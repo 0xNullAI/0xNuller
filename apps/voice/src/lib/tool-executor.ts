@@ -266,7 +266,7 @@ export class ToolExecutor {
       // paw-prints/civet-edging aren't wired up in DG-Voice at all (see
       // device-session.ts) — deny with a clear reason instead of touching a
       // client that doesn't exist.
-      return this.deny(`DG-Voice 不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
+      return this.deny(`语音通话不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
     }
     const client = this.options.session.opossum;
     try {

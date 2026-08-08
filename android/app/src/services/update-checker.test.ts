@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TauriUpdateChecker, isNewerVersion, type UpdateStorage } from './update-checker.js';
+import {
+  TauriUpdateChecker,
+  isNewerVersion,
+  versionFromTag,
+  type UpdateStorage,
+} from './update-checker.js';
 
 function memoryStorage(): UpdateStorage {
   const store = new Map<string, string>();
@@ -9,11 +14,21 @@ function memoryStorage(): UpdateStorage {
   };
 }
 
+interface FakeRelease {
+  tag_name?: string;
+  html_url?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+}
+
+/** 单个 APK release，仓库里没有别的东西——最简单的情形。 */
 function fetchReturning(tagName: string | undefined, htmlUrl = 'https://example.com/release') {
-  return vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({ tag_name: tagName, html_url: htmlUrl }),
-  });
+  return fetchReleases([{ tag_name: tagName, html_url: htmlUrl }]);
+}
+
+/** GitHub `/releases` 的返回：按创建时间倒序的列表。 */
+function fetchReleases(releases: FakeRelease[]) {
+  return vi.fn().mockResolvedValue({ ok: true, json: async () => releases });
 }
 
 describe('isNewerVersion', () => {
@@ -48,10 +63,10 @@ describe('TauriUpdateChecker', () => {
 
   it('reports hasUpdate when the release tag is newer than the running version', async () => {
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -64,10 +79,10 @@ describe('TauriUpdateChecker', () => {
 
   it('does not report hasUpdate when already on the latest version', async () => {
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.2',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -78,10 +93,10 @@ describe('TauriUpdateChecker', () => {
   it('dismiss() persists per-version and survives a fresh checker instance', async () => {
     const storage = memoryStorage();
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -89,10 +104,10 @@ describe('TauriUpdateChecker', () => {
     expect(checker.getStatus().hasUpdate).toBe(false);
 
     const reopened = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
     await reopened['checkOnce']();
     expect(reopened.getStatus().hasUpdate).toBe(false);
@@ -102,15 +117,15 @@ describe('TauriUpdateChecker', () => {
   it('a dismissed version does not suppress a subsequent, newer release', async () => {
     const storage = memoryStorage();
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
     await checker['checkOnce']();
     checker.dismiss();
 
-    checker['options'].fetchImpl = fetchReturning('v5.4.3');
+    checker['options'].fetchImpl = fetchReturning('android-v5.4.3');
     await checker['checkOnce']();
 
     expect(checker.getStatus().hasUpdate).toBe(true);
@@ -119,7 +134,7 @@ describe('TauriUpdateChecker', () => {
 
   it('ignores a malformed response instead of throwing', async () => {
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
       fetchImpl: fetchReturning(undefined),
@@ -131,7 +146,7 @@ describe('TauriUpdateChecker', () => {
 
   it('ignores a network error instead of throwing', async () => {
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
       fetchImpl: vi.fn().mockRejectedValue(new Error('offline')),
@@ -142,9 +157,9 @@ describe('TauriUpdateChecker', () => {
   });
 
   it('start() schedules an initial check and subsequent polls', async () => {
-    const fetchImpl = fetchReturning('v5.4.2');
+    const fetchImpl = fetchReturning('android-v5.4.2');
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
       fetchImpl,
@@ -168,10 +183,10 @@ describe('TauriUpdateChecker', () => {
 
   it('subscribe() delivers the current status immediately and on change', async () => {
     const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/DG-Agent',
+      repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('v5.4.2'),
+      fetchImpl: fetchReturning('android-v5.4.2'),
     });
 
     const statuses: boolean[] = [];
@@ -180,5 +195,91 @@ describe('TauriUpdateChecker', () => {
     await checker['checkOnce']();
 
     expect(statuses).toEqual([false, true]);
+  });
+});
+
+describe('versionFromTag', () => {
+  it('只认本应用的 tag 前缀', () => {
+    expect(versionFromTag('android-v5.5.2', 'android-v')).toBe('5.5.2');
+    // 合并后同一个仓库还会打出这些 tag。认错任何一个，用户点进去下到的不是 APK。
+    expect(versionFromTag('@dg-kit/core@1.14.0', 'android-v')).toBeNull();
+    expect(versionFromTag('v0.1.0', 'android-v')).toBeNull();
+    expect(versionFromTag('dg-mcp@0.3.1', 'android-v')).toBeNull();
+  });
+
+  it('前缀之后必须是纯数字点分版本', () => {
+    expect(versionFromTag('android-v5.5.2-beta', 'android-v')).toBeNull();
+    expect(versionFromTag('android-vnext', 'android-v')).toBeNull();
+    expect(versionFromTag('android-v', 'android-v')).toBeNull();
+  });
+});
+
+describe('合并后的单仓库里挑出 APK 发布', () => {
+  it('跳过 @dg-kit/* 与平台版本的 release，找到真正的 APK', async () => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '5.5.2',
+      // 现实中的顺序：kit 的包发布天天有，APK 几周一次，所以它必然不在最前面。
+      // 用 `releases/latest` 的话永远拿到第一条，安卓的更新提示就此静默失效——
+      // 而安卓没有热更新，用户不会收到任何出错的信号。
+      fetchImpl: fetchReleases([
+        { tag_name: '@dg-kit/core@1.14.0', html_url: 'https://example.com/kit' },
+        { tag_name: 'v0.2.0', html_url: 'https://example.com/platform' },
+        { tag_name: 'android-v5.6.0', html_url: 'https://example.com/apk' },
+      ]),
+    });
+
+    await checker['checkOnce']();
+
+    const status = checker.getStatus();
+    expect(status.hasUpdate).toBe(true);
+    expect(status.latestVersion).toBe('5.6.0');
+    expect(status.releaseUrl).toBe('https://example.com/apk');
+  });
+
+  it('一个 APK release 都没有时什么也不提示', async () => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '5.5.2',
+      fetchImpl: fetchReleases([{ tag_name: '@dg-kit/core@1.14.0' }]),
+    });
+
+    await checker['checkOnce']();
+
+    expect(checker.getStatus().hasUpdate).toBe(false);
+    // 也不能把别的产物的版本号显示出来。
+    expect(checker.getStatus().latestVersion).toBeNull();
+  });
+
+  it('跳过草稿与预发布', async () => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '5.5.2',
+      fetchImpl: fetchReleases([
+        { tag_name: 'android-v9.9.9', draft: true, html_url: 'https://example.com/draft' },
+        { tag_name: 'android-v9.9.8', prerelease: true, html_url: 'https://example.com/pre' },
+        { tag_name: 'android-v5.6.0', html_url: 'https://example.com/apk' },
+      ]),
+    });
+
+    await checker['checkOnce']();
+
+    // 草稿的 APK 还没上传，预发布不该推给普通用户。
+    expect(checker.getStatus().latestVersion).toBe('5.6.0');
+  });
+
+  it('返回的不是数组时不炸', async () => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '5.5.2',
+      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: 'Not Found' }) }),
+    });
+
+    await expect(checker['checkOnce']()).resolves.toBeUndefined();
+    expect(checker.getStatus().hasUpdate).toBe(false);
   });
 });

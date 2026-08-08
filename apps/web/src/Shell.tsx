@@ -1,7 +1,9 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Menu } from 'lucide-react';
 import {
   useTheme,
   ShellChromeProvider,
+  type ShellSettingsTab,
   ModuleActionsProvider,
   useModuleActionsContainer,
   SidebarSectionsProvider,
@@ -100,7 +102,7 @@ export function Shell() {
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
   // 窄屏下侧边栏默认收起（抽屉关着），宽屏默认展开。
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -136,6 +138,13 @@ export function Shell() {
     if (drawerOpen) setDrawerOpen(false);
   }
 
+  // 模块界面里该有设置入口的地方（Chat 房主配 AI 的按钮）点开的是**这一个**面板，
+  // 而不是模块自己再开一套。给的是入口位置，不是第二份设置界面。
+  const openSettings = useCallback((tab: ShellSettingsTab = 'appearance') => {
+    setDrawerOpen(false);
+    setSettingsTab(tab);
+  }, []);
+
   const go = useCallback(
     (moduleId: string | null) => {
       navigate(moduleId ? `/${moduleId}` : '/');
@@ -157,7 +166,7 @@ export function Shell() {
       }}
       onOpenSettings={() => {
         setDrawerOpen(false);
-        setSettingsOpen(true);
+        setSettingsTab('appearance');
       }}
       onOpenDocs={() => {
         setDrawerOpen(false);
@@ -188,9 +197,14 @@ export function Shell() {
                 type="button"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="打开侧边栏"
-                className="shrink-0 rounded-[10px] px-2 py-1.5 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)]"
+                // 光有模块名的话，窄屏顶部就是孤零零两个字，没人看得出能点。
+                // 触摸目标也要够大：44px 是 iOS/Android 都建议的下限。
+                className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[10px] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
-                {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+                <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
+                <span className="truncate">
+                  {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+                </span>
               </button>
             )}
             <div className="min-w-0 flex-1" />
@@ -209,6 +223,7 @@ export function Shell() {
                   active={id === activeId}
                   overlayRoot={overlayRoot}
                   actionsContainer={id === activeId ? actionsContainer : null}
+                  openSettings={openSettings}
                 />
               );
             })}
@@ -232,7 +247,9 @@ export function Shell() {
           {accountOpen && (
             <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
           )}
-          {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+          {settingsTab && (
+            <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />
+          )}
           {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
           {/* 安全须知在**首次连上设备**时出现一次，而不是开场弹窗。开场弹窗打扰了
               只想逛市场或看文档的人，而真正需要看到它的时刻是设备接到身上那一刻。
@@ -257,15 +274,17 @@ function ModuleSlot({
   active,
   overlayRoot,
   actionsContainer,
+  openSettings,
 }: {
   mod: (typeof MODULES)[number];
   active: boolean;
   overlayRoot: HTMLElement | undefined;
   actionsContainer: HTMLElement | null;
+  openSettings: (tab?: ShellSettingsTab) => void;
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
-    <ShellChromeProvider>
+    <ShellChromeProvider openSettings={openSettings}>
       <ModuleActionsProvider container={actionsContainer}>
         <OverlayProvider container={layer}>
           <div

@@ -142,7 +142,7 @@ export async function withBlePermissionHelp<T>(connectCall: () => Promise<T>): P
       // user; we don't actually open the settings intent (would need
       // tauri-plugin-shell). Re-throw so the caller's catch still runs.
       window.alert(
-        '蓝牙权限被拒绝。\n\n请到 系统设置 → 应用 → DG-Agent → 权限\n手动开启 "蓝牙" 权限后重试。',
+        '蓝牙权限被拒绝。\n\n请到 系统设置 → 应用 → 0xNuller → 权限\n手动开启 "蓝牙" 权限后重试。',
       );
     }
     throw error;

@@ -19,7 +19,8 @@ import { Button } from '@0xnullai/ui';
 import { BridgeTab } from './settings/BridgeTab.js';
 import { BridgeLogsTab, ModelLogsTab } from './settings/LogsTab.js';
 import { DataTab, type ExportableSession } from './settings/DataTab.js';
-import { PresetSelector } from './PresetSelector.js';
+import { SceneLibrary } from '@0xnullai/scenes/library';
+import { BUILTIN_PROMPT_PRESETS } from '@dg-agent/runtime';
 import { SensorsTab } from './settings/SensorsTab.js';
 import { WaveformsPanel } from './WaveformsPanel.js';
 
@@ -163,7 +164,7 @@ function SettingsTabContent({
 >) {
   switch (tab) {
     case 'preset':
-      return <PresetSelector onNotify={onNotify} />;
+      return <SceneLibrary builtins={BUILTIN_PROMPT_PRESETS} onNotify={onNotify} />;
     case 'sensors':
       return (
         <SensorsTab
@@ -263,7 +264,7 @@ export function SettingsSidebar({
         </Button>
         <Button variant="ghost" className="settings-sidebar-reset" asChild>
           <a
-            href="https://github.com/0xNullAI/DG-Agent"
+            href="https://github.com/0xNullAI/0xNuller"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="项目主页"
@@ -338,7 +339,7 @@ export function SettingsWorkspace(props: SettingsDrawerProps) {
             <span className="sidebar-icon-label">恢复默认</span>
           </button>
           <a
-            href="https://github.com/0xNullAI/DG-Agent"
+            href="https://github.com/0xNullAI/0xNuller"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="项目主页"

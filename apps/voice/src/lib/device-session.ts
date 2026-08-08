@@ -126,7 +126,7 @@ export class DeviceSession {
         break;
       case 'paw-prints':
       case 'civet-edging':
-        throw new Error(`DG-Voice 暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
+        throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
     }
 
     return { kind, name: device.name ?? '' };
