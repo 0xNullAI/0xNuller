@@ -11,7 +11,7 @@ import {
 import { useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
-import { MODULES, DOCS_ROUTE } from './routes';
+import { MODULES } from './routes';
 import { Avatar } from './Avatar';
 
 /**
@@ -33,6 +33,7 @@ interface SidebarProps {
   user: AuthUser | null;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
+  onOpenDocs: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -118,12 +119,12 @@ function AccountButton({
   user,
   onOpenAccount,
   onOpenSettings,
-  onNavigate,
+  onOpenDocs,
 }: {
   user: AuthUser | null;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
-  onNavigate: (id: string | null) => void;
+  onOpenDocs: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -155,12 +156,7 @@ function AccountButton({
       label: '软件设置',
       run: onOpenSettings,
     },
-    {
-      key: 'docs',
-      icon: <BookOpen className="h-4 w-4" />,
-      label: DOCS_ROUTE.label,
-      run: () => onNavigate(DOCS_ROUTE.id),
-    },
+    { key: 'docs', icon: <BookOpen className="h-4 w-4" />, label: '说明', run: onOpenDocs },
   ];
 
   return (
@@ -221,6 +217,7 @@ export function Sidebar({
   user,
   onOpenAccount,
   onOpenSettings,
+  onOpenDocs,
   collapsed,
   onToggleCollapsed,
 }: SidebarProps) {
@@ -274,7 +271,7 @@ export function Sidebar({
           user={user}
           onOpenAccount={onOpenAccount}
           onOpenSettings={onOpenSettings}
-          onNavigate={onNavigate}
+          onOpenDocs={onOpenDocs}
         />
       </div>
     </aside>

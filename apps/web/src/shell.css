@@ -34,6 +34,7 @@
 @import '../../agent/src/styles/app.css' layer(module);
 @import '../../voice/src/styles/settings.css' layer(module);
 @import '../../chat/src/styles/app.css' layer(module);
+/* 文档站的 markdown 排版。它现在只服务于说明弹窗（.doc-body），不再是一个模块。 */
 @import '../../wiki/src/styles/wiki.css' layer(module);
 /* Market 的 561 行必须走这里而不是模块入口的 JS import：通过 JS import 的 CSS 无法
    指定层，会落在所有层之外从而无条件压过全部 Tailwind。实测后果是它那条通用的
@@ -41,11 +42,46 @@
 @import '../../market/src/web/styles.css' layer(module);
 
 @layer shell {
+  /* 说明弹窗里的正文。文档站那套排版是给一个独立站点做的——h1 用 clamp 到 3.6rem、
+     标题上方 2em 的留白，塞进 880px 宽的弹窗里第一屏只装得下一个标题。
+     这里只压字号与间距，其余（§ 标记、行高、代码块）原样保留。 */
+  .docs-in-dialog {
+    max-width: none;
+    font-size: 14.5px;
+  }
+
+  .docs-in-dialog h1 {
+    font-size: 1.6rem;
+    margin-bottom: 0.8em;
+    padding-bottom: 0.5em;
+  }
+
+  .docs-in-dialog h2 {
+    font-size: 1.15rem;
+    margin-top: 1.6em;
+  }
+
+  .docs-in-dialog h3 {
+    font-size: 1rem;
+    margin-top: 1.3em;
+  }
+
   html,
   body,
   #root {
     height: 100%;
     margin: 0;
+  }
+
+  /* 全局网格质感。原本藏在文档站的 wiki.css 里，靠 module 层排在 ui-base 之后
+     无条件泄漏到所有模块——看起来一致是巧合。挪到这里成为有意为之的一层，
+     并且只画在外壳根上，模块想盖掉自己那块只需要设自己的背景。 */
+  #shl-root {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 88px 88px;
   }
 
   /* 两列。侧边栏宽度走变量，收起态与展开态只差这一个值——没有第二处需要同步的地方。

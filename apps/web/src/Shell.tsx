@@ -10,7 +10,7 @@ import {
   useModuleOverlayLayer,
 } from '@0xnullai/ui';
 import { me, type AuthUser } from '@0xnullai/auth';
-import { ALL_ROUTES, MODULES, moduleIdFromPath } from './routes';
+import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { Sidebar } from './Sidebar';
 import { DeviceBar } from './DeviceBar';
@@ -18,6 +18,7 @@ import { AccountDialog } from './AccountDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 import { FirstConnectionNotice } from './FirstConnectionNotice';
+import { DocsDialog } from './DocsDialog';
 
 /**
  * 统一外壳。**两列**：左侧边栏 + 右内容区，没有顶部横栏。
@@ -99,6 +100,7 @@ export function Shell() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   // 窄屏下侧边栏默认收起（抽屉关着），宽屏默认展开。
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -140,6 +142,7 @@ export function Shell() {
       user={user}
       onOpenAccount={() => setAccountOpen(true)}
       onOpenSettings={() => setSettingsOpen(true)}
+      onOpenDocs={() => setDocsOpen(true)}
       collapsed={!narrow && sidebarCollapsed}
       onToggleCollapsed={() => (narrow ? setDrawerOpen(false) : setSidebarCollapsed((v) => !v))}
     />
@@ -177,7 +180,7 @@ export function Shell() {
           <div id="shl-content">
             {activeId === null ? <Home onOpen={go} /> : null}
             {opened.map((id) => {
-              const mod = ALL_ROUTES.find((m) => m.id === id);
+              const mod = MODULES.find((m) => m.id === id);
               if (!mod) return null;
               return (
                 <ModuleSlot
@@ -210,6 +213,7 @@ export function Shell() {
             <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
           )}
           {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+          {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
           {/* 安全须知在**首次连上设备**时出现一次，而不是开场弹窗。开场弹窗打扰了
               只想逛市场或看文档的人，而真正需要看到它的时刻是设备接到身上那一刻。
               注册流程里的用户协议是另一个落点——但账号是可选的，只放那儿等于让从不
@@ -234,7 +238,7 @@ function ModuleSlot({
   overlayRoot,
   actionsContainer,
 }: {
-  mod: (typeof ALL_ROUTES)[number];
+  mod: (typeof MODULES)[number];
   active: boolean;
   overlayRoot: HTMLElement | undefined;
   actionsContainer: HTMLElement | null;

@@ -9,24 +9,13 @@
   --font-mono: var(--font-mono);
 }
 
-html, body, #root { height: 100%; margin: 0; }
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-body);
-  letter-spacing: -0.005em;
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 88px 88px;
-}
-::selection { background: var(--accent); color: var(--bg); }
+/* 这里原本有一整块裸的 html / body / ::selection / ::-webkit-scrollbar 规则。
+   它们归 module 层，而 module 排在 ui-base 之后——于是这份文档站的样式无条件地
+   决定了**所有模块**的正文字体、选中色、滚动条外观和那层网格背景。
+   看起来一致是巧合，不是设计。
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; border: 2px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+   高度与 reset 由共享的 base.css 负责；滚动条由共享的 scrollbar.css 负责；
+   网格背景上提成外壳的一层（shell.css），成为有意为之的全局质感。 */
 
 @keyframes pulse-flow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -200; } }
 @keyframes glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
