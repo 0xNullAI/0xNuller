@@ -1,3 +1,4 @@
+import { Overlay } from '@0xnullai/ui';
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Search, X } from 'lucide-react';
 import { fetchMarketItems, markMarketDownloaded, type MarketItem } from '@0xnullai/market-client';
@@ -73,11 +74,7 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onMouseDown={handleClose}
-      role="presentation"
-    >
+    <Overlay onDismiss={handleClose}>
       <div
         role="dialog"
         aria-label="从市场导入波形"
@@ -164,6 +161,6 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
           })}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

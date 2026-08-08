@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useOverlayContainer } from '../overlay';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from './button';
 
@@ -41,7 +43,9 @@ export function PermissionModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onDeny]);
 
-  return (
+  const overlayContainer = useOverlayContainer();
+
+  const node = (
     <section
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
       role="dialog"
@@ -110,6 +114,11 @@ export function PermissionModal({
       </div>
     </section>
   );
+
+  // 必须 portal 出模块子树：留在原地时，祖先有无 transform 决定了它是「盖住外壳」
+  // 还是「关不住模态」，两种都不能接受。无外壳时容器为 undefined，回落 document.body，
+  // 与独立运行时行为一致。
+  return overlayContainer ? createPortal(node, overlayContainer) : node;
 }
 
 function ArgsCollapsible({ args }: { args: Record<string, unknown> }) {

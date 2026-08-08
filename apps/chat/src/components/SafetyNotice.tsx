@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useOverlayContainer } from '@0xnullai/ui';
 
 const STORAGE_KEY = 'dg-chat-safety-accepted';
 
@@ -67,7 +69,9 @@ export function SafetyNotice({ onAccept }: SafetyNoticeProps) {
     return () => clearTimeout(t);
   }, [remaining]);
 
-  return (
+  const overlayContainer = useOverlayContainer();
+
+  const node = (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 backdrop-blur-sm">
       <article className="w-full max-w-[960px] max-h-[90vh] overflow-auto rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow)] scrollbar-none sm:p-6">
         {/* Header */}
@@ -130,4 +134,7 @@ export function SafetyNotice({ onAccept }: SafetyNoticeProps) {
       </article>
     </div>
   );
+
+  // portal 出模块子树，避免「盖住外壳」/「关不住模态」的翻转。
+  return overlayContainer ? createPortal(node, overlayContainer) : node;
 }

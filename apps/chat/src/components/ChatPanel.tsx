@@ -1,3 +1,4 @@
+import { Overlay } from '@0xnullai/ui';
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Image as ImageIcon, Mic, X, AtSign } from 'lucide-react';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
@@ -353,10 +354,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
 
       {/* 图片放大 */}
       {lightbox && (
-        <div
-          onClick={() => setLightbox(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-        >
+        <Overlay onDismiss={() => setLightbox(null)} scrim="strong">
           <img
             src={lightbox}
             alt="图片"
@@ -368,7 +366,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           >
             <X size={22} />
           </button>
-        </div>
+        </Overlay>
       )}
     </div>
   );

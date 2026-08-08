@@ -3,6 +3,7 @@
 
 export * from './components/alert';
 export * from './components/app-switcher';
+export * from './components/overlay-surface';
 export * from './components/permission-modal';
 export * from './components/setting-toggle';
 export * from './components/setting-label';
@@ -22,3 +23,4 @@ export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
 export * from './theme';
+export * from './overlay';

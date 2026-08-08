@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useOverlayContainer } from '../overlay';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../utils';
@@ -30,7 +31,7 @@ const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = 'popper', ...props }, ref) => (
-  <SelectPrimitive.Portal>
+  <SelectPrimitive.Portal container={useOverlayContainer()}>
     <SelectPrimitive.Content
       ref={ref}
       className={cn(

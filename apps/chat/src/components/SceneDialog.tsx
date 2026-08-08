@@ -1,3 +1,4 @@
+import { Overlay } from '@0xnullai/ui';
 import { useState } from 'react';
 import { X, Plus, Trash2, Crown, UserPlus, LogOut, Store, Bot } from 'lucide-react';
 import type { Scene, SceneRole, MemberState } from '../lib/protocol';
@@ -73,11 +74,7 @@ export function SceneDialog({
   const editing = draft !== null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onMouseDown={onClose}
-      role="presentation"
-    >
+    <Overlay onDismiss={onClose}>
       <div
         role="dialog"
         aria-label="房间场景"
@@ -255,6 +252,6 @@ export function SceneDialog({
           )}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

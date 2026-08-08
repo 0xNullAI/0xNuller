@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useOverlayContainer } from '@0xnullai/ui';
 import { Button, Checkbox } from '@0xnullai/ui';
 import styles from './SafetyNoticeModal.module.css';
 
@@ -59,7 +61,9 @@ export function SafetyNoticeModal({ onAccept, countdownSeconds = 10 }: SafetyNot
     return () => window.clearTimeout(timer);
   }, [remainingSeconds]);
 
-  return (
+  const overlayContainer = useOverlayContainer();
+
+  const node = (
     <section className={styles.backdrop}>
       <article
         className={styles.modal}
@@ -123,4 +127,7 @@ export function SafetyNoticeModal({ onAccept, countdownSeconds = 10 }: SafetyNot
       </article>
     </section>
   );
+
+  // portal 出模块子树，避免「盖住外壳」/「关不住模态」的翻转。
+  return overlayContainer ? createPortal(node, overlayContainer) : node;
 }

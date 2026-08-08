@@ -1,3 +1,4 @@
+import { Overlay } from '@0xnullai/ui';
 import { useState, useEffect, useCallback } from 'react';
 import { Search, X, Download } from 'lucide-react';
 import { fetchMarketItems, markMarketDownloaded, type MarketItem, type MarketMultiSceneContent } from '@0xnullai/market-client';
@@ -72,7 +73,7 @@ export function SceneMarketDialog({ open, onClose, onImport }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose} role="presentation">
+    <Overlay onDismiss={onClose} level="stacked">
       <div
         role="dialog"
         aria-label="从市场导入场景"
@@ -139,6 +140,6 @@ export function SceneMarketDialog({ open, onClose, onImport }: Props) {
           })}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

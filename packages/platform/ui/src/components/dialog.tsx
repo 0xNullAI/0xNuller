@@ -1,11 +1,15 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
-const DialogPortal = DialogPrimitive.Portal;
+/** Portal 到外壳提供的覆盖层容器；无外壳时回落 document.body（Radix 默认行为）。 */
+function DialogPortal(props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) {
+  return <DialogPrimitive.Portal container={useOverlayContainer()} {...props} />;
+}
 const DialogClose = DialogPrimitive.Close;
 
 const DialogOverlay = React.forwardRef<

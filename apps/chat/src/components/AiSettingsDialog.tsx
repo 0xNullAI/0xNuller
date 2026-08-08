@@ -1,3 +1,4 @@
+import { Overlay } from '@0xnullai/ui';
 import { useState } from 'react';
 import { X, Bot } from 'lucide-react';
 import type { AiConfig } from '../lib/ai-config';
@@ -49,11 +50,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
     'w-full rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onMouseDown={onClose}
-      role="presentation"
-    >
+    <Overlay onDismiss={onClose}>
       <div
         role="dialog"
         aria-label="AI 设置"
@@ -157,6 +154,6 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
