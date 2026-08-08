@@ -570,3 +570,5 @@ function bufferToHex(buf: ArrayBuffer): string {
   }
   return out;
 }
+
+export * from './config-store';
