@@ -3,6 +3,8 @@ import { Moon, Sun } from 'lucide-react';
 import {
   useTheme,
   ShellChromeProvider,
+  ModuleActionsProvider,
+  useModuleActionsContainer,
   SafetyNotice,
   OverlayProvider,
   useOverlayRoot,
@@ -80,6 +82,8 @@ export function Shell() {
   // 全系统唯一的一道安全门：进主界面时确认一次，之后所有模块都算已确认。
   // 各模块**不再**各设一道——同一份协议确认三遍只会训练用户无脑点掉它。
   const [safetyAccepted, setSafetyAccepted] = useState(isSafetyNoticeAccepted);
+  // 模块把自己的顶栏按钮投进这个容器——全局只有一条横栏。
+  const [actionsRef, actionsContainer] = useModuleActionsContainer();
 
   return (
     <div id="shl-root">
@@ -112,9 +116,12 @@ export function Shell() {
           ))}
         </nav>
 
+        {/* 当前模块的按钮落在这里。模块自己不再画 header，所以全局只有这一条栏。 */}
+        <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+
         {/* 全局停止锚点。模块被切走后会隐藏，它自己的停止按钮就点不到了，但设备
               仍在输出——这个按钮不随模块显隐而消失。没有活动会话时它不渲染。 */}
-        <EmergencyStopButton className="mr-1 shrink-0" />
+        <EmergencyStopButton className="mx-1 shrink-0" />
 
         <AccountMenu />
 
@@ -135,7 +142,14 @@ export function Shell() {
           const mod = MODULES.find((m) => m.id === id);
           if (!mod) return null;
           return (
-            <ModuleSlot key={id} mod={mod} active={id === activeId} overlayRoot={overlayRoot} />
+            <ModuleSlot
+              key={id}
+              mod={mod}
+              active={id === activeId}
+              overlayRoot={overlayRoot}
+              // 只有当前模块把按钮投上去——否则后台模块的按钮也会挤进那条栏。
+              actionsContainer={id === activeId ? actionsContainer : null}
+            />
           );
         })}
       </main>
@@ -168,17 +182,20 @@ function ModuleSlot({
   mod,
   active,
   overlayRoot,
+  actionsContainer,
 }: {
   mod: (typeof MODULES)[number];
   active: boolean;
   overlayRoot: HTMLElement | undefined;
+  actionsContainer: HTMLElement | null;
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
     // ShellChromeProvider 让模块知道自己不是独立运行，于是隐藏与外壳顶栏重复的
     // 应用切换器和主题按钮。独立部署时没有这个 Provider，模块的顶栏原样保留。
     <ShellChromeProvider>
-      <OverlayProvider container={layer}>
+      <ModuleActionsProvider container={actionsContainer}>
+        <OverlayProvider container={layer}>
         <div
           hidden={!active}
           // 非当前模块留在 DOM 里但不可见——连接与状态都保住。
@@ -201,7 +218,8 @@ function ModuleSlot({
             </Suspense>
           </ModuleErrorBoundary>
         </div>
-      </OverlayProvider>
+        </OverlayProvider>
+      </ModuleActionsProvider>
     </ShellChromeProvider>
   );
 }

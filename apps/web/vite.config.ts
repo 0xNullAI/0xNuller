@@ -17,6 +17,11 @@ const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? `local-${Date.now()}`;
 export default defineConfig({
   root: __dirname,
   resolve: {
+    // React 必须全仓只有一份实例。合并前 apps/market 声明的是 react@18，其余是 19，
+    // npm 无法提升，于是 apps/market/node_modules 里存了第二份——Market 的 chunk 拿到
+    // 另一个 React 实例，useState 读到 null dispatcher 直接崩。版本已统一，这里再加一道
+    // 兜底，将来谁再引入不同版本也不会静默分裂成两个实例。
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@agent': path.resolve(__dirname, '../agent/src'),
       '@voice': path.resolve(__dirname, '../voice/src'),
