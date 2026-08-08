@@ -6,7 +6,11 @@ import { LedColorPicker } from './LedColorPicker';
 interface OpossumControlProps {
   peerId: string;
   member: MemberState;
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  onSendCommand: (
+    target: string,
+    action: CmdAction,
+    params?: Omit<DeviceCommand, 'action'>,
+  ) => void;
   /** 与 Coyote 共用的安全上限（0-200），见 DeviceSafetyButton 的说明。 */
   limitA: number;
   limitB: number;
@@ -26,8 +30,14 @@ function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval 
   }, [action]);
 
   const stop = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   }, []);
 
   const start = useCallback(() => {
@@ -48,10 +58,12 @@ function RepeatButton({ onAction, children }: { onAction: () => void; children: 
   return (
     <button
       {...handlers}
-      onContextMenu={e => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
       className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xs text-[var(--text)] hover:border-[var(--accent)] active:scale-90"
       style={{ touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}
-    >{children}</button>
+    >
+      {children}
+    </button>
   );
 }
 
@@ -61,9 +73,18 @@ function IntensityRing({ label, value, limit }: { label: string; value: number; 
   return (
     <div className="relative flex items-center justify-center" style={{ width: 96, height: 96 }}>
       <svg className="absolute inset-0" viewBox="0 0 96 96">
-        <circle cx="48" cy="48" r={RING_R} fill="none" stroke="var(--surface-border)" strokeWidth="6" />
         <circle
-          cx="48" cy="48" r={RING_R}
+          cx="48"
+          cy="48"
+          r={RING_R}
+          fill="none"
+          stroke="var(--surface-border)"
+          strokeWidth="6"
+        />
+        <circle
+          cx="48"
+          cy="48"
+          r={RING_R}
           fill="none"
           stroke="var(--accent)"
           strokeWidth="6"
@@ -76,7 +97,9 @@ function IntensityRing({ label, value, limit }: { label: string; value: number; 
       </svg>
       <div className="flex flex-col items-center">
         <span className="text-xl font-bold tabular-nums text-[var(--text)]">{value}</span>
-        <span className="text-[10px] text-[var(--text-faint)]">{label}:{limit}</span>
+        <span className="text-[10px] text-[var(--text-faint)]">
+          {label}:{limit}
+        </span>
       </div>
     </div>
   );
@@ -88,7 +111,13 @@ function IntensityRing({ label, value, limit }: { label: string; value: number; 
  * 单独一套上限 UI —— 见 DeviceSafetyButton 的说明），没有波形/频率概念所以
  * 没有波形 Tab，只有直接强度 +/- 和一个"一键脉冲"便捷按钮。
  */
-export function OpossumControl({ peerId, member, onSendCommand, limitA, limitB }: OpossumControlProps) {
+export function OpossumControl({
+  peerId,
+  member,
+  onSendCommand,
+  limitA,
+  limitB,
+}: OpossumControlProps) {
   if (!member.opossumConnected) return null;
 
   const intensityA = member.opossumIntensityA ?? 0;
@@ -100,7 +129,11 @@ export function OpossumControl({ peerId, member, onSendCommand, limitA, limitB }
 
   const burst = (channel: 'A' | 'B') => {
     const limit = channel === 'A' ? limitA : limitB;
-    onSendCommand(peerId, 'vibrate_burst', { c: channel, v: Math.round(limit * BURST_STRENGTH_RATIO), ms: 500 });
+    onSendCommand(peerId, 'vibrate_burst', {
+      c: channel,
+      v: Math.round(limit * BURST_STRENGTH_RATIO),
+      ms: 500,
+    });
   };
 
   return (
@@ -118,7 +151,7 @@ export function OpossumControl({ peerId, member, onSendCommand, limitA, limitB }
       </div>
 
       <div className="flex items-center justify-center gap-6">
-        {(['A', 'B'] as const).map(channel => {
+        {(['A', 'B'] as const).map((channel) => {
           const value = channel === 'A' ? intensityA : intensityB;
           const limit = channel === 'A' ? limitA : limitB;
           return (
@@ -152,7 +185,7 @@ export function OpossumControl({ peerId, member, onSendCommand, limitA, limitB }
 
       <LedColorPicker
         className="mt-3 border-t border-[var(--surface-border)] pt-2"
-        onPick={color => onSendCommand(peerId, 'set_led', { kind: 'opossum', color })}
+        onPick={(color) => onSendCommand(peerId, 'set_led', { kind: 'opossum', color })}
       />
     </div>
   );

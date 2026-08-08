@@ -37,7 +37,9 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
       }
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === 'AbortError';
-      setError(aborted ? '请求超时，请稍后重试' : err instanceof Error ? err.message : '网络请求失败');
+      setError(
+        aborted ? '请求超时，请稍后重试' : err instanceof Error ? err.message : '网络请求失败',
+      );
       setItems([]);
     } finally {
       setLoading(false);
@@ -60,7 +62,9 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, handleClose]);
@@ -68,7 +72,7 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
   function handleImport(item: MarketItem) {
     onImport(item);
     void markMarketDownloaded(item.id);
-    setImportedIds(prev => new Set(prev).add(item.id));
+    setImportedIds((prev) => new Set(prev).add(item.id));
   }
 
   if (!open) return null;
@@ -79,13 +83,15 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
         role="dialog"
         aria-label="从市场导入波形"
         className="flex max-h-[80vh] w-[min(560px,calc(100vw-32px))] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-2xl"
-        onMouseDown={e => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
         <div className="flex items-start justify-between border-b border-[var(--surface-border)] px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--text)]">从市场导入波形</p>
-            <p className="mt-0.5 text-xs text-[var(--text-faint)]">浏览社区上传的波形，一键加入本地库</p>
+            <p className="mt-0.5 text-xs text-[var(--text-faint)]">
+              浏览社区上传的波形，一键加入本地库
+            </p>
           </div>
           <button
             onClick={handleClose}
@@ -99,10 +105,13 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
         {/* 搜索框 */}
         <div className="px-4 pt-3">
           <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
+            />
             <input
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索波形名称 / 标签"
               className="w-full rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] py-2 pl-9 pr-3 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--accent)]"
             />
@@ -130,35 +139,37 @@ export function MarketImportDialog({ open, onClose, onImport }: MarketImportDial
               {query ? '没有匹配的波形' : '市场里还没有波形'}
             </div>
           )}
-          {!loading && !error && items.map(item => {
-            const imported = importedIds.has(item.id);
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 transition-colors hover:bg-[var(--bg-soft)]"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-[var(--text)]">{item.name}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-[var(--text-faint)]">
-                    {item.author ? `@${item.author}` : '匿名'} · 下载 {item.downloads}
-                    {item.description ? ` · ${item.description}` : ''}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleImport(item)}
-                  disabled={imported}
-                  className={`flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-xs transition-colors ${
-                    imported
-                      ? 'text-[var(--text-faint)]'
-                      : 'bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent-hover)]'
-                  }`}
+          {!loading &&
+            !error &&
+            items.map((item) => {
+              const imported = importedIds.has(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 transition-colors hover:bg-[var(--bg-soft)]"
                 >
-                  <Download size={13} />
-                  {imported ? '已导入' : '导入'}
-                </button>
-              </div>
-            );
-          })}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[var(--text)]">{item.name}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-[var(--text-faint)]">
+                      {item.author ? `@${item.author}` : '匿名'} · 下载 {item.downloads}
+                      {item.description ? ` · ${item.description}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleImport(item)}
+                    disabled={imported}
+                    className={`flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-xs transition-colors ${
+                      imported
+                        ? 'text-[var(--text-faint)]'
+                        : 'bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent-hover)]'
+                    }`}
+                  >
+                    <Download size={13} />
+                    {imported ? '已导入' : '导入'}
+                  </button>
+                </div>
+              );
+            })}
         </div>
       </div>
     </Overlay>

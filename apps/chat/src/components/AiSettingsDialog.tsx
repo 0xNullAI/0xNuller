@@ -2,12 +2,7 @@ import { Overlay } from '@0xnullai/ui';
 import { useState } from 'react';
 import { X, Bot } from 'lucide-react';
 import type { AiConfig } from '../lib/ai-config';
-import {
-  AI_PROVIDER_PRESETS,
-  getPreset,
-  loadAiConfig,
-  saveAiConfig,
-} from '../lib/ai-config';
+import { AI_PROVIDER_PRESETS, getPreset, loadAiConfig, saveAiConfig } from '../lib/ai-config';
 
 interface AiSettingsDialogProps {
   open: boolean;

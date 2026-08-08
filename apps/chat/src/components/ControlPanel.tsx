@@ -11,7 +11,11 @@ import { MemberControl } from './MemberControl';
 interface ControlPanelProps {
   members: Map<string, MemberState>;
   peers: string[];
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  onSendCommand: (
+    target: string,
+    action: CmdAction,
+    params?: Omit<DeviceCommand, 'action'>,
+  ) => void;
   onSendWaveform: (targetPeerId: string, transfer: WaveformTransfer) => void;
   roomId: string | null;
   waveforms: WaveformDefinition[];
@@ -27,7 +31,15 @@ interface ControlPanelProps {
   roleNameFor?: (peerId: string) => string | undefined;
 }
 
-function SelfCard({ member, onClick, roleName }: { member: MemberState; onClick: () => void; roleName?: string }) {
+function SelfCard({
+  member,
+  onClick,
+  roleName,
+}: {
+  member: MemberState;
+  onClick: () => void;
+  roleName?: string;
+}) {
   const initial = (member.displayName?.[0] || '?').toUpperCase();
   return (
     <div
@@ -38,11 +50,17 @@ function SelfCard({ member, onClick, roleName }: { member: MemberState; onClick:
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium text-[var(--text)]">{member.displayName}</p>
-          <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">我</span>
+          <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
+            我
+          </span>
           {roleName && (
-            <span className="shrink-0 truncate rounded-full bg-[var(--bg-soft)] px-1.5 py-0.5 text-[10px] text-[var(--text-soft)]">{roleName}</span>
+            <span className="shrink-0 truncate rounded-full bg-[var(--bg-soft)] px-1.5 py-0.5 text-[10px] text-[var(--text-soft)]">
+              {roleName}
+            </span>
           )}
-          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${member.deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`} />
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${member.deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
+          />
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-soft)]">
           {member.deviceConnected ? (
@@ -61,7 +79,22 @@ function SelfCard({ member, onClick, roleName }: { member: MemberState; onClick:
   );
 }
 
-export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, roomId, waveforms, onImportWaveform, onImportMarketWaveform, onRemoveWaveform, selfState, selfLimitA, selfLimitB, selfRoleName, roleNameFor }: ControlPanelProps) {
+export function ControlPanel({
+  members,
+  peers,
+  onSendCommand,
+  onSendWaveform,
+  roomId,
+  waveforms,
+  onImportWaveform,
+  onImportMarketWaveform,
+  onRemoveWaveform,
+  selfState,
+  selfLimitA,
+  selfLimitB,
+  selfRoleName,
+  roleNameFor,
+}: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -81,8 +114,10 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
     // When controlling a remote peer, show their waveform catalog; fall back to builtins if not yet received
     const targetWaveforms: WaveformDefinition[] = isSelf
       ? waveforms
-      : (member?.waveformCatalog ?? BUILTIN_WAVEFORMS.map(w => ({ id: w.id, name: w.name, custom: false })))
-          .map(w => ({ id: w.id, name: w.name, custom: !!w.custom, description: '', frames: [] }));
+      : (
+          member?.waveformCatalog ??
+          BUILTIN_WAVEFORMS.map((w) => ({ id: w.id, name: w.name, custom: false }))
+        ).map((w) => ({ id: w.id, name: w.name, custom: !!w.custom, description: '', frames: [] }));
 
     return (
       <MemberControl
@@ -103,7 +138,9 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
   }
 
   // Member list view
-  const joinUrl = roomId ? `${window.location.origin}${window.location.pathname}?room=${roomId}` : '';
+  const joinUrl = roomId
+    ? `${window.location.origin}${window.location.pathname}?room=${roomId}`
+    : '';
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -147,9 +184,13 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
         </p>
         <div className="space-y-2">
           {/* Self */}
-          <SelfCard member={selfState} roleName={selfRoleName} onClick={() => setSelectedMember('self')} />
+          <SelfCard
+            member={selfState}
+            roleName={selfRoleName}
+            onClick={() => setSelectedMember('self')}
+          />
           {/* Peers */}
-          {peers.map(peerId => (
+          {peers.map((peerId) => (
             <MemberCard
               key={peerId}
               peerId={peerId}
@@ -160,7 +201,9 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
           ))}
         </div>
         {peers.length === 0 && (
-          <p className="mt-4 text-center text-xs text-[var(--text-faint)]">分享房间号邀请其他人加入</p>
+          <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
+            分享房间号邀请其他人加入
+          </p>
         )}
       </div>
     </div>

@@ -1,12 +1,13 @@
-import { AppSwitcher, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { ModuleActions, SidebarSection, useSafetySession } from '@0xnullai/ui';
+import { me } from '@0xnullai/auth';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
 import { useWaveforms } from './hooks/use-waveforms';
 import { executeCommand, type CommandContext } from './lib/commands';
-import { RoomEntry } from './components/RoomEntry';
-import { SafetyNotice } from '@0xnullai/ui';
-import { isSafetyNoticeAccepted, rememberSafetyNoticeAccepted } from '@dg-kit/safety';
+import { ShellRoomList } from './components/ShellRoomList';
+import { CreateRoomDialog } from './components/CreateRoomDialog';
+import { RESERVED_ROOM_CODE } from '../shared/room-constants';
 import { ChatPanel } from './components/ChatPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { SceneDialog } from './components/SceneDialog';
@@ -14,7 +15,7 @@ import { SceneMarketDialog } from './components/SceneMarketDialog';
 import { AiSettingsDialog } from './components/AiSettingsDialog';
 import { DeviceSafetyButton } from './components/DeviceSafetyButton';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
-import { LogOut, Sun, Moon, Drama, Bot } from 'lucide-react';
+import { LogOut, Drama, Bot } from 'lucide-react';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type {
@@ -116,16 +117,23 @@ function applyFire(d: FireApplyDeps) {
 }
 
 export default function App({ deviceClientFactory, requestDeviceTauri }: AppProps = {}) {
+  // 昵称取自统一账号；未登录时回落到本地保存的名字，再回落到匿名。账号服务抖动
+  // 不该把人挡在房间外面，所以这里始终有可用值。
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
+  const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  useEffect(() => {
+    me()
+      .then((u) => {
+        if (u) setDisplayName(u.displayName);
+      })
+      .catch(() => undefined);
+  }, []);
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [sceneOpen, setSceneOpen] = useState(false);
   const [sceneMarketOpen, setSceneMarketOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
-  // 主题走 @0xnullai/ui 的共享 store。以前这里读 DOM 当初始值、切换时直接 setAttribute，
-  // 既不持久化，也会跟外壳和其它模块抢同一个属性。
-  const { effective: theme, toggle: toggleTheme } = useTheme();
-  const inShell = useInShell();
+  // 主题由外壳统一持有（@0xnullai/ui 的共享 store），本模块不再有自己的切换入口。
 
   const [queueA, setQueueA] = useState<string[]>([]);
   const [queueB, setQueueB] = useState<string[]>([]);
@@ -143,10 +151,18 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [firingA, setFiringA] = useState(false);
   const [firingB, setFiringB] = useState(false);
 
-  // 安全确认全系统一份。外壳里由外壳统一把门（同一份协议不该确认两遍）；
-  // 独立部署时这里仍然是入口处的那道门。
-  const [safetyAccepted, setSafetyAccepted] = useState(isSafetyNoticeAccepted);
   const peerRoom = usePeerRoom(displayName);
+
+  // 打开即进常驻公开房。合并前这里是一张居中的卡片（填昵称 → 创建/加入），而房间
+  // 列表在另一个页面靠整页跳转往返。常驻房保证任何时候都有一个可进的地方，
+  // 新用户不会面对一张表单不知道从哪开始。
+  useEffect(() => {
+    if (peerRoom.connected || peerRoom.status === 'connecting') return;
+    const fromUrl = new URLSearchParams(window.location.search).get('room');
+    peerRoom.join(fromUrl || RESERVED_ROOM_CODE);
+    // 只在「还没连上」时尝试一次；把 peerRoom 放进依赖会在每次状态变化时重连。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerRoom.connected, peerRoom.status]);
   const device = useDevice({
     clientFactory: deviceClientFactory,
     requestDevice: requestDeviceTauri,
@@ -519,40 +535,30 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     return () => clearInterval(t);
   }, [callApplyFire]);
 
-  if (!inShell && !safetyAccepted) {
-    return (
-      <SafetyNotice
-        moduleId="chat"
-        onAccept={({ dontShowAgain }) => {
-          if (dontShowAgain) rememberSafetyNoticeAccepted();
-          setSafetyAccepted(true);
-        }}
-      />
-    );
-  }
-
-  if (!peerRoom.connected) {
-    return (
-      <RoomEntry
-        displayName={displayName}
-        onNameChange={setDisplayName}
-        onJoin={(code, options) => peerRoom.join(code, options)}
-        status={peerRoom.status}
-        error={peerRoom.error}
-      />
-    );
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
-      {/* 顶部栏 */}
+      {/* 房间列表投进外壳侧边栏的「房间」分区。合并前它在另一个页面（/lobby），
+          靠整页跳转往返；现在打开就能看到有哪些房间在。 */}
+      <SidebarSection id="rooms" title="房间">
+        <ShellRoomList
+          currentRoom={peerRoom.roomId}
+          onJoin={(code) => peerRoom.join(code)}
+          onCreate={() => setCreateRoomOpen(true)}
+        />
+      </SidebarSection>
+
+      {createRoomOpen && (
+        <CreateRoomDialog
+          defaultName={displayName}
+          onCreate={(code, options) => peerRoom.join(code, options)}
+          onClose={() => setCreateRoomOpen(false)}
+        />
+      )}
+
+      {/* 房间信息留在内容区（它是内容不是 chrome）；右侧那组按钮投到外壳的按钮
+          插槽，和别的模块的按钮落在同一条线上。 */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <AppSwitcher
-            current="chat"
-            label="Chat"
-            className="text-base font-bold text-[var(--text)]"
-          />
           {peerRoom.roomId && (
             <span className="hidden rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
               {peerRoom.roomId}
@@ -568,9 +574,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <ModuleActions>
           {/* 常驻讨论房无房主、无 AI（纯开放聊天），隐藏场景/AI 入口 */}
-          {peerRoom.roomId !== '0xNullAI' && (
+          {peerRoom.roomId !== RESERVED_ROOM_CODE && (
             <>
               {/* 房间场景 */}
               <button
@@ -599,16 +605,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 </button>
               )}
             </>
-          )}
-          {/* 主题切换。外壳顶栏已经有一个，挂进外壳时就不再重复渲染。 */}
-          {!inShell && (
-            <button
-              onClick={toggleTheme}
-              className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-              title={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
-            >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
           )}
           {/* 蓝牙 + 个人安全设置（合并面板） */}
           <DeviceSafetyButton
@@ -654,7 +650,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           >
             <LogOut className="h-4 w-4" />
           </button>
-        </div>
+        </ModuleActions>
       </header>
 
       {/* 手机 Tab 栏 */}

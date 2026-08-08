@@ -5,7 +5,11 @@ import { LedColorPicker } from './LedColorPicker';
 interface SensorCardProps {
   peerId: string;
   member: MemberState;
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  onSendCommand: (
+    target: string,
+    action: CmdAction,
+    params?: Omit<DeviceCommand, 'action'>,
+  ) => void;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -42,7 +46,9 @@ export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
         <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--text)]">
           <Radar size={15} className="text-[var(--accent)]" />
           {label}
-          <span className={`h-2 w-2 rounded-full ${member.sensorConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`} />
+          <span
+            className={`h-2 w-2 rounded-full ${member.sensorConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
+          />
         </div>
         {member.sensorBattery != null && (
           <span className="flex items-center gap-0.5 text-xs text-[var(--text-soft)]">
@@ -60,16 +66,18 @@ export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
           </span>
           <span className="text-xs text-[var(--text-faint)]">kPa</span>
           {member.sensorLastEventAt != null && (
-            <span className="ml-auto text-[10px] text-[var(--text-faint)]">{formatAgo(member.sensorLastEventAt)}</span>
+            <span className="ml-auto text-[10px] text-[var(--text-faint)]">
+              {formatAgo(member.sensorLastEventAt)}
+            </span>
           )}
         </div>
       ) : (
         <div>
-          <p className="text-sm text-[var(--text)]">
-            {member.sensorLastEvent ?? '暂无事件'}
-          </p>
+          <p className="text-sm text-[var(--text)]">{member.sensorLastEvent ?? '暂无事件'}</p>
           {member.sensorLastEventAt != null && (
-            <p className="text-[10px] text-[var(--text-faint)]">{formatAgo(member.sensorLastEventAt)}</p>
+            <p className="text-[10px] text-[var(--text-faint)]">
+              {formatAgo(member.sensorLastEventAt)}
+            </p>
           )}
         </div>
       )}
@@ -77,7 +85,9 @@ export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
       {member.sensorConnected && (
         <LedColorPicker
           className="mt-3 border-t border-[var(--surface-border)] pt-2"
-          onPick={color => onSendCommand(peerId, 'set_led', { kind: member.sensorKind ?? undefined, color })}
+          onPick={(color) =>
+            onSendCommand(peerId, 'set_led', { kind: member.sensorKind ?? undefined, color })
+          }
         />
       )}
     </div>

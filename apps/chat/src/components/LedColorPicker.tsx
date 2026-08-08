@@ -31,7 +31,7 @@ export function LedColorPicker({ onPick, disabled, className }: LedColorPickerPr
         <Lightbulb size={12} /> 灯光颜色
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {PRESETS.map(preset => (
+        {PRESETS.map((preset) => (
           <button
             key={preset.byte}
             disabled={disabled}

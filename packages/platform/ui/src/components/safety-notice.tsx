@@ -24,6 +24,13 @@ export interface SafetyNoticeProps {
   /** 决定顶部那条提醒说什么。未知 id 回落到通用版本。 */
   moduleId?: string;
   onAccept: (options: { dontShowAgain: boolean }) => void;
+  /**
+   * 用户选择「暂不使用」。传了才会显示这个出口。
+   *
+   * 呈现时机是「设备刚连上」，所以必须给一条不接受也能退出的路——只有「我已阅读」
+   * 一个按钮等于强迫用户点掉它才能操作界面，那会把这份须知训练成一道无意义的门。
+   */
+  onDecline?: () => void;
   /** 覆盖强制阅读秒数。仅供测试。 */
   countdownSeconds?: number;
 }
@@ -31,6 +38,7 @@ export interface SafetyNoticeProps {
 export function SafetyNotice({
   moduleId,
   onAccept,
+  onDecline,
   countdownSeconds = SAFETY_NOTICE_COUNTDOWN_SECONDS,
 }: SafetyNoticeProps) {
   const [remaining, setRemaining] = useState(countdownSeconds);
@@ -110,14 +118,20 @@ export function SafetyNotice({
               </span>
             </label>
           </div>
-          <Button
-            ref={acceptRef}
-            disabled={remaining > 0}
-            onClick={() => onAccept({ dontShowAgain })}
-            className="shrink-0"
-          >
-            {remaining > 0 ? `我已阅读（${remaining}s）` : '我已阅读并继续'}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onDecline && (
+              <Button variant="secondary" onClick={onDecline}>
+                暂不使用
+              </Button>
+            )}
+            <Button
+              ref={acceptRef}
+              disabled={remaining > 0}
+              onClick={() => onAccept({ dontShowAgain })}
+            >
+              {remaining > 0 ? `我已阅读（${remaining}s）` : '我已阅读并继续'}
+            </Button>
+          </div>
         </footer>
       </article>
     </Overlay>

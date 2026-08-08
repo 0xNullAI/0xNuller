@@ -31,8 +31,20 @@ function emptyDraft(): Scene {
 }
 
 export function SceneDialog({
-  open, onClose, scene, roleAssignments, members, selfId, selfName,
-  isHost, onSetScene, onClaimRole, onReleaseRole, onAssignAi, onReleaseAi, onImportFromMarket,
+  open,
+  onClose,
+  scene,
+  roleAssignments,
+  members,
+  selfId,
+  selfName,
+  isHost,
+  onSetScene,
+  onClaimRole,
+  onReleaseRole,
+  onAssignAi,
+  onReleaseAi,
+  onImportFromMarket,
 }: SceneDialogProps) {
   // 房主编辑态：null = 展示态；非 null = 编辑表单
   const [draft, setDraft] = useState<Scene | null>(null);
@@ -46,16 +58,18 @@ export function SceneDialog({
 
   // —— 房主编辑表单 ——
   function startEdit() {
-    setDraft(scene ? { ...scene, roles: scene.roles.map(r => ({ ...r })) } : emptyDraft());
+    setDraft(scene ? { ...scene, roles: scene.roles.map((r) => ({ ...r })) } : emptyDraft());
   }
   function updateRole(i: number, patch: Partial<SceneRole>) {
-    setDraft(d => d && { ...d, roles: d.roles.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
+    setDraft(
+      (d) => d && { ...d, roles: d.roles.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) },
+    );
   }
   function addRole() {
-    setDraft(d => d && { ...d, roles: [...d.roles, { id: genId(), name: '' }] });
+    setDraft((d) => d && { ...d, roles: [...d.roles, { id: genId(), name: '' }] });
   }
   function removeRole(i: number) {
-    setDraft(d => d && { ...d, roles: d.roles.filter((_, idx) => idx !== i) });
+    setDraft((d) => d && { ...d, roles: d.roles.filter((_, idx) => idx !== i) });
   }
   function saveDraft() {
     if (!draft) return;
@@ -63,8 +77,12 @@ export function SceneDialog({
       ...draft,
       name: draft.name.trim() || '未命名场景',
       roles: draft.roles
-        .filter(r => r.name.trim())
-        .map(r => ({ ...r, name: r.name.trim(), description: r.description?.trim() || undefined })),
+        .filter((r) => r.name.trim())
+        .map((r) => ({
+          ...r,
+          name: r.name.trim(),
+          description: r.description?.trim() || undefined,
+        })),
     };
     if (cleaned.roles.length === 0) return;
     onSetScene(cleaned);
@@ -79,7 +97,7 @@ export function SceneDialog({
         role="dialog"
         aria-label="房间场景"
         className="flex max-h-[85vh] w-[min(520px,calc(100vw-32px))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]"
-        onMouseDown={e => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-4 py-3">
@@ -91,7 +109,11 @@ export function SceneDialog({
               </span>
             )}
           </div>
-          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]" aria-label="关闭">
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+            aria-label="关闭"
+          >
             <X size={15} />
           </button>
         </div>
@@ -102,14 +124,14 @@ export function SceneDialog({
             <div className="space-y-3">
               <input
                 value={draft.name}
-                onChange={e => setDraft({ ...draft, name: e.target.value })}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="场景名"
                 className="w-full rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                 style={{ fontSize: '16px' }}
               />
               <textarea
                 value={draft.setting}
-                onChange={e => setDraft({ ...draft, setting: e.target.value })}
+                onChange={(e) => setDraft({ ...draft, setting: e.target.value })}
                 placeholder="世界观 / 背景设定（描述这个场景、氛围、规则…）"
                 rows={4}
                 className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
@@ -122,15 +144,19 @@ export function SceneDialog({
                     <div className="flex-1 space-y-1">
                       <input
                         value={r.name}
-                        onChange={e => updateRole(i, { name: e.target.value })}
+                        onChange={(e) => updateRole(i, { name: e.target.value })}
                         placeholder={`角色 ${i + 1} 名字`}
                         className="w-full rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                         style={{ fontSize: '16px' }}
                       />
                       <textarea
                         value={r.description ?? ''}
-                        onChange={e => updateRole(i, { description: e.target.value })}
-                        placeholder={r.aiPlayable ? '角色描述 / AI 人设（性格、口吻、动机…）' : '角色描述（可选）'}
+                        onChange={(e) => updateRole(i, { description: e.target.value })}
+                        placeholder={
+                          r.aiPlayable
+                            ? '角色描述 / AI 人设（性格、口吻、动机…）'
+                            : '角色描述（可选）'
+                        }
                         rows={2}
                         className="w-full resize-none rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-2.5 py-1.5 text-xs text-[var(--text-soft)] outline-none focus:border-[var(--accent)]"
                         style={{ fontSize: '16px' }}
@@ -139,7 +165,7 @@ export function SceneDialog({
                         <input
                           type="checkbox"
                           checked={!!r.aiPlayable}
-                          onChange={e => updateRole(i, { aiPlayable: e.target.checked })}
+                          onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })}
                         />
                         <Bot size={12} /> 可由 AI 扮演（用上面的描述当人设）
                       </label>
@@ -153,15 +179,24 @@ export function SceneDialog({
                     </button>
                   </div>
                 ))}
-                <button onClick={addRole} className="flex items-center gap-1 text-xs text-[var(--accent)] hover:underline">
+                <button
+                  onClick={addRole}
+                  className="flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
+                >
                   <Plus size={13} /> 加角色
                 </button>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={() => setDraft(null)} className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]">
+                <button
+                  onClick={() => setDraft(null)}
+                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+                >
                   取消
                 </button>
-                <button onClick={saveDraft} className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-[var(--button-text)] hover:opacity-90">
+                <button
+                  onClick={saveDraft}
+                  className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-[var(--button-text)] hover:opacity-90"
+                >
                   保存场景
                 </button>
               </div>
@@ -171,47 +206,75 @@ export function SceneDialog({
             <div className="space-y-3">
               <div>
                 <p className="text-base font-semibold text-[var(--text)]">{scene.name}</p>
-                {scene.setting && <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-soft)]">{scene.setting}</p>}
+                {scene.setting && (
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-soft)]">
+                    {scene.setting}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <p className="text-xs text-[var(--text-soft)]">角色</p>
-                {scene.roles.map(role => {
+                {scene.roles.map((role) => {
                   const holder = roleAssignments[role.id];
                   const mine = holder === selfId;
                   const aiHeld = holder === `ai:${role.id}`;
                   return (
-                    <div key={role.id} className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2">
+                    <div
+                      key={role.id}
+                      className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-medium text-[var(--text)]">
                           {role.name}
-                          {role.aiPlayable && <Bot size={12} className="shrink-0 text-[var(--text-faint)]" />}
+                          {role.aiPlayable && (
+                            <Bot size={12} className="shrink-0 text-[var(--text-faint)]" />
+                          )}
                         </p>
-                        {role.description && <p className="truncate text-xs text-[var(--text-faint)]">{role.description}</p>}
+                        {role.description && (
+                          <p className="truncate text-xs text-[var(--text-faint)]">
+                            {role.description}
+                          </p>
+                        )}
                       </div>
                       {aiHeld ? (
                         <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--accent)]">
                           <Bot size={12} /> AI
                           {isHost && (
-                            <button onClick={() => onReleaseAi(role.id)} className="ml-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[var(--text-soft)] hover:text-[var(--danger)]">
+                            <button
+                              onClick={() => onReleaseAi(role.id)}
+                              className="ml-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[var(--text-soft)] hover:text-[var(--danger)]"
+                            >
                               取消
                             </button>
                           )}
                         </span>
                       ) : holder ? (
                         mine ? (
-                          <button onClick={() => onReleaseRole(role.id)} className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] hover:text-[var(--danger)]">
+                          <button
+                            onClick={() => onReleaseRole(role.id)}
+                            className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] hover:text-[var(--danger)]"
+                          >
                             <LogOut size={12} /> 释放
                           </button>
                         ) : (
-                          <span className="shrink-0 truncate text-xs text-[var(--text-faint)]">{nameOf(holder)}</span>
+                          <span className="shrink-0 truncate text-xs text-[var(--text-faint)]">
+                            {nameOf(holder)}
+                          </span>
                         )
                       ) : (
                         <div className="flex shrink-0 items-center gap-1">
-                          <button onClick={() => onClaimRole(role.id)} className="flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] px-2.5 py-1 text-xs text-[var(--accent)] hover:opacity-90">
+                          <button
+                            onClick={() => onClaimRole(role.id)}
+                            className="flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] px-2.5 py-1 text-xs text-[var(--accent)] hover:opacity-90"
+                          >
                             <UserPlus size={12} /> 认领
                           </button>
                           {isHost && role.aiPlayable && (
-                            <button onClick={() => onAssignAi(role.id)} className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 py-1 text-xs text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]" title="交给 AI 扮演">
+                            <button
+                              onClick={() => onAssignAi(role.id)}
+                              className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 py-1 text-xs text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                              title="交给 AI 扮演"
+                            >
                               <Bot size={12} /> AI
                             </button>
                           )}
@@ -223,10 +286,16 @@ export function SceneDialog({
               </div>
               {isHost && (
                 <div className="flex gap-2 pt-1">
-                  <button onClick={startEdit} className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-1.5 text-sm text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]">
+                  <button
+                    onClick={startEdit}
+                    className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-1.5 text-sm text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
                     编辑场景
                   </button>
-                  <button onClick={() => onSetScene(null)} className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm text-[var(--text-faint)] hover:text-[var(--danger)]">
+                  <button
+                    onClick={() => onSetScene(null)}
+                    className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm text-[var(--text-faint)] hover:text-[var(--danger)]"
+                  >
                     清除场景
                   </button>
                 </div>
@@ -235,14 +304,22 @@ export function SceneDialog({
           ) : (
             /* —— 无场景 —— */
             <div className="py-6 text-center">
-              <p className="text-sm text-[var(--text-soft)]">{isHost ? '还没有设定场景' : '房主还没设定场景'}</p>
+              <p className="text-sm text-[var(--text-soft)]">
+                {isHost ? '还没有设定场景' : '房主还没设定场景'}
+              </p>
               {isHost && (
                 <div className="mt-4 flex flex-col items-center gap-2">
-                  <button onClick={startEdit} className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)] hover:opacity-90">
+                  <button
+                    onClick={startEdit}
+                    className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)] hover:opacity-90"
+                  >
                     <Plus size={15} /> 创建场景
                   </button>
                   {onImportFromMarket && (
-                    <button onClick={onImportFromMarket} className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]">
+                    <button
+                      onClick={onImportFromMarket}
+                      className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
                       <Store size={14} /> 从市场导入场景
                     </button>
                   )}

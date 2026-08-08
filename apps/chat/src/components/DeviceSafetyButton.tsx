@@ -38,13 +38,23 @@ const SENSOR_KIND_LABEL: Record<string, string> = {
 };
 
 export function DeviceSafetyButton({
-  connected, deviceName, battery,
+  connected,
+  deviceName,
+  battery,
   onDisconnect,
-  limitA, limitB, onSetLimit,
-  backgroundBehavior, onSetBackgroundBehavior,
-  firePolicy, onSetFirePolicy,
+  limitA,
+  limitB,
+  onSetLimit,
+  backgroundBehavior,
+  onSetBackgroundBehavior,
+  firePolicy,
+  onSetFirePolicy,
   onRestoreDefaults,
-  sensor, opossum, onConnectDevice, onDisconnectSensor, onDisconnectOpossum,
+  sensor,
+  opossum,
+  onConnectDevice,
+  onDisconnectSensor,
+  onDisconnectOpossum,
 }: DeviceSafetyButtonProps) {
   const [open, setOpen] = useState(false);
   const [connectingDevice, setConnectingDevice] = useState(false);
@@ -84,7 +94,7 @@ export function DeviceSafetyButton({
     <>
       <button
         ref={btnRef}
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         className={`flex h-9 items-center gap-1.5 rounded-[10px] px-2.5 text-xs transition-colors ${
           connected
             ? 'bg-[var(--success-soft)] text-[var(--success)]'
@@ -137,7 +147,9 @@ export function DeviceSafetyButton({
             <div className="min-w-0">
               <p className="text-xs font-medium text-[var(--text-soft)]">Coyote 主机</p>
               <p className="truncate text-[10px] text-[var(--text-faint)]">
-                {connected ? `${deviceName ?? '已连接'}${battery != null ? ` · 电量 ${battery}%` : ''}` : '未连接'}
+                {connected
+                  ? `${deviceName ?? '已连接'}${battery != null ? ` · 电量 ${battery}%` : ''}`
+                  : '未连接'}
               </p>
             </div>
             {connected && (
@@ -158,9 +170,13 @@ export function DeviceSafetyButton({
                   <div className="flex min-w-0 items-center gap-2">
                     <Radar size={14} className="shrink-0 text-[var(--accent)]" />
                     <div className="min-w-0">
-                      <p className="truncate text-xs text-[var(--text)]">{SENSOR_KIND_LABEL[sensor.kind] ?? sensor.kind}</p>
+                      <p className="truncate text-xs text-[var(--text)]">
+                        {SENSOR_KIND_LABEL[sensor.kind] ?? sensor.kind}
+                      </p>
                       <p className="text-[10px] text-[var(--text-faint)]">
-                        {sensor.connected ? `已连接${sensor.battery != null ? ` · 电量 ${sensor.battery}%` : ''}` : '已断开'}
+                        {sensor.connected
+                          ? `已连接${sensor.battery != null ? ` · 电量 ${sensor.battery}%` : ''}`
+                          : '已断开'}
                       </p>
                     </div>
                   </div>
@@ -180,7 +196,9 @@ export function DeviceSafetyButton({
                     <div className="min-w-0">
                       <p className="truncate text-xs text-[var(--text)]">Opossum 振动控制器</p>
                       <p className="text-[10px] text-[var(--text-faint)]">
-                        {opossum.connected ? `已连接${opossum.battery != null ? ` · 电量 ${opossum.battery}%` : ''}` : '已断开'}
+                        {opossum.connected
+                          ? `已连接${opossum.battery != null ? ` · 电量 ${opossum.battery}%` : ''}`
+                          : '已断开'}
                       </p>
                     </div>
                   </div>
@@ -200,18 +218,38 @@ export function DeviceSafetyButton({
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-soft)]">A 通道上限</span>
-                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">{limitA}</span>
+                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">
+                  {limitA}
+                </span>
               </div>
-              <input type="range" min={0} max={200} value={limitA} onChange={e => onSetLimit('A', Number(e.target.value))} className="w-full" />
+              <input
+                type="range"
+                min={0}
+                max={200}
+                value={limitA}
+                onChange={(e) => onSetLimit('A', Number(e.target.value))}
+                className="w-full"
+              />
             </div>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-soft)]">B 通道上限</span>
-                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">{limitB}</span>
+                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">
+                  {limitB}
+                </span>
               </div>
-              <input type="range" min={0} max={200} value={limitB} onChange={e => onSetLimit('B', Number(e.target.value))} className="w-full" />
+              <input
+                type="range"
+                min={0}
+                max={200}
+                value={limitB}
+                onChange={(e) => onSetLimit('B', Number(e.target.value))}
+                className="w-full"
+              />
             </div>
-            <p className="text-[10px] text-[var(--text-faint)]">硬件级别限制，远程控制无法超过此上限（Opossum 振动强度共用同一套上限）</p>
+            <p className="text-[10px] text-[var(--text-faint)]">
+              硬件级别限制，远程控制无法超过此上限（Opossum 振动强度共用同一套上限）
+            </p>
           </div>
 
           {/* 后台行为 */}
@@ -221,7 +259,9 @@ export function DeviceSafetyButton({
               <p className="text-[10px] text-[var(--text-faint)]">切换至其他标签页时</p>
             </div>
             <button
-              onClick={() => onSetBackgroundBehavior(backgroundBehavior === 'stop' ? 'keep' : 'stop')}
+              onClick={() =>
+                onSetBackgroundBehavior(backgroundBehavior === 'stop' ? 'keep' : 'stop')
+              }
               className={`rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-medium transition-colors ${
                 backgroundBehavior === 'stop'
                   ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
@@ -236,7 +276,7 @@ export function DeviceSafetyButton({
           <div className="border-t border-[var(--surface-border)] pt-3">
             <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
             <div className="flex gap-1">
-              {(['max', 'sum', 'avg'] as const).map(p => (
+              {(['max', 'sum', 'avg'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => onSetFirePolicy(p)}
@@ -259,7 +299,11 @@ export function DeviceSafetyButton({
           <div className="border-t border-[var(--surface-border)] pt-3">
             <button
               onClick={() => {
-                if (window.confirm('恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。')) {
+                if (
+                  window.confirm(
+                    '恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。',
+                  )
+                ) {
                   onRestoreDefaults();
                 }
               }}

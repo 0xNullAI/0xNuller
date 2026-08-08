@@ -17,6 +17,7 @@ import { DeviceBar } from './DeviceBar';
 import { AccountDialog } from './AccountDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
+import { FirstConnectionNotice } from './FirstConnectionNotice';
 
 /**
  * 统一外壳。**两列**：左侧边栏 + 右内容区，没有顶部横栏。
@@ -209,6 +210,11 @@ export function Shell() {
             <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
           )}
           {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+          {/* 安全须知在**首次连上设备**时出现一次，而不是开场弹窗。开场弹窗打扰了
+              只想逛市场或看文档的人，而真正需要看到它的时刻是设备接到身上那一刻。
+              注册流程里的用户协议是另一个落点——但账号是可选的，只放那儿等于让从不
+              注册的人永远看不到。 */}
+          <FirstConnectionNotice />
         </OverlayProvider>
       </div>
     </SidebarSectionsProvider>
