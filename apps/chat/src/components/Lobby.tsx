@@ -29,7 +29,7 @@ export function Lobby() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--bg)]">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--bg)]">
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
         <a
           href="/"

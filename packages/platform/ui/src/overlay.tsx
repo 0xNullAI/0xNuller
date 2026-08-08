@@ -68,3 +68,42 @@ export function useOverlayRoot(id = 'shl-overlay-root'): HTMLElement | undefined
 
   return el;
 }
+
+
+/**
+ * 每个模块一个覆盖层子层，由外壳按当前模块显隐。
+ *
+ * 为什么需要：弹窗一旦 portal 出模块子树，模块容器上的 `hidden` 就管不到它了。
+ * 实测症状是——在 Chat 里打开安全确认后切到 Market，Chat 的弹窗仍然浮在 Market
+ * 上面，还被挤成一条窄列。给每个模块一个子层、跟着模块一起显隐，才能让「切走的
+ * 模块保持挂载」与「切走的模块不该冒出弹窗」同时成立。
+ */
+export function useModuleOverlayLayer(
+  root: HTMLElement | undefined,
+  moduleId: string,
+  active: boolean,
+): HTMLElement | undefined {
+  const [el, setEl] = useState<HTMLElement>();
+
+  useEffect(() => {
+    if (!root) return;
+    const node = document.createElement('div');
+    node.dataset.overlayLayer = moduleId;
+    node.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    root.appendChild(node);
+    setEl(node);
+    return () => {
+      node.remove();
+      setEl(undefined);
+    };
+  }, [root, moduleId]);
+
+  useEffect(() => {
+    if (!el) return;
+    // 用 display 而不是 visibility：隐藏层里的元素不应参与命中测试，也不该被
+    // 屏幕阅读器读到。
+    el.style.display = active ? '' : 'none';
+  }, [el, active]);
+
+  return el;
+}

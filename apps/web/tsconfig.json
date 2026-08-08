@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "paths": { "@agent/*": ["../agent/src/*"], "@voice/*": ["../voice/src/*"] }
+  },
+  "include": ["src", "../agent/src/vite-env.d.ts", "../voice/src/vite-env.d.ts"]
+}

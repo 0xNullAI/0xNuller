@@ -1,0 +1,60 @@
+/* 层名必须与 Tailwind v4 内部一致（theme / base / components / utilities）。
+   自造名字会让 Tailwind 的真实层被追加到声明列表之后，preflight 反过来压过
+   ui-base，共享 base 的表单样式静默失效。shell 层排在 module 之后，外壳的样式
+   在需要时可以压过模块。 */
+@layer theme, base, ui-base, components, utilities, module, shell;
+
+@import 'tailwindcss';
+
+/* Tailwind v4 的自动扫描根取自 Vite 的 config.root。外壳的 root 是 apps/web，
+   所以**每个被挂载模块的源码树都要显式列出**——漏掉哪个，那个模块的工具类就会被
+   静默 tree-shake 掉。上一次外壳失败的首要原因正是这个：Agent 的候选类从 2199 掉到
+   409，整条高度锁 h-full、全部 min-h-0、全部 lg: 断点一起消失，表现为「内容挤顶 +
+   输入区上移 + 下方大片空白」，而构建完全不报错。 */
+@source './';
+@source '../../../packages/platform/ui/src';
+@source '../../agent/src';
+@source '../../chat/src';
+@source '../../voice/src';
+@source '../../market/src';
+@source '../../wiki/src';
+
+@import '@0xnullai/ui/styles/tokens.css';
+@import '@0xnullai/ui/styles/app-switcher.css';
+@import '@0xnullai/ui/styles/base.css' layer(ui-base);
+@import '@0xnullai/ui/styles/scrollbar.css' layer(ui-base);
+@import '@0xnullai/ui/styles/animations.css';
+
+/* 各模块自己的 CSS 统一归 module 层。
+   不放在懒加载封装里，是因为通过 JS import 的 CSS 无法指定层——它会落在所有层之外，
+   于是无条件压过全部 Tailwind utility，重蹈 base.css 的覆辙；而且层外 CSS 在 lazy
+   chunk 场景下由运行时 append 顺序决胜负，故障会变成「先点哪个模块」的随机结果。
+   代价是这几份 CSS 不再分块懒加载，合计约 1500 行，可接受。 */
+@import '../../agent/src/styles/app.css' layer(module);
+@import '../../voice/src/styles/settings.css' layer(module);
+@import '../../chat/src/styles/app.css' layer(module);
+@import '../../wiki/src/styles/wiki.css' layer(module);
+
+@layer shell {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  /* 外壳根禁止 transform / filter / contain —— 它们会把固定定位后代的包含块从视口
+     翻转成外壳盒子。覆盖层容器虽然是外壳根的兄弟（不受影响），但模块内部仍有依赖
+     视口包含块的元素。做切换动画请动模块槽位的 opacity，不要动 transform。 */
+  #shl-root {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #shl-slot {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+  }
+}

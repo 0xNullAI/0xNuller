@@ -729,7 +729,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   return (
     <>
       <main
-        className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden pt-[env(safe-area-inset-top)]"
+        className="relative flex h-full min-h-0 flex-col overflow-hidden pt-[env(safe-area-inset-top)]"
         aria-hidden={!safetyNoticeAccepted}
       >
         {pendingPermission && (

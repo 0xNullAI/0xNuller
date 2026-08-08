@@ -418,7 +418,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[var(--bg)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
       {/* 顶部栏 */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
