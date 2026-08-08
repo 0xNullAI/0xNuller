@@ -31,7 +31,7 @@ export NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
 ## First-time setup
 
 ```bash
-cd apps/tauri-android
+cd android/app
 cargo tauri android init      # regenerates src-tauri/gen/android/
 # After init, re-apply BLE permissions to AndroidManifest.xml — see below.
 ```
@@ -42,12 +42,28 @@ The `gen/android/` directory is regenerated and gitignored. After every regenera
    [`AndroidManifest.template.xml`](./AndroidManifest.template.xml) into
    `gen/android/app/src/main/AndroidManifest.xml` (inside `<manifest>` root,
    before `<application>`). The template explains each permission.
+   Drop the template's duplicate `INTERNET` line — the generated manifest
+   already has it.
 2. Bump `gen/android/app/build.gradle.kts` `minSdk` to `26` (required by
    `@mnlphlp/plugin-blec`'s Android backend).
 3. Re-apply the release-signing config from
    [`signing.gradle.kts.template`](./signing.gradle.kts.template) into
    `gen/android/app/build.gradle.kts` — see "Release builds" below for why
    this is needed and what it reads.
+
+Two things that cost a build cycle if you script step 1:
+
+- **The template's own comment contains the string `<manifest>`** (it says to
+  paste into the `<manifest>` root). Strip comments before locating the tag,
+  or you'll splice half the comment into the XML. Gradle then fails with
+  `ManifestMerger2$MergeFailureException: Error parsing …AndroidManifest.xml`
+  — which says nothing about what actually went wrong.
+- **`cargo tauri android init` does not overwrite an existing
+  AndroidManifest.xml.** A broken one survives re-init; delete the file first.
+
+Validate before building: `python3 -c "import xml.dom.minidom as m;
+m.parse('src-tauri/gen/android/app/src/main/AndroidManifest.xml')"` — two
+seconds, versus a two-minute Gradle run that reports the wrong cause.
 
 ## Release builds
 

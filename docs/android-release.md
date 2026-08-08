@@ -74,8 +74,20 @@ aapt dump badging "$APK" | grep -E "versionName|versionCode"
 apksigner verify --print-certs "$APK" | grep -E "CN=|OU="
 ```
 
-`OU=0xNullAI`。签名那一条尤其要看：`signingConfigs` 里有 `if (ks != null)` 的保护，
-环境变量没设时构建**照样成功**，只是出来的 APK 装不上。
+正确的输出长这样（2026-08-08 实测）：
+
+```
+package: name='ai.nullai.dgagent' versionCode='5005002' versionName='5.5.2'
+application-label:'0xNuller'
+Signer #1 certificate DN: CN=DG-Agent, OU=0xNullAI, O=0xNullAI, …
+```
+
+三处各自的含义：`name` 决定能不能覆盖安装到老用户手机上；`application-label` 是
+桌面上显示的名字（已经是 0xNuller）；`CN=DG-Agent` 是证书主题，**它就该是这个**
+——换掉等于换密钥。APK 约 15MB。
+
+签名那一条尤其要看：`signingConfigs` 里有 `if (ks != null)` 的保护，环境变量没设时
+构建**照样成功**，只是出来的 APK 装不上。
 
 然后：
 
