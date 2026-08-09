@@ -107,7 +107,6 @@ export class BrowserAppSettingsStore {
       maxBurstCallsPerTurn: safety.maxBurstCallsPerTurn,
       maxVibrateAdjustCallsPerTurn: safety.maxVibrateAdjustCallsPerTurn,
       maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
-      backgroundBehavior: safety.backgroundBehavior,
       permissionMode: effectivePermissionState.permissionMode,
       permissionModeExpiresAt: effectivePermissionState.permissionModeExpiresAt,
       bridge: {
@@ -168,7 +167,6 @@ export class BrowserAppSettingsStore {
       maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
       permissionMode: persistedPermissionMode,
       permissionModeExpiresAt: persistedPermissionModeExpiresAt,
-      backgroundBehavior: settings.backgroundBehavior,
     });
 
     const sanitized = {
@@ -180,7 +178,6 @@ export class BrowserAppSettingsStore {
       temperature: settings.temperature,
       permissionMode: persistedPermissionMode,
       permissionModeExpiresAt: persistedPermissionModeExpiresAt,
-      backgroundBehavior: settings.backgroundBehavior,
       maxStrengthA: settings.maxStrengthA,
       maxStrengthB: settings.maxStrengthB,
       maxColdStartStrength: settings.maxColdStartStrength,

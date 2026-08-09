@@ -13,8 +13,6 @@ interface DeviceSafetyButtonProps {
   limitA: number;
   limitB: number;
   onSetLimit: (channel: 'A' | 'B', value: number) => void;
-  backgroundBehavior: 'stop' | 'keep';
-  onSetBackgroundBehavior: (mode: 'stop' | 'keep') => void;
   firePolicy: 'sum' | 'max' | 'avg';
   onSetFirePolicy: (p: 'sum' | 'max' | 'avg') => void;
   onRestoreDefaults: () => void;
@@ -47,8 +45,6 @@ export function DeviceSafetyButton({
   limitA,
   limitB,
   onSetLimit,
-  backgroundBehavior,
-  onSetBackgroundBehavior,
   firePolicy,
   onSetFirePolicy,
   onRestoreDefaults,
@@ -260,26 +256,8 @@ export function DeviceSafetyButton({
             </p>
           </div>
 
-          {/* Background behavior */}
-          <div className="flex items-center justify-between border-t border-[var(--surface-border)] pt-3">
-            <div>
-              <p className="text-xs font-medium text-[var(--text-soft)]">后台行为</p>
-              <p className="text-[10px] text-[var(--text-faint)]">切换至其他标签页时</p>
-            </div>
-            <button
-              onClick={() =>
-                onSetBackgroundBehavior(backgroundBehavior === 'stop' ? 'keep' : 'stop')
-              }
-              className={`rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-medium transition-colors ${
-                backgroundBehavior === 'stop'
-                  ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
-                  : 'bg-[var(--success-soft)] text-[var(--success)]'
-              }`}
-            >
-              {backgroundBehavior === 'stop' ? '停止输出' : '继续运行'}
-            </button>
-          </div>
-
+          {/* Backgrounding always stops output now — it is not a choice, so
+              there is nothing here to toggle. */}
           {/* Multi-controller fire aggregation */}
           <div className="border-t border-[var(--surface-border)] pt-3">
             <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>

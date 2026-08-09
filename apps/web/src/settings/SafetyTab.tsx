@@ -226,26 +226,6 @@ export function SafetyTab() {
           </select>
         </label>
 
-        <label className="mt-3 grid grid-cols-[1fr_auto] items-center gap-4">
-          <span>
-            <span className="block text-sm">切到后台时</span>
-            <span className="block text-xs text-[var(--text-faint)]">
-              移动端始终停止，不受此项影响
-            </span>
-          </span>
-          <select
-            value={settings.backgroundBehavior}
-            onChange={(e) =>
-              patch({
-                backgroundBehavior: e.target.value as DeviceSafetySettings['backgroundBehavior'],
-              })
-            }
-            className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
-          >
-            <option value="stop">停止输出</option>
-            <option value="keep">保持输出</option>
-          </select>
-        </label>
       </section>
 
       <button

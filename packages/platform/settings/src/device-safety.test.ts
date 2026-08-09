@@ -57,7 +57,6 @@ describe('共享设备安全设置', () => {
           maxAdjustStrengthStep: 7,
           maxOpossumIntensityA: 25,
           maxOpossumAdjustStep: 6,
-          backgroundBehavior: 'keep',
         }),
       );
       const s = loadDeviceSafety();
@@ -65,7 +64,6 @@ describe('共享设备安全设置', () => {
       expect(s.maxAdjustStep).toBe(7);
       expect(s.maxIntensityA).toBe(25);
       expect(s.maxOpossumAdjustStep).toBe(6);
-      expect(s.backgroundBehavior).toBe('keep');
     });
 
     it('Voice 的嵌套字段也认', () => {
@@ -80,17 +78,6 @@ describe('共享设备安全设置', () => {
       expect(s.maxBurstDurationMs).toBe(3000);
       expect(s.maxColdStartIntensity).toBe(5);
       expect(s.maxOpossumAdjustStep).toBe(8);
-    });
-
-    it('Chat 的裸键也认', () => {
-      localStorage.setItem('dg-bg-behavior', 'keep');
-      expect(loadDeviceSafety().backgroundBehavior).toBe('keep');
-    });
-
-    it('一处坏掉不影响其它来源', () => {
-      localStorage.setItem('dg-agent.browser-settings', '{坏的');
-      localStorage.setItem('dg-bg-behavior', 'keep');
-      expect(loadDeviceSafety().backgroundBehavior).toBe('keep');
     });
 
     it('迁移只发生一次', () => {

@@ -761,8 +761,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             limitA={device.limitA}
             limitB={device.limitB}
             onSetLimit={device.setLimit}
-            backgroundBehavior={device.backgroundBehavior}
-            onSetBackgroundBehavior={device.setBackgroundBehavior}
             firePolicy={device.firePolicy}
             onSetFirePolicy={device.setFirePolicy}
             onRestoreDefaults={waveforms.restoreDefaults}

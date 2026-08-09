@@ -1,4 +1,4 @@
-import { loadDeviceSafety, updateDeviceSafety } from '@0xnullai/settings';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   DeviceSession,
@@ -10,6 +10,7 @@ import {
   type OpossumSummary,
 } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
+import { DeviceLifecycleGuard } from '@dg-kit/safety';
 
 export interface UseDeviceOptions {
   /** Override the underlying DeviceClient transport. Used by the Tauri shell. */
@@ -43,23 +44,20 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [waveActiveB, setWaveActiveB] = useState(false);
   const [waveIdA, setWaveIdA] = useState<string | null>(null);
   const [waveIdB, setWaveIdB] = useState<string | null>(null);
-  const [limitA, setLimitA] = useState(50);
-  const [limitB, setLimitB] = useState(50);
+  // Seeded from the shared device-safety settings, not a local 50. Lowering
+  // the cap to 30 in the unified settings used to leave Chat still running at
+  // 50 — a safety control that visibly did nothing in one of the modules it
+  // claimed to govern.
+  const [limitA, setLimitA] = useState(() => loadDeviceSafety().maxStrengthA);
+  const [limitB, setLimitB] = useState(() => loadDeviceSafety().maxStrengthB);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
   const [opossum, setOpossum] = useState<OpossumSummary | null>(null);
-  // Background behavior belongs to the shared device-safety settings — all
-  // three modules share one copy, so switching apps doesn't change it.
-  const [backgroundBehavior, setBackgroundBehaviorState] = useState<'stop' | 'keep'>(
-    () => loadDeviceSafety().backgroundBehavior,
-  );
   const [firePolicy, setFirePolicyState] = useState<'sum' | 'max' | 'avg'>(
     () => (localStorage.getItem('dg-fire-policy') as 'sum' | 'max' | 'avg' | null) ?? 'max',
   );
   const firePolicyRef = useRef(firePolicy);
   firePolicyRef.current = firePolicy;
   const sessionRef = useRef<DeviceSession | null>(null);
-  const bgBehaviorRef = useRef(backgroundBehavior);
-  bgBehaviorRef.current = backgroundBehavior;
 
   /** Sync state from the device instance into React state */
   const syncState = useCallback(() => {
@@ -132,8 +130,8 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setWaveActiveB(false);
     setWaveIdA(null);
     setWaveIdB(null);
-    setLimitA(50);
-    setLimitB(50);
+    setLimitA(loadDeviceSafety().maxStrengthA);
+    setLimitB(loadDeviceSafety().maxStrengthB);
     setSensor(null);
     setOpossum(null);
   }, []);
@@ -209,12 +207,6 @@ export function useDevice(options: UseDeviceOptions = {}) {
     sessionRef.current?.setLedColor(target, color);
   }, []);
 
-  /** Set the background behavior */
-  const setBackgroundBehavior = useCallback((mode: 'stop' | 'keep') => {
-    setBackgroundBehaviorState(mode);
-    updateDeviceSafety((prev) => ({ ...prev, backgroundBehavior: mode }));
-  }, []);
-
   /** Set the multi-user fire aggregation policy */
   const setFirePolicy = useCallback((p: 'sum' | 'max' | 'avg') => {
     setFirePolicyState(p);
@@ -230,26 +222,28 @@ export function useDevice(options: UseDeviceOptions = {}) {
   // modules only sets DOM hidden, the page itself is still visible, and this
   // handler never fires at all. That path is covered by revoking the
   // device-control lease (see onRevoke).
+  // Follow the shared caps live: changing them in settings must take effect
+  // in an open Chat session, not only after a reconnect.
   useEffect(() => {
-    const stopIfConfigured = () => {
-      if (bgBehaviorRef.current !== 'stop') return;
-      sessionRef.current?.stopAllOutputs();
-      syncState();
+    const apply = () => {
+      const safety = loadDeviceSafety();
+      sessionRef.current?.coyote.setLimit('A', safety.maxStrengthA);
+      sessionRef.current?.coyote.setLimit('B', safety.maxStrengthB);
+      setLimitA(safety.maxStrengthA);
+      setLimitB(safety.maxStrengthB);
     };
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') stopIfConfigured();
-    };
-    // pagehide covers the cases where visibilitychange never fires: iOS Safari
-    // and WebViews can go straight to pagehide when the system reclaims them.
-    // Missing it means the device keeps outputting after the app has been
-    // killed, with no UI left anywhere for the user to stop it.
-    const onPageHide = () => stopIfConfigured();
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', onPageHide);
-    };
+    apply();
+    return subscribeDeviceSafety(apply);
+  }, []);
+
+  useEffect(() => {
+    const guard = new DeviceLifecycleGuard({
+      onStop: () => {
+        sessionRef.current?.stopAllOutputs();
+        syncState();
+      },
+    });
+    return guard.start();
   }, [syncState]);
 
   return {
@@ -271,8 +265,6 @@ export function useDevice(options: UseDeviceOptions = {}) {
     limitA,
     limitB,
     setLimit,
-    backgroundBehavior,
-    setBackgroundBehavior,
     firePolicy,
     firePolicyRef,
     setFirePolicy,

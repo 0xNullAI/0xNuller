@@ -63,7 +63,6 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
     modelContextStrategy: 'last-user-turn',
     temperature: 0.3,
     permissionMode: 'confirm',
-    backgroundBehavior: 'stop',
     maxStrengthA: 50,
     maxStrengthB: 50,
     maxColdStartStrength: DEFAULT_MAX_COLD_START_STRENGTH,

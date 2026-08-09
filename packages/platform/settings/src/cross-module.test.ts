@@ -66,14 +66,6 @@ describe('三个模块共享同一份设备安全设置', () => {
     expect(voice.opossumSafety.maxAdjustStep).toBe(4);
   });
 
-  it('后台行为跨模块一致', () => {
-    const agent = new BrowserAppSettingsStore();
-    agent.save({ ...agent.load(), backgroundBehavior: 'keep' });
-    // Chat reads the same source of truth (its use-device calls
-    // loadDeviceSafety directly).
-    expect(loadDeviceSafety().backgroundBehavior).toBe('keep');
-  });
-
   it('allow-all 在任何一个模块写入后都不过夜', () => {
     const voice = loadSettings();
     saveSettings({ ...voice, permissionMode: 'allow-all' });

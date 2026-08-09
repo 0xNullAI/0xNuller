@@ -42,7 +42,6 @@ export const settingsSchema = z.object({
   temperature: z.number().min(0).max(1).optional(),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']).optional(),
   permissionModeExpiresAt: z.number().int().positive().optional(),
-  backgroundBehavior: z.enum(['stop', 'keep']).optional(),
   maxStrengthA: z.number().int().min(0).max(200).optional(),
   maxStrengthB: z.number().int().min(0).max(200).optional(),
   maxColdStartStrength: z.number().int().min(0).max(200).optional(),

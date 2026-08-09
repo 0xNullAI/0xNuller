@@ -14,12 +14,11 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { BrowserSafetyGuard } from './services/safety-guard.js';
 import { SidebarSection, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
-import { isSafetyNoticeAccepted } from '@dg-kit/safety';
+import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
@@ -370,15 +369,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   const safetyGuard = useMemo(
     () =>
-      new BrowserSafetyGuard({
-        stopOnLeave: true,
-        backgroundBehavior: settings.backgroundBehavior,
+      new DeviceLifecycleGuard({
         onStop: async (reason) => {
           await performLifecycleStop(reason);
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [settings.backgroundBehavior],
+    [],
   );
 
   // The theme is no longer applied by this module — it is a cross-module global setting

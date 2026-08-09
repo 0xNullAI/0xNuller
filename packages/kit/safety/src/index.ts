@@ -11,5 +11,6 @@ export * from './policy-engine.js';
 export * from './default-policies.js';
 export * from './device-command-queue.js';
 export * from './safety-bus.js';
+export * from './lifecycle-guard.js';
 export * from './safety-notice-content.js';
 export * from './safety-acceptance.js';

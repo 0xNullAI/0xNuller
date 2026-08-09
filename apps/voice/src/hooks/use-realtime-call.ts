@@ -1,7 +1,7 @@
 import { loadScenes } from '@0xnullai/scenes';
 import { useCallback, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
-import { PolicyEngine, OpossumPolicyEngine } from '@dg-kit/safety';
+import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import { ToolExecutor } from '@voice/lib/tool-executor';
@@ -18,7 +18,6 @@ import type {
   RealtimeTranscriptEntry,
 } from '@voice/lib/realtime/realtime-session';
 import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
-import { CallSafetyGuard } from '@voice/services/call-safety-guard';
 import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 
@@ -49,7 +48,7 @@ function createSessionId(): string {
  * Owns one call's lifecycle: builds a fresh safety chain (policy engines,
  * queues, permission service, tool executor) scoped to this call, connects
  * the realtime session, wires the tool bridge, and tears everything down on
- * hangup — including the `CallSafetyGuard` (page-hide/leave => hangup).
+ * hangup — including the shared DeviceLifecycleGuard (page-hide/leave => hangup).
  *
  * A fresh `ToolExecutor`/permission grant per call means switching devices
  * or re-authorizing between calls can't leak stale timed grants forward.
@@ -202,7 +201,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
 
       await session.connect();
       sessionRef.current = session;
-      guardStopRef.current = new CallSafetyGuard({ onHangup: () => hangUp('页面已离开或切至后台，通话已自动挂断') }).start();
+      guardStopRef.current = new DeviceLifecycleGuard({ onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断') }).start();
 
       // Keep the model's [当前设备状态] block current as strength/connection
       // state changes mid-call — debounced so a burst of rapid state changes

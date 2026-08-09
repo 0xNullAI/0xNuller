@@ -32,7 +32,6 @@ export interface BrowserAppSettings {
   temperature: number;
   permissionMode: BrowserPermissionMode;
   permissionModeExpiresAt?: number;
-  backgroundBehavior: 'stop' | 'keep';
   maxStrengthA: number;
   maxStrengthB: number;
   maxColdStartStrength: number;

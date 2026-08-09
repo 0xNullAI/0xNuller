@@ -55,8 +55,6 @@ export interface DeviceSafetySettings {
   permissionMode: BrowserPermissionMode;
   /** Expiry timestamp for `timed` mode. */
   permissionModeExpiresAt?: number;
-  /** Whether output stops automatically when backgrounded. */
-  backgroundBehavior: 'stop' | 'keep';
 }
 
 export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
@@ -82,7 +80,6 @@ export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
   maxVibrateBurstCallsPerTurn: 2,
 
   permissionMode: 'confirm',
-  backgroundBehavior: 'stop',
 };
 
 const KEY = '0xnullai.device-safety';
@@ -124,7 +121,6 @@ function coerce(raw: unknown): DeviceSafetySettings {
   if (typeof o.permissionModeExpiresAt === 'number') {
     out.permissionModeExpiresAt = o.permissionModeExpiresAt;
   }
-  out.backgroundBehavior = o.backgroundBehavior === 'keep' ? 'keep' : 'stop';
   return out;
 }
 
@@ -189,7 +185,6 @@ function migrate(): DeviceSafetySettings | null {
       if (typeof agent.permissionMode === 'string') {
         out.permissionMode = persistableMode(agent.permissionMode as BrowserPermissionMode);
       }
-      if (agent.backgroundBehavior === 'keep') out.backgroundBehavior = 'keep';
     }
   } catch {
     // A corrupt Agent blob must not block the other sources.
@@ -232,7 +227,6 @@ function migrate(): DeviceSafetySettings | null {
     const bg = localStorage.getItem('dg-bg-behavior');
     if (bg === 'keep' || bg === 'stop') {
       found = true;
-      out.backgroundBehavior = bg;
     }
   } catch {
     // Same as above.
