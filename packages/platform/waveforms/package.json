@@ -5,8 +5,7 @@
   "type": "module",
   "description": "跨模块共享的波形库。Agent 与 Chat 曾各存一份互相看不见的库，这里是合并后的唯一一份。",
   "exports": {
-    ".": "./src/index.ts",
-    "./react": "./src/use-waveform-library.ts"
+    ".": "./src/index.ts"
   },
   "peerDependencies": {
     "react": "^19.2.5"
