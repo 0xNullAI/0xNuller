@@ -34,13 +34,11 @@ export interface ProxySettings {
    * SOCKS proxy, e.g. `socks5://127.0.0.1:1080`.
    * Tauri shell only — ignored on the web.
    */
-  socksUrl: string;
 }
 
 export const DEFAULT_PROXY: ProxySettings = {
   enabled: false,
   httpBaseUrl: '',
-  socksUrl: '',
 };
 
 const KEY = '0xnullai.proxy';
@@ -52,7 +50,6 @@ function coerce(raw: unknown): ProxySettings {
   return {
     enabled: o.enabled === true,
     httpBaseUrl: typeof o.httpBaseUrl === 'string' ? o.httpBaseUrl : '',
-    socksUrl: typeof o.socksUrl === 'string' ? o.socksUrl : '',
   };
 }
 
@@ -116,10 +113,7 @@ export function applyHttpProxy(url: string, proxy: ProxySettings = loadProxy()):
   }
 }
 
-/** Whether this runtime can actually use SOCKS. Always false on the web. */
-export function socksSupported(runtime: ProxyRuntime): boolean {
-  return runtime === 'tauri';
-}
+
 
 /**
  * Detect the current runtime.

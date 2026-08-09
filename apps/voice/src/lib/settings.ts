@@ -38,7 +38,6 @@ export interface VoiceSettings {
   activeProviderId: RealtimeProviderId;
   providers: Record<RealtimeProviderId, RealtimeProviderSettings>;
   permissionMode: BrowserPermissionMode;
-  allowProactiveSpeech: boolean;
   coyoteSafety: CoyoteSafetySettings;
   opossumSafety: OpossumSafetySettings;
 }
@@ -58,7 +57,6 @@ export function createDefaultSettings(): VoiceSettings {
     // upgrades to a 'timed' one-time authorization; settings can also
     // widen it, same tradeoff DG-Agent's SafetyTab exposes.
     permissionMode: 'confirm',
-    allowProactiveSpeech: false,
     coyoteSafety: {
       maxStrengthA: 50,
       maxStrengthB: 50,
@@ -91,7 +89,6 @@ const settingsSchema = z.object({
   activeProviderId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']),
-  allowProactiveSpeech: z.boolean(),
   coyoteSafety: z.object({
     maxStrengthA: z.number(),
     maxStrengthB: z.number(),

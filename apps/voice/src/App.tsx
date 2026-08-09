@@ -1,11 +1,9 @@
-import { useState } from 'react';
-import { Bluetooth, Settings, X } from 'lucide-react';
+import { Bluetooth } from 'lucide-react';
 import {
   Alert,
   AlertDescription,
   Button,
   ModuleActions,
-  useInShell,
   useSafetySession,
 } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
@@ -15,12 +13,6 @@ import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
 import { CallPanel } from '@voice/components/CallPanel';
 import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
 import { PermissionModal } from '@0xnullai/ui';
-import {
-  SettingsSidebar,
-  SettingsWorkspace,
-  type SettingsTab,
-} from '@voice/components/settings/SettingsPanel';
-import { ResetSettingsDialog } from '@voice/components/settings/ResetSettingsDialog';
 import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
 
@@ -84,19 +76,13 @@ export function App({ transport }: AppProps = {}) {
         : []),
     ],
   });
-  const inShell = useInShell();
-  const { settings, updateSettings, resetSettings } = useSettings();
+  const { settings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
   // hung 'connecting' used to latch these buttons disabled forever. Connecting
   // a device is always allowed; it gates on its own in-flight flag instead.
-  const callIsActive = call.state.status === 'active';
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
-  const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(true);
-  const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
   // The theme is held solely by @0xnullai/ui's shared store (one key and one
   // DOM write point shared across modules). This only subscribes. The old
@@ -105,11 +91,6 @@ export function App({ transport }: AppProps = {}) {
   // shell, which is exactly why it had to be consolidated.
   useTheme();
 
-  const openSettings = () => {
-    setSettingsMobileNavOpen(true);
-    setSettingsOpen(true);
-  };
-  const closeSettings = () => setSettingsOpen(false);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
@@ -124,50 +105,9 @@ export function App({ transport }: AppProps = {}) {
           <Bluetooth className="h-4 w-4" />
           <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
         </Button>
-        {/* This button doesn't exist inside the shell: settings have exactly
-            one entry point, in the account menu at the bottom of the sidebar.
-            All four pages of this panel have a counterpart over there (主题→
-            外观, 供应商与音色→AI, 场景→场景, 强度上限→设备安全), so keeping it
-            means the same thing is editable in two places and which one takes
-            effect depends on whichever module happens to be open — exactly what
-            the merge is meant to eliminate. */}
-        {!inShell && (
-          <Button
-            variant={settingsOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={settingsOpen ? closeSettings : openSettings}
-            disabled={callIsActive}
-            aria-label={settingsOpen ? '关闭设置' : '设置'}
-          >
-            {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-          </Button>
-        )}
       </ModuleActions>
 
-      {settingsOpen ? (
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block">
-            <SettingsSidebar
-              tab={settingsTab}
-              onTabChange={setSettingsTab}
-              onMobileNavOpenChange={setSettingsMobileNavOpen}
-              onClose={closeSettings}
-              onRequestReset={() => setResetDialogOpen(true)}
-            />
-          </aside>
-          <SettingsWorkspace
-            tab={settingsTab}
-            onTabChange={setSettingsTab}
-            mobileNavOpen={settingsMobileNavOpen}
-            onMobileNavOpenChange={setSettingsMobileNavOpen}
-            onClose={closeSettings}
-            onRequestReset={() => setResetDialogOpen(true)}
-            settings={settings}
-            updateSettings={updateSettings}
-          />
-        </section>
-      ) : (
-        <>
+
           <DeviceStatusBar
             state={state}
             coyoteSafety={settings.coyoteSafety}
@@ -191,8 +131,7 @@ export function App({ transport }: AppProps = {}) {
               onEmergencyStop={() => void emergencyStop()}
             />
           </main>
-        </>
-      )}
+
 
       {call.pendingPermission && (
         <PermissionModal
@@ -207,11 +146,7 @@ export function App({ transport }: AppProps = {}) {
         />
       )}
 
-      <ResetSettingsDialog
-        open={resetDialogOpen}
-        onOpenChange={setResetDialogOpen}
-        onConfirm={resetSettings}
-      />
+
     </div>
   );
 }
