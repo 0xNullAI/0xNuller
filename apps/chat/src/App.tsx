@@ -385,10 +385,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           opossumStop: deviceRef.current.opossumStop,
           setLedColor: deviceRef.current.setLedColor,
         },
+        notify: peerRoom.notifyLocal,
       };
       executeCommand(cmd, ctx);
     },
-    [callApplyFire],
+    [callApplyFire, peerRoom.notifyLocal],
   );
 
   useEffect(() => {

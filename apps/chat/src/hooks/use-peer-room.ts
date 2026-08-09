@@ -653,6 +653,28 @@ export function usePeerRoom(displayName: string) {
     return m;
   }, [members, scene, roleAssignments]);
 
+  /**
+   * Show a remote peer's notice as a line in the transcript.
+   *
+   * Local only — never sent back to the room. It exists so the `alert`
+   * command has a non-blocking way to reach the user.
+   */
+  const notifyLocal = useCallback((text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `notice-${crypto.randomUUID()}`,
+        fromSelf: false,
+        senderId: 'system',
+        senderName: '提示',
+        text: body,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
   return {
     selfId,
     status,
@@ -671,6 +693,7 @@ export function usePeerRoom(displayName: string) {
     broadcastStateSlow,
     setCommandHandler,
     setWaveformHandler,
+    notifyLocal,
     // —— Scene roleplay ——
     scene,
     roleAssignments,

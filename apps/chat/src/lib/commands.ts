@@ -23,6 +23,8 @@ export interface CommandContext {
   getWaveform?: (id: string) => WaveformDefinition | undefined;
   /** Opossum/LED control surface. Present whenever a local device session exists (even if only a sensor is connected). */
   session?: DeviceSessionContext;
+  /** Show a remote peer's notice without blocking the page. */
+  notify?: (text: string) => void;
 }
 
 export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string {
@@ -36,8 +38,12 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       return '当前设备不支持振动';
 
     case 'alert':
-      window.alert(cmd.d ?? '');
-      return '已弹窗';
+      // Never window.alert here. This command arrives from another member of
+      // the room, and a native modal blocks all script and interaction until
+      // it is dismissed — including reaching the stop button, while a device
+      // is attached to the user's body. Stop has to stay one action away.
+      ctx?.notify?.(cmd.d ?? '');
+      return '已提示';
 
     case 'bg':
       if (cmd.d) {
