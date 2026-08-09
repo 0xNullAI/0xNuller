@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bot, Trash2 } from 'lucide-react';
 import { Overlay } from '@0xnullai/ui';
+import { loadScenes, subscribeScenes, type SavedScene } from '@0xnullai/scenes';
 import type { RoomAgent } from '../../worker/wire';
 
 /**
@@ -12,6 +13,12 @@ import type { RoomAgent } from '../../worker/wire';
  *
  * Host-only, matching the server: the agent's device commands are authorized
  * on the host's authority.
+ *
+ * The persona can be picked from the shared scene library — the same one
+ * Agent and Voice use — so a persona written once is available everywhere,
+ * rather than being retyped per room. Picking one fills the text in; it is
+ * still editable afterwards, because a room often wants a variation rather
+ * than the library entry verbatim.
  */
 export function RoomAgentDialog({
   agent,
@@ -24,6 +31,16 @@ export function RoomAgentDialog({
 }) {
   const [name, setName] = useState(agent?.name ?? '');
   const [persona, setPersona] = useState(agent?.persona ?? '');
+  const [scenes, setScenes] = useState<SavedScene[]>([]);
+
+  useEffect(() => {
+    const apply = () => {
+      const lib = loadScenes();
+      setScenes(lib.scenes.filter((s) => !lib.hiddenBuiltinIds.includes(s.id)));
+    };
+    apply();
+    return subscribeScenes(apply);
+  }, []);
 
   const trimmedName = name.trim();
 
@@ -49,6 +66,28 @@ export function RoomAgentDialog({
             className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
         </label>
+
+        {scenes.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-[var(--text-soft)]">从场景库选一个</span>
+            <div className="flex flex-wrap gap-1.5">
+              {scenes.map((scene) => (
+                <button
+                  key={scene.id}
+                  type="button"
+                  onClick={() => {
+                    setPersona(scene.prompt);
+                    if (!trimmedName) setName(scene.name);
+                  }}
+                  className="rounded-[10px] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+                >
+                  {scene.icon ? `${scene.icon} ` : ''}
+                  {scene.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-[var(--text-soft)]">人设（可留空）</span>

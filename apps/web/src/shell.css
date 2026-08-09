@@ -20,6 +20,7 @@
 @source '../../agent/src';
 @source '../../chat/src';
 @source '../../voice/src';
+@source '../../playground/src';
 @source '../../market/src';
 
 @import '@0xnullai/ui/styles/tokens.css';

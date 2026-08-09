@@ -18,6 +18,7 @@ export default defineConfig({
       'apps/chat',
       'apps/voice',
       'apps/mcp',
+      'apps/playground',
       'workers/auth',
       'android/app',
 

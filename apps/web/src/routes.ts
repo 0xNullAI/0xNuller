@@ -16,7 +16,13 @@ export interface ModuleRoute {
   Component: ComponentType;
 }
 
-/** The four entries in the app switcher. */
+/**
+ * The app switcher, in display order.
+ *
+ * The order is deliberate and is the order the products are meant to be
+ * discovered in — Agent first as the simplest way in, Market last because it
+ * is where you go once you know what you want.
+ */
 export const MODULES: ModuleRoute[] = [
   {
     id: 'agent',
@@ -25,16 +31,22 @@ export const MODULES: ModuleRoute[] = [
     Component: lazy(() => import('./modules/agent')),
   },
   {
+    id: 'voice',
+    label: 'Voice',
+    blurb: '实时语音通话',
+    Component: lazy(() => import('./modules/voice')),
+  },
+  {
     id: 'chat',
     label: 'Chat',
     blurb: '多人房间远程控制',
     Component: lazy(() => import('./modules/chat')),
   },
   {
-    id: 'voice',
-    label: 'Voice',
-    blurb: '实时语音通话',
-    Component: lazy(() => import('./modules/voice')),
+    id: 'playground',
+    label: 'Playground',
+    blurb: '把设备接进游戏',
+    Component: lazy(() => import('./modules/playground')),
   },
   {
     id: 'market',
