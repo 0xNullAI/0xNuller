@@ -153,6 +153,18 @@ isolate 数」。绑定还在 `unsafe` 下且 schema 变过，所以**先 `--dry
 **1. `IP_PEPPER` 永不轮换。** 它参与登录限流记录的哈希，换了等于把所有限流记录作废，
 攻击者只要等一次轮换就能重置自己的失败计数。
 
+值已经生成好了，存在仓库外的 `~/.dg-keystores/0xnullai-worker-secrets.txt`（`600`，
+和 keystore 密码放在一起）。首次部署时：
+
+```bash
+wrangler secret put IP_PEPPER --config workers/auth/wrangler.jsonc
+# 从上面那个文件里取值粘贴。不要生成新的——那就是一次轮换。
+```
+
+那个文件永远不进仓库。`.gitignore` 现在挡住了 `.env*` / `*.pem` / `*.key` / `*.jks`，
+但真正的保障是密钥根本不在仓库目录下：误提交的密钥 push 之后就永远留在别人的 clone
+和 GitHub 的对象库里，撤不回来。
+
 **2. `ALLOWED_ORIGINS` 必须包含根域。** 漏了的话 `me()` 会静默失败被当成未登录——
 用户会看到「明明登录了却显示未登录」，而控制台里只有一条 CORS 警告。
 
