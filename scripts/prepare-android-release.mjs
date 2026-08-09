@@ -1,12 +1,16 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const generated = join(root, 'android/app/src-tauri/gen/android/app');
 const gradlePath = join(generated, 'build.gradle.kts');
 const manifestPath = join(generated, 'src/main/AndroidManifest.xml');
+const provenancePath = join(generated, 'src/main/assets/0xnuller-build.json');
 const signingTemplatePath = join(root, 'android/app/signing.gradle.kts.template');
 const manifestTemplatePath = join(root, 'android/app/AndroidManifest.template.xml');
+const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
+const releaseBuild = process.argv.includes('--release');
 
 for (const path of [gradlePath, manifestPath]) {
   if (!existsSync(path)) {
@@ -16,6 +20,10 @@ for (const path of [gradlePath, manifestPath]) {
 
 function attribute(node, name) {
   return node.match(new RegExp(`${name}="([^"]+)"`))?.[1] ?? null;
+}
+
+function git(...args) {
+  return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 }
 
 function kotlinBlocks(source, name) {
@@ -96,6 +104,28 @@ if (normalizedReleaseSigningBlocks.length !== 1) {
 }
 writeFileSync(gradlePath, gradle);
 
+const sourceCommit = git('rev-parse', 'HEAD');
+const worktreeChanges = git('status', '--porcelain', '--untracked-files=all');
+if (releaseBuild && worktreeChanges) {
+  throw new Error('release APK must be built from a clean worktree');
+}
+const tauri = JSON.parse(readFileSync(tauriPath, 'utf8'));
+mkdirSync(join(generated, 'src/main/assets'), { recursive: true });
+writeFileSync(
+  provenancePath,
+  `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      product: tauri.productName,
+      version: tauri.version,
+      sourceCommit,
+      dirty: Boolean(worktreeChanges),
+    },
+    null,
+    2,
+  )}\n`,
+);
+
 for (const required of [
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
@@ -107,4 +137,6 @@ if (!gradle.includes('minSdk = 26') || !gradle.includes(signingMarker)) {
   throw new Error('generated Android Gradle configuration is incomplete');
 }
 
-console.log('Android project prepared: BLE permissions, minSdk 26, fail-closed release signing');
+console.log(
+  `Android project prepared: BLE permissions, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+);

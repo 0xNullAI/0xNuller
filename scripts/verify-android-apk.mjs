@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { inflateRawSync } from 'node:zlib';
 
 const root = resolve(import.meta.dirname, '..');
 const tauri = JSON.parse(readFileSync(join(root, 'android/app/src-tauri/tauri.conf.json'), 'utf8'));
@@ -57,6 +58,47 @@ function requireMatch(text, pattern, message) {
   const match = text.match(pattern);
   if (!match) fail(message);
   return match;
+}
+
+function readZipEntry(zip, wantedName) {
+  const eocdSignature = 0x06054b50;
+  const centralSignature = 0x02014b50;
+  const localSignature = 0x04034b50;
+  let eocd = -1;
+  for (let index = zip.length - 22; index >= Math.max(0, zip.length - 65_557); index -= 1) {
+    if (zip.readUInt32LE(index) === eocdSignature) {
+      eocd = index;
+      break;
+    }
+  }
+  if (eocd < 0) fail('APK has no ZIP end-of-central-directory record');
+
+  const entryCount = zip.readUInt16LE(eocd + 10);
+  let central = zip.readUInt32LE(eocd + 16);
+  for (let entry = 0; entry < entryCount; entry += 1) {
+    if (zip.readUInt32LE(central) !== centralSignature) fail('APK central directory is invalid');
+    const method = zip.readUInt16LE(central + 10);
+    const compressedSize = zip.readUInt32LE(central + 20);
+    const uncompressedSize = zip.readUInt32LE(central + 24);
+    const nameLength = zip.readUInt16LE(central + 28);
+    const extraLength = zip.readUInt16LE(central + 30);
+    const commentLength = zip.readUInt16LE(central + 32);
+    const localOffset = zip.readUInt32LE(central + 42);
+    const name = zip.subarray(central + 46, central + 46 + nameLength).toString('utf8');
+    if (name === wantedName) {
+      if (zip.readUInt32LE(localOffset) !== localSignature) fail(`APK entry ${name} is invalid`);
+      const localNameLength = zip.readUInt16LE(localOffset + 26);
+      const localExtraLength = zip.readUInt16LE(localOffset + 28);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = zip.subarray(dataStart, dataStart + compressedSize);
+      const value = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed) : null;
+      if (!value) fail(`APK entry ${name} uses unsupported compression method ${method}`);
+      if (value.length !== uncompressedSize) fail(`APK entry ${name} has an invalid size`);
+      return value;
+    }
+    central += 46 + nameLength + extraLength + commentLength;
+  }
+  fail(`APK is missing ${wantedName}`);
 }
 
 if (!existsSync(apk)) fail(`APK not found: ${apk}`);
@@ -118,6 +160,20 @@ if (certificate !== expectedCertificate) {
 }
 
 const bytes = readFileSync(apk);
+const provenance = JSON.parse(readZipEntry(bytes, 'assets/0xnuller-build.json').toString('utf8'));
+const expectedSourceCommit =
+  process.env.EXPECTED_SOURCE_COMMIT ?? run('git', ['-C', root, 'rev-parse', 'HEAD']).trim();
+if (
+  provenance.schemaVersion !== 1 ||
+  provenance.product !== tauri.productName ||
+  provenance.version !== tauri.version ||
+  provenance.sourceCommit !== expectedSourceCommit ||
+  provenance.dirty !== false
+) {
+  fail(
+    `APK provenance is ${JSON.stringify(provenance)}, expected clean ${tauri.productName} ${tauri.version} from ${expectedSourceCommit}`,
+  );
+}
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 console.log(
   JSON.stringify(
@@ -131,6 +187,7 @@ console.log(
       minSdk,
       abi: 'arm64-v8a',
       certificateSha256: certificate,
+      sourceCommit: provenance.sourceCommit,
       apkSha256: sha256,
       bytes: statSync(apk).size,
     },

@@ -23,7 +23,11 @@ import type { Plugin } from 'vite';
  * report.
  */
 export function resolveBuildId(localPrefix: string): string {
-  return process.env.VERCEL_GIT_COMMIT_SHA ?? `${localPrefix}-${Date.now()}`;
+  return (
+    process.env.SOURCE_BUILD_ID ??
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    `${localPrefix}-${Date.now()}`
+  );
 }
 
 /** Emits the `version.json` the update checker polls, next to the bundle. */
