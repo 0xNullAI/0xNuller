@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    setupFiles: [path.resolve(__dirname, '../../test/setup/jsdom-gaps.ts')],
+    setupFiles: [path.resolve(import.meta.dirname, '../../test/setup/jsdom-gaps.ts')],
     environment: 'jsdom',
     globals: true,
     // worker/ and shared/ were outside this glob, which is why the room

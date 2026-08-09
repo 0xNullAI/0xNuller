@@ -4,7 +4,7 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.js';
+import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
 
 /**
  * The unified shell. The four modules' source trees still live under
@@ -46,7 +46,7 @@ const proxy = apiProxyTarget
   : undefined;
 
 export default defineConfig({
-  root: __dirname,
+  root: import.meta.dirname,
   resolve: {
     // There must be exactly one React instance across the whole repo. Before the
     // merge apps/market declared react@18 while everything else was 19, npm could not
@@ -57,9 +57,9 @@ export default defineConfig({
     // instances.
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@agent': path.resolve(__dirname, '../agent/src'),
-      '@voice': path.resolve(__dirname, '../voice/src'),
-      '@control': path.resolve(__dirname, '../control/src'),
+      '@agent': path.resolve(import.meta.dirname, '../agent/src'),
+      '@voice': path.resolve(import.meta.dirname, '../voice/src'),
+      '@control': path.resolve(import.meta.dirname, '../control/src'),
     },
   },
   define: { __BUILD_ID__: JSON.stringify(buildId) },

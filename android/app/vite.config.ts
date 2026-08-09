@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveBuildId } from '../../scripts/vite-version.js';
+import { resolveBuildId } from '../../scripts/vite-version.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const r = (p: string) => path.resolve(here, p);

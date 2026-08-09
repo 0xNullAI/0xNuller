@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
-import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.js';
+import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
 
 const buildId = resolveBuildId('local');
 
@@ -15,7 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@agent': path.resolve(__dirname, './src'),
+      '@agent': path.resolve(import.meta.dirname, './src'),
     },
   },
   base: './',
