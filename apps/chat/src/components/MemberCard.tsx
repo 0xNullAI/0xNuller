@@ -1,4 +1,6 @@
 import { ChevronRight } from 'lucide-react';
+import { Avatar } from '@0xnullai/ui';
+import { requestProfileView } from '@0xnullai/auth';
 import type { MemberState } from '../lib/protocol';
 
 interface MemberCardProps {
@@ -9,7 +11,6 @@ interface MemberCardProps {
 
 export function MemberCard({ peerId, member, onClick }: MemberCardProps) {
   const name = member?.displayName || peerId.slice(0, 8);
-  const initial = (member?.displayName?.[0] || peerId[0] || '?').toUpperCase();
   const connected = member?.deviceConnected ?? false;
 
   return (
@@ -17,8 +18,10 @@ export function MemberCard({ peerId, member, onClick }: MemberCardProps) {
       onClick={onClick}
       className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3 transition-all hover:bg-[var(--bg-soft)] active:scale-[0.98]"
     >
-      {/* Avatar */}
-      <div className="avatar">{initial}</div>
+      {/* Avatar. Inert unless this peer has an account behind them — most
+          room members do not, and an avatar that opens an empty page is worse
+          than one that does nothing. Avatar enforces that itself. */}
+      <Avatar name={name} username={member?.username} size={40} onOpenProfile={requestProfileView} />
 
       {/* Info */}
       <div className="flex-1 min-w-0">

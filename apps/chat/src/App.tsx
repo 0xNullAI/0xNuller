@@ -107,10 +107,19 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
    * room is concerned, this is the same as the device being uncontrollable.
    */
   const [deviceReleased, setDeviceReleased] = useState(false);
+  /**
+   * The account handle, kept alongside the display name so an avatar in the
+   * room can open the right profile. Null while signed out, which is the
+   * common case — a room peer is anonymous unless they chose otherwise.
+   */
+  const [username, setUsername] = useState<string | null>(null);
   useEffect(() => {
     me()
       .then((u) => {
-        if (u) setDisplayName(u.displayName);
+        if (u) {
+          setDisplayName(u.displayName);
+          setUsername(u.username);
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -532,6 +541,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     const send = () => {
       peerRoom.broadcastStateSlow({
         displayName,
+        username,
         deviceConnected: device.connected && !deviceReleased,
         battery: device.battery,
         waveformCatalog: waveformsRef.current.allWaveforms.map((w) => ({
@@ -566,6 +576,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     peerRoom.connected,
     peerRoom.broadcastStateSlow,
     displayName,
+    username,
     device.connected,
     device.battery,
     waveforms.allWaveforms.length,
@@ -820,6 +831,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               ...peerRoom.peers.map((p) => ({
                 peerId: p,
                 name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),
+                username: peerRoom.members.get(p)?.username ?? null,
               })),
               // The room agent shows up as a pseudo-member so it can be @-mentioned.
               ...[...peerRoom.members.values()]
@@ -846,6 +858,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               {
                 peerId: 'self',
                 displayName,
+                username,
                 deviceConnected: device.connected,
                 strengthA: device.strengthA,
                 strengthB: device.strengthB,

@@ -508,6 +508,141 @@ describe('他人主页的可见性', () => {
     expect((await get('/api/auth/users/alice', bob.token)).status).toBe(404);
   });
 
+  it('公开资料带上关注数、加入时间与相册', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    const carol = await seedUser('carol');
+    await setVisibility(bob.token, 'public');
+    await follow(alice.token, bob.id);
+    await follow(carol.token, bob.id);
+    await follow(bob.token, alice.id);
+
+    const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      counts: { followers: number; following: number } | null;
+      createdAt: number | null;
+      photos: unknown[];
+    };
+    expect(body.counts).toEqual({ followers: 2, following: 1 });
+    expect(body.createdAt).toBeGreaterThan(0);
+    // No R2 bucket is bound, so there is no upload path and no rows to return.
+    expect(body.photos).toEqual([]);
+  });
+
+  it('私密资料连关注数和加入时间都不给', async () => {
+    // The whole point of the flag. A private profile that still reported its
+    // follower count would publish exactly the presence and popularity signal
+    // it was set to private to withhold, and a moving number tells a watcher
+    // who just followed.
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'private');
+    await follow(alice.token, bob.id);
+
+    const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      counts: unknown;
+      createdAt: unknown;
+      photos: unknown[];
+      user: { username: string };
+    };
+    expect(body.counts).toBeNull();
+    expect(body.createdAt).toBeNull();
+    expect(body.photos).toEqual([]);
+    // The username stays: it is what the viewer typed to get here.
+    expect(body.user.username).toBe('bob');
+  });
+
+  it('自己看自己的私密资料仍然有关注数', async () => {
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'private');
+    const body = (await (await get('/api/auth/users/bob', bob.token)).json()) as {
+      counts: { followers: number; following: number } | null;
+      createdAt: number | null;
+    };
+    expect(body.counts).toEqual({ followers: 0, following: 0 });
+    expect(body.createdAt).toBeGreaterThan(0);
+  });
+
+  it('未登录看公开资料也能看到关注数', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    await follow(alice.token, bob.id);
+
+    const body = (await (await get('/api/auth/users/bob')).json()) as {
+      counts: { followers: number } | null;
+    };
+    expect(body.counts?.followers).toBe(1);
+  });
+
+  it('相册没有绑定存储时取图片一律 404，而不是 500', async () => {
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    await prepared(
+      "INSERT INTO user_photos (id, user_id, object_key, caption, visibility, created_at) VALUES (?, ?, ?, ?, 'public', ?)",
+      'p1',
+      bob.id,
+      'r2/bucket-object-key',
+      null,
+      Date.now(),
+    ).run();
+
+    const listed = (await (await get('/api/auth/users/bob')).json()) as {
+      photos: { id: string; url: string }[];
+    };
+    expect(listed.photos).toHaveLength(1);
+    // The R2 key must never reach the client; only the opaque id does.
+    expect(JSON.stringify(listed.photos)).not.toContain('bucket-object-key');
+    expect(listed.photos[0]?.url).toBe('/api/auth/photos/p1/content');
+
+    // env.PHOTOS is unbound in this suite, exactly as in production today.
+    expect((await get('/api/auth/photos/p1/content')).status).toBe(404);
+  });
+
+  it('私密资料里的公开照片对别人不出现', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'private');
+    await prepared(
+      "INSERT INTO user_photos (id, user_id, object_key, caption, visibility, created_at) VALUES (?, ?, ?, ?, 'public', ?)",
+      'p1',
+      bob.id,
+      'r2/bucket-object-key',
+      null,
+      Date.now(),
+    ).run();
+
+    const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      photos: unknown[];
+    };
+    expect(body.photos).toEqual([]);
+    // And the bytes are refused too, re-derived rather than trusting the list.
+    expect((await get('/api/auth/photos/p1/content', alice.token)).status).toBe(404);
+  });
+
+  it('公开资料里的私密照片只有自己看得到', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    await prepared(
+      "INSERT INTO user_photos (id, user_id, object_key, caption, visibility, created_at) VALUES (?, ?, ?, ?, 'private', ?)",
+      'p1',
+      bob.id,
+      'r2/bucket-object-key',
+      null,
+      Date.now(),
+    ).run();
+
+    const theirs = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      photos: unknown[];
+    };
+    expect(theirs.photos).toEqual([]);
+
+    const mine = (await (await get('/api/auth/users/bob', bob.token)).json()) as {
+      photos: { id: string }[];
+    };
+    expect(mine.photos.map((p) => p.id)).toEqual(['p1']);
+  });
+
   it('未登录也能看公开资料，但看不到关系', async () => {
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'public');

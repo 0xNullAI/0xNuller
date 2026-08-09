@@ -1,9 +1,15 @@
 import { useState } from 'react';
-import { Button, Input, Overlay } from '@0xnullai/ui';
+import { UserRound } from 'lucide-react';
+import { Avatar, Button, Input, Overlay } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
-import { deleteAccount, login, logout, register, type AuthUser } from '@0xnullai/auth';
-import { Avatar } from './Avatar';
-import { ProfileEditor } from './ProfileEditor';
+import {
+  deleteAccount,
+  login,
+  logout,
+  register,
+  requestProfileView,
+  type AuthUser,
+} from '@0xnullai/auth';
 
 /**
  * Account. Login / registration / signed-in info all live in this one dialog.
@@ -84,7 +90,7 @@ export function AccountDialog({
         {user ? (
           <>
             <div className="flex items-center gap-3">
-              <Avatar name={user.username} size={44} />
+              <Avatar name={user.displayName} username={user.username} size={44} />
               <div className="min-w-0">
                 <div className="truncate text-base font-semibold">{user.displayName}</div>
                 <div className="truncate text-sm text-[var(--text-faint)]">@{user.username}</div>
@@ -95,7 +101,28 @@ export function AccountDialog({
               <span className="text-[var(--text-soft)]">它不带来任何设备控制权</span>
               ——控制权始终需要当面授予，且随时可以撤销。
             </p>
-            <ProfileEditor />
+
+            {/* Editing used to be a stack of fields at the bottom of this
+                dialog, where nothing showed what other people would end up
+                seeing. It now happens on the profile itself, in place — so
+                this is an entry point rather than a form, and the account
+                dialog goes back to being only about identity and session. */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                requestProfileView(user.username);
+              }}
+              className="mt-5 flex w-full items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2.5 text-left transition-colors duration-[var(--dur)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              <UserRound className="h-4 w-4 shrink-0 text-[var(--text-soft)]" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">我的主页</span>
+                <span className="block text-[10px] text-[var(--text-faint)]">
+                  简介、地区、链接与可见性，全部选填
+                </span>
+              </span>
+            </button>
 
             <div className="mt-5 flex items-center justify-between gap-3">
               <button

@@ -153,6 +153,15 @@ export type SensorKind = Extract<DeviceKind, 'paw-prints' | 'civet-edging'>;
 export interface MemberState {
   peerId: string;
   displayName: string;
+  /**
+   * The account handle behind this member, when there is one.
+   *
+   * Almost always absent: a room peer is an anonymous, per-page-load id and
+   * anonymous use is a hard product constraint. It rides along only so an
+   * avatar can open the right profile, and every consumer has to treat it as
+   * missing by default rather than as a member field that happens to be empty.
+   */
+  username?: string | null;
   deviceConnected: boolean;
   strengthA: number;
   strengthB: number;
@@ -219,6 +228,8 @@ export interface StateFast {
 /** Low-frequency fields: name, device connection, battery, waveform catalog. 5 second heartbeat. */
 export interface StateSlow {
   displayName: string;
+  /** Account handle, or null when signed out. Slow rather than fast: it changes only at sign-in. */
+  username?: string | null;
   deviceConnected: boolean;
   battery: number | null;
   waveformCatalog?: WaveformCatalogEntry[];

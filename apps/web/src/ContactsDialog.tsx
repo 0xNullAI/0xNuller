@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
-import { Button, Input, Overlay } from '@0xnullai/ui';
+import { Avatar, Button, Input, Overlay } from '@0xnullai/ui';
 import {
   followUser,
   getUser,
   listFollowers,
   listFollowing,
+  requestProfileView,
   unfollowUser,
   type AuthUser,
   type Contact,
   type ContactActionResult,
   type PublicUserView,
 } from '@0xnullai/auth';
-import { Avatar } from './Avatar';
 
 /**
  * Contacts.
@@ -57,14 +57,23 @@ function Row({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2 hover:bg-[var(--bg-soft)]">
-      <Avatar name={username} size={34} />
-      <div className="min-w-0 flex-1">
+      <Avatar
+        name={displayName}
+        username={username}
+        size={34}
+        onOpenProfile={requestProfileView}
+      />
+      <button
+        type="button"
+        onClick={() => requestProfileView(username)}
+        className="min-w-0 flex-1 text-left"
+      >
         <div className="truncate text-sm font-medium">{displayName}</div>
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="truncate text-xs text-[var(--text-faint)]">@{username}</span>
           {mutual && <span className="shrink-0 text-[10px] text-[var(--accent)]">互相关注</span>}
         </div>
-      </div>
+      </button>
       <Button
         size="sm"
         variant={following ? 'secondary' : 'default'}
@@ -176,7 +185,12 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
             <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-1">
               {found.user.id === user.id ? (
                 <div className="flex items-center gap-3 px-2 py-2">
-                  <Avatar name={found.user.username} size={34} />
+                  <Avatar
+                    name={found.user.displayName}
+                    username={found.user.username}
+                    size={34}
+                    onOpenProfile={requestProfileView}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{found.user.displayName}</div>
                     <div className="truncate text-xs text-[var(--text-faint)]">这是你自己</div>

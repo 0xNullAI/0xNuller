@@ -61,6 +61,8 @@ const MAX_PAGE_SIZE = 50;
  * the middle of that is a worse answer than a ceiling nobody reaches.
  */
 const MAX_BLOCKS = 200;
+/** Album ceiling on a profile view. The editor pages its own list separately. */
+const MAX_ALBUM_PHOTOS = 60;
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -142,6 +144,7 @@ interface UserRow {
   username: string;
   display_name: string;
   password_hash: string;
+  created_at: number;
   banned_at: number | null;
   ban_reason: string | null;
 }
@@ -239,6 +242,67 @@ async function follows(env: Env, followerId: string, followeeId: string): Promis
     .bind(followerId, followeeId)
     .first();
   return row != null;
+}
+
+/**
+ * Follower / following counts for one user.
+ *
+ * `column` is chosen here from a closed pair of identifiers, never from request
+ * input: counting rows where the user is the followee gives their followers,
+ * and where they are the follower gives who they follow.
+ *
+ * No block filter, unlike contactListSql. Blocking deletes the follow rows in
+ * both directions, so a block and a follow cannot coexist to begin with; the
+ * NOT EXISTS over there is defence for a list that would otherwise show a
+ * blocked person by name, which a bare number cannot do.
+ */
+async function countFollows(
+  env: Env,
+  column: 'follower_id' | 'followee_id',
+  userId: string,
+): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM user_follows WHERE ${column} = ?`,
+  )
+    .bind(userId)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * The album as somebody else may see it.
+ *
+ * Per-photo visibility is a second gate **inside** an already-visible profile,
+ * not an alternative to it — the caller checks the profile first. The owner
+ * sees their own private photos here so the editor and the public view read
+ * from one place and cannot disagree about what exists.
+ *
+ * No R2 bucket is bound yet, so in practice this returns an empty list: there
+ * is no upload path, therefore no rows. The gating is written now because it is
+ * the part that fails silently later, when uploads land and nobody re-derives
+ * who was supposed to see what.
+ */
+async function visiblePhotos(env: Env, userId: string, isSelf: boolean): Promise<unknown[]> {
+  const rows = await env.DB.prepare(
+    `SELECT id, caption, visibility, created_at FROM user_photos
+      WHERE user_id = ?${isSelf ? '' : " AND visibility = 'public'"}
+      ORDER BY created_at DESC LIMIT ?`,
+  )
+    .bind(userId, MAX_ALBUM_PHOTOS)
+    .all();
+  return (rows.results ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      caption: (row.caption as string | null) ?? null,
+      visibility: row.visibility === 'public' ? 'public' : 'private',
+      createdAt: Number(row.created_at),
+      // The object key never leaves the server. It is an R2 path, and handing
+      // it out would let anyone who learns the bucket's layout guess at
+      // neighbouring keys; the id is the only handle a client needs.
+      url: `/api/auth/photos/${encodeURIComponent(String(row.id))}/content`,
+    };
+  });
 }
 
 /**
@@ -511,6 +575,66 @@ export default {
           .bind(user.id)
           .all();
         return json({ photos: rows.results ?? [] }, 200, cors);
+      }
+
+      /**
+       * Serve one photo's bytes.
+       *
+       * The gate is re-derived here from scratch rather than trusting that the
+       * caller got this URL from a profile they were allowed to see. URLs get
+       * copied, pasted and kept after a profile is switched back to private,
+       * so the only safe assumption is that whoever is asking found the id
+       * somewhere else.
+       *
+       * Every refusal is the same 404. "Exists but you may not see it" would
+       * confirm the photo — and by extension the account and its activity —
+       * to precisely the person the owner shut out.
+       */
+      if (
+        path.startsWith('/api/auth/photos/') &&
+        path.endsWith('/content') &&
+        request.method === 'GET'
+      ) {
+        const id = decodeURIComponent(
+          path.slice('/api/auth/photos/'.length, -'/content'.length),
+        );
+        const photo = await env.DB.prepare(
+          'SELECT user_id, object_key, visibility FROM user_photos WHERE id = ?',
+        )
+          .bind(id)
+          .first<{ user_id: string; object_key: string; visibility: string }>();
+        if (!photo) return err('不存在', 404, cors);
+
+        const viewer = await currentUser(request, env);
+        const isOwner = viewer?.id === photo.user_id;
+        if (!isOwner) {
+          if (photo.visibility !== 'public') return err('不存在', 404, cors);
+          if (viewer && (await blockedBetween(env, viewer.id, photo.user_id))) {
+            return err('不存在', 404, cors);
+          }
+          // The owning profile has to be public too. A public photo inside a
+          // profile its owner has since made private is not public any more.
+          const owner = await env.DB.prepare(
+            'SELECT visibility FROM user_profiles WHERE user_id = ?',
+          )
+            .bind(photo.user_id)
+            .first<{ visibility: string }>();
+          if (owner?.visibility !== 'public') return err('不存在', 404, cors);
+        }
+
+        // No bucket bound: the row may exist but the bytes are unreachable, and
+        // that is a missing photo rather than a server fault.
+        const object = env.PHOTOS ? await env.PHOTOS.get(photo.object_key) : null;
+        if (!object) return err('不存在', 404, cors);
+        return new Response(object.body, {
+          headers: {
+            ...cors,
+            'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+            // Private so shared caches never hold a photo that a block or a
+            // visibility change should have taken away.
+            'cache-control': 'private, max-age=300',
+          },
+        });
       }
 
       if (path.startsWith('/api/auth/photos/') && request.method === 'DELETE') {
@@ -913,7 +1037,41 @@ export default {
               ])
             : [false, false];
 
-        return json({ user: publicUser(target), profile: shown, following, followedBy }, 200, cors);
+        // Everything below is gated on the same `visible` flag as the profile
+        // body. Follower counts and a join date are not identity — they are
+        // profile content, and a private profile that still reported "312
+        // followers, joined 2023" would be leaking exactly the presence and
+        // popularity signals it was set to private to withhold. Counts also
+        // make a private account probe-able: watching the number move tells
+        // you who just followed them.
+        const [followerCount, followingCount] = visible
+          ? await Promise.all([
+              countFollows(env, 'followee_id', target.id),
+              countFollows(env, 'follower_id', target.id),
+            ])
+          : [0, 0];
+
+        // Only the owner's public photos, and only on a visible profile — a
+        // per-photo visibility of 'public' inside a private profile is still
+        // inside a private profile.
+        const photos = visible ? await visiblePhotos(env, target.id, isSelf) : [];
+
+        return json(
+          {
+            user: publicUser(target),
+            profile: shown,
+            following,
+            followedBy,
+            // null rather than 0: the client has to be able to tell "not
+            // allowed to know" from "nobody follows them", or it will render a
+            // confident zero for a profile it cannot see.
+            counts: visible ? { followers: followerCount, following: followingCount } : null,
+            createdAt: visible ? Number(target.created_at) : null,
+            photos,
+          },
+          200,
+          cors,
+        );
       }
 
       // ── Delete account ──

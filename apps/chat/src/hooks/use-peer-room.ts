@@ -396,6 +396,10 @@ export function usePeerRoom(displayName: string) {
               next.set(from, {
                 ...cur,
                 displayName: (data.n as string) ?? cur.displayName,
+                // No `?? cur.username` fallback, for the reason given on the
+                // send side: 'ss' always carries this key, so an absent one
+                // means an older client that has no account to report.
+                username: (data.u as string | null | undefined) ?? null,
                 deviceConnected: (data.dc as boolean) ?? cur.deviceConnected,
                 battery: (data.b as number | null) ?? null,
                 waveformCatalog:
@@ -631,6 +635,11 @@ export function usePeerRoom(displayName: string) {
       send({
         t: 'ss',
         n: s.displayName,
+        // Explicit null when signed out, never undefined: JSON.stringify drops
+        // undefined keys, and the receiver reads a missing key as "no update"
+        // and keeps the previous value — signing out would leave a stale
+        // account handle attached to this peer for the rest of the session.
+        u: s.username ?? null,
         dc: s.deviceConnected,
         b: s.battery,
         ...(s.waveformCatalog ? { cat: s.waveformCatalog } : {}),

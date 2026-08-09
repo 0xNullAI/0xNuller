@@ -9,11 +9,10 @@ import {
   BookOpen,
   LogIn,
 } from 'lucide-react';
-import { useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
+import { Avatar, useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
 import { MODULES } from './routes';
-import { Avatar } from './Avatar';
 
 /**
  * The sidebar. It is the only vertical bar in the app, with the content area to
@@ -191,7 +190,7 @@ function AccountButton({
         aria-haspopup="menu"
         className="flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
-        <Avatar name={user?.username ?? null} size={26} />
+        <Avatar name={user?.displayName ?? null} username={user?.username} size={26} />
         <span className="min-w-0 flex-1 truncate text-sm">{user?.displayName ?? '未登录'}</span>
       </button>
 
@@ -260,7 +259,7 @@ export function Sidebar({
           <PanelLeftClose className="h-4 w-4 rotate-180" />
         </button>
         <div className="mt-auto">
-          <Avatar name={user?.username ?? null} size={26} />
+          <Avatar name={user?.displayName ?? null} username={user?.username} size={26} />
         </div>
       </aside>
     );
