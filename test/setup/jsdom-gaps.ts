@@ -89,3 +89,14 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
       }) as unknown as MediaQueryList,
   });
 }
+
+
+/**
+ * jsdom ships no IndexedDB, and the shared waveform library is backed by it.
+ * Installed only when missing, so a real implementation is left alone.
+ */
+if (typeof globalThis.indexedDB === 'undefined') {
+  const { indexedDB, IDBKeyRange } = await import('fake-indexeddb');
+  Object.defineProperty(globalThis, 'indexedDB', { value: indexedDB, configurable: true });
+  Object.defineProperty(globalThis, 'IDBKeyRange', { value: IDBKeyRange, configurable: true });
+}

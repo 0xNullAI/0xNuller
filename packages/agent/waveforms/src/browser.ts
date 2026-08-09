@@ -1,10 +1,13 @@
 import { strFromU8, unzipSync } from 'fflate';
-import { createStore, get, set, type UseStore } from 'idb-keyval';
+import {
+  listCustomWaveforms as sharedList,
+  removeCustomWaveform as sharedRemove,
+  saveCustomWaveform as sharedSave,
+} from '@0xnullai/waveforms';
 import type { WaveformDefinition, WaveformLibrary } from '@dg-agent/core';
 import { createBasicWaveformLibrary, parsePulseText, type ParsedPulse } from '@dg-kit/waveforms';
 import { z } from 'zod';
 
-const CUSTOM_WAVEFORMS_KEY = 'custom-waveforms';
 
 const waveformSchema = z.object({
   id: z.string().min(1),
@@ -13,13 +16,21 @@ const waveformSchema = z.object({
   frames: z.array(z.tuple([z.number(), z.number()])).min(1),
 });
 
+/**
+ * Agent's view of the waveform library.
+ *
+ * The custom half is no longer Agent's own IndexedDB — it delegates to
+ * @0xnullai/waveforms, the single shared store. Agent and Chat each kept
+ * their own before, so a waveform designed in one was invisible in the
+ * other; the shared module merges the old per-module stores on first read.
+ *
+ * The constructor still accepts the old db/store names so existing callers
+ * compile unchanged; they are ignored.
+ */
 export class BrowserWaveformLibrary implements WaveformLibrary {
   private readonly builtins = createBasicWaveformLibrary();
-  private readonly store: UseStore;
 
-  constructor(dbName = 'dg-agent-waveforms', storeName = 'waveforms') {
-    this.store = createStore(dbName, storeName);
-  }
+  constructor(_dbName = 'dg-agent-waveforms', _storeName = 'waveforms') {}
 
   async getById(id: string): Promise<WaveformDefinition | null> {
     const builtin = await this.builtins.getById(id);
@@ -39,10 +50,7 @@ export class BrowserWaveformLibrary implements WaveformLibrary {
   }
 
   async saveCustom(waveform: WaveformDefinition): Promise<void> {
-    const parsed = waveformSchema.parse(waveform);
-    const custom = await this.getCustomWaveforms();
-    const next = [parsed, ...custom.filter((item) => item.id !== parsed.id)];
-    await set(CUSTOM_WAVEFORMS_KEY, next, this.store);
+    await sharedSave(waveformSchema.parse(waveform));
   }
 
   /** WaveformLibrary.save — alias of saveCustom so runtime tools can write
@@ -52,12 +60,7 @@ export class BrowserWaveformLibrary implements WaveformLibrary {
   }
 
   async removeCustom(id: string): Promise<void> {
-    const custom = await this.getCustomWaveforms();
-    await set(
-      CUSTOM_WAVEFORMS_KEY,
-      custom.filter((item) => item.id !== id),
-      this.store,
-    );
+    await sharedRemove(id);
   }
 
   async importFiles(files: FileList | File[]): Promise<WaveformDefinition[]> {
@@ -82,19 +85,12 @@ export class BrowserWaveformLibrary implements WaveformLibrary {
       throw new Error('没有找到支持的波形文件');
     }
 
-    const custom = await this.getCustomWaveforms();
-    const merged = [
-      ...imported,
-      ...custom.filter((existing) => !imported.some((item) => item.id === existing.id)),
-    ];
-    await set(CUSTOM_WAVEFORMS_KEY, merged, this.store);
+    for (const waveform of imported) await sharedSave(waveform);
     return imported;
   }
 
   private async getCustomWaveforms(): Promise<WaveformDefinition[]> {
-    const raw = (await get<unknown>(CUSTOM_WAVEFORMS_KEY, this.store)) ?? [];
-    const parsed = z.array(waveformSchema).safeParse(raw);
-    return parsed.success ? parsed.data.map(cloneWaveform) : [];
+    return (await sharedList()).map((w) => cloneWaveform(w as WaveformDefinition));
   }
 }
 

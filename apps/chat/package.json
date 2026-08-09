@@ -22,19 +22,20 @@
   "dependencies": {
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@0xnullai/waveforms": "0.1.0",
     "@dg-kit/core": "^1.13.0",
     "@dg-kit/protocol": "^1.13.0",
+    "@dg-kit/safety": "1.13.0",
     "@dg-kit/transport-webbluetooth": "^1.13.0",
     "@dg-kit/waveforms": "^1.13.0",
     "fflate": "^0.8.2",
     "lucide-react": "^1.11.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "@dg-kit/safety": "1.13.0",
-    "@0xnullai/settings": "0.1.0",
-    "@0xnullai/native": "0.1.0"
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",
