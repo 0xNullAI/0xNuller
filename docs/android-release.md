@@ -1,6 +1,6 @@
 # 安卓发版
 
-四个模块打进一个 APK。构建步骤在 [`android/app/README.md`](../android/app/README.md)，
+六个模块打进一个 APK。构建步骤在 [`android/app/README.md`](../android/app/README.md)，
 这里只写**发版本身**——那些做错了就没法补救的部分。
 
 ## 三个不能动的东西

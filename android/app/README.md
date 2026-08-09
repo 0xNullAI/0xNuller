@@ -39,7 +39,7 @@ the thing that is wrong. This has happened before.
 
 `identifier` stays `ai.nullai.dgagent` even though the app is now called
 0xNuller. Android treats the applicationId as the app's identity: changing it
-would make this a *different* app to the OS, so existing DG-Agent users would
+would make this a _different_ app to the OS, so existing DG-Agent users would
 get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 

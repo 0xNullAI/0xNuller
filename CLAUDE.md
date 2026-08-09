@@ -18,12 +18,13 @@ packages/platform/*   @0xnullai/*，跨模块共用、不发布
                       llm-providers · market-client · permissions
 packages/agent/*      @dg-agent/*，Agent 模块专属
 apps/web              统一外壳。唯一的入口
-apps/*                agent chat voice market（模块）· landing wiki mcp
-android/app           单一 Tauri 壳，四个模块一个 APK
+apps/*                control agent voice chat playground market（模块）· landing wiki mcp
+android/app           单一 Tauri 壳，六个模块一个 APK
 workers/*             auth · llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
+                      脚本名一律 0xnullai-*；secret 绑在脚本上，改名不跟着走
 ```
 
-加新东西之前先想清楚它属于哪一层：发布给外部（kit）、四个模块都要用（platform）、
+加新东西之前先想清楚它属于哪一层：发布给外部（kit）、各模块都要用（platform）、
 还是只有 Agent 用（agent）。放错层的代价是它迟早会被复制第二份。
 
 目录多套一层还有个附带好处：`@dg-kit/core` 与 `@dg-agent/core` 同名也能共存。
@@ -62,14 +63,20 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
 
 ## 一个软件
 
-软件名 **0xNuller**，四个模块：Agent / Chat / Voice / Market。说明与设置是弹窗，
-不占模块槽位。界面文案里不出现 DG 前缀（「郊狼」是 DG-Lab 的设备型号，那个不能改）。
+软件名 **0xNuller**，六个模块，按发现顺序排列：**Control / Agent / Voice / Chat /
+Playground / Market**。说明与设置是弹窗，不占模块槽位。
+
+这个顺序是刻意的：Control 在最前，因为「直接控制自己的设备」是这个软件最朴素的一件事，
+不需要账号、不需要房间、不需要模型 key；Market 在最后，因为那是你已经知道自己要什么
+之后才会去的地方。Playground 现在是游戏模块（贪吃蛇、剧本杀），不是它最初的定义。
+
+界面文案里不出现 DG 前缀（「郊狼」是 DG-Lab 的设备型号，那个不能改）。
 
 **独立部署形态已经不再保留。** 模块只在统一外壳里跑。
 
 ## 统一外壳
 
-`apps/web` 是统一入口，四个模块 + 文档站按路由挂载在同一个文档里。各模块**同时**
+`apps/web` 是统一入口，六个模块 + 文档站按路由挂载在同一个文档里。各模块**同时**
 仍然可以独立构建部署，两种形态共用同一份代码。
 
 第一次尝试失败过（Market 白屏、Chat 弹窗逃出外壳、Agent 布局塌陷），当时判断是
@@ -87,14 +94,14 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
 
 外壳级的状态只有一份，模块不要再各写各的：
 
-| 东西 | 真源 |
-|---|---|
-| 主题 | `@0xnullai/ui` 的 `theme-store`（唯一写 `data-theme` 的地方） |
-| 设备安全设置 | `@0xnullai/settings` 的 `device-safety` |
-| 场景（人设） | `@0xnullai/scenes` |
-| LLM 配置 | `@0xnullai/llm-providers` 的 `config-store` |
-| 代理 | `@0xnullai/settings` 的 `proxy` |
-| 急停 / 设备清单 / 控制权租约 | `@dg-kit/safety` 的 `safety-bus` |
+| 东西                         | 真源                                                          |
+| ---------------------------- | ------------------------------------------------------------- |
+| 主题                         | `@0xnullai/ui` 的 `theme-store`（唯一写 `data-theme` 的地方） |
+| 设备安全设置                 | `@0xnullai/settings` 的 `device-safety`                       |
+| 场景（人设）                 | `@0xnullai/scenes`                                            |
+| LLM 配置                     | `@0xnullai/llm-providers` 的 `config-store`                   |
+| 代理                         | `@0xnullai/settings` 的 `proxy`                               |
+| 急停 / 设备清单 / 控制权租约 | `@dg-kit/safety` 的 `safety-bus`                              |
 
 模块与外壳之间只有四个接口：`useSafetySession`（注册设备会话——**这是全局停止按钮和
 设备栏唯一的数据来源**）、`SidebarSection`（投列表项到侧边栏）、`ModuleActions`
@@ -104,14 +111,22 @@ DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@d
 的聚合状态、硬拒绝后续指令（远程指令不经过 UI，只禁用按钮没用）。**撤权绝不能实现成
 disconnect()** —— Agent 与 Voice 开了 autoReconnect，断连会让后台模块静默重连抢回设备。
 
-**安卓**：`android/app` 是唯一的 Tauri 壳，四个模块一个 APK。原生蓝牙注入走
+**安卓**：`android/app` 是唯一的 Tauri 壳，六个模块一个 APK。原生蓝牙注入走
 `@0xnullai/native` 的 `NativeBridge`——**三条缝的形状原样保留**（Agent 用
 servicesOverrides + connectDevice，Chat 用 deviceClientFactory + requestDevice，
 Voice 用 transport），只是注入点合并成一个。不去重塑它们是刻意的：安卓没有热更新，
 改错会让三个模块同时哑掉，而坏掉的版本会长期留在用户手机上。
 
-各模块内部别名是 `@agent` / `@voice` / `@chat`（不是 `@`），保留这个命名以免将来再
-撞车。`apps/web` 与 `android/app` 两个 vite 配置里的 alias 必须保持一致。
+各模块内部别名是 `@agent` / `@voice` / `@chat` / `@control`（不是 `@`），保留这个命名
+以免将来再撞车。`apps/web` 与 `android/app` 两个 vite 配置里的 alias 必须保持一致。
+
+## 设计尺度
+
+圆角与动效各只有一套尺度，都在 `packages/platform/ui/src/styles/tokens.css`：
+`--radius-2xs/xs/ctl/sm/md/lg/xl` 与 `--dur-fast/--dur/--dur-mid/--dur-slow/--dur-enter`。
+**不要写死数值**——`packages/platform/ui/src/design-scale.test.ts` 是一条源码级守卫，
+写死的 `rounded-[10px]` 或裸 ms/s 会让测试红。合并前这两样各有两套并行尺度，
+问题是写死的值 typecheck、lint、构建、渲染全都正常，只有并排看才发现两个弹窗差 6px。
 
 ## 已知的坑
 
