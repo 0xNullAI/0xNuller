@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { MarketItem, WaveformContent, MultiSceneContent } from '../../shared/schema';
 import { WaveformPreview } from './WaveformPreview';
 

@@ -266,7 +266,13 @@ export function Sidebar({
         {sections.map((section) => (
           <SidebarSectionSlot key={section.id} id={section.id} title={section.title} />
         ))}
-        {sections.length === 0 && (
+        {/* Only on the home screen, where the hint describes what modules will
+            put here. Inside a module an empty list means that module has no
+            list at all — Voice and Market have neither conversations nor
+            rooms — and promising them there is just wrong. Agent and Chat
+            always register their section, so their own empty states show
+            instead of this. */}
+        {sections.length === 0 && activeId === null && (
           <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
             这里会显示置顶、对话与房间
           </p>

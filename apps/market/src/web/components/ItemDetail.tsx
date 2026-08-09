@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useState } from 'react';
 import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent, MultiSceneContent } from '../../shared/schema';
 import { updateItem, markDownloaded, reportItem } from '../api';

@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useRef, useState } from 'react';
 import { unzipSync, strFromU8 } from 'fflate';
 import type { BatchUploadPayload, ItemType, UploadPayload } from '../../shared/schema';

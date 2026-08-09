@@ -1,7 +1,9 @@
+import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { Upload } from 'lucide-react';
 import type { ItemType, MarketItem } from '../shared/schema';
 import { fetchItems, markViewed } from './api';
-import { ModuleActions } from '@0xnullai/ui';
+import { Button, ModuleActions } from '@0xnullai/ui';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
@@ -16,6 +18,7 @@ export function App(): JSX.Element {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
   // The theme goes through the shared store. This used to hold an applyTheme that fully
@@ -36,9 +39,19 @@ export function App(): JSX.Element {
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     fetchItems({ type: activeType, sort, q: q.trim() || undefined, limit: 50 })
-      .then(setItems)
-      .catch(() => setItems([]))
+      .then((next) => {
+        setItems(next);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        // Distinct from the empty state on purpose. Collapsing the two told
+        // every user whose request failed that the market was empty and
+        // invited them to upload the first item.
+        setItems([]);
+        setError(e instanceof Error ? e.message : '未知错误');
+      })
       .finally(() => setLoading(false));
   }, [activeType, sort, q]);
 
@@ -111,16 +124,29 @@ export function App(): JSX.Element {
 
           {/* Upload is projected into the shell's button slot so it lands on the same line
             as the other modules' buttons. */}
+          {/* The shared Button, not this stylesheet's .btn: every rule here is
+            nested under .mkt-scope, and ModuleActions portals this button into
+            the shell's slot, which is outside that scope. A .btn class here
+            renders as bare unstyled text. */}
           <ModuleActions>
-            <button className="btn primary" onClick={() => setUploading(true)}>
+            <Button variant="secondary" size="sm" onClick={() => setUploading(true)}>
+              <Upload className="h-4 w-4" />
               上传
-            </button>
+            </Button>
           </ModuleActions>
         </header>
 
         <main className="grid">
           {loading ? (
             <p className="empty">加载中…</p>
+          ) : error ? (
+            <div className="empty">
+              <p>没能加载市场内容</p>
+              <p className="error">{error}</p>
+              <button className="btn" onClick={load}>
+                重试
+              </button>
+            </div>
           ) : items.length === 0 ? (
             <p className="empty">还没有内容，来上传第一个吧！</p>
           ) : (
