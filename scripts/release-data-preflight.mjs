@@ -89,7 +89,12 @@ const auth = remoteQuery(
 const expectedAuthLedger = ['0001_init.sql', '0002_user_data.sql', '0003_user_profile.sql'];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];
-if (JSON.stringify(marketColumns) !== JSON.stringify(expectedMarketColumns)) {
+// Column order is not a compatibility boundary. Production added `views` later than
+// the fresh-migration baseline, so PRAGMA reports it at the end even though both
+// schemas expose the same named fields.
+if (
+  JSON.stringify([...marketColumns].sort()) !== JSON.stringify([...expectedMarketColumns].sort())
+) {
   errors.push(`Market raw columns differ: ${JSON.stringify(marketColumns)}`);
 }
 if (JSON.stringify(marketIndexes) !== JSON.stringify(['idx_items_browse', 'idx_items_ip'])) {
