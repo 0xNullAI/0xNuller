@@ -18,6 +18,25 @@ function attribute(node, name) {
   return node.match(new RegExp(`${name}="([^"]+)"`))?.[1] ?? null;
 }
 
+function kotlinBlocks(source, name) {
+  const blocks = [];
+  const pattern = new RegExp(`\\b${name}\\s*\\{`, 'g');
+  for (const match of source.matchAll(pattern)) {
+    const start = match.index;
+    const open = source.indexOf('{', start);
+    let depth = 0;
+    for (let index = open; index < source.length; index += 1) {
+      if (source[index] === '{') depth += 1;
+      if (source[index] === '}') depth -= 1;
+      if (depth === 0) {
+        blocks.push({ start, end: index + 1, text: source.slice(start, index + 1) });
+        break;
+      }
+    }
+  }
+  return blocks;
+}
+
 let manifest = readFileSync(manifestPath, 'utf8');
 const manifestTemplate = readFileSync(manifestTemplatePath, 'utf8');
 const requiredNodes = manifestTemplate.match(/<uses-(?:permission|feature)\b[\s\S]*?\/>/g) ?? [];
@@ -37,7 +56,27 @@ gradle = gradle.replace(/\bminSdk\s*=\s*\d+/, 'minSdk = 26');
 
 const signingTemplate = readFileSync(signingTemplatePath, 'utf8').trimEnd();
 const signingMarker = '// 0XNULLER_RELEASE_SIGNING';
-if (!gradle.includes(signingMarker)) {
+const releaseSigningBlocks = kotlinBlocks(gradle, 'signingConfigs').filter((block) =>
+  block.text.includes('create("release")'),
+);
+const hardenedSigningBlock = releaseSigningBlocks.find((block) =>
+  gradle
+    .slice(Math.max(0, block.start - signingMarker.length - 80), block.start)
+    .includes(signingMarker),
+);
+if (hardenedSigningBlock) {
+  for (const block of releaseSigningBlocks.toReversed()) {
+    if (block.start !== hardenedSigningBlock.start) {
+      gradle = `${gradle.slice(0, block.start)}${gradle.slice(block.end)}`;
+    }
+  }
+} else if (releaseSigningBlocks.length > 0) {
+  const [first, ...duplicates] = releaseSigningBlocks;
+  for (const block of duplicates.toReversed()) {
+    gradle = `${gradle.slice(0, block.start)}${gradle.slice(block.end)}`;
+  }
+  gradle = `${gradle.slice(0, first.start)}${signingTemplate}${gradle.slice(first.end)}`;
+} else {
   gradle = gradle.replace(/^(\s*)buildTypes\s*\{/m, `${signingTemplate}\n\n$1buildTypes {`);
 }
 const releaseBlock = /(getByName\("release"\)\s*\{\n)(?!\s*signingConfig)/;
@@ -48,6 +87,12 @@ if (!gradle.includes('signingConfig = signingConfigs.getByName("release")')) {
     releaseBlock,
     '$1            signingConfig = signingConfigs.getByName("release")\n',
   );
+}
+const normalizedReleaseSigningBlocks = kotlinBlocks(gradle, 'signingConfigs').filter((block) =>
+  block.text.includes('create("release")'),
+);
+if (normalizedReleaseSigningBlocks.length !== 1) {
+  throw new Error('generated Gradle file must contain exactly one release signing config');
 }
 writeFileSync(gradlePath, gradle);
 
