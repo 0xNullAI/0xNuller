@@ -362,6 +362,84 @@ export * from './profile-view';
 // the shell renders.
 export * from './profile-requests';
 
+/**
+ * Direct messages.
+ *
+ * The conversation itself is Chat's; this is only the part the account service owns —
+ * whether two people may talk, and where their conversation lives. Both answers arrive
+ * together as a short-lived signed ticket, because Chat has no way to ask: a WebSocket
+ * upgrade carries no Authorization header, and the Android shell's origin can never hold
+ * the web domain's cookie.
+ *
+ * The rule is **mutual follow**, enforced by the server. A one-way follow is not enough:
+ * an inbox anyone can write to is an open harassment channel, and it cannot be closed
+ * again after the fact.
+ *
+ * Like contacts above, **nothing here throws**. Every one of these is reachable while
+ * signed out — the sidebar polls the conversation list — and anonymous use of the rest of
+ * the app is a hard constraint, so 401 and an unreachable service both have to read as
+ * "no conversations" rather than as an exception inside the shell.
+ */
+
+/** Admission to one conversation. Valid for about a minute; mint a new one per connect. */
+export interface DmTicket {
+  ticket: string;
+  /** The conversation's id in Chat. Derived server-side; never computed by the client. */
+  room: string;
+  expiresAt: number;
+}
+
+export interface DmConversation {
+  /** The other account. */
+  id: string;
+  username: string;
+  displayName: string;
+  startedAt: number;
+  room: string;
+}
+
+export interface DmConversationList {
+  conversations: DmConversation[];
+  /** Covers exactly these conversations; Chat answers unread counts for no others. */
+  ticket: string;
+  expiresAt: number;
+}
+
+/**
+ * Ask for admission to a conversation with someone.
+ *
+ * Null when you are not signed in, when the two of you are not mutual follows, when
+ * either has blocked the other, and when the service is unreachable — the same
+ * deliberate flattening the user lookup does, so a block cannot be told apart from a
+ * missing account by probing.
+ */
+export async function dmTicket(userId: string): Promise<DmTicket | null> {
+  try {
+    return await call<DmTicket>('/api/auth/dm/ticket', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** The conversations you are party to, re-authorized on every call. Empty when signed out. */
+export async function dmConversations(): Promise<DmConversationList | null> {
+  try {
+    const r = await call<DmConversationList>('/api/auth/dm/conversations');
+    return { conversations: r.conversations ?? [], ticket: r.ticket, expiresAt: r.expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The entry point into a conversation, for anything that shows a person — the profile page
+ * above all. One call navigates and delivers the request; see dm-intent.ts.
+ */
+export { openDirectMessage, subscribeDmRequest, type DmRequest } from './dm-intent.js';
+
 /** Whole years, or null when no birth date is set. Local-only; the server enforces 18+ on save. */
 export function ageFromBirthDate(birthDate: string | null): number | null {
   if (!birthDate) return null;

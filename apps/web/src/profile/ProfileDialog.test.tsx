@@ -147,9 +147,11 @@ describe('用户主页', () => {
     expect(await screen.findByText('互相关注')).toBeTruthy();
     expect(screen.getByRole('button', { name: '已关注' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '互相关注' })).toBeNull();
-    // The seam has no implementation behind it yet, so the button is present
-    // and says why rather than being hidden.
-    expect(screen.getByText('私聊功能还在开发中。')).toBeTruthy();
+    // The gate is the only thing that disables it now that direct messages
+    // exist; mutual means the button acts.
+    const dm = screen.getByRole('button', { name: /私聊/ });
+    expect(dm.hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByText('互相关注之后才能私聊。')).toBeNull();
   });
 
   it('只有单向关注时私聊按钮被禁用并说明门槛', async () => {

@@ -1,4 +1,5 @@
-// RoomDO: one instance per group (idFromName(roomCode)).
+// RoomDO: one instance per group (idFromName(roomCode)), and one per direct-message
+// conversation (idFromName(dmRoomCode(a, b)) — see dm.ts).
 // Responsibilities: WebSocket relay (replaces the public MQTT broker) + connection-level presence + chat history (SQLite) persistence and replay
 //                   + durable ownership (an owner key hash, not a peerId) + owner-controlled lobby visibility
 //                   + bounded retention (oldest messages and their R2 media dropped together) + idle media reconciliation.
@@ -7,6 +8,12 @@
 // a room is a group, it persists and so does its history. What replaced the self-destruct is
 // a cap (see GROUP_MESSAGE_LIMIT) plus the sweep in alarm(), because "permanent" without a
 // bound is just an unbounded Durable Object and an R2 prefix nothing ever cleans.
+//
+// A conversation is the same object with the group's *administration* removed: no ownership,
+// no host and therefore no room agent, no lobby row. Everything else is identical on purpose —
+// it is a room with two people in it, so history, media, presence and device control all work
+// the way they do in a group, by being this class rather than a parallel implementation of the
+// same problems. What differs is only what a two-person conversation cannot have.
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { deleteRoomMedia, listRoomMedia } from './media';
@@ -19,6 +26,7 @@ import {
   type MediaStore,
   type MessageStore,
 } from './group';
+import { dmAllowsFrame, dmTicketRevoked, isDmRoomCode, type DmSummary } from './dm';
 import {
   LOBBY_NAME,
   MAX_GROUP_NAME,
@@ -44,6 +52,10 @@ export class RoomDO extends DurableObject<Env> {
   private lastLobbyReport = 0;
   // In-memory cache of the room agent (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
   private agentCache: RoomAgent | null | undefined;
+  // Same treatment for the code. It is read on every frame now that it decides whether this
+  // instance is a DM, and hibernation can wake the DO straight into webSocketMessage without
+  // fetch() ever running again — so it cannot be a field set on connect.
+  private codeCache: string | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -59,8 +71,19 @@ export class RoomDO extends DurableObject<Env> {
     }
     const url = new URL(request.url);
     const code = url.searchParams.get('code') ?? '';
+    // Second half of a DM's admission check. The Worker verified the ticket's signature and
+    // that the account service issued it; only this object knows whether the conversation has
+    // since been severed, because the mark lives in its storage. A ticket minted before the
+    // block is dead even though it is still inside its minute.
+    if (isDmRoomCode(code)) {
+      const iat = Number(url.searchParams.get('iat')) || 0;
+      if (dmTicketRevoked(iat, await this.ctx.storage.get<number>('revokedAt'))) {
+        return new Response('revoked', { status: 403 });
+      }
+    }
     const peerId = url.searchParams.get('id') || crypto.randomUUID();
     await this.ctx.storage.put('code', code);
+    this.codeCache = code;
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -82,12 +105,27 @@ export class RoomDO extends DurableObject<Env> {
     const att = ws.deserializeAttachment() as Attachment;
     const t = msg.t as string;
 
+    // A conversation relays everything a group does except the two administration frames —
+    // see DM_REMOVED_FRAMES. Dropping them here rather than only in the UI is the point: a
+    // forged client does not use the UI, and `group` is what would put a private conversation
+    // into the public lobby.
+    const dm = isDmRoomCode(await this.code());
+    if (dm && !dmAllowsFrame(t)) return;
+
     switch (t) {
       case 'hello': {
         att.name = (msg.name as string) ?? '';
         ws.serializeAttachment(att);
-        const code = (await this.ctx.storage.get<string>('code')) ?? '';
+        const code = await this.code();
         const reserved = code === RESERVED_ROOM_CODE;
+
+        if (dm) {
+          // Nothing to seed, nobody to make owner, no host to elect and no lobby to appear in.
+          // A DM has exactly one durable thing: its history.
+          ws.send(JSON.stringify({ t: 'history', messages: this.loadHistory() }));
+          this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
+          return;
+        }
 
         await this.seedSettings(reserved, msg);
         const ownerKey = await this.claimIfRequested(code, reserved, msg);
@@ -148,7 +186,7 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'group': {
         // Owner-only, and durable: the settings survive the session that changed them.
-        const code = (await this.ctx.storage.get<string>('code')) ?? '';
+        const code = await this.code();
         // The permanent discussion room's settings are fixed by definition.
         if (code === RESERVED_ROOM_CODE) return;
         if (!(await this.canAdminister(code, att.peerId, msg.ownerKey))) return;
@@ -179,7 +217,7 @@ export class RoomDO extends DurableObject<Env> {
         // Owner-only. The agent's device commands are authorized as ai:room on the host's
         // authority, so whoever defines it must be the group's owner — which is now a durable
         // key rather than "whoever joined first this session".
-        const code = (await this.ctx.storage.get<string>('code')) ?? '';
+        const code = await this.code();
         if (!(await this.canAdminister(code, att.peerId, msg.ownerKey))) return;
         const raw = msg.agent as Record<string, unknown> | null | undefined;
         const next: RoomAgent | null = raw
@@ -250,11 +288,60 @@ export class RoomDO extends DurableObject<Env> {
     // never arrived does not sit in the bucket forever with nothing pointing at it.
     if (this.ctx.getWebSockets().length > 0) return;
     await this.reportLobby(0);
-    const code = (await this.ctx.storage.get<string>('code')) ?? '';
+    const code = await this.code();
     if (code) await this.sweepOrphanMedia(code);
   }
 
+  // -- Direct messages (RPC, called by the Worker) --
+
+  /**
+   * This conversation's state for the DM list: when it last had something in it, and how much
+   * of that is newer than the caller has read.
+   *
+   * `since` comes from the client and only ever produces a smaller or larger badge, never
+   * access to anything — the ticket is what decides which conversations may be asked about.
+   * Nothing here writes, so asking about a conversation nobody has opened answers zeroes.
+   */
+  async dmSummary(room: string, since: number): Promise<DmSummary> {
+    const last = this.sql.exec('SELECT MAX(ts) AS ts FROM messages').one().ts;
+    const unread = this.sql
+      .exec('SELECT COUNT(*) AS n FROM messages WHERE ts > ?', since)
+      .one().n;
+    return { room, lastTs: Number(last ?? 0), unread: Number(unread ?? 0) };
+  }
+
+  /**
+   * Sever this conversation.
+   *
+   * Called when a block lands. Two effects, and both are needed: the mark makes every ticket
+   * minted up to this instant unusable (a client holding one cannot reconnect with it), and
+   * the close ends the sockets that are open right now. Without the second, blocking somebody
+   * mid-conversation would leave them reading and writing until one side closed its laptop —
+   * which is exactly the "gone means hidden" that 0004_contacts.sql refuses.
+   *
+   * The mark is an instant rather than a flag so unblocking needs no second message: a ticket
+   * minted after it is simply newer, and passes.
+   */
+  async dmRevoke(at: number): Promise<void> {
+    await this.ctx.storage.put('revokedAt', at);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(1008, 'revoked');
+      } catch {
+        /* socket already gone; the mark is what matters */
+      }
+    }
+  }
+
   // -- Internals --
+
+  /** The room code, cached in memory. Storage is the durable copy. */
+  private async code(): Promise<string> {
+    if (this.codeCache === undefined) {
+      this.codeCache = (await this.ctx.storage.get<string>('code')) ?? '';
+    }
+    return this.codeCache;
+  }
 
   private async onDisconnect(ws: WebSocket): Promise<void> {
     let att: Attachment | undefined;
@@ -440,7 +527,7 @@ export class RoomDO extends DurableObject<Env> {
 
   /** Apply the retention cap, dropping each message's R2 media along with its row. */
   private async trimHistory(): Promise<string[]> {
-    const code = (await this.ctx.storage.get<string>('code')) ?? '';
+    const code = await this.code();
     const messages: MessageStore = {
       count: () => Number(this.sql.exec('SELECT COUNT(*) AS n FROM messages').one().n),
       oldest: n =>
@@ -523,7 +610,7 @@ export class RoomDO extends DurableObject<Env> {
    * group has to be able to reach, since count=0 no longer means "gone" for a permanent group.
    */
   private async pushLobby(count: number, listed: boolean): Promise<void> {
-    const code = (await this.ctx.storage.get<string>('code')) ?? '';
+    const code = await this.code();
     if (!code) return;
     const name = (await this.ctx.storage.get<string>('roomName')) ?? '';
     const stub = this.env.LOBBY.get(this.env.LOBBY.idFromName(LOBBY_NAME));

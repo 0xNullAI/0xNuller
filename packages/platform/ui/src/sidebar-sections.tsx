@@ -18,14 +18,22 @@ import type { ReactNode } from 'react';
  * either. A portal ties the content to the *module's own* render cycle;
  * no coordination layer needed.
  *
- * Only three sections exist: pinned / conversations / rooms. Scenes are not
- * in the sidebar (they belong to the content area).
+ * Four sections exist: pinned / conversations / direct / rooms. Scenes are
+ * not in the sidebar (they belong to the content area).
+ *
+ * `direct` is Chat's private-message list and could not share `conversations`
+ * with Agent's session list. A section is one container and a module claims
+ * it whole; two modules claiming the same id would interleave their lists in
+ * one heading — and both would do it at once, because a module keeps its
+ * sidebar content registered after you switch away from it (that is the point
+ * of the portal). Two different lists under one word is worse than one more
+ * word.
  */
 
-export type SidebarSectionId = 'pinned' | 'conversations' | 'rooms';
+export type SidebarSectionId = 'pinned' | 'conversations' | 'direct' | 'rooms';
 
 /** Render order. Pinned on top — what the user starred should be visible at a glance. */
-const ORDER: SidebarSectionId[] = ['pinned', 'conversations', 'rooms'];
+const ORDER: SidebarSectionId[] = ['pinned', 'conversations', 'direct', 'rooms'];
 
 interface SidebarRegistry {
   /** Sections claimed by modules, with titles. Decides whether the shell draws a section heading. */

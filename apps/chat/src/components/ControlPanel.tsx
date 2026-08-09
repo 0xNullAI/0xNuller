@@ -32,6 +32,16 @@ interface ControlPanelProps {
   /** Whether this browser may change that (holds the owner key, or is the host of an unowned room). */
   canManage: boolean;
   onSetPublic: (next: boolean) => void;
+  /**
+   * This is a two-person conversation rather than a group.
+   *
+   * The panel is otherwise identical — same member cards, same controls, same device path —
+   * because a conversation *is* a room with two people in it. What it drops is the block that
+   * makes a room joinable: a conversation has no code to share, no QR to scan and no lobby
+   * visibility, and its id is derived from the two account ids rather than being something to
+   * hand out.
+   */
+  isDm?: boolean;
 }
 
 function SelfCard({ member, onClick }: { member: MemberState; onClick: () => void }) {
@@ -89,6 +99,7 @@ export function ControlPanel({
   isPublic,
   canManage,
   onSetPublic,
+  isDm = false,
 }: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -139,8 +150,8 @@ export function ControlPanel({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      {/* Room info */}
-      {roomId && (
+      {/* Room info. A conversation has none of this: no code to share, no QR, no lobby. */}
+      {roomId && !isDm && (
         <div className="border-b border-[var(--surface-border)] px-4 py-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-medium text-[var(--text-soft)]">房间号</p>
@@ -212,7 +223,7 @@ export function ControlPanel({
         </div>
         {peers.length === 0 && (
           <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
-            分享房间号邀请其他人加入
+            {isDm ? '对方当前不在线，消息会保留' : '分享房间号邀请其他人加入'}
           </p>
         )}
       </div>

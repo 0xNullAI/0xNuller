@@ -17,7 +17,7 @@ import {
   type ResolvedProfile,
   type UserProfile,
 } from '@0xnullai/auth';
-import { isDirectMessageReady, openDirectMessage } from '../dm-entry';
+import { openDirectMessage } from '../dm-entry';
 import { cleanProfile, ProfileForm } from './ProfileForm';
 import { formatJoined, ProfileIdentity, ProfileMeta, ProfileSection, ProfileStats } from './frame';
 
@@ -388,7 +388,6 @@ function ProfileActions({
   // by the name and whether direct messages are open — and canDirectMessage
   // already adds the in-flight condition that the badge must not have.
   const dmAllowed = follow ? canDirectMessage(follow, relationship) : false;
-  const dmReady = isDirectMessageReady();
 
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-6 py-4">
@@ -408,10 +407,8 @@ function ProfileActions({
         <Button
           variant="secondary"
           className="flex-1"
-          disabled={!dmAllowed || !dmReady}
-          title={
-            !dmAllowed ? '互相关注后可以私聊' : !dmReady ? '私聊功能还没上线' : undefined
-          }
+          disabled={!dmAllowed}
+          title={!dmAllowed ? '互相关注后可以私聊' : undefined}
           onClick={() => openDirectMessage(resolved.user.id)}
         >
           <MessageSquare className="h-4 w-4" />
@@ -420,9 +417,6 @@ function ProfileActions({
       </div>
       {!dmAllowed && (
         <p className="text-[10px] text-[var(--text-faint)]">互相关注之后才能私聊。</p>
-      )}
-      {dmAllowed && !dmReady && (
-        <p className="text-[10px] text-[var(--text-faint)]">私聊功能还在开发中。</p>
       )}
     </div>
   );
