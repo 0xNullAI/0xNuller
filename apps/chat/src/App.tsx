@@ -1,7 +1,6 @@
 import {
   ModuleActions,
   SidebarSection,
-  useInShell,
   useOpenShellSettings,
   useSafetySession,
 } from '@0xnullai/ui';
@@ -20,7 +19,6 @@ import { ChatPanel } from './components/ChatPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { SceneDialog } from './components/SceneDialog';
 import { SceneMarketDialog } from './components/SceneMarketDialog';
-import { AiSettingsDialog } from './components/AiSettingsDialog';
 import { DeviceSafetyButton } from './components/DeviceSafetyButton';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
 import { LogOut, Drama, Bot } from 'lucide-react';
@@ -151,9 +149,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [sceneOpen, setSceneOpen] = useState(false);
   const [sceneMarketOpen, setSceneMarketOpen] = useState(false);
-  const inShell = useInShell();
   const openShellSettings = useOpenShellSettings();
-  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
   // longer has a toggle of its own.
@@ -671,13 +667,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 <Drama className="h-4 w-4" />
               </button>
               {/* AI settings (the host configures the model) + the toggle allowing AI to control this device */}
-              {/* Inside the shell this opens the one settings panel (AI page), not Chat's
-                  own dialog: both write the same provider config, and two UIs would only
-                  leave people unsure which one to edit.
-                  The button stays where it is — when the host wants to configure AI, this
-                  is already where their hand is. */}
+              {/* Opens the one settings panel (AI page). Chat used to carry its own
+                  dialog for the standalone build, but both wrote the same provider
+                  config while Chat's knew 6 providers to the registry's 23 — pick
+                  one of the other 17 in the shell and Chat's dropdown rendered
+                  blank, then silently rewrote the choice on the next edit.
+                  The button stays where it is — when the host wants to configure
+                  AI, this is already where their hand is. */}
               <button
-                onClick={() => (inShell ? openShellSettings('ai') : setAiSettingsOpen(true))}
+                onClick={() => openShellSettings('ai')}
                 className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
                 title="AI 设置"
               >
@@ -868,7 +866,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           setSceneOpen(true);
         }}
       />
-      <AiSettingsDialog open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
     </div>
   );
 }

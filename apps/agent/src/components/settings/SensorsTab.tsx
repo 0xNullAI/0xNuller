@@ -1,7 +1,7 @@
 import { SettingLabel, SettingToggle } from '@0xnullai/ui';
 import type { Dispatch, SetStateAction } from 'react';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
-import { ConfigNumberField } from './SafetyTab.js';
+import { ConfigNumberField } from './ConfigNumberField.js';
 
 const CIVET_THRESHOLD_MIN = 0.1;
 const CIVET_THRESHOLD_MAX = 50;

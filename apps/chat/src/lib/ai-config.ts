@@ -1,6 +1,5 @@
 import {
   FREE_TRIAL_PROXY_URL,
-  FREE_TRIAL_MODEL,
   loadLlmConfig,
   saveLlmConfig,
   isLlmConfigured,
@@ -21,70 +20,9 @@ import {
 export type AiConfig = LlmConfig;
 
 /** Provider preset: used by the dropdown and to prefill baseUrl / model. */
-export interface AiProviderPreset {
-  id: string;
-  label: string;
-  baseUrl: string;
-  defaultModel: string;
-  needsKey: boolean;
-}
-
-/** Free proxy URL. The single source of truth is @0xnullai/llm-providers; this is only a
- *  re-export so existing imports keep working. */
+/** Re-exported for llm-client, which recognises the free proxy URL to skip the API-key requirement. */
 export const FREE_PROXY_URL = FREE_TRIAL_PROXY_URL;
 
-export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
-  {
-    id: 'free',
-    label: '免费代理（0xNullAI）',
-    baseUrl: FREE_PROXY_URL,
-    defaultModel: FREE_TRIAL_MODEL,
-    needsKey: false,
-  },
-  {
-    id: 'qwen',
-    label: 'Qwen（通义千问）',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    defaultModel: 'qwen3.5-plus',
-    needsKey: true,
-  },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-v4-pro',
-    needsKey: true,
-  },
-  {
-    id: 'doubao',
-    label: '豆包（火山方舟）',
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    defaultModel: 'doubao-seed-2-0-mini-250415',
-    needsKey: true,
-  },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
-    needsKey: true,
-  },
-  {
-    id: 'custom',
-    label: '自定义（OpenAI 兼容）',
-    baseUrl: '',
-    defaultModel: '',
-    needsKey: true,
-  },
-];
-
-/** The free preset is the default config (always available, needs no configuration). */
-
-export function getPreset(id: string): AiProviderPreset | undefined {
-  return AI_PROVIDER_PRESETS.find((p) => p.id === id);
-}
-
-/** Read the saved config; falls back to the free preset when there is none or parsing fails. */
 export function loadAiConfig(): AiConfig {
   return loadLlmConfig();
 }
