@@ -20,7 +20,13 @@
   --accent-strong: #3ab5e6;
   --accent-hover: rgba(88, 200, 242, 0.16);
   --highlight: #3ab5e6;
-  --danger: #f0a2b2;
+  /* A readable red, not a tint. This was #f0a2b2, a pale pink: white text on
+     it measures 2.0:1 and --danger as text on --danger-surface measures
+     1.9:1, against a 4.5:1 floor. It is used for error copy and for Chat's
+     fire button — the control that drives current — so it has to be legible
+     rather than soft. The pale pink survives where it belongs, in
+     --danger-soft / --danger-surface / --danger-border. */
+  --danger: #dc2626;
   --danger-button: #ef4444;
   --danger-button-hover: #dc2626;
   --danger-soft: rgba(240, 162, 178, 0.12);
