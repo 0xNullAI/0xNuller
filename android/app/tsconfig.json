@@ -1,15 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
+    "noEmit": true,
     "rootDir": "../..",
     "outDir": "dist",
     "paths": {
       "@agent/*": ["../../apps/agent/src/*"],
       "@control/*": ["../../apps/control/src/*"],
-      "@dg-agent/web-app/*": ["../../apps/agent/src/*"]
+      "@dg-agent/web-app/*": ["../../apps/agent/src/*"],
+      "@voice/*": ["../../apps/voice/src/*"]
     },
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "../../apps/agent/src/vite-env.d.ts", "vite.config.ts"]
 }
