@@ -4,12 +4,14 @@ import type { DeviceSessionState } from '@voice/lib/device-session';
 import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/settings';
 
 /**
- * 设备状态条。显示用的内核（电量档位 / 强度条刻度 / chip 交互）来自
- * @0xnullai/ui —— 合并前它们在这里和 Agent 的 ChatPanel 里各存一份逐字复制。
- * 这里只负责编排 Voice 支持的两种设备（郊狼 + 负鼠）。
+ * Device status bar. The display internals (battery buckets / strength-bar
+ * scale / chip interaction) come from @0xnullai/ui — before the merge they
+ * lived here and in Agent's ChatPanel as two verbatim copies. This file only
+ * arranges the two device types Voice supports (郊狼 + 负鼠).
  *
- * 两台都没连时不渲染任何东西，与 Agent 行为一致：那个状态下的行动号召是
- * 顶栏常驻的「连接设备」按钮，而不是一条空状态条。
+ * Renders nothing when neither is connected, matching Agent's behaviour: the
+ * call to action in that state is the 「连接设备」 button that always sits in
+ * the top bar, not an empty status row.
  */
 interface DeviceStatusBarProps {
   state: DeviceSessionState;

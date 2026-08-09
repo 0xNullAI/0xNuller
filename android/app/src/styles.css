@@ -1,8 +1,11 @@
-/* 安卓壳直接复用统一外壳的样式表——同一套 CSS，同一份层序、同一批 @source。
-   合并前三个壳各有一份 styles.css，各自 @import 自己那个模块的 CSS。 */
+/* The Android shell reuses the unified shell's stylesheet directly — the same
+   CSS, the same layer order, the same set of @source directives.
+   Before the merge each of the three shells had its own styles.css that
+   @imported that module's CSS. */
 @import '@0xnullai/web/shell.css';
 
-/* 安卓专属：启动图。React 提交首帧后由 main.tsx 淡出。 */
+/* Android-only: the splash screen. main.tsx fades it out once React has
+   committed its first frame. */
 #nx-splash {
   position: fixed;
   inset: 0;

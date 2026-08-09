@@ -5,7 +5,7 @@ interface MemberCardProps {
   peerId: string;
   member: MemberState | undefined;
   onClick: () => void;
-  /** 角色头衔（场景扮演时）。 */
+  /** Role title (when playing a scene). */
   roleName?: string;
 }
 

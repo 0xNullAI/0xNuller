@@ -114,9 +114,12 @@ export function loadSettings(): VoiceSettings {
   if (typeof window === 'undefined') return createDefaultSettings();
 
   const defaults = createDefaultSettings();
-  // 设备安全设置的真源在 @0xnullai/settings，全应用共用一份。**在任何返回路径上都要
-  // 铺**——早期版本在「本模块还没有本地存储」时提前 return defaults，于是新用户在
-  // Agent 里调的上限在 Voice 这边完全看不到，而且默认值恰好是合理的，很难被发现。
+  // The source of truth for device-safety settings is @0xnullai/settings, one
+  // copy shared by the whole app. **Overlay it on every return path** — an
+  // earlier version returned defaults early when this module had no local
+  // storage yet, so the caps a new user set in Agent were completely invisible
+  // over in Voice, and since the defaults happen to be sensible it was very
+  // hard to notice.
   const shared = loadDeviceSafety();
   const withShared = (base: VoiceSettings): VoiceSettings => ({
     ...base,
@@ -156,8 +159,10 @@ export function loadSettings(): VoiceSettings {
 
 export function saveSettings(settings: VoiceSettings): void {
   if (typeof window === 'undefined') return;
-  // 安全部分写回共享真源。本模块的 blob 里仍会留一份副本（形状不变、无害），但读取
-  // 时一律以共享值为准——两边不一致时以真源为准，而不是以谁最后写为准。
+  // Write the safety section back to the shared source of truth. A copy still
+  // stays in this module's own blob (same shape, harmless), but reads always
+  // take the shared value — when the two disagree the source of truth wins,
+  // not whoever wrote last.
   updateDeviceSafety((prev) => ({
     ...prev,
     maxStrengthA: settings.coyoteSafety.maxStrengthA,

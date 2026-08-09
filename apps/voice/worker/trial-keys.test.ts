@@ -69,10 +69,10 @@ describe('isAllowedOrigin', () => {
 
   it('allows the Tauri WebView origin — otherwise trial voice 403s on Android', () => {
     const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://0xnullai.com' });
-    // 安卓上没有热更新：这一条挂了，坏掉的 APK 会长期留在用户手机上。
+    // There are no hot updates on Android: if this one breaks, the broken APK stays on users' phones for a long time.
     expect(isAllowedOrigin('http://tauri.localhost', e)).toBe(true);
     expect(isAllowedOrigin('https://tauri.localhost', e)).toBe(true);
-    // 但仅限这一个主机名，不是「凡是 .localhost 结尾都放行」。
+    // But only this one hostname — not "allow anything ending in .localhost".
     expect(isAllowedOrigin('https://evil.localhost', e)).toBe(false);
   });
 });

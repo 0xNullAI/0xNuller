@@ -25,11 +25,14 @@ import { SensorsTab } from './settings/SensorsTab.js';
 import { WaveformsPanel } from './WaveformsPanel.js';
 
 /**
- * Agent 自己的抽屉里只剩**内容管理**：场景、波形、Bot、数据、日志。
+ * Agent's own drawer holds nothing but **content management** any more:
+ * scenes, waveforms, Bot, data, logs.
  *
- * 主题、模型供应商、设备安全、语音这四组已经搬到统一设置面板
- * （侧边栏底部头像 → 软件设置）。留两个入口意味着同一件事在两处能改，
- * 而改哪一处生效取决于用户当时打开的是哪个——那正是合并要消掉的东西。
+ * Theme, model providers, device safety and speech — those four groups moved
+ * to the unified settings panel (avatar at the bottom of the sidebar →
+ * 软件设置). Keeping two entry points would mean the same thing is editable in
+ * two places, with which edit takes effect depending on whichever one the user
+ * happened to open — exactly what the merge set out to eliminate.
  */
 export type SettingsModalTab =
   'preset' | 'sensors' | 'waveforms' | 'bridge' | 'data' | 'bridge-logs' | 'model-tool-logs';
@@ -278,7 +281,7 @@ export function SettingsSidebar({
   );
 }
 
-// GitHub 官方 mark — lucide-react 已移除 Github 图标，这里手写一个 SVG
+// The official GitHub mark — lucide-react dropped its Github icon, so hand-roll the SVG
 function GitHubMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>

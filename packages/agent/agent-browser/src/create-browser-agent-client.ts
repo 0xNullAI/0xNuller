@@ -107,7 +107,10 @@ export function formatProviderConfigError(
 
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
-  /** 当前场景（人设）。来自共享场景库，不再从 settings blob 取。 */
+  /**
+   * Current scene (persona). Comes from the shared scene library, no longer
+   * from the settings blob.
+   */
   scenes: { selectedId: string; saved: SavedPromptPreset[] };
   device: DeviceClient;
   /** At most one connected auxiliary device of each kind, alongside Coyote. */

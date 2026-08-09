@@ -6,15 +6,18 @@ import remarkGfm from 'remark-gfm';
 import { DOCS } from './docs';
 
 /**
- * 说明。和设置一样是弹窗，不是一个模块。
+ * Docs. Like settings, this is a dialog, not a module.
  *
- * 和设置面板共用同一副外壳（尺寸、圆角、导航列、关闭按钮的位置都一样）——用户
- * 从同一个菜单点进这两个东西，长得不一样只会让人以为自己进错了地方。
+ * It shares the same shell as the settings panel (same size, corner radius, nav
+ * column, close-button position) — the user reaches both from the same menu, so
+ * looking different would only make them think they ended up in the wrong place.
  *
- * 正文排版刻意平淡。之前用的是文档站那套：每个二级标题前面一个 `§`、代码块右上角
- * 一个 `◉ output` 角标、加粗文字带荧光笔底色、列表点是 `▸`、h1 clamp 到 3.6rem。
- * 那是一个独立站点的视觉身份，放进「我卡住了，来查一下怎么办」的弹窗里全是噪音，
- * 而且第一屏只装得下一个标题。
+ * The body typography is deliberately plain. It used to use the doc site's style:
+ * a `§` before every h2, a `◉ output` badge in the top-right corner of code blocks,
+ * highlighter backgrounds behind bold text, `▸` as the list bullet, h1 clamped to
+ * 3.6rem. That is the visual identity of a standalone site; inside an "I'm stuck,
+ * let me look up what to do" dialog it is all noise, and the first screenful only
+ * fits a single heading.
  */
 
 export function DocsDialog({ onClose }: { onClose: () => void }) {
@@ -29,7 +32,8 @@ export function DocsDialog({ onClose }: { onClose: () => void }) {
         aria-label="说明"
         className="flex h-[min(680px,calc(100vh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
       >
-        {/* 窄屏：目录横排在顶部。竖排的导航列在手机上会吃掉一半宽度。 */}
+        {/* Narrow screens: the contents run horizontally along the top. A vertical nav
+            column eats half the width on a phone. */}
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[196px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
           <h2 className="hidden px-2 pb-2 pt-1 text-sm font-semibold sm:block">说明</h2>
           {DOCS.map((d) => (
@@ -46,7 +50,8 @@ export function DocsDialog({ onClose }: { onClose: () => void }) {
               }
             >
               <span className="block text-sm font-medium">{d.label}</span>
-              {/* 一句话说明只在宽屏出现：窄屏是横排 tab，多一行会把目录撑成两层。 */}
+              {/* The blurb only shows on wide screens: narrow screens use horizontal tabs,
+                  and an extra line would stretch the contents into two rows. */}
               <span className="hidden text-xs leading-snug text-[var(--text-faint)] sm:block">
                 {d.blurb}
               </span>
@@ -65,7 +70,8 @@ export function DocsDialog({ onClose }: { onClose: () => void }) {
               <X className="h-4 w-4" />
             </button>
           </div>
-          {/* key 让换文档时滚动位置回到顶部——不加的话点开第二篇是从上一篇的位置开始的。 */}
+          {/* The key sends the scroll position back to the top when the doc changes —
+              without it, opening the second page starts at the previous page's offset. */}
           <article key={docId} className="docs-body min-h-0 flex-1 overflow-y-auto px-6 pb-8">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.markdown}</ReactMarkdown>
           </article>

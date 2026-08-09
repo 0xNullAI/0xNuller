@@ -1,12 +1,15 @@
-// 房间 WebSocket 传输：连 Cloudflare RoomDO（/ws/room/:code），替代原公共 MQTT broker。
-// 单连接、有序可靠；断线自动指数退避重连，重连时由调用方在 onOpen 重发 hello（DO 会重新回放历史）。
+// Room WebSocket transport: connects to the Cloudflare RoomDO (/ws/room/:code), replacing
+// the old public MQTT broker.
+// One connection, ordered and reliable; on disconnect it reconnects automatically with
+// exponential backoff, and on reconnect the caller re-sends hello from onOpen (the DO
+// replays history again).
 
 export type TransportStatus = 'connecting' | 'connected' | 'error';
 
 export interface RoomConnectOptions {
   code: string;
   peerId: string;
-  /** 每次连接就绪（含重连）触发，调用方应在此重发 hello。 */
+  /** Fires every time the connection is ready (including reconnects); the caller should re-send hello here. */
   onOpen: () => void;
   onMessage: (data: Record<string, unknown>) => void;
   onStatus: (status: TransportStatus) => void;
@@ -50,7 +53,7 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
       if (!closed) scheduleReconnect();
     };
     sock.onerror = () => {
-      // 触发 onclose → 重连。
+      // Triggers onclose → reconnect.
       sock.close();
     };
   }

@@ -5,23 +5,27 @@ import voice from './voice.md?raw';
 import market from './market.md?raw';
 
 /**
- * 说明文档。
+ * Documentation.
  *
- * 一层结构：开头一篇介绍，然后四个软件各一篇。没有项目分组，没有开发者文档。
+ * One flat level: an intro up front, then one page per app. No project grouping,
+ * no developer docs.
  *
- * 之前是「三个项目 × 三到五篇」（主线 / Kit / MCP，每组还分 user / developer）——
- * 那是五个仓库时代的投影。用户面对的是一个软件，不是一个仓库群；而 Kit 与 MCP 是
- * 给外部开发者用的 npm 包，跟「这个软件怎么用」无关，放在这里只会让人以为自己
- * 需要读懂它们才能开始。
+ * It used to be "three projects x three to five pages" (main line / Kit / MCP,
+ * each group split further into user / developer) — a projection of the five-repo
+ * era. What the user faces is one piece of software, not a group of repos; and Kit
+ * and MCP are npm packages for external developers, unrelated to "how do I use
+ * this software". Keeping them here only makes people think they have to
+ * understand them before they can start.
  *
- * 安全须知在介绍里，不单独成篇：它是每个人都必须先看到的东西，做成一个需要用户
- * 主动点开的条目就等于默认没人看。
+ * The safety notice lives inside the intro rather than as its own page: it is
+ * something everyone must see first, and making it an entry the user has to click
+ * open means nobody reads it by default.
  */
 
 export interface Doc {
   id: string;
   label: string;
-  /** 目录里的一句话说明，让人不用点开就知道该看哪篇。 */
+  /** One-line blurb in the contents list, so you know which page to read without opening it. */
   blurb: string;
   markdown: string;
 }

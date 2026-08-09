@@ -20,7 +20,8 @@ interface Env {
   ADMIN_KEY: string;
 }
 
-// DG-Agent 部署在 GitHub Pages（不同源），需要开放 CORS 供其拉取/导入。
+// DG-Agent is deployed on GitHub Pages (a different origin), so CORS has to be open for it
+// to fetch/import.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
@@ -43,18 +44,19 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 用 SHA-256 对来源 IP + 盐做哈希，避免明文存 IP。
+// SHA-256 over the source IP plus a salt, so the IP is never stored in plaintext.
 async function hashIp(ip: string, salt: string): Promise<string> {
   return (await sha256Hex(`${ip}:${salt}`)).slice(0, 32);
 }
 
-// 编辑口令哈希：加 ADMIN_KEY 作 pepper，避免明文存口令、也防跨条目彩虹表。
+// Edit key hash: ADMIN_KEY is mixed in as a pepper, so the key is never stored in plaintext
+// and a rainbow table cannot be reused across items.
 async function hashEditKey(key: string, env: Env): Promise<string> {
   return sha256Hex(`${key}:${env.ADMIN_KEY || 'dg-market'}`);
 }
 
-const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 小时
-const UPLOAD_LIMIT = 50; // 每来源每小时最多 50 条（含批量，按条数计）
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_LIMIT = 50; // at most 50 items per source per hour (batches included, counted per item)
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -62,7 +64,7 @@ export default {
     const { pathname } = url;
 
     if (!pathname.startsWith('/api/')) {
-      // 非 API 请求交给 Static Assets（前端 SPA）。
+      // Non-API requests go to Static Assets (the frontend SPA).
       return env.ASSETS.fetch(request);
     }
 
@@ -71,7 +73,7 @@ export default {
     }
 
     try {
-      // GET /api/items —— 列表 / 搜索
+      // GET /api/items —— list / search
       if (pathname === '/api/items' && request.method === 'GET') {
         const typeParam = url.searchParams.get('type');
         const type =
@@ -86,7 +88,7 @@ export default {
         return json({ items });
       }
 
-      // GET /api/items/:id —— 详情
+      // GET /api/items/:id —— detail
       const detailMatch = pathname.match(/^\/api\/items\/([\w-]+)$/);
       if (detailMatch && request.method === 'GET') {
         const item = await getItem(env.DB, detailMatch[1]!);
@@ -94,44 +96,45 @@ export default {
         return json({ item });
       }
 
-      // PATCH /api/items/:id —— 编辑元数据
-      // 未设口令的条目公开可编辑；设了口令则需 X-Edit-Key（管理员 X-Admin-Key 可覆盖）。
+      // PATCH /api/items/:id —— edit metadata
+      // Items with no key set are publicly editable; items with a key require X-Edit-Key
+      // (an admin's X-Admin-Key overrides it).
       if (detailMatch && request.method === 'PATCH') {
         return await handleEditPatch(request, env, detailMatch[1]!);
       }
 
-      // POST /api/items —— 上传
+      // POST /api/items —— upload
       if (pathname === '/api/items' && request.method === 'POST') {
         return await handleUpload(request, env);
       }
 
-      // POST /api/items/batch —— 批量上传（一次多条）
+      // POST /api/items/batch —— batch upload (several items at once)
       if (pathname === '/api/items/batch' && request.method === 'POST') {
         return await handleBatchUpload(request, env);
       }
 
-      // POST /api/items/:id/download —— 下载计数
+      // POST /api/items/:id/download —— download counter
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
         await incrementDownloads(env.DB, dlMatch[1]!);
         return json({ ok: true });
       }
 
-      // POST /api/items/:id/view —— 浏览计数
+      // POST /api/items/:id/view —— view counter
       const viewMatch = pathname.match(/^\/api\/items\/([\w-]+)\/view$/);
       if (viewMatch && request.method === 'POST') {
         await incrementViews(env.DB, viewMatch[1]!);
         return json({ ok: true });
       }
 
-      // POST /api/items/:id/report —— 举报
+      // POST /api/items/:id/report —— report
       const reportMatch = pathname.match(/^\/api\/items\/([\w-]+)\/report$/);
       if (reportMatch && request.method === 'POST') {
         await reportItem(env.DB, reportMatch[1]!);
         return json({ ok: true });
       }
 
-      // 管理员删除 /api/admin/items/:id（口令 X-Admin-Key）
+      // Admin delete /api/admin/items/:id (key in X-Admin-Key)
       const adminMatch = pathname.match(/^\/api\/admin\/items\/([\w-]+)$/);
       if (adminMatch && request.method === 'DELETE') {
         if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return err('无权限', 403);
@@ -148,7 +151,7 @@ export default {
 
 type UploadOne = ReturnType<typeof UploadSchema.parse>;
 
-// 校验通过的单条 payload → 入库行（含可选编辑口令哈希）。
+// A validated single payload -> a database row (including the optional edit key hash).
 async function toInsert(
   payload: UploadOne,
   ipHash: string,
@@ -226,14 +229,16 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
     );
   }
 
-  // 同一批次共用一个时间戳基准，按序错开 1ms 以保留上传顺序。
+  // The whole batch shares one timestamp baseline, staggered 1ms apart in order to preserve
+  // the upload order.
   const rows = await Promise.all(payloads.map((p, i) => toInsert(p, ipHash, now + i, env)));
   await insertItems(env.DB, rows);
   return json({ ok: true, inserted: rows.length, ids: rows.map((r) => r.id) }, 201);
 }
 
-// 改元数据：空串/空数组 → null（清空字段）。
-// 鉴权：条目设了口令 → 需 X-Edit-Key 匹配；管理员 X-Admin-Key 始终可改。
+// Change metadata: empty string / empty array -> null (clears the field).
+// Authentication: if the item has a key set, X-Edit-Key must match; an admin's
+// X-Admin-Key can always edit.
 async function handleEditPatch(request: Request, env: Env, id: string): Promise<Response> {
   const meta = await getEditKeyHash(env.DB, id);
   if (!meta) return err('未找到该条目', 404);

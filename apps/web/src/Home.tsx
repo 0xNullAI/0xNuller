@@ -1,8 +1,9 @@
 import { MODULES } from './routes';
 
 /**
- * 根路径。按本地状态分「首次介绍」与「回访导航」两态——匿名可用是硬约束，
- * 不能让「有导航」变成登录的奖励。
+ * The root path. Local state splits it into two modes, a first-visit introduction
+ * and a returning-visitor navigation — anonymous use is a hard constraint, so
+ * having navigation must never become a reward for signing in.
  */
 export function Home({ onOpen }: { onOpen: (id: string) => void }) {
   const returning = localStorage.getItem('0xnullai-visited') === '1';

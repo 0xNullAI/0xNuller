@@ -1,11 +1,11 @@
-// 图片压缩 + 语音录制 + 上传到 R2（经 Worker /api/upload/:code）。
+// Image compression + voice recording + upload to R2 (through the Worker's /api/upload/:code).
 import type { OutgoingMedia } from '../hooks/use-peer-room';
 
 function genId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 24);
 }
 
-/** 上传媒体 blob 到房间，返回可随聊天消息发出的引用。 */
+/** Upload a media blob to the room and return a reference that can be sent with a chat message. */
 export async function uploadMedia(
   code: string,
   blob: Blob,
@@ -30,7 +30,7 @@ export async function uploadMedia(
   };
 }
 
-/** 将图片缩放压缩为 JPEG（最长边 1280），减小上传体积。 */
+/** Scale and compress the image to JPEG (longest edge 1280) to cut the upload size. */
 export async function compressImage(file: File): Promise<{ blob: Blob; w: number; h: number }> {
   const img = await loadImage(file);
   const maxEdge = 1280;
@@ -68,7 +68,7 @@ export interface Recorder {
   cancel(): void;
 }
 
-/** 选一个浏览器支持的录音 MIME（iOS Safari 回退到 mp4/aac）。 */
+/** Pick a recording MIME type the browser supports (iOS Safari falls back to mp4/aac). */
 function pickAudioMime(): string {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
   const supported = (window as { MediaRecorder?: { isTypeSupported?: (m: string) => boolean } })
@@ -79,7 +79,7 @@ function pickAudioMime(): string {
   return '';
 }
 
-/** 开始录音；返回的 Recorder.stop() 结束并产出 blob + 时长。 */
+/** Start recording; the returned Recorder.stop() finishes it and yields the blob + duration. */
 export async function startRecording(): Promise<Recorder> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const mime = pickAudioMime();
@@ -117,7 +117,7 @@ export async function startRecording(): Promise<Recorder> {
   };
 }
 
-/** 毫秒格式化为 mm:ss。 */
+/** Format milliseconds as mm:ss. */
 export function formatDuration(ms: number): string {
   const total = Math.round(ms / 1000);
   const m = Math.floor(total / 60);

@@ -24,12 +24,14 @@ export interface UseDeviceOptions {
 }
 
 /**
- * DG-Lab 设备控制 Hook
- * 封装 DeviceSession 类（Coyote + 可选 sensor + 可选 Opossum），提供 React 状态同步。
+ * DG-Lab device control hook.
+ * Wraps the DeviceSession class (Coyote + optional sensor + optional Opossum)
+ * and mirrors its state into React state.
  *
- * 保持既有字段名/语义不变（connected/deviceInfo/strengthA/.../setStrength/...
- * 全部仍然只描述 Coyote），新增字段全部是加法：sensor/opossum 相关状态默认为
- * null/false，不影响任何既有消费者。
+ * Existing field names/semantics are unchanged (connected/deviceInfo/strengthA/
+ * .../setStrength/... all still describe the Coyote only); every new field is
+ * purely additive: the sensor/opossum state defaults to null/false, so no
+ * existing consumer is affected.
  */
 export function useDevice(options: UseDeviceOptions = {}) {
   const [connected, setConnected] = useState(false);
@@ -45,7 +47,8 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [limitB, setLimitB] = useState(50);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
   const [opossum, setOpossum] = useState<OpossumSummary | null>(null);
-  // 后台行为归共享的设备安全设置——三个模块共用一份，切换应用不会变。
+  // Background behavior belongs to the shared device-safety settings — all
+  // three modules share one copy, so switching apps doesn't change it.
   const [backgroundBehavior, setBackgroundBehaviorState] = useState<'stop' | 'keep'>(
     () => loadDeviceSafety().backgroundBehavior,
   );
@@ -58,7 +61,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const bgBehaviorRef = useRef(backgroundBehavior);
   bgBehaviorRef.current = backgroundBehavior;
 
-  /** 从设备实例同步状态到 React state */
+  /** Sync state from the device instance into React state */
   const syncState = useCallback(() => {
     const session = sessionRef.current;
     if (!session) return;
@@ -85,7 +88,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const clientFactoryRef = useRef(options.clientFactory);
   const requestDeviceRef = useRef(options.requestDevice);
 
-  /** 确保 session 已创建（懒创建，首次 connectDevice 时才需要）。 */
+  /** Ensure the session exists (created lazily — only needed on the first connectDevice). */
   const ensureSession = useCallback((): DeviceSession => {
     if (!sessionRef.current) {
       const session = new DeviceSession(clientFactoryRef.current, requestDeviceRef.current);
@@ -96,12 +99,14 @@ export function useDevice(options: UseDeviceOptions = {}) {
   }, [syncState]);
 
   /**
-   * 统一连接入口：打开一个设备选择器，覆盖全部 4 种 DG-Lab 设备
-   * （Coyote / 爪印传感器 / 灵猫边缘传感器 / Opossum），按名字前缀自动识别
-   * 种类并接入对应槽位——Coyote 走 DeviceSession.connectDevice() 内部路由到
-   * coyote.connectViaChosenDevice()，其余三种走 attachSensor/attachOpossum。
-   * 反复点击可依次添加更多设备。Web 端走 Web Bluetooth 选择器，Tauri
-   * Android 端走 plugin-blec 扫描 + 设备选择器（见 UseDeviceOptions.requestDevice）。
+   * Unified connect entry point: opens one device chooser covering all 4
+   * DG-Lab device kinds (Coyote / paw-prints sensor / civet-edging sensor /
+   * Opossum), identifies the kind by name prefix and attaches it to the
+   * matching slot — a Coyote is routed inside DeviceSession.connectDevice() to
+   * coyote.connectViaChosenDevice(), the other three go to
+   * attachSensor/attachOpossum. Tap it again to add another device. On web
+   * this is the Web Bluetooth chooser; on Tauri Android it is a plugin-blec
+   * scan + device picker (see UseDeviceOptions.requestDevice).
    */
   const connectDevice = useCallback(async (): Promise<{ kind: DeviceKind; name: string }> => {
     const session = ensureSession();
@@ -111,7 +116,10 @@ export function useDevice(options: UseDeviceOptions = {}) {
     return result;
   }, [ensureSession, syncState]);
 
-  /** 断开整个 session（Coyote + 传感器 + Opossum）。用于"断开"按钮和离开房间。 */
+  /**
+   * Tear down the whole session (Coyote + sensor + Opossum). Used by the
+   * "断开" button and when leaving the room.
+   */
   const disconnect = useCallback(() => {
     sessionRef.current?.disconnectAll();
     sessionRef.current = null;
@@ -130,27 +138,27 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setOpossum(null);
   }, []);
 
-  /** 仅断开 Coyote 主机（保留传感器 / Opossum）。 */
+  /** Disconnect only the Coyote host (keep the sensor / Opossum). */
   const disconnectCoyote = useCallback(() => {
     sessionRef.current?.disconnectCoyote();
   }, []);
 
-  /** 仅断开传感器（保留 Coyote / Opossum）。 */
+  /** Disconnect only the sensor (keep the Coyote / Opossum). */
   const disconnectSensor = useCallback(() => {
     sessionRef.current?.disconnectSensor();
   }, []);
 
-  /** 仅断开 Opossum（保留 Coyote / 传感器）。 */
+  /** Disconnect only the Opossum (keep the Coyote / sensor). */
   const disconnectOpossum = useCallback(() => {
     sessionRef.current?.disconnectOpossum();
   }, []);
 
-  /** 设置指定通道强度 */
+  /** Set the strength of the given channel */
   const setStrength = useCallback((channel: 'A' | 'B', value: number) => {
     sessionRef.current?.coyote.setStrength(channel, value);
   }, []);
 
-  /** 设置指定通道波形 */
+  /** Set the waveform of the given channel */
   const setWave = useCallback(
     (channel: 'A' | 'B', frames: WaveFrame[], waveformId: string, loop?: boolean) => {
       sessionRef.current?.coyote.setWave(channel, frames, waveformId, loop);
@@ -158,22 +166,22 @@ export function useDevice(options: UseDeviceOptions = {}) {
     [],
   );
 
-  /** 停止指定通道波形 */
+  /** Stop the waveform on the given channel */
   const stopWave = useCallback((channel: 'A' | 'B') => {
     sessionRef.current?.coyote.stopWave(channel);
   }, []);
 
-  /** 设置通道强度上限（Coyote 和 Opossum 共用同一套上限，见 DeviceSession 文档）。 */
+  /** Set a channel's strength cap (Coyote and Opossum share one set of caps, see the DeviceSession docs). */
   const setLimit = useCallback((channel: 'A' | 'B', value: number) => {
     sessionRef.current?.coyote.setLimit(channel, value);
   }, []);
 
-  /** 紧急停止：Coyote 双通道 + Opossum 双通道全部归零。 */
+  /** Emergency stop: zero both Coyote channels and both Opossum channels. */
   const stopAll = useCallback(() => {
     sessionRef.current?.stopAllOutputs();
   }, []);
 
-  /** 设置 Opossum 指定通道强度（绝对值，受 limitA/limitB 上限约束）。 */
+  /** Set an Opossum channel's intensity (absolute value, constrained by the limitA/limitB caps). */
   const setOpossumIntensity = useCallback((channel: 'A' | 'B', value: number) => {
     const session = sessionRef.current;
     if (!session) return;
@@ -182,7 +190,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     session.setOpossumIntensity(channel, value, limit);
   }, []);
 
-  /** Opossum 一键脉冲：短时冲到目标强度后自动回落。 */
+  /** One-tap Opossum burst: spike to the target strength briefly, then fall back automatically. */
   const opossumBurst = useCallback((channel: 'A' | 'B', strength: number, durationMs = 500) => {
     const session = sessionRef.current;
     if (!session) return;
@@ -191,33 +199,37 @@ export function useDevice(options: UseDeviceOptions = {}) {
     session.opossumBurst(channel, strength, durationMs, limit);
   }, []);
 
-  /** 停止 Opossum 一个或两个通道。 */
+  /** Stop one or both Opossum channels. */
   const opossumStop = useCallback((channel?: 'A' | 'B') => {
     sessionRef.current?.opossumStop(channel);
   }, []);
 
-  /** 设置传感器或 Opossum 的 LED 颜色（0-7 离散枚举，见 LedColorPicker）。 */
+  /** Set the LED color of the sensor or the Opossum (discrete 0-7 enum, see LedColorPicker). */
   const setLedColor = useCallback((target: 'sensor' | 'opossum', color: number) => {
     sessionRef.current?.setLedColor(target, color);
   }, []);
 
-  /** 设置后台行为 */
+  /** Set the background behavior */
   const setBackgroundBehavior = useCallback((mode: 'stop' | 'keep') => {
     setBackgroundBehaviorState(mode);
     updateDeviceSafety((prev) => ({ ...prev, backgroundBehavior: mode }));
   }, []);
 
-  /** 设置多人开火聚合策略 */
+  /** Set the multi-user fire aggregation policy */
   const setFirePolicy = useCallback((p: 'sum' | 'max' | 'avg') => {
     setFirePolicyState(p);
     localStorage.setItem('dg-fire-policy', p);
   }, []);
 
-  // 后台行为：页面切到后台时按设置停止输出（Coyote + Opossum）。
+  // Background behavior: stop output (Coyote + Opossum) when the page goes to
+  // the background, if that is what the setting says.
   //
-  // 注意这里管的**只是浏览器层面的前后台**（切标签页、锁屏、切到别的 App）。
-  // 「切到别的模块」不走这条路——统一外壳里切模块只是 DOM hidden，页面本身仍然可见，
-  // 这个 handler 根本不触发。那条路径由设备控制权的租约撤销负责（见 onRevoke）。
+  // Note this only covers **browser-level foreground/background** (switching
+  // tabs, locking the screen, switching to another app). "Switching to another
+  // module" does not come through here — in the unified shell, switching
+  // modules only sets DOM hidden, the page itself is still visible, and this
+  // handler never fires at all. That path is covered by revoking the
+  // device-control lease (see onRevoke).
   useEffect(() => {
     const stopIfConfigured = () => {
       if (bgBehaviorRef.current !== 'stop') return;
@@ -227,9 +239,10 @@ export function useDevice(options: UseDeviceOptions = {}) {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') stopIfConfigured();
     };
-    // pagehide 兜住 visibilitychange 不触发的情形：iOS Safari 与 WebView 被系统
-    // 回收时可能直接走 pagehide。漏掉它意味着应用被杀掉后设备还在输出，而用户
-    // 已经没有任何界面可以停它了。
+    // pagehide covers the cases where visibilitychange never fires: iOS Safari
+    // and WebViews can go straight to pagehide when the system reclaims them.
+    // Missing it means the device keeps outputting after the app has been
+    // killed, with no UI left anywhere for the user to stop it.
     const onPageHide = () => stopIfConfigured();
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onPageHide);
@@ -263,7 +276,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     firePolicy,
     firePolicyRef,
     setFirePolicy,
-    // —— 多设备（sensor / opossum） ——
+    // —— Multi-device (sensor / opossum) ——
     sensor,
     opossum,
     connectDevice,

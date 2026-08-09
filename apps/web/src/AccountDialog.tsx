@@ -5,12 +5,14 @@ import { deleteAccount, login, logout, register, type AuthUser } from '@0xnullai
 import { Avatar } from './Avatar';
 
 /**
- * 账户。登录 / 注册 / 已登录信息，都在这一个对话框里。
+ * Account. Login / registration / signed-in info all live in this one dialog.
  *
- * **注册时必须展示并同意用户协议**，协议正文里包含完整的使用前安全须知
- * （`@dg-kit/safety` 的 SAFETY_NOTICE_SECTIONS，全系统唯一一份）。这是安全须知从
- * 开场弹窗搬过来之后的落点之一；另一个落点是首次连接设备时——因为账号是可选的，
- * 只放在注册流程里意味着从不注册的用户永远看不到它。
+ * **Registration must show the user agreement and require consent.** The agreement
+ * body contains the full pre-use safety notice (`@dg-kit/safety`'s
+ * SAFETY_NOTICE_SECTIONS, the only copy in the entire system). This is one of the
+ * places the safety notice landed after being moved out of the startup dialog; the
+ * other is the first device connection — because accounts are optional, putting it
+ * only in the registration flow means users who never register never see it.
  */
 
 function Agreement() {

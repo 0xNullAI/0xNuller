@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { Button, Input, Overlay } from '@0xnullai/ui';
 
 /**
- * 建房间。
+ * Create a room.
  *
- * 从原来那张整页入口卡片里拆出来的——那张卡片同时承担「填昵称」「建房」「加入」
- * 三件事，于是每次打开 Chat 都要先过一遍表单。昵称现在来自账号，加入走侧边栏的
- * 房间列表，这里只剩「建房」这一件事。
+ * Split out of the old full-page entry card — that card handled three things at once
+ * (enter a nickname, create a room, join a room), so every time you opened Chat you had to
+ * work through a form first. The nickname now comes from the account and joining goes
+ * through the room list in the sidebar, so only "create a room" is left here.
  */
 
 function newRoomCode(): string {
-  // 用 crypto 而不是 Math.random：房间号是私密房唯一的准入凭证，可预测就等于没有。
+  // crypto instead of Math.random: the room code is the only admission credential a private
+  // room has, and a predictable one is the same as no credential at all.
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   return [...bytes]
     .map((b) => b.toString(36).padStart(2, '0'))

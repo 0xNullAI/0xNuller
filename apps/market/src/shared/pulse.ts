@@ -1,5 +1,7 @@
-// DG-Lab `.pulse` 文本格式解析器，移植自 @dg-kit/waveforms，纯函数无运行时依赖。
-// 将一段 "Dungeonlab+pulse:..." 展开为 25ms 网格上的 [编码频率, 强度][]。
+// Parser for the DG-Lab `.pulse` text format, ported from @dg-kit/waveforms; pure
+// functions, no runtime dependencies.
+// Expands a "Dungeonlab+pulse:..." string into [encodedFrequency, strength][] on a
+// 25ms grid.
 
 type WaveFrame = [number, number];
 

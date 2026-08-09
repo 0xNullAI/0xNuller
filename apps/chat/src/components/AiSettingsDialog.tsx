@@ -10,7 +10,8 @@ interface AiSettingsDialogProps {
 }
 
 export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
-  // 初始化即载入已保存配置；保存时同步更新本地 state（本组件是唯一写入方）。
+  // Load the saved config on init; saving updates local state in step (this component is
+  // the only writer).
   const [config, setConfig] = useState<AiConfig>(loadAiConfig);
 
   if (!open) return null;
@@ -23,10 +24,10 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
     if (!p) return;
     setConfig((c) => ({
       providerId: p.id,
-      // 切换预设时预填 baseUrl / model（仍可编辑）。
+      // Switching presets prefills baseUrl / model (still editable).
       baseUrl: p.baseUrl,
       model: p.defaultModel,
-      // 不需要 Key 的预设清空 apiKey，避免误带凭据。
+      // Presets that need no key clear apiKey, so no credential is carried over by mistake.
       apiKey: p.needsKey ? c.apiKey : '',
     }));
   }
@@ -52,7 +53,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
         className="flex max-h-[85vh] w-[min(480px,calc(100vw-32px))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* 标题栏 */}
+        {/* Title bar */}
         <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-4 py-3">
           <div className="flex items-center gap-2">
             <Bot className="h-4 w-4 text-[var(--accent)]" />
@@ -68,7 +69,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          {/* 供应商预设 */}
+          {/* Provider preset */}
           <div className="space-y-1">
             <label className="text-xs text-[var(--text-soft)]">供应商</label>
             <select
@@ -85,7 +86,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
             </select>
           </div>
 
-          {/* 模型 */}
+          {/* Model */}
           <div className="space-y-1">
             <label className="text-xs text-[var(--text-soft)]">模型</label>
             <input
@@ -97,7 +98,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
             />
           </div>
 
-          {/* 接口地址 */}
+          {/* API endpoint */}
           <div className="space-y-1">
             <label className="text-xs text-[var(--text-soft)]">接口地址</label>
             <input
@@ -109,7 +110,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
             />
           </div>
 
-          {/* API 密钥（仅需要 Key 的供应商显示） */}
+          {/* API key (shown only for providers that need one) */}
           {needsKey && (
             <div className="space-y-1">
               <label className="text-xs text-[var(--text-soft)]">API 密钥</label>
@@ -125,7 +126,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
             </div>
           )}
 
-          {/* 提示 */}
+          {/* Hint */}
           <p className="text-xs leading-relaxed text-[var(--text-faint)]">
             {needsKey
               ? '兼容 OpenAI Chat Completions 接口。密钥仅保存在本机浏览器，用于房间内 AI 角色调用模型。'
@@ -133,7 +134,7 @@ export function AiSettingsDialog({ open, onClose }: AiSettingsDialogProps) {
           </p>
         </div>
 
-        {/* 底栏 */}
+        {/* Footer bar */}
         <div className="flex justify-end gap-2 border-t border-[var(--surface-border)] px-4 py-3">
           <button
             onClick={onClose}

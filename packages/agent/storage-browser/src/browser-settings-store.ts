@@ -49,8 +49,10 @@ export class BrowserAppSettingsStore {
 
   load(): BrowserAppSettings {
     const persisted = this.normalizePersistedSettings(this.readPersistedSettings());
-    // 设备安全设置的真源在 @0xnullai/settings，全应用共用一份——用户在 Agent 里把
-    // 上限调到 30，切到 Chat / Voice 不该变回 50。这里只是把它铺进本模块的设置视图。
+    // The source of truth for device safety settings is @0xnullai/settings, one
+    // copy shared by the whole app — if the user lowers the cap to 30 in Agent,
+    // switching to Chat / Voice must not put it back at 50. This just spreads it
+    // into this module's settings view.
     const safety = loadDeviceSafety();
     const activeProviderId = persisted?.provider?.providerId ?? this.defaults.provider.providerId;
     const apiKeys = this.readApiKeys(activeProviderId);
@@ -62,7 +64,8 @@ export class BrowserAppSettingsStore {
     return {
       ...this.defaults,
       ...persisted,
-      // 共享的安全设置覆盖本模块曾经持久化的那份（迁移后旧字段不再被写入）。
+      // The shared safety settings override whatever this module used to
+      // persist (after the migration the old fields are no longer written).
       maxStrengthA: safety.maxStrengthA,
       maxStrengthB: safety.maxStrengthB,
       maxColdStartStrength: safety.maxColdStartStrength,
@@ -119,7 +122,8 @@ export class BrowserAppSettingsStore {
     this.sessionPermissionModeOverride =
       settings.permissionMode === 'allow-all' ? 'allow-all' : null;
 
-    // 安全设置写回共享真源，不再进本模块的 blob。
+    // Safety settings are written back to the shared source of truth, no longer
+    // into this module's blob.
     saveDeviceSafety({
       maxStrengthA: settings.maxStrengthA,
       maxStrengthB: settings.maxStrengthB,

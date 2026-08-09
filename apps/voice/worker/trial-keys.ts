@@ -60,14 +60,17 @@ export function isAllowedOrigin(origin: string | null, env: Env): boolean {
   if (!origin) return false;
   try {
     const host = new URL(origin).hostname;
-    // localhost：让 `wrangler dev` 不必改生产白名单。
+    // localhost: lets `wrangler dev` work without editing the production allow-list.
     if (host === 'localhost' || host === '127.0.0.1') return true;
-    // tauri.localhost：安卓壳的 WebView origin。不放行的话体验版语音在手机上一律
-    // 403，而界面只会显示「连接失败」。
+    // tauri.localhost: the Android shell's WebView origin. Without allowing it,
+    // trial voice 403s on phones every single time and the UI only shows
+    // 「连接失败」.
     //
-    // 这不削弱防护：Origin 头只对浏览器有约束力，原生程序想伪造随时可以。真正的
-    // 闸门是激活密钥与 TrialSession 的用量上限，白名单只是挡住「别的网页直接嵌一个
-    // WebSocket 蹭额度」这一种情形。
+    // This doesn't weaken the protection: the Origin header only binds
+    // browsers, and a native program can forge it whenever it likes. The real
+    // gate is the activation key plus TrialSession's usage caps; the allow-list
+    // only blocks the one case of another web page embedding a WebSocket
+    // directly and riding on the quota.
     if (host === 'tauri.localhost') return true;
   } catch {
     return false;

@@ -8,16 +8,20 @@ import {
 } from '@dg-kit/safety';
 
 /**
- * 首次连上设备时的安全须知。
+ * Safety notice shown the first time a device connects.
  *
- * 开场弹窗已经去掉——它打扰了只想逛市场或看文档的人，而这些人根本不会碰到风险。
- * 真正需要看到须知的时刻是**设备接到身上那一刻**，那也是它最可能被认真读的时刻。
+ * The startup dialog is gone — it interrupted people who only wanted to browse the
+ * market or read the docs, and those people never come near the risk. The moment
+ * the notice actually needs to be seen is **the moment the device goes on the
+ * body**, which is also the moment it is most likely to be read carefully.
  *
- * 注册流程里的用户协议是另一个落点（见 AccountDialog），但账号是可选的，只放在
- * 那里等于让从不注册的人永远看不到。两处用的是同一份正文。
+ * The user agreement in the registration flow is the other landing spot (see
+ * AccountDialog), but accounts are optional, so putting it only there means people
+ * who never register never see it. Both places use the same body text.
  *
- * 未确认就选择退出时**主动停掉输出**：能走到这一步说明设备已经连上，而用户明确
- * 表示还不接受风险。这里宁可多停一次。
+ * When the user declines instead of confirming, **actively stop the output**:
+ * getting this far means a device is already connected, and the user has explicitly
+ * said they do not accept the risk yet. Better to stop once too often here.
  */
 
 const POLL_MS = 1000;
@@ -46,7 +50,7 @@ export function FirstConnectionNotice() {
         setShow(false);
       }}
       onDecline={() => {
-        // 设备已连上而用户不接受风险——停掉再关。
+        // A device is connected and the user does not accept the risk — stop, then close.
         void stopAllSafetySessions().catch(() => undefined);
         setDismissed(true);
         setShow(false);

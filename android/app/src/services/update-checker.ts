@@ -16,13 +16,17 @@ export interface TauriUpdateCheckerOptions {
   /** GitHub `owner/repo` to poll releases on, e.g. "0xNullAI/0xNuller". */
   repo: string;
   /**
-   * 只认这个前缀的 release tag，默认 `android-v`。
+   * Only release tags carrying this prefix are recognised; defaults to `android-v`.
    *
-   * **不能用 `releases/latest`。** 合并后这一个仓库同时发布 `@dg-kit/*`（changesets
-   * 打出 `@dg-kit/core@1.14.0` 这种 tag）和平台自身的 `v0.1.0`，`releases/latest`
-   * 返回的多半不是 APK。那些 tag 用点号切开后第一段是非数字，会被当成 0，于是
-   * 比较结果恒为「没有更新」——安卓端的更新提示就此静默失效，而安卓没有热更新，
-   * 用户会一直留在旧版本上，不会有任何报错提示这件事出了问题。
+   * **`releases/latest` cannot be used.** After the merge this one repo
+   * publishes both `@dg-kit/*` (changesets cuts tags such as
+   * `@dg-kit/core@1.14.0`) and the platform's own `v0.1.0`, so what
+   * `releases/latest` returns is more often than not something other than the
+   * APK. Splitting those tags on dots yields a non-numeric first segment, which
+   * is read as 0, so the comparison always comes out as "no update" — the
+   * Android update prompt silently stops working, and since Android has no hot
+   * updates the user stays on the old version indefinitely, with no error
+   * anywhere to signal that something went wrong.
    */
   tagPrefix?: string;
   pollIntervalMs?: number;
@@ -43,14 +47,16 @@ function inMemoryStorage(): UpdateStorage {
   };
 }
 
-/** 纯数字点分版本号，如 `5.4.2`。 */
+/** A purely numeric dotted version, e.g. `5.4.2`. */
 const VERSION_RE = /^\d+(\.\d+)*$/;
 
 /**
- * 把 release tag 还原成版本号；不是本应用的 tag 就返回 null。
+ * Recover the version from a release tag; returns null if the tag is not this
+ * app's.
  *
- * 宁可漏也不能错认：认错一个 tag 的后果是弹出指向别的产物的更新提示，
- * 用户点进去下到的不是 APK。
+ * Better to miss one than to misidentify one: getting a tag wrong means showing
+ * an update prompt that points at a different artifact, and the user who taps
+ * through downloads something that is not the APK.
  */
 export function versionFromTag(tag: string, prefix: string): string | null {
   if (!tag.startsWith(prefix)) return null;
@@ -155,8 +161,9 @@ export class TauriUpdateChecker {
         this.currentVersion = await getCurrentVersion();
       }
 
-      // 列表而不是 `releases/latest`：同一个仓库还发布 @dg-kit/* 与平台版本，
-      // 「最新的那个 release」经常不是 APK。
+      // The list rather than `releases/latest`: this same repo also publishes
+      // @dg-kit/* and the platform version, so "the newest release" is often
+      // not the APK.
       const response = await fetchImpl(
         `https://api.github.com/repos/${this.options.repo}/releases?per_page=30`,
         { headers: { Accept: 'application/vnd.github+json' } },
@@ -172,8 +179,9 @@ export class TauriUpdateChecker {
       if (!Array.isArray(releases)) return;
 
       const prefix = this.options.tagPrefix ?? DEFAULT_TAG_PREFIX;
-      // GitHub 按创建时间倒序返回，所以第一条匹配的就是最新的 APK 发布。
-      // 草稿与预发布跳过：它们的 APK 要么还不存在，要么不该推给普通用户。
+      // GitHub returns these newest-first by creation time, so the first match
+      // is the latest APK release. Drafts and prereleases are skipped: their APK
+      // either does not exist yet, or should not be pushed to ordinary users.
       let version: string | null = null;
       let url: string | null = null;
       for (const release of releases) {

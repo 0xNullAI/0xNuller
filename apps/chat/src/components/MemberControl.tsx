@@ -23,8 +23,9 @@ function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval 
   const timerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const actionRef = useRef(action);
-  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
-  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // Refreshing this "latest value" ref during render is deliberate: moving it into an effect
+  // would make it update one commit late, so device commands could read a stale reference.
+  // Leave it for a dedicated useEffectEvent refactor; don't change behavior in a structural merge.
   // eslint-disable-next-line react-hooks/refs
   actionRef.current = action;
 
@@ -226,8 +227,10 @@ export function MemberControl({
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // 开火心跳：按住期间每 300ms 发一次 fire_active；松开/卸载时清 interval 并发一次 fire_release 加速回落。
-  // 任何异常（页面关闭、popover 突然 unmount、丢包）：心跳停 → owner 端 reaper 800ms 内自动归零。
+  // Fire heartbeat: while held down, send fire_active every 300ms; on release/unmount clear the
+  // interval and send one fire_release to speed up the fall-off.
+  // On any anomaly (page closed, popover suddenly unmounted, packet loss): the heartbeat stops →
+  // the owner-side reaper zeroes it out automatically within 800ms.
   const heartbeatARef = useRef<number | null>(null);
   const heartbeatBRef = useRef<number | null>(null);
   const startFireHeartbeat = useCallback(
@@ -251,7 +254,8 @@ export function MemberControl({
     },
     [peerId, onSendCommand],
   );
-  // 组件卸载时停掉所有心跳并发 release（popover 关闭、用户切换 member、整个 panel unmount 都走这里）
+  // On unmount, stop every heartbeat and send a release (popover closed, user switches member,
+  // whole panel unmounted — all of them come through here)
   useEffect(
     () => () => {
       if (heartbeatARef.current != null) {
@@ -291,13 +295,15 @@ export function MemberControl({
   const currentInterval = waveTab === 'A' ? intervalA : intervalB;
   const activeWaveId = waveTab === 'A' ? member?.waveA : member?.waveB;
 
-  // 乐观本地强度：避免 broadcastState 2 秒延迟导致 strength+1 一直基于旧值
+  // Optimistic local strength: keeps the 2-second broadcastState delay from making every
+  // strength+1 build on a stale value
   const [localStrengthA, setLocalStrengthA] = useState(strengthA);
   const [localStrengthB, setLocalStrengthB] = useState(strengthB);
   const lastLocalAtA = useRef(0);
   const lastLocalAtB = useRef(0);
 
-  // 远端状态变化时，若本地最近无操作（>1.5s）则采纳远端值（开火/归零/他人调整）
+  // When remote state changes, adopt the remote value if there has been no local action recently
+  // (>1.5s) — covers firing, reset to zero, and adjustments made by other people
   useEffect(() => {
     if (Date.now() - lastLocalAtA.current > 1500) setLocalStrengthA(strengthA);
   }, [strengthA]);
@@ -312,7 +318,7 @@ export function MemberControl({
       const stamp = channel === 'A' ? lastLocalAtA : lastLocalAtB;
       setter((prev) => {
         const next = Math.max(0, Math.min(max, prev + delta));
-        const sent = next - prev; // 实际发出的 delta（被本地 limit 削过）
+        const sent = next - prev; // the delta actually sent (already clamped by the local limit)
         if (sent === 0) return prev;
         stamp.current = Date.now();
         onSendCommand(peerId, 'adjust_strength', { c: channel, v: sent });
@@ -332,7 +338,8 @@ export function MemberControl({
 
     onSendCommand(peerId, 'set_queue', { c: waveTab, q: nextQueue });
 
-    // 如果当前正在播且新加了波形，立刻切过去（保持原 UX）
+    // If something is playing and a waveform was just added, switch to it immediately
+    // (preserves the original UX)
     if (!playlist.includes(w.id) && isPlaying) {
       onSendCommand(peerId, 'change_wave', { c: waveTab, w: w.id });
     }
@@ -675,7 +682,7 @@ export function MemberControl({
             </div>
           </div>
 
-          {/* 分组：内置波形常驻 */}
+          {/* Grouping: built-in waveforms are always present */}
           {(() => {
             const builtins = waveforms.filter((w) => !w.custom);
             const customs = waveforms.filter((w) => w.custom);
@@ -695,10 +702,10 @@ export function MemberControl({
           })()}
         </div>
 
-        {/* ==================== 传感器遥测（只读，不联动，见 lib/commands.ts TODO） ==================== */}
+        {/* ============ Sensor telemetry (read-only, no linkage, see the TODO in lib/commands.ts) ============ */}
         {member && <SensorCard peerId={peerId} member={member} onSendCommand={onSendCommand} />}
 
-        {/* ==================== Opossum 振动控制器 ==================== */}
+        {/* ==================== Opossum vibration controller ==================== */}
         {member && (
           <OpossumControl
             peerId={peerId}

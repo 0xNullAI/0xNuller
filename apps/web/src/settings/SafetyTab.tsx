@@ -8,13 +8,17 @@ import {
 } from '@0xnullai/settings';
 
 /**
- * 设备安全。整个软件里唯一直接影响人体的设置。
+ * Device safety. The only setting in the whole software that directly affects a
+ * human body.
  *
- * **全应用共享一份。** 在这里调的上限，Agent / Chat / Voice 立刻都是这个值——合并前
- * 三个模块各存各的，用户在一处调高，切到另一处又变回去，而变回去这件事没有任何提示。
+ * **One copy shared by the whole app.** A cap set here is immediately the value in
+ * Agent / Chat / Voice — before the merge the three modules each stored their own,
+ * so a user would raise it in one place, switch to another, and find it back at the
+ * old value, with nothing at all indicating that it had reverted.
  *
- * 排版上刻意不做成折叠面板：这些数字决定电流有多大，用户应该一眼看到全部，而不是
- * 需要展开才知道自己设了什么。
+ * The layout deliberately avoids collapsible panels: these numbers decide how strong
+ * the current is, so the user should see all of them at a glance instead of having
+ * to expand something to find out what they set.
  */
 
 interface NumberFieldSpec {

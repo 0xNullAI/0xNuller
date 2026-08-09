@@ -1,16 +1,20 @@
-/* 层名必须与 Tailwind v4 内部一致（theme / base / components / utilities）。
-   自造名字会让 Tailwind 的真实层被追加到声明列表之后，preflight 反过来压过
-   ui-base，共享 base 的表单样式静默失效。shell 层排在 module 之后，外壳的样式
-   在需要时可以压过模块。 */
+/* The layer names must match Tailwind v4's internal ones (theme / base /
+   components / utilities). Making up names causes Tailwind's real layers to be
+   appended after this declaration list, so preflight ends up overriding ui-base
+   and the shared base's form styles silently stop working. The shell layer comes
+   after module, so the shell's styles can override a module's when needed. */
 @layer theme, base, ui-base, components, utilities, module, shell;
 
 @import 'tailwindcss';
 
-/* Tailwind v4 的自动扫描根取自 Vite 的 config.root。外壳的 root 是 apps/web，
-   所以**每个被挂载模块的源码树都要显式列出**——漏掉哪个，那个模块的工具类就会被
-   静默 tree-shake 掉。上一次外壳失败的首要原因正是这个：Agent 的候选类从 2199 掉到
-   409，整条高度锁 h-full、全部 min-h-0、全部 lg: 断点一起消失，表现为「内容挤顶 +
-   输入区上移 + 下方大片空白」，而构建完全不报错。 */
+/* Tailwind v4 takes its automatic scan root from Vite's config.root. The shell's
+   root is apps/web, so **the source tree of every mounted module must be listed
+   explicitly** — miss one and that module's utility classes are silently
+   tree-shaken away. That was the primary cause of the previous shell failure:
+   Agent's candidate classes dropped from 2199 to 409, and the whole h-full height
+   chain, every min-h-0 and every lg: breakpoint disappeared at once, showing up as
+   "content crammed against the top + input area shifted up + a large blank area
+   below", while the build reported nothing at all. */
 @source './';
 @source '../../../packages/platform/ui/src';
 @source '../../agent/src';
@@ -24,25 +28,33 @@
 @import '@0xnullai/ui/styles/settings.css' layer(module);
 @import '@0xnullai/ui/styles/animations.css';
 
-/* 各模块自己的 CSS 统一归 module 层。
-   不放在懒加载封装里，是因为通过 JS import 的 CSS 无法指定层——它会落在所有层之外，
-   于是无条件压过全部 Tailwind utility，重蹈 base.css 的覆辙；而且层外 CSS 在 lazy
-   chunk 场景下由运行时 append 顺序决胜负，故障会变成「先点哪个模块」的随机结果。
-   代价是这几份 CSS 不再分块懒加载，合计约 1500 行，可接受。 */
+/* Every module's own CSS goes into the module layer.
+   It is not kept inside the lazy-loading wrapper because CSS brought in through a
+   JS import cannot be assigned a layer — it lands outside all layers and therefore
+   unconditionally overrides every Tailwind utility, repeating the base.css mistake;
+   and with lazy chunks, unlayered CSS is decided by runtime append order, so the
+   failure becomes a random result of "which module you clicked first".
+   The cost is that these stylesheets no longer lazy-load as separate chunks: about
+   1500 lines in total, which is acceptable. */
 @import '../../agent/src/styles/app.css' layer(module);
 @import '../../voice/src/styles/settings.css' layer(module);
 @import '../../chat/src/styles/app.css' layer(module);
-/* Market 的 561 行必须走这里而不是模块入口的 JS import：通过 JS import 的 CSS 无法
-   指定层，会落在所有层之外从而无条件压过全部 Tailwind。实测后果是它那条通用的
-   `.grid` 接管了权限弹窗与安全须知的栅格——安全 UI 的布局被一个商店样式表决定。 */
+/* Market's 561 lines must come through here rather than a JS import in the module
+   entry: CSS brought in through a JS import cannot be assigned a layer, so it lands
+   outside all layers and unconditionally overrides every Tailwind utility. The
+   observed consequence was that its generic `.grid` took over the grid of the
+   permission dialog and the safety notice — the layout of the safety UI decided by
+   a storefront stylesheet. */
 @import '../../market/src/web/styles.css' layer(module);
 
 @layer shell {
-  /* 说明弹窗的正文排版。
-     之前引的是文档站那 74 行 wiki.css（§ 标题前缀、代码块 ◉ output 角标、加粗带
-     荧光笔底色、列表点 ▸、h1 clamp 3.6rem）——那是独立站点的视觉身份，放进
-     「我卡住了，来查一下」的弹窗里全是噪音。文档站已删，这里是全新的一套：
-     字号一档、间距规整、没有任何装饰物。 */
+  /* Body typography for the docs dialog.
+     This used to pull in the docs site's 74-line wiki.css (§ heading prefixes, the
+     ◉ output badge on code blocks, highlighter background behind bold text, ▸ list
+     bullets, h1 clamped at 3.6rem) — that was a standalone site's visual identity,
+     and inside an "I'm stuck, let me look it up" dialog it is all noise. The docs
+     site is gone; this is a brand-new set: one type size, regular spacing, no
+     ornamentation whatsoever. */
   .docs-body {
     font-size: 14.5px;
     line-height: 1.75;
@@ -127,7 +139,8 @@
     background: transparent;
   }
 
-  /* 引用块承载操作提示（「搜不到设备？…」），给一点底色让它从正文里浮出来。 */
+  /* Blockquotes carry operational tips (「搜不到设备？…」); a little background lifts
+     them out of the body text. */
   .docs-body blockquote {
     margin: 0 0 1em;
     padding: 0.55em 1em;
@@ -172,11 +185,13 @@
     background-color: var(--bg);
   }
 
-  /* 网格质感是**首页自己的**表面，不是全局背景。
-     原本藏在文档站的 wiki.css 里泄漏到所有模块，挪到外壳根上之后仍然不对：
-     Chat / Voice / Market 各自铺了不透明底色把它盖掉，Agent 没铺所以留着，
-     顶部那条按钮行又是透明的——于是同一套 CSS 长出三种样子，还多一条漏出来的
-     网格带。归到首页就没有这个问题：模块区一律是平的。 */
+  /* The grid texture is **the home page's own** surface, not a global background.
+     It originally hid in the docs site's wiki.css and leaked into every module, and
+     moving it onto the shell root was still wrong: Chat / Voice / Market each paint
+     an opaque background that covers it, Agent does not so it stays visible, and the
+     button row at the top is transparent — so one stylesheet grew three different
+     looks, plus one strip of grid leaking through. Scoping it to the home page has
+     none of that: module areas are always flat. */
   .shl-home {
     background-image:
       linear-gradient(var(--grid) 1px, transparent 1px),
@@ -184,10 +199,13 @@
     background-size: 88px 88px;
   }
 
-  /* 两列。侧边栏宽度走变量，收起态与展开态只差这一个值——没有第二处需要同步的地方。
-     外壳根禁止 transform / filter / contain：它们会把固定定位后代的包含块从视口翻转
-     成外壳盒子。覆盖层容器虽是外壳根的兄弟（不受影响），但模块内部仍有依赖视口
-     包含块的元素。做切换动画请动 opacity。 */
+  /* Two columns. The sidebar width comes from a variable, and the collapsed and
+     expanded states differ only in that one value — there is no second place to keep
+     in sync. transform / filter / contain are forbidden on the shell root: they flip
+     the containing block of fixed-position descendants from the viewport to the shell
+     box. The overlay container is a sibling of the shell root (so it is unaffected),
+     but modules still contain elements that rely on the viewport as their containing
+     block. For a switch animation, animate opacity. */
   #shl-root {
     height: 100%;
     display: grid;
@@ -195,8 +213,9 @@
     overflow: hidden;
   }
 
-  /* 窄屏：侧边栏变抽屉，不占布局列。内容区拿到全部宽度——把两列压扁成一条窄的
-     侧栏加一条更窄的内容区，比没有侧栏更难用。 */
+  /* Narrow screens: the sidebar becomes a drawer and takes no layout column. The
+     content area gets the full width — squeezing the two columns into a narrow
+     sidebar plus an even narrower content area is worse to use than no sidebar. */
   #shl-root[data-collapsed] {
     grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
   }
@@ -219,7 +238,8 @@
     overflow: hidden;
   }
 
-  /* 模块按钮那一行。没有按钮时高度塌成 0，不留空白条。 */
+  /* The row of module buttons. With no buttons its height collapses to 0, leaving
+     no blank strip. */
   #shl-actions {
     display: flex;
     align-items: center;

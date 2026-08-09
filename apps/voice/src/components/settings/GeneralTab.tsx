@@ -26,7 +26,8 @@ const PERMISSION_MODE_OPTIONS: Array<{ value: BrowserPermissionMode; label: stri
 ];
 
 export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
-  // 主题是跨模块共享的全局设置，不再存进 VoiceSettings——四个模块与外壳共用一个值。
+  // The theme is a cross-module global setting and is no longer stored in
+  // VoiceSettings — the four modules and the shell all share one value.
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const provider = getRealtimeProviderDefinition(settings.activeProviderId);
   const providerSettings = settings.providers[settings.activeProviderId];
@@ -43,7 +44,7 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
 
   return (
     <div className="settings-panel-tab-content">
-      {/* ---- 基本设置 ---- */}
+      {/* ---- Basic settings ---- */}
       <div className="settings-row-card grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3">
         <h3 className="settings-card-legend">基本设置</h3>
 
@@ -66,7 +67,7 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
         </div>
       </div>
 
-      {/* ---- 语音供应商 ---- */}
+      {/* ---- Voice provider ---- */}
       <div className="settings-row-card">
         <h3 className="settings-card-legend">语音供应商</h3>
 
@@ -111,7 +112,7 @@ export function GeneralTab({ settings, updateSettings }: GeneralTabProps) {
         ))}
       </div>
 
-      {/* ---- 确认模式 ---- */}
+      {/* ---- Confirmation mode ---- */}
       <div className="settings-row-card">
         <h3 className="settings-card-legend">工具调用确认</h3>
         <label className="settings-inline-field">

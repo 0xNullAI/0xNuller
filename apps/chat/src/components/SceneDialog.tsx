@@ -15,10 +15,10 @@ interface SceneDialogProps {
   onSetScene: (scene: Scene | null) => void;
   onClaimRole: (roleId: string) => void;
   onReleaseRole: (roleId: string) => void;
-  /** 房主：把某 aiPlayable 角色交给 AI / 取消。 */
+  /** Host only: hand an aiPlayable role over to the AI / take it back. */
   onAssignAi: (roleId: string) => void;
   onReleaseAi: (roleId: string) => void;
-  /** 打开「从市场导入场景」（Part C）。 */
+  /** Open 「从市场导入场景」 (Part C). */
   onImportFromMarket?: () => void;
 }
 
@@ -46,7 +46,7 @@ export function SceneDialog({
   onReleaseAi,
   onImportFromMarket,
 }: SceneDialogProps) {
-  // 房主编辑态：null = 展示态；非 null = 编辑表单
+  // Host edit state: null = display mode; non-null = edit form
   const [draft, setDraft] = useState<Scene | null>(null);
 
   if (!open) return null;
@@ -56,7 +56,7 @@ export function SceneDialog({
     return members.get(peerId)?.displayName || peerId.slice(0, 6);
   }
 
-  // —— 房主编辑表单 ——
+  // —— Host edit form ——
   function startEdit() {
     setDraft(scene ? { ...scene, roles: scene.roles.map((r) => ({ ...r })) } : emptyDraft());
   }
@@ -99,7 +99,7 @@ export function SceneDialog({
         className="flex max-h-[85vh] w-[min(520px,calc(100vw-32px))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* 标题栏 */}
+        {/* Title bar */}
         <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-4 py-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-[var(--text)]">房间场景</h2>
@@ -120,7 +120,7 @@ export function SceneDialog({
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {editing && draft ? (
-            /* —— 编辑表单（仅房主） —— */
+            /* —— Edit form (host only) —— */
             <div className="space-y-3">
               <input
                 value={draft.name}
@@ -202,7 +202,7 @@ export function SceneDialog({
               </div>
             </div>
           ) : scene ? (
-            /* —— 展示态：当前场景 + 角色认领 —— */
+            /* —— Display mode: current scene + role claiming —— */
             <div className="space-y-3">
               <div>
                 <p className="text-base font-semibold text-[var(--text)]">{scene.name}</p>
@@ -302,7 +302,7 @@ export function SceneDialog({
               )}
             </div>
           ) : (
-            /* —— 无场景 —— */
+            /* —— No scene —— */
             <div className="py-6 text-center">
               <p className="text-sm text-[var(--text-soft)]">
                 {isHost ? '还没有设定场景' : '房主还没设定场景'}

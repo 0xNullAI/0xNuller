@@ -6,21 +6,27 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 /**
- * 统一外壳。四个模块的源码树仍在 apps/<模块>/src 下，这里按路由挂载它们。
+ * The unified shell. The four modules' source trees still live under
+ * apps/<module>/src; this config mounts them by route.
  *
- * 模块的**构建期契约**也要一并搬来：Agent 的更新检查读 __BUILD_ID__，那是它原来
- * vite 配置里 define 的常量；只搬源码不搬 define，产物里会留下未替换的标识符，
- * 运行时直接 ReferenceError——类型检查与构建都不会报。
+ * A module's **build-time contract** has to move along with it: Agent's update
+ * check reads __BUILD_ID__, a constant that used to be defined in its own vite
+ * config. Move the source without the define and the bundle keeps an unreplaced
+ * identifier that becomes a plain ReferenceError at runtime — neither typecheck
+ * nor the build reports it.
  */
 const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? `local-${Date.now()}`;
 
 export default defineConfig({
   root: __dirname,
   resolve: {
-    // React 必须全仓只有一份实例。合并前 apps/market 声明的是 react@18，其余是 19，
-    // npm 无法提升，于是 apps/market/node_modules 里存了第二份——Market 的 chunk 拿到
-    // 另一个 React 实例，useState 读到 null dispatcher 直接崩。版本已统一，这里再加一道
-    // 兜底，将来谁再引入不同版本也不会静默分裂成两个实例。
+    // There must be exactly one React instance across the whole repo. Before the
+    // merge apps/market declared react@18 while everything else was 19, npm could not
+    // hoist it, so a second copy sat in apps/market/node_modules — Market's chunk got
+    // the other React instance and useState read a null dispatcher and crashed
+    // outright. The versions are unified now; this is one more backstop so that if
+    // someone reintroduces a different version it will not silently split into two
+    // instances.
     dedupe: ['react', 'react-dom'],
     alias: {
       '@agent': path.resolve(__dirname, '../agent/src'),

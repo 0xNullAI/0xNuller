@@ -7,7 +7,8 @@ import { WaveformPreview } from './WaveformPreview';
 
 type Frame = [number, number];
 
-// 从上传的文件里取出 .pulse 文本：.pulse 直接读，.zip 取第一个 .pulse 条目。
+// Pull the .pulse text out of an uploaded file: read a .pulse directly, take the first
+// .pulse entry out of a .zip.
 async function readPulseFromFile(file: File): Promise<{ text: string; embeddedName: string }> {
   if (/\.zip$/i.test(file.name)) {
     const buf = new Uint8Array(await file.arrayBuffer());
@@ -23,18 +24,19 @@ async function readPulseFromFile(file: File): Promise<{ text: string; embeddedNa
 
 interface Props {
   onClose: () => void;
-  onUploaded: () => void; // 手动单条上传成功 → 关闭并刷新
-  onChanged: () => void; // 文件批量上传成功 → 刷新列表（不关闭，便于看结果/继续传）
+  onUploaded: () => void; // manual single-item upload succeeded -> close and refresh
+  onChanged: () => void; // file batch upload succeeded -> refresh the list (stay open so the results are visible / more can be uploaded)
 }
 
-// 从用户输入解析出波形 frames：支持 .pulse 文本，或直接粘贴 frames JSON 数组。
+// Parse waveform frames out of user input: accepts .pulse text, or a frames JSON array
+// pasted directly.
 function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
   const trimmed = text.trim();
   if (/^Dungeonlab\+pulse:/i.test(trimmed)) {
     const { frames } = parsePulseText(trimmed);
     return { frames: frames as Frame[], pulse: trimmed };
   }
-  // 尝试当作 JSON：可能是 {frames:[...]} 或裸 [[f,s],...]
+  // Try it as JSON: either {frames:[...]} or a bare [[f,s],...]
   const data = JSON.parse(trimmed) as unknown;
   const frames = Array.isArray(data) ? data : (data as { frames?: unknown }).frames;
   if (!Array.isArray(frames)) throw new Error('JSON 中找不到 frames 数组');
@@ -54,9 +56,9 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [batchMsg, setBatchMsg] = useState('');
-  const [manual, setManual] = useState(false); // 是否展开手动填写表单（高级选项）
+  const [manual, setManual] = useState(false); // whether the manual entry form is expanded (advanced option)
   const [preview, setPreview] = useState<Frame[] | null>(null);
-  // —— 多人场景字段 ——
+  // —— multiplayer scene fields ——
   const [setting, setSetting] = useState('');
   const [playerMin, setPlayerMin] = useState('2');
   const [playerMax, setPlayerMax] = useState('4');
@@ -74,7 +76,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
   const uploadRef = useRef<HTMLInputElement>(null);
 
-  // 触发浏览器下载一段文本。
+  // Trigger a browser download of a piece of text.
   const downloadText = (filename: string, text: string) => {
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
     const a = document.createElement('a');
@@ -84,8 +86,10 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     URL.revokeObjectURL(url);
   };
 
-  // 当前类型的 JSON 模板：用一份可直接上传的示例内容填好，照着改字段即可。
-  // 公共可填字段：name 名称(必填) / author 上传者昵称 / description 简介 / tags 标签。
+  // JSON template for the current type: filled in with sample content that uploads as-is,
+  // so the user just edits the fields.
+  // Fields common to all types: name (required) / author (uploader nickname) /
+  // description / tags.
   const templateFor = (t: ItemType): unknown => {
     if (t === 'waveform')
       return {
@@ -94,7 +98,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         author: '你的昵称（可选，留空则匿名）',
         description: '由弱到强再回落的循环脉冲，适合作为前戏铺垫。',
         tags: ['渐强', '节奏感'],
-        // frames：[编码频率(10..240), 强度(0..100)]，一帧约 25ms。也可改填 pulse 文本。
+        // frames: [encodedFrequency(10..240), strength(0..100)], one frame is about 25ms. Can be swapped for pulse text instead.
         content: {
           frames: [[10, 20], [15, 40], [20, 60], [25, 80], [20, 60], [15, 40]],
           pulse: '',
@@ -124,7 +128,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         setting:
           '一座末日后的地下避难所，物资濒临耗尽，外面是被污染的废土。幸存者必须在猜疑与合作之间做出选择。',
         playerCount: { min: 2, max: 4 },
-        aiMode: 'none', // none 纯人 / solo 单个 AI / multi 多个 AI
+        aiMode: 'none', // none = humans only / solo = a single AI / multi = several AIs
         roles: [
           { name: '避难所主管', description: '掌握物资分配权的冷静领袖，信奉秩序高于一切。', aiPlayable: false },
           { name: '流浪医生', description: '唯一懂医术的外来者，立场暧昧、动机成谜。', aiPlayable: true },
@@ -138,24 +142,28 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     downloadText(fn, JSON.stringify(templateFor(type), null, 2));
   };
 
-  // —— 上传：压缩包 / 单 JSON / 单 .pulse 全自动识别，统一批量发布 ——
+  // —— Upload: zip / single JSON / single .pulse are all detected automatically and
+  // published through the same batch path ——
 
   const baseName = (n: string) => n.replace(/.*\//, '');
 
-  // 一段 .pulse 文本 → 一条波形条目（名称用内嵌名 / 文件名兜底）。
+  // One piece of .pulse text -> one waveform item (name taken from the embedded name,
+  // falling back to the file name).
   const pulseToItem = (text: string, fallbackName: string): unknown => {
     const { frames, name: embedded } = parsePulseText(text);
     return { type: 'waveform', name: embedded || fallbackName, content: { frames, pulse: text } };
   };
 
-  // 一段 JSON 文本 → 条目数组（单个对象 → [对象]，数组 → 原样）。
+  // One piece of JSON text -> an array of items (a single object -> [object], an array ->
+  // as-is).
   const parseItemsJson = (text: string): unknown[] => {
     const data = JSON.parse(text) as unknown;
     return Array.isArray(data) ? data : [data];
   };
 
-  // 波形条目若用文件名引用包内 .pulse（content.pulse / pulse / file），
-  // 或直接给了 pulse 文本，自动解析出 frames 填好；否则原样交后端校验。
+  // If a waveform item references a .pulse inside the archive by file name (content.pulse /
+  // pulse / file), or gives the pulse text directly, parse out the frames and fill them in
+  // automatically; otherwise pass it through unchanged for the backend to validate.
   const resolveWaveItem = (
     it: Record<string, unknown>,
     pulseMap: Record<string, string>,
@@ -163,7 +171,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   ): unknown => {
     if (it.type !== 'waveform') return it;
     const c = (it.content ?? {}) as Record<string, unknown>;
-    if (Array.isArray(c.frames) && c.frames.length) return it; // 已内联 frames
+    if (Array.isArray(c.frames) && c.frames.length) return it; // frames already inlined
     const candidates = [c.pulse, (it as { file?: unknown }).file, (c as { file?: unknown }).file];
     for (const cand of candidates) {
       if (typeof cand !== 'string') continue;
@@ -180,7 +188,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     return it;
   };
 
-  // 任意上传文件 → 待发布条目数组。
+  // Any uploaded file -> an array of items to publish.
   const parseUploadFile = async (file: File): Promise<unknown[]> => {
     if (/\.zip$/i.test(file.name)) {
       const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
@@ -194,7 +202,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         for (const it of parseItemsJson(strFromU8(entries[n]!)))
           items.push(resolveWaveItem((it ?? {}) as Record<string, unknown>, pulseMap, used));
       }
-      // 没被任何 JSON 引用的 .pulse 各自成为一条波形
+      // Each .pulse not referenced by any JSON becomes a waveform item of its own
       for (const [key, text] of Object.entries(pulseMap))
         if (!used.has(key)) items.push(pulseToItem(text, key.replace(/\.pulse$/i, '')));
       return items;
@@ -207,7 +215,8 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     );
   };
 
-  // 「上传」按钮：选文件 → 自动解析 → 批量发布（单条/多条都走这里）。
+  // The 「上传」 button: pick a file -> parse automatically -> publish as a batch (both
+  // single and multiple items go through here).
   const smartUpload = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
@@ -235,9 +244,9 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     setError('');
     try {
       const { text, embeddedName } = await readPulseFromFile(file);
-      const { name: pulseName } = parsePulseText(text); // 校验并取内嵌名
+      const { name: pulseName } = parsePulseText(text); // validate and take the embedded name
       tryPreview(text);
-      // 名称为空时用波形内嵌名 / 文件名自动填充
+      // When the name is empty, autofill it from the waveform's embedded name / the file name
       if (!name.trim()) setName(pulseName || embeddedName);
     } catch (e) {
       setPreview(null);
@@ -287,7 +296,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         };
       } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
-        // 单人场景始终带「DG Agent」标签（去重、限 20 个）。
+        // Single-player scenes always carry the 'DG Agent' tag (deduped, capped at 20).
         const scenarioTags = tags.includes('DG Agent') ? tags : ['DG Agent', ...tags].slice(0, 20);
         payload = {
           type: 'scenario',
@@ -369,7 +378,8 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
             </div>
           )}
         </div>
-        {/* 主流程：下载最新模板 → 离线填好 → 上传（单文件或压缩包，自动识别批量） */}
+        {/* Main flow: download the latest template -> fill it in offline -> upload (a single
+          file or an archive, batches detected automatically) */}
         <div className="tpl-row">
           <button type="button" className="btn tpl-btn" onClick={downloadTemplate}>
             ⬇ 下载模板

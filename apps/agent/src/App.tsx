@@ -98,7 +98,8 @@ export interface AppProps {
 }
 
 export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
-  // 原生能力优先取自 props（独立挂载时），否则从 NativeBridge 取（统一外壳里）。
+  // Native capabilities come from props first (standalone mount), otherwise from
+  // NativeBridge (inside the unified shell).
   const native = useNativeBridge();
   const nativeOverrides = (native.agent?.servicesOverrides ??
     servicesOverrides) as typeof servicesOverrides;
@@ -131,8 +132,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const inShell = useInShell();
-  // 场景库已从设置 blob 搬到跨模块共享存储——Voice 看到的是同一批，而且一条写坏的
-  // 场景不再会连累整份设置回落默认值（那个 blob 里还住着强度上限）。
+  // The scene library moved out of the settings blob into cross-module shared storage —
+  // Voice sees the same set, and one broken scene no longer drags the whole settings
+  // object back to its defaults (that blob also holds the strength caps).
   const [sceneLib, updateSceneLib] = useScenes();
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
     () => !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
@@ -226,12 +228,14 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
 
-  // 注册到全局安全总线——这是外壳那个全局停止按钮唯一的数据来源。
-  // 之前全仓零注册方，按钮永远渲染成 null，等于根本不存在。
+  // Register with the global safety bus — this is the only data source the shell's
+  // global stop button has. Before this, nothing in the repo registered, so the button
+  // always rendered as null, i.e. it may as well not have existed.
   useSafetySession({
     id: 'agent',
     label: 'Agent',
-    // 「持有已连接设备」而不是「正在输出」：见 useSafetySession 的注释。
+    // "Holds a connected device" rather than "is currently outputting": see the
+    // comment on useSafetySession.
     isActive: () =>
       deviceState.connected ||
       opossumState.connected ||
@@ -241,13 +245,15 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
     onRevoke: async () => {
-      // 切走 Agent 时把在途的回复也中止掉，不只是停输出——一个还在跑的工具调用
-      // 序列会在后台继续下指令，而用户以为自己已经离开了这个模块。
+      // Switching away from Agent also aborts the in-flight reply, not just the output —
+      // a tool-call sequence still running would keep issuing commands in the background
+      // while the user believes they already left this module.
       if (!activeSessionId) return;
       await client.abortCurrentReply(activeSessionId).catch(() => undefined);
       await client.emergencyStop(activeSessionId).catch(() => undefined);
     },
-    // 供外壳的设备栏展示。每台设备各占一格，用户要能一眼看到身上连着什么。
+    // Fed to the shell's device bar. One slot per device — the user has to be able to
+    // see at a glance what is attached to them.
     devices: () => [
       ...(deviceState.connected
         ? [
@@ -375,9 +381,11 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     [settings.backgroundBehavior],
   );
 
-  // 主题不再由本模块施加——它是跨模块共享的全局设置，由 @0xnullai/ui 的 store
-  // 唯一持有。这里只订阅，让本模块跟着变；写入在设置面板里直接走 store。
-  // 保留本地施加的话，切回本模块时它会用自己的旧值把外壳的选择顶掉。
+  // The theme is no longer applied by this module — it is a cross-module global setting
+  // owned solely by @0xnullai/ui's store. Here we only subscribe so this module follows
+  // along; writes go straight to the store from the settings panel. If we kept applying
+  // it locally, switching back to this module would override the shell's choice with our
+  // own stale value.
   useTheme();
 
   useEffect(() => {
@@ -858,8 +866,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         </Sheet>
 
         {/* ===== Main layout ===== */}
-        {/* 外壳里只剩单列：侧边栏由外壳统一持有，会话列表通过 useRegisterSidebarSection
-            注册到「对话」分区。模块自己再画一条侧栏就是两条并排。 */}
+        {/* In the shell only one column is left: the sidebar is owned by the shell and the
+            session list registers into the 「对话」 section via useRegisterSidebarSection.
+            If the module drew a second sidebar of its own, there would be two side by side. */}
         <section
           className={
             inShell
@@ -997,8 +1006,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         </section>
       </main>
 
-      {/* 外壳里由外壳统一把门——同一份协议不该在进 Agent 时再确认一遍。 */}
-      {/* 会话列表投进外壳侧边栏的「对话」分区。模块不再画自己那条侧栏。 */}
+      {/* Inside the shell, the shell is the single gatekeeper — the same notice should not
+          be confirmed a second time on entering Agent. */}
+      {/* The session list is projected into the shell sidebar's 「对话」 section. The module
+          no longer draws a sidebar of its own. */}
       <SidebarSection id="conversations" title="对话">
         <ShellSessionList
           sessions={savedSessions}

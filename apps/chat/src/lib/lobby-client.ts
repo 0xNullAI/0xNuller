@@ -1,9 +1,10 @@
-// 大厅客户端：订阅 /ws/lobby 实时获取公开房间列表，断线自动重连；REST 兜底首屏。
+// Lobby client: subscribes to /ws/lobby for a live public room list and reconnects automatically
+// on disconnect; REST covers the first paint.
 export interface LobbyRoom {
   code: string;
   name: string;
   count: number;
-  /** 房间当前场景名（角色扮演房才有）。 */
+  /** The room's current scene name (role-play rooms only). */
   sceneName?: string;
 }
 
@@ -70,7 +71,7 @@ export function subscribeLobby(
   };
 }
 
-/** REST 快照（首屏兜底，WS 未连上时先有内容）。 */
+/** REST snapshot (first-paint fallback, so there is content before the WS connects). */
 export async function fetchLobbyRooms(): Promise<LobbyRoom[]> {
   const res = await fetch('/api/lobby/rooms');
   if (!res.ok) return [];

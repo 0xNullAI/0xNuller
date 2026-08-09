@@ -49,7 +49,7 @@ export type ServicesOverrides = Pick<
 
 export interface UseBrowserAppServicesOptions {
   settings: BrowserAppSettings;
-  /** 当前场景（人设）。来自共享场景库。 */
+  /** The current scene (persona). Comes from the shared scene library. */
   scenes: { selectedId: string; saved: SavedScene[] };
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;

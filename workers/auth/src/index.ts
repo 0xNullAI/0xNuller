@@ -1,33 +1,43 @@
 import { hashPassword, verifyPassword } from './password';
 
 /**
- * 0xNullAI 账号服务。
+ * 0xNullAI account service.
  *
- * 三条设计约束，都不是随手定的：
+ * Three design constraints, none of them casually chosen:
  *
- * 1. **账号是可选增强，不是准入门槛。** 逛市场、进房间、纯本地用 Agent、自带 key
- *    用 Voice——一个都不需要登录。这个品类的用户对匿名性极度敏感，而且老版本的
- *    安卓 App 永远只会发匿名请求。
+ * 1. **An account is an optional enhancement, not a gate.** Browsing the market,
+ *    joining a room, using Agent purely locally, using Voice with your own key —
+ *    none of these require a login. Users in this category are extremely
+ *    sensitive about anonymity, and old Android app builds will only ever send
+ *    anonymous requests.
  *
- * 2. **账号永远不能仅凭登录态获得设备控制权。** 这是最重要的一条。盗号在这个产品
- *    里意味着控制他人身体，跟盗游戏装备完全不是一个量级。所以：设备控制权的授予
- *    始终是当面的、显式的、可随时撤销的，与「谁登录了」无关——哪怕是你自己的另一
- *    台设备登录了同一账号，也不能远程控制你正在用的郊狼。本服务因此**不提供任何
- *    与设备相关的接口**，这是结构性的保证，不是约定。
+ * 2. **An account must never obtain device control from a login alone.** This is
+ *    the most important one. Account theft in this product means controlling
+ *    someone else's body; that is not remotely the same order of magnitude as
+ *    stolen game items. So: device control is always granted in person,
+ *    explicitly, and revocably at any time, independent of "who is logged in" —
+ *    even another of your own devices logged into the same account cannot
+ *    remotely control the 郊狼 you are currently using. This service therefore
+ *    **exposes no device-related endpoint at all**; that is a structural
+ *    guarantee, not a convention.
  *
- * 3. **邮箱可选。** 要求真实邮箱对成人向产品是一道实质门槛。不填则忘记密码等于
- *    失去账号，注册时明确告知。
+ * 3. **Email is optional.** Requiring a real email address is a substantial
+ *    barrier for an adult-oriented product. If it is left blank, forgetting the
+ *    password means losing the account — say so plainly at registration.
  */
 
 export interface Env {
   DB: D1Database;
-  /** ip_hash 的 pepper。与任何其他用途分开——它必须永不轮换，否则限流记录全部失效。 */
+  /**
+   * Pepper for ip_hash. Kept separate from every other use — it must never be
+   * rotated, or every rate-limit record becomes worthless.
+   */
   IP_PEPPER: string;
-  /** 允许携带凭据的来源，逗号分隔。 */
+  /** Origins allowed to send credentials, comma separated. */
   ALLOWED_ORIGINS: string;
 }
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_USERNAME = 8;
 const MAX_FAILS_PER_IP = 30;
@@ -44,7 +54,10 @@ function err(message: string, status: number, headers: HeadersInit = {}): Respon
   return json({ error: message }, status, headers);
 }
 
-/** 回显具体 origin 而不是 `*`——带凭据的请求与通配 origin 不能共存。 */
+/**
+ * Echo the concrete origin rather than `*` — credentialed requests and a wildcard
+ * origin cannot coexist.
+ */
 function corsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') ?? '';
   const allowed = env.ALLOWED_ORIGINS.split(',')
@@ -55,8 +68,9 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-    // Authorization 必须在白名单里：漏了它，浏览器会在 preflight 阶段直接拦掉，
-    // 表现是「请求根本没发出去」而不是可捕获的 401。
+    // Authorization must be on the allowlist: leave it out and the browser blocks
+    // the request outright at the preflight stage, which shows up as "the request
+    // never even went out" rather than a catchable 401.
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     Vary: 'Origin',
   };
@@ -74,10 +88,11 @@ function newToken(): string {
 }
 
 /**
- * 取会话 token。两种载体：
- * - Cookie —— 网页端，同一注册域下的各模块共用
- * - Bearer —— 安卓端。Tauri WebView 的 origin 是本地 scheme，拿不到网页域的 cookie，
- *   所以会话层从一开始就必须支持两种载体，不能只做 cookie。
+ * Read the session token. Two carriers:
+ * - Cookie — the web side, shared by every module under the same registrable domain
+ * - Bearer — the Android side. The Tauri WebView's origin is a local scheme, so it
+ *   cannot get cookies for the web domain; the session layer therefore has to
+ *   support both carriers from the start and cannot be cookie-only.
  */
 function readToken(request: Request): string | null {
   const auth = request.headers.get('Authorization');
@@ -88,8 +103,10 @@ function readToken(request: Request): string | null {
 }
 
 function sessionCookie(token: string, maxAgeSec: number): string {
-  // Domain 覆盖各子域，让四个模块共用登录态。SameSite=Lax 足够——同一注册域下的
-  // 子域间请求算 same-site，跨站请求则带不上，正是我们要的。
+  // Domain spans the subdomains so the four modules share one login state.
+  // SameSite=Lax is enough — requests between subdomains of the same registrable
+  // domain count as same-site, while cross-site requests do not carry it, which is
+  // exactly what we want.
   return [
     `0xn_session=${token}`,
     'Path=/',
@@ -148,7 +165,7 @@ export default {
     );
 
     try {
-      // ── 注册 ──
+      // ── Register ──
       if (path === '/api/auth/register' && request.method === 'POST') {
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const invalid = validateCredentials(body.username, body.password);
@@ -196,7 +213,7 @@ export default {
         });
       }
 
-      // ── 登录 ──
+      // ── Login ──
       if (path === '/api/auth/login' && request.method === 'POST') {
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const username = typeof body.username === 'string' ? body.username.toLowerCase() : '';
@@ -216,7 +233,9 @@ export default {
             .bind(ipHash, since)
             .first<{ n: number }>(),
         ]);
-        // 双维度限流：只按用户名限，攻击者可以换名继续撞；只按 IP 限，分布式撞库绕得过。
+        // Two-dimensional rate limiting: limit by username only and the attacker
+        // just switches names and keeps hammering; limit by IP only and distributed
+        // credential stuffing walks straight around it.
         if ((byName?.n ?? 0) >= MAX_FAILS_PER_USERNAME || (byIp?.n ?? 0) >= MAX_FAILS_PER_IP) {
           return err('尝试过于频繁，请稍后再试', 429, cors);
         }
@@ -233,7 +252,8 @@ export default {
             .run();
 
         if (!user) {
-          // 用户不存在时也走一次哈希，避免用响应时间区分「用户不存在」与「密码错误」。
+          // Run a hash even when the user does not exist, so response time cannot
+          // be used to tell "no such user" apart from "wrong password".
           await hashPassword(password);
           await record(false);
           return err('用户名或密码错误', 401, cors);
@@ -247,7 +267,8 @@ export default {
         if (!ok) return err('用户名或密码错误', 401, cors);
 
         if (needsUpgrade) {
-          // 提高轮数后，老密码在下次成功登录时静默升级——不需要用户改密码。
+          // Once the iteration count is raised, old hashes are silently upgraded on
+          // the next successful login — the user never has to change their password.
           await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
             .bind(await hashPassword(password), user.id)
             .run();
@@ -272,13 +293,13 @@ export default {
         });
       }
 
-      // ── 当前用户 ──
+      // ── Current user ──
       if (path === '/api/auth/me' && request.method === 'GET') {
         const user = await currentUser(request, env);
         return json({ user: user ? publicUser(user) : null }, 200, cors);
       }
 
-      // ── 登出 ──
+      // ── Logout ──
       if (path === '/api/auth/logout' && request.method === 'POST') {
         const token = readToken(request);
         if (token) {
@@ -289,9 +310,10 @@ export default {
         return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
       }
 
-      // ── 注销账号 ──
-      // 这个品类的用户对「能不能真的删掉」极其敏感，所以是硬删除而不是标记，
-      // 且 sessions 有 ON DELETE CASCADE，所有设备立即登出。
+      // ── Delete account ──
+      // Users in this category are extremely sensitive about whether the data is
+      // really gone, so this is a hard delete rather than a flag, and sessions has
+      // ON DELETE CASCADE so every device is logged out immediately.
       if (path === '/api/auth/account' && request.method === 'DELETE') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);

@@ -39,8 +39,10 @@ describe('settings persistence', () => {
   });
 
   it('merges a partial/older-shaped stored object over defaults without crashing', () => {
-    // `theme` 是已经移除的字段（主题上提到 @0xnullai/ui 的共享 store）。老用户的
-    // 存储里还留着它——多出来的键必须被无视，而不是让整份设置回落默认值。
+    // `theme` is a field that has been removed (the theme was lifted up into
+    // @0xnullai/ui's shared store). Older users still have it in their storage
+    // — an extra key must be ignored, not make the whole settings object fall
+    // back to defaults.
     window.localStorage.setItem(
       SETTINGS_STORAGE_KEY,
       JSON.stringify({ theme: 'dark', activeProviderId: 'zhipu' }),

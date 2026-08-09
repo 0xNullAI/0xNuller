@@ -62,8 +62,9 @@ interface ChatPanelProps {
 
 const MESSAGE_BATCH_SIZE = 120;
 
-// 蓝牙配对提示：浏览器原生选择器无法注入文案，所以在未连接时常驻展示，
-// 兼作蓝牙按钮的 title，帮助用户在搜索不到设备时进入配对模式。
+// Bluetooth pairing hint: the browser's native chooser takes no injected copy, so this
+// stays on screen while disconnected and doubles as the Bluetooth button's title, to
+// help users get into pairing mode when the scan turns up no device.
 const BLUETOOTH_PAIR_HINT = '搜索不到设备？将郊狼两侧滚轮同时向下按住 3–5 秒进入蓝牙配对模式。';
 
 const BUBBLE_BASE =
@@ -238,9 +239,10 @@ export function ChatPanel({
 
   return (
     <div className="relative flex w-full flex-1 flex-col overflow-hidden">
-      {/* ===== 窄屏顶栏 —— 只在独立运行、且没有设备连着时出现 =====
-          外壳里不画：侧边栏开关、模块名、设置都由外壳提供，这里再画一份，窄屏上就是
-          两个汉堡按钮和两个齿轮并排。 */}
+      {/* ===== Narrow-screen top bar — only when standalone and no device is connected =====
+          Not drawn inside the shell: the sidebar toggle, the module name and settings all
+          come from the shell, so a second copy here means two hamburger buttons and two
+          gears side by side on narrow screens. */}
       {!inShell &&
         !deviceState.connected &&
         !opossumState.connected &&

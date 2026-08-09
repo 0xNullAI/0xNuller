@@ -26,7 +26,10 @@ function req(path: string, init: RequestInit & { ip?: string; token?: string } =
   });
 }
 
-/** 直查库，用于断言接口之外的存储事实（token 未落原文、孤儿行已清）。 */
+/**
+ * Query the database directly, to assert storage facts the API does not expose (the
+ * token is not stored in the clear, orphan rows are gone).
+ */
 function prepared(sql: string, ...args: unknown[]) {
   const stmt = env.DB.prepare(sql);
   return args.length ? stmt.bind(...args) : stmt;
@@ -57,7 +60,8 @@ describe('注册', () => {
 
   it('用户名不区分大小写地唯一', async () => {
     await registerUser();
-    // 不做这一步的话 Alice 和 alice 会是两个账号，登录时用谁都说不清。
+    // Without this, Alice and alice would be two accounts and it would be anyone's
+    // guess which one a login lands on.
     const { res } = await registerUser({ username: 'ALICE' });
     expect(res.status).toBe(409);
   });
@@ -85,7 +89,7 @@ describe('登录', () => {
     await registerUser();
     const wrongPass = await post('/api/auth/login', { ...GOOD, password: 'wrong-but-long-enough' });
     const noUser = await post('/api/auth/login', { username: 'bob', password: 'whatever-long' });
-    // 两者可区分就等于提供了用户名枚举接口。
+    // If the two are distinguishable, we have shipped a username enumeration API.
     expect(await wrongPass.text()).toBe(await noUser.text());
     expect(wrongPass.status).toBe(noUser.status);
   });
@@ -95,14 +99,17 @@ describe('登录', () => {
     for (let i = 0; i < 8; i++) {
       await post('/api/auth/login', { ...GOOD, password: 'wrong-but-long-enough' });
     }
-    // 关键点：限流之后连**正确**密码也必须被挡住，否则限流只是延缓而非阻断。
+    // The key point: once rate limited, even the **correct** password must be
+    // blocked, otherwise the limit only slows an attack down instead of stopping it.
     const res = await post('/api/auth/login', GOOD);
     expect(res.status).toBe(429);
   });
 
-  // 这两条各做 30 次失败登录。为了让「用户不存在」与「密码错误」的响应时间不可区分，
-  // 用户不存在时也会走一遍 210k 轮 PBKDF2——30 次就逼近 vitest 默认的 5s 超时。
-  // 给足时间，而不是为了测试跑得快去削弱生产配置。
+  // These two each perform 30 failed logins. To keep "no such user" and "wrong
+  // password" indistinguishable by response time, a nonexistent user still runs a
+  // full 210k-iteration PBKDF2 — 30 of those get close to vitest's default 5s
+  // timeout. Give them enough time rather than weakening the production settings to
+  // make the tests run faster.
   it('换用户名继续撞库时按 IP 限流', { timeout: 30_000 }, async () => {
     for (let i = 0; i < 30; i++) {
       await post('/api/auth/login', { username: `user${i}`, password: 'wrong-but-long-enough' });
@@ -116,8 +123,9 @@ describe('登录', () => {
     for (let i = 0; i < 30; i++) {
       await post('/api/auth/login', { username: `user${i}`, password: 'wrong-but-long-enough' });
     }
-    // 共用出口 IP（校园网、NAT）很常见，一个人撞库不该让同网段所有人登不上。
-    // 这里验证的是 IP 维度确实按 IP 分桶，而不是全局计数。
+    // A shared egress IP (campus network, NAT) is common, and one person credential
+    // stuffing should not lock everyone on that network out. What this verifies is
+    // that the IP dimension really buckets per IP instead of counting globally.
     const res = await post('/api/auth/login', GOOD, { ip: '9.9.9.9' });
     expect(res.status).toBe(200);
   });
@@ -126,11 +134,13 @@ describe('登录', () => {
 describe('会话', () => {
   it('token 以哈希形式入库，原文不落盘', async () => {
     const { body } = await registerUser();
-    // 库里存的是 sha256(token)，用原文查不到——库泄露也无法直接冒用会话。
+    // What is stored is sha256(token), so the clear text finds nothing — a database
+    // leak still cannot be used to impersonate a session directly.
     expect(
       await prepared('SELECT * FROM sessions WHERE token_hash = ?', body.token).first(),
     ).toBeNull();
-    // 但确实存了一行，否则上面那条会因为「表是空的」而假通过。
+    // But a row really was written, otherwise the assertion above would pass falsely
+    // just because the table is empty.
     expect((await prepared('SELECT COUNT(*) AS n FROM sessions').first<{ n: number }>())?.n).toBe(
       1,
     );
@@ -171,18 +181,20 @@ describe('注销账号', () => {
     );
     expect(del.status).toBe(200);
 
-    // 会话失效本身由 currentUser 的 `JOIN users` 保证——用户没了就 join 不到。
-    // 这条即使外键关掉也会过，所以它证明的是「安全」，不是「CASCADE 生效」。
+    // Session invalidation itself is guaranteed by currentUser's `JOIN users` — with
+    // the user gone there is nothing to join to. This assertion passes even with
+    // foreign keys off, so what it proves is "safe", not "CASCADE works".
     const me = await worker.fetch(req('/api/auth/me', { token: secondToken }), env);
     expect(((await me.json()) as { user: unknown }).user).toBeNull();
 
-    // CASCADE 要单独验：它管的是行有没有被真正删掉。失效的话 sessions 会永久堆积
-    // 指向已删用户的孤儿记录——注销账号就成了「看起来删了」，而这个品类的用户对
-    // 「有没有真的删掉」极其敏感。
+    // CASCADE has to be verified separately: what it governs is whether the rows are
+    // really deleted. If it fails, sessions accumulates orphan records pointing at
+    // deleted users forever — account deletion becomes "looks deleted", and users in
+    // this category are extremely sensitive about whether it is really gone.
     const orphans = await prepared('SELECT COUNT(*) AS n FROM sessions').first<{ n: number }>();
     expect(orphans?.n).toBe(0);
 
-    // 用户名随之释放，可以重新注册。
+    // The username is released along with it and can be registered again.
     expect((await registerUser()).res.status).toBe(201);
   });
 
@@ -208,7 +220,8 @@ describe('CORS', () => {
 
   it('预检放行 Authorization 头', async () => {
     const res = await worker.fetch(req('/api/auth/me', { method: 'OPTIONS' }), env);
-    // 漏了它，浏览器会在预检阶段拦掉安卓端的 Bearer 请求——表现是「请求根本没发出去」。
+    // Leave it out and the browser blocks the Android side's Bearer requests at the
+    // preflight stage — the symptom being "the request never even went out".
     expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
   });
 });

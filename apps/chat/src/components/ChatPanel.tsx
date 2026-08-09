@@ -7,15 +7,15 @@ import { compressImage, startRecording, formatDuration, type Recorder } from '..
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string, mentions?: ChatMention[]) => void;
-  /** 上传并发送媒体（图片/语音）。房间未就绪时上层应忽略。 */
+  /** Upload and send media (image/voice). The caller should ignore this while the room is not ready. */
   onSendMedia: (
     blob: Blob,
     kind: 'image' | 'audio',
     meta?: { durationMs?: number; w?: number; h?: number },
   ) => Promise<void>;
-  /** 可 @ 提及的成员（其他成员 + 自己）。 */
+  /** Members that can be @-mentioned (other members + yourself). */
   members?: { peerId: string; name: string }[];
-  /** 自己的 peerId（用于「@到我」高亮）。 */
+  /** Your own peerId (used to highlight messages that mention you). */
   selfId?: string;
 }
 
@@ -23,7 +23,8 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** 把文本里的 @角色名/昵称高亮。自己气泡是 accent 底色，@ 改用下划线+加粗以保证可读。 */
+/** Highlight @role-name/@nickname inside the text. Your own bubble has an accent background, so
+ *  there the @ switches to underline + bold to stay readable. */
 function renderMessageText(
   text: string,
   mentions?: ChatMention[],
@@ -84,7 +85,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 录音计时：开始时间记在 ref，interval 内计算已录时长。
+  // Recording timer: the start time lives in a ref, the interval computes elapsed duration from it.
   useEffect(() => {
     if (!recorder) return;
     const t = window.setInterval(() => setRecElapsed(Date.now() - recStartRef.current), 250);
@@ -94,7 +95,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   function handleSend() {
     const text = draft.trim();
     if (!text) return;
-    // 只保留文本里仍出现的 @ 提及。
+    // Keep only the @ mentions that still appear in the text.
     const mentions = pendingMentionsRef.current.filter((m) => text.includes(`@${m.displayName}`));
     onSend(text, mentions.length ? mentions : undefined);
     setDraft('');
@@ -258,7 +259,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
 
       {/* Input bar */}
       <div className="relative border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-        {/* @ 提及候选 */}
+        {/* @ mention candidates */}
         {mentionCandidates.length > 0 && (
           <div className="absolute bottom-full left-3 right-3 mb-1 max-h-44 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]">
             {mentionCandidates.map((m) => (
@@ -352,7 +353,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         )}
       </div>
 
-      {/* 图片放大 */}
+      {/* Image lightbox */}
       {lightbox && (
         <Overlay onDismiss={() => setLightbox(null)} scrim="strong">
           <img

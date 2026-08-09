@@ -7,18 +7,20 @@ import {
   type LlmConfig,
 } from '@0xnullai/llm-providers';
 
-// AI / LLM 供应商配置：房主选择房间内 AI 代理使用的大模型。
+// AI / LLM provider configuration: the host picks the model the in-room AI agent uses.
 //
-// 供应商清单与免费体验代理地址来自 @0xnullai/llm-providers（全平台单一注册表），
-// 这里只保留 DG-Chat 自己的持久化形态 AiConfig。合并前这份文件维护着一套独立的
-// provider 列表和第二个硬编码的 llm.0xnullai.com——改一个地址要记得改两处。
+// The provider list and the free-trial proxy URL come from @0xnullai/llm-providers (the single
+// platform-wide registry); all that stays here is DG-Chat's own persisted shape, AiConfig.
+// Before the merge this file maintained its own provider list plus a second hardcoded
+// llm.0xnullai.com — changing one address meant remembering to change two places.
 
-/** 当前生效的 AI 配置。形态与 @0xnullai/llm-providers 的 LlmConfig 完全一致——
- *  合并前 DG-Agent 与 DG-Chat 各存一份同样的四个字段，用户配完 Agent 还得再配
- *  一遍 Chat。现在是同一份，改一处两边都变。 */
+/** The currently effective AI config. Shape is exactly @0xnullai/llm-providers' LlmConfig —
+ *  before the merge DG-Agent and DG-Chat each stored their own copy of the same four fields,
+ *  so after configuring Agent the user had to configure Chat all over again. Now it is one
+ *  copy: change it in one place and both change. */
 export type AiConfig = LlmConfig;
 
-/** 供应商预设：用于下拉选择并预填 baseUrl / model。 */
+/** Provider preset: used by the dropdown and to prefill baseUrl / model. */
 export interface AiProviderPreset {
   id: string;
   label: string;
@@ -27,7 +29,8 @@ export interface AiProviderPreset {
   needsKey: boolean;
 }
 
-/** 免费代理地址。单一真源在 @0xnullai/llm-providers，这里只做转发以保持既有导入不变。 */
+/** Free proxy URL. The single source of truth is @0xnullai/llm-providers; this is only a
+ *  re-export so existing imports keep working. */
 export const FREE_PROXY_URL = FREE_TRIAL_PROXY_URL;
 
 export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
@@ -75,13 +78,13 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
   },
 ];
 
-/** 免费预设作为默认配置（永远可用，无需配置）。 */
+/** The free preset is the default config (always available, needs no configuration). */
 
 export function getPreset(id: string): AiProviderPreset | undefined {
   return AI_PROVIDER_PRESETS.find((p) => p.id === id);
 }
 
-/** 读取已保存的配置；无配置或解析失败时回退到免费预设。 */
+/** Read the saved config; falls back to the free preset when there is none or parsing fails. */
 export function loadAiConfig(): AiConfig {
   return loadLlmConfig();
 }
@@ -90,7 +93,8 @@ export function saveAiConfig(c: AiConfig): void {
   saveLlmConfig(c);
 }
 
-/** 配置是否可用于发起请求：免费预设永远可用，其余需 apiKey + model + baseUrl。 */
+/** Whether the config can be used to make a request: the free preset always can, the rest need
+ *  apiKey + model + baseUrl. */
 export function isAiConfigured(c: AiConfig): boolean {
   return isLlmConfigured(c);
 }

@@ -3,17 +3,23 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 用 Node 26 内置的 `node:sqlite` 实现 D1 接口的一个子集，供测试使用。
+ * A subset of the D1 interface implemented on Node 26's built-in `node:sqlite`, for
+ * use in tests.
  *
- * 为什么不用手写的假对象：账号服务里最容易出错的地方恰恰在 SQL 本身——UNIQUE 约束、
- * `ON DELETE CASCADE`、限流的时间窗口聚合。假对象只会重复我写查询时的理解，真跑一遍
- * SQLite 才能证明约束确实生效。迁移文件也由此被真正执行，schema 漂移会当场暴露。
+ * Why not a hand-written fake: the most error-prone part of the account service is
+ * the SQL itself — UNIQUE constraints, `ON DELETE CASCADE`, the time-window
+ * aggregation behind rate limiting. A fake would only repeat my own understanding
+ * of the queries as I wrote them; only really running SQLite proves the constraints
+ * actually take effect. It also means the migration file is genuinely executed, so
+ * schema drift surfaces on the spot.
  *
- * 只实现用到的部分：prepare / bind / first / run。D1 的其余接口这里用不到。
+ * Only the parts we use are implemented: prepare / bind / first / run. The rest of
+ * D1's interface is not needed here.
  */
 
-// 用 import.meta.dirname 而不是 new URL(import.meta.url)——后者会撞上
-// @cloudflare/workers-types 与 node 的 URL 类型定义冲突。
+// Use import.meta.dirname rather than new URL(import.meta.url) — the latter runs
+// into the conflict between @cloudflare/workers-types' and node's URL type
+// definitions.
 const MIGRATION = join(import.meta.dirname, '../migrations/0001_init.sql');
 
 class Stmt {
@@ -40,8 +46,9 @@ class Stmt {
 
 export function createTestDb(): { DB: unknown; close: () => void } {
   const db = new DatabaseSync(':memory:');
-  // D1 默认开启外键；node:sqlite 不开，不显式打开的话 ON DELETE CASCADE 会静默失效，
-  // 「注销账号后会话立即失效」这条测试就会假通过。
+  // D1 enables foreign keys by default; node:sqlite does not, and without turning
+  // them on explicitly ON DELETE CASCADE silently does nothing, which would make the
+  // "sessions die immediately after account deletion" test pass falsely.
   db.exec('PRAGMA foreign_keys = ON');
   for (const stmt of readFileSync(MIGRATION, 'utf8').split(';')) {
     if (stmt.trim()) db.exec(stmt);

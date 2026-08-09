@@ -21,12 +21,12 @@ interface FakeRelease {
   prerelease?: boolean;
 }
 
-/** 单个 APK release，仓库里没有别的东西——最简单的情形。 */
+/** A single APK release, nothing else in the repo — the simplest case. */
 function fetchReturning(tagName: string | undefined, htmlUrl = 'https://example.com/release') {
   return fetchReleases([{ tag_name: tagName, html_url: htmlUrl }]);
 }
 
-/** GitHub `/releases` 的返回：按创建时间倒序的列表。 */
+/** What GitHub's `/releases` returns: a list ordered newest-first by creation time. */
 function fetchReleases(releases: FakeRelease[]) {
   return vi.fn().mockResolvedValue({ ok: true, json: async () => releases });
 }
@@ -201,7 +201,8 @@ describe('TauriUpdateChecker', () => {
 describe('versionFromTag', () => {
   it('只认本应用的 tag 前缀', () => {
     expect(versionFromTag('android-v5.5.2', 'android-v')).toBe('5.5.2');
-    // 合并后同一个仓库还会打出这些 tag。认错任何一个，用户点进去下到的不是 APK。
+    // After the merge the same repo also cuts these tags. Misidentify any one of
+    // them and the user taps through and downloads something that is not the APK.
     expect(versionFromTag('@dg-kit/core@1.14.0', 'android-v')).toBeNull();
     expect(versionFromTag('v0.1.0', 'android-v')).toBeNull();
     expect(versionFromTag('dg-mcp@0.3.1', 'android-v')).toBeNull();
@@ -220,9 +221,11 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.5.2',
-      // 现实中的顺序：kit 的包发布天天有，APK 几周一次，所以它必然不在最前面。
-      // 用 `releases/latest` 的话永远拿到第一条，安卓的更新提示就此静默失效——
-      // 而安卓没有热更新，用户不会收到任何出错的信号。
+      // The real-world ordering: kit package releases happen every day, the APK
+      // once every few weeks, so it is never at the front. With
+      // `releases/latest` you always get the first entry and the Android update
+      // prompt silently stops working — and since Android has no hot updates,
+      // the user gets no signal at all that anything is broken.
       fetchImpl: fetchReleases([
         { tag_name: '@dg-kit/core@1.14.0', html_url: 'https://example.com/kit' },
         { tag_name: 'v0.2.0', html_url: 'https://example.com/platform' },
@@ -249,7 +252,7 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
     await checker['checkOnce']();
 
     expect(checker.getStatus().hasUpdate).toBe(false);
-    // 也不能把别的产物的版本号显示出来。
+    // Nor may it surface some other artifact's version number.
     expect(checker.getStatus().latestVersion).toBeNull();
   });
 
@@ -267,7 +270,8 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
 
     await checker['checkOnce']();
 
-    // 草稿的 APK 还没上传，预发布不该推给普通用户。
+    // A draft's APK has not been uploaded yet, and a prerelease should not be
+    // pushed to ordinary users.
     expect(checker.getStatus().latestVersion).toBe('5.6.0');
   });
 

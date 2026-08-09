@@ -18,18 +18,20 @@ export function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
-  // 主题走共享 store。这里原本有一份与 @0xnullai/ui 完全重复的 applyTheme——
-  // 两份实现各自往 data-theme 写，挂进统一外壳后互相顶掉。
+  // The theme goes through the shared store. This used to hold an applyTheme that fully
+  // duplicated the one in @0xnullai/ui — both implementations wrote data-theme on their
+  // own, and once mounted in the unified shell they kept overriding each other.
 
   function openItem(item: MarketItem) {
-    // 乐观自增浏览量，避免重新拉取
+    // Optimistically bump the view count to avoid a refetch
     const bumped = { ...item, views: item.views + 1 };
     setActive(bumped);
     void markViewed(item.id);
     setItems((prev) => prev.map((it) => (it.id === item.id ? bumped : it)));
   }
 
-  // 由顶层标签 + 场景子筛选共同决定要拉取的内容类型字符串。
+  // The top-level tab plus the scene sub-filter together decide which content type string
+  // to fetch.
   const activeType: ItemType = tab === 'waveform' ? 'waveform' : sceneSub;
 
   const load = useCallback(() => {
@@ -46,17 +48,22 @@ export function App(): JSX.Element {
   }, [load, q]);
 
   return (
-    // mkt-scope 必须在**外层**：样式表整份包在 `.mkt-scope { … }` 里，编译出来是
-    // `.mkt-scope .app` 这样的后代选择器。把两个类放在同一个元素上，`.app` 那条规则
-    // 就永远匹配不到自己——实测表现是整页不再限宽、筛选栏溢出到屏幕外。
+    // mkt-scope must sit on the **outer** element: the whole stylesheet is wrapped in
+    // `.mkt-scope { … }`, which compiles into descendant selectors like `.mkt-scope .app`.
+    // Put both classes on the same element and the `.app` rule can never match itself —
+    // the observed result is a page that no longer caps its width and a filter bar that
+    // overflows off screen.
     //
-    // 加作用域本身是必需的：这份样式用的全是通用类名（.app / .grid / .btn），而
-    // module 层排在 utilities 之后，不隔离的话它的 .grid 会压过 Tailwind 的 grid-cols-*。
+    // The scope itself is required: this stylesheet uses nothing but generic class names
+    // (.app / .grid / .btn), and the module layer is ordered after utilities, so without
+    // isolation its .grid would win over Tailwind's grid-cols-*.
     <div className="mkt-scope h-full overflow-y-auto">
       <div className="app">
-        {/* 单条横栏：左侧应用切换器，中间分类与搜索，右侧主题与上传。
-          合并前这里是「品牌块 + 独立筛选行」两行重头部，与 Agent 的细横栏差别很大。 */}
-        {/* 模块名由外壳侧边栏顶部表达，这里不再重复；筛选是内容不是 chrome，留在原地。 */}
+        {/* A single bar: app switcher on the left, categories and search in the middle,
+          theme and upload on the right. Before the merge this was a two-row heavy header
+          (a brand block plus a separate filter row), very different from Agent's thin bar. */}
+        {/* The module name is expressed by the top of the shell sidebar, so it is not
+          repeated here; filters are content, not chrome, so they stay put. */}
         <header className="topbar">
           <div className="topbar-filters">
             <div className="seg">
@@ -102,7 +109,8 @@ export function App(): JSX.Element {
             </select>
           </div>
 
-          {/* 上传投到外壳的按钮插槽，和别的模块的按钮落在同一条线上。 */}
+          {/* Upload is projected into the shell's button slot so it lands on the same line
+            as the other modules' buttons. */}
           <ModuleActions>
             <button className="btn primary" onClick={() => setUploading(true)}>
               上传

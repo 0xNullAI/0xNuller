@@ -34,7 +34,7 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
-  // 同 Chat：props 优先，否则从 NativeBridge 取。
+  // Same as Chat: props win, otherwise take it from the NativeBridge.
   const native = useNativeBridge();
   const {
     session,
@@ -47,15 +47,18 @@ export function App({ transport }: AppProps = {}) {
     disconnectOpossum,
   } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
 
-  // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
+  // Register on the global safety bus — the only data source the shell's
+  // global stop button has.
   useSafetySession({
     id: 'voice',
     label: 'Voice',
     isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
     stop: emergencyStop,
     onRevoke: async () => {
-      // 切走 Voice 时挂断通话再停输出。只停输出的话通话还连着，模型继续说话、
-      // 继续下工具调用——用户以为自己已经离开了。
+      // Hang the call up before stopping output when switching away from
+      // Voice. Stopping output alone leaves the call connected: the model keeps
+      // talking and keeps issuing tool calls — while the user believes they
+      // already left.
       await call.hangUp('切换到其他模块').catch(() => undefined);
       await emergencyStop();
     },
@@ -95,9 +98,11 @@ export function App({ transport }: AppProps = {}) {
   const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(true);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-  // 主题由 @0xnullai/ui 的共享 store 唯一持有（跨模块共用一个键、一个 DOM 写入点）。
-  // 这里只订阅。原先的注释说「运行时没有别处碰 data-theme」——独立部署时成立，
-  // 挂进统一外壳后就不成立了，那正是要收拢它的原因。
+  // The theme is held solely by @0xnullai/ui's shared store (one key and one
+  // DOM write point shared across modules). This only subscribes. The old
+  // comment here said "nothing else touches data-theme at runtime" — true for a
+  // standalone deployment, no longer true once mounted inside the unified
+  // shell, which is exactly why it had to be consolidated.
   useTheme();
 
   const openSettings = () => {
@@ -108,18 +113,24 @@ export function App({ transport }: AppProps = {}) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
-      {/* 外壳里不画自己的 header——全局只有一条横栏，按钮通过 ModuleActions 投上去。
-          独立部署时 ModuleActions 原地渲染，这条 header 照旧。 */}
-      {/* 模块名由外壳侧边栏顶部表达；这两个按钮投到外壳的按钮插槽。 */}
+      {/* Inside the shell we don't draw a header of our own — there is one
+          global bar, and buttons are projected onto it through ModuleActions.
+          In a standalone deployment ModuleActions renders in place and this
+          header stays as it was. */}
+      {/* The module name is expressed by the top of the shell's sidebar; these
+          two buttons go into the shell's button slot. */}
       <ModuleActions>
         <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
           <Bluetooth className="h-4 w-4" />
           <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
         </Button>
-        {/* 外壳里没有这个按钮：设置只有一个入口，在侧边栏底部的账户菜单里。
-            这套面板的四页在那边都有对应（主题→外观、供应商与音色→AI、场景→场景、
-            强度上限→设备安全），留着就是同一件事两处能改，改哪处生效取决于当时
-            开着哪个模块——那正是合并要消掉的东西。 */}
+        {/* This button doesn't exist inside the shell: settings have exactly
+            one entry point, in the account menu at the bottom of the sidebar.
+            All four pages of this panel have a counterpart over there (主题→
+            外观, 供应商与音色→AI, 场景→场景, 强度上限→设备安全), so keeping it
+            means the same thing is editable in two places and which one takes
+            effect depends on whichever module happens to be open — exactly what
+            the merge is meant to eliminate. */}
         {!inShell && (
           <Button
             variant={settingsOpen ? 'secondary' : 'ghost'}

@@ -15,13 +15,13 @@ import type {
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
-/** 创建/加入房间的选项。公开房间会注册进大厅。 */
+/** Options for creating/joining a room. Public rooms get registered in the lobby. */
 export interface JoinOptions {
   public?: boolean;
   roomName?: string;
 }
 
-/** 已上传到 R2、待随聊天消息发出的媒体引用。 */
+/** A media reference already uploaded to R2, waiting to be sent with a chat message. */
 export interface OutgoingMedia {
   kind: 'image' | 'audio';
   id: string;
@@ -32,7 +32,7 @@ export interface OutgoingMedia {
   h?: number;
 }
 
-/** wire 上的媒体引用（DO/历史回传）。 */
+/** A media reference as it appears on the wire (from the DO / history replay). */
 interface WireMedia {
   kind: 'image' | 'audio';
   id: string;
@@ -47,7 +47,7 @@ const PRESENCE_INTERVAL_MS = 3000;
 const PRESENCE_TIMEOUT_MS = 10000;
 const FAST_THROTTLE_MS = 200;
 
-/** 8 字符随机 ID（消息 id 用）。 */
+/** An 8-character random ID (used for message ids). */
 function shortId(): string {
   const arr = crypto.getRandomValues(new Uint8Array(6));
   let s = '';
@@ -66,7 +66,7 @@ function generatePeerId(): string {
 
 const selfId = generatePeerId();
 
-/** 查某成员在当前场景里认领角色的名字（= 头衔）。 */
+/** Look up the name of the role a member has claimed in the current scene (= their title). */
 function roleNameOf(
   peerId: string,
   scene: Scene | null,
@@ -77,7 +77,7 @@ function roleNameOf(
   return entry ? scene.roles.find((r) => r.id === entry[0])?.name : undefined;
 }
 
-/** wire mentions（{peerId,n}）→ ChatMention（{peerId,displayName}）。 */
+/** wire mentions ({peerId,n}) → ChatMention ({peerId,displayName}). */
 function mapMentions(m: unknown): ChatMention[] | undefined {
   if (!Array.isArray(m)) return undefined;
   return (m as Array<{ peerId: string; n: string }>).map((x) => ({
@@ -86,7 +86,7 @@ function mapMentions(m: unknown): ChatMention[] | undefined {
   }));
 }
 
-/** 把 R2 媒体引用解析为可访问 URL（同源 /api/media/:code/:id）。 */
+/** Resolve an R2 media reference into a fetchable URL (same-origin /api/media/:code/:id). */
 function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | undefined {
   if (!m || !room) return undefined;
   return {
@@ -100,15 +100,19 @@ function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | 
 }
 
 /**
- * 传输模型（Cloudflare RoomDO，单 WebSocket）：
+ * Transport model (Cloudflare RoomDO, a single WebSocket):
  *
- * - 状态广播 owner→all：sf（强度/波形/开火，200ms 节流）、ss（名字/电量/队列/目录，5s 心跳）
- * - 边沿命令 controller→owner：cmd（定向，to=peerId）
- * - 波形传输：wave（定向）
- * - presence：每 3s 一次心跳（携带昵称），10s 没收到即 removePeer（异常断开兜底）
- * - DO 主动下发：history（加入回放）、sys joined/left（连接级 presence，即时）
+ * - State broadcasts owner→all: sf (strength/waveform/firing, throttled 200ms),
+ *   ss (name/battery/queue/catalog, 5s heartbeat)
+ * - Edge commands controller→owner: cmd (directed, to=peerId)
+ * - Waveform transfer: wave (directed)
+ * - presence: one heartbeat every 3s (carrying the nickname); nothing received
+ *   for 10s means removePeer (the fallback for abnormal disconnects)
+ * - Pushed by the DO: history (replayed on join), sys joined/left
+ *   (connection-level presence, immediate)
  *
- * WS 单连接有序可靠，无需 MQTT 的多 broker fan-out / QoS / 消息去重。
+ * A single WS connection is ordered and reliable, so none of MQTT's
+ * multi-broker fan-out / QoS / message dedup is needed.
  */
 export function usePeerRoom(displayName: string) {
   const [status, setStatus] = useState<RoomStatus>('idle');
@@ -117,7 +121,7 @@ export function usePeerRoom(displayName: string) {
   const [peers, setPeers] = useState<string[]>([]);
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // —— 场景扮演 ——
+  // —— Scene roleplay ——
   const [scene, setSceneState] = useState<Scene | null>(null);
   const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
@@ -369,7 +373,8 @@ export function usePeerRoom(displayName: string) {
         onStatus: (s: TransportStatus) => setStatus(s),
         onOpen: () => {
           setRoomId(roomCode);
-          // 加入首帧：声明昵称 / 公开标记 / 房间名。重连同样触发 → DO 重新回放历史。
+          // First frame on join: declare nickname / public flag / room name.
+          // A reconnect fires this too → the DO replays history again.
           send({
             t: 'hello',
             name: displayNameRef.current,
@@ -381,7 +386,8 @@ export function usePeerRoom(displayName: string) {
       });
       transportRef.current = transport;
 
-      // presence 心跳（携带昵称，供他人发现与昵称同步）。
+      // presence heartbeat (carries the nickname, so others can discover us and
+      // keep names in sync).
       if (presenceTimerRef.current) clearInterval(presenceTimerRef.current);
       presenceTimerRef.current = window.setInterval(() => {
         send({ t: 'presence', n: displayNameRef.current });
@@ -398,7 +404,8 @@ export function usePeerRoom(displayName: string) {
       const room = roomIdRef.current;
 
       const localMedia: ChatMedia | undefined = media ? buildMedia(room, media) : undefined;
-      // 本地乐观消息自算头衔（DO 不回发给发送者）。
+      // The local optimistic message works out its own title (the DO doesn't
+      // echo messages back to their sender).
       const myRole = roleNameOf(selfId, scene, roleAssignments);
 
       setMessages((prev) => [
@@ -439,7 +446,7 @@ export function usePeerRoom(displayName: string) {
     [send, scene, roleAssignments],
   );
 
-  /** 房主设/改场景（换场景会清空角色认领）。 */
+  /** Host sets/changes the scene (changing scenes clears all role claims). */
   const setScene = useCallback(
     (s: Scene | null) => {
       send({ t: 'scene', scene: s });
@@ -447,7 +454,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 认领角色（独占）。 */
+  /** Claim a role (exclusive). */
   const claimRole = useCallback(
     (roleId: string) => {
       send({ t: 'role', act: 'claim', roleId });
@@ -455,7 +462,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 释放角色。 */
+  /** Release a role. */
   const releaseRole = useCallback(
     (roleId: string) => {
       send({ t: 'role', act: 'release', roleId });
@@ -463,7 +470,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 房主：把某 aiPlayable 角色交给 AI 托管 / 取消托管。 */
+  /** Host: hand an aiPlayable role over to the AI / take it back. */
   const assignAi = useCallback(
     (roleId: string) => {
       send({ t: 'role', act: 'assign-ai', roleId });
@@ -477,7 +484,10 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 房主代某 AI 托管角色发言（agent loop 调用）。服务端校验 host + 该角色确为 AI 托管。 */
+  /**
+   * Host speaks on behalf of an AI-held role (called by the agent loop). The
+   * server verifies the sender is the host and that the role really is AI-held.
+   */
   const sendChatAs = useCallback(
     (roleId: string, text: string, mentions?: ChatMention[]) => {
       const role = scene?.roles.find((r) => r.id === roleId);
@@ -494,7 +504,10 @@ export function usePeerRoom(displayName: string) {
     [send, scene],
   );
 
-  /** 房主代某 AI 托管角色发设备指令（agent 工具调用）。_from 由服务端置为 ai:<roleId>。 */
+  /**
+   * Host sends a device command on behalf of an AI-held role (an agent tool
+   * call). _from is set to ai:<roleId> by the server.
+   */
   const sendCommandAs = useCallback(
     (roleId: string, target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
       send({ t: 'cmd', as: `ai:${roleId}`, to: target, a: action, ...params });
@@ -516,7 +529,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 高频状态广播：变化时立即发，节流 200ms。 */
+  /** High-frequency state broadcast: sent immediately on change, throttled to 200ms. */
   const broadcastStateFast = useCallback(
     (s: StateFast) => {
       const emit = (state: StateFast) => {
@@ -560,7 +573,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 低频状态广播：5 秒心跳 + catalog 变化时调用一次。 */
+  /** Low-frequency state broadcast: a 5s heartbeat, plus one call whenever the catalog changes. */
   const broadcastStateSlow = useCallback(
     (s: StateSlow) => {
       send({
@@ -626,7 +639,8 @@ export function usePeerRoom(displayName: string) {
     };
   }, []);
 
-  // 把 AI 托管角色合成为伪成员，使其出现在成员列表 + @ 候选中（peerId = "ai:<roleId>"）。
+  // Synthesize AI-held roles as pseudo-members so they show up in the member
+  // list and the @-mention candidates (peerId = "ai:<roleId>").
   const membersWithAi = useMemo(() => {
     if (!scene) return members;
     const m = new Map(members);
@@ -657,7 +671,7 @@ export function usePeerRoom(displayName: string) {
     broadcastStateSlow,
     setCommandHandler,
     setWaveformHandler,
-    // —— 场景扮演 ——
+    // —— Scene roleplay ——
     scene,
     roleAssignments,
     hostPeerId,

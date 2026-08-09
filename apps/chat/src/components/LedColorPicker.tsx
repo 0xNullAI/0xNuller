@@ -1,8 +1,10 @@
 import { Lightbulb } from 'lucide-react';
 
 interface LedColorPickerProps {
-  /** 设备实际支持的是离散 8 色枚举（0-7），不是 RGB/连续字节 —— 按钮色块就是设备真实发光颜色，
-   *  枚举取值参考社区蓝牙协议文档（爪印色表 + 灵猫 "01=黄色" 示例）。 */
+  /** What the device actually supports is a discrete 8-color enum (0-7), not RGB / a continuous
+   *  byte — each button swatch is the real color the device lights up with. The enum values come
+   *  from the community Bluetooth protocol docs (the paw-prints color table + the civet
+   *  "01=黄色" example). */
   onPick: (colorByte: number) => void;
   disabled?: boolean;
   className?: string;
@@ -20,9 +22,10 @@ const PRESETS: Array<{ label: string; byte: number; swatch: string }> = [
 ];
 
 /**
- * 小型可复用 LED 颜色选择器，供 paw-prints / civet-edging / opossum 三种设备共用。
- * 点击直接通过 onPick 把颜色枚举值（0-7）交给调用方 —— 调用方负责用 'set_led'
- * room action 把它发出去（自己/远端设备都走同一条路径，见 MemberControl）。
+ * Small reusable LED color picker, shared by the paw-prints / civet-edging / opossum devices.
+ * A click hands the color enum value (0-7) straight to the caller through onPick — the caller
+ * is responsible for sending it with the 'set_led' room action (own and remote devices both go
+ * down the same path, see MemberControl).
  */
 export function LedColorPicker({ onPick, disabled, className }: LedColorPickerProps) {
   return (

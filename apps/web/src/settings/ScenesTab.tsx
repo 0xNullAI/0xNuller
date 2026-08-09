@@ -2,16 +2,20 @@ import { SceneLibrary } from '@0xnullai/scenes/library';
 import { BUILTIN_PROMPT_PRESETS } from '@dg-agent/runtime';
 
 /**
- * 场景库。
+ * Scene library.
  *
- * 一份，Agent 与 Voice 共用——在这里写的人设两边都看得到，从市场导入的也是。
+ * One copy, shared by Agent and Voice — a persona written here is visible in both,
+ * and so is anything imported from the market.
  *
- * 内置场景用 Agent 那份的元数据。七个人设在两个模块里是同一批（id / 名字 / 图标
- * 一致），只有正文不同：Voice 那份为口语重写过，读出来才不会像在念文档。正文不可
- * 编辑，所以这里显示哪一份都不影响用户能做的事。
+ * The built-in scenes use Agent's metadata. The seven personas are the same set in
+ * both modules (same id / name / icon), only the body text differs: Voice's version
+ * was rewritten for speech so that reading it aloud doesn't sound like reciting a
+ * document. The body text is not editable, so which copy is shown here does not
+ * affect anything the user can do.
  *
- * 合并前这个编辑器有两份近 450 行的副本，各自跟着自己的模块漂：写作模板的正文已经
- * 分叉成两个版本了。现在只有 @0xnullai/scenes/library 一份。
+ * Before the merge this editor had two nearly 450-line copies, each drifting along
+ * with its own module: the writing template's body had already forked into two
+ * versions. Now there is only the one in @0xnullai/scenes/library.
  */
 export function ScenesTab() {
   return <SceneLibrary builtins={BUILTIN_PROMPT_PRESETS} />;

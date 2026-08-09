@@ -1,18 +1,22 @@
 @import '@0xnullai/ui/styles/tokens.css';
 
 
-/* 全部规则包在 .mkt-scope 之下。
+/* Every rule is nested under .mkt-scope.
  *
- * 这份样式表用的全是通用类名——.app / .grid / .btn / .card / .tag / .empty。
- * 它归 module 层，而 module 排在 utilities 之后，于是它的 .grid 会压过 Tailwind 的
- * grid-cols-*。实测后果：打开 Market 之后再看 Agent，Agent 的主布局被改成四列
- * （gridTemplateColumns 变成 "291px 291px 291px 291px"），内容挤在左边一条。
+ * This stylesheet uses nothing but generic class names — .app / .grid / .btn / .card /
+ * .tag / .empty. It belongs to the module layer, and module is ordered after utilities,
+ * so its .grid wins over Tailwind's grid-cols-*. Observed consequence: open Market and
+ * then look at Agent, and Agent's main layout has been turned into four columns
+ * (gridTemplateColumns becomes "291px 291px 291px 291px"), with the content squeezed into
+ * a strip on the left.
  *
- * 用 CSS 嵌套包一层而不是逐条改前缀：改前缀要同时动 561 行 CSS 和所有 JSX 的
- * className，任何一处漏改都是静默失效；包一层只需要在根元素加一个类。
+ * Wrapping one layer of CSS nesting instead of prefixing every rule: prefixing would mean
+ * touching 561 lines of CSS and every className in the JSX at once, and any one missed
+ * spot fails silently; wrapping only needs one class added on the root element.
  */
 .mkt-scope {
-/* 设计令牌来自 @0xnullai/ui（实测本文件原有的令牌是共享层的严格子集，零独有）。 */
+/* Design tokens come from @0xnullai/ui (verified: the tokens this file used to define are
+   a strict subset of the shared layer's, with none unique to it). */
 
 *,
 *::before,
@@ -33,18 +37,20 @@ body {
   background: var(--bg);
 }
 
-/* 整页置底布局：内容撑开，页脚永远贴底 */
+/* Sticky-footer page layout: the content expands, the footer always sits at the bottom */
 .app {
   max-width: 1100px;
   margin: 0 auto;
   padding: 20px 16px 0;
-  /* 不是 100vh：外壳里内容区比视口矮（上面还有设备栏），写死 vh 会溢出且滚不到。 */
+  /* Not 100vh: inside the shell the content area is shorter than the viewport (there is a
+     device bar above it), so a hard-coded vh overflows and cannot be scrolled to. */
   min-height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-/* 单条横栏。参照 DG-Agent 的顶栏：细、贴边、下边框分隔，不占垂直空间。 */
+/* A single bar. Modeled on DG-Agent's top bar: thin, flush to the edges, separated by a
+   bottom border, taking up no vertical space. */
 .topbar {
   display: flex;
   align-items: center;
@@ -93,7 +99,7 @@ body {
   color: var(--button-text);
 }
 
-/* 两级标签：顶层 + 场景子筛选 */
+/* Two-level tabs: top level + scene sub-filter */
 .tab-group {
   display: inline-flex;
   flex-wrap: wrap;
@@ -108,7 +114,7 @@ body {
   font-size: 13px;
 }
 
-/* DG Agent 徽标 / 推荐人数徽标 */
+/* DG Agent badge / suggested-player-count badge */
 .agent-badge {
   font-size: 10px;
   font-weight: 600;
@@ -439,8 +445,8 @@ select {
   color: var(--accent-strong);
 }
 
-/* —— 多人场景 —— */
-/* 上传表单：角色编辑 */
+/* —— Multiplayer scenes —— */
+/* Upload form: role editing */
 .role-list {
   display: flex;
   flex-direction: column;
@@ -488,7 +494,7 @@ select {
   padding: 0.4rem 0.9rem;
 }
 
-/* 卡片：多人场景元信息 */
+/* Card: multiplayer scene metadata */
 .card-scene {
   display: flex;
   flex-direction: column;
@@ -508,7 +514,7 @@ select {
   padding: 2px 10px;
 }
 
-/* 详情：角色卡片网格 */
+/* Detail: role card grid */
 .scene-detail {
   display: flex;
   flex-direction: column;
@@ -569,7 +575,7 @@ select {
   }
 }
 
-/* 上传：模板下载 / 导入行 */
+/* Upload: template download / import row */
 .tpl-row { display: flex; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
 .tpl-btn { font-size: 13px; padding: 6px 12px; }
 }

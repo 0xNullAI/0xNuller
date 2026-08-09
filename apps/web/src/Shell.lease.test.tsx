@@ -9,17 +9,22 @@ import {
 import { Shell } from './Shell';
 
 /**
- * 切换模块时设备控制权真的转手了吗。
+ * Does device control actually change hands when you switch modules?
  *
- * 租约本身的行为在 `@dg-kit/safety` 的 device-lease / safety-chain 测试里已经验过。
- * 这里验的是**外壳有没有去调它**——上一轮的教训正是这个：`registerSafetySession`
- * 的逻辑完全正确，测试全绿，但全仓没有一个调用者，全局停止按钮从未渲染过。
+ * The behavior of the lease itself is already covered by the device-lease /
+ * safety-chain tests in `@dg-kit/safety`. What is verified here is **whether the
+ * shell calls into it** — that was exactly the lesson of the previous round:
+ * `registerSafetySession`'s logic was entirely correct and its tests were green,
+ * but nothing in the whole repo called it, so the global stop button was never
+ * rendered at all.
  *
- * 逻辑正确而没人调用，是这类契约最容易出现、也最难从单测里看出来的失效方式。
+ * Correct logic that nobody calls is the failure mode this kind of contract runs
+ * into most easily, and the hardest one to spot from unit tests.
  */
 
-// 模块是懒加载的真实应用，在 jsdom 里跑不起来（BLE、Worker、音频）。
-// 这里关心的只是「路由变了之后外壳做了什么」，所以把四个模块换成占位。
+// The modules are lazily loaded real apps and cannot run under jsdom (BLE, Worker,
+// audio). All that matters here is what the shell does after the route changes, so
+// the four modules are replaced with stubs.
 vi.mock('./routes', async () => {
   const { lazy } = await import('react');
   const stub = (label: string) =>
@@ -36,7 +41,7 @@ vi.mock('./routes', async () => {
   };
 });
 
-// 账号服务在测试里不可达；未登录是它的正常兜底路径。
+// The account service is unreachable in tests; signed out is its normal fallback path.
 vi.mock('@0xnullai/auth', () => ({
   me: () => Promise.resolve(null),
   logout: () => Promise.resolve(),
@@ -91,8 +96,9 @@ describe('外壳与设备控制权', () => {
     });
     expect(hasDeviceLease('agent')).toBe(true);
 
-    // 走真实的导航路径（外壳的 pushState + popstate 同步），不是直接调 grantDeviceLease
-    // ——被测的就是「外壳有没有在路由变化时调它」。
+    // Go through the real navigation path (the shell's pushState + popstate sync)
+    // instead of calling grantDeviceLease directly — what is under test is whether
+    // the shell calls it on a route change.
     await act(async () => {
       window.history.pushState(null, '', '/chat');
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -100,8 +106,9 @@ describe('外壳与设备控制权', () => {
 
     expect(hasDeviceLease('chat')).toBe(true);
     expect(hasDeviceLease('agent')).toBe(false);
-    // 切走的模块必须收到通知去停输出、清掉「按住不放」的聚合状态。
-    // 只把租约标志翻掉是不够的：远程指令不经过 UI。
+    // The module that was switched away from must be notified so it stops output and
+    // clears the accumulated press-and-hold state.
+    // Flipping the lease flag alone is not enough: remote commands do not go through the UI.
     expect(agent.onRevoke).toHaveBeenCalled();
   });
 
@@ -117,8 +124,9 @@ describe('外壳与设备控制权', () => {
     });
 
     expect(hasDeviceLease('agent')).toBe(false);
-    // 首页是最容易漏的一处：把设备栏当成「模块的一部分」渲染，回到首页它就消失了
-    // ——而设备还连在人身上，此时停止按钮反而最该在。
+    // The home page is the easiest spot to miss: render the device bar as if it were
+    // part of a module and it disappears once you go back home — while the device is
+    // still attached to someone, which is exactly when the stop button is needed most.
     expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
   });
 
@@ -136,7 +144,8 @@ describe('外壳与设备控制权', () => {
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
-    // 交出控制权不等于断开设备。设备还在人身上，停止按钮就必须还在。
+    // Handing over control is not the same as disconnecting the device. As long as the
+    // device is still on someone's body, the stop button has to still be there.
     expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
   });
 });

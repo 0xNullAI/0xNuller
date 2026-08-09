@@ -1,5 +1,5 @@
-// R2 媒体上传 / 读回。
-// key 约定：room/{code}/{id}，mime 存在 R2 httpMetadata，房间清理时按 `room/{code}/` 前缀批量删。
+// R2 media upload / read-back.
+// Key convention: room/{code}/{id}; the mime type lives in R2 httpMetadata, and room cleanup bulk-deletes by the `room/{code}/` prefix.
 import type { Env } from './index';
 import { MAX_MEDIA_BYTES, ALLOWED_MEDIA_PREFIXES } from './wire';
 
@@ -7,7 +7,7 @@ function mediaKey(code: string, id: string): string {
   return `room/${code}/${id}`;
 }
 
-/** PUT /api/upload/:code?id=<id>  body=二进制，Content-Type=mime。 */
+/** PUT /api/upload/:code?id=<id>  body=binary, Content-Type=mime. */
 export async function handleMediaUpload(request: Request, env: Env, code: string): Promise<Response> {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
@@ -31,7 +31,7 @@ export async function handleMediaUpload(request: Request, env: Env, code: string
   return json(200, { id, mime, size: buf.byteLength });
 }
 
-/** GET /api/media/:code/:id 读回媒体，带 content-type 与长缓存。 */
+/** GET /api/media/:code/:id reads media back, with its content-type and a long cache. */
 export async function handleMediaRead(env: Env, code: string, id: string): Promise<Response> {
   const obj = await env.MEDIA.get(mediaKey(code, id));
   if (!obj) return new Response('not found', { status: 404 });
@@ -43,7 +43,7 @@ export async function handleMediaRead(env: Env, code: string, id: string): Promi
   return new Response(obj.body, { headers });
 }
 
-/** 删除某房间全部媒体（RoomDO 清理时调用）。 */
+/** Delete all media for a room (called by RoomDO during cleanup). */
 export async function deleteRoomMedia(env: Env, code: string): Promise<void> {
   const prefix = `room/${code}/`;
   let cursor: string | undefined;

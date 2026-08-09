@@ -15,16 +15,22 @@ import { MODULES } from './routes';
 import { Avatar } from './Avatar';
 
 /**
- * 侧边栏。全局只有这一条竖栏，右边是内容区——顶部横栏已经取消。
+ * The sidebar. It is the only vertical bar in the app, with the content area to
+ * its right — the top bar has been removed.
  *
- * 三个区域，各自的位置是有理由的：
- * - **顶部**是当前应用名，点开切换。这是「我在哪」和「去哪」，所以在视线起点。
- * - **中间**是置顶 / 对话 / 房间。模块把自己的列表项注册进来，外壳只管分区与排序。
- *   场景不在这里——它是「当前会话用哪个人设」，属于内容区而不是导航。
- * - **底部**是账户。点开是账户 / 软件设置 / 说明三项。设置只有这一个入口。
+ * Three regions, each placed where it is for a reason:
+ * - **Top** is the current app name; click it to switch. That is "where am I" and
+ *   "where do I go", so it sits where the eye starts.
+ * - **Middle** is pinned / conversations / rooms. Modules register their own list
+ *   items here and the shell only handles sectioning and ordering. Scenes are not
+ *   here — a scene is "which persona this session uses", which belongs to the
+ *   content area rather than to navigation.
+ * - **Bottom** is the account. Clicking it gives three items: account / app
+ *   settings / docs. Settings has this one entry point and no other.
  *
- * 停止按钮**不在这里**。它在内容区顶部的设备栏最左——那条栏只在连上设备后出现，
- * 而停止必须紧挨着「有什么东西连着我」这个信息。
+ * The stop button is **not** here. It is at the far left of the device bar at the
+ * top of the content area — that bar only appears once a device is connected, and
+ * stop has to sit right next to the information "something is attached to me".
  */
 
 interface SidebarProps {
@@ -198,7 +204,8 @@ function AccountButton({
   );
 }
 
-/** 一个分区的容器。模块的列表项 portal 进这里，标题与间距由外壳掌握。 */
+/** The container for one section. Module list items portal in here; the title and
+ *  the spacing stay under the shell's control. */
 function SidebarSectionSlot({ id, title }: { id: SidebarSectionId; title: string }) {
   const ref = useSidebarContainerRef(id);
   return (

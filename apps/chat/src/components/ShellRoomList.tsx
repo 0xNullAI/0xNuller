@@ -9,14 +9,16 @@ import {
 import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
 
 /**
- * 房间列表在**外壳侧边栏**里的形态。
+ * The room list in its **shell sidebar** form.
  *
- * 合并前进 Chat 要先看到一张居中的卡片：填昵称、然后创建或加入房间；公开房间列表
- * 在另一个页面（`/lobby`），靠整页跳转往返。有了统一账号之后昵称不必再问，房间列表
- * 也不该藏在另一个页面——打开就该看到有哪些房间在。
+ * Before the merge, entering Chat meant first meeting a centered card: type a nickname, then
+ * create or join a room; the public room list lived on another page (`/lobby`), reached by
+ * full-page navigation back and forth. With a unified account there is no need to ask for a
+ * nickname any more, and the room list should not be hidden on another page either — you should
+ * see which rooms exist the moment you open it.
  *
- * 常驻公开房排在最前并标出来：它保证任何时候都有一个可进的地方，新用户不会面对
- * 一个空列表不知道该干什么。
+ * The permanent public room sorts first and is labeled as such: it guarantees there is always
+ * somewhere to go, so a new user is never left staring at an empty list with nothing to do.
  */
 
 export interface ShellRoomListProps {
@@ -30,7 +32,8 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
   const [status, setStatus] = useState<LobbyStatus>('connecting');
 
   useEffect(() => {
-    // 先用 REST 拿一次快照再交给 WS 实时更新——只等 WS 的话首屏会空一拍。
+    // Take one REST snapshot first, then hand over to the WS for live updates — waiting on the
+    // WS alone leaves the first paint empty for a beat.
     void fetchLobbyRooms()
       .then(setRooms)
       .catch(() => undefined);
@@ -38,7 +41,8 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
     return () => sub.close();
   }, []);
 
-  // 常驻房永远排第一，且即使大厅还没返回也先显示——它是保证「总有地方可去」的那一个。
+  // The permanent room is always first, and is shown even before the lobby has answered — it is
+  // the one that guarantees there is always somewhere to go.
   const hasReserved = rooms.some((r) => r.code === RESERVED_ROOM_CODE);
   const ordered = [
     ...(hasReserved ? [] : [{ code: RESERVED_ROOM_CODE, name: '公开大厅', count: 0 } as LobbyRoom]),

@@ -1,6 +1,6 @@
-// RoomDO：每个房间一个实例（idFromName(roomCode)）。
-// 职责：WebSocket relay（替代公共 MQTT broker）+ 连接级 presence + 聊天历史(SQLite) 持久化与回放
-//       + 公开房间向 LobbyDO 上报 + 房间空置后宽限清理（历史 + R2 媒体 + 大厅注销）。
+// RoomDO: one instance per room (idFromName(roomCode)).
+// Responsibilities: WebSocket relay (replaces the public MQTT broker) + connection-level presence + chat history (SQLite) persistence and replay
+//                   + reporting public rooms to LobbyDO + grace-period cleanup once the room is empty (history + R2 media + lobby deregistration).
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { deleteRoomMedia } from './media';
@@ -11,13 +11,13 @@ interface Attachment {
   name: string;
 }
 
-/** 公开房间向大厅保活的最小间隔（毫秒）。 */
+/** Minimum interval (ms) between lobby keepalive reports from a public room. */
 const LOBBY_KEEPALIVE_MS = 20 * 1000;
 
 export class RoomDO extends DurableObject<Env> {
   private sql: SqlStorage;
   private lastLobbyReport = 0;
-  // 场景 / 角色认领的内存缓存（storage 持久；hibernation 唤醒后惰性重载）。
+  // In-memory cache of the scene / role claims (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
   private sceneCache: Scene | null | undefined;
   private assignmentsCache: Record<string, string> | undefined;
 
@@ -71,7 +71,7 @@ export class RoomDO extends DurableObject<Env> {
             reserved ? RESERVED_ROOM_NAME : (msg.roomName as string) || att.name || '',
           );
         }
-        // 房主 = 第一个加入者。常驻讨论房无房主（纯开放聊天），不指派并清除任何残留。
+        // Host = the first person to join. The permanent discussion room has no host (pure open chat): don't assign one, and clear any leftover.
         let host = '';
         if (reserved) {
           await this.ctx.storage.delete('hostPeerId');
@@ -82,12 +82,12 @@ export class RoomDO extends DurableObject<Env> {
             await this.ctx.storage.put('hostPeerId', host);
           }
         }
-        // 回放历史给该连接（含此前全部消息与媒体引用）。
+        // Replay the history to this connection (all earlier messages and media references).
         ws.send(JSON.stringify({ t: 'history', messages: this.loadHistory() }));
-        // 同步当前场景 + 房主 + 角色认领状态。
+        // Sync the current scene + host + role claim state.
         ws.send(JSON.stringify({ t: 'scene', scene: await this.getScene(), host }));
         ws.send(JSON.stringify({ t: 'role', assignments: await this.getAssignments() }));
-        // 通知其他成员有人加入。
+        // Tell the other members that someone joined.
         this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
         await this.reportLobby(this.ctx.getWebSockets().length);
         return;
@@ -96,7 +96,7 @@ export class RoomDO extends DurableObject<Env> {
       case 'chat': {
         const scene = await this.getScene();
         const assignments = await this.getAssignments();
-        // 房主可代某个 AI 托管角色发言（校验：sender=host 且该角色确为 AI 托管）。
+        // The host may speak on behalf of an AI-driven role (checked: sender=host and that role really is AI-driven).
         const aiAs = await this.aiSenderOk(att.peerId, msg.as, assignments);
         const fromId = aiAs ?? att.peerId;
         const chat: WireChat = {
@@ -110,14 +110,14 @@ export class RoomDO extends DurableObject<Env> {
           ts: (msg.ts as number) ?? Date.now(),
         };
         this.saveMessage(chat);
-        // 普通消息：发送者已有乐观副本，广播时排除自己；
-        // AI 代发消息：房主本地无副本，需广播给所有人（含房主）。
+        // Normal message: the sender already has an optimistic copy, so exclude it from the broadcast;
+        // AI-proxied message: the host has no local copy, so broadcast to everyone (host included).
         this.broadcast({ t: 'chat', ...chat }, aiAs ? undefined : ws);
         return;
       }
 
       case 'scene': {
-        // 仅房主可设/改场景。换场景会清空角色认领（角色 id 变了）。
+        // Only the host may set/change the scene. Switching scenes clears the role claims (the role ids changed).
         const host = await this.ctx.storage.get<string>('hostPeerId');
         if (att.peerId !== host) return;
         const scene = (msg.scene as Scene | null) ?? null;
@@ -126,29 +126,29 @@ export class RoomDO extends DurableObject<Env> {
         await this.setAssignments({});
         this.broadcast({ t: 'scene', scene, host });
         this.broadcast({ t: 'role', assignments: {} });
-        // 即时刷新大厅，让场景名（或清除）立刻反映到公开房间卡片。
+        // Refresh the lobby right away so the scene name (or its removal) shows up on the public room card immediately.
         await this.reportLobby(this.ctx.getWebSockets().length);
         return;
       }
 
       case 'role': {
-        // 认领/释放（人）；托管/取消（AI，仅房主）。一人最多一个角色；AI 占位为 "ai:<roleId>"。
+        // Claim/release (human); hand over to / take back from AI (host only). One role per person at most; the AI placeholder is "ai:<roleId>".
         const act = msg.act as 'claim' | 'release' | 'assign-ai' | 'release-ai';
         const roleId = msg.roleId as string;
         const assignments = { ...(await this.getAssignments()) };
         const aiHolder = `ai:${roleId}`;
         if (act === 'assign-ai' || act === 'release-ai') {
           const host = await this.ctx.storage.get<string>('hostPeerId');
-          if (att.peerId !== host) return; // 仅房主可托管/取消 AI
+          if (att.peerId !== host) return; // only the host may hand a role to / take it back from the AI
           if (act === 'assign-ai') {
             const role = (await this.getScene())?.roles.find(r => r.id === roleId);
-            if (!role?.aiPlayable) return; // 仅 aiPlayable 角色可交给 AI
-            assignments[roleId] = aiHolder; // 覆盖现有占用
+            if (!role?.aiPlayable) return; // only aiPlayable roles can be handed to the AI
+            assignments[roleId] = aiHolder; // overrides whoever currently holds it
           } else if (assignments[roleId] === aiHolder) {
             delete assignments[roleId];
           }
         } else if (act === 'claim') {
-          if (assignments[roleId]?.startsWith('ai:')) return; // AI 占用的角色，需房主先取消 AI
+          if (assignments[roleId]?.startsWith('ai:')) return; // role held by the AI; the host has to take it back from the AI first
           for (const [rid, pid] of Object.entries(assignments)) {
             if (pid === att.peerId) delete assignments[rid];
           }
@@ -163,7 +163,7 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'cmd':
       case 'wave': {
-        // 定向转发给目标 peer。房主可代 AI 托管角色操作（_from = ai:<roleId>，供设备端授权校验）。
+        // Forward directly to the target peer. The host may act on behalf of an AI-driven role (_from = ai:<roleId>, which the device side uses for authorization checks).
         const aiAs = await this.aiSenderOk(att.peerId, msg.as, await this.getAssignments());
         this.sendTo(msg.to as string, { ...msg, _from: aiAs ?? att.peerId });
         return;
@@ -175,9 +175,9 @@ export class RoomDO extends DurableObject<Env> {
       }
 
       default: {
-        // sf / ss / presence：广播给房间其他人，注入可信 _from。
+        // sf / ss / presence: broadcast to the rest of the room, injecting a trusted _from.
         this.broadcast({ ...msg, _from: att.peerId }, ws);
-        // 借 presence 心跳给大厅保活（节流），避免有人在线却被判过期移除。
+        // Piggyback the presence heartbeat as the lobby keepalive (throttled), so a room with people in it never gets expired away.
         if (t === 'presence') {
           const now = Date.now();
           if (now - this.lastLobbyReport >= LOBBY_KEEPALIVE_MS) {
@@ -198,10 +198,10 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    // 宽限期到：若仍无人在线，彻底清理房间。否则有人重连，取消清理。
+    // Grace period is up: if still nobody is connected, wipe the room completely. Otherwise someone reconnected, so cancel the cleanup.
     if (this.ctx.getWebSockets().length > 0) return;
     const code = (await this.ctx.storage.get<string>('code')) ?? '';
-    // 常驻讨论房永不清理：保留历史，仅上报空闲（大厅由 pinned 兜底保留）。
+    // The permanent discussion room is never cleaned up: keep the history, just report it as idle (the lobby keeps it via pinned).
     if (code === RESERVED_ROOM_CODE) {
       await this.reportLobby(0);
       return;
@@ -212,7 +212,7 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
   }
 
-  // —— 内部 ——
+  // -- Internals --
 
   private async onDisconnect(ws: WebSocket): Promise<void> {
     let att: Attachment | undefined;
@@ -224,7 +224,7 @@ export class RoomDO extends DurableObject<Env> {
     const remaining = this.ctx.getWebSockets().filter(w => w !== ws);
     if (att) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
-      // 释放该成员认领的角色，广播更新。
+      // Release the roles that member had claimed, and broadcast the update.
       const assignments = { ...(await this.getAssignments()) };
       let changed = false;
       for (const [rid, pid] of Object.entries(assignments)) {
@@ -240,7 +240,7 @@ export class RoomDO extends DurableObject<Env> {
     }
     await this.reportLobby(remaining.length);
     if (remaining.length === 0) {
-      // 房间空：保留历史一个宽限期，期间无人重连则由 alarm 清理。
+      // Room is empty: keep the history for one grace period; if nobody reconnects within it, the alarm cleans it up.
       await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
     }
   }
@@ -307,7 +307,7 @@ export class RoomDO extends DurableObject<Env> {
     });
   }
 
-  // —— 场景 / 角色认领 ——
+  // -- Scene / role claims --
 
   private async getScene(): Promise<Scene | null> {
     if (this.sceneCache === undefined) {
@@ -328,7 +328,7 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.put('roleAssignments', a);
   }
 
-  /** 查某成员当前认领角色的名字（= 头衔）。AI 占位 "ai:<roleId>" 同样可解析。 */
+  /** Look up the name (= title) of the role a member currently holds. The AI placeholder "ai:<roleId>" resolves too. */
   private roleNameOf(peerId: string, scene: Scene | null, assignments: Record<string, string>): string | undefined {
     if (!scene) return undefined;
     const entry = Object.entries(assignments).find(([, pid]) => pid === peerId);
@@ -337,9 +337,10 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   /**
-   * 校验「房主代某 AI 托管角色发言/操作」是否合法。
-   * 合法返回该 AI 占位 id（"ai:<roleId>"），否则 null。
-   * 条件：as 形如 ai:<roleId>、发送者为房主、且该角色当前确为 AI 托管。
+   * Check whether "the host speaking/acting on behalf of an AI-driven role" is legitimate.
+   * Returns that AI placeholder id ("ai:<roleId>") when it is, otherwise null.
+   * Conditions: `as` looks like ai:<roleId>, the sender is the host, and that role really is
+   * currently AI-driven.
    */
   private async aiSenderOk(
     senderPeerId: string,
@@ -353,7 +354,7 @@ export class RoomDO extends DurableObject<Env> {
     return assignments[roleId] === as ? as : null;
   }
 
-  /** 仅公开房间上报大厅；count=0 表示房间空，从大厅移除。 */
+  /** Only public rooms report to the lobby; count=0 means the room is empty and gets removed from the lobby. */
   private async reportLobby(count: number): Promise<void> {
     const isPublic = await this.ctx.storage.get<boolean>('public');
     if (!isPublic) return;

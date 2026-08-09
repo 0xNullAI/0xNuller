@@ -13,11 +13,12 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * 传感器触发。
+ * Sensor triggers.
  *
- * 从原来的「安全」标签页里拆出来的——安全设置已经搬到统一设置面板，而这一项是
- * Agent 独有的功能（爪印/灵猫的读数驱动 AI 主动响应），不是跨模块的安全约束，
- * 所以留在 Agent 自己这边。
+ * Split out of the old 「安全」 tab — the safety settings moved to the unified
+ * settings panel, while this one is an Agent-only feature (paw-prints/civet
+ * readings driving the AI to respond on its own), not a cross-module safety
+ * constraint, so it stays on the Agent side.
  */
 
 export interface SensorsTabProps {

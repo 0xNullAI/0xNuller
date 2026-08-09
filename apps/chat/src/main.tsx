@@ -3,8 +3,9 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 
-// 独立的 /lobby 整页路由已删除：房间列表现在是外壳侧边栏的一个分区，
-// 不再需要靠整页跳转往返。
+// The standalone full-page /lobby route has been deleted: the room list is now a
+// section of the shell sidebar, so there is no need to round-trip through a
+// full-page navigation any more.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

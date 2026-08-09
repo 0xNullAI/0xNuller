@@ -125,15 +125,21 @@ function applyFire(d: FireApplyDeps) {
 }
 
 export default function App({ deviceClientFactory, requestDeviceTauri }: AppProps = {}) {
-  // 原生能力优先取自 props（独立挂载时），否则从 NativeBridge 取（统一外壳里）。
-  // 两条路并存是因为安卓没有热更新：改错注入接口会让三个模块同时哑掉，而坏掉的
-  // 版本会长期留在用户手机上，所以旧的注入点保留到确认新路径稳定为止。
+  // Native capabilities come from props first (standalone mount), otherwise from
+  // NativeBridge (inside the unified shell). Both paths coexist because Android has
+  // no hot update: getting the injection interface wrong would mute all three modules
+  // at once, and the broken build sticks around on users' phones for a long time, so
+  // the old injection point stays until the new path is proven stable.
   const native = useNativeBridge();
-  // 昵称取自统一账号；未登录时回落到本地保存的名字，再回落到匿名。账号服务抖动
-  // 不该把人挡在房间外面，所以这里始终有可用值。
+  // The nickname comes from the unified account; when signed out it falls back to the
+  // locally saved name, then to anonymous. A flaky account service must not lock
+  // people out of a room, so there is always a usable value here.
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
-  /** 已交出设备控制权（切到别的模块）。对房间而言等同于「设备不可控」。 */
+  /**
+   * Device control has been handed off (switched to another module). As far as the
+   * room is concerned, this is the same as the device being uncontrollable.
+   */
   const [deviceReleased, setDeviceReleased] = useState(false);
   useEffect(() => {
     me()
@@ -149,7 +155,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const openShellSettings = useOpenShellSettings();
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
-  // 主题由外壳统一持有（@0xnullai/ui 的共享 store），本模块不再有自己的切换入口。
+  // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
+  // longer has a toggle of its own.
 
   const [queueA, setQueueA] = useState<string[]>([]);
   const [queueB, setQueueB] = useState<string[]>([]);
@@ -169,14 +176,17 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   const peerRoom = usePeerRoom(displayName);
 
-  // 打开即进常驻公开房。合并前这里是一张居中的卡片（填昵称 → 创建/加入），而房间
-  // 列表在另一个页面靠整页跳转往返。常驻房保证任何时候都有一个可进的地方，
-  // 新用户不会面对一张表单不知道从哪开始。
+  // Opening the app drops you straight into the permanent public room. Before the merge
+  // this was a centered card (type a nickname → create/join) while the room list lived
+  // on another page reached by full-page navigation. The permanent room guarantees there
+  // is always somewhere to go, so a new user is not left staring at a form with no idea
+  // where to start.
   useEffect(() => {
     if (peerRoom.connected || peerRoom.status === 'connecting') return;
     const fromUrl = new URLSearchParams(window.location.search).get('room');
     peerRoom.join(fromUrl || RESERVED_ROOM_CODE);
-    // 只在「还没连上」时尝试一次；把 peerRoom 放进依赖会在每次状态变化时重连。
+    // Only attempt once while still not connected; putting peerRoom in the deps would
+    // reconnect on every state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerRoom.connected, peerRoom.status]);
   const device = useDevice({
@@ -186,16 +196,19 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   });
   const waveforms = useWaveforms();
 
-  // 保持引用最新，避免闭包过时
+  // Keep the reference fresh so closures do not go stale
   const deviceRef = useRef(device);
-  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
-  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // Refreshing the "latest value" ref during render is deliberate: moving it into an
+  // effect would make it update one commit late, and device commands could then read a
+  // stale reference. To be handled by a dedicated useEffectEvent refactor; not changing
+  // behavior inside a structural merge.
   // eslint-disable-next-line react-hooks/refs
   deviceRef.current = device;
 
-  // 注册到全局安全总线——外壳的全局停止按钮唯一的数据来源。
-  // Chat 尤其重要：房间里其他人可以下指令，而本模块被切走后自己的停止按钮点不到。
-  // 重新拿到控制权时恢复可控状态。
+  // Register with the global safety bus — the only data source for the shell's global
+  // stop button. This matters most in Chat: other people in the room can issue commands,
+  // and once this module is switched away its own stop button cannot be reached.
+  // Restore the controllable state once control is regained.
   useEffect(() => {
     const sync = () => setDeviceReleased(!hasDeviceLease('chat'));
     sync();
@@ -208,20 +221,25 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     isActive: () => deviceRef.current.connected,
     stop: () => deviceRef.current.stopAll(),
     onRevoke: () => {
-      // 三件事缺一不可。
-      // 1) 停输出。
+      // All three of these are required.
+      // 1) Stop the output.
       deviceRef.current.stopAll();
-      // 2) 清掉开火聚合。它在「从空到非空」的边沿抓 baseline 快照，有人按住开火时
-      //    被撤权的话，对应的 fire_release 永远不会到达，map 不清空，强度会停在
-      //    baseline+加成 不回落——通用的 stop 覆盖不到这条清理路径。
+      // 2) Clear the fire aggregation. It snapshots the baseline on the empty →
+      //    non-empty edge, so if the lease is revoked while someone is holding fire,
+      //    the matching fire_release never arrives, the map is never cleared, and
+      //    strength stays at baseline+boost instead of falling back — the generic stop
+      //    does not cover this cleanup path.
       fireBoostsA.current.clear();
       fireBoostsB.current.clear();
       baselineARef.current = 0;
       baselineBRef.current = 0;
-      // 3) 告诉房间。不广播的话，房主看到指令已发送却没反应，本能反应是加大力度重发。
-      // 3) 告诉房间。复用已有的 deviceConnected 字段而不是加新消息类型——新类型
-      //    老客户端会静默忽略，而这个字段对方已经在渲染成「未连接设备」。
-      //    不广播的话，房主看到指令已发送却没反应，本能反应是加大力度重发。
+      // 3) Tell the room. Without the broadcast the host sees the command go out with no
+      //    reaction, and the instinctive response is to crank it up and resend.
+      // 3) Tell the room. Reuse the existing deviceConnected field instead of adding a
+      //    new message type — a new type is silently ignored by old clients, whereas the
+      //    other side already renders this field as 「未连接设备」.
+      //    Without the broadcast the host sees the command go out with no reaction, and
+      //    the instinctive response is to crank it up and resend.
       setDeviceReleased(true);
     },
     devices: () => {
@@ -244,8 +262,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     },
   });
   const waveformsRef = useRef(waveforms);
-  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
-  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
+  // Refreshing the "latest value" ref during render is deliberate: moving it into an
+  // effect would make it update one commit late, and device commands could then read a
+  // stale reference. To be handled by a dedicated useEffectEvent refactor; not changing
+  // behavior inside a structural merge.
   // eslint-disable-next-line react-hooks/refs
   waveformsRef.current = waveforms;
 
@@ -264,18 +284,22 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     if (displayName) localStorage.setItem('dg-chat-name', displayName);
   }, [displayName]);
 
-  // 注册远程指令处理器
+  // Register the remote command handler
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
-      // 没有设备控制权时硬拒绝。**必须在这里挡**而不是只禁用 UI 按钮：房间里其他人
-      // 和 AI 的指令走的是 WebRTC 数据通道，根本不经过界面。
+      // Hard-reject when we do not hold the device lease. **It has to be blocked here**
+      // rather than by only disabling UI buttons: commands from other people in the room
+      // and from the AI travel over the WebRTC data channel and never touch the UI.
       //
-      // 停止类指令是例外——交出控制权不该让别人失去停下你设备的能力。
+      // Stop commands are the exception — handing off control must not take away other
+      // people's ability to stop your device.
       if (!hasDeviceLease('chat') && cmd.action !== 'fire_release' && cmd.action !== 'stop') {
         return;
       }
-      // 队列意图：更新本机权威状态。由 broadcastStateSlow 在 effect 里同步给所有人。
-      // 队列变更后若当前在播波形仍在新队列里，把 index 对齐到它，避免 index 与播放短暂不一致。
+      // Queue intent: update the local authoritative state. broadcastStateSlow syncs it
+      // out to everyone from an effect.
+      // After a queue change, if the currently playing waveform is still in the new
+      // queue, align the index to it so index and playback do not briefly disagree.
       if (cmd.action === 'set_queue' && cmd.c && cmd.q) {
         const q = cmd.q;
         const playing = cmd.c === 'A' ? deviceRef.current.waveIdA : deviceRef.current.waveIdB;
@@ -303,7 +327,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       if (cmd.action === 'fire_active' && cmd.c && cmd.v != null) {
         const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (map.size === 0) {
-          // 从空到非空的边沿：抓 baseline 快照
+          // Empty → non-empty edge: snapshot the baseline
           const dev = deviceRef.current;
           if (cmd.c === 'A') baselineARef.current = dev.strengthA;
           else baselineBRef.current = dev.strengthB;
@@ -318,8 +342,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         callApplyFire(cmd.c);
         return;
       }
-      // 强度增量：v=signed delta，owner 累加并 clamp。多控制者并发安全（每条消息都加上）。
-      // 若当前在烧，同步把 baseline 也加上，否则松开时这部分增量会被冲掉。
+      // Strength delta: v = signed delta, the owner accumulates it and clamps. Safe under
+      // concurrent controllers (every message is added on top).
+      // If a fire is in progress, add it to the baseline as well, otherwise this
+      // increment gets wiped out on release.
       if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
         const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
@@ -327,15 +353,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         if (boosts.size > 0) {
           const baseRef = cmd.c === 'A' ? baselineARef : baselineBRef;
           baseRef.current = Math.max(0, Math.min(limit, baseRef.current + cmd.v));
-          callApplyFire(cmd.c); // 重算 baseline+agg → setStrength
+          callApplyFire(cmd.c); // recompute baseline+agg → setStrength
         } else {
           const current = cmd.c === 'A' ? dev.strengthA : dev.strengthB;
           dev.setStrength(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
         }
         return;
       }
-      // Opossum 强度增量：同 adjust_strength 语义，但作用于 Opossum intensity，
-      // 复用同一套 limitA/limitB 安全上限（v1 简化：不做多控制者 fire 聚合）。
+      // Opossum strength delta: same semantics as adjust_strength, but applied to the
+      // Opossum intensity, reusing the same limitA/limitB safety caps (v1 simplification:
+      // no multi-controller fire aggregation).
       if (cmd.action === 'vibrate_adjust' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
         const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
@@ -368,7 +395,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     peerRoom.setCommandHandler(handleCommand);
   }, [peerRoom.setCommandHandler, handleCommand]);
 
-  // 场景角色头衔派生（peerId → 角色名）。
+  // Derive the scene role title (peerId → role name).
   const roleNameFor = useCallback(
     (peerId: string): string | undefined => {
       const sc = peerRoom.scene;
@@ -380,7 +407,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   );
   const selfRoleName = roleNameFor(peerRoom.selfId);
 
-  // 上传媒体到 R2 后作为一条聊天消息发出。
+  // Upload the media to R2, then send it out as a chat message.
   const sendMedia = useCallback(
     async (
       blob: Blob,
@@ -425,7 +452,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     [peerRoom.sendCommand, handleCommand],
   );
 
-  // 高频状态：强度 / 当前波形变化时立刻广播（hook 内部 200ms 节流）
+  // High-frequency state: broadcast immediately when strength / current waveform changes
+  // (the hook throttles to 200ms internally)
   useEffect(() => {
     if (!peerRoom.connected) return;
     peerRoom.broadcastStateFast({
@@ -457,7 +485,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     device.sensor?.lastEventAt,
   ]);
 
-  // 低频状态：5 秒心跳 + 名字/电量/连接/目录变化时即时同步
+  // Low-frequency state: a 5s heartbeat plus an immediate sync when the name / battery /
+  // connection / catalog changes
   useEffect(() => {
     if (!peerRoom.connected) return;
     const send = () => {
@@ -516,12 +545,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     device.sensor?.battery,
   ]);
 
-  // 持久化「允许 AI 控制」开关。
+  // Persist the "allow AI control" toggle.
   useEffect(() => {
     localStorage.setItem('dg-chat-allow-ai', allowAi ? '1' : '0');
   }, [allowAi]);
 
-  // AI 角色大脑（仅房主浏览器实际运行；@AI 角色触发）。
+  // AI role brains (only actually run in the host's browser; triggered by @-ing an AI role).
   const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()]
     .filter((m) => !m.isAi && m.deviceConnected && m.allowAi)
     .map((m) => ({ peerId: m.peerId, name: m.displayName || m.peerId.slice(0, 6) }));
@@ -536,7 +565,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     sendCommandAs: peerRoom.sendCommandAs,
   });
 
-  // A/B 通道：被控方权威定时切换（自己持有真值）
+  // A/B channels: the controlled side authoritatively rotates on a timer (it holds the
+  // source of truth)
   useChannelRotation(
     'A',
     device.waveIdA,
@@ -558,8 +588,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     waveformsRef,
   );
 
-  // 心跳过期 reaper：fire_active 每 300ms 一次，超过 800ms 没刷新即视作松开。
-  // 正常松开走 fire_release QoS 1 立即回落；任何异常路径（页面关闭/丢包/崩溃）由这里兜底，最坏 ~1s 内归零。
+  // Heartbeat expiry reaper: fire_active arrives every 300ms, so going more than 800ms
+  // without a refresh counts as a release.
+  // A normal release goes through fire_release at QoS 1 and falls back immediately; any
+  // abnormal path (page closed / packet loss / crash) is backstopped here, reaching zero
+  // within ~1s at worst.
   useEffect(() => {
     const t = window.setInterval(() => {
       const now = Date.now();
@@ -585,8 +618,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
-      {/* 房间列表投进外壳侧边栏的「房间」分区。合并前它在另一个页面（/lobby），
-          靠整页跳转往返；现在打开就能看到有哪些房间在。 */}
+      {/* The room list is projected into the shell sidebar's 「房间」 section. Before the
+          merge it lived on another page (/lobby) reached by full-page navigation; now you
+          can see which rooms exist as soon as you open the app. */}
       <SidebarSection id="rooms" title="房间">
         <ShellRoomList
           currentRoom={peerRoom.roomId}
@@ -603,8 +637,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         />
       )}
 
-      {/* 房间信息留在内容区（它是内容不是 chrome）；右侧那组按钮投到外壳的按钮
-          插槽，和别的模块的按钮落在同一条线上。 */}
+      {/* Room info stays in the content area (it is content, not chrome); the button group
+          on the right is projected into the shell's action slot so it lines up with the
+          other modules' buttons. */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
           {peerRoom.roomId && (
@@ -623,10 +658,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           )}
         </div>
         <ModuleActions>
-          {/* 常驻讨论房无房主、无 AI（纯开放聊天），隐藏场景/AI 入口 */}
+          {/* The permanent discussion room has no host and no AI (pure open chat), so hide the scene/AI entry points */}
           {peerRoom.roomId !== RESERVED_ROOM_CODE && (
             <>
-              {/* 房间场景 */}
+              {/* Room scene */}
               <button
                 onClick={() => setSceneOpen(true)}
                 className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.scene ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
@@ -634,10 +669,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               >
                 <Drama className="h-4 w-4" />
               </button>
-              {/* AI 设置（房主配置模型）+ 允许 AI 控制本机设备开关 */}
-              {/* 外壳里点开的是那个唯一的设置面板（AI 页），不是 Chat 自己的对话框：
-                  两边写的是同一份 provider 配置，两套界面只会让人不知道该改哪个。
-                  按钮留在原位——房主要配 AI 的时候手就在这里。 */}
+              {/* AI settings (the host configures the model) + the toggle allowing AI to control this device */}
+              {/* Inside the shell this opens the one settings panel (AI page), not Chat's
+                  own dialog: both write the same provider config, and two UIs would only
+                  leave people unsure which one to edit.
+                  The button stays where it is — when the host wants to configure AI, this
+                  is already where their hand is. */}
               <button
                 onClick={() => (inShell ? openShellSettings('ai') : setAiSettingsOpen(true))}
                 className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
@@ -657,7 +694,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               )}
             </>
           )}
-          {/* 蓝牙 + 个人安全设置（合并面板） */}
+          {/* Bluetooth + personal safety settings (merged panel) */}
           <DeviceSafetyButton
             connected={device.connected}
             deviceName={device.deviceInfo?.name ?? null}
@@ -677,9 +714,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             onDisconnectSensor={device.disconnectSensor}
             onDisconnectOpossum={device.disconnectOpossum}
           />
-          {/* 紧急停止：Coyote 或 Opossum 任一已连接就必须可见——两者都是可能
-              正在输出的设备，只看 Coyote 会让"只连了 Opossum"的用户找不到
-              一键停止按钮。 */}
+          {/* Emergency stop: must be visible whenever either Coyote or Opossum is
+              connected — both are devices that may currently be outputting, and looking
+              at Coyote alone leaves a user who "only connected an Opossum" unable to find
+              the one-tap stop button. */}
           {(device.connected || device.opossum?.connected) && (
             <button
               onClick={device.stopAll}
@@ -690,7 +728,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               <span className="hidden sm:inline">停止</span>
             </button>
           )}
-          {/* 离开房间 */}
+          {/* Leave the room */}
           <button
             onClick={() => {
               device.disconnect();
@@ -704,7 +742,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         </ModuleActions>
       </header>
 
-      {/* 手机 Tab 栏 */}
+      {/* Mobile tab bar */}
       <div className="flex shrink-0 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] lg:hidden">
         <button
           onClick={() => setActiveTab('chat')}
@@ -720,7 +758,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         </button>
       </div>
 
-      {/* 双面板 */}
+      {/* Two panels */}
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
         <div className={`${activeTab !== 'chat' ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col`}>
           <ChatPanel
@@ -732,7 +770,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 peerId: p,
                 name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),
               })),
-              // AI 托管角色作为可 @ 的伪成员（peerId = "ai:<roleId>"）。
+              // AI-hosted roles show up as pseudo-members that can be @-mentioned (peerId = "ai:<roleId>").
               ...[...peerRoom.members.values()]
                 .filter((m) => m.isAi)
                 .map((m) => ({ peerId: m.peerId, name: m.displayName })),

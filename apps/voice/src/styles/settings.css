@@ -1,5 +1,6 @@
-/* DG-Voice 设置页的**差异部分**。共享外壳在 @0xnullai/ui/styles/settings.css，
-   这里只留与它不同的：几处 padding/margin 微调与 voice 独有的行内字段布局。 */
+/* The **delta** for DG-Voice's settings page. The shared shell lives in
+   @0xnullai/ui/styles/settings.css; only what differs from it stays here: a few
+   padding/margin tweaks and the inline-field layout unique to voice. */
 
 /* Settings full-screen two-column layout — ported verbatim in spirit from
    DG-Agent's app.css (`.settings-*`), narrowed to the tabs DG-Voice ships.

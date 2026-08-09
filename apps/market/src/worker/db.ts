@@ -1,6 +1,6 @@
 import type { ItemType, MarketItem } from '../shared/schema';
 
-// D1 行 → MarketItem。content/tags 反序列化。
+// D1 row -> MarketItem. content/tags are deserialized.
 interface ItemRow {
   id: string;
   type: string;
@@ -29,7 +29,7 @@ export function rowToItem(row: ItemRow): MarketItem {
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
-    // 不外泄哈希本身，仅告诉前端这条是否被口令保护。
+    // Never leak the hash itself, only tell the frontend whether this item is key-protected.
     locked: !!row.edit_key_hash,
   };
 }
@@ -86,7 +86,8 @@ export interface InsertItem {
   content: unknown;
   ipHash: string;
   createdAt: number;
-  // 上传时设的编辑口令哈希；未设则 undefined（条目公开可编辑）。
+  // Hash of the edit key set at upload time; undefined when none was set (the item is
+  // publicly editable).
   editKeyHash?: string;
 }
 
@@ -113,7 +114,7 @@ export async function insertItem(db: D1Database, item: InsertItem): Promise<void
   await db.prepare(INSERT_SQL).bind(...insertBinds(item)).run();
 }
 
-// 批量插入：一次 D1 batch，原子提交（全部成功或全部回滚）。
+// Batch insert: a single D1 batch, committed atomically (all succeed or all roll back).
 export async function insertItems(db: D1Database, items: InsertItem[]): Promise<void> {
   if (items.length === 0) return;
   const stmt = db.prepare(INSERT_SQL);
@@ -129,7 +130,7 @@ export async function incrementViews(db: D1Database, id: string): Promise<void> 
 }
 
 export async function reportItem(db: D1Database, id: string): Promise<void> {
-  // reports 达到阈值自动隐藏，等待管理员复核。
+  // Once reports reaches the threshold the item is hidden automatically, pending admin review.
   await db
     .prepare('UPDATE items SET reports = reports + 1, hidden = CASE WHEN reports + 1 >= 5 THEN 1 ELSE hidden END WHERE id = ?')
     .bind(id)
@@ -140,8 +141,8 @@ export async function adminDelete(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
 }
 
-// 取条目的编辑口令哈希用于鉴权：返回 null 表示条目不存在；
-// { hash: null } 表示存在但未设口令（公开可编辑）。
+// Fetch an item's edit key hash for authentication: null means the item does not exist;
+// { hash: null } means it exists but has no key set (publicly editable).
 export async function getEditKeyHash(
   db: D1Database,
   id: string,
@@ -153,7 +154,8 @@ export async function getEditKeyHash(
   return row ? { hash: row.edit_key_hash } : null;
 }
 
-// 改条目元数据：列名取自固定白名单，值已规整（空 → null）。
+// Change item metadata: column names come from a fixed allowlist, values are already
+// normalized (empty -> null).
 export interface ItemPatchRow {
   name?: string;
   description?: string | null;
@@ -180,7 +182,7 @@ export async function updateItemMeta(db: D1Database, id: string, patch: ItemPatc
   return (res.meta.changes ?? 0) > 0;
 }
 
-// 限流：统计同一来源近 windowMs 内的上传数。
+// Rate limiting: count how many uploads the same source made within the last windowMs.
 export async function recentUploadCount(
   db: D1Database,
   ipHash: string,

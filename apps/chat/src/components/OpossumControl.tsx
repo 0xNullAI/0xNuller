@@ -11,7 +11,7 @@ interface OpossumControlProps {
     action: CmdAction,
     params?: Omit<DeviceCommand, 'action'>,
   ) => void;
-  /** 与 Coyote 共用的安全上限（0-200），见 DeviceSafetyButton 的说明。 */
+  /** The safety limits shared with the Coyote (0-200), see the notes in DeviceSafetyButton. */
   limitA: number;
   limitB: number;
 }
@@ -20,7 +20,8 @@ const RING_R = 40;
 const RING_C = 2 * Math.PI * RING_R;
 const BURST_STRENGTH_RATIO = 0.8;
 
-/** 与 MemberControl 里的 RepeatButton 同样的长按连发模式，独立实现以保持 OpossumControl 自包含。 */
+/** Same press-and-hold auto-repeat behavior as the RepeatButton in MemberControl; implemented
+ *  separately to keep OpossumControl self-contained. */
 function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval = 100) {
   const timerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -106,10 +107,11 @@ function IntensityRing({ label, value, limit }: { label: string; value: number; 
 }
 
 /**
- * Opossum（负鼠双通道振动控制器）控制面板。以 MemberControl 的双通道强度环
- * 作为模板改造：范围 0-200（复用 Coyote 的 limitA/limitB 安全上限，而不是
- * 单独一套上限 UI —— 见 DeviceSafetyButton 的说明），没有波形/频率概念所以
- * 没有波形 Tab，只有直接强度 +/- 和一个"一键脉冲"便捷按钮。
+ * Control panel for the Opossum (dual-channel vibration controller). Adapted from
+ * MemberControl's dual-channel strength rings: range 0-200 (reusing the Coyote's limitA/limitB
+ * safety limits rather than a second limit UI of its own — see the notes in DeviceSafetyButton).
+ * It has no notion of waveforms or frequency, so there is no waveform tab, just direct
+ * strength +/- and a one-tap burst button.
  */
 export function OpossumControl({
   peerId,

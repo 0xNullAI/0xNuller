@@ -55,7 +55,8 @@ export function useWaveforms() {
     );
   }, []);
 
-  // 从市场导入：映射成 WaveformDefinition（frames 原样透传），按 market- 前缀 id 去重后持久化。
+  // Import from the market: map to a WaveformDefinition (frames passed through as-is), dedupe by
+  // the market- prefixed id, then persist.
   const addMarketWaveform = useCallback((item: MarketItem) => {
     const waveform = marketItemToWaveform(item);
     setCustomWaveforms((prev) =>
@@ -63,7 +64,7 @@ export function useWaveforms() {
     );
   }, []);
 
-  // builtin → 隐藏到 localStorage；custom → 真删
+  // builtin → hide it via localStorage; custom → actually delete it
   const removeWaveform = useCallback((id: string) => {
     if (BUILTIN_WAVEFORMS.some((w) => w.id === id)) {
       setHiddenBuiltinIds((prev) => (prev.includes(id) ? prev : [...prev, id]));

@@ -1,17 +1,22 @@
 /**
- * 密码哈希。
+ * Password hashing.
  *
- * Workers 运行时只有 WebCrypto，没有 Argon2id / scrypt / bcrypt。可用的最好选择是
- * PBKDF2-SHA256，按 OWASP 现行建议取 210,000 轮。这比 Argon2id 弱——它对 GPU 与
- * ASIC 的抵抗力差得多——但在这个运行时里没有更好的原生选项，而引入 WASM 版 Argon2
- * 会给一个免费额度的 Worker 增加可观的冷启动与 CPU 时间。
+ * The Workers runtime only has WebCrypto — no Argon2id / scrypt / bcrypt. The best
+ * available choice is PBKDF2-SHA256 at 210,000 iterations, per current OWASP
+ * guidance. This is weaker than Argon2id — far less resistant to GPUs and ASICs —
+ * but there is no better native option in this runtime, and pulling in a WASM build
+ * of Argon2 would add considerable cold-start and CPU time to a Worker on the free
+ * tier.
  *
- * 这个取舍必须被记住：如果哪天库泄露了，PBKDF2 的离线爆破成本远低于 Argon2id。
- * 缓解手段是别处的——强制最小密码长度、登录限流、以及最重要的一条：**账号永远
- * 不能仅凭登录态获得设备控制权**，所以盗号的收益本身就是有限的。
+ * This trade-off has to be remembered: if the database ever leaks, offline cracking
+ * of PBKDF2 costs far less than Argon2id. The mitigations live elsewhere — an
+ * enforced minimum password length, login rate limiting, and most importantly
+ * **an account can never obtain device control from a login alone**, so the payoff
+ * from a stolen account is inherently limited.
  *
- * 存储格式：`pbkdf2$<轮数>$<base64 盐>$<base64 派生密钥>`
- * 轮数写进字符串，将来提高轮数时老密码仍可验证，并在下次登录成功时静默升级。
+ * Storage format: `pbkdf2$<iterations>$<base64 salt>$<base64 derived key>`
+ * The iteration count is written into the string so that when it is raised later,
+ * old hashes still verify and are silently upgraded on the next successful login.
  */
 
 const ITERATIONS = 210_000;
@@ -50,7 +55,10 @@ export async function hashPassword(password: string): Promise<string> {
 
 export interface VerifyResult {
   ok: boolean;
-  /** 存储用的轮数低于当前标准时为 true，调用方应在登录成功后重新哈希。 */
+  /**
+   * True when the stored iteration count is below the current standard; the caller
+   * should re-hash after a successful login.
+   */
   needsUpgrade: boolean;
 }
 
@@ -66,7 +74,10 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return { ok: timingSafeEqual(actual, expected), needsUpgrade: iterations < ITERATIONS };
 }
 
-/** 定长比较。用按位或累积差异，不提前返回——避免用比较耗时反推密码前缀。 */
+/**
+ * Constant-time compare. Accumulates the difference with bitwise OR and never
+ * returns early — otherwise the comparison time would leak the password prefix.
+ */
 export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

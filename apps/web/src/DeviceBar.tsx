@@ -9,15 +9,21 @@ import type { DeviceSummary } from '@dg-kit/safety';
 import { BatteryIcon } from '@0xnullai/ui';
 
 /**
- * 设备栏。连上设备后出现在内容区最上方，停止按钮在最左。
+ * The device bar. It appears at the very top of the content area once a device is
+ * connected, with the stop button at the far left.
  *
- * **显隐只看「有没有已连接的设备」这一个信号。** 不看租约、不看「是否正在输出」。
- * 把它绑在输出状态上意味着任何一处状态判断出错（订阅漏更新、刚撤销租约但设备还在
- * 跑）都会让停止按钮在最需要它的时刻消失。宁可长期显示一个可能停了空设备的按钮。
+ * **Visibility keys off exactly one signal: whether any device is connected.** Not
+ * the lease, not whether output is currently running. Tying it to output state
+ * would mean any single state misjudgment (a missed subscription update, a lease
+ * just revoked while the device is still running) makes the stop button disappear
+ * at the moment it is needed most. Better to keep showing a button that may end up
+ * stopping an idle device.
  *
- * 轮询而不是纯事件驱动，理由同上：`subscribeSafetySessions` 只在模块挂载/卸载时触发，
- * 电量、强度、连接状态的变化不经过它。漏一次更新的代价是用户看到过期的设备状态——
- * 而这正是他们判断「现在安不安全」的依据。
+ * Polling rather than pure event-driven updates, for the same reason:
+ * `subscribeSafetySessions` only fires when a module mounts/unmounts, and changes
+ * to battery, intensity or connection state do not go through it. The cost of
+ * missing an update is that the user sees stale device state — and that is exactly
+ * what they use to judge whether things are safe right now.
  */
 
 const POLL_MS = 1000;
@@ -86,7 +92,8 @@ export function DeviceBar() {
 
   return (
     <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-      {/* 停止在最左（阅读顺序的最前）。它是这条栏存在的首要理由，不是附属功能。 */}
+      {/* Stop goes at the far left (first in reading order). It is the primary reason
+          this bar exists, not an accessory feature. */}
       <button
         type="button"
         onClick={async () => {

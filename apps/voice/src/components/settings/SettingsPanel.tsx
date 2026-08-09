@@ -225,7 +225,7 @@ export function SettingsWorkspace(props: SettingsPanelProps) {
   );
 }
 
-// GitHub 官方 mark — lucide-react 已移除 Github 图标，这里手写一个 SVG
+// Official GitHub mark — lucide-react dropped its Github icon, so this is a hand-written SVG
 function GitHubMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>

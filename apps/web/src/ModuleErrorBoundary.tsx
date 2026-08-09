@@ -3,14 +3,17 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { stopAllSafetySessions } from '@dg-kit/safety';
 
 /**
- * 把模块的崩溃关在模块里。
+ * Keeps a module's crash contained inside that module.
  *
- * 没有它的时候，任何一个模块在渲染期抛错都会让 React 卸载整棵树——外壳顶栏跟着消失，
- * 页面看上去还在（DOM 残留），但什么都点不动。**其中包括全局急停按钮。**
- * 设备正在输出时模块崩掉，用户就失去了那个「一个动作可达」的停止入口。
+ * Without it, a throw during any module's render makes React unmount the entire
+ * tree — the shell's top bar goes with it, the page still looks present (leftover
+ * DOM) but nothing responds to clicks. **That includes the global emergency stop
+ * button.** If a module crashes while a device is running, the user loses the stop
+ * entry point that is supposed to be one action away.
  *
- * 所以这里不只是显示一个错误页：捕获的第一件事是停掉所有已注册的设备会话。崩溃的
- * 模块已经不可信了，它自己的停止逻辑也未必还能跑，宁可多停几个空的。
+ * So this is not just an error page: the first thing it does on catch is stop every
+ * registered device session. A crashed module can no longer be trusted, and its own
+ * stop logic may not run anymore either — better to stop a few idle ones too.
  */
 
 interface Props {
@@ -31,8 +34,10 @@ export class ModuleErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // 崩溃时设备可能仍在输出，而这个模块的停止按钮已经随它一起消失了。
-    // 失败也不能让边界本身再抛——那会把崩溃升级成整棵树卸载，正是要防的事。
+    // A device may still be running when the crash happens, and this module's stop
+    // button has already gone down with it.
+    // A failure here must not let the boundary itself throw — that would escalate the
+    // crash into an unmount of the whole tree, exactly what this is here to prevent.
     void stopAllSafetySessions().catch(() => undefined);
     console.error(`[shell] 模块 ${this.props.moduleId} 渲染失败`, error, info.componentStack);
   }

@@ -2,10 +2,12 @@ import type { ComponentType } from 'react';
 import { lazy } from 'react';
 
 /**
- * 模块注册表。每个模块是自己源码树里的根组件，外壳只负责按路由挂载。
- * lazy 让每个模块连同它的 CSS 单独成块——只有真正打开过的模块才会被下载。
+ * The module registry. Each module is the root component of its own source tree;
+ * the shell only mounts them by route. lazy puts each module and its CSS into a
+ * chunk of its own — only modules that were actually opened get downloaded.
  *
- * 名字不带 DG 前缀：软件叫 0xNuller，这些是它的模块。
+ * The names carry no DG prefix: the software is called 0xNuller and these are its
+ * modules.
  */
 export interface ModuleRoute {
   id: string;
@@ -14,7 +16,7 @@ export interface ModuleRoute {
   Component: ComponentType;
 }
 
-/** 应用切换器里的四项。 */
+/** The four entries in the app switcher. */
 export const MODULES: ModuleRoute[] = [
   {
     id: 'agent',

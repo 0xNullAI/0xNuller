@@ -17,12 +17,15 @@ export default defineConfig({
     __BUILD_ID__: JSON.stringify(buildId),
   },
   resolve: {
-    // React 必须全仓只有一份实例。Market 曾经声明 react@18 而其余是 19，npm 无法提升，
-    // 结果是它的 chunk 拿到第二个 React 实例、useState 读到 null dispatcher 直接崩。
+    // There must be exactly one React instance across the whole repo. Market once
+    // declared react@18 while everything else was 19, npm could not hoist it, and
+    // the result was that its chunk got a second React instance and useState read
+    // a null dispatcher and crashed outright.
     dedupe: ['react', 'react-dom'],
     alias: {
-      // 模块内部别名。合并前各模块都用 `@`，塞进同一个构建会互相撞车，
-      // 所以改成各自的前缀，这里必须与 apps/web/vite.config.ts 保持一致。
+      // Module-internal aliases. Before the merge every module used `@`, which
+      // collides once they are packed into a single build, so each got its own
+      // prefix; these must stay consistent with apps/web/vite.config.ts.
       '@agent': r('../../apps/agent/src'),
       '@voice': r('../../apps/voice/src'),
       '@chat': r('../../apps/chat/src'),

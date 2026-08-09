@@ -3,17 +3,22 @@ import type { DeviceClient, DeviceState } from '@dg-agent/core';
 import { wrapWithLifecycleSafety } from './lifecycle-safety';
 
 /**
- * 安卓生命周期安全网。
+ * Android lifecycle safety net.
  *
- * 这是**真机之外能验到的最后一层**：操作系统真的会不会发出这些事件，只有装到手机上
- * 才知道；但「事件发生时我们是否停下设备」在这里可以完整验证。
+ * This is **the last layer that can be verified off a real device**: whether the
+ * OS actually emits these events can only be learned by installing on a phone,
+ * but "do we stop the device when the event fires" is fully verifiable here.
  *
- * 为什么它比浏览器端更要紧：郊狼 V3 是状态保持的——BLE 断开或者不再收到 B0 包时，
- * 设备会**保持在最后一次下发的强度上**。浏览器里后台标签页的定时器还在跑（被节流但
- * 活着），每 100ms 一个 B0，用户回来一按停止就停了。安卓上 WebView 被挂起，定时器
- * 全停，设备就那样一直跑着，直到用户回到应用或者 GATT 连接自己掉线。
+ * Why it matters more here than on the browser side: Coyote V3 is
+ * state-retentive — when BLE drops or no further B0 packets arrive, the device
+ * **stays at the last commanded strength**. In a browser a backgrounded tab's
+ * timers keep running (throttled but alive), one B0 every 100ms, so the user
+ * comes back, presses stop, and it stops. On Android the WebView is suspended,
+ * every timer halts, and the device just keeps running until the user returns
+ * to the app or the GATT connection drops on its own.
  *
- * 所以这里漏一个事件，代价是「锁屏之后设备一直在输出」。
+ * So missing one event here costs "the device keeps outputting after the screen
+ * locks".
  */
 
 function fakeClient(): {
@@ -51,7 +56,7 @@ function fakeClient(): {
   };
 }
 
-/** 等一轮微任务，让 `void stop()` 的异步链跑完。 */
+/** Wait one turn so the `void stop()` async chain runs to completion. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 let fake: ReturnType<typeof fakeClient>;
@@ -117,7 +122,8 @@ describe('安卓生命周期安全网', () => {
 
     hide();
     await tick();
-    // stopping 标志必须在每次结束后复位，否则只有第一次锁屏会停。
+    // The stopping flag must be reset after every run, otherwise only the first
+    // screen lock stops the device.
     expect(fake.stops()).toBe(2);
   });
 
@@ -129,8 +135,9 @@ describe('安卓生命周期安全网', () => {
     const w = wrapWithLifecycleSafety(boom.client);
     boom.setConnected(true);
 
-    // 未捕获的 Promise 拒绝会变成全局错误。设备本来就可能已经不可达，
-    // 这个方向的失败必须被吞掉——断言的是「没有拒绝逃出去」，不是「tick 返回了什么」。
+    // An unhandled promise rejection turns into a global error. The device may
+    // already be unreachable anyway, so failures in this direction must be
+    // swallowed — the assertion is "no rejection escaped", not "what tick returned".
     const rejections: unknown[] = [];
     const onRejection = (e: PromiseRejectionEvent) => rejections.push(e.reason);
     window.addEventListener('unhandledrejection', onRejection);
@@ -156,9 +163,11 @@ describe('安卓生命周期安全网', () => {
     const withExtra = Object.assign(fakeClient().client, { connectDevice });
     const w = wrapWithLifecycleSafety(withExtra);
 
-    // 这个包装用显式对象字面量构造返回值（刻意的：展开类实例会丢原型方法），
-    // 所以没列进去的方法会被静默丢掉。connectDevice 就曾经这样丢过，表现是
-    // 每一次通过统一选择器连郊狼都报「当前环境不支持连接郊狼设备」。
+    // This wrapper builds its return value as an explicit object literal
+    // (deliberately: spreading a class instance drops prototype methods), so any
+    // method not listed there is silently dropped. connectDevice was dropped
+    // exactly that way once, and the symptom was that every Coyote connection
+    // made through the unified picker failed with 「当前环境不支持连接郊狼设备」.
     expect(typeof w.connectDevice).toBe('function');
     await w.connectDevice?.({} as never, {} as never);
     expect(connectDevice).toHaveBeenCalled();

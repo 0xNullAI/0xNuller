@@ -1,9 +1,10 @@
-/* 基础样式（reset / 排版 / 表单 / 滚动条 / 动画）来自 @0xnullai/ui。
-   这里原本重造了一份 body reset、第三套滚动条（6px 常显）和一个位移 8px 的
-   fade-up——后者与共享的 10px 同名，keyframes 名全局唯一，谁后加载谁通吃，
-   入场动画的位移会随加载顺序变化。 */
+/* The base styles (reset / typography / forms / scrollbar / animations) come from
+   @0xnullai/ui. This file used to re-create its own body reset, a third scrollbar
+   (6px, always visible) and a fade-up with an 8px offset — that last one shares its
+   name with the shared 10px one, keyframes names are global, whoever loads last
+   wins, and the entrance animation's offset varies with load order. */
 
-/* 页面抖动动画 */
+/* Page shake animation */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
@@ -11,18 +12,19 @@
 }
 .shake-anim { animation: shake 0.6s ease-in-out; }
 
-/* 消息入场动画 */
+/* Message entrance animation */
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-msg-in { animation: msg-in 0.25s ease-out; }
 
-/* fade-up 与 .animate-fade-up 来自 @0xnullai/ui/styles/animations.css。
-   这里原本另有一份同名 keyframes（位移 8px vs 共享的 10px）——keyframes 名是
-   全局唯一的，谁后加载谁通吃，入场动画的位移会随加载顺序变化。 */
+/* fade-up and .animate-fade-up come from @0xnullai/ui/styles/animations.css.
+   This file used to carry a second keyframes of the same name (8px offset vs the
+   shared 10px) — keyframes names are global, whoever loads last wins, and the
+   entrance animation's offset varies with load order. */
 
-/* 手机 Tab 栏 */
+/* Mobile tab bar */
 .mobile-tab {
   flex: 1;
   padding: 10px 0;
@@ -40,7 +42,7 @@
   border-bottom-color: var(--accent);
 }
 
-/* 成员卡片头像（首字母） */
+/* Member card avatar (first letter) */
 .avatar {
   display: flex;
   align-items: center;
@@ -55,7 +57,7 @@
   flex-shrink: 0;
 }
 
-/* 强度滑条 */
+/* Strength slider */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
@@ -90,7 +92,7 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* ==================== 通道强度圆环 ==================== */
+/* ==================== Channel strength ring ==================== */
 .channel-ring {
   display: flex;
   flex-direction: column;
@@ -108,7 +110,7 @@ input[type='range']::-moz-range-thumb {
   border-color: var(--accent);
 }
 
-/* 强度加减按钮 */
+/* Strength +/- buttons */
 .strength-btn {
   display: flex;
   align-items: center;
@@ -134,7 +136,7 @@ input[type='range']::-moz-range-thumb {
   transform: scale(0.92);
 }
 
-/* ==================== 波形卡片 ==================== */
+/* ==================== Waveform card ==================== */
 .wave-card {
   position: relative;
   display: flex;

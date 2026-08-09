@@ -44,11 +44,13 @@ const TURN_DETECTION = {
 function buildWsUrl(providerId: RealtimeProviderId, settings: RealtimeProviderSettings): string {
   switch (providerId) {
     case 'trial': {
-      // 统一域下的 Worker 路由（`/api/realtime`）；Worker 固定模型，并在上游那一段
-      // 把激活密钥换成真正的 xAI Key。
+      // Worker route under the unified domain (`/api/realtime`); the Worker
+      // pins the model and swaps the activation key for the real xAI key on
+      // the upstream leg.
       //
-      // **不要在这里直接用 `location.host` 拼同源地址。** 网页上没问题，但 Tauri 壳的
-      // origin 是本地 scheme，那样会连到 `wss://tauri.localhost/api/realtime`。
+      // **Do NOT build a same-origin URL from `location.host` here.** It works
+      // on the web, but the Tauri shell's origin is a local scheme, so that
+      // would connect to `wss://tauri.localhost/api/realtime`.
       return apiWsUrl('/api/realtime');
     }
     case 'xai':

@@ -9,7 +9,7 @@ interface Props {
   onUpdated?: (item: MarketItem) => void;
 }
 
-// 记住每条曾用过的编辑口令，避免重复编辑时反复输入。
+// Remember the edit key already used for each item so repeated edits don't need it retyped.
 const EDIT_KEY_STORE = 'dg-market-edit-key';
 
 function download(filename: string, text: string): void {
@@ -25,10 +25,10 @@ function download(filename: string, text: string): void {
 export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
   const [reported, setReported] = useState(false);
-  // 当前展示的（可被管理员编辑覆盖的）元数据快照。
+  // Snapshot of the metadata currently on screen (an admin edit can overwrite it).
   const [view, setView] = useState<MarketItem>(item);
 
-  // —— 编辑态 ——
+  // —— edit state ——
   const [editing, setEditing] = useState(false);
   const [editKey, setEditKey] = useState(() => localStorage.getItem(`${EDIT_KEY_STORE}:${item.id}`) ?? '');
   const [eName, setEName] = useState(item.name);
@@ -41,7 +41,7 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
   const hasIcon = view.type !== 'waveform';
 
-  // Agent 可直接导入的 JSON 形状。
+  // The JSON shape Agent can import directly.
   const exportJson = JSON.stringify(
     view.type === 'waveform'
       ? { name: view.name, description: view.description, frames: (item.content as WaveformContent).frames }

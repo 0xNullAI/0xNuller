@@ -13,7 +13,7 @@ function genId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 }
 
-/** 市场多人场景条目 → 房间 Scene（补本地角色 id）。 */
+/** Market multiplayer-scene entry → room Scene (fills in local role ids). */
 function toScene(item: MarketItem): Scene {
   const c = item.content as MarketMultiSceneContent;
   return {

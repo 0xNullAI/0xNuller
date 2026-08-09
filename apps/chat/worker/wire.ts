@@ -1,126 +1,129 @@
-// DG-Chat WebSocket wire 协议。
-// 原 MQTT 用 topic 区分消息类型，现折叠进单条 WS 消息的 `t` 字段，由 RoomDO 路由。
-// 该文件为纯类型 + 常量，无运行时依赖，可被 Worker 与（参照）前端共用。
+// DG-Chat WebSocket wire protocol.
+// MQTT used to distinguish message types by topic; that is now folded into the `t` field
+// of a single WS message and routed by RoomDO.
+// This file is pure types + constants with no runtime dependencies, so it can be shared by
+// the Worker and (by reference) the frontend.
 
-/** 房间内消息类型。 */
+/** Message types inside a room. */
 export type WireType =
-  | 'hello' // client→DO，加入首帧：声明昵称 / 是否公开 / 房间名
-  | 'chat' // 聊天消息（持久化进历史，含可选 media 引用）
-  | 'sf' // state.fast：强度/波形/开火，广播
-  | 'ss' // state.slow：名字/电量/队列/目录，广播
-  | 'presence' // 昵称心跳（轻量，广播）
-  | 'cmd' // 设备命令，定向（to=peerId）
-  | 'wave' // 波形传输，定向（to=peerId）
-  | 'leave' // 主动离开
-  | 'scene' // 场景：房主设/改（client→DO）；当前场景+host 广播（DO→client）
-  | 'role' // 角色：认领/释放（client→DO）；角色→peer 分配广播（DO→client）
-  | 'history' // DO→client：新人加入回放
-  | 'sys'; // DO→client：连接级 presence（joined/left）
+  | 'hello' // client→DO, first frame on join: declares nickname / whether public / room name
+  | 'chat' // chat message (persisted into history, with an optional media reference)
+  | 'sf' // state.fast: strength/waveform/firing, broadcast
+  | 'ss' // state.slow: name/battery/queue/catalog, broadcast
+  | 'presence' // nickname heartbeat (lightweight, broadcast)
+  | 'cmd' // device command, directed (to=peerId)
+  | 'wave' // waveform transfer, directed (to=peerId)
+  | 'leave' // voluntary leave
+  | 'scene' // scene: the host sets/changes it (client→DO); current scene + host broadcast (DO→client)
+  | 'role' // role: claim/release (client→DO); role→peer assignment broadcast (DO→client)
+  | 'history' // DO→client: replay for a newly joined peer
+  | 'sys'; // DO→client: connection-level presence (joined/left)
 
-/** 媒体引用（图片/语音）。实体存 R2，消息只带引用。 */
+/** Media reference (image/audio). The blob lives in R2; the message only carries the reference. */
 export interface MediaRef {
   kind: 'image' | 'audio';
-  /** R2 object id（不含房间前缀与扩展名由 mime 推断）。 */
+  /** R2 object id (without the room prefix; the extension is inferred from mime). */
   id: string;
   mime: string;
   size: number;
-  /** 语音时长（毫秒），图片可带宽高。 */
+  /** Audio duration in milliseconds; images may carry width/height. */
   durationMs?: number;
   w?: number;
   h?: number;
 }
 
-/** 持久化的聊天消息（DO SQLite 行 ↔ history 回放 ↔ chat 广播体）。
- *  注意：`t` 是信封的消息类型（'chat'），时间戳用 `ts`，二者不可混用。 */
+/** Persisted chat message (DO SQLite row ↔ history replay ↔ chat broadcast body).
+ *  Note: `t` is the envelope's message type ('chat') and the timestamp is `ts`; the two
+ *  must not be mixed up. */
 export interface WireChat {
-  /** 消息类型标记（广播体里恒为 'chat'）。 */
+  /** Message type marker (always 'chat' in the broadcast body). */
   t?: 'chat';
   id: string;
-  /** 发送者 peerId（DO 注入，可信）。 */
+  /** Sender peerId (injected by the DO, therefore trusted). */
   _from?: string;
-  /** 发送者昵称快照。 */
+  /** Snapshot of the sender's nickname. */
   n: string;
-  /** 文本正文（媒体消息可为空）。 */
+  /** Text body (may be empty for a media message). */
   x?: string;
-  /** 媒体引用。 */
+  /** Media reference. */
   m?: MediaRef;
-  /** @ 提及的成员（peerId + 昵称快照）。 */
+  /** Members that were @-mentioned (peerId + nickname snapshot). */
   mentions?: { peerId: string; n: string }[];
-  /** 发送者当时的角色头衔快照（无则普通成员）。 */
+  /** Snapshot of the sender's role title at the time (absent = an ordinary member). */
   senderRole?: string;
-  /** 发送时间戳（毫秒）。 */
+  /** Send timestamp in milliseconds. */
   ts: number;
 }
 
-/** 场景角色定义。 */
+/** Scene role definition. */
 export interface SceneRole {
   id: string;
-  /** 角色名（= 成员头衔）。 */
+  /** Role name (= the member's title). */
   name: string;
-  /** 角色描述 / 人设：既展示给成员，也作为该角色交给 AI 时的人设 prompt。 */
+  /** Role description / persona: shown to members, and also used as the persona prompt when the role is handed to the AI. */
   description?: string;
-  /** 该角色是否可由 AI 扮演（场景上传时标注；房主据此显示「交给 AI」入口）。 */
+  /** Whether this role can be played by the AI (flagged when the scene is uploaded; the host uses it to show the 「交给 AI」 entry point). */
   aiPlayable?: boolean;
 }
 
-/** 房间场景（世界观 + 角色 + 玩法元数据）。 */
+/** Room scene (setting + roles + gameplay metadata). */
 export interface Scene {
   id: string;
   name: string;
-  /** 世界观/背景描述。 */
+  /** Setting / background description. */
   setting: string;
   roles: SceneRole[];
-  /** 建议玩家人数（Market 上传时填，房间可选展示）。 */
+  /** Suggested player count (filled in on Market upload; the room may optionally show it). */
   playerCount?: { min?: number; max?: number };
 }
 
-/** DO→client：当前场景 + 房主。scene 为 null 表示未设场景。 */
+/** DO→client: current scene + host. A null scene means no scene has been set. */
 export interface WireScene {
   t: 'scene';
   scene: Scene | null;
   host: string; // hostPeerId
 }
 
-/** DO→client：角色→peer 的认领分配（权威态）。 */
+/** DO→client: role→peer claim assignments (authoritative state). */
 export interface WireRole {
   t: 'role';
   assignments: Record<string, string>; // roleId -> peerId
 }
 
-/** 客户端发往 DO 的信封（除 hello 外，业务字段扁平在顶层）。 */
+/** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */
 export interface WireInbound {
   t: WireType;
-  /** 定向消息的目标 peerId（cmd/wave）。 */
+  /** Target peerId for a directed message (cmd/wave). */
   to?: string;
-  /** 任意业务字段（chat 的 x/m、sf/ss 的状态字段、cmd 的 a/c/v…）。 */
+  /** Arbitrary business fields (chat's x/m, sf/ss state fields, cmd's a/c/v, ...). */
   [k: string]: unknown;
 }
 
-/** DO 发往客户端的 sys 帧。 */
+/** sys frame sent from the DO to the client. */
 export interface WireSys {
   t: 'sys';
   kind: 'joined' | 'left';
   peerId: string;
 }
 
-/** DO 发往客户端的 history 帧。 */
+/** history frame sent from the DO to the client. */
 export interface WireHistory {
   t: 'history';
   messages: WireChat[];
 }
 
-/** 单例大厅 DO 的固定名字。 */
+/** Fixed name of the singleton lobby DO. */
 export const LOBBY_NAME = 'v1';
 
-/** 房间空置后清理的宽限期（毫秒）。 */
+/** Grace period before an emptied room is cleaned up (milliseconds). */
 export const ROOM_GRACE_MS = 10 * 60 * 1000;
 
-/** 大厅常驻的官方公开讨论房：始终公开、永不清理、空房也显示在大厅顶部。 */
+/** The official public discussion room permanently resident in the lobby: always public, never cleaned up, listed at the top of the lobby even when empty. */
 export { RESERVED_ROOM_CODE } from '../shared/room-constants.js';
 export const RESERVED_ROOM_NAME = '0xNullAI 公开讨论区';
 
-/** 上传媒体大小上限（字节）。 */
+/** Upper bound on uploaded media size (bytes). */
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
 
-/** 允许的媒体 MIME 前缀。 */
+/** Allowed media MIME prefixes. */
 export const ALLOWED_MEDIA_PREFIXES = ['image/', 'audio/'];

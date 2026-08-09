@@ -23,9 +23,11 @@ export async function fetchItems(query: ListQuery): Promise<MarketItem[]> {
   if (query.sort) params.set('sort', query.sort);
   if (query.limit) params.set('limit', String(query.limit));
   if (query.offset) params.set('offset', String(query.offset));
-  // req() 在「HTTP 200 但响应不是预期 JSON」时会返回空对象（例如被某个前端路由
-  // 兜底成了 index.html），解构出的 items 就是 undefined，下游 items.length 直接
-  // 抛错整页白屏。这里兜底成空数组——列表拿不到就显示「还没有内容」，而不是崩掉。
+  // req() returns an empty object when the response is "HTTP 200 but not the JSON we
+  // expect" (for example when some frontend route fell back to index.html), so the
+  // destructured items is undefined and the downstream items.length throws, whiting out
+  // the whole page. Fall back to an empty array here — if the list can't be fetched we
+  // show 「还没有内容」 instead of crashing.
   const { items } = await req<{ items?: MarketItem[] }>(`/api/items?${params}`);
   return items ?? [];
 }
@@ -43,7 +45,7 @@ export async function uploadItem(payload: UploadPayload): Promise<{ id: string }
   });
 }
 
-// 批量上传：一次提交多条，返回成功条数。
+// Batch upload: submit several items at once, returns how many succeeded.
 export async function batchUploadItems(items: BatchUploadPayload): Promise<{ inserted: number }> {
   return req('/api/items/batch', {
     method: 'POST',
@@ -64,9 +66,10 @@ export async function reportItem(id: string): Promise<void> {
   await req(`/api/items/${id}/report`, { method: 'POST' });
 }
 
-// 改条目元数据。未设口令的条目无需 key；设了口令则传上传时的口令。
-// 同一值同时作 X-Edit-Key 与 X-Admin-Key 发送：普通用户走条目口令，
-// 管理员输入 ADMIN_KEY 即可覆盖编辑任何条目。
+// Change item metadata. Items with no key set need no key; items with a key take the one
+// set at upload time.
+// The same value is sent as both X-Edit-Key and X-Admin-Key: ordinary users go through the
+// item's key, while an admin who types ADMIN_KEY can override and edit any item.
 export async function updateItem(id: string, patch: ItemPatch, key?: string): Promise<void> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (key) {

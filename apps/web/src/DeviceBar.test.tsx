@@ -4,14 +4,17 @@ import { registerSafetySession, type DeviceSummary } from '@dg-kit/safety';
 import { DeviceBar } from './DeviceBar';
 
 /**
- * 设备栏与停止按钮。
+ * The device bar and the stop button.
  *
- * 这些是**没有真设备就验不了**的那部分——浏览器里连不上蓝牙，所以正向情形（连上
- * 设备 → 栏出现 → 停止可点）只能在这里守住。反过来说，如果这几条挂了，真机上
- * 用户就会遇到「设备连着但找不到停止按钮」。
+ * These are the parts that **cannot be verified without a real device** — Bluetooth
+ * cannot be reached from the browser here, so the happy path (device connects → the
+ * bar appears → stop is clickable) can only be guarded here. Put the other way
+ * round: if these cases break, users on real hardware hit "the device is connected
+ * but I cannot find the stop button".
  *
- * 上一轮的教训是全局停止按钮从未渲染过而所有检查全绿。所以这里断言的是**它出现了**，
- * 不只是它的逻辑正确。
+ * The lesson of the previous round was that the global stop button was never
+ * rendered while every check stayed green. So what is asserted here is that **it
+ * shows up**, not merely that its logic is correct.
  */
 
 const cleanups: (() => void)[] = [];
@@ -92,8 +95,9 @@ describe('设备栏', () => {
       screen.getByRole('button', { name: /停止/ }).click();
     });
 
-    // 「停止」停的是所有已注册会话。只停当前模块的话，后台模块的设备还在输出，
-    // 而用户以为自己已经全停了。
+    // 「停止」 stops every registered session. If it only stopped the current module,
+    // devices belonging to background modules would still be running while the user
+    // believes everything has stopped.
     expect(stopAgent).toHaveBeenCalled();
     expect(stopChat).toHaveBeenCalled();
   });
@@ -112,7 +116,8 @@ describe('设备栏', () => {
       screen.getByRole('button', { name: /停止/ }).click();
     });
 
-    // 这正是最危险的情形：一台设备断连报错，其余的一个都停不了。
+    // This is the most dangerous case of all: one device throws because it dropped
+    // its connection, and none of the others can be stopped.
     expect(stopChat).toHaveBeenCalled();
   });
 
@@ -131,9 +136,10 @@ describe('设备栏', () => {
     const { container } = render(<DeviceBar />);
     expect(container.innerHTML).toBe('');
 
-    // 电量、强度、连接状态的变化都不经过 subscribeSafetySessions（它只在模块挂载/
-    // 卸载时触发），所以设备栏必须轮询——否则用户看到的是过期的设备状态，而那正是
-    // 他们判断「现在安不安全」的依据。
+    // Changes to battery, intensity and connection state do not go through
+    // subscribeSafetySessions (it only fires when a module mounts/unmounts), so the
+    // device bar has to poll — otherwise the user sees stale device state, and that
+    // is exactly what they use to judge whether things are safe right now.
     devices.push(COYOTE);
     await act(async () => {
       vi.advanceTimersByTime(1100);

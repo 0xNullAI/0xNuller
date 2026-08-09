@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
- * 核对所有 Worker 的路由不重叠。
+ * Check that no two Workers declare overlapping routes.
  *
- * 为什么需要它：Cloudflare 按最长前缀匹配，两个 Worker 声明了重叠的路径时不会报错
- * ——只是其中一个静默收不到请求。表现是「某个接口 404，但配置看起来是对的」。
+ * Why this is needed: Cloudflare matches on longest prefix, and two Workers
+ * declaring overlapping paths is not an error — one of them just silently stops
+ * receiving requests. The symptom is "some endpoint 404s but the config looks right".
  *
- * **配置是自动发现的，不是写死的列表。** 第一版写死了四个 Worker，结果新加的
- * dg-voice 压根没被检查——一个「专门防止漏掉」的脚本自己漏掉了一个，还报了绿。
+ * **The configs are discovered, not a hard-coded list.** The first version had four
+ * Workers hard-coded, and the newly added dg-voice was never checked at all — a
+ * script whose entire job is to prevent something being missed missed one itself,
+ * and reported green.
  *
- * 这个脚本只做静态核对，代替不了真实部署后的探活。
+ * This script only does a static check; it is no substitute for probing the real
+ * deployment.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,7 +29,10 @@ function findConfigs(dir, out = []) {
   return out;
 }
 
-/** wrangler.jsonc 有注释，wrangler.toml 是 TOML——都用正则取字段，不引依赖。 */
+/**
+ * wrangler.jsonc has comments and wrangler.toml is TOML — pull the fields out with
+ * regexes in both cases, no dependencies.
+ */
 function parse(path) {
   const text = readFileSync(path, 'utf8');
   const name = text.match(/name"?\s*[:=]\s*"([^"]+)"/)?.[1] ?? path;
@@ -35,7 +42,8 @@ function parse(path) {
 
 const workers = findConfigs(process.cwd()).map(parse);
 
-// 只有带路径的模式才可能重叠。自定义域（`example.com` 整站）单独看。
+// Only patterns with a path can overlap. Custom domains (all of `example.com`) are
+// a separate matter.
 const entries = workers.flatMap((w) =>
   w.patterns.filter((p) => p.includes('/')).map((p) => ({ worker: w.name, pattern: p })),
 );

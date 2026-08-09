@@ -15,15 +15,20 @@ import { VoiceProviderSection } from './VoiceProviderSection';
 import { ProxySection } from './ProxySection';
 
 /**
- * AI 配置。文本与语音都在这里。
+ * AI configuration. Text and voice both live here.
  *
- * 文本这份 Agent 与 Chat 共用——合并前两边各存各的，用户在一处配好到另一处还得
- * 再配一遍。语音那份是另一套端点与鉴权（realtime 协议），所以是并列的一节而不是
- * 混进同一组字段里：硬凑成一组会让两边的必填项互相污染。
+ * Agent and Chat share this text config — before the merge each side stored its
+ * own, so a user who configured it in one place had to configure it again in the
+ * other. The voice one is a separate set of endpoints and auth (the realtime
+ * protocol), so it is a sibling section rather than being mixed into the same group
+ * of fields: forcing them into one group makes the two sides' required fields
+ * pollute each other.
  *
- * 代理也放这里：它影响的正是这些模型请求。**网页端只有 HTTP 反代可行**——浏览器
- * 不允许页面自行选择 SOCKS 代理，那是操作系统层的设置。给网页端一个 SOCKS 开关等于
- * 给一个看起来能用、实际永不生效的按钮，所以这里按运行时把它禁掉并说明原因。
+ * The proxy also lives here: what it affects is exactly these model requests. **On
+ * the web only an HTTP reverse proxy is viable** — browsers do not let a page pick
+ * its own SOCKS proxy, that is an OS-level setting. Giving the web a SOCKS switch
+ * means giving it a button that looks usable but can never take effect, so it is
+ * disabled here based on the runtime, with the reason spelled out.
  */
 export function AiTab() {
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
@@ -49,12 +54,14 @@ export function AiTab() {
             value={config.providerId}
             onValueChange={(value) => {
               const next = defaultLlmConfig();
-              // 换 provider 时不要保留上一家的 key 与 baseUrl——它们在新的服务上无意义，
-              // 留着只会让「为什么报鉴权失败」变得难查。
+              // Don't keep the previous provider's key and baseUrl when switching — they are
+              // meaningless on the new service, and keeping them only makes "why is auth
+              // failing" hard to track down.
               update({ ...next, providerId: value });
             }}
-            // free 本来就在 PROVIDER_DEFINITIONS 里，不要再手工加一条——同一个 value
-            // 出现两次时 Radix 会把两个标签都渲染进触发器，显示成「免费体验免费体验」。
+            // free is already in PROVIDER_DEFINITIONS; do not add a second entry by hand —
+            // when the same value appears twice, Radix renders both labels into the trigger,
+            // showing 「免费体验免费体验」.
             options={PROVIDER_DEFINITIONS.filter((p) => p.browserSupported).map((p) => ({
               value: p.id,
               label: p.name,

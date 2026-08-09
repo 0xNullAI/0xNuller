@@ -10,11 +10,13 @@ import {
 } from '@0xnullai/settings';
 
 /**
- * 代理。
+ * Proxy.
  *
- * 界面上必须把「网页端 SOCKS 做不到」讲明白，而不是给一个禁用的输入框让用户猜。
- * 浏览器不允许页面自行选择代理——那是操作系统或浏览器层的设置，页面里的 JavaScript
- * 没有这个能力。能做的只有把请求指向自己的 HTTP 反代。
+ * The UI has to spell out that "SOCKS is impossible on the web" instead of handing
+ * the user a disabled input and letting them guess. Browsers do not let a page pick
+ * its own proxy — that is an OS- or browser-level setting, and JavaScript in the
+ * page has no such capability. All it can do is point requests at your own HTTP
+ * reverse proxy.
  */
 export function ProxySection() {
   const [proxy, setProxy] = useState<ProxySettings>(loadProxy);

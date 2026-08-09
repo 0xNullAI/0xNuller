@@ -84,12 +84,16 @@ export class DGLabDevice {
   private readonly protocol = new CoyoteProtocolAdapter();
   private readonly client: DeviceClient;
   /**
-   * 所有写入都必须经过它。
+   * Every write has to go through this.
    *
-   * 合并前这个类是全仓唯一绕开队列直写 `client.execute()` 的地方。后果是
-   * `SerialCommandQueue` 的急停插队（靠 generation 计数作废在途命令）对它完全无效——
-   * 急停之后已经排在路上的旧指令仍会落到设备上。设备所有权上提之后，同一台设备会
-   * 同时有「过队列的写」和「不过队列的写」，那是最危险的组合。
+   * Before the merge this class was the only place in the repo that bypassed
+   * the queue and wrote to `client.execute()` directly. The consequence:
+   * `SerialCommandQueue`'s emergency-stop jump-the-queue (which voids in-flight
+   * commands via a generation counter) had no effect on it whatsoever — after
+   * an emergency stop, old commands already on their way still landed on the
+   * device. Now that device ownership has been hoisted up, one and the same
+   * device would have both "writes that go through the queue" and "writes that
+   * don't" — the most dangerous combination there is.
    */
   private readonly queue: DeviceCommandQueue;
   private onStateChange: (() => void) | null = null;
@@ -163,10 +167,14 @@ export class DGLabDevice {
     this.deviceName = state.deviceName ?? '';
     this.version = this.deviceName.startsWith(V2_DEVICE_NAME_PREFIX) ? 'v2' : 'v3';
 
-    // 不再往设备写硬件上限。这里原本 setLimits(50,50) 是全仓唯一改写设备侧状态的
-    // 地方（V3 的 BF 包是持久的设备状态），于是同一台郊狼被 Chat 连过之后硬件上限
-    // 就是 50、被 Agent 连过之后是 200——谁最后连谁说了算，用户在别处调高的上限会
-    // 被这里静默压回去。上限改为纯软件钳制，取「设备上报值」与「用户设置」的较小者。
+    // The hardware cap is no longer written to the device. The setLimits(50,50)
+    // that used to be here was the only place in the repo that rewrote
+    // device-side state (V3's BF packet is persistent device state), so the same
+    // Coyote ended up with a hardware cap of 50 after Chat had connected to it
+    // and 200 after Agent had — whoever connected last wins, and a cap the user
+    // raised elsewhere got silently pushed back down here. The cap is now a pure
+    // software clamp: the smaller of "what the device reports" and "what the
+    // user set".
 
     return {
       version: this.version,
@@ -192,8 +200,10 @@ export class DGLabDevice {
    */
   setStrength(channel: 'A' | 'B', value: number): void {
     const state = this.protocol.getState();
-    // 取两者较小：设备自己上报的上限（可能是别处遗留的硬件值）与本地的软件上限。
-    // 不再写硬件，所以软件这一侧是唯一由用户控制的闸门，绝不能省。
+    // Take the smaller of the two: the cap the device itself reports (possibly a
+    // hardware value left behind by somewhere else) and the local software cap.
+    // We no longer write the hardware, so the software side is the only gate the
+    // user controls — it must never be skipped.
     const limit = Math.min(
       channel === 'A' ? state.limitA : state.limitB,
       channel === 'A' ? this.limitA : this.limitB,
@@ -240,17 +250,20 @@ export class DGLabDevice {
     void this.queue.enqueue({ type: 'stop', channel }).catch(() => undefined);
   }
 
-  /** 急停：双通道归零、停掉所有波形。 */
+  /** Emergency stop: zero both channels, stop every waveform. */
   stopAll(): void {
     this.channelA = { waveformId: null, frames: null, loop: true };
     this.channelB = { waveformId: null, frames: null, loop: true };
-    // 走队列而不是直接 client.emergencyStop()：队列的插队会 bump generation，
-    // 把已经排在路上的旧指令一并作废。直接调 client 只停当下，排队中的下一条
-    // 强度指令随后照样执行——急停之后设备又动起来。
+    // Go through the queue rather than calling client.emergencyStop() directly:
+    // the queue's jump-the-queue bumps the generation, which voids the old
+    // commands already on their way along with it. Calling the client directly
+    // only stops the present moment; the next strength command waiting in the
+    // queue still runs right after — the device starts moving again after an
+    // emergency stop.
     void this.queue.enqueue({ type: 'emergencyStop' }).catch(() => undefined);
   }
 
-  /** 更新某个通道的强度上限。只改软件侧，不写设备。 */
+  /** Update a channel's strength cap. Software side only — never written to the device. */
   setLimit(channel: 'A' | 'B', value: number): void {
     const next = clamp(Math.round(value), 0, 200);
     this.limitA = channel === 'A' ? next : this.limitA;

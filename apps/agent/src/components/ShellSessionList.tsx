@@ -3,11 +3,13 @@ import type { SessionSnapshot } from '@dg-agent/core';
 import { getSessionTitle } from '@agent/utils/ui-formatters';
 
 /**
- * 会话列表在**外壳侧边栏**里的形态。
+ * The session list as it looks inside the **shell sidebar**.
  *
- * 和 `SessionPanel` 的区别不只是样式：那个是模块自己那条侧栏的完整外壳（含标题、
- * 折叠、设置入口），这个只是一段列表——标题、分区、折叠都归外壳统一掌握。三个模块
- * 各画各的列表就又回到了「五套 UI」。
+ * The difference from `SessionPanel` is more than styling: that one is the full
+ * chrome of the module's own sidebar (title, collapse, settings entry), this one
+ * is just a list — title, section and collapsing are all owned by the shell.
+ * Three modules each drawing their own list is how we end up back at "five
+ * separate UIs".
  */
 
 export interface ShellSessionListProps {
@@ -56,8 +58,9 @@ export function ShellSessionList({
             type="button"
             onClick={() => onDelete(session.id)}
             aria-label={`删除 ${getSessionTitle(session)}`}
-            // 常显会让列表看起来像一排删除按钮；只在悬停/聚焦时出现，但键盘用户
-            // 靠 focus-visible 一样能拿到它。
+            // Always showing it would make the list look like a row of delete buttons;
+            // it only appears on hover/focus, but keyboard users still reach it through
+            // focus-visible.
             className="shrink-0 rounded-[8px] p-1.5 text-[var(--text-faint)] opacity-0 transition-opacity hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />

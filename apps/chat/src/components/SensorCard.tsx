@@ -27,12 +27,14 @@ function formatAgo(at: number | null | undefined): string {
 }
 
 /**
- * 只读传感器遥测卡片：爪印传感器展示最近的按钮/触发事件，灵猫边缘传感器展示
- * 压力数值。两者共用 MemberState.sensorKind 区分展示形式。
+ * Read-only sensor telemetry card: the paw-prints sensor shows the most recent button/trigger
+ * event, the civet-edging sensor shows a pressure reading. Both share MemberState.sensorKind
+ * to pick which presentation to use.
  *
- * 重要：这里只展示，不触发任何联动 —— 传感器事件是否应该驱动其他人的设备是
- * 一个需要专门同意/授权 UI 的功能，这一版本刻意没做（见 lib/commands.ts 里的
- * TODO 和 DeviceSession.attachSensor 里的同名说明）。
+ * Important: this only displays, it triggers no linkage — whether a sensor event should drive
+ * someone else's device is a feature that needs its own consent/authorization UI, and this
+ * version deliberately does not do it (see the TODO in lib/commands.ts and the matching note
+ * in DeviceSession.attachSensor).
  */
 export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
   if (!member.sensorKind) return null;

@@ -1,18 +1,18 @@
 import { z } from 'zod';
 
-// 与 DG-Agent / @dg-kit 的数据结构对齐：
-//   波形 WaveformDefinition.frames = [编码频率(10..240), 强度(0..100)][]
-//   场景 SavedPromptPreset = { name, icon?, prompt }
-// 市场只存可移植的核心字段，导入端自行补 id。
+// Aligned with the data structures in DG-Agent / @dg-kit:
+//   waveform WaveformDefinition.frames = [encodedFrequency(10..240), strength(0..100)][]
+//   scenario SavedPromptPreset = { name, icon?, prompt }
+// The market only stores the portable core fields; the importing side supplies its own id.
 
 export const WaveFrameSchema = z.tuple([
-  z.number().int().min(10).max(240), // 编码后频率
-  z.number().int().min(0).max(100), // 强度
+  z.number().int().min(10).max(240), // encoded frequency
+  z.number().int().min(0).max(100), // strength
 ]);
 
 export const WaveformContentSchema = z.object({
   frames: z.array(WaveFrameSchema).min(1).max(5000),
-  // 可选保留原始 .pulse 文本，便于在其它 DG-Lab 工具里复用。
+  // Optionally keep the original .pulse text so it can be reused in other DG-Lab tools.
   pulse: z.string().max(20000).optional(),
 });
 
@@ -20,26 +20,28 @@ export const ScenarioContentSchema = z.object({
   prompt: z.string().min(1).max(12000),
 });
 
-// 多人场景：世界观 + 一组角色 + 玩法元数据（人数、AI 参与方式）。
+// Multiplayer scene: setting + a set of roles + gameplay metadata (player count, how AI
+// participates).
 export const MultiSceneRoleSchema = z.object({
   name: z.string().trim().min(1).max(40),
-  // 角色描述 / 人设：展示给成员，也作为该角色交给 AI 时的人设（导入 DG-Chat 用）。
+  // Role description / persona: shown to members, and also used as the persona when this
+  // role is handed to an AI (for importing into DG-Chat).
   description: z.string().trim().max(2000).optional(),
-  // 该角色是否可由 AI 扮演。
+  // Whether this role can be played by an AI.
   aiPlayable: z.boolean().optional(),
 });
 
 export const MultiSceneContentSchema = z.object({
-  setting: z.string().trim().min(1).max(8000), // 世界观 / 背景
+  setting: z.string().trim().min(1).max(8000), // setting / background
   roles: z.array(MultiSceneRoleSchema).min(1).max(12),
-  // 建议玩家人数。
+  // Suggested player count.
   playerCount: z
     .object({
       min: z.number().int().min(1).max(50),
       max: z.number().int().min(1).max(50),
     })
     .optional(),
-  // AI 参与方式：none 纯人 / solo 单个 AI / multi 多个 AI 角色。
+  // How AI participates: none = humans only / solo = a single AI / multi = several AI roles.
   aiMode: z.enum(['none', 'solo', 'multi']).optional(),
 });
 
@@ -48,8 +50,9 @@ const baseFields = {
   description: z.string().trim().max(500).optional(),
   author: z.string().trim().max(30).optional(),
   tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
-  // 可选「编辑口令」：上传时设置后，仅知道该口令者（或管理员）能再编辑此条目；
-  // 留空（或不传）则该条目公开可编辑。仅在上传时使用，不会随条目返回给前端。
+  // Optional 「编辑口令」: once set at upload time, only someone who knows that key (or an
+  // admin) can edit this item again; left empty (or omitted) the item is publicly editable.
+  // Used only at upload time, never returned to the frontend along with the item.
   editKey: z.string().trim().max(100).optional(),
 };
 
@@ -73,12 +76,15 @@ export const UploadSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-// 批量上传：一次提交多条（最多 50）。公开可用，不再有人机验证。
+// Batch upload: submit several items at once (at most 50). Publicly available, no more
+// human verification.
 export const BatchUploadSchema = z.array(UploadSchema).min(1).max(50);
 export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 
-// 编辑条目：仅元数据，全部可选；传空串/空数组表示清空该字段。
-// 鉴权在传输层（上传口令哈希 / 管理员口令），不在 payload 里。
+// Edit an item: metadata only, everything optional; an empty string / empty array means
+// clear that field.
+// Authentication happens at the transport layer (upload key hash / admin key), not in the
+// payload.
 export const ItemPatchSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
@@ -96,7 +102,7 @@ export type ScenarioContent = z.infer<typeof ScenarioContentSchema>;
 export type MultiSceneContent = z.infer<typeof MultiSceneContentSchema>;
 export type UploadPayload = z.infer<typeof UploadSchema>;
 
-// 列表/详情接口返回给前端的形状。
+// The shape the list/detail endpoints return to the frontend.
 export interface MarketItem {
   id: string;
   type: ItemType;
@@ -109,6 +115,7 @@ export interface MarketItem {
   downloads: number;
   views: number;
   createdAt: number;
-  // true = 上传时设了编辑口令，再编辑需口令；false/缺省 = 公开可编辑。
+  // true = an edit key was set at upload time, editing again requires that key;
+  // false/absent = publicly editable.
   locked?: boolean;
 }

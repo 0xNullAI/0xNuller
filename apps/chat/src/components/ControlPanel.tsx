@@ -25,9 +25,9 @@ interface ControlPanelProps {
   selfState: MemberState;
   selfLimitA: number;
   selfLimitB: number;
-  /** 自己的角色头衔。 */
+  /** Your own role title. */
   selfRoleName?: string;
-  /** 查某 peer 的角色头衔（场景扮演）。 */
+  /** Look up a peer's role title (scene role-play). */
   roleNameFor?: (peerId: string) => string | undefined;
 }
 

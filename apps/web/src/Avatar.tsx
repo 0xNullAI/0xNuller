@@ -1,13 +1,15 @@
 /**
- * 头像。由用户名确定性生成——零存储、零上传。
+ * Avatar. Generated deterministically from the username — zero storage, zero uploads.
  *
- * 成人向产品里让用户上传头像意味着要处理违规图片：审核流程、举报通道、误判申诉。
- * 那是一整条产品线，不是一个字段。生成式头像回避了整件事，同一个用户名永远得到
- * 同一个图案，识别度足够。`avatar_url` 字段在 auth 的表里预留着，将来真要开上传
- * 时不用改 schema。
+ * In an adult-oriented product, letting users upload avatars means dealing with
+ * policy-violating images: a moderation pipeline, a reporting channel, appeals for
+ * false positives. That is an entire product line, not a field. Generated avatars
+ * sidestep the whole thing; the same username always gets the same pattern, which
+ * is distinctive enough. The `avatar_url` column is reserved in auth's table, so
+ * actually enabling uploads later won't need a schema change.
  */
 
-/** FNV-1a：短字符串上分布够好，且不依赖任何库。 */
+/** FNV-1a: distributes well enough over short strings and depends on no library. */
 function hash(input: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
@@ -31,7 +33,8 @@ export function Avatar({ name, size = 28 }: { name: string | null; size?: number
   }
 
   const h = hash(name);
-  // 色相取自哈希，饱和度与亮度固定——避免生成出与背景或强调色撞车的颜色。
+  // Hue comes from the hash, saturation and lightness are fixed — this avoids
+  // generating colors that collide with the background or the accent color.
   const hue = h % 360;
   const initial = [...name][0]?.toUpperCase() ?? '?';
 

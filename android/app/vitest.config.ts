@@ -15,7 +15,8 @@ export default defineConfig({
   },
   test: {
     name: 'android',
-    // jsdom 而不是 node：生命周期安全网挂的是 document / window 上的事件。
+    // jsdom rather than node: the lifecycle safety net hooks events on
+    // document / window.
     environment: 'jsdom',
     globals: true,
     include: ['src/**/*.test.ts'],

@@ -53,9 +53,11 @@ export interface PermissionRequestInput {
 export interface BrowserServicesOptions {
   settings: BrowserAppSettings;
   /**
-   * 当前场景（人设）。**不再从 settings 里取**——场景库已经搬到跨模块共享的
-   * `@0xnullai/scenes`，和强度上限不再住在同一个 blob 里（那个 blob 一处校验失败
-   * 会静默重置全部安全设置）。调用方从共享库取了传进来。
+   * Current scene (persona). **No longer read from settings** — the scene
+   * library moved to the cross-module shared `@0xnullai/scenes`, so it no
+   * longer lives in the same blob as the strength cap (one validation failure
+   * anywhere in that blob would silently reset every safety setting). The
+   * caller reads it from the shared library and passes it in.
    */
   scenes: { selectedId: string; saved: SavedPromptPreset[] };
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;

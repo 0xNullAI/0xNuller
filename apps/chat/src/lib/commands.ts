@@ -93,7 +93,7 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       if (!dev) return '未连接蓝牙设备';
       return '脉冲已发送';
 
-    // —— Opossum（负鼠振动控制器） ——
+    // —— Opossum (vibration controller) ——
     case 'vibrate_stop':
       if (!ctx?.session?.opossumConnected) return '未连接 Opossum 设备';
       ctx.session.opossumStop(cmd.c);
@@ -105,7 +105,7 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       ctx.session.opossumBurst(cmd.c, cmd.v, cmd.ms ?? 500);
       return `${cmd.c} 通道脉冲已发送`;
 
-    // —— LED 颜色（paw-prints / civet-edging / opossum 共用） ——
+    // —— LED color (shared by paw-prints / civet-edging / opossum) ——
     case 'set_led': {
       if (!ctx?.session) return '当前没有可设置灯光的设备';
       if (cmd.color == null) return '缺少颜色参数';
@@ -126,7 +126,7 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
     case 'set_interval':
     case 'fire_active':
     case 'fire_release':
-      // 由 App.tsx 拦截：owner 端权威状态变更（强度增量 / 队列 / 开火聚合），由 broadcastState* 同步给所有人。
+      // Intercepted by App.tsx: authoritative owner-side state changes (strength delta / queue / firing aggregation), synced to everyone by broadcastState*.
       return '';
 
     default:

@@ -17,15 +17,16 @@ interface DeviceSafetyButtonProps {
   firePolicy: 'sum' | 'max' | 'avg';
   onSetFirePolicy: (p: 'sum' | 'max' | 'avg') => void;
   onRestoreDefaults: () => void;
-  /** 已接入的传感器（爪印/灵猫边缘，二选一），未接入为 null。 */
+  /** The attached sensor (paw-prints or civet-edging, one of the two), null when none. */
   sensor: SensorSummary | null;
-  /** 已接入的 Opossum 负鼠振动控制器，未接入为 null。 */
+  /** The attached Opossum vibration controller, null when none. */
   opossum: OpossumSummary | null;
   /**
-   * 统一连接入口：打开一个设备选择器，覆盖全部 4 种 DG-Lab 设备
-   * （Coyote 主机 / 爪印传感器 / 灵猫边缘传感器 / Opossum），按设备种类
-   * 自动接入对应槽位。反复点击可依次连接多台设备。Web 端走 Web Bluetooth
-   * 选择器，Tauri Android 端走 plugin-blec 扫描 + 设备选择器——两端行为一致。
+   * Unified connect entry point: opens one device picker covering all 4 kinds of DG-Lab
+   * device (Coyote host / paw-prints sensor / civet-edging sensor / Opossum) and attaches
+   * each into the matching slot by device kind. Click it repeatedly to connect several
+   * devices one after another. On the web it goes through the Web Bluetooth picker, on
+   * Tauri Android through a plugin-blec scan + device picker — both behave the same.
    */
   onConnectDevice: () => Promise<{ kind: DeviceKind; name: string }>;
   onDisconnectSensor: () => void;
@@ -73,8 +74,8 @@ export function DeviceSafetyButton({
   }, []);
 
   /**
-   * 统一连接入口：一个按钮打开一次蓝牙选择器，覆盖全部 4 种 DG-Lab 设备。
-   * 可反复点击以依次连接 Coyote 主机 + 传感器 + Opossum。
+   * Unified connect entry point: one button opens one Bluetooth picker covering all 4 kinds
+   * of DG-Lab device. Click it repeatedly to connect Coyote host + sensor + Opossum in turn.
    */
   async function handleConnectDevice() {
     setConnectDeviceError(null);
@@ -120,10 +121,12 @@ export function DeviceSafetyButton({
 
       <Popover open={open} onOpenChange={setOpen} title="设备与个人安全设置" anchorTop={anchorTop}>
         <div className="space-y-4">
-          {/* 统一连接入口：一个按钮 + 一次设备选择器，覆盖 Coyote 主机 / 爪印传感器 /
-              灵猫边缘传感器 / Opossum 全部 4 种设备，按名字自动识别种类接入对应槽位。
-              Web 端弹出 Web Bluetooth 选择器，Tauri Android 端弹出 plugin-blec 扫描出
-              的设备选择器——两端行为一致，可反复点击以依次连接多台设备。 */}
+          {/* Unified connect entry point: one button + one device picker, covering all 4 kinds
+              of device (Coyote host / paw-prints sensor / civet-edging sensor / Opossum);
+              the kind is recognized from the name and attached into the matching slot.
+              On the web this pops the Web Bluetooth picker, on Tauri Android the picker
+              built from a plugin-blec scan — both behave the same, and repeated clicks
+              connect several devices one after another. */}
           <div className="space-y-2">
             <button
               onClick={handleConnectDevice}
@@ -142,7 +145,7 @@ export function DeviceSafetyButton({
             </p>
           </div>
 
-          {/* Coyote 主机状态 */}
+          {/* Coyote host status */}
           <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] pt-3">
             <div className="min-w-0">
               <p className="text-xs font-medium text-[var(--text-soft)]">Coyote 主机</p>
@@ -162,7 +165,8 @@ export function DeviceSafetyButton({
             )}
           </div>
 
-          {/* 已接入的传感器 / Opossum 状态（仅在已接入时显示，连接本身走上方统一入口） */}
+          {/* Status of the attached sensor / Opossum (shown only once attached; connecting
+              itself goes through the unified entry point above) */}
           {(sensor || opossum) && (
             <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
               {sensor && (
@@ -213,7 +217,7 @@ export function DeviceSafetyButton({
             </div>
           )}
 
-          {/* 通道上限 */}
+          {/* Channel limits */}
           <div className="space-y-3 border-t border-[var(--surface-border)] pt-3">
             <div>
               <div className="mb-1 flex items-center justify-between">
@@ -252,7 +256,7 @@ export function DeviceSafetyButton({
             </p>
           </div>
 
-          {/* 后台行为 */}
+          {/* Background behavior */}
           <div className="flex items-center justify-between border-t border-[var(--surface-border)] pt-3">
             <div>
               <p className="text-xs font-medium text-[var(--text-soft)]">后台行为</p>
@@ -272,7 +276,7 @@ export function DeviceSafetyButton({
             </button>
           </div>
 
-          {/* 多人开火聚合 */}
+          {/* Multi-controller fire aggregation */}
           <div className="border-t border-[var(--surface-border)] pt-3">
             <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
             <div className="flex gap-1">
@@ -295,7 +299,7 @@ export function DeviceSafetyButton({
             </p>
           </div>
 
-          {/* 恢复默认波形 */}
+          {/* Restore default waveforms */}
           <div className="border-t border-[var(--surface-border)] pt-3">
             <button
               onClick={() => {

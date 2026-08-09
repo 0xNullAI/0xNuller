@@ -113,9 +113,10 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       return;
     }
 
-    // ActionContext 现在来自 @dg-kit/safety（与 DG-Agent 同一份契约）。
-    // DG-Voice 是网页客户端，sourceType 如实填 'web'；traceId 让这一通电话的
-    // 每条设备指令能在日志里串起来。
+    // ActionContext now comes from @dg-kit/safety (the same contract DG-Agent
+    // uses). DG-Voice is a web client, so sourceType is honestly 'web'; traceId
+    // is what threads every device command from this one call together in the
+    // logs.
     const sessionId = createSessionId();
     const context: ActionContext = {
       sessionId,
@@ -177,7 +178,8 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
         }),
     };
 
-    // 场景来自跨模块共享的库，不再从 VoiceSettings 取——Agent 里写的人设在这里也能用。
+    // Scenes come from the cross-module shared library, not from VoiceSettings
+    // any more — a persona written in Agent is usable here too.
     const sceneLib = loadScenes();
     const preset = getAnyPromptPresetById(sceneLib.selectedId, sceneLib.scenes);
     const buildInstructions = async () =>

@@ -18,18 +18,23 @@ import { installAndroidShellBehaviours, withBlePermissionHelp } from './android-
 import './styles.css';
 
 /**
- * 统一的安卓应用：一个 APK，四个模块。
+ * The unified Android app: one APK, four modules.
  *
- * 合并前是三个各自打包的 APK（Agent / Chat / Voice），用户要装三个、各连一次设备、
- * 各配一遍设置。现在它们是同一个外壳里的四个模块，共享设备、安全设置、场景库与账号。
+ * Before the merge there were three separately packaged APKs (Agent / Chat /
+ * Voice); the user had to install three of them, connect the device once in
+ * each, and configure the settings three times. Now they are four modules
+ * inside one shell, sharing the device, the safety settings, the scene library
+ * and the account.
  *
- * **安卓没有热更新。** 这里出的任何错都会长期留在用户手机上，所以三条原生注入缝的
- * 形状原样保留（见 @0xnullai/native 的注释），只是注入点合并成一个。
+ * **Android has no hot updates.** Any mistake made here lives on users' phones
+ * for a long time, so the shape of the three native injection seams is kept
+ * exactly as it was (see the comments in @0xnullai/native); only the injection
+ * point is merged into one.
  */
 
 installAndroidShellBehaviours();
 
-// React 提交首帧后淡出 index.html 里的启动图。
+// Fade out the splash screen from index.html once React has committed its first frame.
 queueMicrotask(() => {
   requestAnimationFrame(() => {
     const splash = document.getElementById('nx-splash');
@@ -40,16 +45,18 @@ queueMicrotask(() => {
   });
 });
 
-// Vite 构建时内联。安卓请求没有浏览器 Origin，免费代理靠这个签名区分「是我们的
-// 客户端」与「任何人」。
+// Inlined by Vite at build time. Android requests carry no browser Origin, so
+// the free proxy relies on this signature to tell "our client" from "anyone".
 const freeProxySecret = import.meta.env.VITE_DG_PROXY_SECRET;
 
 /**
- * 就地把 `connect()` 包上权限提示，返回同一个实例。
+ * Wrap `connect()` with the permission help in place, returning the same instance.
  *
- * **刻意不用 `{ ...inner, connect }`**：这里的 inner 是类实例，而类体里声明的方法住在
- * 原型上不是实例上。展开只会拷走自有可枚举属性，disconnect/getState/execute 全部丢失，
- * 于是除了 connect 之外任何调用都抛 "is not a function"。
+ * **Deliberately not `{ ...inner, connect }`**: inner here is a class instance,
+ * and methods declared in the class body live on the prototype, not on the
+ * instance. Spreading only copies own enumerable properties, so
+ * disconnect/getState/execute are all lost, and every call other than connect
+ * then throws "is not a function".
  */
 function withConnectPermissionHelp<T extends { connect(): Promise<void> }>(inner: T): T {
   const rawConnect = inner.connect.bind(inner);
@@ -75,8 +82,10 @@ const bridge = {
             scanDurationMs: 8000,
           }),
         );
-        // 用户拒绝蓝牙权限时给一个能看懂的提示。内层客户端抛的是「未授予蓝牙权限」，
-        // 不包一层就只是一条小提示，用户不知道该做什么。
+        // Give the user an understandable prompt when they deny the Bluetooth
+        // permission. The inner client throws 「未授予蓝牙权限」, which without
+        // this wrapper is just a small notice and leaves the user with no idea
+        // what to do about it.
         return { ...inner, connect: () => withBlePermissionHelp(() => inner.connect()) };
       },
       createOpossumClient: () =>

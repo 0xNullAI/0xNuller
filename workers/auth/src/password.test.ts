@@ -25,7 +25,8 @@ describe('密码哈希', () => {
   it('轮数低于当前标准时标记为需升级——老密码不必让用户改', async () => {
     const h = await hashPassword('correct horse battery');
     const weak = h.replace(/^pbkdf2\$\d+\$/, 'pbkdf2$1000$');
-    // 轮数变了，派生结果对不上，所以 ok 为 false；这里只验证解析出了低轮数
+    // The iteration count changed so the derived value no longer matches and ok is
+    // false; all this checks is that the low iteration count was parsed out
     expect(weak.split('$')[1]).toBe('1000');
     expect((await verifyPassword('correct horse battery', h)).needsUpgrade).toBe(false);
   });

@@ -1,13 +1,17 @@
-// use-room-agents：房主浏览器里跑的「AI 角色大脑」。
-// 监听房间聊天，当某条消息 @ 了由 AI 托管的角色时，组场景+角色 system prompt、
-// 调 LLM（可带设备工具），把回复当作该 AI 角色广播回房间。
+// use-room-agents: the "AI role brain" that runs in the host's browser.
+// Watches room chat; when a message @-mentions an AI-held role, it assembles a
+// scene + role system prompt, calls the LLM (optionally with device tools), and
+// broadcasts the reply back into the room as that AI role.
 //
-// 安全要点：
-//  - 只有房主（isHost）跑，保证一条 @AI 只产生一次回复。
-//  - _from 以 "ai:" 开头的消息永不触发 AI（防自触发循环）。
-//  - 设备工具走 sendCommandAs → 现有 cmd 通道，owner 端按本地上限硬钳制；
-//    AI 只能作用于 deviceTargets（已把控制权授予该 AI 的成员）。
-//  - 每角色一次只跑一轮；工具循环封顶，防失控。
+// Safety points:
+//  - Only the host (isHost) runs it, guaranteeing one @AI produces exactly one
+//    reply.
+//  - A message whose _from starts with "ai:" never triggers the AI (prevents
+//    self-triggering loops).
+//  - Device tools go through sendCommandAs → the existing cmd channel, hard
+//    clamped against the local cap on the owner side; the AI can only act on
+//    deviceTargets (members who have granted control to that AI).
+//  - One turn at a time per role; the tool loop is capped to prevent runaway.
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type {
   Scene,
@@ -20,7 +24,7 @@ import type {
 import { loadAiConfig, isAiConfigured } from '../lib/ai-config';
 import { callLlm, type LlmMessage, type LlmTool, type LlmToolCall } from '../lib/llm-client';
 
-/** AI 可操控的目标设备（已授权给该 AI 角色）。 */
+/** A target device the AI may drive (already authorized for that AI role). */
 export interface AgentDeviceTarget {
   peerId: string;
   name: string;
@@ -32,7 +36,7 @@ interface RoomAgentsOptions {
   roleAssignments: Record<string, string>;
   members: Map<string, MemberState>;
   messages: ChatMessage[];
-  /** 该 AI 可控制的设备（已授权）。空数组 = AI 仅聊天，不出工具。 */
+  /** Devices this AI may control (already authorized). Empty array = chat only, no tools offered. */
   deviceTargets: AgentDeviceTarget[];
   sendChatAs: (roleId: string, text: string, mentions?: ChatMention[]) => void;
   sendCommandAs: (
@@ -46,7 +50,10 @@ interface RoomAgentsOptions {
 const MAX_TOOL_ROUNDS = 4;
 const HISTORY_LIMIT = 20;
 
-/** 组装某 AI 角色的 system prompt：场景全貌 + 完整角色表 + 自我身份 + 在场名册。 */
+/**
+ * Assemble an AI role's system prompt: the whole scene + the complete role
+ * table + its own identity + the roster of who is present.
+ */
 function buildSystemPrompt(
   scene: Scene,
   selfRoleId: string,
@@ -87,7 +94,7 @@ function buildSystemPrompt(
   return lines.join('\n');
 }
 
-/** 设备工具定义（仅当有授权目标时提供）。 */
+/** Device tool definitions (offered only when there is an authorized target). */
 function buildTools(targets: AgentDeviceTarget[]): LlmTool[] {
   if (targets.length === 0) return [];
   const targetEnum = targets.map((t) => t.peerId);
@@ -128,7 +135,8 @@ function buildTools(targets: AgentDeviceTarget[]): LlmTool[] {
 }
 
 export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> } {
-  // 仅顶层 effect 需要这几个；其余字段在 runTurn 内通过 latest.current 读取。
+  // Only the top-level effect needs these; the other fields are read inside
+  // runTurn via latest.current.
   const { isHost, scene, roleAssignments, messages } = opts;
 
   const processedRef = useRef<Set<string>>(new Set());
@@ -136,7 +144,9 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
   const [thinking, setThinking] = useState<Set<string>>(new Set());
   const initRef = useRef(false);
 
-  // 最新值用 ref，避免把整个 turn 逻辑塞进 effect 依赖（在 effect 内更新，不在渲染期写 ref）。
+  // Keep the latest values in a ref so the whole turn logic doesn't have to be
+  // stuffed into the effect's deps (updated inside an effect, not written to
+  // during render).
   const latest = useRef(opts);
   useEffect(() => {
     latest.current = opts;
@@ -175,7 +185,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
           if (text) cur.sendChatAs(roleId, text);
           return;
         }
-        // 执行工具，回灌结果，再来一轮。
+        // Run the tools, feed the results back in, and go another round.
         llmMessages.push({ role: 'assistant', content: res.text || '' });
         for (const call of res.toolCalls) {
           const result = applyTool(roleId, call, cur.deviceTargets, cur.sendCommandAs);
@@ -197,14 +207,15 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
         next.delete(roleId);
         return next;
       });
-      // 标记触发消息已处理。
+      // Mark the triggering message as processed.
       processedRef.current.add(triggerId);
     }
   }, []);
 
   useEffect(() => {
     if (!isHost) return;
-    // 首次：把已有历史全部标记为已处理，只对之后的新消息触发。
+    // First pass: mark all existing history as processed, so only messages that
+    // arrive afterwards can trigger a turn.
     if (!initRef.current) {
       initRef.current = true;
       for (const m of messages) processedRef.current.add(m.id);
@@ -220,7 +231,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
       if (processedRef.current.has(m.id)) continue;
       if (m.senderId.startsWith('ai:')) {
         processedRef.current.add(m.id);
-        continue; // 防自触发
+        continue; // prevent self-triggering
       }
       const mentioned = m.mentions?.map((x) => x.peerId) ?? [];
       let handled = false;
@@ -237,7 +248,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
   return { thinking };
 }
 
-/** 执行一个工具调用，返回给 LLM 的结果文本。 */
+/** Run one tool call and return the result text handed back to the LLM. */
 function applyTool(
   roleId: string,
   call: LlmToolCall,

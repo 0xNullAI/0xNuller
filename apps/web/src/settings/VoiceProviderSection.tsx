@@ -9,18 +9,23 @@ import { useProviderVoices } from '../../../voice/src/hooks/use-provider-voices'
 import { loadSettings, saveSettings, type VoiceSettings } from '../../../voice/src/lib/settings';
 
 /**
- * 语音（realtime）provider。
+ * Voice (realtime) provider.
  *
- * 和文本 LLM 并列而不是混进同一组字段：realtime 是另一套协议，端点、鉴权、可调参数
- * 都不同（voice、语速这些文本侧根本没有）。硬凑成一组会让两边的必填项互相污染——
- * 用户会看到一堆对当前 provider 无意义的输入框。
+ * A sibling of the text LLM rather than mixed into the same group of fields:
+ * realtime is a different protocol, with different endpoints, auth and tunable
+ * parameters (voice and speed simply do not exist on the text side). Forcing them
+ * into one group makes the two sides' required fields pollute each other — the user
+ * would see a pile of inputs that mean nothing for the current provider.
  *
- * 直接读写 Voice 的设置模块而不是复制一份形状：复制等于又造一份真源，而合并的整个
- * 意义就是消掉那种东西。
+ * It reads and writes Voice's settings module directly instead of copying its shape:
+ * a copy is another source of truth, and eliminating that kind of thing is the whole
+ * point of the merge.
  */
 export function VoiceProviderSection() {
-  // 每次挂载读一次即可——设置面板是弹窗，打开时组件才创建，所以初值天然是最新的。
-  // 不用 effect 再读一遍：那是在 effect 里同步 setState，会多跑一次渲染+提交。
+  // Reading once per mount is enough — the settings panel is a dialog, so the component
+  // is only created when it opens, which makes the initial value inherently current.
+  // No effect to read it again: that would be a synchronous setState inside an effect,
+  // costing one extra render + commit.
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
 
   function update(updater: (prev: VoiceSettings) => VoiceSettings) {
@@ -82,8 +87,9 @@ export function VoiceProviderSection() {
           </label>
         ))}
 
-        {/* 音色与语速跟着 provider 走（每个 provider 的音色表都不一样），所以留在
-            这一组里而不是另起一节——换 provider 时它们必须一起变。 */}
+        {/* Voice and speed follow the provider (every provider has a different voice
+            table), so they stay in this group instead of getting their own section —
+            they have to change together when the provider changes. */}
         <VoiceField
           providerId={settings.activeProviderId}
           apiKey={current?.apiKey ?? ''}
@@ -122,8 +128,9 @@ function VoiceField({
   onChange: (value: string) => void;
 }) {
   const { voices, loading, error } = useProviderVoices(providerId, apiKey, staticVoices);
-  // 当前选中的音色即使不在刚拉回来的列表里也要保留（比如自定义音色 id），
-  // 否则打开一次设置就会把用户选的音色悄悄换掉。
+  // Keep the currently selected voice even when it is not in the list we just fetched
+  // (a custom voice id, for example), or merely opening settings once would silently
+  // swap out the voice the user picked.
   const options = value && !voices.includes(value) ? [value, ...voices] : voices;
 
   return (

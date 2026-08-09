@@ -24,7 +24,7 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
   const [error, setError] = useState<string | null>(null);
   // In-flight flag for the connect flow. On Android `connectDevice()` runs an
   // ~8s BLE scan before the picker resolves; without visible feedback the
-  // button looks dead ("点了没反应"). Also guards against a second tap kicking
+  // button looks dead ("nothing happens when you tap it"). Also guards against a second tap kicking
   // off a concurrent scan.
   const [connecting, setConnecting] = useState(false);
 

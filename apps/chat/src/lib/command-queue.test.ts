@@ -3,13 +3,18 @@ import type { DeviceClient, DeviceCommand, DeviceState } from '@dg-kit/core';
 import { DGLabDevice } from './bluetooth';
 
 /**
- * Chat 的设备写入必须经过 `DeviceCommandQueue`。
+ * Chat's device writes must all go through `DeviceCommandQueue`.
  *
- * 合并前它是全仓唯一绕开队列直写 `client.execute()` 的地方，而队列的急停插队是靠
- * generation 计数作废在途命令实现的——绕开队列就等于绕开了这个机制。表现是：按下
- * 急停、设备停住，然后排在路上的下一条强度指令照样执行，设备又动起来。
+ * Before the merge this was the only place in the repo that bypassed the queue
+ * and wrote to `client.execute()` directly, and the queue's emergency-stop
+ * jump-the-queue is implemented by voiding in-flight commands via a generation
+ * counter — bypassing the queue means bypassing that mechanism. What it looks
+ * like in practice: you hit emergency stop, the device stops, and then the next
+ * strength command already on its way runs anyway and the device starts moving
+ * again.
  *
- * 这些测试守的正是那条时序，不是「有没有调用队列」这种形式检查。
+ * These tests guard exactly that ordering, not a formality like "was the queue
+ * called".
  */
 
 function makeState(over: Partial<DeviceState> = {}): DeviceState {
@@ -25,7 +30,10 @@ function makeState(over: Partial<DeviceState> = {}): DeviceState {
   } as DeviceState;
 }
 
-/** 可控放行的假设备：execute 挂起直到测试放行，好制造「在途命令」。 */
+/**
+ * A fake device with controllable release: execute hangs until the test lets it
+ * through, so we can manufacture "in-flight commands".
+ */
 function makeGatedClient() {
   const executed: DeviceCommand[] = [];
   const gates: (() => void)[] = [];
@@ -50,11 +58,14 @@ function makeGatedClient() {
     client,
     executed,
     /**
-     * 反复放行直到不再有新的 gate 冒出来。
+     * Release repeatedly until no new gate shows up any more.
      *
-     * 只放行「当下已存在的 gate」是不够的：队列是串行的，第二条命令要等第一条跑完
-     * 才会进入 execute 并压入自己的 gate。一次性放行会让第二条永远卡住，于是无论
-     * generation 作废机制在不在，断言都成立——测试绿得毫无意义。
+     * Releasing only "the gates that exist right now" is not enough: the queue
+     * is serial, so the second command only reaches execute and pushes its own
+     * gate once the first one has finished. A one-shot release leaves the
+     * second command stuck forever, and then the assertions hold whether or not
+     * the generation-voiding mechanism is there at all — the test goes green
+     * for no reason at all.
      */
     drain: async () => {
       for (let i = 0; i < 20; i++) {
@@ -77,7 +88,8 @@ describe('Chat 的设备命令队列', () => {
     const gated = makeGatedClient();
     const device = new DGLabDevice(() => gated.client);
 
-    // 排两条：第一条立刻开始执行并卡在 gate 上，第二条在队列里等。
+    // Queue two: the first starts executing immediately and blocks on its gate,
+    // the second waits in the queue.
     device.setStrength('A', 10);
     device.setStrength('A', 20);
     await Promise.resolve();
@@ -87,13 +99,16 @@ describe('Chat 的设备命令队列', () => {
 
     await gated.drain();
 
-    // 关键断言：急停之后，队列里那条还没跑的强度指令必须被丢弃。
-    // 它要是执行了，用户看到的就是「停住了又自己动起来」。
+    // The key assertion: after the emergency stop, the strength command still
+    // sitting unrun in the queue must be discarded. If it does run, what the
+    // user sees is "it stopped and then started moving on its own again".
     expect(gated.executed.filter((c) => c.type === 'adjustStrength')).toHaveLength(1);
 
-    // 停了几次不重要，「最终是停着的」才重要。已经在 execute() 里的那条撤不回来
-    // （generation 检查发生在 execute 之前，急停是并发跑的），队列会在它落地后补停
-    // 一次，所以这里是 ≥1 而不是 ==1。
+    // How many times it stopped doesn't matter; "it ends up stopped" is what
+    // matters. The one already inside execute() can't be recalled (the
+    // generation check happens before execute, and the emergency stop runs
+    // concurrently), so the queue issues one more stop after it lands — hence
+    // ≥1 here rather than ==1.
     expect(gated.stopped).toBeGreaterThanOrEqual(1);
   });
 
@@ -101,12 +116,13 @@ describe('Chat 的设备命令队列', () => {
     const gated = makeGatedClient();
     const device = new DGLabDevice(() => gated.client);
 
-    device.setStrength('A', 10); // 卡住不放行
+    device.setStrength('A', 10); // blocked, never released
     await Promise.resolve();
     device.stopAll();
     await new Promise((r) => setTimeout(r, 0));
 
-    // 前面那条还卡着，但急停已经落地——它不能等前面的命令跑完。
+    // The earlier command is still blocked, but the emergency stop has already
+    // landed — it must not wait for the command ahead of it to finish.
     expect(gated.stopped).toBe(1);
     expect(gated.executed).toHaveLength(0);
   });
@@ -121,8 +137,10 @@ describe('Chat 的设备命令队列', () => {
 
     device.setLimit('A', 30);
 
-    // 往设备写 BF 包会改变持久的设备侧状态：同一台郊狼被 Chat 连过之后上限就是 50、
-    // 被别处连过之后是别的值——谁最后连谁说了算，用户在别处调高的上限被静默压回。
+    // Writing the BF packet to the device changes persistent device-side state:
+    // the same Coyote has a cap of 50 after Chat has connected to it and some
+    // other value after something else has — whoever connected last wins, and a
+    // cap the user raised elsewhere gets silently pushed back down.
     expect(setLimits).not.toHaveBeenCalled();
     expect(device.getState().limitA).toBe(30);
   });
@@ -133,12 +151,14 @@ describe('Chat 的设备命令队列', () => {
     device.setLimit('A', 30);
     device.setStrength('A', 100);
 
-    // enqueue 到 execute 之间隔着微任务，必须先让它跑到 gate 上再放行，
-    // 否则 releaseAll 时 gate 还没被压进去，什么都不会发生。
+    // There are microtasks between enqueue and execute, so it has to reach the
+    // gate before we release; otherwise the gate hasn't been pushed yet when
+    // releaseAll runs and nothing happens at all.
     await gated.drain();
 
     const cmd = gated.executed.find((c) => c.type === 'adjustStrength');
-    // 不再写硬件，软件这一侧是唯一由用户控制的闸门。
+    // The hardware is no longer written, so the software side is the only gate
+    // the user controls.
     expect(cmd).toMatchObject({ type: 'adjustStrength', delta: 30 });
   });
 });
