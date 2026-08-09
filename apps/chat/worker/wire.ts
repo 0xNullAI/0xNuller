@@ -15,8 +15,11 @@ export type WireType =
   | 'wave' // waveform transfer, directed (to=peerId)
   | 'leave' // voluntary leave
   | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
-  | 'scene' // legacy roleplay, removed from the UI — see RoomDO's no-op case
-  | 'role' // legacy roleplay, removed from the UI — see RoomDO's no-op case
+  // The roleplay feature is gone, but pre-removal Android builds still send these two.
+  // They stay listed here permanently so RoomDO keeps an explicit no-op case for them
+  // rather than letting them fall through to the relay-everything default.
+  | 'scene' // legacy roleplay, dropped by the DO
+  | 'role' // legacy roleplay, dropped by the DO
   | 'history' // DO→client: replay for a newly joined peer
   | 'sys'; // DO→client: connection-level presence (joined/left)
 
@@ -50,8 +53,6 @@ export interface WireChat {
   m?: MediaRef;
   /** Members that were @-mentioned (peerId + nickname snapshot). */
   mentions?: { peerId: string; n: string }[];
-  /** Snapshot of the sender's role title at the time (absent = an ordinary member). */
-  senderRole?: string;
   /** Send timestamp in milliseconds. */
   ts: number;
 }
@@ -86,41 +87,6 @@ export interface WireAgent {
   t: 'agent';
   agent: RoomAgent | null;
   host: string; // hostPeerId
-}
-
-/** Scene role definition. @deprecated legacy roleplay; kept only to type the no-op inbound case. */
-export interface SceneRole {
-  id: string;
-  /** Role name (= the member's title). */
-  name: string;
-  /** Role description / persona: shown to members, and also used as the persona prompt when the role is handed to the AI. */
-  description?: string;
-  /** Whether this role can be played by the AI (flagged when the scene is uploaded; the host uses it to show the 「交给 AI」 entry point). */
-  aiPlayable?: boolean;
-}
-
-/** Room scene (setting + roles + gameplay metadata). */
-export interface Scene {
-  id: string;
-  name: string;
-  /** Setting / background description. */
-  setting: string;
-  roles: SceneRole[];
-  /** Suggested player count (filled in on Market upload; the room may optionally show it). */
-  playerCount?: { min?: number; max?: number };
-}
-
-/** DO→client: current scene + host. A null scene means no scene has been set. */
-export interface WireScene {
-  t: 'scene';
-  scene: Scene | null;
-  host: string; // hostPeerId
-}
-
-/** DO→client: role→peer claim assignments (authoritative state). */
-export interface WireRole {
-  t: 'role';
-  assignments: Record<string, string>; // roleId -> peerId
 }
 
 /** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */

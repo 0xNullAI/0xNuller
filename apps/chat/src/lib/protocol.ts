@@ -39,8 +39,6 @@ export interface ChatMessage {
   media?: ChatMedia;
   /** List of @-mentioned members (used for highlighting + notification). */
   mentions?: ChatMention[];
-  /** The sender's role title at the time (when playing a scene). */
-  senderRole?: string;
 }
 
 export type CmdAction =
@@ -154,10 +152,8 @@ export interface MemberState {
   // —— Added for firing state ——
   firingA: boolean;
   firingB: boolean;
-  // —— Added for scene role-play ——
-  /** The scene role id currently claimed (absent = no role claimed). */
-  roleId?: string;
-  /** Whether this is an AI-driven pseudo-member (peerId shaped like "ai:&lt;roleId&gt;"). */
+  // —— Added for the room AI ——
+  /** Whether this is the AI pseudo-member (peerId shaped like "ai:&lt;id&gt;"). */
   isAi?: boolean;
   /** Whether this member allows the room's AI to control their device (opt-in). */
   allowAi?: boolean;
@@ -180,26 +176,6 @@ export interface MemberState {
   sensorLastEvent?: string | null;
   sensorLastValue?: number | null;
   sensorLastEventAt?: number | null;
-}
-
-/** Scene role definition (= a title a member can claim). */
-export interface SceneRole {
-  id: string;
-  name: string;
-  /** Role description / persona: shown to members, and also used as the persona prompt when the role is handed to the AI. */
-  description?: string;
-  /** Whether this role can be played by the AI (flagged on Market upload; the host uses it to show the 「交给 AI」 entry point). */
-  aiPlayable?: boolean;
-}
-
-/** Room scene: setting + roles + gameplay metadata. */
-export interface Scene {
-  id: string;
-  name: string;
-  setting: string;
-  roles: SceneRole[];
-  /** Suggested player count. */
-  playerCount?: { min?: number; max?: number };
 }
 
 /** High-frequency fields: strength + current waveform id. Any change triggers an immediate broadcast. */
@@ -235,7 +211,7 @@ export interface StateSlow {
   intervalB: number;
   currentIndexA: number;
   currentIndexB: number;
-  /** Whether the room's AI roles may control this machine's device (opt-in; off by default). */
+  /** Whether the room's AI may control this machine's device (opt-in; off by default). */
   allowAi?: boolean;
   // —— Opossum connection state / battery (low frequency) ——
   opossumConnected?: boolean;

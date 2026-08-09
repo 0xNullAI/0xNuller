@@ -480,18 +480,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     peerRoom.setCommandHandler(handleCommand);
   }, [peerRoom.setCommandHandler, handleCommand]);
 
-  // Derive the scene role title (peerId → role name).
-  const roleNameFor = useCallback(
-    (peerId: string): string | undefined => {
-      const sc = peerRoom.scene;
-      if (!sc) return undefined;
-      const entry = Object.entries(peerRoom.roleAssignments).find(([, p]) => p === peerId);
-      return entry ? sc.roles.find((r) => r.id === entry[0])?.name : undefined;
-    },
-    [peerRoom.scene, peerRoom.roleAssignments],
-  );
-  const selfRoleName = roleNameFor(peerRoom.selfId);
-
   // Upload the media to R2, then send it out as a chat message.
   const sendMedia = useCallback(
     async (
@@ -742,7 +730,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           )}
         </div>
         <ModuleActions>
-          {/* The permanent discussion room has no host and no AI (pure open chat), so hide the scene/AI entry points */}
+          {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points */}
           {peerRoom.roomId !== RESERVED_ROOM_CODE && (
             <>
               {/* The room's AI participant. Host-only, matching the server: its
@@ -912,8 +900,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             }
             selfLimitA={device.limitA}
             selfLimitB={device.limitB}
-            selfRoleName={selfRoleName}
-            roleNameFor={roleNameFor}
           />
         </div>
       </div>
