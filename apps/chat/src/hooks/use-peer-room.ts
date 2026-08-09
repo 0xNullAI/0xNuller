@@ -12,13 +12,20 @@ import type {
   StateSlow,
 } from '../lib/protocol';
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
+import { loadOwnerKey, rememberGroup, saveOwnerKey } from '../lib/groups';
+import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
-/** Options for creating/joining a room. Public rooms get registered in the lobby. */
+/** Options for creating/joining a group. Public groups get registered in the lobby. */
 export interface JoinOptions {
   public?: boolean;
   roomName?: string;
+  /**
+   * Ask the server to mint an owner key for this group. Set only on the create path: it is
+   * what makes the creator the durable owner, and it is ignored once a group already has one.
+   */
+  claim?: boolean;
 }
 
 /** A media reference already uploaded to R2, waiting to be sent with a chat message. */
@@ -114,7 +121,16 @@ export function usePeerRoom(displayName: string) {
   const [agent, setAgentState] = useState<RoomAgent | null>(null);
   // The host is whoever the DO says it is. Only that browser runs the agent
   // loop, which is what keeps one @mention from producing several replies.
+  // It is a live role that moves when the current host disconnects — not
+  // ownership, which is durable and lives in the owner key below.
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  // —— Group settings (durable, owner-controlled) ——
+  const [isPublic, setIsPublic] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  /** The group has an owner key on file at all (groups made by older clients do not). */
+  const [groupOwned, setGroupOwned] = useState(false);
+  /** This browser holds the key and the server accepted it. */
+  const [isOwner, setIsOwner] = useState(false);
 
   const transportRef = useRef<RoomTransport | null>(null);
   const roomIdRef = useRef<string | null>(null);
@@ -163,9 +179,49 @@ export function usePeerRoom(displayName: string) {
     transportRef.current?.send(payload);
   }, []);
 
+  /** Close the connection and drop everything that belonged to that group. */
+  const teardown = useCallback(() => {
+    send({ t: 'leave' });
+
+    if (presenceTimerRef.current) {
+      clearInterval(presenceTimerRef.current);
+      presenceTimerRef.current = null;
+    }
+    peerTimersRef.current.forEach((timer) => clearTimeout(timer));
+    peerTimersRef.current.clear();
+    if (fastThrottleRef.current.timer) {
+      clearTimeout(fastThrottleRef.current.timer);
+      fastThrottleRef.current = { lastSent: 0, pending: null, timer: null };
+    }
+
+    transportRef.current?.close();
+    transportRef.current = null;
+    roomIdRef.current = null;
+    setStatus('idle');
+    setError(null);
+    setRoomId(null);
+    setPeers([]);
+    setMembers(new Map());
+    setMessages([]);
+    setHostPeerId(null);
+    // Group-scoped state must go too, or the next group inherits the previous one's
+    // agent and settings for as long as it takes the new frames to arrive.
+    setAgentState(null);
+    setIsOwner(false);
+    setGroupOwned(false);
+    setIsPublic(false);
+    setGroupName('');
+  }, [send]);
+
   const join = useCallback(
     (roomCode: string, options?: JoinOptions) => {
-      if (transportRef.current) return;
+      if (transportRef.current) {
+        // Already here. A reconnect is the transport's job, not ours.
+        if (roomIdRef.current === roomCode) return;
+        // Switching groups. This used to be a bare early return, which made every entry in
+        // the sidebar — and the create dialog — a no-op once you were connected to anything.
+        teardown();
+      }
       setStatus('connecting');
       setError(null);
       roomIdRef.current = roomCode;
@@ -225,6 +281,26 @@ export function usePeerRoom(displayName: string) {
         if (t === 'agent') {
           setAgentState((data.agent as RoomAgent | null) ?? null);
           setHostPeerId((data.host as string) ?? null);
+          return;
+        }
+
+        if (t === 'group') {
+          // Every field is optional and an absent one means "unchanged": the frame that
+          // follows a settings change is broadcast to the whole room and therefore carries
+          // neither isOwner nor ownerKey, which are answers to one connection only.
+          const code = (data.code as string) || roomIdRef.current || '';
+          if (typeof data.public === 'boolean') setIsPublic(data.public);
+          if (typeof data.owned === 'boolean') setGroupOwned(data.owned);
+          if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
+          if (typeof data.name === 'string') {
+            setGroupName(data.name);
+            if (code !== RESERVED_ROOM_CODE) rememberGroup(code, data.name);
+          }
+          // Arrives exactly once, in the reply to the connection that created the group.
+          if (typeof data.ownerKey === 'string' && code) {
+            saveOwnerKey(code, data.ownerKey);
+            setIsOwner(true);
+          }
           return;
         }
 
@@ -356,13 +432,18 @@ export function usePeerRoom(displayName: string) {
         onStatus: (s: TransportStatus) => setStatus(s),
         onOpen: () => {
           setRoomId(roomCode);
-          // First frame on join: declare nickname / public flag / room name.
-          // A reconnect fires this too → the DO replays history again.
+          // First frame on join: declare nickname, plus the settings the group is seeded
+          // with if this is its first hello ever. A reconnect fires this too → the DO
+          // replays history again.
           send({
             t: 'hello',
             name: displayNameRef.current,
             public: joinOptsRef.current.public,
             roomName: joinOptsRef.current.roomName,
+            claim: joinOptsRef.current.claim,
+            // Proof of ownership when this browser created the group. Absent for everyone
+            // else, and the server answers with isOwner:false rather than refusing the join.
+            ownerKey: loadOwnerKey(roomCode) ?? undefined,
           });
         },
         onMessage: handleMessage,
@@ -376,7 +457,7 @@ export function usePeerRoom(displayName: string) {
         send({ t: 'presence', n: displayNameRef.current });
       }, PRESENCE_INTERVAL_MS);
     },
-    [removePeer, send],
+    [removePeer, send, teardown],
   );
 
   const sendMessage = useCallback(
@@ -425,10 +506,28 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** Host adds, edits, or removes the room's agent. The server enforces host-only. */
+  /**
+   * Owner adds, edits, or removes the group's agent. The server verifies the key (and falls
+   * back to host authority for a group that never got an owner, so older clients still work).
+   */
   const setAgent = useCallback(
     (next: RoomAgent | null) => {
-      send({ t: 'agent', agent: next });
+      const code = roomIdRef.current;
+      send({
+        t: 'agent',
+        agent: next,
+        ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined,
+      });
+    },
+    [send],
+  );
+
+  /** Owner shows or hides the group in the lobby. Takes effect there immediately. */
+  const setGroupPublic = useCallback(
+    (next: boolean) => {
+      const code = roomIdRef.current;
+      if (!code) return;
+      send({ t: 'group', public: next, ownerKey: loadOwnerKey(code) ?? undefined });
     },
     [send],
   );
@@ -551,30 +650,8 @@ export function usePeerRoom(displayName: string) {
   );
 
   const leave = useCallback(() => {
-    send({ t: 'leave' });
-
-    if (presenceTimerRef.current) {
-      clearInterval(presenceTimerRef.current);
-      presenceTimerRef.current = null;
-    }
-    peerTimersRef.current.forEach((timer) => clearTimeout(timer));
-    peerTimersRef.current.clear();
-    if (fastThrottleRef.current.timer) {
-      clearTimeout(fastThrottleRef.current.timer);
-      fastThrottleRef.current = { lastSent: 0, pending: null, timer: null };
-    }
-
-    transportRef.current?.close();
-    transportRef.current = null;
-    roomIdRef.current = null;
-    setStatus('idle');
-    setError(null);
-    setRoomId(null);
-    setPeers([]);
-    setMembers(new Map());
-    setMessages([]);
-    setHostPeerId(null);
-  }, [send]);
+    teardown();
+  }, [teardown]);
 
   useEffect(() => {
     const timers = peerTimersRef.current;
@@ -647,6 +724,19 @@ export function usePeerRoom(displayName: string) {
     isHost: hostPeerId === selfId,
     sendChatAs,
     sendCommandAs,
+    // —— Group ——
+    isPublic,
+    groupName,
+    isOwner,
+    setGroupPublic,
+    /**
+     * May this browser change the group's settings and its agent?
+     *
+     * Mirrors the server's rule exactly: the owner key if the group has one, otherwise the
+     * current host — which is what keeps a group created by a client too old to know about
+     * ownership administrable by the people in it.
+     */
+    canManageGroup: isOwner || (!groupOwned && hostPeerId === selfId),
   };
 }
 

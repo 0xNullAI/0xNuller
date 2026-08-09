@@ -1,16 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // 改名会重置 Durable Object 命名空间——这是刻意接受的，不是疏忽。
+  // **这个名字不能再动了。** 免费窗口已经关闭。
   //
   // DO 命名空间按 Worker 脚本名划分，而 wrangler 的 migration 只有
   // new_classes / new_sqlite_classes / renamed_classes（同脚本内）/
   // deleted_classes，没有跨脚本转移。所以换名字 = 一套全新的 RoomDO/LobbyDO。
   //
-  // 代价有限，因为房间本来就是临时的：最后一人离开 10 分钟后 RoomDO 会自删
-  // 消息、R2 媒体和 storage（见 alarm()）。真正会丢的只有切换那一刻还开着的
-  // 房间，和公开讨论区的历史——那个是唯一不自清的。大厅列表会随房间上报重建。
-  //
-  // 所以：**切换选在低峰时段**，并且接受公开讨论区从空开始。
+  // 从 dg-chat 改到这里时代价还有限，因为房间是临时的：最后一人离开 10 分钟后
+  // RoomDO 自删消息、R2 媒体和 storage。**那个自毁已经没有了**——房间现在是
+  // 永久群组，历史、群主密钥哈希与公开设置都长期存在 DO 里（见 room-do.ts），
+  // 再改一次名字就是真正的用户数据丢失，而且无法回滚。
   "name": "0xnullai-chat",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
@@ -47,7 +46,7 @@
     "run_worker_first": ["/ws/*", "/api/*"]
   },
 
-  // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 清理。
+  // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 群主与公开设置。
   // 单例 LobbyDO（idFromName("v1")）：公开房间注册表 + 实时推送。
   "durable_objects": {
     "bindings": [
@@ -62,7 +61,8 @@
     }
   ],
 
-  // 图片/语音对象存储。key = room/{code}/{msgId}.{ext}，随房间清理按前缀删除。
+  // 图片/语音对象存储。key = room/{code}/{msgId}。房间不再自毁，所以也不再按前缀整删：
+  // 消息被保留上限挤掉时连它的对象一起删，剩下的孤儿由 RoomDO 的 alarm() 扫掉。
   // 首次部署前：wrangler r2 bucket create dg-chat-media
   "r2_buckets": [
     { "binding": "MEDIA", "bucket_name": "dg-chat-media" }

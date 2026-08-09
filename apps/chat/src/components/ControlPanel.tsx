@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, ChevronRight } from 'lucide-react';
+import { Copy, Check, ChevronRight, Globe, Lock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { MemberState, CmdAction, DeviceCommand, WaveformTransfer } from '../lib/protocol';
 import type { WaveformDefinition } from '../lib/waveforms';
@@ -25,6 +25,11 @@ interface ControlPanelProps {
   selfState: MemberState;
   selfLimitA: number;
   selfLimitB: number;
+  /** Whether the room is listed in the lobby. Owner-controlled and durable. */
+  isPublic: boolean;
+  /** Whether this browser may change that (holds the owner key, or is the host of an unowned room). */
+  canManage: boolean;
+  onSetPublic: (next: boolean) => void;
 }
 
 function SelfCard({ member, onClick }: { member: MemberState; onClick: () => void }) {
@@ -75,6 +80,9 @@ export function ControlPanel({
   selfState,
   selfLimitA,
   selfLimitB,
+  isPublic,
+  canManage,
+  onSetPublic,
 }: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -155,6 +163,26 @@ export function ControlPanel({
               <QRCodeSVG value={joinUrl} size={120} />
             </div>
           )}
+
+          {/* Lobby visibility. A room is permanent now, so this is a setting rather than
+              something decided once at creation — and only the room's owner may change it. */}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-[var(--text-soft)]">
+              {isPublic ? <Globe size={14} /> : <Lock size={14} />}
+              {isPublic ? '公开到大厅' : '私密房间'}
+            </span>
+            {canManage ? (
+              <button
+                onClick={() => onSetPublic(!isPublic)}
+                className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--bg-soft)]"
+                title={isPublic ? '从大厅移除，只有拿到房间号的人能进' : '公开到大厅，所有人可见'}
+              >
+                {isPublic ? '设为私密' : '公开'}
+              </button>
+            ) : (
+              <span className="text-[10px] text-[var(--text-faint)]">仅房主可改</span>
+            )}
+          </div>
         </div>
       )}
 

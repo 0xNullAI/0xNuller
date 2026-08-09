@@ -704,7 +704,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       {createRoomOpen && (
         <CreateRoomDialog
           defaultName={displayName}
-          onCreate={(code, options) => peerRoom.join(code, options)}
+          // claim is what makes the creator the room's durable owner: the server mints a key
+          // and hands it back once, on this connection only. Set here and nowhere else —
+          // joining someone else's room must never ask for it.
+          onCreate={(code, options) => peerRoom.join(code, { ...options, claim: true })}
           onClose={() => setCreateRoomOpen(false)}
         />
       )}
@@ -713,9 +716,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           on the right is projected into the shell's action slot so it lines up with the
           other modules' buttons. */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {peerRoom.groupName && (
+            <span className="min-w-0 truncate text-sm font-medium text-[var(--text)]">
+              {peerRoom.groupName}
+            </span>
+          )}
           {peerRoom.roomId && (
-            <span className="hidden rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
+            <span className="hidden shrink-0 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
               {peerRoom.roomId}
             </span>
           )}
@@ -733,9 +741,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points */}
           {peerRoom.roomId !== RESERVED_ROOM_CODE && (
             <>
-              {/* The room's AI participant. Host-only, matching the server: its
-                  device commands are authorized on the host's authority. */}
-              {peerRoom.isHost && (
+              {/* The room's AI participant. Owner-only, matching the server: its device
+                  commands are authorized on the host's authority, so defining it belongs to
+                  whoever owns the room — a durable key, not whoever happened to join first. */}
+              {peerRoom.canManageGroup && (
                 <button
                   onClick={() => setAgentOpen(true)}
                   className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
@@ -900,6 +909,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             }
             selfLimitA={device.limitA}
             selfLimitB={device.limitB}
+            isPublic={peerRoom.isPublic}
+            // The permanent discussion room's visibility is fixed by definition.
+            canManage={peerRoom.canManageGroup && peerRoom.roomId !== RESERVED_ROOM_CODE}
+            onSetPublic={peerRoom.setGroupPublic}
           />
         </div>
       </div>

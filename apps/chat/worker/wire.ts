@@ -15,6 +15,7 @@ export type WireType =
   | 'wave' // waveform transfer, directed (to=peerId)
   | 'leave' // voluntary leave
   | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
+  | 'group' // group settings: the owner changes them (client→DO); current settings (DO→client)
   // The roleplay feature is gone, but pre-removal Android builds still send these two.
   // They stay listed here permanently so RoomDO keeps an explicit no-op case for them
   // rather than letting them fall through to the relay-everything default.
@@ -89,6 +90,32 @@ export interface WireAgent {
   host: string; // hostPeerId
 }
 
+/**
+ * DO→client: the group's durable settings.
+ *
+ * Fields are optional on purpose and the client must treat an absent one as "unchanged".
+ * `isOwner` and `ownerKey` are answers to one specific connection and are therefore never
+ * part of the broadcast that follows a settings change — the room learns that the group
+ * went public, not who made it so, and certainly not with what key.
+ */
+export interface WireGroup {
+  t: 'group';
+  code: string;
+  /** Display name; only meaningful while the group is public (that is where it shows). */
+  name?: string;
+  /** Whether the group is listed in the lobby. */
+  public?: boolean;
+  /** Whether the group has an owner key on file at all. */
+  owned?: boolean;
+  /** Whether *this* connection proved ownership. Per-connection, never broadcast. */
+  isOwner?: boolean;
+  /** The minted key, sent exactly once to the connection that created the group. */
+  ownerKey?: string;
+}
+
+/** Longest group name the DO will store. */
+export const MAX_GROUP_NAME = 60;
+
 /** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */
 export interface WireInbound {
   t: WireType;
@@ -114,7 +141,14 @@ export interface WireHistory {
 /** Fixed name of the singleton lobby DO. */
 export const LOBBY_NAME = 'v1';
 
-/** Grace period before an emptied room is cleaned up (milliseconds). */
+/**
+ * How long after the last member leaves the group runs its idle housekeeping (milliseconds).
+ *
+ * This used to be the countdown to the group deleting itself. Groups are permanent now, so
+ * nothing is deleted when it fires; it is the quiet moment in which the media sweep runs,
+ * and it doubles as the age below which an unreferenced R2 object is assumed to be an
+ * upload whose chat message has not landed yet rather than an orphan.
+ */
 export const ROOM_GRACE_MS = 10 * 60 * 1000;
 
 /** The official public discussion room permanently resident in the lobby: always public, never cleaned up, listed at the top of the lobby even when empty. */

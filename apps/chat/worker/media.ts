@@ -1,6 +1,8 @@
 // R2 media upload / read-back.
-// Key convention: room/{code}/{id}; the mime type lives in R2 httpMetadata, and room cleanup bulk-deletes by the `room/{code}/` prefix.
+// Key convention: room/{code}/{id}; the mime type lives in R2 httpMetadata, and the group's
+// whole media set is enumerable by the `room/{code}/` prefix.
 import type { Env } from './index';
+import type { StoredMediaObject } from './group';
 import { MAX_MEDIA_BYTES, isAllowedMediaType } from './wire';
 
 function mediaKey(code: string, id: string): string {
@@ -50,17 +52,30 @@ export async function handleMediaRead(env: Env, code: string, id: string): Promi
   return new Response(obj.body, { headers });
 }
 
-/** Delete all media for a room (called by RoomDO during cleanup). */
-export async function deleteRoomMedia(env: Env, code: string): Promise<void> {
+/**
+ * Delete specific media objects of a group (called by RoomDO when their message rows go).
+ *
+ * There is no longer a "delete everything for this room" call: a group is permanent, so
+ * media only ever leaves one message at a time, together with the row that referenced it.
+ */
+export async function deleteRoomMedia(env: Env, code: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await env.MEDIA.delete(ids.map(id => mediaKey(code, id)));
+}
+
+/** Everything currently stored under a group's prefix, for the orphan sweep. */
+export async function listRoomMedia(env: Env, code: string): Promise<StoredMediaObject[]> {
   const prefix = `room/${code}/`;
+  const out: StoredMediaObject[] = [];
   let cursor: string | undefined;
   do {
     const listed = await env.MEDIA.list({ prefix, cursor });
-    if (listed.objects.length > 0) {
-      await env.MEDIA.delete(listed.objects.map(o => o.key));
+    for (const o of listed.objects) {
+      out.push({ id: o.key.slice(prefix.length), uploadedAt: o.uploaded.getTime() });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
+  return out;
 }
 
 function json(status: number, body: unknown): Response {
