@@ -1,0 +1,143 @@
+import { apiBaseUrl } from '@0xnullai/settings';
+
+/**
+ * Account sync.
+ *
+ * The account dialog has always said an account is 「用于同步波形库、场景与
+ * 市场归属」. This is that, on the client side.
+ *
+ * Two rules shape the whole module:
+ *
+ * 1. **An account is never a prerequisite.** Anonymous use is a hard product
+ *    constraint, so every function here degrades to a no-op when signed out
+ *    or when the service is unreachable. Nothing may throw into a caller that
+ *    was just trying to save a waveform.
+ *
+ * 2. **API keys are never uploaded.** Syncing them would make 0xNullAI the
+ *    custodian of somebody else's third-party credential, which the user
+ *    never agreed to. Provider, model and base URL sync; the key stays on the
+ *    device. `stripSecrets` is the one place that decision is enforced, and
+ *    it is enforced here rather than on the server because the server cannot
+ *    tell what is inside an opaque payload.
+ */
+
+export type SyncNamespace = 'llm' | 'device-safety' | 'proxy' | 'ui';
+export type ContentKind = 'waveform' | 'scene';
+
+export interface SyncedContent {
+  id: string;
+  kind: ContentKind;
+  name: string;
+  payload: unknown;
+  updatedAt: number;
+  deleted: boolean;
+}
+
+const TOKEN_KEY = '0xnullai.auth-token';
+
+function authHeaders(): Record<string, string> {
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem(TOKEN_KEY);
+  } catch {
+    token = null;
+  }
+  return {
+    'content-type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/** Never throws. A sync failure must not surface where a local save is happening. */
+async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers: { ...authHeaders(), ...init?.headers },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove anything that must not leave the device.
+ *
+ * Currently the LLM API key. Written as a deny-list over known secret field
+ * names rather than an allow-list of safe ones, because a new *safe* field
+ * appearing and silently not syncing is a much smaller failure than a new
+ * *secret* field appearing and silently syncing.
+ */
+export function stripSecrets(namespace: SyncNamespace, payload: unknown): unknown {
+  if (namespace !== 'llm' || !payload || typeof payload !== 'object') return payload;
+  const { apiKey: _apiKey, ...rest } = payload as Record<string, unknown>;
+  return rest;
+}
+
+export interface RemoteSettings<T = unknown> {
+  payload: T | null;
+  version: number;
+}
+
+export async function pullSettings<T>(namespace: SyncNamespace): Promise<RemoteSettings<T> | null> {
+  return call<RemoteSettings<T>>(`/api/auth/settings/${encodeURIComponent(namespace)}`);
+}
+
+/**
+ * Push settings.
+ *
+ * `version` is what the caller last saw. A mismatch comes back as null rather
+ * than overwriting — another device wrote in between, and resolving that is
+ * the caller's decision, not something to paper over.
+ */
+export async function pushSettings(
+  namespace: SyncNamespace,
+  payload: unknown,
+  version?: number,
+): Promise<{ version: number } | null> {
+  return call<{ version: number }>(`/api/auth/settings/${encodeURIComponent(namespace)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ payload: stripSecrets(namespace, payload), version }),
+  });
+}
+
+/** Items changed since `since` (0 = everything). Deletions arrive as tombstones. */
+export async function pullContent(
+  kind: ContentKind,
+  since = 0,
+): Promise<SyncedContent[] | null> {
+  const res = await call<{ items: SyncedContent[] }>(
+    `/api/auth/content?kind=${encodeURIComponent(kind)}&since=${since}`,
+  );
+  return res?.items ?? null;
+}
+
+export async function pushContent(
+  items: { id: string; kind: ContentKind; name: string; payload: unknown; deleted?: boolean }[],
+): Promise<boolean> {
+  if (items.length === 0) return true;
+  const res = await call<{ ok: boolean }>('/api/auth/content', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  });
+  return res?.ok === true;
+}
+
+/** Record that this account uploaded a market item, so it survives losing the local edit key. */
+export async function claimMarketItem(itemId: string, editKeyHash?: string): Promise<boolean> {
+  const res = await call<{ ok: boolean }>('/api/auth/market-claims', {
+    method: 'POST',
+    body: JSON.stringify({ itemId, editKeyHash }),
+  });
+  return res?.ok === true;
+}
+
+export async function listMarketClaims(): Promise<{ item_id: string; claimed_at: number }[]> {
+  const res = await call<{ claims: { item_id: string; claimed_at: number }[] }>(
+    '/api/auth/market-claims',
+  );
+  return res?.claims ?? [];
+}

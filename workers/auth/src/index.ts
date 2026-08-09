@@ -310,6 +310,171 @@ export default {
         return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
       }
 
+      // ── Settings sync ──
+      //
+      // Namespaced JSON blobs. The server never interprets the payload; it
+      // stores it and owns the version. That keeps a settings change from
+      // needing a migration, and it is why the API-key exclusion has to be
+      // enforced on the client — the server cannot tell what it is holding.
+      //
+      // The version is optimistic-concurrency, not decoration: a mismatch
+      // means another device wrote first, and the client is told rather than
+      // silently overwritten with a value that may be days old.
+      if (path.startsWith('/api/auth/settings/') && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const namespace = decodeURIComponent(path.slice('/api/auth/settings/'.length));
+        const row = await env.DB.prepare(
+          'SELECT payload, version, updated_at FROM user_settings WHERE user_id = ? AND namespace = ?',
+        )
+          .bind(user.id, namespace)
+          .first<{ payload: string; version: number; updated_at: number }>();
+        if (!row) return json({ payload: null, version: 0 }, 200, cors);
+        return json(
+          { payload: JSON.parse(row.payload), version: row.version, updatedAt: row.updated_at },
+          200,
+          cors,
+        );
+      }
+
+      if (path.startsWith('/api/auth/settings/') && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const namespace = decodeURIComponent(path.slice('/api/auth/settings/'.length));
+        const body = (await request.json()) as { payload?: unknown; version?: number };
+        if (body.payload === undefined) return err('缺少 payload', 400, cors);
+
+        const now = Date.now();
+        const current = await env.DB.prepare(
+          'SELECT version FROM user_settings WHERE user_id = ? AND namespace = ?',
+        )
+          .bind(user.id, namespace)
+          .first<{ version: number }>();
+        const currentVersion = current?.version ?? 0;
+        // A client that did not send a version is doing a first push; one that
+        // did must match, or it is writing over something it never saw.
+        if (body.version !== undefined && body.version !== currentVersion) {
+          return json({ error: '版本冲突', version: currentVersion }, 409, cors);
+        }
+        const nextVersion = currentVersion + 1;
+        await env.DB.prepare(
+          `INSERT INTO user_settings (user_id, namespace, payload, version, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, namespace)
+           DO UPDATE SET payload = excluded.payload, version = excluded.version, updated_at = excluded.updated_at`,
+        )
+          .bind(user.id, namespace, JSON.stringify(body.payload), nextVersion, now)
+          .run();
+        return json({ version: nextVersion, updatedAt: now }, 200, cors);
+      }
+
+      // ── Content library (waveforms / scenes) ──
+      //
+      // One row per item rather than one blob per library: when two devices
+      // each add something, a whole-library blob can only keep one of them.
+      //
+      // `since` makes the pull incremental, and deletions come back as
+      // tombstones — a hard delete would let the item reappear the next time
+      // a device that had not synced pushed its own full list.
+      if (path === '/api/auth/content' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const kind = url.searchParams.get('kind') ?? '';
+        const since = Number(url.searchParams.get('since') ?? '0') || 0;
+        const rows = await env.DB.prepare(
+          `SELECT id, kind, name, payload, created_at, updated_at, deleted_at
+             FROM user_content
+            WHERE user_id = ? AND (? = '' OR kind = ?) AND updated_at > ?
+            ORDER BY updated_at ASC
+            LIMIT 500`,
+        )
+          .bind(user.id, kind, kind, since)
+          .all();
+        return json(
+          {
+            items: (rows.results ?? []).map((r) => {
+              const row = r as Record<string, unknown>;
+              return {
+                id: row.id,
+                kind: row.kind,
+                name: row.name,
+                payload: JSON.parse(String(row.payload)),
+                createdAt: row.created_at,
+                updatedAt: row.updated_at,
+                deleted: row.deleted_at != null,
+              };
+            }),
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/content' && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json()) as {
+          items?: { id: string; kind: string; name: string; payload: unknown; deleted?: boolean }[];
+        };
+        const items = Array.isArray(body.items) ? body.items.slice(0, 200) : [];
+        if (items.length === 0) return json({ ok: true, written: 0 }, 200, cors);
+
+        const now = Date.now();
+        const statements = items.map((item) =>
+          env.DB.prepare(
+            `INSERT INTO user_content (id, user_id, kind, name, payload, created_at, updated_at, deleted_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, id)
+             DO UPDATE SET name = excluded.name, payload = excluded.payload,
+                           updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
+          ).bind(
+            String(item.id),
+            user.id,
+            String(item.kind),
+            String(item.name ?? '').slice(0, 200),
+            JSON.stringify(item.payload ?? null),
+            now,
+            now,
+            item.deleted ? now : null,
+          ),
+        );
+        await env.DB.batch(statements);
+        return json({ ok: true, written: items.length, updatedAt: now }, 200, cors);
+      }
+
+      // ── Market ownership ──
+      //
+      // The item itself lives in Market's own D1, in another Worker. This
+      // only records who claimed what, so "things I uploaded" survives losing
+      // the anonymous edit key that Market issues per device.
+      if (path === '/api/auth/market-claims' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const rows = await env.DB.prepare(
+          'SELECT item_id, claimed_at FROM market_claims WHERE user_id = ? ORDER BY claimed_at DESC LIMIT 500',
+        )
+          .bind(user.id)
+          .all();
+        return json({ claims: rows.results ?? [] }, 200, cors);
+      }
+
+      if (path === '/api/auth/market-claims' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json()) as { itemId?: string; editKeyHash?: string };
+        if (!body.itemId) return err('缺少 itemId', 400, cors);
+        // First claim wins. Re-claiming someone else's item must not be a way
+        // to take it over; Market's edit key stays the authority on editing.
+        await env.DB.prepare(
+          `INSERT INTO market_claims (item_id, user_id, edit_key_hash, claimed_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT (item_id) DO NOTHING`,
+        )
+          .bind(String(body.itemId), user.id, body.editKeyHash ?? null, Date.now())
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
       // ── Delete account ──
       // Users in this category are extremely sensitive about whether the data is
       // really gone, so this is a hard delete rather than a flag, and sessions has

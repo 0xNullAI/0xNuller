@@ -1,0 +1,11 @@
+{
+  "name": "@0xnullai/sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "登录后把设置与内容库同步到账户。未登录时全部为空操作。",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@0xnullai/settings": "0.1.0"
+  }
+}
