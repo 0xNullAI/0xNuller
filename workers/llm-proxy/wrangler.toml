@@ -13,5 +13,36 @@ custom_domain = true
 # here without rebuilding the web app. Mirrors the old FC PROXY_MODEL env var.
 PROXY_MODEL = "openrouter/free"
 
-# Secret (do NOT put in this file) — set once after first deploy:
-#   wrangler secret put PROXY_API_KEY
+# Comma-separated origins allowed to call this worker from a browser. Leave it
+# unset and the worker answers `*`, exactly as it always has — the checks in
+# src/guard.js are opt-in so that a half-finished rollout cannot take the free
+# provider offline. Requests with no Origin (the Android WebView, any
+# non-browser client) are always allowed through this particular check.
+ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com"
+
+# Global per-IP rate limit. Without this binding the worker falls back to a
+# per-isolate in-memory counter, which is barely a limit at all: Cloudflare runs
+# many isolates and each keeps its own map, so the real ceiling is the number
+# below times however many isolates happen to be warm. This worker spends a paid
+# upstream key, so that gap is a money problem, not a tidiness one.
+#
+# `wrangler deploy --dry-run` first — this binding is still behind `unsafe` and
+# its schema has moved before.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+# Secrets (do NOT put in this file) — set once after first deploy, and note that
+# secrets do not survive a script rename:
+#   wrangler secret put PROXY_API_KEY      # upstream gateway key
+#   wrangler secret put FREE_PROXY_SECRET  # optional; must equal the client's
+#                                          # VITE_DG_PROXY_SECRET. Only the
+#                                          # Android build is given one, so a
+#                                          # request without a signature is
+#                                          # still accepted — a *wrong* one is
+#                                          # not. This is a speed bump against
+#                                          # someone pointing a script at the
+#                                          # subdomain, not authentication: the
+#                                          # secret ships inside an APK.

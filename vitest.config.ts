@@ -23,6 +23,17 @@ export default defineConfig({
       'workers/auth',
       'android/app',
 
+      // The two proxy Workers are plain JS with no config of their own. They
+      // guard a paid upstream key, so their request-admission logic is tested
+      // even though the workers themselves are not a workspace.
+      {
+        test: {
+          name: 'worker-proxies',
+          environment: 'node',
+          include: ['workers/{llm-proxy,speech-proxy}/**/*.{test,spec}.js'],
+        },
+      },
+
       // @dg-kit/*：沿用 DG-Kit 原根配置的 node 环境与 include 范围
       {
         test: {

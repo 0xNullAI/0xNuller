@@ -116,6 +116,38 @@ RoomDO / LobbyDO 也不能挪进别的 script——两者都等于让所有群�
 最后一人离开 10 分钟后 RoomDO 的 alarm 会把没有任何消息引用的对象扫掉（上传后没
 发出去的附件走的就是这条路）。所以 R2 用量跟的是「在线群数 × 1000 条」，不是历史总量。
 
+## 免费 provider 的开销边界
+
+`0xnullai-llm-proxy` 转发的是一把**付费**的上游 key，而免费 provider 是对用户的承诺，
+不是可以随便关掉的功能。所以这里的失败模式不是「有人混进来」，而是「所有人被挡在外面」
+——`src/guard.js` 里的每一道检查都是**配了才生效**，什么都不设时行为和以前完全一样。
+
+上线时按顺序打开：
+
+```bash
+wrangler deploy --dry-run --config workers/llm-proxy/wrangler.toml   # 先验配置
+wrangler secret put PROXY_API_KEY     --config workers/llm-proxy/wrangler.toml
+wrangler secret put FREE_PROXY_SECRET --config workers/llm-proxy/wrangler.toml  # 可选
+```
+
+三点要知道：
+
+**1. 签名是减速带，不是鉴权。** 客户端从安卓版上线起就在用 HMAC-SHA256 签
+`X-DG-Timestamp`，而这个 Worker 以前**从来没读过那两个头**——签名是死的，比没有更糟，
+因为在 code review 里它看起来像是保护。现在会验了，但密钥是打包进 APK 的，拆包的人可以
+永远伪造。它真正挡住的是「有人发现了这个子域名，拿脚本对着打」，仅此而已。
+**没带签名的请求仍然放行**：只有安卓版拿得到密钥，强制要求会把网页版的免费 provider
+全部切断。带了但签错的才拒绝。
+
+**2. `ALLOWED_ORIGINS` 不设就是 `*`。** 设了之后只回显名单内的来源。**没有 Origin 的
+请求一律放行**——安卓 WebView 和任何非浏览器客户端都不发这个头，而浏览器无法隐藏自己的
+Origin，所以这条只会放进本来就不受 CORS 约束的客户端，它们照样要过签名和限流。
+
+**3. 没有 `RATE_LIMITER` 绑定时，限流几乎等于没有。** 兜底的是进程内的一张 Map，
+Cloudflare 会跑很多 isolate、每个都有自己的一份，实际上限是「每分钟 N 条 × 当时热着的
+isolate 数」。绑定还在 `unsafe` 下且 schema 变过，所以**先 `--dry-run`**。绑定缺失或
+报错时代码会退回内存计数而不是直接 500——限流可以变弱，但不能变成一次故障。
+
 ## 部署前必须确认的四件事
 
 **1. `IP_PEPPER` 永不轮换。** 它参与登录限流记录的哈希，换了等于把所有限流记录作废，
