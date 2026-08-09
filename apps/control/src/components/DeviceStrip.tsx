@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { Bluetooth, Gauge, Radar } from 'lucide-react';
+import { Bluetooth, Gauge, Radar, X } from 'lucide-react';
 import { isDevicePickerCancelled } from '@dg-kit/core';
 import { DeviceSafetyButton } from '../../../chat/src/components/DeviceSafetyButton';
-import type { OpossumSummary, SensorSummary } from '../../../chat/src/lib/bluetooth';
+import type {
+  CoyoteSummary,
+  OpossumSummary,
+  SensorSummary,
+} from '../../../chat/src/lib/bluetooth';
 import type { DeviceKind } from '../../../chat/src/lib/protocol';
 
 interface DeviceStripProps {
-  connected: boolean;
-  deviceName: string | null;
-  battery: number | null;
+  /** Every attached Coyote host, primary first. */
+  coyotes: CoyoteSummary[];
   sensor: SensorSummary | null;
   opossum: OpossumSummary | null;
   limitA: number;
   limitB: number;
   onSetLimit: (channel: 'A' | 'B', value: number) => void;
   onConnectDevice: () => Promise<{ kind: DeviceKind; name: string }>;
-  onDisconnectCoyote: () => void;
+  /** Omitted id = every Coyote; the chips pass one so each can go on its own. */
+  onDisconnectCoyote: (deviceId?: string) => void;
   onDisconnectSensor: () => void;
   onDisconnectOpossum: () => void;
   onRestoreDefaults: () => void;
@@ -30,16 +34,32 @@ function Chip({
   icon,
   label,
   detail,
+  onRemove,
+  removeTitle,
 }: {
   icon: React.ReactNode;
   label: string;
   detail: string | null;
+  /** When given, the chip grows a per-device disconnect. */
+  onRemove?: () => void;
+  removeTitle?: string;
 }) {
   return (
     <span className="flex items-center gap-1.5 rounded-full bg-[var(--bg-soft)] px-2.5 py-1 text-xs text-[var(--text-soft)]">
       {icon}
       <span className="truncate">{label}</span>
       {detail && <span className="text-[10px] text-[var(--text-faint)]">{detail}</span>}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          title={removeTitle}
+          aria-label={removeTitle}
+          className="-mr-1 flex h-4 w-4 items-center justify-center rounded-full text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--danger)]"
+        >
+          <X size={10} />
+        </button>
+      )}
     </span>
   );
 }
@@ -106,9 +126,7 @@ function ConnectPrompt({
  * still connected" should not require opening a popover to find out.
  */
 export function DeviceStrip({
-  connected,
-  deviceName,
-  battery,
+  coyotes,
   sensor,
   opossum,
   limitA,
@@ -120,15 +138,20 @@ export function DeviceStrip({
   onDisconnectOpossum,
   onRestoreDefaults,
 }: DeviceStripProps) {
-  const nothingAttached = !connected && !sensor?.connected && !opossum?.connected;
+  const attachedCoyotes = coyotes.filter((c) => c.connected);
+  const primary = attachedCoyotes[0] ?? null;
+  const nothingAttached = !primary && !sensor?.connected && !opossum?.connected;
 
   return (
     <section className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+      {/* The shared safety panel is still single-host: it shows the primary and
+          its "断开" drops every Coyote. Per-host disconnect lives on the chips
+          beside it, which is also where a user can see there is more than one. */}
       <DeviceSafetyButton
-        connected={connected}
-        deviceName={deviceName}
-        battery={battery}
-        onDisconnect={onDisconnectCoyote}
+        connected={Boolean(primary)}
+        deviceName={primary?.name ?? null}
+        battery={primary?.battery ?? null}
+        onDisconnect={() => onDisconnectCoyote()}
         limitA={limitA}
         limitB={limitB}
         onSetLimit={onSetLimit}
@@ -144,13 +167,23 @@ export function DeviceStrip({
         <ConnectPrompt onConnectDevice={onConnectDevice} />
       ) : (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {connected && (
+          {attachedCoyotes.map((coyote) => (
             <Chip
+              key={coyote.id}
               icon={<Bluetooth size={12} className="text-[var(--success)]" />}
-              label={deviceName ?? '郊狼'}
-              detail={battery != null ? `${battery}%` : null}
+              label={coyote.name}
+              detail={coyote.battery != null ? `${coyote.battery}%` : null}
+              // Only offer per-chip disconnect once there is more than one:
+              // with a single host the panel's own "断开" already does it, and
+              // two buttons that do the same thing invite the wrong one.
+              {...(attachedCoyotes.length > 1
+                ? {
+                    onRemove: () => onDisconnectCoyote(coyote.id),
+                    removeTitle: `断开 ${coyote.name}`,
+                  }
+                : {})}
             />
-          )}
+          ))}
           {opossum?.connected && (
             <Chip
               icon={<Gauge size={12} className="text-[var(--accent)]" />}

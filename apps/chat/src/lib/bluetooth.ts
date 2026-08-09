@@ -76,6 +76,29 @@ interface ChannelLocalState {
   loop: boolean;
 }
 
+/**
+ * One Coyote host's state, flattened for the UI and the device bar.
+ *
+ * Carries `id` because a session may now hold several Coyotes at once: every
+ * row the user sees, and every targeted command, is addressed by this.
+ */
+export interface CoyoteSummary {
+  /** Stable device identity — see `DGLabDevice.id`. */
+  id: string;
+  name: string;
+  version: DeviceVersion;
+  connected: boolean;
+  battery: number | null;
+  strengthA: number;
+  strengthB: number;
+  limitA: number;
+  limitB: number;
+  waveActiveA: boolean;
+  waveActiveB: boolean;
+  waveIdA: string | null;
+  waveIdB: string | null;
+}
+
 export class DGLabDevice {
   private readonly protocol = new CoyoteProtocolAdapter();
   private readonly client: DeviceClient;
@@ -111,12 +134,43 @@ export class DGLabDevice {
   private limitB = DEFAULT_LIMIT;
 
   /**
+   * Identity of the attached host, once known.
+   *
+   * `BluetoothDevice.id` on web, the BLE address on Android — both stable
+   * across a drop-and-reconnect, which is what lets `DeviceSession` put a
+   * reconnecting device back into the slot it came from instead of growing a
+   * second, duplicate row for it.
+   */
+  private deviceId: string | null = null;
+
+  /**
+   * Stable identity for this host: its device id once connected, otherwise
+   * the slot's construction-time fallback.
+   *
+   * Never empty and never colliding with another slot's, because it keys the
+   * device bar's rows and every targeted command. A row that collides is a
+   * row React drops — and a device the user can no longer see is attached.
+   */
+  get id(): string {
+    return this.deviceId ?? this.fallbackId;
+  }
+
+  /**
    * @param clientFactory optional factory invoked with the protocol adapter
    *   to create the transport-specific `DeviceClient`. Defaults to
    *   `WebBluetoothDeviceClient` for browser. The Tauri Android shell
    *   passes a factory that builds a `TauriBlecDeviceClient`.
+   * @param fallbackId identity used until the transport reports a real device
+   *   id (and if it never does — some `DeviceClientFactory` implementations
+   *   do not expose one).
    */
-  constructor(clientFactory?: DeviceClientFactory) {
+  // Not a constructor parameter property: `erasableSyntaxOnly` is on in this
+  // app, and those fail the build with TS1294 (typecheck alone does not catch
+  // it).
+  private readonly fallbackId: string;
+
+  constructor(clientFactory?: DeviceClientFactory, fallbackId = 'coyote') {
+    this.fallbackId = fallbackId;
     this.client = clientFactory
       ? clientFactory(this.protocol)
       : new WebBluetoothDeviceClient({ protocol: this.protocol });
@@ -154,11 +208,15 @@ export class DGLabDevice {
       throw new Error('当前环境暂不支持免二次选择器直接连接 Coyote 主机');
     }
     await this.client.connectDevice(device, server);
-    return this.afterConnect();
+    return this.afterConnect(device.id ?? null);
   }
 
   /** Shared post-connect bookkeeping for both `connect()` and `connectViaChosenDevice()`. */
-  private async afterConnect(): Promise<DeviceInfo> {
+  private async afterConnect(pickedId: string | null = null): Promise<DeviceInfo> {
+    // Prefer the id of the device actually handed to us; fall back to asking
+    // the transport (the `connect()` path runs the chooser inside the client,
+    // so this side never sees the device object).
+    this.deviceId = pickedId ?? clientDeviceId(this.client);
     const state = await this.client.getState();
     this.deviceName = state.deviceName ?? '';
     this.version = this.deviceName.startsWith(V2_DEVICE_NAME_PREFIX) ? 'v2' : 'v3';
@@ -301,6 +359,26 @@ export class DGLabDevice {
     };
   }
 
+  /** This host's row for the UI and the shell's device bar. */
+  getSummary(): CoyoteSummary {
+    const s = this.getState();
+    return {
+      id: this.id,
+      name: this.deviceName || '郊狼',
+      version: this.version,
+      connected: s.connected,
+      battery: s.connected ? s.battery : null,
+      strengthA: s.strengthA,
+      strengthB: s.strengthB,
+      limitA: s.limitA,
+      limitB: s.limitB,
+      waveActiveA: s.waveActiveA,
+      waveActiveB: s.waveActiveB,
+      waveIdA: s.waveIdA,
+      waveIdB: s.waveIdB,
+    };
+  }
+
   setOnStateChange(cb: () => void): void {
     this.onStateChange = cb;
   }
@@ -308,6 +386,18 @@ export class DGLabDevice {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Reads the transport's device identity when it exposes one — true for both
+ * `WebBluetoothDeviceClient` and `TauriBlecDeviceClient`. Duck-typed rather
+ * than added to `@dg-kit/core`'s `DeviceClient`, so a custom
+ * `DeviceClientFactory` without it keeps working (it just falls back to the
+ * slot id).
+ */
+function clientDeviceId(client: DeviceClient): string | null {
+  const id = (client as { deviceId?: unknown }).deviceId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
 }
 
 /**
@@ -387,14 +477,20 @@ function describeCivetReading(reading: CivetPressureReading): {
 }
 
 /**
- * DeviceSession — manages a member's full BLE device set: exactly one Coyote
- * plus at most one sensor (paw-prints OR civet-edging — never both at once)
- * plus at most one Opossum vibration controller.
+ * DeviceSession — manages a member's full BLE device set: any number of Coyote
+ * hosts plus at most one sensor (paw-prints OR civet-edging — never both at
+ * once) plus at most one Opossum vibration controller.
  *
- * v1 scope, deliberately simplified: no multi-Coyote, no two sensors at
- * once even of different kinds. Connecting a new sensor replaces whichever
- * sensor was previously connected. This mirrors the brief's "one of each
- * kind is a reasonable v1 scope."
+ * Multiple Coyotes are held as one `DGLabDevice` *per device* rather than one
+ * `DGLabDevice` juggling several: each carries its own protocol adapter, its
+ * own `DeviceCommandQueue` and its own software caps, so two hosts can never
+ * end up sharing one clamp state or one emergency-stop generation counter.
+ * The transports were already built this way (both clients are scoped to one
+ * device), so this is the shape the layer below already had.
+ *
+ * Still deliberately simplified: no two sensors at once even of different
+ * kinds. Connecting a new sensor replaces whichever sensor was previously
+ * connected.
  *
  * All four device kinds share ONE entry point — `connectDevice()` — built on
  * an injectable `RequestDeviceFn` that opens a single chooser scoped to
@@ -413,7 +509,49 @@ function describeCivetReading(reading: CivetPressureReading): {
  * produced them.
  */
 export class DeviceSession {
-  readonly coyote: DGLabDevice;
+  /**
+   * Every attached Coyote host, in attach order. Slot 0 is permanent: it is
+   * created up front and never removed, so `coyote` below always has
+   * something to return and the many existing `session.coyote.x()` call sites
+   * keep working with no null check.
+   */
+  private readonly coyotes: DGLabDevice[] = [];
+  private nextSlotSeq = 0;
+  private readonly clientFactory: DeviceClientFactory | undefined;
+
+  /**
+   * The primary Coyote — the first *connected* one, or slot 0 when none is.
+   *
+   * This is what the whole single-device surface (`connected`, `strengthA`,
+   * `setStrength`, ...) still points at, so nothing that predates multi-device
+   * had to change. Resolved dynamically rather than pinned to slot 0: after
+   * the first host is disconnected while a second is still running, a fixed
+   * slot 0 would report "not connected" and the UI would claim nothing is
+   * attached while a device is live on someone's body.
+   */
+  get coyote(): DGLabDevice {
+    return this.coyotes.find((c) => c.getState().connected) ?? this.coyotes[0]!;
+  }
+
+  /** Every attached Coyote's row, primary first. */
+  getCoyoteSummaries(): CoyoteSummary[] {
+    const primaryId = this.coyote.id;
+    return this.coyotes
+      .filter((c) => c.getState().connected)
+      .sort((a, b) => Number(b.id === primaryId) - Number(a.id === primaryId))
+      .map((c) => c.getSummary());
+  }
+
+  /**
+   * Resolve a command's target host. An omitted id means the primary — that
+   * is what every caller written before multi-device meant, and what old
+   * Android clients (no hot update, so they stay on the wire for a long time)
+   * still mean when they send a `DeviceCommand` with no `deviceId`.
+   */
+  coyoteById(deviceId?: string): DGLabDevice | null {
+    if (!deviceId) return this.coyote;
+    return this.coyotes.find((c) => c.id === deviceId) ?? null;
+  }
 
   private sensorAdapter: PawPrintsSensorAdapter | CivetPressureSensorAdapter | null = null;
   private sensorKind: SensorKind | null = null;
@@ -438,8 +576,48 @@ export class DeviceSession {
 
   constructor(clientFactory?: DeviceClientFactory, requestDevice?: RequestDeviceFn) {
     this.requestDevice = requestDevice ?? requestDgLabDevice;
-    this.coyote = new DGLabDevice(clientFactory);
-    this.coyote.setOnStateChange(() => this.emit());
+    this.clientFactory = clientFactory;
+    this.addCoyoteSlot();
+  }
+
+  /**
+   * The caps every Coyote slot runs under, mirrored from the shared
+   * device-safety settings by the host hook.
+   *
+   * Held here as well as on each `DGLabDevice` so a host attached *after* the
+   * user lowered the cap still starts out clamped: without this it would come
+   * up on `DGLabDevice`'s built-in 50 default, i.e. a safety control that
+   * silently does not apply to the second device. Each host still enforces
+   * its own copy — this only seeds them, it is not a shared clamp state.
+   */
+  private coyoteLimitA = DEFAULT_LIMIT;
+  private coyoteLimitB = DEFAULT_LIMIT;
+
+  /** Apply a channel cap to every attached host, and to every host attached later. */
+  setCoyoteLimit(channel: 'A' | 'B', value: number): void {
+    if (channel === 'A') this.coyoteLimitA = value;
+    else this.coyoteLimitB = value;
+    for (const coyote of this.coyotes) coyote.setLimit(channel, value);
+  }
+
+  /** Add an empty Coyote slot, wired to this session's change notifications. */
+  private addCoyoteSlot(): DGLabDevice {
+    // The fallback id only shows up when the transport reports no device id;
+    // it still has to be unique per slot, or two such hosts would collide on
+    // the device bar and one row would silently vanish.
+    const slot = new DGLabDevice(this.clientFactory, `coyote-${this.nextSlotSeq++}`);
+    slot.setLimit('A', this.coyoteLimitA);
+    slot.setLimit('B', this.coyoteLimitB);
+    slot.setOnStateChange(() => this.emit());
+    this.coyotes.push(slot);
+    return slot;
+  }
+
+  /** Drop a slot. Slot 0 is permanent — see the `coyotes` field doc. */
+  private removeCoyoteSlot(slot: DGLabDevice): void {
+    const index = this.coyotes.indexOf(slot);
+    if (index <= 0) return;
+    this.coyotes.splice(index, 1);
   }
 
   setOnStateChange(cb: () => void): void {
@@ -456,15 +634,26 @@ export class DeviceSession {
   }
 
   /**
-   * Disconnect only the Coyote host — sensor and Opossum, if connected,
-   * stay up. Distinct from `disconnectAll()`: the per-device rows in
+   * Disconnect Coyote hosts — sensor and Opossum, if connected, stay up.
+   * Distinct from `disconnectAll()`: the per-device rows in
    * `DeviceSafetyButton` now let a user manage each connection
    * independently, so the Coyote row's own "断开" must not silently also
    * drop the other two (that surprise was the point of the fix — see the
    * PR review that caught it).
+   *
+   * `deviceId` targets one host. Omitting it disconnects *every* Coyote,
+   * which is what the single, un-targeted "断开" button in Chat's device
+   * panel means: it is rendered from an aggregate row, so leaving a second
+   * host silently attached after pressing it would make the UI disagree with
+   * what is on the user's body.
    */
-  disconnectCoyote(): void {
-    this.coyote.disconnect();
+  disconnectCoyote(deviceId?: string): void {
+    const targets = deviceId ? this.coyotes.filter((c) => c.id === deviceId) : [...this.coyotes];
+    for (const target of targets) {
+      target.disconnect();
+      this.removeCoyoteSlot(target);
+    }
+    this.emit();
   }
 
   /**
@@ -482,7 +671,7 @@ export class DeviceSession {
     let coyoteInfo: DeviceInfo | undefined;
     try {
       if (kind === 'coyote') {
-        coyoteInfo = await this.coyote.connectViaChosenDevice(device, server);
+        coyoteInfo = await this.attachCoyote(device, server);
       } else if (kind === 'paw-prints' || kind === 'civet-edging') {
         await this.attachSensor(kind, device, server);
       } else {
@@ -494,6 +683,33 @@ export class DeviceSession {
     }
 
     return { kind, name: device.name ?? '', coyoteInfo };
+  }
+
+  /**
+   * Route a picked Coyote host into a slot.
+   *
+   * Slot choice, in order: the slot that already holds this exact device id
+   * (a reconnect — it keeps its identity, so the device bar row and any
+   * pending targeted commands stay pointed at the same host rather than
+   * growing a duplicate), then any disconnected slot, then a fresh one.
+   */
+  private async attachCoyote(
+    device: BluetoothDeviceLike,
+    server: BluetoothRemoteGATTServerLike,
+  ): Promise<DeviceInfo> {
+    const pickedId = device.id ?? null;
+    const sameDevice = pickedId ? this.coyotes.find((c) => c.id === pickedId) : undefined;
+    const reusable = sameDevice ?? this.coyotes.find((c) => !c.getState().connected);
+    const slot = reusable ?? this.addCoyoteSlot();
+
+    try {
+      return await slot.connectViaChosenDevice(device, server);
+    } catch (error) {
+      // A slot opened just for this attempt must not linger: it would show up
+      // as a dead row and as one more thing the stop button walks over.
+      if (!reusable) this.removeCoyoteSlot(slot);
+      throw error;
+    }
   }
 
   private async attachSensor(
@@ -740,15 +956,29 @@ export class DeviceSession {
     }
   }
 
-  /** Emergency stop across every connected device (Coyote + Opossum). Sensors have no output to zero. */
+  /**
+   * Emergency stop across every connected device (every Coyote + Opossum).
+   * Sensors have no output to zero.
+   *
+   * Walks the whole `coyotes` list, not `this.coyote`: this is the function
+   * the shell's global stop button reaches through the safety bus, and a stop
+   * that zeroes only the primary would leave every other attached host
+   * running at its last commanded strength with the user believing they had
+   * already stopped everything. Each host's `stopAll()` goes through its own
+   * queue's jump-the-queue path, so commands already in flight for that host
+   * are voided too.
+   */
   stopAllOutputs(): void {
-    this.coyote.stopAll();
+    for (const coyote of this.coyotes) coyote.stopAll();
     this.opossumStop();
   }
 
   /** Tear down the whole session — used when disconnecting or leaving the room. */
   disconnectAll(): void {
-    this.coyote.disconnect();
+    for (const coyote of this.coyotes) coyote.disconnect();
+    // Keep slot 0 (permanent, see the field doc); drop the extras so a
+    // re-used session does not start out with dead rows.
+    this.coyotes.splice(1);
     this.disconnectSensor();
     this.disconnectOpossum();
   }

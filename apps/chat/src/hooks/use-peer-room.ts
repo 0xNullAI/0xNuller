@@ -331,6 +331,10 @@ export function usePeerRoom(displayName: string) {
               {
                 action: data.a as CmdAction,
                 kind: data.kind as DeviceCommand['kind'],
+                // Absent on every command from a client that predates
+                // multi-device — which stays undefined here and so keeps
+                // meaning "the primary device of that kind".
+                deviceId: data.deviceId as string | undefined,
                 c: data.c as 'A' | 'B' | undefined,
                 v: data.v as number | undefined,
                 w: data.w as string | undefined,

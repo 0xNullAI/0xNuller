@@ -13,7 +13,7 @@ import type {
 import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
 import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
 import { AuxDevices } from '@control/components/AuxDevices';
-import { CoyoteControl } from '@control/components/CoyoteControl';
+import { CoyoteSection } from '@control/components/CoyoteControl';
 import { DeviceStrip } from '@control/components/DeviceStrip';
 import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
@@ -48,6 +48,14 @@ export default function App() {
   const playbackB = useChannelPlayback();
   const [waveTab, setWaveTab] = useState<'A' | 'B'>('A');
   const [marketOpen, setMarketOpen] = useState(false);
+
+  // Which host the shared waveform panel drives. Held as an id rather than an
+  // index so unplugging one device does not silently re-point the panel at a
+  // different one; the fallback below re-resolves to the primary only once the
+  // selected host is actually gone.
+  const [selectedCoyoteId, setSelectedCoyoteId] = useState<string | null>(null);
+  const coyotes = device.coyotes;
+  const selectedCoyote = coyotes.find((c) => c.id === selectedCoyoteId) ?? coyotes[0] ?? null;
 
   // The Opossum has caps of its own in the shared settings. They are read here
   // rather than borrowed from the Coyote's because setOpossumIntensity clamps
@@ -111,16 +119,25 @@ export default function App() {
   // strength change does not tear down and restart a 10-minute interval. An
   // effect is enough to keep them fresh: the timer fires minutes apart, so
   // being one commit behind cannot matter.
-  const deviceRef = useRef<ChannelRotationDevice>(device);
+  //
+  // It drives the *selected* host, the same one the waveform panel targets —
+  // rotating a playlist on a device the panel is not pointing at would change
+  // what somebody feels with nothing on screen indicating which device moved.
+  const rotationDevice: ChannelRotationDevice = {
+    connected: Boolean(selectedCoyote?.connected),
+    setWave: (channel, frames, id, loop) =>
+      device.setWave(channel, frames, id, loop, selectedCoyote?.id),
+  };
+  const deviceRef = useRef<ChannelRotationDevice>(rotationDevice);
   const waveformsRef = useRef<ChannelRotationWaveforms>(waveforms);
   useEffect(() => {
-    deviceRef.current = device;
+    deviceRef.current = rotationDevice;
     waveformsRef.current = waveforms;
   });
 
   useChannelRotation(
     'A',
-    released ? null : device.waveIdA,
+    released ? null : (selectedCoyote?.waveIdA ?? null),
     playbackA.queue,
     playbackA.mode,
     playbackA.intervalSec,
@@ -130,7 +147,7 @@ export default function App() {
   );
   useChannelRotation(
     'B',
-    released ? null : device.waveIdB,
+    released ? null : (selectedCoyote?.waveIdB ?? null),
     playbackB.queue,
     playbackB.mode,
     playbackB.intervalSec,
@@ -149,53 +166,60 @@ export default function App() {
    * DGLabDevice clamps it against the cap again on the way out.
    */
   const adjustStrength = useCallback(
-    (channel: 'A' | 'B', delta: number) => {
+    (deviceId: string, channel: 'A' | 'B', delta: number) => {
       if (released) return;
-      const current = channel === 'A' ? device.strengthA : device.strengthB;
-      const limit = channel === 'A' ? device.limitA : device.limitB;
+      // Read the target host's own strength and its own cap. Borrowing the
+      // primary's would let a press on device #2's + button be computed
+      // against device #1's reading — the one way two attached devices could
+      // drive each other.
+      const target = coyotes.find((c) => c.id === deviceId);
+      if (!target) return;
+      const current = channel === 'A' ? target.strengthA : target.strengthB;
+      const limit = channel === 'A' ? target.limitA : target.limitB;
       const next = Math.max(0, Math.min(limit, current + delta));
       if (next === current) return;
-      device.setStrength(channel, next);
+      device.setStrength(channel, next, deviceId);
     },
-    [device, released],
+    [coyotes, device, released],
   );
 
   const startChannel = useCallback(
-    (channel: 'A' | 'B', waveformId: string) => {
+    (deviceId: string, channel: 'A' | 'B', waveformId: string) => {
       if (released) return;
       const waveform = waveforms.getWaveform(waveformId);
       if (!waveform) return;
-      device.setWave(channel, waveform.frames, waveform.id, true);
+      device.setWave(channel, waveform.frames, waveform.id, true, deviceId);
     },
     [device, waveforms, released],
   );
 
   const togglePlay = useCallback(
-    (channel: 'A' | 'B') => {
+    (deviceId: string, channel: 'A' | 'B') => {
       const playback = channel === 'A' ? playbackA : playbackB;
-      const playing = channel === 'A' ? device.waveActiveA : device.waveActiveB;
+      const target = coyotes.find((c) => c.id === deviceId);
+      const playing = channel === 'A' ? target?.waveActiveA : target?.waveActiveB;
       if (playing) {
-        device.stopWave(channel);
+        device.stopWave(channel, deviceId);
         return;
       }
       const id = startWaveformId(playback.queue, playback.index);
-      if (id) startChannel(channel, id);
+      if (id) startChannel(deviceId, channel, id);
     },
-    [device, playbackA, playbackB, startChannel],
+    [coyotes, device, playbackA, playbackB, startChannel],
   );
 
   const toggleWaveform = useCallback(
     (waveform: WaveformDefinition) => {
       const playback = waveTab === 'A' ? playbackA : playbackB;
-      const playing = waveTab === 'A' ? device.waveActiveA : device.waveActiveB;
+      const playing = waveTab === 'A' ? selectedCoyote?.waveActiveA : selectedCoyote?.waveActiveB;
       const added = !playback.queue.includes(waveform.id);
       playback.toggle(waveform.id);
       // Adding one while the channel is already running switches to it right
       // away — otherwise the tap looks like it did nothing until the next
       // rotation, which for a 10-minute interval reads as broken.
-      if (added && playing) startChannel(waveTab, waveform.id);
+      if (added && playing && selectedCoyote) startChannel(selectedCoyote.id, waveTab, waveform.id);
     },
-    [waveTab, playbackA, playbackB, device.waveActiveA, device.waveActiveB, startChannel],
+    [waveTab, playbackA, playbackB, selectedCoyote, startChannel],
   );
 
   const activePlayback = waveTab === 'A' ? playbackA : playbackB;
@@ -204,9 +228,7 @@ export default function App() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[520px] flex-col gap-6 px-4 py-5">
         <DeviceStrip
-          connected={device.connected}
-          deviceName={device.deviceInfo?.name ?? null}
-          battery={device.battery}
+          coyotes={coyotes}
           sensor={device.sensor}
           opossum={device.opossum}
           limitA={device.limitA}
@@ -219,24 +241,26 @@ export default function App() {
           onRestoreDefaults={waveforms.restoreDefaults}
         />
 
-        <CoyoteControl
-          connected={device.connected}
-          strengthA={device.strengthA}
-          strengthB={device.strengthB}
-          limitA={device.limitA}
-          limitB={device.limitB}
-          playingA={device.waveActiveA}
-          playingB={device.waveActiveB}
+        <CoyoteSection
+          coyotes={coyotes}
+          selectedId={selectedCoyote?.id ?? null}
+          onSelect={setSelectedCoyoteId}
           queueLengthA={playbackA.queue.length}
           queueLengthB={playbackB.queue.length}
           onAdjustStrength={adjustStrength}
           onTogglePlay={togglePlay}
-          onStopAll={device.stopAll}
+          onStopDevice={(deviceId) => device.stopCoyote(deviceId)}
+          onDisconnect={(deviceId) => device.disconnectCoyote(deviceId)}
+          // No device id: the module-level 归零 must cover every attached host
+          // plus the Opossum, not whichever one happens to be selected.
+          onStopAll={() => device.stopAll()}
           waveTab={waveTab}
           onWaveTabChange={setWaveTab}
           waveforms={waveforms.allWaveforms}
           queue={activePlayback.queue}
-          activeWaveId={waveTab === 'A' ? device.waveIdA : device.waveIdB}
+          activeWaveId={
+            waveTab === 'A' ? (selectedCoyote?.waveIdA ?? null) : (selectedCoyote?.waveIdB ?? null)
+          }
           playMode={activePlayback.mode}
           intervalSec={activePlayback.intervalSec}
           onPlayModeChange={activePlayback.setMode}

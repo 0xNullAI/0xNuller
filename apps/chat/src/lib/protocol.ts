@@ -87,6 +87,26 @@ export interface DeviceCommand {
    * opossum connected and either one can set an LED.
    */
   kind?: DeviceKind;
+  /**
+   * Which specific host of that kind, when the receiver has several attached
+   * (its `DeviceSummary.id` — the BLE address / BluetoothDevice.id).
+   *
+   * Optional and additive. **Omitted means the receiver's primary device of
+   * that kind**, which is exactly what it meant before multi-device existed —
+   * every command ever sent by an older client omits it, and Android has no
+   * hot update, so those clients stay on the wire for a long time. An id the
+   * receiver does not recognise must therefore never be treated as "broadcast
+   * to all"; it means the addressed device is not here.
+   *
+   * NOTE: Chat's own `handleCommand` currently resolves every command to the
+   * primary and ignores this field. Honouring it there means clamping against
+   * the *targeted* host's strength and caps rather than the primary's —
+   * without that, targeting device #2 while clamping on device #1's readings
+   * is precisely the "two devices drive each other" failure the per-device
+   * caps exist to prevent. The field is carried end to end so that work is a
+   * local change to the handler rather than a protocol change.
+   */
+  deviceId?: string;
   /** channel: 'A' | 'B' */
   c?: 'A' | 'B';
   /** numeric value: adjust_strength=delta; fire_active=boost; vibrate_adjust=delta; vibrate_burst=target strength; fire=absolute (deprecated) */

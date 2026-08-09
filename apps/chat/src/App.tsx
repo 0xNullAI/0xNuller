@@ -215,22 +215,24 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     devices: () => {
       const d = deviceRef.current;
       return [
-        ...(d.connected
-          ? [
-              {
-                id: 'coyote',
-                kind: 'coyote',
-                name: d.deviceInfo?.name ?? '郊狼',
-                connected: true,
-                ...(typeof d.battery === 'number' ? { battery: d.battery } : {}),
-                active: d.strengthA > 0 || d.strengthB > 0,
-                channels: [
-                  { label: 'A', value: d.strengthA, max: d.limitA },
-                  { label: 'B', value: d.strengthB, max: d.limitB },
-                ],
-              },
-            ]
-          : []),
+        // One entry per attached Coyote, each under its own device id. They
+        // used to all report id 'coyote', so two hosts collided on the device
+        // bar's `sessionId:deviceId` key and React dropped the second — the
+        // user lost the on-screen proof that it was attached to them.
+        ...d.coyotes
+          .filter((c) => c.connected)
+          .map((c) => ({
+            id: c.id,
+            kind: 'coyote',
+            name: c.name,
+            connected: true,
+            ...(typeof c.battery === 'number' ? { battery: c.battery } : {}),
+            active: c.strengthA > 0 || c.strengthB > 0,
+            channels: [
+              { label: 'A', value: c.strengthA, max: c.limitA },
+              { label: 'B', value: c.strengthB, max: c.limitB },
+            ],
+          })),
         ...(d.opossum?.connected
           ? [
               {
@@ -750,7 +752,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             connected={device.connected}
             deviceName={device.deviceInfo?.name ?? null}
             battery={device.battery}
-            onDisconnect={device.disconnectCoyote}
+            onDisconnect={() => device.disconnectCoyote()}
             limitA={device.limitA}
             limitB={device.limitB}
             onSetLimit={device.setLimit}
