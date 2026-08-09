@@ -64,6 +64,7 @@ expectNames(
     'user_follows',
     'user_blocks',
     'dm_threads',
+    'account_deletions',
   ],
   'auth tables',
 );
@@ -74,6 +75,10 @@ expectNames(
     'idx_content_sync_all',
     'idx_content_sync_kind',
     'idx_attempts_created_at',
+    'idx_claims_verified_user',
+    'idx_photos_user_slot',
+    'idx_photos_pending_cleanup',
+    'idx_account_deletions_requested',
   ],
   'auth indexes',
 );
@@ -114,24 +119,36 @@ assert(
   'auth: login cleanup does not use idx_attempts_created_at',
 );
 
-// Existing production path: the live database already has 0001-0005. Applying only
-// the additive 0006 must produce the same schema as a fresh sequential install.
+// Actual production path (2026-08-09 inventory): the live Auth database has only
+// 0001-0003 recorded. Applying 0004-0007 must converge with a fresh sequential install.
 const authUpgrade = new DatabaseSync(':memory:');
 authUpgrade.exec('PRAGMA foreign_keys = ON');
-for (const file of auth.files.slice(0, 5)) {
+for (const file of auth.files.slice(0, 3)) {
   authUpgrade.exec(readFileSync(join(root, 'workers/auth/migrations', file), 'utf8'));
 }
-authUpgrade.exec(readFileSync(join(root, 'workers/auth/migrations', auth.files[5]), 'utf8'));
+for (const file of auth.files.slice(3)) {
+  authUpgrade.exec(readFileSync(join(root, 'workers/auth/migrations', file), 'utf8'));
+}
 assert(
   JSON.stringify(names(authUpgrade, 'index')) === JSON.stringify(names(auth.db, 'index')),
-  'auth: 0001-0005 -> 0006 schema differs from fresh migration path',
+  'auth: 0001-0003 -> 0004-0007 schema differs from fresh migration path',
+);
+assert(
+  JSON.stringify(names(authUpgrade, 'table')) === JSON.stringify(names(auth.db, 'table')),
+  'auth: 0001-0003 -> 0004-0007 tables differ from fresh migration path',
 );
 
 const market = applyMigrations('apps/market/migrations');
 expectNames(names(market.db, 'table'), ['items'], 'market tables');
 expectNames(
   names(market.db, 'index'),
-  ['idx_items_browse', 'idx_items_ip', 'idx_items_visible_new', 'idx_items_visible_popular'],
+  [
+    'idx_items_browse',
+    'idx_items_ip',
+    'idx_items_visible_new',
+    'idx_items_visible_popular',
+    'idx_items_edit_key_scheme',
+  ],
   'market indexes',
 );
 assert(
@@ -171,18 +188,55 @@ assert(
   'market: published 0001 was rewritten instead of preserved',
 );
 
-// Existing Market path: production already has the old schema and has recorded 0001.
-// Wrangler will still see the newly introduced idempotent 0000 plus 0002 as pending.
-// Recreate that shape and prove those two migrations converge with a fresh database.
+// Actual production path (2026-08-09 inventory): raw schema, 44 rows, edit_key_hash
+// already present, and no d1_migrations table. Recreate it; bootstrap only the ledger;
+// then apply 0002/0003 and prove rows plus schema are preserved.
 const marketUpgrade = new DatabaseSync(':memory:');
-marketUpgrade.exec(marketSnapshotSql.split('CREATE INDEX IF NOT EXISTS idx_items_visible_new')[0]);
 marketUpgrade.exec(readFileSync(join(root, 'apps/market/migrations/0000_init.sql'), 'utf8'));
+marketUpgrade.exec(
+  readFileSync(join(root, 'apps/market/migrations/0001_add_edit_key.sql'), 'utf8'),
+);
+const rawInsert = marketUpgrade.prepare(
+  `INSERT INTO items
+    (id, type, name, content, downloads, views, reports, hidden, ip_hash, created_at, edit_key_hash)
+   VALUES (?, 'waveform', ?, '{"frames":[[10,0]]}', 0, 0, 0, 0, ?, ?, ?)`,
+);
+for (let i = 0; i < 44; i++) {
+  rawInsert.run(`raw-${i}`, `raw ${i}`, `ip-${i}`, i, i % 2 ? `legacy-${i}` : null);
+}
+marketUpgrade.exec(
+  readFileSync(join(root, 'scripts/bootstrap-market-migration-ledger.sql'), 'utf8'),
+);
 marketUpgrade.exec(
   readFileSync(join(root, 'apps/market/migrations/0002_browse_indexes.sql'), 'utf8'),
 );
+marketUpgrade.exec(
+  readFileSync(join(root, 'apps/market/migrations/0003_separate_security_domains.sql'), 'utf8'),
+);
 assert(
   JSON.stringify(names(marketUpgrade, 'index')) === JSON.stringify(names(market.db, 'index')),
-  'market: recorded 0001 plus pending 0000/0002 differs from fresh migration path',
+  'market: raw-ledger bootstrap plus 0002/0003 differs from fresh migration path',
+);
+assert(
+  marketUpgrade.prepare('SELECT COUNT(*) AS n FROM items').get().n === 44,
+  'market: raw-ledger bootstrap changed the 44 existing item rows',
+);
+assert(
+  marketUpgrade
+    .prepare(
+      'SELECT COUNT(*) AS n FROM items WHERE edit_key_hash IS NOT NULL AND edit_key_scheme = 1',
+    )
+    .get().n === 22,
+  'market: legacy edit hashes were not preserved as scheme 1',
+);
+assert(
+  JSON.stringify(
+    marketUpgrade
+      .prepare('SELECT name FROM d1_migrations ORDER BY id')
+      .all()
+      .map((r) => r.name),
+  ) === JSON.stringify(['0000_init.sql', '0001_add_edit_key.sql']),
+  'market: bootstrap ledger did not record exactly 0000/0001',
 );
 
 console.log(
@@ -190,7 +244,8 @@ console.log(
     ok: true,
     authMigrations: auth.files,
     marketMigrations: market.files,
-    marketGate: 'inspect d1_migrations before remote apply',
+    authUpgrade: '0001-0003 -> 0004-0007',
+    marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-0003',
   }),
 );
 

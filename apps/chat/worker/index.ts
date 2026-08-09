@@ -38,6 +38,18 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
+    if (pathname.startsWith('/api/upload/') && request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'PUT,OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Media-Token',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+
     // Room WebSocket: /ws/room/:code -> the matching RoomDO instance.
     const roomMatch = pathname.match(/^\/ws\/room\/([^/]+)$/);
     if (roomMatch) {
@@ -138,7 +150,11 @@ export default {
     // Media read-back: GET /api/media/:code/:id
     const mediaMatch = pathname.match(/^\/api\/media\/([^/]+)\/([^/]+)$/);
     if (mediaMatch && request.method === 'GET') {
-      return handleMediaRead(env, decodeURIComponent(mediaMatch[1]!), decodeURIComponent(mediaMatch[2]!));
+      return handleMediaRead(
+        env,
+        decodeURIComponent(mediaMatch[1]!),
+        decodeURIComponent(mediaMatch[2]!),
+      );
     }
 
     // Everything else falls through to the static assets (SPA).

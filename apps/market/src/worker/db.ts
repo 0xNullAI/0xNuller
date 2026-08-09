@@ -14,6 +14,7 @@ interface ItemRow {
   views: number;
   created_at: number;
   edit_key_hash: string | null;
+  edit_key_scheme: number;
 }
 
 export function rowToItem(row: ItemRow): MarketItem {
@@ -89,10 +90,11 @@ export interface InsertItem {
   // Hash of the edit key set at upload time; undefined when none was set (the item is
   // publicly editable).
   editKeyHash?: string;
+  editKeyScheme: 2;
 }
 
-const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at, edit_key_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at, edit_key_hash, edit_key_scheme)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function insertBinds(item: InsertItem): unknown[] {
   return [
@@ -107,11 +109,15 @@ function insertBinds(item: InsertItem): unknown[] {
     item.ipHash,
     item.createdAt,
     item.editKeyHash ?? null,
+    item.editKeyScheme,
   ];
 }
 
 export async function insertItem(db: D1Database, item: InsertItem): Promise<void> {
-  await db.prepare(INSERT_SQL).bind(...insertBinds(item)).run();
+  await db
+    .prepare(INSERT_SQL)
+    .bind(...insertBinds(item))
+    .run();
 }
 
 // Batch insert: a single D1 batch, committed atomically (all succeed or all roll back).
@@ -132,7 +138,9 @@ export async function incrementViews(db: D1Database, id: string): Promise<void> 
 export async function reportItem(db: D1Database, id: string): Promise<void> {
   // Once reports reaches the threshold the item is hidden automatically, pending admin review.
   await db
-    .prepare('UPDATE items SET reports = reports + 1, hidden = CASE WHEN reports + 1 >= 5 THEN 1 ELSE hidden END WHERE id = ?')
+    .prepare(
+      'UPDATE items SET reports = reports + 1, hidden = CASE WHEN reports + 1 >= 5 THEN 1 ELSE hidden END WHERE id = ?',
+    )
     .bind(id)
     .run();
 }
@@ -146,12 +154,28 @@ export async function adminDelete(db: D1Database, id: string): Promise<void> {
 export async function getEditKeyHash(
   db: D1Database,
   id: string,
-): Promise<{ hash: string | null } | null> {
+): Promise<{ hash: string | null; scheme: 1 | 2 } | null> {
   const row = await db
-    .prepare('SELECT edit_key_hash FROM items WHERE id = ? AND hidden = 0')
+    .prepare('SELECT edit_key_hash, edit_key_scheme FROM items WHERE id = ? AND hidden = 0')
     .bind(id)
-    .first<{ edit_key_hash: string | null }>();
-  return row ? { hash: row.edit_key_hash } : null;
+    .first<{ edit_key_hash: string | null; edit_key_scheme: number }>();
+  return row ? { hash: row.edit_key_hash, scheme: row.edit_key_scheme === 2 ? 2 : 1 } : null;
+}
+
+/** Upgrade one legacy ADMIN_KEY-peppered edit hash after a successful proof. */
+export async function upgradeEditKeyHash(
+  db: D1Database,
+  id: string,
+  expectedLegacyHash: string,
+  nextHash: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE items SET edit_key_hash = ?, edit_key_scheme = 2
+        WHERE id = ? AND edit_key_scheme = 1 AND edit_key_hash = ?`,
+    )
+    .bind(nextHash, id, expectedLegacyHash)
+    .run();
 }
 
 // Change item metadata: column names come from a fixed allowlist, values are already
@@ -164,7 +188,11 @@ export interface ItemPatchRow {
   tags?: string | null;
 }
 
-export async function updateItemMeta(db: D1Database, id: string, patch: ItemPatchRow): Promise<boolean> {
+export async function updateItemMeta(
+  db: D1Database,
+  id: string,
+  patch: ItemPatchRow,
+): Promise<boolean> {
   const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
   const sets: string[] = [];
   const binds: unknown[] = [];

@@ -16,6 +16,7 @@ export type WireType =
   | 'leave' // voluntary leave
   | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
   | 'group' // group settings: the owner changes them (client→DO); current settings (DO→client)
+  | 'media-auth' // DO→client: capability for uploads while this WebSocket remains connected
   // The roleplay feature is gone, but pre-removal Android builds still send these two.
   // They stay listed here permanently so RoomDO keeps an explicit no-op case for them
   // rather than letting them fall through to the relay-everything default.

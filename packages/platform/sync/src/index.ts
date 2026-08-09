@@ -140,11 +140,16 @@ export async function pushContent(
   return res?.ok === true;
 }
 
-/** Record that this account uploaded a market item, so it survives losing the local edit key. */
-export async function claimMarketItem(itemId: string, editKeyHash?: string): Promise<boolean> {
-  const res = await call<{ ok: boolean }>('/api/auth/market-claims', {
+/**
+ * Prove ownership to Market with the plaintext edit key, then let Market write the
+ * authenticated claim through Auth's private service binding. A caller-computed hash is
+ * not proof: before this flow any account could submit any item id and claim it.
+ */
+export async function claimMarketItem(itemId: string, editKey: string): Promise<boolean> {
+  if (!editKey.trim()) return false;
+  const res = await call<{ ok: boolean }>(`/api/items/${encodeURIComponent(itemId)}/claim`, {
     method: 'POST',
-    body: JSON.stringify({ itemId, editKeyHash }),
+    headers: { 'X-Edit-Key': editKey.trim() },
   });
   return res?.ok === true;
 }

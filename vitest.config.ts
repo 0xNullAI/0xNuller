@@ -16,6 +16,7 @@ export default defineConfig({
       'apps/agent',
       'apps/web',
       'apps/chat',
+      'apps/market',
       'apps/control',
       'apps/voice',
       'apps/mcp',

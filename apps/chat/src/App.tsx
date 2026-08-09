@@ -4,7 +4,9 @@ import {
   useOpenShellSettings,
   useSafetySession,
 } from '@0xnullai/ui';
-import { hasDeviceLease, subscribeSafetySessions,
+import {
+  hasDeviceLease,
+  subscribeSafetySessions,
   PolicyEngine,
   createDefaultPolicyRules,
 } from '@dg-kit/safety';
@@ -530,15 +532,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       meta?: { durationMs?: number; w?: number; h?: number },
     ) => {
       const room = peerRoom.roomId;
-      if (!room) return;
+      const mediaToken = peerRoom.mediaUploadToken;
+      if (!room || !mediaToken) return;
       try {
-        const media = await uploadMedia(room, blob, kind, meta);
+        const media = await uploadMedia(room, mediaToken, blob, kind, meta);
         peerRoom.sendMessage('', media);
       } catch (err) {
         console.error('[Chat] media upload failed', err);
       }
     },
-    [peerRoom.roomId, peerRoom.sendMessage],
+    [peerRoom.roomId, peerRoom.mediaUploadToken, peerRoom.sendMessage],
   );
 
   const handleWaveform = useCallback(

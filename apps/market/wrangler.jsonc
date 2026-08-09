@@ -29,6 +29,19 @@
     },
   ],
 
-  // 机密只用 `wrangler secret put ADMIN_KEY` 设置，勿写进配置或源码。
+  // Market 验证条目的编辑凭证后，由这个私有 RPC entrypoint 写入 Auth 的归属表。
+  // 部署顺序必须是 chat → auth → market；公开 HTTP 无法调用该 entrypoint。
+  "services": [
+    {
+      "binding": "AUTH",
+      "service": "0xnullai-auth",
+      "entrypoint": "AuthOwnershipService",
+    },
+  ],
+
+  // 机密只用 `wrangler secret put` 设置，勿写进配置或源码：
+  // ADMIN_KEY（管理员操作）、MARKET_LEGACY_EDIT_PEPPER（首次设置为旧 ADMIN_KEY）、
+  // MARKET_EDIT_PEPPER（新编辑口令哈希）、
+  // MARKET_IP_PEPPER（上传限流）。三个安全域不能复用同一个值。
   "observability": { "enabled": true },
 }

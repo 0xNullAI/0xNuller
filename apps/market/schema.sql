@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS items (
   hidden      INTEGER NOT NULL DEFAULT 0, -- 1=管理员隐藏
   ip_hash     TEXT,                        -- 上传来源哈希，用于限流与溯源
   created_at  INTEGER NOT NULL,           -- epoch ms
-  edit_key_hash TEXT                       -- 上传时所设编辑口令的哈希，空=公开可编辑
+  edit_key_hash TEXT,                      -- 上传时所设编辑口令的哈希，空=公开可编辑
+  edit_key_scheme INTEGER NOT NULL DEFAULT 1 CHECK (edit_key_scheme IN (1, 2))
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_browse
@@ -32,3 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_items_visible_new
 CREATE INDEX IF NOT EXISTS idx_items_visible_popular
   ON items (downloads DESC, created_at DESC, id)
   WHERE hidden = 0;
+
+CREATE INDEX IF NOT EXISTS idx_items_edit_key_scheme
+  ON items (edit_key_scheme)
+  WHERE edit_key_hash IS NOT NULL;

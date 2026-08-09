@@ -9,6 +9,7 @@ function genId(): string {
 /** Upload a media blob to the room and return a reference that can be sent with a chat message. */
 export async function uploadMedia(
   code: string,
+  mediaToken: string,
   blob: Blob,
   kind: 'image' | 'audio',
   meta?: { durationMs?: number; w?: number; h?: number },
@@ -16,7 +17,10 @@ export async function uploadMedia(
   const id = genId();
   const res = await fetch(`${apiBaseUrl()}/api/upload/${encodeURIComponent(code)}?id=${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+    headers: {
+      'Content-Type': blob.type || 'application/octet-stream',
+      'X-Media-Token': mediaToken,
+    },
     body: blob,
   });
   if (!res.ok) throw new Error(`upload failed: ${res.status}`);

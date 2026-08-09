@@ -1,5 +1,6 @@
 import { hashPassword, verifyPassword } from './password';
 import { DM_DIGEST_MAX_ROOMS, DM_TICKET_TTL_MS, dmRoomCode, signDmTicket } from './dm-ticket';
+import { WorkerEntrypoint } from 'cloudflare:workers';
 
 /**
  * 0xNullAI account service.
@@ -77,6 +78,9 @@ const MAX_BLOCKS = 200;
 const MAX_ALBUM_PHOTOS = 60;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const MAX_PHOTO_CAPTION = 200;
+const STALE_PHOTO_UPLOAD_MS = 60 * 60 * 1000;
+const MAINTENANCE_BATCH_SIZE = 100;
+const ACCOUNT_DELETION_BATCH_SIZE = 25;
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const CONTENT_PAGE_SIZE = 500;
 const CONTENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -164,6 +168,142 @@ async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<void> {
   }
 }
 
+interface PendingPhotoRow {
+  id: string;
+  object_key: string;
+}
+
+/** R2 first, row second: a failed delete always leaves a durable retry record. */
+async function cleanupPendingPhoto(env: Env, row: PendingPhotoRow): Promise<void> {
+  await env.PHOTOS.delete(row.object_key);
+  await env.DB.prepare("DELETE FROM user_photos WHERE id = ? AND status = 'uploading'")
+    .bind(row.id)
+    .run();
+}
+
+async function reservePhotoSlot(
+  env: Env,
+  params: {
+    id: string;
+    userId: string;
+    objectKey: string;
+    caption: string | null;
+    visibility: 'public' | 'private';
+    createdAt: number;
+  },
+): Promise<boolean> {
+  await env.DB.prepare(
+    `WITH RECURSIVE slots(slot) AS (
+       VALUES(0) UNION ALL SELECT slot + 1 FROM slots WHERE slot < 59
+     )
+     INSERT INTO user_photos
+       (id, user_id, object_key, caption, visibility, created_at, slot, status)
+     SELECT ?, ?, ?, ?, ?, ?, slots.slot, 'uploading'
+       FROM slots
+      WHERE NOT EXISTS (
+              SELECT 1 FROM user_photos p WHERE p.user_id = ? AND p.slot = slots.slot
+            )
+        AND NOT EXISTS (
+              SELECT 1 FROM account_deletions d WHERE d.user_id = ?
+            )
+      ORDER BY slots.slot
+      LIMIT 1`,
+  )
+    .bind(
+      params.id,
+      params.userId,
+      params.objectKey,
+      params.caption,
+      params.visibility,
+      params.createdAt,
+      params.userId,
+      params.userId,
+    )
+    .run();
+  return (
+    (await env.DB.prepare("SELECT 1 FROM user_photos WHERE id = ? AND status = 'uploading'")
+      .bind(params.id)
+      .first()) != null
+  );
+}
+
+async function finishPhotoUpload(env: Env, id: string, userId: string): Promise<boolean> {
+  await env.DB.prepare(
+    `UPDATE user_photos SET status = 'ready'
+      WHERE id = ? AND user_id = ? AND status = 'uploading'
+        AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = ?)`,
+  )
+    .bind(id, userId, userId)
+    .run();
+  return (
+    (await env.DB.prepare("SELECT 1 FROM user_photos WHERE id = ? AND status = 'ready'")
+      .bind(id)
+      .first()) != null
+  );
+}
+
+async function finalizeAccountDeletion(env: Env, userId: string): Promise<void> {
+  await deleteR2Prefix(env.PHOTOS, `users/${userId}/photos/`);
+  await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
+}
+
+async function recordDeletionFailure(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE account_deletions
+        SET attempts = attempts + 1, last_error_at = ?
+      WHERE user_id = ?`,
+  )
+    .bind(Date.now(), userId)
+    .run();
+}
+
+/** Exported for deterministic local tests; production calls it from the daily cron. */
+export async function runAuthMaintenance(env: Env, now = Date.now()): Promise<void> {
+  const stale = await env.DB.prepare(
+    `SELECT id, object_key FROM user_photos
+      WHERE status = 'uploading' AND created_at < ?
+      ORDER BY created_at, id LIMIT ?`,
+  )
+    .bind(now - STALE_PHOTO_UPLOAD_MS, MAINTENANCE_BATCH_SIZE)
+    .all<PendingPhotoRow>();
+  for (const row of stale.results ?? []) {
+    try {
+      await cleanupPendingPhoto(env, row);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'photo_cleanup_retry_failed',
+          photoId: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+
+  const deletions = await env.DB.prepare(
+    `SELECT user_id FROM account_deletions
+      ORDER BY requested_at, user_id LIMIT ?`,
+  )
+    .bind(ACCOUNT_DELETION_BATCH_SIZE)
+    .all<{ user_id: string }>();
+  for (const row of deletions.results ?? []) {
+    try {
+      await finalizeAccountDeletion(env, row.user_id);
+    } catch (error) {
+      await recordDeletionFailure(env, row.user_id);
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'account_deletion_retry_failed',
+          userId: row.user_id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+}
+
 interface ContentCursor {
   updatedAt: number;
   id: string;
@@ -241,11 +381,95 @@ async function currentUser(request: Request, env: Env): Promise<UserRow | null> 
   if (!token) return null;
   const row = await env.DB.prepare(
     `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ? AND s.expires_at > ?`,
+     WHERE s.token_hash = ? AND s.expires_at > ?
+       AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id)`,
   )
     .bind(await sha256Hex(token), Date.now())
     .first<UserRow>();
   return row ?? null;
+}
+
+export interface MarketClaimCredentials {
+  authorization: string | null;
+  cookie: string | null;
+}
+
+export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
+export type MarketClaimProof = 'market-upload' | 'market-edit-key';
+
+function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
+  const headers = new Headers();
+  if (credentials.authorization) headers.set('Authorization', credentials.authorization);
+  if (credentials.cookie) headers.set('Cookie', credentials.cookie);
+  return new Request('https://auth.internal/market-claim', { headers });
+}
+
+/**
+ * Private RPC entrypoint used only by Market after it has proved control of an item.
+ *
+ * A caller on the public Internet cannot address a named WorkerEntrypoint. Keeping the
+ * write here (instead of a hidden-looking HTTP path) makes the trust boundary structural:
+ * Market owns item proof, Auth owns session identity and the durable account relation.
+ */
+export class AuthOwnershipService extends WorkerEntrypoint<Env> {
+  async claimMarketItems(
+    credentials: MarketClaimCredentials,
+    itemIds: string[],
+    proof: MarketClaimProof,
+  ): Promise<MarketClaimResult> {
+    return claimMarketItemsForCredentials(this.env, credentials, itemIds, proof);
+  }
+}
+
+/** The RPC implementation separated for deterministic D1 tests. */
+export async function claimMarketItemsForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+  itemIds: string[],
+  proof: MarketClaimProof,
+): Promise<MarketClaimResult> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  if (!user) return 'unauthorized';
+  const ids = [...new Set(itemIds)].filter((id) => /^[A-Za-z0-9_-]{1,128}$/.test(id)).slice(0, 50);
+  if (ids.length !== itemIds.length || ids.length === 0) return 'conflict';
+
+  const now = Date.now();
+  const requested = ids.map(() => '(?)').join(',');
+  // One statement is the transaction boundary: if any requested id is already verified
+  // by another account, the NOT EXISTS guard makes the entire INSERT select zero rows.
+  // That prevents a conflicting batch from leaving claims for its otherwise-free ids.
+  await env.DB.prepare(
+    `WITH requested(item_id) AS (VALUES ${requested})
+     INSERT INTO market_claims
+       (item_id, user_id, edit_key_hash, claimed_at, verified_at, proof_method)
+     SELECT requested.item_id, ?, NULL, ?, ?, ?
+       FROM requested
+      WHERE NOT EXISTS (
+        SELECT 1
+          FROM market_claims existing
+          JOIN requested candidate ON candidate.item_id = existing.item_id
+         WHERE existing.verified_at IS NOT NULL AND existing.user_id <> ?
+      )
+     ON CONFLICT (item_id) DO UPDATE SET
+       user_id = excluded.user_id,
+       edit_key_hash = NULL,
+       claimed_at = excluded.claimed_at,
+       verified_at = excluded.verified_at,
+       proof_method = excluded.proof_method
+     WHERE market_claims.verified_at IS NULL OR market_claims.user_id = excluded.user_id`,
+  )
+    .bind(...ids, user.id, now, now, proof, user.id)
+    .run();
+
+  const placeholders = ids.map(() => '?').join(',');
+  const conflict = await env.DB.prepare(
+    `SELECT 1 FROM market_claims
+        WHERE item_id IN (${placeholders}) AND verified_at IS NOT NULL AND user_id <> ?
+        LIMIT 1`,
+  )
+    .bind(...ids, user.id)
+    .first();
+  return conflict ? 'conflict' : 'ok';
 }
 
 /** Age in whole years. Used only to refuse an under-18 birth date. */
@@ -370,7 +594,7 @@ async function countFollows(
 async function visiblePhotos(env: Env, userId: string, isSelf: boolean): Promise<unknown[]> {
   const rows = await env.DB.prepare(
     `SELECT id, caption, visibility, created_at FROM user_photos
-      WHERE user_id = ?${isSelf ? '' : " AND visibility = 'public'"}
+      WHERE user_id = ? AND status = 'ready'${isSelf ? '' : " AND visibility = 'public'"}
       ORDER BY created_at DESC LIMIT ?`,
   )
     .bind(userId, MAX_ALBUM_PHOTOS)
@@ -743,13 +967,6 @@ export default {
 
         const mime = (request.headers.get('content-type') ?? '').split(';', 1)[0]!.trim();
         if (!ALLOWED_PHOTO_TYPES.has(mime)) return err('不支持的图片格式', 415, cors);
-        const count = await env.DB.prepare(
-          'SELECT COUNT(*) AS n FROM user_photos WHERE user_id = ?',
-        )
-          .bind(user.id)
-          .first<{ n: number }>();
-        if (Number(count?.n ?? 0) >= MAX_ALBUM_PHOTOS) return err('相册已达到上限', 409, cors);
-
         const bytes = await readBodyBounded(request, MAX_PHOTO_BYTES);
         if (bytes == null) return err('图片过大', 413, cors);
         if (bytes.byteLength === 0) return err('图片为空', 400, cors);
@@ -768,17 +985,35 @@ export default {
           request.headers.get('x-photo-visibility') === 'public' ? 'public' : 'private';
         const createdAt = Date.now();
 
-        await env.PHOTOS.put(objectKey, bytes, { httpMetadata: { contentType: mime } });
+        const reserved = await reservePhotoSlot(env, {
+          id,
+          userId: user.id,
+          objectKey,
+          caption: caption || null,
+          visibility,
+          createdAt,
+        });
+        if (!reserved) return err('相册已达到上限或账号正在删除', 409, cors);
+
         try {
-          await env.DB.prepare(
-            `INSERT INTO user_photos (id, user_id, object_key, caption, visibility, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-          )
-            .bind(id, user.id, objectKey, caption || null, visibility, createdAt)
-            .run();
+          await env.PHOTOS.put(objectKey, bytes, { httpMetadata: { contentType: mime } });
+          if (!(await finishPhotoUpload(env, id, user.id))) {
+            throw new Error('photo reservation was cancelled');
+          }
         } catch (error) {
-          // Compensate the object write: a failed row insert must not create an R2 orphan.
-          await env.PHOTOS.delete(objectKey);
+          // Keep the uploading row when R2 cleanup fails: cron can see and retry it.
+          try {
+            await cleanupPendingPhoto(env, { id, object_key: objectKey });
+          } catch (cleanupError) {
+            console.error(
+              JSON.stringify({
+                level: 'error',
+                event: 'photo_upload_compensation_failed',
+                photoId: id,
+                error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+              }),
+            );
+          }
           throw error;
         }
         return json(
@@ -822,7 +1057,7 @@ export default {
       ) {
         const id = decodeURIComponent(path.slice('/api/auth/photos/'.length, -'/content'.length));
         const photo = await env.DB.prepare(
-          'SELECT user_id, object_key, visibility FROM user_photos WHERE id = ?',
+          "SELECT user_id, object_key, visibility FROM user_photos WHERE id = ? AND status = 'ready'",
         )
           .bind(id)
           .first<{ user_id: string; object_key: string; visibility: string }>();
@@ -865,7 +1100,7 @@ export default {
         if (!user) return err('未登录', 401, cors);
         const id = decodeURIComponent(path.slice('/api/auth/photos/'.length));
         const row = await env.DB.prepare(
-          'SELECT object_key FROM user_photos WHERE id = ? AND user_id = ?',
+          "SELECT object_key FROM user_photos WHERE id = ? AND user_id = ? AND status = 'ready'",
         )
           .bind(id, user.id)
           .first<{ object_key: string }>();
@@ -1064,7 +1299,9 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const rows = await env.DB.prepare(
-          'SELECT item_id, claimed_at FROM market_claims WHERE user_id = ? ORDER BY claimed_at DESC LIMIT 500',
+          `SELECT item_id, claimed_at FROM market_claims
+            WHERE user_id = ? AND verified_at IS NOT NULL
+            ORDER BY claimed_at DESC LIMIT 500`,
         )
           .bind(user.id)
           .all();
@@ -1072,20 +1309,7 @@ export default {
       }
 
       if (path === '/api/auth/market-claims' && request.method === 'POST') {
-        const user = await currentUser(request, env);
-        if (!user) return err('未登录', 401, cors);
-        const body = (await request.json()) as { itemId?: string; editKeyHash?: string };
-        if (!body.itemId) return err('缺少 itemId', 400, cors);
-        // First claim wins. Re-claiming someone else's item must not be a way
-        // to take it over; Market's edit key stays the authority on editing.
-        await env.DB.prepare(
-          `INSERT INTO market_claims (item_id, user_id, edit_key_hash, claimed_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT (item_id) DO NOTHING`,
-        )
-          .bind(String(body.itemId), user.id, body.editKeyHash ?? null, Date.now())
-          .run();
-        return json({ ok: true }, 200, cors);
+        return err('归属必须由市场验证编辑凭证', 405, cors);
       }
 
       // ── Contacts ──
@@ -1468,12 +1692,25 @@ export default {
       if (path === '/api/auth/account' && request.method === 'DELETE') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        // Delete the whole prefix, not only rows D1 still knows about: a previously
-        // compensated/failed write may have left an object without a row. R2 first,
-        // so a bucket failure leaves the account retryable instead of orphaning bytes.
-        await deleteR2Prefix(env.PHOTOS, `users/${user.id}/photos/`);
-        await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
-        return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
+        await env.DB.prepare(
+          `INSERT INTO account_deletions (user_id, requested_at)
+           VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING`,
+        )
+          .bind(user.id, Date.now())
+          .run();
+        try {
+          await finalizeAccountDeletion(env, user.id);
+          return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
+        } catch {
+          // The marker makes the account immediately unusable and the cron finishes the
+          // cross-service delete. Sessions are removed now so every device is logged out.
+          await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id).run();
+          await recordDeletionFailure(env, user.id);
+          return json({ ok: false, pending: true }, 202, {
+            ...cors,
+            'Set-Cookie': sessionCookie('', 0),
+          });
+        }
       }
 
       return err('接口不存在', 404, cors);
@@ -1499,11 +1736,14 @@ export default {
     const now = Date.now();
     const keepLoginAttemptsAfter = now - 24 * 60 * 60 * 1000;
     ctx.waitUntil(
-      env.DB.batch([
-        env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
-        env.DB.prepare('DELETE FROM login_attempts WHERE created_at < ?').bind(
-          keepLoginAttemptsAfter,
-        ),
+      Promise.all([
+        env.DB.batch([
+          env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
+          env.DB.prepare('DELETE FROM login_attempts WHERE created_at < ?').bind(
+            keepLoginAttemptsAfter,
+          ),
+        ]),
+        runAuthMaintenance(env, now),
       ]).then(() => undefined),
     );
   },

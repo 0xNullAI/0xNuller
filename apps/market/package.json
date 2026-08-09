@@ -10,6 +10,7 @@
     "preview": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply dg-market --local",
     "db:migrate:remote": "wrangler d1 migrations apply dg-market --remote",
     "types": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false",

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import worker, { type Env } from './index';
+import worker, { claimMarketItemsForCredentials, runAuthMaintenance, type Env } from './index';
 import { createTestDb } from './test-helpers';
 
 const ORIGIN = 'https://0xnullai.com';
@@ -9,8 +9,11 @@ let photos: FakePhotos;
 
 class FakePhotos {
   readonly objects = new Map<string, { bytes: ArrayBuffer; contentType: string; uploaded: Date }>();
+  failPuts = 0;
+  failDeletes = 0;
 
   async put(key: string, value: ArrayBuffer, options?: R2PutOptions): Promise<R2Object> {
+    if (this.failPuts-- > 0) throw new Error('fake R2 put failure');
     this.objects.set(key, {
       bytes: value.slice(0),
       contentType:
@@ -34,6 +37,7 @@ class FakePhotos {
   }
 
   async delete(keys: string | string[]): Promise<void> {
+    if (this.failDeletes-- > 0) throw new Error('fake R2 delete failure');
     for (const key of Array.isArray(keys) ? keys : [keys]) this.objects.delete(key);
   }
 
@@ -278,6 +282,27 @@ describe('注销账号', () => {
 
     expect((await del('/api/auth/account', alice.token)).status).toBe(200);
     expect([...photos.objects.keys()]).toEqual(['users/someone-else/photos/keep']);
+  });
+
+  it('R2 暂时失败时立即冻结账号，并由 maintenance 完成删除', async () => {
+    const alice = await seedUser('alice');
+    await photos.put(`users/${alice.id}/photos/retry`, new Uint8Array([1]).buffer);
+    photos.failDeletes = 1;
+
+    const response = await del('/api/auth/account', alice.token);
+    expect(response.status).toBe(202);
+    expect((await response.json()) as object).toEqual({ ok: false, pending: true });
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).not.toBeNull();
+    expect(
+      await prepared('SELECT 1 FROM account_deletions WHERE user_id = ?', alice.id).first(),
+    ).not.toBeNull();
+    expect(
+      ((await (await get('/api/auth/me', alice.token)).json()) as { user: unknown }).user,
+    ).toBeNull();
+
+    await runAuthMaintenance(env, Date.now());
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).toBeNull();
+    expect(photos.objects.size).toBe(0);
   });
 });
 
@@ -744,6 +769,114 @@ describe('他人主页的可见性', () => {
     expect((await del(`/api/auth/photos/${photo.photo.id}`, bob.token)).status).toBe(200);
     expect(photos.objects.size).toBe(0);
     expect((await get(photo.photo.url)).status).toBe(404);
+  });
+
+  it('并发上传由唯一槽位约束在 60 张，而不是先 COUNT 再竞态写入', async () => {
+    const bob = await seedUser('bob');
+    const responses = await Promise.all(
+      Array.from({ length: 61 }, () =>
+        worker.fetch(
+          req('/api/auth/photos', {
+            method: 'POST',
+            token: bob.token,
+            headers: { 'content-type': 'image/png' },
+            body: new Uint8Array([1]),
+          }),
+          env,
+        ),
+      ),
+    );
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(60);
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(1);
+    const rows = await prepared(
+      'SELECT COUNT(*) AS n, COUNT(DISTINCT slot) AS slots FROM user_photos WHERE user_id = ?',
+      bob.id,
+    ).first<{ n: number; slots: number }>();
+    expect(rows).toEqual({ n: 60, slots: 60 });
+  });
+
+  it('失败补偿也失败时保留 uploading 任务，maintenance 删除 R2 与行', async () => {
+    const bob = await seedUser('bob');
+    photos.failPuts = 1;
+    photos.failDeletes = 1;
+    const response = await worker.fetch(
+      req('/api/auth/photos', {
+        method: 'POST',
+        token: bob.token,
+        headers: { 'content-type': 'image/png' },
+        body: new Uint8Array([1]),
+      }),
+      env,
+    );
+    expect(response.status).toBe(500);
+    const pending = await prepared(
+      "SELECT id, object_key FROM user_photos WHERE user_id = ? AND status = 'uploading'",
+      bob.id,
+    ).first<{ id: string; object_key: string }>();
+    expect(pending).not.toBeNull();
+
+    await prepared('UPDATE user_photos SET created_at = 0 WHERE id = ?', pending!.id).run();
+    await runAuthMaintenance(env, 2 * 60 * 60 * 1000);
+    expect(
+      await prepared('SELECT 1 FROM user_photos WHERE id = ?', pending!.id).first(),
+    ).toBeNull();
+  });
+
+  it('公开 HTTP 不能直接写归属，Market 私有证明可写且 verified first-claim-wins', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    expect(
+      (await post('/api/auth/market-claims', { itemId: 'item-1' }, { token: alice.token })).status,
+    ).toBe(405);
+
+    await prepared(
+      'INSERT INTO market_claims (item_id, user_id, claimed_at) VALUES (?, ?, ?)',
+      'item-1',
+      bob.id,
+      1,
+    ).run();
+    const aliceProof = await claimMarketItemsForCredentials(
+      env,
+      { authorization: `Bearer ${alice.token}`, cookie: null },
+      ['item-1'],
+      'market-edit-key',
+    );
+    expect(aliceProof).toBe('ok');
+    const bobProof = await claimMarketItemsForCredentials(
+      env,
+      { authorization: `Bearer ${bob.token}`, cookie: null },
+      ['item-1'],
+      'market-edit-key',
+    );
+    expect(bobProof).toBe('conflict');
+    const claim = await prepared(
+      'SELECT user_id, proof_method, verified_at FROM market_claims WHERE item_id = ?',
+      'item-1',
+    ).first<{ user_id: string; proof_method: string; verified_at: number }>();
+    expect(claim?.user_id).toBe(alice.id);
+    expect(claim?.proof_method).toBe('market-edit-key');
+    expect(claim?.verified_at).toBeGreaterThan(0);
+
+    await prepared(
+      `INSERT INTO market_claims
+         (item_id, user_id, claimed_at, verified_at, proof_method)
+       VALUES (?, ?, ?, ?, ?)`,
+      'item-conflict',
+      bob.id,
+      2,
+      2,
+      'market-edit-key',
+    ).run();
+    const batchConflict = await claimMarketItemsForCredentials(
+      env,
+      { authorization: `Bearer ${alice.token}`, cookie: null },
+      ['item-free', 'item-conflict'],
+      'market-upload',
+    );
+    expect(batchConflict).toBe('conflict');
+    expect(
+      await prepared('SELECT 1 FROM market_claims WHERE item_id = ?', 'item-free').first(),
+    ).toBeNull();
   });
 
   it('拒绝非图片与超过上限的图片，不写 R2', async () => {

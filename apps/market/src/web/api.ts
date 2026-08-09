@@ -1,17 +1,39 @@
 import { apiBaseUrl } from '@0xnullai/settings';
-import type { ItemPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
+import type {
+  ItemPatch,
+  BatchUploadPayload,
+  ItemType,
+  MarketItem,
+  UploadPayload,
+} from '../shared/schema';
+
+const TOKEN_KEY = '0xnullai.auth-token';
+
+function accountHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   // Every path here is relative. On the web that is what we want, but the
   // Tauri WebView's origin is a local scheme, so a bare relative fetch hits
   // the WebView's own asset server and comes back as index.html — which
   // then fails as "Unexpected token '<'", nowhere near the real cause.
-  const res = await fetch(`${apiBaseUrl()}${path}`, init);
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
+    ...init,
+    // Same-origin web requests carry the HttpOnly account cookie. Tauri is cross-origin
+    // and uses the Bearer token above; avoiding `include` keeps wildcard Market CORS valid.
+    credentials: 'same-origin',
+    headers: { ...accountHeaders(), ...init?.headers },
+  });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw new Error((data.error as string) || `请求失败 (${res.status})`);
   return data as T;
 }
-
 
 export interface ListQuery {
   type?: ItemType;

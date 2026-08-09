@@ -42,6 +42,7 @@ import {
 interface Attachment {
   peerId: string;
   name: string;
+  mediaToken: string;
 }
 
 /** Minimum interval (ms) between lobby keepalive reports from a public group. */
@@ -89,7 +90,11 @@ export class RoomDO extends DurableObject<Env> {
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ peerId, name: '' } satisfies Attachment);
+    server.serializeAttachment({
+      peerId,
+      name: '',
+      mediaToken: generateMediaToken(),
+    } satisfies Attachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -116,6 +121,9 @@ export class RoomDO extends DurableObject<Env> {
       case 'hello': {
         att.name = (msg.name as string) ?? '';
         ws.serializeAttachment(att);
+        // Upload is a separate HTTP request. This random capability ties it back to the
+        // currently-live WebSocket instead of treating knowledge of a room code as write access.
+        ws.send(JSON.stringify({ t: 'media-auth', token: att.mediaToken }));
         const code = await this.code();
         const reserved = code === RESERVED_ROOM_CODE;
 
@@ -286,21 +294,22 @@ export class RoomDO extends DurableObject<Env> {
     // is the housekeeping that used to be a side effect of the group dying: report the group
     // as empty, and reconcile R2 against the retained messages so an attachment whose message
     // never arrived does not sit in the bucket forever with nothing pointing at it.
+    const code = await this.code();
+    if (code) await this.sweepOrphanMedia(code);
     if (this.ctx.getWebSockets().length > 0) {
-      // An upload can become orphaned while a room remains active. Keep a bounded
-      // retry alive instead of waiting for a disconnect that may never happen.
+      // Active rooms can still abandon uploads. Sweep first, then keep a bounded recurring
+      // reconciliation alive. A thrown R2 error lets the platform retry this alarm.
       await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
       return;
     }
     await this.reportLobby(0);
-    const code = await this.code();
-    if (code) await this.sweepOrphanMedia(code);
   }
 
   // -- Direct messages (RPC, called by the Worker) --
 
   /** Ensure an upload with no following chat frame still gets an orphan sweep. */
-  async noteMediaUpload(code: string): Promise<void> {
+  async noteMediaUpload(code: string, token: string): Promise<void> {
+    if (!(await this.authorizeMediaUpload(code, token))) throw new Error('media token expired');
     const stored = await this.code();
     if (stored && stored !== code) throw new Error('room code mismatch');
     if (!stored) {
@@ -308,6 +317,20 @@ export class RoomDO extends DurableObject<Env> {
       this.codeCache = code;
     }
     await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
+  }
+
+  /** True only while the WebSocket that received this capability is still attached. */
+  async authorizeMediaUpload(code: string, token: string): Promise<boolean> {
+    if (!token || (await this.code()) !== code) return false;
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        const att = ws.deserializeAttachment() as Attachment | null;
+        if (att?.mediaToken && mediaTokenEqual(att.mediaToken, token)) return true;
+      } catch {
+        /* malformed legacy attachment; it has no upload capability */
+      }
+    }
+    return false;
   }
 
   /**
@@ -320,9 +343,7 @@ export class RoomDO extends DurableObject<Env> {
    */
   async dmSummary(room: string, since: number): Promise<DmSummary> {
     const last = this.sql.exec('SELECT MAX(ts) AS ts FROM messages').one().ts;
-    const unread = this.sql
-      .exec('SELECT COUNT(*) AS n FROM messages WHERE ts > ?', since)
-      .one().n;
+    const unread = this.sql.exec('SELECT COUNT(*) AS n FROM messages WHERE ts > ?', since).one().n;
     return { room, lastTs: Number(last ?? 0), unread: Number(unread ?? 0) };
   }
 
@@ -366,7 +387,7 @@ export class RoomDO extends DurableObject<Env> {
     } catch {
       att = undefined;
     }
-    const remaining = this.ctx.getWebSockets().filter(w => w !== ws);
+    const remaining = this.ctx.getWebSockets().filter((w) => w !== ws);
     if (att) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
       await this.handoverHost(att.peerId, remaining, ws);
@@ -546,16 +567,16 @@ export class RoomDO extends DurableObject<Env> {
     const code = await this.code();
     const messages: MessageStore = {
       count: () => Number(this.sql.exec('SELECT COUNT(*) AS n FROM messages').one().n),
-      oldest: n =>
+      oldest: (n) =>
         this.sql
           .exec('SELECT id, body FROM messages ORDER BY ts ASC, id ASC LIMIT ?', n)
           .toArray()
-          .map(r => ({ id: r.id as string, mediaId: mediaIdOf(r.body as string) })),
-      remove: ids => {
+          .map((r) => ({ id: r.id as string, mediaId: mediaIdOf(r.body as string) })),
+      remove: (ids) => {
         for (const id of ids) this.sql.exec('DELETE FROM messages WHERE id = ?', id);
       },
     };
-    const media: MediaStore = { delete: ids => deleteRoomMedia(this.env, code, ids) };
+    const media: MediaStore = { delete: (ids) => deleteRoomMedia(this.env, code, ids) };
     return enforceMessageRetention(messages, media);
   }
 
@@ -576,7 +597,7 @@ export class RoomDO extends DurableObject<Env> {
     const rows = this.sql
       .exec('SELECT id, from_id, name, body, ts FROM messages ORDER BY ts ASC, id ASC')
       .toArray();
-    return rows.map(r => {
+    return rows.map((r) => {
       const body = JSON.parse(r.body as string) as {
         x?: string;
         m?: WireChat['m'];
@@ -645,4 +666,18 @@ function mediaIdOf(body: string): string | null {
   } catch {
     return null;
   }
+}
+
+function generateMediaToken(): string {
+  return [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** Fixed-length random capabilities; compare every byte rather than a shared prefix. */
+function mediaTokenEqual(a: string, b: string): boolean {
+  if (a.length !== 64 || b.length !== 64) return false;
+  let diff = 0;
+  for (let i = 0; i < 64; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }

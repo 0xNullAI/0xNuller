@@ -18,6 +18,11 @@ export async function handleMediaUpload(
   if (!/^[A-Za-z0-9_-]{1,96}$/.test(code)) {
     return json(400, { error: 'invalid room' });
   }
+  const mediaToken = request.headers.get('x-media-token') ?? '';
+  const room = env.ROOM.get(env.ROOM.idFromName(code));
+  if (!(await room.authorizeMediaUpload(code, mediaToken))) {
+    return json(403, { error: 'active room membership required' });
+  }
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
@@ -43,7 +48,7 @@ export async function handleMediaUpload(
     // no WebSocket disconnect exists to schedule RoomDO's orphan sweep. Tell the
     // room about every successful object write so an otherwise-idle room still
     // reconciles its R2 prefix after the grace window.
-    await env.ROOM.get(env.ROOM.idFromName(code)).noteMediaUpload(code);
+    await room.noteMediaUpload(code, mediaToken);
   } catch {
     // Without a scheduled sweep this object has no guaranteed cleanup path.
     await env.MEDIA.delete(key);
@@ -72,6 +77,7 @@ export async function handleMediaRead(env: Env, code: string, id: string): Promi
   // script and subresource loading even if some future type slips through.
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
+  headers.set('Access-Control-Allow-Origin', '*');
   return new Response(obj.body, { headers });
 }
 
@@ -104,6 +110,6 @@ export async function listRoomMedia(env: Env, code: string): Promise<StoredMedia
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
   });
 }

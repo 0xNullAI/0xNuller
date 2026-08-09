@@ -29,26 +29,36 @@ npm run preview         # wrangler dev：Worker + 静态资源一起跑
 
 ```
 ADMIN_KEY=任意本地口令
+MARKET_LEGACY_EDIT_PEPPER=旧版部署使用的ADMIN_KEY
+MARKET_EDIT_PEPPER=独立随机值
+MARKET_IP_PEPPER=另一个独立随机值
 ```
 
 ## 部署到 Cloudflare（GitHub 推送自动部署）
 
 1. **创建 D1**：`wrangler d1 create dg-market`，把返回的 `database_id` 填进 `wrangler.jsonc`。
-2. **先做只读迁移预检**：确认 `items` 是否存在、是否已有 `edit_key_hash`，以及
-   `d1_migrations` 是否记录了 `0001_add_edit_key.sql`。旧流程允许直接执行
-   `schema.sql`，所以“有表但没有 migration 记录”的库不能直接 apply，必须先显式
-   对齐历史；禁止靠猜测上线。
-3. **应用远程 migration**：`npm run db:migrate:remote`。新库会依次执行幂等的
-   `0000` 基线、不可变的 `0001` 和后续 migration；已正确登记旧 `0001` 的生产库
-   会安全补跑幂等基线并继续到 `0002`。
+2. **先做只读迁移预检**：`npm run release:data:preflight -- --remote-readonly
+--confirm=dg-market,0xnullai-auth`。当前生产库是 44 行 raw schema、没有
+   `d1_migrations`；门禁不是提示，而是 schema/索引/脏数据任一不符就退出非零。
+3. **只建立 migration ledger**：先备份，再对生产 Market 执行
+   `scripts/bootstrap-market-migration-ledger.sql`。它不改任何 `items` 行或索引，
+   只把已经存在的 `0000`/`0001` 记入 Wrangler 的标准账本。随后才可以运行
+   `npm run db:migrate:remote`，让 Wrangler 只应用 `0002`/`0003`。
 4. **设置机密**：
    ```bash
-   wrangler secret put ADMIN_KEY          # 管理员删除口令，同时用作编辑口令哈希的 pepper
+   wrangler secret put ADMIN_KEY
+   wrangler secret put MARKET_LEGACY_EDIT_PEPPER # 首次必须填旧 ADMIN_KEY 的当前值
+   wrangler secret put MARKET_EDIT_PEPPER        # 新编辑口令专用
+   wrangler secret put MARKET_IP_PEPPER          # 上传限流专用
    ```
 5. **连接 GitHub 自动部署**：Cloudflare 控制台 → Workers & Pages → 选中本 Worker → Settings → Builds → Connect to Git，选择本仓库。
    - Build command：`npm run build`
    - Deploy command：`npx wrangler deploy`
      之后每次 `git push` 到生产分支即自动构建并部署。
+
+`0003` 后三个安全域已经分开：管理员口令可单独轮换；旧条目第一次成功验证编辑
+口令时会从 legacy pepper 原地升级到新 pepper。`MARKET_LEGACY_EDIT_PEPPER` 在确认
+所有锁定条目都升级前不能删除。
 
 > 也可手动一次性部署：`npm run deploy`。
 

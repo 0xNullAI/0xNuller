@@ -36,7 +36,8 @@
     "android:dev": "npm run android:dev -w @0xnullai/android",
     "android:build": "npm run android:build -w @0xnullai/android",
     "check:routes": "node scripts/check-routes.mjs",
-    "verify:data": "node scripts/verify-data-platform.mjs"
+    "verify:data": "node scripts/verify-data-platform.mjs",
+    "release:data:preflight": "node scripts/release-data-preflight.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

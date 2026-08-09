@@ -160,6 +160,7 @@ export function usePeerRoom(displayName: string) {
   const [peers, setPeers] = useState<string[]>([]);
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [mediaUploadToken, setMediaUploadToken] = useState<string | null>(null);
   // —— Room AI ——
   const [agent, setAgentState] = useState<RoomAgent | null>(null);
   // The host is whoever the DO says it is. Only that browser runs the agent
@@ -254,6 +255,7 @@ export function usePeerRoom(displayName: string) {
     setPeers([]);
     setMembers(new Map());
     setMessages([]);
+    setMediaUploadToken(null);
     setHostPeerId(null);
     // Group-scoped state must go too, or the next group inherits the previous one's
     // agent and settings for as long as it takes the new frames to arrive.
@@ -324,6 +326,11 @@ export function usePeerRoom(displayName: string) {
               mentions: mapMentions(m.mentions),
             })),
           );
+          return;
+        }
+
+        if (t === 'media-auth') {
+          setMediaUploadToken(typeof data.token === 'string' ? data.token : null);
           return;
         }
 
@@ -785,6 +792,7 @@ export function usePeerRoom(displayName: string) {
     peers,
     members: membersWithAi,
     messages,
+    mediaUploadToken,
     join,
     leave,
     sendMessage,

@@ -42,26 +42,41 @@ Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜
 `/api/*` 还没有 Worker 接管——那些请求会落到静态资源服务上，返回 SPA 的 index.html，
 前端拿到一坨 HTML 去 `JSON.parse`，报的错跟真正的原因毫无关系。
 
-**chat 必须排在 auth 前面**：auth 有一个指向 `0xnullai-chat` 的 service binding（拉黑时
-推送私聊吊销），而绑定一个还不存在的脚本会让 auth 部署直接失败。
+service binding 决定了固定顺序：chat → auth → market。Auth 指向 Chat（拉黑时
+推送私聊吊销），Market 指向 Auth 的私有归属 RPC；绑定目标不存在会使部署失败。
 
 ```bash
 npm run build            # 全仓，各模块的 dist 都要在
+npm run verify:data      # 空库 + 真实升级形状，本地
 
-# 1. 市场 —— 库已在线且有内容，不要重建
-npm run deploy -w 0xnullai-market
+# 只读生产门禁（不会 create/migrate/deploy）
+npm run release:data:preflight -- --remote-readonly --confirm=dg-market,0xnullai-auth
 
-# 2. 聊天（含 DO；已在线的话跳过创建，直接 deploy）
-#    先于 auth，因为 auth 要绑定它
+# 先分别备份两个 D1。确认门禁输出 ok 后，Market 的 raw 库只补 migration ledger：
+wrangler d1 execute dg-market --remote --config apps/market/wrangler.jsonc \
+  --file scripts/bootstrap-market-migration-ledger.sql
+
+# 此时 Market 只会执行 0002-0003；Auth 当前登记 0001-0003，只会执行 0004-0007。
+wrangler d1 migrations apply dg-market --remote --config apps/market/wrangler.jsonc
+wrangler d1 migrations apply 0xnullai-auth --remote --config workers/auth/wrangler.jsonc
+
+# 1. 聊天（含 DO；已在线的话不要重建）
 wrangler r2 bucket create dg-chat-media
 wrangler secret put DM_TICKET_SECRET --config apps/chat/wrangler.jsonc
 npm run deploy -w 0xnullai-chat
 
-# 3. 账号服务 —— 库已建（ed58c339…，region ENAM）
-wrangler d1 migrations apply 0xnullai-auth --remote  # 0005_dm_threads 是新增的
+# 2. 账号服务。照片 bucket 必须在 Worker 绑定它之前存在。
+wrangler r2 bucket create 0xnullai-profile-photos
 wrangler secret put IP_PEPPER        --config workers/auth/wrangler.jsonc
 wrangler secret put DM_TICKET_SECRET --config workers/auth/wrangler.jsonc  # 与 chat 同值
 npm run deploy -w @0xnullai/auth-worker
+
+# 3. 市场。legacy pepper 首次必须复制“旧 ADMIN_KEY 当前值”，不是生成新值。
+wrangler secret put ADMIN_KEY --config apps/market/wrangler.jsonc
+wrangler secret put MARKET_LEGACY_EDIT_PEPPER --config apps/market/wrangler.jsonc
+wrangler secret put MARKET_EDIT_PEPPER --config apps/market/wrangler.jsonc
+wrangler secret put MARKET_IP_PEPPER --config apps/market/wrangler.jsonc
+npm run deploy -w 0xnullai-market
 
 # 4. 体验版语音（含 DO）
 wrangler secret put XAI_API_KEY --config apps/voice/wrangler.jsonc
@@ -77,6 +92,10 @@ npm run deploy -w 0xnullai-llm-proxy 2>/dev/null || \
 # 6. 外壳——最后
 npm run deploy -w @0xnullai/web
 ```
+
+Chat 6.0 的媒体上传要求当前 WebSocket 下发的 `media-auth` capability；仅知道 room
+code 不再有写 R2 的权限。这是有意的协议安全升级：旧客户端仍可聊天，但旧版媒体
+上传会收到 403，必须升级客户端后才恢复附件上传。
 
 ## Worker 改名的切换
 
