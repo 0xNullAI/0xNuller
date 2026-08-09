@@ -14,13 +14,20 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { SidebarSection, useInShell, useSafetySession, useTheme, ModuleSettingsSection } from '@0xnullai/ui';
+import {
+  ModuleActions,
+  ModuleSettingsSection,
+  SidebarSection,
+  useInShell,
+  useSafetySession,
+  useTheme,
+} from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { AudioWaveform, Database, Radio, X } from 'lucide-react';
+import { AudioWaveform, Bug, Database, Radio, X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
@@ -71,6 +78,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { SessionSnapshot } from '@dg-agent/core';
 import { SensorsTab } from './components/settings/SensorsTab.js';
 import { WaveformsPanel } from './components/WaveformsPanel.js';
+import { DebugPanel } from './components/DebugPanel.js';
 import { DataTab } from './components/settings/DataTab.js';
 
 export interface AppProps {
@@ -146,6 +154,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab>('preset');
   const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(false);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -836,6 +845,34 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             list. Declared here, placed there. Rendered unconditionally rather
             than only while Agent's own workspace is open, because the shell's
             panel can be opened from anywhere. */}
+        {/* Diagnostics, not settings — see DebugPanel. Projected onto the
+            shell's toolbar; Agent previously declared no ModuleActions at all,
+            which is why its own panels were unreachable inside the shell. */}
+        <ModuleActions>
+          <button
+            type="button"
+            onClick={() => setDebugPanelOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+            title="调试面板"
+          >
+            <Bug className="h-4 w-4" />
+          </button>
+        </ModuleActions>
+
+        {debugPanelOpen && (
+          <DebugPanel
+            onClose={() => setDebugPanelOpen(false)}
+            bridge={{ settingsDraft, setSettingsDraft }}
+            bridgeLogs={{ bridgeLogs, bridgeStatus, settings }}
+            modelLogs={{
+              settingsDraft,
+              setSettingsDraft,
+              turns: modelLog.turns,
+              onClear: modelLog.clear,
+            }}
+          />
+        )}
+
         <ModuleSettingsSection id="agent-sensors" label="传感器" icon={Radio} order={110}>
           <SensorsTab
             settingsDraft={settingsDraft}
