@@ -221,6 +221,12 @@ export class DGLabDevice {
     this.deviceName = state.deviceName ?? '';
     this.version = this.deviceName.startsWith(V2_DEVICE_NAME_PREFIX) ? 'v2' : 'v3';
 
+    // A V3 host can retain its last output across a BLE drop. Treat every
+    // successful attach (including a manual reconnect) as a new safety
+    // boundary: invalidate commands left from the old link and zero the host
+    // before the user starts controlling it again.
+    this.stopAll();
+
     // The hardware cap is no longer written to the device. The setLimits(50,50)
     // that used to be here was the only place in the repo that rewrote
     // device-side state (V3's BF packet is persistent device state), so the same
@@ -320,8 +326,13 @@ export class DGLabDevice {
   /** Update a channel's strength cap. Software side only — never written to the device. */
   setLimit(channel: 'A' | 'B', value: number): void {
     const next = clamp(Math.round(value), 0, 200);
+    const previous = channel === 'A' ? this.limitA : this.limitB;
     this.limitA = channel === 'A' ? next : this.limitA;
     this.limitB = channel === 'B' ? next : this.limitB;
+    // Lowering a cap must affect commands that were already queued under the
+    // old cap. The emergency path invalidates them before they can land after
+    // the settings change and raise output again.
+    if (next < previous && this.getState().connected) this.stopAll();
   }
 
   getState(): {
@@ -441,6 +452,13 @@ export interface OpossumSummary {
   /** Names of buttons currently reported pressed, joined with '+', or null. */
   lastButtons: string | null;
   lastButtonsAt: number | null;
+}
+
+export interface DeviceSessionSafetyLimits {
+  strengthA: number;
+  strengthB: number;
+  intensityA: number;
+  intensityB: number;
 }
 
 /** Turn a raw paw-prints notification into a short human-readable summary + optional numeric value. */
@@ -573,10 +591,21 @@ export class DeviceSession {
 
   private onStateChange: (() => void) | null = null;
   private readonly requestDevice: RequestDeviceFn;
+  private connectingDevice = false;
 
-  constructor(clientFactory?: DeviceClientFactory, requestDevice?: RequestDeviceFn) {
+  constructor(
+    clientFactory?: DeviceClientFactory,
+    requestDevice?: RequestDeviceFn,
+    safetyLimits?: DeviceSessionSafetyLimits,
+  ) {
     this.requestDevice = requestDevice ?? requestDgLabDevice;
     this.clientFactory = clientFactory;
+    if (safetyLimits) {
+      this.coyoteLimitA = clamp(Math.round(safetyLimits.strengthA), 0, 200);
+      this.coyoteLimitB = clamp(Math.round(safetyLimits.strengthB), 0, 200);
+      this.opossumLimitA = clamp(Math.round(safetyLimits.intensityA), 0, 200);
+      this.opossumLimitB = clamp(Math.round(safetyLimits.intensityB), 0, 200);
+    }
     this.addCoyoteSlot();
   }
 
@@ -592,12 +621,31 @@ export class DeviceSession {
    */
   private coyoteLimitA = DEFAULT_LIMIT;
   private coyoteLimitB = DEFAULT_LIMIT;
+  // Direct DeviceSession callers historically supplied the cap per command,
+  // so 200 preserves that API. Product hooks always seed these from shared
+  // settings (default 50) in the constructor before a device can attach.
+  private opossumLimitA = 200;
+  private opossumLimitB = 200;
 
   /** Apply a channel cap to every attached host, and to every host attached later. */
   setCoyoteLimit(channel: 'A' | 'B', value: number): void {
     if (channel === 'A') this.coyoteLimitA = value;
     else this.coyoteLimitB = value;
     for (const coyote of this.coyotes) coyote.setLimit(channel, value);
+    this.emit();
+  }
+
+  /** Apply Opossum caps now as well as to future commands. */
+  setOpossumLimits(limitA: number, limitB: number): void {
+    const nextA = clamp(Math.round(limitA), 0, 200);
+    const nextB = clamp(Math.round(limitB), 0, 200);
+    const lowered = nextA < this.opossumLimitA || nextB < this.opossumLimitB;
+    this.opossumLimitA = nextA;
+    this.opossumLimitB = nextB;
+    // Opossum writes are asynchronous and bursts carry delayed restores. Its
+    // emergency stop also cancels those restores, so a live cap decrease
+    // deliberately zeroes both channels instead of racing a second set write.
+    if (lowered && this.opossumState.connected) this.opossumStop();
   }
 
   /** Add an empty Coyote slot, wired to this session's change notifications. */
@@ -666,7 +714,48 @@ export class DeviceSession {
    * device — each call opens a fresh chooser.
    */
   async connectDevice(): Promise<{ kind: DeviceKind; name: string; coyoteInfo?: DeviceInfo }> {
+    // Control exposes the same action in its empty-state button and in the
+    // shared device popover. A quick tap on both must not open two pickers or
+    // race two attachments into the same disconnected slot.
+    if (this.connectingDevice) throw new Error('正在连接中，请稍候');
+    this.connectingDevice = true;
+    try {
+      return await this.connectDeviceOnce();
+    } finally {
+      this.connectingDevice = false;
+    }
+  }
+
+  private async connectDeviceOnce(): Promise<{
+    kind: DeviceKind;
+    name: string;
+    coyoteInfo?: DeviceInfo;
+  }> {
     const { kind, device, server } = await this.requestDevice();
+
+    // The picker has already connected GATT. Rejecting a device already held
+    // by this session must happen outside the generic failure cleanup below,
+    // or that cleanup disconnects the healthy connection the UI already owns.
+    // Replacing an auxiliary slot with the exact same device has the same
+    // problem: disconnecting the old adapter tears the new one down too.
+    const pickedId = device.id ?? null;
+    const duplicateCoyote =
+      kind === 'coyote' &&
+      pickedId !== null &&
+      this.coyotes.some((c) => c.id === pickedId && c.getState().connected);
+    const duplicateSensor =
+      (kind === 'paw-prints' || kind === 'civet-edging') &&
+      pickedId !== null &&
+      this.sensorDevice?.id === pickedId &&
+      this.sensorState.connected;
+    const duplicateOpossum =
+      kind === 'opossum' &&
+      pickedId !== null &&
+      this.opossumDevice?.id === pickedId &&
+      this.opossumState.connected;
+    if (duplicateCoyote || duplicateSensor || duplicateOpossum) {
+      throw new Error('设备已连接');
+    }
 
     let coyoteInfo: DeviceInfo | undefined;
     try {
@@ -890,7 +979,8 @@ export class DeviceSession {
   setOpossumIntensity(channel: 'A' | 'B', value: number, limit: number): void {
     if (!this.opossumAdapter) return;
     this.opossumIntensityGeneration[channel] += 1;
-    const target = clamp(Math.round(value), 0, limit);
+    const configuredLimit = channel === 'A' ? this.opossumLimitA : this.opossumLimitB;
+    const target = clamp(Math.round(value), 0, Math.min(limit, configuredLimit));
     void this.opossumAdapter
       .setIntensity(channel === 'A' ? target : 'unchanged', channel === 'B' ? target : 'unchanged')
       .catch(() => undefined);

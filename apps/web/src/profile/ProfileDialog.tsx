@@ -139,11 +139,17 @@ export function ProfileDialog({
         role="dialog"
         aria-modal="true"
         aria-label="用户主页"
-        className="flex max-h-[min(680px,calc(100vh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]"
+        className="flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]"
       >
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
           {resolved === null ? (
-            <p className="py-10 text-center text-sm text-[var(--text-faint)]">加载中…</p>
+            <p
+              role="status"
+              aria-live="polite"
+              className="py-10 text-center text-sm text-[var(--text-faint)]"
+            >
+              加载中…
+            </p>
           ) : resolved.state === 'unavailable' ? (
             // One wording for "no such account", "one of you blocked the
             // other" and "the service is unreachable". The server answers all
@@ -166,7 +172,7 @@ export function ProfileDialog({
         </div>
 
         {mode === 'edit' && draft ? (
-          <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-6 py-4">
+          <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
             {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
             <div className="flex items-center justify-between gap-3">
               <span className="text-[10px] text-[var(--text-faint)]">
@@ -192,7 +198,7 @@ export function ProfileDialog({
             onClose={onClose}
           />
         ) : (
-          <div className="flex justify-end border-t border-[var(--surface-border)] px-6 py-4">
+          <div className="flex justify-end border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
             <Button variant="secondary" onClick={onClose}>
               关闭
             </Button>
@@ -354,7 +360,7 @@ function ProfileActions({
 
   if (relationship === 'self') {
     return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-6 py-4">
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
         <span className="text-xs text-[var(--text-faint)]">
           {resolved.state === 'visible' && resolved.profile.visibility === 'public'
             ? '这是别人看到的样子。'
@@ -370,7 +376,7 @@ function ProfileActions({
 
   if (relationship === 'anonymous') {
     return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-6 py-4">
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
         {/* Signed out is not broken. The profile above is fully readable; only
             the actions that need an identity are unavailable, and they say so
             rather than being offered and then failing. */}
@@ -390,7 +396,7 @@ function ProfileActions({
   const dmAllowed = follow ? canDirectMessage(follow, relationship) : false;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-6 py-4">
+    <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
       {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
       <div className="flex items-center gap-2">
         {/* The button says what your side of the relationship is, never
@@ -409,7 +415,10 @@ function ProfileActions({
           className="flex-1"
           disabled={!dmAllowed}
           title={!dmAllowed ? '互相关注后可以私聊' : undefined}
-          onClick={() => openDirectMessage(resolved.user.id)}
+          onClick={() => {
+            openDirectMessage(resolved.user.id);
+            onClose();
+          }}
         >
           <MessageSquare className="h-4 w-4" />
           私聊

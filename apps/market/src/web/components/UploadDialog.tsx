@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useRef, useState } from 'react';
+import { Overlay } from '@0xnullai/ui';
 import { unzipSync, strFromU8 } from 'fflate';
 import type { BatchUploadPayload, ItemType, UploadPayload } from '../../shared/schema';
 import { parsePulseText } from '../../shared/pulse';
@@ -347,11 +348,16 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Overlay onDismiss={onClose} className="mkt-scope">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-upload-title"
+        className="modal"
+      >
         <header className="modal-head">
-          <h2>上传到市场</h2>
-          <button className="icon-btn" onClick={onClose}>
+          <h2 id="market-upload-title">上传到市场</h2>
+          <button type="button" className="icon-btn" aria-label="关闭上传" onClick={onClose}>
             ✕
           </button>
         </header>
@@ -566,7 +572,11 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         </>
         )}
 
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
 
         <div className="modal-actions">
           {manual && (
@@ -579,6 +589,6 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

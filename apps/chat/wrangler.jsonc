@@ -13,7 +13,8 @@
   "name": "0xnullai-chat",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2026-08-09",
+  "compatibility_flags": ["nodejs_compat"],
 
   // 统一外壳占据根域，本 Worker 只接管它真正处理的那几条路径。
   //
@@ -30,7 +31,7 @@
     { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" },
     // 私聊的未读汇总与吊销通知。私聊本身走 /ws/dm，已被上面的 /ws/* 覆盖。
-    { "pattern": "0xnullai.com/api/dm/*", "zone_name": "0xnullai.com" }
+    { "pattern": "0xnullai.com/api/dm/*", "zone_name": "0xnullai.com" },
   ],
   // 保留 workers.dev 预发地址（0xnullai-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,
@@ -45,7 +46,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/ws/*", "/api/*"]
+    "run_worker_first": ["/ws/*", "/api/*"],
   },
 
   // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 群主与公开设置。
@@ -53,22 +54,20 @@
   "durable_objects": {
     "bindings": [
       { "name": "ROOM", "class_name": "RoomDO" },
-      { "name": "LOBBY", "class_name": "LobbyDO" }
-    ]
+      { "name": "LOBBY", "class_name": "LobbyDO" },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["RoomDO", "LobbyDO"]
-    }
+      "new_sqlite_classes": ["RoomDO", "LobbyDO"],
+    },
   ],
 
   // 图片/语音对象存储。key = room/{code}/{msgId}。房间不再自毁，所以也不再按前缀整删：
   // 消息被保留上限挤掉时连它的对象一起删，剩下的孤儿由 RoomDO 的 alarm() 扫掉。
   // 首次部署前：wrangler r2 bucket create dg-chat-media
-  "r2_buckets": [
-    { "binding": "MEDIA", "bucket_name": "dg-chat-media" }
-  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dg-chat-media" }],
 
   // 机密用命令设置，勿写进文件：
   //   wrangler secret put DM_TICKET_SECRET   # 与 0xnullai-auth 同一个值
@@ -78,6 +77,6 @@
   // 和改 Worker 名字是同一类不可回滚的数据丢失。
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

@@ -26,5 +26,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["worker", "shared"]
+  "include": ["worker", "shared", "worker-configuration.d.ts"]
 }

@@ -28,11 +28,12 @@ seams are deliberately left in their original shape (see the comments in
 
 ## Versioning and app identity
 
-The version lives in **one** place: `version` in `src-tauri/tauri.conf.json`.
-Tauri derives `versionName` and `versionCode` from it into
-`gen/android/app/tauri.properties` **at build time**.
+Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
+0xNuller moves directly to `6.0.0`: the user-facing `version` is `6.0.0`, and
+`bundle.android.versionCode` is the aligned monotonic code `6000000`. Tauri
+writes both into `gen/android/app/tauri.properties` **at build time**.
 
-**Bump it before you build, not after.** Building first and bumping second
+**Bump both before you build, not after.** Building first and bumping second
 produces an APK whose internal version is the previous release while the git
 tag says the new one — and since the APK is what users install, the tag is
 the thing that is wrong. This has happened before.
@@ -42,6 +43,9 @@ the thing that is wrong. This has happened before.
 would make this a _different_ app to the OS, so existing DG-Agent users would
 get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
+
+The GitHub tag, release title, APK `versionName`, and internal code all advance
+together: `android-v6.0.0`, `0xNuller 6.0.0`, `6.0.0`, and `6000000`.
 
 ## Prerequisites
 

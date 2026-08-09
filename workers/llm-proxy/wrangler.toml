@@ -1,6 +1,7 @@
 name = "0xnullai-llm-proxy"
 main = "src/index.js"
-compatibility_date = "2024-09-23"
+compatibility_date = "2026-08-09"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 # Custom domain — wrangler creates the DNS record on deploy.

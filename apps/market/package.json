@@ -10,10 +10,10 @@
     "preview": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
-    "db:init": "wrangler d1 execute dg-market --file=./schema.sql",
-    "db:init:remote": "wrangler d1 execute dg-market --remote --file=./schema.sql",
-    "db:migrate": "wrangler d1 execute dg-market --file=./migrations/0001_add_edit_key.sql",
-    "db:migrate:remote": "wrangler d1 execute dg-market --remote --file=./migrations/0001_add_edit_key.sql"
+    "db:migrate:local": "wrangler d1 migrations apply dg-market --local",
+    "db:migrate:remote": "wrangler d1 migrations apply dg-market --remote",
+    "types": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false",
+    "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check"
   },
   "dependencies": {
     "@0xnullai/scenes": "0.1.0",
@@ -25,7 +25,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250101.0",
+    "@cloudflare/workers-types": "^5.20260809.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.4",

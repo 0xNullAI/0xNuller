@@ -46,7 +46,7 @@
     "@0xnullai/native": "0.1.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1",
+    "@cloudflare/workers-types": "^5.20260809.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/node": "^24.12.2",

@@ -7,11 +7,13 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
+    "types": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false",
+    "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply 0xnullai-auth --local",
     "db:migrate:remote": "wrangler d1 migrations apply 0xnullai-auth --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1"
+    "@cloudflare/workers-types": "^5.20260809.1"
   }
 }

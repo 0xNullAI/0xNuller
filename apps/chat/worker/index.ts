@@ -14,11 +14,7 @@ import {
   type DmSummary,
 } from './dm';
 
-export interface Env {
-  ASSETS: Fetcher;
-  ROOM: DurableObjectNamespace<RoomDO>;
-  LOBBY: DurableObjectNamespace<LobbyDO>;
-  MEDIA: R2Bucket;
+export interface Env extends Cloudflare.Env {
   /**
    * Shared with the account service, which mints the DM tickets this Worker verifies.
    *

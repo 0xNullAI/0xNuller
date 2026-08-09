@@ -280,7 +280,9 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.5.2',
-      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: 'Not Found' }) }),
+      fetchImpl: vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({ message: 'Not Found' }) }),
     });
 
     await expect(checker['checkOnce']()).resolves.toBeUndefined();

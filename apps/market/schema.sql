@@ -1,5 +1,5 @@
--- DG-Market D1 schema
--- 一张表存两类条目（波形 / 场景），content 为 JSON 文本。
+-- 只供阅读的 schema 快照。真实建库与升级一律使用 migrations/，不要直接 execute 本文件。
+-- DG-Market 一张表存波形 / 场景 / 多场景，content 为 JSON 文本。
 
 CREATE TABLE IF NOT EXISTS items (
   id          TEXT PRIMARY KEY,          -- uuid
@@ -24,3 +24,11 @@ CREATE INDEX IF NOT EXISTS idx_items_browse
 
 CREATE INDEX IF NOT EXISTS idx_items_ip
   ON items (ip_hash, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_items_visible_new
+  ON items (created_at DESC, id)
+  WHERE hidden = 0;
+
+CREATE INDEX IF NOT EXISTS idx_items_visible_popular
+  ON items (downloads DESC, created_at DESC, id)
+  WHERE hidden = 0;

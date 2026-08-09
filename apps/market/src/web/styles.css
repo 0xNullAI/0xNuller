@@ -168,7 +168,7 @@ input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='
 textarea,
 select {
   width: 100%;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-ctl);
   border: 1px solid var(--surface-border);
   background: var(--bg-strong);
   color: var(--text);
@@ -280,7 +280,7 @@ select {
   background: var(--bg-strong);
   color: var(--text);
   padding: 0.55rem 1.1rem;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-ctl);
   font: inherit;
   transition: border-color var(--dur) ease, background-color var(--dur) ease;
 }
@@ -304,6 +304,11 @@ select {
   cursor: not-allowed;
 }
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   background: transparent;
   border: 0;
   color: var(--text-faint);
@@ -313,17 +318,6 @@ select {
   color: var(--text);
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  z-index: 10;
-}
 .modal {
   background: var(--bg-elevated);
   border: 1px solid var(--surface-border);
@@ -331,7 +325,7 @@ select {
   padding: 22px;
   width: 100%;
   max-width: 560px;
-  max-height: 88vh;
+  max-height: min(680px, calc(100dvh - 2rem));
   overflow-y: auto;
   display: flex;
   flex-direction: column;

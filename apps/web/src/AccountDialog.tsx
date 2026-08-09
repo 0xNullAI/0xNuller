@@ -85,7 +85,7 @@ export function AccountDialog({
         role="dialog"
         aria-modal="true"
         aria-label="账户"
-        className="w-[min(420px,calc(100vw-2rem))] rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
+        className="max-h-[min(680px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-2rem))] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)] sm:p-6"
       >
         {user ? (
           <>

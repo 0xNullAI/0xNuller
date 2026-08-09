@@ -73,7 +73,11 @@ export function createTestDb(): { DB: unknown; close: () => void } {
     db.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
   }
   return {
-    DB: { prepare: (sql: string) => new Stmt(db, sql) },
+    DB: {
+      prepare: (sql: string) => new Stmt(db, sql),
+      batch: async (statements: Stmt[]) =>
+        Promise.all(statements.map((statement) => statement.run())),
+    },
     close: () => db.close(),
   };
 }

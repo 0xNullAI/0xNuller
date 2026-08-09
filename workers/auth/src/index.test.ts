@@ -5,10 +5,69 @@ import { createTestDb } from './test-helpers';
 const ORIGIN = 'https://0xnullai.com';
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
+let photos: FakePhotos;
+
+class FakePhotos {
+  readonly objects = new Map<string, { bytes: ArrayBuffer; contentType: string; uploaded: Date }>();
+
+  async put(key: string, value: ArrayBuffer, options?: R2PutOptions): Promise<R2Object> {
+    this.objects.set(key, {
+      bytes: value.slice(0),
+      contentType:
+        options?.httpMetadata instanceof Headers
+          ? (options.httpMetadata.get('content-type') ?? 'application/octet-stream')
+          : (options?.httpMetadata?.contentType ?? 'application/octet-stream'),
+      uploaded: new Date(),
+    });
+    return { key } as R2Object;
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
+    const object = this.objects.get(key);
+    if (!object) return null;
+    return {
+      key,
+      body: new Response(object.bytes).body!,
+      httpMetadata: { contentType: object.contentType },
+      httpEtag: '"fake"',
+    } as R2ObjectBody;
+  }
+
+  async delete(keys: string | string[]): Promise<void> {
+    for (const key of Array.isArray(keys) ? keys : [keys]) this.objects.delete(key);
+  }
+
+  async list(options: R2ListOptions = {}): Promise<R2Objects> {
+    const matching = [...this.objects.entries()]
+      .filter(([key]) => key.startsWith(options.prefix ?? ''))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const start = options.cursor ? matching.findIndex(([key]) => key > options.cursor!) : 0;
+    // Deliberately cap fake pages at two, so account deletion proves it keeps
+    // relisting the now-shorter prefix until no objects remain.
+    const limit = Math.min(options.limit ?? 1000, 2);
+    const page = matching.slice(start, start + limit);
+    const next = start + page.length;
+    const base = {
+      objects: page.map(([key, object]) => ({ key, uploaded: object.uploaded }) as R2Object),
+      delimitedPrefixes: [],
+    };
+    if (next < matching.length) {
+      return { ...base, truncated: true, cursor: page[page.length - 1]![0] };
+    }
+    return { ...base, truncated: false };
+  }
+}
 
 beforeEach(() => {
   db = createTestDb();
-  env = { DB: db.DB as Env['DB'], IP_PEPPER: 'test-pepper', ALLOWED_ORIGINS: ORIGIN };
+  photos = new FakePhotos();
+  env = {
+    DB: db.DB as Env['DB'],
+    PHOTOS: photos as unknown as R2Bucket,
+    CHAT: { fetch: async () => new Response('ok') } as unknown as Fetcher,
+    IP_PEPPER: 'test-pepper',
+    ALLOWED_ORIGINS: ORIGIN,
+  };
 });
 afterEach(() => db.close());
 
@@ -202,6 +261,24 @@ describe('注销账号', () => {
     const res = await worker.fetch(req('/api/auth/account', { method: 'DELETE' }), env);
     expect(res.status).toBe(401);
   });
+
+  it('删除账号时清空整个相册前缀，包括没有 D1 行的孤儿', async () => {
+    const alice = await seedUser('alice');
+    for (const suffix of ['row-backed', 'orphan-a', 'orphan-b']) {
+      await photos.put(`users/${alice.id}/photos/${suffix}`, new Uint8Array([1]).buffer);
+    }
+    await photos.put('users/someone-else/photos/keep', new Uint8Array([2]).buffer);
+    await prepared(
+      "INSERT INTO user_photos (id, user_id, object_key, visibility, created_at) VALUES (?, ?, ?, 'private', ?)",
+      'p1',
+      alice.id,
+      `users/${alice.id}/photos/row-backed`,
+      Date.now(),
+    ).run();
+
+    expect((await del('/api/auth/account', alice.token)).status).toBe(200);
+    expect([...photos.objects.keys()]).toEqual(['users/someone-else/photos/keep']);
+  });
 });
 
 // ── Contacts ──
@@ -243,6 +320,38 @@ async function seedUser(username: string) {
   ).run();
   return { id, username, token };
 }
+
+describe('内容同步分页', () => {
+  it('同一毫秒超过一页时用 (updated_at, id) 游标，不跳过也不重复', async () => {
+    const alice = await seedUser('alice');
+    const updatedAt = 1_700_000_000_000;
+    const statements = Array.from({ length: 501 }, (_, index) => {
+      const id = `wave-${String(index).padStart(3, '0')}`;
+      return env.DB.prepare(
+        `INSERT INTO user_content
+          (id, user_id, kind, name, payload, created_at, updated_at, deleted_at)
+         VALUES (?, ?, 'waveform', ?, '{}', ?, ?, NULL)`,
+      ).bind(id, alice.id, id, updatedAt, updatedAt);
+    });
+    await env.DB.batch(statements);
+
+    const first = (await (
+      await get('/api/auth/content?kind=waveform&since=0', alice.token)
+    ).json()) as { items: { id: string }[]; nextCursor: string | null };
+    expect(first.items).toHaveLength(500);
+    expect(first.nextCursor).toBeTruthy();
+
+    const second = (await (
+      await get(
+        `/api/auth/content?kind=waveform&since=0&cursor=${encodeURIComponent(first.nextCursor!)}`,
+        alice.token,
+      )
+    ).json()) as { items: { id: string }[]; nextCursor: string | null };
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.items, ...second.items].map((item) => item.id)).size).toBe(501);
+  });
+});
 
 const follow = (token: string, userId: string) => post('/api/auth/follow', { userId }, { token });
 const block = (token: string, userId: string) => post('/api/auth/block', { userId }, { token });
@@ -574,7 +683,7 @@ describe('他人主页的可见性', () => {
     expect(body.counts?.followers).toBe(1);
   });
 
-  it('相册没有绑定存储时取图片一律 404，而不是 500', async () => {
+  it('相册对象缺失时取图片返回 404，而不是泄漏存储错误', async () => {
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'public');
     await prepared(
@@ -594,8 +703,62 @@ describe('他人主页的可见性', () => {
     expect(JSON.stringify(listed.photos)).not.toContain('bucket-object-key');
     expect(listed.photos[0]?.url).toBe('/api/auth/photos/p1/content');
 
-    // env.PHOTOS is unbound in this suite, exactly as in production today.
     expect((await get('/api/auth/photos/p1/content')).status).toBe(404);
+  });
+
+  it('上传、读取、列出和删除照片形成完整的 D1 + R2 生命周期', async () => {
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    const uploaded = await worker.fetch(
+      req('/api/auth/photos', {
+        method: 'POST',
+        token: bob.token,
+        headers: {
+          'content-type': 'image/png',
+          'x-photo-caption': encodeURIComponent('一张测试图'),
+          'x-photo-visibility': 'public',
+        },
+        body: new Uint8Array([137, 80, 78, 71]),
+      }),
+      env,
+    );
+    expect(uploaded.status).toBe(201);
+    const photo = (await uploaded.json()) as {
+      photo: { id: string; url: string; caption: string };
+    };
+
+    const ownList = (await (await get('/api/auth/photos', bob.token)).json()) as {
+      photos: { id: string; url: string }[];
+    };
+    expect(ownList.photos).toEqual([
+      expect.objectContaining({ id: photo.photo.id, url: photo.photo.url }),
+    ]);
+    expect(JSON.stringify(ownList)).not.toContain('users/');
+
+    const content = await get(photo.photo.url);
+    expect(content.status).toBe(200);
+    expect(content.headers.get('content-type')).toBe('image/png');
+    expect(content.headers.get('cache-control')).toBe('private, no-store');
+    expect([...new Uint8Array(await content.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+
+    expect((await del(`/api/auth/photos/${photo.photo.id}`, bob.token)).status).toBe(200);
+    expect(photos.objects.size).toBe(0);
+    expect((await get(photo.photo.url)).status).toBe(404);
+  });
+
+  it('拒绝非图片与超过上限的图片，不写 R2', async () => {
+    const bob = await seedUser('bob');
+    const wrongType = await worker.fetch(
+      req('/api/auth/photos', {
+        method: 'POST',
+        token: bob.token,
+        headers: { 'content-type': 'text/html' },
+        body: '<script></script>',
+      }),
+      env,
+    );
+    expect(wrongType.status).toBe(415);
+    expect(photos.objects.size).toBe(0);
   });
 
   it('私密资料里的公开照片对别人不出现', async () => {
@@ -678,5 +841,6 @@ describe('CORS', () => {
     // Leave it out and the browser blocks the Android side's Bearer requests at the
     // preflight stage — the symptom being "the request never even went out".
     expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('PUT');
   });
 });

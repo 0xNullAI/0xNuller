@@ -11,7 +11,9 @@
     "cf:dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "types": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false",
+    "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check"
   },
   "dependencies": {
     "@0xnullai/llm-providers": "0.1.0",
@@ -33,7 +35,7 @@
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1",
+    "@cloudflare/workers-types": "^5.20260809.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.2.4",
     "@testing-library/jest-dom": "^6.9.1",

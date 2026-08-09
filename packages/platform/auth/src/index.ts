@@ -134,10 +134,10 @@ export interface UserProfile {
 
 export interface UserPhoto {
   id: string;
-  object_key: string;
   caption: string | null;
   visibility: 'private' | 'public';
-  created_at: number;
+  createdAt: number;
+  url: string;
 }
 
 export async function getProfile(): Promise<UserProfile | null> {
@@ -152,6 +152,23 @@ export async function saveProfile(profile: Partial<UserProfile>): Promise<void> 
 export async function listPhotos(): Promise<UserPhoto[]> {
   const r = await call<{ photos: UserPhoto[] }>('/api/auth/photos');
   return r.photos;
+}
+
+export async function uploadPhoto(
+  bytes: Blob,
+  options: { caption?: string; visibility?: 'private' | 'public' } = {},
+): Promise<UserPhoto> {
+  const r = await call<{ photo: UserPhoto }>('/api/auth/photos', {
+    method: 'POST',
+    headers: {
+      'content-type': bytes.type || 'application/octet-stream',
+      // Header values are ByteStrings in browsers; percent-encode Unicode captions.
+      'x-photo-caption': encodeURIComponent(options.caption ?? ''),
+      'x-photo-visibility': options.visibility ?? 'private',
+    },
+    body: bytes,
+  });
+  return r.photo;
 }
 
 export async function deletePhoto(id: string): Promise<void> {

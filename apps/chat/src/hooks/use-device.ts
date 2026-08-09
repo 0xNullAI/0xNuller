@@ -114,6 +114,17 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setWaveIdB(s.waveIdB);
     setLimitA(s.limitA);
     setLimitB(s.limitB);
+    const nextCoyotes = session.getCoyoteSummaries();
+    const primary = nextCoyotes[0] ?? null;
+    // Every scalar in this hook describes the primary host. Keep deviceInfo
+    // on the same host too: setting it from the most recently attached Coyote
+    // made the name/battery say device #2 while the strength controls still
+    // drove device #1.
+    setDeviceInfo(
+      primary
+        ? { version: primary.version, name: primary.name, battery: primary.battery ?? 0 }
+        : null,
+    );
     // Keep the previous array when nothing actually changed. The protocol
     // emits on every tick (100ms) while a device is connected, and syncState
     // runs on each one; the scalar setters above bail out of re-rendering when
@@ -121,8 +132,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     // and would re-render the whole module tree ten times a second for as long
     // as a device is attached.
     setCoyotes((prev) => {
-      const next = session.getCoyoteSummaries();
-      return sameCoyotes(prev, next) ? prev : next;
+      return sameCoyotes(prev, nextCoyotes) ? prev : nextCoyotes;
     });
     setSensor(session.getSensorSummary());
     setOpossum(session.getOpossumSummary());
@@ -139,7 +149,13 @@ export function useDevice(options: UseDeviceOptions = {}) {
   /** Ensure the session exists (created lazily — only needed on the first connectDevice). */
   const ensureSession = useCallback((): DeviceSession => {
     if (!sessionRef.current) {
-      const session = new DeviceSession(clientFactoryRef.current, requestDeviceRef.current);
+      const safety = loadDeviceSafety();
+      const session = new DeviceSession(clientFactoryRef.current, requestDeviceRef.current, {
+        strengthA: safety.maxStrengthA,
+        strengthB: safety.maxStrengthB,
+        intensityA: safety.maxIntensityA,
+        intensityB: safety.maxIntensityB,
+      });
       session.setOnStateChange(syncState);
       sessionRef.current = session;
     }
@@ -158,8 +174,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
    */
   const connectDevice = useCallback(async (): Promise<{ kind: DeviceKind; name: string }> => {
     const session = ensureSession();
-    const { coyoteInfo, ...result } = await session.connectDevice();
-    if (coyoteInfo) setDeviceInfo(coyoteInfo);
+    const { coyoteInfo: _coyoteInfo, ...result } = await session.connectDevice();
     syncState();
     return result;
   }, [ensureSession, syncState]);
@@ -261,13 +276,16 @@ export function useDevice(options: UseDeviceOptions = {}) {
    * attached later — a cap the user lowered must not quietly fail to cover
    * the second device.
    */
-  const setLimit = useCallback((channel: 'A' | 'B', value: number, deviceId?: string) => {
-    const session = sessionRef.current;
-    if (!session) return;
-    if (deviceId) session.coyoteById(deviceId)?.setLimit(channel, value);
-    else session.setCoyoteLimit(channel, value);
-    syncState();
-  }, [syncState]);
+  const setLimit = useCallback(
+    (channel: 'A' | 'B', value: number, deviceId?: string) => {
+      const session = sessionRef.current;
+      if (!session) return;
+      if (deviceId) session.coyoteById(deviceId)?.setLimit(channel, value);
+      else session.setCoyoteLimit(channel, value);
+      syncState();
+    },
+    [syncState],
+  );
 
   /**
    * Emergency stop: zero **every** attached Coyote and both Opossum channels.
@@ -351,12 +369,14 @@ export function useDevice(options: UseDeviceOptions = {}) {
       // these as the seed for hosts attached later.
       sessionRef.current?.setCoyoteLimit('A', safety.maxStrengthA);
       sessionRef.current?.setCoyoteLimit('B', safety.maxStrengthB);
+      sessionRef.current?.setOpossumLimits(safety.maxIntensityA, safety.maxIntensityB);
       setLimitA(safety.maxStrengthA);
       setLimitB(safety.maxStrengthB);
+      syncState();
     };
     apply();
     return subscribeDeviceSafety(apply);
-  }, []);
+  }, [syncState]);
 
   useEffect(() => {
     const guard = new DeviceLifecycleGuard({

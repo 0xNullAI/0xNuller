@@ -31,6 +31,7 @@ beforeEach(() => {
   pushes = [];
   env = {
     DB: db.DB as Env['DB'],
+    PHOTOS: {} as R2Bucket,
     IP_PEPPER: 'test-pepper',
     ALLOWED_ORIGINS: ORIGIN,
     DM_TICKET_SECRET: SECRET,

@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useState } from 'react';
+import { Overlay } from '@0xnullai/ui';
 import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent, MultiSceneContent } from '../../shared/schema';
 import { updateItem, markDownloaded, reportItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
@@ -124,14 +125,19 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   const pulse = view.type === 'waveform' ? (item.content as WaveformContent).pulse : undefined;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Overlay onDismiss={onClose} className="mkt-scope">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-item-title"
+        className="modal"
+      >
         <header className="modal-head">
-          <h2>
+          <h2 id="market-item-title">
             {view.type === 'waveform' ? '〰️ ' : `${view.icon || (view.type === 'multi-scene' ? '🎬' : '🎭')} `}
             {view.name}
           </h2>
-          <button className="icon-btn" onClick={onClose}>
+          <button type="button" className="icon-btn" aria-label="关闭条目详情" onClick={onClose}>
             ✕
           </button>
         </header>
@@ -184,7 +190,11 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
             ) : (
               <p className="modal-hint">此条目未设口令，任何人都可编辑。</p>
             )}
-            {editErr && <p className="error">{editErr}</p>}
+            {editErr && (
+              <p role="alert" className="error">
+                {editErr}
+              </p>
+            )}
             <div className="modal-actions">
               <button className="btn primary" onClick={saveEdit} disabled={saving}>
                 {saving ? '保存中…' : '保存'}
@@ -257,6 +267,6 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
               : '在 Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
         </p>
       </div>
-    </div>
+    </Overlay>
   );
 }

@@ -21,16 +21,21 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 `dg-voice-release.jks` 和 `dg-chat-release.jks` 对应的是各自独立的 applicationId，
 统一之后不再使用。**不要因为「现在叫 0xNuller 了」就去建一个新密钥。**
 
-### 2. 版本号接着 DG-Agent 的线走
+### 2. 0xNuller 直接进入 6.0.0
 
-`tauri.conf.json` 现在是 `5.5.2`，不是 `0.1.0`。安卓的 `versionCode` 只能递增，
-而存量用户手机上装的是 DG-Agent 的 5.x——降到 0.x 会让升级被系统直接拒绝。
+0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
+`tauri.conf.json` 中对用户显示的 `version` 是 `6.0.0`，Android 内部的
+`bundle.android.versionCode` 是 `6000000`。两者和 GitHub Release tag 始终对齐。
 
-平台仓库根 `package.json` 的版本（网页那条线）和这个是两回事，各走各的。
+存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
+原地升级，不需要为重置版本号引入额外映射层。
 
 ### 3. Release tag 必须是 `android-v<版本号>`
 
-应用内的更新提示按这个前缀在 `/releases` 里找 APK。合并之后同一个仓库还会打出
+应用内的更新提示按这个前缀在 `/releases` 里找 APK。第一个 0xNuller 发布使用
+tag `android-v6.0.0`，Release 标题和 APK 也都显示 `0xNuller 6.0.0`。
+
+合并之后同一个仓库还会打出
 `@dg-kit/core@1.14.0`（changesets）和 `v0.2.0`（平台版本）这类 tag，用
 `releases/latest` 拿到的多半不是 APK——**更新提示会静默失效**，用户不会收到任何
 出错信号，就一直留在旧版本上。安卓没有热更新，这件事只能靠重新打包来修。
@@ -77,7 +82,7 @@ apksigner verify --print-certs "$APK" | grep -E "CN=|OU="
 正确的输出长这样（2026-08-08 实测）：
 
 ```
-package: name='ai.nullai.dgagent' versionCode='5005002' versionName='5.5.2'
+package: name='ai.nullai.dgagent' versionCode='6000000' versionName='6.0.0'
 application-label:'0xNuller'
 Signer #1 certificate DN: CN=DG-Agent, OU=0xNullAI, O=0xNullAI, …
 ```
@@ -92,8 +97,8 @@ Signer #1 certificate DN: CN=DG-Agent, OU=0xNullAI, O=0xNullAI, …
 然后：
 
 ```bash
-gh release create "android-v5.5.3" --repo 0xNullAI/0xNuller \
-  --title "安卓 5.5.3" --notes "..." "$APK"
+gh release create "android-v6.0.0" --repo 0xNullAI/0xNuller \
+  --title "0xNuller 6.0.0" --notes "..." "$APK"
 ```
 
 ## 发布之后

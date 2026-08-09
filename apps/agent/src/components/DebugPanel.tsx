@@ -48,7 +48,7 @@ export function DebugPanel({
         role="dialog"
         aria-modal="true"
         aria-label="调试面板"
-        className="flex h-[min(680px,calc(100vh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
+        className="flex h-[min(680px,calc(100dvh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
         style={{ '--settings-surface': 'var(--bg-elevated)' } as React.CSSProperties}
       >
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[180px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">

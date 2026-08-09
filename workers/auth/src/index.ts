@@ -27,25 +27,17 @@ import { DM_DIGEST_MAX_ROOMS, DM_TICKET_TTL_MS, dmRoomCode, signDmTicket } from 
  *    password means losing the account — say so plainly at registration.
  */
 
-export interface Env {
-  DB: D1Database;
+export interface Env extends Cloudflare.Env {
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
    * rotated, or every rate-limit record becomes worthless.
    */
   IP_PEPPER: string;
-  /** Origins allowed to send credentials, comma separated. */
-  ALLOWED_ORIGINS: string;
-  /**
-   * Bucket for profile photos. Optional so the worker still runs without it —
-   * the photo endpoints degrade rather than the whole service failing to boot.
-   */
-  PHOTOS?: R2Bucket;
   /**
    * Signing key for direct-message tickets, shared with Chat's Worker.
    *
-   * Optional for the same reason as PHOTOS: a deployment without it answers 503
-   * on the DM endpoints instead of failing to boot. **It must never be rotated** —
+   * Optional so a deployment without it answers 503 on DM endpoints instead of
+   * failing unrelated account features. **It must never be rotated** —
    * the conversation id is keyed with it, so a new value moves every conversation
    * to a different Durable Object and orphans its history. See dm-ticket.ts.
    */
@@ -60,7 +52,6 @@ export interface Env {
    * follows, which stops the next ticket from being minted, so the conversation
    * dies within the ticket TTL instead of instantly.
    */
-  CHAT?: Fetcher;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -84,6 +75,14 @@ const MAX_PAGE_SIZE = 50;
 const MAX_BLOCKS = 200;
 /** Album ceiling on a profile view. The editor pages its own list separately. */
 const MAX_ALBUM_PHOTOS = 60;
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_PHOTO_CAPTION = 200;
+const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const CONTENT_PAGE_SIZE = 500;
+const CONTENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const SYNC_NAMESPACES = new Set(['llm', 'device-safety', 'proxy', 'ui']);
+const MAX_SETTINGS_BYTES = 256 * 1024;
+const MAX_CONTENT_PAYLOAD_BYTES = 512 * 1024;
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -109,11 +108,11 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     // Authorization must be on the allowlist: leave it out and the browser blocks
     // the request outright at the preflight stage, which shows up as "the request
     // never even went out" rather than a catchable 401.
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility',
     Vary: 'Origin',
   };
 }
@@ -127,6 +126,73 @@ function newToken(): string {
   return [...crypto.getRandomValues(new Uint8Array(32))]
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+async function readBodyBounded(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
+  const declared = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return new ArrayBuffer(0);
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return joined.buffer;
+}
+
+/** Delete every object under a prefix without reusing a cursor after mutating the listing. */
+async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<void> {
+  while (true) {
+    const listed = await bucket.list({ prefix, limit: 1000 });
+    if (listed.objects.length === 0) return;
+    await bucket.delete(listed.objects.map((o) => o.key));
+  }
+}
+
+interface ContentCursor {
+  updatedAt: number;
+  id: string;
+}
+
+function encodeContentCursor(cursor: ContentCursor): string {
+  return btoa(JSON.stringify([cursor.updatedAt, cursor.id]))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function decodeContentCursor(value: string | null): ContentCursor | null {
+  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    const padded = value
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(value.length / 4) * 4, '=');
+    const parsed = JSON.parse(atob(padded)) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+    const updatedAt = Number(parsed[0]);
+    const id = parsed[1];
+    return Number.isSafeInteger(updatedAt) && updatedAt >= 0 && typeof id === 'string'
+      ? { updatedAt, id }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -282,9 +348,7 @@ async function countFollows(
   column: 'follower_id' | 'followee_id',
   userId: string,
 ): Promise<number> {
-  const row = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM user_follows WHERE ${column} = ?`,
-  )
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM user_follows WHERE ${column} = ?`)
     .bind(userId)
     .first<{ n: number }>();
   return Number(row?.n ?? 0);
@@ -673,15 +737,69 @@ export default {
       // Rows reference R2 objects; the image itself is never in D1. A delete
       // has to remove the object too — otherwise "deleted" only means gone
       // from the list, and for this kind of content that is not deletion.
+      if (path === '/api/auth/photos' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+
+        const mime = (request.headers.get('content-type') ?? '').split(';', 1)[0]!.trim();
+        if (!ALLOWED_PHOTO_TYPES.has(mime)) return err('不支持的图片格式', 415, cors);
+        const count = await env.DB.prepare(
+          'SELECT COUNT(*) AS n FROM user_photos WHERE user_id = ?',
+        )
+          .bind(user.id)
+          .first<{ n: number }>();
+        if (Number(count?.n ?? 0) >= MAX_ALBUM_PHOTOS) return err('相册已达到上限', 409, cors);
+
+        const bytes = await readBodyBounded(request, MAX_PHOTO_BYTES);
+        if (bytes == null) return err('图片过大', 413, cors);
+        if (bytes.byteLength === 0) return err('图片为空', 400, cors);
+
+        const id = crypto.randomUUID();
+        const objectKey = `users/${user.id}/photos/${id}`;
+        let caption = '';
+        try {
+          caption = decodeURIComponent(request.headers.get('x-photo-caption') ?? '')
+            .trim()
+            .slice(0, MAX_PHOTO_CAPTION);
+        } catch {
+          return err('照片说明编码无效', 400, cors);
+        }
+        const visibility =
+          request.headers.get('x-photo-visibility') === 'public' ? 'public' : 'private';
+        const createdAt = Date.now();
+
+        await env.PHOTOS.put(objectKey, bytes, { httpMetadata: { contentType: mime } });
+        try {
+          await env.DB.prepare(
+            `INSERT INTO user_photos (id, user_id, object_key, caption, visibility, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+            .bind(id, user.id, objectKey, caption || null, visibility, createdAt)
+            .run();
+        } catch (error) {
+          // Compensate the object write: a failed row insert must not create an R2 orphan.
+          await env.PHOTOS.delete(objectKey);
+          throw error;
+        }
+        return json(
+          {
+            photo: {
+              id,
+              caption: caption || null,
+              visibility,
+              createdAt,
+              url: `/api/auth/photos/${encodeURIComponent(id)}/content`,
+            },
+          },
+          201,
+          cors,
+        );
+      }
+
       if (path === '/api/auth/photos' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const rows = await env.DB.prepare(
-          'SELECT id, object_key, caption, visibility, created_at FROM user_photos WHERE user_id = ? ORDER BY created_at DESC LIMIT 200',
-        )
-          .bind(user.id)
-          .all();
-        return json({ photos: rows.results ?? [] }, 200, cors);
+        return json({ photos: await visiblePhotos(env, user.id, true) }, 200, cors);
       }
 
       /**
@@ -702,9 +820,7 @@ export default {
         path.endsWith('/content') &&
         request.method === 'GET'
       ) {
-        const id = decodeURIComponent(
-          path.slice('/api/auth/photos/'.length, -'/content'.length),
-        );
+        const id = decodeURIComponent(path.slice('/api/auth/photos/'.length, -'/content'.length));
         const photo = await env.DB.prepare(
           'SELECT user_id, object_key, visibility FROM user_photos WHERE id = ?',
         )
@@ -729,9 +845,7 @@ export default {
           if (owner?.visibility !== 'public') return err('不存在', 404, cors);
         }
 
-        // No bucket bound: the row may exist but the bytes are unreachable, and
-        // that is a missing photo rather than a server fault.
-        const object = env.PHOTOS ? await env.PHOTOS.get(photo.object_key) : null;
+        const object = await env.PHOTOS.get(photo.object_key);
         if (!object) return err('不存在', 404, cors);
         return new Response(object.body, {
           headers: {
@@ -739,7 +853,9 @@ export default {
             'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
             // Private so shared caches never hold a photo that a block or a
             // visibility change should have taken away.
-            'cache-control': 'private, max-age=300',
+            'cache-control': 'private, no-store',
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "default-src 'none'; sandbox",
           },
         });
       }
@@ -756,7 +872,7 @@ export default {
         if (!row) return err('不存在', 404, cors);
         // The object first: a row without its file is a broken thumbnail, a
         // file without its row is content the user believes they deleted.
-        if (env.PHOTOS) await env.PHOTOS.delete(row.object_key);
+        await env.PHOTOS.delete(row.object_key);
         await env.DB.prepare('DELETE FROM user_photos WHERE id = ? AND user_id = ?')
           .bind(id, user.id)
           .run();
@@ -777,6 +893,7 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const namespace = decodeURIComponent(path.slice('/api/auth/settings/'.length));
+        if (!SYNC_NAMESPACES.has(namespace)) return err('同步命名空间不存在', 404, cors);
         const row = await env.DB.prepare(
           'SELECT payload, version, updated_at FROM user_settings WHERE user_id = ? AND namespace = ?',
         )
@@ -794,8 +911,13 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const namespace = decodeURIComponent(path.slice('/api/auth/settings/'.length));
+        if (!SYNC_NAMESPACES.has(namespace)) return err('同步命名空间不存在', 404, cors);
         const body = (await request.json()) as { payload?: unknown; version?: number };
         if (body.payload === undefined) return err('缺少 payload', 400, cors);
+        const encodedPayload = JSON.stringify(body.payload);
+        if (new TextEncoder().encode(encodedPayload).byteLength > MAX_SETTINGS_BYTES) {
+          return err('同步设置过大', 413, cors);
+        }
 
         const now = Date.now();
         const current = await env.DB.prepare(
@@ -816,7 +938,7 @@ export default {
            ON CONFLICT (user_id, namespace)
            DO UPDATE SET payload = excluded.payload, version = excluded.version, updated_at = excluded.updated_at`,
         )
-          .bind(user.id, namespace, JSON.stringify(body.payload), nextVersion, now)
+          .bind(user.id, namespace, encodedPayload, nextVersion, now)
           .run();
         return json({ version: nextVersion, updatedAt: now }, 200, cors);
       }
@@ -833,19 +955,41 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const kind = url.searchParams.get('kind') ?? '';
+        if (kind && kind !== 'waveform' && kind !== 'scene') {
+          return err('内容类型不存在', 400, cors);
+        }
         const since = Number(url.searchParams.get('since') ?? '0') || 0;
-        const rows = await env.DB.prepare(
-          `SELECT id, kind, name, payload, created_at, updated_at, deleted_at
-             FROM user_content
-            WHERE user_id = ? AND (? = '' OR kind = ?) AND updated_at > ?
-            ORDER BY updated_at ASC
-            LIMIT 500`,
-        )
-          .bind(user.id, kind, kind, since)
-          .all();
+        const rawCursor = url.searchParams.get('cursor');
+        const cursor = decodeContentCursor(rawCursor);
+        if (rawCursor && !cursor) return err('同步游标无效', 400, cors);
+        const afterUpdatedAt = cursor?.updatedAt ?? Math.max(0, Math.trunc(since));
+        const afterId = cursor?.id ?? '';
+        const select = `SELECT id, kind, name, payload, created_at, updated_at, deleted_at
+                          FROM user_content`;
+        const rows = kind
+          ? await env.DB.prepare(
+              `${select}
+                WHERE user_id = ? AND kind = ?
+                  AND (updated_at > ? OR (updated_at = ? AND id > ?))
+                ORDER BY updated_at ASC, id ASC
+                LIMIT ?`,
+            )
+              .bind(user.id, kind, afterUpdatedAt, afterUpdatedAt, afterId, CONTENT_PAGE_SIZE)
+              .all()
+          : await env.DB.prepare(
+              `${select}
+                WHERE user_id = ?
+                  AND (updated_at > ? OR (updated_at = ? AND id > ?))
+                ORDER BY updated_at ASC, id ASC
+                LIMIT ?`,
+            )
+              .bind(user.id, afterUpdatedAt, afterUpdatedAt, afterId, CONTENT_PAGE_SIZE)
+              .all();
+        const resultRows = rows.results ?? [];
+        const last = resultRows.at(-1) as Record<string, unknown> | undefined;
         return json(
           {
-            items: (rows.results ?? []).map((r) => {
+            items: resultRows.map((r) => {
               const row = r as Record<string, unknown>;
               return {
                 id: row.id,
@@ -857,6 +1001,10 @@ export default {
                 deleted: row.deleted_at != null,
               };
             }),
+            nextCursor:
+              resultRows.length === CONTENT_PAGE_SIZE && last
+                ? encodeContentCursor({ updatedAt: Number(last.updated_at), id: String(last.id) })
+                : null,
           },
           200,
           cors,
@@ -872,6 +1020,18 @@ export default {
         const items = Array.isArray(body.items) ? body.items.slice(0, 200) : [];
         if (items.length === 0) return json({ ok: true, written: 0 }, 200, cors);
 
+        for (const item of items) {
+          if (!CONTENT_ID.test(String(item.id ?? ''))) return err('内容 id 无效', 400, cors);
+          if (item.kind !== 'waveform' && item.kind !== 'scene') {
+            return err('内容类型不存在', 400, cors);
+          }
+          if (!String(item.name ?? '').trim()) return err('内容名称不能为空', 400, cors);
+          const payload = JSON.stringify(item.payload ?? null);
+          if (new TextEncoder().encode(payload).byteLength > MAX_CONTENT_PAYLOAD_BYTES) {
+            return err('内容数据过大', 413, cors);
+          }
+        }
+
         const now = Date.now();
         const statements = items.map((item) =>
           env.DB.prepare(
@@ -883,8 +1043,8 @@ export default {
           ).bind(
             String(item.id),
             user.id,
-            String(item.kind),
-            String(item.name ?? '').slice(0, 200),
+            item.kind,
+            String(item.name).trim().slice(0, 200),
             JSON.stringify(item.payload ?? null),
             now,
             now,
@@ -1308,13 +1468,43 @@ export default {
       if (path === '/api/auth/account' && request.method === 'DELETE') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        // Delete the whole prefix, not only rows D1 still knows about: a previously
+        // compensated/failed write may have left an object without a row. R2 first,
+        // so a bucket failure leaves the account retryable instead of orphaning bytes.
+        await deleteR2Prefix(env.PHOTOS, `users/${user.id}/photos/`);
         await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
         return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
       }
 
       return err('接口不存在', 404, cors);
-    } catch (e) {
-      return err(`服务器错误：${(e as Error).message}`, 500, cors);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'auth_request_failed',
+          method: request.method,
+          path,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return err('服务器错误', 500, cors);
     }
+  },
+
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    const now = Date.now();
+    const keepLoginAttemptsAfter = now - 24 * 60 * 60 * 1000;
+    ctx.waitUntil(
+      env.DB.batch([
+        env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
+        env.DB.prepare('DELETE FROM login_attempts WHERE created_at < ?').bind(
+          keepLoginAttemptsAfter,
+        ),
+      ]).then(() => undefined),
+    );
   },
 } satisfies ExportedHandler<Env>;

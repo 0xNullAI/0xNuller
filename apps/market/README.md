@@ -12,7 +12,7 @@
 
 - 前端：React 18 + Vite，构建到 `dist/`，由 Workers Static Assets 托管
 - 后端：单个 Worker（`src/worker/index.ts`），路由 `/api/*`
-- 存储：D1，单表 `items`（见 `schema.sql`）
+- 存储：D1，单表 `items`（以 `migrations/` 为准，`schema.sql` 只是快照）
 - 校验：`zod`（前后端共享 `src/shared/schema.ts`）
 
 ## 本地开发
@@ -20,8 +20,7 @@
 ```bash
 npm install
 npm run build           # 先构建前端到 dist/（Worker 需要 ASSETS）
-wrangler d1 create dg-market          # 创建本地/远程 D1，拿到 database_id 填进 wrangler.toml
-npm run db:init                       # 初始化本地 D1 表结构
+npm run db:migrate:local              # 在本地 D1 从空库顺序应用 migrations
 npm run preview         # wrangler dev：Worker + 静态资源一起跑
 # 或仅调前端：npm run dev（/api 代理到 127.0.0.1:8787）
 ```
@@ -34,18 +33,22 @@ ADMIN_KEY=任意本地口令
 
 ## 部署到 Cloudflare（GitHub 推送自动部署）
 
-1. **创建 D1**：`wrangler d1 create dg-market`，把返回的 `database_id` 填进 `wrangler.toml`。
-2. **初始化远程表**：`npm run db:init:remote`。
-   - 若是从旧版本升级（库已存在），改跑一次性迁移补 `edit_key_hash` 列：`npm run db:migrate:remote`。
-     **务必在部署新版 Worker 之前执行**，否则上传会因缺列而失败。
-3. **设置机密**：
+1. **创建 D1**：`wrangler d1 create dg-market`，把返回的 `database_id` 填进 `wrangler.jsonc`。
+2. **先做只读迁移预检**：确认 `items` 是否存在、是否已有 `edit_key_hash`，以及
+   `d1_migrations` 是否记录了 `0001_add_edit_key.sql`。旧流程允许直接执行
+   `schema.sql`，所以“有表但没有 migration 记录”的库不能直接 apply，必须先显式
+   对齐历史；禁止靠猜测上线。
+3. **应用远程 migration**：`npm run db:migrate:remote`。新库会依次执行幂等的
+   `0000` 基线、不可变的 `0001` 和后续 migration；已正确登记旧 `0001` 的生产库
+   会安全补跑幂等基线并继续到 `0002`。
+4. **设置机密**：
    ```bash
    wrangler secret put ADMIN_KEY          # 管理员删除口令，同时用作编辑口令哈希的 pepper
    ```
-4. **连接 GitHub 自动部署**：Cloudflare 控制台 → Workers & Pages → 选中本 Worker → Settings → Builds → Connect to Git，选择本仓库。
+5. **连接 GitHub 自动部署**：Cloudflare 控制台 → Workers & Pages → 选中本 Worker → Settings → Builds → Connect to Git，选择本仓库。
    - Build command：`npm run build`
    - Deploy command：`npx wrangler deploy`
-   之后每次 `git push` 到生产分支即自动构建并部署。
+     之后每次 `git push` 到生产分支即自动构建并部署。
 
 > 也可手动一次性部署：`npm run deploy`。
 

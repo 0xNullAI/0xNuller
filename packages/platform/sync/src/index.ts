@@ -108,14 +108,25 @@ export async function pushSettings(
 }
 
 /** Items changed since `since` (0 = everything). Deletions arrive as tombstones. */
-export async function pullContent(
-  kind: ContentKind,
-  since = 0,
-): Promise<SyncedContent[] | null> {
-  const res = await call<{ items: SyncedContent[] }>(
-    `/api/auth/content?kind=${encodeURIComponent(kind)}&since=${since}`,
-  );
-  return res?.items ?? null;
+export async function pullContent(kind: ContentKind, since = 0): Promise<SyncedContent[] | null> {
+  const items: SyncedContent[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const query = new URLSearchParams({ kind, since: String(since) });
+    if (cursor) query.set('cursor', cursor);
+    const res = await call<{ items: SyncedContent[]; nextCursor: string | null }>(
+      `/api/auth/content?${query}`,
+    );
+    if (!res) return null;
+    items.push(...res.items);
+    cursor = res.nextCursor;
+    // A repeated cursor is a server bug. Stop rather than turning background sync
+    // into an infinite request loop on every client.
+    if (cursor && seen.has(cursor)) return null;
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return items;
 }
 
 export async function pushContent(

@@ -18,6 +18,33 @@ import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.js';
  */
 const buildId = resolveBuildId('local');
 
+/**
+ * Optional dev proxy onto locally-running Workers.
+ *
+ * In production every `/api/*` path is taken over by a Worker on the same
+ * origin, so the client sends bare relative paths. `vite dev` serves the shell
+ * alone, so those paths resolve to the SPA's index.html and the client parses
+ * HTML as JSON — which is why nothing account-shaped (sign-in, profile,
+ * contacts, direct messages) can be exercised locally without this.
+ *
+ * Off unless asked for, because a proxy pointed at a port nothing is listening
+ * on fills the console with ECONNREFUSED and makes the default `npm run dev`
+ * look broken. To use it:
+ *
+ *     wrangler dev --config workers/auth/wrangler.jsonc --port 8787
+ *     DEV_API_PROXY=http://127.0.0.1:8787 npm run dev -w @0xnullai/web
+ *
+ * Point it at whichever Worker owns the paths being worked on; the chat Worker
+ * serves /ws and /api/lobby, /api/upload, /api/media, /api/dm.
+ */
+const apiProxyTarget = process.env.DEV_API_PROXY;
+const proxy = apiProxyTarget
+  ? {
+      '/api': { target: apiProxyTarget, changeOrigin: true },
+      '/ws': { target: apiProxyTarget, changeOrigin: true, ws: true },
+    }
+  : undefined;
+
 export default defineConfig({
   root: __dirname,
   resolve: {
@@ -38,5 +65,5 @@ export default defineConfig({
   define: { __BUILD_ID__: JSON.stringify(buildId) },
   plugins: [react(), tailwindcss(), emitVersionJson(buildId)],
   build: { outDir: 'dist', emptyOutDir: true, target: 'esnext' },
-  server: { port: 5170 },
+  server: { port: 5170, proxy },
 });

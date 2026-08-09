@@ -57,7 +57,10 @@ export function useRepeatAction(action: () => void, initialDelay = 400, repeatIn
 
   useEffect(() => stop, [stop]);
 
-  return { onPointerDown: start, onPointerUp: stop, onPointerLeave: stop };
+  // A scroll, system gesture or app interruption can cancel a touch pointer
+  // without producing pointerup. Stop there too, or the repeat interval keeps
+  // issuing strength commands after the user's finger is no longer down.
+  return { onPointerDown: start, onPointerUp: stop, onPointerLeave: stop, onPointerCancel: stop };
 }
 
 export function RepeatButton({

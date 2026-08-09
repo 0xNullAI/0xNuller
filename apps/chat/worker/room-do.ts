@@ -286,13 +286,29 @@ export class RoomDO extends DurableObject<Env> {
     // is the housekeeping that used to be a side effect of the group dying: report the group
     // as empty, and reconcile R2 against the retained messages so an attachment whose message
     // never arrived does not sit in the bucket forever with nothing pointing at it.
-    if (this.ctx.getWebSockets().length > 0) return;
+    if (this.ctx.getWebSockets().length > 0) {
+      // An upload can become orphaned while a room remains active. Keep a bounded
+      // retry alive instead of waiting for a disconnect that may never happen.
+      await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
+      return;
+    }
     await this.reportLobby(0);
     const code = await this.code();
     if (code) await this.sweepOrphanMedia(code);
   }
 
   // -- Direct messages (RPC, called by the Worker) --
+
+  /** Ensure an upload with no following chat frame still gets an orphan sweep. */
+  async noteMediaUpload(code: string): Promise<void> {
+    const stored = await this.code();
+    if (stored && stored !== code) throw new Error('room code mismatch');
+    if (!stored) {
+      await this.ctx.storage.put('code', code);
+      this.codeCache = code;
+    }
+    await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
+  }
 
   /**
    * This conversation's state for the DM list: when it last had something in it, and how much

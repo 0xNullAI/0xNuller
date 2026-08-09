@@ -181,7 +181,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
         role="dialog"
         aria-modal="true"
         aria-label="联系人"
-        className="flex max-h-[min(600px,calc(100vh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
+        className="flex max-h-[min(600px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)] sm:p-6"
       >
         <h2 className="text-lg font-semibold">联系人</h2>
         <p className="mt-1 text-sm text-[var(--text-soft)]">
@@ -269,7 +269,13 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
 
         <div className="-mx-2 min-h-0 flex-1 overflow-y-auto py-1">
           {rows === null ? (
-            <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">加载中…</p>
+            <p
+              role="status"
+              aria-live="polite"
+              className="px-2 py-6 text-center text-xs text-[var(--text-faint)]"
+            >
+              加载中…
+            </p>
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
               {tab === 'following'

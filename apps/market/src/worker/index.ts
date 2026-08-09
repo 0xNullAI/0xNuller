@@ -14,9 +14,7 @@ import {
   updateItemMeta,
 } from './db';
 
-interface Env {
-  ASSETS: Fetcher;
-  DB: D1Database;
+interface Env extends Cloudflare.Env {
   ADMIN_KEY: string;
 }
 

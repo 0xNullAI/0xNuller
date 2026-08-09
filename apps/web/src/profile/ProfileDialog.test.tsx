@@ -15,6 +15,7 @@ import type { AuthUser, ContactActionResult, PublicUserView, UserProfile } from 
 const getUser = vi.fn<(username: string) => Promise<PublicUserView | null>>();
 const followUser = vi.fn<(id: string) => Promise<ContactActionResult>>();
 const unfollowUser = vi.fn<(id: string) => Promise<ContactActionResult>>();
+const openDirectMessage = vi.fn<(id: string) => void>();
 
 vi.mock('@0xnullai/auth', async () => {
   // Only the network calls are replaced. The gating and the follow reducer are
@@ -27,6 +28,10 @@ vi.mock('@0xnullai/auth', async () => {
     unfollowUser: (id: string) => unfollowUser(id),
   };
 });
+
+vi.mock('../dm-entry', () => ({
+  openDirectMessage: (id: string) => openDirectMessage(id),
+}));
 
 const { ProfileDialog } = await import('./ProfileDialog');
 
@@ -58,14 +63,15 @@ function view(over: Partial<PublicUserView> = {}): PublicUserView {
   };
 }
 
-function open(viewer: AuthUser | null = VIEWER) {
-  return render(<ProfileDialog username="them" viewer={viewer} onClose={() => undefined} />);
+function open(viewer: AuthUser | null = VIEWER, onClose = () => undefined) {
+  return render(<ProfileDialog username="them" viewer={viewer} onClose={onClose} />);
 }
 
 beforeEach(() => {
   getUser.mockReset();
   followUser.mockReset();
   unfollowUser.mockReset();
+  openDirectMessage.mockReset();
 });
 afterEach(cleanup);
 
@@ -152,6 +158,17 @@ describe('用户主页', () => {
     const dm = screen.getByRole('button', { name: /私聊/ });
     expect(dm.hasAttribute('disabled')).toBe(false);
     expect(screen.queryByText('互相关注之后才能私聊。')).toBeNull();
+  });
+
+  it('打开私聊后关闭用户主页，不让主页继续盖住聊天', async () => {
+    const onClose = vi.fn();
+    getUser.mockResolvedValue(view({ following: true, followedBy: true }));
+    open(VIEWER, onClose);
+
+    fireEvent.click(await screen.findByRole('button', { name: /私聊/ }));
+
+    expect(openDirectMessage).toHaveBeenCalledWith(TARGET.id);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('只有单向关注时私聊按钮被禁用并说明门槛', async () => {

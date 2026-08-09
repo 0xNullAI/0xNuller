@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "0xnuller",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2026-08-09",
 
   // 统一外壳占据根域。四个模块与说明都是同一个 SPA 的路由，不再各占子域。
   //
