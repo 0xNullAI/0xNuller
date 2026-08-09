@@ -9,7 +9,7 @@ import { hasDeviceLease, subscribeSafetySessions,
   createDefaultPolicyRules,
 } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
-import { me } from '@0xnullai/auth';
+import { dmTicket, me, subscribeDmRequest, type DmRequest } from '@0xnullai/auth';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
@@ -17,6 +17,8 @@ import { useWaveforms } from './hooks/use-waveforms';
 import { useChannelRotation } from './hooks/use-channel-rotation';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { ShellRoomList } from './components/ShellRoomList';
+import { ShellDmList } from './components/ShellDmList';
+import { markDmRead } from './lib/dm';
 import { CreateRoomDialog } from './components/CreateRoomDialog';
 import { RESERVED_ROOM_CODE } from '../shared/room-constants';
 import { RoomAgentDialog } from './components/RoomAgentDialog';
@@ -103,6 +105,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   /**
+   * Whether there is an account at all. It gates only the private-message affordances:
+   * a conversation is between two accounts, while a room is open to anyone, and the
+   * whole room path below must keep working with this null.
+   */
+  const [signedIn, setSignedIn] = useState(false);
+  /** The conversation currently open, if any. Its name is only for the header. */
+  const [dmPeer, setDmPeer] = useState<{ id: string; name: string; room: string } | null>(null);
+  const [dmError, setDmError] = useState<string | null>(null);
+  /**
    * Device control has been handed off (switched to another module). As far as the
    * room is concerned, this is the same as the device being uncontrollable.
    */
@@ -110,6 +121,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   useEffect(() => {
     me()
       .then((u) => {
+        setSignedIn(u != null);
         if (u) setDisplayName(u.displayName);
       })
       .catch(() => undefined);
@@ -146,12 +158,66 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // where to start.
   useEffect(() => {
     if (peerRoom.connected || peerRoom.status === 'connecting') return;
+    // A conversation that cannot connect keeps retrying on its own (the transport re-mints a
+    // ticket every attempt). Without this guard, its first failed attempt would land here and
+    // drop the user into the public room instead.
+    if (peerRoom.isDm) return;
     const fromUrl = new URLSearchParams(window.location.search).get('room');
     peerRoom.join(fromUrl || RESERVED_ROOM_CODE);
     // Only attempt once while still not connected; putting peerRoom in the deps would
     // reconnect on every state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peerRoom.connected, peerRoom.status]);
+  }, [peerRoom.connected, peerRoom.status, peerRoom.isDm]);
+
+  /**
+   * Open a conversation with an account.
+   *
+   * The ticket does two things at once: it is the admission the Worker checks, and it is how
+   * the client learns where the conversation lives — the id is derived server-side from the
+   * two account ids and is never computed here.
+   *
+   * Null covers "you two are not mutual follows", "one of you blocked the other" and "the
+   * account service is unreachable", deliberately without distinguishing them, so the message
+   * has to be about what the user can do rather than about which of those it was.
+   */
+  const openDm = useCallback(
+    async (request: DmRequest) => {
+      setDmError(null);
+      const ticket = await dmTicket(request.accountId);
+      if (!ticket) {
+        setDmError('无法开始私聊，需要双方互相关注');
+        return;
+      }
+      setDmPeer({
+        id: request.accountId,
+        name: request.displayName || request.username || '私聊',
+        room: ticket.room,
+      });
+      peerRoom.join(ticket.room, {
+        dm: {
+          peerUserId: request.accountId,
+          firstTicket: ticket.ticket,
+          firstExpiresAt: ticket.expiresAt,
+        },
+      });
+    },
+    [peerRoom],
+  );
+
+  // The entry point is somebody's profile, which is nowhere near this module — see
+  // openDirectMessage in @0xnullai/auth. Subscribing also picks up a request made before this
+  // module finished loading, which is the normal case: the first press of 私聊 is what causes
+  // Chat to be mounted at all.
+  useEffect(() => subscribeDmRequest((request) => void openDm(request)), [openDm]);
+
+  // Reading a conversation is what moves its unread mark. It has to be the newest message's
+  // own timestamp rather than "now": a reconnect replays the whole retained history, and
+  // marking up to the present would swallow anything that arrived during the gap.
+  useEffect(() => {
+    if (!dmPeer || peerRoom.roomId !== dmPeer.room) return;
+    const last = peerRoom.messages[peerRoom.messages.length - 1];
+    if (last) markDmRead(dmPeer.room, last.timestamp);
+  }, [dmPeer, peerRoom]);
   const device = useDevice({
     clientFactory:
       deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
@@ -658,10 +724,31 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       {/* The room list is projected into the shell sidebar's 「房间」 section. Before the
           merge it lived on another page (/lobby) reached by full-page navigation; now you
           can see which rooms exist as soon as you open the app. */}
+      {/* Conversations, above the rooms. Signed-out users get no section at all — not an
+          empty one — because a conversation is between two accounts and there is nothing
+          here to offer somebody who has none. Everything below this point works either way. */}
+      {signedIn && (
+        <SidebarSection id="direct" title="私聊">
+          <ShellDmList
+            currentRoom={peerRoom.isDm ? peerRoom.roomId : null}
+            onOpen={(peer) =>
+              void openDm({
+                accountId: peer.id,
+                username: peer.username,
+                displayName: peer.displayName,
+              })
+            }
+          />
+        </SidebarSection>
+      )}
+
       <SidebarSection id="rooms" title="房间">
         <ShellRoomList
-          currentRoom={peerRoom.roomId}
-          onJoin={(code) => peerRoom.join(code)}
+          currentRoom={peerRoom.isDm ? null : peerRoom.roomId}
+          onJoin={(code) => {
+            setDmPeer(null);
+            peerRoom.join(code);
+          }}
           onCreate={() => setCreateRoomOpen(true)}
         />
       </SidebarSection>
@@ -682,29 +769,47 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           other modules' buttons. */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          {peerRoom.groupName && (
+          {/* Same header as a room; a conversation just names the person instead of the group,
+              and has no code to show — its id is derived from the two accounts, not shared. */}
+          {peerRoom.isDm ? (
             <span className="min-w-0 truncate text-sm font-medium text-[var(--text)]">
-              {peerRoom.groupName}
+              {dmPeer?.name ?? '私聊'}
             </span>
+          ) : (
+            <>
+              {peerRoom.groupName && (
+                <span className="min-w-0 truncate text-sm font-medium text-[var(--text)]">
+                  {peerRoom.groupName}
+                </span>
+              )}
+              {peerRoom.roomId && (
+                <span className="hidden shrink-0 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
+                  {peerRoom.roomId}
+                </span>
+              )}
+            </>
           )}
-          {peerRoom.roomId && (
-            <span className="hidden shrink-0 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
-              {peerRoom.roomId}
+          {dmError && (
+            <span className="shrink-0 rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-xs text-[var(--danger)]">
+              {dmError}
             </span>
           )}
           {peerRoom.peers.length > 0 ? (
             <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
-              {peerRoom.peers.length + 1} 人在线
+              {peerRoom.isDm ? '对方在线' : `${peerRoom.peers.length + 1} 人在线`}
             </span>
           ) : (
             <span className="rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-faint)]">
-              等待其他成员加入...
+              {peerRoom.isDm ? '对方不在线' : '等待其他成员加入...'}
             </span>
           )}
         </div>
         <ModuleActions>
-          {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points */}
-          {peerRoom.roomId !== RESERVED_ROOM_CODE && (
+          {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points.
+              Neither does a conversation: the room agent is defined by a group's owner and
+              runs on the host's authority, and a conversation has neither — the server drops
+              the `agent` frame there, so these buttons would be dead controls. */}
+          {peerRoom.roomId !== RESERVED_ROOM_CODE && !peerRoom.isDm && (
             <>
               {/* The room's AI participant. Owner-only, matching the server: its device
                   commands are authorized on the host's authority, so defining it belongs to
@@ -782,9 +887,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             onClick={() => {
               device.disconnect();
               peerRoom.leave();
+              setDmPeer(null);
             }}
             className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-            title="离开房间"
+            title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
           >
             <LogOut className="h-4 w-4" />
           </button>
@@ -878,6 +984,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             // The permanent discussion room's visibility is fixed by definition.
             canManage={peerRoom.canManageGroup && peerRoom.roomId !== RESERVED_ROOM_CODE}
             onSetPublic={peerRoom.setGroupPublic}
+            // Same panel, same member cards, same device controls — a conversation is a room
+            // with two people in it. Only the parts that make a room joinable are dropped.
+            isDm={peerRoom.isDm}
           />
         </div>
       </div>

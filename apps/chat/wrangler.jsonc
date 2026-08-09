@@ -28,7 +28,9 @@
     { "pattern": "0xnullai.com/ws/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/lobby/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
-    { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" }
+    { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" },
+    // 私聊的未读汇总与吊销通知。私聊本身走 /ws/dm，已被上面的 /ws/* 覆盖。
+    { "pattern": "0xnullai.com/api/dm/*", "zone_name": "0xnullai.com" }
   ],
   // 保留 workers.dev 预发地址（dg-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,
@@ -67,6 +69,13 @@
   "r2_buckets": [
     { "binding": "MEDIA", "bucket_name": "dg-chat-media" }
   ],
+
+  // 机密用命令设置，勿写进文件：
+  //   wrangler secret put DM_TICKET_SECRET   # 与 0xnullai-auth 同一个值
+  //
+  // **必须永不轮换。** 私聊会话的 DO 名字是用它对两个账号 id 做 HMAC 得来的，
+  // 换一个值等于所有私聊换到另一批 DO 上——历史全部成为访问不到的孤儿，
+  // 和改 Worker 名字是同一类不可回滚的数据丢失。
 
   "observability": {
     "enabled": true

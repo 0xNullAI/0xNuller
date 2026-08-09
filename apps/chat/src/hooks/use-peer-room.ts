@@ -14,8 +14,23 @@ import type {
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 import { loadOwnerKey, rememberGroup, saveOwnerKey } from '../lib/groups';
 import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
+import { dmTicket } from '@0xnullai/auth';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
+
+/**
+ * Joining a direct message rather than a group.
+ *
+ * The conversation id is not in here on purpose — it comes back from the account service
+ * with the first ticket, so the client never computes where a conversation lives.
+ */
+export interface DmJoinOptions {
+  /** The other account. */
+  peerUserId: string;
+  /** The ticket already minted to learn the conversation id, spent on the first connect. */
+  firstTicket?: string;
+  firstExpiresAt?: number;
+}
 
 /** Options for creating/joining a group. Public groups get registered in the lobby. */
 export interface JoinOptions {
@@ -26,6 +41,34 @@ export interface JoinOptions {
    * what makes the creator the durable owner, and it is ignored once a group already has one.
    */
   claim?: boolean;
+  /**
+   * Join a direct message instead. Every group field above is meaningless here and is not
+   * sent: a DM has no owner, no lobby entry and no name of its own.
+   */
+  dm?: DmJoinOptions;
+}
+
+/** How much of a ticket's life has to be left for it to be worth spending on a connect. */
+const TICKET_MIN_REMAINING_MS = 5000;
+
+/**
+ * Supply an admission ticket for each (re)connect.
+ *
+ * The first one was already minted by the caller — that is how it learned the conversation
+ * id — so spending it saves a round trip on open. Everything after that is minted fresh,
+ * which is the mechanism that re-checks the mutual follow: once the other person blocks or
+ * unfollows you, the account service stops answering and the reconnect has nothing to
+ * present.
+ */
+function dmTicketProvider(dm: DmJoinOptions): () => Promise<string | null> {
+  let unspent = dm.firstTicket ?? null;
+  const expiresAt = dm.firstExpiresAt ?? 0;
+  return async () => {
+    const first = unspent;
+    unspent = null;
+    if (first && expiresAt > Date.now() + TICKET_MIN_REMAINING_MS) return first;
+    return (await dmTicket(dm.peerUserId))?.ticket ?? null;
+  };
 }
 
 /** A media reference already uploaded to R2, waiting to be sent with a chat message. */
@@ -131,6 +174,14 @@ export function usePeerRoom(displayName: string) {
   const [groupOwned, setGroupOwned] = useState(false);
   /** This browser holds the key and the server accepted it. */
   const [isOwner, setIsOwner] = useState(false);
+  /**
+   * The account on the other end, when this connection is a direct message.
+   *
+   * Everything a DM does *not* have hangs off this being non-null on the client — but only
+   * as a matter of not drawing dead controls. The server is what actually refuses a device
+   * frame in a DM; hiding a button stops nobody who is not using the button.
+   */
+  const [dmPeerUserId, setDmPeerUserId] = useState<string | null>(null);
 
   const transportRef = useRef<RoomTransport | null>(null);
   const roomIdRef = useRef<string | null>(null);
@@ -211,6 +262,7 @@ export function usePeerRoom(displayName: string) {
     setGroupOwned(false);
     setIsPublic(false);
     setGroupName('');
+    setDmPeerUserId(null);
   }, [send]);
 
   const join = useCallback(
@@ -226,7 +278,11 @@ export function usePeerRoom(displayName: string) {
       setError(null);
       roomIdRef.current = roomCode;
       joinOptsRef.current = options ?? {};
-      console.log('[DG-Chat] join', roomCode, 'as', selfId);
+      const dm = options?.dm ?? null;
+      setDmPeerUserId(dm?.peerUserId ?? null);
+      // A conversation id is derived from two account ids and is not something to put in a
+      // log; the room code of a group is public enough to be typed by hand.
+      console.log('[DG-Chat] join', dm ? '(dm)' : roomCode, 'as', selfId);
 
       function touchPeer(peerId: string, name?: string) {
         if (peerId === selfId) return;
@@ -429,9 +485,18 @@ export function usePeerRoom(displayName: string) {
       const transport = connectRoom({
         code: roomCode,
         peerId: selfId,
+        ticket: dm ? dmTicketProvider(dm) : undefined,
         onStatus: (s: TransportStatus) => setStatus(s),
         onOpen: () => {
           setRoomId(roomCode);
+          if (dm) {
+            // A DM's hello carries the nickname and nothing else. There is no visibility to
+            // seed, no ownership to claim and no key to present — none of those exist for a
+            // conversation between two accounts, and sending them anyway would be asking the
+            // server to ignore them.
+            send({ t: 'hello', name: displayNameRef.current });
+            return;
+          }
           // First frame on join: declare nickname, plus the settings the group is seeded
           // with if this is its first hello ever. A reconnect fires this too → the DO
           // replays history again.
@@ -724,6 +789,10 @@ export function usePeerRoom(displayName: string) {
     isHost: hostPeerId === selfId,
     sendChatAs,
     sendCommandAs,
+    // —— Direct message ——
+    /** The account on the other end, or null when this is a group. */
+    dmPeerUserId,
+    isDm: dmPeerUserId !== null,
     // —— Group ——
     isPublic,
     groupName,

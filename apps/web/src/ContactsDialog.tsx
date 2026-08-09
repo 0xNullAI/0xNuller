@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { MessageSquare, Search } from 'lucide-react';
 import { Button, Input, Overlay } from '@0xnullai/ui';
 import {
   followUser,
   getUser,
   listFollowers,
   listFollowing,
+  openDirectMessage,
   unfollowUser,
   type AuthUser,
   type Contact,
@@ -47,6 +48,7 @@ function Row({
   following,
   busy,
   onToggle,
+  onMessage,
 }: {
   username: string;
   displayName: string;
@@ -54,6 +56,8 @@ function Row({
   following: boolean;
   busy: boolean;
   onToggle: () => void;
+  /** Only supplied for a mutual row — a one-way follow cannot start a conversation. */
+  onMessage?: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-[12px] px-2 py-2 hover:bg-[var(--bg-soft)]">
@@ -65,6 +69,14 @@ function Row({
           {mutual && <span className="shrink-0 text-[10px] text-[var(--accent)]">互相关注</span>}
         </div>
       </div>
+      {/* Shown on mutual rows only, and not because the server would trust the absence of a
+          button — it refuses to admit anyone else regardless. It is shown here because a
+          button that always answers 「需要互相关注」 teaches nothing about what the rule is. */}
+      {onMessage && (
+        <Button size="sm" variant="secondary" aria-label="私聊" onClick={onMessage}>
+          <MessageSquare className="h-4 w-4" />
+        </Button>
+      )}
       <Button
         size="sm"
         variant={following ? 'secondary' : 'default'}
@@ -126,6 +138,19 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
   const toggle = (id: string, following: boolean) =>
     act(id, () => (following ? unfollowUser(id) : followUser(id)));
 
+  /**
+   * Start (or return to) a conversation.
+   *
+   * One call does everything: openDirectMessage navigates to the module that owns
+   * conversations and leaves the request for it, so this dialog needs to know nothing about
+   * Chat. Closing afterwards is the point — the conversation is what the user asked for, and
+   * leaving a dialog over it would just have to be dismissed.
+   */
+  function startDm(peer: { id: string; username: string; displayName: string }) {
+    openDirectMessage(peer.id, { username: peer.username, displayName: peer.displayName });
+    onClose();
+  }
+
   async function search() {
     const name = query.trim();
     if (!name) return;
@@ -148,7 +173,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
       >
         <h2 className="text-lg font-semibold">联系人</h2>
         <p className="mt-1 text-sm text-[var(--text-soft)]">
-          关注是单向的，互相关注才会显示为联系人。
+          关注是单向的，互相关注才会显示为联系人，也才能私聊。
         </p>
 
         <div className="mt-4 flex gap-2">
@@ -190,6 +215,11 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
                   following={found.following}
                   busy={busyId === found.user.id}
                   onToggle={() => void toggle(found.user.id, found.following)}
+                  onMessage={
+                    found.following && found.followedBy
+                      ? () => startDm(found.user)
+                      : undefined
+                  }
                 />
               )}
             </div>
@@ -241,6 +271,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
                 following={tab === 'following' || row.mutual}
                 busy={busyId === row.id}
                 onToggle={() => void toggle(row.id, tab === 'following' || row.mutual)}
+                onMessage={row.mutual ? () => startDm(row) : undefined}
               />
             ))
           )}

@@ -1,4 +1,5 @@
 import { hashPassword, verifyPassword } from './password';
+import { DM_DIGEST_MAX_ROOMS, DM_TICKET_TTL_MS, dmRoomCode, signDmTicket } from './dm-ticket';
 
 /**
  * 0xNullAI account service.
@@ -40,6 +41,26 @@ export interface Env {
    * the photo endpoints degrade rather than the whole service failing to boot.
    */
   PHOTOS?: R2Bucket;
+  /**
+   * Signing key for direct-message tickets, shared with Chat's Worker.
+   *
+   * Optional for the same reason as PHOTOS: a deployment without it answers 503
+   * on the DM endpoints instead of failing to boot. **It must never be rotated** —
+   * the conversation id is keyed with it, so a new value moves every conversation
+   * to a different Durable Object and orphans its history. See dm-ticket.ts.
+   */
+  DM_TICKET_SECRET?: string;
+  /**
+   * Chat's Worker, for pushing a revocation when a block severs a conversation.
+   *
+   * This is the *only* thing this service ever asks of another Worker, and it is a
+   * push rather than a pull on purpose: this service owns the fact that two people
+   * may no longer talk, so it owns delivering the consequence. Optional, and a
+   * failure here is swallowed — a block that cannot reach Chat still removes the
+   * follows, which stops the next ticket from being minted, so the conversation
+   * dies within the ticket TTL instead of instantly.
+   */
+  CHAT?: Fetcher;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -239,6 +260,92 @@ async function follows(env: Env, followerId: string, followeeId: string): Promis
     .bind(followerId, followeeId)
     .first();
   return row != null;
+}
+
+/**
+ * The admission rule for a direct message: both follow rows exist.
+ *
+ * A one-way follow is deliberately not enough. Following someone is a decision one
+ * person makes about the other's posts; being messageable is a decision about who
+ * may reach you, and only both directions express that both people agreed. In this
+ * product an inbox anyone can write to is an open harassment channel, and it cannot
+ * be closed again afterwards — the messages have already been read.
+ *
+ * Blocks are not consulted here because they cannot survive one: blocking deletes
+ * the follows in both directions, so a blocked pair is never mutual. The callers
+ * still check separately, to answer with the right status.
+ */
+async function mutualFollow(env: Env, a: string, b: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM user_follows f
+      WHERE f.follower_id = ? AND f.followee_id = ?
+        AND EXISTS (SELECT 1 FROM user_follows m
+                     WHERE m.follower_id = f.followee_id AND m.followee_id = f.follower_id)`,
+  )
+    .bind(a, b)
+    .first();
+  return row != null;
+}
+
+/**
+ * Tell Chat that a conversation is over.
+ *
+ * Deleting the follows already stops the *next* ticket from being minted, so a
+ * blocked pair cannot reconnect once the one in flight expires. This closes the
+ * gap in between: the sockets that are open right now, and the ticket somebody is
+ * still holding. Without it, blocking someone mid-conversation would let them keep
+ * reading and writing for as long as their tab stayed open, which is the "gone
+ * means hidden" that 0004_contacts.sql refuses.
+ *
+ * Best effort on purpose. If Chat is unreachable the block still took effect here,
+ * and the conversation dies when the ticket expires instead of instantly — a
+ * degraded outcome, not a wrong one, and far better than failing the block itself
+ * because a different Worker had a bad minute.
+ *
+ * Skipped entirely when the two never opened a conversation, so unfollowing
+ * somebody you have never messaged does not create a Durable Object to tell it that
+ * nothing is happening.
+ */
+async function severDm(env: Env, a: string, b: string): Promise<void> {
+  const secret = env.DM_TICKET_SECRET;
+  if (!secret || !env.CHAT) return;
+  try {
+    const thread = await env.DB.prepare(
+      'SELECT 1 FROM dm_threads WHERE user_id = ? AND peer_id = ?',
+    )
+      .bind(a, b)
+      .first();
+    if (!thread) return;
+    const now = Date.now();
+    const token = await signDmTicket(secret, {
+      aud: 'revoke',
+      sub: a,
+      room: await dmRoomCode(secret, a, b),
+      iat: now,
+      exp: now + DM_TICKET_TTL_MS,
+    });
+    // The hostname is ignored by a service binding; the path is what routes.
+    await env.CHAT.fetch('https://chat.internal/api/dm/revoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    /* see above: the block stands either way */
+  }
+}
+
+/** Remember that these two have a conversation, from both sides — see 0005_dm_threads.sql. */
+async function rememberDmThread(env: Env, a: string, b: string, now: number): Promise<void> {
+  const insert = (user: string, peer: string) =>
+    env.DB.prepare(
+      `INSERT INTO dm_threads (user_id, peer_id, started_at) VALUES (?, ?, ?)
+       ON CONFLICT (user_id, peer_id) DO NOTHING`,
+    )
+      .bind(user, peer, now)
+      .run();
+  await insert(a, b);
+  await insert(b, a);
 }
 
 /**
@@ -758,6 +865,11 @@ export default {
         await env.DB.prepare('DELETE FROM user_follows WHERE follower_id = ? AND followee_id = ?')
           .bind(user.id, targetId)
           .run();
+        // The pair is no longer mutual, so it may no longer be talking. Unfollowing is a
+        // milder act than blocking and the conversation is kept — it reappears if the follow
+        // does — but a live socket has to close, or "mutual follow is required" would only be
+        // true of conversations that had not started yet.
+        await severDm(env, user.id, targetId);
         return json({ ok: true }, 200, cors);
       }
 
@@ -814,7 +926,122 @@ export default {
           .bind(user.id, targetId, targetId, user.id)
           .run();
 
+        // A block has to end the conversation, not hide it. The order matters: the push goes
+        // out while the thread row still exists (severDm reads it to avoid waking a Durable
+        // Object for two people who never spoke), and the row goes afterwards so the
+        // conversation leaves both sidebars.
+        await severDm(env, user.id, targetId);
+        await env.DB.prepare(
+          `DELETE FROM dm_threads
+            WHERE (user_id = ? AND peer_id = ?) OR (user_id = ? AND peer_id = ?)`,
+        )
+          .bind(user.id, targetId, targetId, user.id)
+          .run();
+
         return json({ ok: true }, 200, cors);
+      }
+
+      // ── Direct messages ──
+      //
+      // A DM is a two-person conversation living in Chat's Durable Object, addressed by an id
+      // derived from the two account ids. This service never sees a message; what it owns is
+      // the question Chat cannot answer — may these two talk at all — and the only thing it
+      // hands over is a signed, short-lived statement that they may.
+      //
+      // Accounts are optional everywhere else in this product and deliberately required here.
+      // A group can be anonymous because you chose to walk into it; "who is allowed to message
+      // me" is a question only an account can hold an answer to.
+      if (path === '/api/auth/dm/ticket' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const secret = env.DM_TICKET_SECRET;
+        if (!secret) return err('私聊尚未启用', 503, cors);
+
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const targetId = typeof body.userId === 'string' ? body.userId : '';
+        if (!targetId) return err('缺少 userId', 400, cors);
+        if (targetId === user.id) return err('不能和自己私聊', 400, cors);
+
+        const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
+          .bind(targetId)
+          .first<{ id: string }>();
+        // Same answer for "no such account" and "one of you blocked the other", for the same
+        // reason the follow endpoint gives: a distinguishable answer turns a block into a way
+        // to confirm you found the right person to go after.
+        if (!target || (await blockedBetween(env, user.id, targetId))) {
+          return err('用户不存在', 404, cors);
+        }
+        if (!(await mutualFollow(env, user.id, targetId))) {
+          return err('需要互相关注才能私聊', 403, cors);
+        }
+
+        const now = Date.now();
+        const room = await dmRoomCode(secret, user.id, targetId);
+        const ticket = await signDmTicket(secret, {
+          aud: 'dm',
+          sub: user.id,
+          peer: targetId,
+          room,
+          iat: now,
+          exp: now + DM_TICKET_TTL_MS,
+        });
+        // Minting is the moment a conversation starts existing, and it is recorded for both
+        // sides: the person being written to has to find the conversation in their own list
+        // without having done anything first.
+        await rememberDmThread(env, user.id, targetId, now);
+        return json({ ticket, room, expiresAt: now + DM_TICKET_TTL_MS }, 200, cors);
+      }
+
+      // The DM list, re-authorized on every read rather than cached anywhere: a conversation
+      // whose follow went away simply stops being returned, so the sidebar cannot outlive the
+      // permission behind it. The digest ticket is what lets Chat answer unread counts for
+      // exactly these conversations and no others.
+      if (path === '/api/auth/dm/conversations' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const secret = env.DM_TICKET_SECRET;
+        if (!secret) return err('私聊尚未启用', 503, cors);
+
+        const rows = await env.DB.prepare(
+          `SELECT u.id, u.username, u.display_name, t.started_at
+             FROM dm_threads t
+             JOIN users u ON u.id = t.peer_id
+            WHERE t.user_id = ?
+              AND EXISTS (SELECT 1 FROM user_follows f
+                           WHERE f.follower_id = t.user_id AND f.followee_id = t.peer_id)
+              AND EXISTS (SELECT 1 FROM user_follows f
+                           WHERE f.follower_id = t.peer_id AND f.followee_id = t.user_id)
+              AND NOT EXISTS (SELECT 1 FROM user_blocks x
+                               WHERE (x.blocker_id = t.user_id AND x.blocked_id = t.peer_id)
+                                  OR (x.blocker_id = t.peer_id AND x.blocked_id = t.user_id))
+            ORDER BY t.started_at DESC
+            LIMIT ?`,
+        )
+          .bind(user.id, DM_DIGEST_MAX_ROOMS)
+          .all();
+
+        const now = Date.now();
+        const conversations = await Promise.all(
+          (rows.results ?? []).map(async (r) => {
+            const row = r as Record<string, unknown>;
+            const id = String(row.id);
+            return {
+              id,
+              username: String(row.username),
+              displayName: String(row.display_name),
+              startedAt: Number(row.started_at),
+              room: await dmRoomCode(secret, user.id, id),
+            };
+          }),
+        );
+        const ticket = await signDmTicket(secret, {
+          aud: 'digest',
+          sub: user.id,
+          rooms: conversations.map((c) => c.room),
+          iat: now,
+          exp: now + DM_TICKET_TTL_MS,
+        });
+        return json({ conversations, ticket, expiresAt: now + DM_TICKET_TTL_MS }, 200, cors);
       }
 
       // Unblocking does not restore the follows the block removed — they were
