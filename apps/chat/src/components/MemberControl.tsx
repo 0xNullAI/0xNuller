@@ -19,63 +19,9 @@ import {
 import type { CmdAction, DeviceCommand, MemberState, WaveformTransfer } from '../lib/protocol';
 import type { MarketItem } from '@0xnullai/market-client';
 
-function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval = 100) {
-  const timerRef = useRef<number | null>(null);
-  const intervalRef = useRef<number | null>(null);
-  const actionRef = useRef(action);
-  // Refreshing this "latest value" ref during render is deliberate: moving it into an effect
-  // would make it update one commit late, so device commands could read a stale reference.
-  // Leave it for a dedicated useEffectEvent refactor; don't change behavior in a structural merge.
-  // eslint-disable-next-line react-hooks/refs
-  actionRef.current = action;
-
-  const stop = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const start = useCallback(() => {
-    stop();
-    actionRef.current();
-    timerRef.current = window.setTimeout(() => {
-      intervalRef.current = window.setInterval(() => actionRef.current(), repeatInterval);
-    }, initialDelay);
-  }, [stop, initialDelay, repeatInterval]);
-
-  useEffect(() => stop, [stop]);
-
-  return { onPointerDown: start, onPointerUp: stop, onPointerLeave: stop };
-}
-
-function RepeatButton({
-  onAction,
-  className,
-  children,
-}: {
-  onAction: () => void;
-  className: string;
-  children: React.ReactNode;
-}) {
-  const handlers = useRepeatAction(onAction);
-  return (
-    <button
-      {...handlers}
-      onContextMenu={(e) => e.preventDefault()}
-      className={className}
-      style={{ touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}
-    >
-      {children}
-    </button>
-  );
-}
 import { parseImportFile, type WaveformDefinition } from '../lib/waveforms';
 import { Popover } from './Popover';
+import { RepeatButton } from './RepeatControls';
 import { SensorCard } from './SensorCard';
 import { OpossumControl } from './OpossumControl';
 
@@ -703,16 +649,37 @@ export function MemberControl({
         </div>
 
         {/* ============ Sensor telemetry (read-only, no linkage, see the TODO in lib/commands.ts) ============ */}
-        {member && <SensorCard peerId={peerId} member={member} onSendCommand={onSendCommand} />}
+        {member && (
+          <SensorCard
+            kind={member.sensorKind}
+            connected={!!member.sensorConnected}
+            battery={member.sensorBattery}
+            lastEvent={member.sensorLastEvent}
+            lastValue={member.sensorLastValue}
+            lastEventAt={member.sensorLastEventAt}
+            onPickLedColor={(color) =>
+              onSendCommand(peerId, 'set_led', { kind: member.sensorKind ?? undefined, color })
+            }
+          />
+        )}
 
         {/* ==================== Opossum vibration controller ==================== */}
         {member && (
           <OpossumControl
-            peerId={peerId}
-            member={member}
-            onSendCommand={onSendCommand}
+            connected={!!member.opossumConnected}
+            battery={member.opossumBattery}
+            intensityA={member.opossumIntensityA ?? 0}
+            intensityB={member.opossumIntensityB ?? 0}
             limitA={limitA}
             limitB={limitB}
+            onAdjust={(channel, delta) =>
+              onSendCommand(peerId, 'vibrate_adjust', { c: channel, v: delta })
+            }
+            onBurst={(channel, strength, durationMs) =>
+              onSendCommand(peerId, 'vibrate_burst', { c: channel, v: strength, ms: durationMs })
+            }
+            onStop={() => onSendCommand(peerId, 'vibrate_stop')}
+            onPickLedColor={(color) => onSendCommand(peerId, 'set_led', { kind: 'opossum', color })}
           />
         )}
       </div>

@@ -6,6 +6,7 @@
     "outDir": "dist",
     "paths": {
       "@agent/*": ["../../apps/agent/src/*"],
+      "@control/*": ["../../apps/control/src/*"],
       "@dg-agent/web-app/*": ["../../apps/agent/src/*"]
     },
     "types": ["node", "vite/client"]

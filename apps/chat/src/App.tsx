@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { useDevice } from './hooks/use-device';
 import { useWaveforms } from './hooks/use-waveforms';
+import { useChannelRotation } from './hooks/use-channel-rotation';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { ShellRoomList } from './components/ShellRoomList';
 import { CreateRoomDialog } from './components/CreateRoomDialog';
@@ -33,7 +34,6 @@ import type {
   PlayMode,
   WaveformTransfer,
 } from './lib/protocol';
-import type { WaveFrame } from './lib/waveforms';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
 export interface AppProps {
@@ -51,41 +51,6 @@ export interface AppProps {
    * experience, over plugin-blec.
    */
   requestDeviceTauri?: RequestDeviceFn;
-}
-
-interface ChannelRotationDevice {
-  connected: boolean;
-  setWave: (channel: 'A' | 'B', frames: WaveFrame[], id: string, loop: boolean) => void;
-}
-
-interface ChannelRotationWaveforms {
-  getWaveform: (id: string) => { id: string; name: string; frames: WaveFrame[] } | undefined;
-}
-
-function useChannelRotation(
-  channel: 'A' | 'B',
-  waveId: string | null,
-  queue: string[],
-  mode: PlayMode,
-  intervalSec: number,
-  setIndex: React.Dispatch<React.SetStateAction<number>>,
-  deviceRef: React.RefObject<ChannelRotationDevice>,
-  waveformsRef: React.RefObject<ChannelRotationWaveforms>,
-) {
-  useEffect(() => {
-    if (waveId == null || queue.length <= 1 || mode === 'single') return;
-    const t = window.setInterval(() => {
-      setIndex((prev) => {
-        const next =
-          mode === 'random' ? Math.floor(Math.random() * queue.length) : (prev + 1) % queue.length;
-        const wf = waveformsRef.current.getWaveform(queue[next]!);
-        const dev = deviceRef.current;
-        if (wf && dev.connected) dev.setWave(channel, wf.frames, wf.id, true);
-        return next;
-      });
-    }, intervalSec * 1000);
-    return () => clearInterval(t);
-  }, [channel, waveId, queue, mode, intervalSec, setIndex, deviceRef, waveformsRef]);
 }
 
 type FirePolicy = 'sum' | 'max' | 'avg';

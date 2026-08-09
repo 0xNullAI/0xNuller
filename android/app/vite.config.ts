@@ -29,6 +29,7 @@ export default defineConfig({
       '@agent': r('../../apps/agent/src'),
       '@voice': r('../../apps/voice/src'),
       '@chat': r('../../apps/chat/src'),
+      '@control': r('../../apps/control/src'),
       '@dg-agent/web-app': r('../../apps/agent/src'),
     },
   },

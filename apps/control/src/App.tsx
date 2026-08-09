@@ -1,0 +1,280 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
+import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
+import { useNativeBridge } from '@0xnullai/native';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import { useDevice } from '../../chat/src/hooks/use-device';
+import { useWaveforms } from '../../chat/src/hooks/use-waveforms';
+import { useChannelRotation } from '../../chat/src/hooks/use-channel-rotation';
+import type {
+  ChannelRotationDevice,
+  ChannelRotationWaveforms,
+} from '../../chat/src/hooks/use-channel-rotation';
+import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
+import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
+import { AuxDevices } from '@control/components/AuxDevices';
+import { CoyoteControl } from '@control/components/CoyoteControl';
+import { DeviceStrip } from '@control/components/DeviceStrip';
+import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
+import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
+
+/**
+ * Control — drive your own device, directly.
+ *
+ * No AI deciding anything, no room full of people, no game. The whole module is
+ * one screen with three stacked sections (devices, Coyote, everything else)
+ * rather than tabs, because the reason to open it is to reach a control right
+ * now, and a tab is one extra thing standing between a hand and the strength
+ * buttons.
+ *
+ * Everything below the UI is borrowed rather than rebuilt: `useDevice` owns the
+ * BLE session and the `DeviceCommandQueue` that every write goes through,
+ * `useWaveforms` owns the shared library, and the caps come from
+ * `@0xnullai/settings`. There is no second copy of the safety chain here — that
+ * is the one thing this repo has decided may never be duplicated.
+ */
+export default function App() {
+  // Android has no Web Bluetooth; the native shell injects a plugin-blec client
+  // through NativeBridge. Control reuses Chat's seam because it runs on Chat's
+  // DeviceSession — this is the same seam, not a fourth one.
+  const native = useNativeBridge();
+  const device = useDevice({
+    clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
+    requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
+  });
+  const waveforms = useWaveforms();
+
+  const playbackA = useChannelPlayback();
+  const playbackB = useChannelPlayback();
+  const [waveTab, setWaveTab] = useState<'A' | 'B'>('A');
+  const [marketOpen, setMarketOpen] = useState(false);
+
+  // The Opossum has caps of its own in the shared settings. They are read here
+  // rather than borrowed from the Coyote's because setOpossumIntensity clamps
+  // against these, and a ring showing a number that is not the enforced one is
+  // a safety control that lies.
+  const [opossumLimits, setOpossumLimits] = useState(() => {
+    const safety = loadDeviceSafety();
+    return { a: safety.maxIntensityA, b: safety.maxIntensityB };
+  });
+  useEffect(() => {
+    const apply = () => {
+      const safety = loadDeviceSafety();
+      setOpossumLimits({ a: safety.maxIntensityA, b: safety.maxIntensityB });
+    };
+    apply();
+    return subscribeDeviceSafety(apply);
+  }, []);
+
+  // Device control is a lease that follows the current module. Losing it has to
+  // stop more than the output: the playlist timer is the one thing in here that
+  // keeps running while the module is hidden, so it would happily issue a
+  // setWave minutes after the user switched away. Tracking the lease lets it be
+  // torn down at the moment control is handed over, instead of hoping the
+  // waveform state goes quiet on its own.
+  //
+  // Read as "somebody else holds it" rather than "we do not hold it": nothing
+  // has granted a lease before the shell's first effect runs, and standalone
+  // mounts never grant one at all — treating that as "released" would leave the
+  // module inert with no way to tell.
+  const [released, setReleased] = useState(false);
+  useEffect(() => {
+    const sync = () => {
+      const holder = currentDeviceLease();
+      setReleased(holder !== null && holder !== 'control');
+    };
+    sync();
+    return subscribeSafetySessions(sync);
+  }, []);
+
+  // Register on the global safety bus. This is the shell's only source for the
+  // stop button and the device bar, and it must count every attached device —
+  // an Opossum-only session that reports nothing leaves someone with a running
+  // device and no stop button on screen.
+  useSafetySession({
+    id: 'control',
+    label: 'Control',
+    isActive: () => holdsAnyDevice(device),
+    stop: () => device.stopAll(),
+    onRevoke: () => {
+      // Losing the lease means switching away from Control. Stop the output and
+      // let the playlists fall idle; there is no held-down aggregate to unwind
+      // here (nobody else can push strength into this device), and the lease is
+      // never surrendered by disconnecting — a disconnect would let a
+      // background module's autoReconnect take the device back.
+      device.stopAll();
+    },
+    devices: () => attachedDeviceSummaries(device),
+  });
+
+  // The rotation timer reads the device and the library through refs so that a
+  // strength change does not tear down and restart a 10-minute interval. An
+  // effect is enough to keep them fresh: the timer fires minutes apart, so
+  // being one commit behind cannot matter.
+  const deviceRef = useRef<ChannelRotationDevice>(device);
+  const waveformsRef = useRef<ChannelRotationWaveforms>(waveforms);
+  useEffect(() => {
+    deviceRef.current = device;
+    waveformsRef.current = waveforms;
+  });
+
+  useChannelRotation(
+    'A',
+    released ? null : device.waveIdA,
+    playbackA.queue,
+    playbackA.mode,
+    playbackA.intervalSec,
+    playbackA.setIndex,
+    deviceRef,
+    waveformsRef,
+  );
+  useChannelRotation(
+    'B',
+    released ? null : device.waveIdB,
+    playbackB.queue,
+    playbackB.mode,
+    playbackB.intervalSec,
+    playbackB.setIndex,
+    deviceRef,
+    waveformsRef,
+  );
+
+  /**
+   * Press-and-hold strength.
+   *
+   * A press is a plain absolute setStrength, with no optimistic local value:
+   * the device state is right here, one 100 ms protocol tick away, so the worst
+   * a stale read can do is skip a step. It cannot overshoot — the target is
+   * always derived from a value the device has already reported, and
+   * DGLabDevice clamps it against the cap again on the way out.
+   */
+  const adjustStrength = useCallback(
+    (channel: 'A' | 'B', delta: number) => {
+      if (released) return;
+      const current = channel === 'A' ? device.strengthA : device.strengthB;
+      const limit = channel === 'A' ? device.limitA : device.limitB;
+      const next = Math.max(0, Math.min(limit, current + delta));
+      if (next === current) return;
+      device.setStrength(channel, next);
+    },
+    [device, released],
+  );
+
+  const startChannel = useCallback(
+    (channel: 'A' | 'B', waveformId: string) => {
+      if (released) return;
+      const waveform = waveforms.getWaveform(waveformId);
+      if (!waveform) return;
+      device.setWave(channel, waveform.frames, waveform.id, true);
+    },
+    [device, waveforms, released],
+  );
+
+  const togglePlay = useCallback(
+    (channel: 'A' | 'B') => {
+      const playback = channel === 'A' ? playbackA : playbackB;
+      const playing = channel === 'A' ? device.waveActiveA : device.waveActiveB;
+      if (playing) {
+        device.stopWave(channel);
+        return;
+      }
+      const id = startWaveformId(playback.queue, playback.index);
+      if (id) startChannel(channel, id);
+    },
+    [device, playbackA, playbackB, startChannel],
+  );
+
+  const toggleWaveform = useCallback(
+    (waveform: WaveformDefinition) => {
+      const playback = waveTab === 'A' ? playbackA : playbackB;
+      const playing = waveTab === 'A' ? device.waveActiveA : device.waveActiveB;
+      const added = !playback.queue.includes(waveform.id);
+      playback.toggle(waveform.id);
+      // Adding one while the channel is already running switches to it right
+      // away — otherwise the tap looks like it did nothing until the next
+      // rotation, which for a 10-minute interval reads as broken.
+      if (added && playing) startChannel(waveTab, waveform.id);
+    },
+    [waveTab, playbackA, playbackB, device.waveActiveA, device.waveActiveB, startChannel],
+  );
+
+  const activePlayback = waveTab === 'A' ? playbackA : playbackB;
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[520px] flex-col gap-6 px-4 py-5">
+        <DeviceStrip
+          connected={device.connected}
+          deviceName={device.deviceInfo?.name ?? null}
+          battery={device.battery}
+          sensor={device.sensor}
+          opossum={device.opossum}
+          limitA={device.limitA}
+          limitB={device.limitB}
+          onSetLimit={device.setLimit}
+          onConnectDevice={device.connectDevice}
+          onDisconnectCoyote={device.disconnectCoyote}
+          onDisconnectSensor={device.disconnectSensor}
+          onDisconnectOpossum={device.disconnectOpossum}
+          onRestoreDefaults={waveforms.restoreDefaults}
+        />
+
+        <CoyoteControl
+          connected={device.connected}
+          strengthA={device.strengthA}
+          strengthB={device.strengthB}
+          limitA={device.limitA}
+          limitB={device.limitB}
+          playingA={device.waveActiveA}
+          playingB={device.waveActiveB}
+          queueLengthA={playbackA.queue.length}
+          queueLengthB={playbackB.queue.length}
+          onAdjustStrength={adjustStrength}
+          onTogglePlay={togglePlay}
+          onStopAll={device.stopAll}
+          waveTab={waveTab}
+          onWaveTabChange={setWaveTab}
+          waveforms={waveforms.allWaveforms}
+          queue={activePlayback.queue}
+          activeWaveId={waveTab === 'A' ? device.waveIdA : device.waveIdB}
+          playMode={activePlayback.mode}
+          intervalSec={activePlayback.intervalSec}
+          onPlayModeChange={activePlayback.setMode}
+          onIntervalChange={activePlayback.setIntervalSec}
+          onToggleWaveform={toggleWaveform}
+          onRemoveWaveform={waveforms.removeWaveform}
+          onImportFile={waveforms.importFile}
+          onOpenMarket={() => setMarketOpen(true)}
+        />
+
+        <AuxDevices
+          sensor={device.sensor}
+          opossum={device.opossum}
+          opossumLimitA={opossumLimits.a}
+          opossumLimitB={opossumLimits.b}
+          onOpossumAdjust={(channel, delta) => {
+            if (released) return;
+            const current =
+              channel === 'A'
+                ? (device.opossum?.intensityA ?? 0)
+                : (device.opossum?.intensityB ?? 0);
+            device.setOpossumIntensity(channel, current + delta);
+          }}
+          onOpossumBurst={(channel, strength, durationMs) => {
+            if (released) return;
+            device.opossumBurst(channel, strength, durationMs);
+          }}
+          onOpossumStop={() => device.opossumStop()}
+          onSetLedColor={device.setLedColor}
+        />
+      </div>
+
+      <MarketImportDialog
+        open={marketOpen}
+        onOpenChange={setMarketOpen}
+        type="waveform"
+        onImport={waveforms.addMarketWaveform}
+      />
+    </div>
+  );
+}

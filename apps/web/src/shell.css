@@ -17,6 +17,7 @@
    below", while the build reported nothing at all. */
 @source './';
 @source '../../../packages/platform/ui/src';
+@source '../../control/src';
 @source '../../agent/src';
 @source '../../chat/src';
 @source '../../voice/src';
