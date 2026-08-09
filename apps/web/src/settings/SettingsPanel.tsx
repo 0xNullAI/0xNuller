@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { Cpu, LayoutTemplate, Palette, ShieldAlert, X } from 'lucide-react';
-import { Overlay } from '@0xnullai/ui';
+import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
 import { AppearanceTab } from './AppearanceTab';
 import { AiTab } from './AiTab';
 import { SafetyTab } from './SafetyTab';
@@ -39,8 +39,16 @@ export function SettingsPanel({
   initialTab?: (typeof TABS)[number]['id'];
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>(initialTab);
-  const Active = TABS.find((t) => t.id === tab)!.Component;
+  const [tab, setTab] = useState<string>(initialTab);
+  // Pages declared by whichever modules are mounted. They are settings like
+  // any other and belong in this panel, but they read module state the shell
+  // does not have, so the module declares the page and the shell places it.
+  const moduleClaims = useModuleSettingsClaims();
+  const Active = TABS.find((t) => t.id === tab)?.Component;
+  const activeModuleClaim = moduleClaims.find((c) => c.id === tab);
+  // A module can unmount while its page is open — fall back rather than
+  // leaving the content area blank with a nav item selected.
+  const resolvedTab = Active || activeModuleClaim ? tab : TABS[0].id;
 
   return (
     <Overlay onDismiss={onClose}>
@@ -58,20 +66,23 @@ export function SettingsPanel({
             column eats half the width on a phone. */}
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[180px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
           <h2 className="hidden px-2 pb-2 pt-1 text-sm font-semibold sm:block">设置</h2>
-          {TABS.map((t) => (
+          {[
+            ...TABS.map((t) => ({ id: t.id as string, label: t.label, icon: t.icon })),
+            ...moduleClaims.map((c) => ({ id: c.id, label: c.label, icon: c.icon })),
+          ].map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              aria-current={tab === t.id ? 'page' : undefined}
+              aria-current={resolvedTab === t.id ? 'page' : undefined}
               className={
                 'flex shrink-0 items-center gap-2 rounded-[10px] px-3 py-2 text-sm transition-colors ' +
-                (tab === t.id
+                (resolvedTab === t.id
                   ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
                   : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
               }
             >
-              <t.icon className="h-4 w-4 shrink-0" />
+              {t.icon ? <t.icon className="h-4 w-4 shrink-0" /> : null}
               {t.label}
             </button>
           ))}
@@ -92,7 +103,16 @@ export function SettingsPanel({
               translateY(-50%), and get clipped in half when flush against the top edge
               of the scroll container. */}
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
-            <Active />
+            {Active ? <Active /> : null}
+            {/* Every module page keeps a mounted slot, not just the active one:
+                the slot is the portal target, and a module that renders its
+                section before you open its page needs somewhere to land. Only
+                the active one is visible. */}
+            {moduleClaims.map((claim) => (
+              <div key={claim.id} hidden={resolvedTab !== claim.id}>
+                <ModuleSettingsSlot id={claim.id} />
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import {
   ModuleActionsProvider,
   useModuleActionsContainer,
   SidebarSectionsProvider,
+  ModuleSettingsProvider,
   OverlayProvider,
   StopFailureBanner,
   useOverlayRoot,
@@ -205,6 +206,7 @@ export function Shell() {
   );
 
   return (
+    <ModuleSettingsProvider>
     <SidebarSectionsProvider>
       <div
         id="shl-root"
@@ -300,6 +302,7 @@ export function Shell() {
         <StopFailureBanner />
       </div>
     </SidebarSectionsProvider>
+    </ModuleSettingsProvider>
   );
 }
 

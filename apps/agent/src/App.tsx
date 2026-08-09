@@ -14,13 +14,13 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { SidebarSection, useInShell, useSafetySession, useTheme } from '@0xnullai/ui';
+import { SidebarSection, useInShell, useSafetySession, useTheme, ModuleSettingsSection } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { X } from 'lucide-react';
+import { AudioWaveform, Database, Radio, X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
@@ -69,6 +69,9 @@ import {
 } from './utils/session-transfer.js';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { SessionSnapshot } from '@dg-agent/core';
+import { SensorsTab } from './components/settings/SensorsTab.js';
+import { WaveformsPanel } from './components/WaveformsPanel.js';
+import { DataTab } from './components/settings/DataTab.js';
 
 export interface AppProps {
   /**
@@ -827,6 +830,43 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           onOpenChange={setResetSettingsDialogOpen}
           onConfirm={resetSettings}
         />
+
+        {/* Settings that belong in the one shell panel but read this module's
+            live state — the settings draft, the waveform list, the session
+            list. Declared here, placed there. Rendered unconditionally rather
+            than only while Agent's own workspace is open, because the shell's
+            panel can be opened from anywhere. */}
+        <ModuleSettingsSection id="agent-sensors" label="传感器" icon={Radio} order={110}>
+          <SensorsTab
+            settingsDraft={settingsDraft}
+            setSettingsDraft={setSettingsDraft}
+            sensorTriggersEnabled={sensorTriggersEnabled}
+            onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
+          />
+        </ModuleSettingsSection>
+
+        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={120}>
+          <WaveformsPanel
+            waveforms={waveforms}
+            customWaveforms={customWaveforms}
+            onImport={(files) => void importWaveformFiles(files)}
+            onImportFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
+            onRemove={(id) => void removeWaveform(id)}
+            onEdit={openWaveformEditor}
+          />
+        </ModuleSettingsSection>
+
+        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={130}>
+          <DataTab
+            sessions={savedSessions.map((session) => ({
+              id: session.id,
+              title: getSessionTitle(session),
+              updatedAt: session.updatedAt,
+            }))}
+            onExport={(ids) => void exportSessions(ids)}
+            onImport={(file) => void importSessions(file)}
+          />
+        </ModuleSettingsSection>
 
         {/* ===== Sidebar sheet (mobile) ===== */}
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>

@@ -35,6 +35,7 @@ export * from './shell-context';
 export * from './shell-nav';
 export * from './module-actions';
 export * from './sidebar-sections';
+export * from './settings-sections';
 export * from './overlay';
 export * from './stop-all';
 export { StopFailureBanner } from './components/stop-failure-banner';
