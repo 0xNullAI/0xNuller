@@ -294,8 +294,16 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
 
     const type = canonicalEventType(message.type);
     if (!KNOWN_EVENT_TYPES.has(type)) {
-      console.log('[dg-voice] unhandled realtime event:', message.type, message);
-    } else {
+      // The event type only. Realtime payloads carry transcripts of what the
+      // user said, and this fires on a live call — dumping the whole object
+      // put that in the console of a shipped build. The full message is
+      // still there in a dev build, where the log is actually being read.
+      if (import.meta.env.DEV) {
+        console.log('[dg-voice] unhandled realtime event:', message.type, message);
+      } else {
+        console.warn('[dg-voice] unhandled realtime event:', message.type);
+      }
+    } else if (import.meta.env.DEV) {
       console.debug('[dg-voice] realtime event:', message.type);
     }
 

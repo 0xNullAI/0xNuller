@@ -54,8 +54,16 @@ describe('resolveTrialKey', () => {
 });
 
 describe('isAllowedOrigin', () => {
-  it('is permissive when the allow-list is unset', () => {
-    expect(isAllowedOrigin('https://evil.example', env({ TRIAL_ALLOWED_ORIGINS: undefined }))).toBe(true);
+  it('allow-list 没配时也不放行任意来源——但本地开发照常', () => {
+    // This used to assert `true`: an unset allow-list meant "allow everyone".
+    // TRIAL_ALLOWED_ORIGINS is ordinary config, not a secret, so a deploy that
+    // dropped it silently opened the trial quota — which spends real money —
+    // to any origin. It now fails closed, while localhost still passes so
+    // `wrangler dev` keeps working without editing the production list.
+    const e = env({ TRIAL_ALLOWED_ORIGINS: undefined });
+    expect(isAllowedOrigin('https://evil.example', e)).toBe(false);
+    expect(isAllowedOrigin('http://localhost:5173', e)).toBe(true);
+    expect(isAllowedOrigin('http://tauri.localhost', e)).toBe(true);
   });
 
   it('enforces membership when configured, but always allows localhost', () => {

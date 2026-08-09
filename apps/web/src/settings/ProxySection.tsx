@@ -1,27 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@0xnullai/ui';
-import {
-  detectProxyRuntime,
-  loadProxy,
-  socksSupported,
-  subscribeProxy,
-  updateProxy,
-  type ProxySettings,
-} from '@0xnullai/settings';
+import { loadProxy, subscribeProxy, updateProxy, type ProxySettings } from '@0xnullai/settings';
 
 /**
  * Proxy.
  *
- * The UI has to spell out that "SOCKS is impossible on the web" instead of handing
- * the user a disabled input and letting them guess. Browsers do not let a page pick
- * its own proxy — that is an OS- or browser-level setting, and JavaScript in the
- * page has no such capability. All it can do is point requests at your own HTTP
+ * Browsers do not let a page pick its own proxy — that is an OS- or
+ * browser-level setting. All this can do is point requests at your own HTTP
  * reverse proxy.
+ *
+ * The scope note is deliberately narrow. It used to read "影响全部模型请求
+ * （文本与语音）", but applyHttpProxy has exactly one consumer — the text
+ * LLM client — and voice realtime opens its socket directly. Someone turning
+ * this on for privacy was told their voice traffic was covered when it was
+ * being sent straight out.
+ *
+ * The SOCKS field is gone for the same reason: nothing read `socksUrl` on
+ * any platform, including the Tauri side, while the helper text claimed the
+ * native network stack used it. The key stays in the stored settings so
+ * existing saved blobs still validate.
  */
 export function ProxySection() {
   const [proxy, setProxy] = useState<ProxySettings>(loadProxy);
-  const runtime = useMemo(() => detectProxyRuntime(), []);
-  const canSocks = socksSupported(runtime);
 
   useEffect(() => subscribeProxy(setProxy), []);
 
@@ -35,7 +35,7 @@ export function ProxySection() {
         <span>
           <span className="block text-sm font-semibold">代理</span>
           <span className="block text-xs text-[var(--text-faint)]">
-            影响全部模型请求（文本与语音）
+            只影响文本模型请求；语音通话不走代理
           </span>
         </span>
         <input
@@ -60,27 +60,6 @@ export function ProxySection() {
             </span>
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
-              SOCKS 代理
-              {!canSocks && (
-                <span className="rounded-full bg-[var(--bg-soft)] px-1.5 py-0.5 text-[10px] text-[var(--text-faint)]">
-                  网页端不可用
-                </span>
-              )}
-            </span>
-            <Input
-              value={proxy.socksUrl}
-              onChange={(e) => patch({ socksUrl: e.target.value })}
-              placeholder="socks5://127.0.0.1:1080"
-              disabled={!canSocks}
-            />
-            <span className="text-xs text-[var(--text-faint)]">
-              {canSocks
-                ? '由客户端的原生网络栈使用。'
-                : '浏览器不允许网页自行选择代理，这是操作系统或浏览器的设置。此项只在桌面/安卓客户端里生效——填了在网页端也不会有任何作用，所以这里直接禁用。'}
-            </span>
-          </label>
         </div>
       )}
     </section>
