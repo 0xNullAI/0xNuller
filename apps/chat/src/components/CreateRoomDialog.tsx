@@ -8,6 +8,10 @@ import { Button, Input, Overlay } from '@0xnullai/ui';
  * (enter a nickname, create a room, join a room), so every time you opened Chat you had to
  * work through a form first. The nickname now comes from the account and joining goes
  * through the room list in the sidebar, so only "create a room" is left here.
+ *
+ * Creating is also what claims the room: the server mints an owner key for whoever creates it
+ * and this browser keeps it. No account is involved — that is the point — so the settings
+ * below are only the *initial* ones; the owner can change them later from the room header.
  */
 
 function newRoomCode(): string {
@@ -46,7 +50,7 @@ export function CreateRoomDialog({
           <span className="min-w-0">
             <span className="block text-sm">公开到大厅</span>
             <span className="block text-xs text-[var(--text-faint)]">
-              关闭 = 私密房间，只有拿到房间号的人能进
+              关闭 = 私密房间，只有拿到房间号的人能进；建好后房主随时可改
             </span>
           </span>
           <input
@@ -57,16 +61,16 @@ export function CreateRoomDialog({
           />
         </label>
 
-        {isPublic && (
-          <label className="mt-3 flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">房间名</span>
-            <Input
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              placeholder={defaultName || '未命名房间'}
-            />
-          </label>
-        )}
+        {/* Asked for whether or not the room is public: a room persists now and shows up in
+            your own sidebar forever, and a list of ten-character codes is unreadable. */}
+        <label className="mt-3 flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--text-soft)]">房间名</span>
+          <Input
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder={defaultName || '未命名房间'}
+          />
+        </label>
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -76,7 +80,7 @@ export function CreateRoomDialog({
             onClick={() => {
               onCreate(newRoomCode(), {
                 public: isPublic,
-                ...(isPublic ? { roomName: roomName.trim() || defaultName } : {}),
+                roomName: roomName.trim() || defaultName,
               });
               onClose();
             }}

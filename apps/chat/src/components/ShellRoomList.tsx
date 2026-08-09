@@ -7,6 +7,7 @@ import {
   type LobbyStatus,
 } from '../lib/lobby-client';
 import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
+import { loadKnownGroups } from '../lib/groups';
 
 /**
  * The room list in its **shell sidebar** form.
@@ -19,6 +20,11 @@ import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
  *
  * The permanent public room sorts first and is labeled as such: it guarantees there is always
  * somewhere to go, so a new user is never left staring at an empty list with nothing to do.
+ *
+ * The lobby is not the whole list any more. Rooms are permanent groups, so the ones you belong
+ * to have to be reachable when nobody is online in them — and a private group is never in the
+ * lobby at all. Those come from the local record instead, and the lobby's copy wins wherever
+ * both have the same code (it carries the live name and member count).
  */
 
 export interface ShellRoomListProps {
@@ -41,14 +47,22 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
     return () => sub.close();
   }, []);
 
+  // Read on every render rather than once: a group is recorded the moment you join it, and
+  // the sidebar is where you go back to it.
+  const merged = new Map<string, LobbyRoom>();
+  for (const g of loadKnownGroups()) merged.set(g.code, { code: g.code, name: g.name, count: 0 });
+  for (const r of rooms) merged.set(r.code, r);
+
   // The permanent room is always first, and is shown even before the lobby has answered — it is
   // the one that guarantees there is always somewhere to go.
-  const hasReserved = rooms.some((r) => r.code === RESERVED_ROOM_CODE);
-  const ordered = [
-    ...(hasReserved ? [] : [{ code: RESERVED_ROOM_CODE, name: '公开大厅', count: 0 } as LobbyRoom]),
-    ...rooms
-      .slice()
-      .sort((a, b) => (a.code === RESERVED_ROOM_CODE ? -1 : b.code === RESERVED_ROOM_CODE ? 1 : 0)),
+  const reserved = merged.get(RESERVED_ROOM_CODE) ?? {
+    code: RESERVED_ROOM_CODE,
+    name: '公开大厅',
+    count: 0,
+  };
+  const ordered: LobbyRoom[] = [
+    reserved,
+    ...[...merged.values()].filter((r) => r.code !== RESERVED_ROOM_CODE),
   ];
 
   return (
