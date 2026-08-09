@@ -347,10 +347,10 @@ export function MemberControl({
           />
         </svg>
         <span className="wave-card-name">{w.name}</span>
+        {/* --button-text, not white: the light theme's accent is a pale cyan
+            and white on it measures 1.9:1, so the playlist position was
+            invisible there. */}
         {inPlaylist && (
-          {/* --button-text, not white: the light theme's accent is a pale cyan
-              and white on it measures 1.9:1, so the playlist position was
-              invisible there. */}
           <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] font-bold text-[var(--button-text)]">
             {currentPlaylist.indexOf(w.id) + 1}
           </span>
