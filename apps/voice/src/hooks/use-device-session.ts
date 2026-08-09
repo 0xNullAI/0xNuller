@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createEmptyDeviceState } from '@dg-kit/core';
+import { createEmptyDeviceState, isDevicePickerCancelled } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@voice/lib/device-session';
 
@@ -44,10 +44,12 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
       await session.connectDevice();
       refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // A cancelled Web Bluetooth chooser is a normal user action, not an error.
-      if (!/cancelled|user gesture/i.test(message)) {
-        setError(message);
+      // Through the shared predicate: the local regex only knew the English
+      // Web Bluetooth wording, so on Android — where the Tauri transport
+      // throws a Chinese message — backing out of the picker raised an error
+      // banner.
+      if (!isDevicePickerCancelled(err)) {
+        setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
       setConnecting(false);

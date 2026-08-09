@@ -14,22 +14,23 @@
     "deploy:dry": "wrangler deploy --dry-run"
   },
   "dependencies": {
+    "@0xnullai/auth": "*",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@dg-agent/runtime": "0.1.0",
     "@dg-agent/web": "5.0.0",
+    "@dg-kit/core": "1.13.0",
+    "@dg-kit/safety": "1.13.0",
     "dg-chat": "2.6.1",
     "dg-market": "0.1.0",
     "dg-voice": "0.7.5",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "@0xnullai/auth": "*",
-    "@dg-kit/safety": "1.13.0",
-    "@0xnullai/scenes": "0.1.0",
-    "@0xnullai/settings": "0.1.0",
-    "@0xnullai/native": "0.1.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "@dg-agent/runtime": "0.1.0"
+    "remark-gfm": "^4.0.1"
   },
   "exports": {
     "./Shell": "./src/Shell.tsx",

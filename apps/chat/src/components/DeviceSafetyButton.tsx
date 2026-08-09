@@ -3,6 +3,7 @@ import { Bluetooth, BluetoothOff, RotateCcw, Radar, Gauge } from 'lucide-react';
 import { Popover } from './Popover';
 import type { SensorSummary, OpossumSummary } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
+import { isDevicePickerCancelled } from '@dg-kit/core';
 
 interface DeviceSafetyButtonProps {
   connected: boolean;
@@ -83,7 +84,10 @@ export function DeviceSafetyButton({
     try {
       await onConnectDevice();
     } catch (err) {
-      setConnectDeviceError(err instanceof Error ? err.message : '连接设备失败');
+      // Closing the picker is a normal action, not a failure worth a red banner.
+      if (!isDevicePickerCancelled(err)) {
+        setConnectDeviceError(err instanceof Error ? err.message : '连接设备失败');
+      }
     } finally {
       setConnectingDevice(false);
     }

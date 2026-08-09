@@ -29,6 +29,7 @@ import { createGattShim } from './gatt-shim.js';
 import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.js';
 import { resolvePluginBlec } from './plugin-blec.js';
 import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
+import { DEVICE_PICKER_CANCELLED_MESSAGE } from '@dg-kit/core';
 
 /** Minimal shape both `OpossumVibrateAdapter` and the sensor adapters satisfy. */
 export interface ConnectableAdapter {
@@ -76,7 +77,7 @@ export async function connectTauriAuxDevice(
     scanDurationMs: options.scanDurationMs,
   });
   if (!picked) {
-    throw new Error('用户取消了设备选择');
+    throw new Error(DEVICE_PICKER_CANCELLED_MESSAGE);
   }
   const { address, name } = picked;
 

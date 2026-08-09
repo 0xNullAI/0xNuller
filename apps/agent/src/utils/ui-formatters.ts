@@ -1,4 +1,5 @@
 import type { SessionSnapshot } from '@dg-agent/core';
+import { isDevicePickerCancelled } from '@dg-kit/core';
 
 export function getSessionTitle(session: SessionSnapshot): string {
   const firstUserMessage = session.messages
@@ -54,25 +55,11 @@ export function formatUiErrorMessage(error: unknown): string {
   return normalizedMessage;
 }
 
+/** Kept as a named re-export: this module is Agent's UI-formatting surface and
+ *  several call sites import it from here. The logic itself lives beside the
+ *  code that throws the message, in @dg-kit/core. */
 export function isBluetoothChooserCancelledError(error: unknown): boolean {
-  const rawMessage =
-    typeof error === 'string'
-      ? error
-      : error instanceof Error
-        ? error.message
-        : String(error ?? '');
-  const normalizedMessage = rawMessage
-    .trim()
-    .replace(/^(DOMException|TypeError|Error|AbortError):\s*/i, '');
-  return (
-    normalizedMessage.includes('User cancelled the requestDevice() chooser') ||
-    // Tauri Android's connect flow (apps/tauri-android/src/connect-any-device-tauri.ts)
-    // cancels via @dg-kit/transport-tauri-blec's requestDgLabDeviceTauri(),
-    // which throws this Chinese message instead of the Web Bluetooth one
-    // above — same "user backed out, not a real error" outcome, so it needs
-    // the same friendly treatment.
-    normalizedMessage.includes('用户取消了设备选择')
-  );
+  return isDevicePickerCancelled(error);
 }
 
 export function parseCommaSeparated(value: string): string[] {

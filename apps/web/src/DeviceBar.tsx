@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Square } from 'lucide-react';
 import { allConnectedDevices, subscribeSafetySessions } from '@dg-kit/safety';
+// The device names are @dg-kit/core's to own. This file used to keep its own
+// copy, which called civet-edging 灵狐 while every other module said 灵猫 —
+// the same device read differently in the top bar and in a Voice transcript.
+import { DEVICE_KIND_DISPLAY_NAME } from '@dg-kit/core';
 import type { DeviceSummary } from '@dg-kit/safety';
 import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
 
@@ -40,12 +44,12 @@ function useConnectedDevices() {
   return groups;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  coyote: '郊狼',
-  opossum: '负鼠',
-  'paw-prints': '爪印',
-  'civet-edging': '灵狐',
-};
+
+/** DeviceSummary.kind is a free-form string — a module may report a kind kit
+ *  does not know about — so fall back to the raw value instead of blanking. */
+function kindLabel(kind: string): string {
+  return (DEVICE_KIND_DISPLAY_NAME as Record<string, string>)[kind] ?? kind;
+}
 
 function DeviceChip({ device }: { device: DeviceSummary }) {
   return (
@@ -57,7 +61,7 @@ function DeviceChip({ device }: { device: DeviceSummary }) {
         }
         aria-hidden
       />
-      <span className="shrink-0 text-xs font-medium">{KIND_LABEL[device.kind] ?? device.kind}</span>
+      <span className="shrink-0 text-xs font-medium">{kindLabel(device.kind)}</span>
       <span className="truncate text-xs text-[var(--text-faint)]">{device.name}</span>
       {device.channels?.map((ch) => (
         <span

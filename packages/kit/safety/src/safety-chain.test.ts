@@ -255,7 +255,7 @@ describe('多设备同时连接', () => {
           { id: 'c', kind: 'coyote', name: '郊狼', connected: true },
           { id: 'o', kind: 'opossum', name: '负鼠', connected: true },
           { id: 'p', kind: 'paw-prints', name: '爪印', connected: true },
-          { id: 'v', kind: 'civet-edging', name: '灵狐', connected: true },
+          { id: 'v', kind: 'civet-edging', name: '灵猫', connected: true },
         ],
       }),
     );

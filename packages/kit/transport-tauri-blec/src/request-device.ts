@@ -37,6 +37,7 @@ import {
 import { createGattShim } from './gatt-shim.js';
 import { resolvePluginBlec } from './plugin-blec.js';
 import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
+import { DEVICE_PICKER_CANCELLED_MESSAGE } from '@dg-kit/core';
 
 /**
  * Combined name-prefix filter covering every known DG-Lab device kind —
@@ -100,7 +101,7 @@ export async function requestDgLabDeviceTauri(
     scanDurationMs: options.scanDurationMs,
   });
   if (!picked) {
-    throw new Error('用户取消了设备选择');
+    throw new Error(DEVICE_PICKER_CANCELLED_MESSAGE);
   }
   const { address, name } = picked;
 

@@ -278,7 +278,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
         : []),
       ...(civetEdgingState.connected
-        ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵狐', connected: true }]
+        ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵猫', connected: true }]
         : []),
     ],
   });

@@ -21,6 +21,7 @@ import type {
   ToolCall,
   ToolExecutionPlan,
 } from '@dg-kit/core';
+import { DEVICE_KIND_DISPLAY_NAME } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { ToolRegistry } from '@dg-kit/tools';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
@@ -46,12 +47,6 @@ export interface ToolExecutionResult {
   output: string;
 }
 
-const DEVICE_KIND_DISPLAY_NAME: Record<DeviceKind, string> = {
-  coyote: '郊狼',
-  'paw-prints': '爪印',
-  'civet-edging': '灵猫',
-  opossum: '负鼠',
-};
 
 const SHOCK_TOOL_NAMES = new Set([
   'shock_start',
