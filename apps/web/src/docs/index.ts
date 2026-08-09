@@ -2,13 +2,14 @@ import intro from './intro.md?raw';
 import agent from './agent.md?raw';
 import chat from './chat.md?raw';
 import voice from './voice.md?raw';
+import playground from './playground.md?raw';
 import market from './market.md?raw';
 
 /**
  * Documentation.
  *
- * One flat level: an intro up front, then one page per app. No project grouping,
- * no developer docs.
+ * One flat level: an intro up front, then one page per app, in the same order
+ * as the app switcher. No project grouping, no developer docs.
  *
  * It used to be "three projects x three to five pages" (main line / Kit / MCP,
  * each group split further into user / developer) — a projection of the five-repo
@@ -33,7 +34,8 @@ export interface Doc {
 export const DOCS: Doc[] = [
   { id: 'intro', label: '介绍', blurb: '这是什么 · 安全须知 · 第一次使用', markdown: intro },
   { id: 'agent', label: 'Agent', blurb: '打字，AI 帮你操作', markdown: agent },
-  { id: 'chat', label: 'Chat', blurb: '多人房间，别人可以控制你', markdown: chat },
   { id: 'voice', label: 'Voice', blurb: '说话代替打字', markdown: voice },
+  { id: 'chat', label: 'Chat', blurb: '多人房间，别人可以控制你', markdown: chat },
+  { id: 'playground', label: 'Playground', blurb: '把设备接进游戏', markdown: playground },
   { id: 'market', label: 'Market', blurb: '现成的波形和场景', markdown: market },
 ];
