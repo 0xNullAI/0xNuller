@@ -20,10 +20,18 @@ export interface ModuleRoute {
  * The app switcher, in display order.
  *
  * The order is deliberate and is the order the products are meant to be
- * discovered in — Agent first as the simplest way in, Market last because it
- * is where you go once you know what you want.
+ * discovered in — Control first because driving your own device is the plainest
+ * thing this software does and needs no account, no room and no model key, then
+ * Agent as the simplest way to hand that over, and Market last because it is
+ * where you go once you know what you want.
  */
 export const MODULES: ModuleRoute[] = [
+  {
+    id: 'control',
+    label: 'Control',
+    blurb: '直接控制自己的设备',
+    Component: lazy(() => import('./modules/control')),
+  },
   {
     id: 'agent',
     label: 'Agent',

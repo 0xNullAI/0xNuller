@@ -32,6 +32,7 @@ export default defineConfig({
     alias: {
       '@agent': path.resolve(__dirname, '../agent/src'),
       '@voice': path.resolve(__dirname, '../voice/src'),
+      '@control': path.resolve(__dirname, '../control/src'),
     },
   },
   define: { __BUILD_ID__: JSON.stringify(buildId) },

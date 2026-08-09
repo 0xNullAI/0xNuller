@@ -13,8 +13,14 @@ interface DeviceSafetyButtonProps {
   limitA: number;
   limitB: number;
   onSetLimit: (channel: 'A' | 'B', value: number) => void;
-  firePolicy: 'sum' | 'max' | 'avg';
-  onSetFirePolicy: (p: 'sum' | 'max' | 'avg') => void;
+  /**
+   * How several controllers holding fire at once combine. Optional, and the whole block
+   * disappears when it is left out: in a single-user module there is never more than one
+   * controller, so a chooser between 取最大 / 叠加 / 平均 offers a decision that cannot
+   * arise, in the one panel where every visible control has to mean something.
+   */
+  firePolicy?: 'sum' | 'max' | 'avg';
+  onSetFirePolicy?: (p: 'sum' | 'max' | 'avg') => void;
   onRestoreDefaults: () => void;
   /** The attached sensor (paw-prints or civet-edging, one of the two), null when none. */
   sensor: SensorSummary | null;
@@ -258,28 +264,30 @@ export function DeviceSafetyButton({
 
           {/* Backgrounding always stops output now — it is not a choice, so
               there is nothing here to toggle. */}
-          {/* Multi-controller fire aggregation */}
-          <div className="border-t border-[var(--surface-border)] pt-3">
-            <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
-            <div className="flex gap-1">
-              {(['max', 'sum', 'avg'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => onSetFirePolicy(p)}
-                  className={`flex-1 rounded-[var(--radius-sm)] py-1.5 text-xs transition-colors ${
-                    firePolicy === p
-                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                      : 'border border-[var(--surface-border)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
-                  }`}
-                >
-                  {p === 'max' ? '取最大' : p === 'sum' ? '叠加' : '平均'}
-                </button>
-              ))}
+          {/* Multi-controller fire aggregation — only where several people can hold fire at once. */}
+          {onSetFirePolicy && (
+            <div className="border-t border-[var(--surface-border)] pt-3">
+              <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
+              <div className="flex gap-1">
+                {(['max', 'sum', 'avg'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => onSetFirePolicy(p)}
+                    className={`flex-1 rounded-[var(--radius-sm)] py-1.5 text-xs transition-colors ${
+                      firePolicy === p
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                        : 'border border-[var(--surface-border)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
+                    }`}
+                  >
+                    {p === 'max' ? '取最大' : p === 'sum' ? '叠加' : '平均'}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-[var(--text-faint)]">
+                取最大：任意控制者按下都不超过其单人份。叠加：多人累计（受上限封顶）。平均：多人按时反而稀释。
+              </p>
             </div>
-            <p className="mt-1 text-[10px] text-[var(--text-faint)]">
-              取最大：任意控制者按下都不超过其单人份。叠加：多人累计（受上限封顶）。平均：多人按时反而稀释。
-            </p>
-          </div>
+          )}
 
           {/* Restore default waveforms */}
           <div className="border-t border-[var(--surface-border)] pt-3">
