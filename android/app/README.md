@@ -1,16 +1,47 @@
-# @dg-agent/tauri-android
+# @0xnullai/android
 
-Tauri 2 Android wrapper for DG-Agent.
+The Android app. **One APK containing all six modules** — Control, Agent,
+Voice, Chat, Playground, Market — not one APK per module.
 
 ## Why this exists
 
-Android WebView does not implement Web Bluetooth. We wrap the existing React app in a Tauri shell and swap the device transport for [`@mnlphlp/plugin-blec`](https://github.com/MnlPhlp/tauri-plugin-blec) (BLE via Android native APIs).
+Android WebView does not implement Web Bluetooth. So the unified shell
+(`apps/web`) is wrapped in a Tauri shell that swaps the device transport for
+[`@mnlphlp/plugin-blec`](https://github.com/MnlPhlp/tauri-plugin-blec) (BLE
+through Android's native APIs).
 
-The web app under `apps/web` is reused verbatim — `App.tsx` accepts an optional `servicesOverrides` prop, and this shell passes:
+`src/main.tsx` mounts the same `Shell` component the web build mounts, and
+supplies the native pieces through `NativeBridgeProvider` from
+`@0xnullai/native`. The shell and every module are shared source, not a
+port — `src/styles.css` even `@import`s the shell's own stylesheet, so the
+Tailwind `@source` list cannot drift between web and Android.
 
-- `createDeviceClient`: returns `TauriBlecDeviceClient` from `@dg-agent/device-tauri-ble`
-- `disableSpeech: true` (no DashScope ASR/TTS or browser SpeechRecognition on Android)
-- `disableBridge: true` (no QQ NapCat or Telegram bridges on Android)
+Before the merge this was three separately packaged APKs (Agent / Chat /
+Voice). A user had to install three apps, pair their device in each, and
+configure safety limits three times.
+
+**Android has no hot update.** Whatever ships here lives on people's phones
+for a long time, including after the Workers it talks to have moved on, so
+protocol changes have to stay backward compatible and the native injection
+seams are deliberately left in their original shape (see the comments in
+`@0xnullai/native`).
+
+## Versioning and app identity
+
+The version lives in **one** place: `version` in `src-tauri/tauri.conf.json`.
+Tauri derives `versionName` and `versionCode` from it into
+`gen/android/app/tauri.properties` **at build time**.
+
+**Bump it before you build, not after.** Building first and bumping second
+produces an APK whose internal version is the previous release while the git
+tag says the new one — and since the APK is what users install, the tag is
+the thing that is wrong. This has happened before.
+
+`identifier` stays `ai.nullai.dgagent` even though the app is now called
+0xNuller. Android treats the applicationId as the app's identity: changing it
+would make this a *different* app to the OS, so existing DG-Agent users would
+get a second icon instead of an upgrade, with none of their settings, and no
+way to migrate the data. The name is cosmetic; the identifier is not.
 
 ## Prerequisites
 
@@ -104,20 +135,29 @@ npm run android:build -- --apk
 ## Architecture
 
 ```
-React UI (apps/web/src/App.tsx, reused via vite alias)
+Shell (@0xnullai/web) + six modules, reused via vite alias
   ↓
-@dg-agent/agent-browser createBrowserServices({ createDeviceClient: ... })
+NativeBridgeProvider (@0xnullai/native) — the one injection point
+  ↓ three seams, each kept in its original shape:
+      Agent  servicesOverrides + connectDevice
+      Chat   deviceClientFactory + requestDevice
+      Voice  transport
   ↓
 wrapWithLifecycleSafety  ← Android safety net (see below)
   ↓
-TauriBlecDeviceClient (@dg-kit/transport-tauri-blec)
+TauriBlec{Device,Opossum,PawPrints,CivetEdging}Client (@dg-kit/transport-tauri-blec)
   ↓ scan + connect + (uuid, bytes) writes
-@mnlphlp/plugin-blec (Tauri plugin)
+@mnlphlp/plugin-blec (Tauri plugin, pinned to the 0xNullAI multi-connection fork)
   ↓ JNI
 android.bluetooth.le.* (Android system BLE)
   ↓
-DG-Lab Coyote 2.0 / 3.0
+DG-Lab Coyote 2.0 / 3.0 · paw-prints · civet-edging · Opossum
 ```
+
+The vite aliases in `vite.config.ts` (`@agent` / `@voice` / `@chat` /
+`@control`) **must stay identical to `apps/web/vite.config.ts`**. They differ
+per module because before the merge every module used a bare `@`, which
+collides once they are packed into one build.
 
 ### Lifecycle safety
 

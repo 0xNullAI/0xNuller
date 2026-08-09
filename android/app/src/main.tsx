@@ -18,13 +18,14 @@ import { installAndroidShellBehaviours, withBlePermissionHelp } from './android-
 import './styles.css';
 
 /**
- * The unified Android app: one APK, four modules.
+ * The unified Android app: one APK, six modules.
  *
  * Before the merge there were three separately packaged APKs (Agent / Chat /
  * Voice); the user had to install three of them, connect the device once in
- * each, and configure the settings three times. Now they are four modules
- * inside one shell, sharing the device, the safety settings, the scene library
- * and the account.
+ * each, and configure the settings three times. Now Control, Agent, Voice,
+ * Chat, Playground and Market are modules inside one shell, sharing the
+ * device, the safety settings, the scene library, the waveform library and
+ * the account.
  *
  * **Android has no hot updates.** Any mistake made here lives on users' phones
  * for a long time, so the shape of the three native injection seams is kept
