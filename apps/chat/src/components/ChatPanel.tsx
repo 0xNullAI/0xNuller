@@ -189,7 +189,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                 {msg.media?.kind === 'image' ? (
                   <button
                     onClick={() => setLightbox(msg.media!.url)}
-                    className="block overflow-hidden rounded-[14px] border border-[var(--surface-border)]"
+                    className="block overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)]"
                   >
                     <img
                       src={msg.media.url}
@@ -202,8 +202,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                   <div
                     className={
                       isSelf
-                        ? 'rounded-[14px] rounded-br-[4px] bg-[var(--accent)] px-3 py-2'
-                        : 'rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2'
+                        ? 'rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] px-3 py-2'
+                        : 'rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2'
                     }
                   >
                     <audio controls src={msg.media.url} className="max-w-[220px]" />
@@ -222,8 +222,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                     className={
                       `${hasMedia ? 'mt-1 ' : ''}` +
                       (isSelf
-                        ? 'rounded-[14px] rounded-br-[4px] bg-[var(--accent)] px-3 py-2 text-sm text-[var(--button-text)]'
-                        : 'rounded-[14px] rounded-bl-[4px] border px-3 py-2 text-sm text-[var(--text)] ' +
+                        ? 'rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] px-3 py-2 text-sm text-[var(--button-text)]'
+                        : 'rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border px-3 py-2 text-sm text-[var(--text)] ' +
                           (selfId && msg.mentions?.some((m) => m.peerId === selfId)
                             ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'))

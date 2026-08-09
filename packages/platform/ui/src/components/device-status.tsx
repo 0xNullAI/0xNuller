@@ -54,7 +54,7 @@ export function DeviceStatusChip({
     <div className="flex items-center gap-1.5 sm:gap-2">
       <button
         type="button"
-        className="flex shrink-0 items-center gap-1 rounded-[8px] px-1.5 py-1 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] sm:gap-1.5 sm:px-2"
+        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-1.5 py-1 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] sm:gap-1.5 sm:px-2"
         onClick={onClick}
         title={title}
       >

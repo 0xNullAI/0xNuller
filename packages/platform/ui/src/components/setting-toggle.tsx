@@ -25,13 +25,13 @@ export function SettingToggle({
         type="button"
         role="switch"
         aria-checked={checked}
-        className={`relative inline-flex h-[22px] w-[40px] shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-strong)] ${
+        className={`relative inline-flex h-[22px] w-[40px] shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-[var(--dur-mid)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-strong)] ${
           checked ? 'bg-[var(--accent)]' : 'bg-[var(--surface-border-strong)]'
         }`}
         onClick={() => onCheckedChange(!checked)}
       >
         <span
-          className={`pointer-events-none block h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 ${
+          className={`pointer-events-none block h-[18px] w-[18px] rounded-full bg-white transition-transform duration-[var(--dur-mid)] ${
             checked ? 'translate-x-[18px]' : 'translate-x-0'
           }`}
         />

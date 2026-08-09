@@ -29,7 +29,7 @@ export function StopFailureBanner() {
       className="fixed inset-x-0 top-0 flex justify-center px-3 py-2"
       style={{ zIndex: 'var(--z-stop)' }}
     >
-      <div className="flex w-full max-w-[560px] flex-col gap-2 rounded-[12px] border border-[var(--danger)] bg-[var(--danger-surface)] p-3 shadow-[var(--shadow-panel)]">
+      <div className="flex w-full max-w-[560px] flex-col gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)] bg-[var(--danger-surface)] p-3 shadow-[var(--shadow-panel)]">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--danger-button)]" />
           <div className="min-w-0 text-sm text-[var(--text)]">
@@ -42,7 +42,7 @@ export function StopFailureBanner() {
         <button
           type="button"
           onClick={clearStopFailure}
-          className="self-end rounded-[10px] border border-[var(--surface-border)] px-3 py-1 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
+          className="self-end rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-3 py-1 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
         >
           我已断开
         </button>

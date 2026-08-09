@@ -70,7 +70,7 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
       <button
         type="button"
         onClick={onCreate}
-        className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+        className="flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
         建房间
@@ -82,7 +82,7 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
           type="button"
           onClick={() => onJoin(room.code)}
           className={
-            'flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-sm transition-colors ' +
+            'flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm transition-colors ' +
             (room.code === currentRoom
               ? 'bg-[var(--accent-soft)]'
               : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')

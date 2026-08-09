@@ -51,17 +51,32 @@
   --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  /* The radius scale. One scale, seven steps, each with a job — a corner
+     radius is read relative to the size of the thing it is on, so the step is
+     chosen by what kind of surface it is, not by taste:
+
+       2xs  inline code, checkboxes, message-bubble tails
+       xs   tags, chips, small list rows
+       ctl  controls — buttons, inputs, menu items (the most common by far)
+       sm   cards sitting inside a panel
+       md   popovers, panels, section cards
+       lg   modal dialog shells
+       xl   the full-bleed Agent surface
+
+     Before the merge there were two scales running in parallel: these tokens
+     (12/16/22/28, 48 call sites) and a hardcoded 4/6/7/8/10/12/14/16/20 that
+     the modules had actually converged on (155 call sites). Neither was wrong
+     on its own; having both meant two dialogs a click apart could differ by
+     6px for no reason. The steps below keep the numbers the modules chose and
+     the token names the shared layer chose, and every call site now goes
+     through a token — see the radius guard in ui's tests. */
   --radius-xl: 28px;
-  --radius-lg: 22px;
+  --radius-lg: 20px;
   --radius-md: 16px;
   --radius-sm: 12px;
-  /* The control scale. 12px is the smallest surface radius, but buttons,
-     chips and small inputs across the four modules settled on 10px and 8px —
-     67 and 18 call sites respectively, none of which was wrong. Naming the
-     scale they actually use beats rewriting a hundred call sites to a number
-     nobody chose. */
   --radius-ctl: 10px;
   --radius-xs: 8px;
+  --radius-2xs: 4px;
   --max-width: 1600px;
   --button-text: #ffffff;
   --scrollbar-thumb: #d0dbe3;
@@ -96,13 +111,28 @@
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --overlay-scrim-strong: rgba(0, 0, 0, 0.55);
 
-  /* Motion durations. The scattered 120/140/150/160/200ms collapse into two tiers. */
+  /* Motion durations. Five tiers, chosen by what the motion is for.
+
+     The four modules had written 120/140/150/160/180/200/240/250/300/500/550/
+     600ms across two notations (`.15s` and `150ms`), and the clustering says
+     most of that was not a decision: .14s, .15s, .16s and 160ms all mean "a
+     normal state change" and no one can tell them apart. What is real is the
+     difference between feedback under the finger and a panel opening, so
+     that is what the tiers encode.
+
+       fast   pressed/hover feedback — must not lag the finger
+       (base) the default for a state change: color, border, background
+       mid    something moves or resizes in place
+       slow   a panel or sheet expands
+       enter  an element arrives on screen for the first time
+
+     Anything at or above 1s is ambient (spinners, background drift) and is
+     not on this scale. */
   --dur-fast: 120ms;
   --dur: 160ms;
-  /* Deliberate long-form motion — panel transitions, meters settling. The
-     300-500ms values in use are not drift toward the other two tiers; they
-     read as slow on purpose. */
+  --dur-mid: 200ms;
   --dur-slow: 300ms;
+  --dur-enter: 500ms;
 }
 
 :root[data-theme='dark'] {

@@ -30,7 +30,7 @@ export function ProxySection() {
   }
 
   return (
-    <section className="rounded-[14px] border border-[var(--surface-border)] p-4">
+    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <label className="flex items-center justify-between gap-4">
         <span>
           <span className="block text-sm font-semibold">代理</span>

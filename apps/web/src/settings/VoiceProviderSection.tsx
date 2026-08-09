@@ -51,7 +51,7 @@ export function VoiceProviderSection() {
   }
 
   return (
-    <section className="rounded-[14px] border border-[var(--surface-border)] p-4">
+    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <h3 className="text-sm font-semibold">语音服务</h3>
       <p className="mt-1 text-xs text-[var(--text-faint)]">
         实时语音通话用的模型。与上面的文本模型是两套独立的服务。
@@ -70,7 +70,7 @@ export function VoiceProviderSection() {
         />
 
         {def?.hint && (
-          <p className="rounded-[10px] bg-[var(--bg-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--text-soft)]">
+          <p className="rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--text-soft)]">
             {def.hint}
           </p>
         )}

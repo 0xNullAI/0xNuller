@@ -58,7 +58,7 @@ export default function SnakeGame() {
       </div>
 
       <div
-        className="grid w-full max-w-[420px] gap-px rounded-[12px] border border-[var(--surface-border)] bg-[var(--surface-border)] p-px"
+        className="grid w-full max-w-[420px] gap-px rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-border)] p-px"
         style={{ gridTemplateColumns: `repeat(${BOARD}, 1fr)`, aspectRatio: '1 / 1' }}
         role="grid"
         aria-label="贪吃蛇棋盘"
@@ -91,7 +91,7 @@ export default function SnakeGame() {
         <button
           type="button"
           onClick={start}
-          className="rounded-[10px] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
+          className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
         >
           {state.status === 'over' ? `再来一局（上次 ${state.score} 分）` : '开始'}
         </button>
@@ -120,7 +120,7 @@ function TouchButton({ label, onPress }: { label: string; onPress: () => void })
     <button
       type="button"
       onClick={onPress}
-      className="h-12 w-12 rounded-[10px] border border-[var(--surface-border)] text-sm text-[var(--text-soft)]"
+      className="h-12 w-12 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-sm text-[var(--text-soft)]"
     >
       {label}
     </button>

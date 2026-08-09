@@ -27,7 +27,7 @@ export function Meter({
     >
       <Progress.Indicator
         className={cn(
-          'h-full rounded-full bg-[var(--accent)]/80 transition-transform duration-300 ease-out',
+          'h-full rounded-full bg-[var(--accent)]/80 transition-transform duration-[var(--dur-slow)] ease-out',
           indicatorClassName,
         )}
         style={{ transform: `translateX(${value - 100.2}%)` }}

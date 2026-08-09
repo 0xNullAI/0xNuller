@@ -78,11 +78,18 @@ body {
   flex: none;
 }
 
+/* Segmented control.
+ *
+ * Pulled onto the shared control scale: fully-round pills with a solid accent
+ * fill made Market read as a different application from the other five
+ * modules, all of which use --radius-ctl with a tinted selected state. The
+ * shape and the selected treatment are what the eye compares first, so those
+ * are what had to match — the rest of this sheet stays scoped as it is. */
 .seg {
   display: inline-flex;
   background: var(--bg-strong);
   border: 1px solid var(--surface-border);
-  border-radius: 999px;
+  border-radius: var(--radius-ctl);
   padding: 3px;
 }
 .seg button {
@@ -90,13 +97,16 @@ body {
   background: transparent;
   color: var(--text-soft);
   padding: 7px 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   font-size: 14px;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color var(--dur) ease,
+    color var(--dur) ease;
 }
 .seg button.active {
-  background: var(--accent);
-  color: var(--button-text);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 500;
 }
 
 /* Two-level tabs: top level + scene sub-filter */
@@ -165,9 +175,9 @@ select {
   padding: 0.7rem 0.9rem;
   outline: none;
   transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
+    border-color var(--dur) ease,
+    box-shadow var(--dur) ease,
+    background-color var(--dur) ease;
 }
 input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):focus,
 textarea:focus,
@@ -200,7 +210,7 @@ select {
   flex-direction: column;
   gap: 10px;
   box-shadow: var(--shadow-soft);
-  transition: border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+  transition: border-color var(--dur) ease, transform var(--dur-fast) ease, box-shadow var(--dur) ease;
 }
 .card:hover {
   border-color: var(--accent);
@@ -272,7 +282,7 @@ select {
   padding: 0.55rem 1.1rem;
   border-radius: var(--radius-sm);
   font: inherit;
-  transition: border-color 160ms ease, background-color 160ms ease;
+  transition: border-color var(--dur) ease, background-color var(--dur) ease;
 }
 .btn:hover {
   border-color: var(--accent);
@@ -414,7 +424,7 @@ select {
   padding: 0.7rem 1rem;
   color: var(--text-soft);
   font-size: 13px;
-  transition: border-color 160ms ease, color 160ms ease;
+  transition: border-color var(--dur) ease, color var(--dur) ease;
 }
 .file-drop:hover {
   border-color: var(--accent);
@@ -534,7 +544,7 @@ select {
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   background: var(--bg-strong);
-  transition: border-color 160ms ease;
+  transition: border-color var(--dur) ease;
 }
 .role-card:hover {
   border-color: var(--accent);

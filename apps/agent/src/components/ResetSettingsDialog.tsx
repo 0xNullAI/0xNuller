@@ -19,7 +19,7 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         overlayClassName="backdrop-blur-[2px]"
-        className="reset-settings-dialog max-w-[380px] rounded-[14px] p-5 shadow-[var(--shadow-soft)]"
+        className="reset-settings-dialog max-w-[380px] rounded-[var(--radius-md)] p-5 shadow-[var(--shadow-soft)]"
       >
         <DialogHeader className="gap-1 pr-10">
           <DialogTitle className="text-base font-semibold">恢复默认设置？</DialogTitle>
@@ -31,7 +31,7 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
           <Button
             type="button"
             variant="secondary"
-            className="!text-sm !font-medium h-9 min-w-[72px] rounded-[8px] px-4"
+            className="!text-sm !font-medium h-9 min-w-[72px] rounded-[var(--radius-xs)] px-4"
             onClick={() => onOpenChange(false)}
           >
             取消
@@ -39,7 +39,7 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
           <Button
             type="button"
             variant="destructive"
-            className="!text-sm !font-medium h-9 min-w-[88px] rounded-[8px] px-4 "
+            className="!text-sm !font-medium h-9 min-w-[88px] rounded-[var(--radius-xs)] px-4 "
             onClick={() => {
               onConfirm();
               onOpenChange(false);

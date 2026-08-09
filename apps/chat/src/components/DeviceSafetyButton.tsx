@@ -102,7 +102,7 @@ export function DeviceSafetyButton({
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 items-center gap-1.5 rounded-[10px] px-2.5 text-xs transition-colors ${
+        className={`flex h-9 items-center gap-1.5 rounded-[var(--radius-ctl)] px-2.5 text-xs transition-colors ${
           connected
             ? 'bg-[var(--success-soft)] text-[var(--success)]'
             : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'

@@ -42,11 +42,11 @@ export function CreateRoomDialog({
         role="dialog"
         aria-modal="true"
         aria-label="建房间"
-        className="w-[min(400px,calc(100vw-2rem))] rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
+        className="w-[min(400px,calc(100vw-2rem))] rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
       >
         <h2 className="text-lg font-semibold">建房间</h2>
 
-        <label className="mt-5 flex cursor-pointer items-start justify-between gap-4 rounded-[12px] border border-[var(--surface-border)] p-3">
+        <label className="mt-5 flex cursor-pointer items-start justify-between gap-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
           <span className="min-w-0">
             <span className="block text-sm">公开到大厅</span>
             <span className="block text-xs text-[var(--text-faint)]">

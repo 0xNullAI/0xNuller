@@ -712,7 +712,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               {peerRoom.canManageGroup && (
                 <button
                   onClick={() => setAgentOpen(true)}
-                  className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
+                  className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
                   title={peerRoom.agent ? `房间 AI：${peerRoom.agent.name}` : '给房间加个 AI'}
                 >
                   <Bot className="h-4 w-4" />
@@ -728,7 +728,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                   AI, this is already where their hand is. */}
               <button
                 onClick={() => openShellSettings('ai')}
-                className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
                 title="AI 设置"
               >
                 <Bot className="h-4 w-4" />
@@ -736,7 +736,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               {device.connected && (
                 <button
                   onClick={() => setAllowAi((v) => !v)}
-                  className={`flex h-9 items-center gap-1 rounded-[10px] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
+                  className={`flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
                   title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许房间内 AI 控制你的设备'}
                 >
                   <Bot className="h-3.5 w-3.5" />
@@ -770,7 +770,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           {(device.connected || device.opossum?.connected) && (
             <button
               onClick={device.stopAll}
-              className="flex h-9 items-center gap-1 rounded-[10px] bg-[var(--danger-soft)] px-2.5 text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80"
+              className="flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] bg-[var(--danger-soft)] px-2.5 text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80"
               title="紧急停止"
             >
               <span aria-hidden>⏹</span>
@@ -783,7 +783,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               device.disconnect();
               peerRoom.leave();
             }}
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
             title="离开房间"
           >
             <LogOut className="h-4 w-4" />

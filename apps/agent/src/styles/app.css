@@ -169,10 +169,10 @@
   gap: 0.75rem;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--surface-border);
-  border-radius: 10px;
+  border-radius: var(--radius-ctl);
   transition:
-    background-color 160ms ease,
-    border-color 160ms ease;
+    background-color var(--dur) ease,
+    border-color var(--dur) ease;
 }
 
 .bridge-connector-row:hover,

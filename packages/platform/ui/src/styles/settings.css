@@ -42,15 +42,15 @@
   min-height: 2.2rem;
   padding: 0 0.45rem;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-ctl);
   color: var(--text-soft);
   background: transparent;
   font-size: 0.84rem;
   font-weight: 500;
   transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease;
 }
 
 .settings-sidebar-back:hover {
@@ -94,14 +94,14 @@
   min-height: 2.35rem;
   padding: 0 0.5rem;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-ctl);
   background: transparent;
   color: var(--text-soft);
   text-align: left;
   transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease;
 }
 
 .settings-nav-icon {
@@ -146,7 +146,7 @@
   justify-content: flex-start;
   gap: 0.625rem;
   padding: 0 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--radius-ctl);
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 500;
@@ -194,7 +194,7 @@
   height: 2.25rem;
   align-items: center;
   justify-content: center;
-  border-radius: 9999px;
+  border-radius: 999px;
   color: var(--text-soft);
 }
 
@@ -230,7 +230,7 @@
   align-items: center;
   gap: 0.625rem;
   padding: 0 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--radius-ctl);
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 500;
@@ -279,7 +279,7 @@
   height: 2.25rem;
   align-items: center;
   justify-content: center;
-  border-radius: 9999px;
+  border-radius: 999px;
   color: var(--text-soft);
 }
 
@@ -321,7 +321,7 @@
   gap: 0.95rem;
   padding: 1.15rem;
   border: 1px solid var(--surface-border);
-  border-radius: 10px;
+  border-radius: var(--radius-ctl);
   background: transparent;
   box-shadow: none;
 }
@@ -337,7 +337,7 @@
   min-width: 0;
   padding: 1.25rem 1.65rem 1.05rem;
   border: 1px solid var(--surface-border);
-  border-radius: 10px;
+  border-radius: var(--radius-ctl);
   background: transparent;
 }
 
@@ -511,7 +511,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   border: 1px solid var(--surface-border);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: transparent;
   padding: 0.75rem 0.85rem;
   color: var(--text-soft);

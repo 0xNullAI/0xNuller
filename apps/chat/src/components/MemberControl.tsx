@@ -93,7 +93,7 @@ function FireCircle({
             strokeDasharray={RING_C}
             strokeDashoffset={offset}
             transform="rotate(-90 55 55)"
-            className="transition-all duration-150"
+            className="transition-all duration-[var(--dur)]"
           />
         </svg>
         {/* Center fire button */}

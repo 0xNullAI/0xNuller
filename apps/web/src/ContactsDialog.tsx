@@ -56,7 +56,7 @@ function Row({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-[12px] px-2 py-2 hover:bg-[var(--bg-soft)]">
+    <div className="flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2 hover:bg-[var(--bg-soft)]">
       <Avatar name={username} size={34} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{displayName}</div>
@@ -144,7 +144,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
         role="dialog"
         aria-modal="true"
         aria-label="联系人"
-        className="flex max-h-[min(600px,calc(100vh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
+        className="flex max-h-[min(600px,calc(100vh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
       >
         <h2 className="text-lg font-semibold">联系人</h2>
         <p className="mt-1 text-sm text-[var(--text-soft)]">
@@ -173,7 +173,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
 
         {searched &&
           (found ? (
-            <div className="mt-2 rounded-[12px] border border-[var(--surface-border)] p-1">
+            <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-1">
               {found.user.id === user.id ? (
                 <div className="flex items-center gap-3 px-2 py-2">
                   <Avatar name={found.user.username} size={34} />
@@ -247,7 +247,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
         </div>
 
         {error && (
-          <p className="mt-2 rounded-[10px] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
+          <p className="mt-2 rounded-[var(--radius-ctl)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
             {error}
           </p>
         )}

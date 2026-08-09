@@ -68,12 +68,12 @@ const BLUETOOTH_PAIR_HINT = '搜索不到设备？将郊狼两侧滚轮同时向
 
 const BUBBLE_BASE =
   'max-w-[min(92%,560px)] overflow-hidden break-words px-4 py-3 text-[14.5px] leading-[1.6]';
-const BUBBLE_ASSISTANT = `${BUBBLE_BASE} whitespace-normal rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text)]`;
-const BUBBLE_USER = `${BUBBLE_BASE} whitespace-pre-wrap rounded-[14px] rounded-br-[4px] bg-[var(--accent)] text-[var(--button-text)]`;
+const BUBBLE_ASSISTANT = `${BUBBLE_BASE} whitespace-normal rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text)]`;
+const BUBBLE_USER = `${BUBBLE_BASE} whitespace-pre-wrap rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] text-[var(--button-text)]`;
 const ICON_BTN =
-  'h-9 w-9 rounded-[10px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'h-9 w-9 rounded-[var(--radius-ctl)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 const SYSTEM_MSG =
-  'max-w-[min(85%,480px)] rounded-[8px] border-l-[3px] border-l-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[13px] leading-[1.35] text-[var(--text-soft)]';
+  'max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border-l-[3px] border-l-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[13px] leading-[1.35] text-[var(--text-soft)]';
 
 function summarizeAssistantContent(content: string): string {
   const prefix = 'Fake LLM 已完成工具执行：';
@@ -279,7 +279,7 @@ export function ChatPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 rounded-[8px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+            className="h-8 w-8 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
             onClick={onOpenSidebar}
             aria-label="历史记录"
           >
@@ -353,7 +353,7 @@ export function ChatPanel({
           <Button
             variant="secondary"
             size="sm"
-            className="h-7 shrink-0 rounded-[8px] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+            className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
             onClick={onConnect}
             aria-label="连接其他设备"
             title="连接其他设备"
@@ -364,7 +364,7 @@ export function ChatPanel({
           <Button
             variant="destructive"
             size="sm"
-            className="h-7 shrink-0 rounded-[8px] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+            className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
             onClick={onEmergencyStop}
             aria-label="紧急停止"
           >
@@ -374,7 +374,7 @@ export function ChatPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 rounded-[8px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+            className="h-7 w-7 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
             onClick={onOpenSettings}
             aria-label="设置"
           >
@@ -397,7 +397,7 @@ export function ChatPanel({
                 <div className="relative" ref={sceneDropdownRef}>
                   <button
                     type="button"
-                    className="!text-sm inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                    className="!text-sm inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
                     onClick={() => setSceneDropdownOpen((v) => !v)}
                   >
                     <span>{activePreset?.icon ?? '📝'}</span>
@@ -410,7 +410,7 @@ export function ChatPanel({
                     />
                   </button>
                   {sceneDropdownOpen && (
-                    <div className="absolute left-0 top-full z-10 mt-1 w-[180px] overflow-hidden rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg">
+                    <div className="absolute left-0 top-full z-10 mt-1 w-[180px] overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg">
                       {allPresets.map((preset) => (
                         <button
                           key={preset.id}
@@ -441,7 +441,7 @@ export function ChatPanel({
                     type="button"
                     onClick={onConnect}
                     title={BLUETOOTH_PAIR_HINT}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
                   >
                     <Bluetooth className="h-3.5 w-3.5" />
                     <span>连接蓝牙</span>
@@ -465,7 +465,7 @@ export function ChatPanel({
                   <Button
                     variant="destructive"
                     size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[10px] sm:h-12 sm:w-12"
+                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
                     onClick={onToggleVoiceMode}
                     aria-label="结束识别"
                   >
@@ -481,7 +481,7 @@ export function ChatPanel({
                           : 'secondary'
                     }
                     size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[10px] sm:h-12 sm:w-12"
+                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
                     disabled={!activeSessionId || (!hasText && !voiceModeAvailable)}
                     onClick={handlePrimaryAction}
                     aria-label={hasText ? '发送' : voiceModeAvailable ? '语音识别' : '发送'}
@@ -549,7 +549,7 @@ export function ChatPanel({
                 if (message.role === 'assistant' && isToolExecutionSummary(message.content)) {
                   return (
                     <div key={message.id} className="flex justify-center">
-                      <div className="max-w-[min(85%,480px)] rounded-[8px] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm text-[var(--text-soft)]">
+                      <div className="max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm text-[var(--text-soft)]">
                         {summarizeAssistantContent(message.content)}
                       </div>
                     </div>
@@ -587,7 +587,7 @@ export function ChatPanel({
 
               {busy && !streamingAssistantText && (
                 <div className="flex justify-start">
-                  <div className="inline-flex items-center gap-1 rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
+                  <div className="inline-flex items-center gap-1 rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse" />
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:120ms]" />
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:240ms]" />
@@ -613,7 +613,7 @@ export function ChatPanel({
               <Button
                 variant="secondary"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 onClick={onConnect}
                 aria-label="连接蓝牙"
                 title={BLUETOOTH_PAIR_HINT}
@@ -625,7 +625,7 @@ export function ChatPanel({
               <Button
                 variant="destructive"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 onClick={onToggleVoiceMode}
                 aria-label="结束识别"
               >
@@ -643,7 +643,7 @@ export function ChatPanel({
                         : 'secondary'
                 }
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 disabled={!activeSessionId || (!hasText && !busy && !voiceModeAvailable)}
                 onClick={handlePrimaryAction}
                 aria-label={

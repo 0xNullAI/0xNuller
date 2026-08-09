@@ -238,7 +238,7 @@ export function Shell() {
                 // lone words and nobody can tell they are tappable.
                 // The touch target also has to be big enough: 44px is the lower bound
                 // both iOS and Android recommend.
-                className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[10px] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
                 <span className="truncate">

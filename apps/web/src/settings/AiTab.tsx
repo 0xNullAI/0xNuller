@@ -71,7 +71,7 @@ export function AiTab() {
       </section>
 
       {isFree ? (
-        <p className="rounded-[10px] bg-[var(--bg-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
+        <p className="rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
           免费体验无需任何配置，由代理服务提供。想用自己的额度或更强的模型时再来这里换。
         </p>
       ) : (
@@ -101,7 +101,7 @@ export function AiTab() {
       )}
 
       {!isLlmConfigured(config) && (
-        <p className="rounded-[10px] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]">
+        <p className="rounded-[var(--radius-ctl)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]">
           还差一项配置，当前无法发起对话。
         </p>
       )}

@@ -18,7 +18,7 @@ import { ProfileEditor } from './ProfileEditor';
 
 function Agreement() {
   return (
-    <div className="mt-3 max-h-[240px] overflow-y-auto rounded-[12px] border border-[var(--surface-border)] bg-[var(--bg)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
+    <div className="mt-3 max-h-[240px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
       <p className="font-semibold text-[var(--text)]">使用前请阅读</p>
       <p className="mt-1">
         本软件会驱动设备向人体输出电流。继续即表示你已理解相关风险，并愿意自行承担。
@@ -79,7 +79,7 @@ export function AccountDialog({
         role="dialog"
         aria-modal="true"
         aria-label="账户"
-        className="w-[min(420px,calc(100vw-2rem))] rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
+        className="w-[min(420px,calc(100vw-2rem))] rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
       >
         {user ? (
           <>
@@ -170,7 +170,7 @@ export function AccountDialog({
             )}
 
             {error && (
-              <p className="mt-3 rounded-[10px] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
+              <p className="mt-3 rounded-[var(--radius-ctl)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
                 {error}
               </p>
             )}

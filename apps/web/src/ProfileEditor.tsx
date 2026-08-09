@@ -87,7 +87,7 @@ export function ProfileEditor() {
           maxLength={500}
           rows={3}
           placeholder="想让别人知道的一句话"
-          className="resize-none rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          className="resize-none rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
         />
       </label>
 
@@ -97,7 +97,7 @@ export function ProfileEditor() {
           type="date"
           value={profile.birthDate ?? ''}
           onChange={(e) => patch({ birthDate: e.target.value || null })}
-          className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
         />
         <span className="text-[10px] text-[var(--text-faint)]">用于确认成年，不会公开显示具体日期。</span>
       </label>
@@ -109,7 +109,7 @@ export function ProfileEditor() {
           onChange={(e) => patch({ location: e.target.value })}
           maxLength={60}
           placeholder="例如：上海"
-          className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
         />
         <span className="text-[10px] text-[var(--text-faint)]">
           只填到城市就够了。不要填详细住址——这类信息一旦泄露，风险不是被打扰而是人身安全。
@@ -119,7 +119,7 @@ export function ProfileEditor() {
       <button
         type="button"
         onClick={() => patch({ visibility: isPublic ? 'private' : 'public' })}
-        className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--surface-border)] px-3 py-2 text-left"
+        className="flex items-center justify-between gap-3 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-3 py-2 text-left"
       >
         <span className="flex items-center gap-2 text-sm">
           {isPublic ? (
@@ -141,7 +141,7 @@ export function ProfileEditor() {
           type="button"
           onClick={() => void save()}
           disabled={status === 'saving'}
-          className="rounded-[10px] bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--button-text)] disabled:opacity-50"
+          className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--button-text)] disabled:opacity-50"
         >
           {status === 'saving' ? '保存中…' : '保存资料'}
         </button>

@@ -49,7 +49,7 @@ export function WaveformsPanel({
             const isCustom = customWaveforms.some((c) => c.id === waveform.id);
             return (
               <div key={waveform.id} className="group flex items-center gap-1">
-                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[10px] px-3 py-2.5">
+                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-ctl)] px-3 py-2.5">
                   <span className="shrink-0 text-lg">{isCustom ? '📝' : '〰️'}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-[var(--text)]">{waveform.name}</div>
@@ -82,7 +82,7 @@ export function WaveformsPanel({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <label className="!flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
+          <label className="!flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
             <Upload className="h-4 w-4" />
             <span>导入波形文件</span>
             <input
@@ -95,7 +95,7 @@ export function WaveformsPanel({
           </label>
           <button
             type="button"
-            className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
             onClick={() => setMarketOpen(true)}
           >
             <Store className="h-4 w-4" />

@@ -46,7 +46,7 @@ export function RoomAgentDialog({
 
   return (
     <Overlay onDismiss={onClose}>
-      <div className="flex w-[min(520px,100%)] flex-col gap-4 rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)]">
+      <div className="flex w-[min(520px,100%)] flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)]">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-[var(--accent)]" />
           <h2 className="text-base font-semibold">房间 AI</h2>
@@ -63,7 +63,7 @@ export function RoomAgentDialog({
             onChange={(e) => setName(e.target.value)}
             maxLength={40}
             placeholder="例如：小助手"
-            className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+            className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
         </label>
 
@@ -79,7 +79,7 @@ export function RoomAgentDialog({
                     setPersona(scene.prompt);
                     if (!trimmedName) setName(scene.name);
                   }}
-                  className="rounded-[10px] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
                 >
                   {scene.icon ? `${scene.icon} ` : ''}
                   {scene.name}
@@ -97,7 +97,7 @@ export function RoomAgentDialog({
             maxLength={4000}
             rows={6}
             placeholder="它是谁、说话什么风格、该做什么不该做什么。"
-            className="resize-none rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--accent)]"
+            className="resize-none rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--accent)]"
           />
         </label>
 
@@ -109,7 +109,7 @@ export function RoomAgentDialog({
                 onSave(null);
                 onClose();
               }}
-              className="flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-sm text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
+              className="flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-3 py-2 text-sm text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
             >
               <Trash2 className="h-4 w-4" />
               移出房间
@@ -122,7 +122,7 @@ export function RoomAgentDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-[10px] border border-[var(--surface-border)] px-3 py-2 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+              className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-3 py-2 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
             >
               取消
             </button>
@@ -133,7 +133,7 @@ export function RoomAgentDialog({
                 onSave({ name: trimmedName, persona });
                 onClose();
               }}
-              className="rounded-[10px] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--button-text)] transition-opacity disabled:opacity-40"
+              className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--button-text)] transition-opacity disabled:opacity-40"
             >
               {agent ? '保存' : '加入房间'}
             </button>

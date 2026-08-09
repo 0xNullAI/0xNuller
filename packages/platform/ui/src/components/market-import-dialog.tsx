@@ -124,7 +124,7 @@ export function MarketImportDialog({
                 return (
                   <div
                     key={item.id}
-                    className="group flex items-center gap-3 rounded-[10px] px-3 py-2.5 hover:bg-[var(--bg-soft)]"
+                    className="group flex items-center gap-3 rounded-[var(--radius-ctl)] px-3 py-2.5 hover:bg-[var(--bg-soft)]"
                   >
                     <span className="shrink-0 text-lg">
                       {type === 'scenario' ? item.icon || '🎭' : '〰️'}

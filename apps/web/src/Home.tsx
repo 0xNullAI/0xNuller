@@ -29,7 +29,7 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
               key={m.id}
               type="button"
               onClick={() => onOpen(m.id)}
-              className="flex flex-col gap-1.5 rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-5 py-4 text-left transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-5 py-4 text-left transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <span className="font-medium">{m.label}</span>
               <span className="text-sm text-[var(--text-soft)]">{m.blurb}</span>

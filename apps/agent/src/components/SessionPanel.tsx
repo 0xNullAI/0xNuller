@@ -19,9 +19,9 @@ interface SessionPanelProps {
 
 const SESSION_BATCH_SIZE = 60;
 const ICON_BTN =
-  'session-action-icon h-9 w-9 rounded-[7px] border border-transparent text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'session-action-icon h-9 w-9 rounded-[var(--radius-xs)] border border-transparent text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 const SIDEBAR_BTN =
-  'session-action-button h-[2.35rem] w-full justify-start gap-2.5 rounded-[7px] border border-transparent px-2 text-[13px] font-medium text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'session-action-button h-[2.35rem] w-full justify-start gap-2.5 rounded-[var(--radius-xs)] border border-transparent px-2 text-[13px] font-medium text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 
 export function SessionPanel({
   savedSessions,
@@ -119,7 +119,7 @@ export function SessionPanel({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-[10px] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+              className="h-8 w-8 rounded-[var(--radius-ctl)] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
               onClick={onToggleCollapsed}
               aria-label="收起侧边栏"
             >
@@ -161,7 +161,7 @@ export function SessionPanel({
                 <div
                   key={item.id}
                   className={cn(
-                    'group relative flex items-center gap-1 rounded-[10px] transition-colors',
+                    'group relative flex items-center gap-1 rounded-[var(--radius-ctl)] transition-colors',
                     active ? 'bg-[var(--bg-soft)]' : 'hover:bg-[var(--bg-soft)]',
                   )}
                 >

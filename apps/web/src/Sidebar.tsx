@@ -78,7 +78,7 @@ function AppSwitcherButton({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex w-full min-w-0 items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <span className="truncate text-[15px] font-bold tracking-tight">
           {current?.label ?? '0xNuller'}
@@ -94,7 +94,7 @@ function AppSwitcherButton({
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-[calc(100%+4px)] z-[var(--z-shell)] w-[220px] rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
+          className="absolute left-0 top-[calc(100%+4px)] z-[var(--z-shell)] w-[220px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
         >
           {MODULES.map((m) => (
             <button
@@ -106,7 +106,7 @@ function AppSwitcherButton({
                 setOpen(false);
               }}
               className={
-                'flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] ' +
+                'flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] ' +
                 (m.id === activeId ? 'bg-[var(--accent-soft)]' : '')
               }
             >
@@ -189,7 +189,7 @@ function AccountButton({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex w-full items-center gap-2 rounded-[10px] px-2 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <Avatar name={user?.username ?? null} size={26} />
         <span className="min-w-0 flex-1 truncate text-sm">{user?.displayName ?? '未登录'}</span>
@@ -198,7 +198,7 @@ function AccountButton({
       {open && (
         <div
           role="menu"
-          className="absolute bottom-[calc(100%+4px)] left-0 z-[var(--z-shell)] w-[200px] rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
+          className="absolute bottom-[calc(100%+4px)] left-0 z-[var(--z-shell)] w-[200px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
         >
           {items.map((it) => (
             <button
@@ -209,7 +209,7 @@ function AccountButton({
                 setOpen(false);
                 it.run();
               }}
-              className="flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+              className="flex w-full items-center gap-2.5 rounded-[var(--radius-ctl)] px-2.5 py-2 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
             >
               <span className="shrink-0 text-[var(--text-faint)]">{it.icon}</span>
               {it.label}
@@ -255,7 +255,7 @@ export function Sidebar({
           type="button"
           onClick={onToggleCollapsed}
           aria-label="展开侧边栏"
-          className="rounded-[10px] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+          className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
         >
           <PanelLeftClose className="h-4 w-4 rotate-180" />
         </button>
@@ -274,7 +274,7 @@ export function Sidebar({
           type="button"
           onClick={onToggleCollapsed}
           aria-label="收起侧边栏"
-          className="shrink-0 rounded-[10px] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+          className="shrink-0 rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
         >
           <PanelLeftClose className="h-4 w-4" />
         </button>

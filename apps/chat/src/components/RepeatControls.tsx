@@ -116,7 +116,7 @@ export function IntensityRing({
           strokeDasharray={RING_C}
           strokeDashoffset={offset}
           transform="rotate(-90 48 48)"
-          className="transition-all duration-150"
+          className="transition-all duration-[var(--dur)]"
         />
       </svg>
       <div className="flex flex-col items-center">

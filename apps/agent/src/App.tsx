@@ -831,7 +831,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           <button
             type="button"
             onClick={() => setDebugPanelOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
             title="调试面板"
           >
             <Bug className="h-4 w-4" />
@@ -898,7 +898,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                     选择历史对话，或者新建一条会话
                   </SheetDescription>
                 </div>
-                <SheetClose className="scale-90 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+                <SheetClose className="scale-90 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
                   <X className="h-5 w-5" />
                   <span className="sr-only">关闭</span>
                 </SheetClose>
@@ -926,7 +926,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           className={
             inShell
               ? 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden'
-              : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-300 ease-out lg:grid-cols-[var(--sidebar-w-agent)_minmax(0,1fr)]'
+              : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-[var(--dur-slow)] ease-out lg:grid-cols-[var(--sidebar-w-agent)_minmax(0,1fr)]'
           }
           style={
             {

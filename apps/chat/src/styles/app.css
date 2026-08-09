@@ -10,14 +10,14 @@
   10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
   20%, 40%, 60%, 80% { transform: translateX(5px); }
 }
-.shake-anim { animation: shake 0.6s ease-in-out; }
+.shake-anim { animation: shake var(--dur-enter) ease-in-out; }
 
 /* Message entrance animation */
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-msg-in { animation: msg-in 0.25s ease-out; }
+.animate-msg-in { animation: msg-in var(--dur-slow) ease-out; }
 
 /* fade-up and .animate-fade-up come from @0xnullai/ui/styles/animations.css.
    This file used to carry a second keyframes of the same name (8px offset vs the
@@ -34,7 +34,7 @@
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color var(--dur), border-color var(--dur);
   border-bottom: 2px solid transparent;
 }
 .mobile-tab.active {
@@ -63,7 +63,8 @@ input[type='range'] {
   appearance: none;
   width: 100%;
   height: 6px;
-  border-radius: 3px;
+  /* A pill, not a step on the radius scale — 3px was just half the height. */
+  border-radius: 999px;
   background: var(--bg-soft);
   outline: none;
 }
@@ -75,7 +76,7 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  transition: box-shadow 0.15s;
+  transition: box-shadow var(--dur);
 }
 input[type='range']::-webkit-slider-thumb:hover {
   box-shadow: 0 0 0 4px var(--ring);
@@ -104,7 +105,7 @@ input[type='range']::-moz-range-thumb {
   border: 3px solid var(--surface-border);
   background: var(--bg-elevated);
   gap: 2px;
-  transition: border-color 0.2s;
+  transition: border-color var(--dur-mid);
 }
 .channel-ring:hover {
   border-color: var(--accent);
@@ -124,7 +125,7 @@ input[type='range']::-moz-range-thumb {
   font-size: 20px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--dur);
   user-select: none;
 }
 .strength-btn:hover {
@@ -150,7 +151,7 @@ input[type='range']::-moz-range-thumb {
   background: var(--bg-elevated);
   color: var(--text-soft);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--dur);
 }
 .wave-card:hover {
   background: var(--bg-soft);

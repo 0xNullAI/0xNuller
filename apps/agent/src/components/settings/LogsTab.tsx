@@ -61,7 +61,7 @@ function CollapsibleJson({
 }) {
   return (
     <details
-      className="rounded-[8px] border border-[var(--surface-border)] bg-[var(--bg-soft)]"
+      className="rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-soft)]"
       open={defaultOpen}
     >
       <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-[var(--text-soft)] hover:text-[var(--text)]">
@@ -119,7 +119,7 @@ export function ModelLogsTab({
             {sortedTurns.map((turn) => (
               <div
                 key={turn.id}
-                className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3"
+                className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3"
               >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-soft)]">
                   <span className="font-medium text-[var(--text)]">

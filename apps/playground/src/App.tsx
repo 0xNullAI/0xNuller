@@ -21,7 +21,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setOpenId(null)}
-            className="flex items-center gap-1.5 rounded-[10px] px-2 py-1 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+            className="flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-2 py-1 text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
           >
             <ArrowLeft className="h-4 w-4" />
             全部游戏
@@ -59,7 +59,7 @@ export default function App() {
                 type="button"
                 disabled={!ready}
                 onClick={() => setOpenId(game.id)}
-                className="flex flex-col gap-1.5 rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3 text-left transition-colors enabled:hover:border-[var(--accent)] disabled:opacity-55"
+                className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3 text-left transition-colors enabled:hover:border-[var(--accent)] disabled:opacity-55"
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">{game.name}</span>

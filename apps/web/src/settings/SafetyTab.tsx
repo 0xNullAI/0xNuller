@@ -133,7 +133,7 @@ function Group({
   onChange: (patch: Partial<DeviceSafetySettings>) => void;
 }) {
   return (
-    <section className="rounded-[14px] border border-[var(--surface-border)] p-4">
+    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <h3 className="text-sm font-semibold">{title}</h3>
       {desc && <p className="mt-1 text-xs text-[var(--text-faint)]">{desc}</p>}
       <div className="mt-2 divide-y divide-[var(--surface-border)]">
@@ -161,7 +161,7 @@ export function SafetyTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="rounded-[10px] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
+      <p className="rounded-[var(--radius-ctl)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
         这些上限在<strong className="font-semibold text-[var(--text)]">设备持有者一侧</strong>
         执行。来自房间里其他人、AI 或游戏逻辑的数值都会被钳制到这里设定的范围内—— 它们说了不算。
       </p>
@@ -176,7 +176,7 @@ export function SafetyTab() {
 
       <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch} />
 
-      <section className="rounded-[14px] border border-[var(--surface-border)] p-4">
+      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
         <label className="flex items-center justify-between gap-4">
           <span>
             <span className="block text-sm">脉冲需要通道已在输出</span>
@@ -203,7 +203,7 @@ export function SafetyTab() {
         onChange={patch}
       />
 
-      <section className="rounded-[14px] border border-[var(--surface-border)] p-4">
+      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
         <h3 className="text-sm font-semibold">权限与生命周期</h3>
 
         <label className="mt-3 grid grid-cols-[1fr_auto] items-center gap-4">
@@ -218,7 +218,7 @@ export function SafetyTab() {
             onChange={(e) =>
               patch({ permissionMode: e.target.value as DeviceSafetySettings['permissionMode'] })
             }
-            className="rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
+            className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
           >
             <option value="confirm">每次确认</option>
             <option value="timed">确认后 5 分钟免确认</option>

@@ -241,7 +241,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
               <div
                 key={preset.id}
                 className={cn(
-                  'group flex w-full min-w-0 items-center gap-2 rounded-[10px] px-3 py-2.5 transition-colors',
+                  'group flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2.5 transition-colors',
                   active
                     ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]'
                     : 'hover:bg-[var(--bg-soft)]',
@@ -299,7 +299,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
               return (
                 <div
                   key={preset.id}
-                  className="space-y-2 rounded-[12px] border border-[var(--accent)] bg-[var(--bg-strong)] p-3"
+                  className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--bg-strong)] p-3"
                 >
                   <div className="flex gap-2">
                     <EmojiPicker value={editIcon} onChange={setEditIcon} />
@@ -335,7 +335,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
               <div
                 key={preset.id}
                 className={cn(
-                  'group flex w-full min-w-0 items-center gap-2 rounded-[10px] px-3 py-2.5 transition-colors',
+                  'group flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2.5 transition-colors',
                   active
                     ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]'
                     : 'hover:bg-[var(--bg-soft)]',
@@ -378,7 +378,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
         </div>
 
         {creating ? (
-          <div className="space-y-2 rounded-[12px] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3">
+          <div className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3">
             <div className="flex gap-2">
               <EmojiPicker value={newIcon} onChange={setNewIcon} />
               <Input
@@ -421,7 +421,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
           <div className="flex gap-2">
             <Button
               variant="ghost"
-              className="flex-1 justify-center gap-2 rounded-[10px] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               onClick={startCreate}
             >
               <Plus className="h-4 w-4" />
@@ -429,7 +429,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
             </Button>
             <Button
               variant="ghost"
-              className="flex-1 justify-center gap-2 rounded-[10px] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               onClick={() => setMarketOpen(true)}
             >
               <Store className="h-4 w-4" />
@@ -457,20 +457,20 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: str
     <div ref={containerRef} className="relative shrink-0">
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg)] text-lg transition-colors hover:border-[var(--accent)]"
+        className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg)] text-lg transition-colors hover:border-[var(--accent)]"
         onClick={() => setOpen((prev) => !prev)}
         aria-label="选择图标"
       >
         {value}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 grid w-[188px] grid-cols-6 gap-0.5 rounded-[12px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]">
+        <div className="absolute left-0 top-full z-50 mt-1 grid w-[188px] grid-cols-6 gap-0.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]">
           {EMOJI_OPTIONS.map((emoji) => (
             <button
               key={emoji}
               type="button"
               className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-[6px] text-base transition-colors hover:bg-[var(--bg-soft)]',
+                'flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-base transition-colors hover:bg-[var(--bg-soft)]',
                 value === emoji && 'bg-[var(--accent-soft)]',
               )}
               onClick={() => {

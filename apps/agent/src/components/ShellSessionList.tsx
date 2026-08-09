@@ -32,7 +32,7 @@ export function ShellSessionList({
       <button
         type="button"
         onClick={onCreate}
-        className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+        className="flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
         新对话
@@ -42,7 +42,7 @@ export function ShellSessionList({
         <div
           key={session.id}
           className={
-            'group flex items-center gap-1 rounded-[10px] pr-1 transition-colors ' +
+            'group flex items-center gap-1 rounded-[var(--radius-ctl)] pr-1 transition-colors ' +
             (session.id === activeId ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-soft)]')
           }
         >
@@ -61,7 +61,7 @@ export function ShellSessionList({
             // Always showing it would make the list look like a row of delete buttons;
             // it only appears on hover/focus, but keyboard users still reach it through
             // focus-visible.
-            className="shrink-0 rounded-[8px] p-1.5 text-[var(--text-faint)] opacity-0 transition-opacity hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100"
+            className="shrink-0 rounded-[var(--radius-xs)] p-1.5 text-[var(--text-faint)] opacity-0 transition-opacity hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>

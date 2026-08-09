@@ -48,7 +48,7 @@ export function DebugPanel({
         role="dialog"
         aria-modal="true"
         aria-label="调试面板"
-        className="flex h-[min(680px,calc(100vh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
+        className="flex h-[min(680px,calc(100vh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
         style={{ '--settings-surface': 'var(--bg-elevated)' } as React.CSSProperties}
       >
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[180px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
@@ -63,7 +63,7 @@ export function DebugPanel({
               onClick={() => setTab(t.id)}
               aria-current={tab === t.id ? 'page' : undefined}
               className={
-                'flex shrink-0 items-center gap-2 rounded-[10px] px-3 py-2 text-sm transition-colors ' +
+                'flex shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors ' +
                 (tab === t.id
                   ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
                   : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
@@ -81,7 +81,7 @@ export function DebugPanel({
               type="button"
               onClick={onClose}
               aria-label="关闭调试面板"
-              className="rounded-[10px] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+              className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
             >
               <X className="h-4 w-4" />
             </button>

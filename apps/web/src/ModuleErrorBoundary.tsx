@@ -54,13 +54,13 @@ export class ModuleErrorBoundary extends Component<Props, State> {
             这个模块出错了，其余模块不受影响。为安全起见，所有设备输出已经停止。
           </p>
         </div>
-        <pre className="max-w-full overflow-x-auto rounded-[10px] bg-[var(--bg-soft)] px-3 py-2 text-left text-xs text-[var(--text-faint)]">
+        <pre className="max-w-full overflow-x-auto rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-left text-xs text-[var(--text-faint)]">
           {error.message}
         </pre>
         <button
           type="button"
           onClick={() => this.setState({ error: null })}
-          className="rounded-[10px] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
+          className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
         >
           重试
         </button>

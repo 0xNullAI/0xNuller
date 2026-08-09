@@ -53,7 +53,7 @@ function kindLabel(kind: string): string {
 
 function DeviceChip({ device }: { device: DeviceSummary }) {
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-2 rounded-[10px] bg-[var(--bg-soft)] px-2.5 py-1.5">
+    <div className="flex min-w-0 shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-2.5 py-1.5">
       <span
         className={
           'h-1.5 w-1.5 shrink-0 rounded-full ' +
@@ -104,7 +104,7 @@ export function DeviceBar() {
             setStopping(false);
           }
         }}
-        className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[var(--danger-button)] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--danger-button-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
+        className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--danger-button)] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--danger-button-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
         title={`立刻停止全部输出（${total} 台设备）`}
       >
         <Square className="h-3.5 w-3.5 fill-current" />

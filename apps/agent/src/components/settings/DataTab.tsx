@@ -62,7 +62,7 @@ export function DataTab({ sessions, onExport, onImport }: DataTabProps) {
               {sessions.map((session) => (
                 <label
                   key={session.id}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-[8px] px-1.5 py-2 transition-colors hover:bg-[var(--bg-soft)]"
+                  className="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-xs)] px-1.5 py-2 transition-colors hover:bg-[var(--bg-soft)]"
                 >
                   <Checkbox
                     checked={selected.has(session.id)}

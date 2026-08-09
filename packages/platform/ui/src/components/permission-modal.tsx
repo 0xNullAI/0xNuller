@@ -51,7 +51,7 @@ export function PermissionModal({
         aria-modal="true"
         aria-label="权限请求"
         ref={panelRef}
-        className="w-[min(320px,calc(100vw-2rem))] rounded-[16px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
+        className="w-[min(320px,calc(100vw-2rem))] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
         tabIndex={-1}
       >
         <div className="text-center text-xs font-medium text-[var(--accent)]">权限请求</div>
@@ -63,12 +63,12 @@ export function PermissionModal({
         <ArgsCollapsible args={args} />
 
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button className="h-11 rounded-[10px] text-[13px] font-medium" onClick={onAllowOnce}>
+          <Button className="h-11 rounded-[var(--radius-ctl)] text-[13px] font-medium" onClick={onAllowOnce}>
             仅本次允许
           </Button>
           <Button
             variant="destructive"
-            className="h-11 rounded-[10px] text-[13px] font-medium"
+            className="h-11 rounded-[var(--radius-ctl)] text-[13px] font-medium"
             onClick={onDeny}
           >
             拒绝
@@ -93,14 +93,14 @@ export function PermissionModal({
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Button
                 variant="secondary"
-                className="rounded-[10px] text-[12px]"
+                className="rounded-[var(--radius-ctl)] text-[12px]"
                 onClick={onAllowTimed}
               >
                 允许 5 分钟
               </Button>
               <Button
                 variant="secondary"
-                className="rounded-[10px] text-[12px]"
+                className="rounded-[var(--radius-ctl)] text-[12px]"
                 onClick={onAllowSession}
               >
                 允许本会话
@@ -129,7 +129,7 @@ function ArgsCollapsible({ args }: { args: Record<string, unknown> }) {
         详细参数
       </button>
       {open && (
-        <pre className="mt-2 max-h-[160px] overflow-auto rounded-[8px] bg-[var(--bg-strong)] p-3 text-[11px] leading-[1.4] text-[var(--text-soft)]">
+        <pre className="mt-2 max-h-[160px] overflow-auto rounded-[var(--radius-xs)] bg-[var(--bg-strong)] p-3 text-[11px] leading-[1.4] text-[var(--text-soft)]">
           {JSON.stringify(args, null, 2)}
         </pre>
       )}
