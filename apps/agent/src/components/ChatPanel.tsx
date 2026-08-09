@@ -17,8 +17,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { ChannelStrengthBar, DeviceStatusChip, Button, Input, useInShell } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { ChannelStrengthBar, DeviceStatusChip, Button, Input, cn, useInShell } from '@0xnullai/ui';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
 

@@ -23,7 +23,6 @@
  * / `TauriBlecCivetEdgingClient` (via the shared `TauriBlecSensorClient`
  * base) for `paw-prints` / `civet-edging`.
  */
-import type { DeviceKind } from '@dg-kit/core';
 import {
   CIVET_DEVICE_NAME_PREFIX,
   OPOSSUM_DEVICE_NAME_PREFIX,
@@ -31,8 +30,7 @@ import {
   V2_DEVICE_NAME_PREFIX,
   V3_DEVICE_NAME_PREFIX,
   detectDeviceKind,
-  type BluetoothDeviceLike,
-  type BluetoothRemoteGATTServerLike,
+  type RequestedDevice,
 } from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
 import { resolvePluginBlec } from './plugin-blec.js';
@@ -69,11 +67,8 @@ export interface RequestDgLabDeviceTauriOptions {
   scanDurationMs?: number;
 }
 
-export interface RequestedDgLabDeviceTauri {
-  kind: DeviceKind;
-  device: BluetoothDeviceLike;
-  server: BluetoothRemoteGATTServerLike;
-}
+/** @see RequestedDevice — the shared shape every cross-kind picker returns. */
+export type RequestedDgLabDeviceTauri = RequestedDevice;
 
 /**
  * Opens ONE plugin-blec scan scoped to every known DG-Lab device kind,

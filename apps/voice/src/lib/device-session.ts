@@ -31,6 +31,7 @@ import {
   type BluetoothRemoteGATTServerLike,
   type OpossumClient,
   type OpossumState,
+  type RequestedDevice,
 } from '@dg-kit/protocol';
 import type { DeviceClient, DeviceKind, DeviceState } from '@dg-kit/core';
 import {
@@ -54,11 +55,12 @@ export interface GattConnectable {
   connectDevice(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void>;
 }
 
-export interface RequestedDevice {
-  kind: DeviceKind;
-  device: BluetoothDeviceLike;
-  server: BluetoothRemoteGATTServerLike;
-}
+/**
+ * A picked, already-GATT-connected DG-Lab device plus its identified kind.
+ * Declared in `@dg-kit/protocol` (both pickers return it); re-exported so
+ * transport implementations only need this module.
+ */
+export type { RequestedDevice };
 
 export interface DeviceSessionTransport {
   coyote: DeviceClient & GattConnectable;
