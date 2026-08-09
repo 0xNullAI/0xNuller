@@ -90,7 +90,6 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   });
 }
 
-
 /**
  * jsdom ships no IndexedDB, and the shared waveform library is backed by it.
  * Installed only when missing, so a real implementation is left alone.

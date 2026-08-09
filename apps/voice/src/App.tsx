@@ -1,11 +1,5 @@
 import { Bluetooth } from 'lucide-react';
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  ModuleActions,
-  useSafetySession,
-} from '@0xnullai/ui';
+import { Alert, AlertDescription, Button, ModuleActions, useSafetySession } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -83,14 +77,12 @@ export function App({ transport }: AppProps = {}) {
   // hung 'connecting' used to latch these buttons disabled forever. Connecting
   // a device is always allowed; it gates on its own in-flight flag instead.
 
-
   // The theme is held solely by @0xnullai/ui's shared store (one key and one
   // DOM write point shared across modules). This only subscribes. The old
   // comment here said "nothing else touches data-theme at runtime" — true for a
   // standalone deployment, no longer true once mounted inside the unified
   // shell, which is exactly why it had to be consolidated.
   useTheme();
-
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
@@ -107,36 +99,34 @@ export function App({ transport }: AppProps = {}) {
         </Button>
       </ModuleActions>
 
+      <DeviceStatusBar
+        state={state}
+        coyoteSafety={settings.coyoteSafety}
+        opossumSafety={settings.opossumSafety}
+        onDisconnectCoyote={() => void disconnectCoyote()}
+        onDisconnectOpossum={() => void disconnectOpossum()}
+      />
 
-          <DeviceStatusBar
-            state={state}
-            coyoteSafety={settings.coyoteSafety}
-            opossumSafety={settings.opossumSafety}
-            onDisconnectCoyote={() => void disconnectCoyote()}
-            onDisconnectOpossum={() => void disconnectOpossum()}
-          />
-
-          {/* justify-center, because before a call starts this whole module is
+      {/* justify-center, because before a call starts this whole module is
               one card. Top-aligned it sat against the device bar with most of
               a 900px window empty underneath, which reads as a page that
               stopped loading. min-h-0 keeps it scrollable once a running call
               makes the content taller than the viewport. */}
-          <main className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto px-4 py-6">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+      <main className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto px-4 py-6">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-            <CallPanel
-              call={call.state}
-              providerId={settings.activeProviderId}
-              onStart={() => void call.startCall()}
-              onHangUp={() => void call.hangUp()}
-              onEmergencyStop={() => void emergencyStop()}
-            />
-          </main>
-
+        <CallPanel
+          call={call.state}
+          providerId={settings.activeProviderId}
+          onStart={() => void call.startCall()}
+          onHangUp={() => void call.hangUp()}
+          onEmergencyStop={() => void emergencyStop()}
+        />
+      </main>
 
       {call.pendingPermission && (
         <PermissionModal
@@ -150,8 +140,6 @@ export function App({ transport }: AppProps = {}) {
           onAllowSession={() => call.resolvePermission({ type: 'approve-scoped' })}
         />
       )}
-
-
     </div>
   );
 }

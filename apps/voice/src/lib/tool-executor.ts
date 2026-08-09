@@ -47,7 +47,6 @@ export interface ToolExecutionResult {
   output: string;
 }
 
-
 const SHOCK_TOOL_NAMES = new Set([
   'shock_start',
   'shock_stop',

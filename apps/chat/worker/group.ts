@@ -116,9 +116,9 @@ export async function enforceMessageRetention(
   if (excess <= 0) return [];
   const doomed = messages.oldest(excess);
   if (doomed.length === 0) return [];
-  const mediaIds = doomed.map(m => m.mediaId).filter((id): id is string => !!id);
+  const mediaIds = doomed.map((m) => m.mediaId).filter((id): id is string => !!id);
   if (mediaIds.length > 0) await media.delete(mediaIds);
-  const ids = doomed.map(m => m.id);
+  const ids = doomed.map((m) => m.id);
   messages.remove(ids);
   return ids;
 }
@@ -146,14 +146,14 @@ export function orphanMediaIds(
   uploadedBefore: number,
 ): string[] {
   return objects
-    .filter(o => !referenced.has(o.id) && o.uploadedAt < uploadedBefore)
-    .map(o => o.id);
+    .filter((o) => !referenced.has(o.id) && o.uploadedAt < uploadedBefore)
+    .map((o) => o.id);
 }
 
 // -- Internals --
 
 function hex(bytes: Uint8Array): string {
-  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Compare two hex digests without leaking how far the match got. */

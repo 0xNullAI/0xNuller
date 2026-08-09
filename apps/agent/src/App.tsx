@@ -944,16 +944,16 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             }
           >
             <SessionPanel
-                savedSessions={savedSessions}
-                activeSessionId={activeSessionId}
-                onSelectSession={selectSession}
-                onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-                onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openShellSettings()}
-                collapsed={sidebarCollapsed}
-                onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
-                detached={false}
-              />
+              savedSessions={savedSessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={selectSession}
+              onDeleteSession={(sessionId) => void deleteSession(sessionId)}
+              onCreateSession={() => void createNewSession()}
+              onOpenSettings={() => openShellSettings()}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+              detached={false}
+            />
           </aside>
 
           {/* Chat section */}
@@ -970,44 +970,44 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onReload={() => window.location.reload()}
             />
             <ChatPanel
-                activeSessionId={activeSessionId}
-                text={text}
-                statusMessage={statusMessage}
-                onTextChange={setText}
-                onAbortReply={() => void abortCurrentReply()}
-                onToggleVoiceMode={() => void toggleVoiceMode()}
-                onSend={() => void send()}
-                busy={busy}
-                speechRecognitionEnabled={settings.speechRecognitionEnabled}
-                voiceMode={voiceMode}
-                voiceState={voiceState}
-                speechRecognitionSupported={speechCapabilities.recognitionSupported}
-                session={session}
-                traceFeed={traceFeed}
-                streamingAssistantText={streamingAssistantText}
-                deviceState={deviceState}
-                maxStrengthA={settings.maxStrengthA}
-                maxStrengthB={settings.maxStrengthB}
-                opossumState={opossumState}
-                maxOpossumIntensityA={settings.maxOpossumIntensityA}
-                maxOpossumIntensityB={settings.maxOpossumIntensityB}
-                pawPrintsState={pawPrintsState}
-                civetEdgingState={civetEdgingState}
-                onConnect={() => void connect()}
-                onDisconnectDevice={() => void disconnectDevice()}
-                onDisconnectOpossum={() => void disconnectOpossum()}
-                onDisconnectPawPrints={() => void disconnectPawPrints()}
-                onDisconnectCivetEdging={() => void disconnectCivetEdging()}
-                onEmergencyStop={() => void stop()}
-                onOpenSidebar={() => setSidebarOpen(true)}
-                onOpenSettings={() => openShellSettings('scenes')}
-                promptPresetId={sceneLib.selectedId}
-                builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
-                  (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
-                )}
-                savedPresets={sceneLib.scenes}
-                onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
-              />
+              activeSessionId={activeSessionId}
+              text={text}
+              statusMessage={statusMessage}
+              onTextChange={setText}
+              onAbortReply={() => void abortCurrentReply()}
+              onToggleVoiceMode={() => void toggleVoiceMode()}
+              onSend={() => void send()}
+              busy={busy}
+              speechRecognitionEnabled={settings.speechRecognitionEnabled}
+              voiceMode={voiceMode}
+              voiceState={voiceState}
+              speechRecognitionSupported={speechCapabilities.recognitionSupported}
+              session={session}
+              traceFeed={traceFeed}
+              streamingAssistantText={streamingAssistantText}
+              deviceState={deviceState}
+              maxStrengthA={settings.maxStrengthA}
+              maxStrengthB={settings.maxStrengthB}
+              opossumState={opossumState}
+              maxOpossumIntensityA={settings.maxOpossumIntensityA}
+              maxOpossumIntensityB={settings.maxOpossumIntensityB}
+              pawPrintsState={pawPrintsState}
+              civetEdgingState={civetEdgingState}
+              onConnect={() => void connect()}
+              onDisconnectDevice={() => void disconnectDevice()}
+              onDisconnectOpossum={() => void disconnectOpossum()}
+              onDisconnectPawPrints={() => void disconnectPawPrints()}
+              onDisconnectCivetEdging={() => void disconnectCivetEdging()}
+              onEmergencyStop={() => void stop()}
+              onOpenSidebar={() => setSidebarOpen(true)}
+              onOpenSettings={() => openShellSettings('scenes')}
+              promptPresetId={sceneLib.selectedId}
+              builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
+                (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
+              )}
+              savedPresets={sceneLib.scenes}
+              onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
+            />
           </section>
         </section>
       </main>

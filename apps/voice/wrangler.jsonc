@@ -19,7 +19,7 @@
 
   // 体验版计量 Durable Object：每个激活密钥一个实例，管并发 / 单次时长 / 每日总量。
   "durable_objects": {
-    "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }]
+    "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }],
   },
   // SQLite-backed DO (`new_sqlite_classes`, not `new_classes`): required on the
   // free Workers plan, and the only variant that supports the free tier. Our
@@ -35,10 +35,10 @@
     "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
     "TRIAL_DISABLED": "0",
     // 统一域。漏掉的话体验版一律 403，而前端只会显示「连接失败」。
-    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com"
+    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com",
   },
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

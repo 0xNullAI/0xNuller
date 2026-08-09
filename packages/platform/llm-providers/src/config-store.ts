@@ -17,7 +17,7 @@ import { FREE_TRIAL_MODEL, FREE_TRIAL_PROXY_URL, getProviderDefinition } from '.
  * is not encrypted storage — same-origin scripts can read it and so can
  * browser extensions. Deployments that truly need secrecy should run their
  * own proxy so the key only exists server-side (the free provider works
- * that way). 
+ * that way).
  */
 
 export interface LlmConfig {

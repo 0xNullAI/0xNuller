@@ -38,9 +38,7 @@ function roomUrl(code: string, peerId: string): string {
   // Through apiWsUrl, not location.host: the Tauri WebView's origin is a
   // local scheme, so a same-origin ws:// dials tauri.localhost and the room
   // never connects. Android has no hot update, so that ships and stays.
-  return apiWsUrl(
-    `/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}`,
-  );
+  return apiWsUrl(`/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}`);
 }
 
 /**
@@ -50,9 +48,7 @@ function roomUrl(code: string, peerId: string): string {
  * Authorization header, and the Android shell can never hold the web domain's cookie.
  */
 function dmUrl(ticket: string, peerId: string): string {
-  return apiWsUrl(
-    `/ws/dm?ticket=${encodeURIComponent(ticket)}&id=${encodeURIComponent(peerId)}`,
-  );
+  return apiWsUrl(`/ws/dm?ticket=${encodeURIComponent(ticket)}&id=${encodeURIComponent(peerId)}`);
 }
 
 export function connectRoom(opts: RoomConnectOptions): RoomTransport {

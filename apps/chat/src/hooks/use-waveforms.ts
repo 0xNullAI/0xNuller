@@ -36,7 +36,9 @@ export function useWaveforms() {
     const refresh = () => {
       void Promise.all([listCustomWaveforms(), listHiddenBuiltins()]).then(([custom, hidden]) => {
         if (!alive) return;
-        setCustomWaveforms(custom.map((w) => ({ ...w, description: w.description ?? '', custom: true })));
+        setCustomWaveforms(
+          custom.map((w) => ({ ...w, description: w.description ?? '', custom: true })),
+        );
         setHiddenBuiltinIds(hidden);
       });
     };

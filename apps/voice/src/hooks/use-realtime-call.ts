@@ -76,23 +76,31 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     pending?.resolve(decision);
   }, []);
 
-  const hangUp = useCallback(async (reason?: string) => {
-    // A dialog still on screen when the call ends must not leave its promise
-    // dangling — the tool executor would await it forever.
-    const stranded = pendingPermissionRef.current;
-    pendingPermissionRef.current = null;
-    setPendingPermission(null);
-    stranded?.resolve({ type: 'deny', reason: '通话已结束' });
+  const hangUp = useCallback(
+    async (reason?: string) => {
+      // A dialog still on screen when the call ends must not leave its promise
+      // dangling — the tool executor would await it forever.
+      const stranded = pendingPermissionRef.current;
+      pendingPermissionRef.current = null;
+      setPendingPermission(null);
+      stranded?.resolve({ type: 'deny', reason: '通话已结束' });
 
-    guardStopRef.current?.();
-    guardStopRef.current = null;
-    deviceWatchStopRef.current?.();
-    deviceWatchStopRef.current = null;
-    sessionRef.current?.disconnect();
-    sessionRef.current = null;
-    await deviceSession.emergencyStop();
-    setState((prev) => ({ ...prev, status: 'ended', error: reason ?? prev.error, speaking: false }));
-  }, [deviceSession]);
+      guardStopRef.current?.();
+      guardStopRef.current = null;
+      deviceWatchStopRef.current?.();
+      deviceWatchStopRef.current = null;
+      sessionRef.current?.disconnect();
+      sessionRef.current = null;
+      await deviceSession.emergencyStop();
+      setState((prev) => ({
+        ...prev,
+        status: 'ended',
+        error: reason ?? prev.error,
+        speaking: false,
+      }));
+    },
+    [deviceSession],
+  );
 
   const startCall = useCallback(async () => {
     setState({
@@ -108,7 +116,11 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       providerId: settings.activeProviderId,
     });
     if (!providerSettings.apiKey) {
-      setState((prev) => ({ ...prev, status: 'idle', error: '请先在设置里填写当前 provider 的 API Key' }));
+      setState((prev) => ({
+        ...prev,
+        status: 'idle',
+        error: '请先在设置里填写当前 provider 的 API Key',
+      }));
       return;
     }
 
@@ -150,7 +162,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       session: deviceSession,
       registry,
       policyEngine: new PolicyEngine(createDefaultPolicyRules(settings.coyoteSafety)),
-      opossumPolicyEngine: new OpossumPolicyEngine(createDefaultOpossumPolicyRules(settings.opossumSafety)),
+      opossumPolicyEngine: new OpossumPolicyEngine(
+        createDefaultOpossumPolicyRules(settings.opossumSafety),
+      ),
       permission,
       deviceQueue: new DeviceCommandQueue(deviceSession.coyote),
       opossumQueue: new OpossumCommandQueue(deviceSession.opossum),
@@ -160,7 +174,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     const events: RealtimeSessionEvents = {
       onOpen: () => setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() })),
       onClose: (reason) =>
-        setState((prev) => (prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason })),
+        setState((prev) =>
+          prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason },
+        ),
       onError: (error) =>
         setState((prev) => ({ ...prev, error: `服务端返回错误：${error.message}` })),
       onSpeakingChange: (speaking) => setState((prev) => ({ ...prev, speaking })),
@@ -201,7 +217,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
 
       await session.connect();
       sessionRef.current = session;
-      guardStopRef.current = new DeviceLifecycleGuard({ onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断') }).start();
+      guardStopRef.current = new DeviceLifecycleGuard({
+        onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断'),
+      }).start();
 
       // Keep the model's [当前设备状态] block current as strength/connection
       // state changes mid-call — debounced so a burst of rapid state changes

@@ -80,8 +80,7 @@ export function dmTicketRevoked(iat: number, revokedAt: number | undefined): boo
 export type DmAuthFailure = { ok: false; status: number; message: string };
 
 export type DmUpgradeAuth =
-  | { ok: true; code: string; iat: number; self: string; peer: string }
-  | DmAuthFailure;
+  { ok: true; code: string; iat: number; self: string; peer: string } | DmAuthFailure;
 
 /**
  * Decide whether a WebSocket upgrade may enter a DM's Durable Object.

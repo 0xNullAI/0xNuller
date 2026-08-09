@@ -25,8 +25,7 @@ let failedLabels: string[] = [];
 const listeners = new Set<() => void>();
 
 function publish(next: string[]): void {
-  const same =
-    next.length === failedLabels.length && next.every((v, i) => v === failedLabels[i]);
+  const same = next.length === failedLabels.length && next.every((v, i) => v === failedLabels[i]);
   if (same) return;
   failedLabels = next;
   for (const l of listeners) l();

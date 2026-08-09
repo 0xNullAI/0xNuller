@@ -69,7 +69,10 @@ describe('共享波形库', () => {
   it('单条损坏不会拖垮整个库', async () => {
     localStorage.setItem(
       'dg-chat-custom-waveforms',
-      JSON.stringify([{ id: 'ok', name: '好的', frames: [[1, 2]] }, { id: '', name: '', frames: [] }]),
+      JSON.stringify([
+        { id: 'ok', name: '好的', frames: [[1, 2]] },
+        { id: '', name: '', frames: [] },
+      ]),
     );
 
     const list = await listCustomWaveforms();

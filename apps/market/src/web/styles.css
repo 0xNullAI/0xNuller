@@ -1,6 +1,5 @@
 @import '@0xnullai/ui/styles/tokens.css';
 
-
 /* Every rule is nested under .mkt-scope.
  *
  * This stylesheet uses nothing but generic class names — .app / .grid / .btn / .card /
@@ -15,575 +14,594 @@
  * spot fails silently; wrapping only needs one class added on the root element.
  */
 .mkt-scope {
-/* Design tokens come from @0xnullai/ui (verified: the tokens this file used to define are
+  /* Design tokens come from @0xnullai/ui (verified: the tokens this file used to define are
    a strict subset of the shared layer's, with none unique to it). */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-}
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+  }
 
-body {
-  font-family:
-    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  color: var(--text);
-  background: var(--bg);
-}
+  body {
+    font-family:
+      'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
 
-/* Sticky-footer page layout: the content expands, the footer always sits at the bottom */
-.app {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 20px 16px 0;
-  /* Not 100vh: inside the shell the content area is shorter than the viewport (there is a
+  /* Sticky-footer page layout: the content expands, the footer always sits at the bottom */
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px 0;
+    /* Not 100vh: inside the shell the content area is shorter than the viewport (there is a
      device bar above it), so a hard-coded vh overflows and cannot be scrolled to. */
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
 
-/* A single bar. Modeled on DG-Agent's top bar: thin, flush to the edges, separated by a
+  /* A single bar. Modeled on DG-Agent's top bar: thin, flush to the edges, separated by a
    bottom border, taking up no vertical space. */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 10px 0 12px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--surface-border);
-}
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 10px 0 12px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--surface-border);
+  }
 
-.topbar-filters {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 320px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
+  .topbar-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 320px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  flex: none;
-}
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    flex: none;
+  }
 
-/* Segmented control.
+  /* Segmented control.
  *
  * Pulled onto the shared control scale: fully-round pills with a solid accent
  * fill made Market read as a different application from the other five
  * modules, all of which use --radius-ctl with a tinted selected state. The
  * shape and the selected treatment are what the eye compares first, so those
  * are what had to match — the rest of this sheet stays scoped as it is. */
-.seg {
-  display: inline-flex;
-  background: var(--bg-strong);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-ctl);
-  padding: 3px;
-}
-.seg button {
-  border: 0;
-  background: transparent;
-  color: var(--text-soft);
-  padding: 7px 18px;
-  border-radius: var(--radius-xs);
-  font-size: 14px;
-  transition:
-    background-color var(--dur) ease,
-    color var(--dur) ease;
-}
-.seg button.active {
-  background: var(--accent-soft);
-  color: var(--text);
-  font-weight: 500;
-}
+  .seg {
+    display: inline-flex;
+    background: var(--bg-strong);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+    padding: 3px;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--text-soft);
+    padding: 7px 18px;
+    border-radius: var(--radius-xs);
+    font-size: 14px;
+    transition:
+      background-color var(--dur) ease,
+      color var(--dur) ease;
+  }
+  .seg button.active {
+    background: var(--accent-soft);
+    color: var(--text);
+    font-weight: 500;
+  }
 
-/* Two-level tabs: top level + scene sub-filter */
-.tab-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.seg-sub {
-  background: var(--bg-soft);
-}
-.seg-sub button {
-  padding: 5px 14px;
-  font-size: 13px;
-}
+  /* Two-level tabs: top level + scene sub-filter */
+  .tab-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .seg-sub {
+    background: var(--bg-soft);
+  }
+  .seg-sub button {
+    padding: 5px 14px;
+    font-size: 13px;
+  }
 
-/* DG Agent badge / suggested-player-count badge */
-.agent-badge {
-  font-size: 10px;
-  font-weight: 600;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-.player-badge {
-  font-size: 10px;
-  background: var(--bg-soft);
-  border: 1px solid var(--surface-border);
-  color: var(--text-soft);
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-.upload-note {
-  margin: -2px 0 4px;
-  font-size: 12px;
-  color: var(--text-soft);
-}
-.upload-ok {
-  margin: -2px 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent, #2e7d32);
-}
-.manual-toggle {
-  align-self: flex-start;
-  font-size: 13px;
-  padding: 4px 8px;
-}
+  /* DG Agent badge / suggested-player-count badge */
+  .agent-badge {
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .player-badge {
+    font-size: 10px;
+    background: var(--bg-soft);
+    border: 1px solid var(--surface-border);
+    color: var(--text-soft);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .upload-note {
+    margin: -2px 0 4px;
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  .upload-ok {
+    margin: -2px 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent, #2e7d32);
+  }
+  .manual-toggle {
+    align-self: flex-start;
+    font-size: 13px;
+    padding: 4px 8px;
+  }
 
-/* Excludes the structurally different input types, same as the shared
+  /* Excludes the structurally different input types, same as the shared
    base.css. Without the filter this stretched the 角色 AI 可玩 checkbox in
    the upload dialog into a bordered ~34px box; `.role-ai input { width:auto }`
    below only undid the width, not the padding, border and background. */
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
-textarea,
-select {
-  width: 100%;
-  border-radius: var(--radius-ctl);
-  border: 1px solid var(--surface-border);
-  background: var(--bg-strong);
-  color: var(--text);
-  padding: 0.7rem 0.9rem;
-  outline: none;
-  transition:
-    border-color var(--dur) ease,
-    box-shadow var(--dur) ease,
-    background-color var(--dur) ease;
-}
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):focus,
-textarea:focus,
-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--ring);
-}
-.search {
-  flex: 1;
-  min-width: 160px;
-}
-select {
-  width: auto;
-}
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+      [type='color']
+    ),
+  textarea,
+  select {
+    width: 100%;
+    border-radius: var(--radius-ctl);
+    border: 1px solid var(--surface-border);
+    background: var(--bg-strong);
+    color: var(--text);
+    padding: 0.7rem 0.9rem;
+    outline: none;
+    transition:
+      border-color var(--dur) ease,
+      box-shadow var(--dur) ease,
+      background-color var(--dur) ease;
+  }
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+      [type='color']
+    ):focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--ring);
+  }
+  .search {
+    flex: 1;
+    min-width: 160px;
+  }
+  select {
+    width: auto;
+  }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
 
-.card {
-  text-align: left;
-  background: var(--bg-elevated);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  box-shadow: var(--shadow-soft);
-  transition: border-color var(--dur) ease, transform var(--dur-fast) ease, box-shadow var(--dur) ease;
-}
-.card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-panel);
-  transform: translateY(-2px);
-}
-.card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.card-icon {
-  font-size: 20px;
-}
-.card-name {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.card-desc {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 13px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 54px;
-}
-.card-foot {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-faint);
-}
-.wave-canvas {
-  width: 100%;
-  display: block;
-  background: var(--bg-strong);
-  border-radius: var(--radius-sm);
-}
+  .card {
+    text-align: left;
+    background: var(--bg-elevated);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: var(--shadow-soft);
+    transition:
+      border-color var(--dur) ease,
+      transform var(--dur-fast) ease,
+      box-shadow var(--dur) ease;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-panel);
+    transform: translateY(-2px);
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-icon {
+    font-size: 20px;
+  }
+  .card-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-desc {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 13px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 54px;
+  }
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  .wave-canvas {
+    width: 100%;
+    display: block;
+    background: var(--bg-strong);
+    border-radius: var(--radius-sm);
+  }
 
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.tag {
-  font-size: 11px;
-  background: var(--bg-soft);
-  border: 1px solid var(--surface-border);
-  padding: 2px 8px;
-  border-radius: 999px;
-  color: var(--text-soft);
-}
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tag {
+    font-size: 11px;
+    background: var(--bg-soft);
+    border: 1px solid var(--surface-border);
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--text-soft);
+  }
 
-.empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: var(--text-faint);
-  padding: 60px 0;
-}
+  .empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-faint);
+    padding: 60px 0;
+  }
 
-.btn {
-  border: 1px solid var(--surface-border);
-  background: var(--bg-strong);
-  color: var(--text);
-  padding: 0.55rem 1.1rem;
-  border-radius: var(--radius-ctl);
-  font: inherit;
-  transition: border-color var(--dur) ease, background-color var(--dur) ease;
-}
-.btn:hover {
-  border-color: var(--accent);
-}
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--button-text);
-}
-.btn.primary:hover {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-}
-.btn.ghost {
-  background: transparent;
-}
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  background: transparent;
-  border: 0;
-  color: var(--text-faint);
-  font-size: 18px;
-}
-.icon-btn:hover {
-  color: var(--text);
-}
+  .btn {
+    border: 1px solid var(--surface-border);
+    background: var(--bg-strong);
+    color: var(--text);
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius-ctl);
+    font: inherit;
+    transition:
+      border-color var(--dur) ease,
+      background-color var(--dur) ease;
+  }
+  .btn:hover {
+    border-color: var(--accent);
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--button-text);
+  }
+  .btn.primary:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+  }
+  .btn.ghost {
+    background: transparent;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    background: transparent;
+    border: 0;
+    color: var(--text-faint);
+    font-size: 18px;
+  }
+  .icon-btn:hover {
+    color: var(--text);
+  }
 
-.modal {
-  background: var(--bg-elevated);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
-  padding: 22px;
-  width: 100%;
-  max-width: 560px;
-  max-height: min(680px, calc(100dvh - 2rem));
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: var(--shadow-panel);
-}
-.modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.modal-head h2 {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: -0.02em;
-}
-.modal-meta,
-.modal-hint {
-  color: var(--text-faint);
-  font-size: 12px;
-  margin: 0;
-}
-.modal-desc {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text-soft);
-}
-.prompt-box {
-  background: var(--bg-strong);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  max-height: 320px;
-  overflow-y: auto;
-  margin: 0;
-  color: var(--text-soft);
-}
-.modal-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.admin-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px dashed var(--surface-border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-strong);
-}
-.admin-edit-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-soft);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 13px;
-}
-.field > span {
-  color: var(--text-soft);
-}
-.row {
-  display: flex;
-  gap: 12px;
-}
-.row .field {
-  flex: 1;
-}
-.icon-field {
-  flex: 0 0 80px;
-}
-.file-drop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  border: 1px dashed var(--surface-border);
-  border-radius: var(--radius-sm);
-  padding: 0.7rem 1rem;
-  color: var(--text-soft);
-  font-size: 13px;
-  transition: border-color var(--dur) ease, color var(--dur) ease;
-}
-.file-drop:hover {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-.file-input-hidden {
-  display: none;
-}
-
-.preview-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.preview-wrap small {
-  color: var(--text-faint);
-}
-.error {
-  color: var(--danger);
-  font-size: 13px;
-  margin: 0;
-}
-
-.foot {
-  margin-top: auto;
-  text-align: center;
-  color: var(--text-faint);
-  font-size: 12px;
-  padding: 40px 0 20px;
-}
-.foot a {
-  color: var(--accent-strong);
-}
-
-/* —— Multiplayer scenes —— */
-/* Upload form: role editing */
-.role-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-.role-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.role-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.role-persona {
-  width: 100%;
-  font-size: 12px;
-}
-.role-row .role-name {
-  flex: 0 0 32%;
-}
-.role-row .role-desc {
-  flex: 1;
-  min-width: 0;
-}
-.role-ai {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-soft);
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-.role-ai input {
-  width: auto;
-  margin: 0;
-}
-.btn.add-role {
-  align-self: flex-start;
-  margin-top: 8px;
-  font-size: 13px;
-  padding: 0.4rem 0.9rem;
-}
-
-/* Card: multiplayer scene metadata */
-.card-scene {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.scene-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-soft);
-}
-.scene-meta span {
-  background: var(--bg-soft);
-  border: 1px solid var(--surface-border);
-  border-radius: 999px;
-  padding: 2px 10px;
-}
-
-/* Detail: role card grid */
-.scene-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.role-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-}
-.role-card {
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  background: var(--bg-strong);
-  transition: border-color var(--dur) ease;
-}
-.role-card:hover {
-  border-color: var(--accent);
-}
-.role-card strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: var(--text);
-}
-.role-card p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--text-soft);
-  line-height: 1.5;
-}
-.role-persona-view {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--text-soft);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  border-top: 1px dashed var(--surface-border);
-  padding-top: 6px;
-}
-.ai-tag {
-  font-size: 10px;
-  font-weight: 500;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-
-@media (max-width: 480px) {
-  .role-row {
+  .modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    width: 100%;
+    max-width: 560px;
+    max-height: min(680px, calc(100dvh - 2rem));
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-panel);
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-head h2 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+  }
+  .modal-meta,
+  .modal-hint {
+    color: var(--text-faint);
+    font-size: 12px;
+    margin: 0;
+  }
+  .modal-desc {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-soft);
+  }
+  .prompt-box {
+    background: var(--bg-strong);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    max-height: 320px;
+    overflow-y: auto;
+    margin: 0;
+    color: var(--text-soft);
+  }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
     flex-wrap: wrap;
   }
-  .role-row .role-name {
-    flex: 1 1 100%;
-  }
-}
 
-/* Upload: template download / import row */
-.tpl-row { display: flex; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
-.tpl-btn { font-size: 13px; padding: 6px 12px; }
+  .admin-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px dashed var(--surface-border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-strong);
+  }
+  .admin-edit-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-soft);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+  }
+  .field > span {
+    color: var(--text-soft);
+  }
+  .row {
+    display: flex;
+    gap: 12px;
+  }
+  .row .field {
+    flex: 1;
+  }
+  .icon-field {
+    flex: 0 0 80px;
+  }
+  .file-drop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    border: 1px dashed var(--surface-border);
+    border-radius: var(--radius-sm);
+    padding: 0.7rem 1rem;
+    color: var(--text-soft);
+    font-size: 13px;
+    transition:
+      border-color var(--dur) ease,
+      color var(--dur) ease;
+  }
+  .file-drop:hover {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+  }
+  .file-input-hidden {
+    display: none;
+  }
+
+  .preview-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .preview-wrap small {
+    color: var(--text-faint);
+  }
+  .error {
+    color: var(--danger);
+    font-size: 13px;
+    margin: 0;
+  }
+
+  .foot {
+    margin-top: auto;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 12px;
+    padding: 40px 0 20px;
+  }
+  .foot a {
+    color: var(--accent-strong);
+  }
+
+  /* —— Multiplayer scenes —— */
+  /* Upload form: role editing */
+  .role-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .role-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .role-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .role-persona {
+    width: 100%;
+    font-size: 12px;
+  }
+  .role-row .role-name {
+    flex: 0 0 32%;
+  }
+  .role-row .role-desc {
+    flex: 1;
+    min-width: 0;
+  }
+  .role-ai {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-soft);
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .role-ai input {
+    width: auto;
+    margin: 0;
+  }
+  .btn.add-role {
+    align-self: flex-start;
+    margin-top: 8px;
+    font-size: 13px;
+    padding: 0.4rem 0.9rem;
+  }
+
+  /* Card: multiplayer scene metadata */
+  .card-scene {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .scene-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  .scene-meta span {
+    background: var(--bg-soft);
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+
+  /* Detail: role card grid */
+  .scene-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .role-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .role-card {
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    background: var(--bg-strong);
+    transition: border-color var(--dur) ease;
+  }
+  .role-card:hover {
+    border-color: var(--accent);
+  }
+  .role-card strong {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .role-card p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+  .role-persona-view {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: var(--text-soft);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    border-top: 1px dashed var(--surface-border);
+    padding-top: 6px;
+  }
+  .ai-tag {
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+
+  @media (max-width: 480px) {
+    .role-row {
+      flex-wrap: wrap;
+    }
+    .role-row .role-name {
+      flex: 1 1 100%;
+    }
+  }
+
+  /* Upload: template download / import row */
+  .tpl-row {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 4px;
+    flex-wrap: wrap;
+  }
+  .tpl-btn {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
 }

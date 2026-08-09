@@ -11,7 +11,7 @@
   // 注释与 docs/deploy.md）——它们排在更具体的位置，Cloudflare 按最长前缀匹配。
   "routes": [
     { "pattern": "0xnullai.com", "custom_domain": true },
-    { "pattern": "www.0xnullai.com", "custom_domain": true }
+    { "pattern": "www.0xnullai.com", "custom_domain": true },
   ],
   "workers_dev": true,
 
@@ -23,10 +23,10 @@
   // 服务——整站直接挂掉，直到 UTC 零点。
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
   },
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

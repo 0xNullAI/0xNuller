@@ -17,7 +17,12 @@ describe('共享 LLM 配置', () => {
   });
 
   it('round-trip 保存与读取', () => {
-    const c = { providerId: 'deepseek', apiKey: 'sk-x', model: 'deepseek-chat', baseUrl: 'https://x' };
+    const c = {
+      providerId: 'deepseek',
+      apiKey: 'sk-x',
+      model: 'deepseek-chat',
+      baseUrl: 'https://x',
+    };
     saveLlmConfig(c);
     expect(loadLlmConfig()).toEqual(c);
   });
@@ -27,7 +32,12 @@ describe('共享 LLM 配置', () => {
     // no reconfiguration.
     localStorage.setItem(
       'dg-chat-ai-config',
-      JSON.stringify({ providerId: 'qwen', apiKey: 'sk-old', model: 'qwen3.5-plus', baseUrl: 'https://q' }),
+      JSON.stringify({
+        providerId: 'qwen',
+        apiKey: 'sk-old',
+        model: 'qwen3.5-plus',
+        baseUrl: 'https://q',
+      }),
     );
     expect(loadLlmConfig().providerId).toBe('qwen');
     // Migration writes the new key; legacy keys are never read again
@@ -41,8 +51,12 @@ describe('共享 LLM 配置', () => {
   });
 
   it('非免费 provider 缺 key 时视为未配置', () => {
-    expect(isLlmConfigured({ providerId: 'deepseek', apiKey: '  ', model: 'm', baseUrl: 'b' })).toBe(false);
-    expect(isLlmConfigured({ providerId: 'deepseek', apiKey: 'sk', model: 'm', baseUrl: 'b' })).toBe(true);
+    expect(
+      isLlmConfigured({ providerId: 'deepseek', apiKey: '  ', model: 'm', baseUrl: 'b' }),
+    ).toBe(false);
+    expect(
+      isLlmConfigured({ providerId: 'deepseek', apiKey: 'sk', model: 'm', baseUrl: 'b' }),
+    ).toBe(true);
   });
 
   it('订阅者在保存时收到通知——这是「一处改、各模块同步」的机制', () => {

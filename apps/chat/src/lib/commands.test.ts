@@ -77,8 +77,9 @@ describe('多设备指令路由', () => {
       session: s,
     });
 
-    expect((s as unknown as { opossumStop: ReturnType<typeof vi.fn> }).opossumStop)
-      .toHaveBeenCalled();
+    expect(
+      (s as unknown as { opossumStop: ReturnType<typeof vi.fn> }).opossumStop,
+    ).toHaveBeenCalled();
     expect(result).toBe('已停止所有输出');
   });
 
@@ -106,8 +107,9 @@ describe('多设备指令路由', () => {
       session: s,
     });
 
-    expect((s as unknown as { setLedColor: ReturnType<typeof vi.fn> }).setLedColor)
-      .not.toHaveBeenCalled();
+    expect(
+      (s as unknown as { setLedColor: ReturnType<typeof vi.fn> }).setLedColor,
+    ).not.toHaveBeenCalled();
     expect(result).toBe('未知的灯光目标');
   });
 
@@ -118,7 +120,8 @@ describe('多设备指令路由', () => {
       session: s,
     });
 
-    expect((s as unknown as { setLedColor: ReturnType<typeof vi.fn> }).setLedColor)
-      .toHaveBeenCalledWith('opossum', 3);
+    expect(
+      (s as unknown as { setLedColor: ReturnType<typeof vi.fn> }).setLedColor,
+    ).toHaveBeenCalledWith('opossum', 3);
   });
 });

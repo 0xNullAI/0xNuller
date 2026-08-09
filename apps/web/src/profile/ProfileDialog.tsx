@@ -155,9 +155,7 @@ export function ProfileDialog({
             // other" and "the service is unreachable". The server answers all
             // three identically so a block cannot be found by probing, and
             // saying more here would undo that.
-            <p className="py-10 text-center text-sm text-[var(--text-faint)]">
-              没有找到这个用户。
-            </p>
+            <p className="py-10 text-center text-sm text-[var(--text-faint)]">没有找到这个用户。</p>
           ) : mode === 'edit' && draft ? (
             <div className="flex flex-col gap-6">
               <ProfileIdentity
@@ -176,7 +174,9 @@ export function ProfileDialog({
             {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
             <div className="flex items-center justify-between gap-3">
               <span className="text-[10px] text-[var(--text-faint)]">
-                {draft.visibility === 'public' ? '保存后所有人都能看到。' : '保存后只有你自己能看到。'}
+                {draft.visibility === 'public'
+                  ? '保存后所有人都能看到。'
+                  : '保存后只有你自己能看到。'}
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
@@ -424,9 +424,7 @@ function ProfileActions({
           私聊
         </Button>
       </div>
-      {!dmAllowed && (
-        <p className="text-[10px] text-[var(--text-faint)]">互相关注之后才能私聊。</p>
-      )}
+      {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注之后才能私聊。</p>}
     </div>
   );
 }

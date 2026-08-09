@@ -37,7 +37,9 @@ export function ConfigNumberField({
   }
 
   const sanitize = (raw: string): string =>
-    allowDecimal ? raw.replace(/[^0-9.]+/g, '').replace(/(\..*)\./g, '$1') : raw.replace(/\D+/g, '');
+    allowDecimal
+      ? raw.replace(/[^0-9.]+/g, '').replace(/(\..*)\./g, '$1')
+      : raw.replace(/\D+/g, '');
 
   function commit(nextDraftValue: string) {
     const sanitized = sanitize(nextDraftValue);

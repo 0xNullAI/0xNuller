@@ -59,7 +59,6 @@ export function ProxySection() {
               请求会改写成 <code>反代地址/上游域名/原路径</code>，由你的反代转发。留空则不改写。
             </span>
           </label>
-
         </div>
       )}
     </section>

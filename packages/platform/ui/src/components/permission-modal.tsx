@@ -63,7 +63,10 @@ export function PermissionModal({
         <ArgsCollapsible args={args} />
 
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button className="h-11 rounded-[var(--radius-ctl)] text-[13px] font-medium" onClick={onAllowOnce}>
+          <Button
+            className="h-11 rounded-[var(--radius-ctl)] text-[13px] font-medium"
+            onClick={onAllowOnce}
+          >
             仅本次允许
           </Button>
           <Button

@@ -6,18 +6,42 @@
 
 /* Page shake animation */
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-  20%, 40%, 60%, 80% { transform: translateX(5px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
 }
-.shake-anim { animation: shake var(--dur-enter) ease-in-out; }
+.shake-anim {
+  animation: shake var(--dur-enter) ease-in-out;
+}
 
 /* Message entrance animation */
 @keyframes msg-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-.animate-msg-in { animation: msg-in var(--dur-slow) ease-out; }
+.animate-msg-in {
+  animation: msg-in var(--dur-slow) ease-out;
+}
 
 /* fade-up and .animate-fade-up come from @0xnullai/ui/styles/animations.css.
    This file used to carry a second keyframes of the same name (8px offset vs the
@@ -34,7 +58,9 @@
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: color var(--dur), border-color var(--dur);
+  transition:
+    color var(--dur),
+    border-color var(--dur);
   border-bottom: 2px solid transparent;
 }
 .mobile-tab.active {
@@ -176,4 +202,3 @@ input[type='range']::-moz-range-thumb {
   white-space: nowrap;
   max-width: 100%;
 }
-

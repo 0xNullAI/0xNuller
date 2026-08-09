@@ -49,7 +49,7 @@ export function loadKnownGroups(): KnownGroup[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((g): g is KnownGroup => !!g && typeof (g as KnownGroup).code === 'string')
-      .map(g => ({ code: g.code, name: typeof g.name === 'string' ? g.name : '' }));
+      .map((g) => ({ code: g.code, name: typeof g.name === 'string' ? g.name : '' }));
   } catch {
     return [];
   }
@@ -65,7 +65,7 @@ export function loadKnownGroups(): KnownGroup[] {
 export function rememberGroup(code: string, name?: string): void {
   if (!code) return;
   const groups = loadKnownGroups();
-  const existing = groups.find(g => g.code === code);
+  const existing = groups.find((g) => g.code === code);
   if (existing) {
     // An empty name means "not known yet", never "clear the name I already had".
     if (!name || existing.name === name) return;
@@ -77,7 +77,7 @@ export function rememberGroup(code: string, name?: string): void {
 }
 
 export function forgetGroup(code: string): void {
-  save(loadKnownGroups().filter(g => g.code !== code));
+  save(loadKnownGroups().filter((g) => g.code !== code));
 }
 
 function save(groups: KnownGroup[]): void {

@@ -38,7 +38,9 @@ export async function requestDgLabDevice(
 ): Promise<RequestedDgLabDevice> {
   const nav =
     options.navigatorRef ??
-    (typeof navigator === 'undefined' ? undefined : (navigator as unknown as NavigatorBluetoothLike));
+    (typeof navigator === 'undefined'
+      ? undefined
+      : (navigator as unknown as NavigatorBluetoothLike));
 
   const availability = getWebBluetoothAvailability(nav);
   if (!availability.supported) {

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createEmptyDeviceState, isDevicePickerCancelled } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
-import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@voice/lib/device-session';
+import {
+  DeviceSession,
+  type DeviceSessionState,
+  type DeviceSessionTransport,
+} from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
   coyote: createEmptyDeviceState(),
@@ -71,5 +75,14 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
-  return { session, state, error, connecting, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum };
+  return {
+    session,
+    state,
+    error,
+    connecting,
+    connectDevice,
+    emergencyStop,
+    disconnectCoyote,
+    disconnectOpossum,
+  };
 }

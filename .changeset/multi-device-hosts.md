@@ -16,7 +16,7 @@ way on both platforms instead of branching on the transport. It is the same
 value `TauriBlecDeviceClient.address` already returned, under the shared name.
 
 `WebBluetoothDeviceClient.connectDevice()` now throws `设备已连接` when it
-already holds a *different, still connected* device, matching the guard
+already holds a _different, still connected_ device, matching the guard
 `TauriBlecDeviceClient` has always had. It previously dropped the previous
 device's GATT link instead — and because `protocol.onConnected()` has by then
 rebound the adapter (and with it `emergencyStop()`) to the new device, there

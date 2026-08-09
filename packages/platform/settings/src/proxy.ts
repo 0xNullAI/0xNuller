@@ -113,8 +113,6 @@ export function applyHttpProxy(url: string, proxy: ProxySettings = loadProxy()):
   }
 }
 
-
-
 /**
  * Detect the current runtime.
  *

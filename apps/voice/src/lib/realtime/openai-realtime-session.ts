@@ -94,7 +94,10 @@ async function resolveCredential(
         throw new Error('unreachable');
     }
   } catch (error) {
-    console.warn(`[dg-voice] ${providerId} 换票失败，回退为直接用 API Key 作为 WebSocket 凭据：`, error);
+    console.warn(
+      `[dg-voice] ${providerId} 换票失败，回退为直接用 API Key 作为 WebSocket 凭据：`,
+      error,
+    );
     return settings.apiKey;
   }
 }
@@ -150,8 +153,16 @@ export class OpenAiRealtimeSession extends BaseRealtimeSession {
         instructions: this.options.instructions,
         output_modalities: ['audio'],
         audio: {
-          input: { format: pcm, turn_detection: TURN_DETECTION, transcription: { model: 'whisper-1' } },
-          output: { format: pcm, voice: this.options.settings.voice, speed: this.options.settings.speed },
+          input: {
+            format: pcm,
+            turn_detection: TURN_DETECTION,
+            transcription: { model: 'whisper-1' },
+          },
+          output: {
+            format: pcm,
+            voice: this.options.settings.voice,
+            speed: this.options.settings.speed,
+          },
         },
         tools: this.mappedTools(),
         tool_choice: 'auto',

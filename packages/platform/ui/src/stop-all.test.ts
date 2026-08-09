@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerSafetySession } from '@dg-kit/safety';
-import { clearStopFailure, stopAllDevices, stopFailureLabels, subscribeStopFailure } from './stop-all';
+import {
+  clearStopFailure,
+  stopAllDevices,
+  stopFailureLabels,
+  subscribeStopFailure,
+} from './stop-all';
 
 /**
  * The defect these cover: `stopAllSafetySessions` reports which sessions

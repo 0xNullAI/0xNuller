@@ -61,12 +61,7 @@ function Row({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2 hover:bg-[var(--bg-soft)]">
-      <Avatar
-        name={displayName}
-        username={username}
-        size={34}
-        onOpenProfile={requestProfileView}
-      />
+      <Avatar name={displayName} username={username} size={34} onOpenProfile={requestProfileView} />
       <button
         type="button"
         onClick={() => requestProfileView(username)}
@@ -233,9 +228,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
                   busy={busyId === found.user.id}
                   onToggle={() => void toggle(found.user.id, found.following)}
                   onMessage={
-                    found.following && found.followedBy
-                      ? () => startDm(found.user)
-                      : undefined
+                    found.following && found.followedBy ? () => startDm(found.user) : undefined
                   }
                 />
               )}

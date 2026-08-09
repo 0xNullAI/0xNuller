@@ -26,10 +26,10 @@ function fakeMessages(initial: RetainedMessage[]): MessageStore & { rows: Retain
   return {
     rows,
     count: () => rows.length,
-    oldest: n => rows.slice(0, n),
-    remove: ids => {
+    oldest: (n) => rows.slice(0, n),
+    remove: (ids) => {
       for (const id of ids) {
-        const i = rows.findIndex(r => r.id === id);
+        const i = rows.findIndex((r) => r.id === id);
         if (i >= 0) rows.splice(i, 1);
       }
     },
@@ -40,7 +40,7 @@ function fakeMedia(): MediaStore & { deleted: string[] } {
   const deleted: string[] = [];
   return {
     deleted,
-    delete: async ids => {
+    delete: async (ids) => {
       deleted.push(...ids);
     },
   };
@@ -66,10 +66,10 @@ describe('群消息保留上限', () => {
   });
 
   it('超出时从最旧的开始删，删到正好等于上限', async () => {
-    const messages = fakeMessages(['a', 'b', 'c', 'd', 'e'].map(id => message(id)));
+    const messages = fakeMessages(['a', 'b', 'c', 'd', 'e'].map((id) => message(id)));
     const dropped = await enforceMessageRetention(messages, fakeMedia(), 2);
     expect(dropped).toEqual(['a', 'b', 'c']);
-    expect(messages.rows.map(r => r.id)).toEqual(['d', 'e']);
+    expect(messages.rows.map((r) => r.id)).toEqual(['d', 'e']);
   });
 
   it('被删消息的 R2 媒体和行一起删——留下的孤儿没人能读到也没人会去删', async () => {
@@ -84,7 +84,7 @@ describe('群消息保留上限', () => {
     expect(media.deleted).toEqual(['img-a', 'img-c']);
     // 保留下来的那条的媒体绝不能被牵连删掉
     expect(media.deleted).not.toContain('img-d');
-    expect(messages.rows.map(r => r.id)).toEqual(['d']);
+    expect(messages.rows.map((r) => r.id)).toEqual(['d']);
   });
 
   it('R2 删除失败时行留着，下一条消息再试——反过来会丢掉指向对象的唯一指针', async () => {

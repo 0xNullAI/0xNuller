@@ -138,7 +138,9 @@ describe('设备栏', () => {
     // If the count came from the number of *modules* rather than devices, a
     // user with three attached devices would read 「1 台设备」 and reasonably
     // conclude the button only covers one of them.
-    expect(screen.getByRole('button', { name: /停止/ }).getAttribute('title')).toContain('3 台设备');
+    expect(screen.getByRole('button', { name: /停止/ }).getAttribute('title')).toContain(
+      '3 台设备',
+    );
   });
 
   it('未连接的设备不列出', () => {

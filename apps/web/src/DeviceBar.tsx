@@ -44,7 +44,6 @@ function useConnectedDevices() {
   return groups;
 }
 
-
 /** DeviceSummary.kind is a free-form string — a module may report a kind kit
  *  does not know about — so fall back to the raw value instead of blanking. */
 function kindLabel(kind: string): string {

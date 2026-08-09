@@ -97,7 +97,9 @@ describe('进入私聊需要账号服务签发的票据', () => {
     // conversation and rewrite the peer to somebody else's account.
     const real = await ticketFor(MALLORY, ALICE);
     const [payload, tag] = real.split('.');
-    const claims = JSON.parse(atob(payload!.replace(/-/g, '+').replace(/_/g, '/'))) as DmTicketClaims;
+    const claims = JSON.parse(
+      atob(payload!.replace(/-/g, '+').replace(/_/g, '/')),
+    ) as DmTicketClaims;
     claims.peer = BOB;
     claims.room = await dmRoomCode(SECRET, ALICE, BOB);
     const forged = `${btoa(JSON.stringify(claims)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}.${tag}`;

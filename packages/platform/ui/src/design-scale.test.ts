@@ -174,6 +174,8 @@ describe('圆角与动效各只有一套尺度', () => {
     expect('  transition: color var(--dur) ease;'.match(SUBSECOND)).toBeNull();
     // Ambient motion and easing curves must not read as drift.
     expect('  animation: spin 2s linear infinite;'.match(SUBSECOND)).toBeNull();
-    expect('  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);'.match(SUBSECOND)).toBeNull();
+    expect(
+      '  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);'.match(SUBSECOND),
+    ).toBeNull();
   });
 });

@@ -68,15 +68,17 @@ function initialState(random: () => number): SnakeState {
 }
 
 /** One tick. Exported so the rules can be tested directly. */
-export function advance(state: SnakeState, random: () => number): { next: SnakeState; event?: SnakeEvent } {
+export function advance(
+  state: SnakeState,
+  random: () => number,
+): { next: SnakeState; event?: SnakeEvent } {
   if (state.status !== 'running') return { next: state };
 
   const head = state.snake[0]!;
   const step = STEP[state.direction];
   const nextHead = { x: head.x + step.x, y: head.y + step.y };
 
-  const hitWall =
-    nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= BOARD || nextHead.y >= BOARD;
+  const hitWall = nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= BOARD || nextHead.y >= BOARD;
   // The tail cell is about to be vacated, so moving into it is legal —
   // except when we just ate and the tail stays put.
   const ate = samePoint(nextHead, state.food);

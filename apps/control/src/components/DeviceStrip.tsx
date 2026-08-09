@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { Bluetooth, Gauge, Radar, X } from 'lucide-react';
 import { isDevicePickerCancelled } from '@dg-kit/core';
 import { DeviceSafetyButton } from '../../../chat/src/components/DeviceSafetyButton';
-import type {
-  CoyoteSummary,
-  OpossumSummary,
-  SensorSummary,
-} from '../../../chat/src/lib/bluetooth';
+import type { CoyoteSummary, OpossumSummary, SensorSummary } from '../../../chat/src/lib/bluetooth';
 import type { DeviceKind } from '../../../chat/src/lib/protocol';
 
 interface DeviceStripProps {

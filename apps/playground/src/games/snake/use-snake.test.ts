@@ -33,7 +33,15 @@ describe('贪吃蛇规则', () => {
   });
 
   it('没吃到就不变长', () => {
-    const { next } = advance(base({ snake: [{ x: 5, y: 5 }, { x: 4, y: 5 }] }), fixedRandom);
+    const { next } = advance(
+      base({
+        snake: [
+          { x: 5, y: 5 },
+          { x: 4, y: 5 },
+        ],
+      }),
+      fixedRandom,
+    );
     expect(next.snake).toHaveLength(2);
   });
 

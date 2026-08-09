@@ -21,7 +21,12 @@ export function MemberCard({ peerId, member, onClick }: MemberCardProps) {
       {/* Avatar. Inert unless this peer has an account behind them — most
           room members do not, and an avatar that opens an empty page is worse
           than one that does nothing. Avatar enforces that itself. */}
-      <Avatar name={name} username={member?.username} size={40} onOpenProfile={requestProfileView} />
+      <Avatar
+        name={name}
+        username={member?.username}
+        size={40}
+        onOpenProfile={requestProfileView}
+      />
 
       {/* Info */}
       <div className="flex-1 min-w-0">

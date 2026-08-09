@@ -206,7 +206,10 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
   }
 
   sendFunctionCallOutput(callId: string, output: string): void {
-    this.send({ type: 'conversation.item.create', item: this.functionCallOutputItem(callId, output) });
+    this.send({
+      type: 'conversation.item.create',
+      item: this.functionCallOutputItem(callId, output),
+    });
   }
 
   requestResponse(): void {
@@ -240,7 +243,10 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
 
   private sendAudioFrame(frame: Float32Array): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.send({ type: 'input_audio_buffer.append', audio: this.encodeAudioFrame(float32ToInt16(frame)) });
+    this.send({
+      type: 'input_audio_buffer.append',
+      audio: this.encodeAudioFrame(float32ToInt16(frame)),
+    });
     if (this.usesClientTurnDetection()) this.detectClientTurnEnd(frame);
   }
 
@@ -333,7 +339,10 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         break;
       }
       case 'response.audio_transcript.done': {
-        this.emitAssistantDone(itemId, typeof message.transcript === 'string' ? message.transcript : undefined);
+        this.emitAssistantDone(
+          itemId,
+          typeof message.transcript === 'string' ? message.transcript : undefined,
+        );
         break;
       }
 
@@ -368,8 +377,14 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         break;
       }
       case 'conversation.item.input_audio_transcription.completed': {
-        const transcript = typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
-        this.options.events.onTranscript?.({ id: userTranscriptId(itemId), role: 'user', text: transcript, done: true });
+        const transcript =
+          typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
+        this.options.events.onTranscript?.({
+          id: userTranscriptId(itemId),
+          role: 'user',
+          text: transcript,
+          done: true,
+        });
         this.userTranscript = '';
         break;
       }
@@ -378,7 +393,11 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         const name = message.name;
         const args = message.arguments;
         if (typeof name === 'string' && typeof args === 'string') {
-          this.options.events.onFunctionCall?.({ callId: this.functionCallId(message), name, argsJson: args });
+          this.options.events.onFunctionCall?.({
+            callId: this.functionCallId(message),
+            name,
+            argsJson: args,
+          });
         }
         break;
       }
@@ -412,21 +431,38 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     const key = itemId ?? 'assistant-pending';
     const text = (this.assistantTranscripts.get(key) ?? '') + delta;
     this.assistantTranscripts.set(key, text);
-    this.options.events.onTranscript?.({ id: assistantTranscriptId(key), role: 'assistant', text, done: false });
+    this.options.events.onTranscript?.({
+      id: assistantTranscriptId(key),
+      role: 'assistant',
+      text,
+      done: false,
+    });
   }
 
   private emitAssistantDone(itemId: string | undefined, finalText?: string): void {
     const key = itemId ?? 'assistant-pending';
     const text = finalText ?? this.assistantTranscripts.get(key) ?? '';
     this.assistantTranscripts.delete(key);
-    if (text) this.options.events.onTranscript?.({ id: assistantTranscriptId(key), role: 'assistant', text, done: true });
+    if (text)
+      this.options.events.onTranscript?.({
+        id: assistantTranscriptId(key),
+        role: 'assistant',
+        text,
+        done: true,
+      });
   }
 
   /** A response can end without a per-item `.done` — mark any still-streaming assistant lines complete. */
   private flushAssistantTranscripts(): void {
     for (const [key, text] of [...this.assistantTranscripts]) {
       this.assistantTranscripts.delete(key);
-      if (text) this.options.events.onTranscript?.({ id: assistantTranscriptId(key), role: 'assistant', text, done: true });
+      if (text)
+        this.options.events.onTranscript?.({
+          id: assistantTranscriptId(key),
+          role: 'assistant',
+          text,
+          done: true,
+        });
     }
   }
 

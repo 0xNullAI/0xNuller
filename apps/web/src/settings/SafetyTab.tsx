@@ -225,7 +225,6 @@ export function SafetyTab() {
             <option value="allow-all">完全放行（不推荐）</option>
           </select>
         </label>
-
       </section>
 
       <button

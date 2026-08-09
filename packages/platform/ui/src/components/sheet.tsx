@@ -30,8 +30,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const sheetVariants = {
-  right:
-    `fixed inset-y-0 right-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
+  right: `fixed inset-y-0 right-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
   left: `fixed inset-y-0 left-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
 } as const;
 

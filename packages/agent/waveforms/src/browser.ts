@@ -8,7 +8,6 @@ import type { WaveformDefinition, WaveformLibrary } from '@dg-agent/core';
 import { createBasicWaveformLibrary, parsePulseText, type ParsedPulse } from '@dg-kit/waveforms';
 import { z } from 'zod';
 
-
 const waveformSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),

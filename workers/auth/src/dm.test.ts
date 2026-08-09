@@ -155,11 +155,7 @@ describe('开私聊需要互相关注', () => {
     await post('/api/auth/block', { userId: alice.id }, bob.token);
 
     const blocked = await ticket(alice, bob);
-    const missing = await post(
-      '/api/auth/dm/ticket',
-      { userId: 'no-such-account' },
-      alice.token,
-    );
+    const missing = await post('/api/auth/dm/ticket', { userId: 'no-such-account' }, alice.token);
     // Telling the two apart confirms who blocked you, and here that invites exactly the
     // attention blocking was meant to end.
     expect(blocked.status).toBe(missing.status);
@@ -300,7 +296,9 @@ describe('私聊列表', () => {
     await ticket(alice, bob);
 
     await post('/api/auth/block', { userId: bob.id }, alice.token);
-    const rows = await env.DB.prepare('SELECT COUNT(*) AS n FROM dm_threads').first<{ n: number }>();
+    const rows = await env.DB.prepare('SELECT COUNT(*) AS n FROM dm_threads').first<{
+      n: number;
+    }>();
     // Blocking is the one act that means gone. The row is deleted rather than left for a
     // read filter to keep hiding correctly forever.
     expect(rows?.n).toBe(0);

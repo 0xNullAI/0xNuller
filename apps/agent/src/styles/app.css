@@ -1,5 +1,3 @@
-
-
 .dg-sidebar-shell,
 .dg-sidebar-sheet {
   background: color-mix(in srgb, var(--bg-elevated) 90%, var(--bg) 10%);
@@ -126,25 +124,19 @@
 
 .settings-workspace .settings-panel-tab-content > .pb-3,
 .settings-workspace .settings-panel-tab-content > .py-2,
-
 .settings-workspace .settings-panel-tab-content > .grid,
 .settings-workspace .settings-panel-tab-content > .space-y-3,
 .settings-workspace .settings-panel-tab-content > .space-y-4,
-
 .settings-workspace
   .settings-row-card
   > label:not(.checkbox-row):not(.custom-checkbox):not(.setting-toggle-row),
-
 .settings-workspace
   .settings-row-card
   > label:not(.checkbox-row):not(.custom-checkbox):not(.setting-toggle-row)
   > :last-child,
-
 .settings-row-card .text-sm,
-
 .settings-workspace .settings-panel-tab-content > .pb-3.text-xs,
 .settings-workspace .settings-panel-tab-content > .mt-3.grid,
-
 .settings label {
   display: grid;
   gap: 0.48rem;
@@ -260,7 +252,6 @@
    user is stranded in settings with no way back to chat. */
 
 @media (max-width: 900px) {
-
   .settings-workspace {
     margin: 0;
     border: 0;
@@ -269,7 +260,6 @@
 }
 
 @media (max-width: 680px) {
-
   .settings-workspace-title span,
   .settings-workspace-title p {
     display: none;

@@ -230,117 +230,117 @@ export function Shell() {
 
   return (
     <ModuleSettingsProvider>
-    <SidebarSectionsProvider>
-      <div
-        id="shl-root"
-        data-narrow={narrow || undefined}
-        data-collapsed={(!narrow && sidebarCollapsed) || undefined}
-      >
-        {/* Wide screens: the sidebar is one of the layout columns. Narrow screens: it
+      <SidebarSectionsProvider>
+        <div
+          id="shl-root"
+          data-narrow={narrow || undefined}
+          data-collapsed={(!narrow && sidebarCollapsed) || undefined}
+        >
+          {/* Wide screens: the sidebar is one of the layout columns. Narrow screens: it
             is a drawer over the content and takes up no layout width. */}
-        {!narrow && <div id="shl-side">{sidebar}</div>}
+          {!narrow && <div id="shl-side">{sidebar}</div>}
 
-        <main id="shl-slot">
-          <DeviceBar />
+          <main id="shl-slot">
+            <DeviceBar />
 
-          {/* The module's own buttons land here. On narrow screens the drawer toggle
+            {/* The module's own buttons land here. On narrow screens the drawer toggle
               shares this row. */}
-          <div id="shl-actions">
-            {narrow && (
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="打开侧边栏"
-                // With only the module name, the top of a narrow screen is a couple of
-                // lone words and nobody can tell they are tappable.
-                // The touch target also has to be big enough: 44px is the lower bound
-                // both iOS and Android recommend.
-                className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              >
-                <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
-                <span className="truncate">
-                  {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
-                </span>
-              </button>
-            )}
-            <div className="min-w-0 flex-1" />
-            <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
-          </div>
-
-          <div id="shl-content">
-            {activeId === null ? <Home onOpen={go} /> : null}
-            {opened.map((id) => {
-              const mod = MODULES.find((m) => m.id === id);
-              if (!mod) return null;
-              return (
-                <ModuleSlot
-                  key={id}
-                  mod={mod}
-                  active={id === activeId}
-                  overlayRoot={overlayRoot}
-                  actionsContainer={id === activeId ? actionsContainer : null}
-                  openSettings={openSettings}
-                />
-              );
-            })}
-          </div>
-        </main>
-
-        {narrow && drawerOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-[var(--z-shell)] bg-[var(--overlay-scrim)]"
-              onClick={() => setDrawerOpen(false)}
-              aria-hidden
-            />
-            <div className="fixed inset-y-0 left-0 z-[calc(var(--z-shell)+1)] w-[min(280px,80vw)]">
-              {sidebar}
+            <div id="shl-actions">
+              {narrow && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  aria-label="打开侧边栏"
+                  // With only the module name, the top of a narrow screen is a couple of
+                  // lone words and nobody can tell they are tappable.
+                  // The touch target also has to be big enough: 44px is the lower bound
+                  // both iOS and Android recommend.
+                  className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
+                  <span className="truncate">
+                    {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+                  </span>
+                </button>
+              )}
+              <div className="min-w-0 flex-1" />
+              <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
             </div>
-          </>
-        )}
 
-        <OverlayProvider container={overlayRoot}>
-          {accountOpen && (
-            <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
+            <div id="shl-content">
+              {activeId === null ? <Home onOpen={go} /> : null}
+              {opened.map((id) => {
+                const mod = MODULES.find((m) => m.id === id);
+                if (!mod) return null;
+                return (
+                  <ModuleSlot
+                    key={id}
+                    mod={mod}
+                    active={id === activeId}
+                    overlayRoot={overlayRoot}
+                    actionsContainer={id === activeId ? actionsContainer : null}
+                    openSettings={openSettings}
+                  />
+                );
+              })}
+            </div>
+          </main>
+
+          {narrow && drawerOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-[var(--z-shell)] bg-[var(--overlay-scrim)]"
+                onClick={() => setDrawerOpen(false)}
+                aria-hidden
+              />
+              <div className="fixed inset-y-0 left-0 z-[calc(var(--z-shell)+1)] w-[min(280px,80vw)]">
+                {sidebar}
+              </div>
+            </>
           )}
-          {/* Signed-in only, and gated on `user` here as well as in the menu:
+
+          <OverlayProvider container={overlayRoot}>
+            {accountOpen && (
+              <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
+            )}
+            {/* Signed-in only, and gated on `user` here as well as in the menu:
               signing out while the dialog is open has to close it rather than
               leave a surface up with nothing left to show. */}
-          {contactsOpen && user && (
-            <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
-          )}
-          {settingsTab && (
-            <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />
-          )}
-          {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
-          {/* Not gated on `user`: a public profile is readable while signed
+            {contactsOpen && user && (
+              <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
+            )}
+            {settingsTab && (
+              <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />
+            )}
+            {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
+            {/* Not gated on `user`: a public profile is readable while signed
               out, and anonymous use is a hard constraint. The dialog itself
               decides which actions need an account. */}
-          {profileUsername && (
-            <ProfileDialog
-              username={profileUsername}
-              viewer={user}
-              onClose={() => setProfileUsername(null)}
-            />
-          )}
-          {/* The safety notice appears once, on the **first device connection**, not
+            {profileUsername && (
+              <ProfileDialog
+                username={profileUsername}
+                viewer={user}
+                onClose={() => setProfileUsername(null)}
+              />
+            )}
+            {/* The safety notice appears once, on the **first device connection**, not
               as a splash dialog. A splash dialog interrupts people who only want to
               browse the market or read the docs, while the moment it really needs to
               be seen is the moment the device goes onto someone's body. The terms of
               use in the sign-up flow are the other candidate spot — but accounts are
               optional, so putting it only there means anyone who never registers
               never sees it. */}
-          <FirstConnectionNotice />
-        </OverlayProvider>
+            <FirstConnectionNotice />
+          </OverlayProvider>
 
-        {/* Outside the overlay provider on purpose. The overlay container is
+          {/* Outside the overlay provider on purpose. The overlay container is
             per-module and gets hidden when you switch modules, but "a device
             did not stop" outlives whichever module was showing — and it has
             to stay reachable while a dialog is open, which is why it sits at
             the top of the z scale rather than in the overlay layer. */}
-        <StopFailureBanner />
-      </div>
-    </SidebarSectionsProvider>
+          <StopFailureBanner />
+        </div>
+      </SidebarSectionsProvider>
     </ModuleSettingsProvider>
   );
 }

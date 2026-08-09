@@ -15,7 +15,7 @@ const LOBBY_STALE_MS = 45 * 1000;
 const PINNED_ROOMS: { code: string; name: string }[] = [
   { code: RESERVED_ROOM_CODE, name: RESERVED_ROOM_NAME },
 ];
-const PINNED_CODES = new Set(PINNED_ROOMS.map(r => r.code));
+const PINNED_CODES = new Set(PINNED_ROOMS.map((r) => r.code));
 
 interface LobbyRoom {
   code: string;
@@ -152,7 +152,7 @@ export class LobbyDO extends DurableObject<Env> {
       .toArray();
     return {
       t: 'lobby',
-      rooms: rows.map(r => ({
+      rooms: rows.map((r) => ({
         code: r.code as string,
         name: r.name as string,
         count: Number(r.count),

@@ -13,9 +13,9 @@ import { DEVICE_PICKER_CANCELLED_MESSAGE, isDevicePickerCancelled } from './inde
 
 describe('设备选择器取消判定', () => {
   it('认得 Web Bluetooth 的取消', () => {
-    expect(
-      isDevicePickerCancelled(new Error('User cancelled the requestDevice() chooser')),
-    ).toBe(true);
+    expect(isDevicePickerCancelled(new Error('User cancelled the requestDevice() chooser'))).toBe(
+      true,
+    );
   });
 
   it('认得安卓 Tauri 传输层抛的取消——之前 Voice 与 Chat 都漏了这条', () => {

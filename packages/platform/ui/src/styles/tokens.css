@@ -106,8 +106,8 @@
      and not in the shared layer — so "unified fonts" never actually took
      effect anywhere else. */
   --font-display: 'Big Shoulders Display', 'PingFang SC', 'HarmonyOS_Regular', sans-serif;
-  --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei',
-    system-ui, sans-serif;
+  --font-body:
+    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
   /* Background grid, the ambience layer for landing/docs surfaces. */
   --grid: rgba(88, 200, 242, 0.05);

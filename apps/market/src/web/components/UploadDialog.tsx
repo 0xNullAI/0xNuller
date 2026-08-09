@@ -75,7 +75,8 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     patch: Partial<{ name: string; description: string; aiPlayable: boolean }>,
   ) => setRoles((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRole = () => setRoles((rs) => [...rs, { name: '', description: '', aiPlayable: false }]);
-  const removeRole = (i: number) => setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
+  const removeRole = (i: number) =>
+    setRoles((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
   const uploadRef = useRef<HTMLInputElement>(null);
 
   // Trigger a browser download of a piece of text.
@@ -102,7 +103,14 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         tags: ['渐强', '节奏感'],
         // frames: [encodedFrequency(10..240), strength(0..100)], one frame is about 25ms. Can be swapped for pulse text instead.
         content: {
-          frames: [[10, 20], [15, 40], [20, 60], [25, 80], [20, 60], [15, 40]],
+          frames: [
+            [10, 20],
+            [15, 40],
+            [20, 60],
+            [25, 80],
+            [20, 60],
+            [15, 40],
+          ],
           pulse: '',
         },
       };
@@ -132,15 +140,28 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         playerCount: { min: 2, max: 4 },
         aiMode: 'none', // none = humans only / solo = a single AI / multi = several AIs
         roles: [
-          { name: '避难所主管', description: '掌握物资分配权的冷静领袖，信奉秩序高于一切。', aiPlayable: false },
-          { name: '流浪医生', description: '唯一懂医术的外来者，立场暧昧、动机成谜。', aiPlayable: true },
+          {
+            name: '避难所主管',
+            description: '掌握物资分配权的冷静领袖，信奉秩序高于一切。',
+            aiPlayable: false,
+          },
+          {
+            name: '流浪医生',
+            description: '唯一懂医术的外来者，立场暧昧、动机成谜。',
+            aiPlayable: true,
+          },
         ],
       },
     };
   };
 
   const downloadTemplate = () => {
-    const fn = type === 'waveform' ? '波形模板.json' : type === 'scenario' ? '单人场景模板.json' : '多人场景模板.json';
+    const fn =
+      type === 'waveform'
+        ? '波形模板.json'
+        : type === 'scenario'
+          ? '单人场景模板.json'
+          : '多人场景模板.json';
     downloadText(fn, JSON.stringify(templateFor(type), null, 2));
   };
 
@@ -194,9 +215,12 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   const parseUploadFile = async (file: File): Promise<unknown[]> => {
     if (/\.zip$/i.test(file.name)) {
       const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
-      const names = Object.keys(entries).filter((n) => !baseName(n).startsWith('__') && !n.endsWith('/'));
+      const names = Object.keys(entries).filter(
+        (n) => !baseName(n).startsWith('__') && !n.endsWith('/'),
+      );
       const pulseMap: Record<string, string> = {};
-      for (const n of names) if (/\.pulse$/i.test(n)) pulseMap[baseName(n)] = strFromU8(entries[n]!);
+      for (const n of names)
+        if (/\.pulse$/i.test(n)) pulseMap[baseName(n)] = strFromU8(entries[n]!);
       const used = new Set<string>();
       const items: unknown[] = [];
       for (const n of names) {
@@ -330,7 +354,12 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           icon: icon.trim() || undefined,
           tags,
           editKey: editKey.trim() || undefined,
-          content: { setting: setting.trim(), roles: cleanRoles, playerCount: { min: mn, max: mx }, aiMode },
+          content: {
+            setting: setting.trim(),
+            roles: cleanRoles,
+            playerCount: { min: mn, max: mx },
+            aiMode,
+          },
         };
       }
     } catch (e) {
@@ -349,12 +378,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
 
   return (
     <Overlay onDismiss={onClose} className="mkt-scope">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="market-upload-title"
-        className="modal"
-      >
+      <div role="dialog" aria-modal="true" aria-labelledby="market-upload-title" className="modal">
         <header className="modal-head">
           <h2 id="market-upload-title">上传到市场</h2>
           <button type="button" className="icon-btn" aria-label="关闭上传" onClick={onClose}>
@@ -370,16 +394,25 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
             >
               场景
             </button>
-            <button className={type === 'waveform' ? 'active' : ''} onClick={() => setType('waveform')}>
+            <button
+              className={type === 'waveform' ? 'active' : ''}
+              onClick={() => setType('waveform')}
+            >
               波形
             </button>
           </div>
           {(type === 'scenario' || type === 'multi-scene') && (
             <div className="seg seg-sub">
-              <button className={type === 'scenario' ? 'active' : ''} onClick={() => setType('scenario')}>
+              <button
+                className={type === 'scenario' ? 'active' : ''}
+                onClick={() => setType('scenario')}
+              >
                 单人
               </button>
-              <button className={type === 'multi-scene' ? 'active' : ''} onClick={() => setType('multi-scene')}>
+              <button
+                className={type === 'multi-scene' ? 'active' : ''}
+                onClick={() => setType('multi-scene')}
+              >
                 多人
               </button>
             </div>
@@ -409,173 +442,218 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           />
         </div>
         <p className="upload-note">
-          下载模板填好后点「上传」选文件即可：单个 JSON、JSON 数组、或含多个 JSON / .pulse 的压缩包都自动识别，校验通过直接发布（最多 50 条）。
+          下载模板填好后点「上传」选文件即可：单个 JSON、JSON 数组、或含多个 JSON / .pulse
+          的压缩包都自动识别，校验通过直接发布（最多 50 条）。
         </p>
         {batchMsg && <p className="upload-ok">{batchMsg}</p>}
 
-        <button type="button" className="btn ghost manual-toggle" onClick={() => setManual((m) => !m)}>
+        <button
+          type="button"
+          className="btn ghost manual-toggle"
+          onClick={() => setManual((m) => !m)}
+        >
           {manual ? '收起手动填写' : '✏️ 或手动填写一条'}
         </button>
 
         {manual && (
-        <>
-        {type === 'scenario' && (
-          <p className="upload-note">单人场景会自动标记，供 Agent 导入。</p>
-        )}
-        <label className="field">
-          <span>名称 *</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-        </label>
-
-        <div className="row">
-          <label className="field">
-            <span>昵称（可选）</span>
-            <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={30} placeholder="匿名" />
-          </label>
-          {(type === 'scenario' || type === 'multi-scene') && (
-            <label className="field icon-field">
-              <span>图标</span>
-              <input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={8} />
-            </label>
-          )}
-        </div>
-
-        <label className="field">
-          <span>简介（可选）</span>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-        </label>
-
-        <label className="field">
-          <span>标签（逗号分隔，可选）</span>
-          <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="温柔, 节奏感" />
-        </label>
-
-        <label className="field">
-          <span>编辑口令（可选）</span>
-          <input
-            type="password"
-            value={editKey}
-            onChange={(e) => setEditKey(e.target.value)}
-            maxLength={100}
-            placeholder="留空则任何人都能编辑这一条"
-          />
-        </label>
-        <p className="upload-note">设了口令后，只有知道口令的人才能再编辑这一条；留空则公开可编辑。</p>
-
-        {type === 'waveform' ? (
           <>
-            <label className="field">
-              <span>波形数据 *</span>
-              <label className="file-drop">
-                <span>📁 选择 .pulse / .zip 文件</span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pulse,.zip"
-                  className="file-input-hidden"
-                  onChange={(e) => void handleFile(e.target.files)}
-                />
-              </label>
-              <textarea
-                rows={4}
-                value={waveInput}
-                onChange={(e) => tryPreview(e.target.value)}
-                placeholder="或在此粘贴 Dungeonlab+pulse:... 文本 / frames JSON"
-              />
-            </label>
-            {preview && (
-              <div className="preview-wrap">
-                <WaveformPreview frames={preview} />
-                <small>{preview.length} 帧 · {(preview.length * 25) / 1000}s</small>
-              </div>
+            {type === 'scenario' && (
+              <p className="upload-note">单人场景会自动标记，供 Agent 导入。</p>
             )}
-          </>
-        ) : type === 'scenario' ? (
-          <label className="field">
-            <span>场景提示词 *</span>
-            <textarea
-              rows={8}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              maxLength={12000}
-              placeholder="粘贴你的自定义场景设定…"
-            />
-          </label>
-        ) : (
-          <>
             <label className="field">
-              <span>世界观 / 背景 *</span>
-              <textarea
-                rows={5}
-                value={setting}
-                onChange={(e) => setSetting(e.target.value)}
-                maxLength={8000}
-                placeholder="描述这个多人场景的世界观、氛围、规则…"
-              />
+              <span>名称 *</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
             </label>
-            <p className="upload-note">推荐人数会显著影响匹配，建议认真填写。</p>
+
             <div className="row">
               <label className="field">
-                <span>推荐人数（最少）★</span>
-                <input type="number" min={1} max={50} value={playerMin} onChange={(e) => setPlayerMin(e.target.value)} />
+                <span>昵称（可选）</span>
+                <input
+                  value={author}
+                  onChange={(e) => setAuthor(e.target.value)}
+                  maxLength={30}
+                  placeholder="匿名"
+                />
               </label>
-              <label className="field">
-                <span>推荐人数（最多）★</span>
-                <input type="number" min={1} max={50} value={playerMax} onChange={(e) => setPlayerMax(e.target.value)} />
-              </label>
-              <label className="field">
-                <span>AI 参与</span>
-                <select value={aiMode} onChange={(e) => setAiMode(e.target.value as 'none' | 'solo' | 'multi')}>
-                  <option value="none">纯人（无 AI）</option>
-                  <option value="solo">单个 AI</option>
-                  <option value="multi">多个 AI</option>
-                </select>
-              </label>
+              {(type === 'scenario' || type === 'multi-scene') && (
+                <label className="field icon-field">
+                  <span>图标</span>
+                  <input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={8} />
+                </label>
+              )}
             </div>
-            <div className="field">
-              <span>角色 * — 每人扮演一个</span>
-              <div className="role-list">
-                {roles.map((r, i) => (
-                  <div key={i} className="role-item">
-                    <div className="role-row">
-                      <input
-                        className="role-name"
-                        value={r.name}
-                        onChange={(e) => updateRole(i, { name: e.target.value })}
-                        maxLength={40}
-                        placeholder={`角色 ${i + 1}`}
-                      />
-                      <input
-                        className="role-desc"
-                        value={r.description}
-                        onChange={(e) => updateRole(i, { description: e.target.value })}
-                        maxLength={2000}
-                        placeholder={r.aiPlayable ? '角色描述 / AI 人设（性格、口吻、动机…）' : '角色描述（可选）'}
-                      />
-                      <label className="role-ai" title="该角色可由 AI 扮演（用描述当人设）">
-                        <input type="checkbox" checked={r.aiPlayable} onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })} />
-                        AI
-                      </label>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`删除角色 ${i + 1}`}
-                        onClick={() => removeRole(i)}
-                        disabled={roles.length <= 1}
-                      >
-                        ✕
-                      </button>
-                    </div>
+
+            <label className="field">
+              <span>简介（可选）</span>
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={500}
+              />
+            </label>
+
+            <label className="field">
+              <span>标签（逗号分隔，可选）</span>
+              <input
+                value={tagsText}
+                onChange={(e) => setTagsText(e.target.value)}
+                placeholder="温柔, 节奏感"
+              />
+            </label>
+
+            <label className="field">
+              <span>编辑口令（可选）</span>
+              <input
+                type="password"
+                value={editKey}
+                onChange={(e) => setEditKey(e.target.value)}
+                maxLength={100}
+                placeholder="留空则任何人都能编辑这一条"
+              />
+            </label>
+            <p className="upload-note">
+              设了口令后，只有知道口令的人才能再编辑这一条；留空则公开可编辑。
+            </p>
+
+            {type === 'waveform' ? (
+              <>
+                <label className="field">
+                  <span>波形数据 *</span>
+                  <label className="file-drop">
+                    <span>📁 选择 .pulse / .zip 文件</span>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept=".pulse,.zip"
+                      className="file-input-hidden"
+                      onChange={(e) => void handleFile(e.target.files)}
+                    />
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={waveInput}
+                    onChange={(e) => tryPreview(e.target.value)}
+                    placeholder="或在此粘贴 Dungeonlab+pulse:... 文本 / frames JSON"
+                  />
+                </label>
+                {preview && (
+                  <div className="preview-wrap">
+                    <WaveformPreview frames={preview} />
+                    <small>
+                      {preview.length} 帧 · {(preview.length * 25) / 1000}s
+                    </small>
                   </div>
-                ))}
-              </div>
-              <button type="button" className="btn add-role" onClick={addRole}>
-                + 加角色
-              </button>
-            </div>
+                )}
+              </>
+            ) : type === 'scenario' ? (
+              <label className="field">
+                <span>场景提示词 *</span>
+                <textarea
+                  rows={8}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  maxLength={12000}
+                  placeholder="粘贴你的自定义场景设定…"
+                />
+              </label>
+            ) : (
+              <>
+                <label className="field">
+                  <span>世界观 / 背景 *</span>
+                  <textarea
+                    rows={5}
+                    value={setting}
+                    onChange={(e) => setSetting(e.target.value)}
+                    maxLength={8000}
+                    placeholder="描述这个多人场景的世界观、氛围、规则…"
+                  />
+                </label>
+                <p className="upload-note">推荐人数会显著影响匹配，建议认真填写。</p>
+                <div className="row">
+                  <label className="field">
+                    <span>推荐人数（最少）★</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={playerMin}
+                      onChange={(e) => setPlayerMin(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>推荐人数（最多）★</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={playerMax}
+                      onChange={(e) => setPlayerMax(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>AI 参与</span>
+                    <select
+                      value={aiMode}
+                      onChange={(e) => setAiMode(e.target.value as 'none' | 'solo' | 'multi')}
+                    >
+                      <option value="none">纯人（无 AI）</option>
+                      <option value="solo">单个 AI</option>
+                      <option value="multi">多个 AI</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="field">
+                  <span>角色 * — 每人扮演一个</span>
+                  <div className="role-list">
+                    {roles.map((r, i) => (
+                      <div key={i} className="role-item">
+                        <div className="role-row">
+                          <input
+                            className="role-name"
+                            value={r.name}
+                            onChange={(e) => updateRole(i, { name: e.target.value })}
+                            maxLength={40}
+                            placeholder={`角色 ${i + 1}`}
+                          />
+                          <input
+                            className="role-desc"
+                            value={r.description}
+                            onChange={(e) => updateRole(i, { description: e.target.value })}
+                            maxLength={2000}
+                            placeholder={
+                              r.aiPlayable
+                                ? '角色描述 / AI 人设（性格、口吻、动机…）'
+                                : '角色描述（可选）'
+                            }
+                          />
+                          <label className="role-ai" title="该角色可由 AI 扮演（用描述当人设）">
+                            <input
+                              type="checkbox"
+                              checked={r.aiPlayable}
+                              onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })}
+                            />
+                            AI
+                          </label>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label={`删除角色 ${i + 1}`}
+                            onClick={() => removeRole(i)}
+                            disabled={roles.length <= 1}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="btn add-role" onClick={addRole}>
+                    + 加角色
+                  </button>
+                </div>
+              </>
+            )}
           </>
-        )}
-        </>
         )}
 
         {error && (

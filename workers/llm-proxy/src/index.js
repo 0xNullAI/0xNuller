@@ -20,12 +20,7 @@
  *     (Workers > 0xnullai-llm-proxy > Settings > Domains & Routes).
  */
 
-import {
-  checkSignature,
-  corsHeaders,
-  createMemoryLimiter,
-  originAllowed,
-} from './guard.js';
+import { checkSignature, corsHeaders, createMemoryLimiter, originAllowed } from './guard.js';
 
 const UPSTREAM = 'https://aihub.071129.xyz/v1/chat/completions';
 const MAX_REQUESTS_PER_MINUTE = 10;
@@ -127,7 +122,11 @@ export default {
         body: JSON.stringify(body),
       });
     } catch (e) {
-      return json(502, { error: '代理请求失败: ' + (e && e.message ? e.message : String(e)) }, cors);
+      return json(
+        502,
+        { error: '代理请求失败: ' + (e && e.message ? e.message : String(e)) },
+        cors,
+      );
     }
 
     if (body.stream) {

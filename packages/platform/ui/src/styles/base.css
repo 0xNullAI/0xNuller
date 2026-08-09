@@ -53,7 +53,9 @@ button:disabled {
  * (appearance:none; background:transparent), while DG-Chat never dared
  * import this file at all. The rule was too broad; consumers should not
  * each have to work around it. */
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+    [type='color']
+  ),
 select,
 textarea {
   width: 100%;
@@ -69,7 +71,9 @@ textarea {
     background-color var(--dur) ease;
 }
 
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):focus,
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+    [type='color']
+  ):focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);

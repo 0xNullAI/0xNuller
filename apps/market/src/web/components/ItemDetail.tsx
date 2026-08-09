@@ -1,7 +1,13 @@
 import type { JSX } from 'react';
 import { useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
-import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent, MultiSceneContent } from '../../shared/schema';
+import type {
+  ItemPatch,
+  MarketItem,
+  ScenarioContent,
+  WaveformContent,
+  MultiSceneContent,
+} from '../../shared/schema';
 import { updateItem, markDownloaded, reportItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
@@ -32,7 +38,9 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
   // —— edit state ——
   const [editing, setEditing] = useState(false);
-  const [editKey, setEditKey] = useState(() => localStorage.getItem(`${EDIT_KEY_STORE}:${item.id}`) ?? '');
+  const [editKey, setEditKey] = useState(
+    () => localStorage.getItem(`${EDIT_KEY_STORE}:${item.id}`) ?? '',
+  );
   const [eName, setEName] = useState(item.name);
   const [eAuthor, setEAuthor] = useState(item.author ?? '');
   const [eDesc, setEDesc] = useState(item.description ?? '');
@@ -46,7 +54,11 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   // The JSON shape Agent can import directly.
   const exportJson = JSON.stringify(
     view.type === 'waveform'
-      ? { name: view.name, description: view.description, frames: (item.content as WaveformContent).frames }
+      ? {
+          name: view.name,
+          description: view.description,
+          frames: (item.content as WaveformContent).frames,
+        }
       : view.type === 'multi-scene'
         ? { name: view.name, icon: view.icon, ...(item.content as MultiSceneContent) }
         : { name: view.name, icon: view.icon, prompt: (item.content as ScenarioContent).prompt },
@@ -126,15 +138,12 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
   return (
     <Overlay onDismiss={onClose} className="mkt-scope">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="market-item-title"
-        className="modal"
-      >
+      <div role="dialog" aria-modal="true" aria-labelledby="market-item-title" className="modal">
         <header className="modal-head">
           <h2 id="market-item-title">
-            {view.type === 'waveform' ? '〰️ ' : `${view.icon || (view.type === 'multi-scene' ? '🎬' : '🎭')} `}
+            {view.type === 'waveform'
+              ? '〰️ '
+              : `${view.icon || (view.type === 'multi-scene' ? '🎬' : '🎭')} `}
             {view.name}
           </h2>
           <button type="button" className="icon-btn" aria-label="关闭条目详情" onClick={onClose}>
@@ -143,8 +152,12 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
         </header>
 
         <p className="modal-meta">
-          {view.type === 'waveform' ? '波形' : view.type === 'multi-scene' ? '多人场景' : '单人场景'} ·{' '}
-          {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
+          {view.type === 'waveform'
+            ? '波形'
+            : view.type === 'multi-scene'
+              ? '多人场景'
+              : '单人场景'}{' '}
+          · {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
           {view.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
         </p>
 
@@ -160,7 +173,12 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
             <div className="row">
               <label className="field">
                 <span>昵称</span>
-                <input value={eAuthor} onChange={(e) => setEAuthor(e.target.value)} maxLength={30} placeholder="匿名" />
+                <input
+                  value={eAuthor}
+                  onChange={(e) => setEAuthor(e.target.value)}
+                  maxLength={30}
+                  placeholder="匿名"
+                />
               </label>
               {hasIcon && (
                 <label className="field icon-field">
@@ -175,7 +193,11 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
             </label>
             <label className="field">
               <span>标签（逗号分隔）</span>
-              <input value={eTags} onChange={(e) => setETags(e.target.value)} placeholder="温柔, 节奏感" />
+              <input
+                value={eTags}
+                onChange={(e) => setETags(e.target.value)}
+                placeholder="温柔, 节奏感"
+              />
             </label>
             {view.locked ? (
               <label className="field">
@@ -211,12 +233,17 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
         ) : view.type === 'multi-scene' ? (
           (() => {
             const c = item.content as MultiSceneContent;
-            const aiLabel = c.aiMode === 'solo' ? '单个 AI' : c.aiMode === 'multi' ? '多个 AI' : '纯人';
+            const aiLabel =
+              c.aiMode === 'solo' ? '单个 AI' : c.aiMode === 'multi' ? '多个 AI' : '纯人';
             return (
               <div className="scene-detail">
                 <pre className="prompt-box">{c.setting}</pre>
                 <div className="scene-meta">
-                  {c.playerCount && <span>👥 建议 {c.playerCount.min}-{c.playerCount.max} 人</span>}
+                  {c.playerCount && (
+                    <span>
+                      👥 建议 {c.playerCount.min}-{c.playerCount.max} 人
+                    </span>
+                  )}
                   <span>🤖 {aiLabel}</span>
                 </div>
                 <div className="role-cards">
@@ -253,7 +280,11 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
             {reported ? '已举报' : '举报'}
           </button>
           {!editing && (
-            <button className="btn ghost" onClick={startEdit} title={view.locked ? '需要编辑口令' : '任何人可编辑'}>
+            <button
+              className="btn ghost"
+              onClick={startEdit}
+              title={view.locked ? '需要编辑口令' : '任何人可编辑'}
+            >
               {view.locked ? '🔒 编辑' : '✏️ 编辑'}
             </button>
           )}

@@ -31,12 +31,7 @@ import type { AuthUser, PublicPhoto, PublicUserView, UserProfile } from './index
  * not the edge one.
  */
 export type FollowRelationship =
-  | 'self'
-  | 'anonymous'
-  | 'none'
-  | 'following'
-  | 'followsYou'
-  | 'mutual';
+  'self' | 'anonymous' | 'none' | 'following' | 'followsYou' | 'mutual';
 
 /**
  * What the UI may render.

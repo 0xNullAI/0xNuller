@@ -19,7 +19,9 @@ function env(overrides: Partial<Env> = {}): Env {
 
 describe('parseActivationKey', () => {
   it('extracts the key from the openai-insecure-api-key subprotocol token', () => {
-    expect(parseActivationKey('realtime, openai-insecure-api-key.dgv-trial-ok')).toBe('dgv-trial-ok');
+    expect(parseActivationKey('realtime, openai-insecure-api-key.dgv-trial-ok')).toBe(
+      'dgv-trial-ok',
+    );
   });
 
   it('returns null when the header is missing or has no credential token', () => {

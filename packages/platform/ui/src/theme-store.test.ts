@@ -37,10 +37,7 @@ describe('共享主题 store', () => {
     });
 
     it('认 Agent 设置对象里的嵌套字段', () => {
-      localStorage.setItem(
-        'dg-agent.browser-settings',
-        JSON.stringify({ themeMode: 'light' }),
-      );
+      localStorage.setItem('dg-agent.browser-settings', JSON.stringify({ themeMode: 'light' }));
       expect(loadThemeMode()).toBe('light');
     });
 

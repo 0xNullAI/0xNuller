@@ -45,5 +45,4 @@ describe('代理设置', () => {
       expect(applyHttpProxy('not-a-url')).toBe('not-a-url');
     });
   });
-
 });

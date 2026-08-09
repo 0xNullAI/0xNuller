@@ -59,10 +59,7 @@ describe('主页可见性', () => {
 
   it('私密资料对别人只剩用户名，不泄露任何计数', () => {
     // What the server actually sends for a private profile.
-    const r = resolveProfileView(
-      view({ profile: null, counts: null, createdAt: null }),
-      ME.id,
-    );
+    const r = resolveProfileView(view({ profile: null, counts: null, createdAt: null }), ME.id);
     expect(r.state).toBe('hidden');
     if (r.state !== 'hidden') return;
     expect(r.user.username).toBe('other');
