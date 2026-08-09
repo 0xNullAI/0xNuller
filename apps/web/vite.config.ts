@@ -4,6 +4,7 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.js';
 
 /**
  * The unified shell. The four modules' source trees still live under
@@ -15,7 +16,7 @@ import tailwindcss from '@tailwindcss/vite';
  * identifier that becomes a plain ReferenceError at runtime — neither typecheck
  * nor the build reports it.
  */
-const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? `local-${Date.now()}`;
+const buildId = resolveBuildId('local');
 
 export default defineConfig({
   root: __dirname,
@@ -34,16 +35,7 @@ export default defineConfig({
     },
   },
   define: { __BUILD_ID__: JSON.stringify(buildId) },
-  plugins: [
-    react(),
-    tailwindcss(),
-    {
-      name: 'emit-version-json',
-      generateBundle() {
-        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId }, null, 2) });
-      },
-    },
-  ],
+  plugins: [react(), tailwindcss(), emitVersionJson(buildId)],
   build: { outDir: 'dist', emptyOutDir: true, target: 'esnext' },
   server: { port: 5170 },
 });

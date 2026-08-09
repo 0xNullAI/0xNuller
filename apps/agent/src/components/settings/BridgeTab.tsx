@@ -1,11 +1,9 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { MessageCircle, Send, type LucideIcon } from 'lucide-react';
-import { Input } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { Input, SettingLabel, SettingSelect, cn } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { parseCommaSeparated } from '../../utils/ui-formatters.js';
-import { SettingLabel, SettingSelect } from '@0xnullai/ui';
 
 function formatCommaSeparatedInput(values: string[]): string {
   return values.join(', ');

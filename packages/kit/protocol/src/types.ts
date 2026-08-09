@@ -1,3 +1,5 @@
+import type { DeviceKind } from '@dg-kit/core';
+
 /**
  * Minimal BLE characteristic shape needed by the protocol adapters.
  *
@@ -57,4 +59,19 @@ export interface BluetoothLike {
 
 export interface NavigatorBluetoothLike {
   bluetooth?: BluetoothLike;
+}
+
+/**
+ * A picked, already-GATT-connected DG-Lab device plus its identified kind.
+ *
+ * Every cross-kind picker returns this shape — `requestDgLabDevice()` over
+ * Web Bluetooth and `requestDgLabDeviceTauri()` over plugin-blec — which is
+ * what lets a host swap transports without branching on which one it got.
+ * It lives here, next to the `*Like` BLE shapes it is built from, because
+ * both transports and both app-side device layers had redeclared it.
+ */
+export interface RequestedDevice {
+  kind: DeviceKind;
+  device: BluetoothDeviceLike;
+  server: BluetoothRemoteGATTServerLike;
 }

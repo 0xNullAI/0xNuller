@@ -1,11 +1,9 @@
-import type { DeviceKind } from '@dg-kit/core';
 import {
   DG_LAB_REQUEST_DEVICE_OPTIONS,
   detectDeviceKind,
-  type BluetoothDeviceLike,
-  type BluetoothRemoteGATTServerLike,
   type NavigatorBluetoothLike,
   type RequestDeviceOptionsLike,
+  type RequestedDevice,
 } from '@dg-kit/protocol';
 import { getWebBluetoothAvailability } from './availability.js';
 
@@ -14,11 +12,8 @@ export interface RequestDgLabDeviceOptions {
   requestDeviceOptions?: RequestDeviceOptionsLike;
 }
 
-export interface RequestedDgLabDevice {
-  kind: DeviceKind;
-  device: BluetoothDeviceLike;
-  server: BluetoothRemoteGATTServerLike;
-}
+/** @see RequestedDevice — the shared shape every cross-kind picker returns. */
+export type RequestedDgLabDevice = RequestedDevice;
 
 /**
  * Open ONE shared Web Bluetooth chooser scoped to every known DG-Lab device

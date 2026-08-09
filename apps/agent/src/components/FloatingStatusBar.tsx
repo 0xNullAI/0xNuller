@@ -1,6 +1,5 @@
 import type { UpdateCheckerStatus } from '../services/update-checker.js';
-import { Alert, AlertDescription, Button } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { Alert, AlertDescription, Button, cn } from '@0xnullai/ui';
 
 interface RenderToastItem {
   key: string;

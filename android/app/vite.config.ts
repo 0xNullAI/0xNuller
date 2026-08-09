@@ -5,11 +5,14 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveBuildId } from '../../scripts/vite-version.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const r = (p: string) => path.resolve(here, p);
 
-const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? `tauri-${Date.now()}`;
+// No update checker in the APK (no hot update), so no version.json — but the
+// shell still stamps its own build id, and 'tauri' is what marks it as one.
+const buildId = resolveBuildId('tauri');
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

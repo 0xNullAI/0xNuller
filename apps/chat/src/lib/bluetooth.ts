@@ -19,6 +19,7 @@ import {
   type BluetoothRemoteGATTServerLike,
   type PawPrintsReading,
   type CivetPressureReading,
+  type RequestedDevice,
   type OpossumState,
   type OpossumButtonEvent,
 } from '@dg-kit/protocol';
@@ -40,16 +41,11 @@ import type {
 export type DeviceClientFactory = (protocol: WebBluetoothProtocolAdapter) => DeviceClient;
 
 /**
- * A picked, already-GATT-connected DG-Lab device plus its identified kind —
- * the shape both `@dg-kit/transport-webbluetooth`'s `requestDgLabDevice()`
- * (Web Bluetooth) and `@dg-kit/transport-tauri-blec`'s
- * `requestDgLabDeviceTauri()` (Tauri Android) return.
+ * A picked, already-GATT-connected DG-Lab device plus its identified kind.
+ * Declared in `@dg-kit/protocol` (both pickers return it); re-exported so
+ * this module stays the one import surface Chat's device code reaches for.
  */
-export interface RequestedDevice {
-  kind: DeviceKind;
-  device: BluetoothDeviceLike;
-  server: BluetoothRemoteGATTServerLike;
-}
+export type { RequestedDevice };
 
 /**
  * Override hook for `DeviceSession.connectDevice()`'s device-picking step.
