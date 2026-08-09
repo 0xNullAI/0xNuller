@@ -116,7 +116,12 @@ export function App({ transport }: AppProps = {}) {
             onDisconnectOpossum={() => void disconnectOpossum()}
           />
 
-          <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
+          {/* justify-center, because before a call starts this whole module is
+              one card. Top-aligned it sat against the device bar with most of
+              a 900px window empty underneath, which reads as a page that
+              stopped loading. min-h-0 keeps it scrollable once a running call
+              makes the content taller than the viewport. */}
+          <main className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto px-4 py-6">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
