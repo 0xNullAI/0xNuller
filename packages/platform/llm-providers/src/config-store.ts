@@ -75,6 +75,25 @@ export function loadLlmConfig(): LlmConfig {
   return defaultLlmConfig();
 }
 
+/**
+ * Whether the user has actually chosen a provider, as opposed to the store
+ * handing back its defaults.
+ *
+ * Callers that merge this config over their own need the difference:
+ * `loadLlmConfig()` always returns something, so an untouched store would
+ * otherwise silently overwrite a module's own persisted provider with
+ * `free`.
+ */
+export function hasLlmConfig(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    if (coerce(JSON.parse(localStorage.getItem(KEY) ?? 'null'))) return true;
+    return LEGACY_KEYS.some((k) => coerce(JSON.parse(localStorage.getItem(k) ?? 'null')) !== null);
+  } catch {
+    return false;
+  }
+}
+
 export function saveLlmConfig(config: LlmConfig): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(config));

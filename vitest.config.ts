@@ -34,7 +34,12 @@ export default defineConfig({
       {
         test: {
           name: 'agent-packages',
-          include: ['packages/agent/*/src/**/*.test.ts'],
+          // Node 26's built-in localStorage shadows jsdom's; the shim is a
+          // no-op where the real one works. Without it, any test in this
+          // project that reaches the shared browser stores dies on
+          // `localStorage is undefined`.
+          setupFiles: ['./test/setup/jsdom-gaps.ts'],
+          include: ['packages/agent/*/src/**/*.test.{ts,tsx}'],
         },
       },
 
