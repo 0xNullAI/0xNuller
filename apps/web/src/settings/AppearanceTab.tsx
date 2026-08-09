@@ -16,16 +16,22 @@ export function AppearanceTab() {
         <p className="mt-1 text-xs text-[var(--text-faint)]">
           只影响这台设备上的显示。所有模块共用同一个值。
         </p>
-        <div className="mt-3 flex rounded-full bg-[var(--bg-strong)] p-0.5 text-xs">
+        {/* Sized to its labels, not to the panel. `flex-1` inside a full-width
+            row stretched three options across ~700px, which reads as three
+            large buttons rather than one control with three states — and it
+            was the last place still using the round-pill + solid-accent
+            treatment that the other segmented controls moved off. */}
+        <div className="mt-3 inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs">
           {THEMES.map((t) => (
             <button
               key={t.value}
               type="button"
               onClick={() => setMode(t.value)}
+              aria-pressed={mode === t.value}
               className={
-                'flex-1 rounded-full px-3.5 py-1.5 font-medium transition-all ' +
+                'rounded-[var(--radius-xs)] px-3.5 py-1.5 transition-colors duration-[var(--dur)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
                 (mode === t.value
-                  ? 'bg-[var(--accent)] text-[var(--button-text)]'
+                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
                   : 'text-[var(--text-soft)] hover:text-[var(--text)]')
               }
             >

@@ -27,8 +27,15 @@
      rather than soft. The pale pink survives where it belongs, in
      --danger-soft / --danger-surface / --danger-border. */
   --danger: #dc2626;
-  --danger-button: #ef4444;
-  --danger-button-hover: #dc2626;
+  /* The filled destructive button, in both themes — nothing overrides these.
+     It carries white text, and #ef4444 measured 3.76:1 against white, under
+     the 4.5:1 floor for 14px bold. The control it renders is the global stop
+     button in the device bar: the one thing that must be unmistakable while
+     current is running, and the one place where "close enough" is not a
+     judgement call. #dc2626 measures 4.83:1, and hover moves down to #b91c1c
+     so the state change is still visible. */
+  --danger-button: #dc2626;
+  --danger-button-hover: #b91c1c;
   --danger-soft: rgba(240, 162, 178, 0.12);
   --danger-surface: #fef2f5;
   --danger-border: #f0c8d2;
