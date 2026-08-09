@@ -12,16 +12,20 @@ import {
 } from './safety-bus.js';
 
 /**
- * 安全链的端到端。
+ * End-to-end tests for the safety chain.
  *
- * 真机验证不了的部分，这里尽可能补上：从策略引擎一路走到**传输层边界**——除了最后
- * 那段无线电，每一段都跑真的实现（真 PolicyEngine、真 DeviceCommandQueue、真租约），
- * 只有 `DeviceClient` 是假的。
+ * They cover as much as possible of what real hardware can't be used to
+ * verify here: from the policy engine all the way to the *transport
+ * boundary* — every segment runs the real implementation (real PolicyEngine,
+ * real DeviceCommandQueue, real lease) except the radio itself; only
+ * `DeviceClient` is fake.
  *
- * 换句话说，这些测试能证明「用户设了上限 30，AI 要求 100，最终落到传输层的是 30」，
- * 但证明不了「传输层真的把那个包发出去了」。后者只有真机能证。
+ * In other words, these tests can prove "user capped at 30, AI asked for
+ * 100, what reached the transport was 30" — but not "the transport actually
+ * sent that packet". Only a real device proves the latter.
  *
- * 每个模块单独的测试都只覆盖自己那一段，而这条链的失效恰恰发生在段与段之间。
+ * Each module's own tests cover only their own segment, and this chain
+ * fails precisely at the seams between segments.
  */
 
 interface Landed {
@@ -47,7 +51,8 @@ function fakeDevice(): { client: DeviceClient; landed: Landed; state: DeviceStat
     getState: async () => state,
     execute: async (command) => {
       landed.commands.push(command);
-      // 模拟设备侧状态推进，好让后续命令的相对计算有依据
+      // Simulate device-side state advancing so later commands have a
+      // baseline for relative math
       if (command.type === 'adjustStrength') {
         if (command.channel === 'A') state.strengthA += command.delta;
         else state.strengthB += command.delta;
@@ -64,7 +69,7 @@ function fakeDevice(): { client: DeviceClient; landed: Landed; state: DeviceStat
   return { client, landed, state };
 }
 
-/** 用户设的上限走到策略引擎，再走到队列——这就是模块里那条真实路径的形状。 */
+/** User cap → policy engine → queue: the same shape as the real path inside a module. */
 function makeChain(userCaps: { maxStrengthA: number; maxAdjustStep?: number }) {
   const { client, landed, state } = fakeDevice();
   const engine = new PolicyEngine(createDefaultPolicyRules(userCaps));
@@ -98,8 +103,9 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     await chain.send({ type: 'adjustStrength', channel: 'A', delta: 100 });
 
     const landed = chain.landed.commands.find((c) => c.type === 'adjustStrength');
-    // 关键：落到传输层的是钳制**之后**的值。这条链断在任何一段，用户设的 30 都会
-    // 失效，而失效的表现是电流直接到 100。
+    // The point: what reaches the transport is the *post-clamp* value. If
+    // this chain breaks at any segment, the user's 30 stops mattering — and
+    // the symptom is current going straight to 100.
     expect(landed).toBeDefined();
     expect(chain.state.strengthA).toBeLessThanOrEqual(30);
   });
@@ -112,7 +118,7 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
 
   it('急停会作废已经排在队列里、还没到传输层的指令', async () => {
     const { client, landed, state } = fakeDevice();
-    // 卡住第一条，让第二条留在队列里
+    // Stall the first command so the second stays queued
     const gates: (() => void)[] = [];
     const original = client.execute;
     client.execute = async (c) => {
@@ -126,20 +132,24 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     await Promise.resolve();
     void queue.enqueue({ type: 'emergencyStop' });
 
-    // 反复放行到没有新的 gate——串行队列里第二条要等第一条跑完才进 execute。
+    // Keep releasing gates until none appear — in a serial queue the second
+    // command only enters execute after the first finishes.
     for (let i = 0; i < 10; i++) {
       while (gates.length) gates.shift()!();
       await new Promise((r) => setTimeout(r, 0));
     }
 
-    // 排在队列里、还没开始执行的那条必须被丢弃。
+    // The command still queued and not yet executing must be dropped.
     expect(landed.commands.filter((c) => c.type === 'adjustStrength')).toHaveLength(1);
 
-    // **最终强度必须是 0。** 这才是用户关心的事，停了几次不重要。
+    // Final strength MUST be 0. That is what the user cares about; how many
+    // stops it took does not matter.
     //
-    // 已经在 execute() 里的那条撤不回来——generation 检查发生在 execute 之前，而急停
-    // 是并发跑的，它的写入会落在急停之后。所以队列在这种情况下会补停一次，
-    // stops 因此是 2 而不是 1。写死 stops===1 会把这个修复判成回归。
+    // The command already inside execute() cannot be recalled — the
+    // generation check runs before execute while the stop runs concurrently,
+    // so its write lands after the stop. The queue therefore issues a
+    // follow-up stop, making stops 2 rather than 1. Hard-coding stops===1
+    // would flag that fix as a regression.
     expect(landed.stops).toBeGreaterThanOrEqual(1);
     expect(state.strengthA).toBe(0);
   });
@@ -163,7 +173,8 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     );
     await grantDeviceLease('chat');
 
-    // 模块在**每一条**指令前检查租约——远程指令不经过 UI，只禁用按钮没用。
+    // The module checks the lease before *every* command — remote commands
+    // never pass through the UI, so disabling buttons is not enough.
     const guardedSend = async (c: DeviceCommand) => {
       if (!allowed || !hasDeviceLease('chat')) return;
       await chain.send(c);
@@ -193,7 +204,8 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
 
     const result = await stopAllSafetySessions();
 
-    // 后台模块的设备也在人身上。只停当前模块等于让用户以为全停了。
+    // Background modules' devices are on the user's body too. Stopping only
+    // the current module makes the user believe everything stopped.
     expect(a).toHaveBeenCalled();
     expect(b).toHaveBeenCalled();
     expect(result.attempted).toBe(2);
@@ -219,7 +231,8 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     const result = await stopAllSafetySessions();
 
     expect(good).toHaveBeenCalled();
-    // 失败必须被报出来而不是吞掉——用户需要知道有一台没停下。
+    // Failures must be reported, not swallowed — the user needs to know one
+    // device did not stop.
     expect(result.failed.map((f) => f.id)).toEqual(['agent']);
   });
 });
@@ -233,8 +246,9 @@ describe('多设备同时连接', () => {
         label: 'agent',
         isActive: () => true,
         stop: () => {
-          // 一个模块可以同时持有四种设备。它的 stop 必须把每一种都归零——
-          // 只停郊狼的话，负鼠还在振动，而用户已经按过停止了。
+          // One module can hold all four device kinds at once. Its stop must
+          // zero every one of them — stopping only the Coyote leaves the
+          // Opossum vibrating after the user already pressed stop.
           stopped.push('coyote', 'opossum', 'paw-prints', 'civet-edging');
         },
         devices: () => [
@@ -271,8 +285,9 @@ describe('多设备同时连接', () => {
     );
 
     const groups = allConnectedDevices();
-    // 两台设备的 id 都是 'c'——设备栏用 `sessionId:deviceId` 做 key，只用 deviceId
-    // 会让 React 把两台设备当成同一个，第二台根本不显示。
+    // Both devices have id 'c' — the device bar keys rows by
+    // `sessionId:deviceId`; keying by deviceId alone makes React treat the
+    // two as one and the second never renders.
     expect(groups).toHaveLength(2);
     expect(groups.map((g) => g.sessionId).sort()).toEqual(['agent', 'chat']);
     expect(groups.flatMap((g) => g.devices.map((d) => d.name)).sort()).toEqual([
@@ -303,7 +318,8 @@ describe('多设备同时连接', () => {
       }),
     );
 
-    // 一个模块状态读取出错不该让设备栏整个消失——那会连带藏掉旁边的停止按钮。
+    // One module's broken state read must not blank the whole device bar —
+    // that would also hide the stop button next to it.
     const groups = allConnectedDevices();
     expect(groups.map((g) => g.sessionId)).toEqual(['chat']);
   });

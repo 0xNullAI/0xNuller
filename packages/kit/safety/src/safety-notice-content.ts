@@ -1,14 +1,20 @@
 /**
- * 使用前安全确认的正文。
+ * Body text of the pre-use safety acknowledgement.
  *
- * 放在 kit/safety 而不是 UI 层，是因为它属于安全链的一部分：它是产品对使用者作出的
- * 风险告知，审计这件事的人会先来这个包找。UI 层只负责怎么显示。
+ * Lives in kit/safety rather than the UI layer because it is part of the
+ * safety chain: it is the product's risk disclosure to the user, and whoever
+ * audits that will look in this package first. The UI layer only decides how
+ * to display it.
  *
- * 合并前 Agent 与 Chat 各有一份，九条里七条逐字相同，另外两条已经悄悄分叉——
- * Agent 的「禁用与慎用」多了「或先咨询专业人士」，Chat 的没有。这正是
- * 「安全逻辑不得出现第二份可独立演化的副本」要防的事：没人会记得同步改两处。
+ * Before the merge, Agent and Chat each carried a copy; seven of the nine
+ * items were byte-identical and the other two had already silently diverged —
+ * Agent's "do not use / use with caution" section had "or consult a
+ * professional first", Chat's did not. That is exactly what "safety logic
+ * must never have a second independently-evolving copy" is meant to prevent:
+ * nobody remembers to update both.
  *
- * 改这里的文案前先想清楚：这些句子是用来防止人受伤的，不是产品文案。
+ * Think before editing this copy: these sentences exist to keep people from
+ * getting hurt; they are not marketing text.
  */
 
 export interface SafetyNoticeSection {
@@ -28,7 +34,8 @@ export const SAFETY_NOTICE_SECTIONS: readonly SafetyNoticeSection[] = [
   {
     title: '禁用与慎用',
     items: [
-      // 合并两份时取更完整的那句：Chat 的版本漏了「或先咨询专业人士」这个出口。
+      // When merging the two copies, keep the more complete sentence: Chat's
+      // version was missing the "or consult a professional first" escape.
       '心脏起搏器、心血管疾病、癫痫、孕期或任何不确定身体状况时，请不要使用，或先咨询专业人士。',
       '禁止将电极放在胸口、头部、颈部、破损皮肤、炎症区域或任何异常敏感部位。',
       '独处、睡眠、洗澡、饮酒后、驾驶中或操作机械时，禁止使用。',
@@ -50,8 +57,9 @@ export interface SafetyCallout {
 }
 
 /**
- * 顶部那条最重要的提醒。各模块的风险来源不同，所以这里按模块分——但正文一份，
- * 不允许模块自己另写一段。
+ * The single most important callout at the top. Risk sources differ per
+ * module, hence the per-module keys — but the body lives here once; modules
+ * are not allowed to write their own.
  */
 export const SAFETY_CALLOUTS: Record<string, SafetyCallout> = {
   agent: {
@@ -73,5 +81,5 @@ export const DEFAULT_SAFETY_CALLOUT: SafetyCallout = {
   body: '浏览器、蓝牙或网络链路可能卡顿、断连或产生非预期行为。请始终把“立刻停止输出”和“立刻断开设备”放在最高优先级。',
 };
 
-/** 强制阅读的秒数。按钮在此之前不可点。 */
+/** Forced reading time in seconds. The button is unclickable until it elapses. */
 export const SAFETY_NOTICE_COUNTDOWN_SECONDS = 10;

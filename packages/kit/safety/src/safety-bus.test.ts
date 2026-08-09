@@ -12,7 +12,7 @@ function session(id: string, over: Partial<Parameters<typeof registerSafetySessi
 
 describe('安全总线', () => {
   beforeEach(async () => {
-    // 清空：注销所有已注册会话
+    // Reset: unregister every session
     for (const s of activeSafetySessions()) registerSafetySession(s)();
   });
 
@@ -30,7 +30,8 @@ describe('安全总线', () => {
   });
 
   it('某个会话抛错不能中断其余会话的停止', async () => {
-    // 这是最危险的情形：一台设备断连报错，另一台还在输出。
+    // This is the dangerous case: one device throws on a dropped
+    // connection while another keeps outputting.
     const good = vi.fn();
     const offBad = registerSafetySession(
       session('bad', {

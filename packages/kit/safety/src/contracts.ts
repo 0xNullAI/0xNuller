@@ -1,12 +1,14 @@
-// 安全链契约。
+// Safety-chain contracts.
 //
-// 合并前这组类型存在两份：@dg-agent/core 与 apps/voice/src/lib/types.ts（后者的
-// 文件头自述是前者的「镜像切片」）。它们描述的是「调用方如何驱动安全链」，与 BLE
-// 协议本身无关，所以落在这里而不是 @dg-kit/core。
+// Before the merge these types existed twice: in @dg-agent/core and in
+// apps/voice/src/lib/types.ts (whose file header described itself as a
+// "mirror slice" of the former). They describe how a caller drives the
+// safety chain, not the BLE protocol itself — hence this package rather
+// than @dg-kit/core.
 
 import type { DeviceCommand } from '@dg-kit/core';
 
-/** 指令来源。用于策略与权限决策，也用于把回复路由回原始渠道。 */
+/** Command origin. Used for policy/permission decisions and for routing replies back to the original channel. */
 export type SourceType = 'web' | 'qq' | 'telegram' | 'cli' | 'api' | 'system' | 'sensor';
 
 export interface ActionContext {

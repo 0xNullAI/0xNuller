@@ -8,11 +8,13 @@ import {
 } from './safety-bus.js';
 
 /**
- * 设备控制权的租约。
+ * The device-control lease.
  *
- * 「切换应用后原应用失去设备控制权」是产品级要求，但它落地成的是一条安全链：
- * 撤权做得不彻底，表现是「切走了但对方还能控制我的设备」；做得太狠（断连）
- * 又会被 autoReconnect 抢回去。这些测试守的是那条窄路。
+ * "Switching modules revokes the previous module's device control" is a
+ * product requirement, but it lands as a safety chain: revoke too little and
+ * the symptom is "I switched away but they can still control my device";
+ * revoke too hard (disconnect) and autoReconnect steals the device back.
+ * These tests guard that narrow path.
  */
 
 const cleanups: (() => void)[] = [];
@@ -91,7 +93,8 @@ describe('设备控制权租约', () => {
     );
     await grantDeviceLease('agent');
     await grantDeviceLease('chat');
-    // 控制权已经不在它手里，但设备可能还在输出——至少要停掉。
+    // It no longer holds the lease, but its device may still be outputting
+    // — at minimum it must be stopped.
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
@@ -103,7 +106,8 @@ describe('设备控制权租约', () => {
         label: 'agent',
         isActive: () => true,
         stop,
-        // 同步抛错会在 await 之前就炸出去，不包一层就到不了 catch。
+        // A synchronous throw escapes before the await; without the wrapper
+        // it never reaches the catch.
         onRevoke: () => {
           throw new Error('同步炸');
         },
@@ -128,7 +132,8 @@ describe('设备控制权租约', () => {
     await grantDeviceLease(null);
 
     await stopAllSafetySessions();
-    // 交出控制权 ≠ 断开设备。停止按钮停的是所有已注册会话，与谁持有租约无关。
+    // Surrendering the lease != disconnecting. The stop button stops every
+    // registered session regardless of who holds the lease.
     expect(agent.stop).toHaveBeenCalled();
   });
 });

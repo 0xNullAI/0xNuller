@@ -54,12 +54,16 @@ export class SerialCommandQueue<TCommand, TResult> {
       const startedAt = this.generation;
       const result = await this.options.execute(command);
 
-      // 命令**执行期间**发生了急停：这条已经在途，generation 检查拦不住它——检查
-      // 发生在 execute 之前，而急停是并发跑的。它的写入会落在急停之后，设备于是
-      // 停住又回到刚才的强度。实测就是这个顺序（急停 → 在途的 +10 落地 → 强度 10）。
+      // An emergency stop happened *while the command was executing*: it was
+      // already in flight, so the generation check can't catch it — the check
+      // runs before execute, and the stop runs concurrently. Its write lands
+      // after the stop, so the device halts and then jumps back to the
+      // previous strength. Observed exactly in that order (stop → in-flight
+      // +10 lands → strength 10).
       //
-      // 无法撤回一个已经发出的包，能做的是紧接着再停一次。急停必须幂等，所以重复
-      // 停是安全的；漏停不是。
+      // A packet already sent cannot be recalled; what we can do is stop
+      // again right after. Emergency stop must be idempotent, so a duplicate
+      // stop is safe — a missed one is not.
       if (interrupt && startedAt !== this.generation) {
         await interrupt.run(command);
         return interrupt.skippedResult();
