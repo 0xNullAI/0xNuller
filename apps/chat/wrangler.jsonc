@@ -1,16 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // 脚本名保持 dg-chat，不要改成 0xnullai-chat。
+  // 改名会重置 Durable Object 命名空间——这是刻意接受的，不是疏忽。
   //
-  // Durable Object 的命名空间是按 **Worker 脚本名** 划分的，而 wrangler 的
-  // migration 只支持 new_classes / new_sqlite_classes / renamed_classes（同
-  // 脚本内改名）/ deleted_classes——没有跨脚本转移。改脚本名等于换一套全新的
-  // DO 实例：每个房间的聊天记录（RoomDO 的 SQLite）和公开大厅列表（LobbyDO）
-  // 会全部变成不可达。数据不会被删，但谁也再拿不到。
+  // DO 命名空间按 Worker 脚本名划分，而 wrangler 的 migration 只有
+  // new_classes / new_sqlite_classes / renamed_classes（同脚本内）/
+  // deleted_classes，没有跨脚本转移。所以换名字 = 一套全新的 RoomDO/LobbyDO。
   //
-  // 命名不统一是控制台里的观感问题，用户永远看不到；房间历史丢了是用户第一眼
-  // 就会发现的。这个取舍是刻意的。
-  "name": "dg-chat",
+  // 代价有限，因为房间本来就是临时的：最后一人离开 10 分钟后 RoomDO 会自删
+  // 消息、R2 媒体和 storage（见 alarm()）。真正会丢的只有切换那一刻还开着的
+  // 房间，和公开讨论区的历史——那个是唯一不自清的。大厅列表会随房间上报重建。
+  //
+  // 所以：**切换选在低峰时段**，并且接受公开讨论区从空开始。
+  "name": "0xnullai-chat",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
   "compatibility_date": "2025-01-01",

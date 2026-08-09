@@ -12,12 +12,20 @@
     "android:build": "tauri android build"
   },
   "dependencies": {
+    "0xnullai-chat": "*",
+    "0xnullai-market": "*",
+    "0xnullai-voice": "*",
+    "@0xnullai/auth": "*",
+    "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@0xnullai/web": "*",
     "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/audio-browser": "0.1.0",
     "@dg-agent/bridge": "0.1.0",
     "@dg-agent/core": "0.1.0",
-    "@0xnullai/llm-providers": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
     "@dg-agent/storage-browser": "0.1.0",
     "@dg-agent/waveforms": "0.1.0",
@@ -39,15 +47,7 @@
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^3.5.0",
-    "@0xnullai/web": "*",
-    "@0xnullai/native": "0.1.0",
-    "@0xnullai/settings": "0.1.0",
-    "@0xnullai/scenes": "0.1.0",
-    "@0xnullai/auth": "*",
-    "dg-chat": "*",
-    "dg-voice": "*",
-    "dg-market": "*"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

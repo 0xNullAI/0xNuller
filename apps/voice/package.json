@@ -1,5 +1,5 @@
 {
-  "name": "dg-voice",
+  "name": "0xnullai-voice",
   "private": true,
   "version": "0.7.5",
   "type": "module",
@@ -14,8 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "android:init": "npm run tauri:android:init -w @dg-voice/tauri-android"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@0xnullai/market-client": "0.1.0",
@@ -72,8 +71,5 @@
     "semi": true,
     "singleQuote": true,
     "trailingComma": "all"
-  },
-  "workspaces": [
-    "apps/*"
-  ]
+  }
 }

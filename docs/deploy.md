@@ -3,15 +3,15 @@
 统一外壳占据根域，四个后端 Worker 按**路径路由**接管各自的 API。
 
 ```
-0xnullai.com/*                  → 0xnuller       纯静态，无 Worker 代码
-0xnullai.com/api/auth/*         → 0xnullai-auth  D1
-0xnullai.com/ws/*               → dg-chat        Durable Objects + R2
-0xnullai.com/api/lobby/*        → dg-chat
-0xnullai.com/api/upload/*       → dg-chat
-0xnullai.com/api/media/*        → dg-chat
-0xnullai.com/api/items*         → dg-market      D1 + R2
-0xnullai.com/api/admin/*        → dg-market
-0xnullai.com/api/realtime       → dg-voice       Durable Object（体验版计量）
+0xnullai.com/*                  → 0xnuller         纯静态，无 Worker 代码
+0xnullai.com/api/auth/*         → 0xnullai-auth    D1
+0xnullai.com/ws/*               → 0xnullai-chat    Durable Objects + R2
+0xnullai.com/api/lobby/*        → 0xnullai-chat
+0xnullai.com/api/upload/*       → 0xnullai-chat
+0xnullai.com/api/media/*        → 0xnullai-chat
+0xnullai.com/api/items*         → 0xnullai-market  D1 + R2
+0xnullai.com/api/admin/*        → 0xnullai-market
+0xnullai.com/api/realtime       → 0xnullai-voice   Durable Object（体验版计量）
 
 llm.0xnullai.com                → dg-llm-proxy   免费 provider，独立子域
 ```
@@ -27,10 +27,10 @@ Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜
 
 **Durable Object 的 migration tag 按 Worker script 计。** 把 `RoomDO` / `LobbyDO`
 搬进另一个 script 等于新建一组空的 DO——现有的所有房间和聊天历史会变成永远访问不到
-的孤儿数据，且不可恢复。`dg-voice` 的 `TrialSession` 同理：搬走会让所有激活密钥的
+的孤儿数据，且不可恢复。`0xnullai-voice` 的 `TrialSession` 同理：搬走会让所有激活密钥的
 用量计数归零，那是花钱的方向。
 
-**同样不能改的是 script 的名字**（`dg-chat` / `dg-voice`）。名字只出现在 Cloudflare
+**同样不能改的是 script 的名字**（`0xnullai-chat` / `0xnullai-voice`）。名字只出现在 Cloudflare
 控制台里，用户看不到，不值得为「去掉 DG」冒这个险。
 
 这是唯一的原因。除此之外几个 script 合并没有任何障碍，将来如果 Cloudflare 提供了
@@ -50,40 +50,47 @@ wrangler d1 migrations apply 0xnullai-auth --remote  # 只在新增 migration �
 npm run deploy -w @0xnullai/auth-worker
 
 # 2. 市场 —— 库已在线且有内容，不要重建
-npm run deploy -w dg-market
+npm run deploy -w 0xnullai-market
 
 # 3. 聊天（含 DO；已在线的话跳过创建，直接 deploy）
 wrangler r2 bucket create dg-chat-media
-npm run deploy -w dg-chat
+npm run deploy -w 0xnullai-chat
 
 # 4. 体验版语音（含 DO）
 wrangler secret put XAI_API_KEY --config apps/voice/wrangler.jsonc
 wrangler secret put TRIAL_KEYS  --config apps/voice/wrangler.jsonc
-npm run deploy -w dg-voice
+npm run deploy -w 0xnullai-voice
 
 # 5. 外壳——最后
 npm run deploy -w @0xnullai/web
 ```
 
-## dg-market 改名成 0xnullai-market 的切换
+## 三个 Worker 改名的切换
 
-脚本名从 `dg-market` 改成了 `0xnullai-market`。**改名不是原地重命名**——部署会创建
-一个新脚本，旧的那个还在，而且路由仍指向它。必须按顺序切：
+`dg-market` / `dg-chat` / `dg-voice` 全部改成 `0xnullai-*`。**改名不是原地重命名**
+——部署会创建一个新脚本，旧的还在，而且路由仍指向它。逐个切：
 
 ```bash
-npm run deploy -w dg-market                 # 以新名字部署，此时两个脚本并存
-curl -s https://0xnullai.com/api/items | head -c 200   # 确认新脚本已接管路由
-wrangler delete --name dg-market            # 确认无误后，删掉旧脚本
+npm run deploy -w 0xnullai-market
+curl -s https://0xnullai.com/api/items | head -c 200   # 确认新脚本接管了路由
+wrangler delete --name dg-market                       # 确认无误后删旧脚本
+# chat / voice 同样三步，用各自的路由做验证
 ```
 
-D1 库名仍是 `dg-market`：绑定按 `database_id` 走，库名只在控制台里出现。改库名要新
-建库再搬 44 条内容，为一个用户永远看不到的字符串冒数据风险不值得。
+**chat 与 voice 带 Durable Object，改名等于换一套新命名空间。** 这是刻意接受的：
+房间本来就是临时的（最后一人离开 10 分钟后 RoomDO 自删消息、R2 媒体与 storage），
+所以真正会丢的只有切换那一刻还开着的房间、公开讨论区的历史，以及体验额度重置一次。
+**切换选在低峰时段**，并且接受公开讨论区从空开始。
 
-**dg-chat 与 dg-voice 的脚本名不要动。** Durable Object 的命名空间按脚本名划分，而
-wrangler 的 migration 只有 new_classes / new_sqlite_classes / renamed_classes（同脚本
-内）/ deleted_classes——没有跨脚本转移。改名等于换一套全新 DO 实例：房间聊天记录
-（RoomDO）、公开大厅（LobbyDO）、体验额度（TrialSession）全部变成不可达。命名不统一
-是控制台里的观感，用户看不到；房间历史丢了用户第一眼就发现。
+D1 库名仍是 `dg-market`：绑定按 `database_id` 走，库名只在控制台里出现。改库名要新建
+库再搬 44 条真实内容，为一个用户永远看不到的字符串冒数据风险不值得。R2 桶名同理，
+`dg-chat-media` 不动——桶根本不能改名，只能新建再逐个对象搬。
+
+**为什么必须现在改，而不是以后。** DO 命名空间按脚本名划分，wrangler 只有
+new_classes / new_sqlite_classes / renamed_classes（同脚本内）/ deleted_classes，
+没有跨脚本转移。所以改名的代价完全取决于那一刻 DO 里存着什么。现在房间是临时的，
+存的东西本来就会自己消失；等房间变成永久群组、承载长期聊天记录之后，同样一次改名
+就是真正的数据丢失。**这是最后一个免费窗口。**
 
 ## 部署前必须确认的四件事
 
@@ -94,7 +101,7 @@ wrangler 的 migration 只有 new_classes / new_sqlite_classes / renamed_classes
 用户会看到「明明登录了却显示未登录」，而控制台里只有一条 CORS 警告。
 
 **3. 两个 origin 白名单都要含根域**：`0xnullai-auth` 的 `ALLOWED_ORIGINS` 与
-`dg-voice` 的 `TRIAL_ALLOWED_ORIGINS`。两者都必须包含 `http://tauri.localhost`
+`0xnullai-voice` 的 `TRIAL_ALLOWED_ORIGINS`。两者都必须包含 `http://tauri.localhost`
 ——那是安卓壳 WebView 的 origin，漏了的话手机上登录和体验版语音全部 403，而界面
 只会显示「连接失败」。安卓没有热更新，这种错要重新打包才能修。
 

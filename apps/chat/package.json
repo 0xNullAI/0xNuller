@@ -1,11 +1,8 @@
 {
-  "name": "dg-chat",
+  "name": "0xnullai-chat",
   "private": true,
   "version": "2.6.1",
   "type": "module",
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -14,10 +11,7 @@
     "cf:dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "tauri:android:init": "npm run tauri:android:init -w @dg-chat/tauri-android",
-    "tauri:android:dev": "npm run tauri:android:dev -w @dg-chat/tauri-android",
-    "tauri:android:build": "npm run tauri:android:build -w @dg-chat/tauri-android"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@0xnullai/llm-providers": "0.1.0",
