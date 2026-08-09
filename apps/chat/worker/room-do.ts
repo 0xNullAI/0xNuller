@@ -4,7 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { deleteRoomMedia } from './media';
-import { LOBBY_NAME, ROOM_GRACE_MS, RESERVED_ROOM_CODE, RESERVED_ROOM_NAME, type WireChat, type Scene } from './wire';
+import { LOBBY_NAME, ROOM_GRACE_MS, RESERVED_ROOM_CODE, RESERVED_ROOM_NAME, ROOM_AGENT_SENDER, type WireChat, type Scene, type RoomAgent } from './wire';
 
 interface Attachment {
   peerId: string;
@@ -18,6 +18,7 @@ export class RoomDO extends DurableObject<Env> {
   private sql: SqlStorage;
   private lastLobbyReport = 0;
   // In-memory cache of the scene / role claims (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
+  private agentCache: RoomAgent | null | undefined;
   private sceneCache: Scene | null | undefined;
   private assignmentsCache: Record<string, string> | undefined;
 
@@ -84,6 +85,7 @@ export class RoomDO extends DurableObject<Env> {
         }
         // Replay the history to this connection (all earlier messages and media references).
         ws.send(JSON.stringify({ t: 'history', messages: this.loadHistory() }));
+        ws.send(JSON.stringify({ t: 'agent', agent: await this.getAgent(), host }));
         // Sync the current scene + host + role claim state.
         ws.send(JSON.stringify({ t: 'scene', scene: await this.getScene(), host }));
         ws.send(JSON.stringify({ t: 'role', assignments: await this.getAssignments() }));
@@ -113,6 +115,24 @@ export class RoomDO extends DurableObject<Env> {
         // Normal message: the sender already has an optimistic copy, so exclude it from the broadcast;
         // AI-proxied message: the host has no local copy, so broadcast to everyone (host included).
         this.broadcast({ t: 'chat', ...chat }, aiAs ? undefined : ws);
+        return;
+      }
+
+      case 'agent': {
+        // Host-only. The agent's device commands are authorized as ai:room on
+        // the host's authority, so whoever defines it must be the room owner.
+        const agentHost = await this.ctx.storage.get<string>('hostPeerId');
+        if (att.peerId !== agentHost) return;
+        const raw = msg.agent as Record<string, unknown> | null | undefined;
+        const next: RoomAgent | null = raw
+          ? {
+              name: String(raw.name ?? '').slice(0, 40),
+              persona: String(raw.persona ?? '').slice(0, 4000),
+            }
+          : null;
+        this.agentCache = next;
+        await this.ctx.storage.put('agent', next);
+        this.broadcast({ t: 'agent', agent: next, host: agentHost ?? '' });
         return;
       }
 
@@ -307,6 +327,13 @@ export class RoomDO extends DurableObject<Env> {
     });
   }
 
+  private async getAgent(): Promise<RoomAgent | null> {
+    if (this.agentCache === undefined) {
+      this.agentCache = (await this.ctx.storage.get<RoomAgent>('agent')) ?? null;
+    }
+    return this.agentCache;
+  }
+
   // -- Scene / role claims --
 
   private async getScene(): Promise<Scene | null> {
@@ -350,6 +377,8 @@ export class RoomDO extends DurableObject<Env> {
     if (typeof as !== 'string' || !as.startsWith('ai:')) return null;
     const host = await this.ctx.storage.get<string>('hostPeerId');
     if (senderPeerId !== host) return null;
+    // The room agent: legitimate as soon as the room has one.
+    if (as === ROOM_AGENT_SENDER) return (await this.getAgent()) ? as : null;
     const roleId = as.slice(3);
     return assignments[roleId] === as ? as : null;
   }

@@ -15,13 +15,12 @@ import { executeCommand, type CommandContext } from './lib/commands';
 import { ShellRoomList } from './components/ShellRoomList';
 import { CreateRoomDialog } from './components/CreateRoomDialog';
 import { RESERVED_ROOM_CODE } from '../shared/room-constants';
+import { RoomAgentDialog } from './components/RoomAgentDialog';
 import { ChatPanel } from './components/ChatPanel';
 import { ControlPanel } from './components/ControlPanel';
-import { SceneDialog } from './components/SceneDialog';
-import { SceneMarketDialog } from './components/SceneMarketDialog';
 import { DeviceSafetyButton } from './components/DeviceSafetyButton';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
-import { LogOut, Drama, Bot } from 'lucide-react';
+import { LogOut, Bot } from 'lucide-react';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type {
@@ -147,8 +146,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       .catch(() => undefined);
   }, []);
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
-  const [sceneOpen, setSceneOpen] = useState(false);
-  const [sceneMarketOpen, setSceneMarketOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const openShellSettings = useOpenShellSettings();
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
@@ -547,14 +545,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     localStorage.setItem('dg-chat-allow-ai', allowAi ? '1' : '0');
   }, [allowAi]);
 
-  // AI role brains (only actually run in the host's browser; triggered by @-ing an AI role).
+  // The room agent's brain (only actually runs in the host's browser; triggered by @-ing it).
   const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()]
     .filter((m) => !m.isAi && m.deviceConnected && m.allowAi)
     .map((m) => ({ peerId: m.peerId, name: m.displayName || m.peerId.slice(0, 6) }));
   useRoomAgents({
     isHost: peerRoom.isHost,
-    scene: peerRoom.scene,
-    roleAssignments: peerRoom.roleAssignments,
+    agent: peerRoom.agent,
     members: peerRoom.members,
     messages: peerRoom.messages,
     deviceTargets: agentDeviceTargets,
@@ -658,14 +655,17 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           {/* The permanent discussion room has no host and no AI (pure open chat), so hide the scene/AI entry points */}
           {peerRoom.roomId !== RESERVED_ROOM_CODE && (
             <>
-              {/* Room scene */}
-              <button
-                onClick={() => setSceneOpen(true)}
-                className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.scene ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
-                title="房间场景"
-              >
-                <Drama className="h-4 w-4" />
-              </button>
+              {/* The room's AI participant. Host-only, matching the server: its
+                  device commands are authorized on the host's authority. */}
+              {peerRoom.isHost && (
+                <button
+                  onClick={() => setAgentOpen(true)}
+                  className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
+                  title={peerRoom.agent ? `房间 AI：${peerRoom.agent.name}` : '给房间加个 AI'}
+                >
+                  <Bot className="h-4 w-4" />
+                </button>
+              )}
               {/* AI settings (the host configures the model) + the toggle allowing AI to control this device */}
               {/* Opens the one settings panel (AI page). Chat used to carry its own
                   dialog for the standalone build, but both wrote the same provider
@@ -769,7 +769,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 peerId: p,
                 name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),
               })),
-              // AI-hosted roles show up as pseudo-members that can be @-mentioned (peerId = "ai:<roleId>").
+              // The room agent shows up as a pseudo-member so it can be @-mentioned.
               ...[...peerRoom.members.values()]
                 .filter((m) => m.isAi)
                 .map((m) => ({ peerId: m.peerId, name: m.displayName })),
@@ -841,31 +841,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         </a>
       </footer>
 
-      <SceneDialog
-        open={sceneOpen}
-        onClose={() => setSceneOpen(false)}
-        scene={peerRoom.scene}
-        roleAssignments={peerRoom.roleAssignments}
-        members={peerRoom.members}
-        selfId={peerRoom.selfId}
-        selfName={displayName}
-        isHost={peerRoom.isHost}
-        onSetScene={peerRoom.setScene}
-        onClaimRole={peerRoom.claimRole}
-        onReleaseRole={peerRoom.releaseRole}
-        onAssignAi={peerRoom.assignAi}
-        onReleaseAi={peerRoom.releaseAi}
-        onImportFromMarket={() => setSceneMarketOpen(true)}
-      />
-      <SceneMarketDialog
-        open={sceneMarketOpen}
-        onClose={() => setSceneMarketOpen(false)}
-        onImport={(s) => {
-          peerRoom.setScene(s);
-          setSceneMarketOpen(false);
-          setSceneOpen(true);
-        }}
-      />
+      {agentOpen && (
+        <RoomAgentDialog
+          agent={peerRoom.agent}
+          onSave={peerRoom.setAgent}
+          onClose={() => setAgentOpen(false)}
+        />
+      )}
     </div>
   );
 }

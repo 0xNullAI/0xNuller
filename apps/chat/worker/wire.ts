@@ -14,8 +14,9 @@ export type WireType =
   | 'cmd' // device command, directed (to=peerId)
   | 'wave' // waveform transfer, directed (to=peerId)
   | 'leave' // voluntary leave
-  | 'scene' // scene: the host sets/changes it (client→DO); current scene + host broadcast (DO→client)
-  | 'role' // role: claim/release (client→DO); role→peer assignment broadcast (DO→client)
+  | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
+  | 'scene' // legacy roleplay, removed from the UI — see RoomDO's no-op case
+  | 'role' // legacy roleplay, removed from the UI — see RoomDO's no-op case
   | 'history' // DO→client: replay for a newly joined peer
   | 'sys'; // DO→client: connection-level presence (joined/left)
 
@@ -55,7 +56,39 @@ export interface WireChat {
   ts: number;
 }
 
-/** Scene role definition. */
+/**
+ * The room's AI participant.
+ *
+ * Exactly one per room, addressed by @-mention. It replaced a system where
+ * the AI was modelled as a *claimed scene role*, which meant its identity,
+ * its persona and its permission to speak all came from a scene definition
+ * — and so did the ability to @ it at all.
+ *
+ * Its sender id is fixed (`ai:room`). Keeping the `ai:` prefix is what lets
+ * the self-loop guard, the isAi member flag, and the server-side `as` check
+ * stay exactly as they were.
+ */
+export interface RoomAgent {
+  /** Shown in the room and in the @ list. */
+  name: string;
+  /** Free-text persona, written by the host. Becomes the system prompt. */
+  persona: string;
+}
+
+/** The room agent's fixed member id. */
+export const ROOM_AGENT_ID = 'room';
+
+/** The room agent's fixed sender id, as it appears in `as` and in `senderId`. */
+export const ROOM_AGENT_SENDER = `ai:${ROOM_AGENT_ID}`;
+
+/** DO→client: the room's agent. Null means the host has not added one. */
+export interface WireAgent {
+  t: 'agent';
+  agent: RoomAgent | null;
+  host: string; // hostPeerId
+}
+
+/** Scene role definition. @deprecated legacy roleplay; kept only to type the no-op inbound case. */
 export interface SceneRole {
   id: string;
   /** Role name (= the member's title). */

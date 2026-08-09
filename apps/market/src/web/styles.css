@@ -150,7 +150,11 @@ body {
   padding: 4px 8px;
 }
 
-input,
+/* Excludes the structurally different input types, same as the shared
+   base.css. Without the filter this stretched the 角色 AI 可玩 checkbox in
+   the upload dialog into a bordered ~34px box; `.role-ai input { width:auto }`
+   below only undid the width, not the padding, border and background. */
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
 textarea,
 select {
   width: 100%;
@@ -165,7 +169,7 @@ select {
     box-shadow 160ms ease,
     background-color 160ms ease;
 }
-input:focus,
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);

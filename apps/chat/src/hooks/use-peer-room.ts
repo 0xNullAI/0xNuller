@@ -12,6 +12,7 @@ import type {
   StateSlow,
   Scene,
 } from '../lib/protocol';
+import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -122,6 +123,7 @@ export function usePeerRoom(displayName: string) {
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // —— Scene roleplay ——
+  const [agent, setAgentState] = useState<RoomAgent | null>(null);
   const [scene, setSceneState] = useState<Scene | null>(null);
   const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
@@ -230,6 +232,12 @@ export function usePeerRoom(displayName: string) {
           const peerId = data.peerId as string;
           if (data.kind === 'joined') touchPeer(peerId);
           else if (data.kind === 'left') removePeer(peerId);
+          return;
+        }
+
+        if (t === 'agent') {
+          setAgentState((data.agent as RoomAgent | null) ?? null);
+          setHostPeerId((data.host as string) ?? null);
           return;
         }
 
@@ -484,24 +492,35 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
+  /** Host adds, edits, or removes the room's agent. The server enforces host-only. */
+  const setAgent = useCallback(
+    (next: RoomAgent | null) => {
+      send({ t: 'agent', agent: next });
+    },
+    [send],
+  );
+
   /**
    * Host speaks on behalf of an AI-held role (called by the agent loop). The
    * server verifies the sender is the host and that the role really is AI-held.
    */
   const sendChatAs = useCallback(
     (roleId: string, text: string, mentions?: ChatMention[]) => {
-      const role = scene?.roles.find((r) => r.id === roleId);
+      const name =
+        roleId === ROOM_AGENT_ID
+          ? (agent?.name ?? 'AI')
+          : (scene?.roles.find((r) => r.id === roleId)?.name ?? 'AI');
       send({
         t: 'chat',
         as: `ai:${roleId}`,
         id: shortId(),
-        n: role?.name ?? 'AI',
+        n: name,
         x: text,
         ts: Date.now(),
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, scene],
+    [send, scene, agent],
   );
 
   /**
@@ -642,8 +661,18 @@ export function usePeerRoom(displayName: string) {
   // Synthesize AI-held roles as pseudo-members so they show up in the member
   // list and the @-mention candidates (peerId = "ai:<roleId>").
   const membersWithAi = useMemo(() => {
-    if (!scene) return members;
+    if (!scene && !agent) return members;
     const m = new Map(members);
+    // The room agent is a first-class member with a fixed id, so it appears in
+    // the member list and the @ candidates without needing a scene.
+    if (agent) {
+      m.set(ROOM_AGENT_SENDER, {
+        ...emptyMember(ROOM_AGENT_SENDER),
+        displayName: agent.name || 'AI',
+        isAi: true,
+      });
+    }
+    if (!scene) return m;
     for (const [roleId, holder] of Object.entries(roleAssignments)) {
       if (!holder.startsWith('ai:')) continue;
       const role = scene.roles.find((r) => r.id === roleId);
@@ -651,7 +680,7 @@ export function usePeerRoom(displayName: string) {
         m.set(holder, { ...emptyMember(holder), displayName: role.name, roleId, isAi: true });
     }
     return m;
-  }, [members, scene, roleAssignments]);
+  }, [members, scene, roleAssignments, agent]);
 
   /**
    * Show a remote peer's notice as a line in the transcript.
@@ -694,6 +723,8 @@ export function usePeerRoom(displayName: string) {
     setCommandHandler,
     setWaveformHandler,
     notifyLocal,
+    agent,
+    setAgent,
     // —— Scene roleplay ——
     scene,
     roleAssignments,

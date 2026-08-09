@@ -1,7 +1,7 @@
-// use-room-agents: the "AI role brain" that runs in the host's browser.
-// Watches room chat; when a message @-mentions an AI-held role, it assembles a
-// scene + role system prompt, calls the LLM (optionally with device tools), and
-// broadcasts the reply back into the room as that AI role.
+// use-room-agents: the room agent's brain, running in the host's browser.
+// Watches room chat; when a message @-mentions the room's agent it builds the
+// system prompt, calls the LLM (optionally with device tools), and broadcasts
+// the reply back into the room as that agent.
 //
 // Safety points:
 //  - Only the host (isHost) runs it, guaranteeing one @AI produces exactly one
@@ -11,10 +11,9 @@
 //  - Device tools go through sendCommandAs → the existing cmd channel, hard
 //    clamped against the local cap on the owner side; the AI can only act on
 //    deviceTargets (members who have granted control to that AI).
-//  - One turn at a time per role; the tool loop is capped to prevent runaway.
+//  - One turn at a time; the tool loop is capped to prevent runaway.
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type {
-  Scene,
   MemberState,
   ChatMention,
   CmdAction,
@@ -23,6 +22,7 @@ import type {
 } from '../lib/protocol';
 import { loadAiConfig, isAiConfigured } from '../lib/ai-config';
 import { callLlm, type LlmMessage, type LlmTool, type LlmToolCall } from '../lib/llm-client';
+import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 
 /** A target device the AI may drive (already authorized for that AI role). */
 export interface AgentDeviceTarget {
@@ -32,8 +32,8 @@ export interface AgentDeviceTarget {
 
 interface RoomAgentsOptions {
   isHost: boolean;
-  scene: Scene | null;
-  roleAssignments: Record<string, string>;
+  /** The room's agent, or null when the host has not added one. */
+  agent: RoomAgent | null;
   members: Map<string, MemberState>;
   messages: ChatMessage[];
   /** Devices this AI may control (already authorized). Empty array = chat only, no tools offered. */
@@ -51,46 +51,31 @@ const MAX_TOOL_ROUNDS = 4;
 const HISTORY_LIMIT = 20;
 
 /**
- * Assemble an AI role's system prompt: the whole scene + the complete role
- * table + its own identity + the roster of who is present.
+ * The agent's system prompt.
+ *
+ * It used to be assembled from a scene: the world setting, the full role
+ * table, and the agent's own identity as one claimed role. With roleplay
+ * gone the persona is just free text the host writes, so this is the whole
+ * of it plus who is in the room.
  */
-function buildSystemPrompt(
-  scene: Scene,
-  selfRoleId: string,
-  members: Map<string, MemberState>,
-  roleAssignments: Record<string, string>,
-): string {
+function buildSystemPrompt(agent: RoomAgent, members: Map<string, MemberState>): string {
   const lines: string[] = [];
-  lines.push(`【场景】${scene.name}`);
-  if (scene.setting) lines.push(`世界观：${scene.setting}`);
-  lines.push('');
-  lines.push('【角色表】（本场景所有角色，让你了解全局，不只自己）');
-  for (const r of scene.roles) {
-    const holder = roleAssignments[r.id];
-    let who = '（无人扮演）';
-    if (holder?.startsWith('ai:'))
-      who = holder === `ai:${selfRoleId}` ? '由你(AI)扮演 ★' : '由 AI 扮演';
-    else if (holder) who = `由 ${members.get(holder)?.displayName || '某成员'} 扮演`;
-    lines.push(`- ${r.name}：${r.description || '（无描述）'} —— ${who}`);
+  lines.push(`【你的身份】你是「${agent.name || 'AI'}」，这个聊天房间里的一位participant。`);
+  if (agent.persona.trim()) {
+    lines.push('');
+    lines.push('【人设】');
+    lines.push(agent.persona.trim());
   }
-  const self = scene.roles.find((r) => r.id === selfRoleId);
-  lines.push('');
-  lines.push('【你的身份】');
-  lines.push(`你是「${self?.name ?? '未知角色'}」。`);
-  if (self?.description) lines.push(`人设：${self.description}`);
-  lines.push('始终以这个角色的身份和口吻发言，不要跳出角色，不要承认自己是 AI。');
-  lines.push('');
   const roster = [...members.values()]
-    .filter((m) => m.displayName)
-    .map(
-      (m) =>
-        `${m.displayName}${m.roleId ? `(${scene.roles.find((r) => r.id === m.roleId)?.name ?? ''})` : ''}`,
-    )
+    .filter((m) => m.displayName && !m.isAi)
+    .map((m) => m.displayName)
     .join('、');
-  if (roster) lines.push(`【在场成员】${roster}`);
-  lines.push(
-    '【规则】用中文、简短自然、符合场景氛围；只在被 @ 时回应；如需对设备施加效果，调用提供的工具。',
-  );
+  if (roster) {
+    lines.push('');
+    lines.push(`【在场成员】${roster}`);
+  }
+  lines.push('');
+  lines.push('【规则】用中文、简短自然；只在被 @ 时回应；如需对设备施加效果，调用提供的工具。');
   return lines.join('\n');
 }
 
@@ -137,7 +122,7 @@ function buildTools(targets: AgentDeviceTarget[]): LlmTool[] {
 export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> } {
   // Only the top-level effect needs these; the other fields are read inside
   // runTurn via latest.current.
-  const { isHost, scene, roleAssignments, messages } = opts;
+  const { isHost, agent, messages } = opts;
 
   const processedRef = useRef<Set<string>>(new Set());
   const busyRef = useRef<Set<string>>(new Set());
@@ -160,15 +145,15 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
       const cfg = loadAiConfig();
       if (!isAiConfigured(cfg)) return;
       const cur = latest.current;
-      if (!cur.scene) return;
-      const sys = buildSystemPrompt(cur.scene, roleId, cur.members, cur.roleAssignments);
+      if (!cur.agent) return;
+      const sys = buildSystemPrompt(cur.agent, cur.members);
       const recent = cur.messages.slice(-HISTORY_LIMIT);
       const convo: LlmMessage[] = recent.map((m) =>
         m.senderId === `ai:${roleId}`
           ? { role: 'assistant', content: m.text }
           : {
               role: 'user',
-              content: `${m.senderName}${m.senderRole ? `(${m.senderRole})` : ''}：${m.text}`,
+              content: `${m.senderName}：${m.text}`,
             },
       );
       const tools = buildTools(cur.deviceTargets);
@@ -221,12 +206,8 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
       for (const m of messages) processedRef.current.add(m.id);
       return;
     }
-    const aiRoleIds = new Set(
-      Object.entries(roleAssignments)
-        .filter(([roleId, holder]) => holder === `ai:${roleId}`)
-        .map(([roleId]) => roleId),
-    );
-    if (aiRoleIds.size === 0) return;
+    // One agent per room, at a fixed id — no scene, no role claims.
+    if (!agent) return;
     for (const m of messages) {
       if (processedRef.current.has(m.id)) continue;
       if (m.senderId.startsWith('ai:')) {
@@ -234,16 +215,13 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
         continue; // prevent self-triggering
       }
       const mentioned = m.mentions?.map((x) => x.peerId) ?? [];
-      let handled = false;
-      for (const roleId of aiRoleIds) {
-        if (mentioned.includes(`ai:${roleId}`)) {
-          void runTurn(roleId, m.id);
-          handled = true;
-        }
+      if (mentioned.includes(ROOM_AGENT_SENDER)) {
+        void runTurn(ROOM_AGENT_ID, m.id);
+      } else {
+        processedRef.current.add(m.id);
       }
-      if (!handled) processedRef.current.add(m.id);
     }
-  }, [isHost, messages, roleAssignments, scene, runTurn]);
+  }, [isHost, messages, agent, runTurn]);
 
   return { thinking };
 }
