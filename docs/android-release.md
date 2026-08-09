@@ -62,19 +62,14 @@ set +a
 npm run android:build -- --apk --target aarch64
 ```
 
-## 上传前必须验的两件事
+## 上传前必须验的产物
 
-`aapt` 和 `apksigner` 在 Android SDK 的 build-tools 里，默认不在 PATH 上：
+自动门禁会从 Android SDK 中选择最新的 build-tools，同时核对包名、版本、versionCode、
+应用名、minSdk、arm64 ABI、BLE/旧版定位权限、APK v2 签名与旧 DG-Agent 证书指纹：
 
 ```bash
-export PATH="$HOME/Library/Android/sdk/build-tools/35.0.0:$PATH"
 APK=$(ls android/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk)
-
-# 版本号真的是这一版吗——从 dev 构建的话这里会是上一个版本
-aapt dump badging "$APK" | grep -E "versionName|versionCode"
-
-# 签名是不是那把对的钥匙——没设环境变量时 Gradle 会产出未签名产物而不报错
-apksigner verify --print-certs "$APK" | grep -E "CN=|OU="
+npm run verify:android:apk -- "$APK"
 ```
 
 正确的输出长这样（2026-08-08 实测）：
@@ -89,8 +84,8 @@ Signer #1 certificate DN: CN=DG-Agent, OU=0xNullAI, O=0xNullAI, …
 桌面上显示的名字（已经是 0xNuller）；`CN=DG-Agent` 是证书主题，**它就该是这个**
 ——换掉等于换密钥。APK 约 15MB。
 
-签名那一条尤其要看：`signingConfigs` 里有 `if (ks != null)` 的保护，环境变量没设时
-构建**照样成功**，只是出来的 APK 装不上。
+签名配置是 fail-closed：release 任务缺任一 `DG_AGENT_*` 变量都会直接失败，不能产出
+未签名候选。自动门禁仍必须执行，因为变量也可能指向错误的 keystore 或版本产物。
 
 然后：
 
