@@ -288,6 +288,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
             {mentionCandidates.map((m) => (
               <button
                 key={m.peerId}
+                type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   selectMention(m);
@@ -301,10 +302,15 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           </div>
         )}
         {mediaError && (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1.5 text-sm text-[var(--danger)]">
+          <div
+            role="alert"
+            className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1.5 text-sm text-[var(--danger)]"
+          >
             <span>{mediaError}</span>
             <button
+              type="button"
               onClick={() => setMediaError(null)}
+              aria-label="关闭发送错误"
               className="shrink-0 text-[var(--text-faint)] hover:text-[var(--text)]"
               title="关闭"
             >
@@ -315,7 +321,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         {recorder ? (
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={cancelRec}
+              aria-label="取消录音"
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--danger)] transition-colors"
               title="取消录音"
             >
@@ -326,7 +334,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               录音中 {formatDuration(recElapsed)}
             </div>
             <button
+              type="button"
               onClick={stopRecAndSend}
+              aria-label="结束录音并发送"
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90"
               title="结束并发送"
             >
@@ -337,7 +347,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={handlePickImage} />
             <button
+              type="button"
               onClick={() => fileRef.current?.click()}
+              aria-label="发送图片"
               disabled={busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
               title="发送图片"
@@ -345,7 +357,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               <ImageIcon size={20} />
             </button>
             <button
+              type="button"
               onClick={startRec}
+              aria-label="发送语音"
               disabled={busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
               title="发送语音"
@@ -366,7 +380,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               style={{ fontSize: '16px' }}
             />
             <button
+              type="button"
               onClick={handleSend}
+              aria-label="发送消息"
               disabled={!draft.trim() || busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90 disabled:opacity-40"
             >
@@ -385,7 +401,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
             className="max-h-full max-w-full rounded-[var(--radius-sm)]"
           />
           <button
+            type="button"
             onClick={() => setLightbox(null)}
+            aria-label="关闭图片预览"
             className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
           >
             <X size={22} />

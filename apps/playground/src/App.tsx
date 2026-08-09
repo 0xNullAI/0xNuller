@@ -29,7 +29,13 @@ export default function App() {
           <span className="text-sm font-medium">{open.name}</span>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <Suspense fallback={<p className="p-6 text-sm text-[var(--text-faint)]">加载中…</p>}>
+          <Suspense
+            fallback={
+              <p role="status" aria-live="polite" className="p-6 text-sm text-[var(--text-faint)]">
+                加载中…
+              </p>
+            }
+          >
             <Game />
           </Suspense>
         </div>

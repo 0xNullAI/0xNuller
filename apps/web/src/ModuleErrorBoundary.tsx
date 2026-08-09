@@ -47,7 +47,10 @@ export class ModuleErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
 
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+      <div
+        role="alert"
+        className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center"
+      >
         <div>
           <h2 className="text-lg font-semibold">{this.props.label} 加载失败</h2>
           <p className="mt-2 max-w-md text-sm text-[var(--text-soft)]">

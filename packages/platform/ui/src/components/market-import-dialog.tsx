@@ -100,12 +100,18 @@ export function MarketImportDialog({
             />
           </div>
 
-          <div className="max-h-[52vh] space-y-1.5 overflow-y-auto">
+          <div className="max-h-[52dvh] space-y-1.5 overflow-y-auto">
             {loading && (
-              <div className="py-8 text-center text-sm text-[var(--text-faint)]">加载中…</div>
+              <div
+                role="status"
+                aria-live="polite"
+                className="py-8 text-center text-sm text-[var(--text-faint)]"
+              >
+                加载中…
+              </div>
             )}
             {error && (
-              <div className="py-8 text-center text-sm text-[var(--danger)]">
+              <div role="alert" className="py-8 text-center text-sm text-[var(--danger)]">
                 {error}
                 <div className="mt-1 text-[12px] text-[var(--text-faint)]">
                   请确认已部署 Market 并配置了市场地址

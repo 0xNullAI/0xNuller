@@ -46,10 +46,17 @@ export function RoomAgentDialog({
 
   return (
     <Overlay onDismiss={onClose}>
-      <div className="flex w-[min(520px,100%)] flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="room-agent-title"
+        className="flex max-h-[calc(100dvh-2rem)] w-[min(520px,100%)] flex-col gap-4 overflow-y-auto rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)]"
+      >
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-[var(--accent)]" />
-          <h2 className="text-base font-semibold">房间 AI</h2>
+          <h2 id="room-agent-title" className="text-base font-semibold">
+            房间 AI
+          </h2>
         </div>
 
         <p className="text-xs text-[var(--text-faint)]">

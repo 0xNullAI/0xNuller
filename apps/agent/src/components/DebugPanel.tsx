@@ -81,7 +81,7 @@ export function DebugPanel({
               type="button"
               onClick={onClose}
               aria-label="关闭调试面板"
-              className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] sm:min-h-0 sm:min-w-0 sm:p-2"
             >
               <X className="h-4 w-4" />
             </button>

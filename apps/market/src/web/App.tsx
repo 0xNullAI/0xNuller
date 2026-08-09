@@ -138,9 +138,11 @@ export function App(): JSX.Element {
 
         <main className="grid">
           {loading ? (
-            <p className="empty">加载中…</p>
+            <p role="status" aria-live="polite" className="empty">
+              加载中…
+            </p>
           ) : error ? (
-            <div className="empty">
+            <div role="alert" className="empty">
               <p>没能加载市场内容</p>
               <p className="error">{error}</p>
               <button className="btn" onClick={load}>

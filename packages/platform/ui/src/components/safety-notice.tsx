@@ -68,7 +68,7 @@ export function SafetyNotice({
         role="dialog"
         aria-modal="true"
         aria-labelledby="safety-notice-title"
-        className="max-h-[90vh] w-full max-w-[960px] overflow-auto rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)] sm:p-6"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-[960px] overflow-auto rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)] sm:p-6"
       >
         <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--accent)]">
           安全确认

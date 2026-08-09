@@ -51,7 +51,7 @@ export function PermissionModal({
         aria-modal="true"
         aria-label="权限请求"
         ref={panelRef}
-        className="w-[min(320px,calc(100vw-2rem))] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
+        className="max-h-[calc(100dvh-2rem)] w-[min(320px,calc(100vw-2rem))] overflow-y-auto rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-xl outline-none"
         tabIndex={-1}
       >
         <div className="text-center text-xs font-medium text-[var(--accent)]">权限请求</div>

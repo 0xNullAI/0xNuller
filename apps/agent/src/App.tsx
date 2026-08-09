@@ -831,6 +831,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           <button
             type="button"
             onClick={() => setDebugPanelOpen(true)}
+            aria-label="打开调试面板"
             className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
             title="调试面板"
           >
@@ -898,7 +899,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                     选择历史对话，或者新建一条会话
                   </SheetDescription>
                 </div>
-                <SheetClose className="scale-90 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+                <SheetClose className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
                   <X className="h-5 w-5" />
                   <span className="sr-only">关闭</span>
                 </SheetClose>

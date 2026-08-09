@@ -65,7 +65,7 @@ export function SessionSearchDialog({
       <DialogPrimitive.Portal container={useOverlayContainer()}>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[1.5px] animate-in fade-in-0 duration-[var(--dur)]" />
         <DialogPrimitive.Content
-          className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9vh)] z-[calc(var(--z-module-overlay)+1)] mx-auto max-w-[500px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-[var(--dur-mid)]"
+          className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9dvh)] z-[calc(var(--z-module-overlay)+1)] mx-auto max-w-[500px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-[var(--dur-mid)]"
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             inputRef.current?.focus();
@@ -79,7 +79,7 @@ export function SessionSearchDialog({
               <div className="text-sm font-semibold tracking-[0.01em] text-[var(--text-faint)]">
                 搜索历史对话
               </div>
-              <DialogPrimitive.Close className="scale-90 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+              <DialogPrimitive.Close className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-8 sm:w-8">
                 <X className="h-4 w-4" />
                 <span className="sr-only">关闭</span>
               </DialogPrimitive.Close>
@@ -107,7 +107,7 @@ export function SessionSearchDialog({
           </div>
 
           {/* Results */}
-          <div className="max-h-[min(50vh,360px)] overflow-y-auto border-t border-[var(--surface-border)]">
+          <div className="max-h-[min(50dvh,360px)] overflow-y-auto border-t border-[var(--surface-border)]">
             {query.trim() && results.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-[var(--text-faint)]">
                 <Search className="h-7 w-7 opacity-30" />

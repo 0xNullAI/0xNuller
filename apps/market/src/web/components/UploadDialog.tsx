@@ -556,7 +556,13 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                         <input type="checkbox" checked={r.aiPlayable} onChange={(e) => updateRole(i, { aiPlayable: e.target.checked })} />
                         AI
                       </label>
-                      <button type="button" className="icon-btn" onClick={() => removeRole(i)} disabled={roles.length <= 1}>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`删除角色 ${i + 1}`}
+                        onClick={() => removeRole(i)}
+                        disabled={roles.length <= 1}
+                      >
                         ✕
                       </button>
                     </div>
