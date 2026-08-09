@@ -158,6 +158,147 @@ export async function deletePhoto(id: string): Promise<void> {
   await call(`/api/auth/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/**
+ * Contacts.
+ *
+ * Following is directional; a **contact** is both directions existing, which is
+ * what `mutual` reports. There is no separate friendship concept anywhere in
+ * the stack — see the auth worker's 0004_contacts.sql.
+ *
+ * **Nothing below throws.** Every other function in this file rejects on a
+ * failed request, and callers there are already inside a flow the user started
+ * by signing in. Contacts are different: the surface can be reached while
+ * signed out, and the account service can simply be unreachable — anonymous use
+ * is a hard product constraint, so an unavailable server has to read as "no
+ * contacts", never as a crash inside the shell. Reads therefore degrade to an
+ * empty page and writes report failure in the return value.
+ *
+ * The rules themselves are not implemented here. Self-follow, following someone
+ * who blocked you and blocking removing follows are all enforced by the server;
+ * this layer only carries the answer back.
+ */
+
+export interface Contact {
+  id: string;
+  username: string;
+  displayName: string;
+  /** Epoch ms the follow was created. Lists come back newest first. */
+  followedAt: number;
+  /** Both directions of the follow exist — the two of you are contacts. */
+  mutual: boolean;
+}
+
+export interface ContactPage {
+  users: Contact[];
+  /** Offset for the next page, or null at the end of the list. */
+  nextOffset: number | null;
+}
+
+export interface BlockedUser {
+  id: string;
+  username: string;
+  displayName: string;
+  blockedAt: number;
+}
+
+/** Another user as seen by someone else. `profile` is null unless it is public (or your own). */
+export interface PublicUserView {
+  user: AuthUser;
+  profile: UserProfile | null;
+  /** You follow them. */
+  following: boolean;
+  /** They follow you. */
+  followedBy: boolean;
+}
+
+/** Writes report failure rather than throwing; `error` carries the server's wording. */
+export interface ContactActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+const EMPTY_PAGE: ContactPage = { users: [], nextOffset: null };
+
+async function contactAction(path: string, init: RequestInit): Promise<ContactActionResult> {
+  try {
+    await call(path, init);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : '操作失败' };
+  }
+}
+
+/** Paging is by offset, and the server caps the page size. Ids are never put in a query string. */
+function pageQuery(options: { limit?: number; offset?: number } = {}): string {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset) params.set('offset', String(options.offset));
+  const q = params.toString();
+  return q ? `?${q}` : '';
+}
+
+async function contactPage(path: string): Promise<ContactPage> {
+  try {
+    const r = await call<ContactPage>(path);
+    return { users: r.users ?? [], nextOffset: r.nextOffset ?? null };
+  } catch {
+    return EMPTY_PAGE;
+  }
+}
+
+export function listFollowing(options?: { limit?: number; offset?: number }): Promise<ContactPage> {
+  return contactPage(`/api/auth/following${pageQuery(options)}`);
+}
+
+export function listFollowers(options?: { limit?: number; offset?: number }): Promise<ContactPage> {
+  return contactPage(`/api/auth/followers${pageQuery(options)}`);
+}
+
+export function followUser(userId: string): Promise<ContactActionResult> {
+  return contactAction('/api/auth/follow', { method: 'POST', body: JSON.stringify({ userId }) });
+}
+
+export function unfollowUser(userId: string): Promise<ContactActionResult> {
+  return contactAction(`/api/auth/follow/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+/**
+ * Block someone. The server also drops any follow in **both** directions — a
+ * block that left the existing follow in place would not be a block.
+ */
+export function blockUser(userId: string): Promise<ContactActionResult> {
+  return contactAction('/api/auth/block', { method: 'POST', body: JSON.stringify({ userId }) });
+}
+
+/** Unblocking does not restore the follows the block removed; they have to be made again. */
+export function unblockUser(userId: string): Promise<ContactActionResult> {
+  return contactAction(`/api/auth/block/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+export async function listBlocks(): Promise<BlockedUser[]> {
+  try {
+    return (await call<{ users: BlockedUser[] }>('/api/auth/blocks')).users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Look someone up by username — the only handle a person can type, and it goes
+ * in the path rather than a query string.
+ *
+ * Returns null when there is no such user, when either of you has blocked the
+ * other (deliberately the same answer, so a block cannot be detected), and when
+ * the service is unreachable.
+ */
+export async function getUser(username: string): Promise<PublicUserView | null> {
+  try {
+    return await call<PublicUserView>(`/api/auth/users/${encodeURIComponent(username)}`);
+  } catch {
+    return null;
+  }
+}
+
 /** Whole years, or null when no birth date is set. Local-only; the server enforces 18+ on save. */
 export function ageFromBirthDate(birthDate: string | null): number | null {
   if (!birthDate) return null;

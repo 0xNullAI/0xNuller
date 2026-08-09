@@ -48,6 +48,20 @@ const MAX_FAILS_PER_USERNAME = 8;
 const MAX_FAILS_PER_IP = 30;
 const MIN_PASSWORD_LEN = 10;
 
+/**
+ * Contact list paging. The cap is the point: without it a single request can
+ * ask for an entire follower graph, which is both a slow query and a bulk
+ * export of who is connected to whom.
+ */
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
+/**
+ * Blocks are returned in one shot rather than paged. The list is only useful as
+ * "everyone I have blocked, so I can unblock someone", and a page boundary in
+ * the middle of that is a worse answer than a ceiling nobody reaches.
+ */
+const MAX_BLOCKS = 200;
+
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -170,6 +184,92 @@ function publicProfile(row: Record<string, unknown>) {
 
 function publicUser(u: UserRow) {
   return { id: u.id, username: u.username, displayName: u.display_name };
+}
+
+/**
+ * A contact list row. `mutual` is what makes a contact — both follow rows
+ * exist. It is computed rather than stored; see 0004_contacts.sql.
+ */
+function contactRow(r: Record<string, unknown>) {
+  return {
+    id: String(r.id),
+    username: String(r.username),
+    displayName: String(r.display_name),
+    followedAt: Number(r.followed_at),
+    mutual: Number(r.mutual) === 1,
+  };
+}
+
+/**
+ * Clamp the paging parameters. Neither carries personal data, which is why
+ * paging is offset-based here: a keyset cursor would have to encode the last
+ * row's user id, and user ids do not go in query strings — those end up in
+ * access logs, referrer headers and browser history.
+ */
+function pageParams(url: URL): { limit: number; offset: number } {
+  const requested = Number(url.searchParams.get('limit')) || DEFAULT_PAGE_SIZE;
+  return {
+    limit: Math.min(Math.max(Math.trunc(requested), 1), MAX_PAGE_SIZE),
+    offset: Math.max(Math.trunc(Number(url.searchParams.get('offset')) || 0), 0),
+  };
+}
+
+/**
+ * Is there a block in either direction between these two users?
+ *
+ * Blocks are stored directionally so their owner can undo them, but they are
+ * always read symmetrically: if either party blocked the other, they are
+ * invisible to each other. Checking only one direction would leave the blocked
+ * person free to keep watching the blocker.
+ */
+async function blockedBetween(env: Env, a: string, b: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM user_blocks
+      WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)`,
+  )
+    .bind(a, b, b, a)
+    .first();
+  return row != null;
+}
+
+async function follows(env: Env, followerId: string, followeeId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    'SELECT 1 FROM user_follows WHERE follower_id = ? AND followee_id = ?',
+  )
+    .bind(followerId, followeeId)
+    .first();
+  return row != null;
+}
+
+/**
+ * Both contact lists are the same query read from opposite ends of the row, so
+ * they are built from one place rather than kept in sync by hand.
+ *
+ * `mutual` is the same sub-select either way round: does a row exist pointing
+ * back along this one. The NOT EXISTS drops anyone in a block relationship with
+ * the viewer — the write path already refuses to create such a follow, but a
+ * read path that trusted that would fail silently the day a new call site
+ * forgets, and the failure looks like a blocked person reappearing in a list.
+ *
+ * The interpolated names are column identifiers chosen here from a closed set,
+ * never request input.
+ */
+function contactListSql(direction: 'following' | 'followers'): string {
+  // "Following" filters on my end being the follower and shows the followee;
+  // "followers" is the mirror image.
+  const mine = direction === 'following' ? 'follower_id' : 'followee_id';
+  const other = direction === 'following' ? 'followee_id' : 'follower_id';
+  return `SELECT u.id, u.username, u.display_name, f.created_at AS followed_at,
+       EXISTS (SELECT 1 FROM user_follows m
+                WHERE m.follower_id = f.followee_id AND m.followee_id = f.follower_id) AS mutual
+  FROM user_follows f
+  JOIN users u ON u.id = f.${other}
+ WHERE f.${mine} = ?
+   AND NOT EXISTS (SELECT 1 FROM user_blocks x
+                    WHERE (x.blocker_id = f.follower_id AND x.blocked_id = f.followee_id)
+                       OR (x.blocker_id = f.followee_id AND x.blocked_id = f.follower_id))
+ ORDER BY f.created_at DESC
+ LIMIT ? OFFSET ?`;
 }
 
 function validateCredentials(username: unknown, password: unknown): string | null {
@@ -595,6 +695,225 @@ export default {
           .bind(String(body.itemId), user.id, body.editKeyHash ?? null, Date.now())
           .run();
         return json({ ok: true }, 200, cors);
+      }
+
+      // ── Contacts ──
+      //
+      // Following is directional; a "contact" is both directions existing. See
+      // 0004_contacts.sql for why there is no friendship table.
+      //
+      // Three rules are enforced here rather than in the UI, because the UI is
+      // not the only caller and never will be: you cannot follow yourself,
+      // following someone who blocked you fails, and blocking removes the
+      // follow in both directions. Anything checked only in the client is a
+      // rule that holds until somebody uses curl.
+      if (path === '/api/auth/follow' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const targetId = typeof body.userId === 'string' ? body.userId : '';
+        if (!targetId) return err('缺少 userId', 400, cors);
+        if (targetId === user.id) return err('不能关注自己', 400, cors);
+
+        const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
+          .bind(targetId)
+          .first<{ id: string }>();
+        if (!target) return err('用户不存在', 404, cors);
+
+        const blocks = await env.DB.prepare(
+          `SELECT blocker_id FROM user_blocks
+            WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)`,
+        )
+          .bind(user.id, targetId, targetId, user.id)
+          .all();
+        const blockRows = (blocks.results ?? []) as { blocker_id: string }[];
+        if (blockRows.some((r) => r.blocker_id === user.id)) {
+          // The user's own block, so saying so plainly is useful rather than a leak.
+          return err('你已拉黑该用户，请先解除拉黑', 400, cors);
+        }
+        if (blockRows.length > 0) {
+          // Blocked by the target. Deliberately the same answer as a nonexistent
+          // user: confirming "you have been blocked" tells someone exactly who to
+          // go after, and in this product that means targeted harassment. It also
+          // keeps the block from being usable as a presence probe.
+          return err('用户不存在', 404, cors);
+        }
+
+        await env.DB.prepare(
+          `INSERT INTO user_follows (follower_id, followee_id, created_at) VALUES (?, ?, ?)
+           ON CONFLICT (follower_id, followee_id) DO NOTHING`,
+        )
+          .bind(user.id, targetId, Date.now())
+          .run();
+
+        return json({ ok: true, mutual: await follows(env, targetId, user.id) }, 200, cors);
+      }
+
+      // Idempotent: "I do not follow this person" is equally true whether or not a
+      // row was there, so a repeat unfollow is a success, not a 404.
+      if (path.startsWith('/api/auth/follow/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const targetId = decodeURIComponent(path.slice('/api/auth/follow/'.length));
+        await env.DB.prepare('DELETE FROM user_follows WHERE follower_id = ? AND followee_id = ?')
+          .bind(user.id, targetId)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (
+        (path === '/api/auth/following' || path === '/api/auth/followers') &&
+        request.method === 'GET'
+      ) {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const { limit, offset } = pageParams(url);
+        const rows = await env.DB.prepare(
+          contactListSql(path === '/api/auth/following' ? 'following' : 'followers'),
+        )
+          .bind(user.id, limit, offset)
+          .all();
+        const users = (rows.results ?? []).map((r) => contactRow(r as Record<string, unknown>));
+        return json(
+          // A short page means the end of the list; no extra count query, and no
+          // total either — a follower count is a number people scrape.
+          { users, nextOffset: users.length === limit ? offset + limit : null },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/block' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const targetId = typeof body.userId === 'string' ? body.userId : '';
+        if (!targetId) return err('缺少 userId', 400, cors);
+        if (targetId === user.id) return err('不能拉黑自己', 400, cors);
+
+        const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
+          .bind(targetId)
+          .first<{ id: string }>();
+        if (!target) return err('用户不存在', 404, cors);
+
+        // The block goes in first, then the follows come out. If the second
+        // statement fails, the block is already in force and the read paths filter
+        // the stale follow anyway. The other order would leave a window with the
+        // follows gone and no block — the user gets the weaker half of what they
+        // asked for and no error to explain it.
+        await env.DB.prepare(
+          `INSERT INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)
+           ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        )
+          .bind(user.id, targetId, Date.now())
+          .run();
+        await env.DB.prepare(
+          `DELETE FROM user_follows
+            WHERE (follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?)`,
+        )
+          .bind(user.id, targetId, targetId, user.id)
+          .run();
+
+        return json({ ok: true }, 200, cors);
+      }
+
+      // Unblocking does not restore the follows the block removed — they were
+      // deleted by an intentional act, and bringing one back silently is a worse
+      // surprise than having to follow again.
+      if (path.startsWith('/api/auth/block/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const targetId = decodeURIComponent(path.slice('/api/auth/block/'.length));
+        await env.DB.prepare('DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?')
+          .bind(user.id, targetId)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (path === '/api/auth/blocks' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const rows = await env.DB.prepare(
+          `SELECT u.id, u.username, u.display_name, b.created_at AS blocked_at
+             FROM user_blocks b JOIN users u ON u.id = b.blocked_id
+            WHERE b.blocker_id = ?
+            ORDER BY b.created_at DESC
+            LIMIT ?`,
+        )
+          .bind(user.id, MAX_BLOCKS)
+          .all();
+        return json(
+          {
+            users: (rows.results ?? []).map((r) => {
+              const row = r as Record<string, unknown>;
+              return {
+                id: String(row.id),
+                username: String(row.username),
+                displayName: String(row.display_name),
+                blockedAt: Number(row.blocked_at),
+              };
+            }),
+          },
+          200,
+          cors,
+        );
+      }
+
+      // ── Another user's public view ──
+      //
+      // Looked up by username because that is the only handle a person can type;
+      // it goes in the path, never a query string.
+      //
+      // `user_profiles.visibility` decides the profile body and it is honoured
+      // literally: private means nobody but the owner, following or not. Following
+      // someone is not a grant of access to them — treating it as one would mean a
+      // profile silently becomes visible to whoever presses a button.
+      //
+      // What a private profile still returns is the identity that was already
+      // public: the username the caller just typed, and the display name attached
+      // to it. Without that there is no way to confirm you found the right person
+      // before following them, and the username was never the secret.
+      if (path.startsWith('/api/auth/users/') && request.method === 'GET') {
+        // Signed-out callers are allowed here; the account is optional and a public
+        // profile is public. What they cannot get is any relationship state, and a
+        // block cannot apply to a viewer with no identity.
+        const viewer = await currentUser(request, env);
+        const username = decodeURIComponent(path.slice('/api/auth/users/'.length)).toLowerCase();
+        if (!username) return err('用户不存在', 404, cors);
+
+        const target = await env.DB.prepare('SELECT * FROM users WHERE username = ?')
+          .bind(username)
+          .first<UserRow>();
+        if (!target) return err('用户不存在', 404, cors);
+
+        const isSelf = viewer?.id === target.id;
+        if (viewer && !isSelf && (await blockedBetween(env, viewer.id, target.id))) {
+          return err('用户不存在', 404, cors);
+        }
+
+        const row = await env.DB.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
+          .bind(target.id)
+          .first<Record<string, unknown>>();
+        const profile = row ? publicProfile(row) : null;
+        const visible = isSelf || profile?.visibility === 'public';
+
+        // The birth date never leaves its owner's own view. The profile editor
+        // tells users in so many words that it is collected to confirm they are
+        // an adult and that the date itself is not shown — marking a profile
+        // public is consent to the bio and the region, not to that. A promise
+        // made in the UI has to be kept by the endpoint, or it is not a promise.
+        const shown =
+          !visible || !profile ? null : isSelf ? profile : { ...profile, birthDate: null };
+
+        const [following, followedBy] =
+          viewer && !isSelf
+            ? await Promise.all([
+                follows(env, viewer.id, target.id),
+                follows(env, target.id, viewer.id),
+              ])
+            : [false, false];
+
+        return json({ user: publicUser(target), profile: shown, following, followedBy }, 200, cors);
       }
 
       // ── Delete account ──
