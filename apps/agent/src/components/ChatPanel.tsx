@@ -502,17 +502,6 @@ export function ChatPanel({
               )}
             </div>
           </div>
-          <p className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] text-[var(--text-faint)]">
-            本项目仅供学习交流使用，请遵守当地法律法规。{' '}
-            <a
-              href="https://github.com/0xNullAI/0xNuller"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-[var(--text-soft)]"
-            >
-              GitHub
-            </a>
-          </p>
         </>
       ) : (
         /* ===== Normal chat state ===== */
@@ -665,17 +654,6 @@ export function ChatPanel({
               {BLUETOOTH_PAIR_HINT}
             </p>
           )}
-          <p className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] text-[var(--text-faint)]">
-            本项目仅供学习交流使用，请遵守当地法律法规。{' '}
-            <a
-              href="https://github.com/0xNullAI/0xNuller"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-[var(--text-soft)]"
-            >
-              GitHub
-            </a>
-          </p>
         </>
       )}
     </div>

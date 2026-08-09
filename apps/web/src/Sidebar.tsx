@@ -304,6 +304,15 @@ export function Sidebar({
           onOpenSettings={onOpenSettings}
           onOpenDocs={onOpenDocs}
         />
+        {/* The one copy of this notice. It used to sit under Agent's composer
+            (twice) and under Chat's, and nowhere else — so four of the six
+            modules simply did not carry it, which is worse than either
+            extreme. Here it is present in every module without taking any
+            space from a module's working area, and Control in particular is
+            designed as a single screen with no footer to give up. */}
+        <p className="px-2 pt-2 text-[10px] leading-snug text-[var(--text-faint)]">
+          本项目仅供学习交流使用，请遵守当地法律法规。
+        </p>
       </div>
     </aside>
   );

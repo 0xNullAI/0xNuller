@@ -1005,18 +1005,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           />
         </div>
       </div>
-      <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] py-1.5 text-center text-[10px] text-[var(--text-faint)]">
-        本项目仅供学习交流使用，请遵守当地法律法规。
-        <a
-          href="https://github.com/0xNullAI/0xNuller"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-[var(--accent)]"
-        >
-          GitHub
-        </a>
-      </footer>
-
       {agentOpen && (
         <RoomAgentDialog
           agent={peerRoom.agent}
