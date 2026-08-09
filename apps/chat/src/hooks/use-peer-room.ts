@@ -10,7 +10,6 @@ import type {
   WaveformTransfer,
   StateFast,
   StateSlow,
-  Scene,
 } from '../lib/protocol';
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 
@@ -67,17 +66,6 @@ function generatePeerId(): string {
 
 const selfId = generatePeerId();
 
-/** Look up the name of the role a member has claimed in the current scene (= their title). */
-function roleNameOf(
-  peerId: string,
-  scene: Scene | null,
-  assignments: Record<string, string>,
-): string | undefined {
-  if (!scene) return undefined;
-  const entry = Object.entries(assignments).find(([, pid]) => pid === peerId);
-  return entry ? scene.roles.find((r) => r.id === entry[0])?.name : undefined;
-}
-
 /** wire mentions ({peerId,n}) → ChatMention ({peerId,displayName}). */
 function mapMentions(m: unknown): ChatMention[] | undefined {
   if (!Array.isArray(m)) return undefined;
@@ -122,10 +110,10 @@ export function usePeerRoom(displayName: string) {
   const [peers, setPeers] = useState<string[]>([]);
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // —— Scene roleplay ——
+  // —— Room AI ——
   const [agent, setAgentState] = useState<RoomAgent | null>(null);
-  const [scene, setSceneState] = useState<Scene | null>(null);
-  const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
+  // The host is whoever the DO says it is. Only that browser runs the agent
+  // loop, which is what keeps one @mention from producing several replies.
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
 
   const transportRef = useRef<RoomTransport | null>(null);
@@ -222,7 +210,6 @@ export function usePeerRoom(displayName: string) {
               timestamp: (m.ts as number) ?? 0,
               media: buildMedia(room, m.m as WireMedia | undefined),
               mentions: mapMentions(m.mentions),
-              senderRole: m.senderRole as string | undefined,
             })),
           );
           return;
@@ -238,17 +225,6 @@ export function usePeerRoom(displayName: string) {
         if (t === 'agent') {
           setAgentState((data.agent as RoomAgent | null) ?? null);
           setHostPeerId((data.host as string) ?? null);
-          return;
-        }
-
-        if (t === 'scene') {
-          setSceneState((data.scene as Scene | null) ?? null);
-          setHostPeerId((data.host as string) ?? null);
-          return;
-        }
-
-        if (t === 'role') {
-          setRoleAssignments((data.assignments as Record<string, string>) ?? {});
           return;
         }
 
@@ -271,7 +247,6 @@ export function usePeerRoom(displayName: string) {
                 timestamp: (data.ts as number) ?? Date.now(),
                 media: buildMedia(roomIdRef.current, data.m as WireMedia | undefined),
                 mentions: mapMentions(data.mentions),
-                senderRole: data.senderRole as string | undefined,
               },
             ]);
             break;
@@ -412,9 +387,6 @@ export function usePeerRoom(displayName: string) {
       const room = roomIdRef.current;
 
       const localMedia: ChatMedia | undefined = media ? buildMedia(room, media) : undefined;
-      // The local optimistic message works out its own title (the DO doesn't
-      // echo messages back to their sender).
-      const myRole = roleNameOf(selfId, scene, roleAssignments);
 
       setMessages((prev) => [
         ...prev,
@@ -427,7 +399,6 @@ export function usePeerRoom(displayName: string) {
           timestamp: now,
           media: localMedia,
           mentions,
-          senderRole: myRole,
         },
       ]);
 
@@ -451,44 +422,6 @@ export function usePeerRoom(displayName: string) {
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, scene, roleAssignments],
-  );
-
-  /** Host sets/changes the scene (changing scenes clears all role claims). */
-  const setScene = useCallback(
-    (s: Scene | null) => {
-      send({ t: 'scene', scene: s });
-    },
-    [send],
-  );
-
-  /** Claim a role (exclusive). */
-  const claimRole = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'claim', roleId });
-    },
-    [send],
-  );
-
-  /** Release a role. */
-  const releaseRole = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'release', roleId });
-    },
-    [send],
-  );
-
-  /** Host: hand an aiPlayable role over to the AI / take it back. */
-  const assignAi = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'assign-ai', roleId });
-    },
-    [send],
-  );
-  const releaseAi = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'release-ai', roleId });
-    },
     [send],
   );
 
@@ -501,15 +434,12 @@ export function usePeerRoom(displayName: string) {
   );
 
   /**
-   * Host speaks on behalf of an AI-held role (called by the agent loop). The
-   * server verifies the sender is the host and that the role really is AI-held.
+   * Host speaks as the room agent (called by the agent loop). The server
+   * verifies the sender is the host and that the room really has an agent.
    */
   const sendChatAs = useCallback(
     (roleId: string, text: string, mentions?: ChatMention[]) => {
-      const name =
-        roleId === ROOM_AGENT_ID
-          ? (agent?.name ?? 'AI')
-          : (scene?.roles.find((r) => r.id === roleId)?.name ?? 'AI');
+      const name = roleId === ROOM_AGENT_ID ? (agent?.name ?? 'AI') : 'AI';
       send({
         t: 'chat',
         as: `ai:${roleId}`,
@@ -520,12 +450,12 @@ export function usePeerRoom(displayName: string) {
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, scene, agent],
+    [send, agent],
   );
 
   /**
-   * Host sends a device command on behalf of an AI-held role (an agent tool
-   * call). _from is set to ai:<roleId> by the server.
+   * Host sends a device command as the room agent (an agent tool call).
+   * _from is set to ai:<roleId> by the server.
    */
   const sendCommandAs = useCallback(
     (roleId: string, target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
@@ -643,8 +573,6 @@ export function usePeerRoom(displayName: string) {
     setPeers([]);
     setMembers(new Map());
     setMessages([]);
-    setSceneState(null);
-    setRoleAssignments({});
     setHostPeerId(null);
   }, [send]);
 
@@ -658,29 +586,18 @@ export function usePeerRoom(displayName: string) {
     };
   }, []);
 
-  // Synthesize AI-held roles as pseudo-members so they show up in the member
-  // list and the @-mention candidates (peerId = "ai:<roleId>").
+  // Synthesize the room agent as a pseudo-member (peerId = ROOM_AGENT_SENDER)
+  // so it shows up in the member list and the @-mention candidates.
   const membersWithAi = useMemo(() => {
-    if (!scene && !agent) return members;
+    if (!agent) return members;
     const m = new Map(members);
-    // The room agent is a first-class member with a fixed id, so it appears in
-    // the member list and the @ candidates without needing a scene.
-    if (agent) {
-      m.set(ROOM_AGENT_SENDER, {
-        ...emptyMember(ROOM_AGENT_SENDER),
-        displayName: agent.name || 'AI',
-        isAi: true,
-      });
-    }
-    if (!scene) return m;
-    for (const [roleId, holder] of Object.entries(roleAssignments)) {
-      if (!holder.startsWith('ai:')) continue;
-      const role = scene.roles.find((r) => r.id === roleId);
-      if (role)
-        m.set(holder, { ...emptyMember(holder), displayName: role.name, roleId, isAi: true });
-    }
+    m.set(ROOM_AGENT_SENDER, {
+      ...emptyMember(ROOM_AGENT_SENDER),
+      displayName: agent.name || 'AI',
+      isAi: true,
+    });
     return m;
-  }, [members, scene, roleAssignments, agent]);
+  }, [members, agent]);
 
   /**
    * Show a remote peer's notice as a line in the transcript.
@@ -723,19 +640,11 @@ export function usePeerRoom(displayName: string) {
     setCommandHandler,
     setWaveformHandler,
     notifyLocal,
+    // —— Room AI ——
     agent,
     setAgent,
-    // —— Scene roleplay ——
-    scene,
-    roleAssignments,
     hostPeerId,
     isHost: hostPeerId === selfId,
-    myRoleId: Object.entries(roleAssignments).find(([, p]) => p === selfId)?.[0] ?? null,
-    setScene,
-    claimRole,
-    releaseRole,
-    assignAi,
-    releaseAi,
     sendChatAs,
     sendCommandAs,
   };

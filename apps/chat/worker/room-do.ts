@@ -4,7 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { deleteRoomMedia } from './media';
-import { LOBBY_NAME, ROOM_GRACE_MS, RESERVED_ROOM_CODE, RESERVED_ROOM_NAME, ROOM_AGENT_SENDER, type WireChat, type Scene, type RoomAgent } from './wire';
+import { LOBBY_NAME, ROOM_GRACE_MS, RESERVED_ROOM_CODE, RESERVED_ROOM_NAME, ROOM_AGENT_SENDER, type WireChat, type RoomAgent } from './wire';
 
 interface Attachment {
   peerId: string;
@@ -17,10 +17,8 @@ const LOBBY_KEEPALIVE_MS = 20 * 1000;
 export class RoomDO extends DurableObject<Env> {
   private sql: SqlStorage;
   private lastLobbyReport = 0;
-  // In-memory cache of the scene / role claims (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
+  // In-memory cache of the room agent (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
   private agentCache: RoomAgent | null | undefined;
-  private sceneCache: Scene | null | undefined;
-  private assignmentsCache: Record<string, string> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -86,9 +84,6 @@ export class RoomDO extends DurableObject<Env> {
         // Replay the history to this connection (all earlier messages and media references).
         ws.send(JSON.stringify({ t: 'history', messages: this.loadHistory() }));
         ws.send(JSON.stringify({ t: 'agent', agent: await this.getAgent(), host }));
-        // Sync the current scene + host + role claim state.
-        ws.send(JSON.stringify({ t: 'scene', scene: await this.getScene(), host }));
-        ws.send(JSON.stringify({ t: 'role', assignments: await this.getAssignments() }));
         // Tell the other members that someone joined.
         this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
         await this.reportLobby(this.ctx.getWebSockets().length);
@@ -96,10 +91,8 @@ export class RoomDO extends DurableObject<Env> {
       }
 
       case 'chat': {
-        const scene = await this.getScene();
-        const assignments = await this.getAssignments();
-        // The host may speak on behalf of an AI-driven role (checked: sender=host and that role really is AI-driven).
-        const aiAs = await this.aiSenderOk(att.peerId, msg.as, assignments);
+        // The host may speak as the room agent (checked: sender=host and the room really has an agent).
+        const aiAs = await this.aiSenderOk(att.peerId, msg.as);
         const fromId = aiAs ?? att.peerId;
         const chat: WireChat = {
           id: (msg.id as string) ?? crypto.randomUUID(),
@@ -108,7 +101,6 @@ export class RoomDO extends DurableObject<Env> {
           x: msg.x as string | undefined,
           m: msg.m as WireChat['m'],
           mentions: msg.mentions as WireChat['mentions'],
-          senderRole: this.roleNameOf(fromId, scene, assignments),
           ts: (msg.ts as number) ?? Date.now(),
         };
         this.saveMessage(chat);
@@ -136,55 +128,22 @@ export class RoomDO extends DurableObject<Env> {
         return;
       }
 
-      case 'scene': {
-        // Only the host may set/change the scene. Switching scenes clears the role claims (the role ids changed).
-        const host = await this.ctx.storage.get<string>('hostPeerId');
-        if (att.peerId !== host) return;
-        const scene = (msg.scene as Scene | null) ?? null;
-        this.sceneCache = scene;
-        await this.ctx.storage.put('scene', scene);
-        await this.setAssignments({});
-        this.broadcast({ t: 'scene', scene, host });
-        this.broadcast({ t: 'role', assignments: {} });
-        // Refresh the lobby right away so the scene name (or its removal) shows up on the public room card immediately.
-        await this.reportLobby(this.ctx.getWebSockets().length);
+      // Legacy roleplay frames from pre-removal clients: drop silently.
+      //
+      // These two cases must stay here permanently. Android has no hot update,
+      // so pre-removal APKs keep talking to this Worker indefinitely, and the
+      // default branch below relays anything it does not recognise to the whole
+      // room with a trusted _from injected. Deleting these cases would hand the
+      // old clients a working peer-to-peer roleplay channel through the relay —
+      // with the host-only checks that used to guard it gone.
+      case 'scene':
+      case 'role':
         return;
-      }
-
-      case 'role': {
-        // Claim/release (human); hand over to / take back from AI (host only). One role per person at most; the AI placeholder is "ai:<roleId>".
-        const act = msg.act as 'claim' | 'release' | 'assign-ai' | 'release-ai';
-        const roleId = msg.roleId as string;
-        const assignments = { ...(await this.getAssignments()) };
-        const aiHolder = `ai:${roleId}`;
-        if (act === 'assign-ai' || act === 'release-ai') {
-          const host = await this.ctx.storage.get<string>('hostPeerId');
-          if (att.peerId !== host) return; // only the host may hand a role to / take it back from the AI
-          if (act === 'assign-ai') {
-            const role = (await this.getScene())?.roles.find(r => r.id === roleId);
-            if (!role?.aiPlayable) return; // only aiPlayable roles can be handed to the AI
-            assignments[roleId] = aiHolder; // overrides whoever currently holds it
-          } else if (assignments[roleId] === aiHolder) {
-            delete assignments[roleId];
-          }
-        } else if (act === 'claim') {
-          if (assignments[roleId]?.startsWith('ai:')) return; // role held by the AI; the host has to take it back from the AI first
-          for (const [rid, pid] of Object.entries(assignments)) {
-            if (pid === att.peerId) delete assignments[rid];
-          }
-          if (!assignments[roleId]) assignments[roleId] = att.peerId;
-        } else if (assignments[roleId] === att.peerId) {
-          delete assignments[roleId];
-        }
-        await this.setAssignments(assignments);
-        this.broadcast({ t: 'role', assignments });
-        return;
-      }
 
       case 'cmd':
       case 'wave': {
-        // Forward directly to the target peer. The host may act on behalf of an AI-driven role (_from = ai:<roleId>, which the device side uses for authorization checks).
-        const aiAs = await this.aiSenderOk(att.peerId, msg.as, await this.getAssignments());
+        // Forward directly to the target peer. The host may act as the room agent (_from = ai:room, which the device side uses for authorization checks).
+        const aiAs = await this.aiSenderOk(att.peerId, msg.as);
         this.sendTo(msg.to as string, { ...msg, _from: aiAs ?? att.peerId });
         return;
       }
@@ -244,19 +203,6 @@ export class RoomDO extends DurableObject<Env> {
     const remaining = this.ctx.getWebSockets().filter(w => w !== ws);
     if (att) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
-      // Release the roles that member had claimed, and broadcast the update.
-      const assignments = { ...(await this.getAssignments()) };
-      let changed = false;
-      for (const [rid, pid] of Object.entries(assignments)) {
-        if (pid === att.peerId) {
-          delete assignments[rid];
-          changed = true;
-        }
-      }
-      if (changed) {
-        await this.setAssignments(assignments);
-        this.broadcast({ t: 'role', assignments }, ws);
-      }
     }
     await this.reportLobby(remaining.length);
     if (remaining.length === 0) {
@@ -298,7 +244,7 @@ export class RoomDO extends DurableObject<Env> {
       chat.id,
       chat._from ?? '',
       chat.n,
-      JSON.stringify({ x: chat.x, m: chat.m, mentions: chat.mentions, senderRole: chat.senderRole }),
+      JSON.stringify({ x: chat.x, m: chat.m, mentions: chat.mentions }),
       chat.ts,
     );
   }
@@ -312,7 +258,6 @@ export class RoomDO extends DurableObject<Env> {
         x?: string;
         m?: WireChat['m'];
         mentions?: WireChat['mentions'];
-        senderRole?: string;
       };
       return {
         id: r.id as string,
@@ -321,7 +266,6 @@ export class RoomDO extends DurableObject<Env> {
         x: body.x,
         m: body.m,
         mentions: body.mentions,
-        senderRole: body.senderRole,
         ts: r.ts as number,
       };
     });
@@ -334,53 +278,17 @@ export class RoomDO extends DurableObject<Env> {
     return this.agentCache;
   }
 
-  // -- Scene / role claims --
-
-  private async getScene(): Promise<Scene | null> {
-    if (this.sceneCache === undefined) {
-      this.sceneCache = (await this.ctx.storage.get<Scene>('scene')) ?? null;
-    }
-    return this.sceneCache;
-  }
-
-  private async getAssignments(): Promise<Record<string, string>> {
-    if (this.assignmentsCache === undefined) {
-      this.assignmentsCache = (await this.ctx.storage.get<Record<string, string>>('roleAssignments')) ?? {};
-    }
-    return this.assignmentsCache;
-  }
-
-  private async setAssignments(a: Record<string, string>): Promise<void> {
-    this.assignmentsCache = a;
-    await this.ctx.storage.put('roleAssignments', a);
-  }
-
-  /** Look up the name (= title) of the role a member currently holds. The AI placeholder "ai:<roleId>" resolves too. */
-  private roleNameOf(peerId: string, scene: Scene | null, assignments: Record<string, string>): string | undefined {
-    if (!scene) return undefined;
-    const entry = Object.entries(assignments).find(([, pid]) => pid === peerId);
-    if (!entry) return undefined;
-    return scene.roles.find(r => r.id === entry[0])?.name;
-  }
-
   /**
-   * Check whether "the host speaking/acting on behalf of an AI-driven role" is legitimate.
-   * Returns that AI placeholder id ("ai:<roleId>") when it is, otherwise null.
-   * Conditions: `as` looks like ai:<roleId>, the sender is the host, and that role really is
-   * currently AI-driven.
+   * Check whether "the host speaking/acting as the room agent" is legitimate.
+   * Returns the agent's sender id when it is, otherwise null.
+   * Conditions: `as` is exactly ROOM_AGENT_SENDER, the sender is the host, and the room
+   * actually has an agent.
    */
-  private async aiSenderOk(
-    senderPeerId: string,
-    as: unknown,
-    assignments: Record<string, string>,
-  ): Promise<string | null> {
-    if (typeof as !== 'string' || !as.startsWith('ai:')) return null;
+  private async aiSenderOk(senderPeerId: string, as: unknown): Promise<string | null> {
+    if (as !== ROOM_AGENT_SENDER) return null;
     const host = await this.ctx.storage.get<string>('hostPeerId');
     if (senderPeerId !== host) return null;
-    // The room agent: legitimate as soon as the room has one.
-    if (as === ROOM_AGENT_SENDER) return (await this.getAgent()) ? as : null;
-    const roleId = as.slice(3);
-    return assignments[roleId] === as ? as : null;
+    return (await this.getAgent()) ? ROOM_AGENT_SENDER : null;
   }
 
   /** Only public rooms report to the lobby; count=0 means the room is empty and gets removed from the lobby. */
@@ -390,11 +298,10 @@ export class RoomDO extends DurableObject<Env> {
     const code = (await this.ctx.storage.get<string>('code')) ?? '';
     const name = (await this.ctx.storage.get<string>('roomName')) ?? '';
     if (!code) return;
-    const sceneName = (await this.getScene())?.name || undefined;
     const stub = this.env.LOBBY.get(this.env.LOBBY.idFromName(LOBBY_NAME));
     await stub.fetch('https://lobby/update', {
       method: 'POST',
-      body: JSON.stringify({ code, name, count, sceneName }),
+      body: JSON.stringify({ code, name, count }),
     });
   }
 }

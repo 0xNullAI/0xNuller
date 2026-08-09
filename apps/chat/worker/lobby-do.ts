@@ -17,8 +17,6 @@ interface LobbyRoom {
   code: string;
   name: string;
   count: number;
-  /** The room's current scene name (absent when there is no scene); used to flag roleplay rooms in the lobby. */
-  sceneName?: string;
 }
 
 export class LobbyDO extends DurableObject<Env> {
@@ -32,6 +30,9 @@ export class LobbyDO extends DurableObject<Env> {
     );
     // Idempotent migration: add the scene_name / pinned columns to the existing singleton's old table
     // (running it again throws, which is fine to ignore).
+    // scene_name is dead: the roleplay feature it described is gone and nothing reads or
+    // writes it any more. It is kept because this is a live singleton DO — dropping a
+    // column there is a migration with real failure modes, in exchange for nothing.
     try {
       this.sql.exec('ALTER TABLE rooms ADD COLUMN scene_name TEXT');
     } catch {
@@ -73,26 +74,20 @@ export class LobbyDO extends DurableObject<Env> {
 
     // Report coming in from a RoomDO.
     if (url.pathname.endsWith('/update') && request.method === 'POST') {
-      const { code, name, count, sceneName } = (await request.json()) as LobbyRoom;
+      const { code, name, count } = (await request.json()) as LobbyRoom;
       const pinned = PINNED_CODES.has(code) ? 1 : 0;
       if (count > 0) {
         this.sql.exec(
-          'INSERT OR REPLACE INTO rooms (code, name, count, ts, scene_name, pinned) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT OR REPLACE INTO rooms (code, name, count, ts, pinned) VALUES (?, ?, ?, ?, ?)',
           code,
           (pinned ? RESERVED_ROOM_NAME : name) ?? '',
           count,
           Date.now(),
-          sceneName ?? null,
           pinned,
         );
       } else if (pinned) {
-        // Permanent room went empty: keep the row, just zero out the member count and the scene.
-        this.sql.exec(
-          'UPDATE rooms SET count = 0, scene_name = ?, ts = ? WHERE code = ?',
-          sceneName ?? null,
-          Date.now(),
-          code,
-        );
+        // Permanent room went empty: keep the row, just zero out the member count.
+        this.sql.exec('UPDATE rooms SET count = 0, ts = ? WHERE code = ?', Date.now(), code);
       } else {
         this.sql.exec('DELETE FROM rooms WHERE code = ?', code);
       }
@@ -132,7 +127,7 @@ export class LobbyDO extends DurableObject<Env> {
     const cutoff = Date.now() - LOBBY_STALE_MS;
     const rows = this.sql
       .exec(
-        'SELECT code, name, count, scene_name FROM rooms WHERE ts >= ? OR pinned = 1 ORDER BY pinned DESC, count DESC, name ASC',
+        'SELECT code, name, count FROM rooms WHERE ts >= ? OR pinned = 1 ORDER BY pinned DESC, count DESC, name ASC',
         cutoff,
       )
       .toArray();
@@ -142,7 +137,6 @@ export class LobbyDO extends DurableObject<Env> {
         code: r.code as string,
         name: r.name as string,
         count: Number(r.count),
-        sceneName: (r.scene_name as string | null) ?? undefined,
       })),
     };
   }

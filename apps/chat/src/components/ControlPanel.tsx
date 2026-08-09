@@ -25,21 +25,9 @@ interface ControlPanelProps {
   selfState: MemberState;
   selfLimitA: number;
   selfLimitB: number;
-  /** Your own role title. */
-  selfRoleName?: string;
-  /** Look up a peer's role title (scene role-play). */
-  roleNameFor?: (peerId: string) => string | undefined;
 }
 
-function SelfCard({
-  member,
-  onClick,
-  roleName,
-}: {
-  member: MemberState;
-  onClick: () => void;
-  roleName?: string;
-}) {
+function SelfCard({ member, onClick }: { member: MemberState; onClick: () => void }) {
   const initial = (member.displayName?.[0] || '?').toUpperCase();
   return (
     <div
@@ -53,11 +41,6 @@ function SelfCard({
           <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
             我
           </span>
-          {roleName && (
-            <span className="shrink-0 truncate rounded-full bg-[var(--bg-soft)] px-1.5 py-0.5 text-[10px] text-[var(--text-soft)]">
-              {roleName}
-            </span>
-          )}
           <span
             className={`inline-block h-2 w-2 shrink-0 rounded-full ${member.deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
           />
@@ -92,8 +75,6 @@ export function ControlPanel({
   selfState,
   selfLimitA,
   selfLimitB,
-  selfRoleName,
-  roleNameFor,
 }: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -184,18 +165,13 @@ export function ControlPanel({
         </p>
         <div className="space-y-2">
           {/* Self */}
-          <SelfCard
-            member={selfState}
-            roleName={selfRoleName}
-            onClick={() => setSelectedMember('self')}
-          />
+          <SelfCard member={selfState} onClick={() => setSelectedMember('self')} />
           {/* Peers */}
           {peers.map((peerId) => (
             <MemberCard
               key={peerId}
               peerId={peerId}
               member={members.get(peerId)}
-              roleName={roleNameFor?.(peerId)}
               onClick={() => setSelectedMember(peerId)}
             />
           ))}

@@ -6,8 +6,6 @@ export interface LobbyRoom {
   code: string;
   name: string;
   count: number;
-  /** The room's current scene name (role-play rooms only). */
-  sceneName?: string;
 }
 
 export type LobbyStatus = 'connecting' | 'connected' | 'error';

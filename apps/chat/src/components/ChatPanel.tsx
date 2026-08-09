@@ -181,13 +181,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
             >
               <div className="max-w-[75%]">
                 {!isSelf && !grouped && (
-                  <p className="mb-0.5 flex items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
-                    <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
-                    {msg.senderRole && (
-                      <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
-                        {msg.senderRole}
-                      </span>
-                    )}
+                  <p className="mb-0.5 truncate px-1 text-xs text-[var(--text-faint)]">
+                    {msg.senderName || msg.senderId.slice(0, 6)}
                   </p>
                 )}
 
