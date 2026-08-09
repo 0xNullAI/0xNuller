@@ -296,6 +296,62 @@ describe('多设备同时连接', () => {
     ]);
   });
 
+  it('同一个模块挂两台郊狼时，两台都要出现在设备清单里', () => {
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'control',
+        isActive: () => true,
+        stop: vi.fn(),
+        // Both entries are the same *kind*. Before device ids were made
+        // per-device, every Coyote reported id 'coyote', so the two rows
+        // collided on the device bar's `sessionId:deviceId` key and React
+        // rendered only one of them — the user lost the only on-screen
+        // confirmation that a second device was attached to their body.
+        // The cross-module test above never caught this: there the sessionId
+        // half of the key differs.
+        devices: () => [
+          { id: 'aa:bb:cc:dd:ee:01', kind: 'coyote', name: '郊狼一号', connected: true },
+          { id: 'aa:bb:cc:dd:ee:02', kind: 'coyote', name: '郊狼二号', connected: true },
+        ],
+      }),
+    );
+
+    const groups = allConnectedDevices();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.devices).toHaveLength(2);
+    // The keys the device bar builds must be distinct, or one row vanishes.
+    const keys = groups.flatMap((g) => g.devices.map((d) => `${g.sessionId}:${d.id}`));
+    expect(new Set(keys).size).toBe(2);
+    expect(groups[0]?.devices.map((d) => d.name)).toEqual(['郊狼一号', '郊狼二号']);
+  });
+
+  it('同一个模块挂两台郊狼时，停止必须两台都归零', async () => {
+    const zeroed: string[] = [];
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'control',
+        isActive: () => true,
+        // A module holding N Coyotes registers ONE stop on the bus, so that
+        // stop is the only thing standing between the user and a device that
+        // keeps running. Stopping just the primary would leave device #2
+        // outputting after the user pressed the global stop — the worst
+        // possible failure of this button.
+        stop: () => {
+          zeroed.push('aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02');
+        },
+        devices: () => [
+          { id: 'aa:bb:cc:dd:ee:01', kind: 'coyote', name: '郊狼一号', connected: true },
+          { id: 'aa:bb:cc:dd:ee:02', kind: 'coyote', name: '郊狼二号', connected: true },
+        ],
+      }),
+    );
+
+    await stopAllSafetySessions();
+    expect(zeroed).toEqual(['aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02']);
+  });
+
   it('一个模块的设备读取抛错时，其余模块的设备照常列出', () => {
     cleanups.push(
       registerSafetySession({

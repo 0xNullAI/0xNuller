@@ -103,6 +103,18 @@ export class TauriBlecDeviceClient implements DeviceClient {
     return this.connected ? this.lastAddress : null;
   }
 
+  /**
+   * Identity of the currently-held device, or `null` while none is held.
+   *
+   * The same value as `address` (the BLE address, stable across reconnects),
+   * under the name `WebBluetoothDeviceClient` also uses — so a caller holding
+   * several devices can key them identically on both platforms instead of
+   * branching on which transport it happens to be running.
+   */
+  get deviceId(): string | null {
+    return this.address;
+  }
+
   async connect(): Promise<void> {
     // Reentrancy guard: double-tap on the connect button must not start
     // two parallel scans or two plugin-blec.connect() calls for THIS

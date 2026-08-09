@@ -51,27 +51,60 @@ function kindLabel(kind: string): string {
   return (DEVICE_KIND_DISPLAY_NAME as Record<string, string>)[kind] ?? kind;
 }
 
-function DeviceChip({ device }: { device: DeviceSummary }) {
+/**
+ * One device's row.
+ *
+ * `owner` is the module holding it, shown only when devices come from more
+ * than one module: with several attached at once, "which of these is the one
+ * Chat is driving" is otherwise unanswerable from the bar, and the bar is the
+ * only place that question gets asked.
+ *
+ * An outputting device is marked in words as well as by the dot. The dot alone
+ * carries the single most important piece of state on this bar — whether
+ * something is running on the user's body right now — through colour only,
+ * which is the one channel a user may not be able to read.
+ */
+function DeviceChip({ device, owner }: { device: DeviceSummary; owner: string | null }) {
+  const active = Boolean(device.active);
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-2.5 py-1.5">
+    <div
+      className={
+        'flex min-w-0 shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] border px-2.5 py-1.5 ' +
+        (active
+          ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+          : 'border-transparent bg-[var(--bg-soft)]')
+      }
+    >
       <span
         className={
           'h-1.5 w-1.5 shrink-0 rounded-full ' +
-          (device.active ? 'bg-[var(--accent)]' : 'bg-[var(--success)]')
+          (active ? 'bg-[var(--accent)]' : 'bg-[var(--success)]')
         }
         aria-hidden
       />
       <span className="shrink-0 text-xs font-medium">{kindLabel(device.kind)}</span>
       <span className="truncate text-xs text-[var(--text-faint)]">{device.name}</span>
+      {owner && (
+        <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 text-[10px] text-[var(--text-faint)]">
+          {owner}
+        </span>
+      )}
       {device.channels?.map((ch) => (
         <span
           key={ch.label}
-          className="shrink-0 font-mono text-xs tabular-nums text-[var(--text-soft)]"
+          className={
+            'shrink-0 font-mono text-xs tabular-nums ' +
+            (ch.value > 0 ? 'font-semibold text-[var(--accent)]' : 'text-[var(--text-soft)]')
+          }
+          title={`${ch.label} 通道：${ch.value} / 上限 ${ch.max}`}
         >
           {ch.label}
           {ch.value}
         </span>
       ))}
+      <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
+        {active ? '输出中' : '待机'}
+      </span>
       {typeof device.battery === 'number' && (
         <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-faint)]">
           <BatteryIcon level={device.battery} />
@@ -113,7 +146,18 @@ export function DeviceBar() {
 
       <div className="flex min-w-0 items-center gap-2">
         {groups.map((g) =>
-          g.devices.map((d) => <DeviceChip key={`${g.sessionId}:${d.id}`} device={d} />),
+          g.devices.map((d) => (
+            // Keyed by module + device id: two modules may legitimately report
+            // the same device id, and one module may now report several
+            // devices. Either half alone collides, and a collided key means a
+            // row React never renders — a device attached to the user with no
+            // sign of it here.
+            <DeviceChip
+              key={`${g.sessionId}:${d.id}`}
+              device={d}
+              owner={groups.length > 1 ? g.label : null}
+            />
+          )),
         )}
       </div>
     </div>

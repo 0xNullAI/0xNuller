@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import {
+  BluetoothOff,
   Pause,
   Play,
   Repeat,
@@ -12,41 +13,10 @@ import {
   Upload,
 } from 'lucide-react';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
+import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
 import type { WaveformDefinition } from '../../../chat/src/lib/waveforms';
 import type { PlayMode } from '../../../chat/src/lib/protocol';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
-
-interface CoyoteControlProps {
-  connected: boolean;
-  strengthA: number;
-  strengthB: number;
-  limitA: number;
-  limitB: number;
-  playingA: boolean;
-  playingB: boolean;
-  queueLengthA: number;
-  queueLengthB: number;
-  onAdjustStrength: (channel: 'A' | 'B', delta: number) => void;
-  onTogglePlay: (channel: 'A' | 'B') => void;
-  onStopAll: () => void;
-
-  waveTab: 'A' | 'B';
-  onWaveTabChange: (channel: 'A' | 'B') => void;
-
-  waveforms: WaveformDefinition[];
-  /** Queue of the channel the tab is on. */
-  queue: string[];
-  /** Waveform playing on that channel, if any. */
-  activeWaveId: string | null;
-  playMode: PlayMode;
-  intervalSec: number;
-  onPlayModeChange: (mode: PlayMode) => void;
-  onIntervalChange: (seconds: number) => void;
-  onToggleWaveform: (waveform: WaveformDefinition) => void;
-  onRemoveWaveform: (id: string) => void;
-  onImportFile: (file: File) => Promise<string | null>;
-  onOpenMarket: () => void;
-}
 
 const RING_CLASS =
   'flex h-[110px] w-[110px] flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
@@ -66,61 +36,60 @@ function ModeIcon({ mode }: { mode: PlayMode }) {
   return <Shuffle size={13} />;
 }
 
+interface CoyoteControlProps {
+  coyote: CoyoteSummary;
+  /**
+   * True while more than one host is attached. It turns on the per-device
+   * header (name, battery, 断开, 归零) and the "the waveform panel below drives
+   * this one" affordance — all of which are noise when there is only one
+   * device and nothing to tell apart.
+   */
+  multi: boolean;
+  /** Whether the shared waveform panel currently targets this host. */
+  selected: boolean;
+  onSelect: (deviceId: string) => void;
+  queueLengthA: number;
+  queueLengthB: number;
+  onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
+  onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
+  /** Zero this host only. The all-devices 归零 stays below, outside this block. */
+  onStopDevice: (deviceId: string) => void;
+  onDisconnect: (deviceId: string) => void;
+}
+
 /**
- * The Coyote panel: strength, playback, waveforms.
+ * One Coyote host's panel: strength and playback for that host alone.
  *
- * The layout is MemberControl's — rings, 归零, channel tab, play mode, grid —
- * because it is a shape people already know from Chat. None of the wiring is:
- * there is no room to send to, no fire heartbeat to keep alive and no aggregate
- * to unwind, so every control here calls straight into the caller's own device.
+ * The layout is MemberControl's — rings, channel buttons — because it is a
+ * shape people already know from Chat. What is new is that there is one of
+ * these per attached host: every reading, every cap and every button here is
+ * addressed by `coyote.id`, so two hosts can never end up driving each other.
+ * The waveform library is deliberately NOT in here (see `WaveformPanel`): it is
+ * a library, and duplicating the whole grid per device would bury the controls
+ * people actually reach for.
  */
 export function CoyoteControl({
-  connected,
-  strengthA,
-  strengthB,
-  limitA,
-  limitB,
-  playingA,
-  playingB,
+  coyote,
+  multi,
+  selected,
+  onSelect,
   queueLengthA,
   queueLengthB,
   onAdjustStrength,
   onTogglePlay,
-  onStopAll,
-  waveTab,
-  onWaveTabChange,
-  waveforms,
-  queue,
-  activeWaveId,
-  playMode,
-  intervalSec,
-  onPlayModeChange,
-  onIntervalChange,
-  onToggleWaveform,
-  onRemoveWaveform,
-  onImportFile,
-  onOpenMarket,
+  onStopDevice,
+  onDisconnect,
 }: CoyoteControlProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const error = await onImportFile(file);
-    if (error) window.alert(error);
-    e.target.value = '';
-  }
-
   const renderChannel = (channel: 'A' | 'B') => {
-    const strength = channel === 'A' ? strengthA : strengthB;
-    const limit = channel === 'A' ? limitA : limitB;
-    const playing = channel === 'A' ? playingA : playingB;
+    const strength = channel === 'A' ? coyote.strengthA : coyote.strengthB;
+    const limit = channel === 'A' ? coyote.limitA : coyote.limitB;
+    const playing = channel === 'A' ? coyote.waveActiveA : coyote.waveActiveB;
     const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
     return (
       <div className="flex flex-col items-center">
         <button
-          onClick={() => onTogglePlay(channel)}
-          disabled={!connected || (!playing && queueLength === 0)}
+          onClick={() => onTogglePlay(coyote.id, channel)}
+          disabled={!coyote.connected || (!playing && queueLength === 0)}
           className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-30 ${
             playing
               ? 'bg-[var(--danger)] text-white'
@@ -148,13 +117,13 @@ export function CoyoteControl({
         </div>
         <div className="mt-3 flex items-center gap-3">
           <RepeatButton
-            onAction={() => onAdjustStrength(channel, -1)}
+            onAction={() => onAdjustStrength(coyote.id, channel, -1)}
             className={STRENGTH_BTN_CLASS}
           >
             −
           </RepeatButton>
           <RepeatButton
-            onAction={() => onAdjustStrength(channel, +1)}
+            onAction={() => onAdjustStrength(coyote.id, channel, +1)}
             className={STRENGTH_BTN_CLASS}
           >
             +
@@ -163,6 +132,133 @@ export function CoyoteControl({
       </div>
     );
   };
+
+  const body = (
+    <div className="flex items-center justify-center gap-6">
+      {renderChannel('A')}
+      {renderChannel('B')}
+    </div>
+  );
+
+  if (!multi) return body;
+
+  return (
+    <div
+      className={`rounded-[var(--radius-md)] border bg-[var(--bg-elevated)] px-3 py-3 transition-colors duration-[var(--dur)] ${
+        selected ? 'border-[var(--accent)]' : 'border-[var(--surface-border)]'
+      }`}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onSelect(coyote.id)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          title={selected ? '下方波形面板正作用于这台' : '让下方波形面板作用于这台'}
+        >
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+              coyote.strengthA > 0 || coyote.strengthB > 0
+                ? 'bg-[var(--accent)]'
+                : 'bg-[var(--success)]'
+            }`}
+            aria-hidden
+          />
+          <span className="truncate text-sm font-medium text-[var(--text)]">{coyote.name}</span>
+          {coyote.battery != null && (
+            <span className="shrink-0 text-[11px] text-[var(--text-faint)]">{coyote.battery}%</span>
+          )}
+          {selected && (
+            <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
+              波形面板
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => onStopDevice(coyote.id)}
+          className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+          title={`只把 ${coyote.name} 归零`}
+        >
+          <RotateCcw size={11} className="text-[var(--danger)]" />
+          归零
+        </button>
+        <button
+          type="button"
+          onClick={() => onDisconnect(coyote.id)}
+          className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+          title={`断开 ${coyote.name}`}
+        >
+          <BluetoothOff size={11} />
+          断开
+        </button>
+      </div>
+      {body}
+    </div>
+  );
+}
+
+interface WaveformPanelProps {
+  /** Name of the host the panel drives; shown only when several are attached. */
+  targetName: string | null;
+  waveTab: 'A' | 'B';
+  onWaveTabChange: (channel: 'A' | 'B') => void;
+  waveforms: WaveformDefinition[];
+  /** Queue of the channel the tab is on. */
+  queue: string[];
+  /** Waveform playing on that channel of the targeted host, if any. */
+  activeWaveId: string | null;
+  playMode: PlayMode;
+  intervalSec: number;
+  onPlayModeChange: (mode: PlayMode) => void;
+  onIntervalChange: (seconds: number) => void;
+  onToggleWaveform: (waveform: WaveformDefinition) => void;
+  onRemoveWaveform: (id: string) => void;
+  onImportFile: (file: File) => Promise<string | null>;
+  onOpenMarket: () => void;
+  /** Zero every attached device. Never narrowed to one host — see below. */
+  onStopAll: () => void;
+}
+
+/**
+ * The waveform library, plus the all-devices 归零.
+ *
+ * One panel for the whole module rather than one per host: the library and the
+ * playlist are a property of "what I want to feel", not of a particular piece
+ * of hardware, and repeating a 20-tile grid per device would push the strength
+ * controls off the screen.
+ *
+ * The big 归零 stays here and stays *global* — it zeroes every attached host
+ * and the Opossum. The per-device 归零 in each `CoyoteControl` header is an
+ * addition, never a replacement: stop has to remain one action away from
+ * covering everything, and N buttons that each cover a third of the problem is
+ * not that.
+ */
+export function WaveformPanel({
+  targetName,
+  waveTab,
+  onWaveTabChange,
+  waveforms,
+  queue,
+  activeWaveId,
+  playMode,
+  intervalSec,
+  onPlayModeChange,
+  onIntervalChange,
+  onToggleWaveform,
+  onRemoveWaveform,
+  onImportFile,
+  onOpenMarket,
+  onStopAll,
+}: WaveformPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const error = await onImportFile(file);
+    if (error) window.alert(error);
+    e.target.value = '';
+  }
 
   const renderCard = (waveform: WaveformDefinition) => {
     const queued = queue.includes(waveform.id);
@@ -222,25 +318,18 @@ export function CoyoteControl({
   const customs = waveforms.filter((w) => w.custom);
 
   return (
-    <section>
-      <h2 className="mb-3 text-xs font-medium tracking-wide text-[var(--text-faint)]">郊狼主机</h2>
-
-      {/* ==================== Dual channel strength ==================== */}
-      <div className="flex items-center justify-center gap-6">
-        {renderChannel('A')}
-        {renderChannel('B')}
-      </div>
-
+    <>
       {/* ==================== Reset bar ====================
-          Stop is always one action away, and it does not care whether a Coyote
-          is attached: stopAll zeroes the Opossum too. */}
+          Stop is always one action away, it covers every attached host, and it
+          does not care whether a Coyote is attached at all: stopAll zeroes the
+          Opossum too. */}
       <div className="mt-5 flex items-center justify-center">
         <button
           onClick={onStopAll}
           className="flex h-11 max-w-xs flex-1 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-sm text-[var(--text)] transition-colors hover:bg-[var(--bg-soft)] active:scale-[0.98]"
         >
           <RotateCcw size={15} className="text-[var(--danger)]" />
-          归零
+          全部归零
         </button>
       </div>
 
@@ -260,6 +349,12 @@ export function CoyoteControl({
           </button>
         ))}
       </div>
+
+      {targetName && (
+        <p className="mt-2 text-[11px] text-[var(--text-faint)]">
+          作用于 <span className="text-[var(--accent)]">{targetName}</span>，点上方设备标题可切换
+        </p>
+      )}
 
       {/* ==================== Play mode ==================== */}
       <div className="mt-3 flex items-center justify-between">
@@ -337,6 +432,99 @@ export function CoyoteControl({
           </>
         )}
       </div>
+    </>
+  );
+}
+
+interface CoyoteSectionProps extends Omit<WaveformPanelProps, 'targetName'> {
+  coyotes: CoyoteSummary[];
+  selectedId: string | null;
+  onSelect: (deviceId: string) => void;
+  queueLengthA: number;
+  queueLengthB: number;
+  onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
+  onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
+  onStopDevice: (deviceId: string) => void;
+  onDisconnect: (deviceId: string) => void;
+}
+
+/**
+ * Section two: every attached Coyote, then the shared waveform library.
+ *
+ * With nothing attached this renders a single disabled-looking placeholder
+ * block, exactly as the one-device version used to — the module is unusable
+ * until something is connected either way, and an empty section with no rings
+ * reads as "broken" rather than "not connected yet".
+ */
+export function CoyoteSection({
+  coyotes,
+  selectedId,
+  onSelect,
+  queueLengthA,
+  queueLengthB,
+  onAdjustStrength,
+  onTogglePlay,
+  onStopDevice,
+  onDisconnect,
+  ...panel
+}: CoyoteSectionProps) {
+  const multi = coyotes.length > 1;
+  const selected = coyotes.find((c) => c.id === selectedId) ?? coyotes[0] ?? null;
+
+  return (
+    <section>
+      <h2 className="mb-3 text-xs font-medium tracking-wide text-[var(--text-faint)]">
+        郊狼主机{multi ? `（${coyotes.length} 台）` : ''}
+      </h2>
+
+      {coyotes.length === 0 ? (
+        <PlaceholderChannels />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {coyotes.map((coyote) => (
+            <CoyoteControl
+              key={coyote.id}
+              coyote={coyote}
+              multi={multi}
+              selected={multi && coyote.id === selected?.id}
+              onSelect={onSelect}
+              queueLengthA={queueLengthA}
+              queueLengthB={queueLengthB}
+              onAdjustStrength={onAdjustStrength}
+              onTogglePlay={onTogglePlay}
+              onStopDevice={onStopDevice}
+              onDisconnect={onDisconnect}
+            />
+          ))}
+        </div>
+      )}
+
+      <WaveformPanel
+        {...panel}
+        targetName={multi ? (selected?.name ?? null) : null}
+        queue={panel.queue}
+      />
     </section>
+  );
+}
+
+/** The nothing-attached stand-in: the same two rings, inert. */
+function PlaceholderChannels() {
+  return (
+    <div className="flex items-center justify-center gap-6 opacity-40">
+      {(['A', 'B'] as const).map((channel) => (
+        <div key={channel} className="flex flex-col items-center">
+          <div className="mb-2 h-9 w-9 rounded-full bg-[var(--bg-soft)]" />
+          <div className={RING_CLASS}>
+            <span className="text-2xl font-bold tabular-nums text-[var(--text)]">0</span>
+            <span className="text-[10px] text-[var(--text-faint)]">{channel}</span>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <span className={STRENGTH_BTN_CLASS}>−</span>
+            <span className={STRENGTH_BTN_CLASS}>+</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   DeviceSession,
+  type CoyoteSummary,
   type DeviceClientFactory,
   type RequestDeviceFn,
   type WaveFrame,
@@ -11,6 +12,37 @@ import {
 } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
 import { DeviceLifecycleGuard } from '@dg-kit/safety';
+
+/**
+ * Field-by-field comparison of two host lists, so an unchanged tick can reuse
+ * the previous array reference (see the call site in `syncState`).
+ *
+ * Explicit rather than a generic deep-equal: every field here is one the UI
+ * renders, so adding a field to `CoyoteSummary` without adding it here would
+ * show up as a reading that visibly stops updating — which for strength is a
+ * display that lies about what the device is doing.
+ */
+function sameCoyotes(a: CoyoteSummary[], b: CoyoteSummary[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i]!;
+    return (
+      x.id === y.id &&
+      x.name === y.name &&
+      x.version === y.version &&
+      x.connected === y.connected &&
+      x.battery === y.battery &&
+      x.strengthA === y.strengthA &&
+      x.strengthB === y.strengthB &&
+      x.limitA === y.limitA &&
+      x.limitB === y.limitB &&
+      x.waveActiveA === y.waveActiveA &&
+      x.waveActiveB === y.waveActiveB &&
+      x.waveIdA === y.waveIdA &&
+      x.waveIdB === y.waveIdB
+    );
+  });
+}
 
 export interface UseDeviceOptions {
   /** Override the underlying DeviceClient transport. Used by the Tauri shell. */
@@ -33,9 +65,17 @@ export interface UseDeviceOptions {
  * .../setStrength/... all still describe the Coyote only); every new field is
  * purely additive: the sensor/opossum state defaults to null/false, so no
  * existing consumer is affected.
+ *
+ * Several Coyote hosts may be attached at once. The scalar surface above keeps
+ * describing exactly one of them — the *primary* (the first connected host) —
+ * so consumers written before multi-device keep working unchanged; `coyotes`
+ * is the full list, and every command takes an optional trailing `deviceId` to
+ * target one host. Omitting it means the primary, which is what those older
+ * consumers already meant.
  */
 export function useDevice(options: UseDeviceOptions = {}) {
   const [connected, setConnected] = useState(false);
+  const [coyotes, setCoyotes] = useState<CoyoteSummary[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [strengthA, setStrengthA] = useState(0);
   const [strengthB, setStrengthB] = useState(0);
@@ -74,6 +114,16 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setWaveIdB(s.waveIdB);
     setLimitA(s.limitA);
     setLimitB(s.limitB);
+    // Keep the previous array when nothing actually changed. The protocol
+    // emits on every tick (100ms) while a device is connected, and syncState
+    // runs on each one; the scalar setters above bail out of re-rendering when
+    // their value is unchanged, but a freshly-built array never compares equal
+    // and would re-render the whole module tree ten times a second for as long
+    // as a device is attached.
+    setCoyotes((prev) => {
+      const next = session.getCoyoteSummaries();
+      return sameCoyotes(prev, next) ? prev : next;
+    });
     setSensor(session.getSensorSummary());
     setOpossum(session.getOpossumSummary());
   }, []);
@@ -122,6 +172,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     sessionRef.current?.disconnectAll();
     sessionRef.current = null;
     setConnected(false);
+    setCoyotes([]);
     setDeviceInfo(null);
     setBattery(null);
     setStrengthA(0);
@@ -136,10 +187,37 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setOpossum(null);
   }, []);
 
-  /** Disconnect only the Coyote host (keep the sensor / Opossum). */
-  const disconnectCoyote = useCallback(() => {
-    sessionRef.current?.disconnectCoyote();
-  }, []);
+  /**
+   * Disconnect Coyote hosts (keep the sensor / Opossum).
+   *
+   * `deviceId` targets one host; omitting it disconnects every attached
+   * Coyote — see `DeviceSession.disconnectCoyote`.
+   */
+  const disconnectCoyote = useCallback(
+    (deviceId?: string) => {
+      // Anything that is not a string means "all hosts". This function is
+      // wired straight to onClick in places (`onClick={onDisconnect}`), where
+      // React hands the handler a MouseEvent — as a device id that matches
+      // nothing, so the disconnect would silently do nothing at all. TypeScript
+      // cannot see it: those props are declared `() => void`, and a handler
+      // taking fewer parameters is assignable to one taking more.
+      const id = typeof deviceId === 'string' ? deviceId : undefined;
+      const session = sessionRef.current;
+      session?.disconnectCoyote(id);
+      // The scalar surface tracks the primary, and the primary may just have
+      // become a different host (disconnecting #1 while #2 is still attached)
+      // or none at all. Leaving the old name/battery on screen would claim a
+      // device is attached that no longer is.
+      const primary = session?.getCoyoteSummaries()[0] ?? null;
+      setDeviceInfo(
+        primary
+          ? { version: primary.version, name: primary.name, battery: primary.battery ?? 0 }
+          : null,
+      );
+      syncState();
+    },
+    [syncState],
+  );
 
   /** Disconnect only the sensor (keep the Coyote / Opossum). */
   const disconnectSensor = useCallback(() => {
@@ -151,32 +229,67 @@ export function useDevice(options: UseDeviceOptions = {}) {
     sessionRef.current?.disconnectOpossum();
   }, []);
 
-  /** Set the strength of the given channel */
-  const setStrength = useCallback((channel: 'A' | 'B', value: number) => {
-    sessionRef.current?.coyote.setStrength(channel, value);
+  /** Set the strength of the given channel. `deviceId` omitted = the primary host. */
+  const setStrength = useCallback((channel: 'A' | 'B', value: number, deviceId?: string) => {
+    sessionRef.current?.coyoteById(deviceId)?.setStrength(channel, value);
   }, []);
 
-  /** Set the waveform of the given channel */
+  /** Set the waveform of the given channel. `deviceId` omitted = the primary host. */
   const setWave = useCallback(
-    (channel: 'A' | 'B', frames: WaveFrame[], waveformId: string, loop?: boolean) => {
-      sessionRef.current?.coyote.setWave(channel, frames, waveformId, loop);
+    (
+      channel: 'A' | 'B',
+      frames: WaveFrame[],
+      waveformId: string,
+      loop?: boolean,
+      deviceId?: string,
+    ) => {
+      sessionRef.current?.coyoteById(deviceId)?.setWave(channel, frames, waveformId, loop);
     },
     [],
   );
 
-  /** Stop the waveform on the given channel */
-  const stopWave = useCallback((channel: 'A' | 'B') => {
-    sessionRef.current?.coyote.stopWave(channel);
+  /** Stop the waveform on the given channel. `deviceId` omitted = the primary host. */
+  const stopWave = useCallback((channel: 'A' | 'B', deviceId?: string) => {
+    sessionRef.current?.coyoteById(deviceId)?.stopWave(channel);
   }, []);
 
-  /** Set a channel's strength cap (Coyote and Opossum share one set of caps, see the DeviceSession docs). */
-  const setLimit = useCallback((channel: 'A' | 'B', value: number) => {
-    sessionRef.current?.coyote.setLimit(channel, value);
-  }, []);
+  /**
+   * Set a channel's strength cap (Coyote and Opossum share one set of caps,
+   * see the DeviceSession docs).
+   *
+   * With no `deviceId` this applies to *every* attached host and to any host
+   * attached later — a cap the user lowered must not quietly fail to cover
+   * the second device.
+   */
+  const setLimit = useCallback((channel: 'A' | 'B', value: number, deviceId?: string) => {
+    const session = sessionRef.current;
+    if (!session) return;
+    if (deviceId) session.coyoteById(deviceId)?.setLimit(channel, value);
+    else session.setCoyoteLimit(channel, value);
+    syncState();
+  }, [syncState]);
 
-  /** Emergency stop: zero both Coyote channels and both Opossum channels. */
+  /**
+   * Emergency stop: zero **every** attached Coyote and both Opossum channels.
+   *
+   * Deliberately takes NO arguments, unlike every other command here. It is
+   * wired straight to onClick in several places (`onClick={device.stopAll}`),
+   * and an optional `deviceId` would let React hand it a MouseEvent as the
+   * target id — which resolves to no device, so the emergency stop would
+   * silently stop nothing at all. Per-device zeroing is `stopCoyote` below;
+   * this one is never narrowed.
+   */
   const stopAll = useCallback(() => {
     sessionRef.current?.stopAllOutputs();
+  }, []);
+
+  /**
+   * Zero one Coyote host. A convenience for a per-device 归零 button — it is
+   * NOT the emergency stop, which is `stopAll` above and always covers
+   * everything.
+   */
+  const stopCoyote = useCallback((deviceId: string) => {
+    sessionRef.current?.coyoteById(deviceId)?.stopAll();
   }, []);
 
   /**
@@ -234,8 +347,10 @@ export function useDevice(options: UseDeviceOptions = {}) {
   useEffect(() => {
     const apply = () => {
       const safety = loadDeviceSafety();
-      sessionRef.current?.coyote.setLimit('A', safety.maxStrengthA);
-      sessionRef.current?.coyote.setLimit('B', safety.maxStrengthB);
+      // Every attached host, not just the primary — and the session keeps
+      // these as the seed for hosts attached later.
+      sessionRef.current?.setCoyoteLimit('A', safety.maxStrengthA);
+      sessionRef.current?.setCoyoteLimit('B', safety.maxStrengthB);
       setLimitA(safety.maxStrengthA);
       setLimitB(safety.maxStrengthB);
     };
@@ -255,6 +370,11 @@ export function useDevice(options: UseDeviceOptions = {}) {
 
   return {
     connected,
+    /**
+     * Every attached Coyote host, primary first. The scalars above describe
+     * `coyotes[0]`; this is the only place the other hosts are visible.
+     */
+    coyotes,
     deviceInfo,
     strengthA,
     strengthB,
@@ -269,6 +389,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setWave,
     stopWave,
     stopAll,
+    stopCoyote,
     limitA,
     limitB,
     setLimit,

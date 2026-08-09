@@ -78,6 +78,69 @@ describe('设备栏', () => {
     expect(screen.getByText('负鼠 A')).toBeTruthy();
   });
 
+  it('同一个模块的两台郊狼都要出现在栏里', () => {
+    // The regression this guards: every Coyote used to report id 'coyote', so
+    // both rows produced the same `sessionId:deviceId` key and React rendered
+    // only one. The user then had a device attached to them with nothing on
+    // screen saying so.
+    connectFake('control', [
+      { ...COYOTE, id: 'aa:01', name: '郊狼 #1' },
+      { ...COYOTE, id: 'aa:02', name: '郊狼 #2', battery: 47 },
+    ]);
+    render(<DeviceBar />);
+    expect(screen.getByText('郊狼 #1')).toBeTruthy();
+    expect(screen.getByText('郊狼 #2')).toBeTruthy();
+  });
+
+  it('三台设备时每一行的电量跟着自己那台走', () => {
+    connectFake('control', [
+      { ...COYOTE, id: 'aa:01', name: '郊狼 #1', battery: 82 },
+      { ...COYOTE, id: 'aa:02', name: '郊狼 #2', battery: 47 },
+      { id: 'op', kind: 'opossum', name: '负鼠', connected: true, battery: 12 },
+    ]);
+    render(<DeviceBar />);
+    expect(screen.getByText('82%')).toBeTruthy();
+    expect(screen.getByText('47%')).toBeTruthy();
+    expect(screen.getByText('12%')).toBeTruthy();
+  });
+
+  it('正在输出的设备标出「输出中」，空闲的标「待机」', () => {
+    connectFake('control', [
+      { ...COYOTE, id: 'aa:01', name: '郊狼 #1', active: true },
+      { ...COYOTE, id: 'aa:02', name: '郊狼 #2', active: false },
+    ]);
+    render(<DeviceBar />);
+    expect(screen.getByText('输出中')).toBeTruthy();
+    expect(screen.getByText('待机')).toBeTruthy();
+  });
+
+  it('设备来自多个模块时标出各自属于哪个模块', () => {
+    connectFake('agent', [COYOTE]);
+    connectFake('chat', [{ id: 'c2', kind: 'coyote', name: '另一台', connected: true }]);
+    render(<DeviceBar />);
+    expect(screen.getByText('agent')).toBeTruthy();
+    expect(screen.getByText('chat')).toBeTruthy();
+  });
+
+  it('只有一个模块时不标模块名', () => {
+    connectFake('control', [COYOTE]);
+    render(<DeviceBar />);
+    expect(screen.queryByText('control')).toBeNull();
+  });
+
+  it('停止按钮的提示要数上同模块里的每一台', () => {
+    connectFake('control', [
+      { ...COYOTE, id: 'aa:01' },
+      { ...COYOTE, id: 'aa:02' },
+      { id: 'op', kind: 'opossum', name: '负鼠', connected: true },
+    ]);
+    render(<DeviceBar />);
+    // If the count came from the number of *modules* rather than devices, a
+    // user with three attached devices would read 「1 台设备」 and reasonably
+    // conclude the button only covers one of them.
+    expect(screen.getByRole('button', { name: /停止/ }).getAttribute('title')).toContain('3 台设备');
+  });
+
   it('未连接的设备不列出', () => {
     connectFake('agent', [COYOTE, { id: 'x', kind: 'opossum', name: '已断开', connected: false }]);
     render(<DeviceBar />);
