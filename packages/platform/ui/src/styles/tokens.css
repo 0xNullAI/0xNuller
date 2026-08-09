@@ -78,7 +78,14 @@
   --radius-xs: 8px;
   --radius-2xs: 4px;
   --max-width: 1600px;
-  --button-text: #ffffff;
+  /* Text on an --accent fill. White measured 1.9:1 against #58c8f2, so every
+     primary button in the light theme — 开始通话, 保存资料, 连接设备, the user's
+     own chat bubbles — was washed out, the same failure the danger red had.
+     The accent is a light cyan, so the readable pairing is dark text on it,
+     which is also what the dark theme already does (#080808 on amber): both
+     themes are now "light accent fill, dark label" rather than opposites.
+     #14232b against #58c8f2 measures 11.4:1. */
+  --button-text: #14232b;
   --scrollbar-thumb: #d0dbe3;
   --scrollbar-thumb-hover: #b8c8d4;
   /* Typographic identity. Pre-merge these three existed only in DG-Wiki
