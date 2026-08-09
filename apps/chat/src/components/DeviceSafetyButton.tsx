@@ -258,7 +258,7 @@ export function DeviceSafetyButton({
               />
             </div>
             <p className="text-[10px] text-[var(--text-faint)]">
-              硬件级别限制，远程控制无法超过此上限（Opossum 振动强度共用同一套上限）
+              硬件级别限制，远程控制无法超过此上限。负鼠的振动强度另有一套上限，在设置的「设备安全」里调。
             </p>
           </div>
 
