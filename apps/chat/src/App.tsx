@@ -4,7 +4,10 @@ import {
   useOpenShellSettings,
   useSafetySession,
 } from '@0xnullai/ui';
-import { hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
+import { hasDeviceLease, subscribeSafetySessions,
+  PolicyEngine,
+  createDefaultPolicyRules,
+} from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { me } from '@0xnullai/auth';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -31,6 +34,7 @@ import type {
   WaveformTransfer,
 } from './lib/protocol';
 import type { WaveFrame } from './lib/waveforms';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
 export interface AppProps {
   /**
@@ -279,6 +283,34 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }, [displayName]);
 
   // Register the remote command handler
+  /**
+   * The shared safety policy, applied to AI-issued commands.
+   *
+   * Chat was the only module with an AI-to-device path that never touched
+   * @dg-kit/safety's PolicyEngine — Agent and Voice both do. Its AI could
+   * move a channel by ±50 in a single call (Agent's cap is ±10), with no
+   * cold-start clamp, so a device sitting at 0 under a cap of 50 could be
+   * taken to 50 by one tool call. That is a second copy of clamping logic
+   * evolving on its own, which CLAUDE.md forbids outright.
+   *
+   * Scoped to AI commands on purpose. Human peers drag sliders, and
+   * step-adjust's ±10 would make that crawl; they also consent differently —
+   * per session, by being in the room and holding the lease, not per
+   * command. Which is also why permission-gate is dropped: Chat's consent
+   * for the AI is `allowAi`, granted once by the device's owner, and there
+   * is no per-command confirm UI on this path to answer it.
+   */
+  const policyRef = useRef<PolicyEngine | null>(null);
+  useEffect(() => {
+    const rebuild = () => {
+      policyRef.current = new PolicyEngine(
+        createDefaultPolicyRules(loadDeviceSafety()).filter((r) => r.name !== 'permission-gate'),
+      );
+    };
+    rebuild();
+    return subscribeDeviceSafety(rebuild);
+  }, []);
+
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
       // Hard-reject when we do not hold the device lease. **It has to be blocked here**
@@ -342,15 +374,42 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       // increment gets wiped out on release.
       if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
-        const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
-        const boosts = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
+        const channel = cmd.c;
+        let delta = cmd.v;
+        // Evaluated on the device holder's side, the only side that can be
+        // trusted with the cap (CLAUDE.md constraint 2).
+        if (peerId.startsWith('ai:')) {
+          const decision = policyRef.current?.evaluate({
+            context: { sessionId: 'chat-room', sourceType: 'api', traceId: peerId },
+            command: { type: 'adjustStrength', channel, delta },
+            deviceState: {
+              connected: dev.connected,
+              strengthA: dev.strengthA,
+              strengthB: dev.strengthB,
+              limitA: dev.limitA,
+              limitB: dev.limitB,
+              waveActiveA: dev.waveActiveA,
+              waveActiveB: dev.waveActiveB,
+            },
+          });
+          if (decision && decision.type !== 'allow') {
+            if (decision.type === 'clamp' && decision.command.type === 'adjustStrength') {
+              delta = decision.command.delta;
+            } else {
+              // deny, or a require-confirm nobody can answer on this path.
+              return;
+            }
+          }
+        }
+        const limit = channel === 'A' ? dev.limitA : dev.limitB;
+        const boosts = channel === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (boosts.size > 0) {
-          const baseRef = cmd.c === 'A' ? baselineARef : baselineBRef;
-          baseRef.current = Math.max(0, Math.min(limit, baseRef.current + cmd.v));
-          callApplyFire(cmd.c); // recompute baseline+agg → setStrength
+          const baseRef = channel === 'A' ? baselineARef : baselineBRef;
+          baseRef.current = Math.max(0, Math.min(limit, baseRef.current + delta));
+          callApplyFire(channel); // recompute baseline+agg → setStrength
         } else {
-          const current = cmd.c === 'A' ? dev.strengthA : dev.strengthB;
-          dev.setStrength(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
+          const current = channel === 'A' ? dev.strengthA : dev.strengthB;
+          dev.setStrength(channel, Math.max(0, Math.min(limit, current + delta)));
         }
         return;
       }
