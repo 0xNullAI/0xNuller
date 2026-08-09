@@ -19,6 +19,7 @@ import { Home } from './Home';
 import { Sidebar } from './Sidebar';
 import { DeviceBar } from './DeviceBar';
 import { AccountDialog } from './AccountDialog';
+import { ContactsDialog } from './ContactsDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 import { FirstConnectionNotice } from './FirstConnectionNotice';
@@ -117,6 +118,7 @@ export function Shell() {
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
   // On narrow screens the sidebar defaults to collapsed (drawer closed); on wide
@@ -191,6 +193,10 @@ export function Shell() {
       onOpenAccount={() => {
         setDrawerOpen(false);
         setAccountOpen(true);
+      }}
+      onOpenContacts={() => {
+        setDrawerOpen(false);
+        setContactsOpen(true);
       }}
       onOpenSettings={() => {
         setDrawerOpen(false);
@@ -279,6 +285,12 @@ export function Shell() {
         <OverlayProvider container={overlayRoot}>
           {accountOpen && (
             <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
+          )}
+          {/* Signed-in only, and gated on `user` here as well as in the menu:
+              signing out while the dialog is open has to close it rather than
+              leave a surface up with nothing left to show. */}
+          {contactsOpen && user && (
+            <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
           )}
           {settingsTab && (
             <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />

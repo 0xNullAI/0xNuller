@@ -5,6 +5,7 @@ import {
   PanelLeftClose,
   Settings,
   UserRound,
+  Users,
   BookOpen,
   LogIn,
 } from 'lucide-react';
@@ -38,6 +39,7 @@ interface SidebarProps {
   onNavigate: (moduleId: string | null) => void;
   user: AuthUser | null;
   onOpenAccount: () => void;
+  onOpenContacts: () => void;
   onOpenSettings: () => void;
   onOpenDocs: () => void;
   collapsed: boolean;
@@ -124,11 +126,13 @@ function AppSwitcherButton({
 function AccountButton({
   user,
   onOpenAccount,
+  onOpenContacts,
   onOpenSettings,
   onOpenDocs,
 }: {
   user: AuthUser | null;
   onOpenAccount: () => void;
+  onOpenContacts: () => void;
   onOpenSettings: () => void;
   onOpenDocs: () => void;
 }) {
@@ -156,6 +160,19 @@ function AccountButton({
       label: user ? '账户' : '登录 / 注册',
       run: onOpenAccount,
     },
+    // Only when signed in. Contacts are the one item here that cannot do
+    // anything without an account, and offering it signed out would put a dead
+    // entry in a menu that is otherwise fully usable anonymously.
+    ...(user
+      ? [
+          {
+            key: 'contacts',
+            icon: <Users className="h-4 w-4" />,
+            label: '联系人',
+            run: onOpenContacts,
+          },
+        ]
+      : []),
     {
       key: 'settings',
       icon: <Settings className="h-4 w-4" />,
@@ -223,6 +240,7 @@ export function Sidebar({
   onNavigate,
   user,
   onOpenAccount,
+  onOpenContacts,
   onOpenSettings,
   onOpenDocs,
   collapsed,
@@ -283,6 +301,7 @@ export function Sidebar({
         <AccountButton
           user={user}
           onOpenAccount={onOpenAccount}
+          onOpenContacts={onOpenContacts}
           onOpenSettings={onOpenSettings}
           onOpenDocs={onOpenDocs}
         />

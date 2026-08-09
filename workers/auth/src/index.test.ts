@@ -204,6 +204,326 @@ describe('注销账号', () => {
   });
 });
 
+// ── Contacts ──
+
+const get = (path: string, token?: string) => worker.fetch(req(path, { token }), env);
+const del = (path: string, token?: string) =>
+  worker.fetch(req(path, { method: 'DELETE', token }), env);
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Create a user and a live session directly in the database.
+ *
+ * Registration runs a 210k-iteration PBKDF2 every time, and these cases need
+ * two or three users each — going through the API would spend most of the
+ * suite's runtime hashing passwords no assertion ever looks at. What is under
+ * test here is the follow graph, and it only needs the rows to exist.
+ */
+async function seedUser(username: string) {
+  const id = `id-${username}`;
+  const token = `token-${username}`;
+  await prepared(
+    'INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
+    id,
+    username,
+    username,
+    'unused',
+    Date.now(),
+  ).run();
+  await prepared(
+    'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+    await sha256Hex(token),
+    id,
+    Date.now(),
+    Date.now() + 86_400_000,
+  ).run();
+  return { id, username, token };
+}
+
+const follow = (token: string, userId: string) => post('/api/auth/follow', { userId }, { token });
+const block = (token: string, userId: string) => post('/api/auth/block', { userId }, { token });
+
+async function listOf(path: string, token: string): Promise<string[]> {
+  const res = await get(path, token);
+  const body = (await res.json()) as { users: { username: string }[] };
+  return body.users.map((u) => u.username);
+}
+
+describe('关注', () => {
+  it('不能关注自己', async () => {
+    const alice = await seedUser('alice');
+    // Enforced on the server, not just hidden in the UI: the UI is not the only
+    // caller. A stored self-follow would surface as the user showing up in their
+    // own follower list, which reads as a broken product rather than a missing check.
+    const res = await follow(alice.token, alice.id);
+    expect(res.status).toBe(400);
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM user_follows').first<{ n: number }>())?.n,
+    ).toBe(0);
+  });
+
+  it('关注是单向的，两边都关注才算联系人', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+
+    const first = await follow(alice.token, bob.id);
+    expect(((await first.json()) as { mutual: boolean }).mutual).toBe(false);
+    // Alice follows Bob, so Bob is in her following list — and she is in his
+    // followers list, not his following list.
+    expect(await listOf('/api/auth/following', alice.token)).toEqual(['bob']);
+    expect(await listOf('/api/auth/followers', alice.token)).toEqual([]);
+    expect(await listOf('/api/auth/followers', bob.token)).toEqual(['alice']);
+
+    const back = await follow(bob.token, alice.id);
+    expect(((await back.json()) as { mutual: boolean }).mutual).toBe(true);
+  });
+
+  it('重复关注不会产生第二行', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    expect((await follow(alice.token, bob.id)).status).toBe(200);
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM user_follows').first<{ n: number }>())?.n,
+    ).toBe(1);
+  });
+
+  it('取消关注是幂等的', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    expect((await del(`/api/auth/follow/${bob.id}`, alice.token)).status).toBe(200);
+    // "I do not follow this person" is equally true the second time.
+    expect((await del(`/api/auth/follow/${bob.id}`, alice.token)).status).toBe(200);
+    expect(await listOf('/api/auth/following', alice.token)).toEqual([]);
+  });
+
+  it('未登录时列表与关注都拒绝', async () => {
+    expect((await get('/api/auth/following')).status).toBe(401);
+    expect((await get('/api/auth/followers')).status).toBe(401);
+    expect((await post('/api/auth/follow', { userId: 'whoever' })).status).toBe(401);
+  });
+
+  it('分页大小有上限，要多少都不给超', async () => {
+    const alice = await seedUser('alice');
+    // One more than the cap, so an unclamped limit would visibly hand back the
+    // lot. The cap is what keeps a single request from being a bulk export of
+    // who is connected to whom.
+    for (let i = 0; i <= 50; i++) {
+      const u = await seedUser(`u${i}`);
+      await follow(alice.token, u.id);
+    }
+
+    const res = await get('/api/auth/following?limit=999', alice.token);
+    const body = (await res.json()) as { users: unknown[]; nextOffset: number | null };
+    expect(body.users.length).toBe(50);
+    expect(body.nextOffset).toBe(50);
+
+    const rest = (await (
+      await get('/api/auth/following?limit=50&offset=50', alice.token)
+    ).json()) as { users: unknown[]; nextOffset: number | null };
+    // A short page is the end of the list, and it is the only signal — there is
+    // no total, because a follower count is a number people scrape.
+    expect(rest.users.length).toBe(1);
+    expect(rest.nextOffset).toBeNull();
+  });
+});
+
+describe('拉黑', () => {
+  it('被拉黑的人无法关注对方，且看不出自己被拉黑了', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await block(alice.token, bob.id);
+
+    const blocked = await follow(bob.token, alice.id);
+    const ghost = await follow(bob.token, 'id-nobody');
+    expect(blocked.status).toBe(404);
+    // Same status and same words as a user who does not exist. Confirming "you
+    // have been blocked" tells someone exactly who to go after, and it would also
+    // turn the block into a way to check whether an account still exists.
+    expect(await blocked.text()).toBe(await ghost.text());
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM user_follows').first<{ n: number }>())?.n,
+    ).toBe(0);
+  });
+
+  it('拉黑会删掉两个方向上已有的关注', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    await follow(bob.token, alice.id);
+
+    await block(alice.token, bob.id);
+
+    // A block that leaves the existing follows in place is not a block.
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM user_follows').first<{ n: number }>())?.n,
+    ).toBe(0);
+    expect(await listOf('/api/auth/following', alice.token)).toEqual([]);
+    expect(await listOf('/api/auth/followers', alice.token)).toEqual([]);
+    expect(await listOf('/api/auth/followers', bob.token)).toEqual([]);
+    expect(await listOf('/api/auth/following', bob.token)).toEqual([]);
+  });
+
+  it('拉黑双方彼此从列表里消失，即使关注行还在', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    // Write the block straight to the table, skipping the endpoint that also
+    // deletes the follows. This is the case the read-path filter exists for: one
+    // future call site that blocks without cleaning up, and a blocked person is
+    // back in someone's list with nothing to show it went wrong.
+    await prepared(
+      'INSERT INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)',
+      bob.id,
+      alice.id,
+      Date.now(),
+    ).run();
+
+    expect(await listOf('/api/auth/following', alice.token)).toEqual([]);
+    expect(await listOf('/api/auth/followers', bob.token)).toEqual([]);
+  });
+
+  it('不能拉黑自己', async () => {
+    const alice = await seedUser('alice');
+    expect((await block(alice.token, alice.id)).status).toBe(400);
+  });
+
+  it('解除拉黑不会把关注还回来', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    await block(alice.token, bob.id);
+    expect((await del(`/api/auth/block/${bob.id}`, alice.token)).status).toBe(200);
+
+    // The follow was removed by a deliberate act; bringing it back silently would
+    // be a worse surprise than having to follow again.
+    expect(await listOf('/api/auth/following', alice.token)).toEqual([]);
+    expect((await get('/api/auth/blocks', alice.token)).status).toBe(200);
+    expect(await listOf('/api/auth/blocks', alice.token)).toEqual([]);
+  });
+
+  it('黑名单列出被自己拉黑的人', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await block(alice.token, bob.id);
+    expect(await listOf('/api/auth/blocks', alice.token)).toEqual(['bob']);
+    // Not the other way round: Bob is not told he is on a list.
+    expect(await listOf('/api/auth/blocks', bob.token)).toEqual([]);
+  });
+});
+
+describe('他人主页的可见性', () => {
+  const setVisibility = (token: string, visibility: 'public' | 'private') =>
+    worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({ bio: '一句话', visibility }),
+      }),
+      env,
+    );
+
+  it('私密资料对任何人都不可见——关注了也一样', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'private');
+    await follow(alice.token, bob.id);
+
+    const res = await get('/api/auth/users/bob', alice.token);
+    const body = (await res.json()) as {
+      user: { username: string };
+      profile: unknown;
+      following: boolean;
+    };
+    expect(res.status).toBe(200);
+    // The identity stays visible — it is the username Alice just typed, and
+    // without it there is no way to confirm she found the right person. The
+    // profile body does not, and following is not a way to earn it.
+    expect(body.user.username).toBe('bob');
+    expect(body.following).toBe(true);
+    expect(body.profile).toBeNull();
+  });
+
+  it('公开资料对他人可见', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      profile: { bio: string } | null;
+    };
+    expect(body.profile?.bio).toBe('一句话');
+  });
+
+  it('公开资料也不把生日给别人看', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({ bio: '一句话', birthDate: '1990-01-01', visibility: 'public' }),
+      }),
+      env,
+    );
+
+    const mine = (await (await get('/api/auth/users/bob', bob.token)).json()) as {
+      profile: { birthDate: string | null } | null;
+    };
+    const theirs = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      profile: { birthDate: string | null; bio: string } | null;
+    };
+    // The profile editor promises the exact date is not shown; making the profile
+    // public is consent to the bio and the region, not to that. Bob still sees his
+    // own.
+    expect(mine.profile?.birthDate).toBe('1990-01-01');
+    expect(theirs.profile?.bio).toBe('一句话');
+    expect(theirs.profile?.birthDate).toBeNull();
+  });
+
+  it('自己的私密资料自己看得到', async () => {
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'private');
+    const body = (await (await get('/api/auth/users/bob', bob.token)).json()) as {
+      profile: { bio: string } | null;
+    };
+    expect(body.profile?.bio).toBe('一句话');
+  });
+
+  it('拉黑之后双方都查不到对方', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    await setVisibility(alice.token, 'public');
+    await block(alice.token, bob.id);
+
+    // Symmetric on purpose: enforcing it one way only would leave the blocked
+    // person free to keep watching the blocker, which is the situation blocking
+    // exists to end.
+    expect((await get('/api/auth/users/bob', alice.token)).status).toBe(404);
+    expect((await get('/api/auth/users/alice', bob.token)).status).toBe(404);
+  });
+
+  it('未登录也能看公开资料，但看不到关系', async () => {
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    // The account is optional throughout the product, so an anonymous reader is
+    // not an error case here.
+    const body = (await (await get('/api/auth/users/bob')).json()) as {
+      profile: { bio: string } | null;
+      following: boolean;
+      followedBy: boolean;
+    };
+    expect(body.profile?.bio).toBe('一句话');
+    expect(body.following).toBe(false);
+    expect(body.followedBy).toBe(false);
+  });
+});
+
 describe('CORS', () => {
   it('只对白名单来源回显 origin', async () => {
     const ok = await worker.fetch(req('/api/auth/me'), env);
