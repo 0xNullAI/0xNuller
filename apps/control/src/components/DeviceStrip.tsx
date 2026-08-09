@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Bluetooth, Gauge, Radar } from 'lucide-react';
+import { isDevicePickerCancelled } from '@dg-kit/core';
 import { DeviceSafetyButton } from '../../../chat/src/components/DeviceSafetyButton';
 import type { OpossumSummary, SensorSummary } from '../../../chat/src/lib/bluetooth';
 import type { DeviceKind } from '../../../chat/src/lib/protocol';
@@ -39,6 +41,57 @@ function Chip({
       <span className="truncate">{label}</span>
       {detail && <span className="text-[10px] text-[var(--text-faint)]">{detail}</span>}
     </span>
+  );
+}
+
+/**
+ * The empty state, which in this module is the whole product.
+ *
+ * It used to be a line of text pointing at the safety button — "点左边的按钮".
+ * That button is a bare BluetoothOff glyph with no label, and getting to a
+ * device from it takes two clicks through a popover. In Chat that is fine,
+ * because the bar around it is full of other things to do; in Control there is
+ * nothing else on the screen that works until something is attached, so the
+ * first action gets to be a button that says what it does.
+ */
+function ConnectPrompt({
+  onConnectDevice,
+}: {
+  onConnectDevice: () => Promise<{ kind: DeviceKind; name: string }>;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function connect() {
+    setError(null);
+    setConnecting(true);
+    try {
+      await onConnectDevice();
+    } catch (err) {
+      // Closing the picker is a normal action, not a failure worth reporting.
+      if (!isDevicePickerCancelled(err)) {
+        setError(err instanceof Error ? err.message : '连接失败');
+      }
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void connect()}
+        disabled={connecting}
+        className="flex h-8 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 text-xs font-medium text-[var(--button-text)] transition-opacity duration-[var(--dur)] hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <Bluetooth className="h-3.5 w-3.5" />
+        {connecting ? '连接中…' : '连接设备'}
+      </button>
+      <span className="text-xs text-[var(--text-faint)]">
+        {error ?? '郊狼主机、传感器、负鼠都从这里连。'}
+      </span>
+    </div>
   );
 }
 
@@ -88,9 +141,7 @@ export function DeviceStrip({
       />
 
       {nothingAttached ? (
-        <span className="text-xs text-[var(--text-faint)]">
-          还没有设备。点左边的按钮连接郊狼、传感器或负鼠。
-        </span>
+        <ConnectPrompt onConnectDevice={onConnectDevice} />
       ) : (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {connected && (

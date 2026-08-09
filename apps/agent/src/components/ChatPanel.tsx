@@ -444,7 +444,7 @@ export function ChatPanel({
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
                   >
                     <Bluetooth className="h-3.5 w-3.5" />
-                    <span>连接蓝牙</span>
+                    <span>连接设备</span>
                   </button>
                 )}
               </div>
@@ -615,7 +615,7 @@ export function ChatPanel({
                 size="icon"
                 className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 onClick={onConnect}
-                aria-label="连接蓝牙"
+                aria-label="连接设备"
                 title={BLUETOOTH_PAIR_HINT}
               >
                 <Bluetooth className="h-4 w-4" />

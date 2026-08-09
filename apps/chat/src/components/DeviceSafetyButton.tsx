@@ -140,7 +140,7 @@ export function DeviceSafetyButton({
               className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] text-xs font-medium text-[var(--accent)] transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {connected ? <Bluetooth size={14} /> : <BluetoothOff size={14} />}
-              {connectingDevice ? '正在打开选择器…' : '连接设备'}
+              {connectingDevice ? '连接中…' : '连接设备'}
             </button>
             {connectDeviceError && (
               <p className="text-[10px] text-[var(--danger)]">{connectDeviceError}</p>

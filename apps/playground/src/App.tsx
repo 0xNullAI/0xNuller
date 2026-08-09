@@ -1,5 +1,5 @@
 import { Suspense, useState } from 'react';
-import { ArrowLeft, Gamepad2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { GAMES } from './games';
 
 /**
@@ -38,42 +38,44 @@ export default function App() {
   }
 
   return (
+    // Same shape as the shell's home screen, because it is the same kind of
+    // screen: a chooser. Centred while the list is shorter than the viewport,
+    // so two cards do not sit against the top edge of a 900px window.
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-5 px-5 py-8">
-        <header className="flex flex-col gap-2">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Gamepad2 className="h-6 w-6 text-[var(--accent)]" />
-            Playground
-          </h1>
-          <p className="max-w-[52ch] text-sm text-[var(--text-soft)]">
-            把设备接进游戏。游戏只能请求一次反馈，实际强度由你的设备安全上限决定。
-          </p>
-        </header>
+      <div className="flex min-h-full flex-col justify-center">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 px-5 py-12">
+          <header className="flex flex-col gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Playground</h1>
+            <p className="max-w-[52ch] text-[var(--text-soft)]">
+              把设备接进游戏。游戏只能请求一次反馈，实际强度由你的设备安全上限决定。
+            </p>
+          </header>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          {GAMES.map((game) => {
-            const ready = game.status === 'ready';
-            return (
-              <button
-                key={game.id}
-                type="button"
-                disabled={!ready}
-                onClick={() => setOpenId(game.id)}
-                className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3 text-left transition-colors enabled:hover:border-[var(--accent)] disabled:opacity-55"
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{game.name}</span>
-                  {!ready && (
-                    <span className="rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] text-[var(--text-faint)]">
-                      敬请期待
-                    </span>
-                  )}
-                </span>
-                <span className="text-sm text-[var(--text-soft)]">{game.blurb}</span>
-                <span className="text-xs text-[var(--text-faint)]">{game.deviceUse}</span>
-              </button>
-            );
-          })}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {GAMES.map((game) => {
+              const ready = game.status === 'ready';
+              return (
+                <button
+                  key={game.id}
+                  type="button"
+                  disabled={!ready}
+                  onClick={() => setOpenId(game.id)}
+                  className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-5 py-4 text-left transition-colors duration-[var(--dur)] enabled:hover:border-[var(--accent)] disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{game.name}</span>
+                    {!ready && (
+                      <span className="rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] text-[var(--text-faint)]">
+                        敬请期待
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-sm text-[var(--text-soft)]">{game.blurb}</span>
+                  <span className="text-xs text-[var(--text-faint)]">{game.deviceUse}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
