@@ -21,8 +21,10 @@ export class BrowserPermissionService implements PermissionService {
   ) => Promise<PermissionDecision | boolean> | PermissionDecision | boolean;
   private timedGrantExpiresAt = 0;
   private readonly grants = new Map<string, number>();
-  // 显式字段而不是构造器参数属性：Chat 与安卓壳的 tsconfig 开了 erasableSyntaxOnly
-  // （参数属性不是纯类型语法，不能被单纯擦除），会在构建期报 TS1294。
+  // Explicit fields instead of constructor parameter properties: Chat and
+  // the Android shell enable erasableSyntaxOnly (parameter properties are
+  // not pure type syntax and cannot be erased), which fails the build with
+  // TS1294.
   private readonly options: BrowserPermissionServiceOptions;
 
   constructor(options: BrowserPermissionServiceOptions) {

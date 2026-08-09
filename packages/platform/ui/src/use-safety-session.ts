@@ -2,37 +2,45 @@ import { useEffect, useRef } from 'react';
 import { registerSafetySession, type DeviceSummary } from '@dg-kit/safety';
 
 /**
- * 把一个模块的设备会话注册到全局安全总线。
+ * Register a module's device session on the global safety bus.
  *
- * **这是全局停止按钮能否出现的唯一来源。** 在此之前 `registerSafetySession` 全仓零调用
- * 方，`EmergencyStopButton` 因此永远走 `return null`——那个按钮从未渲染过，而构建、
- * 测试、lint 全绿。教训是：验证「切走模块后按钮还在」之前，得先验证它出现过。
+ * This is the SOLE source that makes the global stop button appear. Before
+ * it existed, `registerSafetySession` had zero callers repo-wide and
+ * `EmergencyStopButton` always hit `return null` — the button never
+ * rendered, while build, tests, and lint were all green. Lesson: before
+ * verifying "the button survives switching modules", verify it ever
+ * appeared.
  *
- * `isActive` 的语义是**「本模块是否持有已连接的设备」**，不是「是否正在输出」。
- * 这一条是刻意的：把停止按钮的显隐绑在「正在输出」上，意味着任何一处状态判断出错
- * （订阅漏更新、刚撤销租约但设备还在跑）都会让按钮消失。宁可长期显示一个可能停了
- * 空设备的按钮，也不能有一刻它该在却不在。
+ * `isActive` means "does this module hold a connected device", NOT "is it
+ * outputting". Deliberate: tying the stop button's visibility to "is
+ * outputting" makes it depend on state that can be wrong in many ways
+ * (missed subscription update, lease just revoked while the device still
+ * runs) — any mistake hides the button at the worst moment. Better to
+ * long-show a button that may stop an idle device.
  */
 
 export interface SafetySessionSpec {
   id: string;
   label: string;
-  /** 本模块当前是否持有已连接的设备。 */
+  /** Whether this module currently holds a connected device. */
   isActive: () => boolean;
-  /** 把本模块的设备输出全部归零。必须幂等。 */
+  /** Zero all of this module's device output. Must be idempotent. */
   stop: () => void | Promise<void>;
-  /** 本模块当前持有的设备，供外壳的设备栏展示。 */
+  /** Devices this module holds, for the shell's device bar. */
   devices?: () => DeviceSummary[];
   /**
-   * 失去设备控制权时调用。必须停输出、清掉「按住不放」的聚合状态、拒绝后续指令。
-   * 见 @dg-kit/safety 的 SafetySession.onRevoke 注释。
+   * Called on losing the device lease. Must stop output, clear "held
+   * down" aggregate state, and reject subsequent commands. See
+   * SafetySession.onRevoke in @dg-kit/safety.
    */
   onRevoke?: () => void | Promise<void>;
 }
 
 export function useSafetySession(spec: SafetySessionSpec): void {
-  // 回调存 ref：注册只在 id 变化时发生一次，但 stop/isActive 每次渲染都是新函数。
-  // 直接把它们放进依赖数组会导致每帧重新注册，Map 里塞的是随时过期的闭包。
+  // Callbacks live in a ref: registration happens once per id, but
+  // stop/isActive are new functions every render. Putting them in the deps
+  // re-registers every frame and fills the Map with closures that go stale
+  // immediately.
   const latest = useRef(spec);
   latest.current = spec;
 

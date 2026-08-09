@@ -3,27 +3,32 @@ import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 
 /**
- * 侧边栏分区。
+ * Sidebar sections.
  *
- * 分区顺序、标题排版、折叠行为都归外壳；模块只提供列表项本身。三个模块各画各的
- * 列表就又回到了「五套 UI」。
+ * Section order, heading typography, and collapse behavior belong to the
+ * shell; modules provide only the list items. Three modules each drawing
+ * their own list is how you get back to "five UIs".
  *
- * 走 portal 而不是「模块注册一个 render 函数」：后者要求外壳在模块状态变化时重渲，
- * 而外壳并不知道模块的状态。第一版就是这么写的，结果是**分区永远不出现**——
- * Provider 自己 setState 时 children 是同一个元素引用，React 直接跳过整棵子树，
- * 而 context value 又被 useMemo 固定住了，消费者也收不到通知。portal 让内容跟着
- * **模块自己**的渲染周期走，没有这层协调问题。
+ * Portal, not "module registers a render function": the latter requires the
+ * shell to re-render whenever module state changes, and the shell knows
+ * nothing about module state. The first version was written that way and
+ * the sections *never appeared* — when the Provider setState'd, children
+ * was the same element reference so React skipped the whole subtree, and
+ * the context value was pinned by useMemo so consumers weren't notified
+ * either. A portal ties the content to the *module's own* render cycle;
+ * no coordination layer needed.
  *
- * 分区只有三种：置顶 / 对话 / 房间。场景不在侧边栏（它属于内容区）。
+ * Only three sections exist: pinned / conversations / rooms. Scenes are not
+ * in the sidebar (they belong to the content area).
  */
 
 export type SidebarSectionId = 'pinned' | 'conversations' | 'rooms';
 
-/** 渲染顺序。置顶在最上——用户收藏的东西应该一眼看到。 */
+/** Render order. Pinned on top — what the user starred should be visible at a glance. */
 const ORDER: SidebarSectionId[] = ['pinned', 'conversations', 'rooms'];
 
 interface SidebarRegistry {
-  /** 被模块声明使用的分区及其标题。决定外壳要不要画这个分区的标题。 */
+  /** Sections claimed by modules, with titles. Decides whether the shell draws a section heading. */
   claims: Partial<Record<SidebarSectionId, string>>;
   claim: (id: SidebarSectionId, title: string) => void;
   release: (id: SidebarSectionId) => void;
@@ -68,7 +73,7 @@ export function SidebarSectionsProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-/** 外壳侧：当前被声明使用的分区，按固定顺序。 */
+/** Shell side: currently claimed sections, in fixed order. */
 export function useClaimedSidebarSections(): { id: SidebarSectionId; title: string }[] {
   const ctx = useContext(Ctx);
   return useMemo(() => {
@@ -81,12 +86,15 @@ export function useClaimedSidebarSections(): { id: SidebarSectionId; title: stri
 }
 
 /**
- * 外壳侧：把某个分区的容器元素登记上来，模块的内容会 portal 进去。
+ * Shell side: register a section's container element; module content
+ * portals into it.
  *
- * 依赖 `setContainer` 这个**稳定引用**，绝不能依赖 ctx 本身。ctx 的身份随 containers
- * 变化，而 ref 回调身份一变 React 就会用 null 调旧的、用元素调新的——于是
- * setContainer(null) → containers 变 → ctx 变 → 新回调 → setContainer(el) → 再变，
- * 无限循环（实测就是 React #185，整页空白）。
+ * Depend on the *stable* `setContainer` reference, never on ctx itself.
+ * ctx's identity changes with containers, and when a ref callback's
+ * identity changes React calls the old one with null and the new one with
+ * the element — so setContainer(null) → containers change → new ctx → new
+ * callback → setContainer(el) → change again: an infinite loop (observed
+ * as React #185, blank page).
  */
 export function useSidebarContainerRef(id: SidebarSectionId): (el: HTMLElement | null) => void {
   const setContainer = useContext(Ctx)?.setContainer;
@@ -94,10 +102,11 @@ export function useSidebarContainerRef(id: SidebarSectionId): (el: HTMLElement |
 }
 
 /**
- * 模块侧：声明一个分区并把内容投进去。
+ * Module side: claim a section and project content into it.
  *
- * 独立于外壳运行时（无 Provider）什么都不渲染——不是回落成内联，因为侧边栏是外壳的
- * 结构，模块自己没有可放的位置。
+ * Standalone (no Provider) renders nothing — no inline fallback, because
+ * the sidebar is shell structure and the module has nowhere of its own to
+ * put it.
  */
 export function SidebarSection({
   id,
@@ -109,8 +118,9 @@ export function SidebarSection({
   children: ReactNode;
 }) {
   const ctx = useContext(Ctx);
-  // 依赖这两个**稳定引用**而不是 ctx 本身：ctx 的身份随 claims/containers 变化，
-  // 把它放进依赖会变成 claim → 新 ctx → 重新 claim 的循环。
+  // Depend on these two *stable* references, not ctx itself: ctx's
+  // identity changes with claims/containers, and putting it in the deps
+  // becomes a claim → new ctx → re-claim loop.
   const claim = ctx?.claim;
   const release = ctx?.release;
 

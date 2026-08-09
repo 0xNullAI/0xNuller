@@ -4,24 +4,27 @@ import { useOverlayContainer } from '../overlay';
 import { cn } from '../utils';
 
 /**
- * 覆盖层容器：遮罩 + 居中 + portal。
+ * Overlay surface: backdrop + centering + portal.
  *
- * 合并前四个模块各自写 `<div className="fixed inset-0 z-50 flex items-center
- * justify-center bg-black/40 p-4">`，遮罩黑度有 /30 /38 /40 /50 /80 五种，
- * z 值有 50 和 60 两种，而且都不 portal——留在模块子树里，祖先有没有 transform
- * 决定了它是「盖住外壳」还是「关不住模态」。
+ * Pre-merge all four modules hand-wrote `<div className="fixed inset-0
+ * z-50 flex items-center justify-center bg-black/40 p-4">` with five
+ * backdrop opacities (/30 /38 /40 /50 /80), two z values (50 and 60), and
+ * no portal — left in the module subtree, where a transformed ancestor
+ * decided between "covers the shell" and "modal can't trap clicks".
  *
- * 用这个组件替代那一行，遮罩浓度与层级走令牌，portal 走外壳容器。独立运行时
- * 容器为 undefined，回落 document.body，行为不变。
+ * This component replaces that line; backdrop strength and stacking go
+ * through tokens, the portal goes to the shell container. Standalone the
+ * container is undefined and falls back to document.body — behavior
+ * unchanged.
  */
 
 export interface OverlayProps {
   children: ReactNode;
-  /** 点遮罩关闭。不传则遮罩不可关（用于必须显式确认的场景，如安全确认）。 */
+  /** Close on backdrop click. Omit to make the backdrop inert (for flows that demand explicit confirmation, e.g. the safety notice). */
   onDismiss?: () => void;
-  /** 遮罩浓度。`strong` 用于需要遮蔽下方内容的场景（如图片查看器）。 */
+  /** Backdrop strength. `strong` for flows that must obscure what's below (e.g. an image viewer). */
   scrim?: 'default' | 'strong';
-  /** 层级。默认走模块覆盖层；`stacked` 用于叠在另一个覆盖层之上的次级弹窗。 */
+  /** Stacking. Default is the module overlay layer; `stacked` for a secondary dialog above another overlay. */
   level?: 'module' | 'stacked';
   className?: string;
 }
@@ -36,7 +39,7 @@ export function Overlay({
   const container = useOverlayContainer();
 
   function handleMouseDown(e: MouseEvent<HTMLDivElement>) {
-    // 只在点到遮罩本身时关闭，点内容不关。
+    // Close only when the backdrop itself is clicked, not the content.
     if (onDismiss && e.target === e.currentTarget) onDismiss();
   }
 

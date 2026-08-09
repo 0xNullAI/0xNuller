@@ -1,13 +1,18 @@
 /**
- * 账号客户端。
+ * Account client.
  *
- * **它刻意不提供任何与设备相关的接口。** 这是结构性保证而不是约定：账号只管身份与
- * 数据归属，设备控制权的授予始终是当面的、显式的、可随时撤销的，与「谁登录了」无关。
- * 盗号在这个产品里意味着控制他人身体——所以哪怕是你自己的另一台设备登录了同一账号，
- * 也不能远程控制你正在用的郊狼。
+ * It deliberately exposes no device-related API. This is a structural
+ * guarantee, not a convention: accounts handle identity and data ownership
+ * only, while device control is always granted in person, explicitly, and
+ * revocably — independent of who is logged in. A stolen account in this
+ * product would otherwise mean control over someone's body, so even your
+ * own second device logged into the same account cannot remotely control
+ * the Coyote you are using.
  *
- * 两种会话载体：网页端用 HttpOnly cookie（同一注册域下各模块共用），安卓端用 Bearer
- * ——Tauri WebView 的 origin 是本地 scheme，永远拿不到网页域的 cookie。
+ * Two session carriers: the web uses HttpOnly cookies (shared across
+ * modules under one registrable domain); Android uses Bearer tokens — the
+ * Tauri WebView's origin is a local scheme and can never receive the web
+ * domain's cookies.
  */
 
 import { apiBaseUrl } from '@0xnullai/settings';
@@ -18,10 +23,12 @@ export interface AuthUser {
   displayName: string;
 }
 
-// 账号接口挂在统一域的 `/api/auth` 下（路径写在各个调用点），所以这里只要 origin：
-// 网页端是空串走同源，Tauri 壳拿不到同源、由 apiBaseUrl() 给出绝对地址。
+// Auth endpoints live under `/api/auth` on the unified domain (paths are
+// written at each call site), so only the origin is needed here: empty
+// string on the web (same-origin); the Tauri shell gets an absolute origin
+// from apiBaseUrl().
 
-/** 安卓端把 token 存这里；网页端为空，靠 cookie。 */
+/** Android stores the token here; empty on the web, which relies on cookies. */
 const TOKEN_KEY = '0xnullai.auth-token';
 
 function storedToken(): string | null {
@@ -37,7 +44,8 @@ function setStoredToken(token: string | null): void {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
   } catch {
-    // 隐私模式下存不下：本次会话内仍可用（内存里的 state 还在），刷新后需重新登录。
+    // Private browsing may reject the write: the session still works (the
+    // in-memory state remains) but a refresh will require logging in again.
   }
 }
 
@@ -90,7 +98,7 @@ export async function logout(): Promise<void> {
   setStoredToken(null);
 }
 
-/** 硬删除账号。这个品类的用户对「能不能真的删掉」极其敏感，所以不是标记而是真删。 */
+/** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
 export async function deleteAccount(): Promise<void> {
   await call('/api/auth/account', { method: 'DELETE' });
   setStoredToken(null);

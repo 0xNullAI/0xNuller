@@ -43,7 +43,8 @@ export function PermissionModal({
   }, [onDeny]);
 
   return (
-    // 权限请求必须显式回答，所以不传 onDismiss——点遮罩关不掉。
+    // A permission request demands an explicit answer, so no onDismiss —
+    // the backdrop cannot close it.
     <Overlay>
       <div
         role="dialog"

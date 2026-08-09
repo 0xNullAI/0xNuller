@@ -2,10 +2,11 @@ export type ThemeMode = 'auto' | 'dark' | 'light';
 export type EffectiveTheme = 'dark' | 'light';
 
 /**
- * 模式解析成实际生效的深/浅。
+ * Resolve the mode into the effective dark/light.
  *
- * 切换按钮必须基于**这个**取反，而不是基于 mode。基于 mode 的话，从 'auto' 出发的
- * 第一次点击会得到 'light'——在浅色系统上等于什么都没发生，按钮看起来是坏的。
+ * The toggle must invert based on *this*, not on mode. Inverting mode means
+ * the first click starting from 'auto' yields 'light' — on a light system
+ * nothing visibly happens and the button looks broken.
  */
 export function getEffectiveTheme(mode: ThemeMode): EffectiveTheme {
   if (mode === 'auto') {

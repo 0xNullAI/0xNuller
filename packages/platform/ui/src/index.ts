@@ -1,5 +1,6 @@
-// @0xnullai/ui —— 平台设计系统单一真源。
-// 令牌与滚动条样式通过 '@0xnullai/ui/styles/*.css' 引入（CSS 不走 JS 导出）。
+// @0xnullai/ui — single source of truth for the platform design system.
+// Tokens and scrollbar styles come in via '@0xnullai/ui/styles/*.css'
+// (CSS is not exported through JS).
 
 export * from './components/alert';
 export * from './components/overlay-surface';
@@ -24,8 +25,9 @@ export * from './components/select';
 export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
-// 只导出类型。applyTheme / subscribeThemeChanges 是 theme-store 的内部实现——
-// 把它们公开出去就等于邀请模块再各写各的 data-theme，那正是刚清掉的那个 bug。
+// Types only. applyTheme / subscribeThemeChanges are theme-store
+// internals — exporting them invites modules to write their own data-theme
+// again, which is exactly the bug that was just removed.
 export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';
 export * from './use-safety-session';

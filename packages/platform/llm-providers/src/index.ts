@@ -497,8 +497,9 @@ export function providerRequiresUserApiKey(settingsOrId: ProviderSettings | Prov
 
 export function resolveProviderRuntimeSettings(input: ProviderSettings): ProviderRuntimeSettings {
   const normalized = normalizeProviderSettings(input);
-  // 代理在这里生效，而不是在每个调用点各接一次——那样迟早会漏掉某条路径，
-  // 而漏掉的表现是「设了代理但某些请求还是直连」，用户很难发现。
+  // The proxy applies here, not at each call site — wiring it per call
+  // site eventually misses a path, and the symptom is "proxy configured
+  // but some requests still go direct", which users can hardly notice.
   const proxied = (url: string) => applyHttpProxy(url);
   const definition = getProviderDefinition(normalized.providerId);
   const dialect: ProviderDialect = definition?.dialect ?? 'openai-compat';

@@ -1,44 +1,49 @@
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
 
 /**
- * 全应用共享的设备安全设置。
+ * Device-safety settings shared by the whole app.
  *
- * 合并前三个模块各有一套，形态与命名都不同：
- * - Agent：23 项扁平字段，存在 `dg-agent.browser-settings` 一个大 blob 里
- * - Voice：13 项嵌套在 `coyoteSafety` / `opossumSafety` 下，其中 7 项没有 UI
- * - Chat：三个裸 localStorage 字符串键，且完全没有策略引擎
+ * Before the merge each of the three modules had its own set, differing in
+ * both shape and naming:
+ * - Agent: 23 flat fields in one `dg-agent.browser-settings` blob
+ * - Voice: 13 fields nested under `coyoteSafety` / `opossumSafety`, 7 of
+ *   them without any UI
+ * - Chat: three bare localStorage string keys, and no policy engine at all
  *
- * 同一个概念在两边叫不同名字（`maxAdjustStrengthStep` vs `coyoteSafety.maxAdjustStep`、
- * `maxOpossumIntensityA` vs `opossumSafety.maxIntensityA`），默认值倒是一致——说明它们
- * 本来就是同一件事，只是被复制了两次。
+ * The same concept had different names on each side
+ * (`maxAdjustStrengthStep` vs `coyoteSafety.maxAdjustStep`,
+ * `maxOpossumIntensityA` vs `opossumSafety.maxIntensityA`) while the
+ * defaults matched — proof they were always the same thing, copied twice.
  *
- * 字段名采用 `@dg-kit/safety` 的 `DefaultPolicyOptions` 那套，因为策略引擎才是这些
- * 数值真正生效的地方，让存储去迁就执行方而不是反过来。
+ * Field names follow `@dg-kit/safety`'s `DefaultPolicyOptions`, because the
+ * policy engine is where these numbers actually take effect; storage adapts
+ * to the enforcer, not the other way around.
  *
- * **设备切换应用时安全设置不变。** 这是这个包存在的首要理由：用户在 Agent 里把上限
- * 调到 30，切到 Chat 不该变回 50。
+ * Safety settings do NOT change when switching modules. That is the primary
+ * reason this package exists: a user who caps at 30 in Agent must not see
+ * 50 again after switching to Chat.
  */
 
 export interface DeviceSafetySettings {
-  // ── 郊狼 ──
+  // ── Coyote ──
   maxStrengthA: number;
   maxStrengthB: number;
   maxColdStartStrength: number;
   maxAdjustStep: number;
   maxBurstDurationMs: number;
-  /** 0 表示不启用这条额外约束。 */
+  /** 0 disables this extra constraint. */
   maxBurstStrengthAbsolute: number;
-  /** 0 表示不启用这条额外约束。 */
+  /** 0 disables this extra constraint. */
   maxBurstStrengthRelative: number;
   burstRequiresActiveChannel: boolean;
 
-  // ── 负鼠 ──
+  // ── Opossum ──
   maxIntensityA: number;
   maxIntensityB: number;
   maxColdStartIntensity: number;
   maxOpossumAdjustStep: number;
 
-  // ── 单回合调用上限（AI 驱动时才有意义，但归属设备安全）──
+  // ── Per-turn call caps (only meaningful when AI-driven, but they belong to device safety) ──
   maxToolIterations: number;
   maxToolCallsPerTurn: number;
   maxAdjustStrengthCallsPerTurn: number;
@@ -46,11 +51,11 @@ export interface DeviceSafetySettings {
   maxVibrateAdjustCallsPerTurn: number;
   maxVibrateBurstCallsPerTurn: number;
 
-  // ── 权限与生命周期 ──
+  // ── Permission & lifecycle ──
   permissionMode: BrowserPermissionMode;
-  /** `timed` 模式的到期时间戳。 */
+  /** Expiry timestamp for `timed` mode. */
   permissionModeExpiresAt?: number;
-  /** 切到后台时是否自动停止输出。 */
+  /** Whether output stops automatically when backgrounded. */
   backgroundBehavior: 'stop' | 'keep';
 }
 
@@ -83,11 +88,13 @@ export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
 const KEY = '0xnullai.device-safety';
 
 /**
- * `allow-all` 不过夜。
+ * `allow-all` never survives a restart.
  *
- * Agent 的语义：完全放行只在本次会话有效，落盘时降级为 `confirm`。Voice 原本是永久
- * 落盘——刷新后仍然完全放行。采用严格的那一套，否则「危险模式不过夜」这条保护会在
- * 合并中静默消失。
+ * Agent's semantics: full-allow lasts for the session and demotes to
+ * `confirm` on persist. Voice used to persist it permanently — still
+ * full-allow after a refresh. We adopt the strict one; otherwise the
+ * "dangerous mode does not survive overnight" guarantee would silently
+ * vanish in the merge.
  */
 function persistableMode(mode: BrowserPermissionMode): BrowserPermissionMode {
   return mode === 'allow-all' ? 'confirm' : mode;
@@ -122,12 +129,13 @@ function coerce(raw: unknown): DeviceSafetySettings {
 }
 
 /**
- * 合并前三处存量到规范字段名的映射。
+ * Migration from the three pre-merge stores to the canonical field names.
  *
- * 值得单独说明的两处改名：Agent 的 `maxAdjustStrengthStep` 与 Voice 的
- * `coyoteSafety.maxAdjustStep` 是同一件事；Agent 的 `maxOpossumIntensityA` 与 Voice 的
- * `opossumSafety.maxIntensityA` 也是。迁移时漏掉任何一条，用户调过的上限会静默回到
- * 默认值——这个方向的失败很难被发现，因为默认值本身是合理的。
+ * Two renames worth calling out: Agent's `maxAdjustStrengthStep` and
+ * Voice's `coyoteSafety.maxAdjustStep` are the same thing; so are Agent's
+ * `maxOpossumIntensityA` and Voice's `opossumSafety.maxIntensityA`. Missing
+ * any mapping silently resets a user-tuned cap to its default — a failure
+ * that is hard to notice precisely because the defaults are reasonable.
  */
 function migrate(): DeviceSafetySettings | null {
   const out = { ...DEFAULT_DEVICE_SAFETY };
@@ -184,7 +192,7 @@ function migrate(): DeviceSafetySettings | null {
       if (agent.backgroundBehavior === 'keep') out.backgroundBehavior = 'keep';
     }
   } catch {
-    // Agent 的 blob 坏了不影响其它来源。
+    // A corrupt Agent blob must not block the other sources.
   }
 
   try {
@@ -196,8 +204,10 @@ function migrate(): DeviceSafetySettings | null {
     const opossum = voice?.opossumSafety as Record<string, unknown> | undefined;
     if (coyote || opossum) {
       found = true;
-      // Agent 已经写过的值不被 Voice 覆盖——两边都调过时取先到者，避免「以为改的是
-      // 这个模块的设置，结果被另一个模块的旧值顶掉」。
+      // Values Agent already wrote are not overwritten by Voice — when both
+      // were tuned, first writer wins, so a user does not see "I changed
+      // this module's setting but another module's stale value clobbered
+      // it".
       if (coyote) {
         out.maxBurstDurationMs = num(coyote.maxBurstDurationMs, out.maxBurstDurationMs);
         out.maxBurstStrengthAbsolute = num(
@@ -215,7 +225,7 @@ function migrate(): DeviceSafetySettings | null {
       }
     }
   } catch {
-    // 同上。
+    // Same as above.
   }
 
   try {
@@ -225,7 +235,7 @@ function migrate(): DeviceSafetySettings | null {
       out.backgroundBehavior = bg;
     }
   } catch {
-    // 同上。
+    // Same as above.
   }
 
   return found ? out : null;
@@ -244,7 +254,8 @@ export function loadDeviceSafety(): DeviceSafetySettings {
       return migrated;
     }
   } catch {
-    // 存储被污染时回落默认值——默认值是最保守的那一组，这个方向的失败是安全的。
+    // On corrupt storage fall back to defaults — they are the most
+    // conservative set, so failing in this direction is safe.
   }
   return { ...DEFAULT_DEVICE_SAFETY };
 }
@@ -257,7 +268,7 @@ export function saveDeviceSafety(next: DeviceSafetySettings): DeviceSafetySettin
   try {
     localStorage.setItem(KEY, JSON.stringify(persisted));
   } catch {
-    // 存不下时本次会话内仍然生效。
+    // If the write fails the values still apply for this session.
   }
   for (const l of listeners) l(next);
   return next;
@@ -282,10 +293,11 @@ export function subscribeDeviceSafety(listener: (s: DeviceSafetySettings) => voi
 }
 
 /**
- * 当前**生效**的权限模式。
+ * The permission mode currently *in effect*.
  *
- * `timed` 到期后自动回落 `confirm`。这个判断必须在读取时做，不能只在写入时做——
- * 用户可能开着页面过了五分钟。
+ * `timed` falls back to `confirm` after expiry. The check must happen on
+ * read, not only on write — the user may keep the page open past the five
+ * minutes.
  */
 export function effectivePermissionMode(s: DeviceSafetySettings): BrowserPermissionMode {
   if (s.permissionMode !== 'timed') return s.permissionMode;

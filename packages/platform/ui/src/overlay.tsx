@@ -1,26 +1,30 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 /**
- * 覆盖层挂载点。
+ * Overlay mount point.
  *
- * 模块里的弹窗必须 portal 到这里，不能用 `position:fixed` 直接铺在模块子树里，
- * 也不能默认 portal 到 `document.body`。
+ * Module dialogs must portal here — not `position:fixed` inside the module
+ * subtree, and not defaulting to `document.body`.
  *
- * 为什么不能留在模块子树里：那些覆盖层现在处于**不稳定的中间态**。祖先没有
- * transform 时，它们的包含块是视口 → 全屏铺开、盖住外壳顶栏；外壳一旦给模块槽位
- * 加上 transform / filter / contain:paint（做切换动画最自然的写法），包含块就翻转
- * 成模块盒子 → 模态关不住，用户能点到弹窗外面去。两种失败都不能接受。
+ * Why not the module subtree: those overlays sit in an unstable middle
+ * state. With no transformed ancestor, their containing block is the
+ * viewport → they cover the whole screen including the shell chrome; the
+ * moment the shell puts transform / filter / contain:paint on the module
+ * slot (the natural way to animate switching), the containing block flips
+ * to the module box → the modal can't trap clicks and the user can reach
+ * behind it. Both failures are unacceptable.
  *
- * 为什么容器要挂在外壳根的**兄弟**位置而不是后代：同样的道理——只要它不是槽位的
- * 后代，槽位上的任何 transform 都影响不到它。
+ * Why the container is a *sibling* of the shell root, not a descendant:
+ * same reason — as long as it is not a descendant of the slot, no
+ * transform on the slot can affect it.
  *
- * 独立运行（没有外壳）时 useOverlayContainer 返回 undefined，Radix 会回落到
- * document.body，行为与合并前一致。
+ * Standalone (no shell), useOverlayContainer returns undefined and Radix
+ * falls back to document.body — same behavior as before the merge.
  */
 
 const OverlayContext = createContext<HTMLElement | undefined>(undefined);
 
-/** 由外壳提供。传入外壳创建的、与外壳根同级的容器元素。 */
+/** Provided by the shell. Pass the container the shell created as a sibling of its root. */
 export function OverlayProvider({
   container,
   children,
@@ -32,20 +36,22 @@ export function OverlayProvider({
 }
 
 /**
- * 取覆盖层容器。传给 Radix 的 `container` prop：
+ * Get the overlay container. Pass it to Radix's `container` prop:
  * `<DialogPrimitive.Portal container={useOverlayContainer()}>`
  *
- * 返回 undefined 时 Radix 用 document.body，这正是独立运行的期望行为。
+ * When it returns undefined Radix uses document.body — the desired standalone behavior.
  */
 export function useOverlayContainer(): HTMLElement | undefined {
   return useContext(OverlayContext);
 }
 
 /**
- * 创建一个与外壳根同级的覆盖层容器。外壳在挂载时调用一次。
+ * Create an overlay container as a sibling of the shell root. The shell
+ * calls this once on mount.
  *
- * 容器本身 `pointer-events:none`，具体的覆盖层自己开 `pointer-events:auto`——
- * 这样没有弹窗时它不会吃掉整页的点击。
+ * The container itself is `pointer-events:none`; individual overlays opt
+ * back in with `pointer-events:auto` — so with no dialog open it does not
+ * swallow clicks on the whole page.
  */
 export function useOverlayRoot(id = 'shl-overlay-root'): HTMLElement | undefined {
   const [el, setEl] = useState<HTMLElement>();
@@ -70,12 +76,15 @@ export function useOverlayRoot(id = 'shl-overlay-root'): HTMLElement | undefined
 }
 
 /**
- * 每个模块一个覆盖层子层，由外壳按当前模块显隐。
+ * One overlay sublayer per module, shown/hidden by the shell with the
+ * active module.
  *
- * 为什么需要：弹窗一旦 portal 出模块子树，模块容器上的 `hidden` 就管不到它了。
- * 实测症状是——在 Chat 里打开安全确认后切到 Market，Chat 的弹窗仍然浮在 Market
- * 上面，还被挤成一条窄列。给每个模块一个子层、跟着模块一起显隐，才能让「切走的
- * 模块保持挂载」与「切走的模块不该冒出弹窗」同时成立。
+ * Why: once a dialog portals out of the module subtree, `hidden` on the
+ * module container no longer reaches it. Observed symptom — open the
+ * safety notice in Chat, switch to Market, and Chat's dialog still floats
+ * over Market, squeezed into a narrow column. A per-module sublayer that
+ * hides with its module lets "switched-away modules stay mounted" and
+ * "switched-away modules must not surface dialogs" both hold.
  */
 export function useModuleOverlayLayer(
   root: HTMLElement | undefined,
@@ -99,8 +108,8 @@ export function useModuleOverlayLayer(
 
   useEffect(() => {
     if (!el) return;
-    // 用 display 而不是 visibility：隐藏层里的元素不应参与命中测试，也不该被
-    // 屏幕阅读器读到。
+    // display, not visibility: elements in a hidden layer must not take
+    // part in hit testing, nor be read by screen readers.
     el.style.display = active ? '' : 'none';
   }, [el, active]);
 

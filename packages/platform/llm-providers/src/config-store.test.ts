@@ -23,13 +23,14 @@ describe('共享 LLM 配置', () => {
   });
 
   it('从各模块合并前的旧键一次性迁移', () => {
-    // 用户在 DG-Chat 里配过 provider，合并后应该直接带过来，不必重配。
+    // A provider configured in DG-Chat must carry over after the merge —
+    // no reconfiguration.
     localStorage.setItem(
       'dg-chat-ai-config',
       JSON.stringify({ providerId: 'qwen', apiKey: 'sk-old', model: 'qwen3.5-plus', baseUrl: 'https://q' }),
     );
     expect(loadLlmConfig().providerId).toBe('qwen');
-    // 迁移后写入新键，之后不再回头读旧键
+    // Migration writes the new key; legacy keys are never read again
     localStorage.removeItem('dg-chat-ai-config');
     expect(loadLlmConfig().apiKey).toBe('sk-old');
   });

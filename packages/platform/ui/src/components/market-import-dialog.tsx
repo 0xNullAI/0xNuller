@@ -11,19 +11,21 @@ import {
 } from '@0xnullai/market-client';
 
 /**
- * 从市场导入。全应用唯一的一份。
+ * Market import. The app's only copy.
  *
- * 合并前 Agent / Voice / Chat 各有一份（144 / 138 / 177 行），逻辑相同，差别只在
- * 弹窗宽度和标题排版——三份会各自漂移，而它们做的是同一件事。取 Agent 那份最完整的
- * 作为基准。
+ * Pre-merge Agent / Voice / Chat each had one (144 / 138 / 177 lines),
+ * identical in logic, differing only in dialog width and title typography —
+ * three copies drifting apart while doing the same thing. Agent's most
+ * complete copy is the baseline.
  *
- * 导入落到共享场景库（`@0xnullai/scenes`）：Agent 里导入的场景，Voice 里立刻能用。
+ * Imports land in the shared scene library (`@0xnullai/scenes`): a scene
+ * imported in Agent is instantly usable in Voice.
  */
 export interface MarketImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: MarketItemType;
-  // 返回 true 表示导入成功，对话框据此给出反馈。
+  // Returns true on successful import; the dialog uses it for feedback.
   onImport: (item: MarketItem) => Promise<void> | void;
 }
 

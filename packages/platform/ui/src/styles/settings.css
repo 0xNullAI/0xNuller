@@ -1,11 +1,14 @@
-/* 设置外壳样式 —— 共享层单一真源。
+/* Settings chrome — the shared layer's single source of truth.
  *
- * 合并前 DG-Agent 的 app.css 与 DG-Voice 的 settings.css 各存一份：48 个同名选择器
- * 里 **44 个规则体逐字节相同**，voice 那 427 行约九成是 agent 的子集。剩下 4 条只是
- * padding/margin 微调，voice 另有 5 条独有——那些留在各自的模块层里作为覆盖。
+ * Pre-merge DG-Agent's app.css and DG-Voice's settings.css each held a
+ * copy: of 48 same-named selectors, 44 rule bodies were byte-identical,
+ * and ~90% of voice's 427 lines were a subset of agent's. The remaining 4
+ * differed only in padding/margin nudges, plus 5 voice-only rules — those
+ * stay in each module layer as overrides.
  *
- * 这里只管「设置页长什么样」：侧栏、工作区、分组导航、行卡片、卡片图例缺口、
- * 移动端目录。具体有哪些设置项由各模块自己决定。 */
+ * This file owns only "what settings pages look like": sidebar, workspace,
+ * grouped nav, row cards, the card-legend notch, the mobile directory.
+ * Which settings exist is each module's own business. */
 
 .settings-grouped {
   gap: 1.2rem;
@@ -342,11 +345,13 @@
   min-width: 0;
 }
 
-/* 分区标题骑在卡片边框上，所以要用自己的底色把那一段边框盖住。
-   底色必须跟着**所在容器**走：模块独立运行时设置铺在 --bg 上，外壳里它是弹窗、
-   铺在 --bg-elevated 上。写死一个的结果是另一种场合下露出一块深浅不同的方块
-   ——浅色主题两个值接近所以看不出来，深色下非常明显。
-   容器覆盖 --settings-surface 即可，默认仍是 --bg。 */
+/* The section legend rides the card border, so it needs its own
+   background to mask that stretch of border. The background must follow
+   the *containing surface*: standalone settings sit on --bg, in the shell
+   they are a dialog on --bg-elevated. Hard-coding either leaves a
+   differently-shaded rectangle in the other context — invisible in light
+   theme where the two values are close, glaring in dark. Containers
+   override --settings-surface; default stays --bg. */
 .settings-card-legend {
   position: absolute;
   top: 0;

@@ -1,16 +1,21 @@
 /**
- * 后端接口的基地址。
+ * Base URL for the backend APIs.
  *
- * 所有后端都挂在同一个域的不同路径下（`/api/auth` `/api/items` `/api/realtime`
- * `/ws`），所以网页端**不该写任何绝对地址**——同源相对路径自动跟着当前部署走，
- * 预览环境、`wrangler dev`、正式域名都不用改配置。
+ * Every backend hangs off the same domain under different paths
+ * (`/api/auth`, `/api/items`, `/api/realtime`, `/ws`), so the web build
+ * must not hard-code any absolute URL — same-origin relative paths follow
+ * whatever deployment is serving the page: preview environments,
+ * `wrangler dev`, and production all work with zero config.
  *
- * 但 Tauri 壳不行：它的 origin 是本地 scheme（`tauri://localhost` 之类），同源相对
- * 路径会打到 WebView 自己的资源服务上。安卓端因此必须用绝对地址。
+ * The Tauri shell is different: its origin is a local scheme (something
+ * like `tauri://localhost`), so same-origin relative paths hit the
+ * WebView's own asset server. Android therefore needs absolute URLs.
  *
- * 这个区别曾经在体验版语音上真实踩过：`buildWsUrl` 用 `location.host` 拼同源 wss，
- * 网页上完全正常，装到手机上连出去的是 `wss://tauri.localhost/api/realtime`。
- * 而安卓没有热更新——坏掉的那版会长期留在用户手机上。
+ * This difference bit for real in trial voice: `buildWsUrl` composed a
+ * same-origin wss from `location.host` — fine on the web, but on a phone it
+ * dialed `wss://tauri.localhost/api/realtime`. And Android has no hot
+ * update, so the broken build would have lived on users' phones for a long
+ * time.
  */
 
 const PRODUCTION_ORIGIN = 'https://0xnullai.com';
@@ -21,9 +26,11 @@ function isTauri(): boolean {
 }
 
 /**
- * HTTP 接口的前缀。网页端返回空串（同源），Tauri 壳返回绝对 origin。
+ * Prefix for HTTP APIs. Empty string on the web (same-origin); absolute
+ * origin in the Tauri shell.
  *
- * 用 `VITE_API_BASE_URL` 覆盖——自建部署时指向自己的域名。
+ * Override with `VITE_API_BASE_URL` — self-hosted deployments point it at
+ * their own domain.
  */
 export function apiBaseUrl(): string {
   const override = (import.meta.env?.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '');
@@ -32,10 +39,11 @@ export function apiBaseUrl(): string {
 }
 
 /**
- * WebSocket 接口的完整地址。
+ * Full URL for a WebSocket API.
  *
- * 网页端跟随当前页面的协议：https 页面必须用 wss，混用会被浏览器直接拦掉，
- * 而报错信息只说「连接失败」，跟真正的原因对不上。
+ * On the web it follows the page protocol: an https page must use wss —
+ * mixing gets blocked by the browser outright, and the error message only
+ * says "connection failed", nothing near the real cause.
  */
 export function apiWsUrl(path: string): string {
   const base = apiBaseUrl();

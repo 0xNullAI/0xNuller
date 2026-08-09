@@ -2,15 +2,18 @@ import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 
 /**
- * 外壳提供给模块的东西。
+ * What the shell provides to modules.
  *
- * 每个模块都是独立可部署的应用，所以自带完整的顶栏：应用切换器、主题按钮、标题、
- * 自己的设置面板。挂进外壳后这些和外壳一一重复——两个应用切换器、两个主题按钮、
- * 同一个设置项在两处能改。
+ * Each module is an independently deployable app, so it ships a complete
+ * chrome: app switcher, theme button, title, its own settings panel. Inside
+ * the shell those duplicate one-for-one — two app switchers, two theme
+ * buttons, the same setting editable in two places.
  *
- * 模块用 `useInShell()` 隐藏那些外壳已经提供的控件；独立运行时（无 Provider）默认
- * false，行为与合并前完全一致。**只用于隐藏重复的外壳级控件**，不要用它给模块加
- * 分支逻辑，那会让两种运行形态悄悄分叉。
+ * Modules use `useInShell()` to hide controls the shell already provides;
+ * standalone (no Provider) it defaults to false and behavior matches
+ * pre-merge exactly. Use it ONLY to hide duplicated shell-level chrome —
+ * not to branch module logic, which would quietly fork the two runtime
+ * forms.
  */
 
 export type ShellSettingsTab = 'appearance' | 'ai' | 'scenes' | 'safety';
@@ -18,10 +21,11 @@ export type ShellSettingsTab = 'appearance' | 'ai' | 'scenes' | 'safety';
 interface ShellChrome {
   inShell: boolean;
   /**
-   * 打开外壳那个唯一的设置面板，可指定落在哪一页。
+   * Open the shell's one settings panel, optionally on a specific tab.
    *
-   * 给的是「入口位置」而不是「第二套设置界面」：模块界面里该有设置入口的地方
-   * （比如 Chat 房主要配 AI 的那个按钮）仍然有按钮，只是点开的是同一个面板。
+   * This grants an entry point, not a second settings UI: places in module
+   * UIs that deserve a settings entry (e.g. Chat's host-configures-AI
+   * button) keep their button — it just opens the same panel.
    */
   openSettings: (tab?: ShellSettingsTab) => void;
 }
@@ -38,8 +42,10 @@ export function ShellChromeProvider({
   children: ReactNode;
   openSettings: (tab?: ShellSettingsTab) => void;
 }) {
-  // 刻意不 memo：Shell 每次渲染都会重建这个对象，但消费者只有几个按钮，
-  // 而 memo 会引入一个「openSettings 变了没」的依赖，写错就是点了没反应。
+  // Deliberately not memoized: the Shell rebuilds this object every
+  // render, but the consumers are a handful of buttons — and memoization
+  // introduces a "did openSettings change" dependency where a mistake
+  // means a button that does nothing.
   return (
     <ShellChromeContext.Provider value={{ inShell: true, openSettings }}>
       {children}
@@ -51,7 +57,7 @@ export function useInShell(): boolean {
   return useContext(ShellChromeContext).inShell;
 }
 
-/** 打开外壳设置面板。不在外壳里时是空操作——模块自己那套面板此时仍然可用。 */
+/** Open the shell settings panel. A no-op outside the shell — the module's own panel still works there. */
 export function useOpenShellSettings(): (tab?: ShellSettingsTab) => void {
   return useContext(ShellChromeContext).openSettings;
 }

@@ -10,7 +10,7 @@ describe('代理设置', () => {
 
   it('存储被污染时按直连处理', () => {
     localStorage.setItem('0xnullai.proxy', '{不是 JSON');
-    // 这个方向的失败不会把请求发到意料之外的地方。
+    // Failing this way never sends requests somewhere unexpected.
     expect(loadProxy().enabled).toBe(false);
   });
 
@@ -34,8 +34,9 @@ describe('代理设置', () => {
 
     it('反代地址不合法时原样返回，不是拼出一个坏地址', () => {
       saveProxy({ enabled: true, httpBaseUrl: '这不是地址', socksUrl: '' });
-      // 配置错了应该表现为「没走代理」，而不是把请求发到一个拼错的地方——
-      // 后者会让用户以为代理在工作。
+      // A broken config should look like "proxy not used", never like
+      // requests going to a mistyped destination — the latter makes the
+      // user believe the proxy is working.
       expect(applyHttpProxy('https://api.x.ai/v1')).toBe('https://api.x.ai/v1');
     });
 
@@ -46,8 +47,9 @@ describe('代理设置', () => {
   });
 
   it('SOCKS 只在 Tauri 壳里可用', () => {
-    // 浏览器不允许页面自行选择代理——那是 OS/浏览器层的设置。给网页端一个 SOCKS
-    // 开关等于给一个看起来能用、实际永不生效的按钮。
+    // Browsers do not let a page pick its own proxy — that is an
+    // OS/browser-level setting. A SOCKS toggle on the web is a control that
+    // looks usable and never takes effect.
     expect(socksSupported('web')).toBe(false);
     expect(socksSupported('tauri')).toBe(true);
   });

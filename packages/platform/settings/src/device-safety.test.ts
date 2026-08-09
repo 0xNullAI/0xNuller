@@ -19,7 +19,7 @@ describe('共享设备安全设置', () => {
 
   it('存储被污染时回落默认值而不是抛出', () => {
     localStorage.setItem('0xnullai.device-safety', '{不是 JSON');
-    // 默认值是最保守的那一组，这个方向的失败是安全的。
+    // Defaults are the most conservative set; failing this way is safe.
     expect(() => loadDeviceSafety()).not.toThrow();
     expect(loadDeviceSafety().maxStrengthA).toBe(50);
   });
@@ -31,8 +31,8 @@ describe('共享设备安全设置', () => {
     localStorage.setItem('0xnullai.device-safety', JSON.stringify(raw));
 
     const s = loadDeviceSafety();
-    expect(s.maxStrengthA).toBe(50); // 回落默认
-    expect(s.maxStrengthB).toBe(40); // 用户设的值保住了
+    expect(s.maxStrengthA).toBe(50); // fell back to default
+    expect(s.maxStrengthB).toBe(40); // user-tuned value survived
   });
 
   it('负数被拒绝', () => {
@@ -50,8 +50,10 @@ describe('共享设备安全设置', () => {
         JSON.stringify({
           maxStrengthA: 30,
           maxStrengthB: 35,
-          // 这两个是最容易漏的改名：Agent 叫 maxAdjustStrengthStep / maxOpossumIntensityA，
-          // 规范名是 maxAdjustStep / maxIntensityA。漏掉的话用户调过的上限会静默回默认值。
+          // The two renames easiest to miss: Agent calls them
+          // maxAdjustStrengthStep / maxOpossumIntensityA; canonical names
+          // are maxAdjustStep / maxIntensityA. Missing them silently resets
+          // user-tuned caps to defaults.
           maxAdjustStrengthStep: 7,
           maxOpossumIntensityA: 25,
           maxOpossumAdjustStep: 6,
@@ -102,8 +104,10 @@ describe('共享设备安全设置', () => {
   describe('allow-all 不过夜', () => {
     it('落盘时降级为 confirm', () => {
       saveDeviceSafety({ ...DEFAULT_DEVICE_SAFETY, permissionMode: 'allow-all' });
-      // 合并前 Voice 是永久落盘的：刷新后仍然完全放行。采用 Agent 的严格语义，
-      // 否则「危险模式不过夜」这条保护会在合并中静默消失。
+      // Pre-merge Voice persisted it permanently: still full-allow after a
+      // refresh. We adopt Agent's strict semantics, or the "dangerous mode
+      // does not survive overnight" guarantee silently vanishes in the
+      // merge.
       expect(loadDeviceSafety().permissionMode).toBe('confirm');
     });
 
@@ -132,7 +136,8 @@ describe('共享设备安全设置', () => {
         permissionMode: 'timed' as const,
         permissionModeExpiresAt: Date.now() - 1,
       };
-      // 判断必须在**读取**时做，不能只在写入时做——用户可能开着页面过了五分钟。
+      // The check must happen on *read*, not only on write — the user may
+      // keep the page open past the five minutes.
       expect(effectivePermissionMode(s)).toBe('confirm');
     });
 
@@ -144,7 +149,8 @@ describe('共享设备安全设置', () => {
 
   it('切换应用不改变设置——同一个键，谁读都一样', () => {
     updateDeviceSafety((prev) => ({ ...prev, maxStrengthA: 30 }));
-    // 这是这个包存在的首要理由：用户在 Agent 里把上限调到 30，切到 Chat 不该变回 50。
+    // The primary reason this package exists: cap at 30 in Agent, switch
+    // to Chat, and it must not read 50.
     expect(loadDeviceSafety().maxStrengthA).toBe(30);
   });
 });

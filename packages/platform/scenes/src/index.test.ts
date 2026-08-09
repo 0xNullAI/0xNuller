@@ -34,9 +34,10 @@ describe('共享场景库', () => {
           hiddenBuiltinIds: [],
         }),
       );
-      // 这正是从 Agent 那个大 blob 里拆出来要换取的性质：那边是一处 zod 校验失败
-      // 就整份回落默认值，而场景和强度上限住在同一个 blob——一条写坏的场景会
-      // 静默重置用户的安全设置。
+      // Exactly the property the extraction from Agent's big blob buys:
+      // there, one failed zod check reverted the whole blob to defaults,
+      // and scenes shared that blob with the strength caps — one corrupt
+      // scene silently reset the user's safety settings.
       expect(loadScenes().scenes.map((s) => s.id)).toEqual(['good', 'good2']);
     });
 
@@ -66,7 +67,7 @@ describe('共享场景库', () => {
         }),
       );
       const lib = loadScenes();
-      // 用户在哪边写的都是自己的东西，二选一等于删掉一半。
+      // Both sides are the user's own work; picking one deletes half.
       expect(lib.scenes.map((s) => s.id).sort()).toEqual(['from-agent', 'from-voice']);
       expect(lib.hiddenBuiltinIds.sort()).toEqual(['reward', 'tease']);
       expect(lib.selectedId).toBe('from-agent');
@@ -98,7 +99,7 @@ describe('共享场景库', () => {
         'dg-agent.browser-settings',
         JSON.stringify({ savedPromptPresets: [{ id: 'two', name: 'T', prompt: 't' }] }),
       );
-      // 迁移时已写入自己的键，旧键从此无关。
+      // Migration wrote our own key; the legacy keys no longer matter.
       expect(loadScenes().scenes.map((s) => s.id)).toEqual(['one']);
     });
   });
@@ -113,8 +114,10 @@ describe('共享场景库', () => {
   });
 
   it('新 id 不会撞', () => {
-    // 合并前是 `custom-${Date.now()}`：两个库合并时同一毫秒建的会撞 id，
-    // 而查找是 find()——撞了就是静默遮蔽，用户会发现某个场景「点了没反应」。
+    // Pre-merge this was `custom-${Date.now()}`: merging two libraries
+    // collides ids created in the same millisecond, and lookup is find() —
+    // a collision is silent shadowing, a scene that "does nothing when
+    // clicked".
     const ids = new Set(Array.from({ length: 200 }, () => newSceneId()));
     expect(ids.size).toBe(200);
   });

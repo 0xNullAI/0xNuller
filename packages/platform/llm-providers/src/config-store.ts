@@ -2,18 +2,22 @@ import type { ProviderId } from './index';
 import { FREE_TRIAL_MODEL, FREE_TRIAL_PROXY_URL, getProviderDefinition } from './index';
 
 /**
- * 跨模块共享的 LLM 配置。
+ * LLM configuration shared across modules.
  *
- * 合并前 DG-Agent 与 DG-Chat 各存一份，形态却是完全一样的四个字段
- * （providerId / apiKey / model / baseUrl）。用户在 Agent 里配好 provider，
- * 到 Chat 里还得再配一遍——这正是「一个软件」要消掉的摩擦。
+ * Pre-merge, DG-Agent and DG-Chat each stored a copy of exactly the same
+ * four fields (providerId / apiKey / model / baseUrl). Configuring a
+ * provider in Agent and having to do it again in Chat is precisely the
+ * friction "one app" is supposed to remove.
  *
- * DG-Voice 的 realtime provider 配置**不**并进来：它是另一个领域（语音会话的
- * 端点与鉴权方式都不同），形态也不同。硬凑只会让两边都别扭。
+ * DG-Voice's realtime provider config does NOT merge in: it is a different
+ * domain (voice-session endpoints and auth differ) with a different shape.
+ * Forcing them together would make both awkward.
  *
- * API Key 存在 localStorage 里，与合并前各模块的做法一致。这不是加密存储——
- * 同源脚本读得到，浏览器扩展也读得到。真正需要保密的部署应该用自建代理，
- * 让密钥只存在于服务端（免费 provider 就是这么做的）。
+ * API keys live in localStorage, same as each module did pre-merge. This
+ * is not encrypted storage — same-origin scripts can read it and so can
+ * browser extensions. Deployments that truly need secrecy should run their
+ * own proxy so the key only exists server-side (the free provider works
+ * that way). 
  */
 
 export interface LlmConfig {
@@ -24,7 +28,7 @@ export interface LlmConfig {
 }
 
 const KEY = '0xnullai.llm-config';
-/** 合并前各模块自己的键，用于一次性迁移。 */
+/** Per-module keys from before the merge, migrated once on read. */
 const LEGACY_KEYS = ['dg-chat-ai-config', 'dg-agent.provider-settings'];
 
 const listeners = new Set<(c: LlmConfig) => void>();
@@ -55,7 +59,8 @@ export function loadLlmConfig(): LlmConfig {
   try {
     const own = coerce(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
     if (own) return own;
-    // 一次性迁移：读到旧键就搬过来并写入新键，之后不再回头读旧键。
+    // One-time migration: copy a legacy key over, write the new key, and
+    // never read the legacy keys again.
     for (const legacy of LEGACY_KEYS) {
       const old = coerce(JSON.parse(localStorage.getItem(legacy) ?? 'null'));
       if (old) {
@@ -64,7 +69,8 @@ export function loadLlmConfig(): LlmConfig {
       }
     }
   } catch {
-    // 存储被污染时回落默认值，而不是让整个模块崩在启动阶段。
+    // On corrupt storage fall back to defaults instead of crashing the
+    // module at startup.
   }
   return defaultLlmConfig();
 }
@@ -73,14 +79,16 @@ export function saveLlmConfig(config: LlmConfig): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(config));
   } catch {
-    // 隐私模式 / 配额满：配置存不下不该阻断使用，本次会话内仍然生效。
+    // Private browsing / quota exceeded: a failed write must not block
+    // use; the config still applies for this session.
   }
   for (const l of listeners) l(config);
 }
 
 /**
- * 订阅配置变化。同一文档内的改动走 listeners，跨标签页走 storage 事件——
- * 后者是「在 Agent 标签页改了 provider，Chat 标签页跟着变」的实现。
+ * Subscribe to config changes. Same-document changes go through
+ * listeners; cross-tab through the storage event — the latter implements
+ * "change the provider in the Agent tab, the Chat tab follows".
  */
 export function subscribeLlmConfig(listener: (c: LlmConfig) => void): () => void {
   listeners.add(listener);
@@ -94,7 +102,7 @@ export function subscribeLlmConfig(listener: (c: LlmConfig) => void): () => void
   };
 }
 
-/** 配置是否可用。免费 provider 不需要 key，其余需要。 */
+/** Whether the config is usable. The free provider needs no key; the rest do. */
 export function isLlmConfigured(c: LlmConfig): boolean {
   if (c.providerId === 'free') return true;
   const def = getProviderDefinition(c.providerId as ProviderId);

@@ -26,9 +26,11 @@
   --danger-soft: rgba(240, 162, 178, 0.12);
   --danger-surface: #fef2f5;
   --danger-border: #f0c8d2;
-  /* warning 必须与 danger 区分开。合并前两组是逐字相同的粉红，于是「请仔细阅读」
-     的提示框长得跟「删除不可恢复」一模一样——两种完全不同的意思用同一个视觉信号，
-     用户就学不会哪个该停下来看。warning 走琥珀，danger 留给破坏性操作。 */
+  /* warning must be distinct from danger. Pre-merge both were the same
+     pink verbatim, so a "please read carefully" box looked identical to
+     "deletion is irreversible" — two different meanings sharing one visual
+     signal teaches users neither. warning is amber; danger is reserved for
+     destructive actions. */
   --warning: #b45309;
   --warning-soft: rgba(245, 158, 11, 0.12);
   --warning-surface: #fffbeb;
@@ -51,20 +53,24 @@
   --button-text: #ffffff;
   --scrollbar-thumb: #d0dbe3;
   --scrollbar-thumb-hover: #b8c8d4;
-  /* 排版身份。合并前这三个只存在于 DG-Wiki，共享层反而没有——
-     所以「统一字体」这件事在其余应用里从来没生效过。 */
+  /* Typographic identity. Pre-merge these three existed only in DG-Wiki
+     and not in the shared layer — so "unified fonts" never actually took
+     effect anywhere else. */
   --font-display: 'Big Shoulders Display', 'PingFang SC', 'HarmonyOS_Regular', sans-serif;
   --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei',
     system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
-  /* 背景网格，用于落地页与文档站的氛围层。 */
+  /* Background grid, the ambience layer for landing/docs surfaces. */
   --grid: rgba(88, 200, 242, 0.05);
 
-  /* ── z 层级。合并前四个模块各写各的数字（60 安全确认 > 50 权限/抽屉/对话框 >
-     40 浮动状态条 > 20 供应商下拉 > 10 场景下拉），跨模块无法推理谁该压谁。
-     统一成令牌之后，层级关系写在一处。 */
-  /* 侧边栏宽度。收起态与展开态只差这一个值——外壳的 grid 直接吃它，没有第二处
-     需要同步的地方。合并前 Agent 内联 272px、Voice 用 Tailwind 任意值写了同一个数。 */
+  /* ── z stacking. Pre-merge each module wrote its own numbers (60 safety
+     notice > 50 permission/drawer/dialog > 40 floating status bar > 20
+     provider dropdown > 10 scene dropdown) with no way to reason about
+     cross-module ordering. As tokens, the ordering lives in one place. */
+  /* Sidebar width. Collapsed and expanded differ only in this value — the
+     shell grid consumes it directly, nothing else to keep in sync.
+     Pre-merge Agent inlined 272px and Voice wrote the same number as a
+     Tailwind arbitrary value. */
   --sidebar-w: 264px;
   --sidebar-w-collapsed: 56px;
 
@@ -73,11 +79,11 @@
   --z-toast: 300;
   --z-stop: 900;
 
-  /* 遮罩。三个模块现在各用各的黑（bg-black/40 · bg-black/50 · rgba 手写）。 */
+  /* Backdrops. Three modules each used their own black (bg-black/40 · bg-black/50 · hand-written rgba). */
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --overlay-scrim-strong: rgba(0, 0, 0, 0.55);
 
-  /* 动效时长。散落在各处的 120/140/150/160/200ms 收敛成两档。 */
+  /* Motion durations. The scattered 120/140/150/160/200ms collapse into two tiers. */
   --dur-fast: 120ms;
   --dur: 160ms;
 }

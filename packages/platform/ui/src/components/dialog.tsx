@@ -6,7 +6,7 @@ import { cn } from '../utils';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
-/** Portal 到外壳提供的覆盖层容器；无外壳时回落 document.body（Radix 默认行为）。 */
+/** Portals to the shell-provided overlay container; falls back to document.body without a shell (Radix default). */
 function DialogPortal(props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal container={useOverlayContainer()} {...props} />;
 }

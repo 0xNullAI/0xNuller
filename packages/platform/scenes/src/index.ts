@@ -1,19 +1,24 @@
 /**
- * 跨模块共享的场景库。
+ * Scene library shared across modules.
  *
- * 「场景」在 Agent 与 Voice 里是同一个东西——`SavedPromptPreset` 的类型定义两处逐
- * 字节相同（Voice 的 PresetSelector 就是从 Agent 移植的）。差别只在持久化：一份塞在
- * `dg-agent.browser-settings` 的大 JSON 里，另一份塞在 `dg-voice-settings` 里。用户在
- * Agent 里写的人设，到 Voice 里看不到。
+ * A "scene" is the same thing in Agent and Voice — the `SavedPromptPreset`
+ * type was byte-identical in both (Voice's PresetSelector was ported from
+ * Agent). Only persistence differed: one lived inside the big
+ * `dg-agent.browser-settings` JSON, the other inside `dg-voice-settings`.
+ * A persona written in Agent was invisible in Voice.
  *
- * 拆出来还有第二个、更重要的理由：Agent 的设置 blob 是「一处 zod 校验失败 → 整份回落
- * 默认值」。场景和 `maxStrengthA/B`、`permissionMode` 住在同一个 blob 里，于是一条写坏
- * 的自定义场景会**静默重置用户的强度上限**。这里每个场景独立解析，坏的那条丢掉，
- * 其余照常。
+ * There is a second, more important reason to extract it: Agent's settings
+ * blob had "one failed zod check → whole blob falls back to defaults"
+ * semantics. Scenes shared that blob with `maxStrengthA/B` and
+ * `permissionMode`, so one corrupt custom scene would silently reset the
+ * user's strength caps. Here each scene parses independently; a bad one is
+ * dropped, the rest survive.
  *
- * **内置人设不在这里。** 七个内置 id 两边一致（gentle / dominant / tease / reward /
- * edging / companion / hell-island），但文案不同——Voice 那份为 TTS 重写过（短句、无
- * markdown）。共享的是「用户选了哪个」和「用户自己写的那些」，不是文案本身。
+ * Built-in personas do NOT live here. The seven built-in ids match on both
+ * sides (gentle / dominant / tease / reward / edging / companion /
+ * hell-island) but the copy differs — Voice's was rewritten for TTS (short
+ * sentences, no markdown). What is shared is "which one the user picked"
+ * and "the ones the user wrote", not the copy itself.
  */
 
 export interface SavedScene {
@@ -24,16 +29,16 @@ export interface SavedScene {
 }
 
 export interface SceneLibrary {
-  /** 用户自己写的场景。 */
+  /** Scenes the user wrote. */
   scenes: SavedScene[];
-  /** 当前选中的场景 id（可能指向内置人设）。 */
+  /** Currently selected scene id (may point at a built-in persona). */
   selectedId: string;
-  /** 被用户隐藏的内置人设 id。 */
+  /** Built-in persona ids the user has hidden. */
   hiddenBuiltinIds: string[];
 }
 
 const KEY = '0xnullai.scenes';
-/** 合并前各模块自己的键，用于一次性迁移。 */
+/** Per-module keys from before the merge, migrated once on read. */
 const LEGACY = [
   {
     key: 'dg-agent.browser-settings',
@@ -57,8 +62,9 @@ function emptyLibrary(): SceneLibrary {
 }
 
 /**
- * 逐条解析。一条坏了只丢那一条——这正是从大 blob 里拆出来要换取的性质，
- * 整份回落默认值意味着用户会不知不觉丢掉全部自定义场景。
+ * Parse per item. A bad item drops only itself — this is exactly the
+ * property the extraction from the big blob buys; whole-blob fallback means
+ * the user unknowingly loses every custom scene.
  */
 function coerceScenes(raw: unknown): SavedScene[] {
   if (!Array.isArray(raw)) return [];
@@ -100,8 +106,9 @@ function readLegacy(): SceneLibrary | null {
         typeof blob[src.selected] === 'string' ? (blob[src.selected] as string) : null;
       if (!scenes.length && !hidden.length && !selected) continue;
       if (!merged) merged = emptyLibrary();
-      // 两边都有自定义场景时合并而不是二选一——用户在哪边写的都是自己的东西。
-      // 按 id 去重，先到者胜（Agent 排在前面）。
+      // When both sides have custom scenes, merge instead of picking one —
+      // whatever side the user wrote them on, they are the user's. Dedupe
+      // by id, first writer wins (Agent is ordered first).
       for (const s of scenes) {
         if (!merged.scenes.some((existing) => existing.id === s.id)) merged.scenes.push(s);
       }
@@ -109,7 +116,7 @@ function readLegacy(): SceneLibrary | null {
         if (!merged.hiddenBuiltinIds.includes(h)) merged.hiddenBuiltinIds.push(h);
       if (selected && merged.selectedId === DEFAULT_SELECTED) merged.selectedId = selected;
     } catch {
-      // 某个旧 blob 坏了不影响另一个。
+      // A corrupt legacy blob must not block the other.
     }
   }
   return merged;
@@ -134,7 +141,8 @@ export function loadScenes(): SceneLibrary {
       return legacy;
     }
   } catch {
-    // 存储被污染时回落空库，而不是让模块崩在启动阶段。
+    // On corrupt storage fall back to an empty library instead of crashing
+    // the module at startup.
   }
   return emptyLibrary();
 }
@@ -143,7 +151,7 @@ export function saveScenes(lib: SceneLibrary): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(lib));
   } catch {
-    // 隐私模式 / 配额满：存不下不该阻断使用。
+    // Private browsing / quota exceeded: a failed write must not block use.
   }
   for (const l of listeners) l(lib);
 }
@@ -154,7 +162,7 @@ export function updateScenes(updater: (prev: SceneLibrary) => SceneLibrary): Sce
   return next;
 }
 
-/** 订阅变化。同文档走 listeners，跨标签页走 storage 事件。 */
+/** Subscribe to changes. Same-document via listeners, cross-tab via the storage event. */
 export function subscribeScenes(listener: (lib: SceneLibrary) => void): () => void {
   listeners.add(listener);
   const onStorage = (e: StorageEvent) => {
@@ -168,10 +176,12 @@ export function subscribeScenes(listener: (lib: SceneLibrary) => void): () => vo
 }
 
 /**
- * 新建场景的 id。
+ * Id for a newly created scene.
  *
- * 合并前用的是 `custom-${Date.now()}`。两个库合并时同一毫秒建的场景会撞 id，而查找是
- * `find()`——撞了就是静默遮蔽，用户会发现某个场景「点了没反应」。
+ * Pre-merge this was `custom-${Date.now()}`. When merging two libraries,
+ * scenes created in the same millisecond collide — and lookup is `find()`,
+ * so a collision is silent shadowing: the user sees a scene that "does
+ * nothing when clicked".
  */
 export function newSceneId(): string {
   return crypto.randomUUID();

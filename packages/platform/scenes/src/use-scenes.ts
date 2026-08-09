@@ -3,11 +3,13 @@ import { loadScenes, subscribeScenes, updateScenes } from './index';
 import type { SceneLibrary } from './index';
 
 /**
- * 订阅共享场景库。
+ * Subscribe to the shared scene library.
  *
- * 快照必须是稳定引用，否则 useSyncExternalStore 每次比较都不相等会无限重渲。
- * 这里缓存 JSON 序列化后的字符串做比较，只有内容真变了才换新对象——场景库很小
- * （用户手写的几条人设），序列化成本远低于一次错误的重渲。
+ * The snapshot must be referentially stable, or useSyncExternalStore sees a
+ * new value on every compare and re-renders forever. We cache the JSON
+ * serialization for comparison and only swap the object when content truly
+ * changed — the library is tiny (a handful of hand-written personas), so
+ * serializing costs far less than one spurious re-render.
  */
 
 let cachedJson: string | null = null;

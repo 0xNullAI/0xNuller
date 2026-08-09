@@ -7,8 +7,10 @@ import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client'
 
 const DEFAULT_CUSTOM_ICON = '📝';
 
-// 沉浸式角色扮演场景的写作骨架，结构参照「地狱岛冒险」。点击「使用模板」
-// 填入新建场景的内容框，玩家按【】占位提示替换为自己的设定即可。
+// Writing skeleton for immersive role-play scenes, structured after the
+// built-in "Hell Island" persona. "Use template" fills it into the new
+// scene's body; players replace the 【】 placeholders with their own
+// settings.
 const SCENE_TEMPLATE = `# 【世界观名称】（例如：地狱岛）
 
 ## 背景设定
@@ -77,7 +79,7 @@ const EMOJI_OPTIONS = [
   '🎪',
 ];
 
-/** 内置场景在库里只能选和隐藏，不能改——它们的正文由代码持有。 */
+/** Built-in scenes can be selected and hidden here, never edited — their bodies are owned by code. */
 export interface BuiltinScene {
   id: string;
   name: string;
@@ -87,20 +89,24 @@ export interface BuiltinScene {
 
 interface SceneLibraryProps {
   /**
-   * 各模块自己的内置场景。
+   * Each module's own built-in scenes.
    *
-   * 七个人设在 Agent 与 Voice 里是同一批（id / 名字 / 图标一致），只有正文不同
-   * ——Voice 那份为口语重写过。所以这里收一个 prop 而不是从某一边硬引：硬引会让
-   * 另一边显示错误的内置列表，而那种错只有对着两个模块逐条比才看得出来。
+   * The seven personas are the same set in Agent and Voice (ids / names /
+   * icons match); only the bodies differ — Voice's are rewritten for
+   * speech. Hence a prop rather than a hard import from one side: a hard
+   * import shows the other side the wrong built-in list, an error visible
+   * only by comparing the two modules item by item.
    */
   builtins: BuiltinScene[];
-  /** 删除成功后的提示。删除本身由本组件直接对共享场景库执行。 */
+  /** Notification after a successful delete. The delete itself runs directly against the shared library. */
   onNotify?: (message: string) => void;
 }
 
 export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
-  // 场景库从 Agent 的设置 blob 里搬走了：跨模块共享（Voice 看得到同一批），而且
-  // 一条写坏的场景不再会连累整份设置回落默认值——那个 blob 里还住着强度上限。
+  // The library moved out of Agent's settings blob: shared across modules
+  // (Voice sees the same set), and one corrupt scene no longer reverts the
+  // whole settings blob to defaults — the strength caps lived in that blob
+  // too.
   const [scenes, updateScenes] = useScenes();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -122,7 +128,8 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
   function hideBuiltin(id: string) {
     updateScenes((current) => {
       const nextHidden = [...current.hiddenBuiltinIds, id];
-      // 隐藏的正好是当前选中项时，依次回落到第一个仍可见的内置、第一个自定义场景。
+      // If the hidden one is the current selection, fall back to the first
+      // still-visible built-in, then the first custom scene.
       let nextSelected = current.selectedId;
       if (current.selectedId === id) {
         const remaining = builtins.filter((p) => !nextHidden.includes(p.id));
@@ -167,8 +174,9 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
 
   function confirmCreate() {
     if (!newName.trim()) return;
-    // 不用 `custom-${Date.now()}`：两个模块的库合并时同一毫秒建的会撞 id，
-    // 而查找是 find()——撞了是静默遮蔽，表现为某个场景「点了没反应」。
+    // Not `custom-${Date.now()}`: merging two libraries collides ids
+    // created in the same millisecond, and lookup is find() — a collision
+    // is silent shadowing, a scene that "does nothing when clicked".
     const id = newSceneId();
     updateScenes((current) => ({
       ...current,
@@ -185,7 +193,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
     updateScenes((current) => ({
       ...current,
       scenes: current.scenes.filter((p) => p.id !== id),
-      // 删掉的正好是选中项时回落到第一个内置人设。
+      // If the deleted one was selected, fall back to the first built-in.
       selectedId: current.selectedId === id ? 'gentle' : current.selectedId,
     }));
     onNotify?.('已删除该自定义场景');

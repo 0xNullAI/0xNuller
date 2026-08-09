@@ -10,28 +10,33 @@ import { Button } from './button';
 import { Checkbox } from './checkbox';
 
 /**
- * 使用前安全确认。全系统唯一的一份。
+ * Pre-use safety acknowledgement. The system's only copy.
  *
- * 合并前 Agent 与 Chat 各有一份实现（一份 CSS module + 一份 Tailwind），正文九条里
- * 七条逐字相同、两条已经分叉。现在正文在 `@dg-kit/safety`，显示在这里，只有一份。
+ * Pre-merge Agent and Chat each had an implementation (one CSS module, one
+ * Tailwind); seven of the nine body items were identical and two had
+ * diverged. The body now lives in `@dg-kit/safety`, displayed here, once.
  *
- * 两条不能动的性质：
- * - **倒计时结束前按钮不可点。** 这是强制阅读，不是装饰。
- * - **遮罩不可点击关闭。** 必须显式确认——所以不给 Overlay 传 onDismiss。
+ * Two properties that must not change:
+ * - The button is unclickable until the countdown ends. Forced reading,
+ *   not decoration.
+ * - The backdrop cannot dismiss. Confirmation must be explicit — hence no
+ *   onDismiss on the Overlay.
  */
 
 export interface SafetyNoticeProps {
-  /** 决定顶部那条提醒说什么。未知 id 回落到通用版本。 */
+  /** Picks the top callout's wording. Unknown ids fall back to the generic one. */
   moduleId?: string;
   onAccept: (options: { dontShowAgain: boolean }) => void;
   /**
-   * 用户选择「暂不使用」。传了才会显示这个出口。
+   * The user chose "not now". The exit only shows when this is provided.
    *
-   * 呈现时机是「设备刚连上」，所以必须给一条不接受也能退出的路——只有「我已阅读」
-   * 一个按钮等于强迫用户点掉它才能操作界面，那会把这份须知训练成一道无意义的门。
+   * The notice appears right after a device connects, so there must be a
+   * way out that is not acceptance — a lone "I have read this" button
+   * forces users to click through to use the UI at all, training them to
+   * treat the notice as a meaningless gate.
    */
   onDecline?: () => void;
-  /** 覆盖强制阅读秒数。仅供测试。 */
+  /** Override the forced reading seconds. Tests only. */
   countdownSeconds?: number;
 }
 
@@ -56,7 +61,8 @@ export function SafetyNotice({
   }, [remaining]);
 
   return (
-    // 不传 onDismiss：点遮罩关不掉，必须显式确认。
+    // No onDismiss: the backdrop cannot close it; confirmation must be
+    // explicit.
     <Overlay scrim="strong">
       <article
         role="dialog"

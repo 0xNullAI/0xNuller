@@ -22,7 +22,7 @@ describe('共享主题 store', () => {
     it('外壳的键优先级最高', () => {
       localStorage.setItem('0xnullai-theme', 'light');
       localStorage.setItem('dg-wiki:theme', 'dark');
-      // 用户最近一次明确的选择最可能发生在外壳上。
+      // The user's most recent explicit choice most likely happened on the shell.
       expect(loadThemeMode()).toBe('light');
     });
 
@@ -53,7 +53,8 @@ describe('共享主题 store', () => {
       localStorage.setItem('dg-wiki:theme', 'light');
       expect(loadThemeMode()).toBe('light');
       localStorage.setItem('dg-wiki:theme', 'dark');
-      // 迁移时已写入自己的键，旧键从此无关——否则老模块的遗留写入会持续干扰。
+      // Migration wrote our own key; legacy keys no longer matter —
+      // otherwise stale writes from old modules keep interfering.
       expect(loadThemeMode()).toBe('light');
     });
 
@@ -64,7 +65,8 @@ describe('共享主题 store', () => {
     });
 
     it('Market 用「删键」表示 auto，不会被误读', () => {
-      // Market 存 auto 的方式是 removeItem，所以读到 null 必须落回 auto。
+      // Market persisted auto by removeItem, so reading null must fall
+      // back to auto.
       expect(loadThemeMode()).toBe('auto');
     });
   });
@@ -87,7 +89,8 @@ describe('共享主题 store', () => {
         new StorageEvent('storage', { key: '0xnullai.theme', newValue: 'dark' }),
       );
       stop();
-      // 只通知不施加的话，另一个标签页切了主题，这个标签页的 React 状态变了但页面没变。
+      // Notify-without-apply means another tab switches the theme, this
+      // tab's React state changes, but the page does not.
       expect(seen).toEqual(['dark']);
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
@@ -105,7 +108,8 @@ describe('共享主题 store', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceeded');
     });
-    // 隐私模式下存不下，但页面必须照样变色——不能因为存不下就整个抛出去。
+    // Private browsing rejects the write, but the page must still change
+    // color — a failed write must not throw out of the call.
     expect(() => setThemeMode('dark')).not.toThrow();
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });

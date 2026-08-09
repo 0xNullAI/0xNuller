@@ -8,13 +8,17 @@ import {
 import { useSafetySession } from './use-safety-session';
 
 /**
- * 这些测试守的是一个「全绿但功能不存在」的失效模式。
+ * These tests guard an "all green but the feature does not exist" failure
+ * mode.
  *
- * 上一版外壳的全局停止按钮从未渲染过——`registerSafetySession` 全仓零调用方，
- * `EmergencyStopButton` 永远走 `return null`。构建、typecheck、lint、单测全绿，
- * 截图里也看不出来（没连设备时它本来就不该出现）。
+ * The previous shell's global stop button never rendered —
+ * `registerSafetySession` had zero callers repo-wide, so
+ * `EmergencyStopButton` always hit `return null`. Build, typecheck, lint,
+ * and unit tests were all green, and screenshots showed nothing wrong
+ * (with no device connected it is not supposed to appear anyway).
  *
- * 所以这里断言的是「注册确实发生了」，而不是「注册逻辑正确」。
+ * So the assertions here are "registration actually happened", not
+ * "registration logic is correct".
  */
 
 afterEach(cleanup);
@@ -56,14 +60,16 @@ describe('useSafetySession', () => {
     const view = render(<Probe stop={first} />);
     view.rerender(<Probe stop={second} />);
 
-    // 只有一条注册——回调放依赖数组会导致每帧重新注册。
+    // Exactly one registration — callbacks in the deps array would
+    // re-register every frame.
     expect(activeSafetySessions()).toHaveLength(1);
 
     await act(async () => {
       await stopAllSafetySessions();
     });
-    // 调到的必须是最新的那个：注册只发生一次，但 stop 每次渲染都是新函数，
-    // 没有 ref 中转的话总线里存的会是第一帧那个永远过期的闭包。
+    // The latest one must be called: registration happens once, but stop
+    // is a new function every render; without the ref indirection the bus
+    // would hold the first frame's forever-stale closure.
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
@@ -71,8 +77,9 @@ describe('useSafetySession', () => {
   it('isActive 为假时不算活动会话，但仍然注册着', () => {
     render(<Probe active={false} />);
     expect(activeSafetySessions()).toHaveLength(0);
-    // 仍在注册表里——stopAll 依然会停它。设备可能已连接只是本模块认为自己没在输出，
-    // 漏停比多停危险得多。
+    // Still registered — stopAll will still stop it. The device may be
+    // connected while this module merely believes it is not outputting; a
+    // missed stop is far more dangerous than an extra one.
     expect(stopAllSafetySessions()).resolves.toMatchObject({ attempted: 1 });
   });
 
