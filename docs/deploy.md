@@ -42,26 +42,39 @@ Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜
 `/api/*` 还没有 Worker 接管——那些请求会落到静态资源服务上，返回 SPA 的 index.html，
 前端拿到一坨 HTML 去 `JSON.parse`，报的错跟真正的原因毫无关系。
 
+**chat 必须排在 auth 前面**：auth 有一个指向 `0xnullai-chat` 的 service binding（拉黑时
+推送私聊吊销），而绑定一个还不存在的脚本会让 auth 部署直接失败。
+
 ```bash
-npm run build            # 全仓，四个 dist 都要在
+npm run build            # 全仓，各模块的 dist 都要在
 
-# 1. 账号服务 —— 库已建（ed58c339…，region ENAM），migration 与 IP_PEPPER 都已就位
-wrangler d1 migrations apply 0xnullai-auth --remote  # 只在新增 migration 后需要
-npm run deploy -w @0xnullai/auth-worker
-
-# 2. 市场 —— 库已在线且有内容，不要重建
+# 1. 市场 —— 库已在线且有内容，不要重建
 npm run deploy -w 0xnullai-market
 
-# 3. 聊天（含 DO；已在线的话跳过创建，直接 deploy）
+# 2. 聊天（含 DO；已在线的话跳过创建，直接 deploy）
+#    先于 auth，因为 auth 要绑定它
 wrangler r2 bucket create dg-chat-media
+wrangler secret put DM_TICKET_SECRET --config apps/chat/wrangler.jsonc
 npm run deploy -w 0xnullai-chat
+
+# 3. 账号服务 —— 库已建（ed58c339…，region ENAM）
+wrangler d1 migrations apply 0xnullai-auth --remote  # 0005_dm_threads 是新增的
+wrangler secret put IP_PEPPER        --config workers/auth/wrangler.jsonc
+wrangler secret put DM_TICKET_SECRET --config workers/auth/wrangler.jsonc  # 与 chat 同值
+npm run deploy -w @0xnullai/auth-worker
 
 # 4. 体验版语音（含 DO）
 wrangler secret put XAI_API_KEY --config apps/voice/wrangler.jsonc
 wrangler secret put TRIAL_KEYS  --config apps/voice/wrangler.jsonc
 npm run deploy -w 0xnullai-voice
 
-# 5. 外壳——最后
+# 5. 免费 provider（独立子域，和上面互不影响）
+wrangler deploy --dry-run --config workers/llm-proxy/wrangler.toml
+wrangler secret put PROXY_API_KEY --config workers/llm-proxy/wrangler.toml
+npm run deploy -w 0xnullai-llm-proxy 2>/dev/null || \
+  wrangler deploy --config workers/llm-proxy/wrangler.toml
+
+# 6. 外壳——最后
 npm run deploy -w @0xnullai/web
 ```
 
@@ -164,6 +177,19 @@ wrangler secret put IP_PEPPER --config workers/auth/wrangler.jsonc
 那个文件永远不进仓库。`.gitignore` 现在挡住了 `.env*` / `*.pem` / `*.key` / `*.jks`，
 但真正的保障是密钥根本不在仓库目录下：误提交的密钥 push 之后就永远留在别人的 clone
 和 GitHub 的对象库里，撤不回来。
+
+**1b. `DM_TICKET_SECRET` 两个 Worker 同值，且同样永不轮换。** `0xnullai-auth` 用它签
+私聊入场票，`0xnullai-chat` 用它验；两边不一致等于私聊完全打不开，而且报错只会是一句
+「握手失败」。值已经生成好，和 `IP_PEPPER` 在同一个文件里：
+
+```bash
+wrangler secret put DM_TICKET_SECRET --config workers/auth/wrangler.jsonc
+wrangler secret put DM_TICKET_SECRET --config apps/chat/wrangler.jsonc   # 同一个值
+```
+
+轮换它会同时作废所有在线的私聊连接和所有未过期的票。另外 `0xnullai-auth` 现在有一个
+指向 `0xnullai-chat` 的 service binding（拉黑时推送吊销），所以**chat 必须先于 auth
+部署**——绑定一个还不存在的脚本会让 auth 部署失败。
 
 **2. `ALLOWED_ORIGINS` 必须包含根域。** 漏了的话 `me()` 会静默失败被当成未登录——
 用户会看到「明明登录了却显示未登录」，而控制台里只有一条 CORS 警告。
