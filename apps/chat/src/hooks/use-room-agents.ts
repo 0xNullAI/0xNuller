@@ -240,7 +240,12 @@ function applyTool(
   if (call.name === 'adjust_strength') {
     const delta = Math.max(-50, Math.min(50, Number(call.arguments.delta) || 0));
     sendCommandAs(roleId, target, 'adjust_strength', { c: channel ?? 'A', v: delta });
-    return `已对 ${target} 通道${channel ?? 'A'} 调整强度 ${delta > 0 ? '+' : ''}${delta}（设备端按本地上限钳制）`;
+    // Deliberately does not claim the value landed. This runs in the host's
+    // browser; the command still has to cross to the owner, where the shared
+    // policy engine may clamp or reject it, and the host never learns the
+    // result. Telling the model "adjusted by +50" would have it narrate an
+    // effect the person may not have felt.
+    return `已向 ${target} 通道${channel ?? 'A'} 发出调整请求 ${delta > 0 ? '+' : ''}${delta}；实际生效值由对方设备端的安全上限决定，不要断言具体数值。`;
   }
   if (call.name === 'stop') {
     if (channel) sendCommandAs(roleId, target, 'stop', { c: channel });
