@@ -8,13 +8,13 @@
 
   "compatibility_date": "2026-01-01",
 
-  // 首次部署前：wrangler d1 create 0xnullai-auth，把返回的 id 填进来，
-  // 再执行 wrangler d1 migrations apply 0xnullai-auth --remote
+  // 库已创建（region ENAM）。改动 schema 后执行：
+  //   wrangler d1 migrations apply 0xnullai-auth --remote
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "0xnullai-auth",
-      "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID",
+      "database_id": "ed58c339-d33c-41de-9c2d-08673e90d6aa",
       "migrations_dir": "migrations"
     }
   ],
