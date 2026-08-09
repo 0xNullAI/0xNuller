@@ -45,15 +45,11 @@ Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜
 ```bash
 npm run build            # 全仓，四个 dist 都要在
 
-# 1. 账号服务
-wrangler d1 create 0xnullai-auth                    # 把 database_id 填进 wrangler.jsonc
-wrangler d1 execute 0xnullai-auth --remote --file=workers/auth/migrations/0001_init.sql
-wrangler secret put IP_PEPPER --config workers/auth/wrangler.jsonc   # 随机 32 字节
+# 1. 账号服务 —— 库已建（ed58c339…，region ENAM），migration 与 IP_PEPPER 都已就位
+wrangler d1 migrations apply 0xnullai-auth --remote  # 只在新增 migration 后需要
 npm run deploy -w @0xnullai/auth-worker
 
-# 2. 市场
-wrangler d1 create dg-market                        # database_id 填进 wrangler.toml
-wrangler r2 bucket create dg-market-assets
+# 2. 市场 —— 库已在线且有内容，不要重建
 npm run deploy -w dg-market
 
 # 3. 聊天（含 DO；已在线的话跳过创建，直接 deploy）
@@ -68,6 +64,26 @@ npm run deploy -w dg-voice
 # 5. 外壳——最后
 npm run deploy -w @0xnullai/web
 ```
+
+## dg-market 改名成 0xnullai-market 的切换
+
+脚本名从 `dg-market` 改成了 `0xnullai-market`。**改名不是原地重命名**——部署会创建
+一个新脚本，旧的那个还在，而且路由仍指向它。必须按顺序切：
+
+```bash
+npm run deploy -w dg-market                 # 以新名字部署，此时两个脚本并存
+curl -s https://0xnullai.com/api/items | head -c 200   # 确认新脚本已接管路由
+wrangler delete --name dg-market            # 确认无误后，删掉旧脚本
+```
+
+D1 库名仍是 `dg-market`：绑定按 `database_id` 走，库名只在控制台里出现。改库名要新
+建库再搬 44 条内容，为一个用户永远看不到的字符串冒数据风险不值得。
+
+**dg-chat 与 dg-voice 的脚本名不要动。** Durable Object 的命名空间按脚本名划分，而
+wrangler 的 migration 只有 new_classes / new_sqlite_classes / renamed_classes（同脚本
+内）/ deleted_classes——没有跨脚本转移。改名等于换一套全新 DO 实例：房间聊天记录
+（RoomDO）、公开大厅（LobbyDO）、体验额度（TrialSession）全部变成不可达。命名不统一
+是控制台里的观感，用户看不到；房间历史丢了用户第一眼就发现。
 
 ## 部署前必须确认的四件事
 

@@ -2,6 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   // script 名字保持 `dg-voice` 不能改：TrialSession 的 migration tag 按 script 计，
   // 改名等于新建一组空 DO，所有激活密钥的用量计数会归零——那是花钱的方向。
+  // 同 dg-chat：脚本名不要改。TrialSession 是按脚本名划分的 DO 命名空间，
+  // 改名会让所有人的体验额度归零重来——那是直接花钱的账。
   "name": "dg-voice",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",

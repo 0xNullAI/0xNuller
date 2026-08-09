@@ -1,4 +1,4 @@
-name = "dg-market"
+name = "0xnullai-market"
 main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
 
@@ -24,6 +24,8 @@ run_worker_first = ["/api/*"]
 
 # D1 数据库（免费额度：5GB 存储 / 每天 500 万行读 / 10 万行写）。
 # database_id 在执行 `wrangler d1 create dg-market` 后填入。
+# 库名仍是 dg-market：绑定按 database_id 走，名字只在 Cloudflare 控制台里出现。
+# 改名要新建库再搬 44 条内容，为一个用户永远看不到的字符串冒数据风险不值得。
 [[d1_databases]]
 binding = "DB"
 database_name = "dg-market"
