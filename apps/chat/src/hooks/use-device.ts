@@ -179,12 +179,19 @@ export function useDevice(options: UseDeviceOptions = {}) {
     sessionRef.current?.stopAllOutputs();
   }, []);
 
-  /** Set an Opossum channel's intensity (absolute value, constrained by the limitA/limitB caps). */
+  /**
+   * Set an Opossum channel's intensity, capped by the Opossum's own limit.
+   *
+   * This used to borrow the Coyote's limitA/limitB. The shared settings have
+   * always carried separate maxIntensityA/B for the Opossum, and nothing read
+   * them — lowering the Opossum cap in settings had no effect here, which is
+   * a safety control that visibly does nothing.
+   */
   const setOpossumIntensity = useCallback((channel: 'A' | 'B', value: number) => {
     const session = sessionRef.current;
     if (!session) return;
-    const state = session.coyote.getState();
-    const limit = channel === 'A' ? state.limitA : state.limitB;
+    const safety = loadDeviceSafety();
+    const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
     session.setOpossumIntensity(channel, value, limit);
   }, []);
 
@@ -192,8 +199,8 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const opossumBurst = useCallback((channel: 'A' | 'B', strength: number, durationMs = 500) => {
     const session = sessionRef.current;
     if (!session) return;
-    const state = session.coyote.getState();
-    const limit = channel === 'A' ? state.limitA : state.limitB;
+    const safety = loadDeviceSafety();
+    const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
     session.opossumBurst(channel, strength, durationMs, limit);
   }, []);
 

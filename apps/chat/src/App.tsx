@@ -216,7 +216,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   useSafetySession({
     id: 'chat',
     label: 'Chat',
-    isActive: () => deviceRef.current.connected,
+    // Any device, not just the Coyote. This gated on the Coyote alone, so an
+    // Opossum-only session reported no active session — and the shell's stop
+    // button renders from that, meaning there was no stop button while a
+    // device was running on the user's body.
+    isActive: () =>
+      deviceRef.current.connected ||
+      Boolean(deviceRef.current.opossum?.connected) ||
+      Boolean(deviceRef.current.sensor?.connected),
     stop: () => deviceRef.current.stopAll(),
     onRevoke: () => {
       // All three of these are required.
@@ -242,20 +249,44 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     },
     devices: () => {
       const d = deviceRef.current;
-      if (!d.connected) return [];
       return [
-        {
-          id: 'coyote',
-          kind: 'coyote',
-          name: d.deviceInfo?.name ?? '郊狼',
-          connected: true,
-          ...(typeof d.battery === 'number' ? { battery: d.battery } : {}),
-          active: d.strengthA > 0 || d.strengthB > 0,
-          channels: [
-            { label: 'A', value: d.strengthA, max: d.limitA },
-            { label: 'B', value: d.strengthB, max: d.limitB },
-          ],
-        },
+        ...(d.connected
+          ? [
+              {
+                id: 'coyote',
+                kind: 'coyote',
+                name: d.deviceInfo?.name ?? '郊狼',
+                connected: true,
+                ...(typeof d.battery === 'number' ? { battery: d.battery } : {}),
+                active: d.strengthA > 0 || d.strengthB > 0,
+                channels: [
+                  { label: 'A', value: d.strengthA, max: d.limitA },
+                  { label: 'B', value: d.strengthB, max: d.limitB },
+                ],
+              },
+            ]
+          : []),
+        ...(d.opossum?.connected
+          ? [
+              {
+                id: 'opossum',
+                kind: 'opossum',
+                name: '负鼠',
+                connected: true,
+                active: (d.opossum.intensityA ?? 0) > 0 || (d.opossum.intensityB ?? 0) > 0,
+              },
+            ]
+          : []),
+        ...(d.sensor?.connected
+          ? [
+              {
+                id: 'sensor',
+                kind: d.sensor.kind ?? 'paw-prints',
+                name: d.sensor.kind === 'civet-edging' ? '灵猫' : '爪印',
+                connected: true,
+              },
+            ]
+          : []),
       ];
     },
   });
