@@ -103,3 +103,70 @@ export async function deleteAccount(): Promise<void> {
   await call('/api/auth/account', { method: 'DELETE' });
   setStoredToken(null);
 }
+
+/**
+ * Profile.
+ *
+ * Every field is optional and an account that fills in nothing works exactly
+ * as well — for this product, being asked for personal details as a
+ * precondition would be a reason to walk away.
+ *
+ * Two fields are deliberately narrower than they first look:
+ *
+ * `location` is region-level, not a street address. For this category of
+ * product, a home address sitting in a database is a physical-safety risk if
+ * it ever leaks, and nothing in the product needs that precision.
+ *
+ * `visibility` defaults to private. Defaulting to public would publish
+ * details before someone has decided to, and this is information that cannot
+ * be un-seen once it has been shown.
+ */
+export interface UserProfile {
+  avatarUrl: string | null;
+  bio: string | null;
+  /** YYYY-MM-DD. Used to confirm the account holder is an adult. */
+  birthDate: string | null;
+  /** City or region. Not a street address — see above. */
+  location: string | null;
+  links: string[];
+  visibility: 'private' | 'public';
+}
+
+export interface UserPhoto {
+  id: string;
+  object_key: string;
+  caption: string | null;
+  visibility: 'private' | 'public';
+  created_at: number;
+}
+
+export async function getProfile(): Promise<UserProfile | null> {
+  const r = await call<{ profile: UserProfile | null }>('/api/auth/profile');
+  return r.profile;
+}
+
+export async function saveProfile(profile: Partial<UserProfile>): Promise<void> {
+  await call('/api/auth/profile', { method: 'PUT', body: JSON.stringify(profile) });
+}
+
+export async function listPhotos(): Promise<UserPhoto[]> {
+  const r = await call<{ photos: UserPhoto[] }>('/api/auth/photos');
+  return r.photos;
+}
+
+export async function deletePhoto(id: string): Promise<void> {
+  await call(`/api/auth/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Whole years, or null when no birth date is set. Local-only; the server enforces 18+ on save. */
+export function ageFromBirthDate(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const born = new Date(birthDate);
+  if (Number.isNaN(born.getTime())) return null;
+  const now = new Date();
+  const age = now.getFullYear() - born.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < born.getMonth() ||
+    (now.getMonth() === born.getMonth() && now.getDate() < born.getDate());
+  return beforeBirthday ? age - 1 : age;
+}

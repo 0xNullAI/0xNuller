@@ -35,6 +35,11 @@ export interface Env {
   IP_PEPPER: string;
   /** Origins allowed to send credentials, comma separated. */
   ALLOWED_ORIGINS: string;
+  /**
+   * Bucket for profile photos. Optional so the worker still runs without it —
+   * the photo endpoints degrade rather than the whole service failing to boot.
+   */
+  PHOTOS?: R2Bucket;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -137,6 +142,30 @@ async function currentUser(request: Request, env: Env): Promise<UserRow | null> 
     .bind(await sha256Hex(token), Date.now())
     .first<UserRow>();
   return row ?? null;
+}
+
+/** Age in whole years. Used only to refuse an under-18 birth date. */
+function ageFrom(birthDate: string): number {
+  const born = new Date(birthDate);
+  if (Number.isNaN(born.getTime())) return 0;
+  const now = new Date();
+  let age = now.getUTCFullYear() - born.getUTCFullYear();
+  const beforeBirthday =
+    now.getUTCMonth() < born.getUTCMonth() ||
+    (now.getUTCMonth() === born.getUTCMonth() && now.getUTCDate() < born.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+function publicProfile(row: Record<string, unknown>) {
+  return {
+    avatarUrl: row.avatar_url ?? null,
+    bio: row.bio ?? null,
+    birthDate: row.birth_date ?? null,
+    location: row.location ?? null,
+    links: row.links ? (JSON.parse(String(row.links)) as string[]) : [],
+    visibility: row.visibility === 'public' ? 'public' : 'private',
+  };
 }
 
 function publicUser(u: UserRow) {
@@ -308,6 +337,99 @@ export default {
             .run();
         }
         return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
+      }
+
+      // ── Profile ──
+      //
+      // Every field is optional; an account that fills in nothing has to work
+      // exactly as well. Two deliberate limits, for this product's users
+      // rather than out of caution: `location` is region-level and capped
+      // short, because a street address in a leaked database is a physical
+      // risk here and no feature needs one; and visibility defaults to
+      // private, because information like this cannot be un-seen once it has
+      // been shown.
+      if (path === '/api/auth/profile' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const row = await env.DB.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
+          .bind(user.id)
+          .first<Record<string, unknown>>();
+        return json({ profile: row ? publicProfile(row) : null }, 200, cors);
+      }
+
+      if (path === '/api/auth/profile' && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json()) as Record<string, unknown>;
+
+        const birthDate = typeof body.birthDate === 'string' ? body.birthDate.trim() : '';
+        if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+          return err('生日格式应为 YYYY-MM-DD', 400, cors);
+        }
+        // An adult-only product: a birth date that is present and under 18 is
+        // rejected outright rather than stored and checked later.
+        if (birthDate && ageFrom(birthDate) < 18) {
+          return err('本产品仅面向成年人', 400, cors);
+        }
+
+        const now = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO user_profiles (user_id, avatar_url, bio, birth_date, location, links, visibility, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id) DO UPDATE SET
+             avatar_url = excluded.avatar_url, bio = excluded.bio,
+             birth_date = excluded.birth_date, location = excluded.location,
+             links = excluded.links, visibility = excluded.visibility,
+             updated_at = excluded.updated_at`,
+        )
+          .bind(
+            user.id,
+            typeof body.avatarUrl === 'string' ? body.avatarUrl.slice(0, 500) : null,
+            typeof body.bio === 'string' ? body.bio.slice(0, 500) : null,
+            birthDate || null,
+            // Region-level. The cap is the point, not a guess at a sane length.
+            typeof body.location === 'string' ? body.location.slice(0, 60) : null,
+            Array.isArray(body.links) ? JSON.stringify(body.links.slice(0, 5)) : null,
+            body.visibility === 'public' ? 'public' : 'private',
+            now,
+          )
+          .run();
+        return json({ ok: true, updatedAt: now }, 200, cors);
+      }
+
+      // ── Photos ──
+      //
+      // Rows reference R2 objects; the image itself is never in D1. A delete
+      // has to remove the object too — otherwise "deleted" only means gone
+      // from the list, and for this kind of content that is not deletion.
+      if (path === '/api/auth/photos' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const rows = await env.DB.prepare(
+          'SELECT id, object_key, caption, visibility, created_at FROM user_photos WHERE user_id = ? ORDER BY created_at DESC LIMIT 200',
+        )
+          .bind(user.id)
+          .all();
+        return json({ photos: rows.results ?? [] }, 200, cors);
+      }
+
+      if (path.startsWith('/api/auth/photos/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const id = decodeURIComponent(path.slice('/api/auth/photos/'.length));
+        const row = await env.DB.prepare(
+          'SELECT object_key FROM user_photos WHERE id = ? AND user_id = ?',
+        )
+          .bind(id, user.id)
+          .first<{ object_key: string }>();
+        if (!row) return err('不存在', 404, cors);
+        // The object first: a row without its file is a broken thumbnail, a
+        // file without its row is content the user believes they deleted.
+        if (env.PHOTOS) await env.PHOTOS.delete(row.object_key);
+        await env.DB.prepare('DELETE FROM user_photos WHERE id = ? AND user_id = ?')
+          .bind(id, user.id)
+          .run();
+        return json({ ok: true }, 200, cors);
       }
 
       // ── Settings sync ──

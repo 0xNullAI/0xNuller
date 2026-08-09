@@ -3,6 +3,7 @@ import { Button, Input, Overlay } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import { deleteAccount, login, logout, register, type AuthUser } from '@0xnullai/auth';
 import { Avatar } from './Avatar';
+import { ProfileEditor } from './ProfileEditor';
 
 /**
  * Account. Login / registration / signed-in info all live in this one dialog.
@@ -94,6 +95,8 @@ export function AccountDialog({
               <span className="text-[var(--text-soft)]">它不带来任何设备控制权</span>
               ——控制权始终需要当面授予，且随时可以撤销。
             </p>
+            <ProfileEditor />
+
             <div className="mt-5 flex items-center justify-between gap-3">
               <button
                 type="button"
