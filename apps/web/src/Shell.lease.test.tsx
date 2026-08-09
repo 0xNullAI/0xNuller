@@ -45,6 +45,9 @@ vi.mock('./routes', async () => {
 vi.mock('@0xnullai/auth', () => ({
   me: () => Promise.resolve(null),
   logout: () => Promise.resolve(),
+  // The shell subscribes to profile requests on mount. Nothing here asks for a
+  // profile, so an unsubscribe that does nothing is the whole stub.
+  subscribeProfileRequests: () => () => undefined,
 }));
 
 const cleanups: (() => void)[] = [];

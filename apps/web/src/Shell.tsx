@@ -13,13 +13,14 @@ import {
   useOverlayRoot,
   useModuleOverlayLayer,
 } from '@0xnullai/ui';
-import { me, type AuthUser } from '@0xnullai/auth';
+import { me, subscribeProfileRequests, type AuthUser } from '@0xnullai/auth';
 import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { Sidebar } from './Sidebar';
 import { DeviceBar } from './DeviceBar';
 import { AccountDialog } from './AccountDialog';
 import { ContactsDialog } from './ContactsDialog';
+import { ProfileDialog } from './profile/ProfileDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 import { FirstConnectionNotice } from './FirstConnectionNotice';
@@ -121,6 +122,10 @@ export function Shell() {
   const [contactsOpen, setContactsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
+  // Whose profile is open, by username. The shell owns this surface because it
+  // is reachable from Chat's member list, from contacts and from the account
+  // dialog, and there must be exactly one of it.
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
   // On narrow screens the sidebar defaults to collapsed (drawer closed); on wide
   // screens it defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -147,6 +152,18 @@ export function Shell() {
       .then(setUser)
       .catch(() => setUser(null));
   }, []);
+
+  // Modules ask for a profile rather than rendering one; see profile-requests
+  // in @0xnullai/auth. Subscribing here rather than inside a module is what
+  // keeps a lazily-mounted module from needing a provider threaded into it.
+  useEffect(
+    () =>
+      subscribeProfileRequests((username) => {
+        setDrawerOpen(false);
+        setProfileUsername(username);
+      }),
+    [],
+  );
 
   // Close the drawer as soon as the route or the breakpoint changes, otherwise it
   // stays covering the content after the switch.
@@ -296,6 +313,16 @@ export function Shell() {
             <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />
           )}
           {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
+          {/* Not gated on `user`: a public profile is readable while signed
+              out, and anonymous use is a hard constraint. The dialog itself
+              decides which actions need an account. */}
+          {profileUsername && (
+            <ProfileDialog
+              username={profileUsername}
+              viewer={user}
+              onClose={() => setProfileUsername(null)}
+            />
+          )}
           {/* The safety notice appears once, on the **first device connection**, not
               as a splash dialog. A splash dialog interrupts people who only want to
               browse the market or read the docs, while the moment it really needs to

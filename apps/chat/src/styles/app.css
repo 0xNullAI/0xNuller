@@ -42,20 +42,13 @@
   border-bottom-color: var(--accent);
 }
 
-/* Member card avatar (first letter) */
-.avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  font-weight: 600;
-  font-size: 16px;
-  color: var(--button-text);
-  background: var(--accent);
-  flex-shrink: 0;
-}
+/* The member avatar used to be a `.avatar` rule here: a flat accent-filled
+   circle with the first letter. It is now @0xnullai/ui's Avatar, so that one
+   person looks the same in the member list, in the contacts dialog and on
+   their profile. The rule is deleted rather than left behind because this
+   module's stylesheet sits after Tailwind's utilities layer, so a name that
+   generic would keep winning against anything else in the shell that dared to
+   call itself .avatar. */
 
 /* Strength slider */
 input[type='range'] {

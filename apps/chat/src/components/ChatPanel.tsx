@@ -1,4 +1,5 @@
-import { Overlay } from '@0xnullai/ui';
+import { Avatar, Overlay } from '@0xnullai/ui';
+import { requestProfileView } from '@0xnullai/auth';
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Image as ImageIcon, Mic, X, AtSign } from 'lucide-react';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
@@ -13,8 +14,18 @@ interface ChatPanelProps {
     kind: 'image' | 'audio',
     meta?: { durationMs?: number; w?: number; h?: number },
   ) => Promise<void>;
-  /** Members that can be @-mentioned (other members + yourself). */
-  members?: { peerId: string; name: string }[];
+  /**
+   * Members that can be @-mentioned (other members + yourself), and the source
+   * for a sender's avatar.
+   *
+   * `username` is how a bubble finds the account behind a sender. It is looked
+   * up here rather than carried on the message because the room's chat frame is
+   * reconstructed field by field in the Durable Object; adding to it would mean
+   * a protocol and a storage change for something the member list already
+   * knows. Absent for anonymous peers, for the room AI, and for history from
+   * someone who has since left — all of which correctly render an inert avatar.
+   */
+  members?: { peerId: string; name: string; username?: string | null }[];
   /** Your own peerId (used to highlight messages that mention you). */
   selfId?: string;
 }
@@ -48,6 +59,9 @@ function renderMessageText(
 }
 
 export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId }: ChatPanelProps) {
+  // Sender id to account handle. Rebuilt per render from a list that is at most
+  // a roomful long, which is cheaper than the memo that would guard it.
+  const usernameByPeer = new Map(members.map((m) => [m.peerId, m.username ?? null]));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [recorder, setRecorder] = useState<Recorder | null>(null);
@@ -177,8 +191,22 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           return (
             <div
               key={msg.id}
-              className={`${grouped ? 'mb-0.5' : 'mb-2'} flex animate-msg-in ${isSelf ? 'justify-end' : 'justify-start'}`}
+              className={`${grouped ? 'mb-0.5' : 'mb-2'} flex animate-msg-in gap-2 ${isSelf ? 'justify-end' : 'justify-start'}`}
             >
+              {/* A fixed-width gutter, so grouped messages stay aligned with
+                  the first one in the run instead of sliding left. */}
+              {!isSelf && (
+                <div className="w-7 shrink-0">
+                  {!grouped && (
+                    <Avatar
+                      name={msg.senderName || msg.senderId.slice(0, 6)}
+                      username={usernameByPeer.get(msg.senderId)}
+                      size={28}
+                      onOpenProfile={requestProfileView}
+                    />
+                  )}
+                </div>
+              )}
               <div className="max-w-[75%]">
                 {!isSelf && !grouped && (
                   <p className="mb-0.5 truncate px-1 text-xs text-[var(--text-faint)]">

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Copy, Check, ChevronRight, Globe, Lock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Avatar } from '@0xnullai/ui';
+import { requestProfileView } from '@0xnullai/auth';
 import type { MemberState, CmdAction, DeviceCommand, WaveformTransfer } from '../lib/protocol';
 import type { WaveformDefinition } from '../lib/waveforms';
 import type { MarketItem } from '@0xnullai/market-client';
@@ -33,13 +35,17 @@ interface ControlPanelProps {
 }
 
 function SelfCard({ member, onClick }: { member: MemberState; onClick: () => void }) {
-  const initial = (member.displayName?.[0] || '?').toUpperCase();
   return (
     <div
       onClick={onClick}
       className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-md)] border border-[var(--accent-soft)] bg-[var(--bg-elevated)] p-3 transition-all hover:bg-[var(--bg-soft)] active:scale-[0.98]"
     >
-      <div className="avatar">{initial}</div>
+      <Avatar
+        name={member.displayName}
+        username={member.username}
+        size={40}
+        onOpenProfile={requestProfileView}
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium text-[var(--text)]">{member.displayName}</p>

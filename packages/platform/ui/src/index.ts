@@ -3,6 +3,7 @@
 // (CSS is not exported through JS).
 
 export * from './components/alert';
+export * from './components/avatar';
 export * from './components/overlay-surface';
 export * from './components/permission-modal';
 export * from './components/safety-notice';

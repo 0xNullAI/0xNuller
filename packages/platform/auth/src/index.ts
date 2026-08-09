@@ -201,7 +201,29 @@ export interface BlockedUser {
   blockedAt: number;
 }
 
-/** Another user as seen by someone else. `profile` is null unless it is public (or your own). */
+/** One album entry as somebody else may see it. `url` is served by the account service. */
+export interface PublicPhoto {
+  id: string;
+  caption: string | null;
+  visibility: 'private' | 'public';
+  createdAt: number;
+  /** Path on the account service; combine with `photoSrc` before putting it in an <img>. */
+  url: string;
+}
+
+/**
+ * Another user as seen by someone else.
+ *
+ * `profile` is null unless it is public (or your own), and **everything that is
+ * profile content rather than identity follows that same flag**: `counts` and
+ * `createdAt` come back null and `photos` empty for a profile the viewer may
+ * not see. They are separate fields rather than nested inside `profile` because
+ * the server computes them separately — but the UI must treat them as one
+ * decision, which is what `resolveProfileView` is for.
+ *
+ * A blocked viewer does not get this object at all; the lookup 404s and
+ * `getUser` returns null, indistinguishable from "no such user".
+ */
 export interface PublicUserView {
   user: AuthUser;
   profile: UserProfile | null;
@@ -209,6 +231,11 @@ export interface PublicUserView {
   following: boolean;
   /** They follow you. */
   followedBy: boolean;
+  /** null means "not allowed to know", which is not the same as zero. */
+  counts: { followers: number; following: number } | null;
+  /** Epoch ms the account was created, or null when the profile is not visible. */
+  createdAt: number | null;
+  photos: PublicPhoto[];
 }
 
 /** Writes report failure rather than throwing; `error` carries the server's wording. */
@@ -293,11 +320,47 @@ export async function listBlocks(): Promise<BlockedUser[]> {
  */
 export async function getUser(username: string): Promise<PublicUserView | null> {
   try {
-    return await call<PublicUserView>(`/api/auth/users/${encodeURIComponent(username)}`);
+    const r = await call<Partial<PublicUserView> & { user: AuthUser }>(
+      `/api/auth/users/${encodeURIComponent(username)}`,
+    );
+    // Normalised rather than cast. The web shell and a deployed account service
+    // are released separately, and an older service simply omits the newer
+    // fields — read as `undefined` those would render as "NaN 关注" and crash on
+    // `photos.map`. Absent has to mean "not allowed to know", which is also the
+    // safe reading if the two ever disagree.
+    return {
+      user: r.user,
+      profile: r.profile ?? null,
+      following: r.following === true,
+      followedBy: r.followedBy === true,
+      counts: r.counts ?? null,
+      createdAt: typeof r.createdAt === 'number' ? r.createdAt : null,
+      photos: Array.isArray(r.photos) ? r.photos : [],
+    };
   } catch {
     return null;
   }
 }
+
+/**
+ * Absolute source for a photo returned by `getUser`.
+ *
+ * The service returns a path, not a URL, because it does not know which origin
+ * the caller reached it on: the web is same-origin and the Tauri shell is not.
+ * Resolving it here rather than server-side keeps that one difference in the
+ * one place that already knows about it.
+ */
+export function photoSrc(photo: PublicPhoto): string {
+  return `${apiBaseUrl()}${photo.url}`;
+}
+
+// Visibility gating, optimistic follow and the mutual-follow derivation. Kept
+// in their own file because they are pure and tested; `import type` only in
+// that direction, so re-exporting them here creates no runtime cycle.
+export * from './profile-view';
+// The shell-wide request to open somebody's profile. Any module can ask; only
+// the shell renders.
+export * from './profile-requests';
 
 /** Whole years, or null when no birth date is set. Local-only; the server enforces 18+ on save. */
 export function ageFromBirthDate(birthDate: string | null): number | null {
