@@ -1,5 +1,7 @@
 // Lobby client: subscribes to /ws/lobby for a live public room list and reconnects automatically
 // on disconnect; REST covers the first paint.
+
+import { apiBaseUrl, apiWsUrl } from '@0xnullai/settings';
 export interface LobbyRoom {
   code: string;
   name: string;
@@ -15,8 +17,9 @@ export interface LobbySubscription {
 }
 
 function lobbyWsUrl(): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws/lobby`;
+  // See room-transport: same-origin resolves to the WebView's own scheme
+  // inside the Android shell.
+  return apiWsUrl('/ws/lobby');
 }
 
 export function subscribeLobby(
@@ -73,7 +76,7 @@ export function subscribeLobby(
 
 /** REST snapshot (first-paint fallback, so there is content before the WS connects). */
 export async function fetchLobbyRooms(): Promise<LobbyRoom[]> {
-  const res = await fetch('/api/lobby/rooms');
+  const res = await fetch(`${apiBaseUrl()}/api/lobby/rooms`);
   if (!res.ok) return [];
   const data = (await res.json()) as { rooms?: LobbyRoom[] };
   return data.rooms ?? [];

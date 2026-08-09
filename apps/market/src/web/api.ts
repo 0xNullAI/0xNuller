@@ -1,7 +1,12 @@
+import { apiBaseUrl } from '@0xnullai/settings';
 import type { ItemPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  // Every path here is relative. On the web that is what we want, but the
+  // Tauri WebView's origin is a local scheme, so a bare relative fetch hits
+  // the WebView's own asset server and comes back as index.html — which
+  // then fails as "Unexpected token '<'", nowhere near the real cause.
+  const res = await fetch(`${apiBaseUrl()}${path}`, init);
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw new Error((data.error as string) || `请求失败 (${res.status})`);
   return data as T;
@@ -55,11 +60,11 @@ export async function batchUploadItems(items: BatchUploadPayload): Promise<{ ins
 }
 
 export async function markDownloaded(id: string): Promise<void> {
-  await fetch(`/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${apiBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
 }
 
 export async function markViewed(id: string): Promise<void> {
-  await fetch(`/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
+  await fetch(`${apiBaseUrl()}/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
 }
 
 export async function reportItem(id: string): Promise<void> {

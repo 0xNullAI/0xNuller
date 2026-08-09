@@ -4,6 +4,8 @@
 // exponential backoff, and on reconnect the caller re-sends hello from onOpen (the DO
 // replays history again).
 
+import { apiWsUrl } from '@0xnullai/settings';
+
 export type TransportStatus = 'connecting' | 'connected' | 'error';
 
 export interface RoomConnectOptions {
@@ -21,8 +23,12 @@ export interface RoomTransport {
 }
 
 function roomUrl(code: string, peerId: string): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}`;
+  // Through apiWsUrl, not location.host: the Tauri WebView's origin is a
+  // local scheme, so a same-origin ws:// dials tauri.localhost and the room
+  // never connects. Android has no hot update, so that ships and stays.
+  return apiWsUrl(
+    `/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}`,
+  );
 }
 
 export function connectRoom(opts: RoomConnectOptions): RoomTransport {

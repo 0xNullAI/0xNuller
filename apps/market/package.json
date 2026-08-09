@@ -16,12 +16,13 @@
     "db:migrate:remote": "wrangler d1 execute dg-market --remote --file=./migrations/0001_add_edit_key.sql"
   },
   "dependencies": {
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "fflate": "^0.8.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "zod": "^3.23.8",
-    "@0xnullai/scenes": "0.1.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",

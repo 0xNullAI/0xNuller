@@ -1,5 +1,6 @@
 // Image compression + voice recording + upload to R2 (through the Worker's /api/upload/:code).
 import type { OutgoingMedia } from '../hooks/use-peer-room';
+import { apiBaseUrl } from '@0xnullai/settings';
 
 function genId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 24);
@@ -13,7 +14,7 @@ export async function uploadMedia(
   meta?: { durationMs?: number; w?: number; h?: number },
 ): Promise<OutgoingMedia> {
   const id = genId();
-  const res = await fetch(`/api/upload/${encodeURIComponent(code)}?id=${id}`, {
+  const res = await fetch(`${apiBaseUrl()}/api/upload/${encodeURIComponent(code)}?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': blob.type || 'application/octet-stream' },
     body: blob,
