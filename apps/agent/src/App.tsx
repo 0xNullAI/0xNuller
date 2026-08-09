@@ -19,6 +19,7 @@ import {
   ModuleSettingsSection,
   SidebarSection,
   useInShell,
+  useOpenShellSettings,
   useSafetySession,
   useTheme,
 } from '@0xnullai/ui';
@@ -36,11 +37,6 @@ import { SessionPanel } from './components/SessionPanel.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
 import { ResetSettingsDialog } from './components/ResetSettingsDialog.js';
-import {
-  SettingsSidebar,
-  SettingsWorkspace,
-  type SettingsModalTab,
-} from './components/SettingsDrawer.js';
 import {
   Sheet,
   SheetClose,
@@ -142,6 +138,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const inShell = useInShell();
+  const openShellSettings = useOpenShellSettings();
   // The scene library moved out of the settings blob into cross-module shared storage —
   // Voice sees the same set, and one broken scene no longer drags the whole settings
   // object back to its defaults (that blob also holds the strength caps).
@@ -150,9 +147,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     () => !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
   const [text, setText] = useState('');
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab>('preset');
-  const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(false);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -631,7 +625,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   }
 
   async function createNewSession(): Promise<void> {
-    closeSettingsWorkspace();
+    flushSettingsDraft();
+    setEditingWaveform(null);
     clearSessionPermissionOverride();
     resetPermissionGrants();
 
@@ -756,10 +751,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   function selectSession(sessionId: string): void {
     if (sessionId === activeSessionId) {
-      if (settingsModalOpen) closeSettingsWorkspace();
       return;
     }
-    closeSettingsWorkspace();
+    flushSettingsDraft();
+    setEditingWaveform(null);
     resetPermissionGrants();
     setActiveSessionId(sessionId);
     setText('');
@@ -775,22 +770,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       setStatusMessage('设置已恢复默认值');
       clearEvents();
     });
-  }
-
-  function openSettingsModal(tab: SettingsModalTab = 'preset'): void {
-    setSettingsModalTab(tab);
-    setSettingsModalOpen(true);
-    setSettingsMobileNavOpen(true);
-    setSidebarOpen(false);
-  }
-
-  function closeSettingsWorkspace(): void {
-    if (settingsModalOpen) {
-      flushSettingsDraft();
-    }
-    setEditingWaveform(null);
-    setSettingsMobileNavOpen(false);
-    setSettingsModalOpen(false);
   }
 
   function resolvePermission(decision: PermissionDecision): void {
@@ -932,7 +911,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 onSelectSession={selectSession}
                 onDeleteSession={(sessionId) => void deleteSession(sessionId)}
                 onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openSettingsModal()}
+                onOpenSettings={() => openShellSettings()}
                 detached={true}
               />
             </div>
@@ -951,11 +930,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           }
           style={
             {
-              '--sidebar-w-agent': settingsModalOpen
-                ? '272px'
-                : sidebarCollapsed
-                  ? '65px'
-                  : '272px',
+              '--sidebar-w-agent': sidebarCollapsed ? '65px' : '272px',
             } as React.CSSProperties
           }
         >
@@ -967,27 +942,17 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 : 'dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block'
             }
           >
-            {settingsModalOpen ? (
-              <SettingsSidebar
-                tab={settingsModalTab}
-                onTabChange={setSettingsModalTab}
-                onMobileNavOpenChange={setSettingsMobileNavOpen}
-                onClose={closeSettingsWorkspace}
-                onRequestReset={() => setResetSettingsDialogOpen(true)}
-              />
-            ) : (
-              <SessionPanel
+            <SessionPanel
                 savedSessions={savedSessions}
                 activeSessionId={activeSessionId}
                 onSelectSession={selectSession}
                 onDeleteSession={(sessionId) => void deleteSession(sessionId)}
                 onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openSettingsModal()}
+                onOpenSettings={() => openShellSettings()}
                 collapsed={sidebarCollapsed}
                 onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
                 detached={false}
               />
-            )}
           </aside>
 
           {/* Chat section */}
@@ -1003,40 +968,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onDismissUpdate={() => updateChecker.dismiss()}
               onReload={() => window.location.reload()}
             />
-            {settingsModalOpen ? (
-              <SettingsWorkspace
-                tab={settingsModalTab}
-                onTabChange={setSettingsModalTab}
-                mobileNavOpen={settingsMobileNavOpen}
-                onMobileNavOpenChange={setSettingsMobileNavOpen}
-                onClose={closeSettingsWorkspace}
-                onRequestReset={() => setResetSettingsDialogOpen(true)}
-                settingsDraft={settingsDraft}
-                setSettingsDraft={setSettingsDraft}
-                onNotify={setStatusMessage}
-                waveforms={waveforms}
-                customWaveforms={customWaveforms}
-                onImportWaveforms={(files) => void importWaveformFiles(files)}
-                onImportWaveformFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
-                onRemoveWaveform={(id) => void removeWaveform(id)}
-                onEditWaveform={openWaveformEditor}
-                sensorTriggersEnabled={sensorTriggersEnabled}
-                onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
-                bridgeLogs={bridgeLogs}
-                bridgeStatus={bridgeStatus}
-                modelLogTurns={modelLog.turns}
-                onClearModelLogs={modelLog.clear}
-                settings={settings}
-                exportableSessions={savedSessions.map((s) => ({
-                  id: s.id,
-                  title: getSessionTitle(s),
-                  updatedAt: s.updatedAt,
-                }))}
-                onExportSessions={(ids) => void exportSessions(ids)}
-                onImportSessions={(file) => void importSessions(file)}
-              />
-            ) : (
-              <ChatPanel
+            <ChatPanel
                 activeSessionId={activeSessionId}
                 text={text}
                 statusMessage={statusMessage}
@@ -1067,7 +999,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 onDisconnectCivetEdging={() => void disconnectCivetEdging()}
                 onEmergencyStop={() => void stop()}
                 onOpenSidebar={() => setSidebarOpen(true)}
-                onOpenSettings={() => openSettingsModal('preset')}
+                onOpenSettings={() => openShellSettings('scenes')}
                 promptPresetId={sceneLib.selectedId}
                 builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
                   (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
@@ -1075,7 +1007,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 savedPresets={sceneLib.scenes}
                 onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
               />
-            )}
           </section>
         </section>
       </main>
