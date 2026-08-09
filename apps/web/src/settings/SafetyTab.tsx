@@ -168,7 +168,7 @@ export function SafetyTab() {
 
       <Group
         title="郊狼"
-        desc="全应用共享。在这里调的值，Agent、Chat、Voice 立刻都是这个值。"
+        desc="全应用共享。在这里调的值，Control、Agent、Voice、Chat、Playground 立刻都是这个值。"
         fields={COYOTE_FIELDS}
         settings={settings}
         onChange={patch}

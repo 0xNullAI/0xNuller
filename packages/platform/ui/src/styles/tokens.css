@@ -14,7 +14,14 @@
   --surface-border-strong: #d0dbe3;
   --text: #1a1a1a;
   --text-soft: #5a6872;
-  --text-faint: #94a3b0;
+  /* The tertiary tier. It was #94a3b0, which measures 2.59:1 on white — not
+     merely under the 4.5:1 floor but under even the 3:1 sometimes argued for
+     hint text. What it renders is not decoration: 「任何来源都不能让 A 通道
+     超过这个值」, the sentence that explains what a strength cap actually
+     does, is --text-faint. In a product that drives current through a body,
+     the copy explaining the limits has to be readable by someone who is not
+     looking for it. 4.54:1, still visibly a step below --text-soft. */
+  --text-faint: #6a7883;
   --accent: #58c8f2;
   --accent-soft: rgba(88, 200, 242, 0.1);
   --accent-strong: #3ab5e6;
@@ -158,7 +165,8 @@
   --surface-border-strong: #333333;
   --text: #ececec;
   --text-soft: #999999;
-  --text-faint: #666666;
+  /* 3.2:1 on --bg-elevated before; same reasoning as the light theme's. 4.5:1. */
+  --text-faint: #7d7d7d;
   --accent: #ffe99d;
   --accent-soft: rgba(255, 233, 157, 0.1);
   --accent-strong: #ffb800;
