@@ -1,4 +1,4 @@
-name = "dg-llm-proxy"
+name = "0xnullai-llm-proxy"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
 workers_dev = true

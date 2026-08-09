@@ -1,5 +1,5 @@
 /**
- * dg-llm-proxy — Cloudflare Worker
+ * 0xnullai-llm-proxy — Cloudflare Worker
  *
  * Free-tier LLM relay for DG-Agent. Port of the former Aliyun FC proxy
  * (aliyun-fc/index.js) onto Cloudflare Workers — same behaviour, new host.
@@ -13,7 +13,7 @@
  *   wrangler secret put PROXY_API_KEY      # aihub.071129.xyz key
  *   # PROXY_MODEL is set via [vars] in wrangler.toml (optional override)
  *   # Bind custom domain llm.0xnullai.com in the dashboard
- *     (Workers > dg-llm-proxy > Settings > Domains & Routes).
+ *     (Workers > 0xnullai-llm-proxy > Settings > Domains & Routes).
  */
 
 const UPSTREAM = 'https://aihub.071129.xyz/v1/chat/completions';

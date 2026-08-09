@@ -13,7 +13,7 @@
 0xnullai.com/api/admin/*        → 0xnullai-market
 0xnullai.com/api/realtime       → 0xnullai-voice   Durable Object（体验版计量）
 
-llm.0xnullai.com                → dg-llm-proxy   免费 provider，独立子域
+llm.0xnullai.com                → 0xnullai-llm-proxy   免费 provider，独立子域
 ```
 
 免费 provider 的代理留在自己的子域上：它不属于统一外壳的接口面，客户端用绝对地址
@@ -65,10 +65,11 @@ npm run deploy -w 0xnullai-voice
 npm run deploy -w @0xnullai/web
 ```
 
-## 三个 Worker 改名的切换
+## Worker 改名的切换
 
-`dg-market` / `dg-chat` / `dg-voice` 全部改成 `0xnullai-*`。**改名不是原地重命名**
-——部署会创建一个新脚本，旧的还在，而且路由仍指向它。逐个切：
+`dg-market` / `dg-chat` / `dg-voice` / `dg-llm-proxy` / `dg-speech-proxy` 全部改成
+`0xnullai-*`。**改名不是原地重命名**——部署会创建一个新脚本，旧的还在，而且路由仍
+指向它。逐个切：
 
 ```bash
 npm run deploy -w 0xnullai-market
@@ -76,6 +77,21 @@ curl -s https://0xnullai.com/api/items | head -c 200   # 确认新脚本接管�
 wrangler delete --name dg-market                       # 确认无误后删旧脚本
 # chat / voice 同样三步，用各自的路由做验证
 ```
+
+**Secret 不跟着改名走。** Secret 是绑在脚本上的，新脚本一开始一个都没有。两个
+proxy 尤其要小心，因为它们的 secret 就是它们能工作的全部理由：
+
+```bash
+wrangler secret put PROXY_API_KEY    --config workers/llm-proxy/wrangler.toml
+wrangler secret put DASHSCOPE_API_KEY --config workers/speech-proxy/wrangler.toml
+```
+
+**顺序是「先部署新脚本 → 补 secret → 再把自定义域切过去」。** 反过来做，
+`llm.0xnullai.com` 会指向一个没有 key 的脚本，免费 provider 当场全线 502——而那是
+对用户的产品承诺，不是可降级的功能。切完先用一次真实请求验证，再删旧脚本。
+
+（`0xnullai-speech-proxy` 是给别人自建用的模板，我们并不托管，所以它只是改个默认
+名字，没有切换风险。）
 
 **chat 与 voice 带 Durable Object，改名等于换一套新命名空间。** 这是刻意接受的：
 当时房间还是临时的（最后一人离开 10 分钟后 RoomDO 自删消息、R2 媒体与 storage），

@@ -5,7 +5,7 @@ verified).
 
 | Worker                       | Hosted by 0xNullAi?         | Purpose                 | Upstream                               | Domain             |
 | ---------------------------- | --------------------------- | ----------------------- | -------------------------------------- | ------------------ |
-| `llm-proxy` (`dg-llm-proxy`) | **Yes** — free tier         | LLM text relay          | `aihub.071129.xyz` (OpenAI-compatible) | `llm.0xnullai.com` |
+| `llm-proxy` (`0xnullai-llm-proxy`) | **Yes** — free tier         | LLM text relay          | `aihub.071129.xyz` (OpenAI-compatible) | `llm.0xnullai.com` |
 | `speech-proxy`               | **No** — self-host template | DashScope ASR/TTS relay | `wss://dashscope.aliyuncs.com`         | (your own)         |
 
 ## llm-proxy — hosted free LLM tier

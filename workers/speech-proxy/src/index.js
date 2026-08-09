@@ -1,5 +1,5 @@
 /**
- * dg-speech-proxy — Cloudflare Worker (SELF-HOST TEMPLATE, not hosted by 0xNullAi)
+ * 0xnullai-speech-proxy — Cloudflare Worker (SELF-HOST TEMPLATE, not hosted by 0xNullAi)
  *
  * DashScope dropped its free tier, so there is NO shared relay. This worker is
  * a template for users who register their own DashScope account and want

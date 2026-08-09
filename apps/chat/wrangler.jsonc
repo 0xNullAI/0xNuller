@@ -30,7 +30,7 @@
     { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" }
   ],
-  // 保留 workers.dev 预发地址（dg-chat.0xnullai.workers.dev）作为备用/调试入口。
+  // 保留 workers.dev 预发地址（0xnullai-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,
 
   // 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
