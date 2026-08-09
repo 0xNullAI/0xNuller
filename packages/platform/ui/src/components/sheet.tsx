@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
+import { Z_OVERLAY, Z_OVERLAY_PANEL } from '../z-layers';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
@@ -20,7 +21,7 @@ const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[2px]',
+      `fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[2px]`,
       className,
     )}
     {...props}
@@ -30,8 +31,8 @@ SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const sheetVariants = {
   right:
-    'fixed inset-y-0 right-0 z-50 h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none',
-  left: 'fixed inset-y-0 left-0 z-50 h-full w-full max-w-[440px] border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none',
+    `fixed inset-y-0 right-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
+  left: `fixed inset-y-0 left-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
 } as const;
 
 interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {

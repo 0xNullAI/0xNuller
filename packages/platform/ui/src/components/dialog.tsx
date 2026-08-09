@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
+import { Z_OVERLAY, Z_OVERLAY_PANEL } from '../z-layers';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -19,7 +20,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[2px]',
+      `fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[2px]`,
       className,
     )}
     {...props}
@@ -42,7 +43,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-xl',
+        `fixed left-1/2 top-1/2 ${Z_OVERLAY_PANEL} w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-xl`,
         className,
       )}
       {...props}
