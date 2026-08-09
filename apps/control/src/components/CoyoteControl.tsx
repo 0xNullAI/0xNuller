@@ -294,7 +294,7 @@ export function WaveformPanel({
         </svg>
         <span className="max-w-full truncate text-[11px] leading-tight">{waveform.name}</span>
         {queued && (
-          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] font-bold text-white">
+          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] font-bold text-[var(--button-text)]">
             {queue.indexOf(waveform.id) + 1}
           </span>
         )}
