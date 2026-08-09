@@ -38,6 +38,7 @@
     "android:prepare": "node scripts/prepare-android-release.mjs",
     "android:dev": "npm run android:prepare && npm run android:dev -w @0xnullai/android",
     "android:build": "npm run verify:release && npm run android:prepare && npm run android:build -w @0xnullai/android --",
+    "verify:android:apk": "node scripts/verify-android-apk.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "check:routes": "node scripts/check-routes.mjs",
     "verify:data": "node scripts/verify-data-platform.mjs",
