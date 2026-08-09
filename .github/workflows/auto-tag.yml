@@ -6,9 +6,8 @@ name: Auto-tag main
 # Idempotent: existing tag/release is skipped.
 
 on:
-  # 迁移期间只允许手动触发。旧仓（DG-Agent 等）的 auto-tag 仍然武装，且本仓当前
-  # 版本号 0.1.0 只是占位——自动打 tag 会产出一个误导性的 "Latest release"。
-  # 切换完成、定下第一条产品版本线之后，恢复下面被注释掉的 push 触发。
+  # 外部切换完成前只允许手动触发，避免旧仓和本仓同时创建产品 release。
+  # 产品版本线已经从兼容 DG-Agent 升级身份的 6.0.0 开始；旧仓自动化停用后再恢复 push。
   workflow_dispatch:
   # push:
   #   branches: [main]
@@ -24,6 +23,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+
+      - name: Verify release metadata
+        run: node scripts/verify-release.mjs
+
       - name: Read version
         id: version
         run: |
@@ -33,6 +39,9 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Create tag (if absent)
+        env:
+          GIT_COMMITTER_NAME: 0xNull
+          GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com
         run: |
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
@@ -40,8 +49,6 @@ jobs:
             echo "::notice::Tag $tag already exists, skipping."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$tag" -m "Release $tag"
           git push origin "$tag"
 

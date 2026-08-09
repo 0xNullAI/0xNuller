@@ -15,7 +15,7 @@ npm run build:kit    # 共享层是 dist-first，不先构建它，其余包的�
 npm run build && npm run test && npm run lint
 ```
 
-预期：全仓构建通过、621 个测试全过、lint 零错误。lint 目前有 7 个
+预期：全仓构建通过、1063 个测试全过、lint 零错误。lint 目前有 7 个
 `react-hooks/exhaustive-deps` 警告，那是合并前 DG-Chat 的 lint 被 `|| true`
 关掉留下的既有基线——**不要新增，但也不必在无关的 PR 里顺手清理**。
 

@@ -1,6 +1,6 @@
 # DG-Market
 
-社区市场：上传与交换 [DG-Agent](https://github.com/0xNullAI/DG-Agent) 的**波形**和**场景**。
+0xNuller 社区市场：上传与交换 Agent 模块的**波形**和**场景**。
 
 全免费栈：**Cloudflare Workers**（前端静态资源 + `/api` 接口）+ **D1**（SQLite）。
 匿名上传（单条 / 批量），按来源限流（每小时 50 条），举报满 5 次自动隐藏。
@@ -99,9 +99,9 @@ curl -X DELETE https://<your-worker>.workers.dev/api/admin/items/<id> \
   -H "X-Admin-Key: <你的 ADMIN_KEY>"
 ```
 
-## 数据格式（与 DG-Agent 互通）
+## 数据格式（与 0xNuller Agent 互通）
 
 - **波形**：`{ name, description?, frames: [编码频率(10..240), 强度(0..100)][], pulse? }`
 - **场景**：`{ name, icon?, prompt }`
 
-DG-Agent 在「波形库 / 场景」面板提供「从市场导入」，直接拉取本站内容导入；也可下载/复制 JSON 手动导入。
+0xNuller Agent 在「波形库 / 场景」面板提供「从市场导入」，直接拉取本站内容导入；也可下载/复制 JSON 手动导入。

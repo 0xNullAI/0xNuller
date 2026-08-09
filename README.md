@@ -103,10 +103,11 @@ npm run changeset    # 为 @dg-kit/* 的改动写发布说明
 
 本仓库正在接管以下仓库，迁移完成前它们保持在线：
 
-DG-Kit · DG-Agent · DG-Chat · DG-Voice · DG-Market · DG-Web · DG-Wiki · DG-MCP
+DG-Kit · DG-Agent · DG-Chat · DG-Voice · DG-Market · DG-Web · DG-Wiki · DG-MCP · DG-Playground
 
-代码已通过 `git subtree` 并入，提交历史与 blame 完整保留。Cloudflare 部署与 npm
-发布仍指向旧仓，切换后旧仓才会下线。
+代码已通过 `git subtree` 并入，提交历史与 blame 完整保留。截至 2026-08-09，目标
+Cloudflare 脚本只有 Auth 已存在，其余服务和根域路由仍未切换，旧 Pages 继续承载现网；
+npm 发布权也尚未正式切换。外部状态与切换顺序以 [`docs/deploy.md`](./docs/deploy.md) 为准。
 
 保持独立的只有 [tauri-plugin-blec-multi](https://github.com/0xNullAI/tauri-plugin-blec-multi)——它是上游项目的 Rust fork，工具链与本仓无交集。
 

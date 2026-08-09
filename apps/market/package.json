@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "社区市场：上传与交换 DG-Agent 波形和场景，部署在 Cloudflare Workers + D1（全免费）",
+  "description": "0xNuller 社区市场：上传与交换 Agent 波形和场景，部署在 Cloudflare Workers + D1",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

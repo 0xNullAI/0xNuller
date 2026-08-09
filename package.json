@@ -11,7 +11,7 @@
   },
   "packageManager": "npm@11.6.2",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "workspaces": [
     "packages/*/*",
@@ -29,12 +29,16 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:check:changed": "node scripts/check-format-changed.mjs",
     "clean": "rm -rf packages/*/*/dist packages/*/*/tsconfig.tsbuildinfo apps/*/dist",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "npm run build:kit && changeset publish",
-    "android:dev": "npm run android:dev -w @0xnullai/android",
-    "android:build": "npm run android:build -w @0xnullai/android",
+    "android:init": "npm run tauri -w @0xnullai/android -- android init --ci && npm run android:prepare",
+    "android:prepare": "node scripts/prepare-android-release.mjs",
+    "android:dev": "npm run android:prepare && npm run android:dev -w @0xnullai/android",
+    "android:build": "npm run verify:release && npm run android:prepare && npm run android:build -w @0xnullai/android --",
+    "verify:release": "node scripts/verify-release.mjs",
     "check:routes": "node scripts/check-routes.mjs",
     "verify:data": "node scripts/verify-data-platform.mjs",
     "release:data:preflight": "node scripts/release-data-preflight.mjs"

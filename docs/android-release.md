@@ -36,7 +36,7 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 tag `android-v6.0.0`，Release 标题和 APK 也都显示 `0xNuller 6.0.0`。
 
 合并之后同一个仓库还会打出
-`@dg-kit/core@1.14.0`（changesets）和 `v0.2.0`（平台版本）这类 tag，用
+`@dg-kit/core@1.14.0`（changesets）和 `v6.0.0`（平台版本）这类 tag，用
 `releases/latest` 拿到的多半不是 APK——**更新提示会静默失效**，用户不会收到任何
 出错信号，就一直留在旧版本上。安卓没有热更新，这件事只能靠重新打包来修。
 
@@ -46,22 +46,20 @@ tag `android-v6.0.0`，Release 标题和 APK 也都显示 `0xNuller 6.0.0`。
 
 **从 `main` 的实际 tip 构建，在版本号提交合并之后。**
 
-`dev` 上永远没有版本号提交——它只随发布 PR 进 `main`。从 `dev` 构建出来的 APK 里烤
-的是**上一个版本**的 versionName/versionCode，然后被挂到新的 Release tag 上，两边对
-不上。这个错误犯过一次，是上传之后用 `aapt dump badging` 才发现的。
+`dev` 可以提前包含下一版版本号，但它之后还可能继续变化；发布产物必须来自最终合入
+`main` 的同一个 commit，不能拿较早的 dev 构建挂到 Release tag。脚本会检查 npm、Cargo、
+Tauri 与 Android versionCode 是否一致，上传前仍要检查 APK 内部元数据。
 
 ```bash
 git checkout main && git pull
 
-# gen/android 是 gitignore 的，每次 `tauri android init` 都从头生成，
-# 会丢掉签名配置、BLE 权限和 minSdk——按 android/app/README.md 的三步重新贴回去。
-
 npm run build:kit && npm run build
-export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
-export DG_AGENT_ALIAS=dg-agent
-export DG_AGENT_STORE_PASS=...   # 见 ~/.dg-keystores/passwords.txt
-export DG_AGENT_KEY_PASS=...
-npm run android:build -w @0xnullai/android -- --apk --target aarch64
+# passwords.txt 是只含上述四个 DG_AGENT_* 赋值的 shell 文件；不要打开后复制到日志。
+chmod 600 ~/.dg-keystores/passwords.txt ~/.dg-keystores/dg-agent-release.jks
+set -a
+source ~/.dg-keystores/passwords.txt
+set +a
+npm run android:build -- --apk --target aarch64
 ```
 
 ## 上传前必须验的两件事
@@ -98,7 +96,7 @@ Signer #1 certificate DN: CN=DG-Agent, OU=0xNullAI, O=0xNullAI, …
 
 ```bash
 gh release create "android-v6.0.0" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.0.0" --notes "..." "$APK"
+  --title "0xNuller 6.0.0" --notes-file docs/releases/6.0.0.md "$APK"
 ```
 
 ## 发布之后

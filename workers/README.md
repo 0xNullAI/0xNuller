@@ -1,12 +1,12 @@
-# DG-Agent Cloudflare Workers
+# 0xNuller Cloudflare Workers
 
 Replaces the old `aliyun-fc/` proxy (delete it once `llm-proxy` is deployed and
 verified).
 
-| Worker                       | Hosted by 0xNullAi?         | Purpose                 | Upstream                               | Domain             |
-| ---------------------------- | --------------------------- | ----------------------- | -------------------------------------- | ------------------ |
+| Worker                             | Hosted by 0xNullAi?         | Purpose                 | Upstream                               | Domain             |
+| ---------------------------------- | --------------------------- | ----------------------- | -------------------------------------- | ------------------ |
 | `llm-proxy` (`0xnullai-llm-proxy`) | **Yes** — free tier         | LLM text relay          | `aihub.071129.xyz` (OpenAI-compatible) | `llm.0xnullai.com` |
-| `speech-proxy`               | **No** — self-host template | DashScope ASR/TTS relay | `wss://dashscope.aliyuncs.com`         | (your own)         |
+| `speech-proxy`                     | **No** — self-host template | DashScope ASR/TTS relay | `wss://dashscope.aliyuncs.com`         | (your own)         |
 
 ## llm-proxy — hosted free LLM tier
 

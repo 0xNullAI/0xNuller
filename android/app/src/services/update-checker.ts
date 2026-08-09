@@ -20,7 +20,7 @@ export interface TauriUpdateCheckerOptions {
    *
    * **`releases/latest` cannot be used.** After the merge this one repo
    * publishes both `@dg-kit/*` (changesets cuts tags such as
-   * `@dg-kit/core@1.14.0`) and the platform's own `v0.1.0`, so what
+   * `@dg-kit/core@1.14.0`) and the platform's own `v6.0.0`, so what
    * `releases/latest` returns is more often than not something other than the
    * APK. Splitting those tags on dots yields a non-numeric first segment, which
    * is read as 0, so the comparison always comes out as "no update" — the

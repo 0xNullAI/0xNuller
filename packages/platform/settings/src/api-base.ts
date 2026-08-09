@@ -33,7 +33,8 @@ function isTauri(): boolean {
  * their own domain.
  */
 export function apiBaseUrl(): string {
-  const override = (import.meta.env?.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '');
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  const override = env?.VITE_API_BASE_URL?.replace(/\/$/, '');
   if (override) return override;
   return isTauri() ? PRODUCTION_ORIGIN : '';
 }

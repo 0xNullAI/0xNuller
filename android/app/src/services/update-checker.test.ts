@@ -204,7 +204,7 @@ describe('versionFromTag', () => {
     // After the merge the same repo also cuts these tags. Misidentify any one of
     // them and the user taps through and downloads something that is not the APK.
     expect(versionFromTag('@dg-kit/core@1.14.0', 'android-v')).toBeNull();
-    expect(versionFromTag('v0.1.0', 'android-v')).toBeNull();
+    expect(versionFromTag('v6.0.0', 'android-v')).toBeNull();
     expect(versionFromTag('dg-mcp@0.3.1', 'android-v')).toBeNull();
   });
 
@@ -228,7 +228,7 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
       // the user gets no signal at all that anything is broken.
       fetchImpl: fetchReleases([
         { tag_name: '@dg-kit/core@1.14.0', html_url: 'https://example.com/kit' },
-        { tag_name: 'v0.2.0', html_url: 'https://example.com/platform' },
+        { tag_name: 'v6.0.0', html_url: 'https://example.com/platform' },
         { tag_name: 'android-v5.6.0', html_url: 'https://example.com/apk' },
       ]),
     });

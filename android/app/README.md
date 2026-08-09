@@ -49,6 +49,7 @@ together: `android-v6.0.0`, `0xNuller 6.0.0`, `6.0.0`, and `6000000`.
 
 ## Prerequisites
 
+- Node.js 22.19+
 - Rust 1.78+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - Android SDK with platform 34/35/36 + build-tools 34/35
 - Android NDK 26.x (set `NDK_HOME` or `ANDROID_NDK_HOME`)
@@ -66,25 +67,14 @@ export NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
 ## First-time setup
 
 ```bash
-cd android/app
-cargo tauri android init      # regenerates src-tauri/gen/android/
-# After init, re-apply BLE permissions to AndroidManifest.xml — see below.
+npm run android:init      # regenerates src-tauri/gen/android/, then prepares it
 ```
 
-The `gen/android/` directory is regenerated and gitignored. After every regeneration:
-
-1. Copy the `<uses-permission>` / `<uses-feature>` block from
-   [`AndroidManifest.template.xml`](./AndroidManifest.template.xml) into
-   `gen/android/app/src/main/AndroidManifest.xml` (inside `<manifest>` root,
-   before `<application>`). The template explains each permission.
-   Drop the template's duplicate `INTERNET` line — the generated manifest
-   already has it.
-2. Bump `gen/android/app/build.gradle.kts` `minSdk` to `26` (required by
-   `@mnlphlp/plugin-blec`'s Android backend).
-3. Re-apply the release-signing config from
-   [`signing.gradle.kts.template`](./signing.gradle.kts.template) into
-   `gen/android/app/build.gradle.kts` — see "Release builds" below for why
-   this is needed and what it reads.
+The `gen/android/` directory is regenerated and gitignored. `npm run android:prepare`
+deterministically applies [`AndroidManifest.template.xml`](./AndroidManifest.template.xml),
+sets minSdk 26, and injects [`signing.gradle.kts.template`](./signing.gradle.kts.template).
+Both root Android commands run it automatically; do not invoke the workspace command directly
+for a release.
 
 Two things that cost a build cycle if you script step 1:
 
@@ -102,20 +92,17 @@ seconds, versus a two-minute Gradle run that reports the wrong cause.
 
 ## Release builds
 
-`gen/android/` is regenerated from scratch by `cargo tauri android init` and
-is gitignored, so the release-signing config isn't checked in anywhere — it
-has to be re-applied by hand after every regeneration (step 3 above), reading
-from [`signing.gradle.kts.template`](./signing.gradle.kts.template).
+`gen/android/` is regenerated from scratch and gitignored. The checked-in preparation script
+re-applies release signing and fails a release Gradle task when any signing variable is absent;
+an unsigned APK can no longer look like a successful release build.
 
-To produce an installable release APK, set these environment variables
-before building (keystore path + passwords are kept outside the repo, not
-committed anywhere):
+To produce an installable release APK, load these environment variables before building
+(keystore path + passwords are kept outside the repo, mode 600, and never committed):
 
 ```bash
-export DG_AGENT_KEYSTORE=/path/to/dg-agent-release.jks
-export DG_AGENT_ALIAS=dg-agent
-export DG_AGENT_STORE_PASS=...
-export DG_AGENT_KEY_PASS=...
+set -a
+source ~/.dg-keystores/passwords.txt
+set +a
 npm run android:build -- --apk --target aarch64
 ```
 

@@ -1,6 +1,6 @@
 # 部署
 
-统一外壳占据根域，四个后端 Worker 按**路径路由**接管各自的 API。
+下面是目标拓扑：统一外壳占据根域，后端 Worker 按**路径路由**接管各自的 API。
 
 ```
 0xnullai.com/*                  → 0xnuller         纯静态，无 Worker 代码
@@ -18,6 +18,18 @@ llm.0xnullai.com                → 0xnullai-llm-proxy   免费 provider，独�
 
 免费 provider 的代理留在自己的子域上：它不属于统一外壳的接口面，客户端用绝对地址
 直连，挪进根域没有收益，只有风险。
+
+## 当前外部状态（2026-08-09，只读核对）
+
+- 目标脚本中只有 `0xnullai-auth` 已存在；`0xnullai-chat`、`0xnullai-market`、
+  `0xnullai-voice`、`0xnuller`、`0xnullai-llm-proxy` 与 `0xnullai-speech-proxy` 均未创建。
+- `dg-agent`、`dg-web`、`dg-wiki` 旧 Pages 项目仍在承载现网。
+- `https://0xnullai.com/api/items` 仍返回旧站 HTML，不是 Market JSON；这证明目标 API
+  path route 尚未切换，不能把前端或 APK 指向当前根域后宣称 Market 已上线。
+- 根仓的 auto-tag 与 npm release workflow 因此继续只允许手动触发。关闭旧仓自动化、
+  创建并验证目标资源、完成路由切换之前，不得恢复 push 触发。
+
+这段状态只能由下一次发布前的只读核对更新；配置文件描述的是目标，不能反推远端已经存在。
 
 Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜底。路径互不重叠，
 `npm run check:routes` 会核对这一点——它**自动发现**仓库里所有 wrangler 配置，
@@ -60,8 +72,8 @@ wrangler d1 execute dg-market --remote --config apps/market/wrangler.jsonc \
 wrangler d1 migrations apply dg-market --remote --config apps/market/wrangler.jsonc
 wrangler d1 migrations apply 0xnullai-auth --remote --config workers/auth/wrangler.jsonc
 
-# 1. 聊天（含 DO；已在线的话不要重建）
-wrangler r2 bucket create dg-chat-media
+# 1. 聊天（含 DO）——先创建目标脚本，auth 的下一次部署需要这个 service binding。
+#    dg-chat-media 已存在；先用 `wrangler r2 bucket list` 核对，不要重复创建或换桶。
 wrangler secret put DM_TICKET_SECRET --config apps/chat/wrangler.jsonc
 npm run deploy -w 0xnullai-chat
 
@@ -99,9 +111,9 @@ code 不再有写 R2 的权限。这是有意的协议安全升级：旧客户�
 
 ## Worker 改名的切换
 
-`dg-market` / `dg-chat` / `dg-voice` / `dg-llm-proxy` / `dg-speech-proxy` 全部改成
-`0xnullai-*`。**改名不是原地重命名**——部署会创建一个新脚本，旧的还在，而且路由仍
-指向它。逐个切：
+`dg-market` / `dg-chat` / `dg-voice` / `dg-llm-proxy` / `dg-speech-proxy` 计划切到
+`0xnullai-*`。截至上面的核对日期，新脚本除 auth 外尚不存在。**改名不是原地重命名**——
+部署会创建一个新脚本，旧的还在，而且路由仍指向它。逐个切：
 
 ```bash
 npm run deploy -w 0xnullai-market
@@ -140,9 +152,10 @@ new_classes / new_sqlite_classes / renamed_classes（同脚本内）/ deleted_cl
 存的东西本来就会自己消失；等房间变成永久群组、承载长期聊天记录之后，同样一次改名
 就是真正的数据丢失。**这是最后一个免费窗口。**
 
-**窗口已经关闭。** 房间现在是永久群组：RoomDO 的自毁 alarm 没有了，消息、R2 媒体、
-群主密钥哈希和公开设置都长期存在 DO 里。`0xnullai-chat` 这个脚本名从此不能再改，
-RoomDO / LobbyDO 也不能挪进别的 script——两者都等于让所有群组变成访问不到的孤儿。
+代码里的房间现在是永久群组，但目标 `0xnullai-chat` 尚未创建。第一次上线前必须明确决定
+旧 `dg-chat` 的历史是否放弃；Cloudflare 没有跨 script 搬 DO 的路径，不能把“部署成功”
+误当成“历史已迁移”。目标脚本开始承载群组后，`0xnullai-chat` 名称与 RoomDO/LobbyDO
+归属从此不能再改，否则所有新群组都会变成访问不到的孤儿。
 
 群组不会无限长：每个群保留最近 1000 条消息，被挤掉的消息连同它的 R2 对象一起删；
 最后一人离开 10 分钟后 RoomDO 的 alarm 会把没有任何消息引用的对象扫掉（上传后没
