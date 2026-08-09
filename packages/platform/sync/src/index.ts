@@ -36,12 +36,15 @@ export interface SyncedContent {
 const TOKEN_KEY = '0xnullai.auth-token';
 
 function authHeaders(): Record<string, string> {
-  let token: string | null = null;
-  try {
-    token = localStorage.getItem(TOKEN_KEY);
-  } catch {
-    token = null;
-  }
+  // Private browsing can reject the read; signed-out is the right reading of
+  // that, not a crash.
+  const token = (() => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  })();
   return {
     'content-type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
