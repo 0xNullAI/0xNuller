@@ -55,8 +55,6 @@ packages/
     runtime/ agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/
 apps/
   agent/ chat/ voice/ market/     四个独立应用，各自部署、各自的设置与主题
-  landing/                 落地页（Astro）
-  wiki/                    文档站（只读，贡献走 PR）
   mcp/                     MCP 服务端，发布为 npm 包 dg-mcp
 android/
   agent/ chat/ voice/      三个 Tauri 壳，将合并为单一「0xNullAI」应用

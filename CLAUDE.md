@@ -134,7 +134,7 @@ Voice 用 transport），只是注入点合并成一个。不去重塑它们是�
 
 ## 代码约定
 
-TypeScript `strict` + `noUncheckedIndexedAccess`；仅 ESM；`import type`；未使用变量前缀 `_`；注释解释 WHY 不解释 WHAT；不用 emoji；UI 文案简体中文。
+TypeScript `strict` + `noUncheckedIndexedAccess`；仅 ESM；`import type`；未使用变量前缀 `_`；注释解释 WHY 不解释 WHAT；不用 emoji。**注释一律英文**；UI 文案（字符串字面量）与测试名（describe/it）保持简体中文——注释是给读代码的人的，文案和测试输出是给用户与运行报告的。
 
 lint 现有 7 个 `react-hooks/exhaustive-deps` 警告，是 DG-Chat 合并前 lint 被 `|| true` 关掉留下的基线。**不要新增**，也不必在无关改动里顺手清理。
 
