@@ -18,7 +18,7 @@ packages/platform/*   @0xnullai/*，跨模块共用、不发布
                       llm-providers · market-client · permissions
 packages/agent/*      @dg-agent/*，Agent 模块专属
 apps/web              统一外壳。唯一的入口
-apps/*                control agent voice chat playground market（模块）· landing wiki mcp
+apps/*                control agent voice chat playground market（模块）· mcp
 android/app           单一 Tauri 壳，六个模块一个 APK
 workers/*             auth · llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
                       脚本名一律 0xnullai-*；secret 绑在脚本上，改名不跟着走

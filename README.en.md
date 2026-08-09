@@ -80,7 +80,7 @@ packages/
 apps/
   web/        the shell — the only entry point
   control/ agent/ voice/ chat/ playground/ market/
-  landing/ wiki/ mcp/
+  mcp/        the MCP server, published to npm as dg-mcp
 android/app/  one Tauri shell, six modules, one APK
 workers/      auth · llm-proxy (the free provider) · speech-proxy
 ```

@@ -62,7 +62,6 @@ packages/
 apps/
   web/                     统一外壳，唯一的入口
   control/ agent/ voice/ chat/ playground/ market/   六个模块，只在外壳里跑
-  landing/ wiki/           落地页与文档站
   mcp/                     MCP 服务端，发布为 npm 包 dg-mcp
 android/
   app/                     单一 Tauri 壳，六个模块一个 APK
@@ -93,7 +92,7 @@ npm run format       # prettier --write
 npm run changeset    # 为 @dg-kit/* 的改动写发布说明
 ```
 
-单个 workspace 用 `-w`：`npm run test -w dg-voice`。
+单个 workspace 用 `-w`：`npm run test -w 0xnullai-voice`。
 
 ## 分支约定
 
