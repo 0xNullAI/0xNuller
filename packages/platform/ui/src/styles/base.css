@@ -14,8 +14,11 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  font-family:
-    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif !important;
+  /* Through the token, not a second literal copy of the stack. --font-body
+     is a superset (it also lists system-ui), and having the stack written
+     twice meant the token could be changed with no effect here. The
+     !important went with it: nothing was overriding this. */
+  font-family: var(--font-body);
   color: var(--text);
   background: var(--bg);
   background-color: var(--bg);

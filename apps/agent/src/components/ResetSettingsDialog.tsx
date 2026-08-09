@@ -18,7 +18,7 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        overlayClassName="bg-black/30 backdrop-blur-[1px]"
+        overlayClassName="backdrop-blur-[2px]"
         className="reset-settings-dialog max-w-[380px] rounded-[14px] p-5 shadow-[var(--shadow-soft)]"
       >
         <DialogHeader className="gap-1 pr-10">

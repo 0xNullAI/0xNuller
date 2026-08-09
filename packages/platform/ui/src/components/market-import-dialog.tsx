@@ -75,7 +75,7 @@ export function MarketImportDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        overlayClassName="bg-black/18 backdrop-blur-[2px]"
+        overlayClassName="backdrop-blur-[2px]"
         className="max-w-[680px] overflow-hidden p-0"
       >
         <div className="panel-header">

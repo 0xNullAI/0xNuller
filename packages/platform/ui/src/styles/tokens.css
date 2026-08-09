@@ -55,6 +55,13 @@
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
+  /* The control scale. 12px is the smallest surface radius, but buttons,
+     chips and small inputs across the four modules settled on 10px and 8px —
+     67 and 18 call sites respectively, none of which was wrong. Naming the
+     scale they actually use beats rewriting a hundred call sites to a number
+     nobody chose. */
+  --radius-ctl: 10px;
+  --radius-xs: 8px;
   --max-width: 1600px;
   --button-text: #ffffff;
   --scrollbar-thumb: #d0dbe3;
@@ -92,6 +99,10 @@
   /* Motion durations. The scattered 120/140/150/160/200ms collapse into two tiers. */
   --dur-fast: 120ms;
   --dur: 160ms;
+  /* Deliberate long-form motion — panel transitions, meters settling. The
+     300-500ms values in use are not drift toward the other two tiers; they
+     read as slow on purpose. */
+  --dur-slow: 300ms;
 }
 
 :root[data-theme='dark'] {
