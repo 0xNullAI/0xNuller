@@ -47,8 +47,7 @@
     "@0xnullai/auth": "*",
     "dg-chat": "*",
     "dg-voice": "*",
-    "dg-market": "*",
-    "dg-wiki": "*"
+    "dg-market": "*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

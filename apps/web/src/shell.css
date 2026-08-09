@@ -17,7 +17,6 @@
 @source '../../chat/src';
 @source '../../voice/src';
 @source '../../market/src';
-@source '../../wiki/src';
 
 @import '@0xnullai/ui/styles/tokens.css';
 @import '@0xnullai/ui/styles/base.css' layer(ui-base);
@@ -33,36 +32,133 @@
 @import '../../agent/src/styles/app.css' layer(module);
 @import '../../voice/src/styles/settings.css' layer(module);
 @import '../../chat/src/styles/app.css' layer(module);
-/* 文档站的 markdown 排版。它现在只服务于说明弹窗（.doc-body），不再是一个模块。 */
-@import '../../wiki/src/styles/wiki.css' layer(module);
 /* Market 的 561 行必须走这里而不是模块入口的 JS import：通过 JS import 的 CSS 无法
    指定层，会落在所有层之外从而无条件压过全部 Tailwind。实测后果是它那条通用的
    `.grid` 接管了权限弹窗与安全须知的栅格——安全 UI 的布局被一个商店样式表决定。 */
 @import '../../market/src/web/styles.css' layer(module);
 
 @layer shell {
-  /* 说明弹窗里的正文。文档站那套排版是给一个独立站点做的——h1 用 clamp 到 3.6rem、
-     标题上方 2em 的留白，塞进 880px 宽的弹窗里第一屏只装得下一个标题。
-     这里只压字号与间距，其余（§ 标记、行高、代码块）原样保留。 */
-  .docs-in-dialog {
-    max-width: none;
+  /* 说明弹窗的正文排版。
+     之前引的是文档站那 74 行 wiki.css（§ 标题前缀、代码块 ◉ output 角标、加粗带
+     荧光笔底色、列表点 ▸、h1 clamp 3.6rem）——那是独立站点的视觉身份，放进
+     「我卡住了，来查一下」的弹窗里全是噪音。文档站已删，这里是全新的一套：
+     字号一档、间距规整、没有任何装饰物。 */
+  .docs-body {
     font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--text);
   }
 
-  .docs-in-dialog h1 {
-    font-size: 1.6rem;
-    margin-bottom: 0.8em;
-    padding-bottom: 0.5em;
+  .docs-body h1 {
+    margin: 0 0 1em;
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
   }
 
-  .docs-in-dialog h2 {
-    font-size: 1.15rem;
-    margin-top: 1.6em;
+  .docs-body h2 {
+    margin: 1.9em 0 0.6em;
+    font-size: 1.05rem;
+    font-weight: 650;
   }
 
-  .docs-in-dialog h3 {
-    font-size: 1rem;
-    margin-top: 1.3em;
+  .docs-body h3 {
+    margin: 1.5em 0 0.4em;
+    font-size: 0.95rem;
+    font-weight: 650;
+  }
+
+  .docs-body p {
+    margin: 0 0 0.9em;
+  }
+
+  /* Tailwind preflight strips list markers globally; restore them here —
+     without bullets a list reads as a run of unrelated lines. */
+  .docs-body ul {
+    list-style: disc;
+  }
+
+  .docs-body ol {
+    list-style: decimal;
+  }
+
+  .docs-body ul,
+  .docs-body ol {
+    margin: 0 0 0.9em;
+    padding-left: 1.4em;
+  }
+
+  .docs-body li {
+    margin: 0.3em 0;
+  }
+
+  .docs-body li::marker {
+    color: var(--text-faint);
+  }
+
+  .docs-body strong {
+    font-weight: 650;
+  }
+
+  .docs-body a {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .docs-body code {
+    padding: 0.1em 0.4em;
+    border-radius: 6px;
+    background: var(--bg-soft);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+  }
+
+  .docs-body pre {
+    margin: 0 0 1em;
+    padding: 0.8em 1em;
+    border-radius: 10px;
+    background: var(--bg-soft);
+    overflow-x: auto;
+  }
+
+  .docs-body pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  /* 引用块承载操作提示（「搜不到设备？…」），给一点底色让它从正文里浮出来。 */
+  .docs-body blockquote {
+    margin: 0 0 1em;
+    padding: 0.55em 1em;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    background: var(--accent-soft);
+  }
+
+  .docs-body blockquote p {
+    margin: 0;
+  }
+
+  .docs-body hr {
+    margin: 1.8em 0;
+    border: none;
+    height: 1px;
+    background: var(--surface-border);
+  }
+
+  .docs-body table {
+    margin: 0 0 1em;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+  }
+
+  .docs-body th,
+  .docs-body td {
+    padding: 0.5em 0.8em;
+    border-bottom: 1px solid var(--surface-border);
+    text-align: left;
   }
 
   html,

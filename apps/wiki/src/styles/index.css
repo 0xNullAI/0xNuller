@@ -1,4 +1,0 @@
-@import 'tailwindcss';
-@import '@0xnullai/ui/styles/tokens.css';
-@source '../../../../packages/platform/ui/src';
-@import './wiki.css' layer(module);
