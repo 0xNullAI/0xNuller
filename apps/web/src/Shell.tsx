@@ -8,6 +8,7 @@ import {
   useModuleActionsContainer,
   SidebarSectionsProvider,
   OverlayProvider,
+  StopFailureBanner,
   useOverlayRoot,
   useModuleOverlayLayer,
 } from '@0xnullai/ui';
@@ -290,6 +291,13 @@ export function Shell() {
               never sees it. */}
           <FirstConnectionNotice />
         </OverlayProvider>
+
+        {/* Outside the overlay provider on purpose. The overlay container is
+            per-module and gets hidden when you switch modules, but "a device
+            did not stop" outlives whichever module was showing — and it has
+            to stay reachable while a dialog is open, which is why it sits at
+            the top of the z scale rather than in the overlay layer. */}
+        <StopFailureBanner />
       </div>
     </SidebarSectionsProvider>
   );

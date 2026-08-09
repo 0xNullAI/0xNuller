@@ -1,12 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Square } from 'lucide-react';
-import {
-  allConnectedDevices,
-  stopAllSafetySessions,
-  subscribeSafetySessions,
-} from '@dg-kit/safety';
+import { allConnectedDevices, subscribeSafetySessions } from '@dg-kit/safety';
 import type { DeviceSummary } from '@dg-kit/safety';
-import { BatteryIcon } from '@0xnullai/ui';
+import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
 
 /**
  * The device bar. It appears at the very top of the content area once a device is
@@ -99,7 +95,7 @@ export function DeviceBar() {
         onClick={async () => {
           setStopping(true);
           try {
-            await stopAllSafetySessions();
+            await stopAllDevices();
           } finally {
             setStopping(false);
           }

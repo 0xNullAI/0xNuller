@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { SafetyNotice } from '@0xnullai/ui';
+import { SafetyNotice, stopAllDevices } from '@0xnullai/ui';
 import {
   allConnectedDevices,
   isSafetyNoticeAccepted,
   rememberSafetyNoticeAccepted,
-  stopAllSafetySessions,
 } from '@dg-kit/safety';
 
 /**
@@ -51,7 +50,7 @@ export function FirstConnectionNotice() {
       }}
       onDecline={() => {
         // A device is connected and the user does not accept the risk — stop, then close.
-        void stopAllSafetySessions().catch(() => undefined);
+        void stopAllDevices();
         setDismissed(true);
         setShow(false);
       }}

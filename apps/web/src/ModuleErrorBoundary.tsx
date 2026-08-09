@@ -1,6 +1,6 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { stopAllSafetySessions } from '@dg-kit/safety';
+import { stopAllDevices } from '@0xnullai/ui';
 
 /**
  * Keeps a module's crash contained inside that module.
@@ -38,7 +38,7 @@ export class ModuleErrorBoundary extends Component<Props, State> {
     // button has already gone down with it.
     // A failure here must not let the boundary itself throw — that would escalate the
     // crash into an unmount of the whole tree, exactly what this is here to prevent.
-    void stopAllSafetySessions().catch(() => undefined);
+    void stopAllDevices();
     console.error(`[shell] 模块 ${this.props.moduleId} 渲染失败`, error, info.componentStack);
   }
 

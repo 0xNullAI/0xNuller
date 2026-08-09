@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import {
-  activeSafetySessions,
-  stopAllSafetySessions,
-  subscribeSafetySessions,
-} from '@dg-kit/safety';
+import { activeSafetySessions, subscribeSafetySessions } from '@dg-kit/safety';
 import { Button } from './button';
+import { stopAllDevices } from '../stop-all';
 
 /**
  * The global stop anchor.
@@ -52,12 +49,9 @@ export function EmergencyStopButton({ className }: { className?: string }) {
       onClick={async () => {
         setStopping(true);
         try {
-          const r = await stopAllSafetySessions();
-          if (r.failed.length > 0) {
-            // Not swallowed: if a module failed to stop, the user must
-            // know to physically disconnect.
-            console.error('[safety] 部分会话未能停止', r.failed);
-          }
+          // Failures surface through StopFailureBanner — the user has to be
+          // told to physically disconnect, and a console line does not do that.
+          await stopAllDevices();
         } finally {
           setStopping(false);
         }
