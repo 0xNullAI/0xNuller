@@ -1,7 +1,7 @@
 // R2 media upload / read-back.
 // Key convention: room/{code}/{id}; the mime type lives in R2 httpMetadata, and room cleanup bulk-deletes by the `room/{code}/` prefix.
 import type { Env } from './index';
-import { MAX_MEDIA_BYTES, ALLOWED_MEDIA_PREFIXES } from './wire';
+import { MAX_MEDIA_BYTES, isAllowedMediaType } from './wire';
 
 function mediaKey(code: string, id: string): string {
   return `room/${code}/${id}`;
@@ -16,7 +16,7 @@ export async function handleMediaUpload(request: Request, env: Env, code: string
   }
 
   const mime = request.headers.get('Content-Type') ?? '';
-  if (!ALLOWED_MEDIA_PREFIXES.some(p => mime.startsWith(p))) {
+  if (!isAllowedMediaType(mime)) {
     return json(415, { error: 'unsupported media type' });
   }
 
@@ -40,6 +40,13 @@ export async function handleMediaRead(env: Env, code: string, id: string): Promi
   headers.set('Content-Type', obj.httpMetadata?.contentType ?? 'application/octet-stream');
   headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   headers.set('ETag', obj.httpEtag);
+  // Defense in depth behind the upload allow-list. This response is served
+  // from the app's own origin, where the session cookie lives, so anything
+  // stored here must not be able to become active content: nosniff stops the
+  // browser inventing a richer type than we declared, and the CSP neuters
+  // script and subresource loading even if some future type slips through.
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
   return new Response(obj.body, { headers });
 }
 

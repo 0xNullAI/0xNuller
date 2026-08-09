@@ -125,5 +125,41 @@ export const RESERVED_ROOM_NAME = '0xNullAI 公开讨论区';
 /** Upper bound on uploaded media size (bytes). */
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
 
-/** Allowed media MIME prefixes. */
-export const ALLOWED_MEDIA_PREFIXES = ['image/', 'audio/'];
+/**
+ * Media types accepted for upload, as an exact allow-list.
+ *
+ * It used to be the prefixes `image/` and `audio/`, which admit
+ * `image/svg+xml` — and an SVG is a document that can carry <script>. The
+ * upload endpoint takes no auth, and read-back serves the file inline from
+ * the app's own origin with the type it was uploaded under, so an attacker
+ * could park script on the origin that holds the session cookie.
+ *
+ * Only formats the client actually produces are listed: images are always
+ * re-encoded through canvas.toBlob to JPEG, and the recorder picks from the
+ * webm/mp4/aac set. The extra raster types cover paths that may forward an
+ * original file. Nothing here can execute.
+ */
+export const ALLOWED_MEDIA_TYPES: readonly string[] = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'audio/webm',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
+  'audio/wav',
+];
+
+/**
+ * Whether a Content-Type header may be stored.
+ *
+ * Compares the bare type: the recorder sends `audio/webm;codecs=opus`, and
+ * a parameter must not be a way to smuggle a type past the check.
+ */
+export function isAllowedMediaType(header: string | null): boolean {
+  if (!header) return false;
+  const bare = header.split(';')[0]!.trim().toLowerCase();
+  return ALLOWED_MEDIA_TYPES.includes(bare);
+}
