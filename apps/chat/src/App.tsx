@@ -357,6 +357,25 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     if (displayName) localStorage.setItem('dg-chat-name', displayName);
   }, [displayName]);
 
+  // usePeerRoom returns a fresh aggregate object whenever room state changes, while these
+  // callbacks are deliberately stable and route through refs inside the hook. Depending on
+  // the aggregate would therefore re-register handlers and restart heartbeats for unrelated
+  // room updates (messages, presence, host changes). Keep the lifecycle tied to the stable
+  // capabilities and the specific scalar state each operation actually consumes.
+  const {
+    notifyLocal,
+    setCommandHandler,
+    roomId,
+    mediaUploadToken,
+    sendMessage,
+    setWaveformHandler,
+    sendCommand: sendRoomCommand,
+    connected: roomConnected,
+    broadcastStateFast,
+    broadcastStateSlow,
+  } = peerRoom;
+  const { addRemoteWaveform } = waveforms;
+
   // Register the remote command handler
   /**
    * The shared safety policy, applied to AI-issued commands.
@@ -513,16 +532,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           opossumStop: deviceRef.current.opossumStop,
           setLedColor: deviceRef.current.setLedColor,
         },
-        notify: peerRoom.notifyLocal,
+        notify: notifyLocal,
       };
       executeCommand(cmd, ctx);
     },
-    [callApplyFire, peerRoom.notifyLocal],
+    [callApplyFire, notifyLocal],
   );
 
   useEffect(() => {
-    peerRoom.setCommandHandler(handleCommand);
-  }, [peerRoom.setCommandHandler, handleCommand]);
+    setCommandHandler(handleCommand);
+  }, [setCommandHandler, handleCommand]);
 
   // Upload the media to R2, then send it out as a chat message.
   const sendMedia = useCallback(
@@ -531,22 +550,22 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       kind: 'image' | 'audio',
       meta?: { durationMs?: number; w?: number; h?: number },
     ) => {
-      const room = peerRoom.roomId;
-      const mediaToken = peerRoom.mediaUploadToken;
+      const room = roomId;
+      const mediaToken = mediaUploadToken;
       if (!room || !mediaToken) return;
       try {
         const media = await uploadMedia(room, mediaToken, blob, kind, meta);
-        peerRoom.sendMessage('', media);
+        sendMessage('', media);
       } catch (err) {
         console.error('[Chat] media upload failed', err);
       }
     },
-    [peerRoom.roomId, peerRoom.mediaUploadToken, peerRoom.sendMessage],
+    [roomId, mediaUploadToken, sendMessage],
   );
 
   const handleWaveform = useCallback(
     (transfer: WaveformTransfer, _peerId: string) => {
-      waveforms.addRemoteWaveform({
+      addRemoteWaveform({
         id: transfer.wid,
         name: transfer.wn,
         description: '',
@@ -554,27 +573,27 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         custom: true,
       });
     },
-    [waveforms.addRemoteWaveform],
+    [addRemoteWaveform],
   );
 
   useEffect(() => {
-    peerRoom.setWaveformHandler(handleWaveform);
-  }, [peerRoom.setWaveformHandler, handleWaveform]);
+    setWaveformHandler(handleWaveform);
+  }, [setWaveformHandler, handleWaveform]);
 
   const sendCommand = useCallback(
     (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
       const cmd: DeviceCommand = { action, ...params };
       if (target === 'self') handleCommand(cmd, 'self');
-      else peerRoom.sendCommand(target, action, params);
+      else sendRoomCommand(target, action, params);
     },
-    [peerRoom.sendCommand, handleCommand],
+    [sendRoomCommand, handleCommand],
   );
 
   // High-frequency state: broadcast immediately when strength / current waveform changes
   // (the hook throttles to 200ms internally)
   useEffect(() => {
-    if (!peerRoom.connected) return;
-    peerRoom.broadcastStateFast({
+    if (!roomConnected) return;
+    broadcastStateFast({
       strengthA: device.strengthA,
       strengthB: device.strengthB,
       waveA: device.waveIdA,
@@ -588,8 +607,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       sensorLastEventAt: device.sensor?.lastEventAt ?? null,
     });
   }, [
-    peerRoom.connected,
-    peerRoom.broadcastStateFast,
+    roomConnected,
+    broadcastStateFast,
     device.strengthA,
     device.strengthB,
     device.waveIdA,
@@ -606,9 +625,9 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // Low-frequency state: a 5s heartbeat plus an immediate sync when the name / battery /
   // connection / catalog changes
   useEffect(() => {
-    if (!peerRoom.connected) return;
+    if (!roomConnected) return;
     const send = () => {
-      peerRoom.broadcastStateSlow({
+      broadcastStateSlow({
         displayName,
         username,
         deviceConnected: device.connected && !deviceReleased,
@@ -642,11 +661,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     const t = setInterval(send, 5000);
     return () => clearInterval(t);
   }, [
-    peerRoom.connected,
-    peerRoom.broadcastStateSlow,
+    roomConnected,
+    broadcastStateSlow,
     displayName,
     username,
     device.connected,
+    deviceReleased,
     device.battery,
     waveforms.allWaveforms.length,
     queueA,
