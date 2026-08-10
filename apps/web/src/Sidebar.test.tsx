@@ -30,6 +30,7 @@ describe('Sidebar 默认入口', () => {
 
     expect(screen.getByRole('heading', { name: '对话' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '房间' })).toBeTruthy();
+    expect(screen.queryByText('本项目仅供学习交流使用，请遵守当地法律法规。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '新对话' }));
     expect(onNavigate).toHaveBeenCalledWith('agent');
     fireEvent.click(screen.getByRole('button', { name: /公开大厅/ }));
