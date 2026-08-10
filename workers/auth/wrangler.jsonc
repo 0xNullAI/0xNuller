@@ -2,16 +2,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "0xnullai-auth",
   "main": "src/index.ts",
-  // 账号服务挂在根域的 /api/auth/* 下。同源意味着会话 cookie 不需要跨站配置，
-  // Tauri 壳仍然走 Bearer（它的 origin 是本地 scheme，永远拿不到网页域的 cookie）。
+  // 账户与个人数据 API。
   "routes": [{ "pattern": "0xnullai.com/api/auth/*", "zone_name": "0xnullai.com" }],
 
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
   "secrets": { "required": ["IP_PEPPER", "DM_TICKET_SECRET"] },
 
-  // 库已创建（region ENAM）。改动 schema 后执行：
-  //   wrangler d1 migrations apply 0xnullai-auth --remote
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,32 +18,17 @@
     },
   ],
 
-  // 个人相册对象。首次部署前需显式创建生产 bucket；本地 Wrangler 会模拟该 binding：
-  //   wrangler r2 bucket create 0xnullai-profile-photos
+  // 个人相册对象存储。
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "0xnullai-profile-photos" }],
 
-  // 只清理已经失效的会话与登录限流记录；用户内容和删除墓碑不做时间淘汰。
+  // 定时处理会话、上传补偿和账户删除任务。
   "triggers": { "crons": ["17 4 * * *"] },
 
   "vars": {
-    // 允许携带凭据的来源。带凭据的请求不能用通配 origin，必须逐个列出。
     "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
   },
 
-  // 拉黑要把已经在跑的私聊掐掉，本服务是唯一知道这件事的地方，所以由它推给 Chat。
-  // 只有这一个用途：账号服务不向任何 Worker「要」东西，只推自己拥有的事实。
-  //
-  // 反方向没有绑定，也不会有。Chat 验票据用的是签名，不是回调——WebSocket 升级
-  // 请求带不了 Authorization 头，安卓壳又永远拿不到网页域的 cookie，凭据根本递
-  // 不过去。详见 src/dm-ticket.ts。
+  // 向 Chat 同步账户侧的私聊状态变化。
   "services": [{ "binding": "CHAT", "service": "0xnullai-chat" }],
-
-  // 机密用命令设置，勿写进文件：
-  //   wrangler secret put IP_PEPPER   # 限流哈希的 pepper，**必须永不轮换**
-  //                                   # ——轮换会让全部限流记录失效
-  //   wrangler secret put DM_TICKET_SECRET   # 与 0xnullai-chat 同一个值
-  //                                   # **必须永不轮换**——私聊会话的 DO 名字是用它
-  //                                   # 对两个账号 id 做 HMAC 得来的，换值等于全部
-  //                                   # 私聊历史变成孤儿
   "observability": { "enabled": true },
 }

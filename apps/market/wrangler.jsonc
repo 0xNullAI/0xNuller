@@ -6,13 +6,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "secrets": { "required": ["MARKET_IP_PEPPER"] },
 
-  // 统一外壳占据根域，本 Worker 只接管市场 API。
+  // Market API。
   "routes": [{ "pattern": "0xnullai.com/api/items*", "zone_name": "0xnullai.com" }],
   "workers_dev": true,
   "preview_urls": true,
 
-  // 库名仍是 dg-market；绑定按 database_id 走。迁移必须统一经 Wrangler
-  // migrations 执行，不能再分别维护 schema.sql 与一次性 execute 脚本。
+  // 数据结构只通过 Wrangler migrations 升级。
   "d1_databases": [
     {
       "binding": "DB",
@@ -22,7 +21,7 @@
     },
   ],
 
-  // 上传时由私有 RPC 将条目绑定到当前 Auth 账户；公开 HTTP 无法调用该入口。
+  // 上传内容绑定当前 Auth 账户。
   "services": [
     {
       "binding": "AUTH",
@@ -31,7 +30,5 @@
     },
   ],
 
-  // 机密只用版本上传的 secrets file 设置，勿写进配置或源码：
-  // MARKET_IP_PEPPER（上传限流）。编辑与管理权限来自 Auth 账户归属/角色。
   "observability": { "enabled": true },
 }

@@ -1,26 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "0xnuller",
-  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "compatibility_date": "2026-08-09",
 
-  // 统一外壳占据根域。四个模块与说明都是同一个 SPA 的路由，不再各占子域。
-  //
-  // **注意这里没有 `main`**：本 Worker 不跑任何代码，纯静态资源托管。
-  // 需要服务端逻辑的三条路径由各自的 Worker 通过**路径路由**接管（见下方 routes
-  // 注释与 docs/deploy.md）——它们排在更具体的位置，Cloudflare 按最长前缀匹配。
+  // 统一 Web 外壳；API 由更具体的 Worker 路由接管。
   "routes": [
     { "pattern": "0xnullai.com", "custom_domain": true },
     { "pattern": "www.0xnullai.com", "custom_domain": true },
   ],
   "workers_dev": true,
 
-  // 没有 binding：纯静态 Worker 不允许带 assets binding（wrangler 会直接拒绝），
-  // 而 binding 是给 Worker 代码用的——这里没有代码。
-  //
-  // 也不设 run_worker_first：全部请求直接由静态资源服务应答，不产生计费的 Worker
-  // 调用。免费额度是账号级共享的，而且耗尽时 Cloudflare 返回 429 而不是回退到资源
-  // 服务——整站直接挂掉，直到 UTC 零点。
+  // 纯静态资源，不配置 Worker 代码或 binding。
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",

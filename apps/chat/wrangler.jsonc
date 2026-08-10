@@ -1,45 +1,25 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // **这个名字不能再动了。** 免费窗口已经关闭。
-  //
-  // DO 命名空间按 Worker 脚本名划分，而 wrangler 的 migration 只有
-  // new_classes / new_sqlite_classes / renamed_classes（同脚本内）/
-  // deleted_classes，没有跨脚本转移。所以换名字 = 一套全新的 RoomDO/LobbyDO。
-  //
-  // 从 dg-chat 改到这里时代价还有限，因为房间是临时的：最后一人离开 10 分钟后
-  // RoomDO 自删消息、R2 媒体和 storage。**那个自毁已经没有了**——房间现在是
-  // 永久群组，历史、群主密钥哈希与公开设置都长期存在 DO 里（见 room-do.ts），
-  // 再改一次名字就是真正的用户数据丢失，而且无法回滚。
+  // Worker 名称与 Durable Object 命名空间已投入使用，禁止更改。
   "name": "0xnullai-chat",
-  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Fail closed during upload: a Chat version without this value would accept
-  // public rooms but make every authenticated DM handshake fail.
+  // 与 Auth 使用同一份私聊签名密钥。
   "secrets": { "required": ["DM_TICKET_SECRET"] },
 
-  // 统一外壳占据根域，本 Worker 只接管实时通信与媒体路径。
-  //
-  // **Durable Object 留在这个 script 里，绝不能挪走。** migration tag 按 Worker
-  // script 计——把 RoomDO / LobbyDO 搬进别的 script 等于新建一组空的 DO，
-  // 所有房间和聊天历史会变成永远访问不到的孤儿。这也是不把四个 Worker 合并成
-  // 一个 script 的唯一原因。
-  //
+  // 统一外壳下的 Chat API 与 WebSocket 路由。
   "routes": [
     { "pattern": "0xnullai.com/ws/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/lobby/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" },
-    // 私聊的未读汇总与吊销通知。私聊本身走 /ws/dm，已被上面的 /ws/* 覆盖。
     { "pattern": "0xnullai.com/api/dm/*", "zone_name": "0xnullai.com" },
   ],
-  // 保留 workers.dev 预发地址（0xnullai-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,
 
-  // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 群主与公开设置。
-  // 单例 LobbyDO（idFromName("v1")）：公开房间注册表 + 实时推送。
+  // 保持类名和 migration tag 稳定，以保留既有房间数据。
   "durable_objects": {
     "bindings": [
       { "name": "ROOM", "class_name": "RoomDO" },
@@ -53,17 +33,8 @@
     },
   ],
 
-  // 图片/语音对象存储。key = room/{code}/{msgId}。房间不再自毁，所以也不再按前缀整删：
-  // 消息被保留上限挤掉时连它的对象一起删，剩下的孤儿由 RoomDO 的 alarm() 扫掉。
-  // 首次部署前：wrangler r2 bucket create dg-chat-media
+  // 图片与语音对象存储。
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dg-chat-media" }],
-
-  // 机密用命令设置，勿写进文件：
-  //   wrangler secret put DM_TICKET_SECRET   # 与 0xnullai-auth 同一个值
-  //
-  // **必须永不轮换。** 私聊会话的 DO 名字是用它对两个账号 id 做 HMAC 得来的，
-  // 换一个值等于所有私聊换到另一批 DO 上——历史全部成为访问不到的孤儿，
-  // 和改 Worker 名字是同一类不可回滚的数据丢失。
 
   "observability": {
     "enabled": true,
