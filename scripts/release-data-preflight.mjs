@@ -48,7 +48,7 @@ const market = remoteQuery(
   ].join(';'),
 );
 
-const expectedMarketColumns = [
+const legacyMarketColumns = [
   'id',
   'type',
   'name',
@@ -64,6 +64,21 @@ const expectedMarketColumns = [
   'ip_hash',
   'created_at',
   'edit_key_hash',
+];
+const currentMarketColumns = [...legacyMarketColumns, 'edit_key_scheme'];
+const legacyMarketIndexes = ['idx_items_browse', 'idx_items_ip'];
+const currentMarketIndexes = [
+  'idx_items_browse',
+  'idx_items_edit_key_scheme',
+  'idx_items_ip',
+  'idx_items_visible_new',
+  'idx_items_visible_popular',
+];
+const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
+const marketCurrentLedger = [
+  ...marketBaseline,
+  '0002_browse_indexes.sql',
+  '0003_separate_security_domains.sql',
 ];
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
@@ -104,25 +119,62 @@ const auth = remoteQuery(
   ].join(';'),
 );
 
-const expectedAuthLedger = ['0001_init.sql', '0002_user_data.sql', '0003_user_profile.sql'];
+const legacyAuthLedger = ['0001_init.sql', '0002_user_data.sql', '0003_user_profile.sql'];
+const currentAuthLedger = [
+  ...legacyAuthLedger,
+  '0004_contacts.sql',
+  '0005_dm_threads.sql',
+  '0006_data_integrity.sql',
+  '0007_verified_claims_and_deletion_jobs.sql',
+  '0008_unique_email.sql',
+  '0009_account_roles.sql',
+];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];
 // Column order is not a compatibility boundary. Production added `views` later than
 // the fresh-migration baseline, so PRAGMA reports it at the end even though both
 // schemas expose the same named fields.
-if (
-  JSON.stringify([...marketColumns].sort()) !== JSON.stringify([...expectedMarketColumns].sort())
-) {
-  errors.push(`Market raw columns differ: ${JSON.stringify(marketColumns)}`);
+const sameNames = (actual, expected) =>
+  JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+const sameOrder = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);
+
+const marketState = (() => {
+  if (
+    sameNames(marketColumns, legacyMarketColumns) &&
+    sameOrder(marketIndexes, legacyMarketIndexes) &&
+    marketLedger.length === 0
+  ) {
+    return 'raw';
+  }
+  if (
+    sameNames(marketColumns, legacyMarketColumns) &&
+    sameOrder(marketIndexes, legacyMarketIndexes) &&
+    sameOrder(marketLedger, marketBaseline)
+  ) {
+    return 'baseline';
+  }
+  if (
+    sameNames(marketColumns, currentMarketColumns) &&
+    sameOrder(marketIndexes, currentMarketIndexes) &&
+    sameOrder(marketLedger, marketCurrentLedger)
+  ) {
+    return 'current';
+  }
+  return 'unknown';
+})();
+
+if (marketState === 'unknown') {
+  errors.push(
+    `Market schema/ledger combination is not a supported release state: ${JSON.stringify({ marketColumns, marketIndexes, marketLedger })}`,
+  );
 }
-if (JSON.stringify(marketIndexes) !== JSON.stringify(['idx_items_browse', 'idx_items_ip'])) {
-  errors.push(`Market raw indexes differ: ${JSON.stringify(marketIndexes)}`);
-}
-const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
-if (marketLedger.length > 0 && JSON.stringify(marketLedger) !== JSON.stringify(marketBaseline)) {
-  errors.push(`Market migration ledger differs: ${JSON.stringify(marketLedger)}`);
-}
-if (JSON.stringify(authLedger) !== JSON.stringify(expectedAuthLedger)) {
+
+const authState = sameOrder(authLedger, legacyAuthLedger)
+  ? 'legacy'
+  : sameOrder(authLedger, currentAuthLedger)
+    ? 'current'
+    : 'unknown';
+if (authState === 'unknown') {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
 }
 if (scalar(auth, 1, 'n') !== 0) errors.push('Auth 0006 blocker: duplicate photo object_key');
@@ -136,12 +188,14 @@ console.log(
       ok: errors.length === 0,
       readOnly: true,
       market: {
+        state: marketState,
         items: marketItems,
         columns: marketColumns,
         indexes: marketIndexes,
         migrations: marketLedger,
       },
       auth: {
+        state: authState,
         migrations: authLedger,
         users: scalar(auth, 6, 'n'),
         photos: scalar(auth, 5, 'n'),
@@ -149,15 +203,26 @@ console.log(
       errors,
       next: errors.length
         ? []
-        : [
-            'Back up both D1 databases.',
-            marketLedger.length === 0
-              ? 'Execute scripts/bootstrap-market-migration-ledger.sql against dg-market.'
-              : 'Market baseline ledger already exists; do not execute the bootstrap script again.',
-            'Apply Market 0002-0003 and Auth 0004-0009 migrations.',
-            'Create 0xnullai-profile-photos before deploying Auth.',
-            'Deploy chat, then auth, then market.',
-          ],
+        : marketState === 'current' && authState === 'current'
+          ? [
+              'Both D1 databases are at the 6.0 schema; do not reapply migrations.',
+              'Confirm the 0xnullai-profile-photos bucket exists.',
+              'Deploy chat, then auth, then market.',
+            ]
+          : [
+              'Back up both D1 databases.',
+              marketState === 'raw'
+                ? 'Execute scripts/bootstrap-market-migration-ledger.sql against dg-market.'
+                : marketState === 'baseline'
+                  ? 'Market baseline ledger already exists; do not execute the bootstrap script again.'
+                  : 'Market schema is current; do not reapply its migrations.',
+              authState === 'current'
+                ? 'Auth schema is current; do not reapply its migrations.'
+                : 'Apply Auth 0004-0009 migrations.',
+              marketState === 'current' ? null : 'Apply Market 0002-0003 migrations.',
+              'Create 0xnullai-profile-photos before deploying Auth.',
+              'Deploy chat, then auth, then market.',
+            ].filter(Boolean),
     },
     null,
     2,
