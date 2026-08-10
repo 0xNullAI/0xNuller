@@ -58,7 +58,7 @@ describe('设备栏', () => {
   it('连上设备后出现，且带停止按钮', () => {
     connectFake('agent', [COYOTE]);
     render(<DeviceBar />);
-    expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
     expect(screen.getByText('47L121000')).toBeTruthy();
     expect(screen.getByText('郊狼')).toBeTruthy();
   });
@@ -112,6 +112,7 @@ describe('设备栏', () => {
     render(<DeviceBar />);
     expect(screen.getByText('输出中')).toBeTruthy();
     expect(screen.getByText('待机')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
   });
 
   it('设备来自多个模块时标出各自属于哪个模块', () => {
@@ -128,7 +129,7 @@ describe('设备栏', () => {
     expect(screen.queryByText('control')).toBeNull();
   });
 
-  it('停止按钮的提示要数上同模块里的每一台', () => {
+  it('归零按钮的提示要数上同模块里的每一台', () => {
     connectFake('control', [
       { ...COYOTE, id: 'aa:01' },
       { ...COYOTE, id: 'aa:02' },
@@ -138,7 +139,7 @@ describe('设备栏', () => {
     // If the count came from the number of *modules* rather than devices, a
     // user with three attached devices would read 「1 台设备」 and reasonably
     // conclude the button only covers one of them.
-    expect(screen.getByRole('button', { name: /停止/ }).getAttribute('title')).toContain(
+    expect(screen.getByRole('button', { name: /归零/ }).getAttribute('title')).toContain(
       '3 台设备',
     );
   });
@@ -149,7 +150,7 @@ describe('设备栏', () => {
     expect(screen.queryByText('已断开')).toBeNull();
   });
 
-  it('点停止会停掉全部模块，不只是当前那个', async () => {
+  it('点归零会停掉全部模块，不只是当前那个', async () => {
     const stopAgent = connectFake('agent', [COYOTE]);
     const stopChat = connectFake('chat', [
       { id: 'c', kind: 'coyote', name: '另一台', connected: true },
@@ -157,7 +158,7 @@ describe('设备栏', () => {
     render(<DeviceBar />);
 
     await act(async () => {
-      screen.getByRole('button', { name: /停止/ }).click();
+      screen.getByRole('button', { name: /归零/ }).click();
     });
 
     // 「停止」 stops every registered session. If it only stopped the current module,
@@ -167,7 +168,7 @@ describe('设备栏', () => {
     expect(stopChat).toHaveBeenCalled();
   });
 
-  it('某个模块停止时抛错不影响其余模块', async () => {
+  it('某个模块归零时抛错不影响其余模块', async () => {
     const boom = vi.fn(() => {
       throw new Error('设备已断开');
     });
@@ -178,7 +179,7 @@ describe('设备栏', () => {
     render(<DeviceBar />);
 
     await act(async () => {
-      screen.getByRole('button', { name: /停止/ }).click();
+      screen.getByRole('button', { name: /归零/ }).click();
     });
 
     // This is the most dangerous case of all: one device throws because it dropped
@@ -209,7 +210,7 @@ describe('设备栏', () => {
     await act(async () => {
       vi.advanceTimersByTime(1100);
     });
-    expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
     vi.useRealTimers();
   });
 });

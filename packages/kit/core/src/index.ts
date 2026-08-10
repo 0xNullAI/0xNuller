@@ -54,6 +54,19 @@ export function createEmptyDeviceState(): DeviceState {
   };
 }
 
+/**
+ * Whether a Coyote is physically outputting on either channel.
+ *
+ * Strength is only the configured amplitude; without a running waveform no
+ * pulses are emitted. The two signals must also belong to the same channel —
+ * A strength plus a B waveform is still idle on both channels.
+ */
+export function isCoyoteOutputActive(
+  state: Pick<DeviceState, 'strengthA' | 'strengthB' | 'waveActiveA' | 'waveActiveB'>,
+): boolean {
+  return (state.strengthA > 0 && state.waveActiveA) || (state.strengthB > 0 && state.waveActiveB);
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------

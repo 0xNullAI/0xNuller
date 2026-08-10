@@ -9,6 +9,7 @@ import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
 import { PermissionModal } from '@0xnullai/ui';
 import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
+import { isCoyoteOutputActive } from '@dg-kit/core';
 
 interface AppProps {
   /**
@@ -57,7 +58,7 @@ export function App({ transport }: AppProps = {}) {
               name: state.coyote.deviceName ?? '郊狼',
               connected: true,
               battery: state.coyote.battery,
-              active: state.coyote.strengthA > 0 || state.coyote.strengthB > 0,
+              active: isCoyoteOutputActive(state.coyote),
               channels: [
                 { label: 'A', value: state.coyote.strengthA, max: state.coyote.limitA },
                 { label: 'B', value: state.coyote.strengthB, max: state.coyote.limitB },

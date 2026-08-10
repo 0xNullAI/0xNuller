@@ -25,6 +25,8 @@ function coyote(overrides: Partial<AttachedCoyoteState> = {}): AttachedCoyoteSta
     strengthB: 0,
     limitA: 50,
     limitB: 50,
+    waveActiveA: false,
+    waveActiveB: false,
     ...overrides,
   };
 }
@@ -73,7 +75,7 @@ describe('attachedDeviceSummaries', () => {
     expect(attachedDeviceSummaries(state())).toEqual([]);
   });
 
-  it('郊狼带上双通道读数与上限', () => {
+  it('郊狼带上双通道读数与上限，但未开波形时保持待机', () => {
     const [first] = attachedDeviceSummaries(state(COYOTE));
     expect(first).toMatchObject({
       id: 'aa:bb:cc:dd:ee:01',
@@ -81,7 +83,7 @@ describe('attachedDeviceSummaries', () => {
       name: '47L121000',
       connected: true,
       battery: 88,
-      active: true,
+      active: false,
       channels: [
         { label: 'A', value: 12, max: 50 },
         { label: 'B', value: 0, max: 50 },
@@ -92,6 +94,20 @@ describe('attachedDeviceSummaries', () => {
   it('郊狼两个通道都是零时不算在输出', () => {
     const [first] = attachedDeviceSummaries(
       state({ coyotes: [coyote({ strengthA: 0, strengthB: 0 })] }),
+    );
+    expect(first?.active).toBe(false);
+  });
+
+  it('同一通道有强度且波形运行时才标记为输出', () => {
+    const [first] = attachedDeviceSummaries(
+      state({ coyotes: [coyote({ strengthA: 5, waveActiveA: true })] }),
+    );
+    expect(first?.active).toBe(true);
+  });
+
+  it('A 强度与 B 波形不能交叉误报输出', () => {
+    const [first] = attachedDeviceSummaries(
+      state({ coyotes: [coyote({ strengthA: 5, waveActiveB: true })] }),
     );
     expect(first?.active).toBe(false);
   });

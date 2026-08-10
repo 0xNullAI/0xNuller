@@ -16,6 +16,7 @@ import { AuxDevices } from '@control/components/AuxDevices';
 import { CoyoteSection } from '@control/components/CoyoteControl';
 import { DeviceStrip } from '@control/components/DeviceStrip';
 import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
+import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
 
 /**
@@ -95,6 +96,41 @@ export default function App() {
     return subscribeSafetySessions(sync);
   }, []);
 
+  const {
+    start: startFire,
+    stop: stopFire,
+    cancel: cancelFire,
+    firingDeviceIds,
+  } = useMomentaryFire({
+    coyotes,
+    released,
+    setStrength: device.setStrength,
+  });
+
+  const stopAll = useCallback(() => {
+    // Invalidate held-fire restoration before the queued emergency stop. A
+    // pointerup delivered after the stop must never put the old baseline back.
+    cancelFire();
+    device.stopAll();
+  }, [cancelFire, device]);
+
+  const stopCoyote = useCallback(
+    (deviceId: string) => {
+      cancelFire(deviceId);
+      device.stopCoyote(deviceId);
+    },
+    [cancelFire, device],
+  );
+
+  const disconnectCoyote = useCallback(
+    (deviceId?: string) => {
+      if (deviceId) cancelFire(deviceId);
+      else cancelFire();
+      device.disconnectCoyote(deviceId);
+    },
+    [cancelFire, device],
+  );
+
   // Register on the global safety bus. This is the shell's only source for the
   // stop button and the device bar, and it must count every attached device —
   // an Opossum-only session that reports nothing leaves someone with a running
@@ -103,14 +139,11 @@ export default function App() {
     id: 'control',
     label: 'Control',
     isActive: () => holdsAnyDevice(device),
-    stop: () => device.stopAll(),
+    stop: stopAll,
     onRevoke: () => {
       // Losing the lease means switching away from Control. Stop the output and
-      // let the playlists fall idle; there is no held-down aggregate to unwind
-      // here (nobody else can push strength into this device), and the lease is
-      // never surrendered by disconnecting — a disconnect would let a
-      // background module's autoReconnect take the device back.
-      device.stopAll();
+      // invalidate any held fire before its eventual pointerup can restore it.
+      stopAll();
     },
     devices: () => attachedDeviceSummaries(device),
   });
@@ -199,13 +232,14 @@ export default function App() {
       const target = coyotes.find((c) => c.id === deviceId);
       const playing = channel === 'A' ? target?.waveActiveA : target?.waveActiveB;
       if (playing) {
+        stopFire(channel);
         device.stopWave(channel, deviceId);
         return;
       }
       const id = startWaveformId(playback.queue, playback.index);
       if (id) startChannel(deviceId, channel, id);
     },
-    [coyotes, device, playbackA, playbackB, startChannel],
+    [coyotes, device, playbackA, playbackB, startChannel, stopFire],
   );
 
   const toggleWaveform = useCallback(
@@ -235,7 +269,7 @@ export default function App() {
           limitB={device.limitB}
           onSetLimit={device.setLimit}
           onConnectDevice={device.connectDevice}
-          onDisconnectCoyote={device.disconnectCoyote}
+          onDisconnectCoyote={disconnectCoyote}
           onDisconnectSensor={device.disconnectSensor}
           onDisconnectOpossum={device.disconnectOpossum}
           onRestoreDefaults={waveforms.restoreDefaults}
@@ -249,11 +283,15 @@ export default function App() {
           queueLengthB={playbackB.queue.length}
           onAdjustStrength={adjustStrength}
           onTogglePlay={togglePlay}
-          onStopDevice={(deviceId) => device.stopCoyote(deviceId)}
-          onDisconnect={(deviceId) => device.disconnectCoyote(deviceId)}
+          firingDeviceIdA={firingDeviceIds.A}
+          firingDeviceIdB={firingDeviceIds.B}
+          onFireStart={startFire}
+          onFireStop={stopFire}
+          onStopDevice={stopCoyote}
+          onDisconnect={disconnectCoyote}
           // No device id: the module-level 归零 must cover every attached host
           // plus the Opossum, not whichever one happens to be selected.
-          onStopAll={() => device.stopAll()}
+          onStopAll={stopAll}
           waveTab={waveTab}
           onWaveTabChange={setWaveTab}
           waveforms={waveforms.allWaveforms}

@@ -39,6 +39,7 @@ import type {
   WaveformTransfer,
 } from './lib/protocol';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import { isCoyoteOutputActive } from '@dg-kit/core';
 
 export interface AppProps {
   /**
@@ -304,7 +305,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             name: c.name,
             connected: true,
             ...(typeof c.battery === 'number' ? { battery: c.battery } : {}),
-            active: c.strengthA > 0 || c.strengthB > 0,
+            active: isCoyoteOutputActive(c),
             channels: [
               { label: 'A', value: c.strengthA, max: c.limitA },
               { label: 'B', value: c.strengthB, max: c.limitB },

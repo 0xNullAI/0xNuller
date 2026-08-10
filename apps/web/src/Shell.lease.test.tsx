@@ -115,7 +115,7 @@ describe('外壳与设备控制权', () => {
     expect(agent.onRevoke).toHaveBeenCalled();
   });
 
-  it('回到首页时没有任何模块持有租约，但停止按钮还在', async () => {
+  it('回到首页时没有任何模块持有租约，但全局安全按钮还在', async () => {
     fakeModule('agent', [COYOTE]);
     await act(async () => {
       render(<Shell />);
@@ -129,18 +129,18 @@ describe('外壳与设备控制权', () => {
     expect(hasDeviceLease('agent')).toBe(false);
     // The home page is the easiest spot to miss: render the device bar as if it were
     // part of a module and it disappears once you go back home — while the device is
-    // still attached to someone, which is exactly when the stop button is needed most.
-    expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
+    // still attached to someone, which is exactly when the zero-output safety action is needed.
+    expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
   });
 
-  it('设备栏与停止按钮不随模块切换消失——设备还连着', async () => {
+  it('设备栏与全局安全按钮不随模块切换消失——设备还连着', async () => {
     fakeModule('agent', [COYOTE]);
     fakeModule('chat', []);
 
     await act(async () => {
       render(<Shell />);
     });
-    expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
 
     await act(async () => {
       window.history.pushState(null, '', '/chat');
@@ -148,7 +148,7 @@ describe('外壳与设备控制权', () => {
     });
 
     // Handing over control is not the same as disconnecting the device. As long as the
-    // device is still on someone's body, the stop button has to still be there.
-    expect(screen.getByRole('button', { name: /停止/ })).toBeTruthy();
+    // device is still on someone's body, the zero-output action has to still be there.
+    expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
   });
 });

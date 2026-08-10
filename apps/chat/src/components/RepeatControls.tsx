@@ -66,16 +66,19 @@ export function useRepeatAction(action: () => void, initialDelay = 400, repeatIn
 export function RepeatButton({
   onAction,
   className = DEFAULT_BUTTON_CLASS,
+  disabled = false,
   children,
 }: {
   onAction: () => void;
   className?: string;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   const handlers = useRepeatAction(onAction);
   return (
     <button
       {...handlers}
+      disabled={disabled}
       onContextMenu={(e) => e.preventDefault()}
       className={className}
       style={{ touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}

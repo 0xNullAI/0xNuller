@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   BluetoothOff,
   Pause,
@@ -11,18 +11,20 @@ import {
   Timer,
   Trash2,
   Upload,
+  Zap,
 } from 'lucide-react';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
 import type { WaveformDefinition } from '../../../chat/src/lib/waveforms';
 import type { PlayMode } from '../../../chat/src/lib/protocol';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
+import { isCoyoteOutputActive } from '@dg-kit/core';
 
 const RING_CLASS =
   'flex h-[110px] w-[110px] flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
 
 const STRENGTH_BTN_CLASS =
-  'flex h-11 w-11 select-none items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] active:scale-[0.92]';
+  'flex h-11 w-11 select-none items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] active:scale-[0.92] disabled:cursor-not-allowed disabled:opacity-30';
 
 const MODE_BUTTONS: { mode: PlayMode; label: string; title: string }[] = [
   { mode: 'single', label: '单曲', title: '单曲循环' },
@@ -50,6 +52,8 @@ interface CoyoteControlProps {
   onSelect: (deviceId: string) => void;
   queueLengthA: number;
   queueLengthB: number;
+  firingA: boolean;
+  firingB: boolean;
   onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
   /** Zero this host only. The all-devices 归零 stays below, outside this block. */
@@ -75,6 +79,8 @@ export function CoyoteControl({
   onSelect,
   queueLengthA,
   queueLengthB,
+  firingA,
+  firingB,
   onAdjustStrength,
   onTogglePlay,
   onStopDevice,
@@ -84,6 +90,7 @@ export function CoyoteControl({
     const strength = channel === 'A' ? coyote.strengthA : coyote.strengthB;
     const limit = channel === 'A' ? coyote.limitA : coyote.limitB;
     const playing = channel === 'A' ? coyote.waveActiveA : coyote.waveActiveB;
+    const firing = channel === 'A' ? firingA : firingB;
     const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
     return (
       <div className="flex flex-col items-center">
@@ -119,12 +126,14 @@ export function CoyoteControl({
           <RepeatButton
             onAction={() => onAdjustStrength(coyote.id, channel, -1)}
             className={STRENGTH_BTN_CLASS}
+            disabled={firing}
           >
             −
           </RepeatButton>
           <RepeatButton
             onAction={() => onAdjustStrength(coyote.id, channel, +1)}
             className={STRENGTH_BTN_CLASS}
+            disabled={firing}
           >
             +
           </RepeatButton>
@@ -157,9 +166,7 @@ export function CoyoteControl({
         >
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              coyote.strengthA > 0 || coyote.strengthB > 0
-                ? 'bg-[var(--accent)]'
-                : 'bg-[var(--success)]'
+              isCoyoteOutputActive(coyote) ? 'bg-[var(--accent)]' : 'bg-[var(--success)]'
             }`}
             aria-hidden
           />
@@ -217,6 +224,14 @@ interface WaveformPanelProps {
   onOpenMarket: () => void;
   /** Zero every attached device. Never narrowed to one host — see below. */
   onStopAll: () => void;
+  fireEnabledA: boolean;
+  fireEnabledB: boolean;
+  fireLimitA: number;
+  fireLimitB: number;
+  firingA: boolean;
+  firingB: boolean;
+  onFireStart: (channel: 'A' | 'B', boost: number) => void;
+  onFireStop: (channel: 'A' | 'B') => void;
 }
 
 /**
@@ -249,8 +264,93 @@ export function WaveformPanel({
   onImportFile,
   onOpenMarket,
   onStopAll,
+  fireEnabledA,
+  fireEnabledB,
+  fireLimitA,
+  fireLimitB,
+  firingA,
+  firingB,
+  onFireStart,
+  onFireStop,
 }: WaveformPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fireBoostA, setFireBoostA] = useState(5);
+  const [fireBoostB, setFireBoostB] = useState(5);
+
+  const renderFireChannel = (channel: 'A' | 'B') => {
+    const enabled = channel === 'A' ? fireEnabledA : fireEnabledB;
+    const firing = channel === 'A' ? firingA : firingB;
+    const limit = channel === 'A' ? fireLimitA : fireLimitB;
+    const configuredBoost = channel === 'A' ? fireBoostA : fireBoostB;
+    const boost = limit > 0 ? Math.min(configuredBoost, limit) : configuredBoost;
+    const setBoost = channel === 'A' ? setFireBoostA : setFireBoostB;
+    const disabled = !enabled || boost <= 0;
+    const stop = () => onFireStop(channel);
+
+    return (
+      <div
+        key={channel}
+        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] p-2"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="w-4 text-xs font-semibold text-[var(--text)]">{channel}</span>
+          <RepeatButton
+            onAction={() => setBoost(Math.max(0, boost - 1))}
+            disabled={firing}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-sm disabled:opacity-30"
+          >
+            −
+          </RepeatButton>
+          <span className="w-9 text-center font-mono text-xs tabular-nums text-[var(--text)]">
+            +{boost}
+          </span>
+          <RepeatButton
+            onAction={() => setBoost(Math.min(limit, boost + 1))}
+            disabled={firing || limit <= 0}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-sm disabled:opacity-30"
+          >
+            +
+          </RepeatButton>
+        </div>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={firing}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            onFireStart(channel, boost);
+          }}
+          onPointerUp={stop}
+          onPointerCancel={stop}
+          onLostPointerCapture={() => {
+            if (firing) stop();
+          }}
+          onKeyDown={(event) => {
+            if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              onFireStart(channel, boost);
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') stop();
+          }}
+          onBlur={stop}
+          onContextMenu={(event) => event.preventDefault()}
+          className={`flex h-9 shrink-0 select-none items-center gap-1.5 rounded-[var(--radius-ctl)] px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-35 ${
+            firing
+              ? 'scale-[0.97] bg-[var(--danger-button)] text-white'
+              : 'border border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger)] hover:bg-[var(--danger-surface)]'
+          }`}
+          style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
+          title={enabled ? `按住临时增加 ${channel} 通道强度` : `请先启动 ${channel} 通道波形`}
+        >
+          <Zap size={14} fill={firing ? 'currentColor' : 'none'} />
+          {firing ? '开火中' : '按住开火'}
+        </button>
+      </div>
+    );
+  };
 
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -331,6 +431,26 @@ export function WaveformPanel({
           <RotateCcw size={15} className="text-[var(--danger)]" />
           全部归零
         </button>
+      </div>
+
+      <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3">
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
+              <Zap size={13} className="text-[var(--danger)]" /> 一键开火
+            </p>
+            <p className="mt-1 text-[11px] text-[var(--text-faint)]">
+              按住临时增加强度，松开恢复；需先启动对应通道波形。
+            </p>
+          </div>
+          {targetName && (
+            <span className="max-w-28 truncate text-[10px] text-[var(--accent)]">{targetName}</span>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {renderFireChannel('A')}
+          {renderFireChannel('B')}
+        </div>
       </div>
 
       {/* ==================== A/B channel wave tab ==================== */}
@@ -436,7 +556,18 @@ export function WaveformPanel({
   );
 }
 
-interface CoyoteSectionProps extends Omit<WaveformPanelProps, 'targetName'> {
+interface CoyoteSectionProps extends Omit<
+  WaveformPanelProps,
+  | 'targetName'
+  | 'fireEnabledA'
+  | 'fireEnabledB'
+  | 'fireLimitA'
+  | 'fireLimitB'
+  | 'firingA'
+  | 'firingB'
+  | 'onFireStart'
+  | 'onFireStop'
+> {
   coyotes: CoyoteSummary[];
   selectedId: string | null;
   onSelect: (deviceId: string) => void;
@@ -444,6 +575,10 @@ interface CoyoteSectionProps extends Omit<WaveformPanelProps, 'targetName'> {
   queueLengthB: number;
   onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
+  firingDeviceIdA: string | null;
+  firingDeviceIdB: string | null;
+  onFireStart: (deviceId: string, channel: 'A' | 'B', boost: number) => void;
+  onFireStop: (channel: 'A' | 'B') => void;
   onStopDevice: (deviceId: string) => void;
   onDisconnect: (deviceId: string) => void;
 }
@@ -464,6 +599,10 @@ export function CoyoteSection({
   queueLengthB,
   onAdjustStrength,
   onTogglePlay,
+  firingDeviceIdA,
+  firingDeviceIdB,
+  onFireStart,
+  onFireStop,
   onStopDevice,
   onDisconnect,
   ...panel
@@ -490,6 +629,8 @@ export function CoyoteSection({
               onSelect={onSelect}
               queueLengthA={queueLengthA}
               queueLengthB={queueLengthB}
+              firingA={firingDeviceIdA === coyote.id}
+              firingB={firingDeviceIdB === coyote.id}
               onAdjustStrength={onAdjustStrength}
               onTogglePlay={onTogglePlay}
               onStopDevice={onStopDevice}
@@ -503,6 +644,16 @@ export function CoyoteSection({
         {...panel}
         targetName={multi ? (selected?.name ?? null) : null}
         queue={panel.queue}
+        fireEnabledA={Boolean(selected?.connected && selected.waveActiveA)}
+        fireEnabledB={Boolean(selected?.connected && selected.waveActiveB)}
+        fireLimitA={selected?.limitA ?? 0}
+        fireLimitB={selected?.limitB ?? 0}
+        firingA={firingDeviceIdA === selected?.id}
+        firingB={firingDeviceIdB === selected?.id}
+        onFireStart={(channel, boost) => {
+          if (selected) onFireStart(selected.id, channel, boost);
+        }}
+        onFireStop={onFireStop}
       />
     </section>
   );

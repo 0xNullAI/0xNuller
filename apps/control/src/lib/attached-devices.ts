@@ -1,4 +1,5 @@
 import type { DeviceSummary } from '@dg-kit/safety';
+import { isCoyoteOutputActive } from '@dg-kit/core';
 
 /**
  * What Control tells the safety bus it is holding.
@@ -22,6 +23,8 @@ export interface AttachedCoyoteState {
   strengthB: number;
   limitA: number;
   limitB: number;
+  waveActiveA: boolean;
+  waveActiveB: boolean;
 }
 
 /** The subset of `useDevice()`'s return value these summaries are built from. */
@@ -117,7 +120,7 @@ export function attachedDeviceSummaries(device: AttachedDeviceState): DeviceSumm
       name: labels.get(coyote.id) ?? coyote.name ?? '郊狼',
       connected: true,
       ...(typeof coyote.battery === 'number' ? { battery: coyote.battery } : {}),
-      active: coyote.strengthA > 0 || coyote.strengthB > 0,
+      active: isCoyoteOutputActive(coyote),
       channels: [
         { label: 'A', value: coyote.strengthA, max: coyote.limitA },
         { label: 'B', value: coyote.strengthB, max: coyote.limitB },

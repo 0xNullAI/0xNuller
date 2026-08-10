@@ -121,6 +121,7 @@ export function DeviceBar() {
   if (groups.length === 0) return null;
 
   const total = groups.reduce((n, g) => n + g.devices.length, 0);
+  const hasActiveOutput = groups.some((group) => group.devices.some((device) => device.active));
 
   return (
     <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
@@ -136,11 +137,19 @@ export function DeviceBar() {
             setStopping(false);
           }
         }}
-        className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--danger-button)] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--danger-button-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
-        title={`立刻停止全部输出（${total} 台设备）`}
+        className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+          hasActiveOutput
+            ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
+            : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
+        }`}
+        title={
+          hasActiveOutput
+            ? `立刻停止全部输出（${total} 台设备）`
+            : `将全部已连接设备归零（${total} 台设备）`
+        }
       >
         <Square className="h-3.5 w-3.5 fill-current" />
-        {stopping ? '停止中…' : '停止'}
+        {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
       </button>
 
       <div className="flex min-w-0 items-center gap-2">
