@@ -33,11 +33,11 @@ export interface Doc {
 }
 
 export const DOCS: Doc[] = [
-  { id: 'intro', label: '介绍', blurb: '这是什么 · 安全须知 · 第一次使用', markdown: intro },
+  { id: 'intro', label: '介绍', blurb: '安全与开始使用', markdown: intro },
   { id: 'control', label: 'Control', blurb: '自己控制自己的设备', markdown: control },
   { id: 'agent', label: 'Agent', blurb: '打字，AI 帮你操作', markdown: agent },
   { id: 'voice', label: 'Voice', blurb: '说话代替打字', markdown: voice },
-  { id: 'chat', label: 'Chat', blurb: '多人房间，别人可以控制你', markdown: chat },
+  { id: 'chat', label: 'Chat', blurb: '房间与私聊', markdown: chat },
   { id: 'playground', label: 'Playground', blurb: '把设备接进游戏', markdown: playground },
   { id: 'market', label: 'Market', blurb: '现成的波形和场景', markdown: market },
 ];
