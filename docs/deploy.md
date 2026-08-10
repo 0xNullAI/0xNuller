@@ -57,6 +57,12 @@ npm run release:data:preflight -- \
 4. Voice（启用体验服务时）
 5. Web
 
+Web 发布产物使用当前 Git commit 作为构建编号，并拒绝从未提交的代码构建：
+
+```bash
+npm run web:build:release
+```
+
 建议先上传不接流量的版本，完成烟测后再提升同一个版本：
 
 ```bash
