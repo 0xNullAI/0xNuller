@@ -9,10 +9,10 @@ import type { ReactNode } from 'react';
  * settings. Inside the shell that meant two stacked bars, with the module
  * name duplicating the highlighted nav item.
  *
- * Now there is one bar: module switcher top-left; the module's own buttons,
- * emergency stop, account, and theme on the right. Modules no longer draw a
- * header — they declare "these are my buttons" and the shell decides where
- * they go.
+ * Now there is one bar: device state and emergency stop stay on the left; the
+ * active module declares only the few context actions that belong on the right.
+ * Content-specific controls remain inside the module instead of creating a
+ * second global-looking header.
  *
  * Standalone (no Provider), `<ModuleActions>` renders in place and the
  * module keeps its own header — both forms share the same button code, no

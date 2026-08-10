@@ -22,7 +22,6 @@ import { ContactsDialog } from './ContactsDialog';
 import { ProfileDialog } from './profile/ProfileDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
-import { FirstConnectionNotice } from './FirstConnectionNotice';
 import { DocsDialog } from './DocsDialog';
 import { grantDeviceLease } from '@dg-kit/safety';
 
@@ -346,13 +345,6 @@ export function Shell() {
                 onClose={() => setProfileUsername(null)}
               />
             )}
-            {/* The safety notice appears once, on the **first device connection**, not
-              as a splash dialog. A splash dialog interrupts people who only want to
-              browse the market or read the docs, while the moment it really needs to
-              be seen is the moment the device goes onto someone's body. The terms of
-              use in the sign-up flow are the other candidate spot, but device use does
-              not require an account. */}
-            <FirstConnectionNotice />
           </OverlayProvider>
 
           {/* Outside the overlay provider on purpose. The overlay container is
