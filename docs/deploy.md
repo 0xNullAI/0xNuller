@@ -68,7 +68,8 @@ service binding 决定了固定顺序：chat → auth → market。Auth 指向 C
 推送私聊吊销），Market 指向 Auth 的私有归属 RPC；绑定目标不存在会使部署失败。
 
 ```bash
-npm run build            # 全仓，各模块的 dist 都要在
+# 发布构建必须写入来源 commit；否则本地 fallback 是一次性时间戳，无法追溯或复现。
+SOURCE_BUILD_ID="$(git rev-parse HEAD)" npm run build
 npm run verify:data      # 空库 + 真实升级形状，本地
 
 # 只读生产门禁（不会 create/migrate/deploy）

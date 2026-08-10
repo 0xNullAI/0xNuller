@@ -25,6 +25,7 @@ import type { Plugin } from 'vite';
 export function resolveBuildId(localPrefix: string): string {
   return (
     process.env.SOURCE_BUILD_ID ??
+    process.env.GITHUB_SHA ??
     process.env.VERCEL_GIT_COMMIT_SHA ??
     `${localPrefix}-${Date.now()}`
   );
