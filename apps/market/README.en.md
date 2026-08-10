@@ -22,8 +22,9 @@ npm run typecheck -w 0xnullai-market
 npm run build -w 0xnullai-market
 ```
 
-The Worker requires an independent `MARKET_IP_PEPPER` for upload rate limiting. Do not store it in
-the repository.
+The API Worker uses an independent `MARKET_IP_PEPPER` for upload rate limiting. Do not store it in
+the repository. The standalone Vite build is for local module development; the production UI is
+served by the unified web shell.
 
 ## API
 

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "wrangler dev",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run typecheck && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply dg-market --local",

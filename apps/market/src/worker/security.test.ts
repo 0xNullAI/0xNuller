@@ -14,7 +14,7 @@ describe('Market account ownership', () => {
       AUTH: {
         claimMarketItems: async () => 'unauthorized' as const,
       },
-    } as unknown as Parameters<typeof recordVerifiedClaims>[0];
+    } satisfies Parameters<typeof recordVerifiedClaims>[0];
 
     await expect(
       recordVerifiedClaims(env, new Request('https://market.test/api/items'), ['anonymous']),

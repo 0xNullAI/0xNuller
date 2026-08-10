@@ -14,25 +14,23 @@ import {
 } from './db';
 import { hashSourceIp } from './security';
 
-interface Env extends Cloudflare.Env {
-  // Wrangler currently emits the named entrypoint as bare `Service`; keep the RPC
-  // surface explicit here while still inheriting the generated binding.
-  AUTH: Fetcher & {
-    claimMarketItems(
-      credentials: { authorization: string | null; cookie: string | null },
-      itemIds: string[],
-      proof: 'market-upload',
-    ): Promise<'ok' | 'unauthorized' | 'conflict'>;
-    marketItemAccess(
-      credentials: { authorization: string | null; cookie: string | null },
-      itemId: string,
-    ): Promise<'admin' | 'owner' | 'user' | 'unauthorized'>;
-  };
-  MARKET_IP_PEPPER: string;
+interface MarketAuthService extends Fetcher {
+  claimMarketItems(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemIds: string[],
+    proof: 'market-upload',
+  ): Promise<'ok' | 'unauthorized' | 'conflict'>;
+  marketItemAccess(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemId: string,
+  ): Promise<'admin' | 'owner' | 'user' | 'unauthorized'>;
 }
 
-// DG-Agent is deployed on GitHub Pages (a different origin), so CORS has to be open for it
-// to fetch/import.
+type Env = Omit<Cloudflare.Env, 'AUTH'> & {
+  AUTH: MarketAuthService;
+};
+
+// Compatible clients on other origins can browse and import the public catalog.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
@@ -72,10 +70,7 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    if (!pathname.startsWith('/api/')) {
-      // Non-API requests go to Static Assets (the frontend SPA).
-      return env.ASSETS.fetch(request);
-    }
+    if (!pathname.startsWith('/api/')) return err('接口不存在', 404);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
@@ -214,7 +209,7 @@ function hasCredentials(credentials: ClaimCredentials): boolean {
 }
 
 export async function recordVerifiedClaims(
-  env: Env,
+  env: { AUTH: Pick<MarketAuthService, 'claimMarketItems'> },
   request: Request,
   itemIds: string[],
 ): Promise<'claimed'> {

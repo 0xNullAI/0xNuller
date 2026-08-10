@@ -9,13 +9,6 @@
   // 统一外壳占据根域，本 Worker 只接管市场 API。
   "routes": [{ "pattern": "0xnullai.com/api/items*", "zone_name": "0xnullai.com" }],
 
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
-  },
-
   // 库名仍是 dg-market；绑定按 database_id 走。迁移必须统一经 Wrangler
   // migrations 执行，不能再分别维护 schema.sql 与一次性 execute 脚本。
   "d1_databases": [
@@ -27,8 +20,7 @@
     },
   ],
 
-  // Market 验证条目的编辑凭证后，由这个私有 RPC entrypoint 写入 Auth 的归属表。
-  // 部署顺序必须是 chat → auth → market；公开 HTTP 无法调用该 entrypoint。
+  // 上传时由私有 RPC 将条目绑定到当前 Auth 账户；公开 HTTP 无法调用该入口。
   "services": [
     {
       "binding": "AUTH",
