@@ -24,9 +24,8 @@ export default defineConfig({
       'workers/auth',
       'android/app',
 
-      // The two proxy Workers are plain JS with no config of their own. They
-      // guard a paid upstream key, so their request-admission logic is tested
-      // even though the workers themselves are not a workspace.
+      // The two proxy Workers are plain JS with no config of their own. Their
+      // request-admission logic shares this lightweight Node project.
       {
         test: {
           name: 'worker-proxies',

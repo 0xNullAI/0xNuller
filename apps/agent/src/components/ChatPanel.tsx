@@ -496,7 +496,7 @@ export function ChatPanel({
                 )}
               </div>
 
-              {!deviceState.connected && (
+              {!inShell && !deviceState.connected && (
                 <p className="mt-2 px-1 text-[12px] leading-relaxed text-[var(--text-faint)]">
                   {BLUETOOTH_PAIR_HINT}
                 </p>
@@ -650,7 +650,7 @@ export function ChatPanel({
               </Button>
             )}
           </div>
-          {!deviceState.connected && (
+          {!inShell && !deviceState.connected && (
             <p className="mx-auto w-full max-w-[800px] shrink-0 px-3 pt-1.5 text-center text-[11px] leading-relaxed text-[var(--text-faint)] sm:px-6">
               {BLUETOOTH_PAIR_HINT}
             </p>

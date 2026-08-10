@@ -296,8 +296,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       fireBoostsB.current.clear();
       baselineARef.current = 0;
       baselineBRef.current = 0;
-      // 3) Tell the room. Without the broadcast the host sees the command go out with no
-      //    reaction, and the instinctive response is to crank it up and resend.
       // 3) Tell the room. Reuse the existing deviceConnected field instead of adding a
       //    new message type — a new type is silently ignored by old clients, whereas the
       //    other side already renders this field as 「未连接设备」.

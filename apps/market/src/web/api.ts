@@ -60,11 +60,6 @@ export async function fetchItems(query: ListQuery): Promise<MarketItem[]> {
   return items ?? [];
 }
 
-export async function fetchItem(id: string): Promise<MarketItem> {
-  const { item } = await req<{ item: MarketItem }>(`/api/items/${id}`);
-  return item;
-}
-
 export async function uploadItem(payload: UploadPayload): Promise<{ id: string }> {
   return req('/api/items', {
     method: 'POST',

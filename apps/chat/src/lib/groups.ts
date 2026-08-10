@@ -76,10 +76,6 @@ export function rememberGroup(code: string, name?: string): void {
   save(groups);
 }
 
-export function forgetGroup(code: string): void {
-  save(loadKnownGroups().filter((g) => g.code !== code));
-}
-
 function save(groups: KnownGroup[]): void {
   try {
     localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));

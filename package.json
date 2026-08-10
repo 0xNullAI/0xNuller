@@ -41,6 +41,7 @@
     "verify:android:apk": "node scripts/verify-android-apk.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "check:routes": "node scripts/check-routes.mjs",
+    "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
     "verify:data": "node scripts/verify-data-platform.mjs",
     "release:data:preflight": "node scripts/release-data-preflight.mjs",
     "account:role": "node scripts/set-account-role.mjs"
@@ -56,10 +57,12 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.9.0",
+    "jsdom": "^29.1.1",
+    "knip": "^5.68.0",
     "prettier": "^3.8.3",
-    "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.2",
+    "vite": "^8.2.1",
     "vitest": "^4.1.5"
   },
   "prettier": {

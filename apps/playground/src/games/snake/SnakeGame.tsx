@@ -14,8 +14,6 @@ export default function SnakeGame() {
 
   const onEvent = useCallback(
     (event: SnakeEvent) => {
-      // Feedback strength is a *request*. The device holder's safety caps
-      // decide what actually lands — a game must never be a way around them.
       if (event.type === 'ate') pulse('light');
       else pulse('strong');
     },
@@ -108,10 +106,7 @@ export default function SnakeGame() {
         <TouchButton label="右" onPress={() => turn('right')} />
       </div>
 
-      <p className="max-w-[420px] text-center text-xs text-[var(--text-faint)]">
-        方向键或 WASD
-        控制。吃到食物会给一次短反馈，撞墙或咬到自己会给一次稍强的——强度始终受你的设备安全上限约束。
-      </p>
+      <p className="text-center text-xs text-[var(--text-faint)]">方向键或 WASD</p>
     </div>
   );
 }

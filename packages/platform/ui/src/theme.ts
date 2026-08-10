@@ -45,16 +45,3 @@ export function applyTheme(mode: ThemeMode): void {
     root.style.removeProperty('--theme-transition-override');
   });
 }
-
-export function subscribeThemeChanges(mode: ThemeMode, listener: () => void): () => void {
-  if (mode !== 'auto' || typeof window === 'undefined') {
-    return () => undefined;
-  }
-
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const handler = () => listener();
-  media.addEventListener('change', handler);
-  return () => {
-    media.removeEventListener('change', handler);
-  };
-}

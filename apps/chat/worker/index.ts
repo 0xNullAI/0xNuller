@@ -1,6 +1,4 @@
-// DG-Chat Worker entry point.
-// Same-origin hosting: frontend static assets (env.ASSETS) + room WebSocket relay (RoomDO) + public room lobby (LobbyDO) + R2 media
-//                     + the direct-message path, which is the same RoomDO reached through a signed ticket instead of a room code.
+// Chat API entry point: room/DM WebSockets, lobby state and R2 media.
 import { RoomDO } from './room-do';
 import { LobbyDO } from './lobby-do';
 import { handleMediaUpload, handleMediaRead } from './media';
@@ -158,8 +156,7 @@ export default {
       );
     }
 
-    // Everything else falls through to the static assets (SPA).
-    return env.ASSETS.fetch(request);
+    return new Response('not found', { status: 404 });
   },
 };
 

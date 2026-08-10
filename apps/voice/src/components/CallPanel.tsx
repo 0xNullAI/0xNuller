@@ -131,14 +131,13 @@ function ActiveCallView({
           onClick={onEmergencyStop}
         >
           <ShieldAlert className="h-4 w-4" />
-          紧急停止
+          设备归零
         </Button>
         <Button variant="destructive" className="h-12 flex-1 text-base" onClick={onHangUp}>
           <PhoneOff className="h-4 w-4" />
           结束通话
         </Button>
       </div>
-      <p className="-mt-3 text-[11px] text-[var(--text-faint)]">紧急停止仅归零设备，通话继续</p>
     </section>
   );
 }

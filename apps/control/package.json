@@ -5,15 +5,19 @@
   "type": "module",
   "description": "直接控制自己的设备：连接、双通道强度、波形播放。没有 AI，也没有别人。",
   "dependencies": {
-    "@0xnullai/market-client": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@dg-kit/core": "1.13.0",
     "@dg-kit/safety": "1.13.0",
     "lucide-react": "^1.11.0"
   },
   "peerDependencies": {
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
   }
 }

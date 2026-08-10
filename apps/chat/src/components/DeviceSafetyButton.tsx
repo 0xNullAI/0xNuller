@@ -270,9 +270,6 @@ export function DeviceSafetyButton({
                 className="w-full"
               />
             </div>
-            <p className="text-[10px] text-[var(--text-faint)]">
-              全局设备安全上限，任何模块的控制都无法超过。负鼠振动强度另有一套上限，在设置的「设备安全」里调。
-            </p>
           </div>
 
           {/* Backgrounding always stops output now — it is not a choice, so
@@ -296,9 +293,6 @@ export function DeviceSafetyButton({
                   </button>
                 ))}
               </div>
-              <p className="mt-1 text-[10px] text-[var(--text-faint)]">
-                取最大：任意控制者按下都不超过其单人份。叠加：多人累计（受上限封顶）。平均：多人按时反而稀释。
-              </p>
             </div>
           )}
 

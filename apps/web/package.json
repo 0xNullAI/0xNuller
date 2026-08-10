@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "统一外壳：常驻导航 + 四模块按路由挂载",
+  "description": "统一外壳：常驻导航 + 六模块按路由挂载",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -14,16 +14,12 @@
     "deploy:dry": "wrangler deploy --dry-run"
   },
   "dependencies": {
-    "0xnullai-chat": "2.6.1",
-    "0xnullai-market": "0.1.0",
-    "0xnullai-voice": "0.7.5",
     "@0xnullai/auth": "*",
-    "@0xnullai/native": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/scenes": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
-    "@dg-agent/web": "5.0.0",
     "@dg-kit/core": "1.13.0",
     "@dg-kit/safety": "1.13.0",
     "lucide-react": "^1.11.0",
@@ -35,5 +31,18 @@
   "exports": {
     "./Shell": "./src/Shell.tsx",
     "./shell.css": "./src/shell.css"
+  },
+  "devDependencies": {
+    "@dg-agent/core": "0.1.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
   }
 }

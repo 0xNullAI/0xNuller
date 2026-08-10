@@ -14,6 +14,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply 0xnullai-auth --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260809.1"
+    "@cloudflare/workers-types": "^5.20260809.1",
+    "wrangler": "^4.120.0"
   }
 }

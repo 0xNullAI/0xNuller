@@ -20,15 +20,13 @@
   // public rooms but make every authenticated DM handshake fail.
   "secrets": { "required": ["DM_TICKET_SECRET"] },
 
-  // 统一外壳占据根域，本 Worker 只接管它真正处理的那几条路径。
+  // 统一外壳占据根域，本 Worker 只接管实时通信与媒体路径。
   //
   // **Durable Object 留在这个 script 里，绝不能挪走。** migration tag 按 Worker
   // script 计——把 RoomDO / LobbyDO 搬进别的 script 等于新建一组空的 DO，
   // 所有房间和聊天历史会变成永远访问不到的孤儿。这也是不把四个 Worker 合并成
   // 一个 script 的唯一原因。
   //
-  // 静态资源不再由本 Worker 托管（外壳接管了），所以 assets 只留一个占位——
-  // 路由只命中 /ws/* 与 /api/*，不会有请求落到静态资源上。
   "routes": [
     { "pattern": "0xnullai.com/ws/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/lobby/*", "zone_name": "0xnullai.com" },
@@ -39,19 +37,6 @@
   ],
   // 保留 workers.dev 预发地址（0xnullai-chat.0xnullai.workers.dev）作为备用/调试入口。
   "workers_dev": true,
-
-  // 前端静态资源由 Vite 构建到 ./dist，由 Workers Static Assets 托管。
-  // run_worker_first 只列 Worker 真正处理的前缀（worker/index.ts 只有 /ws/* 与 /api/*）。
-  // 设成 true 会让 **每一个静态资源请求** 都变成计费的 Worker 调用：一次 SPA 首屏
-  // 约 10–30 个请求，免费额度 10 万/天换算下来只够几千次页面加载，而且额度是账号级
-  // 共享的。更糟的是额度耗尽时 Cloudflare 返回 429 而不是回退到资源服务——整站直接
-  // 挂掉，直到 UTC 零点。
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/ws/*", "/api/*"],
-  },
 
   // 每个房间一个 RoomDO 实例（idFromName(roomCode)）：WebSocket relay + 历史(SQLite) + 群主与公开设置。
   // 单例 LobbyDO（idFromName("v1")）：公开房间注册表 + 实时推送。

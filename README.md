@@ -55,6 +55,7 @@ npm run format
 ## 开发入口
 
 - [`apps/web`](./apps/web/README.md) — 统一网页应用与内置文档
+- [`apps/control`](./apps/control/README.md) — 直接设备控制
 - [`apps/agent`](./apps/agent/README.md) — 文字 Agent
 - [`apps/chat`](./apps/chat/README.md) — 房间、私聊与远程互动
 - [`apps/voice`](./apps/voice/README.md) — 实时语音
@@ -63,7 +64,7 @@ npm run format
 - [`android/app`](./android/app/README.md) — 安卓应用
 - [`apps/mcp`](./apps/mcp/README.md) — MCP 服务（迁移与对外发布待确认）
 - `packages` — 共享功能包
-- [`workers`](./workers/README.md) — 后端服务
+- [`workers`](./workers/README.md) — Cloudflare 后端服务
 
 维护者文档位于 [`docs`](./docs)；合并前各项目的完整 README 快照见
 [`docs/legacy`](./docs/legacy/README.md)。

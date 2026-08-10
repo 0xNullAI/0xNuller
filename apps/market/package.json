@@ -17,10 +17,10 @@
     "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check"
   },
   "dependencies": {
-    "@0xnullai/scenes": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "fflate": "^0.8.3",
+    "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "zod": "^3.23.8"

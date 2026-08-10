@@ -26,9 +26,7 @@ export * from './components/select';
 export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
-// Types only. applyTheme / subscribeThemeChanges are theme-store
-// internals — exporting them invites modules to write their own data-theme
-// again, which is exactly the bug that was just removed.
+// Types only. Theme DOM writes stay inside theme-store.
 export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';
 export * from './use-safety-session';

@@ -1,7 +1,6 @@
 import {
   FREE_TRIAL_PROXY_URL,
   loadLlmConfig,
-  saveLlmConfig,
   isLlmConfigured,
   type LlmConfig,
 } from '@0xnullai/llm-providers';
@@ -25,10 +24,6 @@ export const FREE_PROXY_URL = FREE_TRIAL_PROXY_URL;
 
 export function loadAiConfig(): AiConfig {
   return loadLlmConfig();
-}
-
-export function saveAiConfig(c: AiConfig): void {
-  saveLlmConfig(c);
 }
 
 /** Whether the config can be used to make a request: the free preset always can, the rest need

@@ -4,8 +4,10 @@
  * Every backend hangs off the same domain under different paths
  * (`/api/auth`, `/api/items`, `/api/realtime`, `/ws`), so the web build
  * must not hard-code any absolute URL — same-origin relative paths follow
- * whatever deployment is serving the page: preview environments,
- * `wrangler dev`, and production all work with zero config.
+ * the deployment serving the page. Production and an integrated local proxy
+ * work with zero config. A static-only Workers preview does not inherit the
+ * apex domain's API routes, so it is UI-only unless a preview API origin is
+ * supplied explicitly.
  *
  * The Tauri shell is different: its origin is a local scheme (something
  * like `tauri://localhost`), so same-origin relative paths hit the

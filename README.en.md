@@ -53,6 +53,7 @@ npm run format
 ## Development entry points
 
 - [`apps/web`](./apps/web/README.en.md) — unified web app and documentation
+- [`apps/control`](./apps/control/README.en.md) — direct device control
 - [`apps/agent`](./apps/agent/README.en.md) — text Agent
 - [`apps/chat`](./apps/chat/README.en.md) — rooms and direct messages
 - [`apps/voice`](./apps/voice/README.en.md) — realtime voice

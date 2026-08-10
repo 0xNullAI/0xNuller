@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@0xnullai/ui": "0.1.0",
-    "@0xnullai/market-client": "0.1.0"
+    "@0xnullai/market-client": "0.1.0",
+    "lucide-react": "^1.11.0"
   }
 }

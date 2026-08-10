@@ -1,6 +1,7 @@
 import { Suspense, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { GAMES } from './games';
+import { GameDeviceProvider } from './GameDeviceProvider';
 
 /**
  * Playground: the games module.
@@ -9,7 +10,7 @@ import { GAMES } from './games';
  * with their real status instead of being hidden, so the module says what it
  * is going to be rather than looking finished.
  */
-export default function App() {
+function Playground() {
   const [openId, setOpenId] = useState<string | null>(null);
   const open = GAMES.find((g) => g.id === openId && g.status === 'ready');
 
@@ -50,11 +51,8 @@ export default function App() {
     <div className="h-full overflow-y-auto">
       <div className="flex min-h-full flex-col justify-center">
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 px-5 py-12">
-          <header className="flex flex-col gap-3">
+          <header>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Playground</h1>
-            <p className="max-w-[52ch] text-[var(--text-soft)]">
-              用设备感受游戏反馈，强度始终受设备安全上限约束
-            </p>
           </header>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -77,7 +75,6 @@ export default function App() {
                     )}
                   </span>
                   <span className="text-sm text-[var(--text-soft)]">{game.blurb}</span>
-                  <span className="text-xs text-[var(--text-faint)]">{game.deviceUse}</span>
                 </button>
               );
             })}
@@ -85,5 +82,13 @@ export default function App() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <GameDeviceProvider>
+      <Playground />
+    </GameDeviceProvider>
   );
 }

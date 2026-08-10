@@ -1,38 +1,71 @@
-import { useCallback, useSyncExternalStore } from 'react';
-import { allConnectedDevices, currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
+import { createContext, useContext } from 'react';
+import type { DeviceSafetySettings } from '@0xnullai/settings';
 
 /**
- * The seam between a game and the device.
- *
- * Games express intent — "a light pulse", "a stronger one" — and never a
- * number. The strength a game asks for is a request; what actually reaches
- * the body is decided by the device holder's safety caps, and no game may be
- * a way around them.
- *
- * Playground does not own a Bluetooth connection yet: it has no picker and
- * holds no device client. `pulse` is therefore a no-op today, and `connected`
- * says so plainly rather than pretending. That is deliberate — a game that
- * looks like it is driving a device while it is not is worse than one that
- * admits it isn't, and this is the file that gets wired up when Playground
- * grows a real device path (through the same lease + policy engine + command
- * queue every other module uses, never around them).
+ * Games name an intent and the provider turns it into a short, capped device
+ * action. Keeping that boundary here stops individual games from inventing
+ * their own connection, strength or timing rules.
  */
 
 export type PulseIntensity = 'light' | 'strong';
 
-export function useGameDevice() {
-  const connected = useSyncExternalStore(
-    subscribeSafetySessions,
-    () => allConnectedDevices().length > 0,
-    () => false,
-  );
+export interface GamePulseProfile {
+  coyoteStrength: number;
+  opossumIntensity: number;
+  durationMs: number;
+  waveformId: 'pulse_low' | 'pulse_mid';
+}
 
-  const pulse = useCallback((intensity: PulseIntensity) => {
-    // No device path yet — see the note above. Kept as a named call so the
-    // games already describe what they want, and wiring it later touches
-    // this function only.
-    void intensity;
-  }, []);
+const REQUESTS: Record<PulseIntensity, GamePulseProfile> = {
+  light: {
+    coyoteStrength: 5,
+    opossumIntensity: 5,
+    durationMs: 250,
+    waveformId: 'pulse_low',
+  },
+  strong: {
+    coyoteStrength: 10,
+    opossumIntensity: 10,
+    durationMs: 450,
+    waveformId: 'pulse_mid',
+  },
+};
 
-  return { pulse, connected, holdsLease: currentDeviceLease() === 'playground' };
+/** Resolve a game request against every relevant shared safety ceiling. */
+export function resolveGamePulse(
+  intensity: PulseIntensity,
+  safety: DeviceSafetySettings,
+): GamePulseProfile {
+  const request = REQUESTS[intensity];
+  const coyoteCaps = [request.coyoteStrength, safety.maxStrengthA, safety.maxColdStartStrength];
+  if (safety.maxBurstStrengthAbsolute > 0) coyoteCaps.push(safety.maxBurstStrengthAbsolute);
+  if (safety.maxBurstStrengthRelative > 0) coyoteCaps.push(safety.maxBurstStrengthRelative);
+
+  return {
+    ...request,
+    coyoteStrength: Math.max(0, Math.min(...coyoteCaps)),
+    opossumIntensity: Math.max(
+      0,
+      Math.min(request.opossumIntensity, safety.maxIntensityA, safety.maxColdStartIntensity),
+    ),
+    durationMs: Math.max(0, Math.min(request.durationMs, safety.maxBurstDurationMs)),
+  };
+}
+
+export interface GameDeviceValue {
+  connected: boolean;
+  holdsLease: boolean;
+  pulse: (intensity: PulseIntensity) => void;
+}
+
+const fallback: GameDeviceValue = {
+  connected: false,
+  holdsLease: false,
+  pulse: () => undefined,
+};
+
+export const GameDeviceContext = createContext<GameDeviceValue>(fallback);
+
+export function useGameDevice(): GameDeviceValue {
+  return useContext(GameDeviceContext);
 }

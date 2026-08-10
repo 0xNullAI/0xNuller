@@ -59,10 +59,6 @@ export function RoomAgentDialog({
           </h2>
         </div>
 
-        <p className="text-xs text-[var(--text-faint)]">
-          在消息中 @ 它即可回复。控制设备需由设备持有者授权
-        </p>
-
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-[var(--text-soft)]">名字</span>
           <input
