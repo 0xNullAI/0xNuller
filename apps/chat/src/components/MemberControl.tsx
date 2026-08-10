@@ -700,7 +700,7 @@ export function MemberControl({
         title="一键开火"
         anchorTop={popAnchorTop}
       >
-        <p className="mb-3 text-center text-xs text-[var(--text-faint)]">按住增加强度，松开恢复</p>
+        <p className="mb-3 text-center text-xs text-[var(--text-faint)]">按住增强，松开恢复</p>
         <div className="flex items-center justify-center gap-8">
           <FireCircle
             label="A"

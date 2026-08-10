@@ -107,7 +107,20 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // locally saved name, then to anonymous. A flaky account service must not lock
   // people out of a room, so there is always a usable value here.
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
-  const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  const [createRoomOpen, setCreateRoomOpen] = useState(
+    () => new URL(window.location.href).searchParams.get('create') === '1',
+  );
+  const showChat = useCallback(() => {
+    if (window.location.pathname === '/chat') return;
+    window.history.pushState(null, '', '/chat');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, []);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('create') !== '1') return;
+    url.searchParams.delete('create');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
   /**
    * Whether there is an account at all. It gates only the private-message affordances:
    * a conversation is between two accounts, while a room is open to anyone, and the
@@ -776,13 +789,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         <SidebarSection id="direct" title="私聊">
           <ShellDmList
             currentRoom={peerRoom.isDm ? peerRoom.roomId : null}
-            onOpen={(peer) =>
+            onOpen={(peer) => {
+              showChat();
               void openDm({
                 accountId: peer.id,
                 username: peer.username,
                 displayName: peer.displayName,
-              })
-            }
+              });
+            }}
           />
         </SidebarSection>
       )}
@@ -791,10 +805,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         <ShellRoomList
           currentRoom={peerRoom.isDm ? null : peerRoom.roomId}
           onJoin={(code) => {
+            showChat();
             setDmPeer(null);
             peerRoom.join(code);
           }}
-          onCreate={() => setCreateRoomOpen(true)}
+          onCreate={() => {
+            showChat();
+            setCreateRoomOpen(true);
+          }}
         />
       </SidebarSection>
 

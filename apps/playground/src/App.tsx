@@ -53,7 +53,7 @@ export default function App() {
           <header className="flex flex-col gap-3">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Playground</h1>
             <p className="max-w-[52ch] text-[var(--text-soft)]">
-              把设备接进游戏。游戏只能请求一次反馈，实际强度由你的设备安全上限决定。
+              用设备感受游戏反馈，强度始终受设备安全上限约束
             </p>
           </header>
 

@@ -43,6 +43,7 @@ interface SidebarProps {
   onOpenContacts: () => void;
   onOpenSettings: () => void;
   onOpenDocs: () => void;
+  onCreateRoom: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -247,9 +248,15 @@ function SidebarSectionSlot({ id, title }: { id: SidebarSectionId; title: string
 function DefaultSidebarDestination({
   id,
   onNavigate,
+  user,
+  onOpenAccount,
+  onCreateRoom,
 }: {
-  id: 'conversations' | 'rooms';
+  id: 'conversations' | 'direct' | 'rooms';
   onNavigate: (moduleId: string | null) => void;
+  user: AuthUser | null;
+  onOpenAccount: () => void;
+  onCreateRoom: () => void;
 }) {
   const itemClass =
     'flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
@@ -268,11 +275,43 @@ function DefaultSidebarDestination({
     );
   }
 
+  if (!user) {
+    return id === 'rooms' ? (
+      <section className="mb-3">
+        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
+          Chat
+        </h2>
+        <button type="button" onClick={onOpenAccount} className={itemClass}>
+          <LogIn className="h-4 w-4 shrink-0" />
+          登录后使用
+        </button>
+      </section>
+    ) : null;
+  }
+
+  if (id === 'direct') {
+    return (
+      <section className="mb-3">
+        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
+          私聊
+        </h2>
+        <button type="button" onClick={() => onNavigate('chat')} className={itemClass}>
+          <Users className="h-4 w-4 shrink-0" />
+          打开 Chat
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="mb-3">
       <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
         房间
       </h2>
+      <button type="button" onClick={onCreateRoom} className={itemClass}>
+        <Plus className="h-4 w-4 shrink-0" />
+        建房间
+      </button>
       <button type="button" onClick={() => onNavigate('chat')} className={itemClass}>
         <Globe2 className="h-4 w-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate">公开大厅</span>
@@ -292,6 +331,7 @@ export function Sidebar({
   onOpenContacts,
   onOpenSettings,
   onOpenDocs,
+  onCreateRoom,
   collapsed,
   onToggleCollapsed,
 }: SidebarProps) {
@@ -335,8 +375,17 @@ export function Sidebar({
           if (section) {
             return <SidebarSectionSlot key={id} id={id} title={section.title} />;
           }
-          if (id === 'conversations' || id === 'rooms') {
-            return <DefaultSidebarDestination key={id} id={id} onNavigate={onNavigate} />;
+          if (id === 'conversations' || id === 'direct' || id === 'rooms') {
+            return (
+              <DefaultSidebarDestination
+                key={id}
+                id={id}
+                onNavigate={onNavigate}
+                user={user}
+                onOpenAccount={onOpenAccount}
+                onCreateRoom={onCreateRoom}
+              />
+            );
           }
           return null;
         })}

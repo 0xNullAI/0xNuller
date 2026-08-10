@@ -179,9 +179,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
         className="flex max-h-[min(600px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-panel)] sm:p-6"
       >
         <h2 className="text-lg font-semibold">联系人</h2>
-        <p className="mt-1 text-sm text-[var(--text-soft)]">
-          关注是单向的，互相关注才会显示为联系人，也才能私聊。
-        </p>
+        <p className="mt-1 text-sm text-[var(--text-soft)]">互相关注后成为联系人并可私聊</p>
 
         <div className="mt-4 flex gap-2">
           <Input
@@ -238,7 +236,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
             // blocked the other. Telling them apart would make the block itself
             // detectable, and here that invites exactly the attention blocking
             // was meant to end.
-            <p className="mt-2 text-xs text-[var(--text-faint)]">没有找到这个用户。</p>
+            <p className="mt-2 text-xs text-[var(--text-faint)]">未找到用户</p>
           ))}
 
         <div className="mt-4 flex gap-1 border-b border-[var(--surface-border)]">
@@ -271,9 +269,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
             </p>
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
-              {tab === 'following'
-                ? '还没有关注任何人。查找用户名可以关注对方。'
-                : '还没有人关注你。'}
+              {tab === 'following' ? '暂无关注，搜索用户名即可添加' : '暂无粉丝'}
             </p>
           ) : (
             rows.map((row) => (

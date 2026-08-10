@@ -55,9 +55,8 @@ describe('设备栏', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('当前模块未连接时仍常驻顶部，并提供唯一连接入口和设备安全设置', async () => {
+  it('当前模块未连接时仍常驻顶部，并只提供连接入口', async () => {
     const connect = vi.fn(async () => undefined);
-    const openSafety = vi.fn();
     cleanups.push(
       registerSafetySession({
         id: 'control',
@@ -68,15 +67,14 @@ describe('设备栏', () => {
         connect,
       }),
     );
-    render(<DeviceBar activeSessionId="control" onOpenSafety={openSafety} />);
+    render(<DeviceBar activeSessionId="control" />);
 
     expect(screen.getAllByRole('button', { name: '连接设备' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /归零/ })).toBeNull();
     await act(async () => screen.getByRole('button', { name: '连接设备' }).click());
     expect(connect).toHaveBeenCalledTimes(1);
 
-    screen.getByRole('button', { name: '设备安全' }).click();
-    expect(openSafety).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: '设备安全' })).toBeNull();
   });
 
   it('不会把后台模块的连接入口显示到当前页面', () => {

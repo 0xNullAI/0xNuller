@@ -175,8 +175,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         {messages.length === 0 && (
           <div className="mt-16 flex flex-col items-center gap-2 text-[var(--text-faint)]">
             <span className="text-3xl">💬</span>
-            <p className="text-sm">还没有消息</p>
-            <p className="text-xs">发送第一条消息开始聊天吧</p>
+            <p className="text-sm">暂无消息</p>
+            <p className="text-xs">发一条消息开始聊天</p>
           </div>
         )}
 
@@ -374,7 +374,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                 if (e.key === 'Escape') setMentionQuery(null);
                 else if (e.key === 'Enter') handleSend();
               }}
-              placeholder={busy ? '发送中...' : '输入消息...'}
+              placeholder={busy ? '发送中…' : '输入消息…'}
               disabled={busy}
               className="flex-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-60"
               style={{ fontSize: '16px' }}

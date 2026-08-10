@@ -41,12 +41,6 @@ export function DataTab({ sessions, onExport, onImport }: DataTabProps) {
     <div className="settings-panel-tab-content">
       <section className="settings-row-card">
         <h3 className="settings-card-legend">聊天记录</h3>
-        <p className="text-[13px] leading-relaxed text-[var(--text-soft)]">
-          勾选要导出的会话，导出为 zip 压缩包（每个会话一个 JSON 文件，采用 OpenTelemetry GenAI
-          语义约定）。导入支持 zip 或单个 JSON，
-          <span className="text-[var(--text)]">同 id 的会话会被覆盖</span>。
-        </p>
-
         {sessions.length === 0 ? (
           <div className="settings-log-empty">暂无会话</div>
         ) : (

@@ -100,7 +100,7 @@ describe('用户主页', () => {
   it('被拉黑与账号不存在给出同一句话', async () => {
     getUser.mockResolvedValue(null);
     open();
-    expect(await screen.findByText('没有找到这个用户。')).toBeTruthy();
+    expect(await screen.findByText('未找到用户')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '关注' })).toBeNull();
   });
 
@@ -108,7 +108,7 @@ describe('用户主页', () => {
     getUser.mockResolvedValue(view());
     open(null);
     expect(await screen.findByText('一句话简介')).toBeTruthy();
-    expect(screen.getByText('登录后可以关注和私聊。')).toBeTruthy();
+    expect(screen.getByText('登录后可关注和私聊')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '关注' })).toBeNull();
   });
 
@@ -157,7 +157,7 @@ describe('用户主页', () => {
     // exist; mutual means the button acts.
     const dm = screen.getByRole('button', { name: /私聊/ });
     expect(dm.hasAttribute('disabled')).toBe(false);
-    expect(screen.queryByText('互相关注之后才能私聊。')).toBeNull();
+    expect(screen.queryByText('互相关注后可私聊')).toBeNull();
   });
 
   it('打开私聊后关闭用户主页，不让主页继续盖住聊天', async () => {
@@ -176,7 +176,7 @@ describe('用户主页', () => {
     open();
     const dm = await screen.findByRole('button', { name: /私聊/ });
     expect(dm.hasAttribute('disabled')).toBe(true);
-    expect(screen.getByText('互相关注之后才能私聊。')).toBeTruthy();
+    expect(screen.getByText('互相关注后可私聊')).toBeTruthy();
   });
 
   it('看自己的主页时是编辑入口而不是关注按钮', async () => {
@@ -184,7 +184,7 @@ describe('用户主页', () => {
     open();
     expect(await screen.findByRole('button', { name: /编辑资料/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '关注' })).toBeNull();
-    expect(screen.getByText('目前只有你自己能看到这些。')).toBeTruthy();
+    expect(screen.getByText('仅自己可见')).toBeTruthy();
   });
 
   it('编辑态说明全部选填，且住址一栏给出人身安全提示', async () => {

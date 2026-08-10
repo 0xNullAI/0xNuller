@@ -101,7 +101,11 @@ function prepared(sql: string, ...args: unknown[]) {
 const post = (path: string, body: unknown, extra = {}) =>
   worker.fetch(req(path, { method: 'POST', body: JSON.stringify(body), ...extra }), env);
 
-const GOOD = { username: 'alice', password: 'correct-horse-battery' };
+const GOOD = {
+  username: 'alice',
+  email: 'alice@example.com',
+  password: 'correct-horse-battery',
+};
 
 async function registerUser(overrides: Record<string, unknown> = {}) {
   const res = await post('/api/auth/register', { ...GOOD, ...overrides });
@@ -134,9 +138,14 @@ describe('注册', () => {
     expect(res.status).toBe(400);
   });
 
-  it('不需要邮箱', async () => {
-    const { res } = await registerUser();
-    expect(res.status).toBe(201);
+  it('需要有效且唯一的邮箱', async () => {
+    const missing = await registerUser({ email: undefined });
+    expect(missing.res.status).toBe(400);
+    const invalid = await registerUser({ username: 'bob', email: 'bad' });
+    expect(invalid.res.status).toBe(400);
+    await registerUser();
+    const duplicate = await registerUser({ username: 'bob', email: 'ALICE@example.com' });
+    expect(duplicate.res.status).toBe(409);
   });
 });
 

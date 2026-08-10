@@ -1,10 +1,12 @@
 import { useState, type CSSProperties } from 'react';
-import { Cpu, LayoutTemplate, Palette, ShieldAlert, X } from 'lucide-react';
+import { Cpu, LayoutTemplate, Palette, ShieldAlert, UserRound, X } from 'lucide-react';
 import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
+import type { AuthUser } from '@0xnullai/auth';
 import { AppearanceTab } from './AppearanceTab';
 import { AiTab } from './AiTab';
 import { SafetyTab } from './SafetyTab';
 import { ScenesTab } from './ScenesTab';
+import { AccountContent } from './AccountContent';
 
 /**
  * The software's one and only settings panel.
@@ -25,6 +27,7 @@ import { ScenesTab } from './ScenesTab';
  */
 
 const TABS = [
+  { id: 'account', label: '账户', icon: UserRound, Component: null },
   { id: 'appearance', label: '外观', icon: Palette, Component: AppearanceTab },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab },
   { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab },
@@ -33,10 +36,14 @@ const TABS = [
 
 export function SettingsPanel({
   initialTab = 'appearance',
+  user,
+  onUser,
   onClose,
 }: {
   /** Which page to land on when opened. Settings entry points inside modules (e.g. the Chat host configuring AI) point straight at the matching page. */
   initialTab?: (typeof TABS)[number]['id'];
+  user: AuthUser | null;
+  onUser: (user: AuthUser | null) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<string>(initialTab);
@@ -44,11 +51,12 @@ export function SettingsPanel({
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
   const moduleClaims = useModuleSettingsClaims();
-  const Active = TABS.find((t) => t.id === tab)?.Component;
+  const builtinTab = TABS.find((t) => t.id === tab);
   const activeModuleClaim = moduleClaims.find((c) => c.id === tab);
   // A module can unmount while its page is open — fall back rather than
   // leaving the content area blank with a nav item selected.
-  const resolvedTab = Active || activeModuleClaim ? tab : TABS[0].id;
+  const resolvedTab = builtinTab || activeModuleClaim ? tab : 'appearance';
+  const Active = TABS.find((t) => t.id === resolvedTab)?.Component;
 
   return (
     <Overlay onDismiss={onClose}>
@@ -103,7 +111,11 @@ export function SettingsPanel({
               translateY(-50%), and get clipped in half when flush against the top edge
               of the scroll container. */}
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
-            {Active ? <Active /> : null}
+            {resolvedTab === 'account' ? (
+              <AccountContent user={user} onUser={onUser} onDone={onClose} />
+            ) : Active ? (
+              <Active />
+            ) : null}
             {/* Every module page keeps a mounted slot, not just the active one:
                 the slot is the portal target, and a module that renders its
                 section before you open its page needs somewhere to land. Only

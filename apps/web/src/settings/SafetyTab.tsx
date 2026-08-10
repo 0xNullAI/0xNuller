@@ -24,7 +24,6 @@ import {
 interface NumberFieldSpec {
   key: keyof DeviceSafetySettings;
   label: string;
-  hint?: string;
   min: number;
   max: number;
   step?: number;
@@ -37,7 +36,6 @@ const COYOTE_FIELDS: NumberFieldSpec[] = [
     label: 'A 通道上限',
     min: 0,
     max: 200,
-    hint: '任何来源都不能让 A 通道超过这个值',
   },
   { key: 'maxStrengthB', label: 'B 通道上限', min: 0, max: 200 },
   {
@@ -45,9 +43,8 @@ const COYOTE_FIELDS: NumberFieldSpec[] = [
     label: '冷启动上限',
     min: 0,
     max: 200,
-    hint: '从零开始时单次能拉到的最高值，防止一上来就是满档',
   },
-  { key: 'maxAdjustStep', label: '单次调节步长', min: 1, max: 200, hint: '一次指令最多能加减多少' },
+  { key: 'maxAdjustStep', label: '单次调节步长', min: 1, max: 200 },
 ];
 
 const BURST_FIELDS: NumberFieldSpec[] = [
@@ -64,9 +61,8 @@ const BURST_FIELDS: NumberFieldSpec[] = [
     label: '脉冲绝对上限',
     min: 0,
     max: 200,
-    hint: '0 = 不启用这条额外约束',
   },
-  { key: 'maxBurstStrengthRelative', label: '脉冲相对上限', min: 0, max: 200, hint: '0 = 不启用' },
+  { key: 'maxBurstStrengthRelative', label: '脉冲相对上限', min: 0, max: 200 },
 ];
 
 const OPOSSUM_FIELDS: NumberFieldSpec[] = [
@@ -110,24 +106,17 @@ function NumberField({
           {spec.unit ?? ''}
         </span>
       </span>
-      {spec.hint && (
-        <span className="col-span-2 text-xs leading-relaxed text-[var(--text-faint)]">
-          {spec.hint}
-        </span>
-      )}
     </label>
   );
 }
 
 function Group({
   title,
-  desc,
   fields,
   settings,
   onChange,
 }: {
   title: string;
-  desc?: string;
   fields: NumberFieldSpec[];
   settings: DeviceSafetySettings;
   onChange: (patch: Partial<DeviceSafetySettings>) => void;
@@ -135,7 +124,6 @@ function Group({
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <h3 className="text-sm font-semibold">{title}</h3>
-      {desc && <p className="mt-1 text-xs text-[var(--text-faint)]">{desc}</p>}
       <div className="mt-2 divide-y divide-[var(--surface-border)]">
         {fields.map((f) => (
           <NumberField
@@ -161,29 +149,13 @@ export function SafetyTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="rounded-[var(--radius-ctl)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
-        这些上限在<strong className="font-semibold text-[var(--text)]">设备持有者一侧</strong>
-        执行。来自房间里其他人、AI 或游戏逻辑的数值都会被钳制到这里设定的范围内—— 它们说了不算。
-      </p>
-
-      <Group
-        title="郊狼"
-        desc="全应用共享。在这里调的值，Control、Agent、Voice、Chat、Playground 立刻都是这个值。"
-        fields={COYOTE_FIELDS}
-        settings={settings}
-        onChange={patch}
-      />
+      <Group title="郊狼" fields={COYOTE_FIELDS} settings={settings} onChange={patch} />
 
       <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch} />
 
       <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
         <label className="flex items-center justify-between gap-4">
-          <span>
-            <span className="block text-sm">脉冲需要通道已在输出</span>
-            <span className="block text-xs text-[var(--text-faint)]">
-              关闭后允许从静止状态直接脉冲
-            </span>
-          </span>
+          <span className="text-sm">脉冲需要通道已在输出</span>
           <input
             type="checkbox"
             checked={settings.burstRequiresActiveChannel}
@@ -195,24 +167,13 @@ export function SafetyTab() {
 
       <Group title="负鼠" fields={OPOSSUM_FIELDS} settings={settings} onChange={patch} />
 
-      <Group
-        title="单回合上限"
-        desc="限制 AI 在一次回复里能连续下多少条指令。"
-        fields={TURN_FIELDS}
-        settings={settings}
-        onChange={patch}
-      />
+      <Group title="单回合上限" fields={TURN_FIELDS} settings={settings} onChange={patch} />
 
       <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
         <h3 className="text-sm font-semibold">权限与生命周期</h3>
 
         <label className="mt-3 grid grid-cols-[1fr_auto] items-center gap-4">
-          <span>
-            <span className="block text-sm">设备指令确认</span>
-            <span className="block text-xs text-[var(--text-faint)]">
-              「完全放行」只在本次会话有效，不会被记住
-            </span>
-          </span>
+          <span className="text-sm">设备指令确认</span>
           <select
             value={settings.permissionMode}
             onChange={(e) =>

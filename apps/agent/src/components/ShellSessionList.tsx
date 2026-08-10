@@ -69,7 +69,7 @@ export function ShellSessionList({
       ))}
 
       {sessions.length === 0 && (
-        <p className="px-2 py-3 text-xs text-[var(--text-faint)]">还没有保存的会话</p>
+        <p className="px-2 py-3 text-xs text-[var(--text-faint)]">暂无会话</p>
       )}
     </div>
   );

@@ -74,6 +74,7 @@ interface Account {
 async function register(username: string): Promise<Account> {
   const res = await post('/api/auth/register', {
     username,
+    email: `${username}@example.com`,
     password: 'correct-horse-battery',
   });
   const body = (await res.json()) as { user: { id: string }; token: string };

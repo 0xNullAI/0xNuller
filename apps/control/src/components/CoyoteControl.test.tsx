@@ -22,7 +22,6 @@ function renderPanel(overrides: Partial<ComponentProps<typeof WaveformPanel>> = 
       onRemoveWaveform={vi.fn()}
       onImportFile={vi.fn(async () => null)}
       onOpenMarket={vi.fn()}
-      onStopAll={vi.fn()}
       fireEnabledA={false}
       fireEnabledB={false}
       fireLimitA={30}
@@ -41,6 +40,8 @@ describe('WaveformPanel 一键开火', () => {
   it('未启动波形时保持禁用并解释原因', () => {
     renderPanel();
     expect(screen.getByText('一键开火')).toBeTruthy();
+    expect(screen.queryByText('全部归零')).toBeNull();
+    expect(screen.queryByText('按住增强，松开恢复。需先播放波形')).toBeNull();
     expect((screen.getByTitle('请先启动 A 通道波形') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTitle('请先启动 B 通道波形') as HTMLButtonElement).disabled).toBe(true);
   });

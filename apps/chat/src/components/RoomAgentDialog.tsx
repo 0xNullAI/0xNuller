@@ -60,7 +60,7 @@ export function RoomAgentDialog({
         </div>
 
         <p className="text-xs text-[var(--text-faint)]">
-          加进房间之后，在消息里 @ 它就会回复。要让它控制谁的设备，得那个人自己点「允许AI」。
+          在消息中 @ 它即可回复。控制设备需由设备持有者授权
         </p>
 
         <label className="flex flex-col gap-1.5">
@@ -103,7 +103,7 @@ export function RoomAgentDialog({
             onChange={(e) => setPersona(e.target.value)}
             maxLength={4000}
             rows={6}
-            placeholder="它是谁、说话什么风格、该做什么不该做什么。"
+            placeholder="描述身份、语气和规则"
             className="resize-none rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--accent)]"
           />
         </label>

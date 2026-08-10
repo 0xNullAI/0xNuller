@@ -46,9 +46,8 @@ export function AiTab() {
 
   return (
     <div className="flex flex-col gap-5">
-      <section>
-        <h3 className="text-sm font-semibold">模型服务</h3>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">Agent 与 Chat 共用这一份配置。</p>
+      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
+        <h3 className="text-sm font-semibold">文本模型</h3>
         <div className="mt-3">
           <SettingSelect
             value={config.providerId}
@@ -68,48 +67,37 @@ export function AiTab() {
             }))}
           />
         </div>
+
+        {!isFree && (
+          <div className="mt-3 flex flex-col gap-3">
+            {def?.fields
+              .filter((field) => field.key !== 'model')
+              .map((field) => (
+                <label key={field.key} className="flex flex-col gap-1.5">
+                  <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
+                  <Input
+                    type={field.key === 'apiKey' ? 'password' : 'text'}
+                    value={(config[field.key as keyof LlmConfig] as string) ?? ''}
+                    placeholder={field.placeholder}
+                    onChange={(e) => update({ [field.key]: e.target.value } as Partial<LlmConfig>)}
+                  />
+                </label>
+              ))}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">模型</span>
+              <Input
+                value={config.model}
+                onChange={(e) => update({ model: e.target.value })}
+                placeholder="留空使用默认模型"
+              />
+            </label>
+          </div>
+        )}
+
+        {!isLlmConfigured(config) && (
+          <p className="mt-3 text-xs text-[var(--danger)]">配置未完成</p>
+        )}
       </section>
-
-      {isFree ? (
-        <p className="rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-soft)]">
-          免费体验无需任何配置，由代理服务提供。想用自己的额度或更强的模型时再来这里换。
-        </p>
-      ) : (
-        <section className="flex flex-col gap-3">
-          {def?.fields
-            .filter((field) => field.key !== 'model')
-            .map((field) => (
-              <label key={field.key} className="flex flex-col gap-1.5">
-                <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
-                <Input
-                  type={field.key === 'apiKey' ? 'password' : 'text'}
-                  value={(config[field.key as keyof LlmConfig] as string) ?? ''}
-                  placeholder={field.placeholder}
-                  onChange={(e) => update({ [field.key]: e.target.value } as Partial<LlmConfig>)}
-                />
-              </label>
-            ))}
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">模型</span>
-            <Input
-              value={config.model}
-              onChange={(e) => update({ model: e.target.value })}
-              placeholder="留空使用默认模型"
-            />
-          </label>
-        </section>
-      )}
-
-      {!isLlmConfigured(config) && (
-        <p className="rounded-[var(--radius-ctl)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]">
-          还差一项配置，当前无法发起对话。
-        </p>
-      )}
-
-      <p className="text-xs leading-relaxed text-[var(--text-faint)]">
-        API Key 存在本机浏览器里，不加密——同源脚本与浏览器扩展都读得到。真正需要保密的
-        部署应该自建代理，让密钥只存在于服务端。
-      </p>
 
       <VoiceProviderSection />
       <ProxySection />

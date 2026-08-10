@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { Menu } from 'lucide-react';
+import { LogIn, Menu } from 'lucide-react';
 import {
   useTheme,
   ShellChromeProvider,
@@ -18,7 +18,6 @@ import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { Sidebar } from './Sidebar';
 import { DeviceBar } from './DeviceBar';
-import { AccountDialog } from './AccountDialog';
 import { ContactsDialog } from './ContactsDialog';
 import { ProfileDialog } from './profile/ProfileDialog';
 import { SettingsPanel } from './settings/SettingsPanel';
@@ -83,9 +82,14 @@ function useHistoryRoute(): [RouteState, (path: string) => void] {
   }, []);
 
   const navigate = useCallback((path: string) => {
-    if (window.location.pathname === path) return;
+    const target = new URL(path, window.location.href);
+    if (
+      `${window.location.pathname}${window.location.search}` ===
+      `${target.pathname}${target.search}`
+    )
+      return;
     window.history.pushState(null, '', path);
-    setState((prev) => nextState(prev, path));
+    setState((prev) => nextState(prev, target.pathname));
   }, []);
 
   return [state, navigate];
@@ -118,7 +122,7 @@ export function Shell() {
   useTheme();
 
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
@@ -146,11 +150,12 @@ export function Shell() {
   }, [activeId]);
 
   useEffect(() => {
-    // Treat an unavailable account service as signed out — a hiccup there must not
-    // block anonymous use.
+    // Treat an unavailable account service as signed out. Chat is account-only,
+    // while the other modules remain available.
     me()
       .then(setUser)
-      .catch(() => setUser(null));
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
   }, []);
 
   // Modules ask for a profile rather than rendering one; see profile-requests
@@ -209,7 +214,7 @@ export function Shell() {
       // --z-module-overlay, so the drawer is higher).
       onOpenAccount={() => {
         setDrawerOpen(false);
-        setAccountOpen(true);
+        setSettingsTab('account');
       }}
       onOpenContacts={() => {
         setDrawerOpen(false);
@@ -222,6 +227,10 @@ export function Shell() {
       onOpenDocs={() => {
         setDrawerOpen(false);
         setDocsOpen(true);
+      }}
+      onCreateRoom={() => {
+        navigate('/chat?create=1');
+        setDrawerOpen(false);
       }}
       collapsed={!narrow && sidebarCollapsed}
       onToggleCollapsed={() => (narrow ? setDrawerOpen(false) : setSidebarCollapsed((v) => !v))}
@@ -241,7 +250,7 @@ export function Shell() {
           {!narrow && <div id="shl-side">{sidebar}</div>}
 
           <main id="shl-slot">
-            <DeviceBar activeSessionId={activeId} onOpenSafety={() => openSettings('safety')} />
+            <DeviceBar activeSessionId={activeId} />
 
             {/* The module's own buttons land here. On narrow screens the drawer toggle
               shares this row. */}
@@ -272,6 +281,20 @@ export function Shell() {
               {opened.map((id) => {
                 const mod = MODULES.find((m) => m.id === id);
                 if (!mod) return null;
+                if (mod.id === 'chat' && (!authChecked || !user)) {
+                  return (
+                    <div
+                      key={id}
+                      hidden={id !== activeId}
+                      className={id === activeId ? 'h-full min-h-0' : 'hidden'}
+                    >
+                      <ChatAccountGate
+                        loading={!authChecked}
+                        onLogin={() => setSettingsTab('account')}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <ModuleSlot
                     key={id}
@@ -300,9 +323,6 @@ export function Shell() {
           )}
 
           <OverlayProvider container={overlayRoot}>
-            {accountOpen && (
-              <AccountDialog user={user} onUser={setUser} onClose={() => setAccountOpen(false)} />
-            )}
             {/* Signed-in only, and gated on `user` here as well as in the menu:
               signing out while the dialog is open has to close it rather than
               leave a surface up with nothing left to show. */}
@@ -310,12 +330,15 @@ export function Shell() {
               <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
             )}
             {settingsTab && (
-              <SettingsPanel initialTab={settingsTab} onClose={() => setSettingsTab(null)} />
+              <SettingsPanel
+                initialTab={settingsTab}
+                user={user}
+                onUser={setUser}
+                onClose={() => setSettingsTab(null)}
+              />
             )}
             {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
-            {/* Not gated on `user`: a public profile is readable while signed
-              out, and anonymous use is a hard constraint. The dialog itself
-              decides which actions need an account. */}
+            {/* Public profiles remain readable while signed out. */}
             {profileUsername && (
               <ProfileDialog
                 username={profileUsername}
@@ -327,9 +350,8 @@ export function Shell() {
               as a splash dialog. A splash dialog interrupts people who only want to
               browse the market or read the docs, while the moment it really needs to
               be seen is the moment the device goes onto someone's body. The terms of
-              use in the sign-up flow are the other candidate spot — but accounts are
-              optional, so putting it only there means anyone who never registers
-              never sees it. */}
+              use in the sign-up flow are the other candidate spot, but device use does
+              not require an account. */}
             <FirstConnectionNotice />
           </OverlayProvider>
 
@@ -342,6 +364,26 @@ export function Shell() {
         </div>
       </SidebarSectionsProvider>
     </ModuleSettingsProvider>
+  );
+}
+
+function ChatAccountGate({ loading, onLogin }: { loading: boolean; onLogin: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <h1 className="text-xl font-semibold">{loading ? '正在检查账户…' : '登录后使用 Chat'}</h1>
+        {!loading && (
+          <button
+            type="button"
+            onClick={onLogin}
+            className="flex items-center gap-2 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--button-text)]"
+          >
+            <LogIn className="h-4 w-4" />
+            登录 / 注册
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

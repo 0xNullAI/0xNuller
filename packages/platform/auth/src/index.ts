@@ -69,7 +69,7 @@ export async function register(input: {
   username: string;
   password: string;
   displayName?: string;
-  email?: string;
+  email: string;
 }): Promise<AuthUser> {
   const r = await call<{ user: AuthUser; token: string }>('/api/auth/register', {
     method: 'POST',

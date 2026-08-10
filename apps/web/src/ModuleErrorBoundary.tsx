@@ -54,7 +54,7 @@ export class ModuleErrorBoundary extends Component<Props, State> {
         <div>
           <h2 className="text-lg font-semibold">{this.props.label} 加载失败</h2>
           <p className="mt-2 max-w-md text-sm text-[var(--text-soft)]">
-            这个模块出错了，其余模块不受影响。为安全起见，所有设备输出已经停止。
+            模块发生错误，设备已停止，其他模块不受影响
           </p>
         </div>
         <pre className="max-w-full overflow-x-auto rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-left text-xs text-[var(--text-faint)]">

@@ -64,7 +64,7 @@ const MESSAGE_BATCH_SIZE = 120;
 // Bluetooth pairing hint: the browser's native chooser takes no injected copy, so this
 // stays on screen while disconnected and doubles as the Bluetooth button's title, to
 // help users get into pairing mode when the scan turns up no device.
-const BLUETOOTH_PAIR_HINT = '搜索不到设备？将郊狼两侧滚轮同时向下按住 3–5 秒进入蓝牙配对模式。';
+const BLUETOOTH_PAIR_HINT = '搜不到设备？同时向下按住两侧滚轮 3–5 秒';
 
 const BUBBLE_BASE =
   'max-w-[min(92%,560px)] overflow-hidden break-words px-4 py-3 text-[14.5px] leading-[1.6]';

@@ -122,7 +122,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       setState((prev) => ({
         ...prev,
         status: 'idle',
-        error: '请先在设置里填写当前 provider 的 API Key',
+        error: '请先配置当前语音服务的 API Key',
       }));
       return;
     }

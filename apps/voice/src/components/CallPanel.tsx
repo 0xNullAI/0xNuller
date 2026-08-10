@@ -64,7 +64,7 @@ function IdleCallView({
       )}
 
       <p className="mb-3 text-xs text-[var(--text-faint)]">
-        当前 provider：{provider?.name ?? providerId}
+        语音服务：{provider?.name ?? providerId}
         {provider?.pricePerMinuteUsd ? ` · 约 $${provider.pricePerMinuteUsd}/分钟` : ''}
       </p>
 
@@ -138,7 +138,7 @@ function ActiveCallView({
           结束通话
         </Button>
       </div>
-      <p className="-mt-3 text-[11px] text-[var(--text-faint)]">紧急停止只把设备归零，不挂断通话</p>
+      <p className="-mt-3 text-[11px] text-[var(--text-faint)]">紧急停止仅归零设备，通话继续</p>
     </section>
   );
 }

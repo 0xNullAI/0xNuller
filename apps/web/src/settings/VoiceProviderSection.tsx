@@ -52,10 +52,7 @@ export function VoiceProviderSection() {
 
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-      <h3 className="text-sm font-semibold">语音服务</h3>
-      <p className="mt-1 text-xs text-[var(--text-faint)]">
-        实时语音通话用的模型。与上面的文本模型是两套独立的服务。
-      </p>
+      <h3 className="text-sm font-semibold">语音模型</h3>
 
       <div className="mt-3 flex flex-col gap-3">
         <SettingSelect
@@ -68,12 +65,6 @@ export function VoiceProviderSection() {
           }
           options={REALTIME_PROVIDER_DEFINITIONS.map((p) => ({ value: p.id, label: p.name }))}
         />
-
-        {def?.hint && (
-          <p className="rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--text-soft)]">
-            {def.hint}
-          </p>
-        )}
 
         {def?.fields.map((field) => (
           <label key={field.key} className="flex flex-col gap-1.5">
@@ -144,7 +135,7 @@ function VoiceField({
         onValueChange={onChange}
         options={options.map((voice) => ({ value: voice, label: voice }))}
       />
-      {error && <p className="text-xs text-[var(--danger)]">音色列表获取失败，已回退到内置列表</p>}
+      {error && <p className="text-xs text-[var(--danger)]">音色加载失败，已使用内置列表</p>}
     </label>
   );
 }

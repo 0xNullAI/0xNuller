@@ -71,7 +71,7 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
             </div>
             {!returning ? (
               <p className="max-w-[52ch] text-[var(--text-soft)]">
-                六个模块共用一套设备协议、一套安全链和一份波形库。连一次设备，处处可用。
+                一次连接，所有模块共用设备、安全设置和波形库
               </p>
             ) : null}
           </header>

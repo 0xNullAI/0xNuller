@@ -32,12 +32,7 @@ export function ProxySection() {
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <label className="flex items-center justify-between gap-4">
-        <span>
-          <span className="block text-sm font-semibold">代理</span>
-          <span className="block text-xs text-[var(--text-faint)]">
-            只影响文本模型请求；语音通话不走代理
-          </span>
-        </span>
+        <span className="text-sm font-semibold">文本模型代理</span>
         <input
           type="checkbox"
           checked={proxy.enabled}
@@ -55,9 +50,6 @@ export function ProxySection() {
               onChange={(e) => patch({ httpBaseUrl: e.target.value })}
               placeholder="http://127.0.0.1:8080"
             />
-            <span className="text-xs text-[var(--text-faint)]">
-              请求会改写成 <code>反代地址/上游域名/原路径</code>，由你的反代转发。留空则不改写。
-            </span>
           </label>
         </div>
       )}

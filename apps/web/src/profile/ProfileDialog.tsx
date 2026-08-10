@@ -155,7 +155,7 @@ export function ProfileDialog({
             // other" and "the service is unreachable". The server answers all
             // three identically so a block cannot be found by probing, and
             // saying more here would undo that.
-            <p className="py-10 text-center text-sm text-[var(--text-faint)]">没有找到这个用户。</p>
+            <p className="py-10 text-center text-sm text-[var(--text-faint)]">未找到用户</p>
           ) : mode === 'edit' && draft ? (
             <div className="flex flex-col gap-6">
               <ProfileIdentity
@@ -174,9 +174,7 @@ export function ProfileDialog({
             {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
             <div className="flex items-center justify-between gap-3">
               <span className="text-[10px] text-[var(--text-faint)]">
-                {draft.visibility === 'public'
-                  ? '保存后所有人都能看到。'
-                  : '保存后只有你自己能看到。'}
+                {draft.visibility === 'public' ? '所有人可见' : '仅自己可见'}
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
@@ -237,10 +235,7 @@ function ProfileBody({
             active and how popular it is, which is what private was for. */}
         <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3">
           <Lock className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
-          <p className="text-sm text-[var(--text-soft)]">
-            这个人的主页设为了仅自己可见。
-            <span className="text-[var(--text-faint)]">关注也不会解锁。</span>
-          </p>
+          <p className="text-sm text-[var(--text-soft)]">主页仅自己可见</p>
         </div>
       </div>
     );
@@ -272,7 +267,7 @@ function ProfileBody({
         // stays empty is a finished account, and a nag bar would say the
         // opposite of what this product promises.
         <p className="text-sm leading-relaxed text-[var(--text-faint)]">
-          还没有填任何资料。全部选填，不填也完全能用。
+          暂无资料，所有内容均为选填
         </p>
       ) : null}
 
@@ -363,8 +358,8 @@ function ProfileActions({
       <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
         <span className="text-xs text-[var(--text-faint)]">
           {resolved.state === 'visible' && resolved.profile.visibility === 'public'
-            ? '这是别人看到的样子。'
-            : '目前只有你自己能看到这些。'}
+            ? '公开主页预览'
+            : '仅自己可见'}
         </span>
         <Button onClick={onEdit}>
           <Pencil className="h-4 w-4" />
@@ -380,7 +375,7 @@ function ProfileActions({
         {/* Signed out is not broken. The profile above is fully readable; only
             the actions that need an identity are unavailable, and they say so
             rather than being offered and then failing. */}
-        <span className="text-xs text-[var(--text-faint)]">登录后可以关注和私聊。</span>
+        <span className="text-xs text-[var(--text-faint)]">登录后可关注和私聊</span>
         <Button variant="secondary" onClick={onClose}>
           关闭
         </Button>
@@ -414,7 +409,7 @@ function ProfileActions({
           variant="secondary"
           className="flex-1"
           disabled={!dmAllowed}
-          title={!dmAllowed ? '互相关注后可以私聊' : undefined}
+          title={!dmAllowed ? '互相关注后可私聊' : undefined}
           onClick={() => {
             openDirectMessage(resolved.user.id);
             onClose();
@@ -424,7 +419,7 @@ function ProfileActions({
           私聊
         </Button>
       </div>
-      {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注之后才能私聊。</p>}
+      {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注后可私聊</p>}
     </div>
   );
 }

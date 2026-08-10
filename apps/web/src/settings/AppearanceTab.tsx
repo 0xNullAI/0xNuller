@@ -13,9 +13,6 @@ export function AppearanceTab() {
     <div className="flex flex-col gap-5">
       <section>
         <h3 className="text-sm font-semibold">主题</h3>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">
-          只影响这台设备上的显示。所有模块共用同一个值。
-        </p>
         {/* Sized to its labels, not to the panel. `flex-1` inside a full-width
             row stretched three options across ~700px, which reads as three
             large buttons rather than one control with three states — and it

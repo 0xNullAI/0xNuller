@@ -225,8 +225,6 @@ interface WaveformPanelProps {
   onRemoveWaveform: (id: string) => void;
   onImportFile: (file: File) => Promise<string | null>;
   onOpenMarket: () => void;
-  /** Zero every attached device. Never narrowed to one host — see below. */
-  onStopAll: () => void;
   fireEnabledA: boolean;
   fireEnabledB: boolean;
   fireLimitA: number;
@@ -238,18 +236,15 @@ interface WaveformPanelProps {
 }
 
 /**
- * The waveform library, plus the all-devices 归零.
+ * The shared waveform library.
  *
  * One panel for the whole module rather than one per host: the library and the
  * playlist are a property of "what I want to feel", not of a particular piece
  * of hardware, and repeating a 20-tile grid per device would push the strength
  * controls off the screen.
  *
- * The big 归零 stays here and stays *global* — it zeroes every attached host
- * and the Opossum. The per-device 归零 in each `CoyoteControl` header is an
- * addition, never a replacement: stop has to remain one action away from
- * covering everything, and N buttons that each cover a third of the problem is
- * not that.
+ * Global zero-output lives in the shell device bar so it does not duplicate or
+ * disappear between modules. Per-device zero remains in multi-device headers.
  */
 export function WaveformPanel({
   targetName,
@@ -266,7 +261,6 @@ export function WaveformPanel({
   onRemoveWaveform,
   onImportFile,
   onOpenMarket,
-  onStopAll,
   fireEnabledA,
   fireEnabledB,
   fireLimitA,
@@ -422,28 +416,11 @@ export function WaveformPanel({
 
   return (
     <>
-      {/* ==================== Reset bar ====================
-          Stop is always one action away, it covers every attached host, and it
-          does not care whether a Coyote is attached at all: stopAll zeroes the
-          Opossum too. */}
-      <div className="mt-5 flex items-center justify-center">
-        <button
-          onClick={onStopAll}
-          className="flex h-11 max-w-xs flex-1 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-sm text-[var(--text)] transition-colors hover:bg-[var(--bg-soft)] active:scale-[0.98]"
-        >
-          <RotateCcw size={15} className="text-[var(--danger)]" />
-          全部归零
-        </button>
-      </div>
-
       <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>
             <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
               <Zap size={13} className="text-[var(--danger)]" /> 一键开火
-            </p>
-            <p className="mt-1 text-[11px] text-[var(--text-faint)]">
-              按住临时增加强度，松开恢复；需先启动对应通道波形。
             </p>
           </div>
           {targetName && (
@@ -475,7 +452,7 @@ export function WaveformPanel({
 
       {targetName && (
         <p className="mt-2 text-[11px] text-[var(--text-faint)]">
-          作用于 <span className="text-[var(--accent)]">{targetName}</span>，点上方设备标题可切换
+          当前设备：<span className="text-[var(--accent)]">{targetName}</span>
         </p>
       )}
 

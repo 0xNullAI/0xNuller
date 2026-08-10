@@ -23,9 +23,8 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
  *    **exposes no device-related endpoint at all**; that is a structural
  *    guarantee, not a convention.
  *
- * 3. **Email is optional.** Requiring a real email address is a substantial
- *    barrier for an adult-oriented product. If it is left blank, forgetting the
- *    password means losing the account — say so plainly at registration.
+ * 3. **New accounts require an email address.** It is normalized and reserved for
+ *    the recovery flow; existing accounts created before this rule remain valid.
  */
 
 export interface Env extends Cloudflare.Env {
@@ -60,6 +59,7 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_USERNAME = 8;
 const MAX_FAILS_PER_IP = 30;
 const MIN_PASSWORD_LEN = 10;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -758,12 +758,20 @@ export default {
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const invalid = validateCredentials(body.username, body.password);
         if (invalid) return err(invalid, 400, cors);
+        const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+        if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
+          return err('请输入有效邮箱', 400, cors);
+        }
 
         const username = (body.username as string).toLowerCase();
         const exists = await env.DB.prepare('SELECT 1 FROM users WHERE username = ?')
           .bind(username)
           .first();
         if (exists) return err('用户名已被占用', 409, cors);
+        const emailExists = await env.DB.prepare('SELECT 1 FROM users WHERE lower(email) = ?')
+          .bind(email)
+          .first();
+        if (emailExists) return err('邮箱已被注册', 409, cors);
 
         const id = crypto.randomUUID();
         await env.DB.prepare(
@@ -777,7 +785,7 @@ export default {
               ? body.displayName.trim().slice(0, 24)
               : (body.username as string),
             await hashPassword(body.password as string),
-            typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null,
+            email,
             Date.now(),
           )
           .run();

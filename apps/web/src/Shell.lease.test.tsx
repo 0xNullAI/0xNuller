@@ -82,6 +82,17 @@ afterEach(async () => {
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
 
 describe('外壳与设备控制权', () => {
+  it('未登录时不挂载 Chat', async () => {
+    window.history.pushState(null, '', '/chat');
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(await screen.findByText('登录后使用 Chat')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '登录 / 注册' })).toBeTruthy();
+    expect(screen.queryByText('Chat 模块')).toBeNull();
+  });
+
   it('挂载时把租约给当前模块', async () => {
     fakeModule('agent', [COYOTE]);
     await act(async () => {

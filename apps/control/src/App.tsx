@@ -282,9 +282,6 @@ export default function App() {
           onFireStop={stopFire}
           onStopDevice={stopCoyote}
           onDisconnect={disconnectCoyote}
-          // No device id: the module-level 归零 must cover every attached host
-          // plus the Opossum, not whichever one happens to be selected.
-          onStopAll={stopAll}
           waveTab={waveTab}
           onWaveTabChange={setWaveTab}
           waveforms={waveforms.allWaveforms}

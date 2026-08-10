@@ -25,8 +25,8 @@ export const GAMES: GameEntry[] = [
   {
     id: 'snake',
     name: '贪吃蛇',
-    blurb: '经典贪吃蛇，撞墙或咬到自己就结束。',
-    deviceUse: '吃到食物给一次短反馈，游戏结束给一次稍强的。强度始终受设备安全上限约束。',
+    blurb: '经典贪吃蛇，撞墙或碰到自己即结束',
+    deviceUse: '吃到食物时短反馈，结束时加强反馈',
     status: 'ready',
     Component: lazy(() => import('./games/snake/SnakeGame')),
   },

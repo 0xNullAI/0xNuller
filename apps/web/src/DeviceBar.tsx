@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bluetooth, LoaderCircle, Settings2, Square, X } from 'lucide-react';
+import { Bluetooth, LoaderCircle, Square, X } from 'lucide-react';
 import { allConnectedDevices, safetySessionById, subscribeSafetySessions } from '@dg-kit/safety';
 // The device names are @dg-kit/core's to own. This file used to keep its own
 // copy, which called civet-edging 灵狐 while every other module said 灵猫 —
@@ -138,13 +138,7 @@ function DeviceChip({
   );
 }
 
-export function DeviceBar({
-  activeSessionId = null,
-  onOpenSafety,
-}: {
-  activeSessionId?: string | null;
-  onOpenSafety?: () => void;
-}) {
+export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string | null }) {
   const groups = useConnectedDevices();
   const [stopping, setStopping] = useState(false);
   const [connectState, setConnectState] = useState<{
@@ -234,18 +228,6 @@ export function DeviceBar({
             <Bluetooth className="h-3.5 w-3.5" />
           )}
           {connecting ? '连接中…' : '连接设备'}
-        </button>
-      )}
-
-      {onOpenSafety && (canConnect || total > 0) && (
-        <button
-          type="button"
-          onClick={onOpenSafety}
-          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm font-medium text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          title="设备安全设置"
-        >
-          <Settings2 className="h-3.5 w-3.5" />
-          设备安全
         </button>
       )}
 
