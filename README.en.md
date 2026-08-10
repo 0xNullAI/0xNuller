@@ -63,7 +63,8 @@ npm run format
 - `packages` — shared packages
 - [`workers`](./workers/README.md) — backend services
 
-Maintainer documentation is available under [`docs`](./docs).
+Maintainer documentation is available under [`docs`](./docs). The complete pre-merge project README
+snapshots are indexed in [`docs/legacy`](./docs/legacy/README.md).
 
 The compatibility release replaces only the `0xnullai.com` root site. Legacy subdomains remain
 online. DG-Kit and DG-MCP migration/public release require separate approval.

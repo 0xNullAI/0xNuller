@@ -10,11 +10,11 @@
 [![npm: @dg-kit/tools](https://img.shields.io/npm/v/@dg-kit/tools?label=%40dg-kit%2Ftools&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/tools)
 [![npm: @dg-kit/transport-webbluetooth](https://img.shields.io/npm/v/@dg-kit/transport-webbluetooth?label=%40dg-kit%2Ftransport-webbluetooth&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/transport-webbluetooth)
 [![npm: @dg-kit/transport-tauri-blec](https://img.shields.io/npm/v/@dg-kit/transport-tauri-blec?label=%40dg-kit%2Ftransport-tauri-blec&color=0a84ff)](https://www.npmjs.com/package/@dg-kit/transport-tauri-blec)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../../LICENSE)
 [![CI](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml/badge.svg)](https://github.com/0xNullAI/DG-Kit/actions/workflows/ci.yml)
 [![官网](https://img.shields.io/badge/官网-0xnullai.com-58c8f2)](https://0xnullai.com)
 
-中文 | [English](./README.en.md)
+中文 | [English](kit-README.en.md)
 
 </div>
 
@@ -90,4 +90,4 @@ npm run test
 
 ## 协议
 
-[MIT](./LICENSE)
+[MIT](../../LICENSE)

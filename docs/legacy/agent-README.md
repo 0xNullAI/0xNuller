@@ -4,11 +4,11 @@
 
 **用自然语言控制 DG-Lab 郊狼 2.0 / 3.0**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../../LICENSE)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
 [![Demo](https://img.shields.io/badge/demo-online-success)](https://agent.0xnullai.com)
 
-中文 | [English](./README.en.md)
+中文 | [English](agent-README.en.md)
 
 > 交流 QQ 群：**628954471**
 
@@ -105,4 +105,4 @@ npm run format       # prettier --write
 
 ## 协议
 
-[MIT](./LICENSE)
+[MIT](../../LICENSE)

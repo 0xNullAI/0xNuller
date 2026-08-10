@@ -4,11 +4,11 @@
 
 **Control your DG-Lab Coyote 2.0 / 3.0 with natural language**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../../LICENSE)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
 [![Demo](https://img.shields.io/badge/demo-online-success)](https://agent.0xnullai.com)
 
-[中文](./README.md) | English
+[中文](agent-README.md) | English
 
 </div>
 
@@ -107,4 +107,4 @@ npm run format
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](../../LICENSE)

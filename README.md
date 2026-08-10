@@ -65,7 +65,8 @@ npm run format
 - `packages` — 共享功能包
 - [`workers`](./workers/README.md) — 后端服务
 
-维护者文档位于 [`docs`](./docs)。
+维护者文档位于 [`docs`](./docs)；合并前各项目的完整 README 快照见
+[`docs/legacy`](./docs/legacy/README.md)。
 
 兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 的迁移及
 对外发布在单独确认后进行。
