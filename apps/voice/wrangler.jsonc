@@ -1,10 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // script 名字保持 `dg-voice` 不能改：TrialSession 的 migration tag 按 script 计，
-  // 改名等于新建一组空 DO，所有激活密钥的用量计数会归零——那是花钱的方向。
-  // 同 0xnullai-chat：改名会重置 TrialSession 的 DO 命名空间，所有人的体验
-  // 额度归零重来一次。这是花钱的账，但是一次性的、有界的——DO 的用量上限本身
-  // 仍然生效，只是计数从头开始。切换选在低峰时段。
+  // 独立脚本保留旧版 dg-voice；首次上线后保持名称稳定，以免重建 TrialSession 数据。
   "name": "0xnullai-voice",
   "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "worker/index.ts",
