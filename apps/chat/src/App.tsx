@@ -1,10 +1,4 @@
-import {
-  ModuleActions,
-  SidebarSection,
-  useOpenShellSettings,
-  useInShell,
-  useSafetySession,
-} from '@0xnullai/ui';
+import { SidebarSection, useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
 import {
   hasDeviceLease,
   subscribeSafetySessions,
@@ -29,7 +23,7 @@ import { ChatPanel } from './components/ChatPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { DeviceSafetyButton } from './components/DeviceSafetyButton';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
-import { LogOut, Bot } from 'lucide-react';
+import { LogOut, Bot, Settings2 } from 'lucide-react';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type {
@@ -777,6 +771,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     return () => clearInterval(t);
   }, [callApplyFire]);
 
+  const roomTitle = peerRoom.isDm
+    ? (dmPeer?.name ?? '私聊')
+    : peerRoom.groupName || (peerRoom.roomId === RESERVED_ROOM_CODE ? '公开大厅' : '房间');
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
       {/* The room list is projected into the shell sidebar's 「房间」 section. Before the
@@ -827,31 +825,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         />
       )}
 
-      {/* Room info stays in the content area (it is content, not chrome); the button group
-          on the right is projected into the shell's action slot so it lines up with the
-          other modules' buttons. */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+      <header className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3">
         <div className="flex min-w-0 items-center gap-2">
-          {/* Same header as a room; a conversation just names the person instead of the group,
-              and has no code to show — its id is derived from the two accounts, not shared. */}
-          {peerRoom.isDm ? (
-            <span className="min-w-0 truncate text-sm font-medium text-[var(--text)]">
-              {dmPeer?.name ?? '私聊'}
-            </span>
-          ) : (
-            <>
-              {peerRoom.groupName && (
-                <span className="min-w-0 truncate text-sm font-medium text-[var(--text)]">
-                  {peerRoom.groupName}
-                </span>
-              )}
-              {peerRoom.roomId && (
-                <span className="hidden shrink-0 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--text-faint)] sm:inline">
-                  {peerRoom.roomId}
-                </span>
-              )}
-            </>
-          )}
+          <span className="min-w-0 truncate text-sm font-semibold text-[var(--text)]">
+            {roomTitle}
+          </span>
           {dmError && (
             <span className="shrink-0 rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-xs text-[var(--danger)]">
               {dmError}
@@ -863,11 +841,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             </span>
           ) : (
             <span className="rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-faint)]">
-              {peerRoom.isDm ? '对方不在线' : '等待其他成员加入...'}
+              {peerRoom.isDm ? '对方不在线' : '等待成员'}
             </span>
           )}
         </div>
-        <ModuleActions>
+        <div className="flex shrink-0 items-center gap-1">
           {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points.
               Neither does a conversation: the room agent is defined by a group's owner and
               runs on the host's authority, and a conversation has neither — the server drops
@@ -899,7 +877,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
                 title="AI 设置"
               >
-                <Bot className="h-4 w-4" />
+                <Settings2 className="h-4 w-4" />
               </button>
               {device.connected && (
                 <button
@@ -959,7 +937,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           >
             <LogOut className="h-4 w-4" />
           </button>
-        </ModuleActions>
+        </div>
       </header>
 
       {/* Mobile tab bar */}
