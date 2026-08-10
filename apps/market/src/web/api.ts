@@ -2,6 +2,7 @@ import { apiBaseUrl } from '@0xnullai/settings';
 import type {
   ItemPatch,
   BatchUploadPayload,
+  MarketAdminItem,
   ItemType,
   MarketItem,
   UploadPayload,
@@ -109,4 +110,27 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<void> {
 
 export async function deleteItem(id: string): Promise<void> {
   await req(`/api/items/${id}`, { method: 'DELETE' });
+}
+
+export type AdminItemStatus = 'all' | 'reported' | 'hidden';
+
+export async function fetchAdminItems(input: {
+  status: AdminItemStatus;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<{ items: MarketAdminItem[]; nextOffset: number | null }> {
+  const params = new URLSearchParams({ status: input.status });
+  if (input.q) params.set('q', input.q);
+  if (input.offset) params.set('offset', String(input.offset));
+  if (input.limit) params.set('limit', String(input.limit));
+  return req(`/api/items/admin?${params}`);
+}
+
+export async function setItemHidden(id: string, hidden: boolean): Promise<void> {
+  await req(`/api/items/${id}/moderation`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden }),
+  });
 }

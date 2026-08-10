@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Cpu, LayoutTemplate, Palette, ShieldAlert, UserRound, X } from 'lucide-react';
+import { Cpu, LayoutTemplate, Palette, ShieldAlert, ShieldCheck, UserRound, X } from 'lucide-react';
 import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
 import { AppearanceTab } from './AppearanceTab';
@@ -7,6 +7,7 @@ import { AiTab } from './AiTab';
 import { SafetyTab } from './SafetyTab';
 import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
+import { AdminContent } from './AdminContent';
 
 /**
  * The software's one and only settings panel.
@@ -25,6 +26,7 @@ import { AccountContent } from './AccountContent';
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
+  { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 5 },
   { id: 'appearance', label: '外观', icon: Palette, Component: AppearanceTab, order: 10 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
@@ -48,8 +50,9 @@ export function SettingsPanel({
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
   const moduleClaims = useModuleSettingsClaims();
+  const builtinTabs = user?.role === 'admin' ? TABS : TABS.filter((item) => item.id !== 'admin');
   const navigationTabs = [
-    ...TABS.map((item) => ({
+    ...builtinTabs.map((item) => ({
       id: item.id as string,
       label: item.label,
       icon: item.icon,
@@ -57,12 +60,12 @@ export function SettingsPanel({
     })),
     ...moduleClaims,
   ].sort((left, right) => left.order - right.order);
-  const builtinTab = TABS.find((t) => t.id === tab);
+  const builtinTab = builtinTabs.find((t) => t.id === tab);
   const activeModuleClaim = moduleClaims.find((c) => c.id === tab);
   // A module can unmount while its page is open — fall back rather than
   // leaving the content area blank with a nav item selected.
   const resolvedTab = builtinTab || activeModuleClaim ? tab : 'appearance';
-  const Active = TABS.find((t) => t.id === resolvedTab)?.Component;
+  const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {

@@ -72,7 +72,14 @@ export function AccountContent({
         <div className="flex items-center gap-3">
           <Avatar name={user.displayName} username={user.username} size={44} />
           <div className="min-w-0">
-            <div className="truncate text-base font-semibold">{user.displayName}</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-base font-semibold">{user.displayName}</div>
+              {user.role === 'admin' ? (
+                <span className="shrink-0 rounded-full border border-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                  管理员
+                </span>
+              ) : null}
+            </div>
             <div className="truncate text-sm text-[var(--text-faint)]">@{user.username}</div>
           </div>
         </div>

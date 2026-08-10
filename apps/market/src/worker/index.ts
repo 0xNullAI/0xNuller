@@ -1,4 +1,9 @@
-import { ItemPatchSchema, BatchUploadSchema, UploadSchema } from '../shared/schema';
+import {
+  ItemPatchSchema,
+  BatchUploadSchema,
+  ModerationPatchSchema,
+  UploadSchema,
+} from '../shared/schema';
 import type { ItemPatchRow, InsertItem } from './db';
 import {
   deleteItem,
@@ -7,9 +12,11 @@ import {
   incrementViews,
   insertItem,
   insertItems,
+  listAdminItems,
   listItems,
   recentUploadCount,
   reportItem,
+  setItemHidden,
   updateItemMeta,
 } from './db';
 import { hashSourceIp } from './security';
@@ -24,6 +31,10 @@ interface MarketAuthService extends Fetcher {
     credentials: { authorization: string | null; cookie: string | null },
     itemId: string,
   ): Promise<'admin' | 'owner' | 'user' | 'unauthorized'>;
+  marketAccountAccess(credentials: {
+    authorization: string | null;
+    cookie: string | null;
+  }): Promise<'admin' | 'user' | 'unauthorized'>;
 }
 
 type Env = Omit<Cloudflare.Env, 'AUTH'> & {
@@ -90,6 +101,29 @@ export default {
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
         const items = await listItems(env.DB, { type, q, sort, limit, offset });
         return json({ items });
+      }
+
+      if (pathname === '/api/items/admin' && request.method === 'GET') {
+        await requireMarketAdmin(request, env);
+        const requestedStatus = url.searchParams.get('status');
+        const status =
+          requestedStatus === 'reported' || requestedStatus === 'hidden' ? requestedStatus : 'all';
+        const q = url.searchParams.get('q')?.trim() || undefined;
+        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const items = await listAdminItems(env.DB, { status, q, limit, offset });
+        return json({ items, nextOffset: items.length === limit ? offset + limit : null });
+      }
+
+      const moderationMatch = pathname.match(/^\/api\/items\/([\w-]+)\/moderation$/);
+      if (moderationMatch && request.method === 'PATCH') {
+        await requireMarketAdmin(request, env);
+        const body = await request.json().catch(() => null);
+        const parsed = ModerationPatchSchema.safeParse(body);
+        if (!parsed.success) return err('数据校验失败', 400);
+        const updated = await setItemHidden(env.DB, moderationMatch[1]!, parsed.data.hidden);
+        if (!updated) return err('未找到该条目', 404);
+        return json({ ok: true });
       }
 
       // GET /api/items/:id —— detail
@@ -301,8 +335,21 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
   }
 }
 
-async function marketAccess(request: Request, env: Env, id: string) {
+async function marketAccess(
+  request: Request,
+  env: { AUTH: Pick<MarketAuthService, 'marketItemAccess'> },
+  id: string,
+) {
   return env.AUTH.marketItemAccess(credentialsFrom(request), id);
+}
+
+export async function requireMarketAdmin(
+  request: Request,
+  env: { AUTH: Pick<MarketAuthService, 'marketAccountAccess'> },
+): Promise<void> {
+  const access = await env.AUTH.marketAccountAccess(credentialsFrom(request));
+  if (access === 'unauthorized') throw new MarketRequestError('请先登录', 401);
+  if (access !== 'admin') throw new MarketRequestError('需要管理员权限', 403);
 }
 
 // Change metadata: empty string / empty array -> null (clears the field).

@@ -91,6 +91,9 @@ export const ItemPatchSchema = z
   .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
 export type ItemPatch = z.infer<typeof ItemPatchSchema>;
 
+export const ModerationPatchSchema = z.object({ hidden: z.boolean() }).strict();
+export type ModerationPatch = z.infer<typeof ModerationPatchSchema>;
+
 export type ItemType = 'waveform' | 'scenario' | 'multi-scene';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;
 export type ScenarioContent = z.infer<typeof ScenarioContentSchema>;
@@ -110,4 +113,9 @@ export interface MarketItem {
   downloads: number;
   views: number;
   createdAt: number;
+}
+
+export interface MarketAdminItem extends MarketItem {
+  reports: number;
+  hidden: boolean;
 }

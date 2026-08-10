@@ -117,7 +117,11 @@ async function registerUser(overrides: Record<string, unknown> = {}) {
   const res = await post('/api/auth/register', { ...GOOD, ...overrides });
   return {
     res,
-    body: (await res.json()) as { user?: { id: string }; token?: string; error?: string },
+    body: (await res.json()) as {
+      user?: { id: string; role: 'user' | 'admin' };
+      token?: string;
+      error?: string;
+    },
   };
 }
 
@@ -126,9 +130,13 @@ describe('注册', () => {
     const { res, body } = await registerUser();
     expect(res.status).toBe(201);
     expect(body.token).toBeTruthy();
+    expect(body.user?.role).toBe('user');
 
     const me = await worker.fetch(req('/api/auth/me', { token: body.token }), env);
-    expect(((await me.json()) as { user: { username: string } }).user.username).toBe('alice');
+    expect(((await me.json()) as { user: { username: string; role: string } }).user).toMatchObject({
+      username: 'alice',
+      role: 'user',
+    });
   });
 
   it('用户名不区分大小写地唯一', async () => {

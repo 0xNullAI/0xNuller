@@ -6,6 +6,7 @@ import {
   type ModuleSettingsClaim,
 } from '@0xnullai/ui';
 import { SettingsPanel } from './settings/SettingsPanel';
+import type { AuthUser } from '@0xnullai/auth';
 
 function ModuleSettingsFixtures() {
   const claims: Array<ModuleSettingsClaim & { content: string; navigation?: boolean }> = [
@@ -33,10 +34,10 @@ function ModuleSettingsFixtures() {
   ));
 }
 
-function renderSettings() {
+function renderSettings(user: AuthUser | null = null) {
   render(
     <ModuleSettingsProvider>
-      <SettingsPanel user={null} onUser={vi.fn()} onClose={vi.fn()} />
+      <SettingsPanel user={user} onUser={vi.fn()} onClose={vi.fn()} />
       <ModuleSettingsFixtures />
     </ModuleSettingsProvider>,
   );
@@ -60,5 +61,16 @@ describe('统一设置顺序', () => {
     renderSettings();
     fireEvent.click(await screen.findByRole('button', { name: '设备安全' }));
     expect(await screen.findByText('传感器内容')).toBeTruthy();
+  });
+
+  it('管理页仅向管理员账户显示', async () => {
+    renderSettings({ id: 'admin-1', username: 'admin', displayName: 'Admin', role: 'admin' });
+    const navigation = screen.getByRole('navigation');
+    await screen.findByRole('button', { name: '波形' });
+    expect(
+      within(navigation)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['账户', '管理', '外观', 'AI', '波形', '场景', '设备安全', '数据']);
   });
 });

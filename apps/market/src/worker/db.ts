@@ -1,4 +1,4 @@
-import type { ItemType, MarketItem } from '../shared/schema';
+import type { ItemType, MarketAdminItem, MarketItem } from '../shared/schema';
 
 // D1 row -> MarketItem. content/tags are deserialized.
 interface ItemRow {
@@ -12,6 +12,8 @@ interface ItemRow {
   content: string;
   downloads: number;
   views: number;
+  reports: number;
+  hidden: number;
   created_at: number;
 }
 
@@ -28,6 +30,14 @@ export function rowToItem(row: ItemRow): MarketItem {
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
+  };
+}
+
+function rowToAdminItem(row: ItemRow): MarketAdminItem {
+  return {
+    ...rowToItem(row),
+    reports: row.reports,
+    hidden: row.hidden === 1,
   };
 }
 
@@ -62,6 +72,37 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
     .bind(...binds)
     .all<ItemRow>();
   return (results ?? []).map(rowToItem);
+}
+
+export interface AdminListParams {
+  status: 'all' | 'reported' | 'hidden';
+  q?: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listAdminItems(
+  db: D1Database,
+  params: AdminListParams,
+): Promise<MarketAdminItem[]> {
+  const where: string[] = [];
+  const binds: unknown[] = [];
+  if (params.status === 'reported') where.push('reports > 0');
+  if (params.status === 'hidden') where.push('hidden = 1');
+  if (params.q) {
+    where.push('(name LIKE ? OR description LIKE ? OR author LIKE ?)');
+    const like = `%${params.q}%`;
+    binds.push(like, like, like);
+  }
+  const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const sql = `SELECT * FROM items ${filter}
+    ORDER BY hidden DESC, reports DESC, created_at DESC LIMIT ? OFFSET ?`;
+  binds.push(params.limit, params.offset);
+  const { results } = await db
+    .prepare(sql)
+    .bind(...binds)
+    .all<ItemRow>();
+  return (results ?? []).map(rowToAdminItem);
 }
 
 export async function getItem(db: D1Database, id: string): Promise<MarketItem | null> {
@@ -139,6 +180,14 @@ export async function reportItem(db: D1Database, id: string): Promise<void> {
 
 export async function deleteItem(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
+}
+
+export async function setItemHidden(db: D1Database, id: string, hidden: boolean): Promise<boolean> {
+  const result = await db
+    .prepare('UPDATE items SET hidden = ? WHERE id = ?')
+    .bind(hidden ? 1 : 0, id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 // Change item metadata: column names come from a fixed allowlist, values are already

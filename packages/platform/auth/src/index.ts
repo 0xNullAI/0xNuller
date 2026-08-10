@@ -21,6 +21,8 @@ export interface AuthUser {
   id: string;
   username: string;
   displayName: string;
+  /** Present for the signed-in account; omitted from public profile identities. */
+  role?: 'user' | 'admin';
 }
 
 // Auth endpoints live under `/api/auth` on the unified domain (paths are

@@ -397,6 +397,7 @@ export interface MarketClaimCredentials {
 export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
+export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
 
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
   const headers = new Headers();
@@ -426,6 +427,14 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     itemId: string,
   ): Promise<MarketAccessResult> {
     return marketItemAccessForCredentials(this.env, credentials, itemId);
+  }
+
+  async marketAccountAccess(
+    credentials: MarketClaimCredentials,
+  ): Promise<MarketAccountAccessResult> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    if (!user) return 'unauthorized';
+    return user.role === 'admin' ? 'admin' : 'user';
   }
 }
 
@@ -525,6 +534,10 @@ function publicProfile(row: Record<string, unknown>) {
 
 function publicUser(u: UserRow) {
   return { id: u.id, username: u.username, displayName: u.display_name };
+}
+
+function sessionUser(u: UserRow) {
+  return { ...publicUser(u), role: u.role };
 }
 
 /**
@@ -830,7 +843,7 @@ export default {
           )
           .run();
 
-        return json({ user: { id, username, displayName: username }, token }, 201, {
+        return json({ user: { id, username, displayName: username, role: 'user' }, token }, 201, {
           ...cors,
           'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
         });
@@ -910,7 +923,7 @@ export default {
           )
           .run();
 
-        return json({ user: publicUser(user), token }, 200, {
+        return json({ user: sessionUser(user), token }, 200, {
           ...cors,
           'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
         });
@@ -919,7 +932,7 @@ export default {
       // ── Current user ──
       if (path === '/api/auth/me' && request.method === 'GET') {
         const user = await currentUser(request, env);
-        return json({ user: user ? publicUser(user) : null }, 200, cors);
+        return json({ user: user ? sessionUser(user) : null }, 200, cors);
       }
 
       // ── Logout ──
@@ -1328,8 +1341,7 @@ export default {
       // ── Market ownership ──
       //
       // The item itself lives in Market's own D1, in another Worker. This
-      // only records who claimed what, so "things I uploaded" survives losing
-      // the anonymous edit key that Market issues per device.
+      // records the durable account ownership created during upload.
       if (path === '/api/auth/market-claims' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
