@@ -10,8 +10,8 @@ import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/set
  * arranges the two device types Voice supports (郊狼 + 负鼠).
  *
  * Renders nothing when neither is connected, matching Agent's behaviour: the
- * call to action in that state is the 「连接设备」 button that always sits in
- * the top bar, not an empty status row.
+ * call to action in that state lives inside the shared device-safety button in
+ * the shell bar, not in an empty status row or a Voice-only connect button.
  */
 interface DeviceStatusBarProps {
   state: DeviceSessionState;

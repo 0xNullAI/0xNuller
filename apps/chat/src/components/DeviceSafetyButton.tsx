@@ -21,7 +21,8 @@ interface DeviceSafetyButtonProps {
    */
   firePolicy?: 'sum' | 'max' | 'avg';
   onSetFirePolicy?: (p: 'sum' | 'max' | 'avg') => void;
-  onRestoreDefaults: () => void;
+  /** Omit in modules without a waveform library, such as Voice. */
+  onRestoreDefaults?: () => void;
   /** The attached sensor (paw-prints or civet-edging, one of the two), null when none. */
   sensor: SensorSummary | null;
   /** The attached Opossum vibration controller, null when none. */
@@ -33,9 +34,11 @@ interface DeviceSafetyButtonProps {
    * devices one after another. On the web it goes through the Web Bluetooth picker, on
    * Tauri Android through a plugin-blec scan + device picker — both behave the same.
    */
-  onConnectDevice: () => Promise<{ kind: DeviceKind; name: string }>;
-  onDisconnectSensor: () => void;
+  onConnectDevice: () => Promise<unknown>;
+  onDisconnectSensor?: () => void;
   onDisconnectOpossum: () => void;
+  /** Device families this module can actually use. Defaults to every supported family. */
+  supportedDeviceKinds?: readonly DeviceKind[];
 }
 
 const SENSOR_KIND_LABEL: Record<string, string> = {
@@ -59,6 +62,7 @@ export function DeviceSafetyButton({
   onConnectDevice,
   onDisconnectSensor,
   onDisconnectOpossum,
+  supportedDeviceKinds = ['coyote', 'paw-prints', 'civet-edging', 'opossum'],
 }: DeviceSafetyButtonProps) {
   const [open, setOpen] = useState(false);
   const [connectingDevice, setConnectingDevice] = useState(false);
@@ -95,7 +99,17 @@ export function DeviceSafetyButton({
     }
   }
 
-  const extraDeviceCount = (sensor ? 1 : 0) + (opossum ? 1 : 0);
+  const extraDeviceCount = (sensor?.connected ? 1 : 0) + (opossum?.connected ? 1 : 0);
+  const connectedDeviceCount = (connected ? 1 : 0) + extraDeviceCount;
+  const anyConnected = connectedDeviceCount > 0;
+  const supportedDeviceText = supportedDeviceKinds
+    .map((kind) => {
+      if (kind === 'coyote') return 'Coyote 主机';
+      if (kind === 'paw-prints') return '爪印传感器';
+      if (kind === 'civet-edging') return '灵猫边缘传感器';
+      return 'Opossum 振动控制器';
+    })
+    .join('、');
 
   return (
     <>
@@ -103,17 +117,17 @@ export function DeviceSafetyButton({
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         className={`flex h-9 items-center gap-1.5 rounded-[var(--radius-ctl)] px-2.5 text-xs transition-colors ${
-          connected
+          anyConnected
             ? 'bg-[var(--success-soft)] text-[var(--success)]'
             : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
         }`}
-        title={connected ? `已连接 ${deviceName ?? ''}` : '设备与个人安全设置'}
+        title={anyConnected ? `已连接 ${connectedDeviceCount} 台设备` : '设备与个人安全设置'}
         aria-label="设备与个人安全设置"
       >
-        {connected ? (
+        {anyConnected ? (
           <>
             <Bluetooth className="h-4 w-4" />
-            {battery != null && <span className="hidden sm:inline">{battery}%</span>}
+            {connected && battery != null && <span className="hidden sm:inline">{battery}%</span>}
           </>
         ) : (
           <BluetoothOff className="h-4 w-4" />
@@ -146,8 +160,7 @@ export function DeviceSafetyButton({
               <p className="text-[10px] text-[var(--danger)]">{connectDeviceError}</p>
             )}
             <p className="text-[10px] text-[var(--text-faint)]">
-              自动识别 Coyote 主机、爪印传感器、灵猫边缘传感器、Opossum 振动控制器，
-              点击后从选择器中选取即可；每种设备一次只支持接入一台，重复点击可依次连接多台。
+              自动识别{supportedDeviceText}，点击后从选择器中选取即可；重复点击可依次连接设备。
             </p>
           </div>
 
@@ -191,7 +204,7 @@ export function DeviceSafetyButton({
                     </div>
                   </div>
                   <button
-                    onClick={onDisconnectSensor}
+                    onClick={() => onDisconnectSensor?.()}
                     className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--danger)]"
                   >
                     断开
@@ -258,7 +271,7 @@ export function DeviceSafetyButton({
               />
             </div>
             <p className="text-[10px] text-[var(--text-faint)]">
-              硬件级别限制，远程控制无法超过此上限。负鼠的振动强度另有一套上限，在设置的「设备安全」里调。
+              全局设备安全上限，任何模块的控制都无法超过。负鼠振动强度另有一套上限，在设置的「设备安全」里调。
             </p>
           </div>
 
@@ -290,23 +303,25 @@ export function DeviceSafetyButton({
           )}
 
           {/* Restore default waveforms */}
-          <div className="border-t border-[var(--surface-border)] pt-3">
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    '恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。',
-                  )
-                ) {
-                  onRestoreDefaults();
-                }
-              }}
-              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
-            >
-              <RotateCcw size={13} /> 恢复默认波形
-            </button>
-            <p className="mt-1 text-[10px] text-[var(--text-faint)]">清空自定义 + 取消隐藏内置</p>
-          </div>
+          {onRestoreDefaults && (
+            <div className="border-t border-[var(--surface-border)] pt-3">
+              <button
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      '恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。',
+                    )
+                  ) {
+                    onRestoreDefaults();
+                  }
+                }}
+                className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+              >
+                <RotateCcw size={13} /> 恢复默认波形
+              </button>
+              <p className="mt-1 text-[10px] text-[var(--text-faint)]">清空自定义 + 取消隐藏内置</p>
+            </div>
+          )}
         </div>
       </Popover>
     </>

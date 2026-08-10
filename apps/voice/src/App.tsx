@@ -1,5 +1,4 @@
-import { Bluetooth } from 'lucide-react';
-import { Alert, AlertDescription, Button, ModuleActions, useSafetySession } from '@0xnullai/ui';
+import { Alert, AlertDescription, ModuleActions, useSafetySession } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -10,6 +9,7 @@ import { PermissionModal } from '@0xnullai/ui';
 import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
 import { isCoyoteOutputActive } from '@dg-kit/core';
+import { DeviceSafetyButton } from '../../chat/src/components/DeviceSafetyButton';
 
 interface AppProps {
   /**
@@ -27,7 +27,6 @@ export function App({ transport }: AppProps = {}) {
     session,
     state,
     error,
-    connecting: connectingDevice,
     connectDevice,
     emergencyStop,
     disconnectCoyote,
@@ -71,7 +70,7 @@ export function App({ transport }: AppProps = {}) {
         : []),
     ],
   });
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
@@ -92,12 +91,42 @@ export function App({ transport }: AppProps = {}) {
           In a standalone deployment ModuleActions renders in place and this
           header stays as it was. */}
       {/* The module name is expressed by the top of the shell's sidebar; these
-          two buttons go into the shell's button slot. */}
+          device controls go into the shell's shared action slot. */}
       <ModuleActions>
-        <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
-          <Bluetooth className="h-4 w-4" />
-          <span className="hidden sm:inline">{connectingDevice ? '连接中…' : '连接设备'}</span>
-        </Button>
+        <DeviceSafetyButton
+          connected={state.coyote.connected}
+          deviceName={state.coyote.deviceName ?? null}
+          battery={state.coyote.battery ?? null}
+          onDisconnect={() => void disconnectCoyote()}
+          limitA={settings.coyoteSafety.maxStrengthA}
+          limitB={settings.coyoteSafety.maxStrengthB}
+          onSetLimit={(channel, value) =>
+            updateSettings((current) => ({
+              ...current,
+              coyoteSafety: {
+                ...current.coyoteSafety,
+                [channel === 'A' ? 'maxStrengthA' : 'maxStrengthB']: value,
+              },
+            }))
+          }
+          sensor={null}
+          opossum={
+            state.opossum.connected
+              ? {
+                  connected: true,
+                  deviceName: state.opossum.deviceName ?? '负鼠',
+                  battery: state.opossum.battery ?? null,
+                  intensityA: state.opossum.intensityA,
+                  intensityB: state.opossum.intensityB,
+                  lastButtons: null,
+                  lastButtonsAt: null,
+                }
+              : null
+          }
+          onConnectDevice={connectDevice}
+          onDisconnectOpossum={() => void disconnectOpossum()}
+          supportedDeviceKinds={['coyote', 'opossum']}
+        />
       </ModuleActions>
 
       <DeviceStatusBar
