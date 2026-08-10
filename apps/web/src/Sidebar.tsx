@@ -7,7 +7,9 @@ import {
   UserRound,
   Users,
   BookOpen,
+  Globe2,
   LogIn,
+  Plus,
 } from 'lucide-react';
 import { Avatar, useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
@@ -234,6 +236,54 @@ function SidebarSectionSlot({ id, title }: { id: SidebarSectionId; title: string
   );
 }
 
+/**
+ * Useful first-run destinations while Agent and Chat have not mounted yet.
+ *
+ * The real modules claim these same section ids once opened and portal their
+ * complete, stateful lists into the shell. Until then, keeping the two primary
+ * entry points here makes the sidebar useful on the home page and in modules
+ * such as Control that do not own conversations or rooms.
+ */
+function DefaultSidebarDestination({
+  id,
+  onNavigate,
+}: {
+  id: 'conversations' | 'rooms';
+  onNavigate: (moduleId: string | null) => void;
+}) {
+  const itemClass =
+    'flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
+
+  if (id === 'conversations') {
+    return (
+      <section className="mb-3">
+        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
+          对话
+        </h2>
+        <button type="button" onClick={() => onNavigate('agent')} className={itemClass}>
+          <Plus className="h-4 w-4 shrink-0" />
+          新对话
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-3">
+      <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
+        房间
+      </h2>
+      <button type="button" onClick={() => onNavigate('chat')} className={itemClass}>
+        <Globe2 className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">公开大厅</span>
+        <span className="text-[10px] text-[var(--text-faint)]">常驻</span>
+      </button>
+    </section>
+  );
+}
+
+const SIDEBAR_SECTION_ORDER: SidebarSectionId[] = ['pinned', 'conversations', 'direct', 'rooms'];
+
 export function Sidebar({
   activeId,
   onNavigate,
@@ -280,20 +330,16 @@ export function Sidebar({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-        {sections.map((section) => (
-          <SidebarSectionSlot key={section.id} id={section.id} title={section.title} />
-        ))}
-        {/* Only on the home screen, where the hint describes what modules will
-            put here. Inside a module an empty list means that module has no
-            list at all — Voice and Market have neither conversations nor
-            rooms — and promising them there is just wrong. Agent and Chat
-            always register their section, so their own empty states show
-            instead of this. */}
-        {sections.length === 0 && activeId === null && (
-          <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
-            这里会显示置顶、对话与房间
-          </p>
-        )}
+        {SIDEBAR_SECTION_ORDER.map((id) => {
+          const section = sections.find((candidate) => candidate.id === id);
+          if (section) {
+            return <SidebarSectionSlot key={id} id={id} title={section.title} />;
+          }
+          if (id === 'conversations' || id === 'rooms') {
+            return <DefaultSidebarDestination key={id} id={id} onNavigate={onNavigate} />;
+          }
+          return null;
+        })}
       </div>
 
       <div className="shrink-0 border-t border-[var(--surface-border)] p-2">
