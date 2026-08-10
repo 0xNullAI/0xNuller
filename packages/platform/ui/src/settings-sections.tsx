@@ -85,22 +85,25 @@ export function ModuleSettingsSection({
   label,
   icon,
   order = 100,
+  navigation = true,
   children,
 }: {
   id: string;
   label: string;
   icon?: ComponentType<{ className?: string }>;
   order?: number;
+  /** False portals content into a built-in page without adding another nav item. */
+  navigation?: boolean;
   children: ReactNode;
 }) {
   const ctx = useContext(Ctx);
   const { claim, release } = ctx ?? {};
 
   useEffect(() => {
-    if (!claim || !release) return;
+    if (!navigation || !claim || !release) return;
     claim({ id, label, icon, order });
     return () => release(id);
-  }, [claim, release, id, label, icon, order]);
+  }, [claim, release, id, label, icon, order, navigation]);
 
   const container = ctx?.containers[id];
   if (!container) return null;

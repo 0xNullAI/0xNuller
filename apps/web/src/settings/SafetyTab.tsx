@@ -6,6 +6,7 @@ import {
   updateDeviceSafety,
   type DeviceSafetySettings,
 } from '@0xnullai/settings';
+import { ModuleSettingsSlot } from '@0xnullai/ui';
 
 /**
  * Device safety. The only setting in the whole software that directly affects a
@@ -198,6 +199,8 @@ export function SafetyTab() {
       >
         恢复默认值
       </button>
+
+      <ModuleSettingsSlot id="agent-sensors" />
     </div>
   );
 }

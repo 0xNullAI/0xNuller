@@ -15,10 +15,8 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Sensor triggers.
  *
- * Split out of the old 「安全」 tab — the safety settings moved to the unified
- * settings panel, while this one is an Agent-only feature (paw-prints/civet
- * readings driving the AI to respond on its own), not a cross-module safety
- * constraint, so it stays on the Agent side.
+ * Agent owns the live trigger state, while the unified settings panel places
+ * these controls inside Device Safety beside the other device boundaries.
  */
 
 export interface SensorsTabProps {

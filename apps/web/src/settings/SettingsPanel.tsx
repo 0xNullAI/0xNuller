@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Cpu, LayoutTemplate, Palette, ShieldAlert, UserRound, X } from 'lucide-react';
 import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
@@ -17,21 +17,18 @@ import { AccountContent } from './AccountContent';
  * only this one entry point, reached from the account menu at the bottom of the
  * sidebar.
  *
- * Four sections, divided along "what does changing it affect":
- * - **Appearance**: only affects the display on this device.
- * - **AI**: affects how the model understands you; one provider config shared across
- *   modules (one set for text, one for voice).
- * - **Scenes**: the persona library, the same set shared by Agent and Voice.
- * - **Device safety**: affects the current the device outputs into a human body. One
- *   copy shared by the whole app; switching modules does not change it.
+ * Navigation follows the way a configuration is used: account and appearance,
+ * model behavior, waveform and scene content, device boundaries, then data tools.
+ * Module-owned pages join this order through their numeric claim rather than being
+ * appended as a second group.
  */
 
 const TABS = [
-  { id: 'account', label: '账户', icon: UserRound, Component: null },
-  { id: 'appearance', label: '外观', icon: Palette, Component: AppearanceTab },
-  { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab },
-  { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab },
-  { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab },
+  { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
+  { id: 'appearance', label: '外观', icon: Palette, Component: AppearanceTab, order: 10 },
+  { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
+  { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
+  { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
 ] as const;
 
 export function SettingsPanel({
@@ -51,12 +48,26 @@ export function SettingsPanel({
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
   const moduleClaims = useModuleSettingsClaims();
+  const navigationTabs = [
+    ...TABS.map((item) => ({
+      id: item.id as string,
+      label: item.label,
+      icon: item.icon,
+      order: item.order,
+    })),
+    ...moduleClaims,
+  ].sort((left, right) => left.order - right.order);
   const builtinTab = TABS.find((t) => t.id === tab);
   const activeModuleClaim = moduleClaims.find((c) => c.id === tab);
   // A module can unmount while its page is open — fall back rather than
   // leaving the content area blank with a nav item selected.
   const resolvedTab = builtinTab || activeModuleClaim ? tab : 'appearance';
   const Active = TABS.find((t) => t.id === resolvedTab)?.Component;
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [resolvedTab]);
 
   return (
     <Overlay onDismiss={onClose}>
@@ -74,12 +85,10 @@ export function SettingsPanel({
             column eats half the width on a phone. */}
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[180px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
           <h2 className="hidden px-2 pb-2 pt-1 text-sm font-semibold sm:block">设置</h2>
-          {[
-            ...TABS.map((t) => ({ id: t.id as string, label: t.label, icon: t.icon })),
-            ...moduleClaims.map((c) => ({ id: c.id, label: c.label, icon: c.icon })),
-          ].map((t) => (
+          {navigationTabs.map((t) => (
             <button
               key={t.id}
+              ref={resolvedTab === t.id ? activeTabRef : undefined}
               type="button"
               onClick={() => setTab(t.id)}
               aria-current={resolvedTab === t.id ? 'page' : undefined}

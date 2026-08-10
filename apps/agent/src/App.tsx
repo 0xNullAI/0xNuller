@@ -28,7 +28,7 @@ import { ShellSessionList } from './components/ShellSessionList.js';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { AudioWaveform, Bug, Database, Radio, X } from 'lucide-react';
+import { AudioWaveform, Bug, Database, X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
@@ -62,6 +62,7 @@ import { buildWarnings } from './utils/runtime-warnings.js';
 import {
   formatUiErrorMessage,
   getSessionTitle,
+  isSessionListEntry,
   isBluetoothChooserCancelledError,
 } from './utils/ui-formatters.js';
 import { buildTraceFeed } from './utils/trace-feed.js';
@@ -874,7 +875,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           />
         )}
 
-        <ModuleSettingsSection id="agent-sensors" label="传感器" icon={Radio} order={110}>
+        <ModuleSettingsSection id="agent-sensors" label="传感器" navigation={false}>
           <SensorsTab
             settingsDraft={settingsDraft}
             setSettingsDraft={setSettingsDraft}
@@ -883,7 +884,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           />
         </ModuleSettingsSection>
 
-        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={120}>
+        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={30}>
           <WaveformsPanel
             waveforms={waveforms}
             customWaveforms={customWaveforms}
@@ -894,9 +895,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           />
         </ModuleSettingsSection>
 
-        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={130}>
+        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={60}>
           <DataTab
-            sessions={savedSessions.map((session) => ({
+            sessions={savedSessions.filter(isSessionListEntry).map((session) => ({
               id: session.id,
               title: getSessionTitle(session),
               updatedAt: session.updatedAt,
