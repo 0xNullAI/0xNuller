@@ -59,7 +59,7 @@ describe('设备栏', () => {
     connectFake('agent', [COYOTE]);
     render(<DeviceBar />);
     expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
-    expect(screen.getByText('47L121000')).toBeTruthy();
+    expect(screen.queryByText('47L121000')).toBeNull();
     expect(screen.getByText('郊狼')).toBeTruthy();
   });
 
@@ -74,8 +74,10 @@ describe('设备栏', () => {
     connectFake('agent', [COYOTE]);
     connectFake('chat', [{ id: 'op', kind: 'opossum', name: '负鼠 A', connected: true }]);
     render(<DeviceBar />);
-    expect(screen.getByText('47L121000')).toBeTruthy();
-    expect(screen.getByText('负鼠 A')).toBeTruthy();
+    expect(screen.queryByText('47L121000')).toBeNull();
+    expect(screen.queryByText('负鼠 A')).toBeNull();
+    expect(screen.getByText('郊狼')).toBeTruthy();
+    expect(screen.getByText('负鼠')).toBeTruthy();
   });
 
   it('同一个模块的两台郊狼都要出现在栏里', () => {
@@ -88,8 +90,10 @@ describe('设备栏', () => {
       { ...COYOTE, id: 'aa:02', name: '郊狼 #2', battery: 47 },
     ]);
     render(<DeviceBar />);
-    expect(screen.getByText('郊狼 #1')).toBeTruthy();
-    expect(screen.getByText('郊狼 #2')).toBeTruthy();
+    expect(screen.getByText('郊狼 1')).toBeTruthy();
+    expect(screen.getByText('郊狼 2')).toBeTruthy();
+    expect(screen.queryByText('郊狼 #1')).toBeNull();
+    expect(screen.queryByText('郊狼 #2')).toBeNull();
   });
 
   it('三台设备时每一行的电量跟着自己那台走', () => {

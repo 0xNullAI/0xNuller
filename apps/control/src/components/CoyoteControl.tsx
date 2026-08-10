@@ -40,6 +40,8 @@ function ModeIcon({ mode }: { mode: PlayMode }) {
 
 interface CoyoteControlProps {
   coyote: CoyoteSummary;
+  /** Human-readable shell label; raw BLE names are kept out of everyday controls. */
+  displayName: string;
   /**
    * True while more than one host is attached. It turns on the per-device
    * header (name, battery, 断开, 归零) and the "the waveform panel below drives
@@ -74,6 +76,7 @@ interface CoyoteControlProps {
  */
 export function CoyoteControl({
   coyote,
+  displayName,
   multi,
   selected,
   onSelect,
@@ -170,7 +173,7 @@ export function CoyoteControl({
             }`}
             aria-hidden
           />
-          <span className="truncate text-sm font-medium text-[var(--text)]">{coyote.name}</span>
+          <span className="truncate text-sm font-medium text-[var(--text)]">{displayName}</span>
           {coyote.battery != null && (
             <span className="shrink-0 text-[11px] text-[var(--text-faint)]">{coyote.battery}%</span>
           )}
@@ -184,7 +187,7 @@ export function CoyoteControl({
           type="button"
           onClick={() => onStopDevice(coyote.id)}
           className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-          title={`只把 ${coyote.name} 归零`}
+          title={`只把 ${displayName} 归零`}
         >
           <RotateCcw size={11} className="text-[var(--danger)]" />
           归零
@@ -193,7 +196,7 @@ export function CoyoteControl({
           type="button"
           onClick={() => onDisconnect(coyote.id)}
           className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-          title={`断开 ${coyote.name}`}
+          title={`断开 ${displayName}`}
         >
           <BluetoothOff size={11} />
           断开
@@ -609,6 +612,9 @@ export function CoyoteSection({
 }: CoyoteSectionProps) {
   const multi = coyotes.length > 1;
   const selected = coyotes.find((c) => c.id === selectedId) ?? coyotes[0] ?? null;
+  const displayNames = new Map(
+    coyotes.map((coyote, index) => [coyote.id, multi ? `郊狼 ${index + 1}` : '郊狼']),
+  );
 
   return (
     <section>
@@ -624,6 +630,7 @@ export function CoyoteSection({
             <CoyoteControl
               key={coyote.id}
               coyote={coyote}
+              displayName={displayNames.get(coyote.id) ?? '郊狼'}
               multi={multi}
               selected={multi && coyote.id === selected?.id}
               onSelect={onSelect}
@@ -642,7 +649,7 @@ export function CoyoteSection({
 
       <WaveformPanel
         {...panel}
-        targetName={multi ? (selected?.name ?? null) : null}
+        targetName={multi && selected ? (displayNames.get(selected.id) ?? '郊狼') : null}
         queue={panel.queue}
         fireEnabledA={Boolean(selected?.connected && selected.waveActiveA)}
         fireEnabledB={Boolean(selected?.connected && selected.waveActiveB)}

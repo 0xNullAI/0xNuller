@@ -63,7 +63,15 @@ function kindLabel(kind: string): string {
  * something is running on the user's body right now — through colour only,
  * which is the one channel a user may not be able to read.
  */
-function DeviceChip({ device, owner }: { device: DeviceSummary; owner: string | null }) {
+function DeviceChip({
+  device,
+  owner,
+  displayLabel,
+}: {
+  device: DeviceSummary;
+  owner: string | null;
+  displayLabel: string;
+}) {
   const active = Boolean(device.active);
   return (
     <div
@@ -81,8 +89,7 @@ function DeviceChip({ device, owner }: { device: DeviceSummary; owner: string | 
         }
         aria-hidden
       />
-      <span className="shrink-0 text-xs font-medium">{kindLabel(device.kind)}</span>
-      <span className="truncate text-xs text-[var(--text-faint)]">{device.name}</span>
+      <span className="shrink-0 text-xs font-medium">{displayLabel}</span>
       {owner && (
         <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 text-[10px] text-[var(--text-faint)]">
           {owner}
@@ -120,8 +127,14 @@ export function DeviceBar() {
 
   if (groups.length === 0) return null;
 
-  const total = groups.reduce((n, g) => n + g.devices.length, 0);
+  const rows = groups.flatMap((group) => group.devices.map((device) => ({ group, device })));
+  const total = rows.length;
   const hasActiveOutput = groups.some((group) => group.devices.some((device) => device.active));
+  const kindTotals = new Map<string, number>();
+  for (const { device } of rows) {
+    kindTotals.set(device.kind, (kindTotals.get(device.kind) ?? 0) + 1);
+  }
+  const kindSeen = new Map<string, number>();
 
   return (
     <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
@@ -153,20 +166,26 @@ export function DeviceBar() {
       </button>
 
       <div className="flex min-w-0 items-center gap-2">
-        {groups.map((g) =>
-          g.devices.map((d) => (
+        {rows.map(({ group, device }) => {
+          const ordinal = (kindSeen.get(device.kind) ?? 0) + 1;
+          kindSeen.set(device.kind, ordinal);
+          const baseLabel = kindLabel(device.kind);
+          const displayLabel =
+            (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
+          return (
             // Keyed by module + device id: two modules may legitimately report
             // the same device id, and one module may now report several
             // devices. Either half alone collides, and a collided key means a
             // row React never renders — a device attached to the user with no
             // sign of it here.
             <DeviceChip
-              key={`${g.sessionId}:${d.id}`}
-              device={d}
-              owner={groups.length > 1 ? g.label : null}
+              key={`${group.sessionId}:${device.id}`}
+              device={device}
+              owner={groups.length > 1 ? group.label : null}
+              displayLabel={displayLabel}
             />
-          )),
-        )}
+          );
+        })}
       </div>
     </div>
   );

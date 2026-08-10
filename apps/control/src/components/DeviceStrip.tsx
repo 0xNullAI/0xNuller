@@ -163,23 +163,26 @@ export function DeviceStrip({
         <ConnectPrompt onConnectDevice={onConnectDevice} />
       ) : (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {attachedCoyotes.map((coyote) => (
-            <Chip
-              key={coyote.id}
-              icon={<Bluetooth size={12} className="text-[var(--success)]" />}
-              label={coyote.name}
-              detail={coyote.battery != null ? `${coyote.battery}%` : null}
-              // Only offer per-chip disconnect once there is more than one:
-              // with a single host the panel's own "断开" already does it, and
-              // two buttons that do the same thing invite the wrong one.
-              {...(attachedCoyotes.length > 1
-                ? {
-                    onRemove: () => onDisconnectCoyote(coyote.id),
-                    removeTitle: `断开 ${coyote.name}`,
-                  }
-                : {})}
-            />
-          ))}
+          {attachedCoyotes.map((coyote, index) => {
+            const label = attachedCoyotes.length > 1 ? `郊狼 ${index + 1}` : '郊狼';
+            return (
+              <Chip
+                key={coyote.id}
+                icon={<Bluetooth size={12} className="text-[var(--success)]" />}
+                label={label}
+                detail={coyote.battery != null ? `${coyote.battery}%` : null}
+                // Only offer per-chip disconnect once there is more than one:
+                // with a single host the panel's own "断开" already does it, and
+                // two buttons that do the same thing invite the wrong one.
+                {...(attachedCoyotes.length > 1
+                  ? {
+                      onRemove: () => onDisconnectCoyote(coyote.id),
+                      removeTitle: `断开 ${label}`,
+                    }
+                  : {})}
+              />
+            );
+          })}
           {opossum?.connected && (
             <Chip
               icon={<Gauge size={12} className="text-[var(--accent)]" />}
