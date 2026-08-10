@@ -36,12 +36,11 @@ export interface Env extends Cloudflare.Env {
   /**
    * Signing key for direct-message tickets, shared with Chat's Worker.
    *
-   * Optional so a deployment without it answers 503 on DM endpoints instead of
-   * failing unrelated account features. **It must never be rotated** —
+   * Deployment is blocked when this is absent. **It must never be rotated** —
    * the conversation id is keyed with it, so a new value moves every conversation
    * to a different Durable Object and orphans its history. See dm-ticket.ts.
    */
-  DM_TICKET_SECRET?: string;
+  DM_TICKET_SECRET: string;
   /**
    * Chat's Worker, for pushing a revocation when a block severs a conversation.
    *
@@ -374,6 +373,7 @@ interface UserRow {
   created_at: number;
   banned_at: number | null;
   ban_reason: string | null;
+  role: 'user' | 'admin';
 }
 
 async function currentUser(request: Request, env: Env): Promise<UserRow | null> {
@@ -395,7 +395,8 @@ export interface MarketClaimCredentials {
 }
 
 export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
-export type MarketClaimProof = 'market-upload' | 'market-edit-key';
+export type MarketClaimProof = 'market-upload';
+export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
   const headers = new Headers();
@@ -419,6 +420,32 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
   ): Promise<MarketClaimResult> {
     return claimMarketItemsForCredentials(this.env, credentials, itemIds, proof);
   }
+
+  async marketItemAccess(
+    credentials: MarketClaimCredentials,
+    itemId: string,
+  ): Promise<MarketAccessResult> {
+    return marketItemAccessForCredentials(this.env, credentials, itemId);
+  }
+}
+
+/** Resolve Market permissions without exposing account roles on a public endpoint. */
+export async function marketItemAccessForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+  itemId: string,
+): Promise<MarketAccessResult> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  if (!user) return 'unauthorized';
+  if (user.role === 'admin') return 'admin';
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) return 'user';
+  const claim = await env.DB.prepare(
+    `SELECT 1 FROM market_claims
+      WHERE item_id = ? AND user_id = ? AND verified_at IS NOT NULL`,
+  )
+    .bind(itemId, user.id)
+    .first();
+  return claim ? 'owner' : 'user';
 }
 
 /** The RPC implementation separated for deterministic D1 tests. */

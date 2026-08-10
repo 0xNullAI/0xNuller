@@ -13,8 +13,6 @@ interface ItemRow {
   downloads: number;
   views: number;
   created_at: number;
-  edit_key_hash: string | null;
-  edit_key_scheme: number;
 }
 
 export function rowToItem(row: ItemRow): MarketItem {
@@ -30,8 +28,6 @@ export function rowToItem(row: ItemRow): MarketItem {
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
-    // Never leak the hash itself, only tell the frontend whether this item is key-protected.
-    locked: !!row.edit_key_hash,
   };
 }
 
@@ -87,14 +83,12 @@ export interface InsertItem {
   content: unknown;
   ipHash: string;
   createdAt: number;
-  // Hash of the edit key set at upload time; undefined when none was set (the item is
-  // publicly editable).
-  editKeyHash?: string;
-  editKeyScheme: 2;
 }
 
-const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at, edit_key_hash, edit_key_scheme)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+// Legacy edit-key columns stay in D1 so existing rows migrate without a rewrite, but new
+// account-owned rows never read or write them.
+const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function insertBinds(item: InsertItem): unknown[] {
   return [
@@ -108,8 +102,6 @@ function insertBinds(item: InsertItem): unknown[] {
     JSON.stringify(item.content),
     item.ipHash,
     item.createdAt,
-    item.editKeyHash ?? null,
-    item.editKeyScheme,
   ];
 }
 
@@ -145,37 +137,8 @@ export async function reportItem(db: D1Database, id: string): Promise<void> {
     .run();
 }
 
-export async function adminDelete(db: D1Database, id: string): Promise<void> {
+export async function deleteItem(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
-}
-
-// Fetch an item's edit key hash for authentication: null means the item does not exist;
-// { hash: null } means it exists but has no key set (publicly editable).
-export async function getEditKeyHash(
-  db: D1Database,
-  id: string,
-): Promise<{ hash: string | null; scheme: 1 | 2 } | null> {
-  const row = await db
-    .prepare('SELECT edit_key_hash, edit_key_scheme FROM items WHERE id = ? AND hidden = 0')
-    .bind(id)
-    .first<{ edit_key_hash: string | null; edit_key_scheme: number }>();
-  return row ? { hash: row.edit_key_hash, scheme: row.edit_key_scheme === 2 ? 2 : 1 } : null;
-}
-
-/** Upgrade one legacy ADMIN_KEY-peppered edit hash after a successful proof. */
-export async function upgradeEditKeyHash(
-  db: D1Database,
-  id: string,
-  expectedLegacyHash: string,
-  nextHash: string,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE items SET edit_key_hash = ?, edit_key_scheme = 2
-        WHERE id = ? AND edit_key_scheme = 1 AND edit_key_hash = ?`,
-    )
-    .bind(nextHash, id, expectedLegacyHash)
-    .run();
 }
 
 // Change item metadata: column names come from a fixed allowlist, values are already

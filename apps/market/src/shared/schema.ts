@@ -50,10 +50,6 @@ const baseFields = {
   description: z.string().trim().max(500).optional(),
   author: z.string().trim().max(30).optional(),
   tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
-  // Optional 「编辑口令」: once set at upload time, only someone who knows that key (or an
-  // admin) can edit this item again; left empty (or omitted) the item is publicly editable.
-  // Used only at upload time, never returned to the frontend along with the item.
-  editKey: z.string().trim().max(100).optional(),
 };
 
 export const UploadSchema = z.discriminatedUnion('type', [
@@ -76,15 +72,14 @@ export const UploadSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-// Batch upload: submit several items at once (at most 50). Publicly available, no more
-// human verification.
+// Batch upload: submit several items at once (at most 50). The transport requires an
+// authenticated account and records every inserted id as that account's content.
 export const BatchUploadSchema = z.array(UploadSchema).min(1).max(50);
 export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 
 // Edit an item: metadata only, everything optional; an empty string / empty array means
 // clear that field.
-// Authentication happens at the transport layer (upload key hash / admin key), not in the
-// payload.
+// Authentication happens at the transport layer through account ownership.
 export const ItemPatchSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
@@ -115,7 +110,4 @@ export interface MarketItem {
   downloads: number;
   views: number;
   createdAt: number;
-  // true = an edit key was set at upload time, editing again requires that key;
-  // false/absent = publicly editable.
-  locked?: boolean;
 }

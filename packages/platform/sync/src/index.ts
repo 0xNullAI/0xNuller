@@ -140,20 +140,6 @@ export async function pushContent(
   return res?.ok === true;
 }
 
-/**
- * Prove ownership to Market with the plaintext edit key, then let Market write the
- * authenticated claim through Auth's private service binding. A caller-computed hash is
- * not proof: before this flow any account could submit any item id and claim it.
- */
-export async function claimMarketItem(itemId: string, editKey: string): Promise<boolean> {
-  if (!editKey.trim()) return false;
-  const res = await call<{ ok: boolean }>(`/api/items/${encodeURIComponent(itemId)}/claim`, {
-    method: 'POST',
-    headers: { 'X-Edit-Key': editKey.trim() },
-  });
-  return res?.ok === true;
-}
-
 export async function listMarketClaims(): Promise<{ item_id: string; claimed_at: number }[]> {
   const res = await call<{ claims: { item_id: string; claimed_at: number }[] }>(
     '/api/auth/market-claims',

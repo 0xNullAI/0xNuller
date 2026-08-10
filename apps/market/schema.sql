@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS items (
   downloads   INTEGER NOT NULL DEFAULT 0,
   views       INTEGER NOT NULL DEFAULT 0,
   reports     INTEGER NOT NULL DEFAULT 0,
-  hidden      INTEGER NOT NULL DEFAULT 0, -- 1=管理员隐藏
+  hidden      INTEGER NOT NULL DEFAULT 0, -- 1=举报或账户管理员隐藏
   ip_hash     TEXT,                        -- 上传来源哈希，用于限流与溯源
   created_at  INTEGER NOT NULL,           -- epoch ms
-  edit_key_hash TEXT,                      -- 上传时所设编辑口令的哈希，空=公开可编辑
+  edit_key_hash TEXT,                      -- 仅保留旧版数据；新内容使用账户归属
   edit_key_scheme INTEGER NOT NULL DEFAULT 1 CHECK (edit_key_scheme IN (1, 2))
 );
 

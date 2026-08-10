@@ -162,14 +162,6 @@ describe('开私聊需要互相关注', () => {
     expect(blocked.status).toBe(missing.status);
     expect(await blocked.text()).toBe(await missing.text());
   });
-
-  it('没配密钥时明确拒绝，而不是放行', async () => {
-    const alice = await register('alice');
-    const bob = await register('bob');
-    await makeContacts(alice, bob);
-    env = { ...env, DM_TICKET_SECRET: undefined };
-    expect((await ticket(alice, bob)).status).toBe(503);
-  });
 });
 
 describe('拉黑要掐断已经在跑的会话', () => {

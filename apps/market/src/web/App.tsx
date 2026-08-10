@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Upload } from 'lucide-react';
 import type { ItemType, MarketItem } from '../shared/schema';
 import { fetchItems, markViewed } from './api';
-import { Button, ModuleActions } from '@0xnullai/ui';
+import {
+  Button,
+  ModuleActions,
+  useInShell,
+  useOpenShellSettings,
+  useShellSignedIn,
+} from '@0xnullai/ui';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
@@ -21,6 +27,9 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<MarketItem | null>(null);
   const [uploading, setUploading] = useState(false);
+  const inShell = useInShell();
+  const signedIn = useShellSignedIn();
+  const openShellSettings = useOpenShellSettings();
   // The theme goes through the shared store. This used to hold an applyTheme that fully
   // duplicated the one in @0xnullai/ui — both implementations wrote data-theme on their
   // own, and once mounted in the unified shell they kept overriding each other.
@@ -129,7 +138,18 @@ export function App(): JSX.Element {
             the shell's slot, which is outside that scope. A .btn class here
             renders as bare unstyled text. */}
           <ModuleActions>
-            <Button variant="secondary" size="sm" onClick={() => setUploading(true)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (inShell && !signedIn) {
+                  openShellSettings('account');
+                  return;
+                }
+                setUploading(true);
+              }}
+              title={inShell && !signedIn ? '登录后上传' : undefined}
+            >
               <Upload className="h-4 w-4" />
               上传
             </Button>
@@ -164,6 +184,7 @@ export function App(): JSX.Element {
               setActive(updated);
               setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
             }}
+            onDeleted={(id) => setItems((prev) => prev.filter((item) => item.id !== id))}
           />
         )}
         {uploading && (

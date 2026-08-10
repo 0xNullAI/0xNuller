@@ -9,15 +9,13 @@
 0xnullai.com/api/lobby/*        → 0xnullai-chat
 0xnullai.com/api/upload/*       → 0xnullai-chat
 0xnullai.com/api/media/*        → 0xnullai-chat
-0xnullai.com/api/items*         → 0xnullai-market  D1 + R2
-0xnullai.com/api/admin/*        → 0xnullai-market
+0xnullai.com/api/items*         → 0xnullai-market  D1
 0xnullai.com/api/realtime       → 0xnullai-voice   Durable Object（体验版计量）
 
-llm.0xnullai.com                → 0xnullai-llm-proxy   免费 provider，独立子域
+llm.0xnullai.com                → dg-llm-proxy         兼容期继续使用旧服务
 ```
 
-免费 provider 的代理留在自己的子域上：它不属于统一外壳的接口面，客户端用绝对地址
-直连，挪进根域没有收益，只有风险。
+免费 provider 留在自己的子域上。兼容发布只替换根站，不切换这个自定义域。
 
 ## 当前外部状态（2026-08-09，只读核对）
 
@@ -30,6 +28,14 @@ llm.0xnullai.com                → 0xnullai-llm-proxy   免费 provider，独�
   创建并验证目标资源、完成路由切换之前，不得恢复 push 触发。
 
 这段状态只能由下一次发布前的只读核对更新；配置文件描述的是目标，不能反推远端已经存在。
+
+## 旧版本保留策略
+
+统一站只替换 `0xnullai.com` 与 `www.0xnullai.com`。旧版 `agent.0xnullai.com`、
+`voice.0xnullai.com`、`chat.0xnullai.com`、`market.0xnullai.com` 与
+`wiki.0xnullai.com` 继续作为历史版本独立运行；不要删除它们的 Pages 项目、旧 Worker、
+自定义域或 DNS。旧 GitHub 仓库归档前先关闭自动构建，归档只表示不再维护，不代表下线
+历史站点。
 
 Cloudflare 按最长前缀匹配，所以更具体的路径优先于外壳的兜底。路径互不重叠，
 `npm run check:routes` 会核对这一点——它**自动发现**仓库里所有 wrangler 配置，
@@ -68,40 +74,48 @@ npm run release:data:preflight -- --remote-readonly --confirm=dg-market,0xnullai
 wrangler d1 execute dg-market --remote --config apps/market/wrangler.jsonc \
   --file scripts/bootstrap-market-migration-ledger.sql
 
-# 此时 Market 只会执行 0002-0003；Auth 当前登记 0001-0003，只会执行 0004-0007。
+# 此时 Market 只会执行 0002-0003；Auth 当前登记 0001-0003，只会执行 0004-0009。
 wrangler d1 migrations apply dg-market --remote --config apps/market/wrangler.jsonc
 wrangler d1 migrations apply 0xnullai-auth --remote --config workers/auth/wrangler.jsonc
 
-# 1. 聊天（含 DO）——先创建目标脚本，auth 的下一次部署需要这个 service binding。
+# 新 Worker 不存在时 `wrangler secret put` 会失败，而且普通 secret put 会立即部署。
+# 每个 Worker 使用仓库外、权限 600 的独立 env/JSON 文件，把代码和必需 secret 一次上传为
+# 未接流量的版本；先验 preview URL，再用同一个 version tag 正式部署。不要把 secret 文件
+# 放进仓库或把内容打印到日志。
+
+# 1. 聊天（含 DO）——先创建目标版本，auth 的 service binding 才有稳定目标。
 #    dg-chat-media 已存在；先用 `wrangler r2 bucket list` 核对，不要重复创建或换桶。
-wrangler secret put DM_TICKET_SECRET --config apps/chat/wrangler.jsonc
-npm run deploy -w 0xnullai-chat
+wrangler versions upload --config apps/chat/wrangler.jsonc \
+  --secrets-file ~/.dg-keystores/0xnullai-chat.env \
+  --tag release-6.0.0 --preview-alias release-6-0-0
+# 验证 preview 后：
+wrangler versions deploy --config apps/chat/wrangler.jsonc --version-tag release-6.0.0
 
 # 2. 账号服务。照片 bucket 必须在 Worker 绑定它之前存在。
 wrangler r2 bucket create 0xnullai-profile-photos
-wrangler secret put IP_PEPPER        --config workers/auth/wrangler.jsonc
-wrangler secret put DM_TICKET_SECRET --config workers/auth/wrangler.jsonc  # 与 chat 同值
-npm run deploy -w @0xnullai/auth-worker
+wrangler versions upload --config workers/auth/wrangler.jsonc \
+  --secrets-file ~/.dg-keystores/0xnullai-auth.env \
+  --tag release-6.0.0 --preview-alias release-6-0-0
+wrangler versions deploy --config workers/auth/wrangler.jsonc --version-tag release-6.0.0
 
-# 3. 市场。legacy pepper 首次必须复制“旧 ADMIN_KEY 当前值”，不是生成新值。
-wrangler secret put ADMIN_KEY --config apps/market/wrangler.jsonc
-wrangler secret put MARKET_LEGACY_EDIT_PEPPER --config apps/market/wrangler.jsonc
-wrangler secret put MARKET_EDIT_PEPPER --config apps/market/wrangler.jsonc
-wrangler secret put MARKET_IP_PEPPER --config apps/market/wrangler.jsonc
-npm run deploy -w 0xnullai-market
+# 3. 市场。上传、编辑和管理都使用账户归属/角色，不再需要全局 ADMIN_KEY。
+wrangler versions upload --config apps/market/wrangler.jsonc \
+  --secrets-file ~/.dg-keystores/0xnullai-market.env \
+  --tag release-6.0.0 --preview-alias release-6-0-0
+wrangler versions deploy --config apps/market/wrangler.jsonc --version-tag release-6.0.0
+
+# 首位管理员先正常注册账号，再显式绑定角色。不要让“第一个注册者”自动成为管理员。
+npm run account:role -- --remote-write --confirm=0xnullai-auth-account-role \
+  --username=<已注册用户名> --role=admin
 
 # 4. 体验版语音（含 DO）
-wrangler secret put XAI_API_KEY --config apps/voice/wrangler.jsonc
-wrangler secret put TRIAL_KEYS  --config apps/voice/wrangler.jsonc
-npm run deploy -w 0xnullai-voice
+wrangler versions upload --config apps/voice/wrangler.jsonc \
+  --secrets-file ~/.dg-keystores/0xnullai-voice.env \
+  --tag release-6.0.0 --preview-alias release-6-0-0
+wrangler versions deploy --config apps/voice/wrangler.jsonc --version-tag release-6.0.0
 
-# 5. 免费 provider（独立子域，和上面互不影响）
-wrangler deploy --dry-run --config workers/llm-proxy/wrangler.toml
-wrangler secret put PROXY_API_KEY --config workers/llm-proxy/wrangler.toml
-npm run deploy -w 0xnullai-llm-proxy 2>/dev/null || \
-  wrangler deploy --config workers/llm-proxy/wrangler.toml
-
-# 6. 外壳——最后
+# 5. 外壳——最后。先上传并验证 workers.dev preview；随后从 dg-web Pages 仅移除
+#    0xnullai.com 自定义域，再正式部署 0xnuller。dg-web 项目本身与其他旧子域不删除。
 npm run deploy -w @0xnullai/web
 ```
 
@@ -109,57 +123,17 @@ Chat 6.0 的媒体上传要求当前 WebSocket 下发的 `media-auth` capability
 code 不再有写 R2 的权限。这是有意的协议安全升级：旧客户端仍可聊天，但旧版媒体
 上传会收到 403，必须升级客户端后才恢复附件上传。
 
-## Worker 改名的切换
+## 新旧 Worker 并行
 
-`dg-market` / `dg-chat` / `dg-voice` / `dg-llm-proxy` / `dg-speech-proxy` 计划切到
-`0xnullai-*`。截至上面的核对日期，新脚本除 auth 外尚不存在。**改名不是原地重命名**——
-部署会创建一个新脚本，旧的还在，而且路由仍指向它。逐个切：
+`0xnullai-chat`、`0xnullai-market` 与 `0xnullai-voice` 只接管新主站的路径路由；
+`dg-chat`、`dg-market`、`dg-voice` 继续服务旧子域。不要删除或重绑旧 Worker。
 
-```bash
-npm run deploy -w 0xnullai-market
-curl -s https://0xnullai.com/api/items | head -c 200   # 确认新脚本接管了路由
-wrangler delete --name dg-market                       # 确认无误后删旧脚本
-# chat / voice 同样三步，用各自的路由做验证
-```
+Market 继续绑定原来的 `dg-market` D1，Chat 继续绑定原来的 `dg-chat-media` R2，因此
+现有市场内容和媒体桶无需复制。Durable Object 无法跨 Worker script 搬迁：旧站的房间
+留在旧 Worker，新主站从新的命名空间开始，两边互不覆盖。
 
-**Secret 不跟着改名走。** Secret 是绑在脚本上的，新脚本一开始一个都没有。两个
-proxy 尤其要小心，因为它们的 secret 就是它们能工作的全部理由：
-
-```bash
-wrangler secret put PROXY_API_KEY    --config workers/llm-proxy/wrangler.toml
-wrangler secret put DASHSCOPE_API_KEY --config workers/speech-proxy/wrangler.toml
-```
-
-**顺序是「先部署新脚本 → 补 secret → 再把自定义域切过去」。** 反过来做，
-`llm.0xnullai.com` 会指向一个没有 key 的脚本，免费 provider 当场全线 502——而那是
-对用户的产品承诺，不是可降级的功能。切完先用一次真实请求验证，再删旧脚本。
-
-（`0xnullai-speech-proxy` 是给别人自建用的模板，我们并不托管，所以它只是改个默认
-名字，没有切换风险。）
-
-**chat 与 voice 带 Durable Object，改名等于换一套新命名空间。** 这是刻意接受的：
-当时房间还是临时的（最后一人离开 10 分钟后 RoomDO 自删消息、R2 媒体与 storage），
-所以真正会丢的只有切换那一刻还开着的房间、公开讨论区的历史，以及体验额度重置一次。
-**切换选在低峰时段**，并且接受公开讨论区从空开始。
-
-D1 库名仍是 `dg-market`：绑定按 `database_id` 走，库名只在控制台里出现。改库名要新建
-库再搬 44 条真实内容，为一个用户永远看不到的字符串冒数据风险不值得。R2 桶名同理，
-`dg-chat-media` 不动——桶根本不能改名，只能新建再逐个对象搬。
-
-**为什么必须现在改，而不是以后。** DO 命名空间按脚本名划分，wrangler 只有
-new_classes / new_sqlite_classes / renamed_classes（同脚本内）/ deleted_classes，
-没有跨脚本转移。所以改名的代价完全取决于那一刻 DO 里存着什么。改名时房间是临时的，
-存的东西本来就会自己消失；等房间变成永久群组、承载长期聊天记录之后，同样一次改名
-就是真正的数据丢失。**这是最后一个免费窗口。**
-
-代码里的房间现在是永久群组，但目标 `0xnullai-chat` 尚未创建。第一次上线前必须明确决定
-旧 `dg-chat` 的历史是否放弃；Cloudflare 没有跨 script 搬 DO 的路径，不能把“部署成功”
-误当成“历史已迁移”。目标脚本开始承载群组后，`0xnullai-chat` 名称与 RoomDO/LobbyDO
-归属从此不能再改，否则所有新群组都会变成访问不到的孤儿。
-
-群组不会无限长：每个群保留最近 1000 条消息，被挤掉的消息连同它的 R2 对象一起删；
-最后一人离开 10 分钟后 RoomDO 的 alarm 会把没有任何消息引用的对象扫掉（上传后没
-发出去的附件走的就是这条路）。所以 R2 用量跟的是「在线群数 × 1000 条」，不是历史总量。
+`llm.0xnullai.com` 在兼容阶段继续由 `dg-llm-proxy` 提供服务；仓库里的新 proxy 只做
+本地 dry-run，不上传、不切域。`0xnullai-speech-proxy` 是自建模板，本次也不部署。
 
 ## 免费 provider 的开销边界
 
@@ -245,7 +219,7 @@ Worker 的部署是原子的，`wrangler rollback --config <配置>` 回到上�
 **DO 的存储也不会回滚。** RoomDO 的 schema 变更必须向后兼容——旧版本的 Worker 可能
 在回滚后读到新版本写入的数据。
 
-## 旧仓库下线
+## 旧仓库归档
 
 九个旧仓（DG-Kit / DG-Agent / DG-Chat / DG-Voice / DG-Market / DG-Web / DG-Wiki /
 DG-MCP / DG-Playground）在迁移完成前**保持在线且自动化仍然是武装的**：DG-Kit 的
@@ -254,13 +228,13 @@ DG-MCP / DG-Playground）在迁移完成前**保持在线且自动化仍然是�
 
 所以：**不要往旧仓推任何东西。**
 
-下线顺序（每一步之间留出观察期）：
+归档顺序（每一步之间留出观察期）：
 
 1. 关掉旧仓的 Workers Builds 集成 —— 否则它们会继续覆盖新部署
 2. 停用旧仓的 GitHub Actions
-3. 确认新部署稳定运行至少一周
-4. Archive（不是 delete）旧仓，保留 issue 与 PR 历史
-5. 确认没有外部引用后再考虑删除
+3. 确认新部署稳定运行至少一周，同时逐一确认历史子域仍返回旧版
+4. Archive（不是 delete）已经完成文档与构建迁移的旧仓，保留 issue、PR、release 与 commit 历史
+5. 保留旧 Pages/Worker 与子域；除非以后明确决定下线历史版本，否则不删除
 
-**第 4 步之后就不可逆了。** Archive 可以撤销，delete 不能。npm 上的 `@dg-kit/*` 已发布
-版本永远不能删——别人的 lockfile 指着它们。
+DG-Kit 和 DG-MCP 的迁移与对外发布必须先确认，本轮不归档这两个仓。Archive 可以撤销，
+delete 不能；npm 上已发布版本也不删除。

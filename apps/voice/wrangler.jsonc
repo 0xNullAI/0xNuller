@@ -10,6 +10,7 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["XAI_API_KEY", "TRIAL_KEYS"] },
 
   // 统一域下只认领体验版这一条路径。独立部署形态已不再保留，静态资源由统一外壳
   // （0xnuller）提供，所以这里不再挂 assets——也就不需要 run_worker_first。
@@ -35,7 +36,7 @@
     "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
     "TRIAL_DISABLED": "0",
     // 统一域。漏掉的话体验版一律 403，而前端只会显示「连接失败」。
-    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com",
+    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
   },
 
   "observability": {

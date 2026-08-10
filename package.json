@@ -42,7 +42,8 @@
     "verify:release": "node scripts/verify-release.mjs",
     "check:routes": "node scripts/check-routes.mjs",
     "verify:data": "node scripts/verify-data-platform.mjs",
-    "release:data:preflight": "node scripts/release-data-preflight.mjs"
+    "release:data:preflight": "node scripts/release-data-preflight.mjs",
+    "account:role": "node scripts/set-account-role.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

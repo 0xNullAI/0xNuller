@@ -68,6 +68,17 @@ const expectedMarketColumns = [
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
 const marketItems = scalar(market, 3, 'n');
+const marketHasLedger = scalar(market, 2, 'n') === 1;
+const marketLedger = marketHasLedger
+  ? rows(
+      remoteQuery(
+        'dg-market',
+        'apps/market/wrangler.jsonc',
+        'SELECT name FROM d1_migrations ORDER BY id',
+      ),
+      0,
+    ).map((row) => row.name)
+  : [];
 
 const auth = remoteQuery(
   '0xnullai-auth',
@@ -81,6 +92,13 @@ const auth = remoteQuery(
        SELECT user_id FROM user_photos GROUP BY user_id HAVING COUNT(*) > 60
      )`,
     "SELECT COUNT(*) AS n FROM user_photos WHERE object_key IS NULL OR trim(object_key) = ''",
+    `SELECT COUNT(*) AS n FROM (
+       SELECT lower(email) AS normalized_email
+       FROM users
+       WHERE email IS NOT NULL
+       GROUP BY lower(email)
+       HAVING COUNT(*) > 1
+     )`,
     'SELECT COUNT(*) AS n FROM user_photos',
     'SELECT COUNT(*) AS n FROM users',
   ].join(';'),
@@ -100,32 +118,43 @@ if (
 if (JSON.stringify(marketIndexes) !== JSON.stringify(['idx_items_browse', 'idx_items_ip'])) {
   errors.push(`Market raw indexes differ: ${JSON.stringify(marketIndexes)}`);
 }
-if (scalar(market, 2, 'n') !== 0) errors.push('Market d1_migrations already exists');
+const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
+if (marketLedger.length > 0 && JSON.stringify(marketLedger) !== JSON.stringify(marketBaseline)) {
+  errors.push(`Market migration ledger differs: ${JSON.stringify(marketLedger)}`);
+}
 if (JSON.stringify(authLedger) !== JSON.stringify(expectedAuthLedger)) {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
 }
 if (scalar(auth, 1, 'n') !== 0) errors.push('Auth 0006 blocker: duplicate photo object_key');
 if (scalar(auth, 2, 'n') !== 0) errors.push('Auth 0007 blocker: account with >60 photos');
 if (scalar(auth, 3, 'n') !== 0) errors.push('Auth blocker: blank photo object_key');
+if (scalar(auth, 4, 'n') !== 0) errors.push('Auth 0008 blocker: duplicate normalized email');
 
 console.log(
   JSON.stringify(
     {
       ok: errors.length === 0,
       readOnly: true,
-      market: { items: marketItems, columns: marketColumns, indexes: marketIndexes },
+      market: {
+        items: marketItems,
+        columns: marketColumns,
+        indexes: marketIndexes,
+        migrations: marketLedger,
+      },
       auth: {
         migrations: authLedger,
-        users: scalar(auth, 5, 'n'),
-        photos: scalar(auth, 4, 'n'),
+        users: scalar(auth, 6, 'n'),
+        photos: scalar(auth, 5, 'n'),
       },
       errors,
       next: errors.length
         ? []
         : [
             'Back up both D1 databases.',
-            'Execute scripts/bootstrap-market-migration-ledger.sql against dg-market.',
-            'Apply Market 0002-0003 and Auth 0004-0007 migrations.',
+            marketLedger.length === 0
+              ? 'Execute scripts/bootstrap-market-migration-ledger.sql against dg-market.'
+              : 'Market baseline ledger already exists; do not execute the bootstrap script again.',
+            'Apply Market 0002-0003 and Auth 0004-0009 migrations.',
             'Create 0xnullai-profile-photos before deploying Auth.',
             'Deploy chat, then auth, then market.',
           ],

@@ -93,19 +93,20 @@ export async function reportItem(id: string): Promise<void> {
   await req(`/api/items/${id}/report`, { method: 'POST' });
 }
 
-// Change item metadata. Items with no key set need no key; items with a key take the one
-// set at upload time.
-// The same value is sent as both X-Edit-Key and X-Admin-Key: ordinary users go through the
-// item's key, while an admin who types ADMIN_KEY can override and edit any item.
-export async function updateItem(id: string, patch: ItemPatch, key?: string): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (key) {
-    headers['X-Edit-Key'] = key;
-    headers['X-Admin-Key'] = key;
-  }
+export async function fetchItemAccess(
+  id: string,
+): Promise<{ canEdit: boolean; canDelete: boolean }> {
+  return req(`/api/items/${id}/access`);
+}
+
+export async function updateItem(id: string, patch: ItemPatch): Promise<void> {
   await req(`/api/items/${id}`, {
     method: 'PATCH',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  await req(`/api/items/${id}`, { method: 'DELETE' });
 }

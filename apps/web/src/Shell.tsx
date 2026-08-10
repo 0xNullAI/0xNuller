@@ -302,6 +302,7 @@ export function Shell() {
                     overlayRoot={overlayRoot}
                     actionsContainer={id === activeId ? actionsContainer : null}
                     openSettings={openSettings}
+                    signedIn={!!user}
                   />
                 );
               })}
@@ -394,16 +395,18 @@ function ModuleSlot({
   overlayRoot,
   actionsContainer,
   openSettings,
+  signedIn,
 }: {
   mod: (typeof MODULES)[number];
   active: boolean;
   overlayRoot: HTMLElement | undefined;
   actionsContainer: HTMLElement | null;
   openSettings: (tab?: ShellSettingsTab) => void;
+  signedIn: boolean;
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
-    <ShellChromeProvider openSettings={openSettings}>
+    <ShellChromeProvider openSettings={openSettings} signedIn={signedIn}>
       <ModuleActionsProvider container={actionsContainer}>
         <OverlayProvider container={layer}>
           <div

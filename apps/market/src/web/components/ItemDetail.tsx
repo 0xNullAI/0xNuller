@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
 import type {
   ItemPatch,
@@ -8,17 +8,15 @@ import type {
   WaveformContent,
   MultiSceneContent,
 } from '../../shared/schema';
-import { updateItem, markDownloaded, reportItem } from '../api';
+import { deleteItem, fetchItemAccess, updateItem, markDownloaded, reportItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
   item: MarketItem;
   onClose: () => void;
   onUpdated?: (item: MarketItem) => void;
+  onDeleted?: (id: string) => void;
 }
-
-// Remember the edit key already used for each item so repeated edits don't need it retyped.
-const EDIT_KEY_STORE = 'dg-market-edit-key';
 
 function download(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -30,17 +28,15 @@ function download(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
+export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
   const [reported, setReported] = useState(false);
-  // Snapshot of the metadata currently on screen (an admin edit can overwrite it).
+  // Snapshot of the metadata currently on screen.
   const [view, setView] = useState<MarketItem>(item);
+  const [access, setAccess] = useState({ canEdit: false, canDelete: false });
 
   // —— edit state ——
   const [editing, setEditing] = useState(false);
-  const [editKey, setEditKey] = useState(
-    () => localStorage.getItem(`${EDIT_KEY_STORE}:${item.id}`) ?? '',
-  );
   const [eName, setEName] = useState(item.name);
   const [eAuthor, setEAuthor] = useState(item.author ?? '');
   const [eDesc, setEDesc] = useState(item.description ?? '');
@@ -48,6 +44,17 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   const [eTags, setETags] = useState(item.tags.join(', '));
   const [saving, setSaving] = useState(false);
   const [editErr, setEditErr] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchItemAccess(item.id)
+      .then((next) => active && setAccess(next))
+      .catch(() => active && setAccess({ canEdit: false, canDelete: false }));
+    return () => {
+      active = false;
+    };
+  }, [item.id]);
 
   const hasIcon = view.type !== 'waveform';
 
@@ -97,7 +104,6 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
   const saveEdit = async () => {
     setEditErr('');
     if (!eName.trim()) return setEditErr('名称不能为空');
-    if (view.locked && !editKey.trim()) return setEditErr('此条目已设编辑口令，请输入口令');
 
     const tags = eTags
       .split(/[,，\s]+/)
@@ -114,8 +120,7 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
 
     setSaving(true);
     try {
-      await updateItem(item.id, patch, editKey.trim() || undefined);
-      if (editKey.trim()) localStorage.setItem(`${EDIT_KEY_STORE}:${item.id}`, editKey.trim());
+      await updateItem(item.id, patch);
       const updated: MarketItem = {
         ...view,
         name: patch.name!,
@@ -131,6 +136,20 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
       setEditErr((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('确定删除这条内容吗？')) return;
+    setDeleting(true);
+    setEditErr('');
+    try {
+      await deleteItem(item.id);
+      onDeleted?.(item.id);
+      onClose();
+    } catch (error) {
+      setEditErr(error instanceof Error ? error.message : '删除失败');
+      setDeleting(false);
     }
   };
 
@@ -199,19 +218,6 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
                 placeholder="温柔, 节奏感"
               />
             </label>
-            {view.locked ? (
-              <label className="field">
-                <span>编辑口令</span>
-                <input
-                  type="password"
-                  value={editKey}
-                  onChange={(e) => setEditKey(e.target.value)}
-                  placeholder="上传时设置的口令"
-                />
-              </label>
-            ) : (
-              <p className="modal-hint">此条目未设口令，任何人都可编辑。</p>
-            )}
             {editErr && (
               <p role="alert" className="error">
                 {editErr}
@@ -279,13 +285,14 @@ export function ItemDetail({ item, onClose, onUpdated }: Props): JSX.Element {
           <button className="btn ghost" onClick={handleReport} disabled={reported}>
             {reported ? '已举报' : '举报'}
           </button>
-          {!editing && (
-            <button
-              className="btn ghost"
-              onClick={startEdit}
-              title={view.locked ? '需要编辑口令' : '任何人可编辑'}
-            >
-              {view.locked ? '🔒 编辑' : '✏️ 编辑'}
+          {!editing && access.canEdit && (
+            <button className="btn ghost" onClick={startEdit} title="编辑自己的内容">
+              ✏️ 编辑
+            </button>
+          )}
+          {!editing && access.canDelete && (
+            <button className="btn ghost" onClick={() => void handleDelete()} disabled={deleting}>
+              {deleting ? '删除中…' : '删除'}
             </button>
           )}
         </div>

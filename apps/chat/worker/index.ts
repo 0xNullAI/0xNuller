@@ -18,12 +18,13 @@ export interface Env extends Cloudflare.Env {
   /**
    * Shared with the account service, which mints the DM tickets this Worker verifies.
    *
-   * Optional so the Worker still boots without it — a deployment that has not configured
-   * DMs answers 503 on the DM paths and keeps serving rooms, rather than failing to start.
+   * Deployment configuration requires this secret so a release cannot silently ship with
+   * direct messages disabled. The verifier still rejects a missing value at runtime as a
+   * second fail-closed boundary.
    * **Never rotate it**: the conversation id is keyed with it, so a new value moves every
    * conversation to a different Durable Object and orphans all DM history.
    */
-  DM_TICKET_SECRET?: string;
+  DM_TICKET_SECRET: string;
 }
 
 function json(status: number, body: unknown): Response {

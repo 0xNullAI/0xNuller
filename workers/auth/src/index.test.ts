@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import worker, { claimMarketItemsForCredentials, runAuthMaintenance, type Env } from './index';
+import worker, {
+  claimMarketItemsForCredentials,
+  marketItemAccessForCredentials,
+  runAuthMaintenance,
+  type Env,
+} from './index';
 import { createTestDb } from './test-helpers';
 
 const ORIGIN = 'https://0xnullai.com';
@@ -70,6 +75,7 @@ beforeEach(() => {
     PHOTOS: photos as unknown as R2Bucket,
     CHAT: { fetch: async () => new Response('ok') } as unknown as Fetcher,
     IP_PEPPER: 'test-pepper',
+    DM_TICKET_SECRET: 'test-dm-ticket-secret',
     ALLOWED_ORIGINS: ORIGIN,
   };
 });
@@ -848,14 +854,14 @@ describe('他人主页的可见性', () => {
       env,
       { authorization: `Bearer ${alice.token}`, cookie: null },
       ['item-1'],
-      'market-edit-key',
+      'market-upload',
     );
     expect(aliceProof).toBe('ok');
     const bobProof = await claimMarketItemsForCredentials(
       env,
       { authorization: `Bearer ${bob.token}`, cookie: null },
       ['item-1'],
-      'market-edit-key',
+      'market-upload',
     );
     expect(bobProof).toBe('conflict');
     const claim = await prepared(
@@ -863,7 +869,7 @@ describe('他人主页的可见性', () => {
       'item-1',
     ).first<{ user_id: string; proof_method: string; verified_at: number }>();
     expect(claim?.user_id).toBe(alice.id);
-    expect(claim?.proof_method).toBe('market-edit-key');
+    expect(claim?.proof_method).toBe('market-upload');
     expect(claim?.verified_at).toBeGreaterThan(0);
 
     await prepared(
@@ -886,6 +892,32 @@ describe('他人主页的可见性', () => {
     expect(
       await prepared('SELECT 1 FROM market_claims WHERE item_id = ?', 'item-free').first(),
     ).toBeNull();
+
+    await expect(
+      marketItemAccessForCredentials(
+        env,
+        { authorization: `Bearer ${alice.token}`, cookie: null },
+        'item-1',
+      ),
+    ).resolves.toBe('owner');
+    await expect(
+      marketItemAccessForCredentials(
+        env,
+        { authorization: `Bearer ${bob.token}`, cookie: null },
+        'item-1',
+      ),
+    ).resolves.toBe('user');
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", bob.id).run();
+    await expect(
+      marketItemAccessForCredentials(
+        env,
+        { authorization: `Bearer ${bob.token}`, cookie: null },
+        'item-1',
+      ),
+    ).resolves.toBe('admin');
+    await expect(
+      marketItemAccessForCredentials(env, { authorization: null, cookie: null }, 'item-1'),
+    ).resolves.toBe('unauthorized');
   });
 
   it('拒绝非图片与超过上限的图片，不写 R2', async () => {

@@ -16,6 +16,10 @@
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Fail closed during upload: a Chat version without this value would accept
+  // public rooms but make every authenticated DM handshake fail.
+  "secrets": { "required": ["DM_TICKET_SECRET"] },
+
   // 统一外壳占据根域，本 Worker 只接管它真正处理的那几条路径。
   //
   // **Durable Object 留在这个 script 里，绝不能挪走。** migration tag 按 Worker

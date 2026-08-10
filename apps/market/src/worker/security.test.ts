@@ -1,24 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { recordVerifiedClaims } from './index';
-import { hashCurrentEditKey, hashLegacyEditKey, hashSourceIp, secretEqual } from './security';
+import { hashSourceIp } from './security';
 
-describe('Market security domains', () => {
-  it('does not couple admin, edit-key and source-IP hashes', async () => {
-    const [legacy, current, ip] = await Promise.all([
-      hashLegacyEditKey('human-key', 'admin-secret'),
-      hashCurrentEditKey('human-key', 'edit-pepper'),
-      hashSourceIp('203.0.113.7', 'ip-pepper'),
-    ]);
-    expect(current).not.toBe(legacy);
-    expect(ip).not.toBe(current.slice(0, 32));
+describe('Market account ownership', () => {
+  it('hashes a source without retaining the address', async () => {
+    const ip = await hashSourceIp('203.0.113.7', 'ip-pepper');
+    expect(ip).toHaveLength(32);
+    expect(ip).not.toContain('203.0.113.7');
   });
 
-  it('compares both matching and differently-sized secrets', async () => {
-    await expect(secretEqual('same', 'same')).resolves.toBe(true);
-    await expect(secretEqual('same', 'different-and-longer')).resolves.toBe(false);
-  });
-
-  it('allows truly anonymous uploads but rejects stale account credentials', async () => {
+  it('requires a current account for every upload', async () => {
     const env = {
       AUTH: {
         claimMarketItems: async () => 'unauthorized' as const,
@@ -27,7 +18,7 @@ describe('Market security domains', () => {
 
     await expect(
       recordVerifiedClaims(env, new Request('https://market.test/api/items'), ['anonymous']),
-    ).resolves.toBe('anonymous');
+    ).rejects.toMatchObject({ status: 401 });
     await expect(
       recordVerifiedClaims(
         env,

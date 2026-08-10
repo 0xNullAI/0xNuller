@@ -8,6 +8,7 @@
 
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["IP_PEPPER", "DM_TICKET_SECRET"] },
 
   // 库已创建（region ENAM）。改动 schema 后执行：
   //   wrangler d1 migrations apply 0xnullai-auth --remote

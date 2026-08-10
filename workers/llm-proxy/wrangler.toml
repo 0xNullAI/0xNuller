@@ -4,10 +4,11 @@ compatibility_date = "2026-08-09"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# Custom domain — wrangler creates the DNS record on deploy.
-[[routes]]
-pattern = "llm.0xnullai.com"
-custom_domain = true
+[secrets]
+required = ["PROXY_API_KEY"]
+
+# Compatibility release: `llm.0xnullai.com` remains on the existing dg-llm-proxy.
+# Add the custom domain only after its separate cutover is explicitly approved.
 
 [vars]
 # Display/default upstream model. The worker forces this server-side; override

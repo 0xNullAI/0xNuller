@@ -4,12 +4,10 @@
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["MARKET_IP_PEPPER"] },
 
   // 统一外壳占据根域，本 Worker 只接管市场 API。
-  "routes": [
-    { "pattern": "0xnullai.com/api/items*", "zone_name": "0xnullai.com" },
-    { "pattern": "0xnullai.com/api/admin/*", "zone_name": "0xnullai.com" },
-  ],
+  "routes": [{ "pattern": "0xnullai.com/api/items*", "zone_name": "0xnullai.com" }],
 
   "assets": {
     "directory": "./dist",
@@ -39,9 +37,7 @@
     },
   ],
 
-  // 机密只用 `wrangler secret put` 设置，勿写进配置或源码：
-  // ADMIN_KEY（管理员操作）、MARKET_LEGACY_EDIT_PEPPER（首次设置为旧 ADMIN_KEY）、
-  // MARKET_EDIT_PEPPER（新编辑口令哈希）、
-  // MARKET_IP_PEPPER（上传限流）。三个安全域不能复用同一个值。
+  // 机密只用版本上传的 secrets file 设置，勿写进配置或源码：
+  // MARKET_IP_PEPPER（上传限流）。编辑与管理权限来自 Auth 账户归属/角色。
   "observability": { "enabled": true },
 }

@@ -1,8 +1,7 @@
 import { ItemPatchSchema, BatchUploadSchema, UploadSchema } from '../shared/schema';
 import type { ItemPatchRow, InsertItem } from './db';
 import {
-  adminDelete,
-  getEditKeyHash,
+  deleteItem,
   getItem,
   incrementDownloads,
   incrementViews,
@@ -12,9 +11,8 @@ import {
   recentUploadCount,
   reportItem,
   updateItemMeta,
-  upgradeEditKeyHash,
 } from './db';
-import { hashCurrentEditKey, hashLegacyEditKey, hashSourceIp, secretEqual } from './security';
+import { hashSourceIp } from './security';
 
 interface Env extends Cloudflare.Env {
   // Wrangler currently emits the named entrypoint as bare `Service`; keep the RPC
@@ -23,12 +21,13 @@ interface Env extends Cloudflare.Env {
     claimMarketItems(
       credentials: { authorization: string | null; cookie: string | null },
       itemIds: string[],
-      proof: 'market-upload' | 'market-edit-key',
+      proof: 'market-upload',
     ): Promise<'ok' | 'unauthorized' | 'conflict'>;
+    marketItemAccess(
+      credentials: { authorization: string | null; cookie: string | null },
+      itemId: string,
+    ): Promise<'admin' | 'owner' | 'user' | 'unauthorized'>;
   };
-  ADMIN_KEY: string;
-  MARKET_LEGACY_EDIT_PEPPER: string;
-  MARKET_EDIT_PEPPER: string;
   MARKET_IP_PEPPER: string;
 }
 
@@ -37,7 +36,7 @@ interface Env extends Cloudflare.Env {
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Admin-Key,X-Edit-Key',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
 };
 
 function json(data: unknown, status = 200): Response {
@@ -106,18 +105,26 @@ export default {
         return json({ item });
       }
 
-      // PATCH /api/items/:id —— edit metadata
-      // Items with no key set are publicly editable; items with a key require X-Edit-Key
-      // (an admin's X-Admin-Key overrides it).
+      // PATCH /api/items/:id —— account owner or account administrator edits metadata.
       if (detailMatch && request.method === 'PATCH') {
         return await handleEditPatch(request, env, detailMatch[1]!);
       }
 
-      // A logged-in account may claim an existing locked item only after Market itself
-      // verifies the plaintext edit key. Auth never trusts a caller-supplied hash.
-      const claimMatch = pathname.match(/^\/api\/items\/([\w-]+)\/claim$/);
-      if (claimMatch && request.method === 'POST') {
-        return await handleClaim(request, env, claimMatch[1]!);
+      const accessMatch = pathname.match(/^\/api\/items\/([\w-]+)\/access$/);
+      if (accessMatch && request.method === 'GET') {
+        const access = await marketAccess(request, env, accessMatch[1]!);
+        return json({
+          canEdit: access === 'owner' || access === 'admin',
+          canDelete: access === 'owner' || access === 'admin',
+        });
+      }
+
+      if (detailMatch && request.method === 'DELETE') {
+        const access = await marketAccess(request, env, detailMatch[1]!);
+        if (access === 'unauthorized') return err('未登录', 401);
+        if (access !== 'owner' && access !== 'admin') return err('无权限', 403);
+        await deleteItem(env.DB, detailMatch[1]!);
+        return json({ ok: true });
       }
 
       // POST /api/items —— upload
@@ -151,14 +158,6 @@ export default {
         return json({ ok: true });
       }
 
-      // Admin delete /api/admin/items/:id (key in X-Admin-Key)
-      const adminMatch = pathname.match(/^\/api\/admin\/items\/([\w-]+)$/);
-      if (adminMatch && request.method === 'DELETE') {
-        if (!(await isAdminRequest(request, env))) return err('无权限', 403);
-        await adminDelete(env.DB, adminMatch[1]!);
-        return json({ ok: true });
-      }
-
       return err('接口不存在', 404);
     } catch (error) {
       if (error instanceof MarketRequestError) return err(error.message, error.status);
@@ -178,14 +177,12 @@ export default {
 
 type UploadOne = ReturnType<typeof UploadSchema.parse>;
 
-// A validated single payload -> a database row (including the optional edit key hash).
+// A validated single payload -> a database row. Ownership lives in Auth.
 async function toInsert(
   payload: UploadOne,
   ipHash: string,
   createdAt: number,
-  env: Env,
 ): Promise<InsertItem> {
-  const editKey = payload.editKey?.trim();
   return {
     id: crypto.randomUUID(),
     type: payload.type,
@@ -197,13 +194,6 @@ async function toInsert(
     content: payload.content,
     ipHash,
     createdAt,
-    editKeyHash: editKey
-      ? await hashCurrentEditKey(
-          editKey,
-          requiredSecret(env.MARKET_EDIT_PEPPER, 'MARKET_EDIT_PEPPER'),
-        )
-      : undefined,
-    editKeyScheme: 2,
   };
 }
 
@@ -227,9 +217,9 @@ export async function recordVerifiedClaims(
   env: Env,
   request: Request,
   itemIds: string[],
-): Promise<'claimed' | 'anonymous'> {
+): Promise<'claimed'> {
   const credentials = credentialsFrom(request);
-  if (!hasCredentials(credentials)) return 'anonymous';
+  if (!hasCredentials(credentials)) throw new MarketRequestError('请先登录', 401);
   const result = await env.AUTH.claimMarketItems(credentials, itemIds, 'market-upload');
   if (result === 'unauthorized') throw new MarketRequestError('登录已失效', 401);
   if (result === 'conflict') throw new MarketRequestError('条目归属冲突', 409);
@@ -258,7 +248,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     return err(`上传过于频繁，请稍后再试（每小时最多 ${UPLOAD_LIMIT} 条）`, 429);
   }
 
-  const row = await toInsert(parsed.data, ipHash, now, env);
+  const row = await toInsert(parsed.data, ipHash, now);
   await insertItem(env.DB, row);
   try {
     const ownership = await recordVerifiedClaims(env, request, [row.id]);
@@ -266,7 +256,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   } catch (error) {
     // An authenticated upload must not succeed without its durable ownership record.
     // Delete the Market row so a retry is safe and does not strand an unclaimable item.
-    await adminDelete(env.DB, row.id);
+    await deleteItem(env.DB, row.id);
     throw error;
   }
 }
@@ -301,7 +291,7 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
 
   // The whole batch shares one timestamp baseline, staggered 1ms apart in order to preserve
   // the upload order.
-  const rows = await Promise.all(payloads.map((p, i) => toInsert(p, ipHash, now + i, env)));
+  const rows = await Promise.all(payloads.map((p, i) => toInsert(p, ipHash, now + i)));
   await insertItems(env.DB, rows);
   try {
     const ownership = await recordVerifiedClaims(
@@ -311,70 +301,22 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
     );
     return json({ ok: true, inserted: rows.length, ids: rows.map((r) => r.id), ownership }, 201);
   } catch (error) {
-    await Promise.all(rows.map((row) => adminDelete(env.DB, row.id)));
+    await Promise.all(rows.map((row) => deleteItem(env.DB, row.id)));
     throw error;
   }
 }
 
-async function isAdminRequest(request: Request, env: Env): Promise<boolean> {
-  const provided = request.headers.get('X-Admin-Key') ?? '';
-  return !!env.ADMIN_KEY && !!provided && secretEqual(provided, env.ADMIN_KEY);
-}
-
-/** Verify an item's key and opportunistically migrate a legacy ADMIN_KEY-derived hash. */
-async function verifyItemEditKey(env: Env, id: string, provided: string): Promise<boolean> {
-  const meta = await getEditKeyHash(env.DB, id);
-  if (!meta?.hash || !provided) return false;
-  const candidate =
-    meta.scheme === 2
-      ? await hashCurrentEditKey(
-          provided,
-          requiredSecret(env.MARKET_EDIT_PEPPER, 'MARKET_EDIT_PEPPER'),
-        )
-      : await hashLegacyEditKey(
-          provided,
-          requiredSecret(env.MARKET_LEGACY_EDIT_PEPPER, 'MARKET_LEGACY_EDIT_PEPPER'),
-        );
-  if (!(await secretEqual(candidate, meta.hash))) return false;
-  if (meta.scheme === 1) {
-    await upgradeEditKeyHash(
-      env.DB,
-      id,
-      meta.hash,
-      await hashCurrentEditKey(
-        provided,
-        requiredSecret(env.MARKET_EDIT_PEPPER, 'MARKET_EDIT_PEPPER'),
-      ),
-    );
-  }
-  return true;
-}
-
-async function handleClaim(request: Request, env: Env, id: string): Promise<Response> {
-  const provided = request.headers.get('X-Edit-Key')?.trim() ?? '';
-  if (!provided) return err('缺少编辑口令', 400);
-  if (!(await verifyItemEditKey(env, id, provided))) return err('编辑口令错误', 403);
-  const credentials = credentialsFrom(request);
-  if (!hasCredentials(credentials)) return err('未登录', 401);
-  const result = await env.AUTH.claimMarketItems(credentials, [id], 'market-edit-key');
-  if (result === 'unauthorized') return err('未登录', 401);
-  if (result === 'conflict') return err('该条目已由其他账号认领', 409);
-  return json({ ok: true }, 200);
+async function marketAccess(request: Request, env: Env, id: string) {
+  return env.AUTH.marketItemAccess(credentialsFrom(request), id);
 }
 
 // Change metadata: empty string / empty array -> null (clears the field).
-// Authentication: if the item has a key set, X-Edit-Key must match; an admin's
-// X-Admin-Key can always edit.
+// Authentication is account ownership; account administrators can moderate old items.
 async function handleEditPatch(request: Request, env: Env, id: string): Promise<Response> {
-  const meta = await getEditKeyHash(env.DB, id);
-  if (!meta) return err('未找到该条目', 404);
-
-  const isAdmin = await isAdminRequest(request, env);
-  if (!isAdmin && meta.hash) {
-    const provided = request.headers.get('X-Edit-Key') ?? '';
-    const ok = await verifyItemEditKey(env, id, provided);
-    if (!ok) return err('编辑口令错误', 403);
-  }
+  if (!(await getItem(env.DB, id))) return err('未找到该条目', 404);
+  const access = await marketAccess(request, env, id);
+  if (access === 'unauthorized') return err('未登录', 401);
+  if (access !== 'owner' && access !== 'admin') return err('无权限', 403);
 
   let body: unknown;
   try {
