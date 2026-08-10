@@ -69,9 +69,11 @@ describe('设备栏', () => {
     );
     render(<DeviceBar activeSessionId="control" />);
 
+    const connectButton = screen.getByRole('button', { name: '连接设备' });
     expect(screen.getAllByRole('button', { name: '连接设备' })).toHaveLength(1);
+    expect(connectButton.parentElement?.lastElementChild).toBe(connectButton);
     expect(screen.queryByRole('button', { name: /归零/ })).toBeNull();
-    await act(async () => screen.getByRole('button', { name: '连接设备' }).click());
+    await act(async () => connectButton.click());
     expect(connect).toHaveBeenCalledTimes(1);
 
     expect(screen.queryByRole('button', { name: '设备安全' })).toBeNull();

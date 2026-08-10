@@ -167,34 +167,98 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
   const kindSeen = new Map<string, number>();
 
   return (
-    <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-      {/* Stop goes at the far left (first in reading order). It is the primary reason
+    <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+        {/* Stop goes at the far left (first in reading order). It is the primary reason
           this bar exists, not an accessory feature. */}
-      {total > 0 && (
-        <button
-          type="button"
-          onClick={async () => {
-            setStopping(true);
-            try {
-              await stopAllDevices();
-            } finally {
-              setStopping(false);
+        {total > 0 && (
+          <button
+            type="button"
+            onClick={async () => {
+              setStopping(true);
+              try {
+                await stopAllDevices();
+              } finally {
+                setStopping(false);
+              }
+            }}
+            className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+              hasActiveOutput
+                ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
+                : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
+            }`}
+            title={
+              hasActiveOutput
+                ? `立刻停止全部输出（${total} 台设备）`
+                : `将全部已连接设备归零（${total} 台设备）`
             }
-          }}
-          className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
-            hasActiveOutput
-              ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
-              : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
-          }`}
-          title={
-            hasActiveOutput
-              ? `立刻停止全部输出（${total} 台设备）`
-              : `将全部已连接设备归零（${total} 台设备）`
-          }
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+            {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
+          </button>
+        )}
+
+        <div className="flex items-center gap-2">
+          {rows.map(({ group, device }) => {
+            const ordinal = (kindSeen.get(device.kind) ?? 0) + 1;
+            kindSeen.set(device.kind, ordinal);
+            const baseLabel = kindLabel(device.kind);
+            const displayLabel =
+              (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
+            const session = safetySessionById(group.sessionId);
+            const disconnectKey = `${group.sessionId}:${device.id}`;
+            const canDisconnect = typeof session?.disconnect === 'function';
+            return (
+              // Keyed by module + device id: two modules may legitimately report
+              // the same device id, and one module may now report several
+              // devices. Either half alone collides, and a collided key means a
+              // row React never renders — a device attached to the user with no
+              // sign of it here.
+              <DeviceChip
+                key={`${group.sessionId}:${device.id}`}
+                device={device}
+                owner={
+                  groups.length > 1 || group.sessionId !== activeSessionId ? group.label : null
+                }
+                displayLabel={displayLabel}
+                disconnecting={disconnectState.key === disconnectKey}
+                onDisconnect={
+                  canDisconnect
+                    ? () => {
+                        if (!session?.disconnect || disconnectState.key) return;
+                        setDisconnectState({ key: disconnectKey, error: null });
+                        void Promise.resolve()
+                          .then(() => session.disconnect?.(device.id))
+                          .then(() => setDisconnectState({ key: null, error: null }))
+                          .catch((error: unknown) =>
+                            setDisconnectState({
+                              key: null,
+                              error:
+                                error instanceof Error ? error.message : `无法断开${displayLabel}`,
+                            }),
+                          );
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
+        </div>
+        {disconnectState.error && (
+          <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
+            {disconnectState.error}
+          </span>
+        )}
+      </div>
+
+      {connectError && (
+        <span
+          role="alert"
+          className="max-w-48 shrink truncate text-xs text-[var(--danger)]"
+          title={connectError}
         >
-          <Square className="h-3.5 w-3.5 fill-current" />
-          {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
-        </button>
+          {connectError}
+        </span>
       )}
 
       {canConnect && (
@@ -219,7 +283,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
               });
             }
           }}
-          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
           title={total > 0 ? '连接其他设备' : '连接设备'}
         >
           {connecting ? (
@@ -229,62 +293,6 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
           )}
           {connecting ? '连接中…' : '连接设备'}
         </button>
-      )}
-
-      {connectError && (
-        <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
-          {connectError}
-        </span>
-      )}
-
-      <div className="flex min-w-0 items-center gap-2">
-        {rows.map(({ group, device }) => {
-          const ordinal = (kindSeen.get(device.kind) ?? 0) + 1;
-          kindSeen.set(device.kind, ordinal);
-          const baseLabel = kindLabel(device.kind);
-          const displayLabel =
-            (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
-          const session = safetySessionById(group.sessionId);
-          const disconnectKey = `${group.sessionId}:${device.id}`;
-          const canDisconnect = typeof session?.disconnect === 'function';
-          return (
-            // Keyed by module + device id: two modules may legitimately report
-            // the same device id, and one module may now report several
-            // devices. Either half alone collides, and a collided key means a
-            // row React never renders — a device attached to the user with no
-            // sign of it here.
-            <DeviceChip
-              key={`${group.sessionId}:${device.id}`}
-              device={device}
-              owner={groups.length > 1 || group.sessionId !== activeSessionId ? group.label : null}
-              displayLabel={displayLabel}
-              disconnecting={disconnectState.key === disconnectKey}
-              onDisconnect={
-                canDisconnect
-                  ? () => {
-                      if (!session?.disconnect || disconnectState.key) return;
-                      setDisconnectState({ key: disconnectKey, error: null });
-                      void Promise.resolve()
-                        .then(() => session.disconnect?.(device.id))
-                        .then(() => setDisconnectState({ key: null, error: null }))
-                        .catch((error: unknown) =>
-                          setDisconnectState({
-                            key: null,
-                            error:
-                              error instanceof Error ? error.message : `无法断开${displayLabel}`,
-                          }),
-                        );
-                    }
-                  : undefined
-              }
-            />
-          );
-        })}
-      </div>
-      {disconnectState.error && (
-        <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
-          {disconnectState.error}
-        </span>
       )}
     </div>
   );

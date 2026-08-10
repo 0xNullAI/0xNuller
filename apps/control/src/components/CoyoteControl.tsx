@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   BluetoothOff,
+  ChevronDown,
   Pause,
   Play,
   Repeat,
@@ -273,6 +274,7 @@ export function WaveformPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fireBoostA, setFireBoostA] = useState(5);
   const [fireBoostB, setFireBoostB] = useState(5);
+  const [fireOpen, setFireOpen] = useState(false);
 
   const renderFireChannel = (channel: 'A' | 'B') => {
     const enabled = channel === 'A' ? fireEnabledA : fireEnabledB;
@@ -417,20 +419,38 @@ export function WaveformPanel({
   return (
     <>
       <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3">
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
-              <Zap size={13} className="text-[var(--danger)]" /> 一键开火
-            </p>
-          </div>
+        <button
+          type="button"
+          aria-expanded={fireOpen}
+          aria-controls="control-fire-panel"
+          onClick={() => {
+            if (fireOpen) {
+              if (firingA) onFireStop('A');
+              if (firingB) onFireStop('B');
+            }
+            setFireOpen((open) => !open);
+          }}
+          className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          <Zap size={13} className="shrink-0 text-[var(--danger)]" />
+          <span className="flex-1 text-xs font-semibold text-[var(--text)]">一键开火</span>
           {targetName && (
             <span className="max-w-28 truncate text-[10px] text-[var(--accent)]">{targetName}</span>
           )}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {renderFireChannel('A')}
-          {renderFireChannel('B')}
-        </div>
+          <ChevronDown
+            size={15}
+            className={`shrink-0 text-[var(--text-faint)] transition-transform ${fireOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {fireOpen && (
+          <div
+            id="control-fire-panel"
+            className="mt-3 grid gap-2 border-t border-[var(--surface-border)] pt-3 sm:grid-cols-2"
+          >
+            {renderFireChannel('A')}
+            {renderFireChannel('B')}
+          </div>
+        )}
       </div>
 
       {/* ==================== A/B channel wave tab ==================== */}
