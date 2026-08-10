@@ -1,6 +1,6 @@
 <div align="center">
 
-# 0xNullAI
+# 0xNuller
 
 **DG-Lab 设备的统一控制平台**
 
@@ -16,7 +16,7 @@
 
 ## 这是什么
 
-0xNullAI 将设备控制、AI 对话、实时语音、多人互动、游戏和社区内容整合在一个网页与安卓应用中。
+0xNuller 将设备控制、AI 对话、实时语音、多人互动、游戏和社区内容整合在一个网页与安卓应用中。
 
 | 模块           | 功能                 |
 | -------------- | -------------------- |
@@ -54,12 +54,21 @@ npm run format
 
 ## 开发入口
 
-- `apps/web` — 统一网页应用
-- `android/app` — 安卓应用
+- [`apps/web`](./apps/web/README.md) — 统一网页应用与内置文档
+- [`apps/agent`](./apps/agent/README.md) — 文字 Agent
+- [`apps/chat`](./apps/chat/README.md) — 房间、私聊与远程互动
+- [`apps/voice`](./apps/voice/README.md) — 实时语音
+- [`apps/playground`](./apps/playground/README.md) — 游戏互动
+- [`apps/market`](./apps/market/README.md) — 场景与波形社区
+- [`android/app`](./android/app/README.md) — 安卓应用
+- [`apps/mcp`](./apps/mcp/README.md) — MCP 服务（迁移与对外发布待确认）
 - `packages` — 共享功能包
-- `workers` — 后端服务
+- [`workers`](./workers/README.md) — 后端服务
 
 维护者文档位于 [`docs`](./docs)。
+
+兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 的迁移及
+对外发布在单独确认后进行。
 
 ## 致谢
 

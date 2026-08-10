@@ -1,6 +1,6 @@
 <div align="center">
 
-# 0xNullAI
+# 0xNuller
 
 **A unified control platform for DG-Lab devices**
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-0xNullAI brings device control, AI chat, realtime voice, multiplayer interaction, games, and community content into one web and Android application.
+0xNuller brings device control, AI chat, realtime voice, multiplayer interaction, games, and community content into one web and Android application.
 
 | Module         | Purpose                               |
 | -------------- | ------------------------------------- |
@@ -52,12 +52,21 @@ npm run format
 
 ## Development entry points
 
-- `apps/web` — unified web app
-- `android/app` — Android app
+- [`apps/web`](./apps/web/README.en.md) — unified web app and documentation
+- [`apps/agent`](./apps/agent/README.en.md) — text Agent
+- [`apps/chat`](./apps/chat/README.en.md) — rooms and direct messages
+- [`apps/voice`](./apps/voice/README.en.md) — realtime voice
+- [`apps/playground`](./apps/playground/README.en.md) — games
+- [`apps/market`](./apps/market/README.en.md) — community scenes and waveforms
+- [`android/app`](./android/app/README.md) — Android app
+- [`apps/mcp`](./apps/mcp/README.en.md) — MCP server (migration/release pending approval)
 - `packages` — shared packages
-- `workers` — backend services
+- [`workers`](./workers/README.md) — backend services
 
 Maintainer documentation is available under [`docs`](./docs).
+
+The compatibility release replaces only the `0xnullai.com` root site. Legacy subdomains remain
+online. DG-Kit and DG-MCP migration/public release require separate approval.
 
 ## Acknowledgements
 
