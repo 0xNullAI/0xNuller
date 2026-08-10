@@ -17,15 +17,19 @@ llm.0xnullai.com                → dg-llm-proxy         兼容期继续使用�
 
 免费 provider 留在自己的子域上。兼容发布只替换根站，不切换这个自定义域。
 
-## 当前外部状态（2026-08-09，只读核对）
+## 当前外部状态（2026-08-10，部署后核对）
 
-- 目标脚本中只有 `0xnullai-auth` 已存在；`0xnullai-chat`、`0xnullai-market`、
-  `0xnullai-voice`、`0xnuller`、`0xnullai-llm-proxy` 与 `0xnullai-speech-proxy` 均未创建。
-- `dg-agent`、`dg-web`、`dg-wiki` 旧 Pages 项目仍在承载现网。
-- `https://0xnullai.com/api/items` 仍返回旧站 HTML，不是 Market JSON；这证明目标 API
-  path route 尚未切换，不能把前端或 APK 指向当前根域后宣称 Market 已上线。
-- 根仓的 auto-tag 与 npm release workflow 因此继续只允许手动触发。关闭旧仓自动化、
-  创建并验证目标资源、完成路由切换之前，不得恢复 push 触发。
+- `0xnullai-chat`、`0xnullai-auth`、`0xnullai-market` 已部署 6.0 后端；根域的 Chat、Auth、
+  Market 路径路由已返回 JSON。`0xnullai-voice` 尚未部署，等待真实的 xAI 与体验密钥。
+- Market D1 在迁移前已备份，44 条内容完整保留，ledger 现为 0000–0003；Auth D1 已从
+  0001–0003 升到 0001–0009，当前仍是 0 个用户。`0xnullai-profile-photos` R2 已创建，
+  `dg-chat-media` 保持原桶不变。
+- `0xnuller` 统一外壳尚未接管根域；`https://0xnullai.com/` 仍由 `dg-web` Pages 提供。
+  `dg-agent`、`dg-web`、`dg-wiki` 与其余旧 Pages/Worker/子域均未删除。
+- `0xnullai-llm-proxy` 与 `0xnullai-speech-proxy` 未创建；`llm.0xnullai.com` 继续由旧
+  `dg-llm-proxy` 提供服务。
+- 根仓 auto-tag 与 npm release workflow 继续只允许手动触发。登录态、Voice、真机与主站
+  切换验收完成前，不得恢复 push 触发或归档旧仓。
 
 这段状态只能由下一次发布前的只读核对更新；配置文件描述的是目标，不能反推远端已经存在。
 
