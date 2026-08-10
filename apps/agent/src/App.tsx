@@ -246,6 +246,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       opossumState.connected ||
       pawPrintsState.connected ||
       civetEdgingState.connected,
+    connect: () => connect(),
+    disconnect: (deviceId) => {
+      if (deviceId === 'opossum') return disconnectOpossum();
+      if (deviceId === 'paw-prints') return disconnectPawPrints();
+      if (deviceId === 'civet-edging') return disconnectCivetEdging();
+      return disconnectDevice();
+    },
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },

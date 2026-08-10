@@ -2,6 +2,7 @@ import {
   ModuleActions,
   SidebarSection,
   useOpenShellSettings,
+  useInShell,
   useSafetySession,
 } from '@0xnullai/ui';
 import {
@@ -140,6 +141,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }, []);
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [agentOpen, setAgentOpen] = useState(false);
+  const inShell = useInShell();
   const openShellSettings = useOpenShellSettings();
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
@@ -268,6 +270,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       Boolean(deviceRef.current.opossum?.connected) ||
       Boolean(deviceRef.current.sensor?.connected),
     stop: () => deviceRef.current.stopAll(),
+    connect: () => deviceRef.current.connectDevice(),
+    disconnect: (deviceId) => {
+      if (deviceId === 'opossum') return deviceRef.current.disconnectOpossum();
+      if (deviceId === 'sensor') return deviceRef.current.disconnectSensor();
+      return deviceRef.current.disconnectCoyote(deviceId);
+    },
     onRevoke: () => {
       // All three of these are required.
       // 1) Stop the output.
@@ -888,28 +896,30 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             </>
           )}
           {/* Bluetooth + personal safety settings (merged panel) */}
-          <DeviceSafetyButton
-            connected={device.connected}
-            deviceName={device.deviceInfo?.name ?? null}
-            battery={device.battery}
-            onDisconnect={() => device.disconnectCoyote()}
-            limitA={device.limitA}
-            limitB={device.limitB}
-            onSetLimit={device.setLimit}
-            firePolicy={device.firePolicy}
-            onSetFirePolicy={device.setFirePolicy}
-            onRestoreDefaults={waveforms.restoreDefaults}
-            sensor={device.sensor}
-            opossum={device.opossum}
-            onConnectDevice={device.connectDevice}
-            onDisconnectSensor={device.disconnectSensor}
-            onDisconnectOpossum={device.disconnectOpossum}
-          />
+          {!inShell && (
+            <DeviceSafetyButton
+              connected={device.connected}
+              deviceName={device.deviceInfo?.name ?? null}
+              battery={device.battery}
+              onDisconnect={() => device.disconnectCoyote()}
+              limitA={device.limitA}
+              limitB={device.limitB}
+              onSetLimit={device.setLimit}
+              firePolicy={device.firePolicy}
+              onSetFirePolicy={device.setFirePolicy}
+              onRestoreDefaults={waveforms.restoreDefaults}
+              sensor={device.sensor}
+              opossum={device.opossum}
+              onConnectDevice={device.connectDevice}
+              onDisconnectSensor={device.disconnectSensor}
+              onDisconnectOpossum={device.disconnectOpossum}
+            />
+          )}
           {/* Emergency stop: must be visible whenever either Coyote or Opossum is
               connected — both are devices that may currently be outputting, and looking
               at Coyote alone leaves a user who "only connected an Opossum" unable to find
               the one-tap stop button. */}
-          {(device.connected || device.opossum?.connected) && (
+          {!inShell && (device.connected || device.opossum?.connected) && (
             <button
               onClick={device.stopAll}
               className="flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] bg-[var(--danger-soft)] px-2.5 text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80"

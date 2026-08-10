@@ -77,7 +77,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
   }, []);
 
   const hangUp = useCallback(
-    async (reason?: string) => {
+    async (_reason?: string) => {
       // A dialog still on screen when the call ends must not leave its promise
       // dangling — the tool executor would await it forever.
       const stranded = pendingPermissionRef.current;
@@ -95,7 +95,10 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       setState((prev) => ({
         ...prev,
         status: 'ended',
-        error: reason ?? prev.error,
+        // A user hang-up, background safety stop, or module switch is a
+        // normal lifecycle transition. The optional reason is for internal
+        // diagnostics, not a service failure to render as a red alert.
+        error: null,
         speaking: false,
       }));
     },

@@ -1,23 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Square } from 'lucide-react';
-import { allConnectedDevices, subscribeSafetySessions } from '@dg-kit/safety';
+import { Bluetooth, LoaderCircle, Settings2, Square, X } from 'lucide-react';
+import { allConnectedDevices, safetySessionById, subscribeSafetySessions } from '@dg-kit/safety';
 // The device names are @dg-kit/core's to own. This file used to keep its own
 // copy, which called civet-edging 灵狐 while every other module said 灵猫 —
 // the same device read differently in the top bar and in a Voice transcript.
-import { DEVICE_KIND_DISPLAY_NAME } from '@dg-kit/core';
+import { DEVICE_KIND_DISPLAY_NAME, isDevicePickerCancelled } from '@dg-kit/core';
 import type { DeviceSummary } from '@dg-kit/safety';
 import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
 
 /**
- * The device bar. It appears at the very top of the content area once a device is
- * connected, with the stop button at the far left.
+ * The one device bar for the unified shell. It stays at the top of every module
+ * that can connect devices, even before a device is attached; once anything is
+ * connected it also survives navigation to non-device modules so stop and
+ * disconnect never disappear.
  *
- * **Visibility keys off exactly one signal: whether any device is connected.** Not
- * the lease, not whether output is currently running. Tying it to output state
- * would mean any single state misjudgment (a missed subscription update, a lease
- * just revoked while the device is still running) makes the stop button disappear
- * at the moment it is needed most. Better to keep showing a button that may end up
- * stopping an idle device.
+ * Visibility therefore has two signals: the active module exposes a connect
+ * capability, or at least one device is connected. Output state only changes the
+ * stop button's emphasis; it never decides whether the safety anchor exists.
  *
  * Polling rather than pure event-driven updates, for the same reason:
  * `subscribeSafetySessions` only fires when a module mounts/unmounts, and changes
@@ -53,10 +52,8 @@ function kindLabel(kind: string): string {
 /**
  * One device's row.
  *
- * `owner` is the module holding it, shown only when devices come from more
- * than one module: with several attached at once, "which of these is the one
- * Chat is driving" is otherwise unanswerable from the bar, and the bar is the
- * only place that question gets asked.
+ * `owner` is the module holding it, shown when several module sessions are
+ * represented or when a background module owns the only attached device.
  *
  * An outputting device is marked in words as well as by the dot. The dot alone
  * carries the single most important piece of state on this bar — whether
@@ -67,10 +64,14 @@ function DeviceChip({
   device,
   owner,
   displayLabel,
+  disconnecting,
+  onDisconnect,
 }: {
   device: DeviceSummary;
   owner: string | null;
   displayLabel: string;
+  disconnecting: boolean;
+  onDisconnect?: () => void;
 }) {
   const active = Boolean(device.active);
   return (
@@ -117,15 +118,50 @@ function DeviceChip({
           {device.battery}%
         </span>
       )}
+      {onDisconnect && (
+        <button
+          type="button"
+          disabled={disconnecting}
+          onClick={onDisconnect}
+          className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-strong)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          aria-label={`断开${displayLabel}`}
+          title={`断开${displayLabel}`}
+        >
+          {disconnecting ? (
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
     </div>
   );
 }
 
-export function DeviceBar() {
+export function DeviceBar({
+  activeSessionId = null,
+  onOpenSafety,
+}: {
+  activeSessionId?: string | null;
+  onOpenSafety?: () => void;
+}) {
   const groups = useConnectedDevices();
   const [stopping, setStopping] = useState(false);
+  const [connectState, setConnectState] = useState<{
+    sessionId: string | null;
+    connecting: boolean;
+    error: string | null;
+  }>({ sessionId: null, connecting: false, error: null });
+  const [disconnectState, setDisconnectState] = useState<{
+    key: string | null;
+    error: string | null;
+  }>({ key: null, error: null });
+  const activeSession = safetySessionById(activeSessionId);
+  const canConnect = typeof activeSession?.connect === 'function';
+  const connecting = connectState.sessionId === activeSessionId && connectState.connecting;
+  const connectError = connectState.sessionId === activeSessionId ? connectState.error : null;
 
-  if (groups.length === 0) return null;
+  if (groups.length === 0 && !canConnect) return null;
 
   const rows = groups.flatMap((group) => group.devices.map((device) => ({ group, device })));
   const total = rows.length;
@@ -140,30 +176,84 @@ export function DeviceBar() {
     <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
       {/* Stop goes at the far left (first in reading order). It is the primary reason
           this bar exists, not an accessory feature. */}
-      <button
-        type="button"
-        onClick={async () => {
-          setStopping(true);
-          try {
-            await stopAllDevices();
-          } finally {
-            setStopping(false);
+      {total > 0 && (
+        <button
+          type="button"
+          onClick={async () => {
+            setStopping(true);
+            try {
+              await stopAllDevices();
+            } finally {
+              setStopping(false);
+            }
+          }}
+          className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+            hasActiveOutput
+              ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
+              : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
+          }`}
+          title={
+            hasActiveOutput
+              ? `立刻停止全部输出（${total} 台设备）`
+              : `将全部已连接设备归零（${total} 台设备）`
           }
-        }}
-        className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
-          hasActiveOutput
-            ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
-            : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
-        }`}
-        title={
-          hasActiveOutput
-            ? `立刻停止全部输出（${total} 台设备）`
-            : `将全部已连接设备归零（${total} 台设备）`
-        }
-      >
-        <Square className="h-3.5 w-3.5 fill-current" />
-        {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
-      </button>
+        >
+          <Square className="h-3.5 w-3.5 fill-current" />
+          {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
+        </button>
+      )}
+
+      {canConnect && (
+        <button
+          type="button"
+          disabled={connecting}
+          onClick={async () => {
+            if (!activeSession?.connect || connecting) return;
+            setConnectState({ sessionId: activeSessionId, connecting: true, error: null });
+            try {
+              await activeSession.connect();
+              setConnectState({ sessionId: activeSessionId, connecting: false, error: null });
+            } catch (error) {
+              setConnectState({
+                sessionId: activeSessionId,
+                connecting: false,
+                error: isDevicePickerCancelled(error)
+                  ? null
+                  : error instanceof Error
+                    ? error.message
+                    : '连接设备失败',
+              });
+            }
+          }}
+          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          title={total > 0 ? '连接其他设备' : '连接设备'}
+        >
+          {connecting ? (
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Bluetooth className="h-3.5 w-3.5" />
+          )}
+          {connecting ? '连接中…' : '连接设备'}
+        </button>
+      )}
+
+      {onOpenSafety && (canConnect || total > 0) && (
+        <button
+          type="button"
+          onClick={onOpenSafety}
+          className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm font-medium text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          title="设备安全设置"
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+          设备安全
+        </button>
+      )}
+
+      {connectError && (
+        <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
+          {connectError}
+        </span>
+      )}
 
       <div className="flex min-w-0 items-center gap-2">
         {rows.map(({ group, device }) => {
@@ -172,6 +262,9 @@ export function DeviceBar() {
           const baseLabel = kindLabel(device.kind);
           const displayLabel =
             (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
+          const session = safetySessionById(group.sessionId);
+          const disconnectKey = `${group.sessionId}:${device.id}`;
+          const canDisconnect = typeof session?.disconnect === 'function';
           return (
             // Keyed by module + device id: two modules may legitimately report
             // the same device id, and one module may now report several
@@ -181,12 +274,36 @@ export function DeviceBar() {
             <DeviceChip
               key={`${group.sessionId}:${device.id}`}
               device={device}
-              owner={groups.length > 1 ? group.label : null}
+              owner={groups.length > 1 || group.sessionId !== activeSessionId ? group.label : null}
               displayLabel={displayLabel}
+              disconnecting={disconnectState.key === disconnectKey}
+              onDisconnect={
+                canDisconnect
+                  ? () => {
+                      if (!session?.disconnect || disconnectState.key) return;
+                      setDisconnectState({ key: disconnectKey, error: null });
+                      void Promise.resolve()
+                        .then(() => session.disconnect?.(device.id))
+                        .then(() => setDisconnectState({ key: null, error: null }))
+                        .catch((error: unknown) =>
+                          setDisconnectState({
+                            key: null,
+                            error:
+                              error instanceof Error ? error.message : `无法断开${displayLabel}`,
+                          }),
+                        );
+                    }
+                  : undefined
+              }
             />
           );
         })}
       </div>
+      {disconnectState.error && (
+        <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
+          {disconnectState.error}
+        </span>
+      )}
     </div>
   );
 }

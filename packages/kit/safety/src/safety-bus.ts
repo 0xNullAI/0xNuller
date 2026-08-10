@@ -69,6 +69,14 @@ export interface SafetySession {
   /** Devices this module currently holds. The shell renders the device bar from it. */
   devices?: () => DeviceSummary[];
   /**
+   * Open this module's unified device picker. When present, the shell renders
+   * the one connect entry in its top device strip; modules must not duplicate
+   * the same action inside their content while mounted in the shell.
+   */
+  connect?: () => void | Promise<unknown>;
+  /** Disconnect one device listed by `devices()`. Used by the shell's top strip. */
+  disconnect?: (deviceId: string) => void | Promise<unknown>;
+  /**
    * Called when the module loses the device lease.
    *
    * It MUST do three things: stop output, clear any "held down" aggregate
@@ -124,6 +132,11 @@ export function registerSafetySession(session: SafetySession): () => void {
       notify();
     }
   };
+}
+
+/** A registered module session, including its optional shell connect action. */
+export function safetySessionById(id: string | null): SafetySession | null {
+  return id ? (sessions.get(id) ?? null) : null;
 }
 
 /** Modules that currently have an active device session. */

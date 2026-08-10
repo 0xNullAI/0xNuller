@@ -241,7 +241,7 @@ export function Shell() {
           {!narrow && <div id="shl-side">{sidebar}</div>}
 
           <main id="shl-slot">
-            <DeviceBar />
+            <DeviceBar activeSessionId={activeId} onOpenSafety={() => openSettings('safety')} />
 
             {/* The module's own buttons land here. On narrow screens the drawer toggle
               shares this row. */}

@@ -55,12 +55,86 @@ describe('设备栏', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('当前模块未连接时仍常驻顶部，并提供唯一连接入口和设备安全设置', async () => {
+    const connect = vi.fn(async () => undefined);
+    const openSafety = vi.fn();
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'Control',
+        isActive: () => false,
+        stop: vi.fn(),
+        devices: () => [],
+        connect,
+      }),
+    );
+    render(<DeviceBar activeSessionId="control" onOpenSafety={openSafety} />);
+
+    expect(screen.getAllByRole('button', { name: '连接设备' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /归零/ })).toBeNull();
+    await act(async () => screen.getByRole('button', { name: '连接设备' }).click());
+    expect(connect).toHaveBeenCalledTimes(1);
+
+    screen.getByRole('button', { name: '设备安全' }).click();
+    expect(openSafety).toHaveBeenCalledTimes(1);
+  });
+
+  it('不会把后台模块的连接入口显示到当前页面', () => {
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'Control',
+        isActive: () => false,
+        stop: vi.fn(),
+        connect: vi.fn(),
+      }),
+    );
+    const { container } = render(<DeviceBar activeSessionId="market" />);
+    expect(container.innerHTML).toBe('');
+  });
+
   it('连上设备后出现，且带停止按钮', () => {
     connectFake('agent', [COYOTE]);
     render(<DeviceBar />);
     expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
     expect(screen.queryByText('47L121000')).toBeNull();
     expect(screen.getByText('郊狼')).toBeTruthy();
+  });
+
+  it('连接后的设备可从同一顶部横栏断开', async () => {
+    const disconnect = vi.fn(async () => undefined);
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'Control',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => [COYOTE],
+        disconnect,
+      }),
+    );
+    render(<DeviceBar activeSessionId="control" />);
+    await act(async () => screen.getByRole('button', { name: '断开郊狼' }).click());
+    expect(disconnect).toHaveBeenCalledWith('coyote');
+  });
+
+  it('断开同步抛错时会恢复按钮并在横栏提示', async () => {
+    cleanups.push(
+      registerSafetySession({
+        id: 'control',
+        label: 'Control',
+        isActive: () => true,
+        stop: vi.fn(),
+        devices: () => [COYOTE],
+        disconnect: () => {
+          throw new Error('蓝牙断开失败');
+        },
+      }),
+    );
+    render(<DeviceBar activeSessionId="control" />);
+    await act(async () => screen.getByRole('button', { name: '断开郊狼' }).click());
+    expect(screen.getByRole('alert').textContent).toBe('蓝牙断开失败');
+    expect(screen.getByRole('button', { name: '断开郊狼' })).not.toHaveProperty('disabled', true);
   });
 
   it('显示电量与通道强度', () => {
@@ -129,8 +203,15 @@ describe('设备栏', () => {
 
   it('只有一个模块时不标模块名', () => {
     connectFake('control', [COYOTE]);
-    render(<DeviceBar />);
+    render(<DeviceBar activeSessionId="control" />);
     expect(screen.queryByText('control')).toBeNull();
+  });
+
+  it('切走后仍显示设备，并标明它属于后台哪个模块', () => {
+    connectFake('control', [COYOTE]);
+    render(<DeviceBar activeSessionId="market" />);
+    expect(screen.getByText('郊狼')).toBeTruthy();
+    expect(screen.getByText('control')).toBeTruthy();
   });
 
   it('归零按钮的提示要数上同模块里的每一台', () => {

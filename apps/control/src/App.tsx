@@ -14,7 +14,6 @@ import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bl
 import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
 import { AuxDevices } from '@control/components/AuxDevices';
 import { CoyoteSection } from '@control/components/CoyoteControl';
-import { DeviceStrip } from '@control/components/DeviceStrip';
 import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
@@ -23,10 +22,10 @@ import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-d
  * Control — drive your own device, directly.
  *
  * No AI deciding anything, no room full of people, no game. The whole module is
- * one screen with three stacked sections (devices, Coyote, everything else)
- * rather than tabs, because the reason to open it is to reach a control right
- * now, and a tab is one extra thing standing between a hand and the strength
- * buttons.
+ * one screen with the Coyote controls followed by auxiliary devices rather
+ * than tabs, because the reason to open it is to reach a control right now.
+ * Connection, disconnection and shared safety settings live in the shell's
+ * one top device strip.
  *
  * Everything below the UI is borrowed rather than rebuilt: `useDevice` owns the
  * BLE session and the `DeviceCommandQueue` that every write goes through,
@@ -140,6 +139,14 @@ export default function App() {
     label: 'Control',
     isActive: () => holdsAnyDevice(device),
     stop: stopAll,
+    connect: device.connectDevice,
+    disconnect: (deviceId) => {
+      if (deviceId === 'opossum') return device.disconnectOpossum();
+      if (deviceId === 'paw-prints' || deviceId === 'civet-edging') {
+        return device.disconnectSensor();
+      }
+      return disconnectCoyote(deviceId);
+    },
     onRevoke: () => {
       // Losing the lease means switching away from Control. Stop the output and
       // invalidate any held fire before its eventual pointerup can restore it.
@@ -261,20 +268,6 @@ export default function App() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[520px] flex-col gap-6 px-4 py-5">
-        <DeviceStrip
-          coyotes={coyotes}
-          sensor={device.sensor}
-          opossum={device.opossum}
-          limitA={device.limitA}
-          limitB={device.limitB}
-          onSetLimit={device.setLimit}
-          onConnectDevice={device.connectDevice}
-          onDisconnectCoyote={disconnectCoyote}
-          onDisconnectSensor={device.disconnectSensor}
-          onDisconnectOpossum={device.disconnectOpossum}
-          onRestoreDefaults={waveforms.restoreDefaults}
-        />
-
         <CoyoteSection
           coyotes={coyotes}
           selectedId={selectedCoyote?.id ?? null}

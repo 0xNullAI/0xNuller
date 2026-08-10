@@ -271,117 +271,118 @@ export function ChatPanel({
         )}
 
       {/* ===== Device status bar — shows whenever any of the four device kinds is connected ===== */}
-      {(deviceState.connected ||
-        opossumState.connected ||
-        pawPrintsState.connected ||
-        civetEdgingState.connected) && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5 sm:gap-x-4 sm:px-3 sm:py-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
-            onClick={onOpenSidebar}
-            aria-label="历史记录"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
+      {!inShell &&
+        (deviceState.connected ||
+          opossumState.connected ||
+          pawPrintsState.connected ||
+          civetEdgingState.connected) && (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5 sm:gap-x-4 sm:px-3 sm:py-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+              onClick={onOpenSidebar}
+              aria-label="历史记录"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
-            {deviceState.connected && (
-              <DeviceStatusChip
-                icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={deviceState.battery}
-                onClick={onDisconnectDevice}
-                title="断开郊狼"
-              >
-                <div className="flex gap-3 sm:gap-4">
-                  <ChannelStrengthBar
-                    channel="A"
-                    value={deviceState.strengthA}
-                    max={maxStrengthA}
-                  />
-                  <ChannelStrengthBar
-                    channel="B"
-                    value={deviceState.strengthB}
-                    max={maxStrengthB}
-                  />
-                </div>
-              </DeviceStatusChip>
-            )}
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+              {deviceState.connected && (
+                <DeviceStatusChip
+                  icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={deviceState.battery}
+                  onClick={onDisconnectDevice}
+                  title="断开郊狼"
+                >
+                  <div className="flex gap-3 sm:gap-4">
+                    <ChannelStrengthBar
+                      channel="A"
+                      value={deviceState.strengthA}
+                      max={maxStrengthA}
+                    />
+                    <ChannelStrengthBar
+                      channel="B"
+                      value={deviceState.strengthB}
+                      max={maxStrengthB}
+                    />
+                  </div>
+                </DeviceStatusChip>
+              )}
 
-            {opossumState.connected && (
-              <DeviceStatusChip
-                icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={opossumState.battery}
-                onClick={onDisconnectOpossum}
-                title="断开负鼠"
-              >
-                <div className="flex gap-3 sm:gap-4">
-                  <ChannelStrengthBar
-                    channel="A"
-                    value={opossumState.intensityA}
-                    max={maxOpossumIntensityA}
-                  />
-                  <ChannelStrengthBar
-                    channel="B"
-                    value={opossumState.intensityB}
-                    max={maxOpossumIntensityB}
-                  />
-                </div>
-              </DeviceStatusChip>
-            )}
+              {opossumState.connected && (
+                <DeviceStatusChip
+                  icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={opossumState.battery}
+                  onClick={onDisconnectOpossum}
+                  title="断开负鼠"
+                >
+                  <div className="flex gap-3 sm:gap-4">
+                    <ChannelStrengthBar
+                      channel="A"
+                      value={opossumState.intensityA}
+                      max={maxOpossumIntensityA}
+                    />
+                    <ChannelStrengthBar
+                      channel="B"
+                      value={opossumState.intensityB}
+                      max={maxOpossumIntensityB}
+                    />
+                  </div>
+                </DeviceStatusChip>
+              )}
 
-            {pawPrintsState.connected && (
-              <DeviceStatusChip
-                icon={<PawPrint className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={pawPrintsState.battery}
-                onClick={onDisconnectPawPrints}
-                title="断开爪印"
-              />
-            )}
+              {pawPrintsState.connected && (
+                <DeviceStatusChip
+                  icon={<PawPrint className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={pawPrintsState.battery}
+                  onClick={onDisconnectPawPrints}
+                  title="断开爪印"
+                />
+              )}
 
-            {civetEdgingState.connected && (
-              <DeviceStatusChip
-                icon={<Gauge className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={civetEdgingState.battery}
-                onClick={onDisconnectCivetEdging}
-                title="断开灵猫"
-              />
-            )}
+              {civetEdgingState.connected && (
+                <DeviceStatusChip
+                  icon={<Gauge className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={civetEdgingState.battery}
+                  onClick={onDisconnectCivetEdging}
+                  title="断开灵猫"
+                />
+              )}
+            </div>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+              onClick={onConnect}
+              aria-label="连接其他设备"
+              title="连接其他设备"
+            >
+              <Bluetooth className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline text-xs">连接</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+              onClick={onEmergencyStop}
+              aria-label="紧急停止"
+            >
+              <CircleStop className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline text-xs">停止</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+              onClick={onOpenSettings}
+              aria-label="设置"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
           </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
-            onClick={onConnect}
-            aria-label="连接其他设备"
-            title="连接其他设备"
-          >
-            <Bluetooth className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline text-xs">连接</span>
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
-            onClick={onEmergencyStop}
-            aria-label="紧急停止"
-          >
-            <CircleStop className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline text-xs">停止</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
-            onClick={onOpenSettings}
-            aria-label="设置"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
+        )}
 
       {isWelcome ? (
         /* ===== Welcome centered state ===== */
@@ -436,7 +437,7 @@ export function ChatPanel({
                     </div>
                   )}
                 </div>
-                {!deviceState.connected && (
+                {!inShell && !deviceState.connected && (
                   <button
                     type="button"
                     onClick={onConnect}
@@ -598,7 +599,7 @@ export function ChatPanel({
               placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
               className="!h-10 flex-1 rounded-full"
             />
-            {!deviceState.connected && (
+            {!inShell && !deviceState.connected && (
               <Button
                 variant="secondary"
                 size="icon"

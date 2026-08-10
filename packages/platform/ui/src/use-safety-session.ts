@@ -28,6 +28,10 @@ export interface SafetySessionSpec {
   stop: () => void | Promise<void>;
   /** Devices this module holds, for the shell's device bar. */
   devices?: () => DeviceSummary[];
+  /** Unified device picker shown by the shell's top device strip. */
+  connect?: () => void | Promise<unknown>;
+  /** Disconnect one listed device from the shell's top device strip. */
+  disconnect?: (deviceId: string) => void | Promise<unknown>;
   /**
    * Called on losing the device lease. Must stop output, clear "held
    * down" aggregate state, and reject subsequent commands. See
@@ -51,6 +55,10 @@ export function useSafetySession(spec: SafetySessionSpec): void {
       isActive: () => latest.current.isActive(),
       stop: () => latest.current.stop(),
       devices: () => latest.current.devices?.() ?? [],
+      ...(spec.connect ? { connect: () => latest.current.connect?.() } : {}),
+      ...(spec.disconnect
+        ? { disconnect: (deviceId: string) => latest.current.disconnect?.(deviceId) }
+        : {}),
       onRevoke: () => latest.current.onRevoke?.(),
     });
   }, [spec.id, spec.label]);

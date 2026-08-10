@@ -3,6 +3,7 @@ import {
   registerSafetySession,
   activeSafetySessions,
   hasActiveSafetySession,
+  safetySessionById,
   stopAllSafetySessions,
 } from './safety-bus.js';
 
@@ -69,6 +70,16 @@ describe('安全总线', () => {
     expect(stale).not.toHaveBeenCalled();
     expect(fresh).toHaveBeenCalled();
     off();
+  });
+
+  it('顶部设备栏能按模块 id 取到连接与断开能力', () => {
+    const connect = vi.fn();
+    const disconnect = vi.fn();
+    const off = registerSafetySession(session('control', { connect, disconnect }));
+    expect(safetySessionById('control')).toMatchObject({ connect, disconnect });
+    expect(safetySessionById('missing')).toBeNull();
+    off();
+    expect(safetySessionById('control')).toBeNull();
   });
 
   it('旧会话的注销函数不会删掉已覆盖它的新会话', async () => {

@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, ModuleActions, useSafetySession } from '@0xnullai/ui';
+import { Alert, AlertDescription, ModuleActions, useInShell, useSafetySession } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -21,6 +21,7 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
+  const inShell = useInShell();
   // Same as Chat: props win, otherwise take it from the NativeBridge.
   const native = useNativeBridge();
   const {
@@ -40,6 +41,8 @@ export function App({ transport }: AppProps = {}) {
     label: 'Voice',
     isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
     stop: emergencyStop,
+    connect: connectDevice,
+    disconnect: (deviceId) => (deviceId === 'opossum' ? disconnectOpossum() : disconnectCoyote()),
     onRevoke: async () => {
       // Hang the call up before stopping output when switching away from
       // Voice. Stopping output alone leaves the call connected: the model keeps
@@ -93,49 +96,53 @@ export function App({ transport }: AppProps = {}) {
       {/* The module name is expressed by the top of the shell's sidebar; these
           device controls go into the shell's shared action slot. */}
       <ModuleActions>
-        <DeviceSafetyButton
-          connected={state.coyote.connected}
-          deviceName={state.coyote.deviceName ?? null}
-          battery={state.coyote.battery ?? null}
-          onDisconnect={() => void disconnectCoyote()}
-          limitA={settings.coyoteSafety.maxStrengthA}
-          limitB={settings.coyoteSafety.maxStrengthB}
-          onSetLimit={(channel, value) =>
-            updateSettings((current) => ({
-              ...current,
-              coyoteSafety: {
-                ...current.coyoteSafety,
-                [channel === 'A' ? 'maxStrengthA' : 'maxStrengthB']: value,
-              },
-            }))
-          }
-          sensor={null}
-          opossum={
-            state.opossum.connected
-              ? {
-                  connected: true,
-                  deviceName: state.opossum.deviceName ?? '负鼠',
-                  battery: state.opossum.battery ?? null,
-                  intensityA: state.opossum.intensityA,
-                  intensityB: state.opossum.intensityB,
-                  lastButtons: null,
-                  lastButtonsAt: null,
-                }
-              : null
-          }
-          onConnectDevice={connectDevice}
-          onDisconnectOpossum={() => void disconnectOpossum()}
-          supportedDeviceKinds={['coyote', 'opossum']}
-        />
+        {!inShell && (
+          <DeviceSafetyButton
+            connected={state.coyote.connected}
+            deviceName={state.coyote.deviceName ?? null}
+            battery={state.coyote.battery ?? null}
+            onDisconnect={() => void disconnectCoyote()}
+            limitA={settings.coyoteSafety.maxStrengthA}
+            limitB={settings.coyoteSafety.maxStrengthB}
+            onSetLimit={(channel, value) =>
+              updateSettings((current) => ({
+                ...current,
+                coyoteSafety: {
+                  ...current.coyoteSafety,
+                  [channel === 'A' ? 'maxStrengthA' : 'maxStrengthB']: value,
+                },
+              }))
+            }
+            sensor={null}
+            opossum={
+              state.opossum.connected
+                ? {
+                    connected: true,
+                    deviceName: state.opossum.deviceName ?? '负鼠',
+                    battery: state.opossum.battery ?? null,
+                    intensityA: state.opossum.intensityA,
+                    intensityB: state.opossum.intensityB,
+                    lastButtons: null,
+                    lastButtonsAt: null,
+                  }
+                : null
+            }
+            onConnectDevice={connectDevice}
+            onDisconnectOpossum={() => void disconnectOpossum()}
+            supportedDeviceKinds={['coyote', 'opossum']}
+          />
+        )}
       </ModuleActions>
 
-      <DeviceStatusBar
-        state={state}
-        coyoteSafety={settings.coyoteSafety}
-        opossumSafety={settings.opossumSafety}
-        onDisconnectCoyote={() => void disconnectCoyote()}
-        onDisconnectOpossum={() => void disconnectOpossum()}
-      />
+      {!inShell && (
+        <DeviceStatusBar
+          state={state}
+          coyoteSafety={settings.coyoteSafety}
+          opossumSafety={settings.opossumSafety}
+          onDisconnectCoyote={() => void disconnectCoyote()}
+          onDisconnectOpossum={() => void disconnectOpossum()}
+        />
+      )}
 
       {/* justify-center, because before a call starts this whole module is
               one card. Top-aligned it sat against the device bar with most of
