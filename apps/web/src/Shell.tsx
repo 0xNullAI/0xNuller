@@ -66,7 +66,7 @@ function nextState(prev: RouteState, pathname: string): RouteState {
  *  updated in the same transition — a ref would mean writing a ref during render
  *  (unsafe under concurrent rendering), and keeping it in separate state written
  *  back from an effect would cost an extra cascading render. */
-function useHistoryRoute(): [RouteState, (path: string) => void] {
+function useHistoryRoute(): [RouteState, (path: string) => void, (moduleId: string) => void] {
   const [state, setState] = useState<RouteState>(() =>
     nextState(
       { pathname: '/', opened: [] },
@@ -91,7 +91,13 @@ function useHistoryRoute(): [RouteState, (path: string) => void] {
     setState((prev) => nextState(prev, target.pathname));
   }, []);
 
-  return [state, navigate];
+  const ensureModuleOpened = useCallback((moduleId: string) => {
+    setState((prev) =>
+      prev.opened.includes(moduleId) ? prev : { ...prev, opened: [...prev.opened, moduleId] },
+    );
+  }, []);
+
+  return [state, navigate, ensureModuleOpened];
 }
 
 /** The narrow-screen test. Below this width the sidebar becomes a drawer instead
@@ -112,7 +118,7 @@ function useIsNarrow(): boolean {
 }
 
 export function Shell() {
-  const [{ pathname, opened }, navigate] = useHistoryRoute();
+  const [{ pathname, opened }, navigate, ensureModuleOpened] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
   const overlayRoot = useOverlayRoot();
   const narrow = useIsNarrow();
@@ -189,10 +195,18 @@ export function Shell() {
   // configuring the AI), it opens **this** panel instead of the module standing up
   // one of its own. What a module gets is the position of the entry point, not a
   // second settings UI.
-  const openSettings = useCallback((tab: ShellSettingsTab = 'appearance') => {
-    setDrawerOpen(false);
-    setSettingsTab(tab);
-  }, []);
+  const openSettings = useCallback(
+    (tab: ShellSettingsTab = 'appearance') => {
+      // Waveforms, sensor automation and conversation data are owned by Agent's
+      // storage/runtime, but the settings panel is global. Mount Agent invisibly
+      // before opening settings so these shared pages do not appear and disappear
+      // depending on which module happened to be visited first.
+      ensureModuleOpened('agent');
+      setDrawerOpen(false);
+      setSettingsTab(tab);
+    },
+    [ensureModuleOpened],
+  );
 
   const go = useCallback(
     (moduleId: string | null) => {
@@ -212,16 +226,14 @@ export function Shell() {
       // cover the dialog (the drawer sits at --z-shell, dialogs at
       // --z-module-overlay, so the drawer is higher).
       onOpenAccount={() => {
-        setDrawerOpen(false);
-        setSettingsTab('account');
+        openSettings('account');
       }}
       onOpenContacts={() => {
         setDrawerOpen(false);
         setContactsOpen(true);
       }}
       onOpenSettings={() => {
-        setDrawerOpen(false);
-        setSettingsTab('appearance');
+        openSettings('appearance');
       }}
       onOpenDocs={() => {
         setDrawerOpen(false);
@@ -289,7 +301,7 @@ export function Shell() {
                     >
                       <ChatAccountGate
                         loading={!authChecked}
-                        onLogin={() => setSettingsTab('account')}
+                        onLogin={() => openSettings('account')}
                       />
                     </div>
                   );

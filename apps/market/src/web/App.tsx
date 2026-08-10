@@ -199,7 +199,6 @@ export function App(): JSX.Element {
         )}
 
         <footer className="foot">
-          内容由社区上传，请遵守当地法律法规 ·{' '}
           <a href="https://github.com/0xNullAI/0xNuller" target="_blank" rel="noreferrer">
             GitHub
           </a>

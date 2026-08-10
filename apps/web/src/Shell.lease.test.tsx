@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { ModuleSettingsSection } from '@0xnullai/ui';
 import {
   grantDeviceLease,
   hasDeviceLease,
@@ -27,16 +28,30 @@ import { Shell } from './Shell';
 // the four modules are replaced with stubs.
 vi.mock('./routes', async () => {
   const { lazy } = await import('react');
-  const stub = (label: string) =>
-    lazy(() => Promise.resolve({ default: () => <div>{label} 模块</div> }));
+  const stub = (label: string, settings = false) =>
+    lazy(() =>
+      Promise.resolve({
+        default: () => (
+          <>
+            <div>{label} 模块</div>
+            {settings && (
+              <ModuleSettingsSection id="agent-waveforms" label="波形" order={30}>
+                波形内容
+              </ModuleSettingsSection>
+            )}
+          </>
+        ),
+      }),
+    );
   return {
     MODULES: [
-      { id: 'agent', label: 'Agent', blurb: '', Component: stub('Agent') },
+      { id: 'control', label: 'Control', blurb: '', Component: stub('Control') },
+      { id: 'agent', label: 'Agent', blurb: '', Component: stub('Agent', true) },
       { id: 'chat', label: 'Chat', blurb: '', Component: stub('Chat') },
     ],
     moduleIdFromPath: (p: string) => {
       const id = p.replace(/^\//, '');
-      return id === 'agent' || id === 'chat' ? id : null;
+      return id === 'control' || id === 'agent' || id === 'chat' ? id : null;
     },
   };
 });
@@ -82,6 +97,20 @@ afterEach(async () => {
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
 
 describe('外壳与设备控制权', () => {
+  it('从任意模块打开设置都会注册共享波形页', async () => {
+    window.history.pushState(null, '', '/control');
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(screen.queryByRole('button', { name: '波形' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '未登录' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '软件设置' }));
+
+    expect(await screen.findByRole('button', { name: '波形' })).toBeTruthy();
+    expect(screen.getByText('Control 模块')).toBeTruthy();
+  });
+
   it('未登录时不挂载 Chat', async () => {
     window.history.pushState(null, '', '/chat');
     await act(async () => {
