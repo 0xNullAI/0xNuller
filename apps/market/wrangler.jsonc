@@ -8,6 +8,8 @@
 
   // 统一外壳占据根域，本 Worker 只接管市场 API。
   "routes": [{ "pattern": "0xnullai.com/api/items*", "zone_name": "0xnullai.com" }],
+  "workers_dev": true,
+  "preview_urls": true,
 
   // 库名仍是 dg-market；绑定按 database_id 走。迁移必须统一经 Wrangler
   // migrations 执行，不能再分别维护 schema.sql 与一次性 execute 脚本。
