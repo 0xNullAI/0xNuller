@@ -856,7 +856,7 @@ export class DeviceSession {
         this.sensorLastEventAt = Date.now();
         this.emit();
 
-        // TODO(cross-device consent): a sensor event like this is exactly the
+        // Cross-device consent boundary: a sensor event like this is exactly the
         // kind of signal a user might eventually want to wire into "my
         // button press nudges someone else's device" — but doing that
         // automatically, without the *receiving* member explicitly opting
@@ -936,7 +936,7 @@ export class DeviceSession {
       this.opossumLastButtons = event.pressed.size > 0 ? [...event.pressed].join('+') : null;
       this.opossumLastButtonsAt = Date.now();
       this.emit();
-      // TODO(cross-device consent): see the identical note in
+      // Cross-device consent boundary: see the identical note in
       // attachSensor() above — Opossum button presses are informational
       // only, for the same reason (no receiving-side consent UI yet).
     });

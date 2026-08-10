@@ -198,9 +198,8 @@ export interface MemberState {
   /**
    * Human-readable summary of the most recent sensor reading + the raw value (if any) +
    * a timestamp. Used only for in-room display (for example "Alice 的爪印传感器：按钮已按下"),
-   * **not** to auto-trigger any device action — see the corresponding TODO in
-   * lib/commands.ts for why "sensor X triggers device Y" automation is left out this
-   * time around.
+   * **not** to auto-trigger any device action. Cross-device sensor automation requires
+   * a separate receiving-side consent flow and is intentionally outside this protocol.
    */
   sensorLastEvent?: string | null;
   sensorLastValue?: number | null;

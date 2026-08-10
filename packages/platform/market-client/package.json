@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DG-Market 社区市场客户端，四个模块共用",
+  "description": "0xNuller Market 客户端，各模块共用",
   "exports": {
     ".": "./src/index.ts"
   },

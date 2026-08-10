@@ -23,9 +23,8 @@ export function generateOwnerKey(): string {
  *
  * The group code is mixed in as the salt so the same key presented for a different
  * group does not match, and so one stolen hash cannot be replayed anywhere else.
- * Market peppers with ADMIN_KEY because its edit key is a human-chosen 口令 that a
- * rainbow table would break; this key is 128 random bits, so there is nothing to
- * pre-compute and the Chat Worker needs no secret of its own.
+ * The key itself is 128 random bits, so the Chat Worker does not need a second secret
+ * to protect a human-chosen value.
  */
 export async function hashOwnerKey(code: string, key: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${code}:${key}`));

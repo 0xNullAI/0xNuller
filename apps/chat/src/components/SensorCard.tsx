@@ -39,8 +39,8 @@ function formatAgo(at: number | null | undefined): string {
  *
  * Important: this only displays, it triggers no linkage — whether a sensor event should drive
  * someone else's device is a feature that needs its own consent/authorization UI, and this
- * version deliberately does not do it (see the TODO in lib/commands.ts and the matching note
- * in DeviceSession.attachSensor).
+ * version deliberately does not do it (see the matching boundary in
+ * DeviceSession.attachSensor).
  */
 export function SensorCard({
   kind,

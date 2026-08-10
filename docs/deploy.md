@@ -98,7 +98,7 @@ wrangler versions upload --config workers/auth/wrangler.jsonc \
   --tag release-6.0.0 --preview-alias release-6-0-0
 wrangler versions deploy --config workers/auth/wrangler.jsonc --version-tag release-6.0.0
 
-# 3. 市场。上传、编辑和管理都使用账户归属/角色，不再需要全局 ADMIN_KEY。
+# 3. 市场。上传、编辑和管理都使用账户归属/角色，不再需要共享管理员口令。
 wrangler versions upload --config apps/market/wrangler.jsonc \
   --secrets-file ~/.dg-keystores/0xnullai-market.env \
   --tag release-6.0.0 --preview-alias release-6-0-0

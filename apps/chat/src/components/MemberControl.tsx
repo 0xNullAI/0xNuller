@@ -651,7 +651,7 @@ export function MemberControl({
           })()}
         </div>
 
-        {/* ============ Sensor telemetry (read-only, no linkage, see the TODO in lib/commands.ts) ============ */}
+        {/* ============ Sensor telemetry (read-only; cross-device linkage requires separate consent) ============ */}
         {member && (
           <SensorCard
             kind={member.sensorKind}
