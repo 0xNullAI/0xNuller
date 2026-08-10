@@ -104,11 +104,11 @@ PR description template:
 
 ## Sister Projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime (consumed by this project) |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop |
+| Project                                          | Purpose                                              |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | Shared TypeScript runtime (consumed by this project) |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller                                |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP server for Claude Desktop                        |
 
 ## Code Conventions
 

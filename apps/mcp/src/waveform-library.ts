@@ -95,7 +95,9 @@ export class NodeWaveformLibrary implements WaveformLibrary {
       } else {
         const text = buf.toString('utf8');
         const parsed = parsePulseText(text);
-        const wave = pulseToWaveformDefinition(basename(filePath), parsed, { idPrefix: 'imported' });
+        const wave = pulseToWaveformDefinition(basename(filePath), parsed, {
+          idPrefix: 'imported',
+        });
         this.custom.set(wave.id, {
           id: wave.id,
           name: wave.name,

@@ -120,11 +120,11 @@ npm run deploy                            # 构建 dist 并部署 Worker + Durab
 
 ## 相关项目
 
-| 项目 | 用途 |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | 共享的 TypeScript 中台（被本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动 |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP 服务器，接入 Claude Desktop |
+| 项目                                             | 用途                                   |
+| ------------------------------------------------ | -------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | 共享的 TypeScript 中台（被本项目消费） |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动       |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP 服务器，接入 Claude Desktop        |
 
 ## 协议
 

@@ -22,9 +22,9 @@ function getAudioContextCtor(): typeof AudioContext | undefined {
 export function isRealtimeAudioSupported(): boolean {
   return Boolean(
     getAudioContextCtor() &&
-      typeof navigator !== 'undefined' &&
-      typeof navigator.mediaDevices?.getUserMedia === 'function' &&
-      typeof WebSocket !== 'undefined',
+    typeof navigator !== 'undefined' &&
+    typeof navigator.mediaDevices?.getUserMedia === 'function' &&
+    typeof WebSocket !== 'undefined',
   );
 }
 
@@ -138,7 +138,12 @@ export class MicCapture {
     }
 
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, sampleRate: SAMPLE_RATE, echoCancellation: true, noiseSuppression: true },
+      audio: {
+        channelCount: 1,
+        sampleRate: SAMPLE_RATE,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
     });
 
     const AudioContextCtor = getAudioContextCtor()!;

@@ -65,7 +65,7 @@ corrected (had Azure-style names that don't exist on Zhipu). Auth is `?Authoriza
 param — the browser can't set the header GLM's docs describe, but a live probe confirmed the server
 reads the query param. (7) **`tool_choice` must be OMITTED** — a live-key probe (v0.7.3) found GLM
 400s the ENTIRE `session.update` ("API 调用参数有误") whenever `tool_choice` is present; every variant
-with it errored, every one without it returned `session.updated`. The tool *shape* (flat
+with it errored, every one without it returned `session.updated`. The tool _shape_ (flat
 `{type:'function',name,description,parameters}`) is accepted. (8) **Do NOT send a client heartbeat** —
 GLM's `heartbeat` is server→client only; sending `{type:'heartbeat'}` 400s and used to kill the
 session ~30s in (the old `onConnected` interval did exactly this). (9) **GLM server_vad never ends a
@@ -103,7 +103,7 @@ a real call is confirmed working). Search `NOT LIVE-VERIFIED` before trusting an
 
 `use-realtime-call.ts` passes `settings.permissionMode` to
 `BrowserPermissionService` **verbatim**. It previously rewrote `'confirm'`
-(the strictest option *and* the default) to `'timed'` and pre-seeded the timed
+(the strictest option _and_ the default) to `'timed'` and pre-seeded the timed
 grant as already-valid, which meant no confirmation prompt could appear in any
 mode — the setting was decorative while its own label read "最严格". A code
 comment described this as "one-time pre-call authorization", but no such
@@ -224,7 +224,7 @@ refactor | perf | test | chore | ci | style`.
   per-kind BLE client here, that's very likely the wrong layer — it belongs in `@dg-kit/*`.
 - **No agent loop.** Unlike DG-Agent's `AgentRuntime.runToolLoop()`, DG-Voice never decides when
   to call the model — the realtime provider does that server-side. The only local loop is
-  `ToolExecutor`, which runs *after* the provider has already decided to call a tool.
+  `ToolExecutor`, which runs _after_ the provider has already decided to call a tool.
 - **Rate limiting is sliding-window, not per-turn.** `tool-registry.ts` injects
   `createSlidingWindowRateLimitPolicy` (same choice as DG-MCP) because a realtime session has no
   "turn" boundary. Caps must key on the registry's current primary tool names
@@ -250,7 +250,7 @@ system changes, check whether DG-Voice should follow.
 
 `policy-engine.ts`, `default-policies.ts`, and `device-command-queue.ts` are ported from
 `DG-Agent/packages/runtime/src/{policy-engine,default-policies,device-command-queue}.ts` with
-import paths adjusted for a standalone repo — the safety *semantics* (cold-start clamp, strength
+import paths adjusted for a standalone repo — the safety _semantics_ (cold-start clamp, strength
 caps, burst caps, permission gate ordering) must stay identical to DG-Agent's. If DG-Agent's
 safety rules change, this file drifts unless someone updates it by hand — there is currently no
 shared package for this (DG-Kit's own CLAUDE.md says policy is deliberately runtime-injected, not
@@ -259,12 +259,12 @@ baked into `@dg-kit/*`). If this experiment sticks, promoting these three files 
 
 ## Sister Projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime (consumed by this project) |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller (text chat) |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room with remote-control |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop and other MCP clients |
+| Project                                          | Purpose                                              |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | Shared TypeScript runtime (consumed by this project) |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller (text chat)                    |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | Multi-user P2P room with remote-control              |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP server for Claude Desktop and other MCP clients  |
 
 ## Code Conventions
 

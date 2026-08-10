@@ -39,7 +39,10 @@ export function createTauriTransport(): DeviceSessionTransport {
     // friendly modal instead of an opaque error in the UI's error banner.
     requestDevice: () =>
       withBlePermissionHelp(() =>
-        requestDgLabDeviceTauri({ selectDevice: showDevicePicker, scanDurationMs: SCAN_DURATION_MS }),
+        requestDgLabDeviceTauri({
+          selectDevice: showDevicePicker,
+          scanDurationMs: SCAN_DURATION_MS,
+        }),
       ),
   };
 }

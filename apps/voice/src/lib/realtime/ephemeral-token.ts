@@ -75,7 +75,9 @@ export async function mintAzureRealtimeEphemeralToken(
       'Content-Type': 'application/json',
     },
     // On Azure `session.model` is the model DEPLOYMENT name.
-    body: JSON.stringify({ session: { type: 'realtime', model: settings.deployment || settings.model } }),
+    body: JSON.stringify({
+      session: { type: 'realtime', model: settings.deployment || settings.model },
+    }),
   });
   if (!response.ok) {
     throw new Error(`Azure 换票失败（${response.status}）：${await safeText(response)}`);

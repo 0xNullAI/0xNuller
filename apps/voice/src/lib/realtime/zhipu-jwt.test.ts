@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { signZhipuJwt } from './zhipu-jwt.js';
 
 function base64UrlDecodeJson(segment: string): unknown {
-  const padded = segment.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(segment.length / 4) * 4, '=');
+  const padded = segment
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(segment.length / 4) * 4, '=');
   return JSON.parse(atob(padded));
 }
 

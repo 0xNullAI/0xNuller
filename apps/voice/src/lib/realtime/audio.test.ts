@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { base64ToInt16, float32ToInt16, int16ToBase64, int16ToFloat32, wrapPcm16AsWav } from './audio.js';
+import {
+  base64ToInt16,
+  float32ToInt16,
+  int16ToBase64,
+  int16ToFloat32,
+  wrapPcm16AsWav,
+} from './audio.js';
 
 describe('float32ToInt16 / int16ToFloat32', () => {
   it('round-trips full-scale and mid-scale samples within int16 precision', () => {
@@ -38,9 +44,9 @@ describe('wrapPcm16AsWav', () => {
     const wav = wrapPcm16AsWav(pcm, 24000);
     const view = new DataView(wav);
 
-    expect(String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3))).toBe(
-      'RIFF',
-    );
+    expect(
+      String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)),
+    ).toBe('RIFF');
     expect(
       String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11)),
     ).toBe('WAVE');

@@ -1310,9 +1310,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBrowserServices } from './create-browser-services.js';
 
 const baseOptions = {
-  settings: {
-    /* fill with minimal valid settings */
-  } as never,
+  settings: {/* fill with minimal valid settings */} as never,
   onPermissionRequest: vi.fn(),
   resolveBridgeSessionId: () => null,
 };
@@ -1389,9 +1387,7 @@ const device = options.createDeviceClient
 // REPLACE the bridgeManager construction WITH:
 const bridgeManager = options.disableBridge
   ? createNullBridgeManager()
-  : new BridgeManager({
-      /* existing args */
-    });
+  : new BridgeManager({/* existing args */});
 
 // REPLACE the three speech lines WITH:
 const speechCapabilities = options.disableSpeech
@@ -1400,15 +1396,11 @@ const speechCapabilities = options.disableSpeech
 
 const speechRecognition = options.disableSpeech
   ? createNullSpeechRecognitionController()
-  : createSpeechRecognitionController({
-      /* existing args */
-    });
+  : createSpeechRecognitionController({/* existing args */});
 
 const speechSynthesizer = options.disableSpeech
   ? createNullSpeechSynthesizer()
-  : createSpeechSynthesizer({
-      /* existing args */
-    });
+  : createSpeechSynthesizer({/* existing args */});
 ```
 
 > **Implementer:** preserve every existing argument passed to the original constructors. Only the construction is conditional; the arguments do not change.

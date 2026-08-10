@@ -31,7 +31,7 @@ function setupNav(deviceName: string): {
 describe('requestDgLabDevice', () => {
   it('detects a Coyote V3 pick and connects its GATT server', async () => {
     const { nav, device } = setupNav('47L121000');
-     
+
     const result = await requestDgLabDevice({ navigatorRef: nav as any });
 
     expect(result.kind).toBe('coyote');
@@ -48,7 +48,7 @@ describe('requestDgLabDevice', () => {
     ];
     for (const [name, kind] of cases) {
       const { nav } = setupNav(name);
-       
+
       const result = await requestDgLabDevice({ navigatorRef: nav as any });
       expect(result.kind).toBe(kind);
     }
@@ -56,21 +56,17 @@ describe('requestDgLabDevice', () => {
 
   it('rejects and disconnects an unrecognized device name', async () => {
     const { nav, device } = setupNav('some-other-ble-thing');
-    await expect(
-       
-      requestDgLabDevice({ navigatorRef: nav as any }),
-    ).rejects.toThrow('未识别的设备');
+    await expect(requestDgLabDevice({ navigatorRef: nav as any })).rejects.toThrow('未识别的设备');
     // Never got far enough to connect GATT at all — nothing to disconnect.
     expect(device.gatt.connect).not.toHaveBeenCalled();
   });
 
   it('throws when the picked device exposes no GATT', async () => {
     const device = new FakeBluetoothDevice('47L121000');
-     
+
     (device as any).gatt = undefined;
     const requestDevice = vi.fn(async () => device);
     const result = requestDgLabDevice({
-       
       navigatorRef: { bluetooth: { requestDevice } } as any,
     });
     await expect(result).rejects.toThrow('不支持 GATT');
@@ -83,10 +79,9 @@ describe('requestDgLabDevice', () => {
       throw new Error('connect refused');
     });
 
-    await expect(
-       
-      requestDgLabDevice({ navigatorRef: nav as any }),
-    ).rejects.toThrow('connect refused');
+    await expect(requestDgLabDevice({ navigatorRef: nav as any })).rejects.toThrow(
+      'connect refused',
+    );
     expect(device.gatt.disconnect).toHaveBeenCalledTimes(1);
   });
 });

@@ -102,12 +102,12 @@ worker/           Cloudflare Worker，纯静态资源托管
 
 ## Sister Projects
 
-| 项目 | 用途 |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | 共享 TypeScript 中台（本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器（文字聊天） |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | 多人 P2P 房间 + 远程控制 |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP 服务端，供 Claude Desktop 等使用 |
+| 项目                                             | 用途                                 |
+| ------------------------------------------------ | ------------------------------------ |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | 共享 TypeScript 中台（本项目消费）   |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器（文字聊天）       |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | 多人 P2P 房间 + 远程控制             |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP 服务端，供 Claude Desktop 等使用 |
 
 ## 协议
 

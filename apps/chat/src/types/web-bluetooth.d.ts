@@ -31,8 +31,12 @@ interface BluetoothRemoteGATTService {
   readonly device: BluetoothDevice;
   readonly uuid: string;
   readonly isPrimary: boolean;
-  getCharacteristic(characteristic: BluetoothCharacteristicUUID): Promise<BluetoothRemoteGATTCharacteristic>;
-  getCharacteristics(characteristic?: BluetoothCharacteristicUUID): Promise<BluetoothRemoteGATTCharacteristic[]>;
+  getCharacteristic(
+    characteristic: BluetoothCharacteristicUUID,
+  ): Promise<BluetoothRemoteGATTCharacteristic>;
+  getCharacteristics(
+    characteristic?: BluetoothCharacteristicUUID,
+  ): Promise<BluetoothRemoteGATTCharacteristic[]>;
 }
 
 interface BluetoothRemoteGATTServer {

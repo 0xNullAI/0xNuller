@@ -8,7 +8,11 @@ import type { RealtimeSessionOptions } from './realtime-session.js';
 const TOOL: ToolDefinition = {
   name: 'shock_start',
   description: '启动郊狼通道',
-  parameters: { type: 'object', properties: { channel: { type: 'string' } }, required: ['channel'] },
+  parameters: {
+    type: 'object',
+    properties: { channel: { type: 'string' } },
+    required: ['channel'],
+  },
 };
 
 function options(providerId: RealtimeProviderId): RealtimeSessionOptions {
@@ -120,7 +124,11 @@ describe('every dialect declares tools for tool calling', () => {
       events: { onTranscript: (e) => entries.push(e) },
     });
     const ITEM = 'item-shared-abc'; // GLM sends the SAME item_id for both roles
-    probe.feed({ type: 'conversation.item.input_audio_transcription.completed', item_id: ITEM, transcript: '你好' });
+    probe.feed({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: ITEM,
+      transcript: '你好',
+    });
     probe.feed({ type: 'response.audio_transcript.done', item_id: ITEM, transcript: '你好呀' });
 
     const user = entries.find((e) => e.role === 'user');
@@ -136,7 +144,11 @@ describe('function-call id handling differs per dialect', () => {
   it('OpenAI family uses call_id and echoes it back in the output item', () => {
     const probe = new ProbeOpenAi('openai', options('openai'));
     expect(probe.callId({ call_id: 'c-1', name: 'shock_start', arguments: '{}' })).toBe('c-1');
-    expect(probe.outputItem('c-1', '{}')).toEqual({ type: 'function_call_output', call_id: 'c-1', output: '{}' });
+    expect(probe.outputItem('c-1', '{}')).toEqual({
+      type: 'function_call_output',
+      call_id: 'c-1',
+      output: '{}',
+    });
   });
 
   it('GLM falls back to response_id (no call_id) and omits call_id in the output item', () => {

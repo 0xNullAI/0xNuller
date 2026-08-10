@@ -115,12 +115,12 @@ See [CLAUDE.md](./CLAUDE.md) for the device-layer and safety-chain breakdown.
 
 ## Sister Projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime (consumed by this project) |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller (text chat) |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room with remote-control |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop and other MCP clients |
+| Project                                          | Purpose                                              |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | Shared TypeScript runtime (consumed by this project) |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller (text chat)                    |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | Multi-user P2P room with remote-control              |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP server for Claude Desktop and other MCP clients  |
 
 ## License
 

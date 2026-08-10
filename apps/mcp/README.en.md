@@ -91,31 +91,31 @@ dg-mcp [options]
 
 ### Device control (from `@dg-kit/tools`)
 
-| Tool | Purpose |
-|---|---|
-| `shock_start` | Cold-start a channel: set strength + waveform in one go (was `start`) |
-| `shock_stop` | Stop one channel, or both if `channel` omitted (was `stop`) |
-| `shock_adjust` | Relative change, ±10/step (rate-limited 2× / 5 s) (was `adjust_strength`) |
-| `shock_change_wave` | Swap waveform without touching strength (was `change_wave`) |
-| `shock_burst` | Briefly spike to a target strength, auto-restore (1× / 5 s) (was `burst`) |
-| `design_wave` | Compose a new waveform from `ramp / hold / pulse / silence` segments |
-| `vibrate_start` | Start a channel on the Opossum vibration controller, optional rhythm `pattern` |
-| `vibrate_stop` | Stop one channel, or both if `channel` omitted |
-| `vibrate_adjust` | Relative intensity change (rate-limited 2× / 5 s) |
-| `vibrate_change_pattern` | Swap the rhythm preset without touching intensity |
-| `vibrate_burst` | Briefly spike a channel's intensity, auto-restore (1× / 5 s) |
-| `set_indicator_color` | Set the LED color on paw-prints / civet-edging / opossum — cosmetic only |
+| Tool                     | Purpose                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `shock_start`            | Cold-start a channel: set strength + waveform in one go (was `start`)          |
+| `shock_stop`             | Stop one channel, or both if `channel` omitted (was `stop`)                    |
+| `shock_adjust`           | Relative change, ±10/step (rate-limited 2× / 5 s) (was `adjust_strength`)      |
+| `shock_change_wave`      | Swap waveform without touching strength (was `change_wave`)                    |
+| `shock_burst`            | Briefly spike to a target strength, auto-restore (1× / 5 s) (was `burst`)      |
+| `design_wave`            | Compose a new waveform from `ramp / hold / pulse / silence` segments           |
+| `vibrate_start`          | Start a channel on the Opossum vibration controller, optional rhythm `pattern` |
+| `vibrate_stop`           | Stop one channel, or both if `channel` omitted                                 |
+| `vibrate_adjust`         | Relative intensity change (rate-limited 2× / 5 s)                              |
+| `vibrate_change_pattern` | Swap the rhythm preset without touching intensity                              |
+| `vibrate_burst`          | Briefly spike a channel's intensity, auto-restore (1× / 5 s)                   |
+| `set_indicator_color`    | Set the LED color on paw-prints / civet-edging / opossum — cosmetic only       |
 
 ### MCP-only
 
-| Tool | Purpose |
-|---|---|
-| `scan` | Discover nearby Coyote devices |
-| `connect` / `disconnect` | Manage the BLE link |
-| `get_status` | Current connection / strength / wave / battery |
-| `list_waveforms` | All available waveforms (built-in + imported) |
-| `load_waveforms` | Import `.pulse` / `.zip` at runtime |
-| `emergency_stop` | Strength → 0, all waves stopped, immediate |
+| Tool                     | Purpose                                        |
+| ------------------------ | ---------------------------------------------- |
+| `scan`                   | Discover nearby Coyote devices                 |
+| `connect` / `disconnect` | Manage the BLE link                            |
+| `get_status`             | Current connection / strength / wave / battery |
+| `list_waveforms`         | All available waveforms (built-in + imported)  |
+| `load_waveforms`         | Import `.pulse` / `.zip` at runtime            |
+| `emergency_stop`         | Strength → 0, all waves stopped, immediate     |
 
 ## Safety
 
@@ -179,11 +179,11 @@ npm run dev          # tsx hot reload
 
 ## Sister projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | Shared TypeScript runtime (consumed by this project) |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room |
+| Project                                          | Purpose                                              |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | Shared TypeScript runtime (consumed by this project) |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller                                |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | Multi-user P2P room                                  |
 
 ## License
 

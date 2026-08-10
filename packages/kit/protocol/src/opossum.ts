@@ -72,17 +72,7 @@ export function createEmptyOpossumState(): OpossumState {
 }
 
 export type OpossumButton =
-  | 'SEL_1'
-  | 'SEL_2'
-  | 'HOME'
-  | 'Up'
-  | 'Down'
-  | 'Left'
-  | 'Right'
-  | 'B'
-  | 'A'
-  | 'G'
-  | 'D';
+  'SEL_1' | 'SEL_2' | 'HOME' | 'Up' | 'Down' | 'Left' | 'Right' | 'B' | 'A' | 'G' | 'D';
 
 export interface OpossumButtonEvent {
   sequence: number;

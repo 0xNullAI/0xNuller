@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "全应用共享的设备安全设置。切换应用不改变安全约束。",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@0xnullai/permissions": "0.1.0" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@0xnullai/permissions": "0.1.0"
+  }
 }

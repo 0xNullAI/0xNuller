@@ -89,13 +89,13 @@ Conventional commit style (`type(scope): subject`). Most edits are `docs(content
 
 ## Sister Projects
 
-| Project | Branch model | Purpose |
-|---|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | dev → main | Shared TypeScript runtime |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | dev → main + dev mirror | Browser AI controller |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | dev → main | Multi-user P2P room |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | dev → main | MCP server for Claude Desktop |
-| **DG-Wiki** | **single main** | Documentation hub (this repo) |
+| Project                                          | Branch model            | Purpose                       |
+| ------------------------------------------------ | ----------------------- | ----------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | dev → main              | Shared TypeScript runtime     |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | dev → main + dev mirror | Browser AI controller         |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | dev → main              | Multi-user P2P room           |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | dev → main              | MCP server for Claude Desktop |
+| **DG-Wiki**                                      | **single main**         | Documentation hub (this repo) |
 
 When updating wiki pages, also keep the four sister-project READMEs (in their own repos) in sync with significant feature changes.
 

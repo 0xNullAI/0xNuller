@@ -32,13 +32,13 @@ browser ──WS── /api/realtime ──(validate key + meter)── TrialSes
 
 Everything the frontend can't be trusted with lives in the DO:
 
-| Guard | Default | Source |
-|---|---|---|
-| Concurrent sessions per key | 1 | in-memory in the DO |
-| Hard per-session length | 20 min | `TRIAL_MAX_SESSION_MINUTES` (storage alarm) |
-| Rolling daily minutes per key | 60 min | `TRIAL_DEFAULT_DAILY_CAP_MINUTES` or per-key `dailyCapMinutes` |
-| Global kill switch | off | `TRIAL_DISABLED="1"` rejects everything |
-| Origin allow-list | `voice.0xnullai.com` | `TRIAL_ALLOWED_ORIGINS` (localhost always allowed) |
+| Guard                         | Default              | Source                                                         |
+| ----------------------------- | -------------------- | -------------------------------------------------------------- |
+| Concurrent sessions per key   | 1                    | in-memory in the DO                                            |
+| Hard per-session length       | 20 min               | `TRIAL_MAX_SESSION_MINUTES` (storage alarm)                    |
+| Rolling daily minutes per key | 60 min               | `TRIAL_DEFAULT_DAILY_CAP_MINUTES` or per-key `dailyCapMinutes` |
+| Global kill switch            | off                  | `TRIAL_DISABLED="1"` rejects everything                        |
+| Origin allow-list             | `voice.0xnullai.com` | `TRIAL_ALLOWED_ORIGINS` (localhost always allowed)             |
 
 A session also ends early if it would exceed the remaining daily budget.
 

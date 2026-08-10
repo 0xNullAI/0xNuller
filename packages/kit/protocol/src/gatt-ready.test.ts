@@ -27,9 +27,9 @@ describe('runWithGattReadyRetry', () => {
   it('rethrows immediately on a non-transient error without retrying', async () => {
     const attempt = vi.fn().mockRejectedValue(new Error('未授予蓝牙权限'));
 
-    await expect(
-      runWithGattReadyRetry(attempt, { gattReadyInitialDelayMs: 0 }),
-    ).rejects.toThrow('未授予蓝牙权限');
+    await expect(runWithGattReadyRetry(attempt, { gattReadyInitialDelayMs: 0 })).rejects.toThrow(
+      '未授予蓝牙权限',
+    );
     expect(attempt).toHaveBeenCalledTimes(1);
   });
 

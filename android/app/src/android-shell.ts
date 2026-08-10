@@ -48,7 +48,11 @@ function autoScrollFocusedInput(): void {
   const handler = (event: FocusEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && target.contentEditable !== 'true') {
+    if (
+      target.tagName !== 'INPUT' &&
+      target.tagName !== 'TEXTAREA' &&
+      target.contentEditable !== 'true'
+    ) {
       return;
     }
     setTimeout(() => {

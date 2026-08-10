@@ -26,14 +26,14 @@ In short: **one protocol implementation, three products**. Fix once, every proje
 
 ## The six packages
 
-| Package | Purpose |
-|---|---|
-| **`@dg-kit/core`** | Base types and contract interfaces (`DeviceState` / `DeviceCommand` / `SensorState` / `DeviceKind` / `DeviceClient` / …) |
-| **`@dg-kit/protocol`** | BLE protocol adapters for the four 47L12x-family devices (Coyote V2/V3, the paw-prints sensor, the civet-edging pressure sensor, the opossum vibrate controller), transport-agnostic |
-| **`@dg-kit/waveforms`** | Built-ins, `ramp / hold / pulse / silence` design compiler, `.pulse` parser |
-| **`@dg-kit/tools`** | LLM tool definitions (`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `set_indicator_color`) with injectable rate-limit policy |
-| **`@dg-kit/transport-webbluetooth`** | Browser-side `DeviceClient` over Web Bluetooth |
-| **`@dg-kit/transport-tauri-blec`** | Tauri (Android/desktop/iOS) `DeviceClient` over `@mnlphlp/plugin-blec` |
+| Package                              | Purpose                                                                                                                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`@dg-kit/core`**                   | Base types and contract interfaces (`DeviceState` / `DeviceCommand` / `SensorState` / `DeviceKind` / `DeviceClient` / …)                                                                                              |
+| **`@dg-kit/protocol`**               | BLE protocol adapters for the four 47L12x-family devices (Coyote V2/V3, the paw-prints sensor, the civet-edging pressure sensor, the opossum vibrate controller), transport-agnostic                                  |
+| **`@dg-kit/waveforms`**              | Built-ins, `ramp / hold / pulse / silence` design compiler, `.pulse` parser                                                                                                                                           |
+| **`@dg-kit/tools`**                  | LLM tool definitions (`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `set_indicator_color`) with injectable rate-limit policy |
+| **`@dg-kit/transport-webbluetooth`** | Browser-side `DeviceClient` over Web Bluetooth                                                                                                                                                                        |
+| **`@dg-kit/transport-tauri-blec`**   | Tauri (Android/desktop/iOS) `DeviceClient` over `@mnlphlp/plugin-blec`                                                                                                                                                |
 
 ## Install
 
@@ -82,11 +82,11 @@ All six packages share a single version (pinned via the `fixed` setting).
 
 ## Sister projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller, drives the device with natural language |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room with remote-control of teammates' devices |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | Model Context Protocol server for Claude Desktop and other MCP clients |
+| Project                                          | Purpose                                                                |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller, drives the device with natural language         |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | Multi-user P2P room with remote-control of teammates' devices          |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | Model Context Protocol server for Claude Desktop and other MCP clients |
 
 ## License
 

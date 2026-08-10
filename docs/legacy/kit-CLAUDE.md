@@ -95,11 +95,11 @@ Squash-merge into `main`. The squashed commit subject becomes the changelog line
 
 ## Sister Projects
 
-| Project | Purpose |
-|---|---|
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | Multi-user P2P room with remote-control |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP server for Claude Desktop and other MCP clients |
+| Project                                          | Purpose                                             |
+| ------------------------------------------------ | --------------------------------------------------- |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | Browser AI controller                               |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | Multi-user P2P room with remote-control             |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | MCP server for Claude Desktop and other MCP clients |
 
 The four repos share a common testing / commit / PR convention; see each project's CLAUDE.md for project-specific notes.
 

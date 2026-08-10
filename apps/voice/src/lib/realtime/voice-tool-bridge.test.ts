@@ -103,7 +103,10 @@ describe('VoiceToolBridge', () => {
     bridge.handleResponseDone();
     await flushMicrotasks();
 
-    expect(session.sendFunctionCallOutput).toHaveBeenCalledWith('call-1', JSON.stringify({ error: 'boom' }));
+    expect(session.sendFunctionCallOutput).toHaveBeenCalledWith(
+      'call-1',
+      JSON.stringify({ error: 'boom' }),
+    );
     expect(session.requestResponse).toHaveBeenCalledTimes(1);
   });
 

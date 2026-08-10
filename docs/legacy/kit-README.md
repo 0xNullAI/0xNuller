@@ -26,14 +26,14 @@ DG-Kit 是 [DG-Agent](https://github.com/0xNullAI/DG-Agent)、[DG-Chat](https://
 
 ## 六个包
 
-| 包 | 用途 |
-|---|---|
-| **`@dg-kit/core`** | 基础类型与抽象接口（`DeviceState` / `DeviceCommand` / `SensorState` / `DeviceKind` / `DeviceClient` 等） |
-| **`@dg-kit/protocol`** | 四种 47L12x 家族设备的蓝牙协议适配器（郊狼 V2/V3、爪印传感器、灵猫气压传感器、负鼠振动控制器），与传输层解耦 |
-| **`@dg-kit/waveforms`** | 内置波形、`ramp / hold / pulse / silence` 段落编译器、`.pulse` 文件解析器 |
-| **`@dg-kit/tools`** | LLM 工具定义（`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `set_indicator_color`），可注入限速策略 |
-| **`@dg-kit/transport-webbluetooth`** | 浏览器侧 `DeviceClient` 实现，基于 Web Bluetooth |
-| **`@dg-kit/transport-tauri-blec`** | Tauri（Android/桌面/iOS）侧 `DeviceClient` 实现，基于 `@mnlphlp/plugin-blec` |
+| 包                                   | 用途                                                                                                                                                                                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`@dg-kit/core`**                   | 基础类型与抽象接口（`DeviceState` / `DeviceCommand` / `SensorState` / `DeviceKind` / `DeviceClient` 等）                                                                                     |
+| **`@dg-kit/protocol`**               | 四种 47L12x 家族设备的蓝牙协议适配器（郊狼 V2/V3、爪印传感器、灵猫气压传感器、负鼠振动控制器），与传输层解耦                                                                                 |
+| **`@dg-kit/waveforms`**              | 内置波形、`ramp / hold / pulse / silence` 段落编译器、`.pulse` 文件解析器                                                                                                                    |
+| **`@dg-kit/tools`**                  | LLM 工具定义（`start` / `stop` / `adjust_strength` / `change_wave` / `burst` / `design_wave` / `vibrate_start` / `vibrate_stop` / `vibrate_adjust` / `set_indicator_color`），可注入限速策略 |
+| **`@dg-kit/transport-webbluetooth`** | 浏览器侧 `DeviceClient` 实现，基于 Web Bluetooth                                                                                                                                             |
+| **`@dg-kit/transport-tauri-blec`**   | Tauri（Android/桌面/iOS）侧 `DeviceClient` 实现，基于 `@mnlphlp/plugin-blec`                                                                                                                 |
 
 ## 安装
 
@@ -82,11 +82,11 @@ npm run test
 
 ## 相关项目
 
-| 项目 | 用途 |
-|---|---|
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动设备 |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | 多人 P2P 房间，可远程控制队友设备 |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | Model Context Protocol 服务器，接入 Claude Desktop 等 MCP 客户端 |
+| 项目                                             | 用途                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动设备                             |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | 多人 P2P 房间，可远程控制队友设备                                |
+| [DG-MCP](https://github.com/0xNullAI/DG-MCP)     | Model Context Protocol 服务器，接入 Claude Desktop 等 MCP 客户端 |
 
 ## 协议
 

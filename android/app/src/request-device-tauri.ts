@@ -11,7 +11,10 @@
  * build gets from `requestDgLabDevice()`. `DeviceSession.connectDevice()`
  * routes the result the same way regardless of which one produced it.
  */
-import { requestDgLabDeviceTauri, type RequestedDgLabDeviceTauri } from '@dg-kit/transport-tauri-blec';
+import {
+  requestDgLabDeviceTauri,
+  type RequestedDgLabDeviceTauri,
+} from '@dg-kit/transport-tauri-blec';
 import { showDevicePicker } from './components/show-device-picker';
 
 export function requestDeviceTauri(): Promise<RequestedDgLabDeviceTauri> {
