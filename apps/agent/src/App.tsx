@@ -689,6 +689,20 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     }
   }
 
+  async function renameSession(sessionId: string, title: string | null): Promise<void> {
+    try {
+      await client.renameSession(sessionId, title);
+      const sessions = await client.listSessions();
+      setSavedSessions(sessions);
+      if (sessionId === activeSessionId) {
+        setSession(await client.getSessionSnapshot(sessionId));
+      }
+      setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
+    } catch (error) {
+      setErrorMessage(formatUiErrorMessage(error));
+    }
+  }
+
   function triggerDownload(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -917,6 +931,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 savedSessions={savedSessions}
                 activeSessionId={activeSessionId}
                 onSelectSession={selectSession}
+                onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
                 onDeleteSession={(sessionId) => void deleteSession(sessionId)}
                 onCreateSession={() => void createNewSession()}
                 onOpenSettings={() => openShellSettings()}
@@ -954,6 +969,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               savedSessions={savedSessions}
               activeSessionId={activeSessionId}
               onSelectSession={selectSession}
+              onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
               onDeleteSession={(sessionId) => void deleteSession(sessionId)}
               onCreateSession={() => void createNewSession()}
               onOpenSettings={() => openShellSettings()}
@@ -1028,6 +1044,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           sessions={savedSessions}
           activeId={activeSessionId}
           onSelect={selectSession}
+          onRename={(id, title) => void renameSession(id, title)}
           onDelete={(id) => void deleteSession(id)}
           onCreate={() => void createNewSession()}
         />

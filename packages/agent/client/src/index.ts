@@ -16,6 +16,7 @@ export interface AgentClient {
    * existing one are overwritten. Not all transports support this.
    */
   importSessions(sessions: SessionSnapshot[]): Promise<void>;
+  renameSession(sessionId: string, title: string | null): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   connectDevice(sessionId?: string): Promise<void>;
   disconnectDevice(): Promise<void>;
@@ -54,6 +55,10 @@ class EmbeddedAgentClient implements AgentClient {
 
   importSessions(sessions: SessionSnapshot[]): Promise<void> {
     return this.runtime.importSessions(sessions);
+  }
+
+  renameSession(sessionId: string, title: string | null): Promise<void> {
+    return this.runtime.renameSession(sessionId, title);
   }
 
   deleteSession(sessionId: string): Promise<void> {

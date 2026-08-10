@@ -1,12 +1,25 @@
-import type { SessionSnapshot } from '@dg-agent/core';
+import { SESSION_TITLE_METADATA_KEY, type SessionSnapshot } from '@dg-agent/core';
 import { isDevicePickerCancelled } from '@dg-kit/core';
 
 export function getSessionTitle(session: SessionSnapshot): string {
+  const customTitle = session.metadata?.[SESSION_TITLE_METADATA_KEY];
+  if (typeof customTitle === 'string' && customTitle.trim()) {
+    return customTitle.trim().slice(0, 60);
+  }
   const firstUserMessage = session.messages
     .find((message) => message.role === 'user')
     ?.content?.trim();
   if (!firstUserMessage) return '新对话';
   return firstUserMessage.slice(0, 36);
+}
+
+/** Empty working sessions stay usable without appearing as fake history rows. */
+export function isSessionListEntry(session: SessionSnapshot): boolean {
+  const customTitle = session.metadata?.[SESSION_TITLE_METADATA_KEY];
+  return (
+    session.messages.some((message) => message.role === 'user') ||
+    (typeof customTitle === 'string' && customTitle.trim().length > 0)
+  );
 }
 
 export function getSessionPreview(session: SessionSnapshot): string {

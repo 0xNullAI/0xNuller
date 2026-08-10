@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
-import { PanelLeftClose, PanelLeftOpen, Search, Settings, SquarePen, Trash2 } from 'lucide-react';
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Search,
+  Settings,
+  SquarePen,
+  Trash2,
+} from 'lucide-react';
 import { Button, ScrollArea, cn } from '@0xnullai/ui';
-import { formatTimestamp, getSessionTitle } from '../utils/ui-formatters.js';
+import { formatTimestamp, getSessionTitle, isSessionListEntry } from '../utils/ui-formatters.js';
 import { SessionSearchDialog } from './SessionSearchDialog.js';
 
 interface SessionPanelProps {
   savedSessions: SessionSnapshot[];
   activeSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onRenameSession: (sessionId: string, title: string | null) => void;
   onDeleteSession: (sessionId: string) => void;
   onCreateSession?: () => void;
   onOpenSettings?: () => void;
@@ -27,6 +36,7 @@ export function SessionPanel({
   savedSessions,
   activeSessionId,
   onSelectSession,
+  onRenameSession,
   onDeleteSession,
   onCreateSession,
   onOpenSettings,
@@ -34,12 +44,25 @@ export function SessionPanel({
   onToggleCollapsed,
   detached = false,
 }: SessionPanelProps) {
-  const visibleSessions = savedSessions.filter((session) =>
-    session.messages.some((message) => message.role === 'user'),
-  );
+  const visibleSessions = savedSessions.filter(isSessionListEntry);
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_BATCH_SIZE);
   const renderedSessions = visibleSessions.slice(0, visibleSessionCount);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  const startRename = (session: SessionSnapshot) => {
+    setRenamingId(session.id);
+    setRenameDraft(getSessionTitle(session));
+  };
+
+  const finishRename = (session: SessionSnapshot) => {
+    const normalized = renameDraft.trim();
+    if (normalized !== getSessionTitle(session)) {
+      onRenameSession(session.id, normalized || null);
+    }
+    setRenamingId(null);
+  };
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -165,23 +188,56 @@ export function SessionPanel({
                     active ? 'bg-[var(--bg-soft)]' : 'hover:bg-[var(--bg-soft)]',
                   )}
                 >
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-left"
-                    onClick={() => onSelectSession(item.id)}
-                  >
-                    <div
-                      className={cn(
-                        'truncate text-[13px] leading-5',
-                        active ? 'font-medium text-[var(--text)]' : 'text-[var(--text)]',
-                      )}
+                  {renamingId === item.id ? (
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      maxLength={60}
+                      aria-label={`重命名 ${getSessionTitle(item)}`}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onBlur={() => finishRename(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          finishRename(item);
+                        } else if (event.key === 'Escape') {
+                          setRenamingId(null);
+                        }
+                      }}
+                      className="ml-2 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-[var(--accent)] bg-[var(--bg)] px-2 py-1.5 text-[13px] outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2 text-left"
+                      onClick={() => onSelectSession(item.id)}
+                      onDoubleClick={() => startRename(item)}
                     >
-                      {getSessionTitle(item)}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-faint)]">
-                      {formatTimestamp(item.updatedAt)}
-                    </div>
-                  </button>
+                      <div
+                        className={cn(
+                          'truncate text-[13px] leading-5',
+                          active ? 'font-medium text-[var(--text)]' : 'text-[var(--text)]',
+                        )}
+                      >
+                        {getSessionTitle(item)}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-faint)]">
+                        {formatTimestamp(item.updatedAt)}
+                      </div>
+                    </button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 shrink-0 rounded-full text-[var(--text-faint)] transition-all hover:bg-[var(--bg-strong)] hover:text-[var(--text)] focus-visible:opacity-100',
+                      active ? 'opacity-60' : 'opacity-0 group-hover:opacity-60',
+                    )}
+                    onClick={() => startRename(item)}
+                    aria-label={`重命名 ${getSessionTitle(item)}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

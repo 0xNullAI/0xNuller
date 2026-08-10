@@ -18,6 +18,7 @@ import {
   isDeviceToolName,
   isSensorTriggersEnabled,
   mergeBridgeOriginMetadata,
+  SESSION_TITLE_METADATA_KEY,
   withSensorLastReading,
   withSensorTriggersEnabled,
   type ActionContext,
@@ -155,6 +156,7 @@ export class AgentRuntime {
   private readonly pendingSystemWork = new Map<string, QueuedSystemWork[]>();
   private readonly drainingSessions = new Set<string>();
   private readonly deletedSessionIds = new Set<string>();
+  private readonly sessionTitleOverrides = new Map<string, string | null>();
   private readonly disposeDeviceListener: () => void;
   private readonly opossumQueue?: OpossumCommandQueue;
   private sensorTriggerEngine: SensorTriggerEngine | null = null;
@@ -351,12 +353,26 @@ export class AgentRuntime {
   async importSessions(sessions: SessionSnapshot[]): Promise<void> {
     for (const session of sessions) {
       this.deletedSessionIds.delete(session.id);
+      this.sessionTitleOverrides.delete(session.id);
       await this.sessions.save(session);
     }
   }
 
+  async renameSession(sessionId: string, title: string | null): Promise<void> {
+    const session = await this.sessions.get(sessionId);
+    if (!session || this.isSessionDeleted(sessionId)) {
+      throw new Error('会话不存在');
+    }
+
+    const normalized = title?.trim().slice(0, 60) ?? '';
+    this.sessionTitleOverrides.set(sessionId, normalized || null);
+    session.updatedAt = Date.now();
+    await this.saveSessionIfAvailable(session);
+  }
+
   async deleteSession(sessionId: string): Promise<void> {
     this.deletedSessionIds.add(sessionId);
+    this.sessionTitleOverrides.delete(sessionId);
     await this.abortCurrentReply(sessionId);
     this.toolExecutor.cancelScheduledTimers(sessionId);
     this.pendingSystemWork.delete(sessionId);
@@ -968,6 +984,16 @@ export class AgentRuntime {
   private async saveSessionIfAvailable(session: SessionSnapshot): Promise<void> {
     if (this.isSessionDeleted(session.id)) {
       return;
+    }
+    if (this.sessionTitleOverrides.has(session.id)) {
+      const title = this.sessionTitleOverrides.get(session.id);
+      const metadata = { ...session.metadata };
+      if (title) {
+        metadata[SESSION_TITLE_METADATA_KEY] = title;
+      } else {
+        delete metadata[SESSION_TITLE_METADATA_KEY];
+      }
+      session.metadata = Object.keys(metadata).length > 0 ? metadata : undefined;
     }
     await this.sessions.save(session);
   }

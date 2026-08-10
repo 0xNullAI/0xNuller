@@ -149,6 +149,10 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.reject(new Error(this.message));
   }
 
+  renameSession(_sessionId: string, _title: string | null): Promise<void> {
+    return Promise.reject(new Error(this.message));
+  }
+
   deleteSession(_sessionId: string): Promise<void> {
     return Promise.resolve();
   }
