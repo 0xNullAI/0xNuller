@@ -3,7 +3,7 @@
   "version": "6.0.0",
   "private": true,
   "type": "module",
-  "description": "0xNullAI 平台 monorepo：@dg-kit 共享层、Agent/Chat/Voice/Market 四模块、文档站、MCP 服务端与安卓应用",
+  "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
   "license": "MIT",
   "repository": {
     "type": "git",
