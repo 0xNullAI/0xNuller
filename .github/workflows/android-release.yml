@@ -138,7 +138,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "0xNuller $VERSION" \
-            --notes-file "docs/releases/$VERSION.md"
+            --notes-file "docs/releases/$VERSION.md" \
+            --latest=false
 
       - name: Summary
         run: |
