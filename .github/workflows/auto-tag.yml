@@ -7,7 +7,9 @@ name: Auto-tag main
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -15,10 +17,28 @@ permissions:
 
 jobs:
   tag:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve the verified main commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v6
         with:
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6

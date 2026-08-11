@@ -90,6 +90,7 @@ function verifyProductMetadata() {
 
   const autoTagWorkflow = readFileSync('.github/workflows/auto-tag.yml', 'utf8');
   const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const androidReleaseWorkflow = readFileSync('.github/workflows/android-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
   if (!autoTagWorkflow.includes('tag="v$v"')) {
     fail('auto-tag must create the platform source tag v<version>');
@@ -113,15 +114,26 @@ function verifyProductMetadata() {
   }
   if (
     !autoTagWorkflow.includes('workflow_dispatch:') ||
-    !/push:\s*\n\s+branches: \[main\]/.test(autoTagWorkflow)
+    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(autoTagWorkflow) ||
+    !autoTagWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
   ) {
-    fail('auto-tag must support manual runs and main push after the external cutover');
+    fail('auto-tag must support manual runs and verified main releases');
   }
   if (
     !releaseWorkflow.includes('workflow_dispatch:') ||
     !/push:\s*\n\s+branches: \[dev, main\]/.test(releaseWorkflow)
   ) {
     fail('release must support manual runs and dev/main push after the external cutover');
+  }
+  if (
+    !androidReleaseWorkflow.includes('workflow_dispatch:') ||
+    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(androidReleaseWorkflow) ||
+    !androidReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
+  ) {
+    fail('Android release must support manual runs and verified main releases');
+  }
+  if (!androidReleaseWorkflow.includes("should-release == 'true'")) {
+    fail('Android release must skip versions that already have a signed release');
   }
 
   return root.version;
