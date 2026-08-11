@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worker, {
   claimMarketItemsForCredentials,
   marketItemAccessForCredentials,
+  registrationConflict,
   runAuthMaintenance,
   type Env,
 } from './index';
@@ -133,6 +134,16 @@ async function registerUser(overrides: Record<string, unknown> = {}) {
 }
 
 describe('注册', () => {
+  it('把并发写入触发的唯一约束统一映射为可读冲突', () => {
+    expect(registrationConflict(new Error('UNIQUE constraint failed: users.username'))).toBe(
+      'username',
+    );
+    expect(
+      registrationConflict(new Error('UNIQUE constraint failed: index idx_users_email_unique')),
+    ).toBe('email');
+    expect(registrationConflict(new Error('database unavailable'))).toBeNull();
+  });
+
   it('建号后立刻是已登录状态', async () => {
     const { res, body } = await registerUser();
     expect(res.status).toBe(201);

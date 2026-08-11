@@ -856,6 +856,14 @@ function validateCredentials(username: unknown, password: unknown): string | nul
   return null;
 }
 
+export function registrationConflict(error: unknown): 'username' | 'email' | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/unique constraint/i.test(message)) return null;
+  if (/users\.username|username/i.test(message)) return 'username';
+  if (/idx_users_email_unique|users\.email|email/i.test(message)) return 'email';
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env);
@@ -902,21 +910,28 @@ export default {
         if (emailExists) return err('邮箱已被注册', 409, cors);
 
         const id = crypto.randomUUID();
-        await env.DB.prepare(
-          `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-          .bind(
-            id,
-            username,
-            typeof body.displayName === 'string' && body.displayName.trim()
-              ? body.displayName.trim().slice(0, 24)
-              : (body.username as string),
-            await hashPassword(body.password as string),
-            email,
-            Date.now(),
+        try {
+          await env.DB.prepare(
+            `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
           )
-          .run();
+            .bind(
+              id,
+              username,
+              typeof body.displayName === 'string' && body.displayName.trim()
+                ? body.displayName.trim().slice(0, 24)
+                : (body.username as string),
+              await hashPassword(body.password as string),
+              email,
+              Date.now(),
+            )
+            .run();
+        } catch (cause) {
+          const conflict = registrationConflict(cause);
+          if (conflict === 'username') return err('用户名已被占用', 409, cors);
+          if (conflict === 'email') return err('邮箱已被注册', 409, cors);
+          throw cause;
+        }
 
         const token = newToken();
         await env.DB.prepare(
