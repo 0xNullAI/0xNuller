@@ -160,7 +160,8 @@ export function useBrowserAppServices(
       }),
     [
       settings,
-      scenes,
+      scenes.selectedId,
+      scenes.saved,
       device,
       opossum,
       pawPrints,
