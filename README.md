@@ -5,7 +5,8 @@
 **DG-Lab 设备的统一控制平台**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![@dg-kit](https://img.shields.io/badge/npm-%40dg--kit%2F*-cb3837)](https://www.npmjs.com/org/dg-kit)
+[![@dg-kit/core](https://img.shields.io/npm/v/%40dg-kit%2Fcore?label=%40dg-kit%2Fcore&color=cb3837)](https://www.npmjs.com/package/@dg-kit/core)
+[![dg-mcp](https://img.shields.io/npm/v/dg-mcp?label=dg-mcp&color=cb3837)](https://www.npmjs.com/package/dg-mcp)
 [![Demo](https://img.shields.io/badge/demo-online-success)](https://0xnullai.com)
 
 中文 | [English](./README.en.md)
@@ -28,6 +29,17 @@
 | **Market**     | 浏览和分享场景与波形 |
 
 第一次使用建议从 Control 开始，并先在软件设置中确认设备安全上限。
+
+## 开发包与 MCP
+
+- **DG-Kit**：用于自行开发设备连接、协议、安全限制、工具和波形功能的 TypeScript 包集合。查看
+  [DG-Kit 使用指南](./packages/kit/README.md)与
+  [npm 包](https://www.npmjs.com/package/@dg-kit/core)。
+- **DG-MCP**：让支持 MCP 的桌面客户端调用 DG-Lab 设备工具。查看
+  [DG-MCP 安装与配置](./apps/mcp/README.md)或直接运行 `npx dg-mcp`。
+
+两者使用同一套 Changesets 规则持续发布：改动附带 changeset，`dev` 自动生成版本 PR，
+版本 PR 进入 `main` 后在 `npm-production` 环境统一构建、验证并发布。
 
 ## 快速开始
 
@@ -62,15 +74,16 @@ npm run format
 - [`apps/playground`](./apps/playground/README.md) — 游戏互动
 - [`apps/market`](./apps/market/README.md) — 场景与波形社区
 - [`android/app`](./android/app/README.md) — 安卓应用
-- [`apps/mcp`](./apps/mcp/README.md) — MCP 服务（迁移与对外发布待确认）
-- `packages` — 共享功能包
+- [`apps/mcp`](./apps/mcp/README.md) — MCP 服务，作为 [`dg-mcp`](https://www.npmjs.com/package/dg-mcp) 发布
+- [`packages/kit`](./packages/kit/README.md) — DG-Kit 公共包与独立使用指南
 - [`workers`](./workers/README.md) — Cloudflare 后端服务
 
 维护者文档位于 [`docs`](./docs)；合并前各项目的完整 README 快照见
 [`docs/legacy`](./docs/legacy/README.md)。
 
-兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 的迁移及
-对外发布在单独确认后进行。
+兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 已迁入本仓库，
+并分别通过 [`@dg-kit/*`](https://www.npmjs.com/package/@dg-kit/core) 与
+[`dg-mcp`](https://www.npmjs.com/package/dg-mcp) 在 npm 发布。
 
 ## 致谢
 

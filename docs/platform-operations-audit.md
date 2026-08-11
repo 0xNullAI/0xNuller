@@ -24,7 +24,8 @@
 
 ## npm 发布
 
-- `@dg-kit/*` 由 changesets 固定版本组管理；`dg-mcp` 保持独立版本和独立人工批准工作流。
+- `@dg-kit/*` 由 changesets 固定版本组管理；`dg-mcp` 保持独立版本号，但使用同一套 changesets
+  版本 PR、`npm-production` 环境和自动发布工作流。
 - `npm run verify:packages` 会构建并执行 `npm pack --dry-run`，检查入口、README、仓库元数据和
   测试产物泄漏。它不发布任何包。
 - 旧 DG-Kit 与 DG-MCP 仓库均已归档，旧发布工作流已停用；新的 Kit/MCP 发布只从本仓执行。

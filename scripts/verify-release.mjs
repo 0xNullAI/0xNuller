@@ -148,9 +148,11 @@ function gitShow(base, path) {
 }
 
 function releasePackagePaths() {
-  const output = execFileSync('git', ['ls-files', 'package.json', 'packages/*/*/package.json'], {
-    encoding: 'utf8',
-  });
+  const output = execFileSync(
+    'git',
+    ['ls-files', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json'],
+    { encoding: 'utf8' },
+  );
   return output
     .trim()
     .split('\n')

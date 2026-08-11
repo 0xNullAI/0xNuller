@@ -1,6 +1,6 @@
 name: Release
 
-# `@dg-kit/*` 的发布链路。
+# `@dg-kit/*` 与 `dg-mcp` 的统一发布链路。
 #
 #   push dev  → changesets 消费 .changeset/*.md，开/更新 "Version Packages" PR
 #   push main → 已无 pending changeset，执行 changeset publish 推到 npm
@@ -40,8 +40,8 @@ jobs:
       - uses: changesets/action@v1
         with:
           version: npm run version
-          commit: 'chore: release @dg-kit/*'
-          title: 'chore: release @dg-kit/*'
+          commit: 'chore: release npm packages'
+          title: 'chore: release npm packages'
           setupGitUser: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,6 +54,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: npm-production
     permissions:
       contents: write
       id-token: write
