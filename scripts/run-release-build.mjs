@@ -30,6 +30,11 @@ if (git('status', '--porcelain', '--untracked-files=no')) {
 
 const releaseEnv = { ...process.env, SOURCE_BUILD_ID: git('rev-parse', 'HEAD') };
 
+// Release builds must work in a fresh checkout. Applications import the Kit
+// packages through their published dist entry points, so never rely on dist
+// files left behind by an earlier local build or CI step.
+run(npm, ['run', 'build:kit'], releaseEnv);
+
 if (target === 'web') {
   run(npm, ['run', 'build', '-w', '@0xnullai/web'], releaseEnv);
 } else {
