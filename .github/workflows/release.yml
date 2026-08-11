@@ -39,6 +39,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build:kit
+      - run: npm run verify:packages
       - uses: changesets/action@v1
         with:
           version: npm run version
@@ -70,6 +71,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build:kit
+      - run: npm run verify:packages
       - name: Publish to npm
         id: changesets
         uses: changesets/action@v1

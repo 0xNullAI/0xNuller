@@ -1,0 +1,48 @@
+name: Release dg-mcp
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact dg-mcp version to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-dg-mcp
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Require the requested version to match the manifest
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          actual=$(node -p "require('./apps/mcp/package.json').version")
+          test "$actual" = "$REQUESTED_VERSION" || {
+            echo "Requested $REQUESTED_VERSION but apps/mcp/package.json is $actual" >&2
+            exit 1
+          }
+          if npm view "dg-mcp@$actual" version >/dev/null 2>&1; then
+            echo "dg-mcp@$actual already exists; refusing to republish" >&2
+            exit 1
+          fi
+      - run: npm run verify:packages
+      - name: Publish dg-mcp with npm trusted publishing
+        run: npm publish --workspace dg-mcp --provenance --access public
+

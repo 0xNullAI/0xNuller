@@ -1,0 +1,61 @@
+name: Roll back Cloudflare service
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to roll back independently
+        required: true
+        type: choice
+        options: [chat, auth, market, voice, web]
+      version_id:
+        description: Known-good Worker version ID (from deployments list)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - name: Resolve fixed service configuration
+        id: target
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          case "$SERVICE" in
+            chat) config=apps/chat/wrangler.jsonc ;;
+            auth) config=workers/auth/wrangler.jsonc ;;
+            market) config=apps/market/wrangler.jsonc ;;
+            voice) config=apps/voice/wrangler.jsonc ;;
+            web) config=apps/web/wrangler.jsonc ;;
+            *) echo "Unsupported service: $SERVICE" >&2; exit 1 ;;
+          esac
+          echo "config=$config" >> "$GITHUB_OUTPUT"
+      - name: Show recent deployments
+        run: npx wrangler deployments list --config "${{ steps.target.outputs.config }}"
+      - name: Roll back only the selected service
+        env:
+          VERSION_ID: ${{ inputs.version_id }}
+        run: >-
+          npx wrangler rollback "$VERSION_ID"
+          --config "${{ steps.target.outputs.config }}"
+          --message "Manual recovery from GitHub Actions run $GITHUB_RUN_ID"
+          --yes
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

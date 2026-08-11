@@ -165,6 +165,19 @@ describe('注册', () => {
     const duplicate = await registerUser({ username: 'bob', email: 'ALICE@example.com' });
     expect(duplicate.res.status).toBe(409);
   });
+
+  it('限制同一来源短时间批量注册', async () => {
+    for (let index = 0; index < 5; index += 1) {
+      const { res } = await registerUser({
+        username: `user-${index}`,
+        email: `user-${index}@example.com`,
+      });
+      expect(res.status).toBe(201);
+    }
+    const blocked = await registerUser({ username: 'user-5', email: 'user-5@example.com' });
+    expect(blocked.res.status).toBe(429);
+    expect(blocked.body.error).toBe('注册请求过于频繁，请稍后再试');
+  });
 });
 
 describe('Chat 房间账户同步', () => {

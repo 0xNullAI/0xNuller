@@ -4,11 +4,11 @@
   "description": "Built-in waveforms, design compiler, and .pulse parser for DG-Lab Coyote",
   "license": "MIT",
   "author": "0xNullAI",
-  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/waveforms",
+  "homepage": "https://github.com/0xNullAI/0xNuller/tree/main/packages/kit/waveforms",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
-    "directory": "packages/waveforms"
+    "url": "git+https://github.com/0xNullAI/0xNuller.git",
+    "directory": "packages/kit/waveforms"
   },
   "type": "module",
   "main": "./dist/index.js",

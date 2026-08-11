@@ -57,6 +57,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_USERNAME = 8;
 const MAX_FAILS_PER_IP = 30;
+const REGISTER_WINDOW_MS = 60 * 60 * 1000;
+const MAX_REGISTRATIONS_PER_IP = 5;
 const MIN_PASSWORD_LEN = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -801,6 +803,19 @@ export default {
     try {
       // ── Register ──
       if (path === '/api/auth/register' && request.method === 'POST') {
+        const registrationCount = await env.DB.prepare(
+          'SELECT COUNT(*) AS n FROM registration_attempts WHERE ip_hash = ? AND created_at >= ?',
+        )
+          .bind(ipHash, Date.now() - REGISTER_WINDOW_MS)
+          .first<{ n: number }>();
+        if ((registrationCount?.n ?? 0) >= MAX_REGISTRATIONS_PER_IP) {
+          return err('注册请求过于频繁，请稍后再试', 429, cors);
+        }
+        await env.DB.prepare(
+          'INSERT INTO registration_attempts (ip_hash, created_at) VALUES (?, ?)',
+        )
+          .bind(ipHash, Date.now())
+          .run();
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const invalid = validateCredentials(body.username, body.password);
         if (invalid) return err(invalid, 400, cors);
@@ -2089,6 +2104,9 @@ export default {
           env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
           env.DB.prepare('DELETE FROM login_attempts WHERE created_at < ?').bind(
             keepLoginAttemptsAfter,
+          ),
+          env.DB.prepare('DELETE FROM registration_attempts WHERE created_at < ?').bind(
+            now - REGISTER_WINDOW_MS,
           ),
         ]),
         runAuthMaintenance(env, now),
