@@ -1,0 +1,22 @@
+/* The Android shell reuses the unified shell's stylesheet directly — the same
+   CSS, the same layer order, the same set of @source directives.
+   Before the merge each of the three shells had its own styles.css that
+   @imported that module's CSS. */
+@import '@0xnullai/web/shell.css';
+
+/* Android-only: the splash screen. main.tsx fades it out once React has
+   committed its first frame. */
+#nx-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity var(--dur-slow) ease;
+}
+
+#nx-splash.nx-splash-loaded {
+  opacity: 0;
+  pointer-events: none;
+}

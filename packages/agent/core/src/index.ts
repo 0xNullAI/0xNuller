@@ -53,6 +53,9 @@ export interface SessionSnapshot {
   metadata?: Record<string, unknown>;
 }
 
+/** Optional user-assigned title stored with the session itself. */
+export const SESSION_TITLE_METADATA_KEY = 'sessionTitle';
+
 export interface BridgeOriginMetadata {
   platform: 'qq' | 'telegram';
   userId: string;

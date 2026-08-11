@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createEmptyDeviceState } from '@dg-kit/core';
+import { createEmptyDeviceState, isDevicePickerCancelled } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
-import { DeviceSession, type DeviceSessionState, type DeviceSessionTransport } from '@voice/lib/device-session';
+import {
+  DeviceSession,
+  type DeviceSessionState,
+  type DeviceSessionTransport,
+} from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
   coyote: createEmptyDeviceState(),
@@ -24,7 +28,7 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
   const [error, setError] = useState<string | null>(null);
   // In-flight flag for the connect flow. On Android `connectDevice()` runs an
   // ~8s BLE scan before the picker resolves; without visible feedback the
-  // button looks dead ("点了没反应"). Also guards against a second tap kicking
+  // button looks dead ("nothing happens when you tap it"). Also guards against a second tap kicking
   // off a concurrent scan.
   const [connecting, setConnecting] = useState(false);
 
@@ -44,10 +48,12 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
       await session.connectDevice();
       refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // A cancelled Web Bluetooth chooser is a normal user action, not an error.
-      if (!/cancelled|user gesture/i.test(message)) {
-        setError(message);
+      // Through the shared predicate: the local regex only knew the English
+      // Web Bluetooth wording, so on Android — where the Tauri transport
+      // throws a Chinese message — backing out of the picker raised an error
+      // banner.
+      if (!isDevicePickerCancelled(err)) {
+        setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
       setConnecting(false);
@@ -69,5 +75,14 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
-  return { session, state, error, connecting, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum };
+  return {
+    session,
+    state,
+    error,
+    connecting,
+    connectDevice,
+    emergencyStop,
+    disconnectCoyote,
+    disconnectOpossum,
+  };
 }

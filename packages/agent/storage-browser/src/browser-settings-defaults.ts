@@ -57,14 +57,12 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
 
   return {
     version: 1,
-    themeMode: 'auto',
     showSafetyNoticeOnStartup: true,
     deviceMode: 'web-bluetooth',
     llmMode: 'provider-http',
     modelContextStrategy: 'last-user-turn',
     temperature: 0.3,
     permissionMode: 'confirm',
-    backgroundBehavior: 'stop',
     maxStrengthA: 50,
     maxStrengthB: 50,
     maxColdStartStrength: DEFAULT_MAX_COLD_START_STRENGTH,
@@ -94,9 +92,6 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
     speechRecognitionLanguage: 'zh-CN',
     speechSynthesisLanguage: 'zh-CN',
     bridge: DEFAULT_BRIDGE_SETTINGS,
-    promptPresetId: 'gentle',
-    savedPromptPresets: [],
-    hiddenBuiltinPresetIds: [],
     provider,
     providerConfigs: {
       [provider.providerId]: provider,

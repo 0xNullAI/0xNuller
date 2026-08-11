@@ -54,6 +54,19 @@ export function createEmptyDeviceState(): DeviceState {
   };
 }
 
+/**
+ * Whether a Coyote is physically outputting on either channel.
+ *
+ * Strength is only the configured amplitude; without a running waveform no
+ * pulses are emitted. The two signals must also belong to the same channel —
+ * A strength plus a B waveform is still idle on both channels.
+ */
+export function isCoyoteOutputActive(
+  state: Pick<DeviceState, 'strengthA' | 'strengthB' | 'waveActiveA' | 'waveActiveB'>,
+): boolean {
+  return (state.strengthA > 0 && state.waveActiveA) || (state.strengthB > 0 && state.waveActiveB);
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -242,4 +255,42 @@ export interface SensorDeviceClient<TReading> {
 
 export function createEmptySensorState(): SensorState {
   return { connected: false, battery: 0 };
+}
+
+/**
+ * The message the Tauri BLE transport throws when the user backs out of the
+ * device picker.
+ *
+ * Exported so the check and the throw cannot drift: the transport raises it,
+ * and every module tests for it. They diverged once — Voice matched
+ * `/cancelled|user gesture/i`, which never matches this Chinese text, and
+ * Chat had no check at all. On Android, where this transport is the only one
+ * available, backing out of the picker therefore raised a red error banner in
+ * both. That is a bug the user cannot distinguish from a real failure, and
+ * Android has no hot update.
+ */
+export const DEVICE_PICKER_CANCELLED_MESSAGE = '用户取消了设备选择';
+
+/** What Web Bluetooth throws for the same thing. */
+const WEB_BLUETOOTH_CANCELLED_MESSAGE = 'User cancelled the requestDevice() chooser';
+
+/**
+ * Whether an error is "the user closed the device picker" rather than a
+ * failure.
+ *
+ * It is a normal action and must not surface as an error: the browser and
+ * the Tauri transport just report it by throwing.
+ */
+export function isDevicePickerCancelled(error: unknown): boolean {
+  const raw =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : String(error ?? '');
+  const message = raw.trim().replace(/^(DOMException|TypeError|Error|AbortError):\s*/i, '');
+  return (
+    message.includes(WEB_BLUETOOTH_CANCELLED_MESSAGE) ||
+    message.includes(DEVICE_PICKER_CANCELLED_MESSAGE)
+  );
 }

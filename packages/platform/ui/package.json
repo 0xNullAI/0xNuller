@@ -10,7 +10,7 @@
     "./styles/scrollbar.css": "./src/styles/scrollbar.css",
     "./styles/animations.css": "./src/styles/animations.css",
     "./styles/base.css": "./src/styles/base.css",
-    "./styles/app-switcher.css": "./src/styles/app-switcher.css"
+    "./styles/settings.css": "./src/styles/settings.css"
   },
   "dependencies": {
     "@dg-kit/safety": "1.13.0",
@@ -23,7 +23,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.11.0",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "@0xnullai/market-client": "0.1.0"
   },
   "peerDependencies": {
     "react": "^19.2.5",

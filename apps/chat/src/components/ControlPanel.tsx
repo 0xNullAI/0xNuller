@@ -1,17 +1,23 @@
 import { useState } from 'react';
-import { Copy, Check, ChevronRight } from 'lucide-react';
+import { Copy, Check, ChevronRight, Globe, Lock, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Input } from '@0xnullai/ui';
 import type { MemberState, CmdAction, DeviceCommand, WaveformTransfer } from '../lib/protocol';
 import type { WaveformDefinition } from '../lib/waveforms';
 import type { MarketItem } from '@0xnullai/market-client';
 import { BUILTIN_WAVEFORMS } from '../lib/waveforms';
 import { MemberCard } from './MemberCard';
 import { MemberControl } from './MemberControl';
+import { ProfileAvatar } from './ProfileAvatar';
 
 interface ControlPanelProps {
   members: Map<string, MemberState>;
   peers: string[];
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  onSendCommand: (
+    target: string,
+    action: CmdAction,
+    params?: Omit<DeviceCommand, 'action'>,
+  ) => void;
   onSendWaveform: (targetPeerId: string, transfer: WaveformTransfer) => void;
   roomId: string | null;
   waveforms: WaveformDefinition[];
@@ -21,28 +27,42 @@ interface ControlPanelProps {
   selfState: MemberState;
   selfLimitA: number;
   selfLimitB: number;
-  /** 自己的角色头衔。 */
-  selfRoleName?: string;
-  /** 查某 peer 的角色头衔（场景扮演）。 */
-  roleNameFor?: (peerId: string) => string | undefined;
+  /** Whether the room is listed in the lobby. Owner-controlled and durable. */
+  isPublic: boolean;
+  /** Whether this browser may change that (holds the owner key, or is the host of an unowned room). */
+  canManage: boolean;
+  onSetPublic: (next: boolean) => void;
+  roomName: string;
+  onRename: (name: string) => void;
+  onCloseRoom: () => void;
+  /**
+   * This is a two-person conversation rather than a group.
+   *
+   * The panel is otherwise identical — same member cards, same controls, same device path —
+   * because a conversation *is* a room with two people in it. What it drops is the block that
+   * makes a room joinable: a conversation has no code to share, no QR to scan and no lobby
+   * visibility, and its id is derived from the two account ids rather than being something to
+   * hand out.
+   */
+  isDm?: boolean;
 }
 
-function SelfCard({ member, onClick, roleName }: { member: MemberState; onClick: () => void; roleName?: string }) {
-  const initial = (member.displayName?.[0] || '?').toUpperCase();
+function SelfCard({ member, onClick }: { member: MemberState; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
       className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-md)] border border-[var(--accent-soft)] bg-[var(--bg-elevated)] p-3 transition-all hover:bg-[var(--bg-soft)] active:scale-[0.98]"
     >
-      <div className="avatar">{initial}</div>
+      <ProfileAvatar name={member.displayName} username={member.username} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium text-[var(--text)]">{member.displayName}</p>
-          <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">我</span>
-          {roleName && (
-            <span className="shrink-0 truncate rounded-full bg-[var(--bg-soft)] px-1.5 py-0.5 text-[10px] text-[var(--text-soft)]">{roleName}</span>
-          )}
-          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${member.deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`} />
+          <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
+            我
+          </span>
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${member.deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
+          />
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-soft)]">
           {member.deviceConnected ? (
@@ -61,9 +81,30 @@ function SelfCard({ member, onClick, roleName }: { member: MemberState; onClick:
   );
 }
 
-export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, roomId, waveforms, onImportWaveform, onImportMarketWaveform, onRemoveWaveform, selfState, selfLimitA, selfLimitB, selfRoleName, roleNameFor }: ControlPanelProps) {
+export function ControlPanel({
+  members,
+  peers,
+  onSendCommand,
+  onSendWaveform,
+  roomId,
+  waveforms,
+  onImportWaveform,
+  onImportMarketWaveform,
+  onRemoveWaveform,
+  selfState,
+  selfLimitA,
+  selfLimitB,
+  isPublic,
+  canManage,
+  onSetPublic,
+  roomName,
+  onRename,
+  onCloseRoom,
+  isDm = false,
+}: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [nameDraft, setNameDraft] = useState(roomName);
 
   function copyRoomId() {
     if (!roomId) return;
@@ -81,8 +122,10 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
     // When controlling a remote peer, show their waveform catalog; fall back to builtins if not yet received
     const targetWaveforms: WaveformDefinition[] = isSelf
       ? waveforms
-      : (member?.waveformCatalog ?? BUILTIN_WAVEFORMS.map(w => ({ id: w.id, name: w.name, custom: false })))
-          .map(w => ({ id: w.id, name: w.name, custom: !!w.custom, description: '', frames: [] }));
+      : (
+          member?.waveformCatalog ??
+          BUILTIN_WAVEFORMS.map((w) => ({ id: w.id, name: w.name, custom: false }))
+        ).map((w) => ({ id: w.id, name: w.name, custom: !!w.custom, description: '', frames: [] }));
 
     return (
       <MemberControl
@@ -103,12 +146,14 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
   }
 
   // Member list view
-  const joinUrl = roomId ? `${window.location.origin}${window.location.pathname}?room=${roomId}` : '';
+  const joinUrl = roomId
+    ? `${window.location.origin}${window.location.pathname}?room=${roomId}`
+    : '';
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      {/* Room info */}
-      {roomId && (
+      {/* Room info. A conversation has none of this: no code to share, no QR, no lobby. */}
+      {roomId && !isDm && (
         <div className="border-b border-[var(--surface-border)] px-4 py-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-medium text-[var(--text-soft)]">房间号</p>
@@ -132,11 +177,59 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
           <p className="mb-3 text-center text-lg font-bold tracking-widest text-[var(--accent)]">
             {roomId}
           </p>
+          {canManage ? (
+            <label className="mb-3 flex flex-col gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">房间名</span>
+              <Input
+                value={nameDraft}
+                maxLength={60}
+                onChange={(event) => setNameDraft(event.target.value)}
+                onBlur={() => nameDraft.trim() && onRename(nameDraft)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && nameDraft.trim()) onRename(nameDraft);
+                }}
+              />
+            </label>
+          ) : null}
           {joinUrl && (
             <div className="flex justify-center rounded-[var(--radius-md)] bg-white p-3">
               <QRCodeSVG value={joinUrl} size={120} />
             </div>
           )}
+
+          {/* Lobby visibility. A room is permanent now, so this is a setting rather than
+              something decided once at creation — and only the room's owner may change it. */}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-[var(--text-soft)]">
+              {isPublic ? <Globe size={14} /> : <Lock size={14} />}
+              {isPublic ? '公开到大厅' : '私密房间'}
+            </span>
+            {canManage ? (
+              <button
+                onClick={() => onSetPublic(!isPublic)}
+                className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--bg-soft)]"
+                title={isPublic ? '从大厅移除，只有拿到房间号的人能进' : '公开到大厅，所有人可见'}
+              >
+                {isPublic ? '设为私密' : '公开'}
+              </button>
+            ) : (
+              <span className="text-[10px] text-[var(--text-faint)]">仅房主可改</span>
+            )}
+          </div>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('关闭房间后所有成员都会退出，且不能重新加入。继续吗？')) {
+                  onCloseRoom();
+                }
+              }}
+              className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--danger-border)] text-sm text-[var(--danger)] hover:bg-[var(--danger-soft)]"
+            >
+              <Trash2 className="h-4 w-4" />
+              关闭房间
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -147,20 +240,21 @@ export function ControlPanel({ members, peers, onSendCommand, onSendWaveform, ro
         </p>
         <div className="space-y-2">
           {/* Self */}
-          <SelfCard member={selfState} roleName={selfRoleName} onClick={() => setSelectedMember('self')} />
+          <SelfCard member={selfState} onClick={() => setSelectedMember('self')} />
           {/* Peers */}
-          {peers.map(peerId => (
+          {peers.map((peerId) => (
             <MemberCard
               key={peerId}
               peerId={peerId}
               member={members.get(peerId)}
-              roleName={roleNameFor?.(peerId)}
               onClick={() => setSelectedMember(peerId)}
             />
           ))}
         </div>
         {peers.length === 0 && (
-          <p className="mt-4 text-center text-xs text-[var(--text-faint)]">分享房间号邀请其他人加入</p>
+          <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
+            {isDm ? '对方当前不在线，消息会保留' : '分享房间号邀请其他人加入'}
+          </p>
         )}
       </div>
     </div>

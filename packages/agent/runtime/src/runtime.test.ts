@@ -810,6 +810,49 @@ describe('AgentRuntime', () => {
     expect(await runtime.getSessionTrace('deleted-while-busy')).toEqual([]);
   });
 
+  it('persists and clears a user-assigned session title', async () => {
+    const runtime = new AgentRuntime({
+      device: new TestDevice(),
+      llm: new TestLlm(),
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+
+    await runtime.getSessionSnapshot('rename-me');
+    await runtime.renameSession('rename-me', '  常用控制  ');
+    expect((await runtime.getSessionSnapshot('rename-me')).metadata?.sessionTitle).toBe('常用控制');
+
+    await runtime.renameSession('rename-me', null);
+    expect((await runtime.getSessionSnapshot('rename-me')).metadata?.sessionTitle).toBeUndefined();
+  });
+
+  it('keeps a rename made while a reply is in flight', async () => {
+    const runtime = new AgentRuntime({
+      device: new TestDevice(),
+      llm: new AbortableLlm(),
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+
+    const reply = runtime.sendUserMessage({
+      sessionId: 'rename-while-busy',
+      text: 'hello',
+      context: {
+        sessionId: 'rename-while-busy',
+        sourceType: 'cli',
+        traceId: 'trace-rename-while-busy',
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await runtime.renameSession('rename-while-busy', '回复中的标题');
+    await runtime.abortCurrentReply('rename-while-busy');
+    await expect(reply).rejects.toThrow('已停止当前回复');
+
+    expect((await runtime.getSessionSnapshot('rename-while-busy')).metadata?.sessionTitle).toBe(
+      '回复中的标题',
+    );
+  });
+
   it('persists a friendly assistant error message when the provider fails', async () => {
     const runtime = new AgentRuntime({
       device: new TestDevice(),

@@ -28,6 +28,7 @@ import {
   mintXaiRealtimeEphemeralToken,
 } from './ephemeral-token.js';
 import type { RealtimeProviderId, RealtimeProviderSettings } from './providers.js';
+import { apiWsUrl } from '@0xnullai/settings';
 
 const TURN_DETECTION = {
   type: 'server_vad',
@@ -43,14 +44,14 @@ const TURN_DETECTION = {
 function buildWsUrl(providerId: RealtimeProviderId, settings: RealtimeProviderSettings): string {
   switch (providerId) {
     case 'trial': {
-      // Same-origin Worker route (`/api/realtime`); the Worker pins the model
-      // and swaps the activation key for the real xAI key on the upstream leg.
-      // Works on voice.0xnullai.com, the workers.dev preview, and `wrangler dev`.
-      if (typeof location !== 'undefined') {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${proto}//${location.host}/api/realtime`;
-      }
-      return 'wss://voice.0xnullai.com/api/realtime';
+      // Worker route under the unified domain (`/api/realtime`); the Worker
+      // pins the model and swaps the activation key for the real xAI key on
+      // the upstream leg.
+      //
+      // **Do NOT build a same-origin URL from `location.host` here.** It works
+      // on the web, but the Tauri shell's origin is a local scheme, so that
+      // would connect to `wss://tauri.localhost/api/realtime`.
+      return apiWsUrl('/api/realtime');
     }
     case 'xai':
       return `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(settings.model)}`;
@@ -93,7 +94,10 @@ async function resolveCredential(
         throw new Error('unreachable');
     }
   } catch (error) {
-    console.warn(`[dg-voice] ${providerId} 换票失败，回退为直接用 API Key 作为 WebSocket 凭据：`, error);
+    console.warn(
+      `[dg-voice] ${providerId} 换票失败，回退为直接用 API Key 作为 WebSocket 凭据：`,
+      error,
+    );
     return settings.apiKey;
   }
 }
@@ -149,8 +153,16 @@ export class OpenAiRealtimeSession extends BaseRealtimeSession {
         instructions: this.options.instructions,
         output_modalities: ['audio'],
         audio: {
-          input: { format: pcm, turn_detection: TURN_DETECTION, transcription: { model: 'whisper-1' } },
-          output: { format: pcm, voice: this.options.settings.voice, speed: this.options.settings.speed },
+          input: {
+            format: pcm,
+            turn_detection: TURN_DETECTION,
+            transcription: { model: 'whisper-1' },
+          },
+          output: {
+            format: pcm,
+            voice: this.options.settings.voice,
+            speed: this.options.settings.speed,
+          },
         },
         tools: this.mappedTools(),
         tool_choice: 'auto',

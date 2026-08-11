@@ -16,7 +16,7 @@ import {
   type ToolRegistry,
 } from '@dg-kit/tools';
 import type { ToolCall, ToolExecutionPlan } from '@dg-kit/core';
-import type { DeviceManager} from './device-manager.js';
+import type { DeviceManager } from './device-manager.js';
 import { type ConnectedDevice } from './device-manager.js';
 import type { NodeWaveformLibrary } from './waveform-library.js';
 
@@ -114,7 +114,8 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
       },
       {
         name: 'get_status',
-        description: '查询所有已连接设备的状态（连接状态 / 强度或振动 / 波形 / 电池等，按设备类型而定）。',
+        description:
+          '查询所有已连接设备的状态（连接状态 / 强度或振动 / 波形 / 电池等，按设备类型而定）。',
         inputSchema: { type: 'object', properties: {} },
       },
       {

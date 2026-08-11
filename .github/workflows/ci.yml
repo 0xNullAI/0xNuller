@@ -10,11 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
+      - run: npm run verify:release
+      - name: Check formatting of changed files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test

@@ -1,6 +1,7 @@
+import { loadScenes } from '@0xnullai/scenes';
 import { useCallback, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
-import { PolicyEngine, OpossumPolicyEngine } from '@dg-kit/safety';
+import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import { ToolExecutor } from '@voice/lib/tool-executor';
@@ -17,7 +18,6 @@ import type {
   RealtimeTranscriptEntry,
 } from '@voice/lib/realtime/realtime-session';
 import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
-import { CallSafetyGuard } from '@voice/services/call-safety-guard';
 import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 
@@ -48,7 +48,7 @@ function createSessionId(): string {
  * Owns one call's lifecycle: builds a fresh safety chain (policy engines,
  * queues, permission service, tool executor) scoped to this call, connects
  * the realtime session, wires the tool bridge, and tears everything down on
- * hangup — including the `CallSafetyGuard` (page-hide/leave => hangup).
+ * hangup — including the shared DeviceLifecycleGuard (page-hide/leave => hangup).
  *
  * A fresh `ToolExecutor`/permission grant per call means switching devices
  * or re-authorizing between calls can't leak stale timed grants forward.
@@ -76,23 +76,34 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     pending?.resolve(decision);
   }, []);
 
-  const hangUp = useCallback(async (reason?: string) => {
-    // A dialog still on screen when the call ends must not leave its promise
-    // dangling — the tool executor would await it forever.
-    const stranded = pendingPermissionRef.current;
-    pendingPermissionRef.current = null;
-    setPendingPermission(null);
-    stranded?.resolve({ type: 'deny', reason: '通话已结束' });
+  const hangUp = useCallback(
+    async (_reason?: string) => {
+      // A dialog still on screen when the call ends must not leave its promise
+      // dangling — the tool executor would await it forever.
+      const stranded = pendingPermissionRef.current;
+      pendingPermissionRef.current = null;
+      setPendingPermission(null);
+      stranded?.resolve({ type: 'deny', reason: '通话已结束' });
 
-    guardStopRef.current?.();
-    guardStopRef.current = null;
-    deviceWatchStopRef.current?.();
-    deviceWatchStopRef.current = null;
-    sessionRef.current?.disconnect();
-    sessionRef.current = null;
-    await deviceSession.emergencyStop();
-    setState((prev) => ({ ...prev, status: 'ended', error: reason ?? prev.error, speaking: false }));
-  }, [deviceSession]);
+      guardStopRef.current?.();
+      guardStopRef.current = null;
+      deviceWatchStopRef.current?.();
+      deviceWatchStopRef.current = null;
+      sessionRef.current?.disconnect();
+      sessionRef.current = null;
+      await deviceSession.emergencyStop();
+      setState((prev) => ({
+        ...prev,
+        status: 'ended',
+        // A user hang-up, background safety stop, or module switch is a
+        // normal lifecycle transition. The optional reason is for internal
+        // diagnostics, not a service failure to render as a red alert.
+        error: null,
+        speaking: false,
+      }));
+    },
+    [deviceSession],
+  );
 
   const startCall = useCallback(async () => {
     setState({
@@ -108,13 +119,18 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       providerId: settings.activeProviderId,
     });
     if (!providerSettings.apiKey) {
-      setState((prev) => ({ ...prev, status: 'idle', error: '请先在设置里填写当前 provider 的 API Key' }));
+      setState((prev) => ({
+        ...prev,
+        status: 'idle',
+        error: '请先配置当前语音服务的 API Key',
+      }));
       return;
     }
 
-    // ActionContext 现在来自 @dg-kit/safety（与 DG-Agent 同一份契约）。
-    // DG-Voice 是网页客户端，sourceType 如实填 'web'；traceId 让这一通电话的
-    // 每条设备指令能在日志里串起来。
+    // ActionContext now comes from @dg-kit/safety (the same contract DG-Agent
+    // uses). DG-Voice is a web client, so sourceType is honestly 'web'; traceId
+    // is what threads every device command from this one call together in the
+    // logs.
     const sessionId = createSessionId();
     const context: ActionContext = {
       sessionId,
@@ -149,7 +165,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       session: deviceSession,
       registry,
       policyEngine: new PolicyEngine(createDefaultPolicyRules(settings.coyoteSafety)),
-      opossumPolicyEngine: new OpossumPolicyEngine(createDefaultOpossumPolicyRules(settings.opossumSafety)),
+      opossumPolicyEngine: new OpossumPolicyEngine(
+        createDefaultOpossumPolicyRules(settings.opossumSafety),
+      ),
       permission,
       deviceQueue: new DeviceCommandQueue(deviceSession.coyote),
       opossumQueue: new OpossumCommandQueue(deviceSession.opossum),
@@ -159,7 +177,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     const events: RealtimeSessionEvents = {
       onOpen: () => setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() })),
       onClose: (reason) =>
-        setState((prev) => (prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason })),
+        setState((prev) =>
+          prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason },
+        ),
       onError: (error) =>
         setState((prev) => ({ ...prev, error: `服务端返回错误：${error.message}` })),
       onSpeakingChange: (speaking) => setState((prev) => ({ ...prev, speaking })),
@@ -176,7 +196,10 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
         }),
     };
 
-    const preset = getAnyPromptPresetById(settings.promptPresetId, settings.savedPromptPresets);
+    // Scenes come from the cross-module shared library, not from VoiceSettings
+    // any more — a persona written in Agent is usable here too.
+    const sceneLib = loadScenes();
+    const preset = getAnyPromptPresetById(sceneLib.selectedId, sceneLib.scenes);
     const buildInstructions = async () =>
       buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
         coyoteSafety: settings.coyoteSafety,
@@ -197,7 +220,9 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
 
       await session.connect();
       sessionRef.current = session;
-      guardStopRef.current = new CallSafetyGuard({ onHangup: () => hangUp('页面已离开或切至后台，通话已自动挂断') }).start();
+      guardStopRef.current = new DeviceLifecycleGuard({
+        onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断'),
+      }).start();
 
       // Keep the model's [当前设备状态] block current as strength/connection
       // state changes mid-call — debounced so a burst of rapid state changes

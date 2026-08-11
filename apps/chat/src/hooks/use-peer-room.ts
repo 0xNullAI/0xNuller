@@ -10,18 +10,73 @@ import type {
   WaveformTransfer,
   StateFast,
   StateSlow,
-  Scene,
 } from '../lib/protocol';
+import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
+import {
+  closeOwnedGroup,
+  forgetGroup,
+  loadOwnerKey,
+  rememberGroup,
+  saveOwnerKey,
+} from '../lib/groups';
+import { dmTicket } from '@0xnullai/auth';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
-/** 创建/加入房间的选项。公开房间会注册进大厅。 */
+/**
+ * Joining a direct message rather than a group.
+ *
+ * The conversation id is not in here on purpose — it comes back from the account service
+ * with the first ticket, so the client never computes where a conversation lives.
+ */
+export interface DmJoinOptions {
+  /** The other account. */
+  peerUserId: string;
+  /** The ticket already minted to learn the conversation id, spent on the first connect. */
+  firstTicket?: string;
+  firstExpiresAt?: number;
+}
+
+/** Options for creating/joining a group. Public groups get registered in the lobby. */
 export interface JoinOptions {
   public?: boolean;
   roomName?: string;
+  /**
+   * Ask the server to mint an owner key for this group. Set only on the create path: it is
+   * what makes the creator the durable owner, and it is ignored once a group already has one.
+   */
+  claim?: boolean;
+  /**
+   * Join a direct message instead. Every group field above is meaningless here and is not
+   * sent: a DM has no owner, no lobby entry and no name of its own.
+   */
+  dm?: DmJoinOptions;
 }
 
-/** 已上传到 R2、待随聊天消息发出的媒体引用。 */
+/** How much of a ticket's life has to be left for it to be worth spending on a connect. */
+const TICKET_MIN_REMAINING_MS = 5000;
+
+/**
+ * Supply an admission ticket for each (re)connect.
+ *
+ * The first one was already minted by the caller — that is how it learned the conversation
+ * id — so spending it saves a round trip on open. Everything after that is minted fresh,
+ * which is the mechanism that re-checks the mutual follow: once the other person blocks or
+ * unfollows you, the account service stops answering and the reconnect has nothing to
+ * present.
+ */
+function dmTicketProvider(dm: DmJoinOptions): () => Promise<string | null> {
+  let unspent = dm.firstTicket ?? null;
+  const expiresAt = dm.firstExpiresAt ?? 0;
+  return async () => {
+    const first = unspent;
+    unspent = null;
+    if (first && expiresAt > Date.now() + TICKET_MIN_REMAINING_MS) return first;
+    return (await dmTicket(dm.peerUserId))?.ticket ?? null;
+  };
+}
+
+/** A media reference already uploaded to R2, waiting to be sent with a chat message. */
 export interface OutgoingMedia {
   kind: 'image' | 'audio';
   id: string;
@@ -32,7 +87,7 @@ export interface OutgoingMedia {
   h?: number;
 }
 
-/** wire 上的媒体引用（DO/历史回传）。 */
+/** A media reference as it appears on the wire (from the DO / history replay). */
 interface WireMedia {
   kind: 'image' | 'audio';
   id: string;
@@ -47,7 +102,7 @@ const PRESENCE_INTERVAL_MS = 3000;
 const PRESENCE_TIMEOUT_MS = 10000;
 const FAST_THROTTLE_MS = 200;
 
-/** 8 字符随机 ID（消息 id 用）。 */
+/** An 8-character random ID (used for message ids). */
 function shortId(): string {
   const arr = crypto.getRandomValues(new Uint8Array(6));
   let s = '';
@@ -66,18 +121,7 @@ function generatePeerId(): string {
 
 const selfId = generatePeerId();
 
-/** 查某成员在当前场景里认领角色的名字（= 头衔）。 */
-function roleNameOf(
-  peerId: string,
-  scene: Scene | null,
-  assignments: Record<string, string>,
-): string | undefined {
-  if (!scene) return undefined;
-  const entry = Object.entries(assignments).find(([, pid]) => pid === peerId);
-  return entry ? scene.roles.find((r) => r.id === entry[0])?.name : undefined;
-}
-
-/** wire mentions（{peerId,n}）→ ChatMention（{peerId,displayName}）。 */
+/** wire mentions ({peerId,n}) → ChatMention ({peerId,displayName}). */
 function mapMentions(m: unknown): ChatMention[] | undefined {
   if (!Array.isArray(m)) return undefined;
   return (m as Array<{ peerId: string; n: string }>).map((x) => ({
@@ -86,7 +130,7 @@ function mapMentions(m: unknown): ChatMention[] | undefined {
   }));
 }
 
-/** 把 R2 媒体引用解析为可访问 URL（同源 /api/media/:code/:id）。 */
+/** Resolve an R2 media reference into a fetchable URL (same-origin /api/media/:code/:id). */
 function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | undefined {
   if (!m || !room) return undefined;
   return {
@@ -100,15 +144,19 @@ function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | 
 }
 
 /**
- * 传输模型（Cloudflare RoomDO，单 WebSocket）：
+ * Transport model (Cloudflare RoomDO, a single WebSocket):
  *
- * - 状态广播 owner→all：sf（强度/波形/开火，200ms 节流）、ss（名字/电量/队列/目录，5s 心跳）
- * - 边沿命令 controller→owner：cmd（定向，to=peerId）
- * - 波形传输：wave（定向）
- * - presence：每 3s 一次心跳（携带昵称），10s 没收到即 removePeer（异常断开兜底）
- * - DO 主动下发：history（加入回放）、sys joined/left（连接级 presence，即时）
+ * - State broadcasts owner→all: sf (strength/waveform/firing, throttled 200ms),
+ *   ss (name/battery/queue/catalog, 5s heartbeat)
+ * - Edge commands controller→owner: cmd (directed, to=peerId)
+ * - Waveform transfer: wave (directed)
+ * - presence: one heartbeat every 3s (carrying the nickname); nothing received
+ *   for 10s means removePeer (the fallback for abnormal disconnects)
+ * - Pushed by the DO: history (replayed on join), sys joined/left
+ *   (connection-level presence, immediate)
  *
- * WS 单连接有序可靠，无需 MQTT 的多 broker fan-out / QoS / 消息去重。
+ * A single WS connection is ordered and reliable, so none of MQTT's
+ * multi-broker fan-out / QoS / message dedup is needed.
  */
 export function usePeerRoom(displayName: string) {
   const [status, setStatus] = useState<RoomStatus>('idle');
@@ -117,10 +165,29 @@ export function usePeerRoom(displayName: string) {
   const [peers, setPeers] = useState<string[]>([]);
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // —— 场景扮演 ——
-  const [scene, setSceneState] = useState<Scene | null>(null);
-  const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
+  const [mediaUploadToken, setMediaUploadToken] = useState<string | null>(null);
+  // —— Room AI ——
+  const [agent, setAgentState] = useState<RoomAgent | null>(null);
+  // The host is whoever the DO says it is. Only that browser runs the agent
+  // loop, which is what keeps one @mention from producing several replies.
+  // It is a live role that moves when the current host disconnects — not
+  // ownership, which is durable and lives in the owner key below.
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  // —— Group settings (durable, owner-controlled) ——
+  const [isPublic, setIsPublic] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  /** The group has an owner key on file at all (groups made by older clients do not). */
+  const [groupOwned, setGroupOwned] = useState(false);
+  /** This browser holds the key and the server accepted it. */
+  const [isOwner, setIsOwner] = useState(false);
+  /**
+   * The account on the other end, when this connection is a direct message.
+   *
+   * Everything a DM does *not* have hangs off this being non-null on the client — but only
+   * as a matter of not drawing dead controls. The server is what actually refuses a device
+   * frame in a DM; hiding a button stops nobody who is not using the button.
+   */
+  const [dmPeerUserId, setDmPeerUserId] = useState<string | null>(null);
 
   const transportRef = useRef<RoomTransport | null>(null);
   const roomIdRef = useRef<string | null>(null);
@@ -169,14 +236,60 @@ export function usePeerRoom(displayName: string) {
     transportRef.current?.send(payload);
   }, []);
 
+  /** Close the connection and drop everything that belonged to that group. */
+  const teardown = useCallback(() => {
+    send({ t: 'leave' });
+
+    if (presenceTimerRef.current) {
+      clearInterval(presenceTimerRef.current);
+      presenceTimerRef.current = null;
+    }
+    peerTimersRef.current.forEach((timer) => clearTimeout(timer));
+    peerTimersRef.current.clear();
+    if (fastThrottleRef.current.timer) {
+      clearTimeout(fastThrottleRef.current.timer);
+      fastThrottleRef.current = { lastSent: 0, pending: null, timer: null };
+    }
+
+    transportRef.current?.close();
+    transportRef.current = null;
+    roomIdRef.current = null;
+    setStatus('idle');
+    setError(null);
+    setRoomId(null);
+    setPeers([]);
+    setMembers(new Map());
+    setMessages([]);
+    setMediaUploadToken(null);
+    setHostPeerId(null);
+    // Group-scoped state must go too, or the next group inherits the previous one's
+    // agent and settings for as long as it takes the new frames to arrive.
+    setAgentState(null);
+    setIsOwner(false);
+    setGroupOwned(false);
+    setIsPublic(false);
+    setGroupName('');
+    setDmPeerUserId(null);
+  }, [send]);
+
   const join = useCallback(
     (roomCode: string, options?: JoinOptions) => {
-      if (transportRef.current) return;
+      if (transportRef.current) {
+        // Already here. A reconnect is the transport's job, not ours.
+        if (roomIdRef.current === roomCode) return;
+        // Switching groups. This used to be a bare early return, which made every entry in
+        // the sidebar — and the create dialog — a no-op once you were connected to anything.
+        teardown();
+      }
       setStatus('connecting');
       setError(null);
       roomIdRef.current = roomCode;
       joinOptsRef.current = options ?? {};
-      console.log('[DG-Chat] join', roomCode, 'as', selfId);
+      const dm = options?.dm ?? null;
+      setDmPeerUserId(dm?.peerUserId ?? null);
+      // A conversation id is derived from two account ids and is not something to put in a
+      // log; the room code of a group is public enough to be typed by hand.
+      console.log('[DG-Chat] join', dm ? '(dm)' : roomCode, 'as', selfId);
 
       function touchPeer(peerId: string, name?: string) {
         if (peerId === selfId) return;
@@ -216,27 +329,52 @@ export function usePeerRoom(displayName: string) {
               timestamp: (m.ts as number) ?? 0,
               media: buildMedia(room, m.m as WireMedia | undefined),
               mentions: mapMentions(m.mentions),
-              senderRole: m.senderRole as string | undefined,
             })),
           );
           return;
         }
 
+        if (t === 'media-auth') {
+          setMediaUploadToken(typeof data.token === 'string' ? data.token : null);
+          return;
+        }
+
         if (t === 'sys') {
+          if (data.kind === 'closed') {
+            setError('房间已关闭');
+            const code = roomIdRef.current;
+            if (code) void closeOwnedGroup(code).finally(() => forgetGroup(code));
+            return;
+          }
           const peerId = data.peerId as string;
           if (data.kind === 'joined') touchPeer(peerId);
           else if (data.kind === 'left') removePeer(peerId);
           return;
         }
 
-        if (t === 'scene') {
-          setSceneState((data.scene as Scene | null) ?? null);
+        if (t === 'agent') {
+          setAgentState((data.agent as RoomAgent | null) ?? null);
           setHostPeerId((data.host as string) ?? null);
           return;
         }
 
-        if (t === 'role') {
-          setRoleAssignments((data.assignments as Record<string, string>) ?? {});
+        if (t === 'group') {
+          // Every field is optional and an absent one means "unchanged": the frame that
+          // follows a settings change is broadcast to the whole room and therefore carries
+          // neither isOwner nor ownerKey, which are answers to one connection only.
+          const code = (data.code as string) || roomIdRef.current || '';
+          if (typeof data.public === 'boolean') setIsPublic(data.public);
+          if (typeof data.owned === 'boolean') setGroupOwned(data.owned);
+          if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
+          if (typeof data.name === 'string') {
+            setGroupName(data.name);
+            rememberGroup(code, data.name);
+          }
+          // Arrives exactly once, in the reply to the connection that created the group.
+          if (typeof data.ownerKey === 'string' && code) {
+            saveOwnerKey(code, data.ownerKey);
+            setIsOwner(true);
+          }
           return;
         }
 
@@ -259,7 +397,6 @@ export function usePeerRoom(displayName: string) {
                 timestamp: (data.ts as number) ?? Date.now(),
                 media: buildMedia(roomIdRef.current, data.m as WireMedia | undefined),
                 mentions: mapMentions(data.mentions),
-                senderRole: data.senderRole as string | undefined,
               },
             ]);
             break;
@@ -268,6 +405,10 @@ export function usePeerRoom(displayName: string) {
               {
                 action: data.a as CmdAction,
                 kind: data.kind as DeviceCommand['kind'],
+                // Absent on every command from a client that predates
+                // multi-device — which stays undefined here and so keeps
+                // meaning "the primary device of that kind".
+                deviceId: data.deviceId as string | undefined,
                 c: data.c as 'A' | 'B' | undefined,
                 v: data.v as number | undefined,
                 w: data.w as string | undefined,
@@ -329,6 +470,10 @@ export function usePeerRoom(displayName: string) {
               next.set(from, {
                 ...cur,
                 displayName: (data.n as string) ?? cur.displayName,
+                // No `?? cur.username` fallback, for the reason given on the
+                // send side: 'ss' always carries this key, so an absent one
+                // means an older client that has no account to report.
+                username: (data.u as string | null | undefined) ?? null,
                 deviceConnected: (data.dc as boolean) ?? cur.deviceConnected,
                 battery: (data.b as number | null) ?? null,
                 waveformCatalog:
@@ -366,28 +511,44 @@ export function usePeerRoom(displayName: string) {
       const transport = connectRoom({
         code: roomCode,
         peerId: selfId,
+        ticket: dm ? dmTicketProvider(dm) : undefined,
         onStatus: (s: TransportStatus) => setStatus(s),
         onOpen: () => {
           setRoomId(roomCode);
-          // 加入首帧：声明昵称 / 公开标记 / 房间名。重连同样触发 → DO 重新回放历史。
+          if (dm) {
+            // A DM's hello carries the nickname and nothing else. There is no visibility to
+            // seed, no ownership to claim and no key to present — none of those exist for a
+            // conversation between two accounts, and sending them anyway would be asking the
+            // server to ignore them.
+            send({ t: 'hello', name: displayNameRef.current });
+            return;
+          }
+          // First frame on join: declare nickname, plus the settings the group is seeded
+          // with if this is its first hello ever. A reconnect fires this too → the DO
+          // replays history again.
           send({
             t: 'hello',
             name: displayNameRef.current,
             public: joinOptsRef.current.public,
             roomName: joinOptsRef.current.roomName,
+            claim: joinOptsRef.current.claim,
+            // Proof of ownership when this browser created the group. Absent for everyone
+            // else, and the server answers with isOwner:false rather than refusing the join.
+            ownerKey: loadOwnerKey(roomCode) ?? undefined,
           });
         },
         onMessage: handleMessage,
       });
       transportRef.current = transport;
 
-      // presence 心跳（携带昵称，供他人发现与昵称同步）。
+      // presence heartbeat (carries the nickname, so others can discover us and
+      // keep names in sync).
       if (presenceTimerRef.current) clearInterval(presenceTimerRef.current);
       presenceTimerRef.current = window.setInterval(() => {
         send({ t: 'presence', n: displayNameRef.current });
       }, PRESENCE_INTERVAL_MS);
     },
-    [removePeer, send],
+    [removePeer, send, teardown],
   );
 
   const sendMessage = useCallback(
@@ -398,8 +559,6 @@ export function usePeerRoom(displayName: string) {
       const room = roomIdRef.current;
 
       const localMedia: ChatMedia | undefined = media ? buildMedia(room, media) : undefined;
-      // 本地乐观消息自算头衔（DO 不回发给发送者）。
-      const myRole = roleNameOf(selfId, scene, roleAssignments);
 
       setMessages((prev) => [
         ...prev,
@@ -412,7 +571,6 @@ export function usePeerRoom(displayName: string) {
           timestamp: now,
           media: localMedia,
           mentions,
-          senderRole: myRole,
         },
       ]);
 
@@ -436,65 +594,75 @@ export function usePeerRoom(displayName: string) {
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, scene, roleAssignments],
+    [send],
   );
 
-  /** 房主设/改场景（换场景会清空角色认领）。 */
-  const setScene = useCallback(
-    (s: Scene | null) => {
-      send({ t: 'scene', scene: s });
+  /**
+   * Owner adds, edits, or removes the group's agent. The server verifies the key (and falls
+   * back to host authority for a group that never got an owner, so older clients still work).
+   */
+  const setAgent = useCallback(
+    (next: RoomAgent | null) => {
+      const code = roomIdRef.current;
+      send({
+        t: 'agent',
+        agent: next,
+        ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined,
+      });
     },
     [send],
   );
 
-  /** 认领角色（独占）。 */
-  const claimRole = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'claim', roleId });
+  /** Owner shows or hides the group in the lobby. Takes effect there immediately. */
+  const setGroupPublic = useCallback(
+    (next: boolean) => {
+      const code = roomIdRef.current;
+      if (!code) return;
+      send({ t: 'group', public: next, ownerKey: loadOwnerKey(code) ?? undefined });
     },
     [send],
   );
 
-  /** 释放角色。 */
-  const releaseRole = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'release', roleId });
+  const renameGroup = useCallback(
+    (name: string) => {
+      const code = roomIdRef.current;
+      if (!code || !name.trim()) return;
+      send({ t: 'group', roomName: name.trim(), ownerKey: loadOwnerKey(code) ?? undefined });
     },
     [send],
   );
 
-  /** 房主：把某 aiPlayable 角色交给 AI 托管 / 取消托管。 */
-  const assignAi = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'assign-ai', roleId });
-    },
-    [send],
-  );
-  const releaseAi = useCallback(
-    (roleId: string) => {
-      send({ t: 'role', act: 'release-ai', roleId });
-    },
-    [send],
-  );
+  const closeGroup = useCallback(() => {
+    const code = roomIdRef.current;
+    if (!code) return;
+    send({ t: 'group', closed: true, ownerKey: loadOwnerKey(code) ?? undefined });
+    forgetGroup(code);
+  }, [send]);
 
-  /** 房主代某 AI 托管角色发言（agent loop 调用）。服务端校验 host + 该角色确为 AI 托管。 */
+  /**
+   * Host speaks as the room agent (called by the agent loop). The server
+   * verifies the sender is the host and that the room really has an agent.
+   */
   const sendChatAs = useCallback(
     (roleId: string, text: string, mentions?: ChatMention[]) => {
-      const role = scene?.roles.find((r) => r.id === roleId);
+      const name = roleId === ROOM_AGENT_ID ? (agent?.name ?? 'AI') : 'AI';
       send({
         t: 'chat',
         as: `ai:${roleId}`,
         id: shortId(),
-        n: role?.name ?? 'AI',
+        n: name,
         x: text,
         ts: Date.now(),
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, scene],
+    [send, agent],
   );
 
-  /** 房主代某 AI 托管角色发设备指令（agent 工具调用）。_from 由服务端置为 ai:<roleId>。 */
+  /**
+   * Host sends a device command as the room agent (an agent tool call).
+   * _from is set to ai:<roleId> by the server.
+   */
   const sendCommandAs = useCallback(
     (roleId: string, target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
       send({ t: 'cmd', as: `ai:${roleId}`, to: target, a: action, ...params });
@@ -516,7 +684,7 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 高频状态广播：变化时立即发，节流 200ms。 */
+  /** High-frequency state broadcast: sent immediately on change, throttled to 200ms. */
   const broadcastStateFast = useCallback(
     (s: StateFast) => {
       const emit = (state: StateFast) => {
@@ -560,12 +728,17 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
-  /** 低频状态广播：5 秒心跳 + catalog 变化时调用一次。 */
+  /** Low-frequency state broadcast: a 5s heartbeat, plus one call whenever the catalog changes. */
   const broadcastStateSlow = useCallback(
     (s: StateSlow) => {
       send({
         t: 'ss',
         n: s.displayName,
+        // Explicit null when signed out, never undefined: JSON.stringify drops
+        // undefined keys, and the receiver reads a missing key as "no update"
+        // and keeps the previous value — signing out would leave a stale
+        // account handle attached to this peer for the rest of the session.
+        u: s.username ?? null,
         dc: s.deviceConnected,
         b: s.battery,
         ...(s.waveformCatalog ? { cat: s.waveformCatalog } : {}),
@@ -589,32 +762,8 @@ export function usePeerRoom(displayName: string) {
   );
 
   const leave = useCallback(() => {
-    send({ t: 'leave' });
-
-    if (presenceTimerRef.current) {
-      clearInterval(presenceTimerRef.current);
-      presenceTimerRef.current = null;
-    }
-    peerTimersRef.current.forEach((timer) => clearTimeout(timer));
-    peerTimersRef.current.clear();
-    if (fastThrottleRef.current.timer) {
-      clearTimeout(fastThrottleRef.current.timer);
-      fastThrottleRef.current = { lastSent: 0, pending: null, timer: null };
-    }
-
-    transportRef.current?.close();
-    transportRef.current = null;
-    roomIdRef.current = null;
-    setStatus('idle');
-    setError(null);
-    setRoomId(null);
-    setPeers([]);
-    setMembers(new Map());
-    setMessages([]);
-    setSceneState(null);
-    setRoleAssignments({});
-    setHostPeerId(null);
-  }, [send]);
+    teardown();
+  }, [teardown]);
 
   useEffect(() => {
     const timers = peerTimersRef.current;
@@ -626,18 +775,40 @@ export function usePeerRoom(displayName: string) {
     };
   }, []);
 
-  // 把 AI 托管角色合成为伪成员，使其出现在成员列表 + @ 候选中（peerId = "ai:<roleId>"）。
+  // Synthesize the room agent as a pseudo-member (peerId = ROOM_AGENT_SENDER)
+  // so it shows up in the member list and the @-mention candidates.
   const membersWithAi = useMemo(() => {
-    if (!scene) return members;
+    if (!agent) return members;
     const m = new Map(members);
-    for (const [roleId, holder] of Object.entries(roleAssignments)) {
-      if (!holder.startsWith('ai:')) continue;
-      const role = scene.roles.find((r) => r.id === roleId);
-      if (role)
-        m.set(holder, { ...emptyMember(holder), displayName: role.name, roleId, isAi: true });
-    }
+    m.set(ROOM_AGENT_SENDER, {
+      ...emptyMember(ROOM_AGENT_SENDER),
+      displayName: agent.name || 'AI',
+      isAi: true,
+    });
     return m;
-  }, [members, scene, roleAssignments]);
+  }, [members, agent]);
+
+  /**
+   * Show a remote peer's notice as a line in the transcript.
+   *
+   * Local only — never sent back to the room. It exists so the `alert`
+   * command has a non-blocking way to reach the user.
+   */
+  const notifyLocal = useCallback((text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `notice-${crypto.randomUUID()}`,
+        fromSelf: false,
+        senderId: 'system',
+        senderName: '提示',
+        text: body,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
 
   return {
     selfId,
@@ -648,6 +819,7 @@ export function usePeerRoom(displayName: string) {
     peers,
     members: membersWithAi,
     messages,
+    mediaUploadToken,
     join,
     leave,
     sendMessage,
@@ -657,19 +829,33 @@ export function usePeerRoom(displayName: string) {
     broadcastStateSlow,
     setCommandHandler,
     setWaveformHandler,
-    // —— 场景扮演 ——
-    scene,
-    roleAssignments,
+    notifyLocal,
+    // —— Room AI ——
+    agent,
+    setAgent,
     hostPeerId,
     isHost: hostPeerId === selfId,
-    myRoleId: Object.entries(roleAssignments).find(([, p]) => p === selfId)?.[0] ?? null,
-    setScene,
-    claimRole,
-    releaseRole,
-    assignAi,
-    releaseAi,
     sendChatAs,
     sendCommandAs,
+    // —— Direct message ——
+    /** The account on the other end, or null when this is a group. */
+    dmPeerUserId,
+    isDm: dmPeerUserId !== null,
+    // —— Group ——
+    isPublic,
+    groupName,
+    isOwner,
+    setGroupPublic,
+    renameGroup,
+    closeGroup,
+    /**
+     * May this browser change the group's settings and its agent?
+     *
+     * Mirrors the server's rule exactly: the owner key if the group has one, otherwise the
+     * current host — which is what keeps a group created by a client too old to know about
+     * ownership administrable by the people in it.
+     */
+    canManageGroup: isOwner || (!groupOwned && hostPeerId === selfId),
   };
 }
 

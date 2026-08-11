@@ -1,3 +1,4 @@
+import type { SavedPromptPreset } from '@dg-agent/runtime';
 import { createEmbeddedAgentClient, type AgentClient } from '@dg-agent/client';
 import type {
   DeviceClient,
@@ -106,6 +107,11 @@ export function formatProviderConfigError(
 
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
+  /**
+   * Current scene (persona). Comes from the shared scene library, no longer
+   * from the settings blob.
+   */
+  scenes: { selectedId: string; saved: SavedPromptPreset[] };
   device: DeviceClient;
   /** At most one connected auxiliary device of each kind, alongside Coyote. */
   opossum?: OpossumClient;
@@ -125,7 +131,7 @@ export interface CreateBrowserAgentClientOptions {
 }
 
 export function createBrowserAgentClient(options: CreateBrowserAgentClientOptions): AgentClient {
-  const { settings } = options;
+  const { settings, scenes } = options;
   const config = settings;
   const provider = resolveProviderRuntimeSettings(config.provider);
 
@@ -234,8 +240,8 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
       }),
     ),
     buildInstructions: createBuildBrowserInstructions({
-      promptPresetId: settings.promptPresetId,
-      savedPromptPresets: settings.savedPromptPresets,
+      promptPresetId: scenes.selectedId,
+      savedPromptPresets: scenes.saved,
       maxStrengthA: settings.maxStrengthA,
       maxStrengthB: settings.maxStrengthB,
       maxOpossumIntensityA: settings.maxOpossumIntensityA,

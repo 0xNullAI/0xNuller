@@ -1,7 +1,6 @@
 import type { BridgeSettings } from '@dg-agent/bridge';
 import type { ModelContextStrategy } from '@dg-agent/core';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
-import type { SavedPromptPreset } from '@dg-agent/runtime';
 import type { ProviderId, ProviderSettings } from '@0xnullai/llm-providers';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
@@ -26,7 +25,6 @@ export interface BrowserVoiceSettings {
 
 export interface BrowserAppSettings {
   version: 1;
-  themeMode: ThemeMode;
   showSafetyNoticeOnStartup: boolean;
   deviceMode: 'fake' | 'web-bluetooth';
   llmMode: 'fake' | 'provider-http';
@@ -34,7 +32,6 @@ export interface BrowserAppSettings {
   temperature: number;
   permissionMode: BrowserPermissionMode;
   permissionModeExpiresAt?: number;
-  backgroundBehavior: 'stop' | 'keep';
   maxStrengthA: number;
   maxStrengthB: number;
   maxColdStartStrength: number;
@@ -51,14 +48,15 @@ export interface BrowserAppSettings {
   // 0 = disabled. Both caps may be enabled and the tighter one wins.
   maxBurstStrengthRelative: number;
   burstRequiresActiveChannel: boolean;
-  // —— Opossum（负鼠双通道振动控制器）安全设置，与郊狼的同名字段同构 ——
+  // —— Opossum (负鼠双通道振动控制器) safety settings, structurally identical
+  // to the identically-named Coyote fields ——
   maxOpossumIntensityA: number;
   maxOpossumIntensityB: number;
   maxOpossumColdStartIntensity: number;
   maxOpossumAdjustStep: number;
   maxVibrateAdjustCallsPerTurn: number;
   maxVibrateBurstCallsPerTurn: number;
-  // —— 传感器触发引擎（爪印 / 灵猫）阈值 ——
+  // —— Sensor trigger engine (paw-prints / civet-edging) thresholds ——
   civetPressureDeltaThresholdKPa: number;
   sensorTriggerDebounceMs: number;
   safetyStopOnLeave: boolean;
@@ -69,11 +67,6 @@ export interface BrowserAppSettings {
   speechRecognitionLanguage: string;
   speechSynthesisLanguage: string;
   bridge: BridgeSettings;
-  promptPresetId: string;
-  savedPromptPresets: SavedPromptPreset[];
-  // Builtin preset ids the user has hidden from the picker. Hidden presets stay
-  // in code and remain usable if still selected; "恢复默认" clears this list.
-  hiddenBuiltinPresetIds: string[];
   provider: ProviderSettings;
   providerConfigs: ProviderConfigMap;
   voice: BrowserVoiceSettings;

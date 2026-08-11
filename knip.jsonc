@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "ignoreIssues": {
+    // Public compatibility alias: existing DG-MCP consumers still import the old name.
+    "packages/kit/protocol/src/constants.ts": ["duplicates"],
+  },
+  "workspaces": {
+    "android/app": {
+      // Tailwind is resolved by @tailwindcss/vite from CSS rather than a JS import.
+      "ignoreDependencies": ["tailwindcss"],
+    },
+    "apps/chat": {
+      "entry": ["src/types/web-bluetooth.d.ts", "worker-configuration.d.ts"],
+      // `cloudflare:workers` is a runtime virtual module, not an npm package.
+      "ignoreDependencies": ["cloudflare"],
+    },
+    "apps/market": {
+      "entry": ["worker-configuration.d.ts"],
+    },
+    "apps/voice": {
+      "entry": ["scripts/*.mjs"],
+    },
+    "workers/auth": {
+      "entry": ["src/cloudflare-workers-test.ts"],
+      "ignoreDependencies": ["cloudflare"],
+    },
+  },
+}

@@ -1,60 +1,38 @@
+import { MarketImportDialog } from '@0xnullai/ui';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ArrowLeft, Bluetooth, BatteryMedium, Play, Pause, RotateCcw, Upload, Store, Trash2, Zap, Repeat, Repeat1, Shuffle, Timer } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bluetooth,
+  BatteryMedium,
+  Play,
+  Pause,
+  RotateCcw,
+  Upload,
+  Store,
+  Trash2,
+  Zap,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  Timer,
+} from 'lucide-react';
 import type { CmdAction, DeviceCommand, MemberState, WaveformTransfer } from '../lib/protocol';
 import type { MarketItem } from '@0xnullai/market-client';
-import { MarketImportDialog } from './MarketImportDialog';
 
-function useRepeatAction(action: () => void, initialDelay = 400, repeatInterval = 100) {
-  const timerRef = useRef<number | null>(null);
-  const intervalRef = useRef<number | null>(null);
-  const actionRef = useRef(action);
-  // 渲染期刷新「最新值」ref 是有意为之：改到 effect 里会让它晚一个 commit 才更新，
-  // 设备指令可能因此读到过期引用。待专门的 useEffectEvent 重构处理，不在结构性合并里改行为。
-  // eslint-disable-next-line react-hooks/refs
-  actionRef.current = action;
-
-  const stop = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  const start = useCallback(() => {
-    stop();
-    actionRef.current();
-    timerRef.current = window.setTimeout(() => {
-      intervalRef.current = window.setInterval(() => actionRef.current(), repeatInterval);
-    }, initialDelay);
-  }, [stop, initialDelay, repeatInterval]);
-
-  useEffect(() => stop, [stop]);
-
-  return { onPointerDown: start, onPointerUp: stop, onPointerLeave: stop };
-}
-
-function RepeatButton({ onAction, className, children }: {
-  onAction: () => void;
-  className: string;
-  children: React.ReactNode;
-}) {
-  const handlers = useRepeatAction(onAction);
-  return (
-    <button
-      {...handlers}
-      onContextMenu={e => e.preventDefault()}
-      className={className}
-      style={{ touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}
-    >{children}</button>
-  );
-}
 import { parseImportFile, type WaveformDefinition } from '../lib/waveforms';
 import { Popover } from './Popover';
+import { RepeatButton } from './RepeatControls';
 import { SensorCard } from './SensorCard';
 import { OpossumControl } from './OpossumControl';
 
 interface MemberControlProps {
   peerId: string;
   member: MemberState | undefined;
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  onSendCommand: (
+    target: string,
+    action: CmdAction,
+    params?: Omit<DeviceCommand, 'action'>,
+  ) => void;
   onSendWaveform: (targetPeerId: string, transfer: WaveformTransfer) => void;
   onBack: () => void;
   waveforms: WaveformDefinition[];
@@ -69,7 +47,16 @@ interface MemberControlProps {
 const RING_R = 46;
 const RING_C = 2 * Math.PI * RING_R;
 
-function FireCircle({ label, strength, maxStrength, disabled, firing, onStrengthChange, onFireStart, onFireStop }: {
+function FireCircle({
+  label,
+  strength,
+  maxStrength,
+  disabled,
+  firing,
+  onStrengthChange,
+  onFireStart,
+  onFireStop,
+}: {
   label: string;
   strength: number;
   maxStrength: number;
@@ -87,9 +74,18 @@ function FireCircle({ label, strength, maxStrength, disabled, firing, onStrength
       <div className="relative" style={{ width: 110, height: 110 }}>
         {/* Background ring */}
         <svg className="absolute inset-0" viewBox="0 0 110 110">
-          <circle cx="55" cy="55" r={RING_R} fill="none" stroke="var(--surface-border)" strokeWidth="6" />
           <circle
-            cx="55" cy="55" r={RING_R}
+            cx="55"
+            cy="55"
+            r={RING_R}
+            fill="none"
+            stroke="var(--surface-border)"
+            strokeWidth="6"
+          />
+          <circle
+            cx="55"
+            cy="55"
+            r={RING_R}
             fill="none"
             stroke={firing ? 'var(--danger)' : 'var(--accent)'}
             strokeWidth="6"
@@ -97,20 +93,27 @@ function FireCircle({ label, strength, maxStrength, disabled, firing, onStrength
             strokeDasharray={RING_C}
             strokeDashoffset={offset}
             transform="rotate(-90 55 55)"
-            className="transition-all duration-150"
+            className="transition-all duration-[var(--dur)]"
           />
         </svg>
         {/* Center fire button */}
         <button
           disabled={disabled}
-          onPointerDown={e => { e.preventDefault(); if (!disabled) onFireStart(); }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            if (!disabled) onFireStart();
+          }}
           onPointerUp={onFireStop}
-          onPointerLeave={() => { if (firing) onFireStop(); }}
-          onContextMenu={e => e.preventDefault()}
+          onPointerLeave={() => {
+            if (firing) onFireStop();
+          }}
+          onContextMenu={(e) => e.preventDefault()}
           className={`absolute inset-[10px] flex flex-col items-center justify-center rounded-full transition-all select-none ${
-            disabled ? 'opacity-30 cursor-not-allowed' :
-            firing ? 'bg-[var(--danger)] text-white scale-95' :
-            'bg-[var(--bg-elevated)] text-[var(--text)] hover:bg-[var(--bg-soft)] active:scale-95 cursor-pointer'
+            disabled
+              ? 'opacity-30 cursor-not-allowed'
+              : firing
+                ? 'bg-[var(--danger)] text-white scale-95'
+                : 'bg-[var(--bg-elevated)] text-[var(--text)] hover:bg-[var(--bg-soft)] active:scale-95 cursor-pointer'
           }`}
           style={{ touchAction: 'manipulation', WebkitUserSelect: 'none' }}
         >
@@ -123,21 +126,36 @@ function FireCircle({ label, strength, maxStrength, disabled, firing, onStrength
         <RepeatButton
           onAction={() => onStrengthChange(Math.max(0, strength - 1))}
           className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xs text-[var(--text)] hover:border-[var(--accent)] active:scale-90"
-        >−</RepeatButton>
-        <span className="w-8 text-center text-xs tabular-nums font-medium text-[var(--text)]">{strength}</span>
+        >
+          −
+        </RepeatButton>
+        <span className="w-8 text-center text-xs tabular-nums font-medium text-[var(--text)]">
+          {strength}
+        </span>
         <RepeatButton
           onAction={() => onStrengthChange(Math.min(maxStrength, strength + 1))}
           className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xs text-[var(--text)] hover:border-[var(--accent)] active:scale-90"
-        >+</RepeatButton>
+        >
+          +
+        </RepeatButton>
       </div>
     </div>
   );
 }
 
 export function MemberControl({
-  peerId, member, onSendCommand, onSendWaveform, onBack,
-  waveforms, onImportWaveform, onImportMarketWaveform, onRemoveWaveform,
-  isSelf, limitA, limitB,
+  peerId,
+  member,
+  onSendCommand,
+  onSendWaveform,
+  onBack,
+  waveforms,
+  onImportWaveform,
+  onImportMarketWaveform,
+  onRemoveWaveform,
+  isSelf,
+  limitA,
+  limitB,
 }: MemberControlProps) {
   const [waveTab, setWaveTab] = useState<'A' | 'B'>('A');
   const [firePopOpen, setFirePopOpen] = useState(false);
@@ -155,38 +173,56 @@ export function MemberControl({
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // 开火心跳：按住期间每 300ms 发一次 fire_active；松开/卸载时清 interval 并发一次 fire_release 加速回落。
-  // 任何异常（页面关闭、popover 突然 unmount、丢包）：心跳停 → owner 端 reaper 800ms 内自动归零。
+  // Fire heartbeat: while held down, send fire_active every 300ms; on release/unmount clear the
+  // interval and send one fire_release to speed up the fall-off.
+  // On any anomaly (page closed, popover suddenly unmounted, packet loss): the heartbeat stops →
+  // the owner-side reaper zeroes it out automatically within 800ms.
   const heartbeatARef = useRef<number | null>(null);
   const heartbeatBRef = useRef<number | null>(null);
-  const startFireHeartbeat = useCallback((channel: 'A' | 'B', boost: number) => {
-    const ref = channel === 'A' ? heartbeatARef : heartbeatBRef;
-    if (ref.current != null) return;
-    onSendCommand(peerId, 'fire_active', { c: channel, v: boost });
-    ref.current = window.setInterval(() => {
+  const startFireHeartbeat = useCallback(
+    (channel: 'A' | 'B', boost: number) => {
+      const ref = channel === 'A' ? heartbeatARef : heartbeatBRef;
+      if (ref.current != null) return;
       onSendCommand(peerId, 'fire_active', { c: channel, v: boost });
-    }, 300);
-  }, [peerId, onSendCommand]);
-  const stopFireHeartbeat = useCallback((channel: 'A' | 'B') => {
-    const ref = channel === 'A' ? heartbeatARef : heartbeatBRef;
-    if (ref.current == null) return;
-    clearInterval(ref.current);
-    ref.current = null;
-    onSendCommand(peerId, 'fire_release', { c: channel });
-  }, [peerId, onSendCommand]);
-  // 组件卸载时停掉所有心跳并发 release（popover 关闭、用户切换 member、整个 panel unmount 都走这里）
-  useEffect(() => () => {
-    if (heartbeatARef.current != null) { clearInterval(heartbeatARef.current); onSendCommand(peerId, 'fire_release', { c: 'A' }); }
-    if (heartbeatBRef.current != null) { clearInterval(heartbeatBRef.current); onSendCommand(peerId, 'fire_release', { c: 'B' }); }
-  }, [peerId, onSendCommand]);
-  const playlistA       = member?.queueA ?? [];
-  const playlistB       = member?.queueB ?? [];
-  const playModeA       = member?.playModeA ?? 'single';
-  const playModeB       = member?.playModeB ?? 'single';
-  const intervalA       = member?.intervalA ?? 30;
-  const intervalB       = member?.intervalB ?? 30;
-  const currentIndexA   = member?.currentIndexA ?? 0;
-  const currentIndexB   = member?.currentIndexB ?? 0;
+      ref.current = window.setInterval(() => {
+        onSendCommand(peerId, 'fire_active', { c: channel, v: boost });
+      }, 300);
+    },
+    [peerId, onSendCommand],
+  );
+  const stopFireHeartbeat = useCallback(
+    (channel: 'A' | 'B') => {
+      const ref = channel === 'A' ? heartbeatARef : heartbeatBRef;
+      if (ref.current == null) return;
+      clearInterval(ref.current);
+      ref.current = null;
+      onSendCommand(peerId, 'fire_release', { c: channel });
+    },
+    [peerId, onSendCommand],
+  );
+  // On unmount, stop every heartbeat and send a release (popover closed, user switches member,
+  // whole panel unmounted — all of them come through here)
+  useEffect(
+    () => () => {
+      if (heartbeatARef.current != null) {
+        clearInterval(heartbeatARef.current);
+        onSendCommand(peerId, 'fire_release', { c: 'A' });
+      }
+      if (heartbeatBRef.current != null) {
+        clearInterval(heartbeatBRef.current);
+        onSendCommand(peerId, 'fire_release', { c: 'B' });
+      }
+    },
+    [peerId, onSendCommand],
+  );
+  const playlistA = member?.queueA ?? [];
+  const playlistB = member?.queueB ?? [];
+  const playModeA = member?.playModeA ?? 'single';
+  const playModeB = member?.playModeB ?? 'single';
+  const intervalA = member?.intervalA ?? 30;
+  const intervalB = member?.intervalB ?? 30;
+  const currentIndexA = member?.currentIndexA ?? 0;
+  const currentIndexB = member?.currentIndexB ?? 0;
   const [fireStrA, setFireStrA] = useState(0);
   const [fireStrB, setFireStrB] = useState(0);
   const firingA = !!member?.firingA;
@@ -205,13 +241,15 @@ export function MemberControl({
   const currentInterval = waveTab === 'A' ? intervalA : intervalB;
   const activeWaveId = waveTab === 'A' ? member?.waveA : member?.waveB;
 
-  // 乐观本地强度：避免 broadcastState 2 秒延迟导致 strength+1 一直基于旧值
+  // Optimistic local strength: keeps the 2-second broadcastState delay from making every
+  // strength+1 build on a stale value
   const [localStrengthA, setLocalStrengthA] = useState(strengthA);
   const [localStrengthB, setLocalStrengthB] = useState(strengthB);
   const lastLocalAtA = useRef(0);
   const lastLocalAtB = useRef(0);
 
-  // 远端状态变化时，若本地最近无操作（>1.5s）则采纳远端值（开火/归零/他人调整）
+  // When remote state changes, adopt the remote value if there has been no local action recently
+  // (>1.5s) — covers firing, reset to zero, and adjustments made by other people
   useEffect(() => {
     if (Date.now() - lastLocalAtA.current > 1500) setLocalStrengthA(strengthA);
   }, [strengthA]);
@@ -219,31 +257,35 @@ export function MemberControl({
     if (Date.now() - lastLocalAtB.current > 1500) setLocalStrengthB(strengthB);
   }, [strengthB]);
 
-  const adjustStrength = useCallback((channel: 'A' | 'B', delta: number) => {
-    const max = channel === 'A' ? limitA : limitB;
-    const setter = channel === 'A' ? setLocalStrengthA : setLocalStrengthB;
-    const stamp = channel === 'A' ? lastLocalAtA : lastLocalAtB;
-    setter(prev => {
-      const next = Math.max(0, Math.min(max, prev + delta));
-      const sent = next - prev; // 实际发出的 delta（被本地 limit 削过）
-      if (sent === 0) return prev;
-      stamp.current = Date.now();
-      onSendCommand(peerId, 'adjust_strength', { c: channel, v: sent });
-      return next;
-    });
-  }, [peerId, onSendCommand, limitA, limitB]);
+  const adjustStrength = useCallback(
+    (channel: 'A' | 'B', delta: number) => {
+      const max = channel === 'A' ? limitA : limitB;
+      const setter = channel === 'A' ? setLocalStrengthA : setLocalStrengthB;
+      const stamp = channel === 'A' ? lastLocalAtA : lastLocalAtB;
+      setter((prev) => {
+        const next = Math.max(0, Math.min(max, prev + delta));
+        const sent = next - prev; // the delta actually sent (already clamped by the local limit)
+        if (sent === 0) return prev;
+        stamp.current = Date.now();
+        onSendCommand(peerId, 'adjust_strength', { c: channel, v: sent });
+        return next;
+      });
+    },
+    [peerId, onSendCommand, limitA, limitB],
+  );
 
   function toggleWaveform(w: WaveformDefinition) {
     const playlist = waveTab === 'A' ? playlistA : playlistB;
     const isPlaying = waveTab === 'A' ? playingA : playingB;
 
     const nextQueue = playlist.includes(w.id)
-      ? playlist.filter(id => id !== w.id)
+      ? playlist.filter((id) => id !== w.id)
       : [...playlist, w.id];
 
     onSendCommand(peerId, 'set_queue', { c: waveTab, q: nextQueue });
 
-    // 如果当前正在播且新加了波形，立刻切过去（保持原 UX）
+    // If something is playing and a waveform was just added, switch to it immediately
+    // (preserves the original UX)
     if (!playlist.includes(w.id) && isPlaying) {
       onSendCommand(peerId, 'change_wave', { c: waveTab, w: w.id });
     }
@@ -285,10 +327,14 @@ export function MemberControl({
         role="button"
         tabIndex={0}
         onClick={() => toggleWaveform(w)}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWaveform(w); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleWaveform(w);
+          }
+        }}
         className={`wave-card group ${
-          isActive ? 'selected' :
-          inPlaylist ? 'wave-card-queued' : ''
+          isActive ? 'selected' : inPlaylist ? 'wave-card-queued' : ''
         }`}
       >
         <svg viewBox="0 0 40 20" className="wave-icon">
@@ -301,14 +347,20 @@ export function MemberControl({
           />
         </svg>
         <span className="wave-card-name">{w.name}</span>
+        {/* --button-text, not white: the light theme's accent is a pale cyan
+            and white on it measures 1.9:1, so the playlist position was
+            invisible there. */}
         {inPlaylist && (
-          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] text-white font-bold">
+          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] font-bold text-[var(--button-text)]">
             {currentPlaylist.indexOf(w.id) + 1}
           </span>
         )}
         {isSelf && !inPlaylist && (
           <button
-            onClick={e => { e.stopPropagation(); onRemoveWaveform(w.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveWaveform(w.id);
+            }}
             className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--danger)] text-white opacity-0 transition-opacity group-hover:opacity-100"
             title={w.custom ? '删除自定义波形' : '隐藏内置波形'}
           >
@@ -322,7 +374,10 @@ export function MemberControl({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Header */}
-      <div ref={headerRef} className="flex items-center gap-2 border-b border-[var(--surface-border)] px-4 py-3">
+      <div
+        ref={headerRef}
+        className="flex items-center gap-2 border-b border-[var(--surface-border)] px-4 py-3"
+      >
         <button
           onClick={onBack}
           className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
@@ -331,7 +386,9 @@ export function MemberControl({
         </button>
         <div className="flex flex-1 items-center gap-2 min-w-0">
           <p className="truncate text-sm font-medium text-[var(--text)]">{name}</p>
-          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`} />
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${deviceConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
+          />
         </div>
         {deviceConnected && (
           <div className="flex shrink-0 items-center gap-1.5 text-xs text-[var(--text-soft)]">
@@ -368,15 +425,25 @@ export function MemberControl({
               }`}
               title={playingA ? '暂停 A' : playlistA.length > 0 ? '启动 A' : '请先选择 A 通道波形'}
             >
-              {playingA ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+              {playingA ? (
+                <Pause size={16} fill="currentColor" />
+              ) : (
+                <Play size={16} fill="currentColor" />
+              )}
             </button>
             <div className="channel-ring">
-              <span className="text-2xl font-bold tabular-nums text-[var(--text)]">{localStrengthA}</span>
+              <span className="text-2xl font-bold tabular-nums text-[var(--text)]">
+                {localStrengthA}
+              </span>
               <span className="text-[10px] text-[var(--text-faint)]">A:{limitA}</span>
             </div>
             <div className="mt-3 flex items-center gap-3">
-              <RepeatButton onAction={() => adjustStrength('A', -1)} className="strength-btn">−</RepeatButton>
-              <RepeatButton onAction={() => adjustStrength('A', +1)} className="strength-btn">+</RepeatButton>
+              <RepeatButton onAction={() => adjustStrength('A', -1)} className="strength-btn">
+                −
+              </RepeatButton>
+              <RepeatButton onAction={() => adjustStrength('A', +1)} className="strength-btn">
+                +
+              </RepeatButton>
             </div>
           </div>
 
@@ -399,15 +466,25 @@ export function MemberControl({
               }`}
               title={playingB ? '暂停 B' : playlistB.length > 0 ? '启动 B' : '请先选择 B 通道波形'}
             >
-              {playingB ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+              {playingB ? (
+                <Pause size={16} fill="currentColor" />
+              ) : (
+                <Play size={16} fill="currentColor" />
+              )}
             </button>
             <div className="channel-ring">
-              <span className="text-2xl font-bold tabular-nums text-[var(--text)]">{localStrengthB}</span>
+              <span className="text-2xl font-bold tabular-nums text-[var(--text)]">
+                {localStrengthB}
+              </span>
               <span className="text-[10px] text-[var(--text-faint)]">B:{limitB}</span>
             </div>
             <div className="mt-3 flex items-center gap-3">
-              <RepeatButton onAction={() => adjustStrength('B', -1)} className="strength-btn">−</RepeatButton>
-              <RepeatButton onAction={() => adjustStrength('B', +1)} className="strength-btn">+</RepeatButton>
+              <RepeatButton onAction={() => adjustStrength('B', -1)} className="strength-btn">
+                −
+              </RepeatButton>
+              <RepeatButton onAction={() => adjustStrength('B', +1)} className="strength-btn">
+                +
+              </RepeatButton>
             </div>
           </div>
         </div>
@@ -490,7 +567,12 @@ export function MemberControl({
                 <Timer size={12} className="text-[var(--text-faint)]" />
                 <select
                   value={currentInterval}
-                  onChange={e => onSendCommand(peerId, 'set_interval', { c: waveTab, iv: Number(e.target.value) })}
+                  onChange={(e) =>
+                    onSendCommand(peerId, 'set_interval', {
+                      c: waveTab,
+                      iv: Number(e.target.value),
+                    })
+                  }
                   className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-1.5 py-0.5 text-[11px] text-[var(--text)] outline-none"
                 >
                   <option value={10}>10秒</option>
@@ -504,7 +586,7 @@ export function MemberControl({
               </div>
             )}
             <button
-              onClick={() => setFirePopOpen(v => !v)}
+              onClick={() => setFirePopOpen((v) => !v)}
               className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
                 firePopOpen
                   ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
@@ -549,16 +631,18 @@ export function MemberControl({
             </div>
           </div>
 
-          {/* 分组：内置波形常驻 */}
+          {/* Grouping: built-in waveforms are always present */}
           {(() => {
-            const builtins = waveforms.filter(w => !w.custom);
-            const customs  = waveforms.filter(w =>  w.custom);
+            const builtins = waveforms.filter((w) => !w.custom);
+            const customs = waveforms.filter((w) => w.custom);
             return (
               <>
                 <div className="grid grid-cols-4 gap-2">{builtins.map(renderCard)}</div>
                 {customs.length > 0 && (
                   <>
-                    <p className="mt-3 mb-2 text-[11px] text-[var(--text-faint)]">自定义波形（{customs.length}）</p>
+                    <p className="mt-3 mb-2 text-[11px] text-[var(--text-faint)]">
+                      自定义波形（{customs.length}）
+                    </p>
                     <div className="grid grid-cols-4 gap-2">{customs.map(renderCard)}</div>
                   </>
                 )}
@@ -567,30 +651,73 @@ export function MemberControl({
           })()}
         </div>
 
-        {/* ==================== 传感器遥测（只读，不联动，见 lib/commands.ts TODO） ==================== */}
-        {member && <SensorCard peerId={peerId} member={member} onSendCommand={onSendCommand} />}
+        {/* ============ Sensor telemetry (read-only; cross-device linkage requires separate consent) ============ */}
+        {member && (
+          <SensorCard
+            kind={member.sensorKind}
+            connected={!!member.sensorConnected}
+            battery={member.sensorBattery}
+            lastEvent={member.sensorLastEvent}
+            lastValue={member.sensorLastValue}
+            lastEventAt={member.sensorLastEventAt}
+            onPickLedColor={(color) =>
+              onSendCommand(peerId, 'set_led', { kind: member.sensorKind ?? undefined, color })
+            }
+          />
+        )}
 
-        {/* ==================== Opossum 振动控制器 ==================== */}
-        {member && <OpossumControl peerId={peerId} member={member} onSendCommand={onSendCommand} limitA={limitA} limitB={limitB} />}
+        {/* ==================== Opossum vibration controller ==================== */}
+        {member && (
+          <OpossumControl
+            connected={!!member.opossumConnected}
+            battery={member.opossumBattery}
+            intensityA={member.opossumIntensityA ?? 0}
+            intensityB={member.opossumIntensityB ?? 0}
+            limitA={limitA}
+            limitB={limitB}
+            onAdjust={(channel, delta) =>
+              onSendCommand(peerId, 'vibrate_adjust', { c: channel, v: delta })
+            }
+            onBurst={(channel, strength, durationMs) =>
+              onSendCommand(peerId, 'vibrate_burst', { c: channel, v: strength, ms: durationMs })
+            }
+            onStop={() => onSendCommand(peerId, 'vibrate_stop')}
+            onPickLedColor={(color) => onSendCommand(peerId, 'set_led', { kind: 'opossum', color })}
+          />
+        )}
       </div>
 
       <MarketImportDialog
         open={marketOpen}
-        onClose={() => setMarketOpen(false)}
+        onOpenChange={setMarketOpen}
+        type="waveform"
         onImport={onImportMarketWaveform}
       />
 
-      <Popover open={firePopOpen} onOpenChange={setFirePopOpen} title="一键开火" anchorTop={popAnchorTop}>
-        <p className="mb-3 text-center text-xs text-[var(--text-faint)]">按住增加强度，松开恢复</p>
+      <Popover
+        open={firePopOpen}
+        onOpenChange={setFirePopOpen}
+        title="一键开火"
+        anchorTop={popAnchorTop}
+      >
+        <p className="mb-3 text-center text-xs text-[var(--text-faint)]">按住增强，松开恢复</p>
         <div className="flex items-center justify-center gap-8">
           <FireCircle
-            label="A" strength={fireStrA} maxStrength={limitA} disabled={false} firing={firingA}
+            label="A"
+            strength={fireStrA}
+            maxStrength={limitA}
+            disabled={false}
+            firing={firingA}
             onStrengthChange={setFireStrA}
             onFireStart={() => startFireHeartbeat('A', fireStrA)}
             onFireStop={() => stopFireHeartbeat('A')}
           />
           <FireCircle
-            label="B" strength={fireStrB} maxStrength={limitB} disabled={false} firing={firingB}
+            label="B"
+            strength={fireStrB}
+            maxStrength={limitB}
+            disabled={false}
+            firing={firingB}
             onStrengthChange={setFireStrB}
             onFireStart={() => startFireHeartbeat('B', fireStrB)}
             onFireStop={() => stopFireHeartbeat('B')}

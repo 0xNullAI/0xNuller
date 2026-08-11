@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { MarketItem, WaveformContent, MultiSceneContent } from '../../shared/schema';
 import { WaveformPreview } from './WaveformPreview';
 
@@ -11,7 +12,9 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
     <button className="card" onClick={() => onOpen(item)}>
       <div className="card-head">
         <span className="card-icon">
-          {item.type === 'waveform' ? '〰️' : item.icon || (item.type === 'multi-scene' ? '🎬' : '🎭')}
+          {item.type === 'waveform'
+            ? '〰️'
+            : item.icon || (item.type === 'multi-scene' ? '🎬' : '🎭')}
         </span>
         <span className="card-name">{item.name}</span>
         {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}

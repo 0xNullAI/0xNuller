@@ -1,11 +1,8 @@
 {
-  "name": "dg-chat",
+  "name": "0xnullai-chat",
   "private": true,
   "version": "2.6.1",
   "type": "module",
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -15,18 +12,22 @@
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "android:dev": "npm run dev -w @dg-chat/tauri-android",
-    "android:build": "npm run build -w @dg-chat/tauri-android",
-    "tauri:android:init": "npm run tauri:android:init -w @dg-chat/tauri-android",
-    "tauri:android:dev": "npm run tauri:android:dev -w @dg-chat/tauri-android",
-    "tauri:android:build": "npm run tauri:android:build -w @dg-chat/tauri-android"
+    "types": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false",
+    "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check"
   },
   "dependencies": {
+    "@0xnullai/auth": "0.1.0",
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
+    "@0xnullai/sync": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@0xnullai/waveforms": "0.1.0",
     "@dg-kit/core": "^1.13.0",
     "@dg-kit/protocol": "^1.13.0",
+    "@dg-kit/safety": "1.13.0",
     "@dg-kit/transport-webbluetooth": "^1.13.0",
     "@dg-kit/waveforms": "^1.13.0",
     "fflate": "^0.8.2",
@@ -36,22 +37,16 @@
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1",
-    "@eslint/js": "^10.0.1",
+    "@cloudflare/workers-types": "^5.20260809.1",
     "@tailwindcss/vite": "^4.2.4",
-    "@testing-library/jest-dom": "^6.9.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^10.2.1",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.5.0",
     "jsdom": "^29.0.2",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.58.2",
     "vite": "^8.0.9",
     "vitest": "^4.1.5",
     "wrangler": "^4.98.0"

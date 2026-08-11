@@ -1,8 +1,8 @@
+import { cn, useOverlayContainer } from '@0xnullai/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Search, X } from 'lucide-react';
-import { cn } from '@agent/lib/utils';
 import { formatTimestamp, getSessionPreview, getSessionTitle } from '../utils/ui-formatters.js';
 
 interface SessionSearchDialogProps {
@@ -62,10 +62,10 @@ export function SessionSearchDialog({
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/38 backdrop-blur-[1.5px] animate-in fade-in-0 duration-150" />
+      <DialogPrimitive.Portal container={useOverlayContainer()}>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[1.5px] animate-in fade-in-0 duration-[var(--dur)]" />
         <DialogPrimitive.Content
-          className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9vh)] z-50 mx-auto max-w-[500px] overflow-hidden rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-200"
+          className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9dvh)] z-[calc(var(--z-module-overlay)+1)] mx-auto max-w-[500px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-[var(--dur-mid)]"
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             inputRef.current?.focus();
@@ -79,12 +79,12 @@ export function SessionSearchDialog({
               <div className="text-sm font-semibold tracking-[0.01em] text-[var(--text-faint)]">
                 搜索历史对话
               </div>
-              <DialogPrimitive.Close className="scale-90 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+              <DialogPrimitive.Close className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-8 sm:w-8">
                 <X className="h-4 w-4" />
                 <span className="sr-only">关闭</span>
               </DialogPrimitive.Close>
             </div>
-            <div className="flex h-8 items-center gap-2 rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3">
+            <div className="flex h-8 items-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3">
               <Search className="h-4 w-4 shrink-0 text-[var(--text-faint)] mt-[0.1em]" />
               <input
                 ref={inputRef}
@@ -107,7 +107,7 @@ export function SessionSearchDialog({
           </div>
 
           {/* Results */}
-          <div className="max-h-[min(50vh,360px)] overflow-y-auto border-t border-[var(--surface-border)]">
+          <div className="max-h-[min(50dvh,360px)] overflow-y-auto border-t border-[var(--surface-border)]">
             {query.trim() && results.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-[var(--text-faint)]">
                 <Search className="h-7 w-7 opacity-30" />
@@ -126,7 +126,7 @@ export function SessionSearchDialog({
                     key={session.id}
                     type="button"
                     className={cn(
-                      'w-full rounded-[8px] px-3 py-2 text-left transition-colors',
+                      'w-full rounded-[var(--radius-xs)] px-3 py-2 text-left transition-colors',
                       index === activeIndex
                         ? 'bg-[var(--accent-soft)] text-[var(--text)]'
                         : 'text-[var(--text)] hover:bg-[var(--bg-soft)]',

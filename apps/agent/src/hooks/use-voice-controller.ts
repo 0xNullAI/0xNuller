@@ -98,7 +98,7 @@ export function useVoiceController(options: UseVoiceControllerOptions) {
       }
 
       setText((current) => (current ? `${current}\n${normalized}` : normalized));
-      setStatusMessage('语音识别结果已填入输入框，请确认后再发送');
+      setStatusMessage('已填入识别结果，确认后发送');
     },
     [resetVoiceCaptureState, setStatusMessage, setText],
   );

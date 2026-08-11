@@ -3,6 +3,7 @@ import { Bluetooth, BluetoothOff, RotateCcw, Radar, Gauge } from 'lucide-react';
 import { Popover } from './Popover';
 import type { SensorSummary, OpossumSummary } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
+import { isDevicePickerCancelled } from '@dg-kit/core';
 
 interface DeviceSafetyButtonProps {
   connected: boolean;
@@ -12,24 +13,32 @@ interface DeviceSafetyButtonProps {
   limitA: number;
   limitB: number;
   onSetLimit: (channel: 'A' | 'B', value: number) => void;
-  backgroundBehavior: 'stop' | 'keep';
-  onSetBackgroundBehavior: (mode: 'stop' | 'keep') => void;
-  firePolicy: 'sum' | 'max' | 'avg';
-  onSetFirePolicy: (p: 'sum' | 'max' | 'avg') => void;
-  onRestoreDefaults: () => void;
-  /** 已接入的传感器（爪印/灵猫边缘，二选一），未接入为 null。 */
+  /**
+   * How several controllers holding fire at once combine. Optional, and the whole block
+   * disappears when it is left out: in a single-user module there is never more than one
+   * controller, so a chooser between 取最大 / 叠加 / 平均 offers a decision that cannot
+   * arise, in the one panel where every visible control has to mean something.
+   */
+  firePolicy?: 'sum' | 'max' | 'avg';
+  onSetFirePolicy?: (p: 'sum' | 'max' | 'avg') => void;
+  /** Omit in modules without a waveform library, such as Voice. */
+  onRestoreDefaults?: () => void;
+  /** The attached sensor (paw-prints or civet-edging, one of the two), null when none. */
   sensor: SensorSummary | null;
-  /** 已接入的 Opossum 负鼠振动控制器，未接入为 null。 */
+  /** The attached Opossum vibration controller, null when none. */
   opossum: OpossumSummary | null;
   /**
-   * 统一连接入口：打开一个设备选择器，覆盖全部 4 种 DG-Lab 设备
-   * （Coyote 主机 / 爪印传感器 / 灵猫边缘传感器 / Opossum），按设备种类
-   * 自动接入对应槽位。反复点击可依次连接多台设备。Web 端走 Web Bluetooth
-   * 选择器，Tauri Android 端走 plugin-blec 扫描 + 设备选择器——两端行为一致。
+   * Unified connect entry point: opens one device picker covering all 4 kinds of DG-Lab
+   * device (Coyote host / paw-prints sensor / civet-edging sensor / Opossum) and attaches
+   * each into the matching slot by device kind. Click it repeatedly to connect several
+   * devices one after another. On the web it goes through the Web Bluetooth picker, on
+   * Tauri Android through a plugin-blec scan + device picker — both behave the same.
    */
-  onConnectDevice: () => Promise<{ kind: DeviceKind; name: string }>;
-  onDisconnectSensor: () => void;
+  onConnectDevice: () => Promise<unknown>;
+  onDisconnectSensor?: () => void;
   onDisconnectOpossum: () => void;
+  /** Device families this module can actually use. Defaults to every supported family. */
+  supportedDeviceKinds?: readonly DeviceKind[];
 }
 
 const SENSOR_KIND_LABEL: Record<string, string> = {
@@ -38,13 +47,22 @@ const SENSOR_KIND_LABEL: Record<string, string> = {
 };
 
 export function DeviceSafetyButton({
-  connected, deviceName, battery,
+  connected,
+  deviceName,
+  battery,
   onDisconnect,
-  limitA, limitB, onSetLimit,
-  backgroundBehavior, onSetBackgroundBehavior,
-  firePolicy, onSetFirePolicy,
+  limitA,
+  limitB,
+  onSetLimit,
+  firePolicy,
+  onSetFirePolicy,
   onRestoreDefaults,
-  sensor, opossum, onConnectDevice, onDisconnectSensor, onDisconnectOpossum,
+  sensor,
+  opossum,
+  onConnectDevice,
+  onDisconnectSensor,
+  onDisconnectOpossum,
+  supportedDeviceKinds = ['coyote', 'paw-prints', 'civet-edging', 'opossum'],
 }: DeviceSafetyButtonProps) {
   const [open, setOpen] = useState(false);
   const [connectingDevice, setConnectingDevice] = useState(false);
@@ -63,8 +81,8 @@ export function DeviceSafetyButton({
   }, []);
 
   /**
-   * 统一连接入口：一个按钮打开一次蓝牙选择器，覆盖全部 4 种 DG-Lab 设备。
-   * 可反复点击以依次连接 Coyote 主机 + 传感器 + Opossum。
+   * Unified connect entry point: one button opens one Bluetooth picker covering all 4 kinds
+   * of DG-Lab device. Click it repeatedly to connect Coyote host + sensor + Opossum in turn.
    */
   async function handleConnectDevice() {
     setConnectDeviceError(null);
@@ -72,31 +90,44 @@ export function DeviceSafetyButton({
     try {
       await onConnectDevice();
     } catch (err) {
-      setConnectDeviceError(err instanceof Error ? err.message : '连接设备失败');
+      // Closing the picker is a normal action, not a failure worth a red banner.
+      if (!isDevicePickerCancelled(err)) {
+        setConnectDeviceError(err instanceof Error ? err.message : '连接设备失败');
+      }
     } finally {
       setConnectingDevice(false);
     }
   }
 
-  const extraDeviceCount = (sensor ? 1 : 0) + (opossum ? 1 : 0);
+  const extraDeviceCount = (sensor?.connected ? 1 : 0) + (opossum?.connected ? 1 : 0);
+  const connectedDeviceCount = (connected ? 1 : 0) + extraDeviceCount;
+  const anyConnected = connectedDeviceCount > 0;
+  const supportedDeviceText = supportedDeviceKinds
+    .map((kind) => {
+      if (kind === 'coyote') return 'Coyote 主机';
+      if (kind === 'paw-prints') return '爪印传感器';
+      if (kind === 'civet-edging') return '灵猫边缘传感器';
+      return 'Opossum 振动控制器';
+    })
+    .join('、');
 
   return (
     <>
       <button
         ref={btnRef}
-        onClick={() => setOpen(v => !v)}
-        className={`flex h-9 items-center gap-1.5 rounded-[10px] px-2.5 text-xs transition-colors ${
-          connected
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-9 items-center gap-1.5 rounded-[var(--radius-ctl)] px-2.5 text-xs transition-colors ${
+          anyConnected
             ? 'bg-[var(--success-soft)] text-[var(--success)]'
             : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
         }`}
-        title={connected ? `已连接 ${deviceName ?? ''}` : '设备与个人安全设置'}
+        title={anyConnected ? `已连接 ${connectedDeviceCount} 台设备` : '设备与个人安全设置'}
         aria-label="设备与个人安全设置"
       >
-        {connected ? (
+        {anyConnected ? (
           <>
             <Bluetooth className="h-4 w-4" />
-            {battery != null && <span className="hidden sm:inline">{battery}%</span>}
+            {connected && battery != null && <span className="hidden sm:inline">{battery}%</span>}
           </>
         ) : (
           <BluetoothOff className="h-4 w-4" />
@@ -110,10 +141,12 @@ export function DeviceSafetyButton({
 
       <Popover open={open} onOpenChange={setOpen} title="设备与个人安全设置" anchorTop={anchorTop}>
         <div className="space-y-4">
-          {/* 统一连接入口：一个按钮 + 一次设备选择器，覆盖 Coyote 主机 / 爪印传感器 /
-              灵猫边缘传感器 / Opossum 全部 4 种设备，按名字自动识别种类接入对应槽位。
-              Web 端弹出 Web Bluetooth 选择器，Tauri Android 端弹出 plugin-blec 扫描出
-              的设备选择器——两端行为一致，可反复点击以依次连接多台设备。 */}
+          {/* Unified connect entry point: one button + one device picker, covering all 4 kinds
+              of device (Coyote host / paw-prints sensor / civet-edging sensor / Opossum);
+              the kind is recognized from the name and attached into the matching slot.
+              On the web this pops the Web Bluetooth picker, on Tauri Android the picker
+              built from a plugin-blec scan — both behave the same, and repeated clicks
+              connect several devices one after another. */}
           <div className="space-y-2">
             <button
               onClick={handleConnectDevice}
@@ -121,23 +154,24 @@ export function DeviceSafetyButton({
               className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] text-xs font-medium text-[var(--accent)] transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {connected ? <Bluetooth size={14} /> : <BluetoothOff size={14} />}
-              {connectingDevice ? '正在打开选择器…' : '连接设备'}
+              {connectingDevice ? '连接中…' : '连接设备'}
             </button>
             {connectDeviceError && (
               <p className="text-[10px] text-[var(--danger)]">{connectDeviceError}</p>
             )}
             <p className="text-[10px] text-[var(--text-faint)]">
-              自动识别 Coyote 主机、爪印传感器、灵猫边缘传感器、Opossum 振动控制器，
-              点击后从选择器中选取即可；每种设备一次只支持接入一台，重复点击可依次连接多台。
+              自动识别{supportedDeviceText}，点击后从选择器中选取即可；重复点击可依次连接设备。
             </p>
           </div>
 
-          {/* Coyote 主机状态 */}
+          {/* Coyote host status */}
           <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] pt-3">
             <div className="min-w-0">
               <p className="text-xs font-medium text-[var(--text-soft)]">Coyote 主机</p>
               <p className="truncate text-[10px] text-[var(--text-faint)]">
-                {connected ? `${deviceName ?? '已连接'}${battery != null ? ` · 电量 ${battery}%` : ''}` : '未连接'}
+                {connected
+                  ? `${deviceName ?? '已连接'}${battery != null ? ` · 电量 ${battery}%` : ''}`
+                  : '未连接'}
               </p>
             </div>
             {connected && (
@@ -150,7 +184,8 @@ export function DeviceSafetyButton({
             )}
           </div>
 
-          {/* 已接入的传感器 / Opossum 状态（仅在已接入时显示，连接本身走上方统一入口） */}
+          {/* Status of the attached sensor / Opossum (shown only once attached; connecting
+              itself goes through the unified entry point above) */}
           {(sensor || opossum) && (
             <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
               {sensor && (
@@ -158,14 +193,18 @@ export function DeviceSafetyButton({
                   <div className="flex min-w-0 items-center gap-2">
                     <Radar size={14} className="shrink-0 text-[var(--accent)]" />
                     <div className="min-w-0">
-                      <p className="truncate text-xs text-[var(--text)]">{SENSOR_KIND_LABEL[sensor.kind] ?? sensor.kind}</p>
+                      <p className="truncate text-xs text-[var(--text)]">
+                        {SENSOR_KIND_LABEL[sensor.kind] ?? sensor.kind}
+                      </p>
                       <p className="text-[10px] text-[var(--text-faint)]">
-                        {sensor.connected ? `已连接${sensor.battery != null ? ` · 电量 ${sensor.battery}%` : ''}` : '已断开'}
+                        {sensor.connected
+                          ? `已连接${sensor.battery != null ? ` · 电量 ${sensor.battery}%` : ''}`
+                          : '已断开'}
                       </p>
                     </div>
                   </div>
                   <button
-                    onClick={onDisconnectSensor}
+                    onClick={() => onDisconnectSensor?.()}
                     className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--danger)]"
                   >
                     断开
@@ -180,7 +219,9 @@ export function DeviceSafetyButton({
                     <div className="min-w-0">
                       <p className="truncate text-xs text-[var(--text)]">Opossum 振动控制器</p>
                       <p className="text-[10px] text-[var(--text-faint)]">
-                        {opossum.connected ? `已连接${opossum.battery != null ? ` · 电量 ${opossum.battery}%` : ''}` : '已断开'}
+                        {opossum.connected
+                          ? `已连接${opossum.battery != null ? ` · 电量 ${opossum.battery}%` : ''}`
+                          : '已断开'}
                       </p>
                     </div>
                   </div>
@@ -195,80 +236,86 @@ export function DeviceSafetyButton({
             </div>
           )}
 
-          {/* 通道上限 */}
+          {/* Channel limits */}
           <div className="space-y-3 border-t border-[var(--surface-border)] pt-3">
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-soft)]">A 通道上限</span>
-                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">{limitA}</span>
+                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">
+                  {limitA}
+                </span>
               </div>
-              <input type="range" min={0} max={200} value={limitA} onChange={e => onSetLimit('A', Number(e.target.value))} className="w-full" />
+              <input
+                type="range"
+                min={0}
+                max={200}
+                value={limitA}
+                onChange={(e) => onSetLimit('A', Number(e.target.value))}
+                className="w-full"
+              />
             </div>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-soft)]">B 通道上限</span>
-                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">{limitB}</span>
+                <span className="text-xs tabular-nums font-medium text-[var(--accent)]">
+                  {limitB}
+                </span>
               </div>
-              <input type="range" min={0} max={200} value={limitB} onChange={e => onSetLimit('B', Number(e.target.value))} className="w-full" />
+              <input
+                type="range"
+                min={0}
+                max={200}
+                value={limitB}
+                onChange={(e) => onSetLimit('B', Number(e.target.value))}
+                className="w-full"
+              />
             </div>
-            <p className="text-[10px] text-[var(--text-faint)]">硬件级别限制，远程控制无法超过此上限（Opossum 振动强度共用同一套上限）</p>
           </div>
 
-          {/* 后台行为 */}
-          <div className="flex items-center justify-between border-t border-[var(--surface-border)] pt-3">
-            <div>
-              <p className="text-xs font-medium text-[var(--text-soft)]">后台行为</p>
-              <p className="text-[10px] text-[var(--text-faint)]">切换至其他标签页时</p>
+          {/* Backgrounding always stops output now — it is not a choice, so
+              there is nothing here to toggle. */}
+          {/* Multi-controller fire aggregation — only where several people can hold fire at once. */}
+          {onSetFirePolicy && (
+            <div className="border-t border-[var(--surface-border)] pt-3">
+              <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
+              <div className="flex gap-1">
+                {(['max', 'sum', 'avg'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => onSetFirePolicy(p)}
+                    className={`flex-1 rounded-[var(--radius-sm)] py-1.5 text-xs transition-colors ${
+                      firePolicy === p
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                        : 'border border-[var(--surface-border)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
+                    }`}
+                  >
+                    {p === 'max' ? '取最大' : p === 'sum' ? '叠加' : '平均'}
+                  </button>
+                ))}
+              </div>
             </div>
-            <button
-              onClick={() => onSetBackgroundBehavior(backgroundBehavior === 'stop' ? 'keep' : 'stop')}
-              className={`rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-medium transition-colors ${
-                backgroundBehavior === 'stop'
-                  ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
-                  : 'bg-[var(--success-soft)] text-[var(--success)]'
-              }`}
-            >
-              {backgroundBehavior === 'stop' ? '停止输出' : '继续运行'}
-            </button>
-          </div>
+          )}
 
-          {/* 多人开火聚合 */}
-          <div className="border-t border-[var(--surface-border)] pt-3">
-            <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
-            <div className="flex gap-1">
-              {(['max', 'sum', 'avg'] as const).map(p => (
-                <button
-                  key={p}
-                  onClick={() => onSetFirePolicy(p)}
-                  className={`flex-1 rounded-[var(--radius-sm)] py-1.5 text-xs transition-colors ${
-                    firePolicy === p
-                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                      : 'border border-[var(--surface-border)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
-                  }`}
-                >
-                  {p === 'max' ? '取最大' : p === 'sum' ? '叠加' : '平均'}
-                </button>
-              ))}
+          {/* Restore default waveforms */}
+          {onRestoreDefaults && (
+            <div className="border-t border-[var(--surface-border)] pt-3">
+              <button
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      '恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。',
+                    )
+                  ) {
+                    onRestoreDefaults();
+                  }
+                }}
+                className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+              >
+                <RotateCcw size={13} /> 恢复默认波形
+              </button>
+              <p className="mt-1 text-[10px] text-[var(--text-faint)]">清空自定义 + 取消隐藏内置</p>
             </div>
-            <p className="mt-1 text-[10px] text-[var(--text-faint)]">
-              取最大：任意控制者按下都不超过其单人份。叠加：多人累计（受上限封顶）。平均：多人按时反而稀释。
-            </p>
-          </div>
-
-          {/* 恢复默认波形 */}
-          <div className="border-t border-[var(--surface-border)] pt-3">
-            <button
-              onClick={() => {
-                if (window.confirm('恢复默认波形：清空全部自定义波形并取消隐藏所有内置波形。此操作无法撤销。')) {
-                  onRestoreDefaults();
-                }
-              }}
-              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
-            >
-              <RotateCcw size={13} /> 恢复默认波形
-            </button>
-            <p className="mt-1 text-[10px] text-[var(--text-faint)]">清空自定义 + 取消隐藏内置</p>
-          </div>
+          )}
         </div>
       </Popover>
     </>

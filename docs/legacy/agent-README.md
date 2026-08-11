@@ -4,11 +4,11 @@
 
 **用自然语言控制 DG-Lab 郊狼 2.0 / 3.0**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../../LICENSE)
 [![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
 [![Demo](https://img.shields.io/badge/demo-online-success)](https://agent.0xnullai.com)
 
-中文 | [English](./README.en.md)
+中文 | [English](agent-README.en.md)
 
 > 交流 QQ 群：**628954471**
 
@@ -103,10 +103,6 @@ npm run format       # prettier --write
 | [DG-Chat](https://github.com/0xNullAI/DG-Chat) | 多人 P2P 房间，远程控制队友设备            |
 | [DG-MCP](https://github.com/0xNullAI/DG-MCP)   | MCP 服务器，让 Claude Desktop 直接驱动设备 |
 
-## 免责声明
-
-> **本项目仅供学习交流使用，不得用于任何违法或不当用途。使用者应自行承担使用本项目所产生的一切风险和责任，项目作者不对因使用本项目而导致的任何直接或间接损害承担责任。**
-
 ## 协议
 
-[MIT](./LICENSE)
+[MIT](../../LICENSE)

@@ -39,30 +39,29 @@ export function DataTab({ sessions, onExport, onImport }: DataTabProps) {
 
   return (
     <div className="settings-panel-tab-content">
-      <section className="settings-row-card">
-        <h3 className="settings-card-legend">聊天记录</h3>
-        <p className="text-[13px] leading-relaxed text-[var(--text-soft)]">
-          勾选要导出的会话，导出为 zip 压缩包（每个会话一个 JSON 文件，采用 OpenTelemetry GenAI
-          语义约定）。导入支持 zip 或单个 JSON，
-          <span className="text-[var(--text)]">同 id 的会话会被覆盖</span>。
-        </p>
-
+      <section className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] p-3 sm:p-4">
+        <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--surface-border)] pb-3">
+          <h3 className="text-sm font-semibold text-[var(--text)]">聊天记录</h3>
+          {sessions.length > 0 && (
+            <span className="shrink-0 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--text-faint)]">
+              {selectedCount} / {sessions.length}
+            </span>
+          )}
+        </div>
         {sessions.length === 0 ? (
-          <div className="settings-log-empty">暂无会话</div>
+          <div className="py-3 text-center text-sm text-[var(--text-faint)]">暂无聊天记录</div>
         ) : (
           <>
-            <label className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--surface-border)] pb-2 text-[13px] text-[var(--text-soft)]">
+            <label className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-[var(--radius-xs)] px-2 text-[13px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]">
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
-              <span>
-                全选（已选 {selectedCount} / {sessions.length}）
-              </span>
+              <span>全选</span>
             </label>
 
-            <div className="flex max-h-[320px] flex-col gap-0.5 overflow-y-auto">
+            <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto border-y border-[var(--surface-border)] py-1">
               {sessions.map((session) => (
                 <label
                   key={session.id}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-[8px] px-1.5 py-2 transition-colors hover:bg-[var(--bg-soft)]"
+                  className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-[var(--radius-xs)] px-2 transition-colors hover:bg-[var(--bg-soft)]"
                 >
                   <Checkbox
                     checked={selected.has(session.id)}
@@ -80,17 +79,23 @@ export function DataTab({ sessions, onExport, onImport }: DataTabProps) {
           </>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => onExport(selectableIds.filter((id) => selected.has(id)))}
             disabled={selectedCount === 0}
+            className="!inline-flex whitespace-nowrap"
           >
             <Download className="h-4 w-4" />
-            导出所选（{selectedCount}）
+            导出{selectedCount > 0 ? `（${selectedCount}）` : ''}
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            className="!inline-flex whitespace-nowrap"
+          >
             <Upload className="h-4 w-4" />
             导入
           </Button>

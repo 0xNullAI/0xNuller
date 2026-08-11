@@ -1,5 +1,5 @@
 {
-  "name": "dg-voice",
+  "name": "0xnullai-voice",
   "private": true,
   "version": "0.7.5",
   "type": "module",
@@ -11,57 +11,43 @@
     "preview": "vite preview",
     "cf:dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
+    "diagnose:glm": "node scripts/glm-connftest.mjs",
+    "trial:key": "node scripts/gen-trial-key.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "android:dev": "npm run tauri:android:dev -w @dg-voice/tauri-android",
-    "android:build": "npm run tauri:android:build -w @dg-voice/tauri-android",
-    "android:init": "npm run tauri:android:init -w @dg-voice/tauri-android"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@0xnullai/market-client": "0.1.0",
+    "@0xnullai/native": "0.1.0",
     "@0xnullai/permissions": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
+    "@0xnullai/waveforms": "0.1.0",
     "@dg-kit/core": "^1.13.0",
     "@dg-kit/protocol": "^1.13.0",
     "@dg-kit/safety": "1.13.0",
     "@dg-kit/tools": "^1.13.0",
     "@dg-kit/transport-webbluetooth": "^1.13.0",
     "@dg-kit/waveforms": "^1.13.0",
-    "@radix-ui/react-checkbox": "^1.3.3",
-    "@radix-ui/react-dialog": "^1.1.15",
-    "@radix-ui/react-progress": "^1.1.8",
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@radix-ui/react-select": "^2.2.6",
-    "@radix-ui/react-slot": "^1.2.4",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "fflate": "^0.8.2",
-    "idb-keyval": "^6.2.1",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1",
-    "@eslint/js": "^10.0.1",
+    "@cloudflare/workers-types": "^5.20260809.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^10.2.1",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.5.0",
     "jsdom": "^29.0.2",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.58.2",
     "vite": "^8.0.9",
     "vitest": "^4.1.5",
     "wrangler": "^4.98.0"
@@ -71,8 +57,5 @@
     "semi": true,
     "singleQuote": true,
     "trailingComma": "all"
-  },
-  "workspaces": [
-    "apps/*"
-  ]
+  }
 }

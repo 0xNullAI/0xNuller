@@ -1,11 +1,17 @@
 import { Radar, BatteryMedium } from 'lucide-react';
-import type { CmdAction, DeviceCommand, MemberState } from '../lib/protocol';
+import type { SensorKind } from '../lib/protocol';
 import { LedColorPicker } from './LedColorPicker';
 
 interface SensorCardProps {
-  peerId: string;
-  member: MemberState;
-  onSendCommand: (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => void;
+  kind: SensorKind | null | undefined;
+  connected: boolean;
+  battery: number | null | undefined;
+  /** Human-readable summary of the most recent reading. */
+  lastEvent: string | null | undefined;
+  /** Raw numeric value of the last reading (civet-edging pressure in kPa). */
+  lastValue: number | null | undefined;
+  lastEventAt: number | null | undefined;
+  onPickLedColor: (color: number) => void;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -23,18 +29,32 @@ function formatAgo(at: number | null | undefined): string {
 }
 
 /**
- * 只读传感器遥测卡片：爪印传感器展示最近的按钮/触发事件，灵猫边缘传感器展示
- * 压力数值。两者共用 MemberState.sensorKind 区分展示形式。
+ * Read-only sensor telemetry card: the paw-prints sensor shows the most recent button/trigger
+ * event, the civet-edging sensor shows a pressure reading. `kind` picks which presentation
+ * to use.
  *
- * 重要：这里只展示，不触发任何联动 —— 传感器事件是否应该驱动其他人的设备是
- * 一个需要专门同意/授权 UI 的功能，这一版本刻意没做（见 lib/commands.ts 里的
- * TODO 和 DeviceSession.attachSensor 里的同名说明）。
+ * The props are plain readings plus one callback rather than a room MemberState: the same
+ * card renders a member's sensor in Chat and the user's own sensor in Control, and only the
+ * caller knows whether a color change travels over the room or straight to the device.
+ *
+ * Important: this only displays, it triggers no linkage — whether a sensor event should drive
+ * someone else's device is a feature that needs its own consent/authorization UI, and this
+ * version deliberately does not do it (see the matching boundary in
+ * DeviceSession.attachSensor).
  */
-export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
-  if (!member.sensorKind) return null;
+export function SensorCard({
+  kind,
+  connected,
+  battery,
+  lastEvent,
+  lastValue,
+  lastEventAt,
+  onPickLedColor,
+}: SensorCardProps) {
+  if (!kind) return null;
 
-  const label = KIND_LABEL[member.sensorKind] ?? member.sensorKind;
-  const isCivet = member.sensorKind === 'civet-edging';
+  const label = KIND_LABEL[kind] ?? kind;
+  const isCivet = kind === 'civet-edging';
 
   return (
     <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3">
@@ -42,42 +62,44 @@ export function SensorCard({ peerId, member, onSendCommand }: SensorCardProps) {
         <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--text)]">
           <Radar size={15} className="text-[var(--accent)]" />
           {label}
-          <span className={`h-2 w-2 rounded-full ${member.sensorConnected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`} />
+          <span
+            className={`h-2 w-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}`}
+          />
         </div>
-        {member.sensorBattery != null && (
+        {battery != null && (
           <span className="flex items-center gap-0.5 text-xs text-[var(--text-soft)]">
-            <BatteryMedium size={13} /> {member.sensorBattery}%
+            <BatteryMedium size={13} /> {battery}%
           </span>
         )}
       </div>
 
-      {!member.sensorConnected ? (
+      {!connected ? (
         <p className="text-xs text-[var(--text-faint)]">已断开</p>
       ) : isCivet ? (
         <div className="flex items-baseline gap-1.5">
           <span className="text-2xl font-bold tabular-nums text-[var(--text)]">
-            {member.sensorLastValue != null ? member.sensorLastValue.toFixed(1) : '--'}
+            {lastValue != null ? lastValue.toFixed(1) : '--'}
           </span>
           <span className="text-xs text-[var(--text-faint)]">kPa</span>
-          {member.sensorLastEventAt != null && (
-            <span className="ml-auto text-[10px] text-[var(--text-faint)]">{formatAgo(member.sensorLastEventAt)}</span>
+          {lastEventAt != null && (
+            <span className="ml-auto text-[10px] text-[var(--text-faint)]">
+              {formatAgo(lastEventAt)}
+            </span>
           )}
         </div>
       ) : (
         <div>
-          <p className="text-sm text-[var(--text)]">
-            {member.sensorLastEvent ?? '暂无事件'}
-          </p>
-          {member.sensorLastEventAt != null && (
-            <p className="text-[10px] text-[var(--text-faint)]">{formatAgo(member.sensorLastEventAt)}</p>
+          <p className="text-sm text-[var(--text)]">{lastEvent ?? '暂无事件'}</p>
+          {lastEventAt != null && (
+            <p className="text-[10px] text-[var(--text-faint)]">{formatAgo(lastEventAt)}</p>
           )}
         </div>
       )}
 
-      {member.sensorConnected && (
+      {connected && (
         <LedColorPicker
           className="mt-3 border-t border-[var(--surface-border)] pt-2"
-          onPick={color => onSendCommand(peerId, 'set_led', { kind: member.sensorKind ?? undefined, color })}
+          onPick={onPickLedColor}
         />
       )}
     </div>

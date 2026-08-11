@@ -1,8 +1,6 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": {
-    
-    },
+  "compilerOptions": {},
   "include": ["src"],
   "exclude": ["src/self-test.ts", "src/**/*.test.ts"]
 }

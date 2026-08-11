@@ -14,10 +14,25 @@ export default defineConfig({
     projects: [
       // 自带配置的 workspace
       'apps/agent',
+      'apps/web',
       'apps/chat',
+      'apps/market',
+      'apps/control',
       'apps/voice',
       'apps/mcp',
-      'android/agent',
+      'apps/playground',
+      'workers/auth',
+      'android/app',
+
+      // The two proxy Workers are plain JS with no config of their own. Their
+      // request-admission logic shares this lightweight Node project.
+      {
+        test: {
+          name: 'worker-proxies',
+          environment: 'node',
+          include: ['workers/{llm-proxy,speech-proxy}/**/*.{test,spec}.js'],
+        },
+      },
 
       // @dg-kit/*：沿用 DG-Kit 原根配置的 node 环境与 include 范围
       {
@@ -32,7 +47,12 @@ export default defineConfig({
       {
         test: {
           name: 'agent-packages',
-          include: ['packages/agent/*/src/**/*.test.ts'],
+          // Node 26's built-in localStorage shadows jsdom's; the shim is a
+          // no-op where the real one works. Without it, any test in this
+          // project that reaches the shared browser stores dies on
+          // `localStorage is undefined`.
+          setupFiles: ['./test/setup/jsdom-gaps.ts'],
+          include: ['packages/agent/*/src/**/*.test.{ts,tsx}'],
         },
       },
 

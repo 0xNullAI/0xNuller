@@ -8,7 +8,6 @@ interface UseSettingsManagerResult {
   setSettings: React.Dispatch<React.SetStateAction<BrowserAppSettings>>;
   settingsStore: BrowserAppSettingsStore;
   resetSettings: (onDone: () => void) => void;
-  deleteSavedPromptPreset: (presetId: string, onSuccess: (msg: string) => void) => void;
   flushSettingsDraft: () => void;
   clearSessionPermissionOverride: () => void;
 }
@@ -30,18 +29,6 @@ export function useSettingsManager(): UseSettingsManagerResult {
     setSettingsDraft(next);
     setSettings(next);
     onDone();
-  }
-
-  function deleteSavedPromptPreset(presetId: string, onSuccess: (msg: string) => void): void {
-    setSettingsDraft((current) => {
-      const nextSavedPresets = current.savedPromptPresets.filter((item) => item.id !== presetId);
-      return {
-        ...current,
-        promptPresetId: current.promptPresetId === presetId ? 'gentle' : current.promptPresetId,
-        savedPromptPresets: nextSavedPresets,
-      };
-    });
-    onSuccess('已删除该自定义场景');
   }
 
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,7 +72,6 @@ export function useSettingsManager(): UseSettingsManagerResult {
     setSettings,
     settingsStore,
     resetSettings,
-    deleteSavedPromptPreset,
     flushSettingsDraft,
     clearSessionPermissionOverride,
   };

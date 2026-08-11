@@ -10,7 +10,14 @@ interface PopoverProps {
   children: ReactNode;
 }
 
-export function Popover({ open, onOpenChange, title, anchorTop, anchorRight = 8, children }: PopoverProps) {
+export function Popover({
+  open,
+  onOpenChange,
+  title,
+  anchorTop,
+  anchorRight = 8,
+  children,
+}: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -18,7 +25,9 @@ export function Popover({ open, onOpenChange, title, anchorTop, anchorRight = 8,
     const onDocClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onOpenChange(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false);
+    };
     // Defer one tick so the click that opened us doesn't immediately close
     const t = window.setTimeout(() => {
       document.addEventListener('mousedown', onDocClick);

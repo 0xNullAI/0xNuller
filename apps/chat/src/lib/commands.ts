@@ -23,21 +23,33 @@ export interface CommandContext {
   getWaveform?: (id: string) => WaveformDefinition | undefined;
   /** Opossum/LED control surface. Present whenever a local device session exists (even if only a sensor is connected). */
   session?: DeviceSessionContext;
+  /** Show a remote peer's notice without blocking the page. */
+  notify?: (text: string) => void;
 }
 
 export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string {
   const dev = ctx?.device;
   switch (cmd.action) {
     case 'vibrate':
-      if (navigator.vibrate) { navigator.vibrate(500); return '已振动'; }
+      if (navigator.vibrate) {
+        navigator.vibrate(500);
+        return '已振动';
+      }
       return '当前设备不支持振动';
 
     case 'alert':
-      window.alert(cmd.d ?? '');
-      return '已弹窗';
+      // Never window.alert here. This command arrives from another member of
+      // the room, and a native modal blocks all script and interaction until
+      // it is dismissed — including reaching the stop button, while a device
+      // is attached to the user's body. Stop has to stay one action away.
+      ctx?.notify?.(cmd.d ?? '');
+      return '已提示';
 
     case 'bg':
-      if (cmd.d) { document.body.style.backgroundColor = cmd.d; return `背景已改为 ${cmd.d}`; }
+      if (cmd.d) {
+        document.body.style.backgroundColor = cmd.d;
+        return `背景已改为 ${cmd.d}`;
+      }
       return '缺少颜色参数';
 
     case 'shake':
@@ -57,7 +69,9 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
         osc.start();
         osc.stop(a.currentTime + 0.2);
         return '已蜂鸣';
-      } catch { return '无法播放蜂鸣'; }
+      } catch {
+        return '无法播放蜂鸣';
+      }
     }
 
     case 'change_wave':
@@ -70,10 +84,17 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       return `${cmd.c} 通道${cmd.action === 'start' ? '已启动' : '波形已切换为'} ${wf.name}`;
     }
 
-    case 'stop':
-      if (!dev) return '未连接蓝牙设备';
-      dev.stopAll();
+    case 'stop': {
+      // Stop is the one command that must never depend on which device is
+      // attached. It used to bail when no Coyote was present, so on an
+      // Opossum-only session 归零 silently did nothing — while the Opossum
+      // sat right there in the same context object.
+      const stoppedCoyote = Boolean(dev);
+      dev?.stopAll();
+      ctx?.session?.opossumStop();
+      if (!stoppedCoyote && !ctx?.session?.opossumConnected) return '未连接蓝牙设备';
       return '已停止所有输出';
+    }
 
     case 'stop_wave':
       if (!dev) return '未连接蓝牙设备';
@@ -82,10 +103,13 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       return `${cmd.c} 通道已暂停`;
 
     case 'burst':
-      if (!dev) return '未连接蓝牙设备';
-      return '脉冲已发送';
+      // Reported 「脉冲已发送」 while calling nothing at all — success for an
+      // action that never happened. DGLabDevice exposes no burst (the
+      // protocol's runBurst is not surfaced through it), so the honest answer
+      // is to say it is unavailable rather than to keep claiming it worked.
+      return '当前设备不支持脉冲';
 
-    // —— Opossum（负鼠振动控制器） ——
+    // —— Opossum (vibration controller) ——
     case 'vibrate_stop':
       if (!ctx?.session?.opossumConnected) return '未连接 Opossum 设备';
       ctx.session.opossumStop(cmd.c);
@@ -97,10 +121,18 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       ctx.session.opossumBurst(cmd.c, cmd.v, cmd.ms ?? 500);
       return `${cmd.c} 通道脉冲已发送`;
 
-    // —— LED 颜色（paw-prints / civet-edging / opossum 共用） ——
+    // —— LED color (shared by paw-prints / civet-edging / opossum) ——
     case 'set_led': {
       if (!ctx?.session) return '当前没有可设置灯光的设备';
       if (cmd.color == null) return '缺少颜色参数';
+      // Explicit, both ways. An unrecognised or missing kind used to fall
+      // through to the sensor, writing to a device the caller never named.
+      // The Coyote has no settable indicator at all.
+      if (cmd.kind === 'opossum') {
+        // fall through to the opossum branch below
+      } else if (cmd.kind !== 'paw-prints' && cmd.kind !== 'civet-edging') {
+        return '未知的灯光目标';
+      }
       const target = cmd.kind === 'opossum' ? 'opossum' : 'sensor';
       const targetConnected =
         target === 'opossum' ? ctx.session.opossumConnected : ctx.session.sensorConnected;
@@ -118,7 +150,7 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
     case 'set_interval':
     case 'fire_active':
     case 'fire_release':
-      // 由 App.tsx 拦截：owner 端权威状态变更（强度增量 / 队列 / 开火聚合），由 broadcastState* 同步给所有人。
+      // Intercepted by App.tsx: authoritative owner-side state changes (strength delta / queue / firing aggregation), synced to everyone by broadcastState*.
       return '';
 
     default:

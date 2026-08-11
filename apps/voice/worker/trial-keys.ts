@@ -55,14 +55,26 @@ export function resolveTrialKey(env: Env, key: string, now: number): TrialKeyCon
 }
 
 export function isAllowedOrigin(origin: string | null, env: Env): boolean {
-  const allow = env.TRIAL_ALLOWED_ORIGINS?.trim();
-  if (!allow) return true; // unset ⇒ permissive (dev / preview)
+  // An unset allow-list used to mean "allow everyone". It is ordinary config,
+  // not a secret, so a deploy that loses it silently opened the trial quota —
+  // which spends real money — to any origin. Unset now falls through to the
+  // localhost checks below, so `wrangler dev` still works and nothing else does.
+  const allow = env.TRIAL_ALLOWED_ORIGINS?.trim() ?? '';
   if (!origin) return false;
-  // Always allow localhost so `wrangler dev` works without reconfiguring the
-  // prod allow-list.
   try {
     const host = new URL(origin).hostname;
+    // localhost: lets `wrangler dev` work without editing the production allow-list.
     if (host === 'localhost' || host === '127.0.0.1') return true;
+    // tauri.localhost: the Android shell's WebView origin. Without allowing it,
+    // trial voice 403s on phones every single time and the UI only shows
+    // 「连接失败」.
+    //
+    // This doesn't weaken the protection: the Origin header only binds
+    // browsers, and a native program can forge it whenever it likes. The real
+    // gate is the activation key plus TrialSession's usage caps; the allow-list
+    // only blocks the one case of another web page embedding a WebSocket
+    // directly and riding on the quota.
+    if (host === 'tauri.localhost') return true;
   } catch {
     return false;
   }

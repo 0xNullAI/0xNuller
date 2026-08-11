@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_PROXY, saveProxy } from '@0xnullai/settings';
 import { fetchXaiVoices } from './voice-catalog.js';
 
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  saveProxy(DEFAULT_PROXY);
   vi.restoreAllMocks();
 });
 
@@ -48,6 +50,18 @@ describe('fetchXaiVoices', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://api.x.ai/v1/tts/voices',
       expect.objectContaining({ headers: { Authorization: 'Bearer my-key' } }),
+    );
+  });
+
+  it('uses the global proxy for voice API requests', async () => {
+    saveProxy({ enabled: true, httpBaseUrl: 'https://proxy.example/ai' });
+    mockFetchOnce(['ara']);
+
+    await fetchXaiVoices('my-key');
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://proxy.example/ai/api.x.ai/v1/tts/voices',
+      expect.any(Object),
     );
   });
 });

@@ -58,7 +58,7 @@ function StringNode({ value }: { value: string }) {
         "{value.slice(0, VALUE_PREVIEW_LIMIT)}…"
         <span className="ml-1 text-[10px] text-[var(--text-faint)]">({value.length} chars)</span>
       </summary>
-      <pre className="mt-1 ml-4 whitespace-pre-wrap break-words rounded-[4px] bg-[var(--bg-soft)] px-2 py-1 text-[var(--text)]">
+      <pre className="mt-1 ml-4 whitespace-pre-wrap break-words rounded-[var(--radius-2xs)] bg-[var(--bg-soft)] px-2 py-1 text-[var(--text)]">
         {value}
       </pre>
     </details>

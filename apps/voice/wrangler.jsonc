@@ -1,46 +1,31 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dg-voice",
-  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
+  // 保持名称稳定，以保留 TrialSession 数据。
+  "name": "0xnullai-voice",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-01-01",
+  "compatibility_date": "2026-08-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["XAI_API_KEY", "TRIAL_KEYS"] },
 
-  // 生产自定义域：voice.0xnullai.com。
-  "routes": [{ "pattern": "voice.0xnullai.com", "custom_domain": true }],
-  // 保留 workers.dev 预发地址作为备用/调试入口。
+  // 统一外壳下的实时语音体验 API。
+  "routes": [{ "pattern": "0xnullai.com/api/realtime", "zone_name": "0xnullai.com" }],
   "workers_dev": true,
 
-  // 静态托管 + 体验版代理。自带 Key 的 provider（xAI/OpenAI/Azure/智谱）仍浏览器直连、不经过
-  // Worker；只有体验版（trial）的 /api/realtime 走 Worker：`run_worker_first` 让该前缀先进
-  // Worker 代码，其余路径直接由 ASSETS 提供。
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  },
-
-  // 体验版计量 Durable Object：每个激活密钥一个实例，管并发 / 单次时长 / 每日总量。
+  // 体验版会话状态。
   "durable_objects": {
-    "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }]
+    "bindings": [{ "name": "TRIAL_SESSION", "class_name": "TrialSession" }],
   },
-  // SQLite-backed DO (`new_sqlite_classes`, not `new_classes`): required on the
-  // free Workers plan, and the only variant that supports the free tier. Our
-  // TrialSession only uses storage.get/put + alarms, all supported here.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TrialSession"] }],
 
-  // 非机密配置。机密（真 xAI Key、激活密钥表）用 `wrangler secret put` 设置：
-  //   wrangler secret put XAI_API_KEY
-  //   wrangler secret put TRIAL_KEYS   # JSON：{"dgv-trial-xxx":{"dailyCapMinutes":30}}
   "vars": {
     "TRIAL_MODEL": "grok-voice-think-fast-1.0",
     "TRIAL_MAX_SESSION_MINUTES": "20",
     "TRIAL_DEFAULT_DAILY_CAP_MINUTES": "60",
     "TRIAL_DISABLED": "0",
-    "TRIAL_ALLOWED_ORIGINS": "https://voice.0xnullai.com"
+    "TRIAL_ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
   },
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

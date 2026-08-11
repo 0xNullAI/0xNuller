@@ -1,3 +1,4 @@
+import { applyHttpProxy } from '@0xnullai/settings';
 import { z } from 'zod';
 
 export type ProviderId =
@@ -496,6 +497,10 @@ export function providerRequiresUserApiKey(settingsOrId: ProviderSettings | Prov
 
 export function resolveProviderRuntimeSettings(input: ProviderSettings): ProviderRuntimeSettings {
   const normalized = normalizeProviderSettings(input);
+  // The proxy applies here, not at each call site — wiring it per call
+  // site eventually misses a path, and the symptom is "proxy configured
+  // but some requests still go direct", which users can hardly notice.
+  const proxied = (url: string) => applyHttpProxy(url);
   const definition = getProviderDefinition(normalized.providerId);
   const dialect: ProviderDialect = definition?.dialect ?? 'openai-compat';
 
@@ -504,7 +509,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
       ...normalized,
       apiKey: 'free',
       model: FREE_TRIAL_MODEL,
-      baseUrl: FREE_TRIAL_PROXY_URL + '/v1',
+      baseUrl: proxied(FREE_TRIAL_PROXY_URL + '/v1'),
       endpoint: 'chat/completions',
       useStrict: false,
       browserSupported: true,
@@ -514,6 +519,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
 
   return {
     ...normalized,
+    baseUrl: normalized.baseUrl ? proxied(normalized.baseUrl) : normalized.baseUrl,
     browserSupported: isProviderUsableInBrowser(normalized),
     dialect,
     piProviderKey: definition?.piProviderKey,
@@ -570,3 +576,5 @@ function bufferToHex(buf: ArrayBuffer): string {
   }
   return out;
 }
+
+export * from './config-store';

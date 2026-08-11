@@ -1,10 +1,15 @@
-// DG-Voice Worker 入口。
+// Trial (体验版) voice Worker.
 //
-// 两个职责：
-//  1. `/api/realtime` —— 体验版（trial）语音代理。前端用「激活密钥」连到这里，Worker
-//     校验密钥、按 TrialSession Durable Object 计量（并发/单次时长/每日总量），再用只存在
-//     服务端 secret 里的真 xAI Key 打开上游连接、双向转发。真 Key 永不下发前端。
-//  2. 其余路径 —— SPA 静态资源托管（各自带 Key 的 provider 仍走浏览器直连，不经过这里）。
+// One job only: `/api/realtime` — the trial voice proxy. The frontend connects
+// here with an 「激活密钥」, and the Worker validates the key, meters it through
+// the TrialSession Durable Object (concurrency / per-session length / daily
+// total), then opens the upstream connection with the real xAI key that only
+// exists as a server-side secret and forwards both directions. The real key is
+// never handed down to the frontend.
+//
+// BYO-key providers (xAI / OpenAI / Azure / 智谱) connect straight from the
+// browser and never come through here. Static assets are served by the unified
+// shell — this Worker no longer hosts any pages.
 import type { Env } from './env.js';
 import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-keys.js';
 
@@ -16,7 +21,10 @@ export default {
     if (url.pathname === '/api/realtime') {
       return handleTrialRealtime(request, env);
     }
-    return env.ASSETS.fetch(request);
+    // In production the route only hands /api/realtime to this Worker, so this
+    // is unreachable there; the workers.dev preview address does reach it.
+    // Return 404 instead of hitting env.ASSETS — that binding no longer exists.
+    return new Response('not found', { status: 404 });
   },
 };
 

@@ -49,7 +49,7 @@ export function HelpTip({ text, side = 'top' }: HelpTipProps) {
       {open && (
         <span
           role="tooltip"
-          className={`absolute left-1/2 z-50 w-64 max-w-[80vw] -translate-x-1/2 whitespace-normal break-words rounded-[8px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs leading-relaxed text-[var(--text)] shadow-lg ${
+          className={`absolute left-1/2 z-50 w-64 max-w-[80vw] -translate-x-1/2 whitespace-normal break-words rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs leading-relaxed text-[var(--text)] shadow-lg ${
             side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
           }`}
         >

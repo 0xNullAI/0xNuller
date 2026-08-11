@@ -1,20 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Bluetooth, Settings, X } from 'lucide-react';
-import { AppSwitcher, Alert, AlertDescription, Button } from '@0xnullai/ui';
+import { Alert, AlertDescription, ModuleActions, useInShell, useSafetySession } from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
 import { CallPanel } from '@voice/components/CallPanel';
 import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
 import { PermissionModal } from '@0xnullai/ui';
-import {
-  SettingsSidebar,
-  SettingsWorkspace,
-  type SettingsTab,
-} from '@voice/components/settings/SettingsPanel';
-import { ResetSettingsDialog } from '@voice/components/settings/ResetSettingsDialog';
-import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
+import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
+import { isCoyoteOutputActive } from '@dg-kit/core';
+import { DeviceSafetyButton } from '../../chat/src/components/DeviceSafetyButton';
 
 interface AppProps {
   /**
@@ -26,104 +21,149 @@ interface AppProps {
 }
 
 export function App({ transport }: AppProps = {}) {
-  const { session, state, error, connecting: connectingDevice, connectDevice, emergencyStop, disconnectCoyote, disconnectOpossum } =
-    useDeviceSession(transport);
-  const { settings, updateSettings, resetSettings } = useSettings();
+  const inShell = useInShell();
+  // Same as Chat: props win, otherwise take it from the NativeBridge.
+  const native = useNativeBridge();
+  const {
+    session,
+    state,
+    error,
+    connectDevice,
+    emergencyStop,
+    disconnectCoyote,
+    disconnectOpossum,
+  } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
+
+  // Register on the global safety bus — the only data source the shell's
+  // global stop button has.
+  useSafetySession({
+    id: 'voice',
+    label: 'Voice',
+    isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
+    stop: emergencyStop,
+    connect: connectDevice,
+    disconnect: (deviceId) => (deviceId === 'opossum' ? disconnectOpossum() : disconnectCoyote()),
+    onRevoke: async () => {
+      // Hang the call up before stopping output when switching away from
+      // Voice. Stopping output alone leaves the call connected: the model keeps
+      // talking and keeps issuing tool calls — while the user believes they
+      // already left.
+      await call.hangUp('切换到其他模块').catch(() => undefined);
+      await emergencyStop();
+    },
+    devices: () => [
+      ...(state.coyote?.connected
+        ? [
+            {
+              id: 'coyote',
+              kind: 'coyote',
+              name: state.coyote.deviceName ?? '郊狼',
+              connected: true,
+              battery: state.coyote.battery,
+              active: isCoyoteOutputActive(state.coyote),
+              channels: [
+                { label: 'A', value: state.coyote.strengthA, max: state.coyote.limitA },
+                { label: 'B', value: state.coyote.strengthB, max: state.coyote.limitB },
+              ],
+            },
+          ]
+        : []),
+      ...(state.opossum?.connected
+        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        : []),
+    ],
+  });
+  const { settings, updateSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
   // hung 'connecting' used to latch these buttons disabled forever. Connecting
   // a device is always allowed; it gates on its own in-flight flag instead.
-  const callIsActive = call.state.status === 'active';
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
-  const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(true);
-  const [resetDialogOpen, setResetDialogOpen] = useState(false);
-
-  // Theme is applied here (and re-applied when the OS scheme flips in `auto`
-  // mode). Nothing else touches `data-theme` at runtime.
-  useEffect(() => {
-    applyTheme(settings.theme);
-    return subscribeThemeChanges(settings.theme, () => applyTheme(settings.theme));
-  }, [settings.theme]);
-
-  const openSettings = () => {
-    setSettingsMobileNavOpen(true);
-    setSettingsOpen(true);
-  };
-  const closeSettings = () => setSettingsOpen(false);
+  // The theme is held solely by @0xnullai/ui's shared store (one key and one
+  // DOM write point shared across modules). This only subscribes. The old
+  // comment here said "nothing else touches data-theme at runtime" — true for a
+  // standalone deployment, no longer true once mounted inside the unified
+  // shell, which is exactly why it had to be consolidated.
+  useTheme();
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)] text-[var(--text)]">
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
-        <AppSwitcher current="voice" label="DG-Voice" className="text-lg font-semibold" />
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={connectDevice} disabled={connectingDevice}>
-            <Bluetooth className="h-4 w-4" />
-            {connectingDevice ? '连接中…' : '连接设备'}
-          </Button>
-          <Button
-            variant={settingsOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={settingsOpen ? closeSettings : openSettings}
-            disabled={callIsActive}
-            aria-label={settingsOpen ? '关闭设置' : '设置'}
-          >
-            {settingsOpen ? <X className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-          </Button>
-        </div>
-      </header>
-
-      {settingsOpen ? (
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block">
-            <SettingsSidebar
-              tab={settingsTab}
-              onTabChange={setSettingsTab}
-              onMobileNavOpenChange={setSettingsMobileNavOpen}
-              onClose={closeSettings}
-              onRequestReset={() => setResetDialogOpen(true)}
-            />
-          </aside>
-          <SettingsWorkspace
-            tab={settingsTab}
-            onTabChange={setSettingsTab}
-            mobileNavOpen={settingsMobileNavOpen}
-            onMobileNavOpenChange={setSettingsMobileNavOpen}
-            onClose={closeSettings}
-            onRequestReset={() => setResetDialogOpen(true)}
-            settings={settings}
-            updateSettings={updateSettings}
-          />
-        </section>
-      ) : (
-        <>
-          <DeviceStatusBar
-            state={state}
-            coyoteSafety={settings.coyoteSafety}
-            opossumSafety={settings.opossumSafety}
-            onDisconnectCoyote={() => void disconnectCoyote()}
+      {/* Inside the shell we don't draw a header of our own — there is one
+          global bar, and buttons are projected onto it through ModuleActions.
+          In a standalone deployment ModuleActions renders in place and this
+          header stays as it was. */}
+      {/* The module name is expressed by the top of the shell's sidebar; these
+          device controls go into the shell's shared action slot. */}
+      <ModuleActions>
+        {!inShell && (
+          <DeviceSafetyButton
+            connected={state.coyote.connected}
+            deviceName={state.coyote.deviceName ?? null}
+            battery={state.coyote.battery ?? null}
+            onDisconnect={() => void disconnectCoyote()}
+            limitA={settings.coyoteSafety.maxStrengthA}
+            limitB={settings.coyoteSafety.maxStrengthB}
+            onSetLimit={(channel, value) =>
+              updateSettings((current) => ({
+                ...current,
+                coyoteSafety: {
+                  ...current.coyoteSafety,
+                  [channel === 'A' ? 'maxStrengthA' : 'maxStrengthB']: value,
+                },
+              }))
+            }
+            sensor={null}
+            opossum={
+              state.opossum.connected
+                ? {
+                    connected: true,
+                    deviceName: state.opossum.deviceName ?? '负鼠',
+                    battery: state.opossum.battery ?? null,
+                    intensityA: state.opossum.intensityA,
+                    intensityB: state.opossum.intensityB,
+                    lastButtons: null,
+                    lastButtonsAt: null,
+                  }
+                : null
+            }
+            onConnectDevice={connectDevice}
             onDisconnectOpossum={() => void disconnectOpossum()}
+            supportedDeviceKinds={['coyote', 'opossum']}
           />
+        )}
+      </ModuleActions>
 
-          <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <CallPanel
-              call={call.state}
-              providerId={settings.activeProviderId}
-              onStart={() => void call.startCall()}
-              onHangUp={() => void call.hangUp()}
-              onEmergencyStop={() => void emergencyStop()}
-            />
-          </main>
-        </>
+      {!inShell && (
+        <DeviceStatusBar
+          state={state}
+          coyoteSafety={settings.coyoteSafety}
+          opossumSafety={settings.opossumSafety}
+          onDisconnectCoyote={() => void disconnectCoyote()}
+          onDisconnectOpossum={() => void disconnectOpossum()}
+        />
       )}
+
+      {/* justify-center, because before a call starts this whole module is
+              one card. Top-aligned it sat against the device bar with most of
+              a 900px window empty underneath, which reads as a page that
+              stopped loading. min-h-0 keeps it scrollable once a running call
+              makes the content taller than the viewport. */}
+      <main className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto px-4 py-6">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <CallPanel
+          call={call.state}
+          providerId={settings.activeProviderId}
+          onStart={() => void call.startCall()}
+          onHangUp={() => void call.hangUp()}
+          onEmergencyStop={() => void emergencyStop()}
+        />
+      </main>
 
       {call.pendingPermission && (
         <PermissionModal
@@ -137,8 +177,6 @@ export function App({ transport }: AppProps = {}) {
           onAllowSession={() => call.resolvePermission({ type: 'approve-scoped' })}
         />
       )}
-
-      <ResetSettingsDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen} onConfirm={resetSettings} />
     </div>
   );
 }

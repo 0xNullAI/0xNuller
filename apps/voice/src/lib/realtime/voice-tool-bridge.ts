@@ -44,7 +44,8 @@ export class VoiceToolBridge {
     onFunctionCall(call: RealtimeFunctionCall): void;
     onResponseDone(): void;
   } {
-    const { onFunctionCall: originalOnFunctionCall, onResponseDone: originalOnResponseDone } = events;
+    const { onFunctionCall: originalOnFunctionCall, onResponseDone: originalOnResponseDone } =
+      events;
     return {
       onFunctionCall: (call) => {
         originalOnFunctionCall?.(call);

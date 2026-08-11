@@ -20,6 +20,15 @@ coverage
 .dev.vars
 !.dev.vars.example
 
+# 任何形式的密钥都不进仓库。.dev.vars 上面已经挡了，这里补上 .env 家族与
+# 密钥文件本身——一次误提交的 pepper 或 keystore 是撤不回来的，push 之后
+# 它就永远在别人的 clone 和 GitHub 的对象库里了。
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
 # Tauri / Rust（android/*）
 target
 gen

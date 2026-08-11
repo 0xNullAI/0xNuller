@@ -1,7 +1,4 @@
 export interface Env {
-  /** SPA static assets (the built `dist/`). */
-  ASSETS: Fetcher;
-
   /** Per-activation-key metering Durable Object (`TrialSession`). */
   TRIAL_SESSION: DurableObjectNamespace;
 

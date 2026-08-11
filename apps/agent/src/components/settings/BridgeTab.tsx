@@ -1,11 +1,9 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { MessageCircle, Send, type LucideIcon } from 'lucide-react';
-import { Input } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { Input, SettingLabel, SettingSelect, cn } from '@0xnullai/ui';
 
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { parseCommaSeparated } from '../../utils/ui-formatters.js';
-import { SettingLabel, SettingSelect } from '@0xnullai/ui';
 
 function formatCommaSeparatedInput(values: string[]): string {
   return values.join(', ');
@@ -86,14 +84,12 @@ export function BridgeTab({ settingsDraft, setSettingsDraft }: BridgeTabProps) {
           <BridgeConnectorRow
             icon={MessageCircle}
             title="QQ / NapCat"
-            description="通过 OneBot WebSocket 接收和回复 QQ 消息"
             enabled={settingsDraft.bridge.qq.enabled}
             onToggle={() => setQqEnabled(!settingsDraft.bridge.qq.enabled)}
           />
           <BridgeConnectorRow
             icon={Send}
             title="Telegram"
-            description="通过 Telegram Bot 接收和回复消息"
             enabled={settingsDraft.bridge.telegram.enabled}
             onToggle={() => setTelegramEnabled(!settingsDraft.bridge.telegram.enabled)}
           />
@@ -315,13 +311,11 @@ export function BridgeTab({ settingsDraft, setSettingsDraft }: BridgeTabProps) {
 function BridgeConnectorRow({
   icon: Icon,
   title,
-  description,
   enabled,
   onToggle,
 }: {
   icon: LucideIcon;
   title: string;
-  description: string;
   enabled: boolean;
   onToggle: () => void;
 }) {
@@ -339,7 +333,6 @@ function BridgeConnectorRow({
         </span>
         <span className="bridge-connector-copy">
           <span>{title}</span>
-          <small>{description}</small>
         </span>
       </span>
       <span className={cn('bridge-connector-status', enabled && 'enabled')}>

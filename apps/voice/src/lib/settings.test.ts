@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createDefaultSettings, loadSettings, saveSettings, SETTINGS_STORAGE_KEY } from './settings.js';
+import {
+  createDefaultSettings,
+  loadSettings,
+  saveSettings,
+  SETTINGS_STORAGE_KEY,
+} from './settings.js';
 
 describe('settings persistence', () => {
   beforeEach(() => {
@@ -34,10 +39,17 @@ describe('settings persistence', () => {
   });
 
   it('merges a partial/older-shaped stored object over defaults without crashing', () => {
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ theme: 'dark' }));
+    // `theme` is a field that has been removed (the theme was lifted up into
+    // @0xnullai/ui's shared store). Older users still have it in their storage
+    // — an extra key must be ignored, not make the whole settings object fall
+    // back to defaults.
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ theme: 'dark', activeProviderId: 'zhipu' }),
+    );
     const settings = loadSettings();
-    expect(settings.theme).toBe('dark');
-    expect(settings.activeProviderId).toBe('xai');
+    expect(settings.activeProviderId).toBe('zhipu');
     expect(settings.coyoteSafety.maxStrengthA).toBe(50);
+    expect(settings).not.toHaveProperty('theme');
   });
 });

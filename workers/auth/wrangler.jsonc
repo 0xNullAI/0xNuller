@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "0xnullai-auth",
+  "main": "src/index.ts",
+  // 账户与个人数据 API。
+  "routes": [{ "pattern": "0xnullai.com/api/auth/*", "zone_name": "0xnullai.com" }],
+
+  "compatibility_date": "2026-08-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["IP_PEPPER", "DM_TICKET_SECRET"] },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "0xnullai-auth",
+      "database_id": "ed58c339-d33c-41de-9c2d-08673e90d6aa",
+      "migrations_dir": "migrations",
+    },
+  ],
+
+  // 个人相册对象存储。
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "0xnullai-profile-photos" }],
+
+  // 定时处理会话、上传补偿和账户删除任务。
+  "triggers": { "crons": ["17 4 * * *"] },
+
+  "vars": {
+    "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
+  },
+
+  // 向 Chat 同步账户侧的私聊状态变化。
+  "services": [{ "binding": "CHAT", "service": "0xnullai-chat" }],
+  "observability": { "enabled": true },
+}

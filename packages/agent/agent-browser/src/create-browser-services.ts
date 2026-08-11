@@ -22,9 +22,19 @@ import type {
   SessionSnapshot,
 } from '@dg-agent/core';
 import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
-import { WebBluetoothCivetEdgingClient, WebBluetoothDeviceClient, WebBluetoothOpossumClient, WebBluetoothPawPrintsClient } from '@dg-kit/transport-webbluetooth';
+import {
+  WebBluetoothCivetEdgingClient,
+  WebBluetoothDeviceClient,
+  WebBluetoothOpossumClient,
+  WebBluetoothPawPrintsClient,
+} from '@dg-kit/transport-webbluetooth';
 import { BrowserPermissionService } from '@0xnullai/permissions';
-import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
+import type {
+  CivetEdgingClient,
+  OpossumClient,
+  PawPrintsClient,
+  SavedPromptPreset,
+} from '@dg-agent/runtime';
 import {
   BrowserSessionStore,
   BrowserSessionTraceStore,
@@ -42,6 +52,14 @@ export interface PermissionRequestInput {
 
 export interface BrowserServicesOptions {
   settings: BrowserAppSettings;
+  /**
+   * Current scene (persona). **No longer read from settings** — the scene
+   * library moved to the cross-module shared `@0xnullai/scenes`, so it no
+   * longer lives in the same blob as the strength cap (one validation failure
+   * anywhere in that blob would silently reset every safety setting). The
+   * caller reads it from the shared library and passes it in.
+   */
+  scenes: { selectedId: string; saved: SavedPromptPreset[] };
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**
@@ -131,6 +149,10 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.reject(new Error(this.message));
   }
 
+  renameSession(_sessionId: string, _title: string | null): Promise<void> {
+    return Promise.reject(new Error(this.message));
+  }
+
   deleteSession(_sessionId: string): Promise<void> {
     return Promise.resolve();
   }
@@ -176,7 +198,7 @@ function formatInitError(prefix: string, error: unknown): string {
 }
 
 export function createBrowserServices(options: BrowserServicesOptions): BrowserServices {
-  const { settings, onPermissionRequest, resolveBridgeSessionId } = options;
+  const { settings, scenes, onPermissionRequest, resolveBridgeSessionId } = options;
 
   const warnings: string[] = [];
 
@@ -243,6 +265,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
   try {
     client = createBrowserAgentClient({
       settings,
+      scenes,
       device,
       opossum,
       pawPrints,

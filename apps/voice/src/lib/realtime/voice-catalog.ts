@@ -10,7 +10,7 @@
  * assuming one.
  */
 export async function fetchXaiVoices(apiKey: string): Promise<string[]> {
-  const response = await fetch('https://api.x.ai/v1/tts/voices', {
+  const response = await fetch(applyHttpProxy('https://api.x.ai/v1/tts/voices'), {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) {
@@ -48,3 +48,4 @@ function extractVoiceIds(data: unknown): string[] {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+import { applyHttpProxy } from '@0xnullai/settings';

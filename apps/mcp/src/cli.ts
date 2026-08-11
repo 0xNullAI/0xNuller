@@ -137,9 +137,7 @@ async function main(): Promise<void> {
       }
     }
     if (result.loaded.length > 0) {
-      process.stderr.write(
-        `[dg-mcp] loaded ${result.loaded.length} waveform(s) from ${path}\n`,
-      );
+      process.stderr.write(`[dg-mcp] loaded ${result.loaded.length} waveform(s) from ${path}\n`);
     }
   }
 
@@ -149,6 +147,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`[dg-mcp] fatal: ${err instanceof Error ? err.stack ?? err.message : err}\n`);
+  process.stderr.write(
+    `[dg-mcp] fatal: ${err instanceof Error ? (err.stack ?? err.message) : err}\n`,
+  );
   process.exit(1);
 });

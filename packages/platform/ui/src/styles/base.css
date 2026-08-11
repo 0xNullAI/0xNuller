@@ -14,8 +14,11 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  font-family:
-    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif !important;
+  /* Through the token, not a second literal copy of the stack. --font-body
+     is a superset (it also lists system-ui), and having the stack written
+     twice meant the token could be changed with no effect here. The
+     !important went with it: nothing was overriding this. */
+  font-family: var(--font-body);
   color: var(--text);
   background: var(--bg);
   background-color: var(--bg);
@@ -41,14 +44,18 @@ button:disabled {
   opacity: 0.45;
 }
 
-/* 文本类控件的统一外观。
+/* Unified look for text-like inputs.
  *
- * 刻意排除 range / checkbox / radio / file / color——它们是结构完全不同的控件，
- * 给它们套 padding + 边框 + 背景会把滑条变成一个带框的 38px 盒子、把复选框拉成
- * 整行。DG-Agent 此前是靠每个滑条各写一份 CSS Module（appearance:none;
- * background:transparent）手工抵消的，而 DG-Chat 因为没这么做，一直不敢引用这个
- * 文件。问题在这条规则太宽，不该由每个消费方各自绕开。 */
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+ * Deliberately excludes range / checkbox / radio / file / color — those are
+ * structurally different controls, and padding + border + background turns
+ * a slider into a framed 38px box and stretches a checkbox across the row.
+ * DG-Agent used to cancel this per slider with individual CSS Modules
+ * (appearance:none; background:transparent), while DG-Chat never dared
+ * import this file at all. The rule was too broad; consumers should not
+ * each have to work around it. */
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+    [type='color']
+  ),
 select,
 textarea {
   width: 100%;
@@ -59,12 +66,14 @@ textarea {
   padding: 0.92rem 1rem;
   outline: none;
   transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
+    border-color var(--dur) ease,
+    box-shadow var(--dur) ease,
+    background-color var(--dur) ease;
 }
 
-input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):focus,
+input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+    [type='color']
+  ):focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);

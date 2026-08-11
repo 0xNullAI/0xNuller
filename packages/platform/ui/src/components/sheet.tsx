@@ -1,13 +1,18 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
+import { Z_OVERLAY, Z_OVERLAY_PANEL } from '../z-layers';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
 const SheetClose = DialogPrimitive.Close;
 
-const SheetPortal = DialogPrimitive.Portal;
+/** Portals to the shell-provided overlay container; falls back to document.body without a shell (Radix default). */
+function SheetPortal(props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) {
+  return <DialogPrimitive.Portal container={useOverlayContainer()} {...props} />;
+}
 
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -15,16 +20,18 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]', className)}
+    className={cn(
+      `fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[2px]`,
+      className,
+    )}
     {...props}
   />
 ));
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const sheetVariants = {
-  right:
-    'fixed inset-y-0 right-0 z-50 h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none',
-  left: 'fixed inset-y-0 left-0 z-50 h-full w-full max-w-[440px] border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none',
+  right: `fixed inset-y-0 right-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-l border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
+  left: `fixed inset-y-0 left-0 ${Z_OVERLAY_PANEL} h-full w-full max-w-[440px] border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 shadow-xl sm:rounded-none`,
 } as const;
 
 interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
@@ -39,7 +46,7 @@ const SheetContent = React.forwardRef<
     <SheetOverlay />
     <DialogPrimitive.Content ref={ref} className={cn(sheetVariants[side], className)} {...props}>
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-5 inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+      <DialogPrimitive.Close className="absolute right-4 top-5 inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
         <X className="h-4 w-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>

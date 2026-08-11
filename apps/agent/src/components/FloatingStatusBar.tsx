@@ -1,6 +1,5 @@
 import type { UpdateCheckerStatus } from '../services/update-checker.js';
-import { Alert, AlertDescription, Button } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { Alert, AlertDescription, Button, cn } from '@0xnullai/ui';
 
 interface RenderToastItem {
   key: string;
@@ -23,7 +22,7 @@ function formatVoiceStateLabel(voiceState: 'idle' | 'listening' | 'speaking'): s
 
 function getToastMotionClass(phase: 'entering' | 'visible' | 'exiting'): string {
   return cn(
-    'pointer-events-auto flex justify-center transition-all duration-200 ease-out will-change-transform',
+    'pointer-events-auto flex justify-center transition-all duration-[var(--dur-mid)] ease-out will-change-transform',
     phase === 'entering' && 'translate-y-[-8px] scale-[0.98] opacity-0',
     phase === 'visible' && 'translate-y-0 scale-100 opacity-100',
     phase === 'exiting' && 'translate-y-[-8px] scale-[0.98] opacity-0',
@@ -67,7 +66,7 @@ export function FloatingStatusBar({
     <div className="pointer-events-none absolute inset-x-0 top-[3.5rem] z-40 flex justify-center px-3">
       <div className="flex w-full max-w-[800px] flex-col gap-3">
         {voiceMode && (
-          <section className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-1rem)] sm:max-w-[60%] rounded-[12px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3 text-center shadow-[var(--shadow)]">
+          <section className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-1rem)] sm:max-w-[60%] rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3 text-center shadow-[var(--shadow)]">
             <div className="text-sm font-medium text-[var(--text)]">
               语音会话状态：{formatVoiceStateLabel(voiceState)}
             </div>

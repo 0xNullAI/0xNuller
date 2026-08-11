@@ -1,5 +1,10 @@
 import { useCallback, useState } from 'react';
-import { createDefaultSettings, loadSettings, saveSettings, type VoiceSettings } from '@voice/lib/settings';
+import {
+  createDefaultSettings,
+  loadSettings,
+  saveSettings,
+  type VoiceSettings,
+} from '@voice/lib/settings';
 
 /**
  * Settings save on every change (the call screen needs the latest value the

@@ -29,7 +29,13 @@ function opossumState(overrides: Partial<OpossumState> = {}): OpossumState {
 describe('createDefaultPolicyRules (Coyote)', () => {
   it('denies every command when the device is disconnected', () => {
     const engine = new PolicyEngine(createDefaultPolicyRules());
-    const command: DeviceCommand = { type: 'start', channel: 'A', strength: 5, waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] }, loop: true };
+    const command: DeviceCommand = {
+      type: 'start',
+      channel: 'A',
+      strength: 5,
+      waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] },
+      loop: true,
+    };
 
     const decision = engine.evaluate({
       context,
@@ -42,7 +48,13 @@ describe('createDefaultPolicyRules (Coyote)', () => {
 
   it('clamps a cold-start strength above the default cap', () => {
     const engine = new PolicyEngine(createDefaultPolicyRules());
-    const command: DeviceCommand = { type: 'start', channel: 'A', strength: 50, waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] }, loop: true };
+    const command: DeviceCommand = {
+      type: 'start',
+      channel: 'A',
+      strength: 50,
+      waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] },
+      loop: true,
+    };
 
     const decision = engine.evaluate({ context, command, deviceState: coyoteState() });
 
@@ -53,7 +65,13 @@ describe('createDefaultPolicyRules (Coyote)', () => {
 
   it('does not treat a start on an already-running channel as a cold start', () => {
     const engine = new PolicyEngine(createDefaultPolicyRules());
-    const command: DeviceCommand = { type: 'start', channel: 'A', strength: 50, waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] }, loop: true };
+    const command: DeviceCommand = {
+      type: 'start',
+      channel: 'A',
+      strength: 50,
+      waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] },
+      loop: true,
+    };
 
     const decision = engine.evaluate({
       context,
@@ -67,7 +85,13 @@ describe('createDefaultPolicyRules (Coyote)', () => {
 
   it('clamps strength to the user cap independent of the hardware limit', () => {
     const engine = new PolicyEngine(createDefaultPolicyRules({ maxStrengthA: 40 }));
-    const command: DeviceCommand = { type: 'start', channel: 'A', strength: 80, waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] }, loop: true };
+    const command: DeviceCommand = {
+      type: 'start',
+      channel: 'A',
+      strength: 80,
+      waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] },
+      loop: true,
+    };
 
     const decision = engine.evaluate({
       context,
@@ -160,7 +184,13 @@ describe('createDefaultPolicyRules (Coyote)', () => {
     });
     const start = engine.evaluate({
       context,
-      command: { type: 'start', channel: 'A', strength: 5, waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] }, loop: true },
+      command: {
+        type: 'start',
+        channel: 'A',
+        strength: 5,
+        waveform: { id: 'breath', name: '呼吸', frames: [[100, 50]] },
+        loop: true,
+      },
       deviceState: coyoteState(),
     });
 

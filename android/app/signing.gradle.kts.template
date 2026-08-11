@@ -1,0 +1,27 @@
+    // 0XNULLER_RELEASE_SIGNING — injected by scripts/prepare-android-release.mjs.
+    signingConfigs {
+        create("release") {
+            val names = listOf(
+                "DG_AGENT_KEYSTORE",
+                "DG_AGENT_ALIAS",
+                "DG_AGENT_STORE_PASS",
+                "DG_AGENT_KEY_PASS",
+            )
+            val configured = names.filter { !System.getenv(it).isNullOrBlank() }
+            val releaseRequested = gradle.startParameter.taskNames.any {
+                it.contains("release", ignoreCase = true)
+            }
+            require(configured.isEmpty() || configured.size == names.size) {
+                "Android signing variables must be configured all together: ${names.joinToString()}"
+            }
+            require(!releaseRequested || configured.size == names.size) {
+                "release APK requested without all Android signing variables"
+            }
+            if (configured.size == names.size) {
+                storeFile = file(System.getenv("DG_AGENT_KEYSTORE")!!)
+                storePassword = System.getenv("DG_AGENT_STORE_PASS")
+                keyAlias = System.getenv("DG_AGENT_ALIAS")
+                keyPassword = System.getenv("DG_AGENT_KEY_PASS")
+            }
+        }
+    }

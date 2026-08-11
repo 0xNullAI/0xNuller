@@ -1,41 +1,39 @@
-# DG-Agent Cloudflare Workers
+# 0xNuller Cloudflare 服务
 
-Replaces the old `aliyun-fc/` proxy (delete it once `llm-proxy` is deployed and
-verified).
+0xNuller 6.0.0 使用 Cloudflare Workers、Durable Objects、D1、R2 与 Static Assets。每项服务
+有独立配置和最小权限边界，统一通过主站的具体路径提供 API。
 
-| Worker                       | Hosted by 0xNullAi?         | Purpose                 | Upstream                               | Domain             |
-| ---------------------------- | --------------------------- | ----------------------- | -------------------------------------- | ------------------ |
-| `llm-proxy` (`dg-llm-proxy`) | **Yes** — free tier         | LLM text relay          | `aihub.071129.xyz` (OpenAI-compatible) | `llm.0xnullai.com` |
-| `speech-proxy`               | **No** — self-host template | DashScope ASR/TTS relay | `wss://dashscope.aliyuncs.com`         | (your own)         |
+| 服务         | 目录                                      | 用途                             |
+| ------------ | ----------------------------------------- | -------------------------------- |
+| Web          | [`apps/web`](../apps/web/README.md)       | 主站 SPA 与静态资源              |
+| Auth         | [`workers/auth`](./auth/README.md)        | 账户、资料、联系人、同步与角色   |
+| Chat         | [`apps/chat`](../apps/chat/README.md)     | 房间、私聊、WebSocket 与媒体     |
+| Market       | [`apps/market`](../apps/market/README.md) | 场景和波形目录、账户所有权与审核 |
+| Voice        | [`apps/voice`](../apps/voice/README.md)   | 实时语音会话                     |
+| LLM Proxy    | [`workers/llm-proxy`](./llm-proxy)        | 托管文本模型中继                 |
+| Speech Proxy | [`workers/speech-proxy`](./speech-proxy)  | 可选的自托管语音中继模板         |
 
-## llm-proxy — hosted free LLM tier
-
-The browser's "免费体验" provider points at `https://llm.0xnullai.com`
-(`packages/providers-catalog/src/index.ts`).
-
-```bash
-cd workers/llm-proxy
-wrangler deploy
-wrangler secret put PROXY_API_KEY          # aihub.071129.xyz key
-# Dashboard: bind llm.0xnullai.com (Settings > Domains & Routes > Add custom domain)
-```
-
-Rate limit is per-IP, 10/min, in-memory (best-effort per isolate). For strict
-global limits add a KV namespace or the Workers Rate Limiting binding.
-
-## speech-proxy — self-host template (not hosted)
-
-DashScope no longer has a free tier, so there is **no shared speech relay**. The
-default voice mode is the browser's native Web Speech (free, zero config) — keep
-recommending that. Users who register their own DashScope account and want
-DashScope voice fill in the app's voice "API 密钥" + "代理地址", pointing the
-proxy URL at their own deployment of this template. The user's key flows in via
-`?api_key=` (no server secret required), so they can deploy it as-is:
+## 本地验证
 
 ```bash
-cd workers/speech-proxy
-wrangler deploy
-# Then set the app's voice 代理地址 to your worker URL.
+npm install
+npm run check:routes
+npm run verify:data
+npm run typecheck
+npm run test
+npm run build
 ```
 
-Keys live as request params / Worker secrets, never in the repo.
+各服务的 Wrangler 配置位于自己的目录。生产发布使用版本上传、预览验证和显式流量切换；不要
+把静态资源预览当作完整 API 预览，因为预览地址不会自动继承主域路径路由。
+
+## 发布原则
+
+- 先只读检查远端资源、迁移账本和绑定，再备份 D1。
+- 按 [部署文档](../docs/deploy.md) 的依赖顺序迁移和部署。
+- secrets 只写入 Cloudflare，不写入 Git、日志或文档。
+- 兼容期保留 `agent.`、`voice.`、`chat.`、`market.` 与 `wiki.` 旧子域。
+- 只有主站 `0xnullai.com` 与 `www` 切换到 6.0.0。
+
+`workers/speech-proxy` 是用户自托管模板，不是共享生产服务。DG-Kit 与 DG-MCP 的对外迁移仍
+等待单独确认。

@@ -21,6 +21,7 @@ import type {
   ToolCall,
   ToolExecutionPlan,
 } from '@dg-kit/core';
+import { DEVICE_KIND_DISPLAY_NAME } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { ToolRegistry } from '@dg-kit/tools';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
@@ -45,13 +46,6 @@ export interface ToolExecutionResult {
   toolCallId: string;
   output: string;
 }
-
-const DEVICE_KIND_DISPLAY_NAME: Record<DeviceKind, string> = {
-  coyote: '郊狼',
-  'paw-prints': '爪印',
-  'civet-edging': '灵猫',
-  opossum: '负鼠',
-};
 
 const SHOCK_TOOL_NAMES = new Set([
   'shock_start',
@@ -81,7 +75,10 @@ const VIBRATE_TOOL_NAMES = new Set([
  * `executeSetIndicatorColor` denies with a clear reason rather than
  * crashing on a client that doesn't exist.
  */
-function resolveRequiredDeviceKind(toolName: string, args: Record<string, unknown>): DeviceKind | null {
+function resolveRequiredDeviceKind(
+  toolName: string,
+  args: Record<string, unknown>,
+): DeviceKind | null {
   if (SHOCK_TOOL_NAMES.has(toolName)) return 'coyote';
   if (VIBRATE_TOOL_NAMES.has(toolName)) return 'opossum';
   if (toolName === 'set_indicator_color') {
@@ -263,7 +260,7 @@ export class ToolExecutor {
       // paw-prints/civet-edging aren't wired up in DG-Voice at all (see
       // device-session.ts) — deny with a clear reason instead of touching a
       // client that doesn't exist.
-      return this.deny(`DG-Voice 不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
+      return this.deny(`语音通话不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
     }
     const client = this.options.session.opossum;
     try {
@@ -319,7 +316,11 @@ export class ToolExecutor {
     command: OpossumCommand,
   ): Promise<
     | { type: 'deny'; reason: string }
-    | { type: 'ok' | 'require-confirm'; command: OpossumCommand; clampedFrom?: { command: OpossumCommand; reason: string } }
+    | {
+        type: 'ok' | 'require-confirm';
+        command: OpossumCommand;
+        clampedFrom?: { command: OpossumCommand; reason: string };
+      }
   > {
     let current = command;
     let clampedFrom: { command: OpossumCommand; reason: string } | undefined;

@@ -1,30 +1,50 @@
-import { ItemPatchSchema, BatchUploadSchema, UploadSchema } from '../shared/schema';
+import {
+  ItemPatchSchema,
+  BatchUploadSchema,
+  ModerationPatchSchema,
+  UploadSchema,
+} from '../shared/schema';
 import type { ItemPatchRow, InsertItem } from './db';
 import {
-  adminDelete,
-  getEditKeyHash,
+  deleteItem,
   getItem,
   incrementDownloads,
   incrementViews,
   insertItem,
   insertItems,
+  listAdminItems,
   listItems,
   recentUploadCount,
-  reportItem,
+  setItemHidden,
   updateItemMeta,
 } from './db';
+import { hashSourceIp } from './security';
 
-interface Env {
-  ASSETS: Fetcher;
-  DB: D1Database;
-  ADMIN_KEY: string;
+interface MarketAuthService extends Fetcher {
+  claimMarketItems(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemIds: string[],
+    proof: 'market-upload',
+  ): Promise<'ok' | 'unauthorized' | 'conflict'>;
+  marketItemAccess(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemId: string,
+  ): Promise<'admin' | 'owner' | 'user' | 'unauthorized'>;
+  marketAccountAccess(credentials: {
+    authorization: string | null;
+    cookie: string | null;
+  }): Promise<'admin' | 'user' | 'unauthorized'>;
 }
 
-// DG-Agent 部署在 GitHub Pages（不同源），需要开放 CORS 供其拉取/导入。
+type Env = Omit<Cloudflare.Env, 'AUTH'> & {
+  AUTH: MarketAuthService;
+};
+
+// Compatible clients on other origins can browse and import the public catalog.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Key,X-Edit-Key',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
 };
 
 function json(data: unknown, status = 200): Response {
@@ -38,40 +58,36 @@ function err(message: string, status: number): Response {
   return json({ error: message }, status);
 }
 
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+class MarketRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
 }
 
-// 用 SHA-256 对来源 IP + 盐做哈希，避免明文存 IP。
-async function hashIp(ip: string, salt: string): Promise<string> {
-  return (await sha256Hex(`${ip}:${salt}`)).slice(0, 32);
-}
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_LIMIT = 50; // at most 50 items per source per hour (batches included, counted per item)
 
-// 编辑口令哈希：加 ADMIN_KEY 作 pepper，避免明文存口令、也防跨条目彩虹表。
-async function hashEditKey(key: string, env: Env): Promise<string> {
-  return sha256Hex(`${key}:${env.ADMIN_KEY || 'dg-market'}`);
+function requiredSecret(value: string | undefined, name: string): string {
+  if (!value) throw new Error(`${name} is not configured`);
+  return value;
 }
-
-const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 小时
-const UPLOAD_LIMIT = 50; // 每来源每小时最多 50 条（含批量，按条数计）
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    if (!pathname.startsWith('/api/')) {
-      // 非 API 请求交给 Static Assets（前端 SPA）。
-      return env.ASSETS.fetch(request);
-    }
+    if (!pathname.startsWith('/api/')) return err('接口不存在', 404);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
     }
 
     try {
-      // GET /api/items —— 列表 / 搜索
+      // GET /api/items —— list / search
       if (pathname === '/api/items' && request.method === 'GET') {
         const typeParam = url.searchParams.get('type');
         const type =
@@ -86,7 +102,29 @@ export default {
         return json({ items });
       }
 
-      // GET /api/items/:id —— 详情
+      if (pathname === '/api/items/admin' && request.method === 'GET') {
+        await requireMarketAdmin(request, env);
+        const requestedStatus = url.searchParams.get('status');
+        const status = requestedStatus === 'hidden' ? 'hidden' : 'all';
+        const q = url.searchParams.get('q')?.trim() || undefined;
+        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const items = await listAdminItems(env.DB, { status, q, limit, offset });
+        return json({ items, nextOffset: items.length === limit ? offset + limit : null });
+      }
+
+      const moderationMatch = pathname.match(/^\/api\/items\/([\w-]+)\/moderation$/);
+      if (moderationMatch && request.method === 'PATCH') {
+        await requireMarketAdmin(request, env);
+        const body = await request.json().catch(() => null);
+        const parsed = ModerationPatchSchema.safeParse(body);
+        if (!parsed.success) return err('数据校验失败', 400);
+        const updated = await setItemHidden(env.DB, moderationMatch[1]!, parsed.data.hidden);
+        if (!updated) return err('未找到该条目', 404);
+        return json({ ok: true });
+      }
+
+      // GET /api/items/:id —— detail
       const detailMatch = pathname.match(/^\/api\/items\/([\w-]+)$/);
       if (detailMatch && request.method === 'GET') {
         const item = await getItem(env.DB, detailMatch[1]!);
@@ -94,68 +132,77 @@ export default {
         return json({ item });
       }
 
-      // PATCH /api/items/:id —— 编辑元数据
-      // 未设口令的条目公开可编辑；设了口令则需 X-Edit-Key（管理员 X-Admin-Key 可覆盖）。
+      // PATCH /api/items/:id —— account owner or account administrator edits metadata.
       if (detailMatch && request.method === 'PATCH') {
         return await handleEditPatch(request, env, detailMatch[1]!);
       }
 
-      // POST /api/items —— 上传
+      const accessMatch = pathname.match(/^\/api\/items\/([\w-]+)\/access$/);
+      if (accessMatch && request.method === 'GET') {
+        const access = await marketAccess(request, env, accessMatch[1]!);
+        return json({
+          canEdit: access === 'owner' || access === 'admin',
+          canDelete: access === 'owner' || access === 'admin',
+        });
+      }
+
+      if (detailMatch && request.method === 'DELETE') {
+        const access = await marketAccess(request, env, detailMatch[1]!);
+        if (access === 'unauthorized') return err('未登录', 401);
+        if (access !== 'owner' && access !== 'admin') return err('无权限', 403);
+        await deleteItem(env.DB, detailMatch[1]!);
+        return json({ ok: true });
+      }
+
+      // POST /api/items —— upload
       if (pathname === '/api/items' && request.method === 'POST') {
         return await handleUpload(request, env);
       }
 
-      // POST /api/items/batch —— 批量上传（一次多条）
+      // POST /api/items/batch —— batch upload (several items at once)
       if (pathname === '/api/items/batch' && request.method === 'POST') {
         return await handleBatchUpload(request, env);
       }
 
-      // POST /api/items/:id/download —— 下载计数
+      // POST /api/items/:id/download —— download counter
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
         await incrementDownloads(env.DB, dlMatch[1]!);
         return json({ ok: true });
       }
 
-      // POST /api/items/:id/view —— 浏览计数
+      // POST /api/items/:id/view —— view counter
       const viewMatch = pathname.match(/^\/api\/items\/([\w-]+)\/view$/);
       if (viewMatch && request.method === 'POST') {
         await incrementViews(env.DB, viewMatch[1]!);
         return json({ ok: true });
       }
 
-      // POST /api/items/:id/report —— 举报
-      const reportMatch = pathname.match(/^\/api\/items\/([\w-]+)\/report$/);
-      if (reportMatch && request.method === 'POST') {
-        await reportItem(env.DB, reportMatch[1]!);
-        return json({ ok: true });
-      }
-
-      // 管理员删除 /api/admin/items/:id（口令 X-Admin-Key）
-      const adminMatch = pathname.match(/^\/api\/admin\/items\/([\w-]+)$/);
-      if (adminMatch && request.method === 'DELETE') {
-        if (!env.ADMIN_KEY || request.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return err('无权限', 403);
-        await adminDelete(env.DB, adminMatch[1]!);
-        return json({ ok: true });
-      }
-
       return err('接口不存在', 404);
-    } catch (e) {
-      return err(`服务器错误：${(e as Error).message}`, 500);
+    } catch (error) {
+      if (error instanceof MarketRequestError) return err(error.message, error.status);
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'market_request_failed',
+          method: request.method,
+          path: pathname,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return err('服务器错误', 500);
     }
   },
 } satisfies ExportedHandler<Env>;
 
 type UploadOne = ReturnType<typeof UploadSchema.parse>;
 
-// 校验通过的单条 payload → 入库行（含可选编辑口令哈希）。
+// A validated single payload -> a database row. Ownership lives in Auth.
 async function toInsert(
   payload: UploadOne,
   ipHash: string,
   createdAt: number,
-  env: Env,
 ): Promise<InsertItem> {
-  const editKey = payload.editKey?.trim();
   return {
     id: crypto.randomUUID(),
     type: payload.type,
@@ -167,8 +214,36 @@ async function toInsert(
     content: payload.content,
     ipHash,
     createdAt,
-    editKeyHash: editKey ? await hashEditKey(editKey, env) : undefined,
   };
+}
+
+interface ClaimCredentials {
+  authorization: string | null;
+  cookie: string | null;
+}
+
+function credentialsFrom(request: Request): ClaimCredentials {
+  return {
+    authorization: request.headers.get('Authorization'),
+    cookie: request.headers.get('Cookie'),
+  };
+}
+
+function hasCredentials(credentials: ClaimCredentials): boolean {
+  return !!credentials.authorization || !!credentials.cookie;
+}
+
+export async function recordVerifiedClaims(
+  env: { AUTH: Pick<MarketAuthService, 'claimMarketItems'> },
+  request: Request,
+  itemIds: string[],
+): Promise<'claimed'> {
+  const credentials = credentialsFrom(request);
+  if (!hasCredentials(credentials)) throw new MarketRequestError('请先登录', 401);
+  const result = await env.AUTH.claimMarketItems(credentials, itemIds, 'market-upload');
+  if (result === 'unauthorized') throw new MarketRequestError('登录已失效', 401);
+  if (result === 'conflict') throw new MarketRequestError('条目归属冲突', 409);
+  return 'claimed';
 }
 
 async function handleUpload(request: Request, env: Env): Promise<Response> {
@@ -185,7 +260,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   }
 
   const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
-  const ipHash = await hashIp(ip, env.ADMIN_KEY || 'dg-market');
+  const ipHash = await hashSourceIp(ip, requiredSecret(env.MARKET_IP_PEPPER, 'MARKET_IP_PEPPER'));
 
   const now = Date.now();
   const recent = await recentUploadCount(env.DB, ipHash, now - UPLOAD_WINDOW_MS);
@@ -193,9 +268,17 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     return err(`上传过于频繁，请稍后再试（每小时最多 ${UPLOAD_LIMIT} 条）`, 429);
   }
 
-  const row = await toInsert(parsed.data, ipHash, now, env);
+  const row = await toInsert(parsed.data, ipHash, now);
   await insertItem(env.DB, row);
-  return json({ ok: true, id: row.id }, 201);
+  try {
+    const ownership = await recordVerifiedClaims(env, request, [row.id]);
+    return json({ ok: true, id: row.id, ownership }, 201);
+  } catch (error) {
+    // An authenticated upload must not succeed without its durable ownership record.
+    // Delete the Market row so a retry is safe and does not strand an unclaimable item.
+    await deleteItem(env.DB, row.id);
+    throw error;
+  }
 }
 
 async function handleBatchUpload(request: Request, env: Env): Promise<Response> {
@@ -215,7 +298,7 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
   const payloads = parsed.data;
 
   const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
-  const ipHash = await hashIp(ip, env.ADMIN_KEY || 'dg-market');
+  const ipHash = await hashSourceIp(ip, requiredSecret(env.MARKET_IP_PEPPER, 'MARKET_IP_PEPPER'));
 
   const now = Date.now();
   const recent = await recentUploadCount(env.DB, ipHash, now - UPLOAD_WINDOW_MS);
@@ -226,24 +309,47 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
     );
   }
 
-  // 同一批次共用一个时间戳基准，按序错开 1ms 以保留上传顺序。
-  const rows = await Promise.all(payloads.map((p, i) => toInsert(p, ipHash, now + i, env)));
+  // The whole batch shares one timestamp baseline, staggered 1ms apart in order to preserve
+  // the upload order.
+  const rows = await Promise.all(payloads.map((p, i) => toInsert(p, ipHash, now + i)));
   await insertItems(env.DB, rows);
-  return json({ ok: true, inserted: rows.length, ids: rows.map((r) => r.id) }, 201);
+  try {
+    const ownership = await recordVerifiedClaims(
+      env,
+      request,
+      rows.map((r) => r.id),
+    );
+    return json({ ok: true, inserted: rows.length, ids: rows.map((r) => r.id), ownership }, 201);
+  } catch (error) {
+    await Promise.all(rows.map((row) => deleteItem(env.DB, row.id)));
+    throw error;
+  }
 }
 
-// 改元数据：空串/空数组 → null（清空字段）。
-// 鉴权：条目设了口令 → 需 X-Edit-Key 匹配；管理员 X-Admin-Key 始终可改。
-async function handleEditPatch(request: Request, env: Env, id: string): Promise<Response> {
-  const meta = await getEditKeyHash(env.DB, id);
-  if (!meta) return err('未找到该条目', 404);
+async function marketAccess(
+  request: Request,
+  env: { AUTH: Pick<MarketAuthService, 'marketItemAccess'> },
+  id: string,
+) {
+  return env.AUTH.marketItemAccess(credentialsFrom(request), id);
+}
 
-  const isAdmin = !!env.ADMIN_KEY && request.headers.get('X-Admin-Key') === env.ADMIN_KEY;
-  if (!isAdmin && meta.hash) {
-    const provided = request.headers.get('X-Edit-Key') ?? '';
-    const ok = provided !== '' && (await hashEditKey(provided, env)) === meta.hash;
-    if (!ok) return err('编辑口令错误', 403);
-  }
+export async function requireMarketAdmin(
+  request: Request,
+  env: { AUTH: Pick<MarketAuthService, 'marketAccountAccess'> },
+): Promise<void> {
+  const access = await env.AUTH.marketAccountAccess(credentialsFrom(request));
+  if (access === 'unauthorized') throw new MarketRequestError('请先登录', 401);
+  if (access !== 'admin') throw new MarketRequestError('需要管理员权限', 403);
+}
+
+// Change metadata: empty string / empty array -> null (clears the field).
+// Authentication is account ownership; account administrators can moderate old items.
+async function handleEditPatch(request: Request, env: Env, id: string): Promise<Response> {
+  if (!(await getItem(env.DB, id))) return err('未找到该条目', 404);
+  const access = await marketAccess(request, env, id);
+  if (access === 'unauthorized') return err('未登录', 401);
+  if (access !== 'owner' && access !== 'admin') return err('无权限', 403);
 
   let body: unknown;
   try {

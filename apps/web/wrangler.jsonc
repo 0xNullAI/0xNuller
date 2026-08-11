@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "0xnuller",
+  "compatibility_date": "2026-08-09",
+
+  // 统一 Web 外壳；API 由更具体的 Worker 路由接管。
+  "routes": [
+    // 根域继续使用现有 DNS；Worker route 接管页面，更具体的 API routes 优先。
+    { "pattern": "0xnullai.com/*", "zone_name": "0xnullai.com" },
+    { "pattern": "www.0xnullai.com", "custom_domain": true },
+  ],
+  "workers_dev": true,
+
+  // 纯静态资源，不配置 Worker 代码或 binding。
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+
+  "observability": {
+    "enabled": true,
+  },
+}

@@ -1,5 +1,8 @@
+import { loadDeviceSafety, saveDeviceSafety } from '@0xnullai/settings';
 import {
   createProviderSettings,
+  hasLlmConfig,
+  loadLlmConfig,
   normalizeProviderSettings,
   type ProviderId,
 } from '@0xnullai/llm-providers';
@@ -48,16 +51,62 @@ export class BrowserAppSettingsStore {
 
   load(): BrowserAppSettings {
     const persisted = this.normalizePersistedSettings(this.readPersistedSettings());
-    const activeProviderId = persisted?.provider?.providerId ?? this.defaults.provider.providerId;
+    // The source of truth for device safety settings is @0xnullai/settings, one
+    // copy shared by the whole app — if the user lowers the cap to 30 in Agent,
+    // switching to Chat / Voice must not put it back at 50. This just spreads it
+    // into this module's settings view.
+    const safety = loadDeviceSafety();
+    // Same story for the model provider: @0xnullai/llm-providers holds the one
+    // copy, and the unified settings panel is what writes it. Agent used to
+    // read only its own key, so the panel's line "Agent 与 Chat 共用这一份配置"
+    // was simply untrue — and since Agent's provider UI moved into that panel,
+    // there was no longer any way to configure Agent at all.
+    // Only when the user has actually chosen one: loadLlmConfig always returns
+    // something, so an untouched store would overwrite Agent's own provider
+    // with the default.
+    const llm = hasLlmConfig() ? loadLlmConfig() : null;
+    const activeProviderId =
+      (llm?.providerId as ProviderId | undefined) ??
+      persisted?.provider?.providerId ??
+      this.defaults.provider.providerId;
     const apiKeys = this.readApiKeys(activeProviderId);
     const voiceApiKey = this.readVoiceApiKey();
     const providerConfigs = this.buildProviderConfigs(persisted, apiKeys);
-    const activeProvider = providerConfigs[activeProviderId] ?? this.defaults.provider;
+    // The shared config wins field by field, but only where it actually has a
+    // value: a user who never opened the panel keeps whatever Agent persisted.
+    const activeProvider = normalizeProviderSettings({
+      ...createProviderSettings(activeProviderId),
+      ...(providerConfigs[activeProviderId] ?? {}),
+      ...(llm?.apiKey ? { apiKey: llm.apiKey } : {}),
+      ...(llm?.model ? { model: llm.model } : {}),
+      ...(llm?.baseUrl ? { baseUrl: llm.baseUrl } : {}),
+    });
+    providerConfigs[activeProviderId] = activeProvider;
     const effectivePermissionState = this.resolvePermissionState(persisted);
 
     return {
       ...this.defaults,
       ...persisted,
+      // The shared safety settings override whatever this module used to
+      // persist (after the migration the old fields are no longer written).
+      maxStrengthA: safety.maxStrengthA,
+      maxStrengthB: safety.maxStrengthB,
+      maxColdStartStrength: safety.maxColdStartStrength,
+      maxAdjustStrengthStep: safety.maxAdjustStep,
+      maxBurstDurationMs: safety.maxBurstDurationMs,
+      maxBurstStrengthAbsolute: safety.maxBurstStrengthAbsolute,
+      maxBurstStrengthRelative: safety.maxBurstStrengthRelative,
+      burstRequiresActiveChannel: safety.burstRequiresActiveChannel,
+      maxOpossumIntensityA: safety.maxIntensityA,
+      maxOpossumIntensityB: safety.maxIntensityB,
+      maxOpossumColdStartIntensity: safety.maxColdStartIntensity,
+      maxOpossumAdjustStep: safety.maxOpossumAdjustStep,
+      maxToolIterations: safety.maxToolIterations,
+      maxToolCallsPerTurn: safety.maxToolCallsPerTurn,
+      maxAdjustStrengthCallsPerTurn: safety.maxAdjustStrengthCallsPerTurn,
+      maxBurstCallsPerTurn: safety.maxBurstCallsPerTurn,
+      maxVibrateAdjustCallsPerTurn: safety.maxVibrateAdjustCallsPerTurn,
+      maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
       permissionMode: effectivePermissionState.permissionMode,
       permissionModeExpiresAt: effectivePermissionState.permissionModeExpiresAt,
       bridge: {
@@ -95,9 +144,33 @@ export class BrowserAppSettingsStore {
     this.sessionPermissionModeOverride =
       settings.permissionMode === 'allow-all' ? 'allow-all' : null;
 
+    // Safety settings are written back to the shared source of truth, no longer
+    // into this module's blob.
+    saveDeviceSafety({
+      maxStrengthA: settings.maxStrengthA,
+      maxStrengthB: settings.maxStrengthB,
+      maxColdStartStrength: settings.maxColdStartStrength,
+      maxAdjustStep: settings.maxAdjustStrengthStep,
+      maxBurstDurationMs: settings.maxBurstDurationMs,
+      maxBurstStrengthAbsolute: settings.maxBurstStrengthAbsolute,
+      maxBurstStrengthRelative: settings.maxBurstStrengthRelative,
+      burstRequiresActiveChannel: settings.burstRequiresActiveChannel,
+      maxIntensityA: settings.maxOpossumIntensityA,
+      maxIntensityB: settings.maxOpossumIntensityB,
+      maxColdStartIntensity: settings.maxOpossumColdStartIntensity,
+      maxOpossumAdjustStep: settings.maxOpossumAdjustStep,
+      maxToolIterations: settings.maxToolIterations,
+      maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
+      maxAdjustStrengthCallsPerTurn: settings.maxAdjustStrengthCallsPerTurn,
+      maxBurstCallsPerTurn: settings.maxBurstCallsPerTurn,
+      maxVibrateAdjustCallsPerTurn: settings.maxVibrateAdjustCallsPerTurn,
+      maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
+      permissionMode: persistedPermissionMode,
+      permissionModeExpiresAt: persistedPermissionModeExpiresAt,
+    });
+
     const sanitized = {
       version: 1 as const,
-      themeMode: settings.themeMode,
       showSafetyNoticeOnStartup: settings.showSafetyNoticeOnStartup,
       deviceMode: settings.deviceMode,
       llmMode: settings.llmMode,
@@ -105,7 +178,6 @@ export class BrowserAppSettingsStore {
       temperature: settings.temperature,
       permissionMode: persistedPermissionMode,
       permissionModeExpiresAt: persistedPermissionModeExpiresAt,
-      backgroundBehavior: settings.backgroundBehavior,
       maxStrengthA: settings.maxStrengthA,
       maxStrengthB: settings.maxStrengthB,
       maxColdStartStrength: settings.maxColdStartStrength,
@@ -134,9 +206,6 @@ export class BrowserAppSettingsStore {
       speechRecognitionLanguage: settings.speechRecognitionLanguage,
       speechSynthesisLanguage: settings.speechSynthesisLanguage,
       bridge: settings.bridge,
-      promptPresetId: settings.promptPresetId,
-      savedPromptPresets: settings.savedPromptPresets,
-      hiddenBuiltinPresetIds: settings.hiddenBuiltinPresetIds,
       provider: {
         providerId: settings.provider.providerId,
         baseUrl: settings.provider.baseUrl,

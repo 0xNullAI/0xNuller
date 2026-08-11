@@ -75,7 +75,9 @@ export interface RealtimeSessionOptions {
 }
 
 /** Picks the dialect implementation for `settings.providerId` — the only place that needs to know both classes exist. */
-export async function createRealtimeSession(options: RealtimeSessionOptions): Promise<RealtimeSession> {
+export async function createRealtimeSession(
+  options: RealtimeSessionOptions,
+): Promise<RealtimeSession> {
   const definition = getRealtimeProviderDefinition(options.settings.providerId);
   if (!definition) {
     throw new Error(`未知的语音 provider：${options.settings.providerId}`);

@@ -33,7 +33,6 @@ const providerIds = [
 
 export const settingsSchema = z.object({
   version: z.literal(1),
-  themeMode: z.enum(['auto', 'dark', 'light']).optional(),
   showSafetyNoticeOnStartup: z.boolean().optional(),
   deviceMode: z.enum(['fake', 'web-bluetooth']).optional(),
   llmMode: z.enum(['fake', 'provider-http']).optional(),
@@ -43,7 +42,6 @@ export const settingsSchema = z.object({
   temperature: z.number().min(0).max(1).optional(),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']).optional(),
   permissionModeExpiresAt: z.number().int().positive().optional(),
-  backgroundBehavior: z.enum(['stop', 'keep']).optional(),
   maxStrengthA: z.number().int().min(0).max(200).optional(),
   maxStrengthB: z.number().int().min(0).max(200).optional(),
   maxColdStartStrength: z.number().int().min(0).max(200).optional(),
@@ -104,18 +102,6 @@ export const settingsSchema = z.object({
       }),
     })
     .optional(),
-  promptPresetId: z.string().min(1).optional(),
-  savedPromptPresets: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        name: z.string().min(1),
-        icon: z.string().optional(),
-        prompt: z.string().min(1),
-      }),
-    )
-    .optional(),
-  hiddenBuiltinPresetIds: z.array(z.string().min(1)).optional(),
   provider: z
     .object({
       providerId: z.enum(providerIds),

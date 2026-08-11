@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// 前端构建到 ./dist，由 wrangler 的 [assets] 托管。
-// dev 时 /api 代理到本地 `wrangler dev`（默认 8787）。
+// The frontend builds to ./dist, served by wrangler's [assets].
+// In dev, /api is proxied to a local `wrangler dev` (8787 by default).
 export default defineConfig({
   plugins: [react()],
   build: {

@@ -51,7 +51,25 @@ export class SerialCommandQueue<TCommand, TResult> {
         return interrupt.skippedResult();
       }
 
-      return this.options.execute(command);
+      const startedAt = this.generation;
+      const result = await this.options.execute(command);
+
+      // An emergency stop happened *while the command was executing*: it was
+      // already in flight, so the generation check can't catch it — the check
+      // runs before execute, and the stop runs concurrently. Its write lands
+      // after the stop, so the device halts and then jumps back to the
+      // previous strength. Observed exactly in that order (stop → in-flight
+      // +10 lands → strength 10).
+      //
+      // A packet already sent cannot be recalled; what we can do is stop
+      // again right after. Emergency stop must be idempotent, so a duplicate
+      // stop is safe — a missed one is not.
+      if (interrupt && startedAt !== this.generation) {
+        await interrupt.run(command);
+        return interrupt.skippedResult();
+      }
+
+      return result;
     });
 
     this.tail = task.then(

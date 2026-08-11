@@ -1,15 +1,23 @@
 import { useEffect, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
-import { PanelLeftClose, PanelLeftOpen, Search, Settings, SquarePen, Trash2 } from 'lucide-react';
-import { Button, ScrollArea } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
-import { formatTimestamp, getSessionTitle } from '../utils/ui-formatters.js';
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Search,
+  Settings,
+  SquarePen,
+  Trash2,
+} from 'lucide-react';
+import { Button, ScrollArea, cn } from '@0xnullai/ui';
+import { formatTimestamp, getSessionTitle, isSessionListEntry } from '../utils/ui-formatters.js';
 import { SessionSearchDialog } from './SessionSearchDialog.js';
 
 interface SessionPanelProps {
   savedSessions: SessionSnapshot[];
   activeSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onRenameSession: (sessionId: string, title: string | null) => void;
   onDeleteSession: (sessionId: string) => void;
   onCreateSession?: () => void;
   onOpenSettings?: () => void;
@@ -20,14 +28,15 @@ interface SessionPanelProps {
 
 const SESSION_BATCH_SIZE = 60;
 const ICON_BTN =
-  'session-action-icon h-9 w-9 rounded-[7px] border border-transparent text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'session-action-icon h-9 w-9 rounded-[var(--radius-xs)] border border-transparent text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 const SIDEBAR_BTN =
-  'session-action-button h-[2.35rem] w-full justify-start gap-2.5 rounded-[7px] border border-transparent px-2 text-[13px] font-medium text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'session-action-button h-[2.35rem] w-full justify-start gap-2.5 rounded-[var(--radius-xs)] border border-transparent px-2 text-[13px] font-medium text-[var(--text-soft)] hover:border-[var(--surface-border)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 
 export function SessionPanel({
   savedSessions,
   activeSessionId,
   onSelectSession,
+  onRenameSession,
   onDeleteSession,
   onCreateSession,
   onOpenSettings,
@@ -35,12 +44,25 @@ export function SessionPanel({
   onToggleCollapsed,
   detached = false,
 }: SessionPanelProps) {
-  const visibleSessions = savedSessions.filter((session) =>
-    session.messages.some((message) => message.role === 'user'),
-  );
+  const visibleSessions = savedSessions.filter(isSessionListEntry);
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_BATCH_SIZE);
   const renderedSessions = visibleSessions.slice(0, visibleSessionCount);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  const startRename = (session: SessionSnapshot) => {
+    setRenamingId(session.id);
+    setRenameDraft(getSessionTitle(session));
+  };
+
+  const finishRename = (session: SessionSnapshot) => {
+    const normalized = renameDraft.trim();
+    if (normalized !== getSessionTitle(session)) {
+      onRenameSession(session.id, normalized || null);
+    }
+    setRenamingId(null);
+  };
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -115,12 +137,12 @@ export function SessionPanel({
       {/* Header: title + collapse */}
       {!detached && (
         <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2">
-          <h1 className="text-[16px] font-bold tracking-tight text-[var(--text)]">DG-Agent</h1>
+          <h1 className="text-[16px] font-bold tracking-tight text-[var(--text)]">Agent</h1>
           {onToggleCollapsed && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-[10px] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+              className="h-8 w-8 rounded-[var(--radius-ctl)] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
               onClick={onToggleCollapsed}
               aria-label="收起侧边栏"
             >
@@ -162,27 +184,60 @@ export function SessionPanel({
                 <div
                   key={item.id}
                   className={cn(
-                    'group relative flex items-center gap-1 rounded-[10px] transition-colors',
+                    'group relative flex items-center gap-1 rounded-[var(--radius-ctl)] transition-colors',
                     active ? 'bg-[var(--bg-soft)]' : 'hover:bg-[var(--bg-soft)]',
                   )}
                 >
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-left"
-                    onClick={() => onSelectSession(item.id)}
-                  >
-                    <div
-                      className={cn(
-                        'truncate text-[13px] leading-5',
-                        active ? 'font-medium text-[var(--text)]' : 'text-[var(--text)]',
-                      )}
+                  {renamingId === item.id ? (
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      maxLength={60}
+                      aria-label={`重命名 ${getSessionTitle(item)}`}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onBlur={() => finishRename(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          finishRename(item);
+                        } else if (event.key === 'Escape') {
+                          setRenamingId(null);
+                        }
+                      }}
+                      className="ml-2 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-[var(--accent)] bg-[var(--bg)] px-2 py-1.5 text-[13px] outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2 text-left"
+                      onClick={() => onSelectSession(item.id)}
+                      onDoubleClick={() => startRename(item)}
                     >
-                      {getSessionTitle(item)}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-faint)]">
-                      {formatTimestamp(item.updatedAt)}
-                    </div>
-                  </button>
+                      <div
+                        className={cn(
+                          'truncate text-[13px] leading-5',
+                          active ? 'font-medium text-[var(--text)]' : 'text-[var(--text)]',
+                        )}
+                      >
+                        {getSessionTitle(item)}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-faint)]">
+                        {formatTimestamp(item.updatedAt)}
+                      </div>
+                    </button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 shrink-0 rounded-full text-[var(--text-faint)] transition-all hover:bg-[var(--bg-strong)] hover:text-[var(--text)] focus-visible:opacity-100',
+                      active ? 'opacity-60' : 'opacity-0 group-hover:opacity-60',
+                    )}
+                    onClick={() => startRename(item)}
+                    aria-label={`重命名 ${getSessionTitle(item)}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

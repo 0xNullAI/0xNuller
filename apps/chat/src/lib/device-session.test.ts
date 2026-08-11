@@ -10,7 +10,7 @@ import {
   OPOSSUM_DEVICE_NAME_PREFIX,
   V3_DEVICE_NAME_PREFIX,
 } from '@dg-kit/protocol';
-import { DeviceSession } from './bluetooth';
+import { DeviceSession, type RequestDeviceFn } from './bluetooth';
 
 /**
  * Minimal Web Bluetooth mocks, mirroring the pattern DG-Kit's own adapter
@@ -55,7 +55,11 @@ class MockCharacteristic extends EventTarget {
   }
 }
 
-function createMockServer(writeChar: MockCharacteristic, notifyChar: MockCharacteristic, batteryChar: MockCharacteristic) {
+function createMockServer(
+  writeChar: MockCharacteristic,
+  notifyChar: MockCharacteristic,
+  batteryChar: MockCharacteristic,
+) {
   return {
     connected: true,
     async getPrimaryService(service: string) {
@@ -83,7 +87,11 @@ function createMockServer(writeChar: MockCharacteristic, notifyChar: MockCharact
 
 /** A fake `BluetoothDevice` — real EventTarget so gattserverdisconnected wiring is exercised for real. */
 class MockDevice extends EventTarget {
-  readonly gatt: { connected: boolean; connect: () => Promise<unknown>; disconnect: ReturnType<typeof vi.fn> };
+  readonly gatt: {
+    connected: boolean;
+    connect: () => Promise<unknown>;
+    disconnect: ReturnType<typeof vi.fn>;
+  };
   name: string;
   id: string;
   writeChar = new MockCharacteristic((bytes) => this.writes.push(Array.from(bytes)));
@@ -125,6 +133,28 @@ describe('DeviceSession — multi-device routing', () => {
 
   afterEach(() => {
     (navigator as unknown as { bluetooth?: unknown }).bluetooth = originalBluetooth;
+  });
+
+  it('同一会话一次只允许一个连接流程，避免两个入口同时抢同一个槽位', async () => {
+    const device = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    const server = await device.gatt.connect();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const requestDevice = vi.fn(async () => {
+      await gate;
+      return { kind: 'coyote' as const, device, server: server as never };
+    });
+    const session = new DeviceSession(undefined, requestDevice as RequestDeviceFn);
+
+    const first = session.connectDevice();
+    await expect(session.connectDevice()).rejects.toThrow('正在连接中');
+    expect(requestDevice).toHaveBeenCalledTimes(1);
+
+    release();
+    await first;
+    expect(session.getCoyoteSummaries()).toHaveLength(1);
   });
 
   it('routes a paw-prints-prefixed device name to the sensor slot', async () => {
@@ -205,6 +235,22 @@ describe('DeviceSession — multi-device routing', () => {
     expect(device.gatt.disconnect).not.toHaveBeenCalled();
   });
 
+  it('重复选择已连接的郊狼会保留现有连接，而不是把它断掉', async () => {
+    const device = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      device,
+      device,
+    ]);
+
+    const session = new DeviceSession();
+    await session.connectDevice();
+    await expect(session.connectDevice()).rejects.toThrow('设备已连接');
+
+    expect(session.getCoyoteSummaries()).toHaveLength(1);
+    expect(session.coyote.getState().connected).toBe(true);
+    expect(device.gatt.disconnect).not.toHaveBeenCalled();
+  });
+
   it('rejects an unrecognized device name', async () => {
     const device = new MockDevice('SomeOtherBleThing', 'unknown-1');
     (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([device]);
@@ -216,7 +262,10 @@ describe('DeviceSession — multi-device routing', () => {
   it('replaces the previous sensor when a second sensor is added (v1: one sensor at a time)', async () => {
     const first = new MockDevice(`${PAW_PRINTS_DEVICE_NAME_PREFIX}000`, 'paw-1');
     const second = new MockDevice(`${CIVET_DEVICE_NAME_PREFIX}000`, 'civet-1');
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([first, second]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      first,
+      second,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
@@ -227,10 +276,28 @@ describe('DeviceSession — multi-device routing', () => {
     expect(first.gatt.disconnect).toHaveBeenCalled();
   });
 
+  it('重复选择同一传感器不会在替换旧槽位时断掉自己', async () => {
+    const device = new MockDevice(`${PAW_PRINTS_DEVICE_NAME_PREFIX}000`, 'paw-1');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      device,
+      device,
+    ]);
+
+    const session = new DeviceSession();
+    await session.connectDevice();
+    await expect(session.connectDevice()).rejects.toThrow('设备已连接');
+
+    expect(session.getSensorSummary()?.connected).toBe(true);
+    expect(device.gatt.disconnect).not.toHaveBeenCalled();
+  });
+
   it('disconnectSensor() clears the sensor slot without touching opossum', async () => {
     const sensor = new MockDevice(`${PAW_PRINTS_DEVICE_NAME_PREFIX}000`, 'paw-1');
     const opossum = new MockDevice(`${OPOSSUM_DEVICE_NAME_PREFIX}000`, 'opossum-1');
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([sensor, opossum]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      sensor,
+      opossum,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
@@ -311,6 +378,25 @@ describe('DeviceSession — multi-device routing', () => {
     }
   });
 
+  it('降低负鼠上限会立即归零，并约束之后的命令', async () => {
+    const device = new MockDevice(`${OPOSSUM_DEVICE_NAME_PREFIX}000`, 'opossum-1');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([device]);
+
+    const session = new DeviceSession();
+    await session.connectDevice();
+    session.setOpossumIntensity('A', 40, 50);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.getOpossumSummary()?.intensityA).toBe(40);
+
+    session.setOpossumLimits(20, 50);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.getOpossumSummary()?.intensityA).toBe(0);
+
+    session.setOpossumIntensity('A', 50, 50);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.getOpossumSummary()?.intensityA).toBe(20);
+  });
+
   it('keeps the previous sensor connected if swapping to a new one fails mid-handshake', async () => {
     // Regression: attachSensor()/attachOpossum() used to disconnect the
     // existing device BEFORE attempting the new one, so a flaky/wrong pick
@@ -324,7 +410,10 @@ describe('DeviceSession — multi-device routing', () => {
         throw new Error('service discovery failed');
       },
     });
-    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([good, broken]);
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      good,
+      broken,
+    ]);
 
     const session = new DeviceSession();
     await session.connectDevice();
@@ -335,5 +424,235 @@ describe('DeviceSession — multi-device routing', () => {
     expect(session.getSensorSummary()?.kind).toBe('paw-prints');
     expect(session.getSensorSummary()?.connected).toBe(true);
     expect(good.gatt.disconnect).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Several Coyote hosts attached to one session.
+ *
+ * These run against the real `DeviceSession` / `WebBluetoothDeviceClient` /
+ * `CoyoteProtocolAdapter` / `DeviceCommandQueue` stack — only the GATT layer is
+ * mocked — so what they assert is what actually goes out over the wire to each
+ * device, not what a fake was told to record.
+ */
+describe('DeviceSession — 多台郊狼', () => {
+  let originalBluetooth: unknown;
+
+  beforeEach(() => {
+    originalBluetooth = (navigator as unknown as { bluetooth?: unknown }).bluetooth;
+  });
+
+  afterEach(() => {
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = originalBluetooth;
+  });
+
+  /** The V3 emergency-stop packet: absolute strength 0/0, [0xb0, 0x0f, 0, 0, ...]. */
+  function sawEmergencyStop(device: MockDevice): boolean {
+    return device.writes.some((w) => w[0] === 0xb0 && w[1] === 0x0f && w[2] === 0 && w[3] === 0);
+  }
+
+  async function connectTwoCoyotes() {
+    const first = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    const second = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-2');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      first,
+      second,
+    ]);
+    const session = new DeviceSession();
+    await session.connectDevice();
+    await session.connectDevice();
+    return { session, first, second };
+  }
+
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('两台可以同时连上，各自有自己的 id', async () => {
+    const { session } = await connectTwoCoyotes();
+
+    const summaries = session.getCoyoteSummaries();
+    expect(summaries).toHaveLength(2);
+    expect(summaries.map((c) => c.id).sort()).toEqual(['coyote-1', 'coyote-2']);
+    expect(summaries.every((c) => c.connected)).toBe(true);
+  });
+
+  it('连第二台不会顶掉第一台', async () => {
+    // The web transport used to disconnect the previously-held device on a
+    // second connect. On a V3 (state-retentive across BLE drops) that left
+    // device #1 running at its last commanded strength, unreachable.
+    const { session, first } = await connectTwoCoyotes();
+
+    expect(first.gatt.disconnect).not.toHaveBeenCalled();
+    expect(session.coyoteById('coyote-1')?.getState().connected).toBe(true);
+  });
+
+  it('停止必须把每一台都归零，不只是主设备', async () => {
+    // THE case this whole change turns on: the shell's global stop button
+    // reaches exactly this function through the safety bus. A stop that
+    // covered only the primary would leave the second device outputting while
+    // the user believes they already stopped everything.
+    const { session, first, second } = await connectTwoCoyotes();
+
+    session.coyoteById('coyote-1')?.setStrength('A', 20);
+    session.coyoteById('coyote-2')?.setStrength('B', 15);
+    await flush();
+
+    first.writes.length = 0;
+    second.writes.length = 0;
+
+    session.stopAllOutputs();
+    await flush();
+
+    // Physically observed on each device's own write characteristic.
+    expect(sawEmergencyStop(first)).toBe(true);
+    expect(sawEmergencyStop(second)).toBe(true);
+    for (const summary of session.getCoyoteSummaries()) {
+      expect(summary.strengthA).toBe(0);
+      expect(summary.strengthB).toBe(0);
+    }
+  });
+
+  it('断开其中一台，另一台照常连着并且还能被停止', async () => {
+    const { session, first, second } = await connectTwoCoyotes();
+
+    session.disconnectCoyote('coyote-1');
+    await flush();
+
+    const remaining = session.getCoyoteSummaries();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.id).toBe('coyote-2');
+    expect(first.gatt.disconnect).toHaveBeenCalled();
+
+    second.writes.length = 0;
+    session.stopAllOutputs();
+    await flush();
+    expect(sawEmergencyStop(second)).toBe(true);
+  });
+
+  it('不带 id 的断开会断掉每一台', async () => {
+    const { session, first, second } = await connectTwoCoyotes();
+
+    session.disconnectCoyote();
+    await flush();
+
+    expect(session.getCoyoteSummaries()).toHaveLength(0);
+    expect(first.gatt.disconnect).toHaveBeenCalled();
+    expect(second.gatt.disconnect).toHaveBeenCalled();
+  });
+
+  it('主设备断开后，标量口径跟着换到还连着的那台', async () => {
+    const { session } = await connectTwoCoyotes();
+    expect(session.coyote.id).toBe('coyote-1');
+
+    session.disconnectCoyote('coyote-1');
+    await flush();
+
+    // If `coyote` stayed pinned to slot 0 it would now report "not connected"
+    // while device #2 is still live on the user's body.
+    expect(session.coyote.id).toBe('coyote-2');
+    expect(session.coyote.getState().connected).toBe(true);
+  });
+
+  it('上限会落到每一台上，包括之后才连上的那台', async () => {
+    const first = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    const second = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-2');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      first,
+      second,
+    ]);
+
+    const session = new DeviceSession();
+    await session.connectDevice();
+    // Lower the cap while only one host is attached...
+    session.setCoyoteLimit('A', 30);
+    // ...then attach a second. A cap the user lowered must not silently fail
+    // to cover a device attached afterwards.
+    await session.connectDevice();
+
+    expect(session.getCoyoteSummaries().map((c) => c.limitA)).toEqual([30, 30]);
+  });
+
+  it('会用创建会话时的共享上限，而不是先短暂回到默认 50', async () => {
+    const first = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    const second = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-2');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([
+      first,
+      second,
+    ]);
+
+    const session = new DeviceSession(undefined, undefined, {
+      strengthA: 17,
+      strengthB: 23,
+      intensityA: 19,
+      intensityB: 29,
+    });
+    await session.connectDevice();
+    await session.connectDevice();
+
+    expect(session.getCoyoteSummaries().map((c) => [c.limitA, c.limitB])).toEqual([
+      [17, 23],
+      [17, 23],
+    ]);
+  });
+
+  it('降低已连接主机的上限会作废旧命令并立即归零', async () => {
+    const device = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([device]);
+    const session = new DeviceSession();
+    await session.connectDevice();
+    await flush();
+
+    session.coyote.setStrength('A', 20);
+    await flush();
+    expect(session.coyote.getState().strengthA).toBe(20);
+    device.writes.length = 0;
+
+    session.setCoyoteLimit('A', 10);
+    await flush();
+
+    expect(sawEmergencyStop(device)).toBe(true);
+    expect(session.coyote.getState().strengthA).toBe(0);
+    expect(session.coyote.getState().limitA).toBe(10);
+  });
+
+  it('两台各自钳各自的，不共用一份钳制状态', async () => {
+    const { session } = await connectTwoCoyotes();
+
+    session.coyoteById('coyote-1')?.setLimit('A', 10);
+    session.coyoteById('coyote-2')?.setLimit('A', 40);
+
+    const byId = new Map(session.getCoyoteSummaries().map((c) => [c.id, c]));
+    expect(byId.get('coyote-1')?.limitA).toBe(10);
+    expect(byId.get('coyote-2')?.limitA).toBe(40);
+  });
+
+  it('同一台设备重连时沿用原来的槽位，不会多出一行', async () => {
+    const device = new MockDevice(`${V3_DEVICE_NAME_PREFIX}000`, 'coyote-1');
+    (navigator as unknown as { bluetooth?: unknown }).bluetooth = {
+      requestDevice: vi.fn(async () => device),
+    };
+
+    const session = new DeviceSession();
+    await session.connectDevice();
+    session.disconnectCoyote('coyote-1');
+    await flush();
+
+    await session.connectDevice();
+
+    const summaries = session.getCoyoteSummaries();
+    expect(summaries).toHaveLength(1);
+    // Same identity across the drop — the device bar row and any targeted
+    // command keep pointing at the same host.
+    expect(summaries[0]?.id).toBe('coyote-1');
+  });
+
+  it('coyoteById 不带参数时给出主设备，给了未知 id 时给出 null', async () => {
+    const { session } = await connectTwoCoyotes();
+
+    // Omitted = primary. This is what every command sent by a client that
+    // predates multi-device means, and Android has no hot update.
+    expect(session.coyoteById()?.id).toBe('coyote-1');
+    // An unknown id must not fall back to "some device" — that would let a
+    // command meant for a device that is not here land on one that is.
+    expect(session.coyoteById('not-attached')).toBeNull();
   });
 });

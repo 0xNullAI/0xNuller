@@ -1,0 +1,546 @@
+/* Settings chrome — the shared layer's single source of truth.
+ *
+ * Pre-merge DG-Agent's app.css and DG-Voice's settings.css each held a
+ * copy: of 48 same-named selectors, 44 rule bodies were byte-identical,
+ * and ~90% of voice's 427 lines were a subset of agent's. The remaining 4
+ * differed only in padding/margin nudges, plus 5 voice-only rules — those
+ * stay in each module layer as overrides.
+ *
+ * This file owns only "what settings pages look like": sidebar, workspace,
+ * grouped nav, row cards, the card-legend notch, the mobile directory.
+ * Which settings exist is each module's own business. */
+
+.settings-grouped {
+  gap: 1.2rem;
+}
+
+.settings-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.settings-sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: 0.9rem 0.75rem 0;
+  background: color-mix(in srgb, var(--bg-elevated) 82%, var(--bg) 18%);
+  color: var(--text);
+}
+
+.settings-sidebar-back {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.2rem;
+  padding: 0 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 0.84rem;
+  font-weight: 500;
+  transition:
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease;
+}
+
+.settings-sidebar-back:hover {
+  border-color: var(--surface-border);
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.settings-workspace-title h2 {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.settings-sidebar-nav {
+  display: grid;
+  gap: 1rem;
+  padding-top: 0.9rem;
+}
+
+.settings-nav-group {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.settings-nav-group-label {
+  padding: 0 0.45rem 0.35rem;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.settings-nav-item {
+  display: grid;
+  grid-template-columns: 1.05rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.72rem;
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  transition:
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease;
+}
+
+.settings-nav-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--text-faint);
+}
+
+.settings-nav-item:hover {
+  border-color: var(--surface-border);
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.settings-nav-item.active {
+  border-color: transparent;
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.settings-nav-item.active .settings-nav-icon {
+  color: var(--accent);
+}
+
+.settings-nav-item span {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.settings-sidebar-footer {
+  margin: auto -0.75rem 0;
+  padding: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-sidebar-reset {
+  height: 2.25rem;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.625rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-ctl);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-sidebar-reset:hover {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.settings-mobile-header {
+  display: none;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  min-height: 3.4rem;
+  padding: 0 0.55rem;
+  border-bottom: 0;
+  background: transparent;
+  font-weight: 650;
+}
+
+.settings-mobile-header > span {
+  grid-column: 2;
+  text-align: center;
+}
+
+.settings-mobile-directory {
+  display: none;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.settings-mobile-directory-header {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  min-height: 3.4rem;
+  padding: 0 0.55rem;
+}
+
+.settings-mobile-directory-header button {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--text-soft);
+}
+
+.settings-mobile-directory-header h2 {
+  margin: 0;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.settings-mobile-directory-list {
+  display: grid;
+  gap: 1.05rem;
+  min-height: 0;
+  flex: 0 1 auto;
+  overflow-y: auto;
+  padding: 0.75rem 1.2rem 1rem;
+}
+
+.settings-mobile-directory-footer {
+  margin-top: auto;
+  padding: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-mobile-directory-footer a {
+  display: inline-flex;
+  width: 100%;
+  height: 2.25rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-ctl);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.settings-mobile-directory-footer a:hover {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.settings-mobile-directory-group {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.settings-mobile-directory-group-label {
+  padding: 0 0 0.2rem;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.settings-mobile-directory-list button {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 3rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  font-size: 0.98rem;
+}
+
+.settings-mobile-directory-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-faint);
+}
+
+.settings-mobile-back {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--text-soft);
+}
+
+.settings-workspace-main {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.settings-workspace-title {
+  padding: 1rem 2.65rem 0.85rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.settings-workspace-title p {
+  margin: 0.22rem 0 0;
+  color: var(--text-faint);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.settings-workspace-content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 0;
+  padding: 0 1.25rem 1.25rem;
+}
+
+.settings-workspace-content > .settings {
+  --settings-card-gap: 1.2rem;
+  width: 100%;
+}
+
+.settings-workspace .settings-group {
+  display: grid;
+  align-items: start;
+  gap: 0.95rem;
+  padding: 1.15rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-panel-tab-content > .settings-row-card {
+  margin-top: var(--settings-card-gap);
+}
+
+.settings-row-card {
+  position: relative;
+  display: grid;
+  gap: 0.95rem;
+  min-width: 0;
+  padding: 1.25rem 1.65rem 1.05rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-ctl);
+  background: transparent;
+}
+
+.settings-row-card > * {
+  min-width: 0;
+}
+
+/* The section legend rides the card border, so it needs its own
+   background to mask that stretch of border. The background must follow
+   the *containing surface*: standalone settings sit on --bg, in the shell
+   they are a dialog on --bg-elevated. Hard-coding either leaves a
+   differently-shaded rectangle in the other context — invisible in light
+   theme where the two values are close, glaring in dark. Containers
+   override --settings-surface; default stays --bg. */
+.settings-card-legend {
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  margin: 0;
+  padding: 0 0.65rem;
+  transform: translateY(-50%);
+  background: var(--settings-surface, var(--bg));
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.settings-workspace .settings-group:first-of-type {
+  border-top: 1px solid var(--surface-border);
+}
+
+.settings-workspace .settings-group-title {
+  margin-bottom: 0.1rem;
+}
+
+.settings-workspace .settings-panel-tab-content > .settings-group-title {
+  grid-column: 1 / -1;
+}
+
+.settings-workspace .settings-panel-tab-content > .space-y-5 {
+  width: 100%;
+}
+
+.settings-workspace .settings-group > .grid.grid-cols-\[1fr_auto\] {
+  grid-template-columns: minmax(180px, 0.34fr) minmax(280px, 0.66fr);
+  column-gap: clamp(1.5rem, 6vw, 7rem);
+  row-gap: 0.85rem;
+}
+
+.settings-workspace .settings-row-card.grid-cols-\[1fr_auto\] {
+  grid-template-columns: minmax(160px, 0.32fr) minmax(280px, 0.68fr);
+  column-gap: clamp(1.25rem, 5vw, 5.5rem);
+  row-gap: 0.85rem;
+}
+
+.settings-inline-field {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.32fr) minmax(280px, 0.68fr);
+  align-items: center;
+  column-gap: clamp(1.25rem, 5vw, 5.5rem);
+}
+
+.settings-workspace .bridge-config-grid > label {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.32fr) minmax(280px, 0.68fr);
+  align-items: center;
+  column-gap: clamp(1.25rem, 5vw, 5.5rem);
+}
+
+.settings-inline-field > :last-child {
+  justify-self: end;
+  max-width: 440px;
+  width: 100%;
+}
+
+.settings-workspace .bridge-config-grid > label > :last-child {
+  justify-self: end;
+  max-width: 440px;
+  width: 100%;
+}
+
+.settings-row-card label > span {
+  font-size: 0.8125rem;
+}
+
+.settings-workspace .settings-group > .grid.grid-cols-\[1fr_auto\] > :nth-child(even) {
+  justify-self: stretch;
+}
+
+.settings-workspace .settings-group > .grid.grid-cols-\[1fr_auto\] > :nth-child(even) > * {
+  width: 100%;
+}
+
+.settings-workspace .settings-row-card.grid-cols-\[1fr_auto\] > :nth-child(even) {
+  justify-self: stretch;
+  max-width: 440px;
+}
+
+.settings-workspace .settings-row-card.grid-cols-\[1fr_auto\] > :nth-child(even) > * {
+  width: 100%;
+}
+
+.settings-workspace .settings-inline-field-control {
+  justify-self: end;
+  max-width: 440px;
+  width: 100%;
+}
+
+.settings-workspace .settings-inline-field-control > * {
+  width: 100%;
+}
+
+.settings-workspace .settings-panel-tab-content > .mt-2 {
+  width: min(880px, 100%);
+}
+
+.settings-workspace .settings-panel-tab-content > .pb-3.text-xs {
+  text-align: left;
+}
+
+.settings-panel-body {
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 0;
+}
+
+.settings-panel-tab-content {
+  margin-top: 0;
+}
+
+.settings-group {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1.05rem 1.25rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-strong);
+}
+
+.settings-group:first-of-type {
+  border-top: 1px solid var(--surface-border);
+}
+
+.settings-group-title {
+  margin: 0;
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.settings-log-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.settings-log-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-log-empty {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+}
+
+.settings-log-entry {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  padding: 0.75rem 0.85rem;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.settings-actions {
+  padding-top: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 1023.98px) {
+  .settings-mobile-header {
+    display: grid;
+  }
+
+  .settings-mobile-nav-open .settings-mobile-directory {
+    display: flex;
+  }
+
+  .settings-mobile-nav-open .settings-mobile-header,
+  .settings-mobile-nav-open .settings-workspace-main {
+    display: none;
+  }
+}

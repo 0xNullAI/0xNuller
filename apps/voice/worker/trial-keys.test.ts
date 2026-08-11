@@ -4,7 +4,6 @@ import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-ke
 
 function env(overrides: Partial<Env> = {}): Env {
   return {
-    ASSETS: {} as Fetcher,
     TRIAL_SESSION: {} as DurableObjectNamespace,
     XAI_API_KEY: 'xai-real-secret',
     TRIAL_KEYS: JSON.stringify({
@@ -20,7 +19,9 @@ function env(overrides: Partial<Env> = {}): Env {
 
 describe('parseActivationKey', () => {
   it('extracts the key from the openai-insecure-api-key subprotocol token', () => {
-    expect(parseActivationKey('realtime, openai-insecure-api-key.dgv-trial-ok')).toBe('dgv-trial-ok');
+    expect(parseActivationKey('realtime, openai-insecure-api-key.dgv-trial-ok')).toBe(
+      'dgv-trial-ok',
+    );
   });
 
   it('returns null when the header is missing or has no credential token', () => {
@@ -55,16 +56,33 @@ describe('resolveTrialKey', () => {
 });
 
 describe('isAllowedOrigin', () => {
-  it('is permissive when the allow-list is unset', () => {
-    expect(isAllowedOrigin('https://evil.example', env({ TRIAL_ALLOWED_ORIGINS: undefined }))).toBe(true);
+  it('allow-list 没配时也不放行任意来源——但本地开发照常', () => {
+    // This used to assert `true`: an unset allow-list meant "allow everyone".
+    // TRIAL_ALLOWED_ORIGINS is ordinary config, not a secret, so a deploy that
+    // dropped it silently opened the trial quota — which spends real money —
+    // to any origin. It now fails closed, while localhost still passes so
+    // `wrangler dev` keeps working without editing the production list.
+    const e = env({ TRIAL_ALLOWED_ORIGINS: undefined });
+    expect(isAllowedOrigin('https://evil.example', e)).toBe(false);
+    expect(isAllowedOrigin('http://localhost:5173', e)).toBe(true);
+    expect(isAllowedOrigin('http://tauri.localhost', e)).toBe(true);
   });
 
   it('enforces membership when configured, but always allows localhost', () => {
-    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://voice.0xnullai.com' });
-    expect(isAllowedOrigin('https://voice.0xnullai.com', e)).toBe(true);
+    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://0xnullai.com' });
+    expect(isAllowedOrigin('https://0xnullai.com', e)).toBe(true);
     expect(isAllowedOrigin('http://localhost:5173', e)).toBe(true);
     expect(isAllowedOrigin('http://127.0.0.1:8787', e)).toBe(true);
     expect(isAllowedOrigin('https://evil.example', e)).toBe(false);
     expect(isAllowedOrigin(null, e)).toBe(false);
+  });
+
+  it('allows the Tauri WebView origin — otherwise trial voice 403s on Android', () => {
+    const e = env({ TRIAL_ALLOWED_ORIGINS: 'https://0xnullai.com' });
+    // There are no hot updates on Android: if this one breaks, the broken APK stays on users' phones for a long time.
+    expect(isAllowedOrigin('http://tauri.localhost', e)).toBe(true);
+    expect(isAllowedOrigin('https://tauri.localhost', e)).toBe(true);
+    // But only this one hostname — not "allow anything ending in .localhost".
+    expect(isAllowedOrigin('https://evil.localhost', e)).toBe(false);
   });
 });

@@ -123,6 +123,8 @@ class FakeAgentClient implements AgentClient {
     return [];
   }
 
+  async renameSession(): Promise<void> {}
+
   async deleteSession(): Promise<void> {}
 
   async connectDevice(): Promise<void> {}

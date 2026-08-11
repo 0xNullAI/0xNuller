@@ -1,12 +1,40 @@
-import type { ItemPatch, BatchUploadPayload, ItemType, MarketItem, UploadPayload } from '../shared/schema';
+import { apiBaseUrl } from '@0xnullai/settings';
+import type {
+  ItemPatch,
+  BatchUploadPayload,
+  MarketAdminItem,
+  ItemType,
+  MarketItem,
+  UploadPayload,
+} from '../shared/schema';
+
+const TOKEN_KEY = '0xnullai.auth-token';
+
+function accountHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  // Every path here is relative. On the web that is what we want, but the
+  // Tauri WebView's origin is a local scheme, so a bare relative fetch hits
+  // the WebView's own asset server and comes back as index.html — which
+  // then fails as "Unexpected token '<'", nowhere near the real cause.
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
+    ...init,
+    // Same-origin web requests carry the HttpOnly account cookie. Tauri is cross-origin
+    // and uses the Bearer token above; avoiding `include` keeps wildcard Market CORS valid.
+    credentials: 'same-origin',
+    headers: { ...accountHeaders(), ...init?.headers },
+  });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw new Error((data.error as string) || `请求失败 (${res.status})`);
   return data as T;
 }
-
 
 export interface ListQuery {
   type?: ItemType;
@@ -23,16 +51,13 @@ export async function fetchItems(query: ListQuery): Promise<MarketItem[]> {
   if (query.sort) params.set('sort', query.sort);
   if (query.limit) params.set('limit', String(query.limit));
   if (query.offset) params.set('offset', String(query.offset));
-  // req() 在「HTTP 200 但响应不是预期 JSON」时会返回空对象（例如被某个前端路由
-  // 兜底成了 index.html），解构出的 items 就是 undefined，下游 items.length 直接
-  // 抛错整页白屏。这里兜底成空数组——列表拿不到就显示「还没有内容」，而不是崩掉。
+  // req() returns an empty object when the response is "HTTP 200 but not the JSON we
+  // expect" (for example when some frontend route fell back to index.html), so the
+  // destructured items is undefined and the downstream items.length throws, whiting out
+  // the whole page. Fall back to an empty array here — if the list can't be fetched we
+  // show 「还没有内容」 instead of crashing.
   const { items } = await req<{ items?: MarketItem[] }>(`/api/items?${params}`);
   return items ?? [];
-}
-
-export async function fetchItem(id: string): Promise<MarketItem> {
-  const { item } = await req<{ item: MarketItem }>(`/api/items/${id}`);
-  return item;
 }
 
 export async function uploadItem(payload: UploadPayload): Promise<{ id: string }> {
@@ -43,7 +68,7 @@ export async function uploadItem(payload: UploadPayload): Promise<{ id: string }
   });
 }
 
-// 批量上传：一次提交多条，返回成功条数。
+// Batch upload: submit several items at once, returns how many succeeded.
 export async function batchUploadItems(items: BatchUploadPayload): Promise<{ inserted: number }> {
   return req('/api/items/batch', {
     method: 'POST',
@@ -53,29 +78,50 @@ export async function batchUploadItems(items: BatchUploadPayload): Promise<{ ins
 }
 
 export async function markDownloaded(id: string): Promise<void> {
-  await fetch(`/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${apiBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
 }
 
 export async function markViewed(id: string): Promise<void> {
-  await fetch(`/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
+  await fetch(`${apiBaseUrl()}/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
 }
 
-export async function reportItem(id: string): Promise<void> {
-  await req(`/api/items/${id}/report`, { method: 'POST' });
+export async function fetchItemAccess(
+  id: string,
+): Promise<{ canEdit: boolean; canDelete: boolean }> {
+  return req(`/api/items/${id}/access`);
 }
 
-// 改条目元数据。未设口令的条目无需 key；设了口令则传上传时的口令。
-// 同一值同时作 X-Edit-Key 与 X-Admin-Key 发送：普通用户走条目口令，
-// 管理员输入 ADMIN_KEY 即可覆盖编辑任何条目。
-export async function updateItem(id: string, patch: ItemPatch, key?: string): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (key) {
-    headers['X-Edit-Key'] = key;
-    headers['X-Admin-Key'] = key;
-  }
+export async function updateItem(id: string, patch: ItemPatch): Promise<void> {
   await req(`/api/items/${id}`, {
     method: 'PATCH',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  await req(`/api/items/${id}`, { method: 'DELETE' });
+}
+
+export type AdminItemStatus = 'all' | 'hidden';
+
+export async function fetchAdminItems(input: {
+  status: AdminItemStatus;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<{ items: MarketAdminItem[]; nextOffset: number | null }> {
+  const params = new URLSearchParams({ status: input.status });
+  if (input.q) params.set('q', input.q);
+  if (input.offset) params.set('offset', String(input.offset));
+  if (input.limit) params.set('limit', String(input.limit));
+  return req(`/api/items/admin?${params}`);
+}
+
+export async function setItemHidden(id: string, hidden: boolean): Promise<void> {
+  await req(`/api/items/${id}/moderation`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden }),
   });
 }

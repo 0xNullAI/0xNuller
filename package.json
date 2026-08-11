@@ -1,9 +1,9 @@
 {
   "name": "0xnuller",
-  "version": "0.1.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
-  "description": "0xNullAI 平台 monorepo：@dg-kit 共享层、Agent/Chat/Voice/Market 四模块、文档站、MCP 服务端与安卓应用",
+  "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,27 +11,41 @@
   },
   "packageManager": "npm@11.6.2",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "workspaces": [
     "packages/*/*",
     "apps/*",
-    "android/*"
+    "android/*",
+    "workers/*"
   ],
   "scripts": {
     "build:kit": "npm run build -w @dg-kit/core && npm run build -w @dg-kit/protocol -w @dg-kit/waveforms && npm run build -w @dg-kit/safety -w @dg-kit/tools -w @dg-kit/transport-webbluetooth -w @dg-kit/transport-tauri-blec",
     "build": "npm run build:kit && npm run build --workspaces --if-present --include-workspace-root=false",
     "typecheck": "npm run build:kit && npm run typecheck --workspaces --if-present --include-workspace-root=false",
-    "test": "npm run build:kit && vitest run",
-    "test:watch": "vitest",
+    "test": "npm run build:kit && node scripts/run-vitest.mjs run",
+    "test:watch": "node scripts/run-vitest.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:check:changed": "node scripts/check-format-changed.mjs",
     "clean": "rm -rf packages/*/*/dist packages/*/*/tsconfig.tsbuildinfo apps/*/dist",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "npm run build:kit && changeset publish"
+    "release": "npm run build:kit && changeset publish",
+    "web:build:release": "node scripts/run-release-build.mjs web",
+    "android:init": "npm run tauri -w @0xnullai/android -- android init --ci && npm run android:prepare",
+    "android:prepare": "node scripts/prepare-android-release.mjs",
+    "android:dev": "npm run android:prepare && npm run android:dev -w @0xnullai/android",
+    "android:build": "node scripts/run-release-build.mjs android",
+    "verify:android:apk": "node scripts/verify-android-apk.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "check:routes": "node scripts/check-routes.mjs",
+    "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
+    "verify:data": "node scripts/verify-data-platform.mjs",
+    "release:data:preflight": "node scripts/release-data-preflight.mjs",
+    "account:role": "node scripts/set-account-role.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
@@ -42,11 +56,14 @@
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^17.9.0",
+    "jsdom": "^29.1.1",
+    "knip": "^5.68.0",
     "prettier": "^3.8.3",
-    "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.2",
+    "vite": "^8.2.1",
     "vitest": "^4.1.5"
   },
   "prettier": {

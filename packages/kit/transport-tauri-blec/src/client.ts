@@ -8,6 +8,7 @@ import { createGattShim } from './gatt-shim.js';
 import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.js';
 import { resolvePluginBlec } from './plugin-blec.js';
 import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
+import { DEVICE_PICKER_CANCELLED_MESSAGE } from '@dg-kit/core';
 
 export type { DeviceSelectionController, DiscoveredDevice } from './scan.js';
 
@@ -102,6 +103,18 @@ export class TauriBlecDeviceClient implements DeviceClient {
     return this.connected ? this.lastAddress : null;
   }
 
+  /**
+   * Identity of the currently-held device, or `null` while none is held.
+   *
+   * The same value as `address` (the BLE address, stable across reconnects),
+   * under the name `WebBluetoothDeviceClient` also uses — so a caller holding
+   * several devices can key them identically on both platforms instead of
+   * branching on which transport it happens to be running.
+   */
+  get deviceId(): string | null {
+    return this.address;
+  }
+
   async connect(): Promise<void> {
     // Reentrancy guard: double-tap on the connect button must not start
     // two parallel scans or two plugin-blec.connect() calls for THIS
@@ -144,7 +157,7 @@ export class TauriBlecDeviceClient implements DeviceClient {
     });
 
     if (!picked) {
-      throw new Error('用户取消了设备选择');
+      throw new Error(DEVICE_PICKER_CANCELLED_MESSAGE);
     }
 
     await this.establishConnection(picked.address, picked.name);

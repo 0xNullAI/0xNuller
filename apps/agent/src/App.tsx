@@ -14,24 +14,37 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { BrowserSafetyGuard } from './services/safety-guard.js';
-import { applyTheme, subscribeThemeChanges } from '@0xnullai/ui';
+import {
+  ModuleActions,
+  ModuleSettingsSection,
+  SidebarSection,
+  useInShell,
+  useOpenShellSettings,
+  useSafetySession,
+  useTheme,
+} from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
+import { ShellSessionList } from './components/ShellSessionList.js';
+import { useScenes } from '@0xnullai/scenes/react';
+import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { X } from 'lucide-react';
+import { AudioWaveform, Bug, Database, X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
-import { SafetyNoticeModal } from './components/SafetyNoticeModal.js';
+import { SafetyNotice } from '@0xnullai/ui';
 import { SessionPanel } from './components/SessionPanel.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
 import { ResetSettingsDialog } from './components/ResetSettingsDialog.js';
 import {
-  SettingsSidebar,
-  SettingsWorkspace,
-  type SettingsModalTab,
-} from './components/SettingsDrawer.js';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@0xnullai/ui';
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@0xnullai/ui';
 import {
   useBrowserAppServices,
   type PendingPermissionRequest,
@@ -49,6 +62,7 @@ import { buildWarnings } from './utils/runtime-warnings.js';
 import {
   formatUiErrorMessage,
   getSessionTitle,
+  isSessionListEntry,
   isBluetoothChooserCancelledError,
 } from './utils/ui-formatters.js';
 import { buildTraceFeed } from './utils/trace-feed.js';
@@ -59,6 +73,10 @@ import {
 } from './utils/session-transfer.js';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { SessionSnapshot } from '@dg-agent/core';
+import { SensorsTab } from './components/settings/SensorsTab.js';
+import { WaveformsPanel } from './components/WaveformsPanel.js';
+import { DebugPanel } from './components/DebugPanel.js';
+import { DataTab } from './components/settings/DataTab.js';
 
 export interface AppProps {
   /**
@@ -87,6 +105,13 @@ export interface AppProps {
 }
 
 export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
+  // Native capabilities come from props first (standalone mount), otherwise from
+  // NativeBridge (inside the unified shell).
+  const native = useNativeBridge();
+  const nativeOverrides = (native.agent?.servicesOverrides ??
+    servicesOverrides) as typeof servicesOverrides;
+  const nativeConnect = (native.agent?.connectDevice ??
+    connectDeviceTauri) as typeof connectDeviceTauri;
   const activeSessionIdRef = useRef<string | null>(null);
   const bridgeSessionResolverRef = useRef<
     (origin: MessageOrigin) => Promise<string | null> | string | null
@@ -103,7 +128,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setSettings,
     settingsStore,
     resetSettings: resetSettingsManager,
-    deleteSavedPromptPreset: deleteSavedPromptPresetManager,
     flushSettingsDraft,
     clearSessionPermissionOverride,
   } = useSettingsManager();
@@ -114,14 +138,18 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const inShell = useInShell();
+  const openShellSettings = useOpenShellSettings();
+  // The scene library moved out of the settings blob into cross-module shared storage —
+  // Voice sees the same set, and one broken scene no longer drags the whole settings
+  // object back to its defaults (that blob also holds the strength caps).
+  const [sceneLib, updateSceneLib] = useScenes();
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
-    () => !settings.showSafetyNoticeOnStartup,
+    () => inShell || !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
   const [text, setText] = useState('');
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [settingsModalTab, setSettingsModalTab] = useState<SettingsModalTab>('general');
-  const [settingsMobileNavOpen, setSettingsMobileNavOpen] = useState(false);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -143,8 +171,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   } = useBrowserAppServices({
     resolveBridgeSessionId,
     settings,
+    scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
-    servicesOverrides,
+    servicesOverrides: nativeOverrides,
   });
 
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckerStatus>(() =>
@@ -205,6 +234,68 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
 
+  // Register with the global safety bus — this is the only data source the shell's
+  // global stop button has. Before this, nothing in the repo registered, so the button
+  // always rendered as null, i.e. it may as well not have existed.
+  useSafetySession({
+    id: 'agent',
+    label: 'Agent',
+    // "Holds a connected device" rather than "is currently outputting": see the
+    // comment on useSafetySession.
+    isActive: () =>
+      deviceState.connected ||
+      opossumState.connected ||
+      pawPrintsState.connected ||
+      civetEdgingState.connected,
+    connect: () => connect(),
+    disconnect: (deviceId) => {
+      if (deviceId === 'opossum') return disconnectOpossum();
+      if (deviceId === 'paw-prints') return disconnectPawPrints();
+      if (deviceId === 'civet-edging') return disconnectCivetEdging();
+      return disconnectDevice();
+    },
+    stop: async () => {
+      if (activeSessionId) await client.emergencyStop(activeSessionId);
+    },
+    onRevoke: async () => {
+      // Switching away from Agent also aborts the in-flight reply, not just the output —
+      // a tool-call sequence still running would keep issuing commands in the background
+      // while the user believes they already left this module.
+      if (!activeSessionId) return;
+      await client.abortCurrentReply(activeSessionId).catch(() => undefined);
+      await client.emergencyStop(activeSessionId).catch(() => undefined);
+    },
+    // Fed to the shell's device bar. One slot per device — the user has to be able to
+    // see at a glance what is attached to them.
+    devices: () => [
+      ...(deviceState.connected
+        ? [
+            {
+              id: 'coyote',
+              kind: 'coyote',
+              name: deviceState.deviceName ?? '郊狼',
+              connected: true,
+              battery: deviceState.battery,
+              active: deviceState.strengthA > 0 || deviceState.strengthB > 0,
+              channels: [
+                { label: 'A', value: deviceState.strengthA, max: settings.maxStrengthA },
+                { label: 'B', value: deviceState.strengthB, max: settings.maxStrengthB },
+              ],
+            },
+          ]
+        : []),
+      ...(opossumState.connected
+        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        : []),
+      ...(pawPrintsState.connected
+        ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
+        : []),
+      ...(civetEdgingState.connected
+        ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵猫', connected: true }]
+        : []),
+    ],
+  });
+
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -233,8 +324,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   );
   const warnings = [
     ...buildWarnings(settings, modes, speechCapabilities, {
-      suppressBridge: servicesOverrides?.disableBridge,
-      suppressSpeech: servicesOverrides?.disableSpeech,
+      suppressBridge: nativeOverrides?.disableBridge,
+      suppressSpeech: nativeOverrides?.disableSpeech,
     }),
     ...serviceInitWarnings,
   ];
@@ -292,23 +383,21 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   const safetyGuard = useMemo(
     () =>
-      new BrowserSafetyGuard({
-        stopOnLeave: true,
-        backgroundBehavior: settings.backgroundBehavior,
+      new DeviceLifecycleGuard({
         onStop: async (reason) => {
           await performLifecycleStop(reason);
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [settings.backgroundBehavior],
+    [],
   );
 
-  useEffect(() => {
-    applyTheme(settings.themeMode);
-    return subscribeThemeChanges(settings.themeMode, () => {
-      applyTheme(settings.themeMode);
-    });
-  }, [settings.themeMode]);
+  // The theme is no longer applied by this module — it is a cross-module global setting
+  // owned solely by @0xnullai/ui's store. Here we only subscribe so this module follows
+  // along; writes go straight to the store from the settings panel. If we kept applying
+  // it locally, switching back to this module would override the shell's choice with our
+  // own stale value.
+  useTheme();
 
   useEffect(() => {
     if (!safetyNoticeAccepted) return;
@@ -395,7 +484,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
     try {
       setErrorMessage(null);
-      const pickDevice = connectDeviceTauri ?? connectAnyDgLabDevice;
+      const pickDevice = nativeConnect ?? connectAnyDgLabDevice;
       const { kind } = await pickDevice({ device, opossum, pawPrints, civetEdging });
       setStatusMessage(`${DEVICE_KIND_DISPLAY_NAME[kind]}已连接`);
       await refreshCurrentSession(activeSessionId);
@@ -419,7 +508,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     opossum,
     pawPrints,
     civetEdging,
-    connectDeviceTauri,
+    nativeConnect,
     liveDeviceState.connected,
     refreshCurrentSession,
   ]);
@@ -544,7 +633,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   }
 
   async function createNewSession(): Promise<void> {
-    closeSettingsWorkspace();
+    flushSettingsDraft();
+    setEditingWaveform(null);
     clearSessionPermissionOverride();
     resetPermissionGrants();
 
@@ -595,6 +685,20 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       }
 
       setStatusMessage('会话已删除');
+    } catch (error) {
+      setErrorMessage(formatUiErrorMessage(error));
+    }
+  }
+
+  async function renameSession(sessionId: string, title: string | null): Promise<void> {
+    try {
+      await client.renameSession(sessionId, title);
+      const sessions = await client.listSessions();
+      setSavedSessions(sessions);
+      if (sessionId === activeSessionId) {
+        setSession(await client.getSessionSnapshot(sessionId));
+      }
+      setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
     } catch (error) {
       setErrorMessage(formatUiErrorMessage(error));
     }
@@ -669,10 +773,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   function selectSession(sessionId: string): void {
     if (sessionId === activeSessionId) {
-      if (settingsModalOpen) closeSettingsWorkspace();
       return;
     }
-    closeSettingsWorkspace();
+    flushSettingsDraft();
+    setEditingWaveform(null);
     resetPermissionGrants();
     setActiveSessionId(sessionId);
     setText('');
@@ -688,26 +792,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       setStatusMessage('设置已恢复默认值');
       clearEvents();
     });
-  }
-
-  function deleteSavedPromptPreset(presetId: string): void {
-    deleteSavedPromptPresetManager(presetId, setStatusMessage);
-  }
-
-  function openSettingsModal(tab: SettingsModalTab = 'general'): void {
-    setSettingsModalTab(tab);
-    setSettingsModalOpen(true);
-    setSettingsMobileNavOpen(true);
-    setSidebarOpen(false);
-  }
-
-  function closeSettingsWorkspace(): void {
-    if (settingsModalOpen) {
-      flushSettingsDraft();
-    }
-    setEditingWaveform(null);
-    setSettingsMobileNavOpen(false);
-    setSettingsModalOpen(false);
   }
 
   function resolvePermission(decision: PermissionDecision): void {
@@ -729,7 +813,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   return (
     <>
       <main
-        className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden pt-[env(safe-area-inset-top)]"
+        className="relative flex h-full min-h-0 flex-col overflow-hidden pt-[env(safe-area-inset-top)]"
         aria-hidden={!safetyNoticeAccepted}
       >
         {pendingPermission && (
@@ -757,6 +841,72 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           onConfirm={resetSettings}
         />
 
+        {/* Settings that belong in the one shell panel but read this module's
+            live state — the settings draft, the waveform list, the session
+            list. Declared here, placed there. Rendered unconditionally rather
+            than only while Agent's own workspace is open, because the shell's
+            panel can be opened from anywhere. */}
+        {/* Diagnostics, not settings — see DebugPanel. Projected onto the
+            shell's toolbar; Agent previously declared no ModuleActions at all,
+            which is why its own panels were unreachable inside the shell. */}
+        <ModuleActions>
+          <button
+            type="button"
+            onClick={() => setDebugPanelOpen(true)}
+            aria-label="打开调试面板"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+            title="调试面板"
+          >
+            <Bug className="h-4 w-4" />
+          </button>
+        </ModuleActions>
+
+        {debugPanelOpen && (
+          <DebugPanel
+            onClose={() => setDebugPanelOpen(false)}
+            bridge={{ settingsDraft, setSettingsDraft }}
+            bridgeLogs={{ bridgeLogs, bridgeStatus, settings }}
+            modelLogs={{
+              settingsDraft,
+              setSettingsDraft,
+              turns: modelLog.turns,
+              onClear: modelLog.clear,
+            }}
+          />
+        )}
+
+        <ModuleSettingsSection id="agent-sensors" label="传感器" navigation={false}>
+          <SensorsTab
+            settingsDraft={settingsDraft}
+            setSettingsDraft={setSettingsDraft}
+            sensorTriggersEnabled={sensorTriggersEnabled}
+            onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
+          />
+        </ModuleSettingsSection>
+
+        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={30}>
+          <WaveformsPanel
+            waveforms={waveforms}
+            customWaveforms={customWaveforms}
+            onImport={(files) => void importWaveformFiles(files)}
+            onImportFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
+            onRemove={(id) => void removeWaveform(id)}
+            onEdit={openWaveformEditor}
+          />
+        </ModuleSettingsSection>
+
+        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={60}>
+          <DataTab
+            sessions={savedSessions.filter(isSessionListEntry).map((session) => ({
+              id: session.id,
+              title: getSessionTitle(session),
+              updatedAt: session.updatedAt,
+            }))}
+            onExport={(ids) => void exportSessions(ids)}
+            onImport={(file) => void importSessions(file)}
+          />
+        </ModuleSettingsSection>
+
         {/* ===== Sidebar sheet (mobile) ===== */}
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <SheetContent
@@ -771,7 +921,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                     选择历史对话，或者新建一条会话
                   </SheetDescription>
                 </div>
-                <SheetClose className="scale-90 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2">
+                <SheetClose className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
                   <X className="h-5 w-5" />
                   <span className="sr-only">关闭</span>
                 </SheetClose>
@@ -782,9 +932,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                 savedSessions={savedSessions}
                 activeSessionId={activeSessionId}
                 onSelectSession={selectSession}
+                onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
                 onDeleteSession={(sessionId) => void deleteSession(sessionId)}
                 onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openSettingsModal()}
+                onOpenSettings={() => openShellSettings()}
                 detached={true}
               />
             </div>
@@ -792,37 +943,41 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         </Sheet>
 
         {/* ===== Main layout ===== */}
+        {/* In the shell only one column is left: the sidebar is owned by the shell and the
+            session list registers into the 「对话」 section via useRegisterSidebarSection.
+            If the module drew a second sidebar of its own, there would be two side by side. */}
         <section
-          className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-300 ease-out lg:grid-cols-[var(--sidebar-w)_minmax(0,1fr)]"
+          className={
+            inShell
+              ? 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden'
+              : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-[var(--dur-slow)] ease-out lg:grid-cols-[var(--sidebar-w-agent)_minmax(0,1fr)]'
+          }
           style={
             {
-              '--sidebar-w': settingsModalOpen ? '272px' : sidebarCollapsed ? '65px' : '272px',
+              '--sidebar-w-agent': sidebarCollapsed ? '65px' : '272px',
             } as React.CSSProperties
           }
         >
           {/* Desktop sidebar */}
-          <aside className="dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block">
-            {settingsModalOpen ? (
-              <SettingsSidebar
-                tab={settingsModalTab}
-                onTabChange={setSettingsModalTab}
-                onMobileNavOpenChange={setSettingsMobileNavOpen}
-                onClose={closeSettingsWorkspace}
-                onRequestReset={() => setResetSettingsDialogOpen(true)}
-              />
-            ) : (
-              <SessionPanel
-                savedSessions={savedSessions}
-                activeSessionId={activeSessionId}
-                onSelectSession={selectSession}
-                onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-                onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openSettingsModal()}
-                collapsed={sidebarCollapsed}
-                onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
-                detached={false}
-              />
-            )}
+          <aside
+            className={
+              inShell
+                ? 'hidden'
+                : 'dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block'
+            }
+          >
+            <SessionPanel
+              savedSessions={savedSessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={selectSession}
+              onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
+              onDeleteSession={(sessionId) => void deleteSession(sessionId)}
+              onCreateSession={() => void createNewSession()}
+              onOpenSettings={() => openShellSettings()}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+              detached={false}
+            />
           </aside>
 
           {/* Chat section */}
@@ -838,87 +993,67 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onDismissUpdate={() => updateChecker.dismiss()}
               onReload={() => window.location.reload()}
             />
-            {settingsModalOpen ? (
-              <SettingsWorkspace
-                tab={settingsModalTab}
-                onTabChange={setSettingsModalTab}
-                mobileNavOpen={settingsMobileNavOpen}
-                onMobileNavOpenChange={setSettingsMobileNavOpen}
-                onClose={closeSettingsWorkspace}
-                onRequestReset={() => setResetSettingsDialogOpen(true)}
-                settingsDraft={settingsDraft}
-                setSettingsDraft={setSettingsDraft}
-                onDeleteSavedPromptPreset={deleteSavedPromptPreset}
-                waveforms={waveforms}
-                customWaveforms={customWaveforms}
-                onImportWaveforms={(files) => void importWaveformFiles(files)}
-                onImportWaveformFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
-                onRemoveWaveform={(id) => void removeWaveform(id)}
-                onEditWaveform={openWaveformEditor}
-                sensorTriggersEnabled={sensorTriggersEnabled}
-                onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
-                bridgeLogs={bridgeLogs}
-                bridgeStatus={bridgeStatus}
-                modelLogTurns={modelLog.turns}
-                onClearModelLogs={modelLog.clear}
-                settings={settings}
-                exportableSessions={savedSessions.map((s) => ({
-                  id: s.id,
-                  title: getSessionTitle(s),
-                  updatedAt: s.updatedAt,
-                }))}
-                onExportSessions={(ids) => void exportSessions(ids)}
-                onImportSessions={(file) => void importSessions(file)}
-              />
-            ) : (
-              <ChatPanel
-                activeSessionId={activeSessionId}
-                text={text}
-                statusMessage={statusMessage}
-                onTextChange={setText}
-                onAbortReply={() => void abortCurrentReply()}
-                onToggleVoiceMode={() => void toggleVoiceMode()}
-                onSend={() => void send()}
-                busy={busy}
-                speechRecognitionEnabled={settings.speechRecognitionEnabled}
-                voiceMode={voiceMode}
-                voiceState={voiceState}
-                speechRecognitionSupported={speechCapabilities.recognitionSupported}
-                session={session}
-                traceFeed={traceFeed}
-                streamingAssistantText={streamingAssistantText}
-                deviceState={deviceState}
-                maxStrengthA={settings.maxStrengthA}
-                maxStrengthB={settings.maxStrengthB}
-                opossumState={opossumState}
-                maxOpossumIntensityA={settings.maxOpossumIntensityA}
-                maxOpossumIntensityB={settings.maxOpossumIntensityB}
-                pawPrintsState={pawPrintsState}
-                civetEdgingState={civetEdgingState}
-                onConnect={() => void connect()}
-                onDisconnectDevice={() => void disconnectDevice()}
-                onDisconnectOpossum={() => void disconnectOpossum()}
-                onDisconnectPawPrints={() => void disconnectPawPrints()}
-                onDisconnectCivetEdging={() => void disconnectCivetEdging()}
-                onEmergencyStop={() => void stop()}
-                onOpenSidebar={() => setSidebarOpen(true)}
-                onOpenSettings={() => openSettingsModal('general')}
-                promptPresetId={settings.promptPresetId}
-                builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
-                  (p) => !settings.hiddenBuiltinPresetIds.includes(p.id),
-                )}
-                savedPresets={settings.savedPromptPresets}
-                onPresetChange={(id) => {
-                  setSettingsDraft((prev) => ({ ...prev, promptPresetId: id }));
-                  flushSettingsDraft();
-                }}
-              />
-            )}
+            <ChatPanel
+              activeSessionId={activeSessionId}
+              text={text}
+              statusMessage={statusMessage}
+              onTextChange={setText}
+              onAbortReply={() => void abortCurrentReply()}
+              onToggleVoiceMode={() => void toggleVoiceMode()}
+              onSend={() => void send()}
+              busy={busy}
+              speechRecognitionEnabled={settings.speechRecognitionEnabled}
+              voiceMode={voiceMode}
+              voiceState={voiceState}
+              speechRecognitionSupported={speechCapabilities.recognitionSupported}
+              session={session}
+              traceFeed={traceFeed}
+              streamingAssistantText={streamingAssistantText}
+              deviceState={deviceState}
+              maxStrengthA={settings.maxStrengthA}
+              maxStrengthB={settings.maxStrengthB}
+              opossumState={opossumState}
+              maxOpossumIntensityA={settings.maxOpossumIntensityA}
+              maxOpossumIntensityB={settings.maxOpossumIntensityB}
+              pawPrintsState={pawPrintsState}
+              civetEdgingState={civetEdgingState}
+              onConnect={() => void connect()}
+              onDisconnectDevice={() => void disconnectDevice()}
+              onDisconnectOpossum={() => void disconnectOpossum()}
+              onDisconnectPawPrints={() => void disconnectPawPrints()}
+              onDisconnectCivetEdging={() => void disconnectCivetEdging()}
+              onEmergencyStop={() => void stop()}
+              onOpenSidebar={() => setSidebarOpen(true)}
+              onOpenSettings={() => openShellSettings('scenes')}
+              promptPresetId={sceneLib.selectedId}
+              builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
+                (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
+              )}
+              savedPresets={sceneLib.scenes}
+              onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
+            />
           </section>
         </section>
       </main>
 
-      {!safetyNoticeAccepted && <SafetyNoticeModal onAccept={handleSafetyNoticeAccept} />}
+      {/* Inside the shell, the shell is the single gatekeeper — the same notice should not
+          be confirmed a second time on entering Agent. */}
+      {/* The session list is projected into the shell sidebar's 「对话」 section. The module
+          no longer draws a sidebar of its own. */}
+      <SidebarSection id="conversations" title="对话">
+        <ShellSessionList
+          sessions={savedSessions}
+          activeId={activeSessionId}
+          onSelect={selectSession}
+          onRename={(id, title) => void renameSession(id, title)}
+          onDelete={(id) => void deleteSession(id)}
+          onCreate={() => void createNewSession()}
+        />
+      </SidebarSection>
+
+      {!inShell && !safetyNoticeAccepted && (
+        <SafetyNotice moduleId="agent" onAccept={handleSafetyNoticeAccept} />
+      )}
     </>
   );
 }

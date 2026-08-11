@@ -1,15 +1,18 @@
 /**
- * Node 26 起，`localStorage` 是一个内置全局：不传 `--localstorage-file` 时它是
- * `undefined`，并且会**遮蔽 jsdom 自己的实现**。结果是 jsdom 环境下
- * `localStorage` / `window.localStorage` 全部取不到，任何碰它的测试直接
- * `TypeError: Cannot read properties of undefined`。
+ * As of Node 26, `localStorage` is a built-in global: without `--localstorage-file`
+ * it is `undefined`, and it **shadows jsdom's own implementation**. The result is
+ * that under jsdom neither `localStorage` nor `window.localStorage` resolves, and
+ * any test that touches it dies right there with
+ * `TypeError: Cannot read properties of undefined`.
  *
- * 这不是本仓引入的问题——合并前各仓在 Node 26 上跑同样会失败；CI 用 Node 20
- * 则不受影响。所以修法不能依赖 node 参数（`--localstorage-file` 是实验性标志，
- * 而且它是文件持久化的，会让测试之间互相串状态）。
+ * This is not a problem this repo introduced — the separate repos failed the same
+ * way on Node 26 before the merge; CI runs Node 20 and is unaffected. So the fix
+ * cannot depend on a node flag (`--localstorage-file` is experimental, and it
+ * persists to a file, which would leak state between tests).
  *
- * 这里在检测到 localStorage 不可用时装一个纯内存实现：Node 20 上 jsdom 的真实
- * 现有实现会被保留，Node 26 上则拿到一个每个测试进程独立、语义一致的替代品。
+ * When localStorage is detected as unusable, this installs a pure in-memory
+ * implementation: on Node 20 jsdom's real existing implementation is left in place,
+ * on Node 26 you get a per-test-process, semantically equivalent stand-in.
  */
 
 class MemoryStorage implements Storage {
@@ -42,7 +45,7 @@ class MemoryStorage implements Storage {
 
 function install(name: 'localStorage' | 'sessionStorage'): void {
   const existing = (globalThis as Record<string, unknown>)[name];
-  // 已经有可用实现（Node 20 + jsdom）就不动它。
+  // If a usable implementation is already there (Node 20 + jsdom), leave it alone.
   if (existing && typeof (existing as Storage).getItem === 'function') return;
 
   const storage = new MemoryStorage();
@@ -51,7 +54,8 @@ function install(name: 'localStorage' | 'sessionStorage'): void {
     writable: true,
     configurable: true,
   });
-  // jsdom 环境里 window 就是 globalThis，但显式写一遍以防环境实现有差异。
+  // Under jsdom window is globalThis, but set it explicitly in case an environment
+  // implementation differs.
   if (typeof window !== 'undefined' && window !== (globalThis as unknown)) {
     Object.defineProperty(window, name, { value: storage, writable: true, configurable: true });
   }
@@ -61,10 +65,12 @@ install('localStorage');
 install('sessionStorage');
 
 /**
- * jsdom 不实现 `window.matchMedia`。任何走「跟随系统配色」分支的代码在测试里都会
- * 直接抛 TypeError——和上面的 localStorage 是同一类环境缺口，所以放在一起处理。
+ * jsdom does not implement `window.matchMedia`. Any code that takes the branch for
+ * following the system color scheme throws a TypeError outright in tests — the same
+ * class of environment gap as the localStorage case above, so it is handled here too.
  *
- * 默认回答「不匹配」，也就是浅色。需要测深色的用例可以自行 mock 覆盖。
+ * The default answer is "no match", i.e. light. Cases that need to test dark can
+ * mock over it themselves.
  */
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
@@ -82,4 +88,14 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
         dispatchEvent: () => false,
       }) as unknown as MediaQueryList,
   });
+}
+
+/**
+ * jsdom ships no IndexedDB, and the shared waveform library is backed by it.
+ * Installed only when missing, so a real implementation is left alone.
+ */
+if (typeof globalThis.indexedDB === 'undefined') {
+  const { indexedDB, IDBKeyRange } = await import('fake-indexeddb');
+  Object.defineProperty(globalThis, 'indexedDB', { value: indexedDB, configurable: true });
+  Object.defineProperty(globalThis, 'IDBKeyRange', { value: IDBKeyRange, configurable: true });
 }

@@ -46,6 +46,19 @@ export interface WebBluetoothDeviceClientOptions {
   gattReadyRetryOptions?: GattReadyRetryOptions;
 }
 
+/**
+ * A `DeviceClient` scoped to ONE device connection, mirroring
+ * `@dg-kit/transport-tauri-blec`'s `TauriBlecDeviceClient`. Several instances
+ * may hold several devices at the same time — nothing here is module-level
+ * state, and the protocol adapter is per-instance too.
+ *
+ * The one-device scoping is not an arbitrary limit, it is forced by the
+ * protocol adapter: `protocol.onConnected()` rebinds the adapter (and with it
+ * `emergencyStop()`) to the new device, so once a second device is handed to
+ * the same client there is no longer any way to reach the first one to zero
+ * it. Hence `connectDevice()` refuses a second *live* device rather than
+ * silently evicting it — see the guard there.
+ */
 export class WebBluetoothDeviceClient implements DeviceClient {
   private readonly listeners = new Set<(state: DeviceState) => void>();
   private readonly nav: NavigatorBluetoothLike | undefined;
@@ -64,6 +77,20 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     this.options.protocol.subscribe((state) => {
       this.emit(state);
     });
+  }
+
+  /**
+   * Identity of the currently-held device, or `null` while none is held.
+   *
+   * This is `BluetoothDevice.id` — an opaque per-origin handle the browser
+   * keeps stable across reconnects (and across visits, once the device is
+   * remembered), which is what lets a caller keep addressing "the same
+   * Coyote" through a drop-and-reconnect. Named to match
+   * `TauriBlecDeviceClient.deviceId` so callers holding several devices can
+   * key them the same way on both platforms.
+   */
+  get deviceId(): string | null {
+    return (this.device as BluetoothDeviceLike | null)?.id ?? null;
   }
 
   async connect(): Promise<void> {
@@ -101,8 +128,14 @@ export class WebBluetoothDeviceClient implements DeviceClient {
    * and identified the picked device as a Coyote via `detectDeviceKind()`
    * hand the device straight to this client, rather than needing a second,
    * Coyote-only chooser prompt. `gatt.connect()` must already have been
-   * called by the caller; this method only runs the protocol handshake and
-   * the same replace-previous-device bookkeeping `connect()` does.
+   * called by the caller; this method only runs the protocol handshake.
+   *
+   * Throws `设备已连接` if this client already holds a *different, still
+   * connected* device — connect a second `WebBluetoothDeviceClient` instead
+   * (see the class doc). Re-attaching the device already held, or replacing
+   * one whose link has already dropped, is allowed: that is the reconnect
+   * path, and it is the only case where the previous device cannot be left
+   * outputting.
    */
   async connectDevice(
     nextDevice: BluetoothDeviceLike,
@@ -111,6 +144,20 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     this.cancelReconnect();
     const previousDevice = this.device as BluetoothDeviceLike | null;
     const shouldReplacePrevious = !!previousDevice && previousDevice !== nextDevice;
+
+    // Refuse rather than evict. This used to drop the previous device's GATT
+    // link outright, which on a V3 Coyote (state-retentive across BLE drops)
+    // left it running at its last commanded strength, on a body, with the
+    // protocol adapter already rebound to the new device and therefore no way
+    // left to reach it — not even the global stop button. Aligning with
+    // TauriBlecDeviceClient's identical guard also means the two platforms
+    // stop diverging on what "connect a second device" does.
+    if (shouldReplacePrevious && isGattConnected(previousDevice)) {
+      if (nextDevice.gatt?.connected) {
+        nextDevice.gatt.disconnect();
+      }
+      throw new Error('设备已连接');
+    }
 
     if (shouldReplacePrevious) {
       previousDevice.removeEventListener('gattserverdisconnected', this.onDisconnected);

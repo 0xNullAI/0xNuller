@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@voice': path.resolve(__dirname, './src'),
+      '@voice': path.resolve(import.meta.dirname, './src'),
     },
   },
 });

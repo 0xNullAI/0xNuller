@@ -1,5 +1,5 @@
-// 极简 OpenAI 兼容 Chat Completions 客户端（非流式），供房间内 AI 代理调用。
-// 与 DG-Agent 的 providers-openai-http 同源思路，但裁剪为 DG-Chat 自用。
+// Minimal OpenAI-compatible Chat Completions client (non-streaming), used by the in-room AI agent.
+// Same idea as DG-Agent's providers-openai-http, trimmed down for DG-Chat's own use.
 
 import type { AiConfig } from './ai-config';
 import { FREE_PROXY_URL } from './ai-config';
@@ -45,7 +45,8 @@ interface ChatCompletionResponse {
   }>;
 }
 
-/** 解析单条 tool_call：参数为 JSON 字符串，解析失败时退化为空对象。 */
+/** Parse a single tool_call: the arguments are a JSON string, and degrade to an empty object
+ *  when parsing fails. */
 function parseToolCall(raw: {
   id?: string;
   function?: { name?: string; arguments?: string };
@@ -57,7 +58,7 @@ function parseToolCall(raw: {
       const parsed = JSON.parse(rawArgs) as unknown;
       if (parsed && typeof parsed === 'object') args = parsed as Record<string, unknown>;
     } catch {
-      // 模型偶尔返回非法 JSON；保留空参数而非抛错。
+      // Models occasionally return invalid JSON; keep empty arguments instead of throwing.
     }
   }
   return {
@@ -67,7 +68,8 @@ function parseToolCall(raw: {
   };
 }
 
-/** 计算 chat/completions 端点：免费代理用根路径 POST，其余追加 /chat/completions。 */
+/** Work out the chat/completions endpoint: the free proxy takes a POST to the root path,
+ *  everything else gets /chat/completions appended. */
 function resolveEndpoint(baseUrl: string): string {
   const trimmed = baseUrl.replace(/\/+$/, '');
   if (trimmed === FREE_PROXY_URL) return trimmed;

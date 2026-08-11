@@ -1,101 +1,103 @@
 # CLAUDE.md
 
-Claude Code 在 **0xNullAI** 平台仓库工作时的指引。
+在 0xNuller monorepo 中工作的开发指引。
 
-## 这是什么
+## 产品与结构
 
-由九个独立仓库合并而成的 monorepo：`@dg-kit/*` 共享层、Agent/Chat/Voice/Market 四个功能模块、落地页、文档站、MCP 服务端、三个待合并的安卓壳。控制对象是 DG-Lab 郊狼——**会向人体输出电流的真实设备**。
+0xNuller 6.0.0 是一个统一 Web 与 Android 应用，包含六个模块：
 
-各仓合并前的 `CLAUDE.md` 完整保留在 `docs/legacy/`，里面有大量硬换来的知识（智谱 GLM 的五处服务端分歧、DG-Agent 的 UI 维护约定、DG-Voice 的 realtime provider 差异等）。改动某个模块前先读对应那份。
+1. Control
+2. Agent
+3. Voice
+4. Chat
+5. Playground
+6. Market
 
-## 结构
+主要目录：
 
+```text
+apps/web              统一 Web 外壳
+apps/control          直接设备控制
+apps/agent            文字 Agent
+apps/voice            实时语音
+apps/chat             房间、私聊与媒体
+apps/playground       游戏
+apps/market           场景与波形社区
+android/app           单一 Tauri Android 外壳
+packages/kit/*        可发布的 @dg-kit 共享层
+packages/platform/*   应用内部共享层
+packages/agent/*      Agent 运行时与浏览器实现
+workers/*             Cloudflare 后端
+apps/mcp              MCP 服务；对外发布等待单独确认
 ```
-packages/kit/*        @dg-kit/*，发布到 npm。dist-first：main/types 指向 dist/
-                      safety/ 是设备安全链的唯一真身
-packages/platform/*   @0xnullai/*，跨模块共用、不发布
-                      ui · llm-providers · market-client · permissions
-packages/agent/*      @dg-agent/*，Agent 模块专属
-apps/*                agent chat voice market landing wiki mcp（四个应用各自独立部署）
-android/*             agent chat voice，三个 Tauri 壳
-workers/*             llm-proxy（免费 provider，产品承诺的一部分）· speech-proxy
-```
 
-加新东西之前先想清楚它属于哪一层：发布给外部（kit）、四个模块都要用（platform）、
-还是只有 Agent 用（agent）。放错层的代价是它迟早会被复制第二份。
+新增能力前先判断它属于可发布 Kit、全应用共享平台层，还是单一模块。不要复制设备协议、
+安全策略、主题、账户或设置存储。
 
-目录多套一层还有个附带好处：`@dg-kit/core` 与 `@dg-agent/core` 同名也能共存。
+## 设备安全
+
+设备会产生真实输出，以下约束不可削弱：
+
+- 停止操作始终一个动作可达；
+- 所有强度、时长与突增请求在设备持有者一侧再次限制；
+- 切换模块或失去设备租约时立即停止输出；
+- 安全链只保留一份，以 `@dg-kit/safety` 为准；
+- 多设备急停必须覆盖每台郊狼与负鼠；
+- 游戏、房间消息与模型工具不能绕过共享策略和命令队列。
+
+外壳设备栏只从模块的 `useSafetySession` 注册信息读取。模块切换时交还控制权，不以断开蓝牙
+代替撤销租约。
+
+## 共享状态
+
+| 状态                     | 真源                              |
+| ------------------------ | --------------------------------- |
+| 主题                     | `@0xnullai/ui` theme store        |
+| 设备安全设置             | `@0xnullai/settings`              |
+| 场景                     | `@0xnullai/scenes`                |
+| 模型配置                 | `@0xnullai/llm-providers`         |
+| 设备清单、急停与控制租约 | `@dg-kit/safety`                  |
+| 账户与角色               | Auth Worker                       |
+| Market 内容所有权        | Auth 与 Market 的 Service Binding |
+
+弹窗使用共享 Overlay；模块通过 `SidebarSection`、`ModuleActions`、`useSafetySession` 与
+`useNativeBridge` 接入外壳。不要在模块中新增第二个顶部设备入口。
 
 ## 命令
 
 ```bash
-npm run build:kit    # 共享层是 dist-first，是其余一切的前置
-npm run build        # 全仓
-npm run test         # vitest 单进程跑完全仓（621 个测试）
-npm run lint         # 零错误策略
-npm run format
-npm run changeset    # 改了 packages/kit/* 就要写
+npm install
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run check:dead-code
+npm run verify:data
+npm run check:routes
+npm run verify:release
 ```
 
-改完提交前跑：`npm run lint && npm run build && npm run test`。
+`@dg-kit/*` 是 dist-first，执行全仓 typecheck、test 或 build 前必须先完成 `build:kit`；根脚本
+已经包含此前置步骤。
 
-## 安全链——改之前先想清楚失效场景
+## Cloudflare 与发布
 
-这些位置决定强度、时长和谁能下指令：
+- 6.0.0 只替换 `0xnullai.com` 与 `www`；旧子域在兼容期继续运行；
+- Worker 继续分开部署，避免移动 Durable Object 命名空间；
+- 已发布 migration 不可改写；生产迁移前先只读预检与备份；
+- secrets 只写 Cloudflare，不写仓库、日志或文档；
+- Chat → Auth → Market → Voice → Web 按依赖顺序发布；
+- DG-Kit 迁移与 DG-MCP 对外发布必须先取得用户确认。
 
-- `packages/kit/safety/src/default-policies.ts` — 强度上限、冷启动钳制、单回合调用上限
-- `packages/kit/safety/src/policy-engine.ts` — 策略求值
-- `packages/kit/safety/src/device-command-queue.ts` — 串行队列与急停插队
-- `packages/platform/permissions/` — 限时权限授予
-- `apps/chat/src/App.tsx` 的 `handleCommand` — 房间内他人指令的落地钳制
-- `android/*/src/lifecycle-safety.ts` — 切后台/被杀时自动停止
+详细步骤见 [部署文档](docs/deploy.md)。
 
-三条硬约束：
+## 代码与提交
 
-1. **停止永远一个动作可达**，任何 UI 改动都不能削弱它
-2. **上限在设备持有者一侧执行**，不信任来自房间、AI 或游戏逻辑的数值
-3. **安全逻辑不得出现第二份可独立演化的副本**——要复用就上提到共享包
-
-DG-Voice 曾整份复制 DG-Agent 的安全链。现在它只有一份，在 `@dg-kit/safety`。不要再制造第二份——需要在别处用就依赖这个包。
-
-## 软件分开，代码收拢
-
-**网页端四个应用保持独立**，各自部署、各自的设置与主题。收拢只发生在代码层：
-共享包（@dg-kit/safety、@0xnullai/ui 等）+ 统一的构建、测试、lint 配置。
-
-试过把四个模块挂进同一个网页外壳，结果是 Market 白屏、Chat 的安全弹窗逃出外壳、
-Agent 布局塌陷。根因是结构性的：四套完整 CSS 体系（Market 那套用 .app/.topbar
-这类通用类名）加各自的全屏布局假设，塞进同一个文档必然互相覆盖。**不要再试。**
-
-**移动端相反**：安卓上四个模块合成单一「0xNullAI」应用，布局重新设计，不存在把
-四套现成桌面布局塞一起的问题。
-
-各模块内部别名是 `@agent` / `@voice`（不是 `@`），保留这个命名以免将来再撞车。
-
-## 已知的坑
-
-- **Kit 是 dist-first。** `main`/`types` 指向 `dist/`，不要改回 `src`——那个模式当年弄坏过 0.1.0 的发布。所以任何 typecheck/test 之前必须先 `build:kit`。
-- **Node 26 的内置 `localStorage` 会遮蔽 jsdom 的。** `test/setup/localstorage.ts` 已处理，不要加 `--localstorage-file`（实验性标志，且文件持久化会让测试互相串状态）。
-- **`run_worker_first: true` 会让静态资源变成计费的 Worker 调用。** 免费额度耗尽时 Cloudflare 返回 429 而不是回退到资源服务——整站挂掉。只对 `/api/*` 与 `/ws/*` 开。
-- **DO migration tag 按 Worker script 计。** 不要把已有的 DO 类挪进别的 Worker。
-- **安卓端没有热更新**，前端修复都要重新打 APK，老版本会长期存在于用户手机上。
-- **`@mnlphlp/plugin-blec` 是 git 依赖**，指向 0xNullAI 的 fork。上游 force-push 会让它漂移。
-
-## 提交与分支
-
-- `dev` 日常开发，PR 全部提到这里；`main` 仅发版
-- Conventional commits，正文解释 WHY
-- 提交身份由 `~/.gitconfig` 的目录条件包含自动提供（`0xNull` + noreply 邮箱），**不要在仓库里设置 `user.*`**
-- 推送前确认 `gh auth status` 的活跃账号是 `0xNullAI`
-
-## 代码约定
-
-TypeScript `strict` + `noUncheckedIndexedAccess`；仅 ESM；`import type`；未使用变量前缀 `_`；注释解释 WHY 不解释 WHAT；不用 emoji；UI 文案简体中文。
-
-lint 现有 7 个 `react-hooks/exhaustive-deps` 警告，是 DG-Chat 合并前 lint 被 `|| true` 关掉留下的基线。**不要新增**，也不必在无关改动里顺手清理。
-
-`apps/chat` 里有三处 `react-hooks/refs` 的显式豁免（渲染期刷新「最新值」ref）。那是有意为之：改到 effect 里会让 ref 晚一个 commit 更新，设备指令可能读到过期引用。要动请单独做，并真机验证。
-
-## 迁移中
-
-本仓库正在接管九个旧仓库。**迁移期间旧仓保持在线且它们的自动化仍然是武装的**——DG-Kit 的 `release.yml` 在 push 时会 npm publish，Chat/Voice/Market 的 Cloudflare Workers Builds 监听旧仓且 push 即部署生产。所以：**不要往旧仓推任何东西**。
+- TypeScript strict、ESM、type-only import；
+- 注释解释原因，面向用户的文案保持简短；
+- 提交前执行格式、lint、类型、测试、构建和 dead-code 门禁；
+- 日常开发在 `dev`，发布通过 PR 进入 `main`；
+- Conventional Commits；
+- 作者与提交者必须是 `0xNull <271426072+0xNullAI@users.noreply.github.com>`；
+- 不在仓库设置 `git user.*`；
+- 不向旧仓库推送代码；归档与下线是两个独立动作。

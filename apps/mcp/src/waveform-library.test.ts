@@ -21,7 +21,9 @@ describe('NodeWaveformLibrary', () => {
     const lib = new NodeWaveformLibrary();
     const all = await lib.list();
     const ids = all.map((w) => w.id);
-    expect(ids).toEqual(expect.arrayContaining(['breath', 'tide', 'pulse_low', 'pulse_mid', 'pulse_high', 'tap']));
+    expect(ids).toEqual(
+      expect.arrayContaining(['breath', 'tide', 'pulse_low', 'pulse_mid', 'pulse_high', 'tap']),
+    );
     expect(all.length).toBe(6);
   });
 

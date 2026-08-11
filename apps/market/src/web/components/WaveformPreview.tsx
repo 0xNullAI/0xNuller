@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useEffect, useRef } from 'react';
 
 interface Props {
@@ -5,7 +6,7 @@ interface Props {
   height?: number;
 }
 
-// 把 frames 的强度画成柱状轮廓，颜色随频率深浅变化。
+// Draw the frames' strength as a bar outline, with the color shading by frequency.
 export function WaveformPreview({ frames, height = 64 }: Props): JSX.Element {
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -24,7 +25,8 @@ export function WaveformPreview({ frames, height = 64 }: Props): JSX.Element {
     ctx.clearRect(0, 0, w, h);
 
     if (frames.length === 0) return;
-    // 用主题强调色（浅色青 / 深色暖黄），与主站一致；频率高低用透明度区分。
+    // Use the theme accent color (cyan in light / warm yellow in dark) to match the main
+    // site; frequency is distinguished by opacity.
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#58c8f2';
     const barW = w / frames.length;

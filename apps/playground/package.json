@@ -1,0 +1,23 @@
+{
+  "name": "0xnullai-playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把设备接进游戏。贪吃蛇、剧本杀等都挂在这里。",
+  "dependencies": {
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
+    "@0xnullai/ui": "0.1.0",
+    "@dg-kit/safety": "1.13.0",
+    "@dg-kit/waveforms": "1.13.0",
+    "lucide-react": "^1.11.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
+  }
+}

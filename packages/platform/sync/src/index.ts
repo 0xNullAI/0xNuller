@@ -1,0 +1,252 @@
+import { apiBaseUrl } from '@0xnullai/settings';
+
+/**
+ * Account sync.
+ *
+ * The account dialog has always said an account is 「用于同步波形库、场景与
+ * 市场归属」. This is that, on the client side.
+ *
+ * Two rules shape the whole module:
+ *
+ * 1. **An account is never a prerequisite.** Anonymous use is a hard product
+ *    constraint, so every function here degrades to a no-op when signed out
+ *    or when the service is unreachable. Nothing may throw into a caller that
+ *    was just trying to save a waveform.
+ *
+ * 2. **API keys are never uploaded.** Syncing them would make 0xNullAI the
+ *    custodian of somebody else's third-party credential, which the user
+ *    never agreed to. Provider, model and base URL sync; the key stays on the
+ *    device. `stripSecrets` is the one place that decision is enforced, and
+ *    it is enforced here rather than on the server because the server cannot
+ *    tell what is inside an opaque payload.
+ */
+
+export type SyncNamespace = 'llm' | 'device-safety' | 'proxy' | 'ui';
+export type ContentKind = 'waveform' | 'scene';
+
+export interface SyncedChatRoom {
+  code: string;
+  name: string;
+  joinedAt: number;
+  updatedAt: number;
+  ownerKey?: string;
+}
+
+export interface SyncedAgentSession<T = unknown> {
+  id: string;
+  session: T | null;
+  clientUpdatedAt: number;
+  updatedAt: number;
+  deleted: boolean;
+}
+
+export interface SyncedContent {
+  id: string;
+  kind: ContentKind;
+  name: string;
+  payload: unknown;
+  updatedAt: number;
+  deleted: boolean;
+  hidden?: boolean;
+  order?: number;
+}
+
+const TOKEN_KEY = '0xnullai.auth-token';
+
+function authHeaders(): Record<string, string> {
+  // Private browsing can reject the read; signed-out is the right reading of
+  // that, not a crash.
+  const token = (() => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  })();
+  return {
+    'content-type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/** Never throws. A sync failure must not surface where a local save is happening. */
+async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers: { ...authHeaders(), ...init?.headers },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove anything that must not leave the device.
+ *
+ * Currently the LLM API key. Written as a deny-list over known secret field
+ * names rather than an allow-list of safe ones, because a new *safe* field
+ * appearing and silently not syncing is a much smaller failure than a new
+ * *secret* field appearing and silently syncing.
+ */
+export function stripSecrets(namespace: SyncNamespace, payload: unknown): unknown {
+  if (namespace !== 'llm' || !payload || typeof payload !== 'object') return payload;
+  const { apiKey: _apiKey, ...rest } = payload as Record<string, unknown>;
+  return rest;
+}
+
+export interface RemoteSettings<T = unknown> {
+  payload: T | null;
+  version: number;
+}
+
+export async function pullSettings<T>(namespace: SyncNamespace): Promise<RemoteSettings<T> | null> {
+  return call<RemoteSettings<T>>(`/api/auth/settings/${encodeURIComponent(namespace)}`);
+}
+
+/**
+ * Push settings.
+ *
+ * `version` is what the caller last saw. A mismatch comes back as null rather
+ * than overwriting — another device wrote in between, and resolving that is
+ * the caller's decision, not something to paper over.
+ */
+export async function pushSettings(
+  namespace: SyncNamespace,
+  payload: unknown,
+  version?: number,
+): Promise<{ version: number } | null> {
+  return call<{ version: number }>(`/api/auth/settings/${encodeURIComponent(namespace)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ payload: stripSecrets(namespace, payload), version }),
+  });
+}
+
+/** Items changed since `since` (0 = everything). Deletions arrive as tombstones. */
+export async function pullContent(kind: ContentKind, since = 0): Promise<SyncedContent[] | null> {
+  const items: SyncedContent[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const query = new URLSearchParams({ kind, since: String(since) });
+    if (cursor) query.set('cursor', cursor);
+    const res = await call<{ items: SyncedContent[]; nextCursor: string | null }>(
+      `/api/auth/content?${query}`,
+    );
+    if (!res) return null;
+    items.push(...res.items);
+    cursor = res.nextCursor;
+    // A repeated cursor is a server bug. Stop rather than turning background sync
+    // into an infinite request loop on every client.
+    if (cursor && seen.has(cursor)) return null;
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+export async function pushContent(
+  items: {
+    id: string;
+    kind: ContentKind;
+    name: string;
+    payload: unknown;
+    deleted?: boolean;
+    hidden?: boolean;
+    order?: number;
+  }[],
+): Promise<boolean> {
+  if (items.length === 0) return true;
+  const res = await call<{ ok: boolean }>('/api/auth/content', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  });
+  return res?.ok === true;
+}
+
+export interface ContentPreferences {
+  selectedId?: string;
+  hiddenBuiltinIds: string[];
+  updatedAt?: number;
+}
+
+export async function pullContentPreferences(
+  kind: ContentKind,
+): Promise<ContentPreferences | null> {
+  return call<ContentPreferences>(`/api/auth/content-preferences/${kind}`);
+}
+
+export async function pushContentPreferences(
+  kind: ContentKind,
+  preferences: Omit<ContentPreferences, 'updatedAt'>,
+): Promise<boolean> {
+  const result = await call<{ ok: boolean }>(`/api/auth/content-preferences/${kind}`, {
+    method: 'PUT',
+    body: JSON.stringify(preferences),
+  });
+  return result?.ok === true;
+}
+
+export async function listMarketClaims(): Promise<{ item_id: string; claimed_at: number }[]> {
+  const res = await call<{ claims: { item_id: string; claimed_at: number }[] }>(
+    '/api/auth/market-claims',
+  );
+  return res?.claims ?? [];
+}
+
+export async function pullChatRooms(): Promise<SyncedChatRoom[] | null> {
+  const res = await call<{ rooms: SyncedChatRoom[] }>('/api/auth/chat-rooms');
+  return res?.rooms ?? null;
+}
+
+export async function rememberChatRoom(
+  code: string,
+  name = '',
+  ownerKey?: string,
+): Promise<boolean> {
+  const res = await call<{ ok: boolean }>('/api/auth/chat-rooms', {
+    method: 'PUT',
+    body: JSON.stringify({ code, name, ownerKey }),
+  });
+  return res?.ok === true;
+}
+
+export async function closeChatRoom(code: string, ownerKey: string): Promise<boolean> {
+  const res = await call<{ ok: boolean }>(
+    `/api/auth/chat-rooms/${encodeURIComponent(code)}/close`,
+    { method: 'POST', body: JSON.stringify({ ownerKey }) },
+  );
+  return res?.ok === true;
+}
+
+export async function forgetChatRoom(code: string): Promise<boolean> {
+  const res = await call<{ ok: boolean }>(`/api/auth/chat-rooms/${encodeURIComponent(code)}`, {
+    method: 'DELETE',
+  });
+  return res?.ok === true;
+}
+
+export async function pullAgentSessions(since = 0): Promise<{
+  sessions: SyncedAgentSession[];
+  cursor: number;
+  hasMore: boolean;
+} | null> {
+  return call(`/api/auth/agent-sessions?since=${Math.max(0, Math.trunc(since))}`);
+}
+
+export async function pushAgentSessions(
+  sessions: Array<{
+    id: string;
+    session?: unknown;
+    clientUpdatedAt: number;
+    deleted?: boolean;
+  }>,
+): Promise<boolean> {
+  const result = await call<{ ok: boolean }>('/api/auth/agent-sessions', {
+    method: 'PUT',
+    body: JSON.stringify({ sessions }),
+  });
+  return result?.ok === true;
+}

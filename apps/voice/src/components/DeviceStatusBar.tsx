@@ -1,20 +1,17 @@
 import { Vibrate, Zap } from 'lucide-react';
-import {
-  ChannelStrengthBar,
-  DeviceStatusChip,
-  DeviceStatusRow,
-} from '@0xnullai/ui';
+import { ChannelStrengthBar, DeviceStatusChip, DeviceStatusRow } from '@0xnullai/ui';
 import type { DeviceSessionState } from '@voice/lib/device-session';
 import type { CoyoteSafetySettings, OpossumSafetySettings } from '@voice/lib/settings';
 
-
 /**
- * 设备状态条。显示用的内核（电量档位 / 强度条刻度 / chip 交互）来自
- * @0xnullai/ui —— 合并前它们在这里和 DG-Agent 的 ChatPanel 里各存一份逐字复制。
- * 这里只负责编排 DG-Voice 支持的两种设备（郊狼 + 负鼠）。
+ * Device status bar. The display internals (battery buckets / strength-bar
+ * scale / chip interaction) come from @0xnullai/ui — before the merge they
+ * lived here and in Agent's ChatPanel as two verbatim copies. This file only
+ * arranges the two device types Voice supports (郊狼 + 负鼠).
  *
- * 两台都没连时不渲染任何东西，与 DG-Agent 行为一致：那个状态下的行动号召是
- * 顶栏常驻的「连接设备」按钮，而不是一条空状态条。
+ * Renders nothing when neither is connected, matching Agent's behaviour: the
+ * call to action in that state lives inside the shared device-safety button in
+ * the shell bar, not in an empty status row or a Voice-only connect button.
  */
 interface DeviceStatusBarProps {
   state: DeviceSessionState;
@@ -43,8 +40,16 @@ export function DeviceStatusBar({
           title="断开郊狼"
         >
           <div className="flex gap-3 sm:gap-4">
-            <ChannelStrengthBar channel="A" value={state.coyote.strengthA} max={Math.min(state.coyote.limitA, coyoteSafety.maxStrengthA)} />
-            <ChannelStrengthBar channel="B" value={state.coyote.strengthB} max={Math.min(state.coyote.limitB, coyoteSafety.maxStrengthB)} />
+            <ChannelStrengthBar
+              channel="A"
+              value={state.coyote.strengthA}
+              max={Math.min(state.coyote.limitA, coyoteSafety.maxStrengthA)}
+            />
+            <ChannelStrengthBar
+              channel="B"
+              value={state.coyote.strengthB}
+              max={Math.min(state.coyote.limitB, coyoteSafety.maxStrengthB)}
+            />
           </div>
         </DeviceStatusChip>
       )}
@@ -57,8 +62,16 @@ export function DeviceStatusBar({
           title="断开负鼠"
         >
           <div className="flex gap-3 sm:gap-4">
-            <ChannelStrengthBar channel="A" value={state.opossum.intensityA} max={opossumSafety.maxIntensityA} />
-            <ChannelStrengthBar channel="B" value={state.opossum.intensityB} max={opossumSafety.maxIntensityB} />
+            <ChannelStrengthBar
+              channel="A"
+              value={state.opossum.intensityA}
+              max={opossumSafety.maxIntensityA}
+            />
+            <ChannelStrengthBar
+              channel="B"
+              value={state.opossum.intensityB}
+              max={opossumSafety.maxIntensityB}
+            />
           </div>
         </DeviceStatusChip>
       )}

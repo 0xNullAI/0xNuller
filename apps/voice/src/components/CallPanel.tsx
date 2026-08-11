@@ -3,7 +3,10 @@ import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
-import { getRealtimeProviderDefinition, type RealtimeProviderId } from '@voice/lib/realtime/providers';
+import {
+  getRealtimeProviderDefinition,
+  type RealtimeProviderId,
+} from '@voice/lib/realtime/providers';
 
 interface CallPanelProps {
   call: RealtimeCallState;
@@ -13,7 +16,13 @@ interface CallPanelProps {
   onEmergencyStop: () => void;
 }
 
-export function CallPanel({ call, providerId, onStart, onHangUp, onEmergencyStop }: CallPanelProps) {
+export function CallPanel({
+  call,
+  providerId,
+  onStart,
+  onHangUp,
+  onEmergencyStop,
+}: CallPanelProps) {
   if (call.status === 'active' || call.status === 'connecting') {
     return (
       <ActiveCallView
@@ -39,7 +48,7 @@ function IdleCallView({
   const provider = getRealtimeProviderDefinition(providerId);
 
   return (
-    <section className="rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4">
+    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-soft)]">
           <Radio className="h-4 w-4" />
@@ -55,7 +64,7 @@ function IdleCallView({
       )}
 
       <p className="mb-3 text-xs text-[var(--text-faint)]">
-        当前 provider：{provider?.name ?? providerId}
+        语音服务：{provider?.name ?? providerId}
         {provider?.pricePerMinuteUsd ? ` · 约 $${provider.pricePerMinuteUsd}/分钟` : ''}
       </p>
 
@@ -83,7 +92,7 @@ function ActiveCallView({
   const connecting = call.status === 'connecting';
 
   return (
-    <section className="flex flex-1 flex-col items-center justify-center gap-6 rounded-[14px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-6 py-10 text-center">
+    <section className="flex flex-1 flex-col items-center justify-center gap-6 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-6 py-10 text-center">
       {call.error && (
         <Alert variant="destructive" className="w-full text-left">
           <AlertDescription>{call.error}</AlertDescription>
@@ -95,7 +104,7 @@ function ActiveCallView({
           <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent)]/30" />
         )}
         <span
-          className={`absolute inset-0 rounded-full bg-[var(--accent)]/15 transition-transform duration-500 ${
+          className={`absolute inset-0 rounded-full bg-[var(--accent)]/15 transition-transform duration-[var(--dur-enter)] ${
             call.speaking ? 'scale-110' : 'scale-100'
           }`}
         />
@@ -122,14 +131,13 @@ function ActiveCallView({
           onClick={onEmergencyStop}
         >
           <ShieldAlert className="h-4 w-4" />
-          紧急停止
+          设备归零
         </Button>
         <Button variant="destructive" className="h-12 flex-1 text-base" onClick={onHangUp}>
           <PhoneOff className="h-4 w-4" />
           结束通话
         </Button>
       </div>
-      <p className="-mt-3 text-[11px] text-[var(--text-faint)]">紧急停止只把设备归零，不挂断通话</p>
     </section>
   );
 }
@@ -147,13 +155,15 @@ function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }
   const visible = transcript.filter((entry) => entry.text.trim() !== '');
 
   return (
-    <div className="max-h-56 w-full space-y-2 overflow-y-auto rounded-[10px] bg-[var(--bg-soft)] px-4 py-3 text-left text-sm">
+    <div className="max-h-56 w-full space-y-2 overflow-y-auto rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-4 py-3 text-left text-sm">
       {visible.map((entry) => (
         <p
           key={entry.id}
           className={entry.role === 'assistant' ? 'text-[var(--text)]' : 'text-[var(--text-soft)]'}
         >
-          <span className="text-[var(--text-faint)]">{entry.role === 'assistant' ? 'AI：' : '你：'}</span>
+          <span className="text-[var(--text-faint)]">
+            {entry.role === 'assistant' ? 'AI：' : '你：'}
+          </span>
           {entry.text}
         </p>
       ))}

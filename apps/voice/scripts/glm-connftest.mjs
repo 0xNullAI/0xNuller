@@ -57,5 +57,7 @@ console.log(body.slice(0, 400));
 if (res.status === 401) {
   console.log('\n=> token REJECTED. The signed JWT is not accepted by Zhipu.');
 } else {
-  console.log('\n=> token ACCEPTED (non-401). Auth is fine; any in-app failure is the browser WS/Origin layer, not the token.');
+  console.log(
+    '\n=> token ACCEPTED (non-401). Auth is fine; any in-app failure is the browser WS/Origin layer, not the token.',
+  );
 }

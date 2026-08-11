@@ -91,31 +91,31 @@ dg-mcp [options]
 
 ### 设备控制（来自 `@dg-kit/tools`）
 
-| 工具 | 用途 |
-|---|---|
-| `shock_start` | 冷启动通道，一次设强度 + 波形（旧名 `start`） |
-| `shock_stop` | 停止通道；省略 `channel` 停全部（旧名 `stop`） |
-| `shock_adjust` | 相对调整强度（±10/步，5s 内最多 2 次）（旧名 `adjust_strength`） |
-| `shock_change_wave` | 不动强度，仅换波形（旧名 `change_wave`） |
-| `shock_burst` | 短时拉到目标强度后自动回落（5s 内最多 1 次）（旧名 `burst`） |
-| `design_wave` | 用 `ramp / hold / pulse / silence` 段落组合新波形 |
-| `vibrate_start` | 负鼠设备启动通道振动，可选带 `pattern` 节奏预设 |
-| `vibrate_stop` | 停止负鼠振动；省略 `channel` 停全部 |
-| `vibrate_adjust` | 相对调整负鼠振动强度（5s 内最多 2 次） |
-| `vibrate_change_pattern` | 不动强度，仅切换负鼠振动节奏预设 |
-| `vibrate_burst` | 负鼠短时脉冲后自动回落（5s 内最多 1 次） |
-| `set_indicator_color` | 设置爪印 / 灵猫边缘控制 / 负鼠的指示灯颜色，纯外观 |
+| 工具                     | 用途                                                             |
+| ------------------------ | ---------------------------------------------------------------- |
+| `shock_start`            | 冷启动通道，一次设强度 + 波形（旧名 `start`）                    |
+| `shock_stop`             | 停止通道；省略 `channel` 停全部（旧名 `stop`）                   |
+| `shock_adjust`           | 相对调整强度（±10/步，5s 内最多 2 次）（旧名 `adjust_strength`） |
+| `shock_change_wave`      | 不动强度，仅换波形（旧名 `change_wave`）                         |
+| `shock_burst`            | 短时拉到目标强度后自动回落（5s 内最多 1 次）（旧名 `burst`）     |
+| `design_wave`            | 用 `ramp / hold / pulse / silence` 段落组合新波形                |
+| `vibrate_start`          | 负鼠设备启动通道振动，可选带 `pattern` 节奏预设                  |
+| `vibrate_stop`           | 停止负鼠振动；省略 `channel` 停全部                              |
+| `vibrate_adjust`         | 相对调整负鼠振动强度（5s 内最多 2 次）                           |
+| `vibrate_change_pattern` | 不动强度，仅切换负鼠振动节奏预设                                 |
+| `vibrate_burst`          | 负鼠短时脉冲后自动回落（5s 内最多 1 次）                         |
+| `set_indicator_color`    | 设置爪印 / 灵猫边缘控制 / 负鼠的指示灯颜色，纯外观               |
 
 ### MCP 专属
 
-| 工具 | 用途 |
-|---|---|
-| `scan` | 扫描附近设备 |
-| `connect` / `disconnect` | 蓝牙连接管理 |
-| `get_status` | 当前连接 / 强度 / 波形 / 电池 |
-| `list_waveforms` | 列出所有可用波形 |
-| `load_waveforms` | 运行时导入新的 `.pulse` / `.zip` |
-| `emergency_stop` | 立即归零 |
+| 工具                     | 用途                             |
+| ------------------------ | -------------------------------- |
+| `scan`                   | 扫描附近设备                     |
+| `connect` / `disconnect` | 蓝牙连接管理                     |
+| `get_status`             | 当前连接 / 强度 / 波形 / 电池    |
+| `list_waveforms`         | 列出所有可用波形                 |
+| `load_waveforms`         | 运行时导入新的 `.pulse` / `.zip` |
+| `emergency_stop`         | 立即归零                         |
 
 ## 安全
 
@@ -179,11 +179,11 @@ npm run dev          # tsx 热重载
 
 ## 相关项目
 
-| 项目 | 用途 |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | 共享的 TypeScript 中台（被本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器 |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat) | 多人 P2P 房间 |
+| 项目                                             | 用途                                   |
+| ------------------------------------------------ | -------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | 共享的 TypeScript 中台（被本项目消费） |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器                     |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | 多人 P2P 房间                          |
 
 ## 协议
 

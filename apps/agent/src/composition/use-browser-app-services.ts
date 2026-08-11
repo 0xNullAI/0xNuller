@@ -8,9 +8,15 @@ import {
 import type { MessageOrigin } from '@dg-agent/bridge';
 import type { DeviceClient, PermissionDecision } from '@dg-agent/core';
 import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
-import { WebBluetoothCivetEdgingClient, WebBluetoothDeviceClient, WebBluetoothOpossumClient, WebBluetoothPawPrintsClient } from '@dg-kit/transport-webbluetooth';
+import {
+  WebBluetoothCivetEdgingClient,
+  WebBluetoothDeviceClient,
+  WebBluetoothOpossumClient,
+  WebBluetoothPawPrintsClient,
+} from '@dg-kit/transport-webbluetooth';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
+import type { SavedScene } from '@0xnullai/scenes';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
 
 export interface PendingPermissionRequest {
@@ -48,6 +54,8 @@ export type ServicesOverrides = Pick<
 
 export interface UseBrowserAppServicesOptions {
   settings: BrowserAppSettings;
+  /** The current scene (persona). Comes from the shared scene library. */
+  scenes: { selectedId: string; saved: SavedScene[] };
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
@@ -61,7 +69,8 @@ export interface UseBrowserAppServicesResult extends BrowserServices {
 export function useBrowserAppServices(
   options: UseBrowserAppServicesOptions,
 ): UseBrowserAppServicesResult {
-  const { resolveBridgeSessionId, settings, setPendingPermission, servicesOverrides } = options;
+  const { resolveBridgeSessionId, settings, scenes, setPendingPermission, servicesOverrides } =
+    options;
 
   const disableUpdateChecker = servicesOverrides?.disableUpdateChecker ?? false;
   const updateChecker = useMemo(
@@ -137,6 +146,7 @@ export function useBrowserAppServices(
     () =>
       createBrowserServices({
         settings,
+        scenes,
         device,
         opossum,
         pawPrints,
@@ -150,6 +160,8 @@ export function useBrowserAppServices(
       }),
     [
       settings,
+      scenes.selectedId,
+      scenes.saved,
       device,
       opossum,
       pawPrints,

@@ -9,11 +9,7 @@
  */
 
 import { strFromU8, unzipSync } from 'fflate';
-import {
-  listBuiltinWaveforms,
-  parsePulseText,
-  pulseToWaveformDefinition,
-} from '@dg-kit/waveforms';
+import { listBuiltinWaveforms, parsePulseText, pulseToWaveformDefinition } from '@dg-kit/waveforms';
 import type { WaveFrame as KitWaveFrame } from '@dg-kit/core';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 
@@ -55,11 +51,12 @@ export function parsePulseFile(content: string): WaveformDefinition | null {
 }
 
 /**
- * 把 DG-Market 的波形条目映射成 DG-Chat 的 WaveformDefinition。
+ * Maps a DG-Market waveform entry onto DG-Chat's WaveformDefinition.
  *
- * 关键：market 的 frames 是 [编码频率 10-240, 强度 0-100][]，与 @dg-kit/core
- * 的 WaveFrame 完全相同，因此原样透传，不做任何数值重映射 / 缩放 / 换序，
- * 否则会把下发给电刺激设备的数值改坏。
+ * The key point: market frames are [encoded frequency 10-240, strength 0-100][], exactly
+ * the same as @dg-kit/core's WaveFrame, so they are passed through verbatim with no
+ * numeric remapping / scaling / reordering — otherwise the values sent down to the
+ * electrostimulation device would be corrupted.
  */
 export function marketItemToWaveform(item: MarketItem): WaveformDefinition {
   const content = item.content as MarketWaveformContent;

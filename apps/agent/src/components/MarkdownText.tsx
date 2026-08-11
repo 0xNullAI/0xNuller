@@ -68,12 +68,12 @@ const MARKDOWN_COMPONENTS = {
     className?.startsWith('language-') ? (
       <code className={className}>{children}</code>
     ) : (
-      <code className="rounded-[4px] bg-[var(--bg-soft)] px-1.5 py-0.5 text-[0.9em]">
+      <code className="rounded-[var(--radius-2xs)] bg-[var(--bg-soft)] px-1.5 py-0.5 text-[0.9em]">
         {children}
       </code>
     ),
   pre: ({ children }: { children?: React.ReactNode }) => (
-    <pre className="my-3 overflow-x-auto rounded-[8px] bg-[var(--bg-soft)] px-3.5 py-3 text-[13px] leading-[1.5]">
+    <pre className="my-3 overflow-x-auto rounded-[var(--radius-xs)] bg-[var(--bg-soft)] px-3.5 py-3 text-[13px] leading-[1.5]">
       {children}
     </pre>
   ),

@@ -54,7 +54,11 @@ interface FakeService {
   characteristics: FakeCharacteristic[];
 }
 
-function createV3FamilyServices(): { services: FakeService[]; writeChar: FakeCharacteristic; notifyChar: FakeCharacteristic } {
+function createV3FamilyServices(): {
+  services: FakeService[];
+  writeChar: FakeCharacteristic;
+  notifyChar: FakeCharacteristic;
+} {
   const writeChar = new FakeCharacteristic(V3_WRITE_CHAR);
   const notifyChar = new FakeCharacteristic(V3_NOTIFY_CHAR);
   const batteryChar = new FakeCharacteristic(V3_BATTERY_CHAR);
@@ -329,7 +333,11 @@ describe('DeviceManager sensor reading cache', () => {
   it('caches the latest paw-prints reading pushed via notifications and exposes it via getSensorSnapshots()', async () => {
     const manager = new DeviceManager();
     const { services, notifyChar } = createV3FamilyServices();
-    const peripheral = new FakePeripheral('D1:D1:D1:D1:D1:01', `${V3_SENSOR_NAME_PREFIX}000`, services);
+    const peripheral = new FakePeripheral(
+      'D1:D1:D1:D1:D1:01',
+      `${V3_SENSOR_NAME_PREFIX}000`,
+      services,
+    );
     fakeNoble.peripheralsToDiscover = [peripheral];
 
     await manager.connect('D1:D1:D1:D1:D1:01');
@@ -340,7 +348,11 @@ describe('DeviceManager sensor reading cache', () => {
     const snapshots = manager.getSensorSnapshots();
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]?.deviceKind).toBe('paw-prints');
-    expect(snapshots[0]?.latestReading).toEqual({ type: 'trigger', eventId: 7, parameterValue: 42 });
+    expect(snapshots[0]?.latestReading).toEqual({
+      type: 'trigger',
+      eventId: 7,
+      parameterValue: 42,
+    });
   });
 
   it('returns an empty array for a device with no readings yet', async () => {

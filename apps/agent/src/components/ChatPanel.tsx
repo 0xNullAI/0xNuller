@@ -17,8 +17,7 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { ChannelStrengthBar, DeviceStatusChip, AppSwitcher, Button, Input } from '@0xnullai/ui';
-import { cn } from '@agent/lib/utils';
+import { ChannelStrengthBar, DeviceStatusChip, Button, Input, cn, useInShell } from '@0xnullai/ui';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
 
@@ -62,18 +61,19 @@ interface ChatPanelProps {
 
 const MESSAGE_BATCH_SIZE = 120;
 
-// 蓝牙配对提示：浏览器原生选择器无法注入文案，所以在未连接时常驻展示，
-// 兼作蓝牙按钮的 title，帮助用户在搜索不到设备时进入配对模式。
-const BLUETOOTH_PAIR_HINT = '搜索不到设备？将郊狼两侧滚轮同时向下按住 3–5 秒进入蓝牙配对模式。';
+// Bluetooth pairing hint: the browser's native chooser takes no injected copy, so this
+// stays on screen while disconnected and doubles as the Bluetooth button's title, to
+// help users get into pairing mode when the scan turns up no device.
+const BLUETOOTH_PAIR_HINT = '搜不到设备？同时向下按住两侧滚轮 3–5 秒';
 
 const BUBBLE_BASE =
   'max-w-[min(92%,560px)] overflow-hidden break-words px-4 py-3 text-[14.5px] leading-[1.6]';
-const BUBBLE_ASSISTANT = `${BUBBLE_BASE} whitespace-normal rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text)]`;
-const BUBBLE_USER = `${BUBBLE_BASE} whitespace-pre-wrap rounded-[14px] rounded-br-[4px] bg-[var(--accent)] text-[var(--button-text)]`;
+const BUBBLE_ASSISTANT = `${BUBBLE_BASE} whitespace-normal rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text)]`;
+const BUBBLE_USER = `${BUBBLE_BASE} whitespace-pre-wrap rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] text-[var(--button-text)]`;
 const ICON_BTN =
-  'h-9 w-9 rounded-[10px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+  'h-9 w-9 rounded-[var(--radius-ctl)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 const SYSTEM_MSG =
-  'max-w-[min(85%,480px)] rounded-[8px] border-l-[3px] border-l-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[13px] leading-[1.35] text-[var(--text-soft)]';
+  'max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border-l-[3px] border-l-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[13px] leading-[1.35] text-[var(--text-soft)]';
 
 function summarizeAssistantContent(content: string): string {
   const prefix = 'Fake LLM 已完成工具执行：';
@@ -233,12 +233,17 @@ export function ChatPanel({
     stickToBottomRef.current = distanceFromBottom < 48;
   }
 
+  const inShell = useInShell();
   const showVoiceAsPrimary = !hasText && !busy;
 
   return (
     <div className="relative flex w-full flex-1 flex-col overflow-hidden">
-      {/* ===== Top bar — only visible on non-lg when no device is connected ===== */}
-      {!deviceState.connected &&
+      {/* ===== Narrow-screen top bar — only when standalone and no device is connected =====
+          Not drawn inside the shell: the sidebar toggle, the module name and settings all
+          come from the shell, so a second copy here means two hamburger buttons and two
+          gears side by side on narrow screens. */}
+      {!inShell &&
+        !deviceState.connected &&
         !opossumState.connected &&
         !pawPrintsState.connected &&
         !civetEdgingState.connected && (
@@ -252,7 +257,7 @@ export function ChatPanel({
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <AppSwitcher current="agent" label="DG-Agent" className="text-sm font-semibold text-[var(--text)]" />
+            <span className="text-sm font-semibold text-[var(--text)]">Agent</span>
             <Button
               variant="ghost"
               size="icon"
@@ -266,124 +271,125 @@ export function ChatPanel({
         )}
 
       {/* ===== Device status bar — shows whenever any of the four device kinds is connected ===== */}
-      {(deviceState.connected ||
-        opossumState.connected ||
-        pawPrintsState.connected ||
-        civetEdgingState.connected) && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5 sm:gap-x-4 sm:px-3 sm:py-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 rounded-[8px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
-            onClick={onOpenSidebar}
-            aria-label="历史记录"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
+      {!inShell &&
+        (deviceState.connected ||
+          opossumState.connected ||
+          pawPrintsState.connected ||
+          civetEdgingState.connected) && (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5 sm:gap-x-4 sm:px-3 sm:py-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+              onClick={onOpenSidebar}
+              aria-label="历史记录"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
-            {deviceState.connected && (
-              <DeviceStatusChip
-                icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={deviceState.battery}
-                onClick={onDisconnectDevice}
-                title="断开郊狼"
-              >
-                <div className="flex gap-3 sm:gap-4">
-                  <ChannelStrengthBar
-                    channel="A"
-                    value={deviceState.strengthA}
-                    max={maxStrengthA}
-                  />
-                  <ChannelStrengthBar
-                    channel="B"
-                    value={deviceState.strengthB}
-                    max={maxStrengthB}
-                  />
-                </div>
-              </DeviceStatusChip>
-            )}
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+              {deviceState.connected && (
+                <DeviceStatusChip
+                  icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={deviceState.battery}
+                  onClick={onDisconnectDevice}
+                  title="断开郊狼"
+                >
+                  <div className="flex gap-3 sm:gap-4">
+                    <ChannelStrengthBar
+                      channel="A"
+                      value={deviceState.strengthA}
+                      max={maxStrengthA}
+                    />
+                    <ChannelStrengthBar
+                      channel="B"
+                      value={deviceState.strengthB}
+                      max={maxStrengthB}
+                    />
+                  </div>
+                </DeviceStatusChip>
+              )}
 
-            {opossumState.connected && (
-              <DeviceStatusChip
-                icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={opossumState.battery}
-                onClick={onDisconnectOpossum}
-                title="断开负鼠"
-              >
-                <div className="flex gap-3 sm:gap-4">
-                  <ChannelStrengthBar
-                    channel="A"
-                    value={opossumState.intensityA}
-                    max={maxOpossumIntensityA}
-                  />
-                  <ChannelStrengthBar
-                    channel="B"
-                    value={opossumState.intensityB}
-                    max={maxOpossumIntensityB}
-                  />
-                </div>
-              </DeviceStatusChip>
-            )}
+              {opossumState.connected && (
+                <DeviceStatusChip
+                  icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={opossumState.battery}
+                  onClick={onDisconnectOpossum}
+                  title="断开负鼠"
+                >
+                  <div className="flex gap-3 sm:gap-4">
+                    <ChannelStrengthBar
+                      channel="A"
+                      value={opossumState.intensityA}
+                      max={maxOpossumIntensityA}
+                    />
+                    <ChannelStrengthBar
+                      channel="B"
+                      value={opossumState.intensityB}
+                      max={maxOpossumIntensityB}
+                    />
+                  </div>
+                </DeviceStatusChip>
+              )}
 
-            {pawPrintsState.connected && (
-              <DeviceStatusChip
-                icon={<PawPrint className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={pawPrintsState.battery}
-                onClick={onDisconnectPawPrints}
-                title="断开爪印"
-              />
-            )}
+              {pawPrintsState.connected && (
+                <DeviceStatusChip
+                  icon={<PawPrint className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={pawPrintsState.battery}
+                  onClick={onDisconnectPawPrints}
+                  title="断开爪印"
+                />
+              )}
 
-            {civetEdgingState.connected && (
-              <DeviceStatusChip
-                icon={<Gauge className="h-3.5 w-3.5 text-[var(--success)]" />}
-                battery={civetEdgingState.battery}
-                onClick={onDisconnectCivetEdging}
-                title="断开灵猫"
-              />
-            )}
+              {civetEdgingState.connected && (
+                <DeviceStatusChip
+                  icon={<Gauge className="h-3.5 w-3.5 text-[var(--success)]" />}
+                  battery={civetEdgingState.battery}
+                  onClick={onDisconnectCivetEdging}
+                  title="断开灵猫"
+                />
+              )}
+            </div>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+              onClick={onConnect}
+              aria-label="连接其他设备"
+              title="连接其他设备"
+            >
+              <Bluetooth className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline text-xs">连接</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 shrink-0 rounded-[var(--radius-xs)] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
+              onClick={onEmergencyStop}
+              aria-label="紧急停止"
+            >
+              <CircleStop className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline text-xs">停止</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0 rounded-[var(--radius-xs)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
+              onClick={onOpenSettings}
+              aria-label="设置"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
           </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-7 shrink-0 rounded-[8px] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
-            onClick={onConnect}
-            aria-label="连接其他设备"
-            title="连接其他设备"
-          >
-            <Bluetooth className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline text-xs">连接</span>
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-7 shrink-0 rounded-[8px] px-2 text-[12px] font-medium shadow-none sm:px-2.5"
-            onClick={onEmergencyStop}
-            aria-label="紧急停止"
-          >
-            <CircleStop className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline text-xs">停止</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 rounded-[8px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] lg:hidden"
-            onClick={onOpenSettings}
-            aria-label="设置"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
+        )}
 
       {isWelcome ? (
         /* ===== Welcome centered state ===== */
         <>
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 overflow-y-auto px-4 py-6 sm:py-8">
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 DG-Agent</h2>
+              <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 Agent</h2>
             </div>
 
             <div className="flex w-full max-w-[480px] flex-col sm:max-w-[560px] lg:max-w-[620px]">
@@ -392,7 +398,7 @@ export function ChatPanel({
                 <div className="relative" ref={sceneDropdownRef}>
                   <button
                     type="button"
-                    className="!text-sm inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                    className="!text-sm inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
                     onClick={() => setSceneDropdownOpen((v) => !v)}
                   >
                     <span>{activePreset?.icon ?? '📝'}</span>
@@ -405,7 +411,7 @@ export function ChatPanel({
                     />
                   </button>
                   {sceneDropdownOpen && (
-                    <div className="absolute left-0 top-full z-10 mt-1 w-[180px] overflow-hidden rounded-[10px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg">
+                    <div className="absolute left-0 top-full z-10 mt-1 w-[180px] overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg">
                       {allPresets.map((preset) => (
                         <button
                           key={preset.id}
@@ -431,15 +437,15 @@ export function ChatPanel({
                     </div>
                   )}
                 </div>
-                {!deviceState.connected && (
+                {!inShell && !deviceState.connected && (
                   <button
                     type="button"
                     onClick={onConnect}
                     title={BLUETOOTH_PAIR_HINT}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
                   >
                     <Bluetooth className="h-3.5 w-3.5" />
-                    <span>连接蓝牙</span>
+                    <span>连接设备</span>
                   </button>
                 )}
               </div>
@@ -460,7 +466,7 @@ export function ChatPanel({
                   <Button
                     variant="destructive"
                     size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[10px] sm:h-12 sm:w-12"
+                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
                     onClick={onToggleVoiceMode}
                     aria-label="结束识别"
                   >
@@ -476,7 +482,7 @@ export function ChatPanel({
                           : 'secondary'
                     }
                     size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[10px] sm:h-12 sm:w-12"
+                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
                     disabled={!activeSessionId || (!hasText && !voiceModeAvailable)}
                     onClick={handlePrimaryAction}
                     aria-label={hasText ? '发送' : voiceModeAvailable ? '语音识别' : '发送'}
@@ -490,24 +496,13 @@ export function ChatPanel({
                 )}
               </div>
 
-              {!deviceState.connected && (
+              {!inShell && !deviceState.connected && (
                 <p className="mt-2 px-1 text-[12px] leading-relaxed text-[var(--text-faint)]">
                   {BLUETOOTH_PAIR_HINT}
                 </p>
               )}
             </div>
           </div>
-          <p className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] text-[var(--text-faint)]">
-            本项目仅供学习交流使用，请遵守当地法律法规。{' '}
-            <a
-              href="https://github.com/0xNullAI/DG-Agent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-[var(--text-soft)]"
-            >
-              GitHub
-            </a>
-          </p>
         </>
       ) : (
         /* ===== Normal chat state ===== */
@@ -544,7 +539,7 @@ export function ChatPanel({
                 if (message.role === 'assistant' && isToolExecutionSummary(message.content)) {
                   return (
                     <div key={message.id} className="flex justify-center">
-                      <div className="max-w-[min(85%,480px)] rounded-[8px] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm text-[var(--text-soft)]">
+                      <div className="max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm text-[var(--text-soft)]">
                         {summarizeAssistantContent(message.content)}
                       </div>
                     </div>
@@ -582,7 +577,7 @@ export function ChatPanel({
 
               {busy && !streamingAssistantText && (
                 <div className="flex justify-start">
-                  <div className="inline-flex items-center gap-1 rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
+                  <div className="inline-flex items-center gap-1 rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse" />
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:120ms]" />
                     <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:240ms]" />
@@ -604,13 +599,13 @@ export function ChatPanel({
               placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
               className="!h-10 flex-1 rounded-full"
             />
-            {!deviceState.connected && (
+            {!inShell && !deviceState.connected && (
               <Button
                 variant="secondary"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 onClick={onConnect}
-                aria-label="连接蓝牙"
+                aria-label="连接设备"
                 title={BLUETOOTH_PAIR_HINT}
               >
                 <Bluetooth className="h-4 w-4" />
@@ -620,7 +615,7 @@ export function ChatPanel({
               <Button
                 variant="destructive"
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 onClick={onToggleVoiceMode}
                 aria-label="结束识别"
               >
@@ -638,7 +633,7 @@ export function ChatPanel({
                         : 'secondary'
                 }
                 size="icon"
-                className="h-10 w-10 shrink-0 rounded-[10px]"
+                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
                 disabled={!activeSessionId || (!hasText && !busy && !voiceModeAvailable)}
                 onClick={handlePrimaryAction}
                 aria-label={
@@ -655,29 +650,16 @@ export function ChatPanel({
               </Button>
             )}
           </div>
-          {!deviceState.connected && (
+          {!inShell && !deviceState.connected && (
             <p className="mx-auto w-full max-w-[800px] shrink-0 px-3 pt-1.5 text-center text-[11px] leading-relaxed text-[var(--text-faint)] sm:px-6">
               {BLUETOOTH_PAIR_HINT}
             </p>
           )}
-          <p className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] text-[var(--text-faint)]">
-            本项目仅供学习交流使用，请遵守当地法律法规。{' '}
-            <a
-              href="https://github.com/0xNullAI/DG-Agent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-[var(--text-soft)]"
-            >
-              GitHub
-            </a>
-          </p>
         </>
       )}
     </div>
   );
 }
-
-
 
 type TimelineItem =
   | (SessionSnapshot['messages'][number] & { kind: 'message' })

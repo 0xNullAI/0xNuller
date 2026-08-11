@@ -113,9 +113,7 @@ export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
     defaultModel: 'grok-voice-think-fast-1.0',
     voiceSource: 'static',
     staticVoices: TRIAL_STATIC_VOICES,
-    fields: [
-      { key: 'apiKey', label: '激活密钥', type: 'password', placeholder: 'dgv-trial-...' },
-    ],
+    fields: [{ key: 'apiKey', label: '激活密钥', type: 'password', placeholder: 'dgv-trial-...' }],
   },
   {
     id: 'xai',

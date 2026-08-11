@@ -13,6 +13,7 @@
  * as the WebSocket subprotocol credential.
  */
 import type { RealtimeProviderSettings } from './providers.js';
+import { applyHttpProxy } from '@0xnullai/settings';
 
 export interface EphemeralToken {
   value: string;
@@ -22,14 +23,17 @@ export interface EphemeralToken {
 export async function mintOpenAiRealtimeEphemeralToken(
   settings: RealtimeProviderSettings,
 ): Promise<EphemeralToken> {
-  const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${settings.apiKey}`,
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    applyHttpProxy('https://api.openai.com/v1/realtime/client_secrets'),
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session: { type: 'realtime', model: settings.model } }),
     },
-    body: JSON.stringify({ session: { type: 'realtime', model: settings.model } }),
-  });
+  );
   if (!response.ok) {
     throw new Error(`OpenAI 换票失败（${response.status}）：${await safeText(response)}`);
   }
@@ -40,7 +44,7 @@ export async function mintOpenAiRealtimeEphemeralToken(
 export async function mintXaiRealtimeEphemeralToken(
   settings: RealtimeProviderSettings,
 ): Promise<EphemeralToken> {
-  const response = await fetch('https://api.x.ai/v1/realtime/client_secrets', {
+  const response = await fetch(applyHttpProxy('https://api.x.ai/v1/realtime/client_secrets'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${settings.apiKey}`,
@@ -68,14 +72,16 @@ export async function mintAzureRealtimeEphemeralToken(
   // same as OpenAI. Both were wrong. (learn.microsoft.com Azure OpenAI
   // realtime GA migration notes.)
   const url = `${settings.baseUrl}/openai/v1/realtime/client_secrets`;
-  const response = await fetch(url, {
+  const response = await fetch(applyHttpProxy(url), {
     method: 'POST',
     headers: {
       'api-key': settings.apiKey,
       'Content-Type': 'application/json',
     },
     // On Azure `session.model` is the model DEPLOYMENT name.
-    body: JSON.stringify({ session: { type: 'realtime', model: settings.deployment || settings.model } }),
+    body: JSON.stringify({
+      session: { type: 'realtime', model: settings.deployment || settings.model },
+    }),
   });
   if (!response.ok) {
     throw new Error(`Azure 换票失败（${response.status}）：${await safeText(response)}`);

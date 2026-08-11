@@ -1,20 +1,33 @@
+import { Overlay } from '@0xnullai/ui';
+import { requestProfileView } from '@0xnullai/auth';
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Image as ImageIcon, Mic, X, AtSign } from 'lucide-react';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
+import { ProfileAvatar } from './ProfileAvatar';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string, mentions?: ChatMention[]) => void;
-  /** 上传并发送媒体（图片/语音）。房间未就绪时上层应忽略。 */
+  /** Upload and send media (image/voice). The caller should ignore this while the room is not ready. */
   onSendMedia: (
     blob: Blob,
     kind: 'image' | 'audio',
     meta?: { durationMs?: number; w?: number; h?: number },
   ) => Promise<void>;
-  /** 可 @ 提及的成员（其他成员 + 自己）。 */
-  members?: { peerId: string; name: string }[];
-  /** 自己的 peerId（用于「@到我」高亮）。 */
+  /**
+   * Members that can be @-mentioned (other members + yourself), and the source
+   * for a sender's avatar.
+   *
+   * `username` is how a bubble finds the account behind a sender. It is looked
+   * up here rather than carried on the message because the room's chat frame is
+   * reconstructed field by field in the Durable Object; adding to it would mean
+   * a protocol and a storage change for something the member list already
+   * knows. Absent for anonymous peers, for the room AI, and for history from
+   * someone who has since left — all of which correctly render an inert avatar.
+   */
+  members?: { peerId: string; name: string; username?: string | null }[];
+  /** Your own peerId (used to highlight messages that mention you). */
   selfId?: string;
 }
 
@@ -22,7 +35,8 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** 把文本里的 @角色名/昵称高亮。自己气泡是 accent 底色，@ 改用下划线+加粗以保证可读。 */
+/** Highlight @role-name/@nickname inside the text. Your own bubble has an accent background, so
+ *  there the @ switches to underline + bold to stay readable. */
 function renderMessageText(
   text: string,
   mentions?: ChatMention[],
@@ -46,6 +60,9 @@ function renderMessageText(
 }
 
 export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId }: ChatPanelProps) {
+  // Sender id to account handle. Rebuilt per render from a list that is at most
+  // a roomful long, which is cheaper than the memo that would guard it.
+  const usernameByPeer = new Map(members.map((m) => [m.peerId, m.username ?? null]));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [recorder, setRecorder] = useState<Recorder | null>(null);
@@ -83,7 +100,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 录音计时：开始时间记在 ref，interval 内计算已录时长。
+  // Recording timer: the start time lives in a ref, the interval computes elapsed duration from it.
   useEffect(() => {
     if (!recorder) return;
     const t = window.setInterval(() => setRecElapsed(Date.now() - recStartRef.current), 250);
@@ -93,7 +110,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   function handleSend() {
     const text = draft.trim();
     if (!text) return;
-    // 只保留文本里仍出现的 @ 提及。
+    // Keep only the @ mentions that still appear in the text.
     const mentions = pendingMentionsRef.current.filter((m) => text.includes(`@${m.displayName}`));
     onSend(text, mentions.length ? mentions : undefined);
     setDraft('');
@@ -111,7 +128,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       const { blob, w, h } = await compressImage(file);
       await onSendMedia(blob, 'image', { w, h });
     } catch (err) {
-      console.error('[DG-Chat] image send failed', err);
+      console.error('[Chat] image send failed', err);
       setMediaError('图片发送失败，请重试');
     } finally {
       setBusy(false);
@@ -126,7 +143,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       setRecElapsed(0);
       setRecorder(rec);
     } catch (err) {
-      console.error('[DG-Chat] mic access failed', err);
+      console.error('[Chat] mic access failed', err);
       setMediaError('无法访问麦克风，请检查权限设置');
     }
   }
@@ -140,7 +157,7 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
       const { blob, durationMs } = await rec.stop();
       if (blob.size > 0) await onSendMedia(blob, 'audio', { durationMs });
     } catch (err) {
-      console.error('[DG-Chat] voice send failed', err);
+      console.error('[Chat] voice send failed', err);
       setMediaError('语音发送失败，请重试');
     } finally {
       setBusy(false);
@@ -159,8 +176,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         {messages.length === 0 && (
           <div className="mt-16 flex flex-col items-center gap-2 text-[var(--text-faint)]">
             <span className="text-3xl">💬</span>
-            <p className="text-sm">还没有消息</p>
-            <p className="text-xs">发送第一条消息开始聊天吧</p>
+            <p className="text-sm">暂无消息</p>
+            <p className="text-xs">发一条消息开始聊天</p>
           </div>
         )}
 
@@ -175,24 +192,42 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           return (
             <div
               key={msg.id}
-              className={`${grouped ? 'mb-0.5' : 'mb-2'} flex animate-msg-in ${isSelf ? 'justify-end' : 'justify-start'}`}
+              className={`${grouped ? 'mb-0.5' : 'mb-2'} flex animate-msg-in gap-2 ${isSelf ? 'justify-end' : 'justify-start'}`}
             >
+              {/* A fixed-width gutter, so grouped messages stay aligned with
+                  the first one in the run instead of sliding left. */}
+              {!isSelf && (
+                <div className="w-7 shrink-0">
+                  {!grouped && (
+                    <ProfileAvatar
+                      name={msg.senderName || msg.senderId.slice(0, 6)}
+                      username={usernameByPeer.get(msg.senderId)}
+                      size={28}
+                    />
+                  )}
+                </div>
+              )}
               <div className="max-w-[75%]">
                 {!isSelf && !grouped && (
-                  <p className="mb-0.5 flex items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
-                    <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
-                    {msg.senderRole && (
-                      <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
-                        {msg.senderRole}
-                      </span>
+                  <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
+                    {usernameByPeer.get(msg.senderId) ? (
+                      <button
+                        type="button"
+                        className="truncate hover:text-[var(--accent)] hover:underline"
+                        onClick={() => requestProfileView(usernameByPeer.get(msg.senderId)!)}
+                      >
+                        {msg.senderName || msg.senderId.slice(0, 6)}
+                      </button>
+                    ) : (
+                      <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
                     )}
-                  </p>
+                  </div>
                 )}
 
                 {msg.media?.kind === 'image' ? (
                   <button
                     onClick={() => setLightbox(msg.media!.url)}
-                    className="block overflow-hidden rounded-[14px] border border-[var(--surface-border)]"
+                    className="block overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)]"
                   >
                     <img
                       src={msg.media.url}
@@ -205,8 +240,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                   <div
                     className={
                       isSelf
-                        ? 'rounded-[14px] rounded-br-[4px] bg-[var(--accent)] px-3 py-2'
-                        : 'rounded-[14px] rounded-bl-[4px] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2'
+                        ? 'rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] px-3 py-2'
+                        : 'rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2'
                     }
                   >
                     <audio controls src={msg.media.url} className="max-w-[220px]" />
@@ -225,8 +260,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                     className={
                       `${hasMedia ? 'mt-1 ' : ''}` +
                       (isSelf
-                        ? 'rounded-[14px] rounded-br-[4px] bg-[var(--accent)] px-3 py-2 text-sm text-[var(--button-text)]'
-                        : 'rounded-[14px] rounded-bl-[4px] border px-3 py-2 text-sm text-[var(--text)] ' +
+                        ? 'rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] px-3 py-2 text-sm text-[var(--button-text)]'
+                        : 'rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border px-3 py-2 text-sm text-[var(--text)] ' +
                           (selfId && msg.mentions?.some((m) => m.peerId === selfId)
                             ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                             : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'))
@@ -257,12 +292,13 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
 
       {/* Input bar */}
       <div className="relative border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
-        {/* @ 提及候选 */}
+        {/* @ mention candidates */}
         {mentionCandidates.length > 0 && (
           <div className="absolute bottom-full left-3 right-3 mb-1 max-h-44 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]">
             {mentionCandidates.map((m) => (
               <button
                 key={m.peerId}
+                type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   selectMention(m);
@@ -276,10 +312,15 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           </div>
         )}
         {mediaError && (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1.5 text-sm text-[var(--danger)]">
+          <div
+            role="alert"
+            className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1.5 text-sm text-[var(--danger)]"
+          >
             <span>{mediaError}</span>
             <button
+              type="button"
               onClick={() => setMediaError(null)}
+              aria-label="关闭发送错误"
               className="shrink-0 text-[var(--text-faint)] hover:text-[var(--text)]"
               title="关闭"
             >
@@ -290,7 +331,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         {recorder ? (
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={cancelRec}
+              aria-label="取消录音"
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--danger)] transition-colors"
               title="取消录音"
             >
@@ -301,7 +344,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               录音中 {formatDuration(recElapsed)}
             </div>
             <button
+              type="button"
               onClick={stopRecAndSend}
+              aria-label="结束录音并发送"
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90"
               title="结束并发送"
             >
@@ -312,7 +357,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={handlePickImage} />
             <button
+              type="button"
               onClick={() => fileRef.current?.click()}
+              aria-label="发送图片"
               disabled={busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
               title="发送图片"
@@ -320,7 +367,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               <ImageIcon size={20} />
             </button>
             <button
+              type="button"
               onClick={startRec}
+              aria-label="发送语音"
               disabled={busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
               title="发送语音"
@@ -335,13 +384,15 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
                 if (e.key === 'Escape') setMentionQuery(null);
                 else if (e.key === 'Enter') handleSend();
               }}
-              placeholder={busy ? '发送中...' : '输入消息...'}
+              placeholder={busy ? '发送中…' : '输入消息…'}
               disabled={busy}
               className="flex-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-60"
               style={{ fontSize: '16px' }}
             />
             <button
+              type="button"
               onClick={handleSend}
+              aria-label="发送消息"
               disabled={!draft.trim() || busy}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90 disabled:opacity-40"
             >
@@ -351,24 +402,23 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
         )}
       </div>
 
-      {/* 图片放大 */}
+      {/* Image lightbox */}
       {lightbox && (
-        <div
-          onClick={() => setLightbox(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-        >
+        <Overlay onDismiss={() => setLightbox(null)} scrim="strong">
           <img
             src={lightbox}
             alt="图片"
             className="max-h-full max-w-full rounded-[var(--radius-sm)]"
           />
           <button
+            type="button"
             onClick={() => setLightbox(null)}
+            aria-label="关闭图片预览"
             className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
           >
             <X size={22} />
           </button>
-        </div>
+        </Overlay>
       )}
     </div>
   );

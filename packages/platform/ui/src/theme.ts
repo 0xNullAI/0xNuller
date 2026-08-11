@@ -1,7 +1,14 @@
 export type ThemeMode = 'auto' | 'dark' | 'light';
-type EffectiveTheme = 'dark' | 'light';
+export type EffectiveTheme = 'dark' | 'light';
 
-function getEffectiveTheme(mode: ThemeMode): EffectiveTheme {
+/**
+ * Resolve the mode into the effective dark/light.
+ *
+ * The toggle must invert based on *this*, not on mode. Inverting mode means
+ * the first click starting from 'auto' yields 'light' — on a light system
+ * nothing visibly happens and the button looks broken.
+ */
+export function getEffectiveTheme(mode: ThemeMode): EffectiveTheme {
   if (mode === 'auto') {
     if (
       typeof window !== 'undefined' &&
@@ -37,17 +44,4 @@ export function applyTheme(mode: ThemeMode): void {
     root.classList.remove('theme-switching');
     root.style.removeProperty('--theme-transition-override');
   });
-}
-
-export function subscribeThemeChanges(mode: ThemeMode, listener: () => void): () => void {
-  if (mode !== 'auto' || typeof window === 'undefined') {
-    return () => undefined;
-  }
-
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const handler = () => listener();
-  media.addEventListener('change', handler);
-  return () => {
-    media.removeEventListener('change', handler);
-  };
 }

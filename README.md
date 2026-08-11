@@ -1,8 +1,8 @@
 <div align="center">
 
-# 0xNullAI
+# 0xNuller
 
-**DG-Lab 郊狼设备的统一 AI 控制平台**
+**DG-Lab 设备的统一控制平台**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![@dg-kit](https://img.shields.io/badge/npm-%40dg--kit%2F*-cb3837)](https://www.npmjs.com/org/dg-kit)
@@ -16,16 +16,18 @@
 
 ## 这是什么
 
-0xNullAI 把原先分散在九个仓库里的产品收拢成一个平台：四个功能模块共用一套设备协议、一套安全链、一套设计系统和一个账号体系，并打包成单一的安卓应用。
+0xNuller 将设备控制、AI 对话、实时语音、多人互动、游戏和社区内容整合在一个网页与安卓应用中。
 
-| 模块       | 做什么                                                        |
-| ---------- | ------------------------------------------------------------- |
-| **Agent**  | 用自然语言跟 AI 对话，AI 通过工具调用真实控制设备             |
-| **Chat**   | 多人房间，把自己设备的控制权交给房间里的伙伴                  |
-| **Voice**  | 像打电话一样跟 AI 保持连线，AI 自己决定何时开口、何时调用工具 |
-| **Market** | 社区波形与场景市场，一键带进其余三个模块                      |
+| 模块           | 功能                 |
+| -------------- | -------------------- |
+| **Control**    | 手动控制设备         |
+| **Agent**      | 通过文字与 AI 交互   |
+| **Voice**      | 实时语音交互         |
+| **Chat**       | 房间、私聊与远程互动 |
+| **Playground** | 游戏互动             |
+| **Market**     | 浏览和分享场景与波形 |
 
-共享层 [`@dg-kit/*`](https://www.npmjs.com/org/dg-kit) 继续发布到 npm，供 MCP 服务端与外部项目消费。
+第一次使用建议从 Control 开始，并先在软件设置中确认设备安全上限。
 
 ## 快速开始
 
@@ -33,85 +35,48 @@
 git clone https://github.com/0xNullAI/0xNuller.git
 cd 0xNuller
 npm install
-npm run build:kit        # 共享层是 dist-first，其余包依赖它的构建产物
-npm run dev -w dg-chat   # 或 -w @dg-agent/web / dg-voice / dg-market
+npm run build:kit
+npm run dev -w @0xnullai/web
 ```
 
-Web Bluetooth 需要 **Chrome 或 Edge**。
+网页版蓝牙连接请使用 Chrome 或 Edge。
 
-## 仓库结构
-
-```
-packages/
-  kit/                     @dg-kit/*，发布到 npm
-    core protocol waveforms tools transport-webbluetooth transport-tauri-blec
-    safety/                ★ 设备安全链唯一真身：策略引擎 · 默认上限 · 串行命令队列
-  platform/                @0xnullai/*，跨模块共用（不发布）
-    ui/                    设计系统单一真源：令牌 · 主题 · 12 个 Radix 原子组件
-    llm-providers/         LLM 供应商注册表与免费体验代理常量
-    market-client/         DG-Market 客户端
-    permissions/           浏览器侧限时权限授予
-  agent/                   @dg-agent/*，Agent 模块专属
-    runtime/ agent-browser/ bridge/ client/ providers-* storage-browser/ audio-browser/
-apps/
-  agent/ chat/ voice/ market/     四个独立应用，各自部署、各自的设置与主题
-  landing/                 落地页（Astro）
-  wiki/                    文档站（只读，贡献走 PR）
-  mcp/                     MCP 服务端，发布为 npm 包 dg-mcp
-android/
-  agent/ chat/ voice/      三个 Tauri 壳，将合并为单一「0xNullAI」应用
-workers/
-  llm-proxy/               免费 provider 中继（llm.0xnullai.com）
-  speech-proxy/            DashScope 语音中继
-docs/legacy/               各仓合并前的 CLAUDE.md 与 README 存档
-```
-
-`packages/*/*` 的两层结构一是为了让 `@dg-kit/core` 与 `@dg-agent/core` 这类同名包共存，二是让「发布到 npm」「跨模块共用」「模块专属」三种性质在目录上一眼可辨。
-
-**网页端四个应用保持独立**——各自的域名、设置、主题、部署互不影响；收拢只发生在代码层（共享包）。曾经试过把它们挂进同一个外壳，结果是 Market 白屏、Chat 弹窗逃逸、Agent 布局塌陷：四套完整的 CSS 体系和各自的全屏布局假设塞进同一个文档必然互相覆盖，要共存等于把四个应用重写一遍。
-
-**移动端相反**：安卓上四个模块合成单一「0xNullAI」应用，那里的布局是重新设计的，不存在「把四套现成的桌面布局塞进一个文档」这个问题。
-
-## 命令
+## 常用命令
 
 ```bash
-npm run build:kit    # 只构建共享层（其余构建的前置）
-npm run build        # 全仓构建
-npm run typecheck    # 全仓类型检查
-npm run test         # vitest，单进程跑完全仓
-npm run lint         # eslint，零错误策略
-npm run format       # prettier --write
-npm run changeset    # 为 @dg-kit/* 的改动写发布说明
+npm run build:kit
+npm run build
+npm run typecheck
+npm run test
+npm run lint
+npm run format
 ```
 
-单个 workspace 用 `-w`：`npm run test -w dg-voice`。
+## 开发入口
 
-## 分支约定
+- [`apps/web`](./apps/web/README.md) — 统一网页应用与内置文档
+- [`apps/control`](./apps/control/README.md) — 直接设备控制
+- [`apps/agent`](./apps/agent/README.md) — 文字 Agent
+- [`apps/chat`](./apps/chat/README.md) — 房间、私聊与远程互动
+- [`apps/voice`](./apps/voice/README.md) — 实时语音
+- [`apps/playground`](./apps/playground/README.md) — 游戏互动
+- [`apps/market`](./apps/market/README.md) — 场景与波形社区
+- [`android/app`](./android/app/README.md) — 安卓应用
+- [`apps/mcp`](./apps/mcp/README.md) — MCP 服务（迁移与对外发布待确认）
+- `packages` — 共享功能包
+- [`workers`](./workers/README.md) — Cloudflare 后端服务
 
-- `dev` — 日常开发，PR 全部走这里
-- `main` — 仅用于发版
+维护者文档位于 [`docs`](./docs)；合并前各项目的完整 README 快照见
+[`docs/legacy`](./docs/legacy/README.md)。
 
-## 迁移状态
-
-本仓库正在接管以下仓库，迁移完成前它们保持在线：
-
-DG-Kit · DG-Agent · DG-Chat · DG-Voice · DG-Market · DG-Web · DG-Wiki · DG-MCP
-
-代码已通过 `git subtree` 并入，提交历史与 blame 完整保留。Cloudflare 部署与 npm
-发布仍指向旧仓，切换后旧仓才会下线。
-
-保持独立的只有 [tauri-plugin-blec-multi](https://github.com/0xNullAI/tauri-plugin-blec-multi)——它是上游项目的 Rust fork，工具链与本仓无交集。
+兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 的迁移及
+对外发布在单独确认后进行。
 
 ## 致谢
 
-- [DG-LAB-OPENSOURCE](https://github.com/DG-LAB-OPENSOURCE/DG-LAB-OPENSOURCE) — 官方开源 BLE 协议
-- [openclaw-plugin-dg-lab](https://github.com/FengYing1314/openclaw-plugin-dg-lab) — 波形解析器参考实现
-- [sse-dg-lab](https://github.com/admilkjs/sse-dg-lab) — Dungeonlab+pulse 波形解析引擎
-- [MapleLeaf API](https://aihub.071129.xyz) — 为「免费体验」模式提供模型调用
-
-## 免责声明
-
-> **本项目仅供学习交流使用，不得用于任何违法或不当用途。使用者应自行承担使用本项目所产生的一切风险和责任，项目作者不对因使用本项目而导致的任何直接或间接损害承担责任。**
+- [DG-LAB-OPENSOURCE](https://github.com/DG-LAB-OPENSOURCE/DG-LAB-OPENSOURCE)
+- [openclaw-plugin-dg-lab](https://github.com/FengYing1314/openclaw-plugin-dg-lab)
+- [sse-dg-lab](https://github.com/admilkjs/sse-dg-lab)
 
 ## 协议
 

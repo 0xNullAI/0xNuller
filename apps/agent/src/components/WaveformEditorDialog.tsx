@@ -1,4 +1,12 @@
-import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input, Textarea } from '@0xnullai/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  Input,
+  Textarea,
+} from '@0xnullai/ui';
 import type { EditingWaveformState } from '../hooks/use-waveform-manager.js';
 
 interface WaveformEditorDialogProps {
@@ -23,13 +31,13 @@ export function WaveformEditorDialog({
     >
       {editingWaveform && (
         <DialogContent
-          overlayClassName="bg-black/18 backdrop-blur-[2px]"
+          overlayClassName="backdrop-blur-[2px]"
           className="max-w-[680px] overflow-hidden p-0"
         >
           <div className="panel-header">
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-[1.1rem] tracking-[-0.03em]">编辑波形</DialogTitle>
-              <DialogDescription className="mt-1">修改自定义波形的名称和说明</DialogDescription>
+              <DialogDescription className="mt-1">修改名称和说明</DialogDescription>
             </div>
           </div>
           <label className="settings">

@@ -21,8 +21,14 @@ export class BrowserPermissionService implements PermissionService {
   ) => Promise<PermissionDecision | boolean> | PermissionDecision | boolean;
   private timedGrantExpiresAt = 0;
   private readonly grants = new Map<string, number>();
+  // Explicit fields instead of constructor parameter properties: Chat and
+  // the Android shell enable erasableSyntaxOnly (parameter properties are
+  // not pure type syntax and cannot be erased), which fails the build with
+  // TS1294.
+  private readonly options: BrowserPermissionServiceOptions;
 
-  constructor(private readonly options: BrowserPermissionServiceOptions) {
+  constructor(options: BrowserPermissionServiceOptions) {
+    this.options = options;
     this.confirmFn =
       options.confirmFn ??
       ((message) => {

@@ -1,0 +1,263 @@
+/* The layer names must match Tailwind v4's internal ones (theme / base /
+   components / utilities). Making up names causes Tailwind's real layers to be
+   appended after this declaration list, so preflight ends up overriding ui-base
+   and the shared base's form styles silently stop working. The shell layer comes
+   after module, so the shell's styles can override a module's when needed. */
+@layer theme, base, ui-base, components, utilities, module, shell;
+
+@import 'tailwindcss';
+
+/* Tailwind v4 takes its automatic scan root from Vite's config.root. The shell's
+   root is apps/web, so **the source tree of every mounted module must be listed
+   explicitly** — miss one and that module's utility classes are silently
+   tree-shaken away. That was the primary cause of the previous shell failure:
+   Agent's candidate classes dropped from 2199 to 409, and the whole h-full height
+   chain, every min-h-0 and every lg: breakpoint disappeared at once, showing up as
+   "content crammed against the top + input area shifted up + a large blank area
+   below", while the build reported nothing at all. */
+@source './';
+@source '../../../packages/platform/ui/src';
+@source '../../control/src';
+@source '../../agent/src';
+@source '../../chat/src';
+@source '../../voice/src';
+@source '../../playground/src';
+@source '../../market/src';
+
+@import '@0xnullai/ui/styles/tokens.css';
+@import '@0xnullai/ui/styles/base.css' layer(ui-base);
+@import '@0xnullai/ui/styles/scrollbar.css' layer(ui-base);
+@import '@0xnullai/ui/styles/settings.css' layer(module);
+@import '@0xnullai/ui/styles/animations.css';
+
+/* Every module's own CSS goes into the module layer.
+   It is not kept inside the lazy-loading wrapper because CSS brought in through a
+   JS import cannot be assigned a layer — it lands outside all layers and therefore
+   unconditionally overrides every Tailwind utility, repeating the base.css mistake;
+   and with lazy chunks, unlayered CSS is decided by runtime append order, so the
+   failure becomes a random result of "which module you clicked first".
+   The cost is that these stylesheets no longer lazy-load as separate chunks: about
+   1500 lines in total, which is acceptable. */
+@import '../../agent/src/styles/app.css' layer(module);
+@import '../../voice/src/styles/settings.css' layer(module);
+@import '../../chat/src/styles/app.css' layer(module);
+/* Market's 561 lines must come through here rather than a JS import in the module
+   entry: CSS brought in through a JS import cannot be assigned a layer, so it lands
+   outside all layers and unconditionally overrides every Tailwind utility. The
+   observed consequence was that its generic `.grid` took over the grid of the
+   permission dialog and the safety notice — the layout of the safety UI decided by
+   a storefront stylesheet. */
+@import '../../market/src/web/styles.css' layer(module);
+
+@layer shell {
+  /* Body typography for the docs dialog.
+     This used to pull in the docs site's 74-line wiki.css (§ heading prefixes, the
+     ◉ output badge on code blocks, highlighter background behind bold text, ▸ list
+     bullets, h1 clamped at 3.6rem) — that was a standalone site's visual identity,
+     and inside an "I'm stuck, let me look it up" dialog it is all noise. The docs
+     site is gone; this is a brand-new set: one type size, regular spacing, no
+     ornamentation whatsoever. */
+  .docs-body {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--text);
+  }
+
+  .docs-body h1 {
+    margin: 0 0 1em;
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  .docs-body h2 {
+    margin: 1.9em 0 0.6em;
+    font-size: 1.05rem;
+    font-weight: 650;
+  }
+
+  .docs-body h3 {
+    margin: 1.5em 0 0.4em;
+    font-size: 0.95rem;
+    font-weight: 650;
+  }
+
+  .docs-body p {
+    margin: 0 0 0.9em;
+  }
+
+  /* Tailwind preflight strips list markers globally; restore them here —
+     without bullets a list reads as a run of unrelated lines. */
+  .docs-body ul {
+    list-style: disc;
+  }
+
+  .docs-body ol {
+    list-style: decimal;
+  }
+
+  .docs-body ul,
+  .docs-body ol {
+    margin: 0 0 0.9em;
+    padding-left: 1.4em;
+  }
+
+  .docs-body li {
+    margin: 0.3em 0;
+  }
+
+  .docs-body li::marker {
+    color: var(--text-faint);
+  }
+
+  .docs-body strong {
+    font-weight: 650;
+  }
+
+  .docs-body a {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .docs-body code {
+    padding: 0.1em 0.4em;
+    border-radius: var(--radius-2xs);
+    background: var(--bg-soft);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+  }
+
+  .docs-body pre {
+    margin: 0 0 1em;
+    padding: 0.8em 1em;
+    border-radius: var(--radius-ctl);
+    background: var(--bg-soft);
+    overflow-x: auto;
+  }
+
+  .docs-body pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  /* Blockquotes carry operational tips (「搜不到设备？…」); a little background lifts
+     them out of the body text. */
+  .docs-body blockquote {
+    margin: 0 0 1em;
+    padding: 0.55em 1em;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    background: var(--accent-soft);
+  }
+
+  .docs-body blockquote p {
+    margin: 0;
+  }
+
+  .docs-body hr {
+    margin: 1.8em 0;
+    border: none;
+    height: 1px;
+    background: var(--surface-border);
+  }
+
+  .docs-body table {
+    margin: 0 0 1em;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+  }
+
+  .docs-body th,
+  .docs-body td {
+    padding: 0.5em 0.8em;
+    border-bottom: 1px solid var(--surface-border);
+    text-align: left;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  #shl-root {
+    background-color: var(--bg);
+  }
+
+  /* The grid texture is **the home page's own** surface, not a global background.
+     It originally hid in the docs site's wiki.css and leaked into every module, and
+     moving it onto the shell root was still wrong: Chat / Voice / Market each paint
+     an opaque background that covers it, Agent does not so it stays visible, and the
+     button row at the top is transparent — so one stylesheet grew three different
+     looks, plus one strip of grid leaking through. Scoping it to the home page has
+     none of that: module areas are always flat. */
+  .shl-home {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 88px 88px;
+  }
+
+  /* Two columns. The sidebar width comes from a variable, and the collapsed and
+     expanded states differ only in that one value — there is no second place to keep
+     in sync. transform / filter / contain are forbidden on the shell root: they flip
+     the containing block of fixed-position descendants from the viewport to the shell
+     box. The overlay container is a sibling of the shell root (so it is unaffected),
+     but modules still contain elements that rely on the viewport as their containing
+     block. For a switch animation, animate opacity. */
+  #shl-root {
+    height: 100%;
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  /* Narrow screens: the sidebar becomes a drawer and takes no layout column. The
+     content area gets the full width — squeezing the two columns into a narrow
+     sidebar plus an even narrower content area is worse to use than no sidebar. */
+  #shl-root[data-collapsed] {
+    grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
+  }
+
+  #shl-root[data-narrow] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #shl-side {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #shl-slot {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* The row of module buttons. With no buttons its height collapses to 0, leaving
+     no blank strip. */
+  #shl-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    padding: 0 0.5rem;
+    min-height: 0;
+  }
+
+  #shl-actions:not(:empty) {
+    padding-block: 0.375rem;
+  }
+
+  #shl-content {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+  }
+}

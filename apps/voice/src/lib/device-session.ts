@@ -31,9 +31,14 @@ import {
   type BluetoothRemoteGATTServerLike,
   type OpossumClient,
   type OpossumState,
+  type RequestedDevice,
 } from '@dg-kit/protocol';
 import type { DeviceClient, DeviceKind, DeviceState } from '@dg-kit/core';
-import { WebBluetoothDeviceClient, WebBluetoothOpossumClient, requestDgLabDevice } from '@dg-kit/transport-webbluetooth';
+import {
+  WebBluetoothDeviceClient,
+  WebBluetoothOpossumClient,
+  requestDgLabDevice,
+} from '@dg-kit/transport-webbluetooth';
 
 export interface DeviceSessionState {
   coyote: DeviceState;
@@ -50,11 +55,12 @@ export interface GattConnectable {
   connectDevice(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void>;
 }
 
-export interface RequestedDevice {
-  kind: DeviceKind;
-  device: BluetoothDeviceLike;
-  server: BluetoothRemoteGATTServerLike;
-}
+/**
+ * A picked, already-GATT-connected DG-Lab device plus its identified kind.
+ * Declared in `@dg-kit/protocol` (both pickers return it); re-exported so
+ * transport implementations only need this module.
+ */
+export type { RequestedDevice };
 
 export interface DeviceSessionTransport {
   coyote: DeviceClient & GattConnectable;
@@ -65,7 +71,10 @@ export interface DeviceSessionTransport {
 /** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
 export function createWebBluetoothTransport(): DeviceSessionTransport {
   return {
-    coyote: new WebBluetoothDeviceClient({ protocol: new CoyoteProtocolAdapter(), autoReconnect: true }),
+    coyote: new WebBluetoothDeviceClient({
+      protocol: new CoyoteProtocolAdapter(),
+      autoReconnect: true,
+    }),
     opossum: new WebBluetoothOpossumClient(),
     requestDevice: () => requestDgLabDevice(),
   };
@@ -119,7 +128,7 @@ export class DeviceSession {
         break;
       case 'paw-prints':
       case 'civet-edging':
-        throw new Error(`DG-Voice 暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
+        throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
     }
 
     return { kind, name: device.name ?? '' };

@@ -200,9 +200,7 @@ export class DeviceManager {
    * reading per device as it arrives via `subscribe()` in `connect()`.
    */
   getSensorSnapshots(address?: string): SensorSnapshot[] {
-    const entries = (
-      address ? [this.requireDevice(address)] : [...this.devices.values()]
-    ).filter(
+    const entries = (address ? [this.requireDevice(address)] : [...this.devices.values()]).filter(
       (entry): entry is Extract<ConnectedDevice, { kind: 'paw-prints' | 'civet-edging' }> =>
         entry.kind === 'paw-prints' || entry.kind === 'civet-edging',
     );

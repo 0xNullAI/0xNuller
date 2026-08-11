@@ -1,6 +1,6 @@
-import type { ItemType, MarketItem } from '../shared/schema';
+import type { ItemType, MarketAdminItem, MarketItem } from '../shared/schema';
 
-// D1 行 → MarketItem。content/tags 反序列化。
+// D1 row -> MarketItem. content/tags are deserialized.
 interface ItemRow {
   id: string;
   type: string;
@@ -12,9 +12,13 @@ interface ItemRow {
   content: string;
   downloads: number;
   views: number;
+  hidden: number;
   created_at: number;
-  edit_key_hash: string | null;
 }
+
+// `reports` remains only as a legacy D1 column. Runtime queries deliberately do not read it.
+const ITEM_COLUMNS =
+  'id, type, name, description, author, icon, tags, content, downloads, views, hidden, created_at';
 
 export function rowToItem(row: ItemRow): MarketItem {
   return {
@@ -29,8 +33,13 @@ export function rowToItem(row: ItemRow): MarketItem {
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
-    // 不外泄哈希本身，仅告诉前端这条是否被口令保护。
-    locked: !!row.edit_key_hash,
+  };
+}
+
+function rowToAdminItem(row: ItemRow): MarketAdminItem {
+  return {
+    ...rowToItem(row),
+    hidden: row.hidden === 1,
   };
 }
 
@@ -57,7 +66,7 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   }
 
   const order = params.sort === 'popular' ? 'downloads DESC, created_at DESC' : 'created_at DESC';
-  const sql = `SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
+  const sql = `SELECT ${ITEM_COLUMNS} FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
   binds.push(params.limit, params.offset);
 
   const { results } = await db
@@ -67,9 +76,39 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   return (results ?? []).map(rowToItem);
 }
 
+export interface AdminListParams {
+  status: 'all' | 'hidden';
+  q?: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listAdminItems(
+  db: D1Database,
+  params: AdminListParams,
+): Promise<MarketAdminItem[]> {
+  const where: string[] = [];
+  const binds: unknown[] = [];
+  if (params.status === 'hidden') where.push('hidden = 1');
+  if (params.q) {
+    where.push('(name LIKE ? OR description LIKE ? OR author LIKE ?)');
+    const like = `%${params.q}%`;
+    binds.push(like, like, like);
+  }
+  const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const sql = `SELECT ${ITEM_COLUMNS} FROM items ${filter}
+    ORDER BY hidden DESC, created_at DESC LIMIT ? OFFSET ?`;
+  binds.push(params.limit, params.offset);
+  const { results } = await db
+    .prepare(sql)
+    .bind(...binds)
+    .all<ItemRow>();
+  return (results ?? []).map(rowToAdminItem);
+}
+
 export async function getItem(db: D1Database, id: string): Promise<MarketItem | null> {
   const row = await db
-    .prepare('SELECT * FROM items WHERE id = ? AND hidden = 0')
+    .prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND hidden = 0`)
     .bind(id)
     .first<ItemRow>();
   return row ? rowToItem(row) : null;
@@ -86,12 +125,12 @@ export interface InsertItem {
   content: unknown;
   ipHash: string;
   createdAt: number;
-  // 上传时设的编辑口令哈希；未设则 undefined（条目公开可编辑）。
-  editKeyHash?: string;
 }
 
-const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at, edit_key_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+// Legacy edit-key columns stay in D1 so existing rows migrate without a rewrite, but new
+// account-owned rows never read or write them.
+const INSERT_SQL = `INSERT INTO items (id, type, name, description, author, icon, tags, content, ip_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function insertBinds(item: InsertItem): unknown[] {
   return [
@@ -105,15 +144,17 @@ function insertBinds(item: InsertItem): unknown[] {
     JSON.stringify(item.content),
     item.ipHash,
     item.createdAt,
-    item.editKeyHash ?? null,
   ];
 }
 
 export async function insertItem(db: D1Database, item: InsertItem): Promise<void> {
-  await db.prepare(INSERT_SQL).bind(...insertBinds(item)).run();
+  await db
+    .prepare(INSERT_SQL)
+    .bind(...insertBinds(item))
+    .run();
 }
 
-// 批量插入：一次 D1 batch，原子提交（全部成功或全部回滚）。
+// Batch insert: a single D1 batch, committed atomically (all succeed or all roll back).
 export async function insertItems(db: D1Database, items: InsertItem[]): Promise<void> {
   if (items.length === 0) return;
   const stmt = db.prepare(INSERT_SQL);
@@ -128,32 +169,20 @@ export async function incrementViews(db: D1Database, id: string): Promise<void> 
   await db.prepare('UPDATE items SET views = views + 1 WHERE id = ?').bind(id).run();
 }
 
-export async function reportItem(db: D1Database, id: string): Promise<void> {
-  // reports 达到阈值自动隐藏，等待管理员复核。
-  await db
-    .prepare('UPDATE items SET reports = reports + 1, hidden = CASE WHEN reports + 1 >= 5 THEN 1 ELSE hidden END WHERE id = ?')
-    .bind(id)
-    .run();
-}
-
-export async function adminDelete(db: D1Database, id: string): Promise<void> {
+export async function deleteItem(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM items WHERE id = ?').bind(id).run();
 }
 
-// 取条目的编辑口令哈希用于鉴权：返回 null 表示条目不存在；
-// { hash: null } 表示存在但未设口令（公开可编辑）。
-export async function getEditKeyHash(
-  db: D1Database,
-  id: string,
-): Promise<{ hash: string | null } | null> {
-  const row = await db
-    .prepare('SELECT edit_key_hash FROM items WHERE id = ? AND hidden = 0')
-    .bind(id)
-    .first<{ edit_key_hash: string | null }>();
-  return row ? { hash: row.edit_key_hash } : null;
+export async function setItemHidden(db: D1Database, id: string, hidden: boolean): Promise<boolean> {
+  const result = await db
+    .prepare('UPDATE items SET hidden = ? WHERE id = ?')
+    .bind(hidden ? 1 : 0, id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
-// 改条目元数据：列名取自固定白名单，值已规整（空 → null）。
+// Change item metadata: column names come from a fixed allowlist, values are already
+// normalized (empty -> null).
 export interface ItemPatchRow {
   name?: string;
   description?: string | null;
@@ -162,7 +191,11 @@ export interface ItemPatchRow {
   tags?: string | null;
 }
 
-export async function updateItemMeta(db: D1Database, id: string, patch: ItemPatchRow): Promise<boolean> {
+export async function updateItemMeta(
+  db: D1Database,
+  id: string,
+  patch: ItemPatchRow,
+): Promise<boolean> {
   const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
   const sets: string[] = [];
   const binds: unknown[] = [];
@@ -180,7 +213,7 @@ export async function updateItemMeta(db: D1Database, id: string, patch: ItemPatc
   return (res.meta.changes ?? 0) > 0;
 }
 
-// 限流：统计同一来源近 windowMs 内的上传数。
+// Rate limiting: count how many uploads the same source made within the last windowMs.
 export async function recentUploadCount(
   db: D1Database,
   ipHash: string,

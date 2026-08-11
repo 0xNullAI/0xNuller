@@ -84,7 +84,10 @@ function createFakeContext(
 
   const device = { id: address, name } as unknown as BluetoothDeviceLike;
 
-  return { context: { device, server: server as WebBluetoothConnectionContext['server'] }, charsByUuid };
+  return {
+    context: { device, server: server as WebBluetoothConnectionContext['server'] },
+    charsByUuid,
+  };
 }
 
 /** Seeds a connected device straight into a real `DeviceManager`'s map, bypassing noble. */
@@ -392,7 +395,11 @@ describe('rate-limit caps track post-1.9.0 tool names', () => {
 describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")', () => {
   it('sends the LED-solid command to a paw-prints device', async () => {
     const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(deviceManager, 'paw-prints', 'F4:F4:F4:F4:F4:01');
+    const { charsByUuid } = await injectConnectedDevice(
+      deviceManager,
+      'paw-prints',
+      'F4:F4:F4:F4:F4:01',
+    );
 
     const result = await client.callTool({
       name: 'set_indicator_color',
@@ -410,7 +417,11 @@ describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")'
 
   it('sends the LED command to an opossum device, defaulting button-reporting to enabled', async () => {
     const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(deviceManager, 'opossum', 'F4:F4:F4:F4:F4:02');
+    const { charsByUuid } = await injectConnectedDevice(
+      deviceManager,
+      'opossum',
+      'F4:F4:F4:F4:F4:02',
+    );
 
     const result = await client.callTool({
       name: 'set_indicator_color',
@@ -426,7 +437,11 @@ describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")'
 
   it('sends the LED color via the 0x50 pressure-reporting packet for civet-edging, preserving streaming state', async () => {
     const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(deviceManager, 'civet-edging', 'F4:F4:F4:F4:F4:03');
+    const { charsByUuid } = await injectConnectedDevice(
+      deviceManager,
+      'civet-edging',
+      'F4:F4:F4:F4:F4:03',
+    );
 
     const result = await client.callTool({
       name: 'set_indicator_color',
@@ -491,7 +506,11 @@ describe('MCP-only device-management tools', () => {
   });
 
   it('emergency_stop zeroes an opossum device', async () => {
-    const { entry } = await injectConnectedDevice(harness.deviceManager, 'opossum', 'F8:F8:F8:F8:F8:01');
+    const { entry } = await injectConnectedDevice(
+      harness.deviceManager,
+      'opossum',
+      'F8:F8:F8:F8:F8:01',
+    );
     if (entry.kind === 'opossum') await entry.adapter.setIntensity(90, 90);
 
     const payload = parseToolResult(

@@ -1,28 +1,54 @@
-/* 基础样式（reset / 排版 / 表单 / 滚动条 / 动画）来自 @0xnullai/ui。
-   这里原本重造了一份 body reset、第三套滚动条（6px 常显）和一个位移 8px 的
-   fade-up——后者与共享的 10px 同名，keyframes 名全局唯一，谁后加载谁通吃，
-   入场动画的位移会随加载顺序变化。 */
+/* The base styles (reset / typography / forms / scrollbar / animations) come from
+   @0xnullai/ui. This file used to re-create its own body reset, a third scrollbar
+   (6px, always visible) and a fade-up with an 8px offset — that last one shares its
+   name with the shared 10px one, keyframes names are global, whoever loads last
+   wins, and the entrance animation's offset varies with load order. */
 
-/* 页面抖动动画 */
+/* Page shake animation */
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-  20%, 40%, 60%, 80% { transform: translateX(5px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
 }
-.shake-anim { animation: shake 0.6s ease-in-out; }
+.shake-anim {
+  animation: shake var(--dur-enter) ease-in-out;
+}
 
-/* 消息入场动画 */
+/* Message entrance animation */
 @keyframes msg-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-.animate-msg-in { animation: msg-in 0.25s ease-out; }
+.animate-msg-in {
+  animation: msg-in var(--dur-slow) ease-out;
+}
 
-/* fade-up 与 .animate-fade-up 来自 @0xnullai/ui/styles/animations.css。
-   这里原本另有一份同名 keyframes（位移 8px vs 共享的 10px）——keyframes 名是
-   全局唯一的，谁后加载谁通吃，入场动画的位移会随加载顺序变化。 */
+/* fade-up and .animate-fade-up come from @0xnullai/ui/styles/animations.css.
+   This file used to carry a second keyframes of the same name (8px offset vs the
+   shared 10px) — keyframes names are global, whoever loads last wins, and the
+   entrance animation's offset varies with load order. */
 
-/* 手机 Tab 栏 */
+/* Mobile tab bar */
 .mobile-tab {
   flex: 1;
   padding: 10px 0;
@@ -32,7 +58,9 @@
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color var(--dur),
+    border-color var(--dur);
   border-bottom: 2px solid transparent;
 }
 .mobile-tab.active {
@@ -40,28 +68,22 @@
   border-bottom-color: var(--accent);
 }
 
-/* 成员卡片头像（首字母） */
-.avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  font-weight: 600;
-  font-size: 16px;
-  color: var(--button-text);
-  background: var(--accent);
-  flex-shrink: 0;
-}
+/* The member avatar used to be a `.avatar` rule here: a flat accent-filled
+   circle with the first letter. It is now @0xnullai/ui's Avatar, so that one
+   person looks the same in the member list, in the contacts dialog and on
+   their profile. The rule is deleted rather than left behind because this
+   module's stylesheet sits after Tailwind's utilities layer, so a name that
+   generic would keep winning against anything else in the shell that dared to
+   call itself .avatar. */
 
-/* 强度滑条 */
+/* Strength slider */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
   height: 6px;
-  border-radius: 3px;
+  /* A pill, not a step on the radius scale — 3px was just half the height. */
+  border-radius: 999px;
   background: var(--bg-soft);
   outline: none;
 }
@@ -73,7 +95,7 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  transition: box-shadow 0.15s;
+  transition: box-shadow var(--dur);
 }
 input[type='range']::-webkit-slider-thumb:hover {
   box-shadow: 0 0 0 4px var(--ring);
@@ -90,7 +112,7 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* ==================== 通道强度圆环 ==================== */
+/* ==================== Channel strength ring ==================== */
 .channel-ring {
   display: flex;
   flex-direction: column;
@@ -102,13 +124,13 @@ input[type='range']::-moz-range-thumb {
   border: 3px solid var(--surface-border);
   background: var(--bg-elevated);
   gap: 2px;
-  transition: border-color 0.2s;
+  transition: border-color var(--dur-mid);
 }
 .channel-ring:hover {
   border-color: var(--accent);
 }
 
-/* 强度加减按钮 */
+/* Strength +/- buttons */
 .strength-btn {
   display: flex;
   align-items: center;
@@ -122,7 +144,7 @@ input[type='range']::-moz-range-thumb {
   font-size: 20px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--dur);
   user-select: none;
 }
 .strength-btn:hover {
@@ -134,7 +156,7 @@ input[type='range']::-moz-range-thumb {
   transform: scale(0.92);
 }
 
-/* ==================== 波形卡片 ==================== */
+/* ==================== Waveform card ==================== */
 .wave-card {
   position: relative;
   display: flex;
@@ -148,7 +170,7 @@ input[type='range']::-moz-range-thumb {
   background: var(--bg-elevated);
   color: var(--text-soft);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--dur);
 }
 .wave-card:hover {
   background: var(--bg-soft);
@@ -180,4 +202,3 @@ input[type='range']::-moz-range-thumb {
   white-space: nowrap;
   max-width: 100%;
 }
-

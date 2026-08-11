@@ -1,131 +1,67 @@
-<div align="center">
+# 0xNuller Chat
 
-# DG-Chat
+中文 | [English](README.en.md)
 
-**自带郊狼控制功能的多人实时房间，跑在 Cloudflare 边缘**
+基于 Cloudflare Durable Objects 的房间、公开大厅和私聊模块，可在明确授权后远程控制房间
+成员共享的设备。
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
-[![Demo](https://img.shields.io/badge/demo-online-success)](https://chat.0xnullai.com)
+- 统一主站：<https://0xnullai.com/chat>
+- 历史独立版：<https://chat.0xnullai.com>
 
-中文 | [English](./README.en.md)
+## 功能
 
-官网：[0xnullai.com](https://0xnullai.com)
+- 公开大厅、公开或私密房间、房间号与二维码邀请。
+- 文字、图片和语音消息；媒体存储于 R2。
+- 账户联系人和私聊；Chat 在统一主站中要求登录。
+- 成员设备共享、波形选择、强度调整和临时开火。
+- 房主设置、房间 Agent 和场景支持。
+- 桌面与移动端布局。
 
-</div>
+房间中的设备操作必须由设备持有者授权，并经过持有者设备上的安全策略。离开房间、撤销授权、
+切换模块或停止输出都会结束相应控制。
 
-## 这是什么
+## 使用
 
-DG-Chat 是一个浏览器端的多人实时房间。消息经 Cloudflare 边缘的 WebSocket 中继（Durable Object）转发，低延迟、无第三方 broker；除此之外，**每个成员可以把自己的郊狼设备授权给房间里其他人远程控制**——发"现在让谁谁谁来"，对方点你头像就能调强度、换波形、发短脉冲。
+1. 登录账户后打开 Chat。
+2. 从侧边栏创建房间、加入房间或进入公开大厅。
+3. 互相关注后，可从用户主页发起私聊；已有私聊显示在侧边栏。
+4. 需要共享设备时，从顶部横栏连接设备，再在房间内明确授权。
 
-打开网页就能用，部署在 Cloudflare（chat.0xnullai.com），HTTPS 已配好。
+## 本地开发
 
-## 特性
-
-- **实时聊天** — Cloudflare 边缘 WebSocket 中继，低延迟、无公共 broker
-- **房间大厅** — 房主可把房间公开到 [大厅](https://chat.0xnullai.com/lobby)，其他人看到在线人数后自由加入；不公开则保持私密，需房间号
-- **聊天历史** — 房间存活期间消息持久保存，新加入者可看到完整历史；所有人离开一段时间后自动清除
-- **图片 / 语音** — 发图片（自动压缩）和语音消息，媒体存 Cloudflare R2，随房间清理一并删除
-- **二维码邀请** — 房间号 + 二维码，分享给朋友直接加入
-- **远程设备控制** — 把强度滑块、波形选择、安全上限的控制权交给队友
-- **响应式布局** — 桌面端左右分栏，移动端 Tab 切换
-- **波形导入** — 支持 `.pulse` / `.zip` 自定义波形包
-- **从 DG-Market 市场导入波形** — 搜索社区市场，一键导入到本地波形库
-- **后台保活策略** — 切到后台时是停止输出还是继续，由你设置
-
-## 快速开始
-
-### 在线试玩
-
-打开 [demo](https://chat.0xnullai.com)。需要 **Chrome / Edge**（Web Bluetooth）。
-
-### 本地开发
+在仓库根目录执行：
 
 ```bash
-git clone https://github.com/0xNullAI/DG-Chat.git
-cd DG-Chat
 npm install
-npm run dev
+npm run dev -w 0xnullai-chat       # 前端
+npm run cf:dev -w 0xnullai-chat    # Worker、DO 和本地存储
+npm run test -w 0xnullai-chat
+npm run build -w 0xnullai-chat
+npm run types:check -w 0xnullai-chat
 ```
 
-打开 http://localhost:5174/。
+统一外壳开发使用 `npm run dev -w @0xnullai/web`。
 
-## 使用方法
+## 代码结构
 
-### 创建 / 加入房间
-
-1. 打开页面，输入昵称
-2. 点"创建房间"（可勾选"公开到大厅"并填房间名），或输入房间号点"加入"
-3. 把房间号或二维码分享给其他人；或在"浏览公开房间大厅"里直接挑一个加入
-
-### 连接郊狼
-
-1. 长按郊狼电源键开机
-2. 点页面顶部蓝牙按钮，在系统弹窗里选择设备
-
-> Web Bluetooth 需要 HTTPS 或 localhost + 支持的浏览器（Chrome/Edge）。
-
-### 远程控制
-
-在右侧成员列表点任意成员（包括自己）→ 进入控制界面 → 调强度、换波形、设安全上限。
-
-> 本机端开了某个上限，远端控制不能突破——安全约束在硬件层面。
-
-## 架构
-
-```
-worker/             Cloudflare Worker（同源托管前端 + 实时层 + 媒体）
-  index.ts          fetch 路由：/ws/room/:code、/ws/lobby、/api/lobby、/api/upload、/api/media，其余回退到静态资源
-  room-do.ts        RoomDO：每房间一个实例，WebSocket relay + presence + 聊天历史(SQLite) + 空房宽限清理
-  lobby-do.ts       LobbyDO：单例，公开房间注册表 + 实时推送
-  media.ts          R2 媒体上传 / 读回 / 按房间前缀清理
-  wire.ts           WebSocket wire 协议（纯类型 + 常量）
-src/
-  components/         UI 组件（含独立大厅页 Lobby.tsx）
-  hooks/              业务 Hook（use-device、use-peer-room、use-waveforms）
-  lib/
-    room-transport.ts 房间 WebSocket 客户端（连 RoomDO，断线自动重连）
-    lobby-client.ts   大厅订阅客户端
-    media.ts          图片压缩 + 语音录制 + 上传
-    bluetooth.ts      DGLabDevice：基于 @dg-kit/protocol + transport-webbluetooth 的薄封装
-    protocol.ts       房间消息协议（聊天、设备命令、波形传输）
-    commands.ts       房间内命令分发
-    waveforms.ts      内置波形 + .pulse 导入（基于 @dg-kit/waveforms）
+```text
+src/components/       房间、消息、成员和设备 UI
+src/hooks/            房间、设备和波形状态
+src/lib/              WebSocket、媒体与客户端协议
+worker/index.ts       HTTP 与 WebSocket 路由
+worker/room-do.ts     房间和私聊状态
+worker/lobby-do.ts    公开大厅
+worker/media.ts       R2 媒体读写
 ```
 
-蓝牙 + 波形相关代码完全复用了 [`@dg-kit/*`](https://github.com/0xNullAI/DG-Kit) 的中台实现，DG-Chat 自身负责 React UI、Cloudflare Worker 实时层（RoomDO/LobbyDO）和房间状态。
-
-## 命令
-
-```bash
-npm run dev      # 前端 Vite 开发服务（http://localhost:5174/）
-npm run cf:dev   # 另开一个终端跑 Worker（wrangler dev，含 DO/R2 本地模拟，:8787）
-npm run build    # tsc + Vite 构建
-npm run lint
-npm run deploy   # 构建并 wrangler deploy
-```
+媒体上传需要当前 WebSocket 会话签发的能力；仅知道房间号不能写入媒体桶。私聊票据由账户
+服务签发，Chat 只接受有效票据。
 
 ## 部署
 
-前端与 Worker 同源，由 **Cloudflare Workers Static Assets** 托管（参照 DG-Market）。首次部署：
-
-```bash
-wrangler r2 bucket create dg-chat-media   # 媒体桶
-npm run deploy                            # 构建 dist 并部署 Worker + Durable Objects
-```
-
-随后在 Cloudflare 控制台把 `chat.0xnullai.com` 自定义域指向该 Worker。
-
-> 成本：SQLite-backed Durable Objects 与 R2 都有免费额度，WebSocket Hibernation 让空闲连接休眠不计费；小流量基本全程免费，上规模后才需 Workers Paid（$5/月起）。
-
-## 相关项目
-
-| 项目 | 用途 |
-|---|---|
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit) | 共享的 TypeScript 中台（被本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器，自然语言驱动 |
-| [DG-MCP](https://github.com/0xNullAI/DG-MCP) | MCP 服务器，接入 Claude Desktop |
+Chat 使用 `RoomDO`、`LobbyDO` 和 `dg-chat-media`。新主站的 `0xnullai-chat` Worker 与历史
+`dg-chat` Worker 并行，旧子域不删除。部署顺序和密钥要求见 [部署文档](../../docs/deploy.md)。
 
 ## 协议
 
-[MIT](./LICENSE)
+[MIT](../../LICENSE)

@@ -1,126 +1,197 @@
-// DG-Chat WebSocket wire 协议。
-// 原 MQTT 用 topic 区分消息类型，现折叠进单条 WS 消息的 `t` 字段，由 RoomDO 路由。
-// 该文件为纯类型 + 常量，无运行时依赖，可被 Worker 与（参照）前端共用。
+// DG-Chat WebSocket wire protocol.
+// MQTT used to distinguish message types by topic; that is now folded into the `t` field
+// of a single WS message and routed by RoomDO.
+// This file is pure types + constants with no runtime dependencies, so it can be shared by
+// the Worker and (by reference) the frontend.
 
-/** 房间内消息类型。 */
+/** Message types inside a room. */
 export type WireType =
-  | 'hello' // client→DO，加入首帧：声明昵称 / 是否公开 / 房间名
-  | 'chat' // 聊天消息（持久化进历史，含可选 media 引用）
-  | 'sf' // state.fast：强度/波形/开火，广播
-  | 'ss' // state.slow：名字/电量/队列/目录，广播
-  | 'presence' // 昵称心跳（轻量，广播）
-  | 'cmd' // 设备命令，定向（to=peerId）
-  | 'wave' // 波形传输，定向（to=peerId）
-  | 'leave' // 主动离开
-  | 'scene' // 场景：房主设/改（client→DO）；当前场景+host 广播（DO→client）
-  | 'role' // 角色：认领/释放（client→DO）；角色→peer 分配广播（DO→client）
-  | 'history' // DO→client：新人加入回放
-  | 'sys'; // DO→client：连接级 presence（joined/left）
+  | 'hello' // client→DO, first frame on join: declares nickname / whether public / room name
+  | 'chat' // chat message (persisted into history, with an optional media reference)
+  | 'sf' // state.fast: strength/waveform/firing, broadcast
+  | 'ss' // state.slow: name/battery/queue/catalog, broadcast
+  | 'presence' // nickname heartbeat (lightweight, broadcast)
+  | 'cmd' // device command, directed (to=peerId)
+  | 'wave' // waveform transfer, directed (to=peerId)
+  | 'leave' // voluntary leave
+  | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
+  | 'group' // group settings: the owner changes them (client→DO); current settings (DO→client)
+  | 'media-auth' // DO→client: capability for uploads while this WebSocket remains connected
+  // The roleplay feature is gone, but pre-removal Android builds still send these two.
+  // They stay listed here permanently so RoomDO keeps an explicit no-op case for them
+  // rather than letting them fall through to the relay-everything default.
+  | 'scene' // legacy roleplay, dropped by the DO
+  | 'role' // legacy roleplay, dropped by the DO
+  | 'history' // DO→client: replay for a newly joined peer
+  | 'sys'; // DO→client: connection-level presence (joined/left)
 
-/** 媒体引用（图片/语音）。实体存 R2，消息只带引用。 */
+/** Media reference (image/audio). The blob lives in R2; the message only carries the reference. */
 export interface MediaRef {
   kind: 'image' | 'audio';
-  /** R2 object id（不含房间前缀与扩展名由 mime 推断）。 */
+  /** R2 object id (without the room prefix; the extension is inferred from mime). */
   id: string;
   mime: string;
   size: number;
-  /** 语音时长（毫秒），图片可带宽高。 */
+  /** Audio duration in milliseconds; images may carry width/height. */
   durationMs?: number;
   w?: number;
   h?: number;
 }
 
-/** 持久化的聊天消息（DO SQLite 行 ↔ history 回放 ↔ chat 广播体）。
- *  注意：`t` 是信封的消息类型（'chat'），时间戳用 `ts`，二者不可混用。 */
+/** Persisted chat message (DO SQLite row ↔ history replay ↔ chat broadcast body).
+ *  Note: `t` is the envelope's message type ('chat') and the timestamp is `ts`; the two
+ *  must not be mixed up. */
 export interface WireChat {
-  /** 消息类型标记（广播体里恒为 'chat'）。 */
+  /** Message type marker (always 'chat' in the broadcast body). */
   t?: 'chat';
   id: string;
-  /** 发送者 peerId（DO 注入，可信）。 */
+  /** Sender peerId (injected by the DO, therefore trusted). */
   _from?: string;
-  /** 发送者昵称快照。 */
+  /** Snapshot of the sender's nickname. */
   n: string;
-  /** 文本正文（媒体消息可为空）。 */
+  /** Text body (may be empty for a media message). */
   x?: string;
-  /** 媒体引用。 */
+  /** Media reference. */
   m?: MediaRef;
-  /** @ 提及的成员（peerId + 昵称快照）。 */
+  /** Members that were @-mentioned (peerId + nickname snapshot). */
   mentions?: { peerId: string; n: string }[];
-  /** 发送者当时的角色头衔快照（无则普通成员）。 */
-  senderRole?: string;
-  /** 发送时间戳（毫秒）。 */
+  /** Send timestamp in milliseconds. */
   ts: number;
 }
 
-/** 场景角色定义。 */
-export interface SceneRole {
-  id: string;
-  /** 角色名（= 成员头衔）。 */
+/**
+ * The room's AI participant.
+ *
+ * Exactly one per room, addressed by @-mention. It replaced a system where
+ * the AI was modelled as a *claimed scene role*, which meant its identity,
+ * its persona and its permission to speak all came from a scene definition
+ * — and so did the ability to @ it at all.
+ *
+ * Its sender id is fixed (`ai:room`). Keeping the `ai:` prefix is what lets
+ * the self-loop guard, the isAi member flag, and the server-side `as` check
+ * stay exactly as they were.
+ */
+export interface RoomAgent {
+  /** Shown in the room and in the @ list. */
   name: string;
-  /** 角色描述 / 人设：既展示给成员，也作为该角色交给 AI 时的人设 prompt。 */
-  description?: string;
-  /** 该角色是否可由 AI 扮演（场景上传时标注；房主据此显示「交给 AI」入口）。 */
-  aiPlayable?: boolean;
+  /** Free-text persona, written by the host. Becomes the system prompt. */
+  persona: string;
 }
 
-/** 房间场景（世界观 + 角色 + 玩法元数据）。 */
-export interface Scene {
-  id: string;
-  name: string;
-  /** 世界观/背景描述。 */
-  setting: string;
-  roles: SceneRole[];
-  /** 建议玩家人数（Market 上传时填，房间可选展示）。 */
-  playerCount?: { min?: number; max?: number };
-}
+/** The room agent's fixed member id. */
+export const ROOM_AGENT_ID = 'room';
 
-/** DO→client：当前场景 + 房主。scene 为 null 表示未设场景。 */
-export interface WireScene {
-  t: 'scene';
-  scene: Scene | null;
+/** The room agent's fixed sender id, as it appears in `as` and in `senderId`. */
+export const ROOM_AGENT_SENDER = `ai:${ROOM_AGENT_ID}`;
+
+/** DO→client: the room's agent. Null means the host has not added one. */
+export interface WireAgent {
+  t: 'agent';
+  agent: RoomAgent | null;
   host: string; // hostPeerId
 }
 
-/** DO→client：角色→peer 的认领分配（权威态）。 */
-export interface WireRole {
-  t: 'role';
-  assignments: Record<string, string>; // roleId -> peerId
+/**
+ * DO→client: the group's durable settings.
+ *
+ * Fields are optional on purpose and the client must treat an absent one as "unchanged".
+ * `isOwner` and `ownerKey` are answers to one specific connection and are therefore never
+ * part of the broadcast that follows a settings change — the room learns that the group
+ * went public, not who made it so, and certainly not with what key.
+ */
+export interface WireGroup {
+  t: 'group';
+  code: string;
+  /** Display name; only meaningful while the group is public (that is where it shows). */
+  name?: string;
+  /** Whether the group is listed in the lobby. */
+  public?: boolean;
+  /** Whether the group has an owner key on file at all. */
+  owned?: boolean;
+  /** Whether *this* connection proved ownership. Per-connection, never broadcast. */
+  isOwner?: boolean;
+  /** The minted key, sent exactly once to the connection that created the group. */
+  ownerKey?: string;
 }
 
-/** 客户端发往 DO 的信封（除 hello 外，业务字段扁平在顶层）。 */
+/** Longest group name the DO will store. */
+export const MAX_GROUP_NAME = 60;
+
+/** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */
 export interface WireInbound {
   t: WireType;
-  /** 定向消息的目标 peerId（cmd/wave）。 */
+  /** Target peerId for a directed message (cmd/wave). */
   to?: string;
-  /** 任意业务字段（chat 的 x/m、sf/ss 的状态字段、cmd 的 a/c/v…）。 */
+  /** Arbitrary business fields (chat's x/m, sf/ss state fields, cmd's a/c/v, ...). */
   [k: string]: unknown;
 }
 
-/** DO 发往客户端的 sys 帧。 */
+/** sys frame sent from the DO to the client. */
 export interface WireSys {
   t: 'sys';
   kind: 'joined' | 'left';
   peerId: string;
 }
 
-/** DO 发往客户端的 history 帧。 */
+/** history frame sent from the DO to the client. */
 export interface WireHistory {
   t: 'history';
   messages: WireChat[];
 }
 
-/** 单例大厅 DO 的固定名字。 */
+/** Fixed name of the singleton lobby DO. */
 export const LOBBY_NAME = 'v1';
 
-/** 房间空置后清理的宽限期（毫秒）。 */
+/**
+ * How long after the last member leaves the group runs its idle housekeeping (milliseconds).
+ *
+ * This used to be the countdown to the group deleting itself. Groups are permanent now, so
+ * nothing is deleted when it fires; it is the quiet moment in which the media sweep runs,
+ * and it doubles as the age below which an unreferenced R2 object is assumed to be an
+ * upload whose chat message has not landed yet rather than an orphan.
+ */
 export const ROOM_GRACE_MS = 10 * 60 * 1000;
 
-/** 大厅常驻的官方公开讨论房：始终公开、永不清理、空房也显示在大厅顶部。 */
-export const RESERVED_ROOM_CODE = '0xNullAI';
-export const RESERVED_ROOM_NAME = '0xNullAI 公开讨论区';
+/** The official public discussion room permanently resident in the lobby: always public, never cleaned up, listed at the top of the lobby even when empty. */
 
-/** 上传媒体大小上限（字节）。 */
+/** Upper bound on uploaded media size (bytes). */
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
 
-/** 允许的媒体 MIME 前缀。 */
-export const ALLOWED_MEDIA_PREFIXES = ['image/', 'audio/'];
+/**
+ * Media types accepted for upload, as an exact allow-list.
+ *
+ * It used to be the prefixes `image/` and `audio/`, which admit
+ * `image/svg+xml` — and an SVG is a document that can carry <script>. The
+ * upload endpoint takes no auth, and read-back serves the file inline from
+ * the app's own origin with the type it was uploaded under, so an attacker
+ * could park script on the origin that holds the session cookie.
+ *
+ * Only formats the client actually produces are listed: images are always
+ * re-encoded through canvas.toBlob to JPEG, and the recorder picks from the
+ * webm/mp4/aac set. The extra raster types cover paths that may forward an
+ * original file. Nothing here can execute.
+ */
+export const ALLOWED_MEDIA_TYPES: readonly string[] = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'audio/webm',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
+  'audio/wav',
+];
+
+/**
+ * Whether a Content-Type header may be stored.
+ *
+ * Compares the bare type: the recorder sends `audio/webm;codecs=opus`, and
+ * a parameter must not be a way to smuggle a type past the check.
+ */
+export function isAllowedMediaType(header: string | null): boolean {
+  if (!header) return false;
+  const bare = header.split(';')[0]!.trim().toLowerCase();
+  return ALLOWED_MEDIA_TYPES.includes(bare);
+}

@@ -1,10 +1,11 @@
-// 大厅客户端：订阅 /ws/lobby 实时获取公开房间列表，断线自动重连；REST 兜底首屏。
+// Lobby client: subscribes to /ws/lobby for a live public room list and reconnects automatically
+// on disconnect; REST covers the first paint.
+
+import { apiBaseUrl, apiWsUrl } from '@0xnullai/settings';
 export interface LobbyRoom {
   code: string;
   name: string;
   count: number;
-  /** 房间当前场景名（角色扮演房才有）。 */
-  sceneName?: string;
 }
 
 export type LobbyStatus = 'connecting' | 'connected' | 'error';
@@ -13,9 +14,16 @@ export interface LobbySubscription {
   close(): void;
 }
 
+const LEGACY_DISCUSSION_CODE = '0xNullAI';
+
+function currentRooms(rooms: LobbyRoom[]): LobbyRoom[] {
+  return rooms.filter((room) => room.code !== LEGACY_DISCUSSION_CODE);
+}
+
 function lobbyWsUrl(): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws/lobby`;
+  // See room-transport: same-origin resolves to the WebView's own scheme
+  // inside the Android shell.
+  return apiWsUrl('/ws/lobby');
 }
 
 export function subscribeLobby(
@@ -39,7 +47,7 @@ export function subscribeLobby(
     sock.onmessage = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data as string) as { t?: string; rooms?: LobbyRoom[] };
-        if (data.t === 'lobby' && Array.isArray(data.rooms)) onRooms(data.rooms);
+        if (data.t === 'lobby' && Array.isArray(data.rooms)) onRooms(currentRooms(data.rooms));
       } catch {
         /* ignore */
       }
@@ -70,10 +78,10 @@ export function subscribeLobby(
   };
 }
 
-/** REST 快照（首屏兜底，WS 未连上时先有内容）。 */
+/** REST snapshot (first-paint fallback, so there is content before the WS connects). */
 export async function fetchLobbyRooms(): Promise<LobbyRoom[]> {
-  const res = await fetch('/api/lobby/rooms');
+  const res = await fetch(`${apiBaseUrl()}/api/lobby/rooms`);
   if (!res.ok) return [];
   const data = (await res.json()) as { rooms?: LobbyRoom[] };
-  return data.rooms ?? [];
+  return currentRooms(data.rooms ?? []);
 }

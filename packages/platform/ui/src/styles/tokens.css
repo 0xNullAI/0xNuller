@@ -14,22 +14,47 @@
   --surface-border-strong: #d0dbe3;
   --text: #1a1a1a;
   --text-soft: #5a6872;
-  --text-faint: #94a3b0;
+  /* The tertiary tier. It was #94a3b0, which measures 2.59:1 on white — not
+     merely under the 4.5:1 floor but under even the 3:1 sometimes argued for
+     hint text. What it renders is not decoration: 「任何来源都不能让 A 通道
+     超过这个值」, the sentence that explains what a strength cap actually
+     does, is --text-faint. In a product that drives current through a body,
+     the copy explaining the limits has to be readable by someone who is not
+     looking for it. 4.54:1, still visibly a step below --text-soft. */
+  --text-faint: #6a7883;
   --accent: #58c8f2;
   --accent-soft: rgba(88, 200, 242, 0.1);
   --accent-strong: #3ab5e6;
   --accent-hover: rgba(88, 200, 242, 0.16);
   --highlight: #3ab5e6;
-  --danger: #f0a2b2;
-  --danger-button: #ef4444;
-  --danger-button-hover: #dc2626;
+  /* A readable red, not a tint. This was #f0a2b2, a pale pink: white text on
+     it measures 2.0:1 and --danger as text on --danger-surface measures
+     1.9:1, against a 4.5:1 floor. It is used for error copy and for Chat's
+     fire button — the control that drives current — so it has to be legible
+     rather than soft. The pale pink survives where it belongs, in
+     --danger-soft / --danger-surface / --danger-border. */
+  --danger: #dc2626;
+  /* The filled destructive button, in both themes — nothing overrides these.
+     It carries white text, and #ef4444 measured 3.76:1 against white, under
+     the 4.5:1 floor for 14px bold. The control it renders is the global stop
+     button in the device bar: the one thing that must be unmistakable while
+     current is running, and the one place where "close enough" is not a
+     judgement call. #dc2626 measures 4.83:1, and hover moves down to #b91c1c
+     so the state change is still visible. */
+  --danger-button: #dc2626;
+  --danger-button-hover: #b91c1c;
   --danger-soft: rgba(240, 162, 178, 0.12);
   --danger-surface: #fef2f5;
   --danger-border: #f0c8d2;
-  --warning: #f0a2b2;
-  --warning-soft: rgba(240, 162, 178, 0.12);
-  --warning-surface: #fef2f5;
-  --warning-border: #f0c8d2;
+  /* warning must be distinct from danger. Pre-merge both were the same
+     pink verbatim, so a "please read carefully" box looked identical to
+     "deletion is irreversible" — two different meanings sharing one visual
+     signal teaches users neither. warning is amber; danger is reserved for
+     destructive actions. */
+  --warning: #b45309;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --warning-surface: #fffbeb;
+  --warning-border: #fcd34d;
   --success: #10b981;
   --success-soft: rgba(16, 185, 129, 0.1);
   --success-surface: #ecfdf5;
@@ -40,38 +65,95 @@
   --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  /* The radius scale. One scale, seven steps, each with a job — a corner
+     radius is read relative to the size of the thing it is on, so the step is
+     chosen by what kind of surface it is, not by taste:
+
+       2xs  inline code, checkboxes, message-bubble tails
+       xs   tags, chips, small list rows
+       ctl  controls — buttons, inputs, menu items (the most common by far)
+       sm   cards sitting inside a panel
+       md   popovers, panels, section cards
+       lg   modal dialog shells
+       xl   the full-bleed Agent surface
+
+     Before the merge there were two scales running in parallel: these tokens
+     (12/16/22/28, 48 call sites) and a hardcoded 4/6/7/8/10/12/14/16/20 that
+     the modules had actually converged on (155 call sites). Neither was wrong
+     on its own; having both meant two dialogs a click apart could differ by
+     6px for no reason. The steps below keep the numbers the modules chose and
+     the token names the shared layer chose, and every call site now goes
+     through a token — see the radius guard in ui's tests. */
   --radius-xl: 28px;
-  --radius-lg: 22px;
+  --radius-lg: 20px;
   --radius-md: 16px;
   --radius-sm: 12px;
+  --radius-ctl: 10px;
+  --radius-xs: 8px;
+  --radius-2xs: 4px;
   --max-width: 1600px;
-  --button-text: #ffffff;
+  /* Text on an --accent fill. White measured 1.9:1 against #58c8f2, so every
+     primary button in the light theme — 开始通话, 保存资料, 连接设备, the user's
+     own chat bubbles — was washed out, the same failure the danger red had.
+     The accent is a light cyan, so the readable pairing is dark text on it,
+     which is also what the dark theme already does (#080808 on amber): both
+     themes are now "light accent fill, dark label" rather than opposites.
+     #14232b against #58c8f2 measures 11.4:1. */
+  --button-text: #14232b;
   --scrollbar-thumb: #d0dbe3;
   --scrollbar-thumb-hover: #b8c8d4;
-  /* 排版身份。合并前这三个只存在于 DG-Wiki，共享层反而没有——
-     所以「统一字体」这件事在其余应用里从来没生效过。 */
+  /* Typographic identity. Pre-merge these three existed only in DG-Wiki
+     and not in the shared layer — so "unified fonts" never actually took
+     effect anywhere else. */
   --font-display: 'Big Shoulders Display', 'PingFang SC', 'HarmonyOS_Regular', sans-serif;
-  --font-body: 'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei',
-    system-ui, sans-serif;
+  --font-body:
+    'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
-  /* 背景网格，用于落地页与文档站的氛围层。 */
+  /* Background grid, the ambience layer for landing/docs surfaces. */
   --grid: rgba(88, 200, 242, 0.05);
 
-  /* ── z 层级。合并前四个模块各写各的数字（60 安全确认 > 50 权限/抽屉/对话框 >
-     40 浮动状态条 > 20 供应商下拉 > 10 场景下拉），跨模块无法推理谁该压谁。
-     统一成令牌之后，层级关系写在一处。 */
+  /* ── z stacking. Pre-merge each module wrote its own numbers (60 safety
+     notice > 50 permission/drawer/dialog > 40 floating status bar > 20
+     provider dropdown > 10 scene dropdown) with no way to reason about
+     cross-module ordering. As tokens, the ordering lives in one place. */
+  /* Sidebar width. Collapsed and expanded differ only in this value — the
+     shell grid consumes it directly, nothing else to keep in sync.
+     Pre-merge Agent inlined 272px and Voice wrote the same number as a
+     Tailwind arbitrary value. */
+  --sidebar-w: 264px;
+  --sidebar-w-collapsed: 56px;
+
   --z-module-overlay: 100;
   --z-shell: 200;
   --z-toast: 300;
   --z-stop: 900;
 
-  /* 遮罩。三个模块现在各用各的黑（bg-black/40 · bg-black/50 · rgba 手写）。 */
+  /* Backdrops. Three modules each used their own black (bg-black/40 · bg-black/50 · hand-written rgba). */
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --overlay-scrim-strong: rgba(0, 0, 0, 0.55);
 
-  /* 动效时长。散落在各处的 120/140/150/160/200ms 收敛成两档。 */
+  /* Motion durations. Five tiers, chosen by what the motion is for.
+
+     The four modules had written 120/140/150/160/180/200/240/250/300/500/550/
+     600ms across two notations (`.15s` and `150ms`), and the clustering says
+     most of that was not a decision: .14s, .15s, .16s and 160ms all mean "a
+     normal state change" and no one can tell them apart. What is real is the
+     difference between feedback under the finger and a panel opening, so
+     that is what the tiers encode.
+
+       fast   pressed/hover feedback — must not lag the finger
+       (base) the default for a state change: color, border, background
+       mid    something moves or resizes in place
+       slow   a panel or sheet expands
+       enter  an element arrives on screen for the first time
+
+     Anything at or above 1s is ambient (spinners, background drift) and is
+     not on this scale. */
   --dur-fast: 120ms;
   --dur: 160ms;
+  --dur-mid: 200ms;
+  --dur-slow: 300ms;
+  --dur-enter: 500ms;
 }
 
 :root[data-theme='dark'] {
@@ -83,7 +165,8 @@
   --surface-border-strong: #333333;
   --text: #ececec;
   --text-soft: #999999;
-  --text-faint: #666666;
+  /* 3.2:1 on --bg-elevated before; same reasoning as the light theme's. 4.5:1. */
+  --text-faint: #7d7d7d;
   --accent: #ffe99d;
   --accent-soft: rgba(255, 233, 157, 0.1);
   --accent-strong: #ffb800;
@@ -93,10 +176,10 @@
   --danger-soft: rgba(220, 38, 38, 0.14);
   --danger-surface: #1f0a0a;
   --danger-border: #4b1515;
-  --warning: #dc2626;
-  --warning-soft: rgba(220, 38, 38, 0.14);
-  --warning-surface: #1f0a0a;
-  --warning-border: #4b1515;
+  --warning: #ffb800;
+  --warning-soft: rgba(255, 184, 0, 0.1);
+  --warning-surface: #1c1505;
+  --warning-border: rgba(255, 184, 0, 0.26);
   --success: #22c55e;
   --success-soft: rgba(52, 211, 153, 0.14);
   --success-surface: #102019;
