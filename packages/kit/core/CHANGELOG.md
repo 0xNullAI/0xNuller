@@ -1,5 +1,9 @@
 # @dg-kit/core
 
+## 1.14.0
+
+- Add shared device-picker cancellation helpers.
+
 ## 1.13.0
 
 ### Minor Changes

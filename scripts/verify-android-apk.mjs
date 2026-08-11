@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -54,6 +54,13 @@ function run(tool, args) {
   return execFileSync(tool, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 }
 
+function runCombined(tool, args) {
+  const result = spawnSync(tool, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  if (result.error) throw result.error;
+  if (result.status !== 0) fail(`${tool} exited with status ${result.status}`);
+  return `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+}
+
 function requireMatch(text, pattern, message) {
   const match = text.match(pattern);
   if (!match) fail(message);
@@ -104,12 +111,10 @@ function readZipEntry(zip, wantedName) {
 if (!existsSync(apk)) fail(`APK not found: ${apk}`);
 
 const badging = run(androidTool('aapt'), ['dump', 'badging', apk]);
-const signature = run(androidTool(process.platform === 'win32' ? 'apksigner.bat' : 'apksigner'), [
-  'verify',
-  '--verbose',
-  '--print-certs',
-  apk,
-]);
+const signature = runCombined(
+  androidTool(process.platform === 'win32' ? 'apksigner.bat' : 'apksigner'),
+  ['verify', '--verbose', '--print-certs', apk],
+);
 const packageLine = requireMatch(
   badging,
   /^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m,
@@ -123,11 +128,15 @@ const label = requireMatch(
 const minSdk = Number(
   requireMatch(badging, /^sdkVersion:'(\d+)'/m, 'aapt did not report minSdk')[1],
 );
-const certificate = requireMatch(
+const certificateText = requireMatch(
   signature,
-  /^Signer #1 certificate SHA-256 digest: ([0-9a-f]+)$/m,
+  /certificate SHA-256 digest:\s*([^\r\n]+)/i,
   'apksigner did not report the signing certificate digest',
 )[1];
+const certificate = certificateText.replaceAll(/[^0-9a-f]/gi, '').toLowerCase();
+if (!/^[0-9a-f]{64}$/.test(certificate)) {
+  fail('apksigner reported an invalid signing certificate digest');
+}
 
 const expectedCode = String(tauri.bundle.android.versionCode);
 if (packageLine[1] !== tauri.identifier) {
