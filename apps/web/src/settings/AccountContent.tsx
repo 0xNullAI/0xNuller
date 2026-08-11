@@ -157,7 +157,8 @@ export function AccountContent({
             value={password}
             autoComplete={registerMode ? 'new-password' : 'current-password'}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="至少 10 位"
+            minLength={registerMode ? 8 : undefined}
+            placeholder={registerMode ? '至少 8 位' : '输入密码'}
           />
         </label>
       </div>
@@ -193,7 +194,10 @@ export function AccountContent({
         <Button
           onClick={() => void submit()}
           disabled={
-            busy || !username.trim() || !password || (registerMode && (!email.trim() || !agreed))
+            busy ||
+            !username.trim() ||
+            !password ||
+            (registerMode && (password.length < 8 || !email.trim() || !agreed))
           }
         >
           {busy ? '处理中…' : registerMode ? '注册' : '登录'}

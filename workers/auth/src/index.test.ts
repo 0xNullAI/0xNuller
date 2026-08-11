@@ -147,9 +147,13 @@ describe('注册', () => {
     expect(res.status).toBe(409);
   });
 
-  it('拒绝过短的密码', async () => {
-    const { res } = await registerUser({ password: 'short' });
-    expect(res.status).toBe(400);
+  it('接受 8 位密码并拒绝更短的密码', async () => {
+    const tooShort = await registerUser({ password: '1234567' });
+    expect(tooShort.res.status).toBe(400);
+    expect(tooShort.body.error).toBe('密码至少 8 位');
+
+    const minimum = await registerUser({ password: '12345678' });
+    expect(minimum.res.status).toBe(201);
   });
 
   it('需要有效且唯一的邮箱', async () => {

@@ -57,7 +57,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_USERNAME = 8;
 const MAX_FAILS_PER_IP = 30;
-const MIN_PASSWORD_LEN = 10;
+const MIN_PASSWORD_LEN = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
