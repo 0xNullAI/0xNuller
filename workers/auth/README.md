@@ -10,9 +10,21 @@
 - R2：用户资料照片
 - Service Binding：向 Chat 发送账户拥有的联系人与私聊事件
 
-注册要求唯一用户名和唯一邮箱，并按来源哈希限制短时间批量建号。当前邮箱仅被保留，尚未完成
-所有权验证，也没有邮件找回流程。浏览器使用同源安全 Cookie；原生外壳使用 Bearer 会话。Market
-管理权限来自账户角色，不使用共享的管理员口令。
+注册要求唯一用户名和唯一邮箱，并按来源哈希限制短时间批量建号。邮箱验证和密码找回令牌只以
+SHA-256 哈希保存；浏览器使用同源安全 Cookie，原生外壳使用 Bearer 会话。Market 管理权限来自
+账户角色，不使用共享的管理员口令。
+
+邮件代码已就绪，但生产账户必须先开通 Workers Paid 并在 Email Sending 中验证
+`0xnullai.com`。启用后在 `wrangler.jsonc` 增加以下绑定并重新生成类型：
+
+```jsonc
+"send_email": [{
+  "name": "EMAIL",
+  "allowed_sender_addresses": ["no-reply@0xnullai.com"]
+}]
+```
+
+未配置绑定时注册和登录保持可用，账户页会明确显示邮件服务待启用。
 
 ## 本地验证
 

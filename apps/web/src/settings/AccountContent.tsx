@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UserRound } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
@@ -7,7 +7,11 @@ import {
   deleteAccount,
   login,
   logout,
+  confirmEmailVerification,
   register,
+  requestEmailVerification,
+  requestPasswordReset,
+  resetPassword,
   requestProfileView,
   type AuthUser,
 } from '@0xnullai/auth';
@@ -42,13 +46,30 @@ export function AccountContent({
   onUser: (user: AuthUser | null) => void;
   onDone: () => void;
 }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const initialResetToken = new URLSearchParams(window.location.search).get('reset') ?? '';
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>(
+    initialResetToken ? 'reset' : 'login',
+  );
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('verify');
+    if (!token) return;
+    void confirmEmailVerification(token)
+      .then(() => {
+        setNotice('邮箱验证成功');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('verify');
+        window.history.replaceState(null, '', url);
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '验证失败'));
+  }, []);
 
   async function submit() {
     setBusy(true);
@@ -89,6 +110,38 @@ export function AccountContent({
             <div className="truncate text-sm text-[var(--text-faint)]">@{user.username}</div>
           </div>
         </div>
+
+        {user.email ? (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="truncate text-sm">{user.email}</div>
+              <div className="text-xs text-[var(--text-faint)]">
+                {user.emailVerified ? '已验证' : '尚未验证'}
+              </div>
+            </div>
+            {!user.emailVerified && user.emailAvailable ? (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  setError(null);
+                  try {
+                    await requestEmailVerification();
+                    setNotice('验证邮件已发送');
+                  } catch (cause) {
+                    setError(cause instanceof Error ? cause.message : '发送失败');
+                  }
+                }}
+              >
+                发送验证邮件
+              </Button>
+            ) : !user.emailVerified ? (
+              <span className="shrink-0 text-xs text-[var(--text-faint)]">邮件服务待启用</span>
+            ) : null}
+          </div>
+        ) : null}
+
+        {notice && <p className="mt-3 text-xs text-[var(--success)]">{notice}</p>}
+        {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
 
         <button
           type="button"
@@ -131,20 +184,49 @@ export function AccountContent({
   }
 
   const registerMode = mode === 'register';
+  const forgotMode = mode === 'forgot';
+  const resetMode = mode === 'reset';
+
+  async function submitRecovery() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (forgotMode) {
+        await requestPasswordReset(email.trim());
+        setNotice('如果邮箱已注册，重置邮件将很快送达');
+      } else {
+        await resetPassword(initialResetToken, password);
+        setNotice('密码已更新，请重新登录');
+        setMode('login');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('reset');
+        window.history.replaceState(null, '', url);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '操作失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
-      <h2 className="text-lg font-semibold">{registerMode ? '注册' : '登录'}</h2>
+      <h2 className="text-lg font-semibold">
+        {registerMode ? '注册' : forgotMode ? '找回密码' : resetMode ? '设置新密码' : '登录'}
+      </h2>
       <div className="mt-5 flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--text-soft)]">用户名</span>
-          <Input
-            value={username}
-            autoComplete="username"
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="3–24 位字母、数字、下划线"
-          />
-        </label>
-        {registerMode && (
+        {!forgotMode && !resetMode ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-[var(--text-soft)]">用户名</span>
+            <Input
+              value={username}
+              autoComplete="username"
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="3–24 位字母、数字、下划线"
+            />
+          </label>
+        ) : null}
+        {(registerMode || forgotMode) && (
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-[var(--text-soft)]">邮箱</span>
             <Input
@@ -156,17 +238,19 @@ export function AccountContent({
             />
           </label>
         )}
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--text-soft)]">密码</span>
-          <Input
-            type="password"
-            value={password}
-            autoComplete={registerMode ? 'new-password' : 'current-password'}
-            onChange={(event) => setPassword(event.target.value)}
-            minLength={registerMode ? 8 : undefined}
-            placeholder={registerMode ? '至少 8 位' : '输入密码'}
-          />
-        </label>
+        {!forgotMode && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-[var(--text-soft)]">密码</span>
+            <Input
+              type="password"
+              value={password}
+              autoComplete={registerMode || resetMode ? 'new-password' : 'current-password'}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={registerMode ? 8 : undefined}
+              placeholder={registerMode || resetMode ? '至少 8 位' : '输入密码'}
+            />
+          </label>
+        )}
       </div>
 
       {registerMode && (
@@ -185,30 +269,52 @@ export function AccountContent({
       )}
 
       {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
+      {notice && <p className="mt-3 text-xs text-[var(--success)]">{notice}</p>}
 
       <div className="mt-5 flex items-center justify-between gap-3">
         <button
           type="button"
           className="text-xs text-[var(--text-soft)] underline underline-offset-2"
           onClick={() => {
-            setMode(registerMode ? 'login' : 'register');
+            setMode(mode === 'login' ? 'register' : 'login');
             setError(null);
           }}
         >
-          {registerMode ? '已有账户？登录' : '没有账户？注册'}
+          {mode === 'login' ? '没有账户？注册' : '返回登录'}
         </button>
         <Button
-          onClick={() => void submit()}
+          onClick={() => void (forgotMode || resetMode ? submitRecovery() : submit())}
           disabled={
             busy ||
-            !username.trim() ||
-            !password ||
+            (!forgotMode && !resetMode && !username.trim()) ||
+            (!forgotMode && (!password || ((registerMode || resetMode) && password.length < 8))) ||
+            (forgotMode && !email.trim()) ||
             (registerMode && (password.length < 8 || !email.trim() || !agreed))
           }
         >
-          {busy ? '处理中…' : registerMode ? '注册' : '登录'}
+          {busy
+            ? '处理中…'
+            : registerMode
+              ? '注册'
+              : forgotMode
+                ? '发送重置邮件'
+                : resetMode
+                  ? '更新密码'
+                  : '登录'}
         </Button>
       </div>
+      {mode === 'login' ? (
+        <button
+          type="button"
+          className="mt-3 text-xs text-[var(--text-soft)] underline underline-offset-2"
+          onClick={() => {
+            setMode('forgot');
+            setError(null);
+          }}
+        >
+          忘记密码
+        </button>
+      ) : null}
     </div>
   );
 }

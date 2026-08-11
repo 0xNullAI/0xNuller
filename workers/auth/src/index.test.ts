@@ -11,6 +11,7 @@ const ORIGIN = 'https://0xnullai.com';
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
 let photos: FakePhotos;
+let sentEmails: unknown[];
 
 class FakePhotos {
   readonly objects = new Map<string, { bytes: ArrayBuffer; contentType: string; uploaded: Date }>();
@@ -70,9 +71,15 @@ class FakePhotos {
 beforeEach(() => {
   db = createTestDb();
   photos = new FakePhotos();
+  sentEmails = [];
   env = {
     DB: db.DB as Env['DB'],
     PHOTOS: photos as unknown as R2Bucket,
+    EMAIL: {
+      send: async (message: unknown) => {
+        sentEmails.push(message);
+      },
+    } as unknown as SendEmail,
     CHAT: { fetch: async () => new Response('ok') } as unknown as Fetcher,
     IP_PEPPER: 'test-pepper',
     DM_TICKET_SECRET: 'test-dm-ticket-secret',
@@ -177,6 +184,49 @@ describe('注册', () => {
     const blocked = await registerUser({ username: 'user-5', email: 'user-5@example.com' });
     expect(blocked.res.status).toBe(429);
     expect(blocked.body.error).toBe('注册请求过于频繁，请稍后再试');
+  });
+});
+
+describe('邮箱验证与密码找回', () => {
+  it('验证令牌只存哈希且使用后失效', async () => {
+    const { body } = await registerUser();
+    const text = String((sentEmails[0] as { text: string }).text);
+    const token = new URL(text.match(/https:\/\/\S+/)![0]).searchParams.get('verify')!;
+    expect(
+      await prepared('SELECT 1 FROM email_action_tokens WHERE token_hash = ?', token).first(),
+    ).toBeNull();
+
+    expect((await post('/api/auth/email/verification/confirm', { token })).status).toBe(200);
+    const me = await worker.fetch(req('/api/auth/me', { token: body.token }), env);
+    expect(((await me.json()) as { user: { emailVerified: boolean } }).user.emailVerified).toBe(
+      true,
+    );
+    expect((await post('/api/auth/email/verification/confirm', { token })).status).toBe(400);
+  });
+
+  it('不泄露账户是否存在，重置后注销旧会话', async () => {
+    const { body } = await registerUser();
+    sentEmails = [];
+    expect((await post('/api/auth/password/forgot', { email: 'nobody@example.com' })).status).toBe(
+      202,
+    );
+    expect(sentEmails).toHaveLength(0);
+    expect((await post('/api/auth/password/forgot', { email: GOOD.email })).status).toBe(202);
+    const text = String((sentEmails[0] as { text: string }).text);
+    const token = new URL(text.match(/https:\/\/\S+/)![0]).searchParams.get('reset')!;
+    expect(
+      (await post('/api/auth/password/reset', { token, password: 'new-password-123' })).status,
+    ).toBe(200);
+    const oldSession = await worker.fetch(req('/api/auth/me', { token: body.token }), env);
+    expect(((await oldSession.json()) as { user: unknown }).user).toBeNull();
+    expect(
+      (
+        await post('/api/auth/login', {
+          username: GOOD.username,
+          password: 'new-password-123',
+        })
+      ).status,
+    ).toBe(200);
   });
 });
 
