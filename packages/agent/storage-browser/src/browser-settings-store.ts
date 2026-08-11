@@ -12,6 +12,7 @@ import type {
   ProviderConfigMap,
   StorageLike,
 } from './browser-settings-types.js';
+import type { ModelContextStrategy } from '@dg-agent/core';
 import {
   API_KEYS_LOCAL,
   API_KEYS_SESSION,
@@ -28,6 +29,13 @@ export interface BrowserAppSettingsStoreOptions {
   sessionStorageRef?: StorageLike;
   env?: BrowserAppEnvLike;
 }
+
+export interface ModelBehaviorSettings {
+  modelContextStrategy: ModelContextStrategy;
+  temperature: number;
+}
+
+const MODEL_BEHAVIOR_CHANGED_EVENT = '0xnullai:agent-model-behavior-changed';
 
 export class BrowserAppSettingsStore {
   private readonly localStorageRef: StorageLike | undefined;
@@ -128,6 +136,49 @@ export class BrowserAppSettingsStore {
         ...(persisted?.voice ?? {}),
         apiKey: voiceApiKey,
       }),
+    };
+  }
+
+  loadModelBehavior(): ModelBehaviorSettings {
+    const settings = this.load();
+    return {
+      modelContextStrategy: settings.modelContextStrategy,
+      temperature: settings.temperature,
+    };
+  }
+
+  /**
+   * Persist only Agent model behavior. This deliberately bypasses `save()`:
+   * the unified AI panel must not rewrite safety/provider/API-key state from a
+   * stale full-settings snapshot merely because a temperature slider moved.
+   * These preferences are device-local and are not part of account sync.
+   */
+  saveModelBehavior(next: ModelBehaviorSettings): ModelBehaviorSettings {
+    const persisted = this.readPersistedSettings() ?? { version: 1 as const };
+    const normalized: ModelBehaviorSettings = {
+      modelContextStrategy: next.modelContextStrategy,
+      temperature: Math.min(1, Math.max(0, next.temperature)),
+    };
+    this.localStorageRef?.setItem(SETTINGS_KEY, JSON.stringify({ ...persisted, ...normalized }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(MODEL_BEHAVIOR_CHANGED_EVENT, { detail: normalized }));
+    }
+    return normalized;
+  }
+
+  subscribeModelBehavior(listener: (settings: ModelBehaviorSettings) => void): () => void {
+    if (typeof window === 'undefined') return () => undefined;
+    const onChanged = (event: Event) => {
+      listener((event as CustomEvent<ModelBehaviorSettings>).detail ?? this.loadModelBehavior());
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SETTINGS_KEY) listener(this.loadModelBehavior());
+    };
+    window.addEventListener(MODEL_BEHAVIOR_CHANGED_EVENT, onChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(MODEL_BEHAVIOR_CHANGED_EVENT, onChanged);
+      window.removeEventListener('storage', onStorage);
     };
   }
 
@@ -235,6 +286,16 @@ export class BrowserAppSettingsStore {
     };
 
     this.localStorageRef?.setItem(SETTINGS_KEY, JSON.stringify(sanitized));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(MODEL_BEHAVIOR_CHANGED_EVENT, {
+          detail: {
+            modelContextStrategy: sanitized.modelContextStrategy,
+            temperature: sanitized.temperature,
+          } satisfies ModelBehaviorSettings,
+        }),
+      );
+    }
     this.persistApiKeys(providerConfigs, settings.rememberApiKey);
     this.persistVoiceApiKey(settings.voice.apiKey, settings.rememberApiKey);
     return this.load();

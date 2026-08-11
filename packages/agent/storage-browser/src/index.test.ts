@@ -109,6 +109,32 @@ describe('BrowserAppSettingsStore', () => {
     ).toBe(0.8);
   });
 
+  it('updates only model behavior for the unified AI panel', () => {
+    const localStorageRef = new MemoryStorage();
+    localStorageRef.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        version: 1,
+        showSafetyNoticeOnStartup: false,
+        modelContextStrategy: 'last-user-turn',
+        temperature: 0.8,
+      }),
+    );
+    const store = new BrowserAppSettingsStore({
+      localStorageRef,
+      sessionStorageRef: new MemoryStorage(),
+    });
+    store.saveModelBehavior({ modelContextStrategy: 'full-history', temperature: 0.65 });
+
+    const raw = JSON.parse(localStorageRef.getItem(SETTINGS_KEY) ?? '{}') as Record<
+      string,
+      unknown
+    >;
+    expect(raw.showSafetyNoticeOnStartup).toBe(false);
+    expect(store.load().modelContextStrategy).toBe('full-history');
+    expect(store.load().temperature).toBe(0.65);
+  });
+
   it('keeps API keys only in memory when remember is disabled', () => {
     const localStorageRef = new MemoryStorage();
     const sessionStorageRef = new MemoryStorage();

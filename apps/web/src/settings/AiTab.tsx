@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Input, SettingSelect } from '@0xnullai/ui';
 import {
   PROVIDER_DEFINITIONS,
@@ -13,6 +13,7 @@ import {
 } from '@0xnullai/llm-providers';
 import { VoiceProviderSection } from './VoiceProviderSection';
 import { ProxySection } from './ProxySection';
+import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 
 /**
  * AI configuration. Text and voice both live here.
@@ -32,13 +33,22 @@ import { ProxySection } from './ProxySection';
  */
 export function AiTab() {
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
+  const behaviorStore = useMemo(() => new BrowserAppSettingsStore(), []);
+  const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
+    behaviorStore.loadModelBehavior(),
+  );
 
   useEffect(() => subscribeLlmConfig(setConfig), []);
+  useEffect(() => behaviorStore.subscribeModelBehavior(setBehavior), [behaviorStore]);
 
   function update(patch: Partial<LlmConfig>) {
     const next = { ...config, ...patch };
     setConfig(next);
     saveLlmConfig(next);
+  }
+
+  function updateBehavior(patch: Partial<ModelBehaviorSettings>) {
+    setBehavior((current) => behaviorStore.saveModelBehavior({ ...current, ...patch }));
   }
 
   const def = getProviderDefinition(config.providerId as ProviderId);
@@ -97,6 +107,52 @@ export function AiTab() {
         {!isLlmConfigured(config) && (
           <p className="mt-3 text-xs text-[var(--danger)]">配置未完成</p>
         )}
+        <div className="mt-5 border-t border-[var(--surface-border)] pt-4">
+          <h4 className="text-sm font-semibold">上下文与回复</h4>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
+            仅影响 Agent，保存在当前设备，不随账户同步。修改后下一条消息起生效。
+          </p>
+          <div className="mt-3 grid gap-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">上下文策略</span>
+              <SettingSelect
+                value={behavior.modelContextStrategy}
+                onValueChange={(value) =>
+                  updateBehavior({
+                    modelContextStrategy: value as ModelBehaviorSettings['modelContextStrategy'],
+                  })
+                }
+                options={[
+                  { value: 'last-user-turn', label: '基础（最近 1 轮）' },
+                  { value: 'last-five-user-turns', label: '中等（最近 5 轮）' },
+                  { value: 'full-history', label: '完整对话' },
+                ]}
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="flex items-center justify-between text-xs text-[var(--text-soft)]">
+                <span>回复多样性</span>
+                <output className="font-mono tabular-nums">
+                  {behavior.temperature.toFixed(2)}
+                </output>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={behavior.temperature}
+                aria-label="回复多样性"
+                onChange={(event) => updateBehavior({ temperature: Number(event.target.value) })}
+                className="w-full accent-[var(--accent)]"
+                style={{ '--strength-value': `${behavior.temperature * 100}%` } as CSSProperties}
+              />
+              <span className="text-[11px] text-[var(--text-faint)]">
+                越低越稳定，越高越有变化；设备控制仍受安全策略约束。
+              </span>
+            </label>
+          </div>
+        </div>
       </section>
 
       <VoiceProviderSection />

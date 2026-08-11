@@ -24,6 +24,15 @@ export function useSettingsManager(): UseSettingsManagerResult {
   const [settingsDraft, setSettingsDraft] = useState<BrowserAppSettings>(initialSettings);
   const [settings, setSettings] = useState<BrowserAppSettings>(initialSettings);
 
+  useEffect(
+    () =>
+      settingsStore.subscribeModelBehavior((behavior) => {
+        setSettings((current) => ({ ...current, ...behavior }));
+        setSettingsDraft((current) => ({ ...current, ...behavior }));
+      }),
+    [settingsStore],
+  );
+
   function resetSettings(onDone: () => void): void {
     const next = settingsStore.reset();
     setSettingsDraft(next);
