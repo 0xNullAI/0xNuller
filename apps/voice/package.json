@@ -12,13 +12,13 @@
     "cf:dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "diagnose:glm": "node scripts/glm-connftest.mjs",
-    "trial:key": "node scripts/gen-trial-key.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@0xnullai/auth": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "@0xnullai/permissions": "0.1.0",
     "@0xnullai/scenes": "0.1.0",

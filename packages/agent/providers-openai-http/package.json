@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/providers-openai-http",
   "version": "0.1.0",
+  "description": "OpenAI Responses 与 Chat Completions 兼容 Agent provider",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

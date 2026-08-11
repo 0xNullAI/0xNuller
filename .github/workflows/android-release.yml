@@ -2,6 +2,10 @@ name: Android Release
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
@@ -11,14 +15,64 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      should-release: ${{ steps.release.outputs.should-release }}
+      version: ${{ steps.release.outputs.version }}
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Resolve the verified main commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+
+      - name: Check whether this version is new
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="android-v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release $tag already exists; no Android build is needed."
+          else
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: prepare
+    if: needs.prepare.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ needs.prepare.outputs.source-sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6

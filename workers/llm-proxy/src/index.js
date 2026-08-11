@@ -74,6 +74,22 @@ export default {
     }
 
     const now = Date.now();
+    const authorization = request.headers.get('Authorization');
+    const quota = await env.AUTH.consumeAiQuota(
+      {
+        authorization: authorization === 'Bearer free' ? null : authorization,
+        cookie: request.headers.get('Cookie'),
+      },
+      'text',
+      1,
+    );
+    if (quota === 'unauthorized') {
+      return json(401, { error: '请先登录后使用体验模型' }, cors);
+    }
+    if (!quota.allowed) {
+      return json(429, { error: '今日体验额度已用完，请明天再试或配置自己的模型服务' }, cors);
+    }
+
     const verdict = await checkSignature(request.headers, env.FREE_PROXY_SECRET, now);
     if (verdict === 'stale') {
       return json(403, { error: '请求已过期，请检查设备时间后重试' }, cors);

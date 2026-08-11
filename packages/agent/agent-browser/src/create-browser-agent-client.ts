@@ -17,6 +17,7 @@ import {
   resolveProviderRuntimeSettings,
   type ProviderDialect,
 } from '@0xnullai/llm-providers';
+import { authRequestHeaders } from '@0xnullai/auth';
 import { OpenAiHttpLlmClient } from '@dg-agent/providers-openai-http';
 import {
   PI_AI_PROVIDER_KEYS,
@@ -175,9 +176,13 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     );
   } else {
     try {
-      const extraHeaders =
+      const signHeaders =
         provider.providerId === 'free' && options.freeProxySecret
           ? createFreeProxyHmacHeaders(options.freeProxySecret)
+          : null;
+      const extraHeaders =
+        provider.providerId === 'free'
+          ? async () => ({ ...(signHeaders ? await signHeaders() : {}), ...authRequestHeaders() })
           : undefined;
       llm = new OpenAiHttpLlmClient({
         apiKey: provider.apiKey,

@@ -29,6 +29,7 @@ import {
 } from './ephemeral-token.js';
 import type { RealtimeProviderId, RealtimeProviderSettings } from './providers.js';
 import { apiWsUrl } from '@0xnullai/settings';
+import { getVoiceTicket } from '@0xnullai/auth';
 
 const TURN_DETECTION = {
   type: 'server_vad',
@@ -45,7 +46,7 @@ function buildWsUrl(providerId: RealtimeProviderId, settings: RealtimeProviderSe
   switch (providerId) {
     case 'trial': {
       // Worker route under the unified domain (`/api/realtime`); the Worker
-      // pins the model and swaps the activation key for the real xAI key on
+      // pins the model and swaps the short-lived account ticket for the real xAI key on
       // the upstream leg.
       //
       // **Do NOT build a same-origin URL from `location.host` here.** It works
@@ -78,12 +79,11 @@ async function resolveCredential(
   providerId: RealtimeProviderId,
   settings: RealtimeProviderSettings,
 ): Promise<string> {
+  if (providerId === 'trial') {
+    return (await getVoiceTicket()).ticket;
+  }
   try {
     switch (providerId) {
-      case 'trial':
-        // No real key on the frontend to mint against — the activation key IS
-        // the credential; the Worker validates it and mints/uses the real key.
-        return settings.apiKey;
       case 'xai':
         return (await mintXaiRealtimeEphemeralToken(settings)).value;
       case 'openai':

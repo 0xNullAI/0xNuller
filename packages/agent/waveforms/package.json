@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/waveforms",
   "version": "0.1.0",
+  "description": "Agent 共享波形库与 pulse、JSON、ZIP 导入适配器",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

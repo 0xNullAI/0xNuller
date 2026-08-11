@@ -1,57 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import type { Env } from './env.js';
-import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-keys.js';
+import { isAllowedOrigin, parseVoiceTicket } from './trial-keys.js';
 
 function env(overrides: Partial<Env> = {}): Env {
   return {
     TRIAL_SESSION: {} as DurableObjectNamespace,
+    AUTH: {} as Env['AUTH'],
     XAI_API_KEY: 'xai-real-secret',
-    TRIAL_KEYS: JSON.stringify({
-      'dgv-trial-ok': { dailyCapMinutes: 30 },
-      'dgv-trial-off': { enabled: false },
-      'dgv-trial-expired': { expiresAt: 1000 },
-    }),
     TRIAL_MAX_SESSION_MINUTES: '20',
-    TRIAL_DEFAULT_DAILY_CAP_MINUTES: '60',
     ...overrides,
   };
 }
 
-describe('parseActivationKey', () => {
-  it('extracts the key from the openai-insecure-api-key subprotocol token', () => {
-    expect(parseActivationKey('realtime, openai-insecure-api-key.dgv-trial-ok')).toBe(
-      'dgv-trial-ok',
+describe('parseVoiceTicket', () => {
+  it('extracts the account ticket from the WebSocket subprotocol token', () => {
+    expect(parseVoiceTicket('realtime, openai-insecure-api-key.signed.account.ticket')).toBe(
+      'signed.account.ticket',
     );
   });
 
   it('returns null when the header is missing or has no credential token', () => {
-    expect(parseActivationKey(null)).toBeNull();
-    expect(parseActivationKey('realtime')).toBeNull();
-    expect(parseActivationKey('realtime, openai-insecure-api-key.')).toBeNull();
-  });
-});
-
-describe('resolveTrialKey', () => {
-  it('resolves a valid key to its caps (per-key daily cap wins over the default)', () => {
-    const config = resolveTrialKey(env(), 'dgv-trial-ok', 5000);
-    expect(config).toEqual({ maxSessionMinutes: 20, dailyCapMinutes: 30 });
-  });
-
-  it('falls back to the default daily cap when the entry omits one', () => {
-    const e = env({ TRIAL_KEYS: JSON.stringify({ 'dgv-trial-plain': {} }) });
-    expect(resolveTrialKey(e, 'dgv-trial-plain', 5000)?.dailyCapMinutes).toBe(60);
-  });
-
-  it('rejects unknown, disabled, and expired keys', () => {
-    expect(resolveTrialKey(env(), 'dgv-trial-nope', 5000)).toBeNull();
-    expect(resolveTrialKey(env(), 'dgv-trial-off', 5000)).toBeNull();
-    expect(resolveTrialKey(env(), 'dgv-trial-expired', 5000)).toBeNull();
-  });
-
-  it('rejects everything when no upstream key or registry is configured', () => {
-    expect(resolveTrialKey(env({ XAI_API_KEY: undefined }), 'dgv-trial-ok', 5000)).toBeNull();
-    expect(resolveTrialKey(env({ TRIAL_KEYS: undefined }), 'dgv-trial-ok', 5000)).toBeNull();
-    expect(resolveTrialKey(env({ TRIAL_KEYS: 'not json' }), 'dgv-trial-ok', 5000)).toBeNull();
+    expect(parseVoiceTicket(null)).toBeNull();
+    expect(parseVoiceTicket('realtime')).toBeNull();
+    expect(parseVoiceTicket('realtime, openai-insecure-api-key.')).toBeNull();
   });
 });
 

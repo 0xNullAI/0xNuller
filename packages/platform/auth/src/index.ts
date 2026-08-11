@@ -24,6 +24,9 @@ export interface AuthUser {
   /** Present for the signed-in account; omitted from public profile identities. */
   role?: 'user' | 'admin';
   avatarUrl?: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  emailAvailable?: boolean;
 }
 
 // Auth endpoints live under `/api/auth` on the unified domain (paths are
@@ -60,6 +63,12 @@ function storedToken(): string | null {
   } catch {
     return null;
   }
+}
+
+/** Bearer carrier for native shells; browsers normally return an empty object and use cookies. */
+export function authRequestHeaders(): Record<string, string> {
+  const token = storedToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function setStoredToken(token: string | null): void {
@@ -133,6 +142,61 @@ export async function logout(): Promise<void> {
   await call('/api/auth/logout', { method: 'POST' });
   setStoredToken(null);
   publishAuthUser(null);
+}
+
+export async function requestEmailVerification(): Promise<void> {
+  await call('/api/auth/email/verification/request', { method: 'POST' });
+}
+
+export async function confirmEmailVerification(token: string): Promise<void> {
+  await call('/api/auth/email/verification/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await call('/api/auth/password/forgot', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await call('/api/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  });
+  setStoredToken(null);
+  publishAuthUser(null);
+}
+
+export interface AiUsageSummary {
+  day: string;
+  text: { used: number; limit: number };
+  voice: { used: number; limit: number };
+}
+
+export async function getAiUsage(): Promise<AiUsageSummary> {
+  return call<AiUsageSummary>('/api/auth/ai-usage');
+}
+
+export async function getVoiceTicket(): Promise<{ ticket: string; expiresAt: number }> {
+  return call('/api/auth/voice/ticket', { method: 'POST' });
+}
+
+export interface AdminStats {
+  generatedAt: number;
+  users: number;
+  verifiedUsers: number;
+  activeSessions: number;
+  registrationAttempts24h: number;
+  textUnitsToday: number;
+  voiceUnitsToday: number;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  return call<AdminStats>('/api/auth/admin/stats');
 }
 
 /** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
