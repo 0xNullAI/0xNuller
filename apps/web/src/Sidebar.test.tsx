@@ -44,15 +44,15 @@ describe('Sidebar 默认入口', () => {
     expect(screen.queryByRole('button', { name: /公开大厅/ })).toBeNull();
   });
 
-  it('登录后显示私聊与建房间入口', () => {
+  it('登录后显示私聊与统一的新建/加入入口，不伪造常驻大厅', () => {
     render(
       <SidebarSectionsProvider>
         <TestSidebar signedIn />
       </SidebarSectionsProvider>,
     );
     expect(screen.getByRole('heading', { name: '私聊' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '建房间' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /公开大厅/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '新建 / 加入房间' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /公开大厅/ })).toBeNull();
   });
 
   it('模块打开后由完整列表接管同一分组', async () => {

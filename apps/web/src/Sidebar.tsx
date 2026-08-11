@@ -7,7 +7,6 @@ import {
   UserRound,
   Users,
   BookOpen,
-  Globe2,
   LogIn,
   Plus,
 } from 'lucide-react';
@@ -340,12 +339,7 @@ function DefaultSidebarDestination({
       <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">房间</h2>
       <button type="button" onClick={onCreateRoom} className={itemClass}>
         <Plus className="h-4 w-4 shrink-0" />
-        建房间
-      </button>
-      <button type="button" onClick={() => onNavigate('chat')} className={itemClass}>
-        <Globe2 className="h-4 w-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">公开大厅</span>
-        <span className="text-[10px] text-[var(--text-faint)]">常驻</span>
+        新建 / 加入房间
       </button>
     </section>
   );

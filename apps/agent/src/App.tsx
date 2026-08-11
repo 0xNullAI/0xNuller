@@ -145,7 +145,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   // object back to its defaults (that blob also holds the strength caps).
   const [sceneLib, updateSceneLib] = useScenes();
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
-    () => !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
+    () => inShell || !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
   const [text, setText] = useState('');
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
