@@ -181,6 +181,10 @@ export async function getAiUsage(): Promise<AiUsageSummary> {
   return call<AiUsageSummary>('/api/auth/ai-usage');
 }
 
+export async function getVoiceTicket(): Promise<{ ticket: string; expiresAt: number }> {
+  return call('/api/auth/voice/ticket', { method: 'POST' });
+}
+
 export interface AdminStats {
   generatedAt: number;
   users: number;
