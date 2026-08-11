@@ -15,4 +15,5 @@
 | DG-Kit        | [README](kit-README.md)        | [README](kit-README.en.md)   | `packages/kit`                                |
 | DG-MCP        | [README](mcp-README.md)        | [README](mcp-README.en.md)   | [MCP](../../apps/mcp/README.md)               |
 
-DG-Kit 与 DG-MCP 的对外迁移和发布仍需单独确认；本索引不改变旧仓库或 npm 发布状态。
+DG-Kit 与 DG-MCP 已迁移到本仓维护。旧仓已归档并停用发布工作流；npm 当前版本与发布方式见
+[切换说明](../kit-release-switchover.md)。本目录仅保存历史文档，不再代表发布状态。
