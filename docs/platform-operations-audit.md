@@ -24,5 +24,5 @@
 - `@dg-kit/*` 由 changesets 固定版本组管理；`dg-mcp` 保持独立版本和独立人工批准工作流。
 - `npm run verify:packages` 会构建并执行 `npm pack --dry-run`，检查入口、README、仓库元数据和
   测试产物泄漏。它不发布任何包。
-- 外部旧仓的 Actions/归档状态只能由有权限的维护者确认。本仓文档提供切换清单，不自动修改
-  或归档外部仓库。
+- 旧 DG-Kit 与 DG-MCP 仓库均已归档，旧发布工作流已停用；新的 Kit/MCP 发布只从本仓执行。
+  现行版本、工作流与验证命令记录在 `docs/kit-release-switchover.md`。
