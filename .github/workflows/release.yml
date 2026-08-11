@@ -76,6 +76,7 @@ jobs:
         with:
           publish: npm run release
           setupGitUser: false
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: 0xNull
