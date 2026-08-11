@@ -14,6 +14,7 @@
 - 使用与 Voice 共用的场景，与 Control、Chat 共用设备连接和安全设置。
 - 对话、场景与波形保存在浏览器；登录后可同步受支持的数据。
 - 网页版通过 Web Bluetooth 连接，安卓壳使用原生 BLE 传输。
+- 可直接导入旧 DG-Agent 导出的 ZIP 或 JSON 聊天记录。
 
 模型只能提交工具请求。设备安全策略、权限确认和命令队列在执行层生效，停止操作不依赖模型响应。
 
@@ -53,6 +54,8 @@ apps/web/src/modules/agent.tsx      统一外壳入口
 
 设备协议、传输和安全能力来自 `packages/kit`；共享 UI、设置、场景和账户能力来自
 `packages/platform`。
+
+旧版记录迁移步骤见[聊天记录迁移说明](../../docs/agent-history-migration.md)。
 
 ## 协议
 

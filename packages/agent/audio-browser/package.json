@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/audio-browser",
   "version": "0.1.0",
+  "description": "浏览器语音识别、语音合成与代理适配器",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
