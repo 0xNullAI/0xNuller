@@ -111,17 +111,17 @@ function verifyProductMetadata() {
       fail(`release workflow does not enforce commit identity: missing ${required}`);
     }
   }
-  for (const [path, workflow] of [
-    ['.github/workflows/auto-tag.yml', autoTagWorkflow],
-    ['.github/workflows/release.yml', releaseWorkflow],
-  ]) {
-    const triggerBlock = workflow.slice(
-      workflow.indexOf('\non:'),
-      workflow.indexOf('\npermissions:'),
-    );
-    if (!triggerBlock.includes('workflow_dispatch:') || /^\s+push:/m.test(triggerBlock)) {
-      fail(`${path} must remain manual until the external cutover is complete`);
-    }
+  if (
+    !autoTagWorkflow.includes('workflow_dispatch:') ||
+    !/push:\s*\n\s+branches: \[main\]/.test(autoTagWorkflow)
+  ) {
+    fail('auto-tag must support manual runs and main push after the external cutover');
+  }
+  if (
+    !releaseWorkflow.includes('workflow_dispatch:') ||
+    !/push:\s*\n\s+branches: \[dev, main\]/.test(releaseWorkflow)
+  ) {
+    fail('release must support manual runs and dev/main push after the external cutover');
   }
 
   return root.version;

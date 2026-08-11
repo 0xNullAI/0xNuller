@@ -6,11 +6,9 @@ name: Auto-tag main
 # Idempotent: existing tag/release is skipped.
 
 on:
-  # 外部切换完成前只允许手动触发，避免旧仓和本仓同时创建产品 release。
-  # 产品版本线已经从兼容 DG-Agent 升级身份的 6.0.0 开始；旧仓自动化停用后再恢复 push。
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: write
