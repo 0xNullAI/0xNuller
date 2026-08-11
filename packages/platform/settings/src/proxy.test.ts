@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_PROXY, applyHttpProxy, loadProxy, saveProxy } from './proxy';
+import { DEFAULT_PROXY, applyHttpProxy, applyWebSocketProxy, loadProxy, saveProxy } from './proxy';
 
 beforeEach(() => localStorage.clear());
 
@@ -43,6 +43,22 @@ describe('代理设置', () => {
     it('上游地址不合法时也原样返回', () => {
       saveProxy({ enabled: true, httpBaseUrl: 'http://127.0.0.1:8080' });
       expect(applyHttpProxy('not-a-url')).toBe('not-a-url');
+    });
+  });
+
+  describe('实时语音连接改写', () => {
+    it('HTTPS 反代地址对应安全 WebSocket', () => {
+      saveProxy({ enabled: true, httpBaseUrl: 'https://proxy.example/realtime/' });
+      expect(applyWebSocketProxy('wss://api.x.ai/v1/realtime?model=grok')).toBe(
+        'wss://proxy.example/realtime/api.x.ai/v1/realtime?model=grok',
+      );
+    });
+
+    it('本地 HTTP 反代地址对应普通 WebSocket', () => {
+      saveProxy({ enabled: true, httpBaseUrl: 'http://127.0.0.1:8080' });
+      expect(applyWebSocketProxy('wss://open.bigmodel.cn/api/paas/v4/realtime')).toBe(
+        'ws://127.0.0.1:8080/open.bigmodel.cn/api/paas/v4/realtime',
+      );
     });
   });
 });

@@ -18,6 +18,7 @@
  * to be applied twice when these were two separate files.
  */
 import { AudioPlayback, MicCapture, SAMPLE_RATE, base64ToInt16, float32ToInt16 } from './audio.js';
+import { applyWebSocketProxy } from '@0xnullai/settings';
 import type { RealtimeSession, RealtimeSessionOptions } from './realtime-session.js';
 
 export type { RealtimeSessionOptions } from './realtime-session.js';
@@ -123,7 +124,8 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     await this.playback.prepare();
 
     const { url, protocols } = await this.buildConnection();
-    const ws = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
+    const connectionUrl = applyWebSocketProxy(url);
+    const ws = protocols ? new WebSocket(connectionUrl, protocols) : new WebSocket(connectionUrl);
     this.ws = ws;
 
     try {

@@ -99,15 +99,41 @@ export function subscribeProxy(listener: (s: ProxySettings) => void): () => void
  * requests going to a mistyped destination.
  */
 export function applyHttpProxy(url: string, proxy: ProxySettings = loadProxy()): string {
+  return applyReverseProxy(url, proxy, 'http');
+}
+
+/** Rewrite a realtime WebSocket URL through the same global reverse proxy. */
+export function applyWebSocketProxy(url: string, proxy: ProxySettings = loadProxy()): string {
+  return applyReverseProxy(url, proxy, 'websocket');
+}
+
+function applyReverseProxy(
+  url: string,
+  proxy: ProxySettings,
+  transport: 'http' | 'websocket',
+): string {
   if (!proxy.enabled || !proxy.httpBaseUrl.trim()) return url;
   try {
     const base = new URL(proxy.httpBaseUrl.trim());
     const target = new URL(url);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(base.protocol)) return url;
+    if (
+      (transport === 'http' && !['http:', 'https:'].includes(target.protocol)) ||
+      (transport === 'websocket' && !['ws:', 'wss:'].includes(target.protocol))
+    ) {
+      return url;
+    }
     // Reverse-proxy convention: mount the upstream host and path under the
     // proxy's path. E.g. http://127.0.0.1:8080 + https://api.x.ai/v1/chat
     //   →  http://127.0.0.1:8080/api.x.ai/v1/chat
     const prefix = base.pathname.replace(/\/$/, '');
-    return `${base.origin}${prefix}/${target.host}${target.pathname}${target.search}`;
+    const protocol =
+      transport === 'websocket'
+        ? base.protocol === 'https:' || base.protocol === 'wss:'
+          ? 'wss:'
+          : 'ws:'
+        : base.protocol;
+    return `${protocol}//${base.host}${prefix}/${target.host}${target.pathname}${target.search}`;
   } catch {
     return url;
   }

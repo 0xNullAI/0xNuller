@@ -81,8 +81,8 @@ export function WaveformsPanel({
           })}
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <label className="!flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="!grid min-h-20 cursor-pointer grid-rows-[1.25rem_1.5rem] place-items-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-3 py-3 text-center text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
             <Upload className="h-4 w-4" />
             <span>导入波形文件</span>
             <input
@@ -95,7 +95,7 @@ export function WaveformsPanel({
           </label>
           <button
             type="button"
-            className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-4 py-2.5 text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="grid min-h-20 cursor-pointer grid-rows-[1.25rem_1.5rem] place-items-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-3 py-3 text-center text-sm text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
             onClick={() => setMarketOpen(true)}
           >
             <Store className="h-4 w-4" />
