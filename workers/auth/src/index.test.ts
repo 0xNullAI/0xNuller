@@ -267,6 +267,26 @@ describe('账户 AI 体验额度', () => {
   });
 });
 
+describe('运营统计', () => {
+  it('只向管理员返回不含个人信息的汇总', async () => {
+    const { body } = await registerUser();
+    expect(
+      (await worker.fetch(req('/api/auth/admin/stats', { token: body.token }), env)).status,
+    ).toBe(403);
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", body.user!.id).run();
+    const response = await worker.fetch(req('/api/auth/admin/stats', { token: body.token }), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      users: 1,
+      verifiedUsers: 0,
+      activeSessions: 1,
+      registrationAttempts24h: 1,
+      textUnitsToday: 0,
+      voiceUnitsToday: 0,
+    });
+  });
+});
+
 describe('Chat 房间账户同步', () => {
   it('跨会话读取已加入房间，并允许只从自己的列表移除', async () => {
     const { body } = await registerUser();
