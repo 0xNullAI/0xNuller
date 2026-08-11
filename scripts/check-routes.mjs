@@ -2,9 +2,9 @@
 /**
  * Check that no two Workers declare overlapping routes.
  *
- * Why this is needed: Cloudflare matches on longest prefix, and two Workers
- * declaring overlapping paths is not an error — one of them just silently stops
- * receiving requests. The symptom is "some endpoint 404s but the config looks right".
+ * Cloudflare matches the most specific route. A zone-root `/*` route is therefore
+ * a valid static-site fallback behind more specific API routes; other overlaps are
+ * rejected because they are easy to make ambiguous during maintenance.
  *
  * **The configs are discovered, not a hard-coded list.** The first version had four
  * Workers hard-coded, and the newly added dg-voice was never checked at all — a
@@ -50,6 +50,10 @@ const entries = workers.flatMap((w) =>
 
 let failed = false;
 
+function isZoneFallback(pattern) {
+  return /^https?:\/\/[^/]+\/\*$/.test(pattern) || /^[^/]+\/\*$/.test(pattern);
+}
+
 for (let i = 0; i < entries.length; i++) {
   for (let j = i + 1; j < entries.length; j++) {
     const a = entries[i];
@@ -58,6 +62,7 @@ for (let i = 0; i < entries.length; i++) {
     const pa = a.pattern.replace(/\*$/, '');
     const pb = b.pattern.replace(/\*$/, '');
     if (pa.startsWith(pb) || pb.startsWith(pa)) {
+      if (isZoneFallback(a.pattern) || isZoneFallback(b.pattern)) continue;
       console.error(`✘ 路由重叠：${a.worker} "${a.pattern}"  ⟷  ${b.worker} "${b.pattern}"`);
       failed = true;
     }
@@ -65,7 +70,7 @@ for (let i = 0; i < entries.length; i++) {
 }
 
 if (failed) {
-  console.error('\n重叠的路由中会有一个静默收不到请求——表现是接口 404 而配置看起来是对的。');
+  console.error('\n仅允许根路径 /* 作为静态站点兜底；其余重叠路由必须拆分。');
   process.exit(1);
 }
 

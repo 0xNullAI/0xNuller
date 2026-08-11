@@ -5,7 +5,8 @@
 
   // 统一 Web 外壳；API 由更具体的 Worker 路由接管。
   "routes": [
-    { "pattern": "0xnullai.com", "custom_domain": true },
+    // 根域继续使用现有 DNS；Worker route 接管页面，更具体的 API routes 优先。
+    { "pattern": "0xnullai.com/*", "zone_name": "0xnullai.com" },
     { "pattern": "www.0xnullai.com", "custom_domain": true },
   ],
   "workers_dev": true,
