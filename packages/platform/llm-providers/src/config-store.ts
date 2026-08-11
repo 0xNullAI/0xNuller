@@ -110,20 +110,30 @@ export function hasLlmConfig(): boolean {
 }
 
 export function saveLlmConfig(config: LlmConfig): void {
+  // Runtime callers from 6.0.0 can still pass the former four-field shape.
+  // Treat a missing preference as the legacy behavior (remember the key),
+  // rather than silently moving the key to session storage and losing it on
+  // the next tab or process.
+  const normalized: LlmConfig = {
+    ...config,
+    endpoint: config.endpoint ?? 'chat/completions',
+    useStrict: config.useStrict ?? false,
+    rememberApiKey: config.rememberApiKey ?? true,
+  };
   try {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ ...config, apiKey: config.rememberApiKey ? config.apiKey : '' }),
+      JSON.stringify({ ...normalized, apiKey: normalized.rememberApiKey ? normalized.apiKey : '' }),
     );
     if (typeof sessionStorage !== 'undefined') {
-      if (config.rememberApiKey) sessionStorage.removeItem(SESSION_KEY);
-      else sessionStorage.setItem(SESSION_KEY, config.apiKey);
+      if (normalized.rememberApiKey) sessionStorage.removeItem(SESSION_KEY);
+      else sessionStorage.setItem(SESSION_KEY, normalized.apiKey);
     }
   } catch {
     // Private browsing / quota exceeded: a failed write must not block
     // use; the config still applies for this session.
   }
-  for (const l of listeners) l(config);
+  for (const l of listeners) l(normalized);
 }
 
 /**
