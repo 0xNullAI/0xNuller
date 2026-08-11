@@ -21,7 +21,7 @@ const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      `fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[2px]`,
+      `ui-dialog-overlay fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[2px]`,
       className,
     )}
     {...props}
@@ -44,7 +44,12 @@ const SheetContent = React.forwardRef<
 >(({ side = 'right', className, children, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
-    <DialogPrimitive.Content ref={ref} className={cn(sheetVariants[side], className)} {...props}>
+    <DialogPrimitive.Content
+      ref={ref}
+      data-side={side}
+      className={cn('ui-sheet-content', sheetVariants[side], className)}
+      {...props}
+    >
       {children}
       <DialogPrimitive.Close className="absolute right-4 top-5 inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
         <X className="h-4 w-4" />
