@@ -128,13 +128,15 @@ const label = requireMatch(
 const minSdk = Number(
   requireMatch(badging, /^sdkVersion:'(\d+)'/m, 'aapt did not report minSdk')[1],
 );
-const certificate = requireMatch(
+const certificateText = requireMatch(
   signature,
-  /^\s*Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)\s*$/im,
+  /certificate SHA-256 digest:\s*([^\r\n]+)/i,
   'apksigner did not report the signing certificate digest',
-)[1]
-  .replaceAll(':', '')
-  .toLowerCase();
+)[1];
+const certificate = certificateText.replaceAll(/[^0-9a-f]/gi, '').toLowerCase();
+if (!/^[0-9a-f]{64}$/.test(certificate)) {
+  fail('apksigner reported an invalid signing certificate digest');
+}
 
 const expectedCode = String(tauri.bundle.android.versionCode);
 if (packageLine[1] !== tauri.identifier) {
