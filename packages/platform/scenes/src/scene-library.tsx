@@ -418,22 +418,22 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
             </div>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               variant="ghost"
-              className="flex-1 justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="h-auto min-h-11 w-full justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-3 py-2.5 text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               onClick={startCreate}
             >
               <Plus className="h-4 w-4" />
-              <span className="-mt-[0.1em] text-sm">新建场景</span>
+              新建场景
             </Button>
             <Button
               variant="ghost"
-              className="flex-1 justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="h-auto min-h-11 w-full justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border)] px-3 py-2.5 text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               onClick={() => setMarketOpen(true)}
             >
               <Store className="h-4 w-4" />
-              <span className="-mt-[0.1em] text-sm">从市场导入</span>
+              从市场导入
             </Button>
           </div>
         )}

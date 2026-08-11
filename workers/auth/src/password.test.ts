@@ -6,6 +6,7 @@ describe('密码哈希', () => {
     const a = await hashPassword('correct horse battery');
     const b = await hashPassword('correct horse battery');
     expect(a).not.toBe(b);
+    expect(a.split('$')[1]).toBe('100000');
     expect((await verifyPassword('correct horse battery', a)).ok).toBe(true);
     expect((await verifyPassword('correct horse battery', b)).ok).toBe(true);
   });

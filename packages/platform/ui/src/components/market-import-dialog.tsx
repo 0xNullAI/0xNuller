@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Download, Search } from 'lucide-react';
+import { useCallback, useEffect, useId, useState } from 'react';
+import { Download, Search, X } from 'lucide-react';
 import { Button } from './button';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
 import { Input } from './input';
+import { Overlay } from './overlay-surface';
 import {
   fetchMarketItems,
   markMarketDownloaded,
@@ -40,6 +40,8 @@ export function MarketImportDialog({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+  const titleId = useId();
+  const descriptionId = useId();
 
   const load = useCallback(
     async (q: string) => {
@@ -72,21 +74,37 @@ export function MarketImportDialog({
 
   const label = type === 'waveform' ? '波形' : '场景';
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        overlayClassName="backdrop-blur-[2px]"
-        className="max-w-[680px] overflow-hidden p-0"
+    <Overlay level="stacked" onDismiss={() => onOpenChange(false)} className="backdrop-blur-[2px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="relative w-[min(680px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-xl"
       >
         <div className="panel-header">
           <div className="min-w-0 flex-1">
-            <DialogTitle className="text-[1.1rem] tracking-[-0.03em]">
+            <h2
+              id={titleId}
+              className="text-[1.1rem] font-semibold tracking-[-0.03em] text-[var(--text)]"
+            >
               从市场导入{label}
-            </DialogTitle>
-            <DialogDescription className="mt-1">
+            </h2>
+            <p id={descriptionId} className="mt-1 text-sm text-[var(--text-soft)]">
               浏览社区上传的{label}，一键加入本地库
-            </DialogDescription>
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label="关闭市场导入"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:h-9 sm:w-9"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="px-5 pb-5">
@@ -157,7 +175,7 @@ export function MarketImportDialog({
               })}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Overlay>
   );
 }

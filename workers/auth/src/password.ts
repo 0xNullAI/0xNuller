@@ -19,7 +19,11 @@
  * old hashes still verify and are silently upgraded on the next successful login.
  */
 
-const ITERATIONS = 210_000;
+// Cloudflare Workers rejects a single PBKDF2 operation above 100,000 rounds.
+// Keep this at the runtime ceiling: a higher value does not make registration
+// stronger there, it makes every registration and password upgrade fail before
+// the database write.
+const ITERATIONS = 100_000;
 const KEY_LEN = 32;
 const SALT_LEN = 16;
 
