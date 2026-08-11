@@ -25,9 +25,13 @@ export interface LlmConfig {
   apiKey: string;
   model: string;
   baseUrl: string;
+  endpoint: 'responses' | 'chat/completions';
+  useStrict: boolean;
+  rememberApiKey: boolean;
 }
 
 const KEY = '0xnullai.llm-config';
+const SESSION_KEY = '0xnullai.llm-api-key';
 /** Per-module keys from before the merge, migrated once on read. */
 const LEGACY_KEYS = ['dg-chat-ai-config', 'dg-agent.provider-settings'];
 
@@ -39,6 +43,9 @@ export function defaultLlmConfig(): LlmConfig {
     apiKey: '',
     model: FREE_TRIAL_MODEL,
     baseUrl: FREE_TRIAL_PROXY_URL,
+    endpoint: 'chat/completions',
+    useStrict: false,
+    rememberApiKey: false,
   };
 }
 
@@ -51,6 +58,10 @@ function coerce(raw: unknown): LlmConfig | null {
     apiKey: typeof o.apiKey === 'string' ? o.apiKey : '',
     model: typeof o.model === 'string' ? o.model : '',
     baseUrl: typeof o.baseUrl === 'string' ? o.baseUrl : '',
+    endpoint: o.endpoint === 'responses' ? 'responses' : 'chat/completions',
+    useStrict: o.useStrict === true,
+    // Existing installations wrote the key to localStorage unconditionally.
+    rememberApiKey: typeof o.rememberApiKey === 'boolean' ? o.rememberApiKey : true,
   };
 }
 
@@ -58,7 +69,11 @@ export function loadLlmConfig(): LlmConfig {
   if (typeof localStorage === 'undefined') return defaultLlmConfig();
   try {
     const own = coerce(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
-    if (own) return own;
+    if (own) {
+      const sessionKey =
+        typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(SESSION_KEY) ?? '');
+      return { ...own, apiKey: own.rememberApiKey ? own.apiKey : sessionKey };
+    }
     // One-time migration: copy a legacy key over, write the new key, and
     // never read the legacy keys again.
     for (const legacy of LEGACY_KEYS) {
@@ -96,7 +111,14 @@ export function hasLlmConfig(): boolean {
 
 export function saveLlmConfig(config: LlmConfig): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(config));
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ ...config, apiKey: config.rememberApiKey ? config.apiKey : '' }),
+    );
+    if (typeof sessionStorage !== 'undefined') {
+      if (config.rememberApiKey) sessionStorage.removeItem(SESSION_KEY);
+      else sessionStorage.setItem(SESSION_KEY, config.apiKey);
+    }
   } catch {
     // Private browsing / quota exceeded: a failed write must not block
     // use; the config still applies for this session.

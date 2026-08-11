@@ -85,9 +85,10 @@ export class BrowserAppSettingsStore {
     const activeProvider = normalizeProviderSettings({
       ...createProviderSettings(activeProviderId),
       ...(providerConfigs[activeProviderId] ?? {}),
-      ...(llm?.apiKey ? { apiKey: llm.apiKey } : {}),
+      ...(llm ? { apiKey: llm.apiKey } : {}),
       ...(llm?.model ? { model: llm.model } : {}),
       ...(llm?.baseUrl ? { baseUrl: llm.baseUrl } : {}),
+      ...(llm ? { endpoint: llm.endpoint, useStrict: llm.useStrict } : {}),
     });
     providerConfigs[activeProviderId] = activeProvider;
     const effectivePermissionState = this.resolvePermissionState(persisted);
@@ -136,6 +137,7 @@ export class BrowserAppSettingsStore {
         ...(persisted?.voice ?? {}),
         apiKey: voiceApiKey,
       }),
+      rememberApiKey: llm?.rememberApiKey ?? persisted?.rememberApiKey ?? false,
     };
   }
 

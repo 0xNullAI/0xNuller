@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Input, SettingSelect } from '@0xnullai/ui';
 import {
   PROVIDER_DEFINITIONS,
+  createProviderSettings,
   defaultLlmConfig,
   getProviderDefinition,
   isLlmConfigured,
@@ -14,6 +15,17 @@ import {
 import { VoiceProviderSection } from './VoiceProviderSection';
 import { ProxySection } from './ProxySection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
+import {
+  ConnectionTestError,
+  ListModelsError,
+  listModels,
+  testConnection,
+} from '@dg-agent/providers-openai-http';
+import {
+  listModelsForProvider,
+  type PiAiModelInfo,
+  type PiAiProviderKey,
+} from '@dg-agent/providers-pi-http';
 
 /**
  * AI configuration. Text and voice both live here.
@@ -37,6 +49,7 @@ export function AiTab() {
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
     behaviorStore.loadModelBehavior(),
   );
+  const [providerQuery, setProviderQuery] = useState('');
 
   useEffect(() => subscribeLlmConfig(setConfig), []);
   useEffect(() => behaviorStore.subscribeModelBehavior(setBehavior), [behaviorStore]);
@@ -53,54 +66,114 @@ export function AiTab() {
 
   const def = getProviderDefinition(config.providerId as ProviderId);
   const isFree = config.providerId === 'free';
+  const providerOptions = PROVIDER_DEFINITIONS.filter(
+    (provider) =>
+      provider.browserSupported &&
+      (!providerQuery.trim() ||
+        provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
+        provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
+  ).map((provider) => ({ value: provider.id, label: provider.name }));
 
   return (
     <div className="flex flex-col gap-5">
       <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
         <h3 className="text-sm font-semibold">文本模型</h3>
-        <div className="mt-3">
+        <div className="mt-3 grid gap-2">
+          <Input
+            value={providerQuery}
+            onChange={(event) => setProviderQuery(event.target.value)}
+            placeholder="搜索服务商"
+            aria-label="搜索服务商"
+          />
           <SettingSelect
             value={config.providerId}
             onValueChange={(value) => {
-              const next = defaultLlmConfig();
+              const next = createProviderSettings(value as ProviderId);
               // Don't keep the previous provider's key and baseUrl when switching — they are
               // meaningless on the new service, and keeping them only makes "why is auth
               // failing" hard to track down.
-              update({ ...next, providerId: value });
+              update({ ...next, rememberApiKey: config.rememberApiKey });
             }}
             // free is already in PROVIDER_DEFINITIONS; do not add a second entry by hand —
             // when the same value appears twice, Radix renders both labels into the trigger,
             // showing 「免费体验免费体验」.
-            options={PROVIDER_DEFINITIONS.filter((p) => p.browserSupported).map((p) => ({
-              value: p.id,
-              label: p.name,
-            }))}
+            options={
+              providerOptions.length
+                ? providerOptions
+                : [{ value: config.providerId, label: def?.name ?? config.providerId }]
+            }
           />
         </div>
+
+        {def?.hint && (
+          <p className="mt-2 rounded-[var(--radius-xs)] bg-[var(--accent-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--text-soft)]">
+            {def.hint}
+          </p>
+        )}
 
         {!isFree && (
           <div className="mt-3 flex flex-col gap-3">
             {def?.fields
-              .filter((field) => field.key !== 'model')
+              .filter((field) => field.key !== 'model' && field.key !== 'apiKey')
               .map((field) => (
                 <label key={field.key} className="flex flex-col gap-1.5">
                   <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
-                  <Input
-                    type={field.key === 'apiKey' ? 'password' : 'text'}
-                    value={(config[field.key as keyof LlmConfig] as string) ?? ''}
-                    placeholder={field.placeholder}
-                    onChange={(e) => update({ [field.key]: e.target.value } as Partial<LlmConfig>)}
-                  />
+                  {field.type === 'select' ? (
+                    <SettingSelect
+                      value={String(config[field.key as 'endpoint' | 'useStrict'])}
+                      onValueChange={(value) =>
+                        update(
+                          field.key === 'useStrict'
+                            ? { useStrict: value === 'true' }
+                            : { endpoint: value as LlmConfig['endpoint'] },
+                        )
+                      }
+                      options={field.options ?? []}
+                    />
+                  ) : (
+                    <Input
+                      type="text"
+                      value={(config[field.key as keyof LlmConfig] as string) ?? ''}
+                      placeholder={field.placeholder}
+                      onChange={(e) =>
+                        update({ [field.key]: e.target.value } as Partial<LlmConfig>)
+                      }
+                    />
+                  )}
                 </label>
               ))}
+            {def?.fields.some((field) => field.key === 'apiKey') && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-[var(--text-soft)]">API 密钥</span>
+                <Input
+                  type="password"
+                  value={config.apiKey}
+                  onChange={(e) => update({ apiKey: e.target.value })}
+                />
+              </label>
+            )}
             <label className="flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">模型</span>
-              <Input
-                value={config.model}
-                onChange={(e) => update({ model: e.target.value })}
-                placeholder="留空使用默认模型"
-              />
+              {def?.dialect === 'pi-ai' && def.piProviderKey ? (
+                <PiModelField
+                  config={config}
+                  providerKey={def.piProviderKey as PiAiProviderKey}
+                  update={update}
+                />
+              ) : (
+                <OpenAiModelField config={config} update={update} />
+              )}
             </label>
+            {def?.fields.some((field) => field.key === 'apiKey') && (
+              <label className="flex items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
+                <span>在当前设备记住 API 密钥</span>
+                <input
+                  type="checkbox"
+                  checked={config.rememberApiKey}
+                  onChange={(event) => update({ rememberApiKey: event.target.checked })}
+                />
+              </label>
+            )}
           </div>
         )}
 
@@ -159,4 +232,143 @@ export function AiTab() {
       <ProxySection />
     </div>
   );
+}
+
+function OpenAiModelField({
+  config,
+  update,
+}: {
+  config: LlmConfig;
+  update: (patch: Partial<LlmConfig>) => void;
+}) {
+  const [models, setModels] = useState<string[] | null>(null);
+  const [status, setStatus] = useState('');
+
+  async function refresh() {
+    setStatus('正在加载模型…');
+    try {
+      const found = await listModels({ baseUrl: config.baseUrl, apiKey: config.apiKey });
+      setModels(found);
+      setStatus(found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入');
+    } catch (error) {
+      setModels(null);
+      setStatus(
+        `加载失败：${error instanceof ListModelsError || error instanceof Error ? error.message : '未知错误'}`,
+      );
+    }
+  }
+
+  async function test() {
+    setStatus('正在测试连接…');
+    const started = performance.now();
+    try {
+      await testConnection({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+      });
+      setStatus(`连接成功 · ${Math.round(performance.now() - started)} ms`);
+    } catch (error) {
+      setStatus(
+        `连接失败：${error instanceof ConnectionTestError || error instanceof Error ? error.message : '未知错误'}`,
+      );
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      {models ? (
+        <SettingSelect
+          value={config.model}
+          onValueChange={(model) => update({ model })}
+          options={[
+            ...(config.model && !models.includes(config.model)
+              ? [{ value: config.model, label: `${config.model}（自定义）` }]
+              : []),
+            ...models.map((model) => ({ value: model, label: model })),
+          ]}
+        />
+      ) : (
+        <Input
+          value={config.model}
+          onChange={(event) => update({ model: event.target.value })}
+          placeholder="留空使用默认模型"
+        />
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
+          onClick={() => void refresh()}
+        >
+          刷新模型列表
+        </button>
+        <button
+          type="button"
+          className="rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
+          onClick={() => void test()}
+        >
+          测试连接
+        </button>
+      </div>
+      {status && <span className="text-xs text-[var(--text-faint)]">{status}</span>}
+    </div>
+  );
+}
+
+function PiModelField({
+  config,
+  providerKey,
+  update,
+}: {
+  config: LlmConfig;
+  providerKey: PiAiProviderKey;
+  update: (patch: Partial<LlmConfig>) => void;
+}) {
+  const [models, setModels] = useState<PiAiModelInfo[] | null>(null);
+  const [error, setError] = useState('');
+  const active = models?.find((model) => model.id === config.model.trim());
+  async function inspect() {
+    setError('');
+    try {
+      setModels(await listModelsForProvider(providerKey));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '未知错误');
+    }
+  }
+  return (
+    <div className="grid gap-2">
+      <Input
+        value={config.model}
+        onChange={(event) => update({ model: event.target.value })}
+        placeholder="输入模型 ID"
+      />
+      <button
+        type="button"
+        className="w-fit rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
+        onClick={() => void inspect()}
+      >
+        查看模型信息
+      </button>
+      {error && <span className="text-xs text-[var(--danger)]">目录读取失败：{error}</span>}
+      {models && (
+        <span className="text-xs text-[var(--text-faint)]">
+          {active
+            ? `上下文 ${formatTokens(active.contextWindow)} · 最大输出 ${formatTokens(active.maxTokens)}${active.reasoning ? ' · 支持推理' : ''}`
+            : `目录中暂无该模型；已知：${models
+                .slice(0, 5)
+                .map((model) => model.id)
+                .join('、')}`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatTokens(value: number): string {
+  return value >= 1_000_000
+    ? `${Number((value / 1_000_000).toFixed(1))}M`
+    : value >= 1_000
+      ? `${Math.round(value / 1_000)}K`
+      : String(value);
 }

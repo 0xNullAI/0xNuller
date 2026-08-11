@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserAppSettingsStore, type BrowserAppSettings } from '@dg-agent/storage-browser';
+import { subscribeLlmConfig } from '@0xnullai/llm-providers';
 
 interface UseSettingsManagerResult {
   settingsDraft: BrowserAppSettings;
@@ -29,6 +30,16 @@ export function useSettingsManager(): UseSettingsManagerResult {
       settingsStore.subscribeModelBehavior((behavior) => {
         setSettings((current) => ({ ...current, ...behavior }));
         setSettingsDraft((current) => ({ ...current, ...behavior }));
+      }),
+    [settingsStore],
+  );
+
+  useEffect(
+    () =>
+      subscribeLlmConfig(() => {
+        const next = settingsStore.load();
+        setSettings(next);
+        setSettingsDraft(next);
       }),
     [settingsStore],
   );

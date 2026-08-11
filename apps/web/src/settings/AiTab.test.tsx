@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BrowserAppSettingsStore } from '@dg-agent/storage-browser';
 import { AiTab } from './AiTab';
+import { defaultLlmConfig, saveLlmConfig } from '@0xnullai/llm-providers';
 
 describe('统一 AI 设置', () => {
   beforeEach(() => localStorage.clear());
@@ -21,5 +22,26 @@ describe('统一 AI 设置', () => {
     const actual = new BrowserAppSettingsStore().loadModelBehavior();
     expect(actual.temperature).toBe(0.55);
     expect(actual.modelContextStrategy).toBe('last-five-user-turns');
+  });
+
+  it('restores provider discovery and OpenAI-compatible controls', () => {
+    saveLlmConfig({
+      ...defaultLlmConfig(),
+      providerId: 'custom',
+      baseUrl: 'https://example.com/v1',
+      model: 'model-x',
+    });
+    render(<AiTab />);
+    expect(screen.getByRole('textbox', { name: '搜索服务商' })).toBeTruthy();
+    expect(screen.getByText(/OpenAI 兼容后端/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '刷新模型列表' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '测试连接' })).toBeTruthy();
+    expect(screen.getByText('在当前设备记住 API 密钥')).toBeTruthy();
+    expect(
+      screen.getByText('接口类型').parentElement?.querySelector('[role="combobox"]'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('严格 Schema').parentElement?.querySelector('[role="combobox"]'),
+    ).toBeTruthy();
   });
 });
