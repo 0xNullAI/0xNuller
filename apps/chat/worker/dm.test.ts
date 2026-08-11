@@ -73,6 +73,26 @@ describe('会话 id', () => {
 });
 
 describe('进入私聊需要账号服务签发的票据', () => {
+  it('Chat admission 只接受 chat audience', async () => {
+    const chat = await ticketFor(ALICE, BOB, {
+      aud: 'chat',
+      room: undefined,
+      peer: undefined,
+    });
+    expect(
+      await authorizeDmToken({ secret: SECRET, token: chat, audience: 'chat', now: NOW }),
+    ).toMatchObject({ ok: true, claims: { aud: 'chat', sub: ALICE } });
+
+    const voice = await ticketFor(ALICE, BOB, {
+      aud: 'voice',
+      room: undefined,
+      peer: undefined,
+    });
+    expect(
+      await authorizeDmToken({ secret: SECRET, token: voice, audience: 'chat', now: NOW }),
+    ).toMatchObject({ ok: false, status: 403 });
+  });
+
   it('拿着有效票据可以进', async () => {
     const auth = await authorizeDmUpgrade({
       secret: SECRET,

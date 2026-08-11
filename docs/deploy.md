@@ -51,11 +51,12 @@ npm run release:data:preflight -- \
 
 后端先于 Web 外壳。服务绑定要求使用以下顺序：
 
-1. Chat
-2. Auth
-3. Market
-4. Voice（启用体验服务时）
-5. Web
+1. Auth（先提供向后兼容的票据/API）
+2. Chat
+3. LLM Proxy（依赖 Auth 的账户额度）
+4. Market
+5. Voice（启用体验服务时）
+6. Web
 
 `main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web

@@ -121,7 +121,7 @@ export type DmClaimsAuth = { ok: true; claims: DmTicketClaims } | DmAuthFailure;
 export async function authorizeDmToken(params: {
   secret: string | undefined;
   token: string | null;
-  audience: 'digest' | 'revoke';
+  audience: 'digest' | 'revoke' | 'chat';
   now: number;
 }): Promise<DmClaimsAuth> {
   const { secret, token, audience, now } = params;

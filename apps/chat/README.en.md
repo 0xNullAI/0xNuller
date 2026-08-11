@@ -3,7 +3,8 @@
 [中文](README.md) | English
 
 Account-based rooms, a public lobby, and direct messages backed by Cloudflare Durable Objects.
-Members can explicitly share device control with other room participants.
+Chat requires a signed-in account with a verified email. Web and Android obtain a short-lived
+admission ticket from Auth, which the room, lobby, and direct-message Worker entry points verify.
 
 - Unified site: <https://0xnullai.com/chat>
 - Legacy standalone site: <https://chat.0xnullai.com>
@@ -12,7 +13,7 @@ Members can explicitly share device control with other room participants.
 
 - Public/private rooms, room codes, QR invites, and a public lobby.
 - Text, image, and voice messages with media stored in R2.
-- Account contacts and direct messages; the unified Chat requires sign-in.
+- Account contacts and direct messages; the unified Chat requires sign-in and email verification.
 - Explicit device sharing, waveforms, strength changes, and temporary fire controls.
 - Host settings, room Agent support, and responsive layouts.
 

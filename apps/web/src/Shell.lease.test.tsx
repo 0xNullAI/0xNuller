@@ -9,6 +9,16 @@ import {
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
 
+const authState = vi.hoisted(() => ({
+  user: null as null | {
+    id: string;
+    username: string;
+    displayName: string;
+    emailVerified: boolean;
+    email?: string;
+  },
+}));
+
 /**
  * Does device control actually change hands when you switch modules?
  *
@@ -59,7 +69,11 @@ vi.mock('./routes', async () => {
 // The account service is unreachable in tests; signed out is its normal fallback path.
 vi.mock('@0xnullai/auth', () => ({
   avatarSrc: () => null,
-  me: () => Promise.resolve(null),
+  confirmEmailVerification: async () => {
+    if (authState.user) authState.user = { ...authState.user, emailVerified: true };
+  },
+  dmConversations: () => Promise.resolve(null),
+  me: () => Promise.resolve(authState.user),
   logout: () => Promise.resolve(),
   // The shell subscribes to profile requests on mount. Nothing here asks for a
   // profile, so an unsubscribe that does nothing is the whole stub.
@@ -86,6 +100,7 @@ function fakeModule(id: string, devices: DeviceSummary[]) {
 }
 
 beforeEach(async () => {
+  authState.user = null;
   window.history.pushState(null, '', '/agent');
   await grantDeviceLease(null);
 });
@@ -122,6 +137,57 @@ describe('外壳与设备控制权', () => {
     expect(await screen.findByText('登录后使用 Chat')).toBeTruthy();
     expect(screen.getByRole('button', { name: '登录 / 注册' })).toBeTruthy();
     expect(screen.queryByText('Chat 模块')).toBeNull();
+  });
+
+  it('邮箱未验证时不挂载 Chat，并引导到账户验证', async () => {
+    authState.user = {
+      id: 'u1',
+      username: 'alice',
+      displayName: 'Alice',
+      emailVerified: false,
+      email: 'alice@example.com',
+    };
+    window.history.pushState(null, '', '/chat');
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(await screen.findByText('验证邮箱后使用 Chat')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '前往账户验证' })).toBeTruthy();
+    expect(screen.queryByText('Chat 模块')).toBeNull();
+  });
+
+  it('邮箱已验证时挂载 Chat', async () => {
+    authState.user = {
+      id: 'u1',
+      username: 'alice',
+      displayName: 'Alice',
+      emailVerified: true,
+    };
+    window.history.pushState(null, '', '/chat');
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(await screen.findByText('Chat 模块')).toBeTruthy();
+    expect(screen.queryByText('验证邮箱后使用 Chat')).toBeNull();
+  });
+
+  it('验证邮件链接直接打开账户设置并立即刷新验证状态', async () => {
+    authState.user = {
+      id: 'u1',
+      username: 'alice',
+      displayName: 'Alice',
+      emailVerified: false,
+      email: 'alice@example.com',
+    };
+    window.history.pushState(null, '', '/settings?verify=test-token');
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(await screen.findByText('邮箱验证成功')).toBeTruthy();
+    expect(screen.getByText('已验证')).toBeTruthy();
   });
 
   it('挂载时把租约给当前模块', async () => {

@@ -72,13 +72,18 @@ interface Account {
   token: string;
 }
 
-async function register(username: string): Promise<Account> {
+async function register(username: string, verified = true): Promise<Account> {
   const res = await post('/api/auth/register', {
     username,
     email: `${username}@example.com`,
     password: 'correct-horse-battery',
   });
   const body = (await res.json()) as { user: { id: string }; token: string };
+  if (verified) {
+    await env.DB.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?')
+      .bind(Date.now(), body.user.id)
+      .run();
+  }
   return { id: body.user.id, token: body.token };
 }
 
@@ -100,6 +105,15 @@ async function conversations(viewer: Account) {
 }
 
 describe('开私聊需要互相关注', () => {
+  it('邮箱未验证时不能取得 Chat 或私聊票据', async () => {
+    const alice = await register('alice', false);
+    const bob = await register('bob');
+    await makeContacts(alice, bob);
+
+    expect((await post('/api/auth/chat/ticket', {}, alice.token)).status).toBe(403);
+    expect((await ticket(alice, bob)).status).toBe(403);
+  });
+
   it('互相关注时签发票据，并把会话 id 一起给出来', async () => {
     const alice = await register('alice');
     const bob = await register('bob');
