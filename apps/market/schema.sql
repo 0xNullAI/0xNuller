@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS items (
   content     TEXT NOT NULL,              -- JSON：波形 {frames,pulse?} 或场景 {prompt}
   downloads   INTEGER NOT NULL DEFAULT 0,
   views       INTEGER NOT NULL DEFAULT 0,
-  reports     INTEGER NOT NULL DEFAULT 0,
-  hidden      INTEGER NOT NULL DEFAULT 0, -- 1=举报或账户管理员隐藏
+  reports     INTEGER NOT NULL DEFAULT 0, -- 仅保留旧版数据兼容；运行时不再读取
+  hidden      INTEGER NOT NULL DEFAULT 0, -- 1=账户管理员隐藏
   ip_hash     TEXT,                        -- 上传来源哈希，用于限流与溯源
   created_at  INTEGER NOT NULL,           -- epoch ms
   edit_key_hash TEXT,                      -- 仅保留旧版数据；新内容使用账户归属

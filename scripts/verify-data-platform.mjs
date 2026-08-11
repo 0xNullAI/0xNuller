@@ -58,6 +58,9 @@ expectNames(
     'login_attempts',
     'user_settings',
     'user_content',
+    'content_entities',
+    'user_content_refs',
+    'user_content_preferences',
     'market_claims',
     'user_profiles',
     'user_photos',
@@ -79,38 +82,24 @@ expectNames(
     'idx_photos_user_slot',
     'idx_photos_pending_cleanup',
     'idx_account_deletions_requested',
+    'idx_content_refs_sync',
+    'idx_content_entities_owner_kind',
   ],
   'auth indexes',
 );
 assert(
   plan(
     auth.db,
-    `SELECT id FROM user_content
-      WHERE user_id = ? AND kind = ?
-        AND (updated_at > ? OR (updated_at = ? AND id > ?))
-      ORDER BY updated_at, id LIMIT ?`,
-    'u',
-    'waveform',
-    0,
-    0,
-    '',
-    500,
-  ).includes('idx_content_sync_kind'),
-  'auth: kind content sync does not use idx_content_sync_kind',
-);
-assert(
-  plan(
-    auth.db,
-    `SELECT id FROM user_content
-      WHERE user_id = ? AND (updated_at > ? OR (updated_at = ? AND id > ?))
-      ORDER BY updated_at, id LIMIT ?`,
+    `SELECT client_id FROM user_content_refs
+      WHERE user_id = ? AND (updated_at > ? OR (updated_at = ? AND client_id > ?))
+      ORDER BY updated_at, client_id LIMIT ?`,
     'u',
     0,
     0,
     '',
     500,
-  ).includes('idx_content_sync_all'),
-  'auth: all-content sync does not use idx_content_sync_all',
+  ).includes('idx_content_refs_sync'),
+  'auth: entity-reference content sync does not use idx_content_refs_sync',
 );
 assert(
   plan(auth.db, 'DELETE FROM login_attempts WHERE created_at < ?', 0).includes(
@@ -136,6 +125,45 @@ assert(
 assert(
   JSON.stringify(names(authUpgrade, 'table')) === JSON.stringify(names(auth.db, 'table')),
   'auth: existing 0001-0003 upgrade tables differ from fresh migration path',
+);
+
+// The deployed 0001-0012 shape contains payload-per-user rows. 0013 must preserve
+// them while moving the body into an owned entity and leaving only a reference.
+const auth0012Upgrade = new DatabaseSync(':memory:');
+auth0012Upgrade.exec('PRAGMA foreign_keys = ON');
+for (const file of auth.files.slice(0, 12))
+  auth0012Upgrade.exec(readFileSync(join(root, 'workers/auth/migrations', file), 'utf8'));
+auth0012Upgrade
+  .prepare(
+    `INSERT INTO users (id, username, display_name, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  )
+  .run('owner', 'owner', 'Owner', 'hash', 1);
+auth0012Upgrade
+  .prepare(
+    `INSERT INTO user_content (id, user_id, kind, name, payload, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+  .run('wave-1', 'owner', 'waveform', 'Mine', '{"frames":[[10,20]]}', 2, 3);
+auth0012Upgrade.exec(
+  readFileSync(join(root, 'workers/auth/migrations/0013_content_entities.sql'), 'utf8'),
+);
+assert(
+  auth0012Upgrade.prepare('SELECT COUNT(*) AS n FROM content_entities').get().n === 1,
+  'auth 0013: legacy content entity was not backfilled',
+);
+assert(
+  auth0012Upgrade.prepare('SELECT COUNT(*) AS n FROM user_content_refs').get().n === 1,
+  'auth 0013: legacy user reference was not backfilled',
+);
+assert(
+  auth0012Upgrade
+    .prepare(
+      `SELECT e.payload FROM user_content_refs r JOIN content_entities e ON e.id = r.content_id
+   WHERE r.user_id = ? AND r.client_id = ?`,
+    )
+    .get('owner', 'wave-1')?.payload === '{"frames":[[10,20]]}',
+  'auth 0013: legacy payload changed during backfill',
 );
 
 const market = applyMigrations('apps/market/migrations');

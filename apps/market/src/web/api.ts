@@ -85,10 +85,6 @@ export async function markViewed(id: string): Promise<void> {
   await fetch(`${apiBaseUrl()}/api/items/${id}/view`, { method: 'POST' }).catch(() => {});
 }
 
-export async function reportItem(id: string): Promise<void> {
-  await req(`/api/items/${id}/report`, { method: 'POST' });
-}
-
 export async function fetchItemAccess(
   id: string,
 ): Promise<{ canEdit: boolean; canDelete: boolean }> {
@@ -107,7 +103,7 @@ export async function deleteItem(id: string): Promise<void> {
   await req(`/api/items/${id}`, { method: 'DELETE' });
 }
 
-export type AdminItemStatus = 'all' | 'reported' | 'hidden';
+export type AdminItemStatus = 'all' | 'hidden';
 
 export async function fetchAdminItems(input: {
   status: AdminItemStatus;

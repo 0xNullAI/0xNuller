@@ -59,7 +59,6 @@ describe('Market account ownership', () => {
       content: '{"frames":[[10,0]]}',
       downloads: 0,
       views: 0,
-      reports: 2,
       hidden: 0,
       created_at: 1,
     };
@@ -76,14 +75,16 @@ describe('Market account ownership', () => {
     };
 
     const list = await worker.fetch(
-      new Request('https://market.test/api/items/admin?status=reported'),
+      new Request('https://market.test/api/items/admin?status=all'),
       env as never,
     );
     expect(list.status).toBe(200);
-    await expect(list.json()).resolves.toMatchObject({
-      items: [{ id: 'item-1', reports: 2, hidden: false }],
+    const listBody = (await list.json()) as { items: Array<Record<string, unknown>> };
+    expect(listBody).toMatchObject({
+      items: [{ id: 'item-1', hidden: false }],
       nextOffset: null,
     });
+    expect(listBody.items[0]).not.toHaveProperty('reports');
 
     const hide = await worker.fetch(
       new Request('https://market.test/api/items/item-1/moderation', {
@@ -95,5 +96,13 @@ describe('Market account ownership', () => {
     );
     expect(hide.status).toBe(200);
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('does not expose the removed report endpoint', async () => {
+    const response = await worker.fetch(
+      new Request('https://market.test/api/items/item-1/report', { method: 'POST' }),
+      { DB: {}, AUTH: {} } as never,
+    );
+    expect(response.status).toBe(404);
   });
 });

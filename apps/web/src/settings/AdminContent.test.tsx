@@ -19,7 +19,6 @@ const ITEM = {
   downloads: 0,
   views: 0,
   createdAt: 1,
-  reports: 3,
   hidden: false,
 };
 
@@ -34,11 +33,11 @@ describe('管理员内容管理', () => {
     );
   });
 
-  it('默认显示有举报内容并可隐藏', async () => {
+  it('默认显示全部内容并可隐藏', async () => {
     render(<AdminContent />);
     expect(await screen.findByText('测试波形')).toBeTruthy();
     expect(fetchAdminItems).toHaveBeenCalledWith({
-      status: 'reported',
+      status: 'all',
       q: undefined,
       offset: 0,
       limit: 20,

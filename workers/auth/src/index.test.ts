@@ -466,12 +466,20 @@ describe('内容同步分页', () => {
     const updatedAt = 1_700_000_000_000;
     const statements = Array.from({ length: 501 }, (_, index) => {
       const id = `wave-${String(index).padStart(3, '0')}`;
-      return env.DB.prepare(
-        `INSERT INTO user_content
-          (id, user_id, kind, name, payload, created_at, updated_at, deleted_at)
-         VALUES (?, ?, 'waveform', ?, '{}', ?, ?, NULL)`,
-      ).bind(id, alice.id, id, updatedAt, updatedAt);
-    });
+      const entityId = `${alice.id}:${id}`;
+      return [
+        env.DB.prepare(
+          `INSERT INTO content_entities
+            (id, owner_id, kind, name, payload, created_at, updated_at)
+           VALUES (?, ?, 'waveform', ?, '{}', ?, ?)`,
+        ).bind(entityId, alice.id, id, updatedAt, updatedAt),
+        env.DB.prepare(
+          `INSERT INTO user_content_refs
+            (user_id, content_id, client_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        ).bind(alice.id, entityId, id, updatedAt, updatedAt),
+      ];
+    }).flat();
     await env.DB.batch(statements);
 
     const first = (await (

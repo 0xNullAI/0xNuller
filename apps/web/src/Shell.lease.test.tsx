@@ -58,11 +58,13 @@ vi.mock('./routes', async () => {
 
 // The account service is unreachable in tests; signed out is its normal fallback path.
 vi.mock('@0xnullai/auth', () => ({
+  avatarSrc: () => null,
   me: () => Promise.resolve(null),
   logout: () => Promise.resolve(),
   // The shell subscribes to profile requests on mount. Nothing here asks for a
   // profile, so an unsubscribe that does nothing is the whole stub.
   subscribeProfileRequests: () => () => undefined,
+  subscribeProfileChanges: () => () => undefined,
 }));
 
 const cleanups: (() => void)[] = [];

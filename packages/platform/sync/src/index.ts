@@ -47,6 +47,8 @@ export interface SyncedContent {
   payload: unknown;
   updatedAt: number;
   deleted: boolean;
+  hidden?: boolean;
+  order?: number;
 }
 
 const TOKEN_KEY = '0xnullai.auth-token';
@@ -146,7 +148,15 @@ export async function pullContent(kind: ContentKind, since = 0): Promise<SyncedC
 }
 
 export async function pushContent(
-  items: { id: string; kind: ContentKind; name: string; payload: unknown; deleted?: boolean }[],
+  items: {
+    id: string;
+    kind: ContentKind;
+    name: string;
+    payload: unknown;
+    deleted?: boolean;
+    hidden?: boolean;
+    order?: number;
+  }[],
 ): Promise<boolean> {
   if (items.length === 0) return true;
   const res = await call<{ ok: boolean }>('/api/auth/content', {
@@ -154,6 +164,29 @@ export async function pushContent(
     body: JSON.stringify({ items }),
   });
   return res?.ok === true;
+}
+
+export interface ContentPreferences {
+  selectedId?: string;
+  hiddenBuiltinIds: string[];
+  updatedAt?: number;
+}
+
+export async function pullContentPreferences(
+  kind: ContentKind,
+): Promise<ContentPreferences | null> {
+  return call<ContentPreferences>(`/api/auth/content-preferences/${kind}`);
+}
+
+export async function pushContentPreferences(
+  kind: ContentKind,
+  preferences: Omit<ContentPreferences, 'updatedAt'>,
+): Promise<boolean> {
+  const result = await call<{ ok: boolean }>(`/api/auth/content-preferences/${kind}`, {
+    method: 'PUT',
+    body: JSON.stringify(preferences),
+  });
+  return result?.ok === true;
 }
 
 export async function listMarketClaims(): Promise<{ item_id: string; claimed_at: number }[]> {

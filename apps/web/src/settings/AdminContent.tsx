@@ -10,13 +10,12 @@ import {
 } from '../../../market/src/web/api';
 
 const FILTERS: Array<{ id: AdminItemStatus; label: string }> = [
-  { id: 'reported', label: '有举报' },
   { id: 'hidden', label: '已隐藏' },
   { id: 'all', label: '全部' },
 ];
 
 export function AdminContent() {
-  const [status, setStatus] = useState<AdminItemStatus>('reported');
+  const [status, setStatus] = useState<AdminItemStatus>('all');
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<MarketAdminItem[]>([]);
@@ -178,7 +177,7 @@ export function AdminContent() {
                   ) : null}
                 </div>
                 <p className="mt-1 text-xs text-[var(--text-faint)]">
-                  {item.type} · {item.author ? `@${item.author}` : '未署名'} · 举报 {item.reports}
+                  {item.type} · {item.author ? `@${item.author}` : '未署名'}
                 </p>
               </div>
               <div className="flex shrink-0 gap-1">
@@ -208,7 +207,7 @@ export function AdminContent() {
 
       {!loading && items.length === 0 ? (
         <p role="status" className="mt-8 text-center text-sm text-[var(--text-faint)]">
-          没有待处理内容
+          没有内容
         </p>
       ) : null}
       {loading ? (

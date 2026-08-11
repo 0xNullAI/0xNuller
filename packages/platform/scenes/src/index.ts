@@ -27,6 +27,12 @@ export interface SavedScene {
   icon?: string;
   prompt: string;
 }
+import {
+  pullContent,
+  pullContentPreferences,
+  pushContent,
+  pushContentPreferences,
+} from '@0xnullai/sync';
 
 export interface SceneLibrary {
   /** Scenes the user wrote. */
@@ -56,6 +62,8 @@ const LEGACY = [
 
 const DEFAULT_SELECTED = 'gentle';
 const listeners = new Set<(lib: SceneLibrary) => void>();
+let syncPromise: Promise<void> | null = null;
+let synced = false;
 
 function emptyLibrary(): SceneLibrary {
   return { scenes: [], selectedId: DEFAULT_SELECTED, hiddenBuiltinIds: [] };
@@ -128,12 +136,14 @@ export function loadScenes(): SceneLibrary {
     const own = localStorage.getItem(KEY);
     if (own) {
       const o = JSON.parse(own) as Record<string, unknown>;
-      return {
+      const result = {
         scenes: coerceScenes(o.scenes),
         selectedId:
           typeof o.selectedId === 'string' && o.selectedId ? o.selectedId : DEFAULT_SELECTED,
         hiddenBuiltinIds: coerceStringArray(o.hiddenBuiltinIds),
       };
+      void syncScenes();
+      return result;
     }
     const legacy = readLegacy();
     if (legacy) {
@@ -154,11 +164,116 @@ export function saveScenes(lib: SceneLibrary): void {
     // Private browsing / quota exceeded: a failed write must not block use.
   }
   for (const l of listeners) l(lib);
+  void pushContent(
+    lib.scenes.map((scene, order) => ({
+      id: scene.id,
+      kind: 'scene' as const,
+      name: scene.name,
+      payload: { prompt: scene.prompt, ...(scene.icon ? { icon: scene.icon } : {}) },
+      order,
+    })),
+  );
+  void pushContentPreferences('scene', {
+    selectedId: lib.selectedId,
+    hiddenBuiltinIds: lib.hiddenBuiltinIds,
+  });
+}
+
+/** Merge account-owned custom scenes into the local library; built-ins stay code-owned. */
+export function syncScenes(): Promise<void> {
+  if (synced) return Promise.resolve();
+  if (syncPromise) return syncPromise;
+  syncPromise = (async () => {
+    const [remote, preferences] = await Promise.all([
+      pullContent('scene'),
+      pullContentPreferences('scene'),
+    ]);
+    if (!remote) return;
+    synced = true;
+    const local = loadScenesWithoutSync();
+    const byId = new Map(local.scenes.map((scene) => [scene.id, scene]));
+    for (const item of remote) {
+      if (item.deleted) byId.delete(item.id);
+      else if (item.payload && typeof item.payload === 'object') {
+        const payload = item.payload as Record<string, unknown>;
+        if (typeof payload.prompt === 'string')
+          byId.set(item.id, {
+            id: item.id,
+            name: item.name,
+            prompt: payload.prompt,
+            ...(typeof payload.icon === 'string' ? { icon: payload.icon } : {}),
+          });
+      }
+    }
+    const merged = {
+      ...local,
+      scenes: [...byId.values()],
+      selectedId: preferences?.selectedId ?? local.selectedId,
+      hiddenBuiltinIds: [
+        ...new Set([...local.hiddenBuiltinIds, ...(preferences?.hiddenBuiltinIds ?? [])]),
+      ],
+    };
+    try {
+      localStorage.setItem(KEY, JSON.stringify(merged));
+    } catch {
+      /* local-first */
+    }
+    const remoteIds = new Set(remote.map((item) => item.id));
+    await pushContent(
+      merged.scenes
+        .filter((s) => !remoteIds.has(s.id))
+        .map((s, order) => ({
+          id: s.id,
+          kind: 'scene' as const,
+          name: s.name,
+          payload: { prompt: s.prompt, ...(s.icon ? { icon: s.icon } : {}) },
+          order,
+        })),
+    );
+    for (const l of listeners) l(merged);
+  })().finally(() => {
+    syncPromise = null;
+  });
+  return syncPromise;
+}
+
+if (typeof window !== 'undefined')
+  window.addEventListener('0xnullai:auth-changed', () => {
+    synced = false;
+    void syncScenes();
+  });
+
+function loadScenesWithoutSync(): SceneLibrary {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Record<string, unknown> | null;
+    if (raw)
+      return {
+        scenes: coerceScenes(raw.scenes),
+        selectedId: typeof raw.selectedId === 'string' ? raw.selectedId : DEFAULT_SELECTED,
+        hiddenBuiltinIds: coerceStringArray(raw.hiddenBuiltinIds),
+      };
+  } catch {
+    /* fall through */
+  }
+  return emptyLibrary();
 }
 
 export function updateScenes(updater: (prev: SceneLibrary) => SceneLibrary): SceneLibrary {
-  const next = updater(loadScenes());
+  const prev = loadScenes();
+  const next = updater(prev);
   saveScenes(next);
+  const nextIds = new Set(next.scenes.map((scene) => scene.id));
+  void pushContent(
+    prev.scenes
+      .filter((scene) => !nextIds.has(scene.id))
+      .map((scene) => ({
+        id: scene.id,
+        kind: 'scene' as const,
+        name: scene.name,
+        payload: null,
+        deleted: true,
+      })),
+  );
   return next;
 }
 

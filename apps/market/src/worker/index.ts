@@ -15,7 +15,6 @@ import {
   listAdminItems,
   listItems,
   recentUploadCount,
-  reportItem,
   setItemHidden,
   updateItemMeta,
 } from './db';
@@ -106,8 +105,7 @@ export default {
       if (pathname === '/api/items/admin' && request.method === 'GET') {
         await requireMarketAdmin(request, env);
         const requestedStatus = url.searchParams.get('status');
-        const status =
-          requestedStatus === 'reported' || requestedStatus === 'hidden' ? requestedStatus : 'all';
+        const status = requestedStatus === 'hidden' ? 'hidden' : 'all';
         const q = url.searchParams.get('q')?.trim() || undefined;
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
@@ -177,13 +175,6 @@ export default {
       const viewMatch = pathname.match(/^\/api\/items\/([\w-]+)\/view$/);
       if (viewMatch && request.method === 'POST') {
         await incrementViews(env.DB, viewMatch[1]!);
-        return json({ ok: true });
-      }
-
-      // POST /api/items/:id/report —— report
-      const reportMatch = pathname.match(/^\/api\/items\/([\w-]+)\/report$/);
-      if (reportMatch && request.method === 'POST') {
-        await reportItem(env.DB, reportMatch[1]!);
         return json({ ok: true });
       }
 

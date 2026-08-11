@@ -8,7 +8,7 @@ import type {
   WaveformContent,
   MultiSceneContent,
 } from '../../shared/schema';
-import { deleteItem, fetchItemAccess, updateItem, markDownloaded, reportItem } from '../api';
+import { deleteItem, fetchItemAccess, updateItem, markDownloaded } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -30,7 +30,6 @@ function download(filename: string, text: string): void {
 
 export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
-  const [reported, setReported] = useState(false);
   // Snapshot of the metadata currently on screen.
   const [view, setView] = useState<MarketItem>(item);
   const [access, setAccess] = useState({ canEdit: false, canDelete: false });
@@ -84,11 +83,6 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     const safe = view.name.replace(/[^\w一-龥-]+/g, '_');
     download(`${safe}.json`, exportJson);
     void markDownloaded(item.id);
-  };
-
-  const handleReport = async () => {
-    await reportItem(item.id);
-    setReported(true);
   };
 
   const startEdit = () => {
@@ -282,9 +276,6 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
               下载 .pulse
             </button>
           )}
-          <button className="btn ghost" onClick={handleReport} disabled={reported}>
-            {reported ? '已举报' : '举报'}
-          </button>
           {!editing && access.canEdit && (
             <button className="btn ghost" onClick={startEdit} title="编辑自己的内容">
               ✏️ 编辑

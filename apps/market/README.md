@@ -29,8 +29,7 @@ Worker 使用独立的 `MARKET_IP_PEPPER` 进行上传限流；不要把它写�
 - `POST /api/items`、`/api/items/batch` — 登录后上传
 - `PATCH /api/items/:id` — 所有者或管理员修改元数据
 - `DELETE /api/items/:id` — 所有者或管理员删除
-- `POST /api/items/:id/report` — 举报内容
-- `GET /api/items/admin` — 管理员查看待处理内容
+- `GET /api/items/admin` — 管理员查看内容
 - `PATCH /api/items/:id/moderation` — 管理员隐藏或恢复内容
 
 生产迁移和预览步骤见[部署文档](../../docs/deploy.md)。

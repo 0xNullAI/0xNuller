@@ -131,6 +131,7 @@ const currentAuthLedger = [
   '0010_chat_rooms.sql',
   '0011_agent_sessions.sql',
   '0012_photo_purpose.sql',
+  '0013_content_entities.sql',
 ];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];

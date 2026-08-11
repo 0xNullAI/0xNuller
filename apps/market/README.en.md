@@ -32,8 +32,7 @@ served by the unified web shell.
 - `POST /api/items` and `/api/items/batch` — authenticated upload.
 - `PATCH /api/items/:id` — owner/admin metadata update.
 - `DELETE /api/items/:id` — owner/admin deletion.
-- `POST /api/items/:id/report` — report content.
-- `GET /api/items/admin` — administrator moderation queue.
+- `GET /api/items/admin` — administrator content list.
 - `PATCH /api/items/:id/moderation` — administrator hide/restore action.
 
 Production migration and preview steps are documented in the [deployment guide](../../docs/deploy.md).

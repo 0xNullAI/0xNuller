@@ -1,5 +1,11 @@
 import { createStore, get, set, del, type UseStore } from 'idb-keyval';
 import { z } from 'zod';
+import {
+  pullContent,
+  pullContentPreferences,
+  pushContent,
+  pushContentPreferences,
+} from '@0xnullai/sync';
 
 /**
  * The shared custom-waveform library.
@@ -39,6 +45,8 @@ const HIDDEN_KEY = 'hidden-builtins';
 const MIGRATED_KEY = 'migrated-from-per-module';
 
 let store: UseStore | undefined;
+let syncPromise: Promise<void> | null = null;
+let synced = false;
 function db(): UseStore {
   if (!store) store = createStore(DB_NAME, STORE_NAME);
   return store;
@@ -143,8 +151,65 @@ async function migrateOnce(): Promise<void> {
 /** Every custom waveform, newest first. */
 export async function listCustomWaveforms(): Promise<SharedWaveform[]> {
   await migrateOnce();
+  void syncWaveforms();
   return coerceList(await get(CUSTOM_KEY, db()));
 }
+
+/** Local-first account reconciliation. Remote failure is intentionally invisible. */
+export function syncWaveforms(): Promise<void> {
+  if (synced) return Promise.resolve();
+  if (syncPromise) return syncPromise;
+  syncPromise = (async () => {
+    await migrateOnce();
+    const local = coerceList(await get(CUSTOM_KEY, db()));
+    const [remote, preferences] = await Promise.all([
+      pullContent('waveform'),
+      pullContentPreferences('waveform'),
+    ]);
+    if (!remote) return;
+    synced = true;
+    const byId = new Map(local.map((w) => [w.id, w]));
+    for (const item of remote) {
+      if (item.deleted) byId.delete(item.id);
+      else {
+        const parsed = waveformSchema.safeParse({
+          id: item.id,
+          name: item.name,
+          ...(item.payload as object),
+        });
+        if (parsed.success) byId.set(item.id, parsed.data as SharedWaveform);
+      }
+    }
+    const merged = [...byId.values()];
+    await set(CUSTOM_KEY, merged, db());
+    if (preferences) {
+      const localHidden = await listHiddenBuiltinsWithoutSync();
+      await set(HIDDEN_KEY, [...new Set([...localHidden, ...preferences.hiddenBuiltinIds])], db());
+    }
+    const remoteIds = new Set(remote.map((item) => item.id));
+    await pushContent(
+      merged
+        .filter((w) => !remoteIds.has(w.id))
+        .map((w, order) => ({
+          id: w.id,
+          kind: 'waveform' as const,
+          name: w.name,
+          payload: { frames: w.frames, ...(w.description ? { description: w.description } : {}) },
+          order,
+        })),
+    );
+    notify();
+  })().finally(() => {
+    syncPromise = null;
+  });
+  return syncPromise;
+}
+
+if (typeof window !== 'undefined')
+  window.addEventListener('0xnullai:auth-changed', () => {
+    synced = false;
+    void syncWaveforms();
+  });
 
 /** Add or replace one. Newest first, matching what Agent's library did. */
 export async function saveCustomWaveform(waveform: SharedWaveform): Promise<void> {
@@ -152,6 +217,17 @@ export async function saveCustomWaveform(waveform: SharedWaveform): Promise<void
   const current = await listCustomWaveforms();
   await set(CUSTOM_KEY, [parsed, ...current.filter((w) => w.id !== parsed.id)], db());
   notify();
+  void pushContent([
+    {
+      id: parsed.id,
+      kind: 'waveform',
+      name: parsed.name,
+      payload: {
+        frames: parsed.frames,
+        ...(parsed.description ? { description: parsed.description } : {}),
+      },
+    },
+  ]);
 }
 
 export async function removeCustomWaveform(id: string): Promise<void> {
@@ -162,11 +238,17 @@ export async function removeCustomWaveform(id: string): Promise<void> {
     db(),
   );
   notify();
+  void pushContent([{ id, kind: 'waveform', name: id, payload: null, deleted: true }]);
 }
 
 /** Built-in ids the user chose to hide. Chat had this concept; it is shared now. */
 export async function listHiddenBuiltins(): Promise<string[]> {
   await migrateOnce();
+  void syncWaveforms();
+  return listHiddenBuiltinsWithoutSync();
+}
+
+async function listHiddenBuiltinsWithoutSync(): Promise<string[]> {
   const raw = await get(HIDDEN_KEY, db());
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
 }
@@ -176,6 +258,7 @@ export async function setBuiltinHidden(id: string, hidden: boolean): Promise<voi
   const next = hidden ? [...new Set([...current, id])] : current.filter((x) => x !== id);
   await set(HIDDEN_KEY, next, db());
   notify();
+  void pushContentPreferences('waveform', { hiddenBuiltinIds: next });
 }
 
 /** Test seam: forget everything, including the migration marker. */

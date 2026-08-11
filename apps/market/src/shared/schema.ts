@@ -116,6 +116,5 @@ export interface MarketItem {
 }
 
 export interface MarketAdminItem extends MarketItem {
-  reports: number;
   hidden: boolean;
 }

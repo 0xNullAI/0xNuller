@@ -1461,23 +1461,26 @@ export default {
         if (rawCursor && !cursor) return err('同步游标无效', 400, cors);
         const afterUpdatedAt = cursor?.updatedAt ?? Math.max(0, Math.trunc(since));
         const afterId = cursor?.id ?? '';
-        const select = `SELECT id, kind, name, payload, created_at, updated_at, deleted_at
-                          FROM user_content`;
+        const select = `SELECT r.client_id AS id, e.kind, e.name, e.payload,
+                               r.sort_order, r.hidden_at, r.created_at,
+                               r.updated_at, r.deleted_at
+                          FROM user_content_refs r
+                          JOIN content_entities e ON e.id = r.content_id`;
         const rows = kind
           ? await env.DB.prepare(
               `${select}
-                WHERE user_id = ? AND kind = ?
-                  AND (updated_at > ? OR (updated_at = ? AND id > ?))
-                ORDER BY updated_at ASC, id ASC
+                WHERE r.user_id = ? AND e.kind = ?
+                  AND (r.updated_at > ? OR (r.updated_at = ? AND r.client_id > ?))
+                ORDER BY r.updated_at ASC, r.client_id ASC
                 LIMIT ?`,
             )
               .bind(user.id, kind, afterUpdatedAt, afterUpdatedAt, afterId, CONTENT_PAGE_SIZE)
               .all()
           : await env.DB.prepare(
               `${select}
-                WHERE user_id = ?
-                  AND (updated_at > ? OR (updated_at = ? AND id > ?))
-                ORDER BY updated_at ASC, id ASC
+                WHERE r.user_id = ?
+                  AND (r.updated_at > ? OR (r.updated_at = ? AND r.client_id > ?))
+                ORDER BY r.updated_at ASC, r.client_id ASC
                 LIMIT ?`,
             )
               .bind(user.id, afterUpdatedAt, afterUpdatedAt, afterId, CONTENT_PAGE_SIZE)
@@ -1496,6 +1499,8 @@ export default {
                 createdAt: row.created_at,
                 updatedAt: row.updated_at,
                 deleted: row.deleted_at != null,
+                hidden: row.hidden_at != null,
+                order: row.sort_order,
               };
             }),
             nextCursor:
@@ -1512,7 +1517,15 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const body = (await request.json()) as {
-          items?: { id: string; kind: string; name: string; payload: unknown; deleted?: boolean }[];
+          items?: {
+            id: string;
+            kind: string;
+            name: string;
+            payload: unknown;
+            deleted?: boolean;
+            hidden?: boolean;
+            order?: number;
+          }[];
         };
         const items = Array.isArray(body.items) ? body.items.slice(0, 200) : [];
         if (items.length === 0) return json({ ok: true, written: 0 }, 200, cors);
@@ -1530,26 +1543,100 @@ export default {
         }
 
         const now = Date.now();
-        const statements = items.map((item) =>
-          env.DB.prepare(
-            `INSERT INTO user_content (id, user_id, kind, name, payload, created_at, updated_at, deleted_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (user_id, id)
-             DO UPDATE SET name = excluded.name, payload = excluded.payload,
-                           updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
-          ).bind(
-            String(item.id),
-            user.id,
-            item.kind,
-            String(item.name).trim().slice(0, 200),
-            JSON.stringify(item.payload ?? null),
-            now,
-            now,
-            item.deleted ? now : null,
-          ),
-        );
+        const statements = items.flatMap((item) => {
+          const clientId = String(item.id);
+          const entityId = `${user.id}:${clientId}`;
+          return [
+            env.DB.prepare(
+              `INSERT INTO content_entities (id, owner_id, kind, name, payload, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE SET name = excluded.name, payload = excluded.payload,
+                 updated_at = excluded.updated_at
+               WHERE content_entities.owner_id = excluded.owner_id AND ? = 0`,
+            ).bind(
+              entityId,
+              user.id,
+              item.kind,
+              String(item.name).trim().slice(0, 200),
+              JSON.stringify(item.payload ?? null),
+              now,
+              now,
+              item.deleted ? 1 : 0,
+            ),
+            env.DB.prepare(
+              `INSERT INTO user_content_refs
+                 (user_id, content_id, client_id, sort_order, hidden_at, deleted_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (user_id, client_id) DO UPDATE SET
+                 content_id = excluded.content_id, sort_order = excluded.sort_order,
+                 hidden_at = excluded.hidden_at, deleted_at = excluded.deleted_at,
+                 updated_at = excluded.updated_at`,
+            ).bind(
+              user.id,
+              entityId,
+              clientId,
+              Number.isFinite(item.order) ? Math.trunc(item.order!) : 0,
+              item.hidden ? now : null,
+              item.deleted ? now : null,
+              now,
+              now,
+            ),
+          ];
+        });
         await env.DB.batch(statements);
         return json({ ok: true, written: items.length, updatedAt: now }, 200, cors);
+      }
+
+      const contentPreferencesMatch = path.match(
+        /^\/api\/auth\/content-preferences\/(waveform|scene)$/,
+      );
+      if (contentPreferencesMatch && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const row = await env.DB.prepare(
+          `SELECT selected_id, hidden_builtin_ids, updated_at FROM user_content_preferences
+           WHERE user_id = ? AND kind = ?`,
+        )
+          .bind(user.id, contentPreferencesMatch[1])
+          .first<Record<string, unknown>>();
+        return json(
+          row
+            ? {
+                selectedId: row.selected_id ?? undefined,
+                hiddenBuiltinIds: JSON.parse(String(row.hidden_builtin_ids)),
+                updatedAt: row.updated_at,
+              }
+            : { hiddenBuiltinIds: [], updatedAt: 0 },
+          200,
+          cors,
+        );
+      }
+      if (contentPreferencesMatch && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json()) as {
+          selectedId?: unknown;
+          hiddenBuiltinIds?: unknown;
+        };
+        const hidden = Array.isArray(body.hiddenBuiltinIds)
+          ? [
+              ...new Set(
+                body.hiddenBuiltinIds.filter((id): id is string => typeof id === 'string'),
+              ),
+            ].slice(0, 200)
+          : [];
+        const selected = typeof body.selectedId === 'string' ? body.selectedId.slice(0, 200) : null;
+        const now = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO user_content_preferences
+             (user_id, kind, selected_id, hidden_builtin_ids, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, kind) DO UPDATE SET selected_id = excluded.selected_id,
+             hidden_builtin_ids = excluded.hidden_builtin_ids, updated_at = excluded.updated_at`,
+        )
+          .bind(user.id, contentPreferencesMatch[1], selected, JSON.stringify(hidden), now)
+          .run();
+        return json({ ok: true, updatedAt: now }, 200, cors);
       }
 
       // ── Market ownership ──

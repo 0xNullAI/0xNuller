@@ -12,10 +12,13 @@ interface ItemRow {
   content: string;
   downloads: number;
   views: number;
-  reports: number;
   hidden: number;
   created_at: number;
 }
+
+// `reports` remains only as a legacy D1 column. Runtime queries deliberately do not read it.
+const ITEM_COLUMNS =
+  'id, type, name, description, author, icon, tags, content, downloads, views, hidden, created_at';
 
 export function rowToItem(row: ItemRow): MarketItem {
   return {
@@ -36,7 +39,6 @@ export function rowToItem(row: ItemRow): MarketItem {
 function rowToAdminItem(row: ItemRow): MarketAdminItem {
   return {
     ...rowToItem(row),
-    reports: row.reports,
     hidden: row.hidden === 1,
   };
 }
@@ -64,7 +66,7 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   }
 
   const order = params.sort === 'popular' ? 'downloads DESC, created_at DESC' : 'created_at DESC';
-  const sql = `SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
+  const sql = `SELECT ${ITEM_COLUMNS} FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
   binds.push(params.limit, params.offset);
 
   const { results } = await db
@@ -75,7 +77,7 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
 }
 
 export interface AdminListParams {
-  status: 'all' | 'reported' | 'hidden';
+  status: 'all' | 'hidden';
   q?: string;
   limit: number;
   offset: number;
@@ -87,7 +89,6 @@ export async function listAdminItems(
 ): Promise<MarketAdminItem[]> {
   const where: string[] = [];
   const binds: unknown[] = [];
-  if (params.status === 'reported') where.push('reports > 0');
   if (params.status === 'hidden') where.push('hidden = 1');
   if (params.q) {
     where.push('(name LIKE ? OR description LIKE ? OR author LIKE ?)');
@@ -95,8 +96,8 @@ export async function listAdminItems(
     binds.push(like, like, like);
   }
   const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const sql = `SELECT * FROM items ${filter}
-    ORDER BY hidden DESC, reports DESC, created_at DESC LIMIT ? OFFSET ?`;
+  const sql = `SELECT ${ITEM_COLUMNS} FROM items ${filter}
+    ORDER BY hidden DESC, created_at DESC LIMIT ? OFFSET ?`;
   binds.push(params.limit, params.offset);
   const { results } = await db
     .prepare(sql)
@@ -107,7 +108,7 @@ export async function listAdminItems(
 
 export async function getItem(db: D1Database, id: string): Promise<MarketItem | null> {
   const row = await db
-    .prepare('SELECT * FROM items WHERE id = ? AND hidden = 0')
+    .prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND hidden = 0`)
     .bind(id)
     .first<ItemRow>();
   return row ? rowToItem(row) : null;
@@ -166,16 +167,6 @@ export async function incrementDownloads(db: D1Database, id: string): Promise<vo
 
 export async function incrementViews(db: D1Database, id: string): Promise<void> {
   await db.prepare('UPDATE items SET views = views + 1 WHERE id = ?').bind(id).run();
-}
-
-export async function reportItem(db: D1Database, id: string): Promise<void> {
-  // Once reports reaches the threshold the item is hidden automatically, pending admin review.
-  await db
-    .prepare(
-      'UPDATE items SET reports = reports + 1, hidden = CASE WHEN reports + 1 >= 5 THEN 1 ELSE hidden END WHERE id = ?',
-    )
-    .bind(id)
-    .run();
 }
 
 export async function deleteItem(db: D1Database, id: string): Promise<void> {
