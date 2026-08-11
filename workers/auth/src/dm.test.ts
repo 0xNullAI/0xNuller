@@ -32,6 +32,7 @@ beforeEach(() => {
   env = {
     DB: db.DB as Env['DB'],
     PHOTOS: {} as R2Bucket,
+    EMAIL: { send: async () => undefined } as unknown as SendEmail,
     IP_PEPPER: 'test-pepper',
     ALLOWED_ORIGINS: ORIGIN,
     DM_TICKET_SECRET: SECRET,

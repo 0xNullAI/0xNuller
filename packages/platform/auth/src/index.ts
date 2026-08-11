@@ -24,6 +24,9 @@ export interface AuthUser {
   /** Present for the signed-in account; omitted from public profile identities. */
   role?: 'user' | 'admin';
   avatarUrl?: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  emailAvailable?: boolean;
 }
 
 // Auth endpoints live under `/api/auth` on the unified domain (paths are
@@ -131,6 +134,33 @@ export async function me(): Promise<AuthUser | null> {
 
 export async function logout(): Promise<void> {
   await call('/api/auth/logout', { method: 'POST' });
+  setStoredToken(null);
+  publishAuthUser(null);
+}
+
+export async function requestEmailVerification(): Promise<void> {
+  await call('/api/auth/email/verification/request', { method: 'POST' });
+}
+
+export async function confirmEmailVerification(token: string): Promise<void> {
+  await call('/api/auth/email/verification/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await call('/api/auth/password/forgot', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await call('/api/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  });
   setStoredToken(null);
   publishAuthUser(null);
 }
