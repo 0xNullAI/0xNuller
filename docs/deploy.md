@@ -57,6 +57,10 @@ npm run release:data:preflight -- \
 4. Voice（启用体验服务时）
 5. Web
 
+`main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
+验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
+始终最后发布，因此任一后端失败都不会把尚未验证的静态外壳推到生产。
+
 Web 发布产物使用当前 Git commit 作为构建编号，并拒绝从未提交的代码构建：
 
 ```bash
@@ -126,5 +130,12 @@ Worker 代码可回滚到上一部署版本：
 wrangler rollback --config <wrangler-config>
 ```
 
+GitHub Actions 的 `Roll back Cloudflare service` 工作流接受固定服务名和明确的已知良好
+`version_id`，一次只恢复一个 Worker。版本号先从该服务的 `wrangler deployments list` 获取；
+不要因一个模块失败而回滚全部模块。自动部署使用同一并发组，回滚不会与部署同时执行。
+
 D1 migration 和 Durable Object 数据不会随 Worker 代码回滚。migration 必须向前兼容，
 上线前也必须保留可验证的数据库备份。
+
+Worker 回滚不会撤销 D1 migration。若新代码依赖新列，migration 必须先保持旧代码可运行，完成
+观察后再启用新行为；不得把代码回滚当作数据库恢复方案。

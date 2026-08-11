@@ -4,11 +4,11 @@
   "description": "Shared types and contract interfaces for DG-Lab Coyote control libraries",
   "license": "MIT",
   "author": "0xNullAI",
-  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/core",
+  "homepage": "https://github.com/0xNullAI/0xNuller/tree/main/packages/kit/core",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
-    "directory": "packages/core"
+    "url": "git+https://github.com/0xNullAI/0xNuller.git",
+    "directory": "packages/kit/core"
   },
   "type": "module",
   "main": "./dist/index.js",

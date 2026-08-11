@@ -196,17 +196,16 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
             >
               {/* A fixed-width gutter, so grouped messages stay aligned with
                   the first one in the run instead of sliding left. */}
-              {!isSelf && (
+              {!grouped && (
                 <div className="w-7 shrink-0">
-                  {!grouped && (
-                    <ProfileAvatar
-                      name={msg.senderName || msg.senderId.slice(0, 6)}
-                      username={usernameByPeer.get(msg.senderId)}
-                      size={28}
-                    />
-                  )}
+                  <ProfileAvatar
+                    name={msg.senderName || msg.senderId.slice(0, 6)}
+                    username={usernameByPeer.get(msg.senderId)}
+                    size={28}
+                  />
                 </div>
               )}
+              {grouped && <div className="w-7 shrink-0" />}
               <div className="max-w-[75%]">
                 {!isSelf && !grouped && (
                   <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">

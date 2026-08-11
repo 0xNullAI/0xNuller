@@ -13,8 +13,8 @@
 
 1. **关旧仓自动化**：旧 DG-Kit 仓 → Settings → Actions → Disable actions。
    （或者删掉它的 `.github/workflows/release.yml`——但 Disable 可逆，优先。）
-2. **确认 npm token**：本仓 Secrets 里的 `NPM_TOKEN` 必须是 **Automation** 类型
-   （不是 Publish 类型——那种会因为要 OTP 而报 EOTP；E404 则说明 token 失效要轮换）。
+2. **确认 npm 权限**：为本仓 release workflow 配置 npm trusted publishing；若迁移期仍使用
+   `NPM_TOKEN`，只授予发布这些包所需的最小权限并在切换后撤销。
 3. **跑一次发布**：本仓 → Actions → Release → Run workflow（分支选 `dev`）。
    changesets 会开一个 "Version Packages" PR，合并它到 dev、再 sync 到 main，
    main 上的 run 执行真正的 `changeset publish`。
@@ -26,3 +26,5 @@
 
 - 恢复 `release.yml` 里被注释的 push 触发（文件里有标注），发布回到全自动
 - 这是九个旧仓下线的第一步；其余仓照 `docs/deploy.md` 的下线顺序走
+- 本仓只能记录旧仓已解除自动化、已只读或已归档的事实；实际 Disable Actions / Archive 必须
+  由旧仓管理员执行并复核，不能从本仓提交推断已经完成

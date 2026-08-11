@@ -4,6 +4,27 @@
    @imported that module's CSS. */
 @import '@0xnullai/web/shell.css';
 
+html,
+body,
+#root {
+  width: 100%;
+  height: var(--android-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+}
+
+#shl-root {
+  height: var(--android-viewport-height, 100dvh);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+html[data-keyboard-open] #shl-root {
+  /* The IME already occupies the bottom inset; keeping navigation padding here
+     creates a second blank strip and pushes the composer under the keyboard. */
+  padding-bottom: 0;
+}
+
 /* Android-only: the splash screen. main.tsx fades it out once React has
    committed its first frame. */
 #nx-splash {

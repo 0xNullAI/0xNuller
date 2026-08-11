@@ -4,11 +4,11 @@
   "description": "Tauri Android/iOS DeviceClient for DG-Lab Coyote (BLE via @mnlphlp/plugin-blec)",
   "license": "MIT",
   "author": "0xNullAI",
-  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/transport-tauri-blec",
+  "homepage": "https://github.com/0xNullAI/0xNuller/tree/main/packages/kit/transport-tauri-blec",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
-    "directory": "packages/transport-tauri-blec"
+    "url": "git+https://github.com/0xNullAI/0xNuller.git",
+    "directory": "packages/kit/transport-tauri-blec"
   },
   "type": "module",
   "main": "./dist/index.js",
