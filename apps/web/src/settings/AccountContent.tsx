@@ -3,6 +3,7 @@ import { UserRound } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
+  avatarSrc,
   deleteAccount,
   login,
   logout,
@@ -70,7 +71,12 @@ export function AccountContent({
     return (
       <div>
         <div className="flex items-center gap-3">
-          <Avatar name={user.displayName} username={user.username} size={44} />
+          <Avatar
+            name={user.displayName}
+            username={user.username}
+            src={avatarSrc(user.avatarUrl)}
+            size={44}
+          />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <div className="truncate text-base font-semibold">{user.displayName}</div>

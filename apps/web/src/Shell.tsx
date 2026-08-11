@@ -13,7 +13,12 @@ import {
   useOverlayRoot,
   useModuleOverlayLayer,
 } from '@0xnullai/ui';
-import { me, subscribeProfileRequests, type AuthUser } from '@0xnullai/auth';
+import {
+  me,
+  subscribeProfileChanges,
+  subscribeProfileRequests,
+  type AuthUser,
+} from '@0xnullai/auth';
 import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { Sidebar } from './Sidebar';
@@ -114,6 +119,7 @@ function useIsNarrow(): boolean {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+
   return narrow;
 }
 
@@ -162,6 +168,16 @@ export function Shell() {
       .catch(() => setUser(null))
       .finally(() => setAuthChecked(true));
   }, []);
+
+  useEffect(
+    () =>
+      subscribeProfileChanges(() => {
+        void me()
+          .then(setUser)
+          .catch(() => undefined);
+      }),
+    [],
+  );
 
   // Modules ask for a profile rather than rendering one; see profile-requests
   // in @0xnullai/auth. Subscribing here rather than inside a module is what

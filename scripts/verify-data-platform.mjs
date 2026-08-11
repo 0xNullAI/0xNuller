@@ -120,7 +120,7 @@ assert(
 );
 
 // Actual production path (2026-08-09 inventory): the live Auth database has only
-// 0001-0003 recorded. Applying 0004-0009 must converge with a fresh sequential install.
+// 0001-0003 recorded. Applying all later migrations must converge with a fresh install.
 const authUpgrade = new DatabaseSync(':memory:');
 authUpgrade.exec('PRAGMA foreign_keys = ON');
 for (const file of auth.files.slice(0, 3)) {
@@ -131,11 +131,11 @@ for (const file of auth.files.slice(3)) {
 }
 assert(
   JSON.stringify(names(authUpgrade, 'index')) === JSON.stringify(names(auth.db, 'index')),
-  'auth: 0001-0003 -> 0004-0009 schema differs from fresh migration path',
+  'auth: existing 0001-0003 upgrade schema differs from fresh migration path',
 );
 assert(
   JSON.stringify(names(authUpgrade, 'table')) === JSON.stringify(names(auth.db, 'table')),
-  'auth: 0001-0003 -> 0004-0009 tables differ from fresh migration path',
+  'auth: existing 0001-0003 upgrade tables differ from fresh migration path',
 );
 
 const market = applyMigrations('apps/market/migrations');
@@ -244,7 +244,7 @@ console.log(
     ok: true,
     authMigrations: auth.files,
     marketMigrations: market.files,
-    authUpgrade: '0001-0003 -> 0004-0009',
+    authUpgrade: '0001-0003 -> current',
     marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-0003',
   }),
 );

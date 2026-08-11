@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Copy, Check, ChevronRight, Globe, Lock } from 'lucide-react';
+import { Copy, Check, ChevronRight, Globe, Lock, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Avatar } from '@0xnullai/ui';
-import { requestProfileView } from '@0xnullai/auth';
+import { Input } from '@0xnullai/ui';
 import type { MemberState, CmdAction, DeviceCommand, WaveformTransfer } from '../lib/protocol';
 import type { WaveformDefinition } from '../lib/waveforms';
 import type { MarketItem } from '@0xnullai/market-client';
 import { BUILTIN_WAVEFORMS } from '../lib/waveforms';
 import { MemberCard } from './MemberCard';
 import { MemberControl } from './MemberControl';
+import { ProfileAvatar } from './ProfileAvatar';
 
 interface ControlPanelProps {
   members: Map<string, MemberState>;
@@ -32,6 +32,9 @@ interface ControlPanelProps {
   /** Whether this browser may change that (holds the owner key, or is the host of an unowned room). */
   canManage: boolean;
   onSetPublic: (next: boolean) => void;
+  roomName: string;
+  onRename: (name: string) => void;
+  onCloseRoom: () => void;
   /**
    * This is a two-person conversation rather than a group.
    *
@@ -50,12 +53,7 @@ function SelfCard({ member, onClick }: { member: MemberState; onClick: () => voi
       onClick={onClick}
       className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-md)] border border-[var(--accent-soft)] bg-[var(--bg-elevated)] p-3 transition-all hover:bg-[var(--bg-soft)] active:scale-[0.98]"
     >
-      <Avatar
-        name={member.displayName}
-        username={member.username}
-        size={40}
-        onOpenProfile={requestProfileView}
-      />
+      <ProfileAvatar name={member.displayName} username={member.username} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium text-[var(--text)]">{member.displayName}</p>
@@ -99,10 +97,14 @@ export function ControlPanel({
   isPublic,
   canManage,
   onSetPublic,
+  roomName,
+  onRename,
+  onCloseRoom,
   isDm = false,
 }: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [nameDraft, setNameDraft] = useState(roomName);
 
   function copyRoomId() {
     if (!roomId) return;
@@ -175,6 +177,20 @@ export function ControlPanel({
           <p className="mb-3 text-center text-lg font-bold tracking-widest text-[var(--accent)]">
             {roomId}
           </p>
+          {canManage ? (
+            <label className="mb-3 flex flex-col gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">房间名</span>
+              <Input
+                value={nameDraft}
+                maxLength={60}
+                onChange={(event) => setNameDraft(event.target.value)}
+                onBlur={() => nameDraft.trim() && onRename(nameDraft)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && nameDraft.trim()) onRename(nameDraft);
+                }}
+              />
+            </label>
+          ) : null}
           {joinUrl && (
             <div className="flex justify-center rounded-[var(--radius-md)] bg-white p-3">
               <QRCodeSVG value={joinUrl} size={120} />
@@ -200,6 +216,20 @@ export function ControlPanel({
               <span className="text-[10px] text-[var(--text-faint)]">仅房主可改</span>
             )}
           </div>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('关闭房间后所有成员都会退出，且不能重新加入。继续吗？')) {
+                  onCloseRoom();
+                }
+              }}
+              className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--danger-border)] text-sm text-[var(--danger)] hover:bg-[var(--danger-soft)]"
+            >
+              <Trash2 className="h-4 w-4" />
+              关闭房间
+            </button>
+          ) : null}
         </div>
       )}
 

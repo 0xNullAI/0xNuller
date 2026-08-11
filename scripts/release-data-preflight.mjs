@@ -128,6 +128,9 @@ const currentAuthLedger = [
   '0007_verified_claims_and_deletion_jobs.sql',
   '0008_unique_email.sql',
   '0009_account_roles.sql',
+  '0010_chat_rooms.sql',
+  '0011_agent_sessions.sql',
+  '0012_photo_purpose.sql',
 ];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];
@@ -218,7 +221,7 @@ console.log(
                   : 'Market schema is current; do not reapply its migrations.',
               authState === 'current'
                 ? 'Auth schema is current; do not reapply its migrations.'
-                : 'Apply Auth 0004-0009 migrations.',
+                : 'Apply pending Auth migrations.',
               marketState === 'current' ? null : 'Apply Market 0002-0003 migrations.',
               'Create 0xnullai-profile-photos before deploying Auth.',
               'Deploy chat, then auth, then market.',

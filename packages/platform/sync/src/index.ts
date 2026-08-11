@@ -24,6 +24,22 @@ import { apiBaseUrl } from '@0xnullai/settings';
 export type SyncNamespace = 'llm' | 'device-safety' | 'proxy' | 'ui';
 export type ContentKind = 'waveform' | 'scene';
 
+export interface SyncedChatRoom {
+  code: string;
+  name: string;
+  joinedAt: number;
+  updatedAt: number;
+  ownerKey?: string;
+}
+
+export interface SyncedAgentSession<T = unknown> {
+  id: string;
+  session: T | null;
+  clientUpdatedAt: number;
+  updatedAt: number;
+  deleted: boolean;
+}
+
 export interface SyncedContent {
   id: string;
   kind: ContentKind;
@@ -145,4 +161,59 @@ export async function listMarketClaims(): Promise<{ item_id: string; claimed_at:
     '/api/auth/market-claims',
   );
   return res?.claims ?? [];
+}
+
+export async function pullChatRooms(): Promise<SyncedChatRoom[] | null> {
+  const res = await call<{ rooms: SyncedChatRoom[] }>('/api/auth/chat-rooms');
+  return res?.rooms ?? null;
+}
+
+export async function rememberChatRoom(
+  code: string,
+  name = '',
+  ownerKey?: string,
+): Promise<boolean> {
+  const res = await call<{ ok: boolean }>('/api/auth/chat-rooms', {
+    method: 'PUT',
+    body: JSON.stringify({ code, name, ownerKey }),
+  });
+  return res?.ok === true;
+}
+
+export async function closeChatRoom(code: string, ownerKey: string): Promise<boolean> {
+  const res = await call<{ ok: boolean }>(
+    `/api/auth/chat-rooms/${encodeURIComponent(code)}/close`,
+    { method: 'POST', body: JSON.stringify({ ownerKey }) },
+  );
+  return res?.ok === true;
+}
+
+export async function forgetChatRoom(code: string): Promise<boolean> {
+  const res = await call<{ ok: boolean }>(`/api/auth/chat-rooms/${encodeURIComponent(code)}`, {
+    method: 'DELETE',
+  });
+  return res?.ok === true;
+}
+
+export async function pullAgentSessions(since = 0): Promise<{
+  sessions: SyncedAgentSession[];
+  cursor: number;
+  hasMore: boolean;
+} | null> {
+  return call(`/api/auth/agent-sessions?since=${Math.max(0, Math.trunc(since))}`);
+}
+
+export async function pushAgentSessions(
+  sessions: Array<{
+    id: string;
+    session?: unknown;
+    clientUpdatedAt: number;
+    deleted?: boolean;
+  }>,
+): Promise<boolean> {
+  const result = await call<{ ok: boolean }>('/api/auth/agent-sessions', {
+    method: 'PUT',
+    body: JSON.stringify({ sessions }),
+  });
+  return result?.ok === true;
 }

@@ -31,8 +31,6 @@ import {
   LOBBY_NAME,
   MAX_GROUP_NAME,
   ROOM_GRACE_MS,
-  RESERVED_ROOM_CODE,
-  RESERVED_ROOM_NAME,
   ROOM_AGENT_SENDER,
   type WireChat,
   type WireGroup,
@@ -72,6 +70,9 @@ export class RoomDO extends DurableObject<Env> {
     }
     const url = new URL(request.url);
     const code = url.searchParams.get('code') ?? '';
+    if (!isDmRoomCode(code) && (await this.ctx.storage.get<boolean>('closed')) === true) {
+      return new Response('room closed', { status: 410 });
+    }
     // Second half of a DM's admission check. The Worker verified the ticket's signature and
     // that the account service issued it; only this object knows whether the conversation has
     // since been severed, because the mark lives in its storage. A ticket minted before the
@@ -125,8 +126,6 @@ export class RoomDO extends DurableObject<Env> {
         // currently-live WebSocket instead of treating knowledge of a room code as write access.
         ws.send(JSON.stringify({ t: 'media-auth', token: att.mediaToken }));
         const code = await this.code();
-        const reserved = code === RESERVED_ROOM_CODE;
-
         if (dm) {
           // Nothing to seed, nobody to make owner, no host to elect and no lobby to appear in.
           // A DM has exactly one durable thing: its history.
@@ -135,8 +134,8 @@ export class RoomDO extends DurableObject<Env> {
           return;
         }
 
-        await this.seedSettings(reserved, msg);
-        const ownerKey = await this.claimIfRequested(code, reserved, msg);
+        await this.seedSettings(msg);
+        const ownerKey = await this.claimIfRequested(code, msg);
         const owned = (await this.ctx.storage.get<string>('ownerKeyHash')) != null;
         const isOwner = ownerKey != null || (await this.provesOwnership(code, msg.ownerKey));
 
@@ -146,15 +145,9 @@ export class RoomDO extends DurableObject<Env> {
         // a permanent group would end up with a host nobody can be, and no agent would ever run.
         // The permanent discussion room has no host (pure open chat): don't assign one, and
         // clear any leftover.
-        let host = '';
-        let hostChanged = false;
-        if (reserved) {
-          await this.ctx.storage.delete('hostPeerId');
-        } else {
-          const assigned = await this.ensureHost(att.peerId);
-          host = assigned.host;
-          hostChanged = assigned.changed;
-        }
+        const assigned = await this.ensureHost(att.peerId);
+        const host = assigned.host;
+        const hostChanged = assigned.changed;
 
         // Replay the history to this connection (all retained messages and media references).
         ws.send(JSON.stringify({ t: 'history', messages: this.loadHistory() }));
@@ -195,9 +188,21 @@ export class RoomDO extends DurableObject<Env> {
       case 'group': {
         // Owner-only, and durable: the settings survive the session that changed them.
         const code = await this.code();
-        // The permanent discussion room's settings are fixed by definition.
-        if (code === RESERVED_ROOM_CODE) return;
         if (!(await this.canAdminister(code, att.peerId, msg.ownerKey))) return;
+
+        if (msg.closed === true) {
+          await this.ctx.storage.put('closed', true);
+          await this.pushLobby(0, false);
+          this.broadcast({ t: 'sys', kind: 'closed' });
+          for (const socket of this.ctx.getWebSockets()) {
+            try {
+              socket.close(4000, '房间已关闭');
+            } catch {
+              /* already closing */
+            }
+          }
+          return;
+        }
 
         const wasPublic = (await this.ctx.storage.get<boolean>('public')) === true;
         let changed = false;
@@ -407,12 +412,7 @@ export class RoomDO extends DurableObject<Env> {
    * `group` frame with the owner key. The first hello still seeds it because that is the
    * only signal a client too old to know about ownership can send when it creates a group.
    */
-  private async seedSettings(reserved: boolean, msg: Record<string, unknown>): Promise<void> {
-    if (reserved) {
-      await this.ctx.storage.put('public', true);
-      await this.ctx.storage.put('roomName', RESERVED_ROOM_NAME);
-      return;
-    }
+  private async seedSettings(msg: Record<string, unknown>): Promise<void> {
     if ((await this.ctx.storage.get<boolean>('public')) !== undefined) return;
     const isPublic = msg.public === true;
     // A public group needs a label in the lobby, so fall back to the creator's nickname the
@@ -436,10 +436,9 @@ export class RoomDO extends DurableObject<Env> {
    */
   private async claimIfRequested(
     code: string,
-    reserved: boolean,
     msg: Record<string, unknown>,
   ): Promise<string | null> {
-    if (reserved || msg.claim !== true) return null;
+    if (msg.claim !== true) return null;
     if ((await this.ctx.storage.get<string>('ownerKeyHash')) != null) return null;
     const key = generateOwnerKey();
     await this.ctx.storage.put('ownerKeyHash', await hashOwnerKey(code, key));

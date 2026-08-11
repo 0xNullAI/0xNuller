@@ -169,6 +169,11 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
   }
 
   const rows = lists[tab];
+  const needle = query.trim().toLocaleLowerCase();
+  const filteredRows =
+    rows?.filter((row) =>
+      `${row.username} ${row.displayName}`.toLocaleLowerCase().includes(needle),
+    ) ?? rows;
 
   return (
     <Overlay onDismiss={onClose}>
@@ -184,7 +189,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
         <div className="mt-4 flex gap-2">
           <Input
             value={query}
-            placeholder="输入用户名查找"
+            placeholder="搜索联系人或用户名"
             aria-label="用户名"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -271,8 +276,12 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
             <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
               {tab === 'following' ? '暂无关注，搜索用户名即可添加' : '暂无粉丝'}
             </p>
+          ) : filteredRows?.length === 0 ? (
+            <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
+              没有匹配的联系人
+            </p>
           ) : (
-            rows.map((row) => (
+            filteredRows?.map((row) => (
               <Row
                 key={row.id}
                 username={row.username}

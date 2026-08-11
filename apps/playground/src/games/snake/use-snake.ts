@@ -128,9 +128,23 @@ export function useSnake({ speedMs = 140, onEvent, random = Math.random }: UseSn
     setState({ ...initialState(random), status: 'running' });
   }, [random]);
 
-  const turn = useCallback((direction: Direction) => {
-    queued.current.push(direction);
-  }, []);
+  const turn = useCallback(
+    (direction: Direction) => {
+      setState((prev) => {
+        // Direction input is also a natural start action. Requiring a
+        // separate click made keyboard and mobile controls appear broken on
+        // the idle/game-over screens.
+        if (prev.status !== 'running') {
+          queued.current = [];
+          return { ...initialState(random), direction, status: 'running' };
+        }
+
+        queued.current.push(direction);
+        return prev;
+      });
+    },
+    [random],
+  );
 
   useEffect(() => {
     if (state.status !== 'running') return;

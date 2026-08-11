@@ -167,6 +167,93 @@ describe('注册', () => {
   });
 });
 
+describe('Chat 房间账户同步', () => {
+  it('跨会话读取已加入房间，并允许只从自己的列表移除', async () => {
+    const { body } = await registerUser();
+    const token = body.token!;
+    const added = await worker.fetch(
+      req('/api/auth/chat-rooms', {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({ code: 'private-room_7', name: '私密房间' }),
+      }),
+      env,
+    );
+    expect(added.status).toBe(200);
+
+    const listed = await worker.fetch(req('/api/auth/chat-rooms', { token }), env);
+    expect(await listed.json()).toMatchObject({
+      rooms: [{ code: 'private-room_7', name: '私密房间' }],
+    });
+
+    const removed = await worker.fetch(
+      req('/api/auth/chat-rooms/private-room_7', { method: 'DELETE', token }),
+      env,
+    );
+    expect(removed.status).toBe(200);
+    const empty = await worker.fetch(req('/api/auth/chat-rooms', { token }), env);
+    expect(await empty.json()).toEqual({ rooms: [] });
+  });
+
+  it('拒绝匿名写入和无效房间号', async () => {
+    const anonymous = await worker.fetch(req('/api/auth/chat-rooms'), env);
+    expect(anonymous.status).toBe(401);
+    const { body } = await registerUser();
+    const invalid = await worker.fetch(
+      req('/api/auth/chat-rooms', {
+        method: 'PUT',
+        token: body.token,
+        body: JSON.stringify({ code: '../room' }),
+      }),
+      env,
+    );
+    expect(invalid.status).toBe(400);
+  });
+
+  it('房主密钥跨平台恢复管理权，且关闭会清除所有成员记录', async () => {
+    const owner = (await registerUser()).body;
+    const member = (await registerUser({ username: 'bob', email: 'bob@example.com' })).body;
+    for (const [token, ownerKey] of [
+      [owner.token, 'owner-secret'],
+      [member.token, undefined],
+    ] as const) {
+      await worker.fetch(
+        req('/api/auth/chat-rooms', {
+          method: 'PUT',
+          token,
+          body: JSON.stringify({ code: 'shared-room', name: '共享房间', ownerKey }),
+        }),
+        env,
+      );
+    }
+    const listed = await worker.fetch(req('/api/auth/chat-rooms', { token: owner.token }), env);
+    expect(await listed.json()).toMatchObject({ rooms: [{ ownerKey: 'owner-secret' }] });
+    const denied = await worker.fetch(
+      req('/api/auth/chat-rooms/shared-room/close', {
+        method: 'POST',
+        token: member.token,
+        body: JSON.stringify({ ownerKey: 'owner-secret' }),
+      }),
+      env,
+    );
+    expect(denied.status).toBe(403);
+    const closed = await worker.fetch(
+      req('/api/auth/chat-rooms/shared-room/close', {
+        method: 'POST',
+        token: owner.token,
+        body: JSON.stringify({ ownerKey: 'owner-secret' }),
+      }),
+      env,
+    );
+    expect(closed.status).toBe(200);
+    const memberList = await worker.fetch(
+      req('/api/auth/chat-rooms', { token: member.token }),
+      env,
+    );
+    expect(await memberList.json()).toEqual({ rooms: [] });
+  });
+});
+
 describe('登录', () => {
   it('密码正确时签发新会话', async () => {
     await registerUser();
@@ -405,6 +492,84 @@ describe('内容同步分页', () => {
   });
 });
 
+describe('Agent 会话同步', () => {
+  it('按账户隔离会话，并用墓碑跨设备删除', async () => {
+    const alice = await seedUser('agent-alice');
+    const bob = await seedUser('agent-bob');
+    const session = { id: 'session-1', updatedAt: 100, messages: [{ content: '私密' }] };
+    const putSession = await worker.fetch(
+      req('/api/auth/agent-sessions', {
+        method: 'PUT',
+        token: alice.token,
+        body: JSON.stringify({
+          sessions: [{ id: 'session-1', session, clientUpdatedAt: 100 }],
+        }),
+      }),
+      env,
+    );
+    expect(putSession.status).toBe(200);
+
+    const aliceList = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as {
+      sessions: { id: string; session: unknown; deleted: boolean }[];
+    };
+    expect(aliceList.sessions).toEqual([
+      expect.objectContaining({ id: 'session-1', session, deleted: false }),
+    ]);
+    const bobList = (await (await get('/api/auth/agent-sessions', bob.token)).json()) as {
+      sessions: unknown[];
+    };
+    expect(bobList.sessions).toEqual([]);
+
+    await worker.fetch(
+      req('/api/auth/agent-sessions', {
+        method: 'PUT',
+        token: alice.token,
+        body: JSON.stringify({
+          sessions: [{ id: 'session-1', deleted: true, clientUpdatedAt: 200 }],
+        }),
+      }),
+      env,
+    );
+    const deleted = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as {
+      sessions: { id: string; deleted: boolean; session: unknown }[];
+    };
+    expect(deleted.sessions).toEqual([
+      expect.objectContaining({ id: 'session-1', deleted: true, session: null }),
+    ]);
+  });
+
+  it('旧设备的迟到写入不会复活已删除会话', async () => {
+    const alice = await seedUser('agent-conflict');
+    const write = async (clientUpdatedAt: number, deleted = false) =>
+      worker.fetch(
+        req('/api/auth/agent-sessions', {
+          method: 'PUT',
+          token: alice.token,
+          body: JSON.stringify({
+            sessions: [
+              {
+                id: 'same',
+                session: deleted ? undefined : { id: 'same', updatedAt: clientUpdatedAt },
+                clientUpdatedAt,
+                deleted,
+              },
+            ],
+          }),
+        }),
+        env,
+      );
+    await write(300, true);
+    await write(200, false);
+
+    const result = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as {
+      sessions: { deleted: boolean; clientUpdatedAt: number }[];
+    };
+    expect(result.sessions[0]).toEqual(
+      expect.objectContaining({ deleted: true, clientUpdatedAt: 300 }),
+    );
+  });
+});
+
 const follow = (token: string, userId: string) => post('/api/auth/follow', { userId }, { token });
 const block = (token: string, userId: string) => post('/api/auth/block', { userId }, { token });
 
@@ -620,6 +785,43 @@ describe('他人主页的可见性', () => {
     expect(body.profile?.bio).toBe('一句话');
   });
 
+  it('头像只能选择自己已经上传的账户图片', async () => {
+    const bob = await seedUser('bob');
+    const external = await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({ avatarUrl: 'https://tracker.example/avatar.png' }),
+      }),
+      env,
+    );
+    expect(external.status).toBe(400);
+
+    const uploaded = await worker.fetch(
+      req('/api/auth/photos', {
+        method: 'POST',
+        token: bob.token,
+        headers: { 'content-type': 'image/png', 'x-photo-visibility': 'public' },
+        body: new Uint8Array([137, 80, 78, 71]),
+      }),
+      env,
+    );
+    const photo = (await uploaded.json()) as { photo: { url: string } };
+    const saved = await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({ avatarUrl: photo.photo.url, visibility: 'public' }),
+      }),
+      env,
+    );
+    expect(saved.status).toBe(200);
+    const profile = (await (await get('/api/auth/profile', bob.token)).json()) as {
+      profile: { avatarUrl: string };
+    };
+    expect(profile.profile.avatarUrl).toBe(photo.photo.url);
+  });
+
   it('公开资料也不把生日给别人看', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
@@ -793,9 +995,43 @@ describe('他人主页的可见性', () => {
     expect(content.headers.get('cache-control')).toBe('private, no-store');
     expect([...new Uint8Array(await content.arrayBuffer())]).toEqual([137, 80, 78, 71]);
 
+    const madePrivate = await worker.fetch(
+      req(`/api/auth/photos/${photo.photo.id}`, {
+        method: 'PATCH',
+        token: bob.token,
+        body: JSON.stringify({ visibility: 'private' }),
+      }),
+      env,
+    );
+    expect(madePrivate.status).toBe(200);
+    expect((await get(photo.photo.url)).status).toBe(404);
+    expect((await get(photo.photo.url, bob.token)).status).toBe(200);
+
     expect((await del(`/api/auth/photos/${photo.photo.id}`, bob.token)).status).toBe(200);
     expect(photos.objects.size).toBe(0);
     expect((await get(photo.photo.url)).status).toBe(404);
+  });
+
+  it('头像资源与相册分离', async () => {
+    const bob = await seedUser('bob');
+    const uploaded = await worker.fetch(
+      req('/api/auth/photos', {
+        method: 'POST',
+        token: bob.token,
+        headers: {
+          'content-type': 'image/png',
+          'x-photo-visibility': 'public',
+          'x-photo-purpose': 'avatar',
+        },
+        body: new Uint8Array([137, 80, 78, 71]),
+      }),
+      env,
+    );
+    expect(uploaded.status).toBe(201);
+    const ownList = (await (await get('/api/auth/photos', bob.token)).json()) as {
+      photos: unknown[];
+    };
+    expect(ownList.photos).toEqual([]);
   });
 
   it('并发上传由唯一槽位约束在 60 张，而不是先 COUNT 再竞态写入', async () => {

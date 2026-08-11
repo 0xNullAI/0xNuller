@@ -12,8 +12,13 @@ import type {
   StateSlow,
 } from '../lib/protocol';
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
-import { loadOwnerKey, rememberGroup, saveOwnerKey } from '../lib/groups';
-import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
+import {
+  closeOwnedGroup,
+  forgetGroup,
+  loadOwnerKey,
+  rememberGroup,
+  saveOwnerKey,
+} from '../lib/groups';
 import { dmTicket } from '@0xnullai/auth';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
@@ -335,6 +340,12 @@ export function usePeerRoom(displayName: string) {
         }
 
         if (t === 'sys') {
+          if (data.kind === 'closed') {
+            setError('房间已关闭');
+            const code = roomIdRef.current;
+            if (code) void closeOwnedGroup(code).finally(() => forgetGroup(code));
+            return;
+          }
           const peerId = data.peerId as string;
           if (data.kind === 'joined') touchPeer(peerId);
           else if (data.kind === 'left') removePeer(peerId);
@@ -357,7 +368,7 @@ export function usePeerRoom(displayName: string) {
           if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
           if (typeof data.name === 'string') {
             setGroupName(data.name);
-            if (code !== RESERVED_ROOM_CODE) rememberGroup(code, data.name);
+            rememberGroup(code, data.name);
           }
           // Arrives exactly once, in the reply to the connection that created the group.
           if (typeof data.ownerKey === 'string' && code) {
@@ -612,6 +623,22 @@ export function usePeerRoom(displayName: string) {
     [send],
   );
 
+  const renameGroup = useCallback(
+    (name: string) => {
+      const code = roomIdRef.current;
+      if (!code || !name.trim()) return;
+      send({ t: 'group', roomName: name.trim(), ownerKey: loadOwnerKey(code) ?? undefined });
+    },
+    [send],
+  );
+
+  const closeGroup = useCallback(() => {
+    const code = roomIdRef.current;
+    if (!code) return;
+    send({ t: 'group', closed: true, ownerKey: loadOwnerKey(code) ?? undefined });
+    forgetGroup(code);
+  }, [send]);
+
   /**
    * Host speaks as the room agent (called by the agent loop). The server
    * verifies the sender is the host and that the room really has an agent.
@@ -819,6 +846,8 @@ export function usePeerRoom(displayName: string) {
     groupName,
     isOwner,
     setGroupPublic,
+    renameGroup,
+    closeGroup,
     /**
      * May this browser change the group's settings and its agent?
      *

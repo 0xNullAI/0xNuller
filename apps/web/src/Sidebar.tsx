@@ -13,7 +13,13 @@ import {
 } from 'lucide-react';
 import { Avatar, useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
-import type { AuthUser } from '@0xnullai/auth';
+import {
+  avatarSrc,
+  dmConversations,
+  openDirectMessage,
+  type AuthUser,
+  type DmConversation,
+} from '@0xnullai/auth';
 import { MODULES } from './routes';
 
 /**
@@ -193,7 +199,12 @@ function AccountButton({
         aria-haspopup="menu"
         className="flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-2 text-left transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
-        <Avatar name={user?.displayName ?? null} username={user?.username} size={26} />
+        <Avatar
+          name={user?.displayName ?? null}
+          username={user?.username}
+          src={avatarSrc(user?.avatarUrl)}
+          size={26}
+        />
         <span className="min-w-0 flex-1 truncate text-sm">{user?.displayName ?? '未登录'}</span>
       </button>
 
@@ -228,10 +239,8 @@ function AccountButton({
 function SidebarSectionSlot({ id, title }: { id: SidebarSectionId; title: string }) {
   const ref = useSidebarContainerRef(id);
   return (
-    <section className="mb-3">
-      <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
-        {title}
-      </h2>
+    <section className="mt-2 border-t border-[var(--surface-border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+      <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">{title}</h2>
       <div ref={ref} />
     </section>
   );
@@ -258,15 +267,24 @@ function DefaultSidebarDestination({
   onOpenAccount: () => void;
   onCreateRoom: () => void;
 }) {
+  const [directMessages, setDirectMessages] = useState<DmConversation[] | null>(null);
+  useEffect(() => {
+    if (id !== 'direct' || !user) return;
+    let alive = true;
+    void dmConversations().then((result) => {
+      if (alive) setDirectMessages(result?.conversations ?? []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id, user]);
   const itemClass =
     'flex w-full items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
 
   if (id === 'conversations') {
     return (
-      <section className="mb-3">
-        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
-          对话
-        </h2>
+      <section className="mt-2 border-t border-[var(--surface-border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+        <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">对话</h2>
         <button type="button" onClick={() => onNavigate('agent')} className={itemClass}>
           <Plus className="h-4 w-4 shrink-0" />
           新对话
@@ -277,10 +295,8 @@ function DefaultSidebarDestination({
 
   if (!user) {
     return id === 'rooms' ? (
-      <section className="mb-3">
-        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
-          Chat
-        </h2>
+      <section className="mt-2 border-t border-[var(--surface-border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+        <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">Chat</h2>
         <button type="button" onClick={onOpenAccount} className={itemClass}>
           <LogIn className="h-4 w-4 shrink-0" />
           登录后使用
@@ -291,23 +307,37 @@ function DefaultSidebarDestination({
 
   if (id === 'direct') {
     return (
-      <section className="mb-3">
-        <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
-          私聊
-        </h2>
-        <button type="button" onClick={() => onNavigate('chat')} className={itemClass}>
-          <Users className="h-4 w-4 shrink-0" />
-          打开 Chat
-        </button>
+      <section className="mt-2 border-t border-[var(--surface-border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+        <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">私聊</h2>
+        {directMessages === null ? (
+          <p className="px-2 py-2 text-xs text-[var(--text-faint)]">加载中…</p>
+        ) : directMessages.length === 0 ? (
+          <p className="px-2 py-2 text-xs text-[var(--text-faint)]">
+            在联系人中找到互相关注的人开始私聊
+          </p>
+        ) : (
+          directMessages.map((peer) => (
+            <button
+              key={peer.id}
+              type="button"
+              onClick={() => {
+                openDirectMessage(peer.id);
+                onNavigate('chat');
+              }}
+              className={itemClass}
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="truncate">{peer.displayName || peer.username}</span>
+            </button>
+          ))
+        )}
       </section>
     );
   }
 
   return (
-    <section className="mb-3">
-      <h2 className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
-        房间
-      </h2>
+    <section className="mt-2 border-t border-[var(--surface-border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+      <h2 className="px-2 pb-1.5 text-sm font-semibold text-[var(--text-soft)]">房间</h2>
       <button type="button" onClick={onCreateRoom} className={itemClass}>
         <Plus className="h-4 w-4 shrink-0" />
         建房间
@@ -349,7 +379,12 @@ export function Sidebar({
           <PanelLeftClose className="h-4 w-4 rotate-180" />
         </button>
         <div className="mt-auto">
-          <Avatar name={user?.displayName ?? null} username={user?.username} size={26} />
+          <Avatar
+            name={user?.displayName ?? null}
+            username={user?.username}
+            src={avatarSrc(user?.avatarUrl)}
+            size={26}
+          />
         </div>
       </aside>
     );

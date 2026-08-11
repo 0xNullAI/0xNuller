@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Plus, RefreshCw, Users } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import {
   fetchLobbyRooms,
   subscribeLobby,
   type LobbyRoom,
   type LobbyStatus,
 } from '../lib/lobby-client';
-import { RESERVED_ROOM_CODE } from '../../shared/room-constants';
-import { loadKnownGroups } from '../lib/groups';
+import { forgetGroup, GROUPS_CHANGED_EVENT, loadKnownGroups, syncKnownGroups } from '../lib/groups';
 
 /**
  * The room list in its **shell sidebar** form.
@@ -31,11 +30,13 @@ export interface ShellRoomListProps {
   currentRoom: string | null;
   onJoin: (code: string) => void;
   onCreate: () => void;
+  onDelete: (code: string) => void;
 }
 
-export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListProps) {
+export function ShellRoomList({ currentRoom, onJoin, onCreate, onDelete }: ShellRoomListProps) {
   const [rooms, setRooms] = useState<LobbyRoom[]>([]);
   const [status, setStatus] = useState<LobbyStatus>('connecting');
+  const [listRevision, setListRevision] = useState(0);
 
   useEffect(() => {
     // Take one REST snapshot first, then hand over to the WS for live updates — waiting on the
@@ -44,63 +45,76 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate }: ShellRoomListPr
       .then(setRooms)
       .catch(() => undefined);
     const sub = subscribeLobby(setRooms, setStatus);
-    return () => sub.close();
+    const changed = () => setListRevision((value) => value + 1);
+    window.addEventListener(GROUPS_CHANGED_EVENT, changed);
+    void syncKnownGroups();
+    return () => {
+      sub.close();
+      window.removeEventListener(GROUPS_CHANGED_EVENT, changed);
+    };
   }, []);
 
   // Read on every render rather than once: a group is recorded the moment you join it, and
   // the sidebar is where you go back to it.
+  const knownGroups = loadKnownGroups();
+  const knownCodes = new Set(knownGroups.map((group) => group.code));
   const merged = new Map<string, LobbyRoom>();
-  for (const g of loadKnownGroups()) merged.set(g.code, { code: g.code, name: g.name, count: 0 });
+  for (const g of knownGroups) merged.set(g.code, { code: g.code, name: g.name, count: 0 });
   for (const r of rooms) merged.set(r.code, r);
 
-  // The permanent room is always first, and is shown even before the lobby has answered — it is
-  // the one that guarantees there is always somewhere to go.
-  const reserved = merged.get(RESERVED_ROOM_CODE) ?? {
-    code: RESERVED_ROOM_CODE,
-    name: '公开大厅',
-    count: 0,
-  };
-  const ordered: LobbyRoom[] = [
-    reserved,
-    ...[...merged.values()].filter((r) => r.code !== RESERVED_ROOM_CODE),
-  ];
+  const ordered: LobbyRoom[] = [...merged.values()];
+  void listRevision;
 
   return (
     <div className="flex flex-col gap-0.5">
       <button
         type="button"
         onClick={onCreate}
-        className="flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+        className="flex min-h-9 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
-        建房间
+        新建 / 加入房间
       </button>
 
       {ordered.map((room) => (
-        <button
+        <div
           key={room.code}
-          type="button"
-          onClick={() => onJoin(room.code)}
           className={
-            'flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm transition-colors ' +
+            'group flex items-center rounded-[var(--radius-ctl)] text-sm transition-colors ' +
             (room.code === currentRoom
               ? 'bg-[var(--accent-soft)]'
               : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
           }
         >
-          <span className="min-w-0 flex-1 truncate">
-            {room.name || room.code}
-            {room.code === RESERVED_ROOM_CODE && (
-              <span className="ml-1.5 text-[10px] text-[var(--text-faint)]">常驻</span>
+          <button
+            type="button"
+            onClick={() => onJoin(room.code)}
+            className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+          >
+            <span className="min-w-0 flex-1 truncate">{room.name || room.code}</span>
+            {room.count > 0 && (
+              <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
+                <Users className="h-3 w-3" />
+                {room.count}
+              </span>
             )}
-          </span>
-          {room.count > 0 && (
-            <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
-              <Users className="h-3 w-3" />
-              {room.count}
-            </span>
-          )}
-        </button>
+          </button>
+          {knownCodes.has(room.code) ? (
+            <button
+              type="button"
+              aria-label={`删除房间 ${room.name || room.code}`}
+              title="从列表删除"
+              onClick={() => {
+                forgetGroup(room.code);
+                setListRevision((value) => value + 1);
+                onDelete(room.code);
+              }}
+              className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] opacity-0 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
       ))}
 
       {status === 'connecting' && rooms.length === 0 && (

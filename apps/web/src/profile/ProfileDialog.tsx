@@ -10,6 +10,7 @@ import {
   photoSrc,
   resolveProfileView,
   saveProfile,
+  uploadPhoto,
   settleFollowToggle,
   unfollowUser,
   type AuthUser,
@@ -58,6 +59,7 @@ export function ProfileDialog({
   // how you lose what you just typed.
   const [draft, setDraft] = useState<UserProfile | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const viewerId = viewer?.id ?? null;
 
@@ -133,6 +135,19 @@ export function ProfileDialog({
     }
   }, [draft]);
 
+  const changeAvatar = useCallback(async (file: File) => {
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      const photo = await uploadPhoto(file, { visibility: 'public', purpose: 'avatar' });
+      setDraft((current) => (current ? { ...current, avatarUrl: photo.url } : current));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '头像上传失败');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, []);
+
   return (
     <Overlay onDismiss={onClose}>
       <div
@@ -161,6 +176,9 @@ export function ProfileDialog({
               <ProfileIdentity
                 displayName={resolved.user.displayName}
                 username={resolved.user.username}
+                avatarUrl={draft.avatarUrl}
+                onAvatarChange={(file) => void changeAvatar(file)}
+                avatarBusy={uploadingAvatar}
               />
               <ProfileForm draft={draft} onChange={setDraft} />
             </div>
@@ -249,6 +267,7 @@ function ProfileBody({
       <ProfileIdentity
         displayName={resolved.user.displayName}
         username={resolved.user.username}
+        avatarUrl={resolved.profile.avatarUrl}
         badge={badge}
       />
 
@@ -305,10 +324,6 @@ function ProfileBody({
         </ProfileSection>
       )}
 
-      {/* No R2 bucket is bound yet, so there is no upload path and this list is
-          empty in practice. It renders from the same gated response as the rest
-          of the profile, so it will be correct rather than new the day uploads
-          land. */}
       {resolved.photos.length > 0 && (
         <ProfileSection title="相册">
           <div className="grid grid-cols-3 gap-2">

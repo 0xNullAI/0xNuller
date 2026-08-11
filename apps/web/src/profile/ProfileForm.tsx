@@ -1,6 +1,15 @@
-import { Globe, Link2, Lock, Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Eye, EyeOff, Globe, ImagePlus, Link2, Lock, Plus, Trash2, X } from 'lucide-react';
 import { Input, Textarea } from '@0xnullai/ui';
-import type { UserProfile } from '@0xnullai/auth';
+import {
+  deletePhoto,
+  listPhotos,
+  photoSrc,
+  updatePhoto,
+  uploadPhoto,
+  type UserPhoto,
+  type UserProfile,
+} from '@0xnullai/auth';
 import { ProfileSection } from './frame';
 
 /**
@@ -35,12 +44,111 @@ import { ProfileSection } from './frame';
  * it, so being visible has to be a decision that was made rather than one that
  * was inherited.
  *
- * There is no avatar upload and no avatar URL field. See the note on `Avatar`
- * in @0xnullai/ui: uploads mean a moderation pipeline, and a remote URL adds
- * handing every viewer's IP to a third-party host on top of that.
  */
 
 const MAX_LINKS = 5;
+
+function AlbumEditor({
+  avatarUrl,
+  onAvatarRemoved,
+}: {
+  avatarUrl: string | null;
+  onAvatarRemoved: () => void;
+}) {
+  const [photos, setPhotos] = useState<UserPhoto[]>([]);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const reload = () =>
+    void listPhotos()
+      .then(setPhotos)
+      .catch(() => setPhotos([]));
+  useEffect(reload, [avatarUrl]);
+
+  return (
+    <ProfileSection title="相册">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="sr-only"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (!file) return;
+          setBusy(true);
+          try {
+            await uploadPhoto(file, { visibility: 'private' });
+            reload();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-dashed border-[var(--surface-border-strong)] text-sm text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+      >
+        <ImagePlus className="h-4 w-4" />
+        {busy ? '添加中…' : '添加照片'}
+      </button>
+      {photos.length > 0 ? (
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {photos.map((photo) => (
+            <div
+              key={photo.id}
+              className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--surface-border)]"
+            >
+              <img
+                src={photoSrc(photo)}
+                alt={photo.caption || '相册照片'}
+                className="aspect-square w-full object-cover"
+              />
+              <div className="flex items-center justify-between gap-1 p-1">
+                <button
+                  type="button"
+                  aria-label={photo.visibility === 'public' ? '设为私密' : '设为公开'}
+                  onClick={async () => {
+                    const visibility = photo.visibility === 'public' ? 'private' : 'public';
+                    await updatePhoto(photo.id, visibility);
+                    setPhotos((current) =>
+                      current.map((item) =>
+                        item.id === photo.id ? { ...item, visibility } : item,
+                      ),
+                    );
+                  }}
+                  className="flex min-h-9 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+                >
+                  {photo.visibility === 'public' ? (
+                    <Eye className="h-3.5 w-3.5" />
+                  ) : (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  )}
+                  {photo.visibility === 'public' ? '公开' : '私密'}
+                </button>
+                <button
+                  type="button"
+                  aria-label="删除照片"
+                  onClick={async () => {
+                    if (!window.confirm('删除这张照片？')) return;
+                    await deletePhoto(photo.id);
+                    setPhotos((current) => current.filter((item) => item.id !== photo.id));
+                    if (avatarUrl === photo.url) onAvatarRemoved();
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </ProfileSection>
+  );
+}
 
 /** Blank rows are how a link is removed, so they are dropped on the way out rather than stored. */
 export function cleanProfile(draft: UserProfile): UserProfile {
@@ -74,6 +182,8 @@ export function ProfileForm({
           aria-label="简介"
         />
       </ProfileSection>
+
+      <AlbumEditor avatarUrl={draft.avatarUrl} onAvatarRemoved={() => patch({ avatarUrl: null })} />
 
       <ProfileSection title="所在地区">
         <Input

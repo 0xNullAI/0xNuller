@@ -1,9 +1,10 @@
-import { Avatar, Overlay } from '@0xnullai/ui';
+import { Overlay } from '@0xnullai/ui';
 import { requestProfileView } from '@0xnullai/auth';
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Image as ImageIcon, Mic, X, AtSign } from 'lucide-react';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
+import { ProfileAvatar } from './ProfileAvatar';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -198,20 +199,29 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               {!isSelf && (
                 <div className="w-7 shrink-0">
                   {!grouped && (
-                    <Avatar
+                    <ProfileAvatar
                       name={msg.senderName || msg.senderId.slice(0, 6)}
                       username={usernameByPeer.get(msg.senderId)}
                       size={28}
-                      onOpenProfile={requestProfileView}
                     />
                   )}
                 </div>
               )}
               <div className="max-w-[75%]">
                 {!isSelf && !grouped && (
-                  <p className="mb-0.5 truncate px-1 text-xs text-[var(--text-faint)]">
-                    {msg.senderName || msg.senderId.slice(0, 6)}
-                  </p>
+                  <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
+                    {usernameByPeer.get(msg.senderId) ? (
+                      <button
+                        type="button"
+                        className="truncate hover:text-[var(--accent)] hover:underline"
+                        onClick={() => requestProfileView(usernameByPeer.get(msg.senderId)!)}
+                      >
+                        {msg.senderName || msg.senderId.slice(0, 6)}
+                      </button>
+                    ) : (
+                      <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
+                    )}
+                  </div>
                 )}
 
                 {msg.media?.kind === 'image' ? (

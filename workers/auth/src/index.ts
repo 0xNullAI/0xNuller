@@ -86,6 +86,10 @@ const CONTENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const SYNC_NAMESPACES = new Set(['llm', 'device-safety', 'proxy', 'ui']);
 const MAX_SETTINGS_BYTES = 256 * 1024;
 const MAX_CONTENT_PAYLOAD_BYTES = 512 * 1024;
+const MAX_AGENT_SESSION_BYTES = 2 * 1024 * 1024;
+const AGENT_SESSION_PAGE_SIZE = 200;
+const CHAT_ROOM_CODE = /^[A-Za-z0-9_-]{1,128}$/;
+const MAX_CHAT_ROOM_NAME = 80;
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -188,6 +192,7 @@ async function reservePhotoSlot(
     objectKey: string;
     caption: string | null;
     visibility: 'public' | 'private';
+    purpose: 'album' | 'avatar';
     createdAt: number;
   },
 ): Promise<boolean> {
@@ -196,8 +201,8 @@ async function reservePhotoSlot(
        VALUES(0) UNION ALL SELECT slot + 1 FROM slots WHERE slot < 59
      )
      INSERT INTO user_photos
-       (id, user_id, object_key, caption, visibility, created_at, slot, status)
-     SELECT ?, ?, ?, ?, ?, ?, slots.slot, 'uploading'
+       (id, user_id, object_key, caption, visibility, purpose, created_at, slot, status)
+     SELECT ?, ?, ?, ?, ?, ?, ?, slots.slot, 'uploading'
        FROM slots
       WHERE NOT EXISTS (
               SELECT 1 FROM user_photos p WHERE p.user_id = ? AND p.slot = slots.slot
@@ -214,6 +219,7 @@ async function reservePhotoSlot(
       params.objectKey,
       params.caption,
       params.visibility,
+      params.purpose,
       params.createdAt,
       params.userId,
       params.userId,
@@ -634,7 +640,7 @@ async function countFollows(
 async function visiblePhotos(env: Env, userId: string, isSelf: boolean): Promise<unknown[]> {
   const rows = await env.DB.prepare(
     `SELECT id, caption, visibility, created_at FROM user_photos
-      WHERE user_id = ? AND status = 'ready'${isSelf ? '' : " AND visibility = 'public'"}
+      WHERE user_id = ? AND status = 'ready' AND purpose = 'album'${isSelf ? '' : " AND visibility = 'public'"}
       ORDER BY created_at DESC LIMIT ?`,
   )
     .bind(userId, MAX_ALBUM_PHOTOS)
@@ -979,6 +985,20 @@ export default {
           return err('本产品仅面向成年人', 400, cors);
         }
 
+        let avatarUrl: string | null = null;
+        if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
+          const match = body.avatarUrl.trim().match(/^\/api\/auth\/photos\/([^/]+)\/content$/);
+          if (!match) return err('头像地址无效', 400, cors);
+          const photoId = decodeURIComponent(match[1]!);
+          const owned = await env.DB.prepare(
+            "SELECT 1 FROM user_photos WHERE id = ? AND user_id = ? AND status = 'ready'",
+          )
+            .bind(photoId, user.id)
+            .first();
+          if (!owned) return err('头像不存在', 400, cors);
+          avatarUrl = `/api/auth/photos/${encodeURIComponent(photoId)}/content`;
+        }
+
         const now = Date.now();
         await env.DB.prepare(
           `INSERT INTO user_profiles (user_id, avatar_url, bio, birth_date, location, links, visibility, updated_at)
@@ -991,7 +1011,7 @@ export default {
         )
           .bind(
             user.id,
-            typeof body.avatarUrl === 'string' ? body.avatarUrl.slice(0, 500) : null,
+            avatarUrl,
             typeof body.bio === 'string' ? body.bio.slice(0, 500) : null,
             birthDate || null,
             // Region-level. The cap is the point, not a guess at a sane length.
@@ -1031,6 +1051,7 @@ export default {
         }
         const visibility =
           request.headers.get('x-photo-visibility') === 'public' ? 'public' : 'private';
+        const purpose = request.headers.get('x-photo-purpose') === 'avatar' ? 'avatar' : 'album';
         const createdAt = Date.now();
 
         const reserved = await reservePhotoSlot(env, {
@@ -1039,6 +1060,7 @@ export default {
           objectKey,
           caption: caption || null,
           visibility,
+          purpose,
           createdAt,
         });
         if (!reserved) return err('相册已达到上限或账号正在删除', 409, cors);
@@ -1143,6 +1165,26 @@ export default {
         });
       }
 
+      if (path.startsWith('/api/auth/photos/') && request.method === 'PATCH') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const id = decodeURIComponent(path.slice('/api/auth/photos/'.length));
+        const body = (await request.json()) as Record<string, unknown>;
+        if (body.visibility !== 'public' && body.visibility !== 'private') {
+          return err('可见范围无效', 400, cors);
+        }
+        const owned = await env.DB.prepare(
+          "SELECT 1 FROM user_photos WHERE id = ? AND user_id = ? AND status = 'ready'",
+        )
+          .bind(id, user.id)
+          .first();
+        if (!owned) return err('不存在', 404, cors);
+        await env.DB.prepare('UPDATE user_photos SET visibility = ? WHERE id = ? AND user_id = ?')
+          .bind(body.visibility, id, user.id)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
       if (path.startsWith('/api/auth/photos/') && request.method === 'DELETE') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
@@ -1163,6 +1205,92 @@ export default {
       }
 
       // ── Settings sync ──
+      if (path === '/api/auth/chat-rooms' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const rows = await env.DB.prepare(
+          `SELECT code, name, owner_key, joined_at, updated_at FROM user_chat_rooms
+           WHERE user_id = ? ORDER BY updated_at DESC`,
+        )
+          .bind(user.id)
+          .all<{
+            code: string;
+            name: string;
+            owner_key: string | null;
+            joined_at: number;
+            updated_at: number;
+          }>();
+        return json(
+          {
+            rooms: rows.results.map((room) => ({
+              code: room.code,
+              name: room.name,
+              joinedAt: room.joined_at,
+              updatedAt: room.updated_at,
+              ...(room.owner_key ? { ownerKey: room.owner_key } : {}),
+            })),
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/chat-rooms' && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const code = typeof body.code === 'string' ? body.code.trim() : '';
+        const name =
+          typeof body.name === 'string' ? body.name.trim().slice(0, MAX_CHAT_ROOM_NAME) : '';
+        const ownerKey = typeof body.ownerKey === 'string' && body.ownerKey ? body.ownerKey : null;
+        if (!CHAT_ROOM_CODE.test(code)) return err('房间号无效', 400, cors);
+        const now = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO user_chat_rooms (user_id, code, name, owner_key, joined_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, code) DO UPDATE SET
+             name = CASE WHEN excluded.name = '' THEN user_chat_rooms.name ELSE excluded.name END,
+             owner_key = COALESCE(excluded.owner_key, user_chat_rooms.owner_key),
+             updated_at = excluded.updated_at`,
+        )
+          .bind(user.id, code, name, ownerKey, now, now)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (
+        path.startsWith('/api/auth/chat-rooms/') &&
+        path.endsWith('/close') &&
+        request.method === 'POST'
+      ) {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const code = decodeURIComponent(
+          path.slice('/api/auth/chat-rooms/'.length, -'/close'.length),
+        );
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const ownerKey = typeof body.ownerKey === 'string' ? body.ownerKey : '';
+        const owner = await env.DB.prepare(
+          'SELECT 1 FROM user_chat_rooms WHERE user_id = ? AND code = ? AND owner_key = ?',
+        )
+          .bind(user.id, code, ownerKey)
+          .first();
+        if (!owner || !ownerKey) return err('无权关闭房间', 403, cors);
+        await env.DB.prepare('DELETE FROM user_chat_rooms WHERE code = ?').bind(code).run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (path.startsWith('/api/auth/chat-rooms/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const code = decodeURIComponent(path.slice('/api/auth/chat-rooms/'.length));
+        if (!CHAT_ROOM_CODE.test(code)) return err('房间号无效', 400, cors);
+        await env.DB.prepare('DELETE FROM user_chat_rooms WHERE user_id = ? AND code = ?')
+          .bind(user.id, code)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
       //
       // Namespaced JSON blobs. The server never interprets the payload; it
       // stores it and owns the version. That keeps a settings change from
@@ -1224,6 +1352,92 @@ export default {
           .bind(user.id, namespace, encodedPayload, nextVersion, now)
           .run();
         return json({ version: nextVersion, updatedAt: now }, 200, cors);
+      }
+
+      // Agent history is row-based rather than a settings namespace: a single
+      // account can exceed the settings blob limit, and independent sessions
+      // must merge instead of making one device overwrite every other chat.
+      if (path === '/api/auth/agent-sessions' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const since = Math.max(0, Math.trunc(Number(url.searchParams.get('since') ?? '0') || 0));
+        const rows = await env.DB.prepare(
+          `SELECT id, payload, client_updated_at, updated_at, deleted_at
+             FROM agent_sessions
+            WHERE user_id = ? AND updated_at > ?
+            ORDER BY updated_at ASC, id ASC
+            LIMIT ?`,
+        )
+          .bind(user.id, since, AGENT_SESSION_PAGE_SIZE)
+          .all();
+        const resultRows = rows.results ?? [];
+        return json(
+          {
+            sessions: resultRows.map((raw) => {
+              const row = raw as Record<string, unknown>;
+              return {
+                id: row.id,
+                session: row.deleted_at == null ? JSON.parse(String(row.payload)) : null,
+                clientUpdatedAt: row.client_updated_at,
+                updatedAt: row.updated_at,
+                deleted: row.deleted_at != null,
+              };
+            }),
+            hasMore: resultRows.length === AGENT_SESSION_PAGE_SIZE,
+            cursor: resultRows.length
+              ? Number((resultRows.at(-1) as Record<string, unknown>).updated_at)
+              : since,
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/agent-sessions' && request.method === 'PUT') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json()) as {
+          sessions?: {
+            id: string;
+            session?: unknown;
+            clientUpdatedAt?: number;
+            deleted?: boolean;
+          }[];
+        };
+        const sessions = Array.isArray(body.sessions) ? body.sessions.slice(0, 100) : [];
+        if (sessions.length === 0) return json({ ok: true, written: 0 }, 200, cors);
+        for (const item of sessions) {
+          if (!CONTENT_ID.test(String(item.id ?? ''))) return err('会话 id 无效', 400, cors);
+          const payload = JSON.stringify(item.session ?? null);
+          if (new TextEncoder().encode(payload).byteLength > MAX_AGENT_SESSION_BYTES) {
+            return err('会话记录过大', 413, cors);
+          }
+        }
+        const now = Date.now();
+        const statements = sessions.map((item) => {
+          const clientUpdatedAt = Math.max(0, Math.trunc(Number(item.clientUpdatedAt) || now));
+          return env.DB.prepare(
+            `INSERT INTO agent_sessions
+               (user_id, id, payload, client_updated_at, updated_at, deleted_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, id) DO UPDATE SET
+               payload = CASE WHEN excluded.client_updated_at >= agent_sessions.client_updated_at
+                              THEN excluded.payload ELSE agent_sessions.payload END,
+               client_updated_at = MAX(agent_sessions.client_updated_at, excluded.client_updated_at),
+               updated_at = excluded.updated_at,
+               deleted_at = CASE WHEN excluded.client_updated_at >= agent_sessions.client_updated_at
+                                 THEN excluded.deleted_at ELSE agent_sessions.deleted_at END`,
+          ).bind(
+            user.id,
+            String(item.id),
+            JSON.stringify(item.session ?? null),
+            clientUpdatedAt,
+            now,
+            item.deleted ? now : null,
+          );
+        });
+        await env.DB.batch(statements);
+        return json({ ok: true, written: sessions.length, updatedAt: now }, 200, cors);
       }
 
       // ── Content library (waveforms / scenes) ──

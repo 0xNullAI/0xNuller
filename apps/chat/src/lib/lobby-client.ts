@@ -14,6 +14,12 @@ export interface LobbySubscription {
   close(): void;
 }
 
+const LEGACY_DISCUSSION_CODE = '0xNullAI';
+
+function currentRooms(rooms: LobbyRoom[]): LobbyRoom[] {
+  return rooms.filter((room) => room.code !== LEGACY_DISCUSSION_CODE);
+}
+
 function lobbyWsUrl(): string {
   // See room-transport: same-origin resolves to the WebView's own scheme
   // inside the Android shell.
@@ -41,7 +47,7 @@ export function subscribeLobby(
     sock.onmessage = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data as string) as { t?: string; rooms?: LobbyRoom[] };
-        if (data.t === 'lobby' && Array.isArray(data.rooms)) onRooms(data.rooms);
+        if (data.t === 'lobby' && Array.isArray(data.rooms)) onRooms(currentRooms(data.rooms));
       } catch {
         /* ignore */
       }
@@ -77,5 +83,5 @@ export async function fetchLobbyRooms(): Promise<LobbyRoom[]> {
   const res = await fetch(`${apiBaseUrl()}/api/lobby/rooms`);
   if (!res.ok) return [];
   const data = (await res.json()) as { rooms?: LobbyRoom[] };
-  return data.rooms ?? [];
+  return currentRooms(data.rooms ?? []);
 }

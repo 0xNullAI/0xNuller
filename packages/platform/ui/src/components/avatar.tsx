@@ -1,18 +1,10 @@
 import { cn } from '../utils';
 
 /**
- * Avatar. Generated deterministically from the account name — zero storage,
- * zero uploads.
+ * Avatar. Uses an account-hosted image when supplied and otherwise generates a
+ * deterministic face from the account name.
  *
- * In an adult-oriented product, letting users upload avatars means dealing with
- * policy-violating images: a moderation pipeline, a reporting channel, appeals
- * for false positives. That is an entire product line, not a field. A remote
- * image URL is not a cheaper version of it either — it re-opens the same
- * moderation problem and adds one of its own, since every viewer's IP would be
- * handed to whatever host the URL points at. Generated avatars sidestep both;
- * the same account always gets the same pattern, which is distinctive enough.
- * The `avatar_url` column is reserved in auth's table, so enabling real uploads
- * later needs no schema change.
+ * Images are served by the account service rather than arbitrary remote hosts.
  *
  * It lives in the design system rather than in the shell because the shell, the
  * contacts dialog, the profile and Chat's member list all draw the same person
@@ -47,18 +39,21 @@ export interface AvatarProps {
    * same everywhere even after they rename themselves.
    */
   username?: string | null;
+  /** Account-hosted image. Falls back to the generated face if it cannot load. */
+  src?: string | null;
   size?: number;
   /** Supplying this together with a username turns the avatar into a button. */
   onOpenProfile?: (username: string) => void;
   className?: string;
 }
 
-export function Avatar({ name, username, size = 28, onOpenProfile, className }: AvatarProps) {
+export function Avatar({ name, username, src, size = 28, onOpenProfile, className }: AvatarProps) {
   const handle = username?.trim() ? username.trim() : null;
   const label = name?.trim() ? name.trim() : handle;
   const interactive = handle !== null && onOpenProfile !== undefined;
 
-  const shared = 'inline-flex shrink-0 items-center justify-center rounded-full';
+  const shared =
+    'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full';
   const style = { width: size, height: size, fontSize: size * 0.42 };
 
   if (!label) {
@@ -88,6 +83,14 @@ export function Avatar({ name, username, size = 28, onOpenProfile, className }: 
     ...style,
     background: `linear-gradient(135deg, hsl(${hue} 62% 48%), hsl(${(hue + 40) % 360} 62% 38%))`,
   };
+  const faceContent = (
+    <>
+      {face}
+      {src ? (
+        <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      ) : null}
+    </>
+  );
 
   if (!interactive) {
     return (
@@ -97,7 +100,7 @@ export function Avatar({ name, username, size = 28, onOpenProfile, className }: 
         aria-label={label}
         title={label}
       >
-        {face}
+        {faceContent}
       </span>
     );
   }
@@ -123,7 +126,7 @@ export function Avatar({ name, username, size = 28, onOpenProfile, className }: 
       aria-label={`查看 ${label} 的主页`}
       title={`查看 ${label} 的主页`}
     >
-      {face}
+      {faceContent}
     </button>
   );
 }

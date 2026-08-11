@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DmConversation } from '@0xnullai/auth';
 import { loadDmList, type DmListEntry } from '../lib/dm';
+import { ProfileAvatar } from './ProfileAvatar';
 
 /**
  * The private-message list in the shell sidebar.
@@ -55,7 +56,7 @@ export function ShellDmList({ currentRoom, onOpen }: ShellDmListProps) {
   if (entries.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-[var(--text-faint)]">
-        还没有私聊。在联系人里找到互相关注的人就能开始。
+        在联系人中找到互相关注的人开始私聊
       </p>
     );
   }
@@ -80,6 +81,12 @@ export function ShellDmList({ currentRoom, onOpen }: ShellDmListProps) {
                 : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
             }
           >
+            <ProfileAvatar
+              name={entry.peer.displayName || entry.peer.username}
+              username={entry.peer.username}
+              size={24}
+              interactive={false}
+            />
             <span className="min-w-0 flex-1 truncate">
               {entry.peer.displayName || entry.peer.username}
             </span>

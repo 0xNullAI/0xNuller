@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
+import { Camera } from 'lucide-react';
 import { Avatar } from '@0xnullai/ui';
+import { avatarSrc } from '@0xnullai/auth';
 
 /**
  * The pieces the public profile and the self-edit view are both built from.
@@ -15,15 +17,42 @@ import { Avatar } from '@0xnullai/ui';
 export function ProfileIdentity({
   displayName,
   username,
+  avatarUrl,
+  onAvatarChange,
+  avatarBusy = false,
   badge,
 }: {
   displayName: string;
   username: string;
+  avatarUrl?: string | null;
+  onAvatarChange?: (file: File) => void;
+  avatarBusy?: boolean;
   badge?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-4">
-      <Avatar name={displayName} username={username} size={64} />
+      {onAvatarChange ? (
+        <label className="group relative shrink-0 cursor-pointer rounded-full focus-within:ring-2 focus-within:ring-[var(--accent)]">
+          <Avatar name={displayName} username={username} src={avatarSrc(avatarUrl)} size={64} />
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <Camera className="h-5 w-5" />
+          </span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            disabled={avatarBusy}
+            aria-label="更换头像"
+            className="sr-only"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              const file = event.target.files?.[0];
+              if (file) onAvatarChange(file);
+              event.target.value = '';
+            }}
+          />
+        </label>
+      ) : (
+        <Avatar name={displayName} username={username} src={avatarSrc(avatarUrl)} size={64} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-xl font-semibold tracking-tight">{displayName}</div>
         <div className="truncate text-sm text-[var(--text-faint)]">@{username}</div>

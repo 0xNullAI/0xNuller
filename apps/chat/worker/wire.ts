@@ -153,8 +153,6 @@ export const LOBBY_NAME = 'v1';
 export const ROOM_GRACE_MS = 10 * 60 * 1000;
 
 /** The official public discussion room permanently resident in the lobby: always public, never cleaned up, listed at the top of the lobby even when empty. */
-export { RESERVED_ROOM_CODE } from '../shared/room-constants.js';
-export const RESERVED_ROOM_NAME = '0xNullAI 公开讨论区';
 
 /** Upper bound on uploaded media size (bytes). */
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;

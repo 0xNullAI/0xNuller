@@ -6,16 +6,9 @@
 // leaves when its owner turns the group private (listed=false).
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
-import { RESERVED_ROOM_CODE, RESERVED_ROOM_NAME } from './wire';
 
 /** A group with no keepalive for longer than this is treated as having nobody online (a fallback; normally RoomDO reports count=0 as it empties). */
 const LOBBY_STALE_MS = 45 * 1000;
-
-/** Permanent lobby rooms (pinned): always shown, immune to keepalive expiry / empty-room removal. */
-const PINNED_ROOMS: { code: string; name: string }[] = [
-  { code: RESERVED_ROOM_CODE, name: RESERVED_ROOM_NAME },
-];
-const PINNED_CODES = new Set(PINNED_ROOMS.map((r) => r.code));
 
 interface LobbyRoom {
   code: string;
@@ -47,21 +40,9 @@ export class LobbyDO extends DurableObject<Env> {
     } catch {
       /* column already exists */
     }
-    try {
-      this.sql.exec('ALTER TABLE rooms ADD COLUMN pinned INTEGER DEFAULT 0');
-    } catch {
-      /* column already exists */
-    }
-    // Seed the permanent rooms: create them if missing (count=0), and force pinned=1 (old rows may have pinned=0).
-    for (const r of PINNED_ROOMS) {
-      this.sql.exec(
-        'INSERT OR IGNORE INTO rooms (code, name, count, ts, pinned) VALUES (?, ?, 0, ?, 1)',
-        r.code,
-        r.name,
-        Date.now(),
-      );
-      this.sql.exec('UPDATE rooms SET pinned = 1, name = ? WHERE code = ?', r.name, r.code);
-    }
+    // Remove the pre-6.0 hard-coded discussion room. It has no owner and therefore cannot
+    // participate in the unified room lifecycle; keeping its old row would make it immortal.
+    this.sql.exec("DELETE FROM rooms WHERE code = '0xNullAI'");
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -84,21 +65,19 @@ export class LobbyDO extends DurableObject<Env> {
     // Report coming in from a RoomDO.
     if (url.pathname.endsWith('/update') && request.method === 'POST') {
       const { code, name, count, listed } = (await request.json()) as LobbyUpdate;
-      const pinned = PINNED_CODES.has(code) ? 1 : 0;
       // Every report carries `listed` today, but treating an absent one as true keeps the
       // older shape meaning what it used to: "this group is public, here is its count".
-      if (listed === false && !pinned) {
+      if (listed === false) {
         // The owner made the group private. This is the only thing that unlists a group.
         this.sql.exec('DELETE FROM rooms WHERE code = ?', code);
       } else {
         // count=0 is a normal steady state now: an empty public group is still a group.
         this.sql.exec(
-          'INSERT OR REPLACE INTO rooms (code, name, count, ts, pinned) VALUES (?, ?, ?, ?, ?)',
+          'INSERT OR REPLACE INTO rooms (code, name, count, ts) VALUES (?, ?, ?, ?)',
           code,
-          (pinned ? RESERVED_ROOM_NAME : name) ?? '',
+          name ?? '',
           Math.max(0, count),
           Date.now(),
-          pinned,
         );
       }
       this.broadcast();
@@ -148,7 +127,7 @@ export class LobbyDO extends DurableObject<Env> {
   private snapshot(): { t: 'lobby'; rooms: LobbyRoom[] } {
     // Every row, including the empty ones: a public group is listed because it is public.
     const rows = this.sql
-      .exec('SELECT code, name, count FROM rooms ORDER BY pinned DESC, count DESC, name ASC')
+      .exec('SELECT code, name, count FROM rooms ORDER BY count DESC, name ASC')
       .toArray();
     return {
       t: 'lobby',

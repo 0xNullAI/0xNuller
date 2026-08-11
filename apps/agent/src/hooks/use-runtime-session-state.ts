@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { subscribeAuthChanges } from '@0xnullai/auth';
 import type { AgentClient } from '@dg-agent/client';
 import {
   createEmptyDeviceState,
@@ -126,6 +127,24 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     return () => {
       active = false;
     };
+  }, [client, enabled]);
+
+  // The Agent module can stay mounted behind another tab while the account is
+  // changed in the shell. Re-read the account-partitioned store immediately so
+  // one account's conversation list is never left on screen for the next one.
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeAuthChanges(() => {
+      void client.listSessions().then((sessions) => {
+        setSavedSessions(sessions);
+        const firstId = sessions[0]?.id ?? null;
+        setActiveSessionId(firstId ?? `session-${Date.now().toString(36)}`);
+        if (!firstId) {
+          setSession(null);
+          setSessionTrace([]);
+        }
+      });
+    });
   }, [client, enabled]);
 
   useEffect(() => {

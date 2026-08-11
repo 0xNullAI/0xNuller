@@ -23,6 +23,7 @@ export interface AuthUser {
   displayName: string;
   /** Present for the signed-in account; omitted from public profile identities. */
   role?: 'user' | 'admin';
+  avatarUrl?: string | null;
 }
 
 // Auth endpoints live under `/api/auth` on the unified domain (paths are
@@ -32,6 +33,26 @@ export interface AuthUser {
 
 /** Android stores the token here; empty on the web, which relies on cookies. */
 const TOKEN_KEY = '0xnullai.auth-token';
+let currentUserId: string | null = null;
+const AUTH_CHANGED_EVENT = '0xnullai:auth-changed';
+
+function publishAuthUser(user: AuthUser | null): void {
+  currentUserId = user?.id ?? null;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: user }));
+  }
+}
+
+/** Synchronous identity hint for account-partitioned local stores. */
+export function currentAuthUserId(): string | null {
+  return currentUserId;
+}
+
+export function subscribeAuthChanges(listener: (user: AuthUser | null) => void): () => void {
+  const handler = (event: Event) => listener((event as CustomEvent<AuthUser | null>).detail);
+  window.addEventListener(AUTH_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
+}
 
 function storedToken(): string | null {
   try {
@@ -78,6 +99,7 @@ export async function register(input: {
     body: JSON.stringify(input),
   });
   setStoredToken(r.token);
+  publishAuthUser(r.user);
   return r.user;
 }
 
@@ -87,23 +109,33 @@ export async function login(username: string, password: string): Promise<AuthUse
     body: JSON.stringify({ username, password }),
   });
   setStoredToken(r.token);
+  publishAuthUser(r.user);
   return r.user;
 }
 
 export async function me(): Promise<AuthUser | null> {
   const r = await call<{ user: AuthUser | null }>('/api/auth/me');
-  return r.user;
+  if (!r.user) {
+    publishAuthUser(null);
+    return null;
+  }
+  const profile = await getProfile().catch(() => null);
+  const user = { ...r.user, avatarUrl: profile?.avatarUrl ?? null };
+  publishAuthUser(user);
+  return user;
 }
 
 export async function logout(): Promise<void> {
   await call('/api/auth/logout', { method: 'POST' });
   setStoredToken(null);
+  publishAuthUser(null);
 }
 
 /** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
 export async function deleteAccount(): Promise<void> {
   await call('/api/auth/account', { method: 'DELETE' });
   setStoredToken(null);
+  publishAuthUser(null);
 }
 
 /**
@@ -149,6 +181,7 @@ export async function getProfile(): Promise<UserProfile | null> {
 
 export async function saveProfile(profile: Partial<UserProfile>): Promise<void> {
   await call('/api/auth/profile', { method: 'PUT', body: JSON.stringify(profile) });
+  window.dispatchEvent(new Event('0xnullai:profile-changed'));
 }
 
 export async function listPhotos(): Promise<UserPhoto[]> {
@@ -158,7 +191,11 @@ export async function listPhotos(): Promise<UserPhoto[]> {
 
 export async function uploadPhoto(
   bytes: Blob,
-  options: { caption?: string; visibility?: 'private' | 'public' } = {},
+  options: {
+    caption?: string;
+    visibility?: 'private' | 'public';
+    purpose?: 'album' | 'avatar';
+  } = {},
 ): Promise<UserPhoto> {
   const r = await call<{ photo: UserPhoto }>('/api/auth/photos', {
     method: 'POST',
@@ -167,6 +204,7 @@ export async function uploadPhoto(
       // Header values are ByteStrings in browsers; percent-encode Unicode captions.
       'x-photo-caption': encodeURIComponent(options.caption ?? ''),
       'x-photo-visibility': options.visibility ?? 'private',
+      'x-photo-purpose': options.purpose ?? 'album',
     },
     body: bytes,
   });
@@ -175,6 +213,25 @@ export async function uploadPhoto(
 
 export async function deletePhoto(id: string): Promise<void> {
   await call(`/api/auth/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function updatePhoto(id: string, visibility: 'private' | 'public'): Promise<void> {
+  await call(`/api/auth/photos/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ visibility }),
+  });
+  window.dispatchEvent(new Event('0xnullai:profile-changed'));
+}
+
+export function subscribeProfileChanges(listener: () => void): () => void {
+  window.addEventListener('0xnullai:profile-changed', listener);
+  return () => window.removeEventListener('0xnullai:profile-changed', listener);
+}
+
+/** Resolve only account-hosted avatar paths; arbitrary remote image URLs are not loaded. */
+export function avatarSrc(value: string | null | undefined): string | null {
+  if (!value?.startsWith('/api/auth/photos/') || !value.endsWith('/content')) return null;
+  return `${apiBaseUrl()}${value}`;
 }
 
 /**

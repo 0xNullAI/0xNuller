@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import { BOARD, useSnake, type SnakeEvent } from './use-snake';
 import { useGameDevice } from '../../use-game-device';
 
@@ -47,7 +48,7 @@ export default function SnakeGame() {
   const bodyKeys = new Set(state.snake.slice(1).map((p) => `${p.x},${p.y}`));
 
   return (
-    <div className="flex flex-col items-center gap-4 p-4">
+    <div className="flex min-h-full flex-col items-center gap-3 p-3 sm:gap-4 sm:p-4">
       <div className="flex w-full max-w-[420px] items-center justify-between">
         <span className="text-sm text-[var(--text-soft)]">得分 {state.score}</span>
         <span className="text-xs text-[var(--text-faint)]">
@@ -95,30 +96,50 @@ export default function SnakeGame() {
         </button>
       )}
 
-      {/* Touch controls: the keyboard is not an option on a phone, and this
-          module ships inside the Android app. */}
-      <div className="grid grid-cols-3 gap-2 sm:hidden">
+      {/* Keep the D-pad available at every viewport width. Android can be
+          wider than the `sm` breakpoint in landscape, while still having no
+          hardware keyboard. */}
+      <div className="grid select-none grid-cols-3 gap-2" aria-label="方向控制">
         <span />
-        <TouchButton label="上" onPress={() => turn('up')} />
+        <DirectionButton label="上" onPress={() => turn('up')}>
+          <ArrowUp aria-hidden="true" className="h-6 w-6" />
+        </DirectionButton>
         <span />
-        <TouchButton label="左" onPress={() => turn('left')} />
-        <TouchButton label="下" onPress={() => turn('down')} />
-        <TouchButton label="右" onPress={() => turn('right')} />
+        <DirectionButton label="左" onPress={() => turn('left')}>
+          <ArrowLeft aria-hidden="true" className="h-6 w-6" />
+        </DirectionButton>
+        <DirectionButton label="下" onPress={() => turn('down')}>
+          <ArrowDown aria-hidden="true" className="h-6 w-6" />
+        </DirectionButton>
+        <DirectionButton label="右" onPress={() => turn('right')}>
+          <ArrowRight aria-hidden="true" className="h-6 w-6" />
+        </DirectionButton>
       </div>
 
-      <p className="text-center text-xs text-[var(--text-faint)]">方向键或 WASD</p>
+      <p className="text-center text-xs text-[var(--text-faint)]">
+        点按方向键即可开始；电脑也可使用键盘方向键或 WASD
+      </p>
     </div>
   );
 }
 
-function TouchButton({ label, onPress }: { label: string; onPress: () => void }) {
+function DirectionButton({
+  label,
+  onPress,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
       onClick={onPress}
-      className="h-12 w-12 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-sm text-[var(--text-soft)]"
+      aria-label={`向${label}`}
+      className="flex h-13 w-13 touch-manipulation items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text)] shadow-sm transition-colors active:bg-[var(--accent-soft)] active:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
     >
-      {label}
+      {children}
     </button>
   );
 }

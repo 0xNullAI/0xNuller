@@ -67,4 +67,9 @@ describe('头像', () => {
     const { container } = render(<Avatar name={null} />);
     expect(container.textContent).toBe('?');
   });
+
+  it('有账户图片时显示图片，仍保留生成头像的无图回退', () => {
+    render(<Avatar name="小明" username="xiaoming" src="/avatar.png" />);
+    expect(document.querySelector('img')?.getAttribute('src')).toBe('/avatar.png');
+  });
 });
