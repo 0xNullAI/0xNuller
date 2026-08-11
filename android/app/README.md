@@ -45,7 +45,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub tag, release title, APK `versionName`, and internal code all advance
-together: `android-v6.0.3`, `0xNuller 6.0.3`, `6.0.3`, and `6000003`.
+together: `android-v6.0.4`, `0xNuller 6.0.4`, `6.0.4`, and `6000004`.
 
 ## Prerequisites
 
