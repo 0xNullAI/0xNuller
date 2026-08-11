@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/storage-browser",
   "version": "0.1.0",
+  "description": "Agent 浏览器设置、会话、追踪和账户同步存储",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/providers-pi-http",
   "version": "0.1.0",
+  "description": "基于 pi-ai 的多模型 Agent provider",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

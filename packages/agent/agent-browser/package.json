@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/agent-browser",
   "version": "0.1.0",
+  "description": "浏览器与 Android 共用的 Agent 服务组合层",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

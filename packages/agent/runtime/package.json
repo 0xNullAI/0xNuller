@@ -1,6 +1,7 @@
 {
   "name": "@dg-agent/runtime",
   "version": "0.1.0",
+  "description": "无 UI 的 Agent 会话运行时、安全工具调度与上下文策略",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
