@@ -3,6 +3,7 @@
 
 import type { AiConfig } from './ai-config';
 import { FREE_PROXY_URL } from './ai-config';
+import { authRequestHeaders } from '@0xnullai/auth';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -84,6 +85,7 @@ export async function callLlm(
   const tools = opts?.tools;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey.trim()) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+  if (cfg.baseUrl.trim() === FREE_PROXY_URL) Object.assign(headers, authRequestHeaders());
 
   const body = {
     model: cfg.model,
@@ -97,6 +99,7 @@ export async function callLlm(
   try {
     res = await fetch(resolveEndpoint(cfg.baseUrl), {
       method: 'POST',
+      credentials: cfg.baseUrl.trim() === FREE_PROXY_URL ? 'include' : 'omit',
       headers,
       body: JSON.stringify(body),
       signal: opts?.signal,

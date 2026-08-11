@@ -3,7 +3,11 @@
 为统一 Web 的免费文本模型入口提供受限中继。上游凭据只存在 Cloudflare secret 中，不会进入
 浏览器或仓库。
 
-该 Worker 在 6.0.0 兼容发布阶段只保留 `workers.dev` 入口，不接管旧 `llm.0xnullai.com`。
+体验模型仅向已登录账户开放。Auth service binding 原子扣减每日文字请求额度；浏览器通过
+同站 Cookie，Android 通过 Bearer 会话归属到同一个账户。自带 API Key 的模型不经过此额度。
+
+部署前先应用 Auth D1 migration，再部署 Auth，最后部署本 Worker。服务绑定使未升级 Auth 时
+代理安全失败为不可用，不会退回匿名消耗上游密钥。
 
 ## 本地验证
 

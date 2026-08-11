@@ -17,7 +17,7 @@
 
 DG-MCP exposes a Coyote device as a set of [Model Context Protocol](https://modelcontextprotocol.io) tools so any MCP-compatible LLM client (Claude Desktop, Continue, etc.) can drive it over Bluetooth — `scan`, `connect`, `shock_start`, `shock_stop`, `shock_adjust`, `shock_change_wave`, `shock_burst`, `design_wave`, `emergency_stop`, and more, all surfaced as ordinary tool calls. (The pre-1.9.0 names `start` / `stop` / `adjust_strength` / `change_wave` / `burst` still work as aliases — the tool list just no longer advertises them.)
 
-Runs in Node.js and talks to the client over stdio. Built on [`@dg-kit/*`](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit), so it shares its protocol implementation with Agent and Chat.
+Runs in Node.js, talks to the client over stdio. Built on [`@dg-kit/*`](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit), so it shares its protocol implementation with Agent and Chat.
 
 ## Status
 
@@ -171,7 +171,7 @@ sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 
 ```bash
 git clone https://github.com/0xNullAI/0xNuller.git
-cd DG-MCP
+cd 0xNuller
 npm install
 npm run build
 npm run dev          # tsx hot reload
@@ -179,11 +179,11 @@ npm run dev          # tsx hot reload
 
 ## Sister projects
 
-| Project                                                               | Purpose                                              |
-| --------------------------------------------------------------------- | ---------------------------------------------------- |
-| [DG-Kit](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit) | Shared TypeScript runtime (consumed by this project) |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent)                      | Browser AI controller                                |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat)                        | Multi-user P2P room                                  |
+| Project                                                               | Purpose                   |
+| --------------------------------------------------------------------- | ------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit) | Shared TypeScript runtime |
+| [Agent](https://github.com/0xNullAI/0xNuller/tree/main/apps/agent)    | Browser AI controller     |
+| [Chat](https://github.com/0xNullAI/0xNuller/tree/main/apps/chat)      | Rooms and direct messages |
 
 ## License
 

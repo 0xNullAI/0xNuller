@@ -157,7 +157,7 @@ export function Overlay({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className={cn(
-        'fixed inset-0 flex items-center justify-center p-4 focus:outline-none',
+        'ui-overlay-enter fixed inset-0 flex items-center justify-center p-4 focus:outline-none',
         className,
       )}
       style={{

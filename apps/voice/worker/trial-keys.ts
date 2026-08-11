@@ -1,18 +1,12 @@
-import type { Env, TrialKeyConfig } from './env.js';
-
-interface TrialKeyEntry {
-  enabled?: boolean;
-  expiresAt?: number;
-  dailyCapMinutes?: number;
-}
+import type { Env } from './env.js';
 
 /**
- * Pulls the activation key out of the offered WebSocket subprotocols. The
+ * Pulls the short-lived account ticket out of the offered WebSocket subprotocols. The
  * browser connects with `['realtime', 'openai-insecure-api-key.<key>']`
  * (the same shape as a direct xAI connection), which arrives here as the
  * `Sec-WebSocket-Protocol` request header.
  */
-export function parseActivationKey(header: string | null): string | null {
+export function parseVoiceTicket(header: string | null): string | null {
   if (!header) return null;
   const prefix = 'openai-insecure-api-key.';
   for (const raw of header.split(',')) {
@@ -23,35 +17,6 @@ export function parseActivationKey(header: string | null): string | null {
     }
   }
   return null;
-}
-
-/**
- * Validates an activation key against the `TRIAL_KEYS` registry and returns
- * its resolved caps, or `null` if the key is unknown / disabled / expired.
- */
-export function resolveTrialKey(env: Env, key: string, now: number): TrialKeyConfig | null {
-  if (!env.XAI_API_KEY) return null; // no upstream credential configured → nothing to lend
-  if (!env.TRIAL_KEYS) return null;
-
-  let registry: Record<string, TrialKeyEntry>;
-  try {
-    registry = JSON.parse(env.TRIAL_KEYS) as Record<string, TrialKeyEntry>;
-  } catch {
-    return null;
-  }
-
-  const entry = registry[key];
-  if (!entry || entry.enabled === false) return null;
-  if (typeof entry.expiresAt === 'number' && now > entry.expiresAt) return null;
-
-  const maxSessionMinutes = positiveInt(env.TRIAL_MAX_SESSION_MINUTES, 20);
-  const defaultDailyCap = positiveInt(env.TRIAL_DEFAULT_DAILY_CAP_MINUTES, 60);
-  const dailyCapMinutes =
-    typeof entry.dailyCapMinutes === 'number' && entry.dailyCapMinutes > 0
-      ? entry.dailyCapMinutes
-      : defaultDailyCap;
-
-  return { maxSessionMinutes, dailyCapMinutes };
 }
 
 export function isAllowedOrigin(origin: string | null, env: Env): boolean {
@@ -71,7 +36,7 @@ export function isAllowedOrigin(origin: string | null, env: Env): boolean {
     //
     // This doesn't weaken the protection: the Origin header only binds
     // browsers, and a native program can forge it whenever it likes. The real
-    // gate is the activation key plus TrialSession's usage caps; the allow-list
+    // gate is the signed account ticket plus TrialSession's usage caps; the allow-list
     // only blocks the one case of another web page embedding a WebSocket
     // directly and riding on the quota.
     if (host === 'tauri.localhost') return true;
@@ -83,9 +48,4 @@ export function isAllowedOrigin(origin: string | null, env: Env): boolean {
     .map((o) => o.trim())
     .filter(Boolean)
     .includes(origin);
-}
-
-function positiveInt(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }

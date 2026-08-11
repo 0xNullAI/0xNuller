@@ -68,6 +68,7 @@ expectNames(
     'user_blocks',
     'dm_threads',
     'account_deletions',
+    'ai_usage_daily',
   ],
   'auth tables',
 );
@@ -84,6 +85,7 @@ expectNames(
     'idx_account_deletions_requested',
     'idx_content_refs_sync',
     'idx_content_entities_owner_kind',
+    'idx_ai_usage_day',
   ],
   'auth indexes',
 );

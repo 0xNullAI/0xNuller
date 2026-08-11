@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
 import { Button, Input } from '@0xnullai/ui';
+import { getAdminStats, type AdminStats } from '@0xnullai/auth';
 import type { MarketAdminItem } from '../../../market/src/shared/schema';
 import {
   deleteItem,
@@ -23,6 +24,7 @@ export function AdminContent() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
 
   const requestPage = useCallback(
     (offset = 0) => fetchAdminItems({ status, q: query || undefined, offset, limit: 20 }),
@@ -67,6 +69,12 @@ export function AdminContent() {
     };
   }, [requestPage]);
 
+  useEffect(() => {
+    void getAdminStats()
+      .then(setStats)
+      .catch(() => undefined);
+  }, []);
+
   async function updateVisibility(item: MarketAdminItem) {
     setBusyId(item.id);
     setError(null);
@@ -96,6 +104,26 @@ export function AdminContent() {
 
   return (
     <section aria-labelledby="admin-content-title">
+      {stats ? (
+        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {[
+            ['账户', stats.users],
+            ['已验证', stats.verifiedUsers],
+            ['活跃会话', stats.activeSessions],
+            ['24h 注册尝试', stats.registrationAttempts24h],
+            ['今日文本体验', stats.textUnitsToday],
+            ['今日语音体验', stats.voiceUnitsToday],
+          ].map(([label, value]) => (
+            <div
+              key={String(label)}
+              className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
+            >
+              <div className="text-xs text-[var(--text-faint)]">{label}</div>
+              <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="admin-content-title" className="text-lg font-semibold">

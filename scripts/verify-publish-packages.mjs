@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const packages = [
   ['@dg-kit/core', 'packages/kit/core'],
@@ -14,6 +14,26 @@ const packages = [
 
 function fail(message) {
   throw new Error(message);
+}
+
+for (const family of readdirSync('packages', { withFileTypes: true }).filter((entry) =>
+  entry.isDirectory(),
+)) {
+  for (const entry of readdirSync(`packages/${family.name}`, { withFileTypes: true }).filter(
+    (item) => item.isDirectory(),
+  )) {
+    const directory = `packages/${family.name}/${entry.name}`;
+    const manifestPath = `${directory}/package.json`;
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if (!existsSync(`${directory}/README.md`)) fail(`${manifest.name}: README.md is missing`);
+    if (typeof manifest.description !== 'string' || !manifest.description.trim()) {
+      fail(`${manifest.name}: package description is missing`);
+    }
+    if (!manifest.main && !manifest.exports?.['.']) {
+      fail(`${manifest.name}: package has no public root entry`);
+    }
+  }
 }
 
 for (const [name, directory] of packages) {
