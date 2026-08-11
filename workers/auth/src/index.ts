@@ -28,8 +28,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
  */
 
 export interface Env extends Cloudflare.Env {
-  /** Enabled after the account has Workers Paid and the sending domain is verified. */
-  EMAIL?: SendEmail;
+  EMAIL: SendEmail;
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
    * rotated, or every rate-limit record becomes worthless.
