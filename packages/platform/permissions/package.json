@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/permissions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "浏览器侧限时权限授予，实现 @dg-kit/safety 的 PermissionService",
@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@dg-kit/safety": "1.13.0"
+    "@dg-kit/safety": "1.14.0"
   }
 }

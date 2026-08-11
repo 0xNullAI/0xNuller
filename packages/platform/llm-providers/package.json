@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/llm-providers",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "LLM 供应商注册表：端点、模型、字段定义与免费体验代理，四个模块共用",
@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "zod": "^4.4.3",
-    "@0xnullai/settings": "0.1.0"
+    "@0xnullai/settings": "0.1.1"
   }
 }

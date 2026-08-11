@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/waveforms",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "跨模块共享的波形库。Agent 与 Chat 曾各存一份互相看不见的库，这里是合并后的唯一一份。",
@@ -11,7 +11,7 @@
     "react": "^19.2.5"
   },
   "dependencies": {
-    "@0xnullai/sync": "0.1.0",
+    "@0xnullai/sync": "0.1.1",
     "idb-keyval": "^6.2.2",
     "zod": "^4.4.3"
   }

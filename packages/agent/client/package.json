@@ -1,6 +1,6 @@
 {
   "name": "@dg-agent/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent 应用与嵌入式运行时之间的稳定客户端接口",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@dg-agent/core": "0.1.0",
-    "@dg-agent/runtime": "0.1.0"
+    "@dg-agent/runtime": "0.1.1"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

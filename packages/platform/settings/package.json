@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/settings",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "全应用共享的设备安全设置。切换应用不改变安全约束。",
@@ -8,9 +8,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@0xnullai/permissions": "0.1.0"
+    "@0xnullai/permissions": "0.1.1"
   },
   "devDependencies": {
-    "@dg-agent/storage-browser": "0.1.0"
+    "@dg-agent/storage-browser": "0.1.1"
   }
 }

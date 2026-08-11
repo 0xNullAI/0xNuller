@@ -1,26 +1,26 @@
 {
   "name": "@dg-agent/agent-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "浏览器与 Android 共用的 Agent 服务组合层",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@0xnullai/auth": "0.1.0",
-    "@0xnullai/permissions": "0.1.0",
+    "@0xnullai/auth": "0.1.1",
+    "@0xnullai/permissions": "0.1.1",
     "@dg-agent/audio-browser": "0.1.0",
-    "@dg-agent/bridge": "0.1.0",
-    "@dg-agent/client": "0.1.0",
+    "@dg-agent/bridge": "0.1.1",
+    "@dg-agent/client": "0.1.1",
     "@dg-agent/core": "0.1.0",
-    "@0xnullai/llm-providers": "0.1.0",
-    "@dg-agent/providers-openai-http": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.1",
+    "@dg-agent/providers-openai-http": "0.1.1",
     "@dg-agent/providers-pi-http": "0.1.0",
-    "@dg-agent/runtime": "0.1.0",
-    "@dg-agent/storage-browser": "0.1.0",
-    "@dg-agent/waveforms": "0.1.0",
-    "@dg-kit/protocol": "^1.13.0",
-    "@dg-kit/transport-webbluetooth": "^1.13.0"
+    "@dg-agent/runtime": "0.1.1",
+    "@dg-agent/storage-browser": "0.1.1",
+    "@dg-agent/waveforms": "0.1.1",
+    "@dg-kit/protocol": "^1.14.0",
+    "@dg-kit/transport-webbluetooth": "^1.14.0"
   },
   "devDependencies": {
     "zod": "^4.4.3"

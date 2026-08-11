@@ -1,6 +1,6 @@
 {
   "name": "@dg-agent/providers-openai-http",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenAI Responses 与 Chat Completions 兼容 Agent provider",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@dg-agent/core": "0.1.0",
-    "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.1",
     "zod": "^4.4.3"
   },
   "scripts": {

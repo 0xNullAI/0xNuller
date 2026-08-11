@@ -1,6 +1,6 @@
 {
   "name": "0xnullai-market",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "0xNuller 社区市场：上传与交换 Agent 波形和场景，部署在 Cloudflare Workers + D1",
@@ -17,8 +17,8 @@
     "types:check": "wrangler types worker-configuration.d.ts --env-file ../../config/wrangler-types.env --include-runtime false --strict-vars false --check"
   },
   "dependencies": {
-    "@0xnullai/settings": "0.1.0",
-    "@0xnullai/ui": "0.1.0",
+    "@0xnullai/settings": "0.1.1",
+    "@0xnullai/ui": "0.1.1",
     "fflate": "^0.8.3",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",

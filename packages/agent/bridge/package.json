@@ -1,13 +1,13 @@
 {
   "name": "@dg-agent/bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent 外部消息桥、队列和桥接权限适配器",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@dg-agent/client": "0.1.0",
+    "@dg-agent/client": "0.1.1",
     "@dg-agent/core": "0.1.0"
   },
   "scripts": {

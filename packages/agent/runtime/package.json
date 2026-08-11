@@ -1,6 +1,6 @@
 {
   "name": "@dg-agent/runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "无 UI 的 Agent 会话运行时、安全工具调度与上下文策略",
   "private": true,
   "type": "module",
@@ -8,11 +8,11 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@dg-agent/core": "0.1.0",
-    "@dg-agent/waveforms": "0.1.0",
-    "@dg-kit/core": "^1.13.0",
-    "@dg-kit/protocol": "^1.13.0",
-    "@dg-kit/safety": "1.13.0",
-    "@dg-kit/tools": "^1.13.0"
+    "@dg-agent/waveforms": "0.1.1",
+    "@dg-kit/core": "^1.14.0",
+    "@dg-kit/protocol": "^1.14.0",
+    "@dg-kit/safety": "1.14.0",
+    "@dg-kit/tools": "^1.14.0"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -36,10 +36,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@dg-kit/core": "^1.12.0",
-    "@dg-kit/protocol": "^1.12.0",
-    "@dg-kit/tools": "^1.12.0",
-    "@dg-kit/waveforms": "^1.12.0",
+    "@dg-kit/core": "^1.14.0",
+    "@dg-kit/protocol": "^1.14.0",
+    "@dg-kit/tools": "^1.14.0",
+    "@dg-kit/waveforms": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@stoprocent/noble": "^2.3.0",
     "fflate": "^0.8.2",

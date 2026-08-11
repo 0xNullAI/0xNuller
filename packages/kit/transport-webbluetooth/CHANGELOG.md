@@ -1,5 +1,52 @@
 # @dg-kit/transport-webbluetooth
 
+## 1.14.0
+
+### Minor Changes
+
+- 9720997: Expose `deviceId` on both transport clients, and stop the Web Bluetooth client
+  from silently evicting a connected device.
+
+  Both clients are scoped to one device, so holding several means holding several
+  clients. Two things were missing for that to be usable:
+
+  `deviceId` gives each client a stable identity for the device it holds —
+  `BluetoothDevice.id` on web, the BLE address on Tauri, both stable across a
+  drop-and-reconnect. A caller holding several devices can now key them the same
+  way on both platforms instead of branching on the transport. It is the same
+  value `TauriBlecDeviceClient.address` already returned, under the shared name.
+
+  `WebBluetoothDeviceClient.connectDevice()` now throws `设备已连接` when it
+  already holds a _different, still connected_ device, matching the guard
+  `TauriBlecDeviceClient` has always had. It previously dropped the previous
+  device's GATT link instead — and because `protocol.onConnected()` has by then
+  rebound the adapter (and with it `emergencyStop()`) to the new device, there
+  was no longer any way to reach the evicted one to zero it. On a V3 Coyote,
+  which retains its state across a BLE drop, that left a device outputting at its
+  last commanded strength, on a body, unreachable even by the global stop button.
+
+  Re-attaching the device already held, or replacing one whose link has already
+  dropped, still works: that is the reconnect path, and it is the only case where
+  the previous device cannot be left running.
+
+### Patch Changes
+
+- fff5af8: Add `RequestedDevice` to `@dg-kit/protocol`, and make the two transports'
+  `RequestedDgLabDevice` / `RequestedDgLabDeviceTauri` aliases of it.
+
+  The `{ kind, device, server }` a cross-kind picker returns was declared four
+  times — once per transport plus once in each app's device layer. Whether the
+  two transports really are interchangeable then rested on four copies staying
+  in step by hand, which is exactly the contract a host relies on when it swaps
+  Web Bluetooth for plugin-blec on Android.
+
+  Both existing names stay exported and keep their shape, so this is additive.
+
+- Updated dependencies [c28b049]
+- Updated dependencies [fff5af8]
+  - @dg-kit/core@1.14.0
+  - @dg-kit/protocol@1.14.0
+
 ## 1.13.0
 
 ### Minor Changes
