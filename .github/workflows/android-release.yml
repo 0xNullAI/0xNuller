@@ -46,6 +46,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate Android project
+        run: npm run android:init
+
       - name: Build signed arm64 APK
         env:
           DG_AGENT_KEYSTORE: ${{ runner.temp }}/dg-agent-release.jks
