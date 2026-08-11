@@ -1,0 +1,94 @@
+name: Deploy Cloudflare
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Resolve the verified main commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+
+      - name: Require Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing production secret CLOUDFLARE_API_TOKEN' >&2; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing production variable CLOUDFLARE_ACCOUNT_ID' >&2; exit 1; }
+
+      - run: npm ci
+      - run: npm run verify:release
+      - run: npm run check:routes
+      - run: npm run web:build:release
+
+      # Deploy dependency providers before their consumers, and the static shell last.
+      # D1 migrations remain an explicit, separately reviewed production operation.
+      - name: Deploy Chat
+        run: npx wrangler deploy --config apps/chat/wrangler.jsonc
+      - name: Deploy Auth
+        run: npx wrangler deploy --config workers/auth/wrangler.jsonc
+      - name: Deploy Market
+        run: npx wrangler deploy --config apps/market/wrangler.jsonc
+      - name: Deploy Voice
+        run: npx wrangler deploy --config apps/voice/wrangler.jsonc
+      - name: Deploy Web
+        run: npx wrangler deploy --config apps/web/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deployment summary
+        run: |
+          {
+            echo '## Cloudflare production deployed'
+            echo ''
+            echo "Source: \`${{ steps.source.outputs.sha }}\`"
+            echo 'Order: Chat → Auth → Market → Voice → Web'
+            echo 'Site: https://0xnullai.com'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

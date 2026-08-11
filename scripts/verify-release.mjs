@@ -111,17 +111,24 @@ function verifyProductMetadata() {
       fail(`release workflow does not enforce commit identity: missing ${required}`);
     }
   }
-  for (const [path, workflow] of [
-    ['.github/workflows/auto-tag.yml', autoTagWorkflow],
-    ['.github/workflows/release.yml', releaseWorkflow],
-  ]) {
-    const triggerBlock = workflow.slice(
-      workflow.indexOf('\non:'),
-      workflow.indexOf('\npermissions:'),
-    );
-    if (!triggerBlock.includes('workflow_dispatch:') || /^\s+push:/m.test(triggerBlock)) {
-      fail(`${path} must remain manual until the external cutover is complete`);
-    }
+  const autoTagTriggers = autoTagWorkflow.slice(
+    autoTagWorkflow.indexOf('\non:'),
+    autoTagWorkflow.indexOf('\npermissions:'),
+  );
+  if (
+    !autoTagTriggers.includes('workflow_dispatch:') ||
+    !/^\s+push:/m.test(autoTagTriggers) ||
+    !autoTagTriggers.includes('branches: [main]')
+  ) {
+    fail('auto-tag must support manual runs and main pushes after the external cutover');
+  }
+
+  const releaseTriggers = releaseWorkflow.slice(
+    releaseWorkflow.indexOf('\non:'),
+    releaseWorkflow.indexOf('\nconcurrency:'),
+  );
+  if (!releaseTriggers.includes('workflow_dispatch:') || /^\s+push:/m.test(releaseTriggers)) {
+    fail('npm release must remain manual until NPM_TOKEN is configured in this repository');
   }
 
   return root.version;
