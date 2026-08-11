@@ -20,8 +20,8 @@ describe('REALTIME_PROVIDER_DEFINITIONS', () => {
   it('trial rides the same openai-realtime (xAI flat) dialect, proxied through the Worker', () => {
     const trial = getRealtimeProviderDefinition('trial');
     expect(trial?.dialect).toBe('openai-realtime');
-    // Only the activation key — the model is pinned server-side, so no model field.
-    expect(trial?.fields.map((f) => f.key)).toEqual(['apiKey']);
+    // Account authentication is automatic; the model is pinned server-side.
+    expect(trial?.fields).toEqual([]);
     // Cost is borne by the provider, so it carries no per-minute price tag.
     expect(trial?.pricePerMinuteUsd).toBeUndefined();
   });

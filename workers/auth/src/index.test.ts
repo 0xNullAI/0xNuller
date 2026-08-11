@@ -5,6 +5,7 @@ import worker, {
   marketItemAccessForCredentials,
   registrationConflict,
   runAuthMaintenance,
+  voiceTicketQuota,
   type Env,
 } from './index';
 import { createTestDb } from './test-helpers';
@@ -264,6 +265,30 @@ describe('账户 AI 体验额度', () => {
       text: { used: 100, limit: 100 },
       voice: { used: 0, limit: 60 },
     });
+  });
+
+  it('签发短期语音票据，并按账户分钟额度扣减', async () => {
+    const { body } = await registerUser();
+    const response = await worker.fetch(
+      req('/api/auth/voice/ticket', { method: 'POST', token: body.token }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const issued = (await response.json()) as { ticket: string; expiresAt: number };
+    expect(issued.ticket).toContain('.');
+    expect(issued.expiresAt).toBeGreaterThan(Date.now());
+
+    expect(await voiceTicketQuota(env, issued.ticket, 0)).toMatchObject({
+      subject: body.user!.id,
+      allowed: true,
+      remaining: 60,
+    });
+    expect(await voiceTicketQuota(env, issued.ticket, 2)).toMatchObject({
+      subject: body.user!.id,
+      allowed: true,
+      remaining: 58,
+    });
+    expect(await voiceTicketQuota(env, 'forged.ticket', 1)).toBe('unauthorized');
   });
 });
 

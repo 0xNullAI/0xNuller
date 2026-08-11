@@ -1,5 +1,11 @@
 import { hashPassword, verifyPassword } from './password';
-import { DM_DIGEST_MAX_ROOMS, DM_TICKET_TTL_MS, dmRoomCode, signDmTicket } from './dm-ticket';
+import {
+  DM_DIGEST_MAX_ROOMS,
+  DM_TICKET_TTL_MS,
+  dmRoomCode,
+  signDmTicket,
+  verifyDmTicket,
+} from './dm-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 
 /**
@@ -64,6 +70,7 @@ const MIN_PASSWORD_LEN = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
+const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -417,6 +424,10 @@ export interface AiQuotaResult {
   limit: number;
 }
 
+export interface VoiceTicketQuotaResult extends AiQuotaResult {
+  subject: string;
+}
+
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
   const headers = new Headers();
   if (credentials.authorization) headers.set('Authorization', credentials.authorization);
@@ -438,6 +449,17 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     units = 1,
   ): Promise<AiQuotaResult | 'unauthorized'> {
     return consumeAiQuotaForCredentials(this.env, credentials, kind, units);
+  }
+
+  async authorizeVoiceTicket(ticket: string): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+    return voiceTicketQuota(this.env, ticket, 0);
+  }
+
+  async consumeVoiceTicket(
+    ticket: string,
+    minutes: number,
+  ): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+    return voiceTicketQuota(this.env, ticket, minutes);
   }
 
   async claimMarketItems(
@@ -464,6 +486,39 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
   }
 }
 
+export async function voiceTicketQuota(
+  env: Env,
+  ticket: string,
+  minutes: number,
+): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+  const claims = await verifyDmTicket(env.DM_TICKET_SECRET, ticket, Date.now());
+  if (!claims || claims.aud !== 'voice') return 'unauthorized';
+  const user = await env.DB.prepare(
+    `SELECT id FROM users
+      WHERE id = ? AND banned_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = users.id)`,
+  )
+    .bind(claims.sub)
+    .first<{ id: string }>();
+  if (!user) return 'unauthorized';
+
+  const day = new Date().toISOString().slice(0, 10);
+  const existing = await env.DB.prepare(
+    `SELECT units FROM ai_usage_daily
+      WHERE user_id = ? AND usage_day = ? AND kind = 'voice'`,
+  )
+    .bind(user.id, day)
+    .first<{ units: number }>();
+  if (minutes <= 0) {
+    const used = existing?.units ?? 0;
+    return { subject: user.id, allowed: used < 60, remaining: Math.max(0, 60 - used), limit: 60 };
+  }
+
+  const safeMinutes = Math.max(1, Math.min(Math.trunc(minutes), 60));
+  const result = await consumeAiQuotaForUserId(env, user.id, 'voice', safeMinutes);
+  return { subject: user.id, ...result };
+}
+
 export async function consumeAiQuotaForCredentials(
   env: Env,
   credentials: MarketClaimCredentials,
@@ -472,6 +527,15 @@ export async function consumeAiQuotaForCredentials(
 ): Promise<AiQuotaResult | 'unauthorized'> {
   const user = await currentUser(requestFromClaimCredentials(credentials), env);
   if (!user) return 'unauthorized';
+  return consumeAiQuotaForUserId(env, user.id, kind, units);
+}
+
+async function consumeAiQuotaForUserId(
+  env: Env,
+  userId: string,
+  kind: 'text' | 'voice',
+  units: number,
+): Promise<AiQuotaResult> {
   const safeUnits = Math.max(1, Math.min(Math.trunc(units), kind === 'voice' ? 60 : 10));
   const limit = kind === 'voice' ? 60 : 100;
   const day = new Date().toISOString().slice(0, 10);
@@ -484,7 +548,7 @@ export async function consumeAiQuotaForCredentials(
        WHERE units + excluded.units <= ?
        RETURNING units`,
   )
-    .bind(user.id, day, kind, safeUnits, now, limit)
+    .bind(userId, day, kind, safeUnits, now, limit)
     .first<{ units: number }>();
   const used = updated?.units ?? limit;
   return {
@@ -1225,6 +1289,20 @@ export default {
           200,
           cors,
         );
+      }
+
+      if (path === '/api/auth/voice/ticket' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!env.DM_TICKET_SECRET) return err('语音体验尚未启用', 503, cors);
+        const now = Date.now();
+        const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
+          aud: 'voice',
+          sub: user.id,
+          iat: now,
+          exp: now + VOICE_TICKET_TTL_MS,
+        });
+        return json({ ticket, expiresAt: now + VOICE_TICKET_TTL_MS }, 200, cors);
       }
 
       if (path === '/api/auth/admin/stats' && request.method === 'GET') {

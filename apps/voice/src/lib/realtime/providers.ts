@@ -17,8 +17,8 @@
 /**
  * `trial` (体验版) is xAI Grok reached through DG-Voice's own Cloudflare
  * Worker (`/api/realtime`) instead of `api.x.ai` directly: the real xAI key
- * lives only as a Worker secret, and the user pastes an "activation key" that
- * the Worker validates + meters (session-length / daily caps) before opening
+ * lives only as a Worker secret. A logged-in account receives a short-lived
+ * ticket that the Worker validates + meters before opening
  * the upstream connection with the real key. On the wire past the Worker it
  * is plain `openai-realtime` (xAI flat shape), so the frontend adapter is a
  * two-line branch — see `openai-realtime-session.ts`.
@@ -107,13 +107,13 @@ export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
   {
     id: 'trial',
     name: '体验版（免自带 Key）',
-    hint: '额度由 0xNullAI 提供：填入拿到的激活密钥即可试用 Grok，单次通话有时长上限、每日有总量上限。',
+    hint: '登录账户后即可使用，每日 60 分钟。',
     dialect: 'openai-realtime',
     // Pinned by the Worker upstream; the trial user can't change it.
     defaultModel: 'grok-voice-think-fast-1.0',
     voiceSource: 'static',
     staticVoices: TRIAL_STATIC_VOICES,
-    fields: [{ key: 'apiKey', label: '激活密钥', type: 'password', placeholder: 'dgv-trial-...' }],
+    fields: [],
   },
   {
     id: 'xai',
