@@ -4,11 +4,11 @@
   "description": "LLM tool definitions and execution-plan resolver for DG-Lab Coyote control",
   "license": "MIT",
   "author": "0xNullAI",
-  "homepage": "https://github.com/0xNullAI/DG-Kit/tree/main/packages/tools",
+  "homepage": "https://github.com/0xNullAI/0xNuller/tree/main/packages/kit/tools",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xNullAI/DG-Kit.git",
-    "directory": "packages/tools"
+    "url": "git+https://github.com/0xNullAI/0xNuller.git",
+    "directory": "packages/kit/tools"
   },
   "type": "module",
   "main": "./dist/index.js",

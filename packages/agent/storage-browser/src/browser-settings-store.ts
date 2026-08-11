@@ -12,6 +12,7 @@ import type {
   ProviderConfigMap,
   StorageLike,
 } from './browser-settings-types.js';
+import type { ModelContextStrategy } from '@dg-agent/core';
 import {
   API_KEYS_LOCAL,
   API_KEYS_SESSION,
@@ -28,6 +29,13 @@ export interface BrowserAppSettingsStoreOptions {
   sessionStorageRef?: StorageLike;
   env?: BrowserAppEnvLike;
 }
+
+export interface ModelBehaviorSettings {
+  modelContextStrategy: ModelContextStrategy;
+  temperature: number;
+}
+
+const MODEL_BEHAVIOR_CHANGED_EVENT = '0xnullai:agent-model-behavior-changed';
 
 export class BrowserAppSettingsStore {
   private readonly localStorageRef: StorageLike | undefined;
@@ -77,9 +85,10 @@ export class BrowserAppSettingsStore {
     const activeProvider = normalizeProviderSettings({
       ...createProviderSettings(activeProviderId),
       ...(providerConfigs[activeProviderId] ?? {}),
-      ...(llm?.apiKey ? { apiKey: llm.apiKey } : {}),
+      ...(llm ? { apiKey: llm.apiKey } : {}),
       ...(llm?.model ? { model: llm.model } : {}),
       ...(llm?.baseUrl ? { baseUrl: llm.baseUrl } : {}),
+      ...(llm ? { endpoint: llm.endpoint, useStrict: llm.useStrict } : {}),
     });
     providerConfigs[activeProviderId] = activeProvider;
     const effectivePermissionState = this.resolvePermissionState(persisted);
@@ -128,6 +137,50 @@ export class BrowserAppSettingsStore {
         ...(persisted?.voice ?? {}),
         apiKey: voiceApiKey,
       }),
+      rememberApiKey: llm?.rememberApiKey ?? persisted?.rememberApiKey ?? false,
+    };
+  }
+
+  loadModelBehavior(): ModelBehaviorSettings {
+    const settings = this.load();
+    return {
+      modelContextStrategy: settings.modelContextStrategy,
+      temperature: settings.temperature,
+    };
+  }
+
+  /**
+   * Persist only Agent model behavior. This deliberately bypasses `save()`:
+   * the unified AI panel must not rewrite safety/provider/API-key state from a
+   * stale full-settings snapshot merely because a temperature slider moved.
+   * These preferences are device-local and are not part of account sync.
+   */
+  saveModelBehavior(next: ModelBehaviorSettings): ModelBehaviorSettings {
+    const persisted = this.readPersistedSettings() ?? { version: 1 as const };
+    const normalized: ModelBehaviorSettings = {
+      modelContextStrategy: next.modelContextStrategy,
+      temperature: Math.min(1, Math.max(0, next.temperature)),
+    };
+    this.localStorageRef?.setItem(SETTINGS_KEY, JSON.stringify({ ...persisted, ...normalized }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(MODEL_BEHAVIOR_CHANGED_EVENT, { detail: normalized }));
+    }
+    return normalized;
+  }
+
+  subscribeModelBehavior(listener: (settings: ModelBehaviorSettings) => void): () => void {
+    if (typeof window === 'undefined') return () => undefined;
+    const onChanged = (event: Event) => {
+      listener((event as CustomEvent<ModelBehaviorSettings>).detail ?? this.loadModelBehavior());
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SETTINGS_KEY) listener(this.loadModelBehavior());
+    };
+    window.addEventListener(MODEL_BEHAVIOR_CHANGED_EVENT, onChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(MODEL_BEHAVIOR_CHANGED_EVENT, onChanged);
+      window.removeEventListener('storage', onStorage);
     };
   }
 
@@ -235,6 +288,16 @@ export class BrowserAppSettingsStore {
     };
 
     this.localStorageRef?.setItem(SETTINGS_KEY, JSON.stringify(sanitized));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(MODEL_BEHAVIOR_CHANGED_EVENT, {
+          detail: {
+            modelContextStrategy: sanitized.modelContextStrategy,
+            temperature: sanitized.temperature,
+          } satisfies ModelBehaviorSettings,
+        }),
+      );
+    }
     this.persistApiKeys(providerConfigs, settings.rememberApiKey);
     this.persistVoiceApiKey(settings.voice.apiKey, settings.rememberApiKey);
     return this.load();
@@ -273,8 +336,16 @@ export class BrowserAppSettingsStore {
   ): PersistedBrowserAppSettings | null {
     if (!persisted) return null;
 
+    // 6.0 accidentally shipped the terse/samey pair as persisted defaults.
+    // Migrate only that exact pair; any other combination reflects a user choice.
+    const legacyConversationDefaults =
+      persisted.modelContextStrategy === 'last-user-turn' && persisted.temperature === 0.3;
+
     return {
       ...persisted,
+      ...(legacyConversationDefaults
+        ? { modelContextStrategy: 'last-five-user-turns' as const, temperature: 0.7 }
+        : {}),
       deviceMode: persisted.deviceMode === 'fake' ? 'web-bluetooth' : persisted.deviceMode,
       llmMode: persisted.llmMode === 'fake' ? 'provider-http' : persisted.llmMode,
       speechRecognitionEnabled: persisted.speechRecognitionEnabled ?? persisted.voiceInputEnabled,

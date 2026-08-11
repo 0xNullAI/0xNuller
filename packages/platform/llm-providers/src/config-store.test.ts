@@ -7,7 +7,10 @@ import {
   subscribeLlmConfig,
 } from './config-store';
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 describe('共享 LLM 配置', () => {
   it('没有存储时给出免费 provider 的默认值——「无需配置就能用」是产品承诺', () => {
@@ -18,6 +21,7 @@ describe('共享 LLM 配置', () => {
 
   it('round-trip 保存与读取', () => {
     const c = {
+      ...defaultLlmConfig(),
       providerId: 'deepseek',
       apiKey: 'sk-x',
       model: 'deepseek-chat',
@@ -52,18 +56,41 @@ describe('共享 LLM 配置', () => {
 
   it('非免费 provider 缺 key 时视为未配置', () => {
     expect(
-      isLlmConfigured({ providerId: 'deepseek', apiKey: '  ', model: 'm', baseUrl: 'b' }),
+      isLlmConfigured({
+        ...defaultLlmConfig(),
+        providerId: 'deepseek',
+        apiKey: '  ',
+        model: 'm',
+        baseUrl: 'b',
+      }),
     ).toBe(false);
     expect(
-      isLlmConfigured({ providerId: 'deepseek', apiKey: 'sk', model: 'm', baseUrl: 'b' }),
+      isLlmConfigured({
+        ...defaultLlmConfig(),
+        providerId: 'deepseek',
+        apiKey: 'sk',
+        model: 'm',
+        baseUrl: 'b',
+      }),
     ).toBe(true);
   });
 
   it('订阅者在保存时收到通知——这是「一处改、各模块同步」的机制', () => {
     const seen = vi.fn();
     const off = subscribeLlmConfig(seen);
-    saveLlmConfig({ providerId: 'free', apiKey: '', model: 'm', baseUrl: 'b' });
+    saveLlmConfig({ ...defaultLlmConfig(), model: 'm', baseUrl: 'b' });
     expect(seen).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'free' }));
     off();
+  });
+
+  it('未勾选记住时仅把 API Key 留在当前会话', () => {
+    saveLlmConfig({
+      ...defaultLlmConfig(),
+      providerId: 'openai',
+      apiKey: 'sk-session',
+      rememberApiKey: false,
+    });
+    expect(JSON.parse(localStorage.getItem('0xnullai.llm-config') ?? '{}').apiKey).toBe('');
+    expect(loadLlmConfig().apiKey).toBe('sk-session');
   });
 });

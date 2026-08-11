@@ -62,6 +62,28 @@ function autoScrollFocusedInput(): void {
   document.addEventListener('focusin', handler);
 }
 
+/** Drive the shell from visualViewport, the only viewport Android shrinks for IME. */
+export function syncVisualViewport(viewport = window.visualViewport): () => void {
+  if (!viewport) return () => undefined;
+  const apply = () => {
+    const height = Math.round(viewport.height);
+    const keyboardInset = Math.max(
+      0,
+      Math.round(window.innerHeight - viewport.height - viewport.offsetTop),
+    );
+    document.documentElement.style.setProperty('--android-viewport-height', `${height}px`);
+    document.documentElement.style.setProperty('--android-keyboard-inset', `${keyboardInset}px`);
+    document.documentElement.toggleAttribute('data-keyboard-open', keyboardInset > 80);
+  };
+  apply();
+  viewport.addEventListener('resize', apply);
+  viewport.addEventListener('scroll', apply);
+  return () => {
+    viewport.removeEventListener('resize', apply);
+    viewport.removeEventListener('scroll', apply);
+  };
+}
+
 /**
  * Intercept Android's hardware/gesture back button so it doesn't exit
  * the app on the first press. Tauri Android maps the back button to
@@ -153,8 +175,16 @@ export async function withBlePermissionHelp<T>(connectCall: () => Promise<T>): P
   }
 }
 
+/** Decorate connect in place so prototype methods remain available to Agent. */
+export function withConnectPermissionHelp<T extends { connect(): Promise<void> }>(inner: T): T {
+  const rawConnect = inner.connect.bind(inner);
+  inner.connect = () => withBlePermissionHelp(rawConnect);
+  return inner;
+}
+
 export function installAndroidShellBehaviours(): void {
   syncStatusBarColor();
   autoScrollFocusedInput();
+  syncVisualViewport();
   interceptBackButton();
 }

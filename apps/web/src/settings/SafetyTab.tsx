@@ -17,9 +17,9 @@ import { ModuleSettingsSlot } from '@0xnullai/ui';
  * so a user would raise it in one place, switch to another, and find it back at the
  * old value, with nothing at all indicating that it had reverted.
  *
- * The layout deliberately avoids collapsible panels: these numbers decide how strong
- * the current is, so the user should see all of them at a glance instead of having
- * to expand something to find out what they set.
+ * Groups are independently collapsible on narrow screens. The primary Coyote limits
+ * stay open by default; less frequently changed burst/auxiliary limits no longer turn
+ * the safety page into one long wall of sliders.
  */
 
 interface NumberFieldSpec {
@@ -116,16 +116,26 @@ function Group({
   fields,
   settings,
   onChange,
+  defaultOpen,
 }: {
   title: string;
   fields: NumberFieldSpec[];
   settings: DeviceSafetySettings;
   onChange: (patch: Partial<DeviceSafetySettings>) => void;
+  defaultOpen?: boolean;
 }) {
   return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="mt-2 divide-y divide-[var(--surface-border)]">
+    <details
+      open={defaultOpen}
+      className="group rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold">
+        {title}
+        <span aria-hidden className="text-[var(--text-faint)] group-open:rotate-90">
+          ›
+        </span>
+      </summary>
+      <div className="mt-3 divide-y divide-[var(--surface-border)]">
         {fields.map((f) => (
           <NumberField
             key={f.key}
@@ -135,7 +145,7 @@ function Group({
           />
         ))}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -150,7 +160,7 @@ export function SafetyTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Group title="郊狼" fields={COYOTE_FIELDS} settings={settings} onChange={patch} />
+      <Group title="郊狼" fields={COYOTE_FIELDS} settings={settings} onChange={patch} defaultOpen />
 
       <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch} />
 

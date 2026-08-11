@@ -120,6 +120,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
    * whole room path below must keep working with this null.
    */
   const [signedIn, setSignedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [accountRequired, setAccountRequired] = useState(false);
   /** The conversation currently open, if any. Its name is only for the header. */
   const [dmPeer, setDmPeer] = useState<{ id: string; name: string; room: string } | null>(null);
   const [dmError, setDmError] = useState<string | null>(null);
@@ -143,12 +145,19 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           setUsername(u.username);
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setAuthChecked(true));
   }, []);
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const [agentOpen, setAgentOpen] = useState(false);
   const inShell = useInShell();
   const openShellSettings = useOpenShellSettings();
+  const requireAccount = useCallback(() => {
+    if (signedIn) return true;
+    setAccountRequired(true);
+    openShellSettings('account');
+    return false;
+  }, [openShellSettings, signedIn]);
   const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
   // longer has a toggle of its own.
@@ -175,6 +184,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // silently entering a special global room.
   const initialRoomOpened = useRef(false);
   useEffect(() => {
+    if (!authChecked) return;
     if (initialRoomOpened.current) return;
     if (peerRoom.connected || peerRoom.status === 'connecting') return;
     // A conversation that cannot connect keeps retrying on its own (the transport re-mints a
@@ -183,11 +193,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     if (peerRoom.isDm) return;
     const fromUrl = new URLSearchParams(window.location.search).get('room');
     initialRoomOpened.current = true;
-    if (fromUrl) peerRoom.join(fromUrl);
+    if (fromUrl && signedIn) peerRoom.join(fromUrl);
+    else if (fromUrl) queueMicrotask(() => requireAccount());
     // Only attempt once while still not connected; putting peerRoom in the deps would
     // reconnect on every state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peerRoom.connected, peerRoom.status, peerRoom.isDm]);
+  }, [authChecked, signedIn, peerRoom.connected, peerRoom.status, peerRoom.isDm, requireAccount]);
 
   /**
    * Open a conversation with an account.
@@ -798,11 +809,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         <ShellRoomList
           currentRoom={peerRoom.isDm ? null : peerRoom.roomId}
           onJoin={(code) => {
+            if (!requireAccount()) return;
             showChat();
             setDmPeer(null);
             peerRoom.join(code);
           }}
           onCreate={() => {
+            if (!requireAccount()) return;
             showChat();
             setCreateRoomOpen(true);
           }}
@@ -811,6 +824,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           }}
         />
       </SidebarSection>
+
+      {accountRequired && !signedIn ? (
+        <div
+          role="alert"
+          className="mx-3 mb-2 rounded-[var(--radius-sm)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]"
+        >
+          登录后才能创建、加入房间或发起私聊；公开房间仍可浏览。
+        </div>
+      ) : null}
 
       {createRoomOpen && (
         <CreateRoomDialog
@@ -947,9 +969,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             <h2 className="text-lg font-semibold">公开房间</h2>
             <div className="mt-3">
               <ShellRoomList
+                mode="directory"
                 currentRoom={null}
-                onJoin={(code) => peerRoom.join(code)}
-                onCreate={() => setCreateRoomOpen(true)}
+                onJoin={(code) => {
+                  if (requireAccount()) peerRoom.join(code);
+                }}
+                onCreate={() => {
+                  if (requireAccount()) setCreateRoomOpen(true);
+                }}
                 onDelete={() => undefined}
               />
             </div>
@@ -988,6 +1015,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 onSend={(text, mentions) => peerRoom.sendMessage(text, undefined, mentions)}
                 onSendMedia={sendMedia}
                 members={[
+                  { peerId: peerRoom.selfId, name: displayName, username },
                   ...peerRoom.peers.map((p) => ({
                     peerId: p,
                     name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),

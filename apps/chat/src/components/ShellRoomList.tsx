@@ -31,9 +31,28 @@ export interface ShellRoomListProps {
   onJoin: (code: string) => void;
   onCreate: () => void;
   onDelete: (code: string) => void;
+  /** `directory` shows every public room. The sidebar otherwise shows memberships only,
+   * falling back to the public directory when this account has not joined anything yet. */
+  mode?: 'memberships' | 'directory';
 }
 
-export function ShellRoomList({ currentRoom, onJoin, onCreate, onDelete }: ShellRoomListProps) {
+export function buildVisibleRooms(
+  knownGroups: { code: string; name: string }[],
+  publicRooms: LobbyRoom[],
+  mode: 'memberships' | 'directory',
+): LobbyRoom[] {
+  if (mode === 'directory' || knownGroups.length === 0) return publicRooms;
+  const live = new Map(publicRooms.map((room) => [room.code, room]));
+  return knownGroups.map((group) => live.get(group.code) ?? { ...group, count: 0 });
+}
+
+export function ShellRoomList({
+  currentRoom,
+  onJoin,
+  onCreate,
+  onDelete,
+  mode = 'memberships',
+}: ShellRoomListProps) {
   const [rooms, setRooms] = useState<LobbyRoom[]>([]);
   const [status, setStatus] = useState<LobbyStatus>('connecting');
   const [listRevision, setListRevision] = useState(0);
@@ -58,11 +77,8 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate, onDelete }: Shell
   // the sidebar is where you go back to it.
   const knownGroups = loadKnownGroups();
   const knownCodes = new Set(knownGroups.map((group) => group.code));
-  const merged = new Map<string, LobbyRoom>();
-  for (const g of knownGroups) merged.set(g.code, { code: g.code, name: g.name, count: 0 });
-  for (const r of rooms) merged.set(r.code, r);
-
-  const ordered: LobbyRoom[] = [...merged.values()];
+  const ordered = buildVisibleRooms(knownGroups, rooms, mode);
+  const showingDirectory = mode === 'directory' || knownGroups.length === 0;
   void listRevision;
 
   return (
@@ -75,6 +91,14 @@ export function ShellRoomList({ currentRoom, onJoin, onCreate, onDelete }: Shell
         <Plus className="h-4 w-4 shrink-0" />
         新建 / 加入房间
       </button>
+
+      {showingDirectory && rooms.length > 0 ? (
+        <p className="px-2 pb-1 pt-2 text-[11px] text-[var(--text-faint)]">
+          {knownGroups.length === 0 && mode === 'memberships'
+            ? '尚未加入房间，以下是公开房间'
+            : '公开房间'}
+        </p>
+      ) : null}
 
       {ordered.map((room) => (
         <div

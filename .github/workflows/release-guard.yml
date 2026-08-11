@@ -1,8 +1,8 @@
 name: Release Guard
 
-# Runs on every PR that targets `main`. Product-code changes must increase the
-# platform version. Repository automation and documentation may land without a
-# product bump, but still have to pass the shared metadata verifier.
+# Runs on every PR that targets `main`. main is reserved for releases, so a
+# PR landing there MUST increase a releasable version. The shared verifier also
+# rejects product-version drift between npm, Cargo, Tauri and Android's versionCode.
 
 on:
   pull_request:
@@ -29,13 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main:refs/remotes/origin/main
-          if git diff --quiet origin/main...HEAD -- \
-            package.json package-lock.json android apps packages workers; then
-            node scripts/verify-release.mjs | tee release-guard.txt
-            echo "No product-code changes; version increase is not required." | tee -a release-guard.txt
-          else
-            node scripts/verify-release.mjs --base=origin/main | tee release-guard.txt
-          fi
+          node scripts/verify-release.mjs --base=origin/main | tee release-guard.txt
           {
             echo "## Release guard passed"
             echo ""
