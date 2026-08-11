@@ -34,11 +34,13 @@ export interface RoomTransport {
   close: () => void;
 }
 
-function roomUrl(code: string, peerId: string): string {
+function roomUrl(code: string, peerId: string, ticket: string): string {
   // Through apiWsUrl, not location.host: the Tauri WebView's origin is a
   // local scheme, so a same-origin ws:// dials tauri.localhost and the room
   // never connects. Android has no hot update, so that ships and stays.
-  return apiWsUrl(`/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}`);
+  return apiWsUrl(
+    `/ws/room/${encodeURIComponent(code)}?id=${encodeURIComponent(peerId)}&ticket=${encodeURIComponent(ticket)}`,
+  );
 }
 
 /**
@@ -80,9 +82,13 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
         opts.onStatus('error');
         return;
       }
-      url = dmUrl(ticket, opts.peerId);
+      url = opts.code.startsWith('dm_')
+        ? dmUrl(ticket, opts.peerId)
+        : roomUrl(opts.code, opts.peerId, ticket);
     } else {
-      url = roomUrl(opts.code, opts.peerId);
+      scheduleReconnect();
+      opts.onStatus('error');
+      return;
     }
 
     const sock = new WebSocket(url);

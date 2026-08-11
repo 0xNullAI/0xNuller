@@ -32,6 +32,25 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+const CROSS_ORIGIN_CLIENTS = new Set([
+  'https://0xnullai.com',
+  'https://www.0xnullai.com',
+  'http://tauri.localhost',
+]);
+
+function clientCorsHeaders(request: Request): Headers {
+  const headers = new Headers();
+  const origin = request.headers.get('Origin');
+  if (origin && CROSS_ORIGIN_CLIENTS.has(origin)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    headers.set('Access-Control-Max-Age', '86400');
+    headers.set('Vary', 'Origin');
+  }
+  return headers;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -49,18 +68,29 @@ export default {
       });
     }
 
+    if (pathname === '/api/lobby/rooms' && request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: clientCorsHeaders(request) });
+    }
+
     // Room WebSocket: /ws/room/:code -> the matching RoomDO instance.
     const roomMatch = pathname.match(/^\/ws\/room\/([^/]+)$/);
     if (roomMatch) {
+      const chat = await authorizeDmToken({
+        secret: env.DM_TICKET_SECRET,
+        token: url.searchParams.get('ticket'),
+        audience: 'chat',
+        now: Date.now(),
+      });
+      if (!chat.ok) return new Response(chat.message, { status: chat.status });
       const code = decodeURIComponent(roomMatch[1]!);
-      // A DM's Durable Object must not be reachable here. This path takes its code straight
-      // from the URL and asks for no credential at all, so without this check the ticket on
-      // /ws/dm would be decoration: anyone able to name a conversation could join it.
+      // A DM's Durable Object must not be reachable here. The general Chat ticket proves a
+      // verified account, but it deliberately proves no entitlement to a specific DM.
       if (!roomPathAllowsCode(code)) return new Response('not found', { status: 404 });
       const id = env.ROOM.idFromName(code);
       const stub = env.ROOM.get(id);
       // Pass the room code through to the DO (idFromName is not reversible, and the DO needs it for the R2 prefix / lobby reporting).
       const fwd = new URL(request.url);
+      fwd.searchParams.delete('ticket');
       fwd.searchParams.set('code', code);
       return stub.fetch(new Request(fwd, request));
     }
@@ -136,8 +166,20 @@ export default {
 
     // Lobby WebSocket + REST snapshot -> the singleton LobbyDO.
     if (pathname === '/ws/lobby' || pathname === '/api/lobby/rooms') {
+      const chat = await authorizeDmToken({
+        secret: env.DM_TICKET_SECRET,
+        token: url.searchParams.get('ticket'),
+        audience: 'chat',
+        now: Date.now(),
+      });
+      if (!chat.ok) return json(chat.status, { error: chat.message });
+      url.searchParams.delete('ticket');
       const id = env.LOBBY.idFromName(LOBBY_NAME);
-      return env.LOBBY.get(id).fetch(request);
+      const response = await env.LOBBY.get(id).fetch(new Request(url, request));
+      if (pathname !== '/api/lobby/rooms') return response;
+      const headers = new Headers(response.headers);
+      clientCorsHeaders(request).forEach((value, key) => headers.set(key, value));
+      return new Response(response.body, { status: response.status, headers });
     }
 
     // Media upload: PUT /api/upload/:code

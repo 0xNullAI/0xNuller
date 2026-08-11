@@ -1,4 +1,7 @@
-name = "0xnullai-llm-proxy"
+# Keep the production script name while the public compatibility hostname is
+# still llm.0xnullai.com. Renaming the script would drop its existing secret and
+# make the account-bound trial fail until an operator copied credentials.
+name = "dg-llm-proxy"
 main = "src/index.js"
 compatibility_date = "2026-08-09"
 compatibility_flags = ["nodejs_compat"]
@@ -12,8 +15,7 @@ entrypoint = "AuthOwnershipService"
 [secrets]
 required = ["PROXY_API_KEY"]
 
-# Compatibility release: `llm.0xnullai.com` remains on the existing dg-llm-proxy.
-# Add the custom domain only after its separate cutover is explicitly approved.
+# `llm.0xnullai.com` is the stable public endpoint used by Web and Android.
 
 [vars]
 # Display/default upstream model. The worker forces this server-side; override
@@ -25,7 +27,7 @@ PROXY_MODEL = "openrouter/free"
 # src/guard.js are opt-in so that a half-finished rollout cannot take the free
 # provider offline. Requests with no Origin (the Android WebView, any
 # non-browser client) are always allowed through this particular check.
-ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com"
+ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost"
 
 # Global per-IP rate limit. Without this binding the worker falls back to a
 # per-isolate in-memory counter, which is barely a limit at all: Cloudflare runs

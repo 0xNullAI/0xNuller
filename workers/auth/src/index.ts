@@ -70,6 +70,7 @@ const MIN_PASSWORD_LEN = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
+const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 
 /**
@@ -701,6 +702,20 @@ async function createEmailAction(
   return token;
 }
 
+async function emailActionCoolingDown(
+  env: Env,
+  userId: string,
+  purpose: 'verify' | 'reset',
+): Promise<boolean> {
+  const recent = await env.DB.prepare(
+    `SELECT 1 FROM email_action_tokens
+     WHERE user_id = ? AND purpose = ? AND created_at > ? LIMIT 1`,
+  )
+    .bind(userId, purpose, Date.now() - EMAIL_ACTION_COOLDOWN_MS)
+    .first();
+  return Boolean(recent);
+}
+
 async function sendAccountEmail(
   env: Env,
   to: string,
@@ -1094,6 +1109,9 @@ export default {
         if (!user) return err('未登录', 401, cors);
         if (!user.email) return err('账户尚未设置邮箱', 400, cors);
         if (user.email_verified_at) return json({ ok: true, alreadyVerified: true }, 200, cors);
+        if (await emailActionCoolingDown(env, user.id, 'verify')) {
+          return err('验证邮件刚刚已发送，请稍后再试', 429, cors);
+        }
         const actionToken = await createEmailAction(env, user.id, 'verify', VERIFY_EMAIL_TTL_MS);
         await sendAccountEmail(env, user.email, 'verify', actionToken);
         return json({ ok: true }, 202, cors);
@@ -1133,6 +1151,9 @@ export default {
             .bind(email)
             .first<{ id: string; email: string }>();
           if (user) {
+            if (await emailActionCoolingDown(env, user.id, 'reset')) {
+              return json({ ok: true }, 202, cors);
+            }
             const actionToken = await createEmailAction(
               env,
               user.id,
@@ -1303,6 +1324,21 @@ export default {
           exp: now + VOICE_TICKET_TTL_MS,
         });
         return json({ ticket, expiresAt: now + VOICE_TICKET_TTL_MS }, 200, cors);
+      }
+
+      if (path === '/api/auth/chat/ticket' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
+        if (!env.DM_TICKET_SECRET) return err('Chat 尚未启用', 503, cors);
+        const now = Date.now();
+        const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
+          aud: 'chat',
+          sub: user.id,
+          iat: now,
+          exp: now + DM_TICKET_TTL_MS,
+        });
+        return json({ ticket, expiresAt: now + DM_TICKET_TTL_MS }, 200, cors);
       }
 
       if (path === '/api/auth/admin/stats' && request.method === 'GET') {
@@ -1610,6 +1646,7 @@ export default {
       if (path === '/api/auth/chat-rooms' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const rows = await env.DB.prepare(
           `SELECT code, name, owner_key, joined_at, updated_at FROM user_chat_rooms
            WHERE user_id = ? ORDER BY updated_at DESC`,
@@ -1640,6 +1677,7 @@ export default {
       if (path === '/api/auth/chat-rooms' && request.method === 'PUT') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const code = typeof body.code === 'string' ? body.code.trim() : '';
         const name =
@@ -1667,6 +1705,7 @@ export default {
       ) {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const code = decodeURIComponent(
           path.slice('/api/auth/chat-rooms/'.length, -'/close'.length),
         );
@@ -1685,6 +1724,7 @@ export default {
       if (path.startsWith('/api/auth/chat-rooms/') && request.method === 'DELETE') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const code = decodeURIComponent(path.slice('/api/auth/chat-rooms/'.length));
         if (!CHAT_ROOM_CODE.test(code)) return err('房间号无效', 400, cors);
         await env.DB.prepare('DELETE FROM user_chat_rooms WHERE user_id = ? AND code = ?')
@@ -2212,6 +2252,7 @@ export default {
       if (path === '/api/auth/dm/ticket' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const secret = env.DM_TICKET_SECRET;
         if (!secret) return err('私聊尚未启用', 503, cors);
 
@@ -2257,6 +2298,7 @@ export default {
       if (path === '/api/auth/dm/conversations' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
         const secret = env.DM_TICKET_SECRET;
         if (!secret) return err('私聊尚未启用', 503, cors);
 

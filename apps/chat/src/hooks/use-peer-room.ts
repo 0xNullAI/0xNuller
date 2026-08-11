@@ -19,7 +19,7 @@ import {
   rememberGroup,
   saveOwnerKey,
 } from '../lib/groups';
-import { dmTicket } from '@0xnullai/auth';
+import { dmTicket, getChatTicket } from '@0xnullai/auth';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -74,6 +74,10 @@ function dmTicketProvider(dm: DmJoinOptions): () => Promise<string | null> {
     if (first && expiresAt > Date.now() + TICKET_MIN_REMAINING_MS) return first;
     return (await dmTicket(dm.peerUserId))?.ticket ?? null;
   };
+}
+
+function chatTicketProvider(): () => Promise<string | null> {
+  return async () => (await getChatTicket().catch(() => null))?.ticket ?? null;
 }
 
 /** A media reference already uploaded to R2, waiting to be sent with a chat message. */
@@ -511,7 +515,7 @@ export function usePeerRoom(displayName: string) {
       const transport = connectRoom({
         code: roomCode,
         peerId: selfId,
-        ticket: dm ? dmTicketProvider(dm) : undefined,
+        ticket: dm ? dmTicketProvider(dm) : chatTicketProvider(),
         onStatus: (s: TransportStatus) => setStatus(s),
         onOpen: () => {
           setRoomId(roomCode);

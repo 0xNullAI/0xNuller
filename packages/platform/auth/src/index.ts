@@ -185,6 +185,10 @@ export async function getVoiceTicket(): Promise<{ ticket: string; expiresAt: num
   return call('/api/auth/voice/ticket', { method: 'POST' });
 }
 
+export async function getChatTicket(): Promise<{ ticket: string; expiresAt: number }> {
+  return call('/api/auth/chat/ticket', { method: 'POST' });
+}
+
 export interface AdminStats {
   generatedAt: number;
   users: number;

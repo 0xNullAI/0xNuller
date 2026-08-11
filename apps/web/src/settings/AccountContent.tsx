@@ -7,6 +7,7 @@ import {
   deleteAccount,
   login,
   logout,
+  me,
   confirmEmailVerification,
   register,
   requestEmailVerification,
@@ -62,7 +63,8 @@ export function AccountContent({
     const token = new URLSearchParams(window.location.search).get('verify');
     if (!token) return;
     void confirmEmailVerification(token)
-      .then(() => {
+      .then(async () => {
+        onUser(await me());
         setNotice('邮箱验证成功');
         const url = new URL(window.location.href);
         url.searchParams.delete('verify');

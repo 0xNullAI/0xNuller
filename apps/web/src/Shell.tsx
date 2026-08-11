@@ -135,7 +135,12 @@ export function Shell() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(null);
+  const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return pathname === '/settings' || params.has('verify') || params.has('reset')
+      ? 'account'
+      : null;
+  });
   const [docsOpen, setDocsOpen] = useState(false);
   // Whose profile is open, by username. The shell owns this surface because it
   // is reachable from Chat's member list, from contacts and from the account
@@ -308,7 +313,7 @@ export function Shell() {
               {opened.map((id) => {
                 const mod = MODULES.find((m) => m.id === id);
                 if (!mod) return null;
-                if (mod.id === 'chat' && (!authChecked || !user)) {
+                if (mod.id === 'chat' && (!authChecked || !user || !user.emailVerified)) {
                   return (
                     <div
                       key={id}
@@ -317,6 +322,7 @@ export function Shell() {
                     >
                       <ChatAccountGate
                         loading={!authChecked}
+                        emailVerificationRequired={Boolean(user && !user.emailVerified)}
                         onLogin={() => openSettings('account')}
                       />
                     </div>
@@ -388,11 +394,25 @@ export function Shell() {
   );
 }
 
-function ChatAccountGate({ loading, onLogin }: { loading: boolean; onLogin: () => void }) {
+function ChatAccountGate({
+  loading,
+  emailVerificationRequired,
+  onLogin,
+}: {
+  loading: boolean;
+  emailVerificationRequired: boolean;
+  onLogin: () => void;
+}) {
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="flex flex-col items-center gap-4 text-center">
-        <h1 className="text-xl font-semibold">{loading ? '正在检查账户…' : '登录后使用 Chat'}</h1>
+        <h1 className="text-xl font-semibold">
+          {loading
+            ? '正在检查账户…'
+            : emailVerificationRequired
+              ? '验证邮箱后使用 Chat'
+              : '登录后使用 Chat'}
+        </h1>
         {!loading && (
           <button
             type="button"
@@ -400,7 +420,7 @@ function ChatAccountGate({ loading, onLogin }: { loading: boolean; onLogin: () =
             className="flex items-center gap-2 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--button-text)]"
           >
             <LogIn className="h-4 w-4" />
-            登录 / 注册
+            {emailVerificationRequired ? '前往账户验证' : '登录 / 注册'}
           </button>
         )}
       </div>
