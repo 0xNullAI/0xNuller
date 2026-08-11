@@ -3,7 +3,6 @@ import { Input, SettingSelect } from '@0xnullai/ui';
 import {
   PROVIDER_DEFINITIONS,
   createProviderSettings,
-  defaultLlmConfig,
   getProviderDefinition,
   isLlmConfigured,
   loadLlmConfig,

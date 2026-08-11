@@ -194,10 +194,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     const fromUrl = new URLSearchParams(window.location.search).get('room');
     initialRoomOpened.current = true;
     if (fromUrl && signedIn) peerRoom.join(fromUrl);
-    else if (fromUrl) {
-      setAccountRequired(true);
-      openShellSettings('account');
-    }
+    else if (fromUrl) queueMicrotask(() => requireAccount());
     // Only attempt once while still not connected; putting peerRoom in the deps would
     // reconnect on every state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +204,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     peerRoom.connected,
     peerRoom.status,
     peerRoom.isDm,
-    openShellSettings,
+    requireAccount,
   ]);
 
   /**
