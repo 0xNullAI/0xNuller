@@ -58,6 +58,14 @@ const responsesSchema = z.object({
   output_text: z.string().optional().default(''),
 });
 
+function accountProxyCredentials(baseUrl: string): RequestCredentials {
+  try {
+    return new URL(baseUrl).hostname === 'llm.0xnullai.com' ? 'include' : 'omit';
+  } catch {
+    return 'omit';
+  }
+}
+
 export interface OpenAiHttpLlmClientConfig {
   apiKey: string;
   baseUrl?: string;
@@ -120,6 +128,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
     input.onRawRequest?.(requestBody);
     const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
+      credentials: accountProxyCredentials(this.config.baseUrl),
       signal: input.abortSignal,
       headers: await this.buildHeaders(),
       body: JSON.stringify(requestBody),
@@ -177,6 +186,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
     input.onRawRequest?.(requestBody);
     const response = await fetch(`${this.config.baseUrl}/responses`, {
       method: 'POST',
+      credentials: accountProxyCredentials(this.config.baseUrl),
       signal: input.abortSignal,
       headers: await this.buildHeaders(),
       body: JSON.stringify(requestBody),

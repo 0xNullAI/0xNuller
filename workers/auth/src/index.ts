@@ -411,6 +411,11 @@ export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
+export interface AiQuotaResult {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+}
 
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
   const headers = new Headers();
@@ -427,6 +432,14 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
+  async consumeAiQuota(
+    credentials: MarketClaimCredentials,
+    kind: 'text' | 'voice',
+    units = 1,
+  ): Promise<AiQuotaResult | 'unauthorized'> {
+    return consumeAiQuotaForCredentials(this.env, credentials, kind, units);
+  }
+
   async claimMarketItems(
     credentials: MarketClaimCredentials,
     itemIds: string[],
@@ -449,6 +462,36 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     if (!user) return 'unauthorized';
     return user.role === 'admin' ? 'admin' : 'user';
   }
+}
+
+export async function consumeAiQuotaForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+  kind: 'text' | 'voice',
+  units = 1,
+): Promise<AiQuotaResult | 'unauthorized'> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  if (!user) return 'unauthorized';
+  const safeUnits = Math.max(1, Math.min(Math.trunc(units), kind === 'voice' ? 60 : 10));
+  const limit = kind === 'voice' ? 60 : 100;
+  const day = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+  const updated = await env.DB.prepare(
+    `INSERT INTO ai_usage_daily (user_id, usage_day, kind, units, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, usage_day, kind) DO UPDATE SET
+         units = units + excluded.units, updated_at = excluded.updated_at
+       WHERE units + excluded.units <= ?
+       RETURNING units`,
+  )
+    .bind(user.id, day, kind, safeUnits, now, limit)
+    .first<{ units: number }>();
+  const used = updated?.units ?? limit;
+  return {
+    allowed: Boolean(updated),
+    remaining: Math.max(0, limit - used),
+    limit,
+  };
 }
 
 /** Resolve Market permissions without exposing account roles on a public endpoint. */
@@ -1161,6 +1204,27 @@ export default {
       if (path === '/api/auth/me' && request.method === 'GET') {
         const user = await currentUser(request, env);
         return json({ user: user ? sessionUser(user, Boolean(env.EMAIL)) : null }, 200, cors);
+      }
+
+      if (path === '/api/auth/ai-usage' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const day = new Date().toISOString().slice(0, 10);
+        const rows = await env.DB.prepare(
+          'SELECT kind, units FROM ai_usage_daily WHERE user_id = ? AND usage_day = ?',
+        )
+          .bind(user.id, day)
+          .all<{ kind: 'text' | 'voice'; units: number }>();
+        const used = Object.fromEntries(rows.results.map((row) => [row.kind, row.units]));
+        return json(
+          {
+            day,
+            text: { used: used.text ?? 0, limit: 100 },
+            voice: { used: used.voice ?? 0, limit: 60 },
+          },
+          200,
+          cors,
+        );
       }
 
       // ── Logout ──
