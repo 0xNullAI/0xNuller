@@ -7,7 +7,7 @@ on:
         description: Service to roll back independently
         required: true
         type: choice
-        options: [chat, auth, market, voice, web]
+        options: [chat, auth, llm-proxy, market, voice, web]
       version_id:
         description: Known-good Worker version ID (from deployments list)
         required: true
@@ -40,6 +40,7 @@ jobs:
           case "$SERVICE" in
             chat) config=apps/chat/wrangler.jsonc ;;
             auth) config=workers/auth/wrangler.jsonc ;;
+            llm-proxy) config=workers/llm-proxy/wrangler.toml ;;
             market) config=apps/market/wrangler.jsonc ;;
             voice) config=apps/voice/wrangler.jsonc ;;
             web) config=apps/web/wrangler.jsonc ;;
