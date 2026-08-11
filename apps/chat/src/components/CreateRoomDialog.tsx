@@ -41,6 +41,7 @@ export function CreateRoomDialog({
   const [mode, setMode] = useState<'create' | 'join' | 'public'>('create');
   const [joinCode, setJoinCode] = useState('');
   const [publicRooms, setPublicRooms] = useState<LobbyRoom[]>([]);
+  const [publicQuery, setPublicQuery] = useState('');
 
   useEffect(() => {
     if (mode !== 'public') return;
@@ -122,21 +123,40 @@ export function CreateRoomDialog({
             />
           </label>
         ) : (
-          <div className="mt-5 max-h-64 space-y-1 overflow-y-auto">
-            {publicRooms.map((room) => (
-              <button
-                key={room.code}
-                type="button"
-                onClick={() => {
-                  onJoin(room.code);
-                  onClose();
-                }}
-                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-ctl)] px-3 text-left hover:bg-[var(--bg-soft)]"
-              >
-                <span className="truncate text-sm">{room.name || room.code}</span>
-                <span className="shrink-0 text-xs text-[var(--text-faint)]">{room.count} 人</span>
-              </button>
-            ))}
+          <div className="mt-5">
+            <Input
+              value={publicQuery}
+              onChange={(event) => setPublicQuery(event.target.value)}
+              placeholder="搜索公开房间名称或房间号"
+              aria-label="搜索公开房间"
+            />
+            <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+              {publicRooms
+                .filter((room) => {
+                  const query = publicQuery.trim().toLowerCase();
+                  return (
+                    !query ||
+                    room.code.toLowerCase().includes(query) ||
+                    room.name.toLowerCase().includes(query)
+                  );
+                })
+                .map((room) => (
+                  <button
+                    key={room.code}
+                    type="button"
+                    onClick={() => {
+                      onJoin(room.code);
+                      onClose();
+                    }}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-ctl)] px-3 text-left hover:bg-[var(--bg-soft)]"
+                  >
+                    <span className="truncate text-sm">{room.name || room.code}</span>
+                    <span className="shrink-0 text-xs text-[var(--text-faint)]">
+                      {room.count} 人
+                    </span>
+                  </button>
+                ))}
+            </div>
           </div>
         )}
 
