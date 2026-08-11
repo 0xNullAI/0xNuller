@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worker, {
   claimMarketItemsForCredentials,
+  consumeAiQuotaForCredentials,
   marketItemAccessForCredentials,
   runAuthMaintenance,
   type Env,
@@ -227,6 +228,31 @@ describe('邮箱验证与密码找回', () => {
         })
       ).status,
     ).toBe(200);
+  });
+});
+
+describe('账户 AI 体验额度', () => {
+  it('要求登录，并按账户原子扣减每日文字额度', async () => {
+    expect(
+      await consumeAiQuotaForCredentials(env, { authorization: null, cookie: null }, 'text'),
+    ).toBe('unauthorized');
+    const { body } = await registerUser();
+    const credentials = { authorization: `Bearer ${body.token}`, cookie: null };
+    for (let index = 0; index < 100; index += 1) {
+      const result = await consumeAiQuotaForCredentials(env, credentials, 'text');
+      expect(result).toMatchObject({ allowed: true, remaining: 99 - index, limit: 100 });
+    }
+    expect(await consumeAiQuotaForCredentials(env, credentials, 'text')).toEqual({
+      allowed: false,
+      remaining: 0,
+      limit: 100,
+    });
+
+    const usage = await worker.fetch(req('/api/auth/ai-usage', { token: body.token }), env);
+    expect(await usage.json()).toMatchObject({
+      text: { used: 100, limit: 100 },
+      voice: { used: 0, limit: 60 },
+    });
   });
 });
 

@@ -65,6 +65,12 @@ function storedToken(): string | null {
   }
 }
 
+/** Bearer carrier for native shells; browsers normally return an empty object and use cookies. */
+export function authRequestHeaders(): Record<string, string> {
+  const token = storedToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function setStoredToken(token: string | null): void {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -163,6 +169,16 @@ export async function resetPassword(token: string, password: string): Promise<vo
   });
   setStoredToken(null);
   publishAuthUser(null);
+}
+
+export interface AiUsageSummary {
+  day: string;
+  text: { used: number; limit: number };
+  voice: { used: number; limit: number };
+}
+
+export async function getAiUsage(): Promise<AiUsageSummary> {
+  return call<AiUsageSummary>('/api/auth/ai-usage');
 }
 
 /** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
