@@ -71,7 +71,7 @@ export function AccountContent({
         window.history.replaceState(null, '', url);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '验证失败'));
-  }, []);
+  }, [onUser]);
 
   async function submit() {
     setBusy(true);
