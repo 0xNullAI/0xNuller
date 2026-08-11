@@ -130,9 +130,11 @@ const minSdk = Number(
 );
 const certificate = requireMatch(
   signature,
-  /^Signer #1 certificate SHA-256 digest: ([0-9a-f]+)$/im,
+  /^\s*Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)\s*$/im,
   'apksigner did not report the signing certificate digest',
-)[1].toLowerCase();
+)[1]
+  .replaceAll(':', '')
+  .toLowerCase();
 
 const expectedCode = String(tauri.bundle.android.versionCode);
 if (packageLine[1] !== tauri.identifier) {
