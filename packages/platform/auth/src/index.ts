@@ -99,8 +99,10 @@ export async function register(input: {
     body: JSON.stringify(input),
   });
   setStoredToken(r.token);
-  publishAuthUser(r.user);
-  return r.user;
+  const profile = await getProfile().catch(() => null);
+  const user = { ...r.user, avatarUrl: profile?.avatarUrl ?? null };
+  publishAuthUser(user);
+  return user;
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {
@@ -109,8 +111,10 @@ export async function login(username: string, password: string): Promise<AuthUse
     body: JSON.stringify({ username, password }),
   });
   setStoredToken(r.token);
-  publishAuthUser(r.user);
-  return r.user;
+  const profile = await getProfile().catch(() => null);
+  const user = { ...r.user, avatarUrl: profile?.avatarUrl ?? null };
+  publishAuthUser(user);
+  return user;
 }
 
 export async function me(): Promise<AuthUser | null> {
