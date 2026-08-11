@@ -41,6 +41,7 @@
     "android:build": "node scripts/run-release-build.mjs android",
     "verify:android:apk": "node scripts/verify-android-apk.mjs",
     "verify:release": "node scripts/verify-release.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs",
     "verify:brand": "node scripts/verify-brand.mjs",
     "verify:packages": "npm run build:kit && npm run build -w dg-mcp && node scripts/verify-publish-packages.mjs",
     "check:routes": "node scripts/check-routes.mjs",

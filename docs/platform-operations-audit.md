@@ -15,6 +15,9 @@
 
 - Chat、Auth、Market、Voice、Web 均已启用 Workers observability。部署后应分别查看请求错误率、
   延迟和异常日志，不能只用主页 200 作为成功标准。
+- GitHub Actions 每 15 分钟运行一次 `npm run smoke:production`，检查 Web 构建标识、Auth 匿名
+  契约、Chat 邮箱门禁、Market 查询和 Voice WebSocket 边界。失败会保留独立运行记录，并按
+  仓库的 Actions 通知设置提醒维护者；它用于可用性监测，不代替 Cloudflare 的错误率分析。
 - 服务使用独立 Worker、路由和存储；部署与回滚按服务操作。D1/R2/DO 数据不随代码版本回滚。
 - 仓库未配置外部告警接收方或 Cloudflare Analytics API 凭据，因此当前只保证采集，不声称已有
   主动告警。配置通知渠道后再添加错误率和注册 429 激增告警。
