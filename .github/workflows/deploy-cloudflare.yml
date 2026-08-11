@@ -62,10 +62,10 @@ jobs:
 
       # Deploy dependency providers before their consumers, and the static shell last.
       # D1 migrations remain an explicit, separately reviewed production operation.
-      - name: Deploy Chat
-        run: npx wrangler deploy --config apps/chat/wrangler.jsonc
       - name: Deploy Auth
         run: npx wrangler deploy --config workers/auth/wrangler.jsonc
+      - name: Deploy Chat
+        run: npx wrangler deploy --config apps/chat/wrangler.jsonc
       - name: Deploy LLM Proxy
         run: npx wrangler deploy --config workers/llm-proxy/wrangler.toml
       - name: Deploy Market
@@ -84,7 +84,7 @@ jobs:
             echo '## Cloudflare production deployed'
             echo ''
             echo "Source: \`${{ steps.source.outputs.sha }}\`"
-            echo 'Order: Chat → Auth → LLM Proxy → Market → Voice → Web'
+            echo 'Order: Auth → Chat → LLM Proxy → Market → Voice → Web'
             echo 'Site: https://0xnullai.com'
           } >> "$GITHUB_STEP_SUMMARY"
         env:

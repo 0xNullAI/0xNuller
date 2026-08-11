@@ -2,6 +2,7 @@
 // on disconnect; REST covers the first paint.
 
 import { apiBaseUrl, apiWsUrl } from '@0xnullai/settings';
+import { getChatTicket } from '@0xnullai/auth';
 export interface LobbyRoom {
   code: string;
   name: string;
@@ -20,10 +21,10 @@ function currentRooms(rooms: LobbyRoom[]): LobbyRoom[] {
   return rooms.filter((room) => room.code !== LEGACY_DISCUSSION_CODE);
 }
 
-function lobbyWsUrl(): string {
+function lobbyWsUrl(ticket: string): string {
   // See room-transport: same-origin resolves to the WebView's own scheme
   // inside the Android shell.
-  return apiWsUrl('/ws/lobby');
+  return apiWsUrl(`/ws/lobby?ticket=${encodeURIComponent(ticket)}`);
 }
 
 export function subscribeLobby(
@@ -35,10 +36,17 @@ export function subscribeLobby(
   let retry = 0;
   let timer: number | null = null;
 
-  function open() {
+  async function open() {
     if (closed) return;
     onStatus?.('connecting');
-    const sock = new WebSocket(lobbyWsUrl());
+    const admission = await getChatTicket().catch(() => null);
+    if (closed) return;
+    if (!admission) {
+      onStatus?.('error');
+      timer = window.setTimeout(() => void open(), 10_000);
+      return;
+    }
+    const sock = new WebSocket(lobbyWsUrl(admission.ticket));
     ws = sock;
     sock.onopen = () => {
       retry = 0;
@@ -57,12 +65,12 @@ export function subscribeLobby(
       onStatus?.('connecting');
       const delay = Math.min(1000 * 2 ** retry, 10000);
       retry++;
-      timer = window.setTimeout(open, delay);
+      timer = window.setTimeout(() => void open(), delay);
     };
     sock.onerror = () => sock.close();
   }
 
-  open();
+  void open();
 
   return {
     close() {
@@ -80,7 +88,11 @@ export function subscribeLobby(
 
 /** REST snapshot (first-paint fallback, so there is content before the WS connects). */
 export async function fetchLobbyRooms(): Promise<LobbyRoom[]> {
-  const res = await fetch(`${apiBaseUrl()}/api/lobby/rooms`);
+  const admission = await getChatTicket().catch(() => null);
+  if (!admission) return [];
+  const res = await fetch(
+    `${apiBaseUrl()}/api/lobby/rooms?ticket=${encodeURIComponent(admission.ticket)}`,
+  );
   if (!res.ok) return [];
   const data = (await res.json()) as { rooms?: LobbyRoom[] };
   return currentRooms(data.rooms ?? []);

@@ -114,11 +114,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     url.searchParams.delete('create');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }, []);
-  /**
-   * Whether there is an account at all. It gates only the private-message affordances:
-   * a conversation is between two accounts, while a room is open to anyone, and the
-   * whole room path below must keep working with this null.
-   */
+  /** Whether there is an account at all. The unified shell also requires a verified email. */
   const [signedIn, setSignedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [accountRequired, setAccountRequired] = useState(false);

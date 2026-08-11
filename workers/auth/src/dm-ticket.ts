@@ -80,7 +80,7 @@ export const DM_DIGEST_MAX_ROOMS = 50;
  * cannot be presented for another — reading the unread counts of every conversation
  * you have is not the same permission as joining one of them.
  */
-export type DmTicketAudience = 'dm' | 'digest' | 'revoke' | 'voice';
+export type DmTicketAudience = 'dm' | 'digest' | 'revoke' | 'voice' | 'chat';
 
 export interface DmTicketClaims {
   aud: DmTicketAudience;

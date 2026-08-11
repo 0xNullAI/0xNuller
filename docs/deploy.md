@@ -51,8 +51,8 @@ npm run release:data:preflight -- \
 
 后端先于 Web 外壳。服务绑定要求使用以下顺序：
 
-1. Chat
-2. Auth
+1. Auth（先提供向后兼容的票据/API）
+2. Chat
 3. LLM Proxy（依赖 Auth 的账户额度）
 4. Market
 5. Voice（启用体验服务时）

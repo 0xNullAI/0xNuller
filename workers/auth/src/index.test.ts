@@ -135,6 +135,17 @@ async function registerUser(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function verifyRegisteredUser(body: {
+  user?: { id: string };
+  token?: string;
+}): Promise<void> {
+  await prepared(
+    'UPDATE users SET email_verified_at = ? WHERE id = ?',
+    Date.now(),
+    body.user!.id,
+  ).run();
+}
+
 describe('注册', () => {
   it('把并发写入触发的唯一约束统一映射为可读冲突', () => {
     expect(registrationConflict(new Error('UNIQUE constraint failed: users.username'))).toBe(
@@ -201,6 +212,23 @@ describe('注册', () => {
 });
 
 describe('邮箱验证与密码找回', () => {
+  it('限制验证邮件和重置邮件的重复发送', async () => {
+    const { body } = await registerUser();
+    expect(
+      (
+        await worker.fetch(
+          req('/api/auth/email/verification/request', { method: 'POST', token: body.token }),
+          env,
+        )
+      ).status,
+    ).toBe(429);
+
+    sentEmails = [];
+    expect((await post('/api/auth/password/forgot', { email: GOOD.email })).status).toBe(202);
+    expect((await post('/api/auth/password/forgot', { email: GOOD.email })).status).toBe(202);
+    expect(sentEmails).toHaveLength(1);
+  });
+
   it('验证令牌只存哈希且使用后失效', async () => {
     const { body } = await registerUser();
     const text = String((sentEmails[0] as { text: string }).text);
@@ -315,6 +343,7 @@ describe('运营统计', () => {
 describe('Chat 房间账户同步', () => {
   it('跨会话读取已加入房间，并允许只从自己的列表移除', async () => {
     const { body } = await registerUser();
+    await verifyRegisteredUser(body);
     const token = body.token!;
     const added = await worker.fetch(
       req('/api/auth/chat-rooms', {
@@ -344,6 +373,7 @@ describe('Chat 房间账户同步', () => {
     const anonymous = await worker.fetch(req('/api/auth/chat-rooms'), env);
     expect(anonymous.status).toBe(401);
     const { body } = await registerUser();
+    await verifyRegisteredUser(body);
     const invalid = await worker.fetch(
       req('/api/auth/chat-rooms', {
         method: 'PUT',
@@ -358,6 +388,8 @@ describe('Chat 房间账户同步', () => {
   it('房主密钥跨平台恢复管理权，且关闭会清除所有成员记录', async () => {
     const owner = (await registerUser()).body;
     const member = (await registerUser({ username: 'bob', email: 'bob@example.com' })).body;
+    await verifyRegisteredUser(owner);
+    await verifyRegisteredUser(member);
     for (const [token, ownerKey] of [
       [owner.token, 'owner-secret'],
       [member.token, undefined],
@@ -396,6 +428,17 @@ describe('Chat 房间账户同步', () => {
       env,
     );
     expect(await memberList.json()).toEqual({ rooms: [] });
+  });
+
+  it('邮箱未验证时服务端拒绝房间同步和 Chat 票据', async () => {
+    const { body } = await registerUser();
+    expect(
+      (await worker.fetch(req('/api/auth/chat-rooms', { token: body.token }), env)).status,
+    ).toBe(403);
+    expect(
+      (await worker.fetch(req('/api/auth/chat/ticket', { method: 'POST', token: body.token }), env))
+        .status,
+    ).toBe(403);
   });
 });
 
