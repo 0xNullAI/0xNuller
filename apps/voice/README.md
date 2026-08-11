@@ -56,7 +56,7 @@ src/components/         通话与设置 UI
 worker/                 体验模式入口与 TrialSession DO
 ```
 
-体验 Worker 的配置、额度和密钥格式见 [worker/README.md](worker/README.md)。正式发布前仍需
+体验 Worker 的账户票据、额度和部署配置见 [worker/README.md](worker/README.md)。正式发布前仍需
 用真实 provider 完成浏览器与安卓端到端通话、工具调用和挂断停止验收。
 
 ## 部署

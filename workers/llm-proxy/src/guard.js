@@ -50,6 +50,7 @@ export function corsHeaders(origin, allowedOriginsVar) {
   return {
     'Access-Control-Allow-Origin': allowedOriginsVar ? (origin ?? '*') : '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-DG-Timestamp, X-DG-Signature',
     'Access-Control-Max-Age': '86400',
     // The answer depends on the request's Origin, so a shared cache must not

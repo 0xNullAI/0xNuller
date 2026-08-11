@@ -1,7 +1,7 @@
 // Trial (体验版) voice Worker.
 //
 // One job only: `/api/realtime` — the trial voice proxy. The frontend connects
-// here with an 「激活密钥」, and the Worker validates the key, meters it through
+// here with a short-lived account ticket, and the Worker validates it, meters it through
 // the TrialSession Durable Object (concurrency / per-session length / daily
 // total), then opens the upstream connection with the real xAI key that only
 // exists as a server-side secret and forwards both directions. The real key is
@@ -11,7 +11,7 @@
 // browser and never come through here. Static assets are served by the unified
 // shell — this Worker no longer hosts any pages.
 import type { Env } from './env.js';
-import { isAllowedOrigin, parseActivationKey, resolveTrialKey } from './trial-keys.js';
+import { isAllowedOrigin, parseVoiceTicket } from './trial-keys.js';
 
 export { TrialSession } from './trial-session.js';
 
@@ -39,19 +39,29 @@ async function handleTrialRealtime(request: Request, env: Env): Promise<Response
     return new Response('forbidden origin', { status: 403 });
   }
 
-  const activationKey = parseActivationKey(request.headers.get('Sec-WebSocket-Protocol'));
-  if (!activationKey) {
-    return new Response('缺少激活密钥', { status: 401 });
+  const ticket = parseVoiceTicket(request.headers.get('Sec-WebSocket-Protocol'));
+  if (!ticket) {
+    return new Response('缺少账户票据', { status: 401 });
   }
-  const config = resolveTrialKey(env, activationKey, Date.now());
-  if (!config) {
-    return new Response('激活密钥无效或已过期', { status: 401 });
+  let authorization: Awaited<ReturnType<Env['AUTH']['authorizeVoiceTicket']>>;
+  try {
+    authorization = await env.AUTH.authorizeVoiceTicket(ticket);
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'voice_auth_unavailable', error: String(error) }));
+    return new Response('账户服务暂不可用', { status: 503 });
+  }
+  if (authorization === 'unauthorized') {
+    return new Response('账户票据无效或已过期', { status: 401 });
+  }
+  if (!authorization.allowed) {
+    return new Response('今日语音体验额度已用完', { status: 429 });
   }
 
-  // One DO per activation key: it owns concurrency + metering for that key.
-  const stub = env.TRIAL_SESSION.get(env.TRIAL_SESSION.idFromName(activationKey));
+  // One DO per account: every device logged into that account shares concurrency
+  // and the same durable daily budget.
+  const stub = env.TRIAL_SESSION.get(env.TRIAL_SESSION.idFromName(authorization.subject));
   const forwarded = new Request(request);
-  forwarded.headers.set('x-trial-max-session', String(config.maxSessionMinutes));
-  forwarded.headers.set('x-trial-daily-cap', String(config.dailyCapMinutes));
+  forwarded.headers.set('x-voice-ticket', ticket);
+  forwarded.headers.set('x-trial-max-session', env.TRIAL_MAX_SESSION_MINUTES || '20');
   return stub.fetch(forwarded);
 }

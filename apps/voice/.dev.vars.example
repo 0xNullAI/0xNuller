@@ -5,6 +5,4 @@
 # The real xAI key. Only ever used on the Worker→xAI upstream leg.
 XAI_API_KEY="xai-REPLACE_ME"
 
-# Activation-key registry (compact JSON, no spaces). Generate keys with
-# `node scripts/gen-trial-key.mjs`.
-TRIAL_KEYS={"dgv-trial-LOCALTEST":{"dailyCapMinutes":30}}
+# 体验模式通过本地 Auth Worker 的登录账户换取短期票据。

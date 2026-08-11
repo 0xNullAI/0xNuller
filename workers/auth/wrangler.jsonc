@@ -21,6 +21,13 @@
   // 个人相册对象存储。
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "0xnullai-profile-photos" }],
 
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["no-reply@0xnullai.com"],
+    },
+  ],
+
   // 定时处理会话、上传补偿和账户删除任务。
   "triggers": { "crons": ["17 4 * * *"] },
 

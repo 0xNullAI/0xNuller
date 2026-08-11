@@ -22,3 +22,129 @@
     opacity: 1;
   }
 }
+
+@keyframes ui-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-overlay-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ui-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ui-dialog-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 6px)) scale(0.99);
+  }
+}
+
+@keyframes ui-sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes ui-sheet-out-right {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes ui-sheet-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes ui-sheet-out-left {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.ui-overlay-enter,
+.ui-dialog-overlay[data-state='open'] {
+  animation: ui-overlay-in var(--dur-mid) ease-out;
+}
+
+.ui-dialog-overlay[data-state='closed'] {
+  animation: ui-overlay-out var(--dur) ease-in;
+}
+
+.ui-dialog-content[data-state='open'] {
+  animation: ui-dialog-in var(--dur-mid) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ui-dialog-content[data-state='closed'] {
+  animation: ui-dialog-out var(--dur) ease-in;
+}
+
+.ui-sheet-content[data-side='right'][data-state='open'] {
+  animation: ui-sheet-in-right var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ui-sheet-content[data-side='right'][data-state='closed'] {
+  animation: ui-sheet-out-right var(--dur-mid) ease-in;
+}
+
+.ui-sheet-content[data-side='left'][data-state='open'] {
+  animation: ui-sheet-in-left var(--dur-slow) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ui-sheet-content[data-side='left'][data-state='closed'] {
+  animation: ui-sheet-out-left var(--dur-mid) ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay-enter,
+  .ui-dialog-overlay,
+  .ui-dialog-content,
+  .ui-sheet-content {
+    animation: none !important;
+  }
+}

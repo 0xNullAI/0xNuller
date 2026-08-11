@@ -1,5 +1,11 @@
 import { hashPassword, verifyPassword } from './password';
-import { DM_DIGEST_MAX_ROOMS, DM_TICKET_TTL_MS, dmRoomCode, signDmTicket } from './dm-ticket';
+import {
+  DM_DIGEST_MAX_ROOMS,
+  DM_TICKET_TTL_MS,
+  dmRoomCode,
+  signDmTicket,
+  verifyDmTicket,
+} from './dm-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 
 /**
@@ -28,6 +34,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
  */
 
 export interface Env extends Cloudflare.Env {
+  EMAIL: SendEmail;
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
    * rotated, or every rate-limit record becomes worthless.
@@ -61,6 +68,9 @@ const REGISTER_WINDOW_MS = 60 * 60 * 1000;
 const MAX_REGISTRATIONS_PER_IP = 5;
 const MIN_PASSWORD_LEN = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
+const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -382,6 +392,8 @@ interface UserRow {
   banned_at: number | null;
   ban_reason: string | null;
   role: 'user' | 'admin';
+  email: string | null;
+  email_verified_at: number | null;
 }
 
 async function currentUser(request: Request, env: Env): Promise<UserRow | null> {
@@ -406,6 +418,15 @@ export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
+export interface AiQuotaResult {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+}
+
+export interface VoiceTicketQuotaResult extends AiQuotaResult {
+  subject: string;
+}
 
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
   const headers = new Headers();
@@ -422,6 +443,25 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
+  async consumeAiQuota(
+    credentials: MarketClaimCredentials,
+    kind: 'text' | 'voice',
+    units = 1,
+  ): Promise<AiQuotaResult | 'unauthorized'> {
+    return consumeAiQuotaForCredentials(this.env, credentials, kind, units);
+  }
+
+  async authorizeVoiceTicket(ticket: string): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+    return voiceTicketQuota(this.env, ticket, 0);
+  }
+
+  async consumeVoiceTicket(
+    ticket: string,
+    minutes: number,
+  ): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+    return voiceTicketQuota(this.env, ticket, minutes);
+  }
+
   async claimMarketItems(
     credentials: MarketClaimCredentials,
     itemIds: string[],
@@ -444,6 +484,78 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     if (!user) return 'unauthorized';
     return user.role === 'admin' ? 'admin' : 'user';
   }
+}
+
+export async function voiceTicketQuota(
+  env: Env,
+  ticket: string,
+  minutes: number,
+): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+  const claims = await verifyDmTicket(env.DM_TICKET_SECRET, ticket, Date.now());
+  if (!claims || claims.aud !== 'voice') return 'unauthorized';
+  const user = await env.DB.prepare(
+    `SELECT id FROM users
+      WHERE id = ? AND banned_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = users.id)`,
+  )
+    .bind(claims.sub)
+    .first<{ id: string }>();
+  if (!user) return 'unauthorized';
+
+  const day = new Date().toISOString().slice(0, 10);
+  const existing = await env.DB.prepare(
+    `SELECT units FROM ai_usage_daily
+      WHERE user_id = ? AND usage_day = ? AND kind = 'voice'`,
+  )
+    .bind(user.id, day)
+    .first<{ units: number }>();
+  if (minutes <= 0) {
+    const used = existing?.units ?? 0;
+    return { subject: user.id, allowed: used < 60, remaining: Math.max(0, 60 - used), limit: 60 };
+  }
+
+  const safeMinutes = Math.max(1, Math.min(Math.trunc(minutes), 60));
+  const result = await consumeAiQuotaForUserId(env, user.id, 'voice', safeMinutes);
+  return { subject: user.id, ...result };
+}
+
+export async function consumeAiQuotaForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+  kind: 'text' | 'voice',
+  units = 1,
+): Promise<AiQuotaResult | 'unauthorized'> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  if (!user) return 'unauthorized';
+  return consumeAiQuotaForUserId(env, user.id, kind, units);
+}
+
+async function consumeAiQuotaForUserId(
+  env: Env,
+  userId: string,
+  kind: 'text' | 'voice',
+  units: number,
+): Promise<AiQuotaResult> {
+  const safeUnits = Math.max(1, Math.min(Math.trunc(units), kind === 'voice' ? 60 : 10));
+  const limit = kind === 'voice' ? 60 : 100;
+  const day = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+  const updated = await env.DB.prepare(
+    `INSERT INTO ai_usage_daily (user_id, usage_day, kind, units, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, usage_day, kind) DO UPDATE SET
+         units = units + excluded.units, updated_at = excluded.updated_at
+       WHERE units + excluded.units <= ?
+       RETURNING units`,
+  )
+    .bind(userId, day, kind, safeUnits, now, limit)
+    .first<{ units: number }>();
+  const used = updated?.units ?? limit;
+  return {
+    allowed: Boolean(updated),
+    remaining: Math.max(0, limit - used),
+    limit,
+  };
 }
 
 /** Resolve Market permissions without exposing account roles on a public endpoint. */
@@ -544,8 +656,70 @@ function publicUser(u: UserRow) {
   return { id: u.id, username: u.username, displayName: u.display_name };
 }
 
-function sessionUser(u: UserRow) {
-  return { ...publicUser(u), role: u.role };
+function sessionUser(u: UserRow, emailAvailable = false) {
+  return {
+    ...publicUser(u),
+    role: u.role,
+    email: u.email,
+    emailVerified: Boolean(u.email_verified_at),
+    emailAvailable,
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]!,
+  );
+}
+
+async function createEmailAction(
+  env: Env,
+  userId: string,
+  purpose: 'verify' | 'reset',
+  ttlMs: number,
+): Promise<string> {
+  const token = newToken();
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM email_action_tokens WHERE user_id = ? AND purpose = ?').bind(
+      userId,
+      purpose,
+    ),
+    env.DB.prepare(
+      `INSERT INTO email_action_tokens
+       (token_hash, user_id, purpose, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+    ).bind(await sha256Hex(token), userId, purpose, now, now + ttlMs),
+  ]);
+  return token;
+}
+
+async function sendAccountEmail(
+  env: Env,
+  to: string,
+  kind: 'verify' | 'reset',
+  token: string,
+): Promise<void> {
+  if (!env.EMAIL) throw new Error('email sending is not enabled');
+  const url = new URL('https://0xnullai.com/settings');
+  url.searchParams.set(kind, token);
+  const action = kind === 'verify' ? '验证邮箱' : '重置密码';
+  const expiry = kind === 'verify' ? '24 小时' : '30 分钟';
+  const safeUrl = escapeHtml(url.toString());
+  await env.EMAIL.send({
+    to,
+    from: { email: 'no-reply@0xnullai.com', name: '0xNuller' },
+    subject: `0xNuller ${action}`,
+    text: `${action}：${url.toString()}\n链接将在 ${expiry}后失效。若非本人操作，请忽略。`,
+    html: `<p>请点击下方链接完成${action}：</p><p><a href="${safeUrl}">${action}</a></p><p>链接将在 ${expiry}后失效。若非本人操作，请忽略。</p>`,
+  });
 }
 
 /**
@@ -789,6 +963,14 @@ function validateCredentials(username: unknown, password: unknown): string | nul
   return null;
 }
 
+export function registrationConflict(error: unknown): 'username' | 'email' | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/unique constraint/i.test(message)) return null;
+  if (/users\.username|username/i.test(message)) return 'username';
+  if (/idx_users_email_unique|users\.email|email/i.test(message)) return 'email';
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env);
@@ -835,21 +1017,28 @@ export default {
         if (emailExists) return err('邮箱已被注册', 409, cors);
 
         const id = crypto.randomUUID();
-        await env.DB.prepare(
-          `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-          .bind(
-            id,
-            username,
-            typeof body.displayName === 'string' && body.displayName.trim()
-              ? body.displayName.trim().slice(0, 24)
-              : (body.username as string),
-            await hashPassword(body.password as string),
-            email,
-            Date.now(),
+        try {
+          await env.DB.prepare(
+            `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
           )
-          .run();
+            .bind(
+              id,
+              username,
+              typeof body.displayName === 'string' && body.displayName.trim()
+                ? body.displayName.trim().slice(0, 24)
+                : (body.username as string),
+              await hashPassword(body.password as string),
+              email,
+              Date.now(),
+            )
+            .run();
+        } catch (cause) {
+          const conflict = registrationConflict(cause);
+          if (conflict === 'username') return err('用户名已被占用', 409, cors);
+          if (conflict === 'email') return err('邮箱已被注册', 409, cors);
+          throw cause;
+        }
 
         const token = newToken();
         await env.DB.prepare(
@@ -864,10 +1053,135 @@ export default {
           )
           .run();
 
-        return json({ user: { id, username, displayName: username, role: 'user' }, token }, 201, {
-          ...cors,
-          'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
-        });
+        const verificationToken = await createEmailAction(env, id, 'verify', VERIFY_EMAIL_TTL_MS);
+        try {
+          await sendAccountEmail(env, email, 'verify', verificationToken);
+        } catch (cause) {
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              event: 'verification_email_failed',
+              userId: id,
+              error: cause instanceof Error ? cause.message : String(cause),
+            }),
+          );
+        }
+
+        return json(
+          {
+            user: {
+              id,
+              username,
+              displayName: username,
+              role: 'user',
+              email,
+              emailVerified: false,
+              emailAvailable: Boolean(env.EMAIL),
+            },
+            token,
+          },
+          201,
+          {
+            ...cors,
+            'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
+          },
+        );
+      }
+
+      // ── Email verification and password recovery ──
+      if (path === '/api/auth/email/verification/request' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!user.email) return err('账户尚未设置邮箱', 400, cors);
+        if (user.email_verified_at) return json({ ok: true, alreadyVerified: true }, 200, cors);
+        const actionToken = await createEmailAction(env, user.id, 'verify', VERIFY_EMAIL_TTL_MS);
+        await sendAccountEmail(env, user.email, 'verify', actionToken);
+        return json({ ok: true }, 202, cors);
+      }
+
+      if (path === '/api/auth/email/verification/confirm' && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const actionToken = typeof body.token === 'string' ? body.token : '';
+        if (!actionToken) return err('验证链接无效', 400, cors);
+        const tokenHash = await sha256Hex(actionToken);
+        const action = await env.DB.prepare(
+          `SELECT user_id FROM email_action_tokens
+           WHERE token_hash = ? AND purpose = 'verify' AND used_at IS NULL AND expires_at > ?`,
+        )
+          .bind(tokenHash, Date.now())
+          .first<{ user_id: string }>();
+        if (!action) return err('验证链接无效或已过期', 400, cors);
+        const now = Date.now();
+        await env.DB.batch([
+          env.DB.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').bind(
+            now,
+            action.user_id,
+          ),
+          env.DB.prepare('UPDATE email_action_tokens SET used_at = ? WHERE token_hash = ?').bind(
+            now,
+            tokenHash,
+          ),
+        ]);
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (path === '/api/auth/password/forgot' && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+        if (email && EMAIL_PATTERN.test(email)) {
+          const user = await env.DB.prepare('SELECT id, email FROM users WHERE lower(email) = ?')
+            .bind(email)
+            .first<{ id: string; email: string }>();
+          if (user) {
+            const actionToken = await createEmailAction(
+              env,
+              user.id,
+              'reset',
+              RESET_PASSWORD_TTL_MS,
+            );
+            try {
+              await sendAccountEmail(env, user.email, 'reset', actionToken);
+            } catch (cause) {
+              console.error(
+                JSON.stringify({
+                  level: 'error',
+                  event: 'password_reset_email_failed',
+                  userId: user.id,
+                  error: cause instanceof Error ? cause.message : String(cause),
+                }),
+              );
+            }
+          }
+        }
+        return json({ ok: true }, 202, cors);
+      }
+
+      if (path === '/api/auth/password/reset' && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const actionToken = typeof body.token === 'string' ? body.token : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (password.length < MIN_PASSWORD_LEN) return err('密码至少 8 位', 400, cors);
+        const tokenHash = await sha256Hex(actionToken);
+        const action = await env.DB.prepare(
+          `SELECT user_id FROM email_action_tokens
+           WHERE token_hash = ? AND purpose = 'reset' AND used_at IS NULL AND expires_at > ?`,
+        )
+          .bind(tokenHash, Date.now())
+          .first<{ user_id: string }>();
+        if (!action) return err('重置链接无效或已过期', 400, cors);
+        const now = Date.now();
+        await env.DB.batch([
+          env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(
+            await hashPassword(password),
+            action.user_id,
+          ),
+          env.DB.prepare('UPDATE email_action_tokens SET used_at = ? WHERE token_hash = ?').bind(
+            now,
+            tokenHash,
+          ),
+          env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(action.user_id),
+        ]);
+        return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
       }
 
       // ── Login ──
@@ -944,7 +1258,7 @@ export default {
           )
           .run();
 
-        return json({ user: sessionUser(user), token }, 200, {
+        return json({ user: sessionUser(user, Boolean(env.EMAIL)), token }, 200, {
           ...cors,
           'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
         });
@@ -953,7 +1267,80 @@ export default {
       // ── Current user ──
       if (path === '/api/auth/me' && request.method === 'GET') {
         const user = await currentUser(request, env);
-        return json({ user: user ? sessionUser(user) : null }, 200, cors);
+        return json({ user: user ? sessionUser(user, Boolean(env.EMAIL)) : null }, 200, cors);
+      }
+
+      if (path === '/api/auth/ai-usage' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const day = new Date().toISOString().slice(0, 10);
+        const rows = await env.DB.prepare(
+          'SELECT kind, units FROM ai_usage_daily WHERE user_id = ? AND usage_day = ?',
+        )
+          .bind(user.id, day)
+          .all<{ kind: 'text' | 'voice'; units: number }>();
+        const used = Object.fromEntries(rows.results.map((row) => [row.kind, row.units]));
+        return json(
+          {
+            day,
+            text: { used: used.text ?? 0, limit: 100 },
+            voice: { used: used.voice ?? 0, limit: 60 },
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/voice/ticket' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!env.DM_TICKET_SECRET) return err('语音体验尚未启用', 503, cors);
+        const now = Date.now();
+        const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
+          aud: 'voice',
+          sub: user.id,
+          iat: now,
+          exp: now + VOICE_TICKET_TTL_MS,
+        });
+        return json({ ticket, expiresAt: now + VOICE_TICKET_TTL_MS }, 200, cors);
+      }
+
+      if (path === '/api/auth/admin/stats' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const now = Date.now();
+        const day = new Date(now).toISOString().slice(0, 10);
+        const [users, verified, sessions, registrations, usage] = await Promise.all([
+          env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
+          env.DB.prepare(
+            'SELECT COUNT(*) AS n FROM users WHERE email_verified_at IS NOT NULL',
+          ).first<{ n: number }>(),
+          env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?')
+            .bind(now)
+            .first<{ n: number }>(),
+          env.DB.prepare('SELECT COUNT(*) AS n FROM registration_attempts WHERE created_at >= ?')
+            .bind(now - 24 * 60 * 60 * 1000)
+            .first<{ n: number }>(),
+          env.DB.prepare(
+            'SELECT kind, COALESCE(SUM(units), 0) AS units FROM ai_usage_daily WHERE usage_day = ? GROUP BY kind',
+          )
+            .bind(day)
+            .all<{ kind: 'text' | 'voice'; units: number }>(),
+        ]);
+        const used = Object.fromEntries(usage.results.map((row) => [row.kind, row.units]));
+        return json(
+          {
+            generatedAt: now,
+            users: users?.n ?? 0,
+            verifiedUsers: verified?.n ?? 0,
+            activeSessions: sessions?.n ?? 0,
+            registrationAttempts24h: registrations?.n ?? 0,
+            textUnitsToday: used.text ?? 0,
+            voiceUnitsToday: used.voice ?? 0,
+          },
+          200,
+          cors,
+        );
       }
 
       // ── Logout ──
@@ -2108,6 +2495,7 @@ export default {
           env.DB.prepare('DELETE FROM registration_attempts WHERE created_at < ?').bind(
             now - REGISTER_WINDOW_MS,
           ),
+          env.DB.prepare('DELETE FROM email_action_tokens WHERE expires_at < ?').bind(now),
         ]),
         runAuthMaintenance(env, now),
       ]).then(() => undefined),

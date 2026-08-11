@@ -21,7 +21,7 @@ DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcont
 
 ## 状态
 
-- `1.2.0` 由 0xNuller monorepo 统一维护并发布到 npm
+- `1.0.0` 正式版，已发布到 npm
 - v0.1.x 的 Python 实现归档在 [`archive/0.x-py`](https://github.com/0xNullAI/DG-MCP/tree/archive/0.x-py) 分支，PyPI 上仍可下载但不再更新
 
 ## 快速开始
@@ -171,7 +171,7 @@ sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 
 ```bash
 git clone https://github.com/0xNullAI/0xNuller.git
-cd DG-MCP
+cd 0xNuller
 npm install
 npm run build
 npm run dev          # tsx 热重载
@@ -182,8 +182,8 @@ npm run dev          # tsx 热重载
 | 项目                                                                  | 用途                                   |
 | --------------------------------------------------------------------- | -------------------------------------- |
 | [DG-Kit](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit) | 共享的 TypeScript 中台（被本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent)                      | 浏览器版 AI 控制器                     |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat)                        | 多人 P2P 房间                          |
+| [Agent](https://github.com/0xNullAI/0xNuller/tree/main/apps/agent)    | 浏览器版 AI 控制器                     |
+| [Chat](https://github.com/0xNullAI/0xNuller/tree/main/apps/chat)      | 多人房间与私聊                         |
 
 ## 协议
 

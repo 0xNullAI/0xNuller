@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worker, {
   claimMarketItemsForCredentials,
+  consumeAiQuotaForCredentials,
   marketItemAccessForCredentials,
+  registrationConflict,
   runAuthMaintenance,
+  voiceTicketQuota,
   type Env,
 } from './index';
 import { createTestDb } from './test-helpers';
@@ -11,6 +14,7 @@ const ORIGIN = 'https://0xnullai.com';
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
 let photos: FakePhotos;
+let sentEmails: unknown[];
 
 class FakePhotos {
   readonly objects = new Map<string, { bytes: ArrayBuffer; contentType: string; uploaded: Date }>();
@@ -70,9 +74,15 @@ class FakePhotos {
 beforeEach(() => {
   db = createTestDb();
   photos = new FakePhotos();
+  sentEmails = [];
   env = {
     DB: db.DB as Env['DB'],
     PHOTOS: photos as unknown as R2Bucket,
+    EMAIL: {
+      send: async (message: unknown) => {
+        sentEmails.push(message);
+      },
+    } as unknown as SendEmail,
     CHAT: { fetch: async () => new Response('ok') } as unknown as Fetcher,
     IP_PEPPER: 'test-pepper',
     DM_TICKET_SECRET: 'test-dm-ticket-secret',
@@ -126,6 +136,16 @@ async function registerUser(overrides: Record<string, unknown> = {}) {
 }
 
 describe('注册', () => {
+  it('把并发写入触发的唯一约束统一映射为可读冲突', () => {
+    expect(registrationConflict(new Error('UNIQUE constraint failed: users.username'))).toBe(
+      'username',
+    );
+    expect(
+      registrationConflict(new Error('UNIQUE constraint failed: index idx_users_email_unique')),
+    ).toBe('email');
+    expect(registrationConflict(new Error('database unavailable'))).toBeNull();
+  });
+
   it('建号后立刻是已登录状态', async () => {
     const { res, body } = await registerUser();
     expect(res.status).toBe(201);
@@ -177,6 +197,118 @@ describe('注册', () => {
     const blocked = await registerUser({ username: 'user-5', email: 'user-5@example.com' });
     expect(blocked.res.status).toBe(429);
     expect(blocked.body.error).toBe('注册请求过于频繁，请稍后再试');
+  });
+});
+
+describe('邮箱验证与密码找回', () => {
+  it('验证令牌只存哈希且使用后失效', async () => {
+    const { body } = await registerUser();
+    const text = String((sentEmails[0] as { text: string }).text);
+    const token = new URL(text.match(/https:\/\/\S+/)![0]).searchParams.get('verify')!;
+    expect(
+      await prepared('SELECT 1 FROM email_action_tokens WHERE token_hash = ?', token).first(),
+    ).toBeNull();
+
+    expect((await post('/api/auth/email/verification/confirm', { token })).status).toBe(200);
+    const me = await worker.fetch(req('/api/auth/me', { token: body.token }), env);
+    expect(((await me.json()) as { user: { emailVerified: boolean } }).user.emailVerified).toBe(
+      true,
+    );
+    expect((await post('/api/auth/email/verification/confirm', { token })).status).toBe(400);
+  });
+
+  it('不泄露账户是否存在，重置后注销旧会话', async () => {
+    const { body } = await registerUser();
+    sentEmails = [];
+    expect((await post('/api/auth/password/forgot', { email: 'nobody@example.com' })).status).toBe(
+      202,
+    );
+    expect(sentEmails).toHaveLength(0);
+    expect((await post('/api/auth/password/forgot', { email: GOOD.email })).status).toBe(202);
+    const text = String((sentEmails[0] as { text: string }).text);
+    const token = new URL(text.match(/https:\/\/\S+/)![0]).searchParams.get('reset')!;
+    expect(
+      (await post('/api/auth/password/reset', { token, password: 'new-password-123' })).status,
+    ).toBe(200);
+    const oldSession = await worker.fetch(req('/api/auth/me', { token: body.token }), env);
+    expect(((await oldSession.json()) as { user: unknown }).user).toBeNull();
+    expect(
+      (
+        await post('/api/auth/login', {
+          username: GOOD.username,
+          password: 'new-password-123',
+        })
+      ).status,
+    ).toBe(200);
+  });
+});
+
+describe('账户 AI 体验额度', () => {
+  it('要求登录，并按账户原子扣减每日文字额度', async () => {
+    expect(
+      await consumeAiQuotaForCredentials(env, { authorization: null, cookie: null }, 'text'),
+    ).toBe('unauthorized');
+    const { body } = await registerUser();
+    const credentials = { authorization: `Bearer ${body.token}`, cookie: null };
+    for (let index = 0; index < 100; index += 1) {
+      const result = await consumeAiQuotaForCredentials(env, credentials, 'text');
+      expect(result).toMatchObject({ allowed: true, remaining: 99 - index, limit: 100 });
+    }
+    expect(await consumeAiQuotaForCredentials(env, credentials, 'text')).toEqual({
+      allowed: false,
+      remaining: 0,
+      limit: 100,
+    });
+
+    const usage = await worker.fetch(req('/api/auth/ai-usage', { token: body.token }), env);
+    expect(await usage.json()).toMatchObject({
+      text: { used: 100, limit: 100 },
+      voice: { used: 0, limit: 60 },
+    });
+  });
+
+  it('签发短期语音票据，并按账户分钟额度扣减', async () => {
+    const { body } = await registerUser();
+    const response = await worker.fetch(
+      req('/api/auth/voice/ticket', { method: 'POST', token: body.token }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const issued = (await response.json()) as { ticket: string; expiresAt: number };
+    expect(issued.ticket).toContain('.');
+    expect(issued.expiresAt).toBeGreaterThan(Date.now());
+
+    expect(await voiceTicketQuota(env, issued.ticket, 0)).toMatchObject({
+      subject: body.user!.id,
+      allowed: true,
+      remaining: 60,
+    });
+    expect(await voiceTicketQuota(env, issued.ticket, 2)).toMatchObject({
+      subject: body.user!.id,
+      allowed: true,
+      remaining: 58,
+    });
+    expect(await voiceTicketQuota(env, 'forged.ticket', 1)).toBe('unauthorized');
+  });
+});
+
+describe('运营统计', () => {
+  it('只向管理员返回不含个人信息的汇总', async () => {
+    const { body } = await registerUser();
+    expect(
+      (await worker.fetch(req('/api/auth/admin/stats', { token: body.token }), env)).status,
+    ).toBe(403);
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", body.user!.id).run();
+    const response = await worker.fetch(req('/api/auth/admin/stats', { token: body.token }), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      users: 1,
+      verifiedUsers: 0,
+      activeSessions: 1,
+      registrationAttempts24h: 1,
+      textUnitsToday: 0,
+      voiceUnitsToday: 0,
+    });
   });
 });
 
