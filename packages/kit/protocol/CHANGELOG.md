@@ -1,5 +1,9 @@
 # @dg-kit/protocol
 
+## 1.14.0
+
+- Add the shared `RequestedDevice` transport contract.
+
 ## 1.13.0
 
 ### Minor Changes

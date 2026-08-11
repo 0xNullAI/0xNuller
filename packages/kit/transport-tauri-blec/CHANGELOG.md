@@ -1,5 +1,9 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.14.0
+
+- Expose stable device identity and shared picker-cancellation behavior.
+
 ## 1.13.0
 
 ### Patch Changes

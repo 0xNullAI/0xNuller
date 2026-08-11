@@ -1,5 +1,9 @@
 # @dg-kit/transport-webbluetooth
 
+## 1.14.0
+
+- Expose stable device identity and prevent silent connected-device eviction.
+
 ## 1.13.0
 
 ### Minor Changes

@@ -6,7 +6,7 @@
 
 [![npm](https://img.shields.io/npm/v/dg-mcp?color=0a84ff)](https://www.npmjs.com/package/dg-mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/DG-Kit)
+[![@dg-kit](https://img.shields.io/badge/built%20on-%40dg--kit%2F*-0a84ff)](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit)
 [![官网](https://img.shields.io/badge/官网-0xnullai.com-58c8f2)](https://0xnullai.com)
 
 中文 | [English](./README.en.md)
@@ -17,11 +17,11 @@
 
 DG-MCP 把郊狼设备暴露成一组 [Model Context Protocol](https://modelcontextprotocol.io) 工具，让任何 MCP 兼容的 LLM 客户端（Claude Desktop、Continue 等）能通过蓝牙直接驱动你的设备——`scan` / `connect` / `shock_start` / `shock_stop` / `shock_adjust` / `shock_change_wave` / `shock_burst` / `design_wave` / `emergency_stop` 全套都是普通的工具调用（旧版 `start` / `stop` / `adjust_strength` / `change_wave` / `burst` 名字仍可调用，但工具列表只展示新名）。
 
-跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](https://github.com/0xNullAI/DG-Kit) 中台，跟 DG-Agent / DG-Chat 共享一份协议代码。
+跑在 Node.js 里，通过 stdio 跟客户端通信。基于 [`@dg-kit/*`](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit) 中台，跟 Agent / Chat 共享一份协议代码。
 
 ## 状态
 
-- `1.0.0` 正式版，已发布到 npm
+- `1.2.0` 由 0xNuller monorepo 统一维护并发布到 npm
 - v0.1.x 的 Python 实现归档在 [`archive/0.x-py`](https://github.com/0xNullAI/DG-MCP/tree/archive/0.x-py) 分支，PyPI 上仍可下载但不再更新
 
 ## 快速开始
@@ -170,7 +170,7 @@ sudo setcap cap_net_raw+eip $(eval readlink -f $(which node))
 ## 开发
 
 ```bash
-git clone https://github.com/0xNullAI/DG-MCP.git
+git clone https://github.com/0xNullAI/0xNuller.git
 cd DG-MCP
 npm install
 npm run build
@@ -179,11 +179,11 @@ npm run dev          # tsx 热重载
 
 ## 相关项目
 
-| 项目                                             | 用途                                   |
-| ------------------------------------------------ | -------------------------------------- |
-| [DG-Kit](https://github.com/0xNullAI/DG-Kit)     | 共享的 TypeScript 中台（被本项目消费） |
-| [DG-Agent](https://github.com/0xNullAI/DG-Agent) | 浏览器版 AI 控制器                     |
-| [DG-Chat](https://github.com/0xNullAI/DG-Chat)   | 多人 P2P 房间                          |
+| 项目                                                                  | 用途                                   |
+| --------------------------------------------------------------------- | -------------------------------------- |
+| [DG-Kit](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit) | 共享的 TypeScript 中台（被本项目消费） |
+| [DG-Agent](https://github.com/0xNullAI/DG-Agent)                      | 浏览器版 AI 控制器                     |
+| [DG-Chat](https://github.com/0xNullAI/DG-Chat)                        | 多人 P2P 房间                          |
 
 ## 协议
 
