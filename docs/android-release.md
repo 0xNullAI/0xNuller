@@ -33,7 +33,7 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 ### 3. Release tag 必须是 `android-v<版本号>`
 
 应用内的更新提示按这个前缀在 `/releases` 里找 APK。第一个 0xNuller 发布使用
-当前发布使用 tag `android-v6.0.3`，Release 标题和 APK 也都显示 `0xNuller 6.0.3`。
+当前发布使用 tag `android-v6.0.4`，Release 标题和 APK 也都显示 `0xNuller 6.0.4`。
 
 合并之后同一个仓库还会打出
 `@dg-kit/core@1.14.0`（changesets）和 `v6.0.0`（平台版本）这类 tag，用
@@ -95,8 +95,8 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-gh release create "android-v6.0.3" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.0.3" --notes-file docs/releases/6.0.3.md "$APK"
+gh release create "android-v6.0.4" --repo 0xNullAI/0xNuller \
+  --title "0xNuller 6.0.4" --notes-file docs/releases/6.0.4.md "$APK"
 ```
 
 ## 发布之后
