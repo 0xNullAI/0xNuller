@@ -1,5 +1,11 @@
 # dg-mcp
 
+## 1.2.2
+
+### Patch Changes
+
+- Separate npm package publishing from 0xNuller platform GitHub Releases.
+
 ## 1.2.1
 
 ### Patch Changes
