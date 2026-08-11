@@ -162,7 +162,21 @@ function verifyBumps(base) {
     if (comparison < 0) fail(`${path} decreases from ${previous} to ${current}`);
     if (comparison > 0) bumps.push(`${path}: ${previous} -> ${current}`);
   }
-  if (bumps.length === 0) fail(`no releasable package version increased relative to ${base}`);
+  if (bumps.length === 0) {
+    const changed = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], {
+      encoding: 'utf8',
+    })
+      .trim()
+      .split('\n')
+      .filter(Boolean);
+    const infrastructureOnly = changed.every(
+      (path) => path.startsWith('.github/') || path === 'scripts/verify-release.mjs',
+    );
+    if (!infrastructureOnly) fail(`no releasable package version increased relative to ${base}`);
+    bumps.push(
+      `release infrastructure only (${changed.length} file(s)); product version unchanged`,
+    );
+  }
   return bumps;
 }
 
