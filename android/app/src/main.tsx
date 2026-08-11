@@ -14,7 +14,11 @@ import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';
 import { requestDeviceTauri } from './request-device-tauri';
 import { createTauriTransport } from './tauri-transport';
 import { wrapWithLifecycleSafety } from './lifecycle-safety';
-import { installAndroidShellBehaviours, withBlePermissionHelp } from './android-shell';
+import {
+  installAndroidShellBehaviours,
+  withBlePermissionHelp,
+  withConnectPermissionHelp,
+} from './android-shell';
 import './styles.css';
 
 /**
@@ -59,12 +63,6 @@ const freeProxySecret = import.meta.env.VITE_DG_PROXY_SECRET;
  * disconnect/getState/execute are all lost, and every call other than connect
  * then throws "is not a function".
  */
-function withConnectPermissionHelp<T extends { connect(): Promise<void> }>(inner: T): T {
-  const rawConnect = inner.connect.bind(inner);
-  inner.connect = () => withBlePermissionHelp(rawConnect);
-  return inner;
-}
-
 const bridge = {
   agent: {
     servicesOverrides: {
@@ -87,7 +85,7 @@ const bridge = {
         // permission. The inner client throws 「未授予蓝牙权限」, which without
         // this wrapper is just a small notice and leaves the user with no idea
         // what to do about it.
-        return { ...inner, connect: () => withBlePermissionHelp(() => inner.connect()) };
+        return withConnectPermissionHelp(inner);
       },
       createOpossumClient: () =>
         withConnectPermissionHelp(
@@ -117,7 +115,7 @@ const bridge = {
           scanDurationMs: 8000,
         }),
       );
-      return { ...inner, connect: () => withBlePermissionHelp(() => inner.connect()) };
+      return withConnectPermissionHelp(inner);
     },
     requestDevice: () => withBlePermissionHelp(() => requestDeviceTauri()),
   },

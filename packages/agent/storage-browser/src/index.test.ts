@@ -29,12 +29,13 @@ class MemoryStorage {
 }
 
 describe('BrowserAppSettingsStore', () => {
-  it('defaults to last-user-turn context and persists model context strategy changes', () => {
+  it('defaults to recent conversation context and persists model context strategy changes', () => {
     const localStorageRef = new MemoryStorage();
     const sessionStorageRef = new MemoryStorage();
     const store = new BrowserAppSettingsStore({ localStorageRef, sessionStorageRef });
 
-    expect(store.load().modelContextStrategy).toBe('last-user-turn');
+    expect(store.load().modelContextStrategy).toBe('last-five-user-turns');
+    expect(store.load().temperature).toBe(0.7);
 
     const saved = store.save({
       ...store.load(),
@@ -77,6 +78,35 @@ describe('BrowserAppSettingsStore', () => {
 
     const store = new BrowserAppSettingsStore({ localStorageRef, sessionStorageRef });
     expect(store.load().bridge.qq.accessToken).toBe('');
+  });
+
+  it('migrates the 6.0 terse conversation defaults without overriding custom choices', () => {
+    const localStorageRef = new MemoryStorage();
+    localStorageRef.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        version: 1,
+        modelContextStrategy: 'last-user-turn',
+        temperature: 0.3,
+      }),
+    );
+    const migrated = new BrowserAppSettingsStore({
+      localStorageRef,
+      sessionStorageRef: new MemoryStorage(),
+    }).load();
+    expect(migrated.modelContextStrategy).toBe('last-five-user-turns');
+    expect(migrated.temperature).toBe(0.7);
+
+    localStorageRef.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ version: 1, modelContextStrategy: 'last-user-turn', temperature: 0.8 }),
+    );
+    expect(
+      new BrowserAppSettingsStore({
+        localStorageRef,
+        sessionStorageRef: new MemoryStorage(),
+      }).load().temperature,
+    ).toBe(0.8);
   });
 
   it('keeps API keys only in memory when remember is disabled', () => {

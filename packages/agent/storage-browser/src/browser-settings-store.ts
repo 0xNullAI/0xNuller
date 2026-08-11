@@ -273,8 +273,16 @@ export class BrowserAppSettingsStore {
   ): PersistedBrowserAppSettings | null {
     if (!persisted) return null;
 
+    // 6.0 accidentally shipped the terse/samey pair as persisted defaults.
+    // Migrate only that exact pair; any other combination reflects a user choice.
+    const legacyConversationDefaults =
+      persisted.modelContextStrategy === 'last-user-turn' && persisted.temperature === 0.3;
+
     return {
       ...persisted,
+      ...(legacyConversationDefaults
+        ? { modelContextStrategy: 'last-five-user-turns' as const, temperature: 0.7 }
+        : {}),
       deviceMode: persisted.deviceMode === 'fake' ? 'web-bluetooth' : persisted.deviceMode,
       llmMode: persisted.llmMode === 'fake' ? 'provider-http' : persisted.llmMode,
       speechRecognitionEnabled: persisted.speechRecognitionEnabled ?? persisted.voiceInputEnabled,

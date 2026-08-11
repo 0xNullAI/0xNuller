@@ -52,6 +52,20 @@ export function shouldRefreshSessionForEvent(event: RuntimeEvent): boolean {
   );
 }
 
+export function appendAcceptedUserMessage(
+  current: SessionSnapshot | null,
+  sessionId: string,
+  message: SessionSnapshot['messages'][number],
+): SessionSnapshot | null {
+  if (!current || current.id !== sessionId) return current;
+  if (current.messages.some((existing) => existing.id === message.id)) return current;
+  return {
+    ...current,
+    updatedAt: message.createdAt,
+    messages: [...current.messages, message],
+  };
+}
+
 export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
   const { client, enabled, onRuntimeEvent } = options;
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -180,6 +194,10 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
       if (isActiveSessionEvent && event.type === 'user-message-accepted') {
         setReplyBusy(true);
         setLiveTraceItems([]);
+        // The runtime has already persisted this exact message before emitting.
+        // Render it from the event immediately instead of waiting for an IndexedDB
+        // round trip; the subsequent snapshot refresh remains authoritative.
+        setSession((current) => appendAcceptedUserMessage(current, sessionId, event.message));
       }
 
       if (isActiveSessionEvent) {
