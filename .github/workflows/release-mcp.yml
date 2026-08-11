@@ -45,4 +45,3 @@ jobs:
       - run: npm run verify:packages
       - name: Publish dg-mcp with npm trusted publishing
         run: npm publish --workspace dg-mcp --provenance --access public
-

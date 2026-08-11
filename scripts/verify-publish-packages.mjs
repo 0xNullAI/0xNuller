@@ -20,7 +20,8 @@ for (const [name, directory] of packages) {
   const manifest = JSON.parse(readFileSync(`${directory}/package.json`, 'utf8'));
   if (manifest.name !== name) fail(`${directory}: expected package name ${name}`);
   if (manifest.private === true) fail(`${name}: publishable package cannot be private`);
-  if (manifest.publishConfig?.access !== 'public') fail(`${name}: publishConfig.access must be public`);
+  if (manifest.publishConfig?.access !== 'public')
+    fail(`${name}: publishConfig.access must be public`);
   if (manifest.repository?.url !== 'git+https://github.com/0xNullAI/0xNuller.git') {
     fail(`${name}: repository must point to the unified 0xNuller repository`);
   }
@@ -44,7 +45,9 @@ for (const [name, directory] of packages) {
       fail(`${name}: tarball is missing declared entry ${target}`);
     }
   }
-  const leakedTests = [...files].filter((file) => /(?:^|\/)\w+\.test\.(?:js|d\.ts)(?:\.map)?$/.test(file));
+  const leakedTests = [...files].filter((file) =>
+    /(?:^|\/)\w+\.test\.(?:js|d\.ts)(?:\.map)?$/.test(file),
+  );
   if (leakedTests.length) fail(`${name}: tarball contains test output: ${leakedTests.join(', ')}`);
   console.log(`${packed.id}: ${packed.entryCount} files, ${packed.size} packed bytes`);
 }

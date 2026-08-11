@@ -198,14 +198,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     // Only attempt once while still not connected; putting peerRoom in the deps would
     // reconnect on every state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    authChecked,
-    signedIn,
-    peerRoom.connected,
-    peerRoom.status,
-    peerRoom.isDm,
-    requireAccount,
-  ]);
+  }, [authChecked, signedIn, peerRoom.connected, peerRoom.status, peerRoom.isDm, requireAccount]);
 
   /**
    * Open a conversation with an account.
