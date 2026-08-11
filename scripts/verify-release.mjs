@@ -170,7 +170,10 @@ function verifyBumps(base) {
       .split('\n')
       .filter(Boolean);
     const infrastructureOnly = changed.every(
-      (path) => path.startsWith('.github/') || path === 'scripts/verify-release.mjs',
+      (path) =>
+        path.startsWith('.github/') ||
+        path === 'scripts/verify-release.mjs' ||
+        path === 'scripts/verify-android-apk.mjs',
     );
     if (!infrastructureOnly) fail(`no releasable package version increased relative to ${base}`);
     bumps.push(
