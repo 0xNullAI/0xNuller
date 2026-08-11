@@ -181,6 +181,20 @@ export async function getAiUsage(): Promise<AiUsageSummary> {
   return call<AiUsageSummary>('/api/auth/ai-usage');
 }
 
+export interface AdminStats {
+  generatedAt: number;
+  users: number;
+  verifiedUsers: number;
+  activeSessions: number;
+  registrationAttempts24h: number;
+  textUnitsToday: number;
+  voiceUnitsToday: number;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  return call<AdminStats>('/api/auth/admin/stats');
+}
+
 /** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
 export async function deleteAccount(): Promise<void> {
   await call('/api/auth/account', { method: 'DELETE' });

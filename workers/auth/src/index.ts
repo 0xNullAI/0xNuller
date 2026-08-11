@@ -1227,6 +1227,44 @@ export default {
         );
       }
 
+      if (path === '/api/auth/admin/stats' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const now = Date.now();
+        const day = new Date(now).toISOString().slice(0, 10);
+        const [users, verified, sessions, registrations, usage] = await Promise.all([
+          env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
+          env.DB.prepare(
+            'SELECT COUNT(*) AS n FROM users WHERE email_verified_at IS NOT NULL',
+          ).first<{ n: number }>(),
+          env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?')
+            .bind(now)
+            .first<{ n: number }>(),
+          env.DB.prepare('SELECT COUNT(*) AS n FROM registration_attempts WHERE created_at >= ?')
+            .bind(now - 24 * 60 * 60 * 1000)
+            .first<{ n: number }>(),
+          env.DB.prepare(
+            'SELECT kind, COALESCE(SUM(units), 0) AS units FROM ai_usage_daily WHERE usage_day = ? GROUP BY kind',
+          )
+            .bind(day)
+            .all<{ kind: 'text' | 'voice'; units: number }>(),
+        ]);
+        const used = Object.fromEntries(usage.results.map((row) => [row.kind, row.units]));
+        return json(
+          {
+            generatedAt: now,
+            users: users?.n ?? 0,
+            verifiedUsers: verified?.n ?? 0,
+            activeSessions: sessions?.n ?? 0,
+            registrationAttempts24h: registrations?.n ?? 0,
+            textUnitsToday: used.text ?? 0,
+            voiceUnitsToday: used.voice ?? 0,
+          },
+          200,
+          cors,
+        );
+      }
+
       // ── Logout ──
       if (path === '/api/auth/logout' && request.method === 'POST') {
         const token = readToken(request);
