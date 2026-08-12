@@ -60,7 +60,15 @@ export function AiTab() {
   }
 
   function updateBehavior(patch: Partial<ModelBehaviorSettings>) {
-    setBehavior((current) => behaviorStore.saveModelBehavior({ ...current, ...patch }));
+    // Persisting dispatches a synchronous cross-module event so the mounted Agent
+    // picks the change up immediately. Do that in the input handler, not inside a
+    // React state-updater callback: the latter runs during AiTab's render work and
+    // makes the event update Agent's App while React is still rendering this one.
+    const next = behaviorStore.saveModelBehavior({
+      ...behaviorStore.loadModelBehavior(),
+      ...patch,
+    });
+    setBehavior(next);
   }
 
   const def = getProviderDefinition(config.providerId as ProviderId);

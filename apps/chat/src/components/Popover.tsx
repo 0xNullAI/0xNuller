@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { Z_LOCAL_POPOVER } from '@0xnullai/ui';
 
 interface PopoverProps {
   open: boolean;
@@ -46,7 +47,7 @@ export function Popover({
       ref={ref}
       role="dialog"
       aria-label={title}
-      className="fixed z-50 w-[min(360px,calc(100vw-16px))] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-2xl"
+      className={`fixed ${Z_LOCAL_POPOVER} w-[min(360px,calc(100vw-16px))] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-2xl`}
       style={{ top: anchorTop, right: anchorRight }}
     >
       <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-3 py-2">

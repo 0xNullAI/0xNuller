@@ -10,7 +10,12 @@ import {
   LogIn,
   Plus,
 } from 'lucide-react';
-import { Avatar, useClaimedSidebarSections, useSidebarContainerRef } from '@0xnullai/ui';
+import {
+  Avatar,
+  Z_SHELL_POPOVER,
+  useClaimedSidebarSections,
+  useSidebarContainerRef,
+} from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
 import {
   avatarSrc,
@@ -101,7 +106,7 @@ function AppSwitcherButton({
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-[calc(100%+4px)] z-[var(--z-shell)] w-[220px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
+          className={`absolute left-0 top-[calc(100%+4px)] ${Z_SHELL_POPOVER} w-[220px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]`}
         >
           {MODULES.map((m) => (
             <button
@@ -210,7 +215,7 @@ function AccountButton({
       {open && (
         <div
           role="menu"
-          className="absolute bottom-[calc(100%+4px)] left-0 z-[var(--z-shell)] w-[200px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]"
+          className={`absolute bottom-[calc(100%+4px)] left-0 ${Z_SHELL_POPOVER} w-[200px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]`}
         >
           {items.map((it) => (
             <button

@@ -14,8 +14,40 @@
  * and consumers import rather than retype.
  */
 
-/** Backdrop / scrim. */
+/** Popovers which stay inside normal module content. */
+export const Z_LOCAL_POPOVER = 'z-[var(--z-local-popover)]';
+
+/** Non-modal voice/update status surface inside module content. */
+export const Z_FLOATING_STATUS = 'z-[var(--z-floating-status)]';
+
+/** Narrow-screen shell scrim. */
+export const Z_SHELL = 'z-[var(--z-shell)]';
+
+/** Narrow-screen shell drawer, above its scrim. */
+export const Z_SHELL_PANEL = 'z-[var(--z-shell-panel)]';
+
+/** Menus owned by shell chrome. */
+export const Z_SHELL_POPOVER = 'z-[var(--z-shell-popover)]';
+
+/** Backdrop / scrim. Dialogs intentionally outrank all shell chrome. */
 export const Z_OVERLAY = 'z-[var(--z-module-overlay)]';
 
 /** The panel that sits on the backdrop. Must always outrank Z_OVERLAY. */
-export const Z_OVERLAY_PANEL = 'z-[calc(var(--z-module-overlay)+1)]';
+export const Z_OVERLAY_PANEL = 'z-[var(--z-overlay-panel)]';
+
+/** Secondary overlay opened while another overlay is still present. */
+export const Z_OVERLAY_STACKED = 'z-[var(--z-overlay-stacked)]';
+
+/**
+ * A popover opened from inside an overlay (Select, combobox menus, etc.).
+ *
+ * These portal beside the overlay surface rather than inside its stacking
+ * context. A plain `z-50` therefore renders behind the surface at 100: the
+ * options exist in the DOM, but the dialog body wins hit testing and every
+ * click appears to do nothing. Keep enough room above the stacked-overlay
+ * level (+10) so selects also work inside secondary dialogs.
+ */
+export const Z_OVERLAY_POPOVER = 'z-[var(--z-overlay-popover)]';
+
+/** Transient application notifications. */
+export const Z_TOAST = 'z-[var(--z-toast)]';

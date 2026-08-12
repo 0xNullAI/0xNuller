@@ -1,5 +1,5 @@
 import type { UpdateCheckerStatus } from '../services/update-checker.js';
-import { Alert, AlertDescription, Button, cn } from '@0xnullai/ui';
+import { Alert, AlertDescription, Button, Z_FLOATING_STATUS, cn } from '@0xnullai/ui';
 
 interface RenderToastItem {
   key: string;
@@ -63,7 +63,9 @@ export function FloatingStatusBar({
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[3.5rem] z-40 flex justify-center px-3">
+    <div
+      className={`pointer-events-none absolute inset-x-0 top-[3.5rem] ${Z_FLOATING_STATUS} flex justify-center px-3`}
+    >
       <div className="flex w-full max-w-[800px] flex-col gap-3">
         {voiceMode && (
           <section className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-1rem)] sm:max-w-[60%] rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3 text-center shadow-[var(--shadow)]">
