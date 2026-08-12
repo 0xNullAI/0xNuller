@@ -118,9 +118,14 @@ function mapModule(mod: PluginBlecModule): PluginBlecApi {
       }
       return mod.checkPermissions(askIfDenied);
     },
-    startScan: (handler, timeoutMs) => mod.startScan(handler, timeoutMs),
+    // Android 11 still needs the plugin's iBeacon/location scan mode flag even
+    // after ACCESS_FINE_LOCATION has been granted. Without forwarding it the
+    // native scanner registers successfully but returns zero advertisements.
+    startScan: (handler, timeoutMs) =>
+      mod.startScan(handler, timeoutMs, legacyAndroidNeedsLocation()),
     stopScan: () => mod.stopScan(),
-    connect: (address, onDisconnect) => mod.connect(address, onDisconnect),
+    connect: (address, onDisconnect) =>
+      mod.connect(address, onDisconnect, legacyAndroidNeedsLocation()),
     disconnect: (address) => mod.disconnect(address),
     connectedDevices: () => mod.connectedDevices(),
     getDeviceConnectionUpdates: (address, handler) =>

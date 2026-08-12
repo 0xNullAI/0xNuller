@@ -13,7 +13,8 @@ import type {
 import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
 import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
 import { OutputDeviceSection, type OutputTarget } from '@control/components/OutputDeviceSection';
-import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
+import { startWaveformId } from '@control/hooks/use-playback';
+import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
 
@@ -43,8 +44,7 @@ export default function App() {
   });
   const waveforms = useWaveforms();
 
-  const playbackA = useChannelPlayback();
-  const playbackB = useChannelPlayback();
+  const devicePlayback = useDevicePlayback();
   const [waveTab, setWaveTab] = useState<'A' | 'B'>('A');
   const [marketOpen, setMarketOpen] = useState(false);
 
@@ -93,6 +93,8 @@ export default function App() {
   const selectedOutput =
     outputTargets.find((target) => target.id === selectedOutputId) ?? outputTargets[0] ?? null;
   const selectedCoyote = selectedOutput?.kind === 'coyote' ? selectedOutput.coyote : null;
+  const playbackA = devicePlayback.get(selectedOutput?.id ?? null, 'A');
+  const playbackB = devicePlayback.get(selectedOutput?.id ?? null, 'B');
 
   // Device control is a lease that follows the current module. Losing it has to
   // stop more than the output: the playlist timer is the one thing in here that
