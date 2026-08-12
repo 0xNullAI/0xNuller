@@ -162,8 +162,7 @@ export function Overlay({
       )}
       style={{
         background: scrim === 'strong' ? 'var(--overlay-scrim-strong)' : 'var(--overlay-scrim)',
-        zIndex:
-          level === 'stacked' ? 'calc(var(--z-module-overlay) + 10)' : 'var(--z-module-overlay)',
+        zIndex: level === 'stacked' ? 'var(--z-overlay-stacked)' : 'var(--z-module-overlay)',
         pointerEvents: 'auto',
       }}
       onMouseDown={handleMouseDown}

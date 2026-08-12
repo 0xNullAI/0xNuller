@@ -6,16 +6,23 @@ const root = join(import.meta.dirname, '..');
 const generated = join(root, 'android/app/src-tauri/gen/android/app');
 const gradlePath = join(generated, 'build.gradle.kts');
 const manifestPath = join(generated, 'src/main/AndroidManifest.xml');
+const mainActivityPath = join(generated, 'src/main/java/ai/nullai/dgagent/MainActivity.kt');
 const provenancePath = join(generated, 'src/main/assets/0xnuller-build.json');
 const signingTemplatePath = join(root, 'android/app/signing.gradle.kts.template');
 const manifestTemplatePath = join(root, 'android/app/AndroidManifest.template.xml');
+const mainActivityTemplatePath = join(root, 'android/app/MainActivity.template.kt');
 const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
 const releaseBuild = process.argv.includes('--release');
 
-for (const path of [gradlePath, manifestPath]) {
+for (const path of [gradlePath, manifestPath, mainActivityPath]) {
   if (!existsSync(path)) {
     throw new Error(`missing generated Android project; run npm run android:init first (${path})`);
   }
+}
+
+const mainActivityTemplate = readFileSync(mainActivityTemplatePath, 'utf8');
+if (readFileSync(mainActivityPath, 'utf8') !== mainActivityTemplate) {
+  writeFileSync(mainActivityPath, mainActivityTemplate);
 }
 
 function attribute(node, name) {
@@ -136,7 +143,17 @@ for (const required of [
 if (!gradle.includes('minSdk = 26') || !gradle.includes(signingMarker)) {
   throw new Error('generated Android Gradle configuration is incomplete');
 }
+const mainActivity = readFileSync(mainActivityPath, 'utf8');
+for (const required of [
+  'WindowInsetsCompat.Type.systemBars()',
+  'WindowInsetsCompat.Type.displayCutout()',
+  '.setInsets(handledTypes, Insets.NONE)',
+]) {
+  if (!mainActivity.includes(required)) {
+    throw new Error(`Android MainActivity is missing native inset handling: ${required}`);
+  }
+}
 
 console.log(
-  `Android project prepared: BLE permissions, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+  `Android project prepared: BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
 );

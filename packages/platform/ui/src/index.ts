@@ -26,6 +26,7 @@ export * from './components/select';
 export * from './components/sheet';
 export * from './components/textarea';
 export * from './utils';
+export * from './z-layers';
 // Types only. Theme DOM writes stay inside theme-store.
 export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';

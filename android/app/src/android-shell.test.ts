@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { syncVisualViewport, withConnectPermissionHelp } from './android-shell';
 
 afterEach(() => {
@@ -8,6 +10,19 @@ afterEach(() => {
 });
 
 describe('Android shell integration', () => {
+  it('keeps native system-bar inset handling in the generated activity template', () => {
+    const activity = readFileSync(
+      resolve(process.cwd(), 'android/app/MainActivity.template.kt'),
+      'utf8',
+    );
+    expect(activity).toContain('WindowInsetsCompat.Type.systemBars()');
+    expect(activity).toContain('WindowInsetsCompat.Type.displayCutout()');
+    expect(activity).toContain('.setInsets(handledTypes, Insets.NONE)');
+    expect(activity).toContain(
+      'view.setPadding(insets.left, insets.top, insets.right, insets.bottom)',
+    );
+  });
+
   it('keeps prototype device methods while decorating connect', async () => {
     class Client {
       connect = vi.fn(async () => undefined);

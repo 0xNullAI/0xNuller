@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { newSceneId, type SavedScene } from './index.js';
 import { useScenes } from './use-scenes.js';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
-import { Button, Input, Textarea, MarketImportDialog, cn } from '@0xnullai/ui';
+import { Button, Input, Textarea, MarketImportDialog, Z_LOCAL_POPOVER, cn } from '@0xnullai/ui';
 import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 
 const DEFAULT_CUSTOM_ICON = '📝';
@@ -464,7 +464,9 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: str
         {value}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 grid w-[188px] grid-cols-6 gap-0.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]">
+        <div
+          className={`absolute left-0 top-full ${Z_LOCAL_POPOVER} mt-1 grid w-[188px] grid-cols-6 gap-0.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]`}
+        >
           {EMOJI_OPTIONS.map((emoji) => (
             <button
               key={emoji}
