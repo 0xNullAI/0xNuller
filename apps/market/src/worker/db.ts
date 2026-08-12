@@ -45,6 +45,7 @@ function rowToAdminItem(row: ItemRow): MarketAdminItem {
 
 export interface ListParams {
   type?: ItemType;
+  modality?: 'electrostimulation' | 'vibration';
   q?: string;
   sort: 'new' | 'popular';
   limit: number;
@@ -58,6 +59,12 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   if (params.type) {
     where.push('type = ?');
     binds.push(params.type);
+  }
+  if (params.modality) {
+    where.push(
+      "(json_extract(content, '$.modality') = ? OR (json_extract(content, '$.modality') IS NULL AND ? = 'electrostimulation'))",
+    );
+    binds.push(params.modality, params.modality);
   }
   if (params.q) {
     where.push('(name LIKE ? OR description LIKE ? OR tags LIKE ?)');

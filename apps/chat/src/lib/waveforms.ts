@@ -20,6 +20,8 @@ export interface WaveformDefinition {
   name: string;
   description: string;
   frames: WaveFrame[];
+  /** Target output family. Legacy/imported waveforms default to electrostimulation. */
+  modality?: 'electrostimulation' | 'vibration';
   /** true when the waveform was imported from a user-supplied .pulse file. */
   custom?: boolean;
 }
@@ -30,6 +32,7 @@ export const BUILTIN_WAVEFORMS: WaveformDefinition[] = listBuiltinWaveforms().ma
   name: wave.name,
   description: wave.description ?? '',
   frames: wave.frames,
+  modality: 'electrostimulation',
 }));
 
 export function parsePulseFile(content: string): WaveformDefinition | null {
@@ -46,6 +49,7 @@ export function parsePulseFile(content: string): WaveformDefinition | null {
     name: parsed.name || fallbackName,
     description: '从 .pulse 文件导入',
     frames: built.frames,
+    modality: 'electrostimulation',
     custom: true,
   };
 }
@@ -65,6 +69,7 @@ export function marketItemToWaveform(item: MarketItem): WaveformDefinition {
     name: item.name,
     description: item.description ?? '',
     frames: content.frames,
+    modality: content.modality ?? 'electrostimulation',
     custom: true,
   };
 }

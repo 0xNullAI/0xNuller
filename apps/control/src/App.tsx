@@ -397,6 +397,9 @@ export default function App() {
           queueLengthB={playbackB.queue.length}
           onAdjust={adjustSelected}
           onTogglePlay={togglePlay}
+          onSetOpossumPattern={(channel, pattern) => {
+            if (selectedOutput?.kind === 'opossum') device.setOpossumPattern(channel, pattern);
+          }}
           firingA={
             selectedOutput?.kind === 'coyote'
               ? firingDeviceIds.A === selectedOutput.coyote.id

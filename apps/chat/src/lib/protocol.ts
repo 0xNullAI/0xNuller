@@ -2,7 +2,7 @@
 // Public types (used by the UI) keep long field names; the wire format (inside
 // use-peer-room) uses short keys to shrink the payload.
 
-import type { DeviceKind } from '@dg-kit/core';
+import type { DeviceKind, OpossumVibrationPatternName } from '@dg-kit/core';
 
 // Re-exported so components (SensorCard/OpossumControl/LedColorPicker, ...) reference the
 // same enum instead of each importing '@dg-kit/core' on their own. Note: this is the BLE
@@ -66,6 +66,7 @@ export type CmdAction =
   // cost nothing in backward compatibility.
   | 'vibrate_adjust' // v=signed delta (same semantics as adjust_strength, but applied to Opossum intensity)
   | 'vibrate_stop' // stop Opossum vibration (c omitted = zero both channels)
+  | 'vibrate_change_pattern' // pattern selects the Opossum rhythm envelope for one channel
   | 'vibrate_burst' // one-shot pulse: v=target strength, ms=duration (default 500ms), then falls back automatically
   // set_led is meaningful for paw-prints / civet-edging / opossum alike; kind tells them apart.
   | 'set_led';
@@ -125,6 +126,8 @@ export interface DeviceCommand {
   color?: number;
   /** Duration in milliseconds, used by vibrate_burst; defaults to 500ms. */
   ms?: number;
+  /** Named Opossum rhythm preset, used by vibrate_change_pattern. */
+  pattern?: OpossumVibrationPatternName;
 }
 
 export interface WaveformTransfer {
@@ -191,6 +194,7 @@ export interface MemberState {
   opossumIntensityA?: number;
   opossumIntensityB?: number;
   opossumBattery?: number | null;
+  opossumLastButtons?: string | null;
   // —— Added for sensors (Paw Prints / Civet Edging, one or the other) ——
   sensorKind?: SensorKind | null;
   sensorConnected?: boolean;
@@ -218,6 +222,7 @@ export interface StateFast {
   // —— Opossum intensity (changes often, so it rides on fast) ——
   opossumIntensityA?: number;
   opossumIntensityB?: number;
+  opossumLastButtons?: string | null;
   // —— Most recent sensor event (button press etc., also needs low latency) ——
   sensorLastEvent?: string | null;
   sensorLastValue?: number | null;

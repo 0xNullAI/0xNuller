@@ -47,6 +47,9 @@ function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
 
 export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Element {
   const [type, setType] = useState<ItemType>('waveform');
+  const [waveformModality, setWaveformModality] = useState<'electrostimulation' | 'vibration'>(
+    'electrostimulation',
+  );
   const [name, setName] = useState('');
   const [author, setAuthor] = useState('');
   const [description, setDescription] = useState('');
@@ -102,6 +105,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         tags: ['渐强', '节奏感'],
         // frames: [encodedFrequency(10..240), strength(0..100)], one frame is about 25ms. Can be swapped for pulse text instead.
         content: {
+          modality: waveformModality,
           frames: [
             [10, 20],
             [15, 40],
@@ -173,7 +177,11 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   // falling back to the file name).
   const pulseToItem = (text: string, fallbackName: string): unknown => {
     const { frames, name: embedded } = parsePulseText(text);
-    return { type: 'waveform', name: embedded || fallbackName, content: { frames, pulse: text } };
+    return {
+      type: 'waveform',
+      name: embedded || fallbackName,
+      content: { frames, pulse: text, modality: waveformModality },
+    };
   };
 
   // One piece of JSON text -> an array of items (a single object -> [object], an array ->
@@ -201,10 +209,26 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
       if (pulseMap[key]) {
         used.add(key);
         const text = pulseMap[key]!;
-        return { ...it, content: { ...c, frames: parsePulseText(text).frames, pulse: text } };
+        return {
+          ...it,
+          content: {
+            ...c,
+            frames: parsePulseText(text).frames,
+            pulse: text,
+            modality: c.modality ?? waveformModality,
+          },
+        };
       }
       if (/^Dungeonlab\+pulse:/i.test(cand)) {
-        return { ...it, content: { ...c, frames: parsePulseText(cand).frames, pulse: cand } };
+        return {
+          ...it,
+          content: {
+            ...c,
+            frames: parsePulseText(cand).frames,
+            pulse: cand,
+            modality: c.modality ?? waveformModality,
+          },
+        };
       }
     }
     return it;
@@ -316,7 +340,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
           description: description.trim() || undefined,
           author: author.trim() || undefined,
           tags,
-          content: { frames, pulse },
+          content: { frames, pulse, modality: waveformModality },
         };
       } else if (type === 'scenario') {
         if (!prompt.trim()) return setError('请填写场景提示词');
@@ -410,6 +434,22 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                 onClick={() => setType('multi-scene')}
               >
                 多人
+              </button>
+            </div>
+          )}
+          {type === 'waveform' && (
+            <div className="seg seg-sub">
+              <button
+                className={waveformModality === 'electrostimulation' ? 'active' : ''}
+                onClick={() => setWaveformModality('electrostimulation')}
+              >
+                电击
+              </button>
+              <button
+                className={waveformModality === 'vibration' ? 'active' : ''}
+                onClick={() => setWaveformModality('vibration')}
+              >
+                震动
               </button>
             </div>
           )}

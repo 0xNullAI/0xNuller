@@ -499,6 +499,7 @@ export function usePeerRoom(displayName: string) {
                 // stale kind after disconnect left the card permanently stuck
                 // visible for the rest of the room session.
                 opossumBattery: (data.obt as number | null | undefined) ?? null,
+                opossumLastButtons: (data.obtn as string | null | undefined) ?? null,
                 sensorKind: (data.sk as MemberState['sensorKind'] | null | undefined) ?? null,
                 sensorConnected: (data.sc as boolean | undefined) ?? cur.sensorConnected,
                 sensorBattery: (data.sbt as number | null | undefined) ?? null,
@@ -702,6 +703,7 @@ export function usePeerRoom(displayName: string) {
           fB: state.firingB,
           oa: state.opossumIntensityA,
           ob: state.opossumIntensityB,
+          obtn: state.opossumLastButtons,
           se: state.sensorLastEvent,
           sv: state.sensorLastValue,
           sea: state.sensorLastEventAt,

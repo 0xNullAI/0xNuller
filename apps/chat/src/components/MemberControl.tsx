@@ -682,6 +682,10 @@ export function MemberControl({
               onSendCommand(peerId, 'vibrate_burst', { c: channel, v: strength, ms: durationMs })
             }
             onStop={() => onSendCommand(peerId, 'vibrate_stop')}
+            onPatternChange={(channel, pattern) =>
+              onSendCommand(peerId, 'vibrate_change_pattern', { c: channel, pattern })
+            }
+            lastButtons={member.opossumLastButtons}
           />
         )}
       </div>

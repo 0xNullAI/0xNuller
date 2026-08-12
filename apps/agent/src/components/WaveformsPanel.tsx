@@ -30,6 +30,7 @@ export function WaveformsPanel({
       name: item.name,
       description: item.description,
       frames,
+      modality: (item.content as MarketWaveformContent).modality ?? 'electrostimulation',
     });
   }
 
@@ -54,7 +55,8 @@ export function WaveformsPanel({
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-[var(--text)]">{waveform.name}</div>
                     <div className="mt-0.5 truncate text-[12px] text-[var(--text-faint)]">
-                      {waveform.id} · {waveform.frames.length} 帧
+                      {waveform.id} · {waveform.frames.length} 帧 ·{' '}
+                      {waveform.modality === 'vibration' ? '震动' : '电击'}
                     </div>
                   </div>
                 </div>

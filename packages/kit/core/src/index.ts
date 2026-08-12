@@ -20,6 +20,8 @@ export interface WaveformDefinition {
   description?: string;
   /** Sequence of 25 ms steps. */
   frames: WaveFrame[];
+  /** Intended output family; old definitions are treated as electrostimulation. */
+  modality?: 'electrostimulation' | 'vibration';
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +125,37 @@ export interface ToolDefinition {
  * without a circular package dependency.
  */
 export type OpossumVibrationPatternName = 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat';
+
+/**
+ * Portable, opt-in sensor-to-output linkage.  The rule is deliberately small:
+ * one source event drives one Opossum channel (or both), with an explicit
+ * safety-capped intensity and rhythm.  Transports/apps own persistence and UI.
+ */
+export type DeviceLinkSource = 'civet-pressure' | 'paw-button' | 'opossum-button';
+export type DeviceLinkChannel = Channel | 'both';
+export interface DeviceLinkRule {
+  enabled: boolean;
+  source: DeviceLinkSource;
+  channel: DeviceLinkChannel;
+  intensity: number;
+  pattern: OpossumVibrationPatternName;
+  /** Civet pressure threshold in kPa; ignored for button sources. */
+  thresholdKPa: number;
+  /** Hysteresis release threshold in kPa; ignored for button sources. */
+  releaseKPa: number;
+  cooldownMs: number;
+}
+
+export const DEFAULT_DEVICE_LINK_RULE: DeviceLinkRule = {
+  enabled: false,
+  source: 'civet-pressure',
+  channel: 'A',
+  intensity: 20,
+  pattern: 'pulse',
+  thresholdKPa: 2,
+  releaseKPa: 1,
+  cooldownMs: 1500,
+};
 
 /**
  * Commands for the Opossum vibrate controller. Separate from `DeviceCommand`

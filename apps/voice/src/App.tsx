@@ -10,6 +10,7 @@ import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
 import { isCoyoteOutputActive } from '@dg-kit/core';
 import { DeviceSafetyButton } from '../../chat/src/components/DeviceSafetyButton';
+import { OpossumControl } from '../../chat/src/components/OpossumControl';
 
 interface AppProps {
   /**
@@ -180,6 +181,35 @@ export function App({ transport }: AppProps = {}) {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
+        <OpossumControl
+          connected={state.opossum.connected}
+          battery={state.opossum.battery}
+          intensityA={state.opossum.intensityA}
+          intensityB={state.opossum.intensityB}
+          limitA={settings.opossumSafety.maxIntensityA}
+          limitB={settings.opossumSafety.maxIntensityB}
+          onAdjust={(channel, delta) =>
+            void session.opossum.execute({ type: 'vibrateAdjust', channel, delta })
+          }
+          onBurst={(channel, strength, durationMs) =>
+            void session.opossum.execute({
+              type: 'vibrateBurst',
+              channel,
+              intensity: Math.min(
+                strength,
+                channel === 'A'
+                  ? settings.opossumSafety.maxIntensityA
+                  : settings.opossumSafety.maxIntensityB,
+              ),
+              durationMs,
+            })
+          }
+          onStop={() => void session.opossum.emergencyStop()}
+          onPatternChange={(channel, pattern) =>
+            void session.opossum.execute({ type: 'vibrateSetPattern', channel, pattern })
+          }
+        />
 
         <CallPanel
           call={call.state}

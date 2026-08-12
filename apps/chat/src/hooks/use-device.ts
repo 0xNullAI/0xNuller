@@ -92,6 +92,9 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [limitB, setLimitB] = useState(() => loadDeviceSafety().maxStrengthB);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
   const [opossum, setOpossum] = useState<OpossumSummary | null>(null);
+  const [deviceLink, setDeviceLinkState] = useState<import('@dg-kit/core').DeviceLinkRule | null>(
+    null,
+  );
   const [firePolicy, setFirePolicyState] = useState<'sum' | 'max' | 'avg'>(
     () => (localStorage.getItem('dg-fire-policy') as 'sum' | 'max' | 'avg' | null) ?? 'max',
   );
@@ -136,6 +139,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     });
     setSensor(session.getSensorSummary());
     setOpossum(session.getOpossumSummary());
+    setDeviceLinkState(session.getDeviceLinkRule());
   }, []);
 
   // The factory is intended to be stable across the hook's lifetime:
@@ -348,6 +352,18 @@ export function useDevice(options: UseDeviceOptions = {}) {
     [],
   );
 
+  const setOpossumPattern = useCallback(
+    (channel: 'A' | 'B', pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat') => {
+      sessionRef.current?.setOpossumPattern(channel, pattern);
+    },
+    [],
+  );
+
+  const setDeviceLink = useCallback((rule: import('@dg-kit/core').DeviceLinkRule) => {
+    sessionRef.current?.setDeviceLinkRule(rule);
+    setDeviceLinkState({ ...rule });
+  }, []);
+
   /** Set the LED color of the sensor or the Opossum (discrete 0-7 enum, see LedColorPicker). */
   const setLedColor = useCallback((target: 'sensor' | 'opossum', color: number) => {
     sessionRef.current?.setLedColor(target, color);
@@ -434,6 +450,9 @@ export function useDevice(options: UseDeviceOptions = {}) {
     opossumBurst,
     opossumStop,
     setOpossumWaveform,
+    setOpossumPattern,
+    deviceLink,
+    setDeviceLink,
     setLedColor,
   };
 }

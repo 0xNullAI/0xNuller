@@ -1,4 +1,9 @@
-import type { RuntimeEvent, RuntimeTraceEntry, SessionSnapshot } from '@dg-agent/core';
+import type {
+  DeviceLinkRule,
+  RuntimeEvent,
+  RuntimeTraceEntry,
+  SessionSnapshot,
+} from '@dg-agent/core';
 import {
   AgentRuntime,
   type AgentRuntimeOptions,
@@ -23,6 +28,8 @@ export interface AgentClient {
   /** Opt-in gate for the Sensor Trigger Engine — see AgentRuntime's doc comment. */
   setSensorTriggersEnabled(sessionId: string, enabled: boolean): Promise<void>;
   isSensorTriggersEnabledForSession(sessionId: string): Promise<boolean>;
+  setDeviceLinkRule(rule: DeviceLinkRule): Promise<void>;
+  getDeviceLinkRule(): DeviceLinkRule | null;
   emergencyStop(sessionId: string): Promise<void>;
   abortCurrentReply(sessionId: string): Promise<void>;
   sendUserMessage(input: SendUserMessageInput): Promise<void>;
@@ -79,6 +86,15 @@ class EmbeddedAgentClient implements AgentClient {
 
   isSensorTriggersEnabledForSession(sessionId: string): Promise<boolean> {
     return this.runtime.isSensorTriggersEnabledForSession(sessionId);
+  }
+
+  setDeviceLinkRule(rule: DeviceLinkRule): Promise<void> {
+    this.runtime.setDeviceLinkRule(rule);
+    return Promise.resolve();
+  }
+
+  getDeviceLinkRule(): DeviceLinkRule | null {
+    return this.runtime.getDeviceLinkRule();
   }
 
   emergencyStop(sessionId: string): Promise<void> {

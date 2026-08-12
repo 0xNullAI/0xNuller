@@ -20,6 +20,7 @@ export interface MarketWaveformContent {
   // Waveform frames: [encoded frequency 10-240, strength 0-100][] —
   // identical to @dg-kit/core's WaveFrame.
   frames: [number, number][];
+  modality?: 'electrostimulation' | 'vibration';
   pulse?: string;
 }
 

@@ -31,7 +31,10 @@ import type {
   WaveFrame as KitWaveFrame,
   SensorState,
   DeviceKind,
+  OpossumVibrationPatternName,
+  DeviceLinkRule,
 } from '@dg-kit/core';
+import { DEFAULT_DEVICE_LINK_RULE } from '@dg-kit/core';
 
 /**
  * Optional override hook for non-browser runtimes (Tauri Android shell).
@@ -456,6 +459,8 @@ export interface OpossumSummary {
   /** Names of buttons currently reported pressed, joined with '+', or null. */
   lastButtons: string | null;
   lastButtonsAt: number | null;
+  patternA?: OpossumVibrationPatternName;
+  patternB?: OpossumVibrationPatternName;
 }
 
 export interface DeviceSessionSafetyLimits {
@@ -594,6 +599,10 @@ export class DeviceSession {
   private opossumWaveIdB: string | null = null;
   private unsubscribeOpossumButtons: (() => void) | null = null;
   private unsubscribeOpossumState: (() => void) | null = null;
+  private deviceLinkRule: DeviceLinkRule = { ...DEFAULT_DEVICE_LINK_RULE };
+  private deviceLinkActive = false;
+  private deviceLinkLastFiredAt = Number.NEGATIVE_INFINITY;
+  private deviceLinkPulseTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onStateChange: (() => void) | null = null;
   private readonly requestDevice: RequestDeviceFn;
@@ -638,6 +647,27 @@ export class DeviceSession {
     if (channel === 'A') this.coyoteLimitA = value;
     else this.coyoteLimitB = value;
     for (const coyote of this.coyotes) coyote.setLimit(channel, value);
+    this.emit();
+  }
+
+  getDeviceLinkRule(): DeviceLinkRule {
+    return { ...this.deviceLinkRule };
+  }
+
+  setDeviceLinkRule(rule: DeviceLinkRule): void {
+    this.deviceLinkRule = {
+      ...rule,
+      intensity: clamp(Math.round(rule.intensity), 0, 200),
+      thresholdKPa: Math.max(0, rule.thresholdKPa),
+      releaseKPa: Math.max(0, Math.min(rule.releaseKPa, rule.thresholdKPa)),
+      cooldownMs: Math.max(250, Math.round(rule.cooldownMs)),
+    };
+    if (!this.deviceLinkRule.enabled) {
+      const wasActive = this.deviceLinkActive || this.deviceLinkPulseTimer != null;
+      this.deviceLinkActive = false;
+      this.clearDeviceLinkPulseTimer();
+      if (wasActive) this.opossumStop();
+    }
     this.emit();
   }
 
@@ -861,17 +891,7 @@ export class DeviceSession {
         this.sensorLastValue = described.value;
         this.sensorLastEventAt = Date.now();
         this.emit();
-
-        // Cross-device consent boundary: a sensor event like this is exactly the
-        // kind of signal a user might eventually want to wire into "my
-        // button press nudges someone else's device" — but doing that
-        // automatically, without the *receiving* member explicitly opting
-        // in, would let one person's sensor silently drive another person's
-        // hardware. That needs its own consent/permission UI (mirroring the
-        // existing `allowAi` opt-in toggle for AI control) before it can be
-        // built safely. Until that exists, sensor events stay strictly
-        // informational: surfaced in the room UI via MemberState.sensorLastEvent,
-        // never used here to construct/send a DeviceCommand automatically.
+        this.handleLinkedSensorReading(reading);
       },
     );
 
@@ -942,9 +962,7 @@ export class DeviceSession {
       this.opossumLastButtons = event.pressed.size > 0 ? [...event.pressed].join('+') : null;
       this.opossumLastButtonsAt = Date.now();
       this.emit();
-      // Cross-device consent boundary: see the identical note in
-      // attachSensor() above — Opossum button presses are informational
-      // only, for the same reason (no receiving-side consent UI yet).
+      this.handleLinkedOpossumButton(event);
     });
 
     this.emit();
@@ -954,7 +972,63 @@ export class DeviceSession {
     this.disconnectOpossum();
   };
 
+  private handleLinkedSensorReading(reading: PawPrintsReading | CivetPressureReading): void {
+    const rule = this.deviceLinkRule;
+    if (!rule.enabled || !this.opossumAdapter || rule.source === 'opossum-button') return;
+    const now = Date.now();
+    if (rule.source === 'paw-button') {
+      if (now - this.deviceLinkLastFiredAt < rule.cooldownMs) return;
+      if (reading.type === 'trigger') this.fireDeviceLink();
+      return;
+    }
+    if (reading.type !== 'pressure') return;
+    if (!this.deviceLinkActive && reading.kPa >= rule.thresholdKPa) {
+      if (now - this.deviceLinkLastFiredAt < rule.cooldownMs) return;
+      this.deviceLinkActive = true;
+      this.fireDeviceLink();
+    } else if (this.deviceLinkActive && reading.kPa <= rule.releaseKPa) {
+      this.deviceLinkActive = false;
+      this.opossumStop();
+    }
+  }
+
+  private handleLinkedOpossumButton(event: OpossumButtonEvent): void {
+    const rule = this.deviceLinkRule;
+    if (rule.enabled && rule.source === 'opossum-button' && event.pressed.size > 0) {
+      this.fireDeviceLink();
+    }
+  }
+
+  private fireDeviceLink(): void {
+    if (!this.opossumAdapter) return;
+    const rule = this.deviceLinkRule;
+    this.deviceLinkLastFiredAt = Date.now();
+    const channels: ('A' | 'B')[] = rule.channel === 'both' ? ['A', 'B'] : [rule.channel];
+    for (const channel of channels) {
+      this.opossumAdapter.setVibrationPattern(channel, rule.pattern);
+      this.setOpossumIntensity(
+        channel,
+        rule.intensity,
+        channel === 'A' ? this.opossumLimitA : this.opossumLimitB,
+      );
+    }
+    if (rule.source !== 'civet-pressure') {
+      this.clearDeviceLinkPulseTimer();
+      this.deviceLinkPulseTimer = setTimeout(() => {
+        this.deviceLinkPulseTimer = null;
+        this.opossumStop();
+      }, 500);
+    }
+  }
+
+  private clearDeviceLinkPulseTimer(): void {
+    if (this.deviceLinkPulseTimer == null) return;
+    clearTimeout(this.deviceLinkPulseTimer);
+    this.deviceLinkPulseTimer = null;
+  }
+
   disconnectOpossum(): void {
+    this.clearDeviceLinkPulseTimer();
     if (this.opossumDevice) {
       this.opossumDevice.removeEventListener(
         'gattserverdisconnected',
@@ -1005,6 +1079,11 @@ export class DeviceSession {
     this.opossumAdapter.setVibrationPattern(channel, envelope);
     if (channel === 'A') this.opossumWaveIdA = waveformId;
     else this.opossumWaveIdB = waveformId;
+    this.emit();
+  }
+
+  setOpossumPattern(channel: 'A' | 'B', pattern: OpossumVibrationPatternName): void {
+    this.opossumAdapter?.setVibrationPattern(channel, pattern);
     this.emit();
   }
 
@@ -1122,6 +1201,8 @@ export class DeviceSession {
       waveIdB: this.opossumWaveIdB,
       lastButtons: this.opossumLastButtons,
       lastButtonsAt: this.opossumLastButtonsAt,
+      patternA: this.opossumState.patternA,
+      patternB: this.opossumState.patternB,
     };
   }
 }

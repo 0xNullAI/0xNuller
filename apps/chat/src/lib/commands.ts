@@ -15,6 +15,10 @@ export interface DeviceSessionContext {
   setOpossumIntensity: (channel: 'A' | 'B', value: number) => void;
   opossumBurst: (channel: 'A' | 'B', strength: number, durationMs?: number) => void;
   opossumStop: (channel?: 'A' | 'B') => void;
+  setOpossumPattern?: (
+    channel: 'A' | 'B',
+    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
+  ) => void;
   setLedColor: (target: 'sensor' | 'opossum', color: number) => void;
 }
 
@@ -120,6 +124,12 @@ export function executeCommand(cmd: DeviceCommand, ctx?: CommandContext): string
       if (!cmd.c || cmd.v == null) return '参数缺失';
       ctx.session.opossumBurst(cmd.c, cmd.v, cmd.ms ?? 500);
       return `${cmd.c} 通道脉冲已发送`;
+
+    case 'vibrate_change_pattern':
+      if (!ctx?.session?.opossumConnected) return '未连接 Opossum 设备';
+      if (!cmd.c || !cmd.pattern || !ctx.session.setOpossumPattern) return '参数缺失';
+      ctx.session.setOpossumPattern(cmd.c, cmd.pattern);
+      return `${cmd.c} 通道节奏已切换`;
 
     // —— LED color (shared by paw-prints / civet-edging / opossum) ——
     case 'set_led': {

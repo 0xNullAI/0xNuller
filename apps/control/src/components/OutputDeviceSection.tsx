@@ -36,6 +36,10 @@ interface Props extends Omit<
   firingB: boolean;
   onAdjust: (channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (channel: 'A' | 'B') => void;
+  onSetOpossumPattern?: (
+    channel: 'A' | 'B',
+    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
+  ) => void;
   onFireStart: (channel: 'A' | 'B', boost: number) => void;
   onFireStop: (channel: 'A' | 'B') => void;
   onStop: () => void;
@@ -61,6 +65,7 @@ export function OutputDeviceSection({
   firingB,
   onAdjust,
   onTogglePlay,
+  onSetOpossumPattern,
   onFireStart,
   onFireStop,
   onStop,
@@ -99,6 +104,15 @@ export function OutputDeviceSection({
     );
     slide?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   };
+
+  // Keep the shared library compact: electrostimulation waveforms belong to
+  // Coyote, while vibration entries imported from Market belong to Opossum.
+  // The Opossum card still exposes its five safe rhythm presets even when no
+  // Market vibration has been imported.
+  const visibleWaveforms =
+    selected?.kind === 'opossum'
+      ? waveformPanel.waveforms.filter((waveform) => waveform.modality === 'vibration')
+      : waveformPanel.waveforms.filter((waveform) => waveform.modality !== 'vibration');
 
   return (
     <section>
@@ -195,6 +209,7 @@ export function OutputDeviceSection({
                           onSelect(target.id);
                           onTogglePlay(channel);
                         }}
+                        onSetPattern={onSetOpossumPattern ?? (() => undefined)}
                         onStop={() => {
                           onSelect(target.id);
                           onStop();
@@ -235,6 +250,7 @@ export function OutputDeviceSection({
 
       <WaveformPanel
         {...waveformPanel}
+        waveforms={visibleWaveforms}
         targetName={selected?.label ?? null}
         fireEnabledA={Boolean(selected)}
         fireEnabledB={Boolean(selected)}
@@ -255,6 +271,7 @@ function OpossumChannels({
   firingB,
   onAdjust,
   onTogglePlay,
+  onSetPattern,
   onStop,
 }: {
   target: Extract<OutputTarget, { kind: 'opossum' }>;
@@ -262,6 +279,10 @@ function OpossumChannels({
   firingB: boolean;
   onAdjust: (channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (channel: 'A' | 'B') => void;
+  onSetPattern: (
+    channel: 'A' | 'B',
+    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
+  ) => void;
   onStop: () => void;
 }) {
   return (
@@ -270,6 +291,7 @@ function OpossumChannels({
         const value = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
         const limit = channel === 'A' ? target.limitA : target.limitB;
         const firing = channel === 'A' ? firingA : firingB;
+        const pattern = channel === 'A' ? target.opossum.patternA : target.opossum.patternB;
         return (
           <div key={channel} className="flex flex-col items-center">
             <button
@@ -307,6 +329,23 @@ function OpossumChannels({
                 +
               </RepeatButton>
             </div>
+            <select
+              className="mt-2 rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px] text-[var(--text-soft)]"
+              value={pattern ?? 'constant'}
+              onChange={(event) =>
+                onSetPattern(
+                  channel,
+                  event.target.value as 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
+                )
+              }
+              aria-label={`${channel} 通道节奏`}
+            >
+              <option value="constant">恒定</option>
+              <option value="pulse">脉冲</option>
+              <option value="wave">波浪</option>
+              <option value="ramp">渐强</option>
+              <option value="heartbeat">心跳</option>
+            </select>
           </div>
         );
       })}

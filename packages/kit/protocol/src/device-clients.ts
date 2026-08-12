@@ -14,7 +14,7 @@
 import type { OpossumCommand, SensorDeviceClient } from '@dg-kit/core';
 import type { CivetPressureReading } from './civet-edging.js';
 import type { PawPrintsReading } from './paw-prints.js';
-import type { OpossumState } from './opossum.js';
+import type { OpossumButtonEvent, OpossumState } from './opossum.js';
 
 export interface OpossumCommandResult {
   state: OpossumState;
@@ -29,6 +29,8 @@ export interface OpossumClient {
   emergencyStop(): Promise<void>;
   setIndicatorColor(color: number): Promise<void>;
   onStateChanged(listener: (state: OpossumState) => void): () => void;
+  /** Optional physical button stream, used by the opt-in device-link engine. */
+  subscribeButtons?(listener: (event: OpossumButtonEvent) => void): () => void;
 }
 
 export type PawPrintsClient = SensorDeviceClient<PawPrintsReading>;

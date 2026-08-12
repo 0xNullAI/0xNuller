@@ -10,6 +10,7 @@ import {
   type OpossumClient,
   type OpossumCommandResult,
   type OpossumState,
+  type OpossumButtonEvent,
 } from '@dg-kit/protocol';
 import type {
   BluetoothDeviceLike,
@@ -96,6 +97,10 @@ export class WebBluetoothOpossumClient implements OpossumClient {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  subscribeButtons(listener: (event: OpossumButtonEvent) => void): () => void {
+    return this.adapter.subscribeButtons(listener);
   }
 
   private readonly handleGattDisconnected = (): void => {

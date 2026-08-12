@@ -169,6 +169,14 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.reject(new Error(this.message));
   }
 
+  setDeviceLinkRule(): Promise<void> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  getDeviceLinkRule(): null {
+    return null;
+  }
+
   isSensorTriggersEnabledForSession(_sessionId: string): Promise<boolean> {
     return Promise.resolve(false);
   }

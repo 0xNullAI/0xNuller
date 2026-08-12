@@ -12,6 +12,8 @@ export const WaveFrameSchema = z.tuple([
 
 export const WaveformContentSchema = z.object({
   frames: z.array(WaveFrameSchema).min(1).max(5000),
+  // `electrostimulation` is the backwards-compatible default for old uploads.
+  modality: z.enum(['electrostimulation', 'vibration']).optional(),
   // Optionally keep the original .pulse text so it can be reused in other DG-Lab tools.
   pulse: z.string().max(20000).optional(),
 });
