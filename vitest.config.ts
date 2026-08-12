@@ -67,6 +67,16 @@ export default defineConfig({
           include: ['packages/platform/*/src/**/*.test.{ts,tsx}'],
         },
       },
+
+      // Repository maintenance scripts are production code too. Keep their
+      // pure helpers covered without pulling command entrypoints into tests.
+      {
+        test: {
+          name: 'tooling',
+          environment: 'node',
+          include: ['scripts/**/*.test.mjs'],
+        },
+      },
     ],
     coverage: {
       provider: 'v8',

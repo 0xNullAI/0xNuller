@@ -16,10 +16,12 @@ import { UploadDialog } from './components/UploadDialog';
 
 type TopTab = 'scene' | 'waveform';
 type SceneSub = 'scenario' | 'multi-scene';
+type WaveformModality = 'electrostimulation' | 'vibration';
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<TopTab>('scene');
   const [sceneSub, setSceneSub] = useState<SceneSub>('scenario');
+  const [waveformModality, setWaveformModality] = useState<WaveformModality>('electrostimulation');
   const [sort, setSort] = useState<'new' | 'popular'>('new');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<MarketItem[]>([]);
@@ -49,7 +51,13 @@ export function App(): JSX.Element {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchItems({ type: activeType, sort, q: q.trim() || undefined, limit: 50 })
+    fetchItems({
+      type: activeType,
+      modality: tab === 'waveform' ? waveformModality : undefined,
+      sort,
+      q: q.trim() || undefined,
+      limit: 50,
+    })
       .then((next) => {
         setItems(next);
         setError(null);
@@ -62,7 +70,7 @@ export function App(): JSX.Element {
         setError(e instanceof Error ? e.message : '未知错误');
       })
       .finally(() => setLoading(false));
-  }, [activeType, sort, q]);
+  }, [activeType, waveformModality, tab, sort, q]);
 
   useEffect(() => {
     const id = window.setTimeout(load, q ? 300 : 0);
@@ -112,6 +120,22 @@ export function App(): JSX.Element {
                   onClick={() => setSceneSub('multi-scene')}
                 >
                   多人
+                </button>
+              </div>
+            )}
+            {tab === 'waveform' && (
+              <div className="seg seg-sub">
+                <button
+                  className={waveformModality === 'electrostimulation' ? 'active' : ''}
+                  onClick={() => setWaveformModality('electrostimulation')}
+                >
+                  电击波形
+                </button>
+                <button
+                  className={waveformModality === 'vibration' ? 'active' : ''}
+                  onClick={() => setWaveformModality('vibration')}
+                >
+                  震动波形
                 </button>
               </div>
             )}

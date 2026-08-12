@@ -100,4 +100,34 @@ describe('resolvePluginBlec mapModule (real @mnlphlp/plugin-blec module shape)',
     await api.getDeviceConnectionUpdates('AA:BB', connHandler);
     expect(mockMod.getDeviceConnectionUpdates).toHaveBeenCalledWith('AA:BB', connHandler);
   });
+
+  it('enables the legacy Android scan/connect mode on Android 11', async () => {
+    (globalThis as { window?: unknown }).window = { __TAURI_INTERNALS__: {} };
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 11; M2103K19C)' });
+    const mockMod = {
+      checkPermissions: vi.fn().mockResolvedValue(true),
+      startScan: vi.fn().mockResolvedValue(undefined),
+      stopScan: vi.fn().mockResolvedValue(undefined),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      connectedDevices: vi.fn().mockResolvedValue([]),
+      getDeviceConnectionUpdates: vi.fn().mockResolvedValue(undefined),
+      send: vi.fn().mockResolvedValue(undefined),
+      read: vi.fn().mockResolvedValue([]),
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+      getMtu: vi.fn().mockResolvedValue(23),
+    };
+    vi.doMock('@mnlphlp/plugin-blec', () => mockMod);
+    vi.resetModules();
+
+    const { resolvePluginBlec: freshResolve } = await import('./plugin-blec.js');
+    const api = await freshResolve();
+    const handler = vi.fn();
+    await api.startScan(handler, 8000);
+    await api.connect('AA:BB', null);
+
+    expect(mockMod.startScan).toHaveBeenCalledWith(handler, 8000, true);
+    expect(mockMod.connect).toHaveBeenCalledWith('AA:BB', null, true);
+  });
 });

@@ -1,5 +1,6 @@
 import { createStore, get, set, del, type UseStore } from 'idb-keyval';
 import { z } from 'zod';
+import { getWaveformModality, type WaveformModality } from '@dg-kit/core';
 import {
   pullContent,
   pullContentPreferences,
@@ -29,6 +30,8 @@ export interface SharedWaveform {
   name: string;
   description?: string;
   frames: [number, number][];
+  /** Output family: omitted legacy entries remain electrostimulation. */
+  modality?: WaveformModality;
 }
 
 const waveformSchema = z.object({
@@ -36,6 +39,7 @@ const waveformSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   frames: z.array(z.tuple([z.number(), z.number()])).min(1),
+  modality: z.enum(['electrostimulation', 'vibration']).optional(),
 });
 
 const DB_NAME = '0xnullai-waveforms';
@@ -84,7 +88,7 @@ function coerceList(raw: unknown): SharedWaveform[] {
 
 /** Same waveform saved in two modules: same name and same frames. */
 function signatureOf(w: SharedWaveform): string {
-  return `${w.name}::${w.frames.map((f) => f.join(',')).join(';')}`;
+  return `${getWaveformModality(w)}::${w.name}::${w.frames.map((f) => f.join(',')).join(';')}`;
 }
 
 function mergeById(groups: SharedWaveform[][]): SharedWaveform[] {
@@ -194,7 +198,11 @@ export function syncWaveforms(): Promise<void> {
           id: w.id,
           kind: 'waveform' as const,
           name: w.name,
-          payload: { frames: w.frames, ...(w.description ? { description: w.description } : {}) },
+          payload: {
+            frames: w.frames,
+            ...(w.description ? { description: w.description } : {}),
+            ...(w.modality ? { modality: w.modality } : {}),
+          },
           order,
         })),
     );
@@ -225,6 +233,7 @@ export async function saveCustomWaveform(waveform: SharedWaveform): Promise<void
       payload: {
         frames: parsed.frames,
         ...(parsed.description ? { description: parsed.description } : {}),
+        ...(parsed.modality ? { modality: parsed.modality } : {}),
       },
     },
   ]);

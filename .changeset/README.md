@@ -12,4 +12,10 @@ Pick the packages affected by your change, choose `patch`/`minor`/`major`, and w
 
 ## Releasing
 
-The release workflow runs `changeset version` to bump versions and update `CHANGELOG.md`, then `changeset publish` to push the new versions to npm. All seven packages are pinned to the same version via the `fixed` list in `config.json` — bumping any one of them bumps them all. `dg-mcp` is explicitly ignored because it has a separate product version and must never hitch a ride on a Kit release. It is released only through the manually approved `Release dg-mcp` workflow, which requires an exact manifest version and refuses an existing registry version.
+The release workflow runs `changeset version` to bump versions and update `CHANGELOG.md`, then
+`changeset publish` to publish packages. All seven DG-Kit packages are pinned to the same version via
+the `fixed` list in `config.json` — bumping one bumps the group. `dg-mcp` keeps an independent version
+and changes only when a changeset explicitly selects it.
+
+Private workspaces are not versioned by Changesets. Product versions are managed only by the
+unified product release flow; a DG-Kit changeset must never rewrite app or Android versions.

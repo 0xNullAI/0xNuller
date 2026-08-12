@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Gauge, Zap, RotateCcw, BatteryMedium } from 'lucide-react';
 import { IntensityRing, RepeatButton } from './RepeatControls';
 
@@ -13,6 +14,11 @@ interface OpossumControlProps {
   /** Spike to `strength` for `durationMs`, then fall back on its own. */
   onBurst: (channel: 'A' | 'B', strength: number, durationMs: number) => void;
   onStop: () => void;
+  onPatternChange?: (
+    channel: 'A' | 'B',
+    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
+  ) => void;
+  lastButtons?: string | null;
 }
 
 const BURST_STRENGTH_RATIO = 0.8;
@@ -22,8 +28,9 @@ const BURST_DURATION_MS = 500;
  * Control panel for the Opossum (dual-channel vibration controller). Adapted from
  * MemberControl's dual-channel strength rings: range 0-200 (reusing the Coyote's limitA/limitB
  * safety limits rather than a second limit UI of its own — see the notes in DeviceSafetyButton).
- * It has no notion of waveforms or frequency, so there is no waveform tab, just direct
- * strength +/- and a one-tap burst button.
+ * Opossum has no frequency axis, so the panel uses named rhythm envelopes
+ * (constant/pulse/wave/ramp/heartbeat) alongside direct strength +/- and a
+ * one-tap burst button.
  *
  * The callbacks are what makes it work for both Chat and Control: Chat points them at the room
  * command channel, Control points them straight at its own `useDevice`. Everything that decides
@@ -39,7 +46,12 @@ export function OpossumControl({
   onAdjust,
   onBurst,
   onStop,
+  onPatternChange,
+  lastButtons,
 }: OpossumControlProps) {
+  const [patterns, setPatterns] = useState<
+    Record<'A' | 'B', 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat'>
+  >({ A: 'constant', B: 'constant' });
   if (!connected) return null;
 
   return (
@@ -49,6 +61,9 @@ export function OpossumControl({
           <Gauge size={15} className="text-[var(--accent)]" />
           Opossum 振动控制器
         </div>
+        {lastButtons && (
+          <span className="text-[10px] text-[var(--accent)]">按键：{lastButtons}</span>
+        )}
         {battery != null && (
           <span className="flex items-center gap-0.5 text-xs text-[var(--text-soft)]">
             <BatteryMedium size={13} /> {battery}%
@@ -76,6 +91,22 @@ export function OpossumControl({
               >
                 <Zap size={11} /> 脉冲
               </button>
+              <select
+                value={patterns[channel]}
+                onChange={(e) => {
+                  const pattern = e.target.value as typeof patterns.A;
+                  setPatterns((current) => ({ ...current, [channel]: pattern }));
+                  onPatternChange?.(channel, pattern);
+                }}
+                className="mt-2 rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px]"
+                aria-label={`${channel} 通道节奏`}
+              >
+                <option value="constant">恒定</option>
+                <option value="pulse">脉冲</option>
+                <option value="wave">波浪</option>
+                <option value="ramp">渐强</option>
+                <option value="heartbeat">心跳</option>
+              </select>
             </div>
           );
         })}

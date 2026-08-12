@@ -64,6 +64,7 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
           name: view.name,
           description: view.description,
           frames: (item.content as WaveformContent).frames,
+          modality: (item.content as WaveformContent).modality ?? 'electrostimulation',
         }
       : view.type === 'multi-scene'
         ? { name: view.name, icon: view.icon, ...(item.content as MultiSceneContent) }
@@ -172,6 +173,11 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
               : '单人场景'}{' '}
           · {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
           {view.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
+          {view.type === 'waveform' && (
+            <span className="agent-badge">
+              {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
+            </span>
+          )}
         </p>
 
         {view.description && <p className="modal-desc">{view.description}</p>}

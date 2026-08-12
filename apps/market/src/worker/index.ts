@@ -94,11 +94,16 @@ export default {
           typeParam === 'waveform' || typeParam === 'scenario' || typeParam === 'multi-scene'
             ? typeParam
             : undefined;
+        const modalityParam = url.searchParams.get('modality');
+        const modality =
+          modalityParam === 'electrostimulation' || modalityParam === 'vibration'
+            ? modalityParam
+            : undefined;
         const q = url.searchParams.get('q')?.trim() || undefined;
         const sort = url.searchParams.get('sort') === 'popular' ? 'popular' : 'new';
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-        const items = await listItems(env.DB, { type, q, sort, limit, offset });
+        const items = await listItems(env.DB, { type, modality, q, sort, limit, offset });
         return json({ items });
       }
 

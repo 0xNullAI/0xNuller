@@ -2,13 +2,18 @@
 // Public types (used by the UI) keep long field names; the wire format (inside
 // use-peer-room) uses short keys to shrink the payload.
 
-import type { DeviceKind } from '@dg-kit/core';
+import type {
+  DeviceKind,
+  OpossumVibrationPatternName,
+  PlayMode,
+  WaveformModality,
+} from '@dg-kit/core';
 
 // Re-exported so components (SensorCard/OpossumControl/LedColorPicker, ...) reference the
 // same enum instead of each importing '@dg-kit/core' on their own. Note: this is the BLE
 // device kind enum itself (the room protocol uses it as the "which device is this command
 // for" routing discriminator), not a new room-protocol concept.
-export type { DeviceKind };
+export type { DeviceKind, PlayMode };
 
 /** Media attached to a chat message (image/audio). The blob lives in R2; this holds the already-resolved, directly accessible URL. */
 export interface ChatMedia {
@@ -66,11 +71,10 @@ export type CmdAction =
   // cost nothing in backward compatibility.
   | 'vibrate_adjust' // v=signed delta (same semantics as adjust_strength, but applied to Opossum intensity)
   | 'vibrate_stop' // stop Opossum vibration (c omitted = zero both channels)
+  | 'vibrate_change_pattern' // pattern selects the Opossum rhythm envelope for one channel
   | 'vibrate_burst' // one-shot pulse: v=target strength, ms=duration (default 500ms), then falls back automatically
   // set_led is meaningful for paw-prints / civet-edging / opossum alike; kind tells them apart.
   | 'set_led';
-
-export type PlayMode = 'single' | 'list' | 'random';
 
 /**
  * Device command. `target` is carried by the topic (cmd/{peerId}), not by the payload.
@@ -125,6 +129,8 @@ export interface DeviceCommand {
   color?: number;
   /** Duration in milliseconds, used by vibrate_burst; defaults to 500ms. */
   ms?: number;
+  /** Named Opossum rhythm preset, used by vibrate_change_pattern. */
+  pattern?: OpossumVibrationPatternName;
 }
 
 export interface WaveformTransfer {
@@ -134,12 +140,15 @@ export interface WaveformTransfer {
   wn: string;
   /** waveform frames [strength, frequency][] */
   fr: [number, number][];
+  /** Preserve the output family when sharing custom content with another Chat peer. */
+  modality?: WaveformModality;
 }
 
 export interface WaveformCatalogEntry {
   id: string;
   name: string;
   custom: boolean;
+  modality?: WaveformModality;
 }
 
 /** Sensor kind (paw-prints / civet-edging). A member has only one sensor connected at a time (v1 simplification). */
@@ -191,6 +200,7 @@ export interface MemberState {
   opossumIntensityA?: number;
   opossumIntensityB?: number;
   opossumBattery?: number | null;
+  opossumLastButtons?: string | null;
   // —— Added for sensors (Paw Prints / Civet Edging, one or the other) ——
   sensorKind?: SensorKind | null;
   sensorConnected?: boolean;
@@ -218,6 +228,7 @@ export interface StateFast {
   // —— Opossum intensity (changes often, so it rides on fast) ——
   opossumIntensityA?: number;
   opossumIntensityB?: number;
+  opossumLastButtons?: string | null;
   // —— Most recent sensor event (button press etc., also needs low latency) ——
   sensorLastEvent?: string | null;
   sensorLastValue?: number | null;

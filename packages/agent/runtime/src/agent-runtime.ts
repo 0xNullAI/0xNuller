@@ -26,6 +26,7 @@ import {
   type ModelContextStrategy,
   type RuntimeTraceEntry,
   type SessionSnapshot,
+  type DeviceLinkRule,
 } from '@dg-agent/core';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
@@ -73,6 +74,7 @@ import {
   type TurnToolCallSummary,
 } from './runtime-turn-state.js';
 import { InMemorySessionTraceStore } from './session-trace.js';
+import { DeviceLinkEngine } from './device-link-engine.js';
 import {
   normalizeSessionHistory,
   appendAssistantMessage,
@@ -121,6 +123,8 @@ export interface AgentRuntimeOptions {
     SensorTriggerEngineOptions,
     'civetPressureDeltaThresholdKPa' | 'debounceMs' | 'now'
   >;
+  /** Optional, explicit sensor/button → Opossum direct-control rule. */
+  deviceLinkRule?: DeviceLinkRule;
 }
 
 export interface SendUserMessageInput {
@@ -160,6 +164,7 @@ export class AgentRuntime {
   private readonly disposeDeviceListener: () => void;
   private readonly opossumQueue?: OpossumCommandQueue;
   private sensorTriggerEngine: SensorTriggerEngine | null = null;
+  private deviceLinkEngine: DeviceLinkEngine | null = null;
   private sensorTriggerSessionId: string | null = null;
   private readonly pawPrintsBuffer?: SensorReadingBuffer<{ eventId: number }>;
   private readonly civetBuffer?: SensorReadingBuffer<number>;
@@ -171,6 +176,14 @@ export class AgentRuntime {
     this.traces = options.sessionTraceStore ?? new InMemorySessionTraceStore();
     this.queue = new DeviceCommandQueue(options.device);
     this.opossumQueue = options.opossum ? new OpossumCommandQueue(options.opossum) : undefined;
+    if (options.deviceLinkRule) {
+      this.deviceLinkEngine = new DeviceLinkEngine({
+        rule: options.deviceLinkRule,
+        opossum: options.opossum,
+        pawPrints: options.pawPrints,
+        civetEdging: options.civetEdging,
+      });
+    }
     this.toolRegistry =
       options.toolRegistry ??
       createDefaultToolRegistryWithDeps({ waveformLibrary: options.waveformLibrary });
@@ -241,11 +254,31 @@ export class AgentRuntime {
     }
     this.toolExecutor.cancelScheduledTimers();
     this.teardownSensorTriggerEngine();
+    this.deviceLinkEngine?.dispose();
+    this.deviceLinkEngine = null;
     for (const controller of this.activeTurns.values()) {
       controller.abort();
     }
     this.activeTurns.clear();
     this.pendingSystemWork.clear();
+  }
+
+  /** Update the local sensor → Opossum bridge without rebuilding the runtime. */
+  setDeviceLinkRule(rule: DeviceLinkRule): void {
+    if (!this.deviceLinkEngine) {
+      this.deviceLinkEngine = new DeviceLinkEngine({
+        rule,
+        opossum: this.options.opossum,
+        pawPrints: this.options.pawPrints,
+        civetEdging: this.options.civetEdging,
+      });
+    } else {
+      this.deviceLinkEngine.setRule(rule);
+    }
+  }
+
+  getDeviceLinkRule(): DeviceLinkRule | null {
+    return this.deviceLinkEngine?.getRule() ?? null;
   }
 
   /**

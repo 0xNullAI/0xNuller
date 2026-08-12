@@ -4,6 +4,7 @@ import { Popover } from './Popover';
 import type { SensorSummary, OpossumSummary } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
 import { isDevicePickerCancelled } from '@dg-kit/core';
+import type { DeviceLinkRule } from '@dg-kit/core';
 
 interface DeviceSafetyButtonProps {
   connected: boolean;
@@ -39,6 +40,9 @@ interface DeviceSafetyButtonProps {
   onDisconnectOpossum: () => void;
   /** Device families this module can actually use. Defaults to every supported family. */
   supportedDeviceKinds?: readonly DeviceKind[];
+  /** Optional, explicit sensor/button → Opossum linkage controls. */
+  deviceLink?: DeviceLinkRule | null;
+  onSetDeviceLink?: (rule: DeviceLinkRule) => void;
 }
 
 const SENSOR_KIND_LABEL: Record<string, string> = {
@@ -63,6 +67,8 @@ export function DeviceSafetyButton({
   onDisconnectSensor,
   onDisconnectOpossum,
   supportedDeviceKinds = ['coyote', 'paw-prints', 'civet-edging', 'opossum'],
+  deviceLink,
+  onSetDeviceLink,
 }: DeviceSafetyButtonProps) {
   const [open, setOpen] = useState(false);
   const [connectingDevice, setConnectingDevice] = useState(false);
@@ -233,6 +239,99 @@ export function DeviceSafetyButton({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {deviceLink && onSetDeviceLink && sensor?.connected && opossum?.connected && (
+            <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-[var(--text-soft)]">设备联动</p>
+                <label className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
+                  <input
+                    type="checkbox"
+                    checked={deviceLink.enabled}
+                    onChange={(e) => onSetDeviceLink({ ...deviceLink, enabled: e.target.checked })}
+                  />
+                  启用
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <select
+                  value={deviceLink.source}
+                  onChange={(e) =>
+                    onSetDeviceLink({
+                      ...deviceLink,
+                      source: e.target.value as DeviceLinkRule['source'],
+                    })
+                  }
+                  className="rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1"
+                >
+                  <option value="civet-pressure">灵猫压力</option>
+                  <option value="paw-button">爪印按键</option>
+                  <option value="opossum-button">负鼠按键</option>
+                </select>
+                <select
+                  value={deviceLink.channel}
+                  onChange={(e) =>
+                    onSetDeviceLink({
+                      ...deviceLink,
+                      channel: e.target.value as DeviceLinkRule['channel'],
+                    })
+                  }
+                  className="rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1"
+                >
+                  <option value="A">负鼠 A</option>
+                  <option value="B">负鼠 B</option>
+                  <option value="both">负鼠 A+B</option>
+                </select>
+                <select
+                  value={deviceLink.pattern}
+                  onChange={(e) =>
+                    onSetDeviceLink({
+                      ...deviceLink,
+                      pattern: e.target.value as DeviceLinkRule['pattern'],
+                    })
+                  }
+                  className="rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1"
+                >
+                  <option value="constant">恒定</option>
+                  <option value="pulse">脉冲</option>
+                  <option value="wave">波浪</option>
+                  <option value="ramp">渐强</option>
+                  <option value="heartbeat">心跳</option>
+                </select>
+                <label className="flex items-center gap-1 rounded border border-[var(--surface-border)] px-2 py-1">
+                  强度
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    value={deviceLink.intensity}
+                    onChange={(e) =>
+                      onSetDeviceLink({ ...deviceLink, intensity: Number(e.target.value) })
+                    }
+                    className="w-12 bg-transparent text-right"
+                  />
+                </label>
+              </div>
+              {deviceLink.source === 'civet-pressure' && (
+                <label className="flex items-center justify-between text-[10px] text-[var(--text-faint)]">
+                  压力阈值 {deviceLink.thresholdKPa.toFixed(1)} kPa
+                  <input
+                    type="range"
+                    min={0}
+                    max={30}
+                    step={0.5}
+                    value={deviceLink.thresholdKPa}
+                    onChange={(e) =>
+                      onSetDeviceLink({ ...deviceLink, thresholdKPa: Number(e.target.value) })
+                    }
+                  />
+                </label>
+              )}
+              <p className="text-[10px] text-[var(--text-faint)]">
+                默认关闭；只在当前成员自己的设备之间联动。
+              </p>
             </div>
           )}
 

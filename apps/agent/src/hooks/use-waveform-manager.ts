@@ -33,7 +33,10 @@ export function useWaveformManager(options: UseWaveformManagerOptions) {
   useEffect(() => {
     if (!enabled) return;
     void refreshWaveforms();
-  }, [enabled, refreshWaveforms]);
+    return waveformLibrary.subscribe(() => {
+      void refreshWaveforms();
+    });
+  }, [enabled, refreshWaveforms, waveformLibrary]);
 
   const importWaveformFiles = useCallback(
     async (files: FileList | null): Promise<void> => {

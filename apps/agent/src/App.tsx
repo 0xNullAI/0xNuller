@@ -10,6 +10,8 @@ import {
   type DeviceClient,
   type DeviceKind,
   type PermissionDecision,
+  type DeviceLinkRule,
+  DEFAULT_DEVICE_LINK_RULE,
 } from '@dg-agent/core';
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
@@ -318,6 +320,18 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   });
 
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
+  const [deviceLinkRule, setDeviceLinkRuleState] = useState<DeviceLinkRule>(() => ({
+    ...DEFAULT_DEVICE_LINK_RULE,
+  }));
+  const setDeviceLinkRule = useCallback(
+    (rule: DeviceLinkRule) => {
+      setDeviceLinkRuleState(rule);
+      void client
+        .setDeviceLinkRule(rule)
+        .catch((error) => setErrorMessage(formatUiErrorMessage(error)));
+    },
+    [client],
+  );
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve()
@@ -902,6 +916,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             setSettingsDraft={setSettingsDraft}
             sensorTriggersEnabled={sensorTriggersEnabled}
             onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
+            deviceLinkRule={deviceLinkRule}
+            onSetDeviceLinkRule={setDeviceLinkRule}
           />
         </ModuleSettingsSection>
 

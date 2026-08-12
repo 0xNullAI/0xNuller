@@ -25,6 +25,8 @@ export interface MarketImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: MarketItemType;
+  /** Restrict waveform imports to one output family when the caller knows it. */
+  modality?: import('@0xnullai/market-client').WaveformModality;
   // Returns true on successful import; the dialog uses it for feedback.
   onImport: (item: MarketItem) => Promise<void> | void;
 }
@@ -33,6 +35,7 @@ export function MarketImportDialog({
   open,
   onOpenChange,
   type,
+  modality,
   onImport,
 }: MarketImportDialogProps) {
   const [items, setItems] = useState<MarketItem[]>([]);
@@ -48,7 +51,12 @@ export function MarketImportDialog({
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchMarketItems({ type, q: q.trim() || undefined, sort: 'popular' });
+        const result = await fetchMarketItems({
+          type,
+          modality,
+          q: q.trim() || undefined,
+          sort: 'popular',
+        });
         setItems(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -57,7 +65,7 @@ export function MarketImportDialog({
         setLoading(false);
       }
     },
-    [type],
+    [modality, type],
   );
 
   useEffect(() => {
@@ -72,7 +80,14 @@ export function MarketImportDialog({
     setImportedIds((prev) => new Set(prev).add(item.id));
   }
 
-  const label = type === 'waveform' ? '波形' : '场景';
+  const label =
+    type === 'waveform'
+      ? modality === 'electrostimulation'
+        ? '电击波形'
+        : modality === 'vibration'
+          ? '震动波形'
+          : '波形'
+      : '场景';
 
   if (!open) return null;
 

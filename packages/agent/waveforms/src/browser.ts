@@ -3,6 +3,7 @@ import {
   listCustomWaveforms as sharedList,
   removeCustomWaveform as sharedRemove,
   saveCustomWaveform as sharedSave,
+  subscribeWaveforms as sharedSubscribe,
 } from '@0xnullai/waveforms';
 import type { WaveformDefinition, WaveformLibrary } from '@dg-agent/core';
 import { createBasicWaveformLibrary, parsePulseText, type ParsedPulse } from '@dg-kit/waveforms';
@@ -13,6 +14,7 @@ const waveformSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   frames: z.array(z.tuple([z.number(), z.number()])).min(1),
+  modality: z.enum(['electrostimulation', 'vibration']).optional(),
 });
 
 /**
@@ -62,6 +64,11 @@ export class BrowserWaveformLibrary implements WaveformLibrary {
     await sharedRemove(id);
   }
 
+  /** Let Agent settings react when Chat/Voice/Control changes the shared library. */
+  subscribe(listener: () => void): () => void {
+    return sharedSubscribe(listener);
+  }
+
   async importFiles(files: FileList | File[]): Promise<WaveformDefinition[]> {
     const imported: WaveformDefinition[] = [];
 
@@ -106,6 +113,7 @@ function createImportedWaveform(fileName: string, parsed: ParsedPulse): Waveform
   return {
     id: safeId,
     name: displayName,
+    modality: 'electrostimulation',
     frames: parsed.frames,
   };
 }

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { PlayMode } from '../../../chat/src/lib/protocol';
+import { DEFAULT_PLAY_INTERVAL_SEC, toggleQueueEntry, type PlayMode } from '@dg-kit/core';
+
+export { startWaveformId, toggleQueueEntry } from '@dg-kit/core';
 
 /**
  * The per-channel playlist: which waveforms are queued, how they advance, and
@@ -23,28 +25,7 @@ export const PLAY_INTERVAL_OPTIONS: { value: number; label: string }[] = [
   { value: 600, label: '10分钟' },
 ];
 
-const DEFAULT_INTERVAL_SEC = 30;
-
-/**
- * Add or remove one waveform, keeping the order the user added them in — the
- * queue badge shows that order, and list mode plays it.
- */
-export function toggleQueueEntry(queue: string[], id: string): string[] {
-  return queue.includes(id) ? queue.filter((entry) => entry !== id) : [...queue, id];
-}
-
-/**
- * Which waveform a play press starts.
- *
- * The modulo is not decoration: the index survives across queue edits, so
- * removing entries can leave it pointing past the end, and an out-of-range read
- * would start nothing at all while the button looked like it worked.
- */
-export function startWaveformId(queue: string[], index: number): string | null {
-  if (queue.length === 0) return null;
-  const safe = ((index % queue.length) + queue.length) % queue.length;
-  return queue[safe] ?? null;
-}
+const DEFAULT_INTERVAL_SEC = DEFAULT_PLAY_INTERVAL_SEC;
 
 export interface ChannelPlayback {
   queue: string[];

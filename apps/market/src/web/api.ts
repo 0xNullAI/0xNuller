@@ -38,6 +38,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface ListQuery {
   type?: ItemType;
+  modality?: 'electrostimulation' | 'vibration';
   q?: string;
   sort?: 'new' | 'popular';
   limit?: number;
@@ -47,6 +48,7 @@ export interface ListQuery {
 export async function fetchItems(query: ListQuery): Promise<MarketItem[]> {
   const params = new URLSearchParams();
   if (query.type) params.set('type', query.type);
+  if (query.modality) params.set('modality', query.modality);
   if (query.q) params.set('q', query.q);
   if (query.sort) params.set('sort', query.sort);
   if (query.limit) params.set('limit', String(query.limit));

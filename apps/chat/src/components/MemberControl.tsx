@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { CmdAction, DeviceCommand, MemberState, WaveformTransfer } from '../lib/protocol';
 import type { MarketItem } from '@0xnullai/market-client';
+import { getWaveformModality } from '@dg-kit/core';
 
 import { parseImportFile, type WaveformDefinition } from '../lib/waveforms';
 import { Popover } from './Popover';
@@ -236,7 +237,18 @@ export function MemberControl({
   const playingA = !!member?.waveA;
   const playingB = !!member?.waveB;
 
-  const currentPlaylist = waveTab === 'A' ? playlistA : playlistB;
+  // The Coyote panel is an electrostimulation console. Vibration entries are
+  // intentionally kept in the shared Settings/library, but never offered as
+  // Coyote cards; Opossum has its own rhythm controls below.
+  const coyoteWaveforms = waveforms.filter(
+    (waveform) => getWaveformModality(waveform) === 'electrostimulation',
+  );
+  // Drop legacy/incompatible ids at the view boundary. Older clients could
+  // put a vibration entry into the Coyote queue before modalities were stored.
+  const coyoteWaveformIds = new Set(coyoteWaveforms.map((waveform) => waveform.id));
+  const coyotePlaylistA = playlistA.filter((id) => coyoteWaveformIds.has(id));
+  const coyotePlaylistB = playlistB.filter((id) => coyoteWaveformIds.has(id));
+  const currentPlaylist = waveTab === 'A' ? coyotePlaylistA : coyotePlaylistB;
   const currentPlayMode = waveTab === 'A' ? playModeA : playModeB;
   const currentInterval = waveTab === 'A' ? intervalA : intervalB;
   const activeWaveId = waveTab === 'A' ? member?.waveA : member?.waveB;
@@ -275,7 +287,7 @@ export function MemberControl({
   );
 
   function toggleWaveform(w: WaveformDefinition) {
-    const playlist = waveTab === 'A' ? playlistA : playlistB;
+    const playlist = waveTab === 'A' ? coyotePlaylistA : coyotePlaylistB;
     const isPlaying = waveTab === 'A' ? playingA : playingB;
 
     const nextQueue = playlist.includes(w.id)
@@ -310,7 +322,12 @@ export function MemberControl({
         return;
       }
       for (const wf of waveformList) {
-        onSendWaveform(peerId, { wid: wf.id, wn: wf.name, fr: wf.frames });
+        onSendWaveform(peerId, {
+          wid: wf.id,
+          wn: wf.name,
+          fr: wf.frames,
+          modality: wf.modality ?? 'electrostimulation',
+        });
       }
     } catch (err) {
       window.alert(err instanceof Error ? err.message : '导入失败');
@@ -412,18 +429,20 @@ export function MemberControl({
               onClick={() => {
                 if (playingA) {
                   onSendCommand(peerId, 'stop_wave', { c: 'A' });
-                } else if (playlistA.length > 0) {
-                  const startId = playlistA[currentIndexA % playlistA.length]!;
+                } else if (coyotePlaylistA.length > 0) {
+                  const startId = coyotePlaylistA[currentIndexA % coyotePlaylistA.length]!;
                   onSendCommand(peerId, 'start', { c: 'A', w: startId });
                 }
               }}
-              disabled={!playingA && playlistA.length === 0}
+              disabled={!playingA && coyotePlaylistA.length === 0}
               className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-30 ${
                 playingA
                   ? 'bg-[var(--danger)] text-white'
                   : 'bg-[var(--accent)] text-[var(--button-text)]'
               }`}
-              title={playingA ? '暂停 A' : playlistA.length > 0 ? '启动 A' : '请先选择 A 通道波形'}
+              title={
+                playingA ? '暂停 A' : coyotePlaylistA.length > 0 ? '启动 A' : '请先选择 A 通道波形'
+              }
             >
               {playingA ? (
                 <Pause size={16} fill="currentColor" />
@@ -453,18 +472,20 @@ export function MemberControl({
               onClick={() => {
                 if (playingB) {
                   onSendCommand(peerId, 'stop_wave', { c: 'B' });
-                } else if (playlistB.length > 0) {
-                  const startId = playlistB[currentIndexB % playlistB.length]!;
+                } else if (coyotePlaylistB.length > 0) {
+                  const startId = coyotePlaylistB[currentIndexB % coyotePlaylistB.length]!;
                   onSendCommand(peerId, 'start', { c: 'B', w: startId });
                 }
               }}
-              disabled={!playingB && playlistB.length === 0}
+              disabled={!playingB && coyotePlaylistB.length === 0}
               className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-30 ${
                 playingB
                   ? 'bg-[var(--danger)] text-white'
                   : 'bg-[var(--accent)] text-[var(--button-text)]'
               }`}
-              title={playingB ? '暂停 B' : playlistB.length > 0 ? '启动 B' : '请先选择 B 通道波形'}
+              title={
+                playingB ? '暂停 B' : coyotePlaylistB.length > 0 ? '启动 B' : '请先选择 B 通道波形'
+              }
             >
               {playingB ? (
                 <Pause size={16} fill="currentColor" />
@@ -604,7 +625,7 @@ export function MemberControl({
         <div className="mt-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs text-[var(--text-faint)]">
-              波形{currentPlaylist.length > 0 ? ` (已选 ${currentPlaylist.length})` : ''}
+              电击波形{currentPlaylist.length > 0 ? ` (已选 ${currentPlaylist.length})` : ''}
             </p>
             <div className="flex items-center gap-1">
               {isSelf && (
@@ -633,8 +654,8 @@ export function MemberControl({
 
           {/* Grouping: built-in waveforms are always present */}
           {(() => {
-            const builtins = waveforms.filter((w) => !w.custom);
-            const customs = waveforms.filter((w) => w.custom);
+            const builtins = coyoteWaveforms.filter((w) => !w.custom);
+            const customs = coyoteWaveforms.filter((w) => w.custom);
             return (
               <>
                 <div className="grid grid-cols-4 gap-2">{builtins.map(renderCard)}</div>
@@ -682,6 +703,10 @@ export function MemberControl({
               onSendCommand(peerId, 'vibrate_burst', { c: channel, v: strength, ms: durationMs })
             }
             onStop={() => onSendCommand(peerId, 'vibrate_stop')}
+            onPatternChange={(channel, pattern) =>
+              onSendCommand(peerId, 'vibrate_change_pattern', { c: channel, pattern })
+            }
+            lastButtons={member.opossumLastButtons}
           />
         )}
       </div>
@@ -690,6 +715,7 @@ export function MemberControl({
         open={marketOpen}
         onOpenChange={setMarketOpen}
         type="waveform"
+        modality="electrostimulation"
         onImport={onImportMarketWaveform}
       />
 

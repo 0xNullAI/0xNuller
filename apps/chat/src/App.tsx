@@ -566,6 +566,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           setOpossumIntensity: deviceRef.current.setOpossumIntensity,
           opossumBurst: deviceRef.current.opossumBurst,
           opossumStop: deviceRef.current.opossumStop,
+          setOpossumPattern: deviceRef.current.setOpossumPattern,
           setLedColor: deviceRef.current.setLedColor,
         },
         notify: notifyLocal,
@@ -606,6 +607,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         name: transfer.wn,
         description: '',
         frames: transfer.fr,
+        modality: transfer.modality ?? 'electrostimulation',
         custom: true,
       });
     },
@@ -638,6 +640,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       firingB,
       opossumIntensityA: device.opossum?.intensityA,
       opossumIntensityB: device.opossum?.intensityB,
+      opossumLastButtons: device.opossum?.lastButtons ?? null,
       sensorLastEvent: device.sensor?.lastEvent ?? null,
       sensorLastValue: device.sensor?.lastValue ?? null,
       sensorLastEventAt: device.sensor?.lastEventAt ?? null,
@@ -653,6 +656,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     firingB,
     device.opossum?.intensityA,
     device.opossum?.intensityB,
+    device.opossum?.lastButtons,
     device.sensor?.lastEvent,
     device.sensor?.lastValue,
     device.sensor?.lastEventAt,
@@ -672,6 +676,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           id: w.id,
           name: w.name,
           custom: !!w.custom,
+          modality: w.modality ?? 'electrostimulation',
         })),
         queueA,
         queueB,
@@ -943,6 +948,8 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 onConnectDevice={device.connectDevice}
                 onDisconnectSensor={device.disconnectSensor}
                 onDisconnectOpossum={device.disconnectOpossum}
+                deviceLink={device.deviceLink}
+                onSetDeviceLink={device.setDeviceLink}
               />
             )}
             {/* Emergency stop: must be visible whenever either Coyote or Opossum is
@@ -1094,6 +1101,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                     opossumIntensityA: device.opossum?.intensityA ?? 0,
                     opossumIntensityB: device.opossum?.intensityB ?? 0,
                     opossumBattery: device.opossum?.battery ?? null,
+                    opossumLastButtons: device.opossum?.lastButtons ?? null,
                     sensorKind: device.sensor?.kind,
                     sensorConnected: device.sensor?.connected ?? false,
                     sensorBattery: device.sensor?.battery ?? null,

@@ -106,6 +106,9 @@ export async function requestDgLabDeviceTauri(
   }
 
   let shim: ReturnType<typeof createGattShim> | null = null;
+  if (/Android/i.test(globalThis.navigator?.userAgent ?? '')) {
+    await api.setAndroidMtu?.(144).catch(() => undefined);
+  }
   await api.connect(address, () => {
     shim?.fireDisconnect();
   });

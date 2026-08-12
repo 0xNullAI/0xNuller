@@ -18,6 +18,11 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
         </span>
         <span className="card-name">{item.name}</span>
         {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
+        {item.type === 'waveform' && (
+          <span className="agent-badge">
+            {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
+          </span>
+        )}
         {item.type === 'multi-scene' && (item.content as MultiSceneContent).playerCount && (
           <span className="player-badge">
             👥 {(item.content as MultiSceneContent).playerCount!.min}-

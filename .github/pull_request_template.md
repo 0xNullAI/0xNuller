@@ -29,9 +29,10 @@ PR 标题用 conventional-commit 风格：type(scope): subject
 
 ## 测试计划
 
+- [ ] `npm run check:structure`
 - [ ] `npm run lint`
 - [ ] `npm run typecheck`（如适用）
-- [ ] `npm run test`（如适用）
+- [ ] `npm run test:full`（交付前）
 - [ ] `npm run build`
 - [ ] 真机 / 浏览器烟测（如涉及设备 / UI）
 
