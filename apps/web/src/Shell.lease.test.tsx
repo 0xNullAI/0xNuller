@@ -8,6 +8,7 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
+import { ANDROID_DOWNLOAD_URL } from './Sidebar';
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -114,6 +115,20 @@ afterEach(async () => {
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
 
 describe('外壳与设备控制权', () => {
+  it('在说明下面提供始终指向最新版 APK 的 Android 下载入口', async () => {
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '未登录' }));
+    const download = screen.getByRole('menuitem', { name: '下载 Android 版' });
+    expect(download.getAttribute('href')).toBe(ANDROID_DOWNLOAD_URL);
+    expect(download.getAttribute('target')).toBe('_blank');
+    const menuItems = screen.getAllByRole('menuitem');
+    expect(menuItems.at(-2)?.textContent).toContain('说明');
+    expect(menuItems.at(-1)).toBe(download);
+  });
+
   it('从任意模块打开设置都会注册共享波形页', async () => {
     window.history.pushState(null, '', '/control');
     await act(async () => {

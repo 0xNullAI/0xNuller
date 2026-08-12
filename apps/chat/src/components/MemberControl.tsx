@@ -682,7 +682,6 @@ export function MemberControl({
               onSendCommand(peerId, 'vibrate_burst', { c: channel, v: strength, ms: durationMs })
             }
             onStop={() => onSendCommand(peerId, 'vibrate_stop')}
-            onPickLedColor={(color) => onSendCommand(peerId, 'set_led', { kind: 'opossum', color })}
           />
         )}
       </div>

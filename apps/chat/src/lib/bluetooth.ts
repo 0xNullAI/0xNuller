@@ -449,6 +449,10 @@ export interface OpossumSummary {
   battery: number | null;
   intensityA: number;
   intensityB: number;
+  limitA: number;
+  limitB: number;
+  waveIdA: string | null;
+  waveIdB: string | null;
   /** Names of buttons currently reported pressed, joined with '+', or null. */
   lastButtons: string | null;
   lastButtonsAt: number | null;
@@ -586,6 +590,8 @@ export class DeviceSession {
   private opossumState: OpossumState = createEmptyOpossumState();
   private opossumLastButtons: string | null = null;
   private opossumLastButtonsAt: number | null = null;
+  private opossumWaveIdA: string | null = null;
+  private opossumWaveIdB: string | null = null;
   private unsubscribeOpossumButtons: (() => void) | null = null;
   private unsubscribeOpossumState: (() => void) | null = null;
 
@@ -965,6 +971,8 @@ export class DeviceSession {
     this.opossumAdapter = null;
     this.opossumDevice = null;
     this.opossumState = createEmptyOpossumState();
+    this.opossumWaveIdA = null;
+    this.opossumWaveIdB = null;
     this.opossumLastButtons = null;
     this.opossumLastButtonsAt = null;
     this.emit();
@@ -984,6 +992,20 @@ export class DeviceSession {
     void this.opossumAdapter
       .setIntensity(channel === 'A' ? target : 'unchanged', channel === 'B' ? target : 'unchanged')
       .catch(() => undefined);
+  }
+
+  /**
+   * Apply the shared waveform library to an Opossum channel. Opossum has no
+   * frequency axis, so each 25 ms Coyote frame becomes one amplitude sample;
+   * the intensity control remains the independent safety-capped ceiling.
+   */
+  setOpossumWaveform(channel: 'A' | 'B', frames: WaveFrame[], waveformId: string): void {
+    if (!this.opossumAdapter || frames.length === 0) return;
+    const envelope = frames.map((frame) => clamp(Math.round(frame[1]), 0, 100));
+    this.opossumAdapter.setVibrationPattern(channel, envelope);
+    if (channel === 'A') this.opossumWaveIdA = waveformId;
+    else this.opossumWaveIdB = waveformId;
+    this.emit();
   }
 
   /** Fire-and-restore burst convenience, mirroring Coyote's `burst` command. */
@@ -1094,6 +1116,10 @@ export class DeviceSession {
       battery: this.opossumState.battery ?? null,
       intensityA: this.opossumState.intensityA,
       intensityB: this.opossumState.intensityB,
+      limitA: this.opossumLimitA,
+      limitB: this.opossumLimitB,
+      waveIdA: this.opossumWaveIdA,
+      waveIdB: this.opossumWaveIdB,
       lastButtons: this.opossumLastButtons,
       lastButtonsAt: this.opossumLastButtonsAt,
     };

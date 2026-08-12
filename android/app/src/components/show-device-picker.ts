@@ -22,12 +22,15 @@ export function showDevicePicker(controller: DeviceSelectionController): Promise
   return new Promise<string | null>((resolve) => {
     let devices: DiscoveredDevice[] = controller.initial;
     let unsubscribe: (() => void) | null = null;
+    let unsubscribeScanning: (() => void) | null = null;
+    let scanning = controller.scanning;
 
     const render = () => {
       root!.render(
         createElement(DevicePicker, {
           open: true,
           devices,
+          scanning,
           onSelect: (address: string) => close(address),
           onCancel: () => close(null),
         }),
@@ -36,12 +39,17 @@ export function showDevicePicker(controller: DeviceSelectionController): Promise
 
     const close = (value: string | null): void => {
       unsubscribe?.();
+      unsubscribeScanning?.();
       root?.render(createElement(Fragment));
       resolve(value);
     };
 
     unsubscribe = controller.subscribe((next) => {
       devices = next;
+      render();
+    });
+    unsubscribeScanning = controller.subscribeScanning((next) => {
+      scanning = next;
       render();
     });
     render();

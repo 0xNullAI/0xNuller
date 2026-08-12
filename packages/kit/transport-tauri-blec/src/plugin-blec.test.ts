@@ -25,8 +25,30 @@ describe('resolvePluginBlec mapModule (real @mnlphlp/plugin-blec module shape)',
 
   afterEach(() => {
     (globalThis as { window?: unknown }).window = originalWindow;
+    vi.unstubAllGlobals();
     vi.doUnmock('@mnlphlp/plugin-blec');
+    vi.doUnmock('@tauri-apps/api/core');
     vi.resetModules();
+  });
+
+  it('requests legacy location permission through the native command on Android 11', async () => {
+    (globalThis as { window?: unknown }).window = { __TAURI_INTERNALS__: {} };
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 11; M2103K19C)' });
+    const invoke = vi.fn().mockResolvedValue(true);
+    const checkPermissions = vi.fn().mockResolvedValue(true);
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke }));
+    vi.doMock('@mnlphlp/plugin-blec', () => ({ checkPermissions }));
+    vi.resetModules();
+
+    const { resolvePluginBlec: freshResolve } = await import('./plugin-blec.js');
+    const api = await freshResolve();
+
+    await expect(api.checkPermissions(true)).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith('plugin:blec|check_permissions', {
+      askIfDenied: true,
+      allowIbeacons: true,
+    });
+    expect(checkPermissions).not.toHaveBeenCalled();
   });
 
   it('forwards the address argument through every address-taking call', async () => {

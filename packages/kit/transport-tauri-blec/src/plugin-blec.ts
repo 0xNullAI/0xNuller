@@ -6,6 +6,8 @@
  * Tauri BLE plugin without touching consumers.
  */
 
+import { invoke } from '@tauri-apps/api/core';
+
 export interface BleDeviceInfo {
   address: string;
   name: string;
@@ -22,7 +24,8 @@ export type WriteType = 'withResponse' | 'withoutResponse';
 export interface PluginBlecApi {
   /**
    * `askIfDenied=true` triggers the system permission dialog if the app does
-   * not already have the bluetooth permissions.
+   * not already have the permissions. Android 11 and older also request the
+   * location permission required by the platform for BLE discovery.
    */
   checkPermissions: (askIfDenied?: boolean) => Promise<boolean>;
   startScan: (handler: (devices: BleDeviceInfo[]) => void, timeoutMs: number) => Promise<void>;
@@ -100,7 +103,21 @@ type PluginBlecModule = typeof import('@mnlphlp/plugin-blec');
 
 function mapModule(mod: PluginBlecModule): PluginBlecApi {
   return {
-    checkPermissions: (askIfDenied) => mod.checkPermissions(askIfDenied),
+    checkPermissions: async (askIfDenied = true) => {
+      // The plugin's public JS helper only forwards `askIfDenied`; its native
+      // Android command has a separate `allowIbeacons` flag which is what
+      // actually adds ACCESS_FINE_LOCATION to the requested aliases. Without
+      // it Android <= 11 reports permission success but silently returns an
+      // empty BLE scan. Do not request it on Android 12+, where Nearby Devices
+      // replaced location for BLE discovery.
+      if (legacyAndroidNeedsLocation()) {
+        return invoke<boolean>('plugin:blec|check_permissions', {
+          askIfDenied,
+          allowIbeacons: true,
+        });
+      }
+      return mod.checkPermissions(askIfDenied);
+    },
     startScan: (handler, timeoutMs) => mod.startScan(handler, timeoutMs),
     stopScan: () => mod.stopScan(),
     connect: (address, onDisconnect) => mod.connect(address, onDisconnect),
@@ -117,4 +134,9 @@ function mapModule(mod: PluginBlecModule): PluginBlecApi {
       mod.unsubscribe(characteristic, service, address),
     getMtu: (address) => mod.getMtu(address),
   };
+}
+
+function legacyAndroidNeedsLocation(): boolean {
+  const match = globalThis.navigator?.userAgent.match(/Android\s+(\d+)/i);
+  return match !== null && Number(match[1]) <= 11;
 }

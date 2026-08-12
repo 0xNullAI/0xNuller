@@ -1,5 +1,4 @@
 import { Gauge, Zap, RotateCcw, BatteryMedium } from 'lucide-react';
-import { LedColorPicker } from './LedColorPicker';
 import { IntensityRing, RepeatButton } from './RepeatControls';
 
 interface OpossumControlProps {
@@ -14,7 +13,6 @@ interface OpossumControlProps {
   /** Spike to `strength` for `durationMs`, then fall back on its own. */
   onBurst: (channel: 'A' | 'B', strength: number, durationMs: number) => void;
   onStop: () => void;
-  onPickLedColor: (color: number) => void;
 }
 
 const BURST_STRENGTH_RATIO = 0.8;
@@ -41,7 +39,6 @@ export function OpossumControl({
   onAdjust,
   onBurst,
   onStop,
-  onPickLedColor,
 }: OpossumControlProps) {
   if (!connected) return null;
 
@@ -93,11 +90,6 @@ export function OpossumControl({
           归零
         </button>
       </div>
-
-      <LedColorPicker
-        className="mt-3 border-t border-[var(--surface-border)] pt-2"
-        onPick={onPickLedColor}
-      />
     </div>
   );
 }
