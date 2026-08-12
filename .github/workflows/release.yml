@@ -1,62 +1,30 @@
 name: Release
 
-# `@dg-kit/*` 与 `dg-mcp` 的统一发布链路。
+# `@dg-kit/*` 与 `dg-mcp` 的独立 npm 发布链路。
 #
-#   push dev  → changesets 消费 .changeset/*.md，开/更新 "Version Packages" PR
-#   push main → 已无 pending changeset，执行 changeset publish 推到 npm
+#   push dev（有 changeset）→ 开/更新 "release npm packages" PR
+#   push dev（Version PR 已合并）→ 发布版本化后的包到 npm
 #
-# 合并前 DG-Kit 的这份配置在 dev 和 main 上都带 `publish:` 参数：真正的发布发生在
-# push dev 时，等 sync 到 main 再跑一次，版本全都已在 registry 上，必然 E409 标红。
-# 这里拆成两个 job 并用 `if` 按分支分工，红叉不再是"正常现象"。
+# npm 包和 0xNuller 产品使用不同的版本线。main 只负责产品、网页与 APK，绝不在
+# main 上再创建一份 changeset-release 分支。
 
 on:
   workflow_dispatch:
   push:
-    branches: [dev, main]
+    branches: [dev]
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: npm-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # dev：只开 Version PR，不发布
-  version:
+  packages:
     if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22.19.0'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build:kit
-      - run: npm run verify:packages
-      - uses: changesets/action@v1
-        with:
-          version: npm run version
-          commit: 'chore: release npm packages'
-          title: 'chore: release npm packages'
-          setupGitUser: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_AUTHOR_NAME: 0xNull
-          GIT_AUTHOR_EMAIL: 271426072+0xNullAI@users.noreply.github.com
-          GIT_COMMITTER_NAME: 0xNull
-          GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com
-
-  # main：只发布，不开 PR
-  publish:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: npm-production
     permissions:
       contents: write
+      pull-requests: write
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -70,11 +38,13 @@ jobs:
       - run: npm ci
       - run: npm run build:kit
       - run: npm run verify:packages
-      - name: Publish to npm
-        id: changesets
+      - id: changesets
         uses: changesets/action@v1
         with:
+          version: npm run version
           publish: npm run release
+          commit: 'chore: release npm packages'
+          title: 'chore: release npm packages'
           setupGitUser: false
           createGithubReleases: false
         env:
