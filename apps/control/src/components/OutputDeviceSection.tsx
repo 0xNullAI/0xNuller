@@ -110,9 +110,9 @@ export function OutputDeviceSection({
       </div>
 
       {targets.length > 0 ? (
-        <div className="relative">
+        <div className="relative mx-auto max-w-[1080px]">
           <div
-            className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex snap-x snap-mandatory gap-0 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             onScroll={(event) => selectNearest(event.currentTarget)}
             aria-label="选择输出设备"
           >
@@ -128,7 +128,7 @@ export function OutputDeviceSection({
                 <div
                   key={target.id}
                   data-output-id={target.id}
-                  className={`min-w-[88%] snap-center rounded-[var(--radius-md)] border p-3 transition-colors sm:min-w-[62%] ${
+                  className={`min-w-full snap-center rounded-[var(--radius-md)] border p-3 transition-colors ${
                     active
                       ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                       : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
@@ -185,8 +185,6 @@ export function OutputDeviceSection({
                     ) : (
                       <OpossumChannels
                         target={target}
-                        queueLengthA={queueLengthA}
-                        queueLengthB={queueLengthB}
                         firingA={target.id === selected?.id ? firingA : false}
                         firingB={target.id === selected?.id ? firingB : false}
                         onAdjust={(channel, delta) => {
@@ -231,42 +229,41 @@ export function OutputDeviceSection({
         </div>
       )}
 
-      {targets.length === 0 && (
-        <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg)] p-3">
-          <div className="py-10 text-center text-sm text-[var(--text-faint)]">
-            先从顶部设备栏连接主机
-          </div>
-        </div>
-      )}
-
-      <WaveformPanel
-        {...waveformPanel}
-        targetName={selected?.label ?? null}
-        fireEnabledA={Boolean(selected)}
-        fireEnabledB={Boolean(selected)}
-        fireLimitA={selected?.kind === 'coyote' ? selected.coyote.limitA : (selected?.limitA ?? 0)}
-        fireLimitB={selected?.kind === 'coyote' ? selected.coyote.limitB : (selected?.limitB ?? 0)}
-        firingA={firingA}
-        firingB={firingB}
-        onFireStart={onFireStart}
-        onFireStop={onFireStop}
-      />
+      <div
+        className={
+          selected ? undefined : 'rounded-[var(--radius-md)] bg-[var(--bg-elevated)] opacity-60'
+        }
+        aria-disabled={!selected}
+      >
+        <WaveformPanel
+          {...waveformPanel}
+          targetName={selected?.label ?? null}
+          fireEnabledA={Boolean(selected)}
+          fireEnabledB={Boolean(selected)}
+          fireLimitA={
+            selected?.kind === 'coyote' ? selected.coyote.limitA : (selected?.limitA ?? 0)
+          }
+          fireLimitB={
+            selected?.kind === 'coyote' ? selected.coyote.limitB : (selected?.limitB ?? 0)
+          }
+          firingA={firingA}
+          firingB={firingB}
+          onFireStart={onFireStart}
+          onFireStop={onFireStop}
+        />
+      </div>
     </section>
   );
 }
 
 function OpossumChannels({
   target,
-  queueLengthA,
-  queueLengthB,
   firingA,
   firingB,
   onAdjust,
   onTogglePlay,
 }: {
   target: Extract<OutputTarget, { kind: 'opossum' }>;
-  queueLengthA: number;
-  queueLengthB: number;
   firingA: boolean;
   firingB: boolean;
   onAdjust: (channel: 'A' | 'B', delta: number) => void;
@@ -277,14 +274,13 @@ function OpossumChannels({
       {(['A', 'B'] as const).map((channel) => {
         const value = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
         const limit = channel === 'A' ? target.limitA : target.limitB;
-        const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
         const firing = channel === 'A' ? firingA : firingB;
         return (
           <div key={channel} className="flex flex-col items-center">
             <button
               type="button"
               onClick={() => onTogglePlay(channel)}
-              disabled={value === 0 && queueLength === 0}
+              disabled={false}
               className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-30 ${
                 value > 0
                   ? 'bg-[var(--danger)] text-white'
