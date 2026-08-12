@@ -441,11 +441,7 @@ export function MemberControl({
                   : 'bg-[var(--accent)] text-[var(--button-text)]'
               }`}
               title={
-                playingA
-                  ? '暂停 A'
-                  : coyotePlaylistA.length > 0
-                    ? '启动 A'
-                    : '请先选择 A 通道波形'
+                playingA ? '暂停 A' : coyotePlaylistA.length > 0 ? '启动 A' : '请先选择 A 通道波形'
               }
             >
               {playingA ? (
@@ -488,11 +484,7 @@ export function MemberControl({
                   : 'bg-[var(--accent)] text-[var(--button-text)]'
               }`}
               title={
-                playingB
-                  ? '暂停 B'
-                  : coyotePlaylistB.length > 0
-                    ? '启动 B'
-                    : '请先选择 B 通道波形'
+                playingB ? '暂停 B' : coyotePlaylistB.length > 0 ? '启动 B' : '请先选择 B 通道波形'
               }
             >
               {playingB ? (

@@ -29,9 +29,7 @@ export function WaveformsPanel({
   const visibleWaveforms = useMemo(
     () =>
       waveforms.filter(
-        (waveform) =>
-          modalityFilter === 'all' ||
-          getWaveformModality(waveform) === modalityFilter,
+        (waveform) => modalityFilter === 'all' || getWaveformModality(waveform) === modalityFilter,
       ),
     [modalityFilter, waveforms],
   );

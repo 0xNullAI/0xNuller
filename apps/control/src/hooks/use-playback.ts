@@ -1,10 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  DEFAULT_PLAY_INTERVAL_SEC,
-  toggleQueueEntry,
-  type PlayMode,
-} from '@dg-kit/core';
+import { DEFAULT_PLAY_INTERVAL_SEC, toggleQueueEntry, type PlayMode } from '@dg-kit/core';
 
 export { startWaveformId, toggleQueueEntry } from '@dg-kit/core';
 
