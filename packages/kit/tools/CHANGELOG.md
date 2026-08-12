@@ -1,5 +1,13 @@
 # @dg-kit/tools
 
+## 1.15.0
+
+### Patch Changes
+
+- Updated dependencies [d29dd12]
+  - @dg-kit/core@1.15.0
+  - @dg-kit/waveforms@1.15.0
+
 ## 1.14.0
 
 - Align dependencies with the 1.14.0 fixed release group.
