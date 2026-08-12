@@ -74,6 +74,8 @@ export interface PluginBlecApi {
   unsubscribe: (characteristic: string, service?: string, address?: string) => Promise<void>;
   /** MTU of a connected device, in bytes. */
   getMtu: (address?: string) => Promise<number>;
+  /** Request the Android BLE MTU used by the DG-LAB Opossum protocol. */
+  setAndroidMtu?: (mtu: number) => Promise<void>;
 }
 
 let injected: PluginBlecApi | undefined;
@@ -138,6 +140,7 @@ function mapModule(mod: PluginBlecModule): PluginBlecApi {
     unsubscribe: (characteristic, service, address) =>
       mod.unsubscribe(characteristic, service, address),
     getMtu: (address) => mod.getMtu(address),
+    setAndroidMtu: (mtu) => mod.setAndroidMtu(mtu),
   };
 }
 

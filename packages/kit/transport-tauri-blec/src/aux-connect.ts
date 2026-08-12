@@ -82,6 +82,11 @@ export async function connectTauriAuxDevice(
   const { address, name } = picked;
 
   let shim: ReturnType<typeof createGattShim> | null = null;
+  // DG-LAB's Android guidance recommends MTU 144 for the Opossum's
+  // continuous B0 stream. plugin-blec negotiates this before connect.
+  if (/Android/i.test(globalThis.navigator?.userAgent ?? '')) {
+    await api.setAndroidMtu?.(144).catch(() => undefined);
+  }
   await api.connect(address, () => {
     shim?.fireDisconnect();
   });

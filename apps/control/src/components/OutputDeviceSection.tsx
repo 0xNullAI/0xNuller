@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { ArrowLeft, ArrowRight, BatteryMedium, Pause, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BatteryMedium, Pause, Play, RotateCcw } from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '../../../chat/src/lib/bluetooth';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
@@ -195,6 +195,10 @@ export function OutputDeviceSection({
                           onSelect(target.id);
                           onTogglePlay(channel);
                         }}
+                        onStop={() => {
+                          onSelect(target.id);
+                          onStop();
+                        }}
                       />
                     )}
                   </div>
@@ -251,15 +255,17 @@ function OpossumChannels({
   firingB,
   onAdjust,
   onTogglePlay,
+  onStop,
 }: {
   target: Extract<OutputTarget, { kind: 'opossum' }>;
   firingA: boolean;
   firingB: boolean;
   onAdjust: (channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (channel: 'A' | 'B') => void;
+  onStop: () => void;
 }) {
   return (
-    <div className="flex items-center justify-center gap-6">
+    <div className="flex flex-wrap items-center justify-center gap-6">
       {(['A', 'B'] as const).map((channel) => {
         const value = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
         const limit = channel === 'A' ? target.limitA : target.limitB;
@@ -304,6 +310,15 @@ function OpossumChannels({
           </div>
         );
       })}
+      <button
+        type="button"
+        onClick={onStop}
+        className="flex h-9 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 text-xs text-[var(--text)] hover:bg-[var(--bg-soft)]"
+        title="负鼠两个通道归零"
+      >
+        <RotateCcw size={13} className="text-[var(--danger)]" />
+        归零
+      </button>
     </div>
   );
 }
