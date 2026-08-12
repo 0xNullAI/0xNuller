@@ -195,7 +195,9 @@ const mainActivity = readFileSync(mainActivityPath, 'utf8');
 for (const required of [
   'WindowInsetsCompat.Type.systemBars()',
   'WindowInsetsCompat.Type.displayCutout()',
-  '.setInsets(handledTypes, Insets.NONE)',
+  'WindowInsetsCompat.Type.ime()',
+  'maxOf(insets.bottom, imeInsets.bottom)',
+  'webView.addJavascriptInterface(AndroidSystemBridge()',
 ]) {
   if (!mainActivity.includes(required)) {
     throw new Error(`Android MainActivity is missing native inset handling: ${required}`);

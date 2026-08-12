@@ -30,14 +30,13 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
 
-### 3. 唯一产品 Release 使用 `android-v<版本号>`
+### 3. 源码与产品统一使用 `v<版本号>`
 
-应用内的更新提示按这个前缀在 `/releases` 里找 APK。第一个 0xNuller 发布使用
-当前发布使用 tag `android-v6.0.5`，Release 标题和 APK 也都显示 `0xNuller 6.0.5`。
+当前发布使用 tag `v6.0.6`，Release 标题和 APK 都显示 `0xNuller 6.0.6`。GitHub 自动生成的
+源码归档与签名 APK 放在同一个 Release 中。
 
-同一个版本仍会保留 `v6.0.5` 源码 tag，但它不再创建第二个 GitHub Release。npm 包发布也不
-创建 GitHub Release。带 APK 的 `android-v<版本号>` 是唯一面向用户的产品 Release，并始终
-标记为 Latest；Android 更新检查器继续按 `android-v` 前缀过滤，以兼容已经发布的客户端。
+npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
+Latest；Android 更新检查器按 `v` 前缀过滤，并确认 Release 内确实存在 APK。
 
 对应实现与测试在 `android/app/src/services/update-checker.ts`。
 
@@ -94,8 +93,8 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-gh release create "android-v6.0.5" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.0.5" --notes-file docs/releases/6.0.5.md "$APK"
+gh release create "v6.0.6" --repo 0xNullAI/0xNuller \
+  --title "0xNuller 6.0.6" --notes-file docs/releases/6.0.6.md "$APK"
 ```
 
 ## 发布之后

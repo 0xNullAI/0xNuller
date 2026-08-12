@@ -5,11 +5,12 @@ import './DevicePicker.css';
 interface Props {
   open: boolean;
   devices: DiscoveredDevice[];
+  scanning: boolean;
   onSelect: (address: string) => void;
   onCancel: () => void;
 }
 
-export function DevicePicker({ open, devices, onSelect, onCancel }: Props) {
+export function DevicePicker({ open, devices, scanning, onSelect, onCancel }: Props) {
   const sorted = useMemo(
     () => [...devices].sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999)),
     [devices],
@@ -25,7 +26,11 @@ export function DevicePicker({ open, devices, onSelect, onCancel }: Props) {
         <header className="dgaa-picker-header">选择设备</header>
         <ul className="dgaa-picker-list">
           {sorted.length === 0 ? (
-            <li className="dgaa-picker-empty">未发现设备 — 请确认设备已开机并按住按键开启广播</li>
+            <li className="dgaa-picker-empty" aria-live="polite">
+              {scanning
+                ? '正在扫描附近设备…'
+                : '扫描完成，未发现设备 — 请确认设备已开机并按住按键开启广播'}
+            </li>
           ) : (
             sorted.map((d) => (
               <li key={d.address}>

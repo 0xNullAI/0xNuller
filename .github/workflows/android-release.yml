@@ -1,4 +1,4 @@
-name: Android Release
+name: Product Release
 
 on:
   workflow_dispatch:
@@ -54,11 +54,11 @@ jobs:
         run: |
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
-          tag="android-v$version"
+          tag="v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "should-release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Release $tag already exists; no Android build is needed."
+            echo "::notice::Product Release $tag already exists; no build is needed."
           else
             echo "should-release=true" >> "$GITHUB_OUTPUT"
           fi
@@ -118,11 +118,13 @@ jobs:
           apk='android/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk'
           npm run verify:android:apk -- "$apk" | tee apk-verification.json
           version=$(node -p "require('./package.json').version")
-          echo "path=$apk" >> "$GITHUB_OUTPUT"
-          echo "tag=android-v$version" >> "$GITHUB_OUTPUT"
+          artifact="$RUNNER_TEMP/0xnuller-v$version.apk"
+          install -m 0644 "$apk" "$artifact"
+          echo "path=$artifact" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Create Android GitHub Release
+      - name: Create unified GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APK: ${{ steps.apk.outputs.path }}
@@ -144,7 +146,7 @@ jobs:
       - name: Summary
         run: |
           {
-            echo '## Android release published'
+            echo '## Product release published'
             echo ''
             echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.apk.outputs.tag }}"
             echo ''

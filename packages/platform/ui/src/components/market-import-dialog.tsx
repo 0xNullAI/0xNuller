@@ -77,15 +77,19 @@ export function MarketImportDialog({
   if (!open) return null;
 
   return (
-    <Overlay level="stacked" onDismiss={() => onOpenChange(false)} className="backdrop-blur-[2px]">
+    <Overlay
+      level="stacked"
+      onDismiss={() => onOpenChange(false)}
+      className="!items-end !p-0 backdrop-blur-[2px] sm:!items-center sm:!p-4"
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="relative w-[min(680px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-xl"
+        className="relative flex max-h-[calc(var(--android-viewport-height,100dvh)-env(safe-area-inset-top)-0.5rem)] w-full flex-col overflow-hidden rounded-t-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-xl sm:max-h-[min(760px,calc(100dvh-2rem))] sm:w-[min(680px,calc(100vw-2rem))] sm:rounded-[var(--radius-lg)]"
       >
-        <div className="panel-header">
+        <div className="flex shrink-0 items-start gap-3 border-b border-[var(--surface-border)] px-4 py-3 sm:px-5 sm:py-4">
           <div className="min-w-0 flex-1">
             <h2
               id={titleId}
@@ -107,8 +111,8 @@ export function MarketImportDialog({
           </button>
         </div>
 
-        <div className="px-5 pb-5">
-          <div className="relative mb-3">
+        <div className="flex min-h-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pb-5">
+          <div className="relative mb-3 shrink-0">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
             <Input
               value={query}
@@ -118,7 +122,7 @@ export function MarketImportDialog({
             />
           </div>
 
-          <div className="max-h-[52dvh] space-y-1.5 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pb-1">
             {loading && (
               <div
                 role="status"

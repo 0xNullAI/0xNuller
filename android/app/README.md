@@ -44,10 +44,10 @@ would make this a _different_ app to the OS, so existing DG-Agent users would
 get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
-The GitHub tag, release title, APK `versionName`, and internal code all advance
-together: `android-v6.0.5`, `0xNuller 6.0.5`, `6.0.5`, and `6000005`.
-The separate `v6.0.5` source boundary is a Git tag only; it must not create a
-second GitHub Release. The Android-tagged Release owns the APK and the Latest badge.
+The GitHub source/product tag, release title, APK `versionName`, and internal
+code all advance together: `v6.0.6`, `0xNuller 6.0.6`, `6.0.6`, and `6000006`.
+There is one GitHub Release on that tag; GitHub supplies the source archives and
+the workflow attaches the signed APK and Latest badge.
 
 ## Prerequisites
 

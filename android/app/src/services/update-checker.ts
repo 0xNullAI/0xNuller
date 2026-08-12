@@ -16,7 +16,7 @@ export interface TauriUpdateCheckerOptions {
   /** GitHub `owner/repo` to poll releases on, e.g. "0xNullAI/0xNuller". */
   repo: string;
   /**
-   * Only release tags carrying this prefix are recognised; defaults to `android-v`.
+   * Only release tags carrying this prefix are recognised; defaults to `v`.
    *
    * **`releases/latest` cannot be used.** After the merge this one repo
    * publishes both `@dg-kit/*` (changesets cuts tags such as
@@ -37,7 +37,8 @@ export interface TauriUpdateCheckerOptions {
 }
 
 const DISMISSED_KEY = 'dg-agent-android-update-dismissed-version';
-const DEFAULT_TAG_PREFIX = 'android-v';
+const DEFAULT_TAG_PREFIX = 'v';
+const APK_ASSET_PREFIX = '0xnuller-v';
 
 function inMemoryStorage(): UpdateStorage {
   const store = new Map<string, string>();
@@ -175,13 +176,15 @@ export class TauriUpdateChecker {
         html_url?: string;
         draft?: boolean;
         prerelease?: boolean;
+        assets?: { name?: string }[];
       }[];
       if (!Array.isArray(releases)) return;
 
       const prefix = this.options.tagPrefix ?? DEFAULT_TAG_PREFIX;
-      // GitHub returns these newest-first by creation time, so the first match
-      // is the latest APK release. Drafts and prereleases are skipped: their APK
-      // either does not exist yet, or should not be pushed to ordinary users.
+      // A product release is valid only when it uses the unified v<version> tag
+      // and carries the signed APK. This excludes package releases and also
+      // protects users from an incomplete product release whose asset upload
+      // failed. GitHub returns releases newest-first by creation time.
       let version: string | null = null;
       let url: string | null = null;
       for (const release of releases) {
@@ -189,6 +192,8 @@ export class TauriUpdateChecker {
         const parsed =
           typeof release.tag_name === 'string' ? versionFromTag(release.tag_name, prefix) : null;
         if (!parsed) continue;
+        const expectedAsset = `${APK_ASSET_PREFIX}${parsed}.apk`;
+        if (!release.assets?.some((asset) => asset.name === expectedAsset)) continue;
         version = parsed;
         url = typeof release.html_url === 'string' ? release.html_url : null;
         break;

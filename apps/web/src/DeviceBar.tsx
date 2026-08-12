@@ -109,6 +109,17 @@ function DeviceChip({
           {ch.value}
         </span>
       ))}
+      {device.readings?.map((reading, index) => (
+        <span
+          key={`${reading.label ?? 'reading'}-${index}`}
+          className="shrink-0 font-mono text-xs font-semibold tabular-nums text-[var(--accent)]"
+          title={reading.label || '传感器读数'}
+        >
+          {reading.label ? `${reading.label} ` : ''}
+          {reading.value}
+          {reading.unit ?? ''}
+        </span>
+      ))}
       <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
         {active ? '输出中' : '待机'}
       </span>

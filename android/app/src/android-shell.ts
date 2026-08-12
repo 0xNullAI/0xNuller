@@ -7,6 +7,8 @@
  * Call `installAndroidShellBehaviours()` once at app start, before render.
  */
 
+import { getAdapterState, type AdapterState } from '@mnlphlp/plugin-blec';
+
 const DARK_BG = '#0b1020';
 const LIGHT_BG = '#ffffff';
 
@@ -148,28 +150,196 @@ function showBackToast(text: string): void {
   }, 1500);
 }
 
-/**
- * Friendly toast/dialog shown when BLE setup fails because the user
- * denied a permission, or the platform refused to scan.
- *
- * Wraps any async call (typically `deviceClient.connect()`). On the
- * permission-denied error string thrown by `TauriBlecDeviceClient`,
- * shows a confirm dialog with instructions; on cancel, surfaces the
- * original error so the existing UI error handling still runs.
- */
-export async function withBlePermissionHelp<T>(connectCall: () => Promise<T>): Promise<T> {
+interface AndroidSystemBridge {
+  getSdkInt(): number;
+  isLocationEnabled(): boolean;
+  isBlePermissionPermanentlyDenied(): boolean;
+  openAppSettings(): void;
+  openBluetoothSettings(): void;
+  openLocationSettings(): void;
+}
+
+declare global {
+  interface Window {
+    AndroidSystem?: AndroidSystemBridge;
+  }
+}
+
+export interface BlePlatform {
+  getAdapterState(): Promise<AdapterState>;
+  getSdkInt(): number;
+  isLocationEnabled(): boolean;
+  isPermissionPermanentlyDenied(): boolean;
+  openAppSettings(): void;
+  openBluetoothSettings(): void;
+  openLocationSettings(): void;
+}
+
+function androidMajorFromUserAgent(): number | null {
+  const match = /Android\s+(\d+)/i.exec(navigator.userAgent);
+  return match ? Number.parseInt(match[1]!, 10) : null;
+}
+
+const defaultBlePlatform: BlePlatform = {
+  getAdapterState,
+  getSdkInt: () => {
+    const nativeSdk = window.AndroidSystem?.getSdkInt();
+    if (nativeSdk) return nativeSdk;
+    return (androidMajorFromUserAgent() ?? 12) >= 12 ? 31 : 30;
+  },
+  isLocationEnabled: () => window.AndroidSystem?.isLocationEnabled() ?? true,
+  isPermissionPermanentlyDenied: () =>
+    window.AndroidSystem?.isBlePermissionPermanentlyDenied() ?? false,
+  openAppSettings: () => window.AndroidSystem?.openAppSettings(),
+  openBluetoothSettings: () => window.AndroidSystem?.openBluetoothSettings(),
+  openLocationSettings: () => window.AndroidSystem?.openLocationSettings(),
+};
+
+interface GuidanceAction {
+  label: string;
+  run(): void;
+}
+
+/** Show one Android-native guidance layer with an explicit settings action. */
+export function showBleGuidance(message: string, action?: GuidanceAction): Promise<void> {
+  document.getElementById('dgaa-ble-guidance')?.remove();
+  const backdrop = document.createElement('div');
+  backdrop.id = 'dgaa-ble-guidance';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  Object.assign(backdrop.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: 'var(--z-native-overlay)',
+    display: 'grid',
+    placeItems: 'center',
+    padding: '24px',
+    background: 'rgba(0, 0, 0, 0.55)',
+  } satisfies Partial<CSSStyleDeclaration>);
+
+  const panel = document.createElement('div');
+  Object.assign(panel.style, {
+    width: 'min(100%, 420px)',
+    border: '1px solid var(--surface-border)',
+    borderRadius: 'var(--radius-md)',
+    padding: '20px',
+    background: 'var(--bg-elevated)',
+    color: 'var(--text)',
+    boxShadow: 'var(--shadow-panel)',
+  } satisfies Partial<CSSStyleDeclaration>);
+  const title = document.createElement('h2');
+  title.textContent = '无法扫描蓝牙设备';
+  Object.assign(title.style, { margin: '0 0 10px', fontSize: '18px', fontWeight: '700' });
+  const body = document.createElement('p');
+  body.textContent = message;
+  Object.assign(body.style, { margin: '0', color: 'var(--text-soft)', lineHeight: '1.6' });
+  const actions = document.createElement('div');
+  Object.assign(actions.style, {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '8px',
+    marginTop: '18px',
+  });
+
+  return new Promise((resolve) => {
+    const close = () => {
+      backdrop.remove();
+      resolve();
+    };
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '取消';
+    cancel.addEventListener('click', close);
+    Object.assign(cancel.style, {
+      border: '1px solid var(--surface-border-strong)',
+      borderRadius: 'var(--radius-ctl)',
+      padding: '9px 14px',
+      background: 'var(--bg-strong)',
+    });
+    actions.appendChild(cancel);
+
+    if (action) {
+      const actionButton = document.createElement('button');
+      actionButton.type = 'button';
+      actionButton.textContent = action.label;
+      actionButton.addEventListener('click', () => {
+        action.run();
+        close();
+      });
+      Object.assign(actionButton.style, {
+        border: '0',
+        borderRadius: 'var(--radius-ctl)',
+        padding: '9px 14px',
+        background: 'var(--accent)',
+        color: 'var(--button-text)',
+        fontWeight: '600',
+      });
+      actions.appendChild(actionButton);
+    }
+
+    panel.append(title, body, actions);
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+  });
+}
+
+/** Run shared BLE preflight and map each Android failure to a precise remedy. */
+export async function withBlePermissionHelp<T>(
+  connectCall: () => Promise<T>,
+  platform: BlePlatform = defaultBlePlatform,
+): Promise<T> {
+  let adapterState: AdapterState = 'Unknown';
+  try {
+    adapterState = await platform.getAdapterState();
+  } catch {
+    // Android 12+ may require Nearby devices before adapter state is readable.
+    // The underlying connect call requests that permission next.
+  }
+  if (adapterState === 'Off') {
+    await showBleGuidance('蓝牙已关闭。请开启蓝牙后再扫描设备。', {
+      label: '打开蓝牙设置',
+      run: platform.openBluetoothSettings,
+    });
+    throw new Error('蓝牙已关闭，请开启蓝牙后重试');
+  }
+
+  const sdk = platform.getSdkInt();
+  if (sdk <= 30 && !platform.isLocationEnabled()) {
+    await showBleGuidance('定位服务已关闭。Android 11 及以下扫描蓝牙设备需要开启系统定位。', {
+      label: '打开定位设置',
+      run: platform.openLocationSettings,
+    });
+    throw new Error('定位服务已关闭，无法扫描蓝牙设备');
+  }
+
   try {
     return await connectCall();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/权限|permission/i.test(message)) {
-      // Native confirm() is the only blocking dialog the WebView reliably
-      // supports without pulling in a UI lib. The OK button advises the
-      // user; we don't actually open the settings intent (would need
-      // tauri-plugin-shell). Re-throw so the caller's catch still runs.
-      window.alert(
-        '蓝牙权限被拒绝。\n\n请到 系统设置 → 应用 → 0xNuller → 权限\n手动开启 "蓝牙" 权限后重试。',
-      );
+      const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
+      const explanation =
+        sdk >= 31
+          ? `请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`
+          : `Android 11 及以下需要授予 0xNuller ${permissionName}，才能扫描蓝牙设备。`;
+      if (platform.isPermissionPermanentlyDenied()) {
+        await showBleGuidance(`${explanation} 当前系统不会再次弹出授权框，请到应用设置中开启。`, {
+          label: '打开应用设置',
+          run: platform.openAppSettings,
+        });
+      } else {
+        window.alert(explanation);
+      }
+    } else if (/location.*(off|disabled)|定位.*关闭/i.test(message)) {
+      await showBleGuidance('定位服务已关闭。请开启系统定位后再扫描设备。', {
+        label: '打开定位设置',
+        run: platform.openLocationSettings,
+      });
+    } else if (/bluetooth.*(off|disabled)|蓝牙.*关闭/i.test(message)) {
+      await showBleGuidance('蓝牙已关闭。请开启蓝牙后再扫描设备。', {
+        label: '打开蓝牙设置',
+        run: platform.openBluetoothSettings,
+      });
     }
     throw error;
   }

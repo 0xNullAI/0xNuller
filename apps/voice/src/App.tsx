@@ -33,6 +33,7 @@ export function App({ transport }: AppProps = {}) {
     disconnectCoyote,
     disconnectOpossum,
   } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
+  const { settings, updateSettings } = useSettings();
 
   // Register on the global safety bus — the only data source the shell's
   // global stop button has.
@@ -69,11 +70,31 @@ export function App({ transport }: AppProps = {}) {
           ]
         : []),
       ...(state.opossum?.connected
-        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        ? [
+            {
+              id: 'opossum',
+              kind: 'opossum',
+              name: '负鼠',
+              connected: true,
+              battery: state.opossum.battery,
+              active: state.opossum.intensityA > 0 || state.opossum.intensityB > 0,
+              channels: [
+                {
+                  label: 'A',
+                  value: state.opossum.intensityA,
+                  max: settings.opossumSafety.maxIntensityA,
+                },
+                {
+                  label: 'B',
+                  value: state.opossum.intensityB,
+                  max: settings.opossumSafety.maxIntensityB,
+                },
+              ],
+            },
+          ]
         : []),
     ],
   });
-  const { settings, updateSettings } = useSettings();
   const call = useRealtimeCall(session, settings);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
@@ -122,6 +143,10 @@ export function App({ transport }: AppProps = {}) {
                     battery: state.opossum.battery ?? null,
                     intensityA: state.opossum.intensityA,
                     intensityB: state.opossum.intensityB,
+                    limitA: settings.opossumSafety.maxIntensityA,
+                    limitB: settings.opossumSafety.maxIntensityB,
+                    waveIdA: null,
+                    waveIdB: null,
                     lastButtons: null,
                     lastButtonsAt: null,
                   }

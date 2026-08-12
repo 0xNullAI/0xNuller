@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { LogOut, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import {
   fetchLobbyRooms,
   subscribeLobby,
@@ -56,6 +56,7 @@ export function ShellRoomList({
   const [rooms, setRooms] = useState<LobbyRoom[]>([]);
   const [status, setStatus] = useState<LobbyStatus>('connecting');
   const [listRevision, setListRevision] = useState(0);
+  const [pendingRoom, setPendingRoom] = useState<string | null>(null);
 
   useEffect(() => {
     // Take one REST snapshot first, then hand over to the WS for live updates — waiting on the
@@ -73,6 +74,12 @@ export function ShellRoomList({
     };
   }, []);
 
+  useEffect(() => {
+    if (!pendingRoom) return;
+    const timeout = window.setTimeout(() => setPendingRoom(null), 2500);
+    return () => window.clearTimeout(timeout);
+  }, [pendingRoom]);
+
   // Read on every render rather than once: a group is recorded the moment you join it, and
   // the sidebar is where you go back to it.
   const knownGroups = loadKnownGroups();
@@ -86,7 +93,7 @@ export function ShellRoomList({
       <button
         type="button"
         onClick={onCreate}
-        className="flex min-h-9 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+        className="flex min-h-11 touch-manipulation items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] active:bg-[var(--accent-soft)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
         新建 / 加入房间
@@ -112,10 +119,21 @@ export function ShellRoomList({
         >
           <button
             type="button"
-            onClick={() => onJoin(room.code)}
-            className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+            disabled={pendingRoom === room.code && currentRoom !== room.code}
+            aria-busy={pendingRoom === room.code && currentRoom !== room.code}
+            onClick={() => {
+              if (room.code === currentRoom) return;
+              setPendingRoom(room.code);
+              onJoin(room.code);
+            }}
+            className="flex min-h-11 min-w-0 flex-1 touch-manipulation items-center gap-2 px-2 py-2 text-left active:bg-[var(--accent-soft)] disabled:opacity-70"
           >
             <span className="min-w-0 flex-1 truncate">{room.name || room.code}</span>
+            {pendingRoom === room.code && currentRoom !== room.code && (
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--accent)]">
+                <RefreshCw className="h-3 w-3 animate-spin" /> 进入中
+              </span>
+            )}
             {room.count > 0 && (
               <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
                 <Users className="h-3 w-3" />
@@ -123,19 +141,23 @@ export function ShellRoomList({
               </span>
             )}
           </button>
-          {knownCodes.has(room.code) ? (
+          {knownCodes.has(room.code) || room.code === currentRoom ? (
             <button
               type="button"
-              aria-label={`删除房间 ${room.name || room.code}`}
-              title="从列表删除"
+              aria-label={`${room.code === currentRoom ? '退出' : '删除'}房间 ${room.name || room.code}`}
+              title={room.code === currentRoom ? '退出房间' : '从列表删除'}
               onClick={() => {
                 forgetGroup(room.code);
                 setListRevision((value) => value + 1);
                 onDelete(room.code);
               }}
-              className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] opacity-0 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100"
+              className="mr-1 flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] opacity-100 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              {room.code === currentRoom ? (
+                <LogOut className="h-3.5 w-3.5" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
             </button>
           ) : null}
         </div>

@@ -337,7 +337,14 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 kind: 'opossum',
                 name: '负鼠',
                 connected: true,
+                ...(typeof d.opossum.battery === 'number'
+                  ? { battery: d.opossum.battery }
+                  : {}),
                 active: (d.opossum.intensityA ?? 0) > 0 || (d.opossum.intensityB ?? 0) > 0,
+                channels: [
+                  { label: 'A', value: d.opossum.intensityA, max: d.opossum.limitA },
+                  { label: 'B', value: d.opossum.intensityB, max: d.opossum.limitB },
+                ],
               },
             ]
           : []),
@@ -348,6 +355,17 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 kind: d.sensor.kind ?? 'paw-prints',
                 name: d.sensor.kind === 'civet-edging' ? '灵猫' : '爪印',
                 connected: true,
+                ...(typeof d.sensor.battery === 'number' ? { battery: d.sensor.battery } : {}),
+                ...(typeof d.sensor.lastValue === 'number'
+                  ? {
+                      readings: [
+                        {
+                          value: d.sensor.lastValue,
+                          ...(d.sensor.kind === 'civet-edging' ? { unit: 'kPa' } : {}),
+                        },
+                      ],
+                    }
+                  : {}),
               },
             ]
           : []),
@@ -956,6 +974,20 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
               <LogOut className="h-4 w-4" />
             </button>
           </div>
+        )}
+        {inShell && peerRoom.roomId && (
+          <button
+            onClick={() => {
+              device.disconnect();
+              peerRoom.leave();
+              setDmPeer(null);
+            }}
+            className="flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
+            title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
+          >
+            <LogOut className="h-4 w-4" />
+            <span>{peerRoom.isDm ? '关闭' : '退出'}</span>
+          </button>
         )}
       </header>
 

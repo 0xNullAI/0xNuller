@@ -36,6 +36,7 @@ export interface AttachedDeviceState {
     connected: boolean;
     deviceName: string;
     battery: number | null;
+    lastValue?: number | null;
   } | null;
   opossum: {
     connected: boolean;
@@ -43,6 +44,8 @@ export interface AttachedDeviceState {
     battery: number | null;
     intensityA: number;
     intensityB: number;
+    limitA?: number;
+    limitB?: number;
   } | null;
 }
 
@@ -136,6 +139,10 @@ export function attachedDeviceSummaries(device: AttachedDeviceState): DeviceSumm
       connected: true,
       ...(typeof device.opossum.battery === 'number' ? { battery: device.opossum.battery } : {}),
       active: device.opossum.intensityA > 0 || device.opossum.intensityB > 0,
+      channels: [
+        { label: 'A', value: device.opossum.intensityA, max: device.opossum.limitA ?? 200 },
+        { label: 'B', value: device.opossum.intensityB, max: device.opossum.limitB ?? 200 },
+      ],
     });
   }
 
@@ -146,6 +153,16 @@ export function attachedDeviceSummaries(device: AttachedDeviceState): DeviceSumm
       name: device.sensor.deviceName || SENSOR_NAME[device.sensor.kind] || device.sensor.kind,
       connected: true,
       ...(typeof device.sensor.battery === 'number' ? { battery: device.sensor.battery } : {}),
+      ...(typeof device.sensor.lastValue === 'number'
+        ? {
+            readings: [
+              {
+                value: device.sensor.lastValue,
+                ...(device.sensor.kind === 'civet-edging' ? { unit: 'kPa' } : {}),
+              },
+            ],
+          }
+        : {}),
     });
   }
 

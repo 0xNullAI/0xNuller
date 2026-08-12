@@ -83,26 +83,22 @@ function verifyProductMetadata() {
     fail('the root product and Android shell must remain private npm packages');
   }
   for (const path of ['android/app/README.md', 'docs/android-release.md']) {
-    if (!readFileSync(path, 'utf8').includes(`android-v${root.version}`)) {
-      fail(`${path} must document the current android-v${root.version} release tag`);
+    if (!readFileSync(path, 'utf8').includes(`v${root.version}`)) {
+      fail(`${path} must document the current v${root.version} release tag`);
     }
   }
 
-  const autoTagWorkflow = readFileSync('.github/workflows/auto-tag.yml', 'utf8');
   const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8');
   const androidReleaseWorkflow = readFileSync('.github/workflows/android-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
-  if (!autoTagWorkflow.includes('tag="v$v"')) {
-    fail('auto-tag must create the platform source tag v<version>');
+  if (!androidReleaseWorkflow.includes('tag="v$version"')) {
+    fail('product release must create the unified source/product tag v<version>');
   }
-  if (autoTagWorkflow.includes('gh release create')) {
-    fail('source tagging must not create a second user-facing GitHub Release');
+  if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
+    fail('Android updater must only consume unified v<version> releases');
   }
-  if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'android-v'")) {
-    fail('Android updater must only consume android-v<version> releases');
-  }
-  if (autoTagWorkflow.includes('git config user.')) {
-    fail('auto-tag must use environment identity, not repository-local git user config');
+  if (!updateChecker.includes("APK_ASSET_PREFIX = '0xnuller-v'")) {
+    fail('Android updater must require the versioned 0xnuller APK asset');
   }
   for (const required of [
     'setupGitUser: false',
@@ -114,13 +110,6 @@ function verifyProductMetadata() {
     if (!releaseWorkflow.includes(required)) {
       fail(`release workflow does not enforce commit identity: missing ${required}`);
     }
-  }
-  if (
-    !autoTagWorkflow.includes('workflow_dispatch:') ||
-    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(autoTagWorkflow) ||
-    !autoTagWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
-  ) {
-    fail('auto-tag must support manual runs and verified main releases');
   }
   if (
     !releaseWorkflow.includes('workflow_dispatch:') ||
@@ -197,5 +186,5 @@ const version = verifyProductMetadata();
 const baseFlag = process.argv.find((argument) => argument.startsWith('--base='));
 const bumps = baseFlag ? verifyBumps(baseFlag.slice('--base='.length)) : [];
 console.log(`release metadata OK: 0xNuller ${version}`);
-console.log(`tag boundaries OK: source v${version}; Android android-v${version}`);
+console.log(`tag boundary OK: unified source/product v${version} with Android APK`);
 for (const bump of bumps) console.log(`version bump: ${bump}`);

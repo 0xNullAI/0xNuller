@@ -209,6 +209,16 @@ describe('DeviceSession — multi-device routing', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(session.getOpossumSummary()?.intensityA).toBe(50);
 
+    session.setOpossumWaveform(
+      'A',
+      [
+        [10, 20],
+        [20, 80],
+      ],
+      'breath',
+    );
+    expect(session.getOpossumSummary()?.waveIdA).toBe('breath');
+
     session.opossumStop();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(session.getOpossumSummary()?.intensityA).toBe(0);

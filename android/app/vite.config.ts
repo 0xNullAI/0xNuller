@@ -1,11 +1,12 @@
 /// <reference types="node" />
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBuildId } from '../../scripts/vite-version.ts';
+import { unwrapCascadeLayers } from './android-css-compat.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const r = (p: string) => path.resolve(here, p);
@@ -14,8 +15,23 @@ const r = (p: string) => path.resolve(here, p);
 // shell still stamps its own build id, and 'tauri' is what marks it as one.
 const buildId = resolveBuildId('tauri');
 
+const androidCssCompatibility: Plugin = {
+  name: 'android-css-compatibility',
+  apply: 'build',
+  async generateBundle(_options, bundle) {
+    for (const output of Object.values(bundle)) {
+      if (output.type !== 'asset' || !output.fileName.endsWith('.css')) continue;
+      const css =
+        typeof output.source === 'string'
+          ? output.source
+          : new TextDecoder().decode(output.source ?? new Uint8Array());
+      output.source = await unwrapCascadeLayers(css);
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), androidCssCompatibility],
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
   },

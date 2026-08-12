@@ -340,6 +340,14 @@ export function useDevice(options: UseDeviceOptions = {}) {
     sessionRef.current?.opossumStop(channel);
   }, []);
 
+  /** Select a shared waveform for one Opossum channel. */
+  const setOpossumWaveform = useCallback(
+    (channel: 'A' | 'B', frames: WaveFrame[], waveformId: string) => {
+      sessionRef.current?.setOpossumWaveform(channel, frames, waveformId);
+    },
+    [],
+  );
+
   /** Set the LED color of the sensor or the Opossum (discrete 0-7 enum, see LedColorPicker). */
   const setLedColor = useCallback((target: 'sensor' | 'opossum', color: number) => {
     sessionRef.current?.setLedColor(target, color);
@@ -425,6 +433,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     setOpossumIntensity,
     opossumBurst,
     opossumStop,
+    setOpossumWaveform,
     setLedColor,
   };
 }

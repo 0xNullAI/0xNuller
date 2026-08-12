@@ -18,6 +18,7 @@ import {
   useSidebarContainerRef,
 } from '@0xnullai/ui';
 import type { SidebarSectionId } from '@0xnullai/ui';
+import productPackage from '../../../package.json';
 import {
   avatarSrc,
   dmConversations,
@@ -28,7 +29,7 @@ import {
 import { MODULES } from './routes';
 
 export const ANDROID_DOWNLOAD_URL =
-  'https://github.com/0xNullAI/0xNuller/releases/latest/download/app-universal-release.apk';
+  `https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-v${productPackage.version}.apk`;
 
 /**
  * The sidebar. It is the only vertical bar in the app, with the content area to
