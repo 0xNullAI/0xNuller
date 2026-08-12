@@ -96,9 +96,12 @@ Do not publish a release from an unverified dirty worktree.
 
 ## Versioning and release
 
-- `dev` is the integration branch; `main` is the released production line.
-- Product releases are `dev -> main`, tagged `vX.Y.Z`, with one GitHub Release and an APK named
-  `0xnuller-vX.Y.Z.apk`.
+- `dev` is integration-only. `main` is the sole production publishing branch for npm, Cloudflare,
+  and signed product artifacts.
+- Product releases are squash snapshots from `dev -> main`, tagged `vX.Y.Z`, with one GitHub
+  Release and an APK named `0xnuller-vX.Y.Z.apk`.
+- Kit Version PRs may update package versions on `dev`, but Kit packages publish only after the
+  promoted main commit passes CI. Kit publication never creates a product GitHub Release.
 - Public changes to `packages/kit/*` or `apps/mcp` need an appropriate changeset.
 - Never publish, deploy, rewrite history, or delete user work unless the user explicitly requests it.
 
