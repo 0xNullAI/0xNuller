@@ -16,9 +16,9 @@ npm 包只有一条发布线：`Kit Version` 在 `dev` 创建 `changeset-release
 - 功能分支：从最新 `dev` 创建，CI 通过后可以 squash 合并回 `dev`。
 
 `main` 不接收普通功能分支。发布时在 `dev` 上统一升级产品版本并补发布说明，然后直接创建
-`dev → main` PR。该 PR 按分支保护要求使用 **squash merge**：`dev` 保留开发提交历史，
-`main` 每个产品版本只保留一个发布快照。发布后不反向 cherry-pick；下一版本继续从 `dev`
-开发并生成新的 main 快照。
+`dev → main` PR。该 PR 必须使用 **merge commit**，让 `main` 真实包含已经验证的 `dev`
+历史。这样两个长期分支保持同一祖先链，下一次发布不会因 squash 复制提交而产生伪冲突。
+普通功能 PR 仍可 squash 到 `dev`。
 
 ## 一个版本只对应一个 tag 和一个 Release
 
@@ -42,7 +42,7 @@ https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-vX.Y.Z.ap
    新增 `docs/releases/X.Y.Z.md`。
 3. 如果存在 npm Version PR，先合并它；此时只更新版本与 CHANGELOG，不发布 npm。
 4. 创建唯一允许进入 `main` 的产品发布 PR：`dev → main`。Release Guard 验证无待消费
-   changeset、产品版本递增和元数据一致；CI 全绿后 squash 合并。
+   changeset、产品版本递增和元数据一致；CI 全绿后使用 merge commit 合并。
 5. `main` CI 成功后并行启动三条相互隔离的生产流程：`Product Release` 构建签名 APK 并
    创建唯一 `vX.Y.Z` 产品 Release；`Kit Release` 仅发布尚未上线的 npm 包；
    `Deploy Cloudflare` 更新线上服务。
