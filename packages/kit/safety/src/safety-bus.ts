@@ -46,6 +46,8 @@ export interface DeviceSummary {
   active?: boolean;
   /** Per-channel strength, for the live readout on the device bar. */
   channels?: { label: string; value: number; max: number }[];
+  /** Read-only sensor values which have no output limit or stop semantics. */
+  readings?: { label?: string; value: number; unit?: string }[];
 }
 
 export interface SafetySession {

@@ -20,6 +20,10 @@ export interface DeviceSelectionController {
    * unsubscribe function the picker should call before resolving.
    */
   subscribe(handler: (devices: DiscoveredDevice[]) => void): () => void;
+  /** Whether the timed BLE scan is still running. */
+  readonly scanning: boolean;
+  /** Receive scan-state changes, including the transition to completed. */
+  subscribeScanning(handler: (scanning: boolean) => void): () => void;
 }
 
 export interface ScanAndSelectOptions {
@@ -55,6 +59,8 @@ export async function scanAndSelectDevice(
   const scanDuration = options.scanDurationMs ?? 8000;
   const prefixes = options.namePrefixes;
   const updateListeners = new Set<(devices: DiscoveredDevice[]) => void>();
+  const scanningListeners = new Set<(scanning: boolean) => void>();
+  let scanning = true;
 
   const toDiscovered = (): DiscoveredDevice[] =>
     [...seen.values()].map((d) => ({
@@ -79,6 +85,11 @@ export async function scanAndSelectDevice(
       for (const fn of updateListeners) fn(snapshot);
     }
   }, scanDuration);
+  const markScanComplete = () => {
+    scanning = false;
+    for (const fn of scanningListeners) fn(false);
+  };
+  void scanPromise.then(markScanComplete, markScanComplete);
 
   let address: string | null;
   try {
@@ -90,6 +101,15 @@ export async function scanAndSelectDevice(
         updateListeners.add(handler);
         return () => {
           updateListeners.delete(handler);
+        };
+      },
+      get scanning() {
+        return scanning;
+      },
+      subscribeScanning(handler) {
+        scanningListeners.add(handler);
+        return () => {
+          scanningListeners.delete(handler);
         };
       },
     });

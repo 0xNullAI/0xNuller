@@ -16,6 +16,15 @@ jobs:
   version-bump-check:
     runs-on: ubuntu-latest
     steps:
+      - name: Require dev as the release source
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          test "$HEAD_REF" = "dev" || {
+            echo "Platform releases must be a dev → main PR; got $HEAD_REF → main" >&2
+            exit 1
+          }
+
       - name: Checkout PR
         uses: actions/checkout@v6
         with:

@@ -19,11 +19,15 @@ interface FakeRelease {
   html_url?: string;
   draft?: boolean;
   prerelease?: boolean;
+  assets?: { name: string }[];
 }
+
+const apkAsset = (version: string) => ({ name: `0xnuller-v${version}.apk` });
 
 /** A single APK release, nothing else in the repo — the simplest case. */
 function fetchReturning(tagName: string | undefined, htmlUrl = 'https://example.com/release') {
-  return fetchReleases([{ tag_name: tagName, html_url: htmlUrl }]);
+  const version = tagName?.startsWith('v') ? tagName.slice(1) : 'unknown';
+  return fetchReleases([{ tag_name: tagName, html_url: htmlUrl, assets: [apkAsset(version)] }]);
 }
 
 /** What GitHub's `/releases` returns: a list ordered newest-first by creation time. */
@@ -66,7 +70,7 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -82,7 +86,7 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.2',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -96,7 +100,7 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
 
     await checker['checkOnce']();
@@ -107,7 +111,7 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
     await reopened['checkOnce']();
     expect(reopened.getStatus().hasUpdate).toBe(false);
@@ -120,12 +124,12 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage,
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
     await checker['checkOnce']();
     checker.dismiss();
 
-    checker['options'].fetchImpl = fetchReturning('android-v5.4.3');
+    checker['options'].fetchImpl = fetchReturning('v5.4.3');
     await checker['checkOnce']();
 
     expect(checker.getStatus().hasUpdate).toBe(true);
@@ -157,7 +161,7 @@ describe('TauriUpdateChecker', () => {
   });
 
   it('start() schedules an initial check and subsequent polls', async () => {
-    const fetchImpl = fetchReturning('android-v5.4.2');
+    const fetchImpl = fetchReturning('v5.4.2');
     const checker = new TauriUpdateChecker({
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
@@ -186,7 +190,7 @@ describe('TauriUpdateChecker', () => {
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning('android-v5.4.2'),
+      fetchImpl: fetchReturning('v5.4.2'),
     });
 
     const statuses: boolean[] = [];
@@ -200,23 +204,23 @@ describe('TauriUpdateChecker', () => {
 
 describe('versionFromTag', () => {
   it('只认本应用的 tag 前缀', () => {
-    expect(versionFromTag('android-v5.5.2', 'android-v')).toBe('5.5.2');
+    expect(versionFromTag('v5.5.2', 'v')).toBe('5.5.2');
     // After the merge the same repo also cuts these tags. Misidentify any one of
     // them and the user taps through and downloads something that is not the APK.
-    expect(versionFromTag('@dg-kit/core@1.14.0', 'android-v')).toBeNull();
-    expect(versionFromTag('v6.0.0', 'android-v')).toBeNull();
-    expect(versionFromTag('dg-mcp@0.3.1', 'android-v')).toBeNull();
+    expect(versionFromTag('@dg-kit/core@1.14.0', 'v')).toBeNull();
+    expect(versionFromTag('android-v6.0.0', 'v')).toBeNull();
+    expect(versionFromTag('dg-mcp@0.3.1', 'v')).toBeNull();
   });
 
   it('前缀之后必须是纯数字点分版本', () => {
-    expect(versionFromTag('android-v5.5.2-beta', 'android-v')).toBeNull();
-    expect(versionFromTag('android-vnext', 'android-v')).toBeNull();
-    expect(versionFromTag('android-v', 'android-v')).toBeNull();
+    expect(versionFromTag('v5.5.2-beta', 'v')).toBeNull();
+    expect(versionFromTag('vnext', 'v')).toBeNull();
+    expect(versionFromTag('v', 'v')).toBeNull();
   });
 });
 
 describe('合并后的单仓库里挑出 APK 发布', () => {
-  it('跳过 @dg-kit/* 与平台版本的 release，找到真正的 APK', async () => {
+  it('跳过 @dg-kit/* 与旧 Android tag，找到统一产品 Release', async () => {
     const checker = new TauriUpdateChecker({
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
@@ -228,8 +232,8 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
       // the user gets no signal at all that anything is broken.
       fetchImpl: fetchReleases([
         { tag_name: '@dg-kit/core@1.14.0', html_url: 'https://example.com/kit' },
-        { tag_name: 'v6.0.0', html_url: 'https://example.com/platform' },
-        { tag_name: 'android-v5.6.0', html_url: 'https://example.com/apk' },
+        { tag_name: 'android-v6.0.0', html_url: 'https://example.com/legacy' },
+        { tag_name: 'v5.6.0', html_url: 'https://example.com/apk', assets: [apkAsset('5.6.0')] },
       ]),
     });
 
@@ -256,15 +260,41 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
     expect(checker.getStatus().latestVersion).toBeNull();
   });
 
+  it('忽略使用正确 tag 但没有 APK 的不完整 Release', async () => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '5.5.2',
+      fetchImpl: fetchReleases([
+        { tag_name: 'v5.6.0', html_url: 'https://example.com/incomplete', assets: [] },
+      ]),
+    });
+
+    await checker['checkOnce']();
+
+    expect(checker.getStatus().hasUpdate).toBe(false);
+    expect(checker.getStatus().latestVersion).toBeNull();
+  });
+
   it('跳过草稿与预发布', async () => {
     const checker = new TauriUpdateChecker({
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.5.2',
       fetchImpl: fetchReleases([
-        { tag_name: 'android-v9.9.9', draft: true, html_url: 'https://example.com/draft' },
-        { tag_name: 'android-v9.9.8', prerelease: true, html_url: 'https://example.com/pre' },
-        { tag_name: 'android-v5.6.0', html_url: 'https://example.com/apk' },
+        {
+          tag_name: 'v9.9.9',
+          draft: true,
+          html_url: 'https://example.com/draft',
+          assets: [apkAsset('9.9.9')],
+        },
+        {
+          tag_name: 'v9.9.8',
+          prerelease: true,
+          html_url: 'https://example.com/pre',
+          assets: [apkAsset('9.9.8')],
+        },
+        { tag_name: 'v5.6.0', html_url: 'https://example.com/apk', assets: [apkAsset('5.6.0')] },
       ]),
     });
 

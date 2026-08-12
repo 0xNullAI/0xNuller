@@ -208,7 +208,7 @@ export function CoyoteControl({
   );
 }
 
-interface WaveformPanelProps {
+export interface WaveformPanelProps {
   /** Name of the host the panel drives; shown only when several are attached. */
   targetName: string | null;
   waveTab: 'A' | 'B';

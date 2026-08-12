@@ -39,6 +39,8 @@ const OPOSSUM = {
   battery: 60,
   intensityA: 0,
   intensityB: 0,
+  limitA: 40,
+  limitB: 60,
 };
 
 const PAW_PRINTS = {
@@ -205,6 +207,17 @@ describe('attachedDeviceSummaries', () => {
   it('负鼠有强度时标记为正在输出', () => {
     const summaries = attachedDeviceSummaries(state({ opossum: { ...OPOSSUM, intensityB: 5 } }));
     expect(summaries[0]?.active).toBe(true);
+    expect(summaries[0]?.channels).toEqual([
+      { label: 'A', value: 0, max: 40 },
+      { label: 'B', value: 5, max: 60 },
+    ]);
+  });
+
+  it('传感器只把最新数字送到状态栏', () => {
+    const summaries = attachedDeviceSummaries(
+      state({ sensor: { ...PAW_PRINTS, kind: 'civet-edging', lastValue: 12.3 } }),
+    );
+    expect(summaries[0]?.readings).toEqual([{ value: 12.3, unit: 'kPa' }]);
   });
 
   it('已断开的设备不出现在设备栏里', () => {

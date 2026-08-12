@@ -285,7 +285,28 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           ]
         : []),
       ...(opossumState.connected
-        ? [{ id: 'opossum', kind: 'opossum', name: '负鼠', connected: true }]
+        ? [
+            {
+              id: 'opossum',
+              kind: 'opossum',
+              name: '负鼠',
+              connected: true,
+              battery: opossumState.battery,
+              active: opossumState.intensityA > 0 || opossumState.intensityB > 0,
+              channels: [
+                {
+                  label: 'A',
+                  value: opossumState.intensityA,
+                  max: settings.maxOpossumIntensityA,
+                },
+                {
+                  label: 'B',
+                  value: opossumState.intensityB,
+                  max: settings.maxOpossumIntensityB,
+                },
+              ],
+            },
+          ]
         : []),
       ...(pawPrintsState.connected
         ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
