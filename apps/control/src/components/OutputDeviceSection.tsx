@@ -1,5 +1,11 @@
 import { useRef } from 'react';
-import { BatteryMedium, BluetoothOff, Pause, Play, RotateCcw } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BatteryMedium,
+  Pause,
+  Play,
+} from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '../../../chat/src/lib/bluetooth';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import {
@@ -52,9 +58,8 @@ const STEP =
   'flex h-11 w-11 items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl text-[var(--text)] active:scale-[0.92] disabled:opacity-30';
 
 /**
- * The physical-device deck sits above one shared two-channel console. Swiping
- * the deck changes which host every control below addresses; sensor-only
- * devices never enter this deck because they have no output to control.
+ * Each horizontal slide is the host card and its two-channel console together.
+ * Swiping therefore changes the complete control surface, not just a label.
  */
 export function OutputDeviceSection({
   targets,
@@ -90,6 +95,21 @@ export function OutputDeviceSection({
     });
   };
 
+  const moveTarget = (direction: -1 | 1) => {
+    if (targets.length < 2) return;
+    const currentIndex = Math.max(
+      0,
+      targets.findIndex((target) => target.id === selected?.id),
+    );
+    const next = targets[(currentIndex + direction + targets.length) % targets.length];
+    if (!next) return;
+    onSelect(next.id);
+    const slide = [...document.querySelectorAll<HTMLElement>('[data-output-id]')].find(
+      (element) => element.dataset.outputId === next.id,
+    );
+    slide?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  };
+
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
@@ -100,11 +120,12 @@ export function OutputDeviceSection({
       </div>
 
       {targets.length > 0 ? (
-        <div
-          className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          onScroll={(event) => selectNearest(event.currentTarget)}
-          aria-label="选择输出设备"
-        >
+        <div className="relative">
+          <div
+            className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onScroll={(event) => selectNearest(event.currentTarget)}
+            aria-label="选择输出设备"
+          >
           {targets.map((target) => {
             const active = target.id === selected?.id;
             const battery = target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery;
@@ -113,19 +134,21 @@ export function OutputDeviceSection({
             const valueB =
               target.kind === 'coyote' ? target.coyote.strengthB : target.opossum.intensityB;
             return (
-              <button
+              <div
                 key={target.id}
-                type="button"
                 data-output-id={target.id}
-                onClick={() => onSelect(target.id)}
-                className={`min-w-[78%] snap-center rounded-[var(--radius-md)] border p-3 text-left transition-colors sm:min-w-[55%] ${
+                className={`min-w-[88%] snap-center rounded-[var(--radius-md)] border p-3 transition-colors sm:min-w-[62%] ${
                   active
                     ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                     : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
                 }`}
-                aria-pressed={active}
               >
-                <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelect(target.id)}
+                  className="flex min-h-9 w-full touch-manipulation items-center gap-2 text-left"
+                  aria-pressed={active}
+                >
                   <span className="h-2 w-2 rounded-full bg-[var(--success)]" aria-hidden />
                   <span className="flex-1 text-sm font-semibold text-[var(--text)]">
                     {target.label}
@@ -135,14 +158,81 @@ export function OutputDeviceSection({
                       <BatteryMedium size={12} /> {battery}%
                     </span>
                   )}
-                </span>
-                <span className="mt-2 flex gap-3 font-mono text-xs tabular-nums text-[var(--text-soft)]">
-                  <span>A {valueA}</span>
-                  <span>B {valueB}</span>
-                </span>
-              </button>
+                  <span className="font-mono text-xs tabular-nums text-[var(--text-soft)]">
+                    A {valueA} · B {valueB}
+                  </span>
+                </button>
+                <div className="mt-2 border-t border-[var(--surface-border)] pt-3">
+                  {target.kind === 'coyote' ? (
+                    <CoyoteControl
+                      coyote={target.coyote}
+                      displayName={target.label}
+                      multi={false}
+                      selected
+                      onSelect={onSelect}
+                      queueLengthA={queueLengthA}
+                      queueLengthB={queueLengthB}
+                      firingA={target.id === selected?.id ? firingA : false}
+                      firingB={target.id === selected?.id ? firingB : false}
+                      onAdjustStrength={(_id, channel, delta) => {
+                        onSelect(target.id);
+                        onAdjust(channel, delta);
+                      }}
+                      onTogglePlay={(_id, channel) => {
+                        onSelect(target.id);
+                        onTogglePlay(channel);
+                      }}
+                      onStopDevice={() => {
+                        onSelect(target.id);
+                        onStop();
+                      }}
+                      onDisconnect={() => {
+                        onSelect(target.id);
+                        onDisconnect();
+                      }}
+                    />
+                  ) : (
+                    <OpossumChannels
+                      target={target}
+                      queueLengthA={queueLengthA}
+                      queueLengthB={queueLengthB}
+                      firingA={target.id === selected?.id ? firingA : false}
+                      firingB={target.id === selected?.id ? firingB : false}
+                      onAdjust={(channel, delta) => {
+                        onSelect(target.id);
+                        onAdjust(channel, delta);
+                      }}
+                      onTogglePlay={(channel) => {
+                        onSelect(target.id);
+                        onTogglePlay(channel);
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
             );
           })}
+          </div>
+          {targets.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="上一个主机"
+                onClick={() => moveTarget(-1)}
+                className="absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
+              >
+                <ArrowLeft size={17} />
+              </button>
+              <button
+                type="button"
+                aria-label="下一个主机"
+                onClick={() => moveTarget(1)}
+                className="absolute right-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
+              >
+                <ArrowRight size={17} />
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 text-center text-sm text-[var(--text-faint)]">
@@ -150,63 +240,13 @@ export function OutputDeviceSection({
         </div>
       )}
 
-      <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg)] p-3">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text)]">
-            {selected ? `${selected.label} 控制台` : '双通道控制台'}
-          </span>
-          {selected && (
-            <>
-              <button
-                type="button"
-                onClick={onStop}
-                className="flex h-8 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)]"
-              >
-                <RotateCcw size={12} className="text-[var(--danger)]" /> 归零
-              </button>
-              <button
-                type="button"
-                onClick={onDisconnect}
-                className="flex h-8 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)]"
-              >
-                <BluetoothOff size={12} /> 断开
-              </button>
-            </>
-          )}
-        </div>
-
-        {selected?.kind === 'coyote' ? (
-          <CoyoteControl
-            coyote={selected.coyote}
-            displayName={selected.label}
-            multi={false}
-            selected
-            onSelect={onSelect}
-            queueLengthA={queueLengthA}
-            queueLengthB={queueLengthB}
-            firingA={firingA}
-            firingB={firingB}
-            onAdjustStrength={(_id, channel, delta) => onAdjust(channel, delta)}
-            onTogglePlay={(_id, channel) => onTogglePlay(channel)}
-            onStopDevice={onStop}
-            onDisconnect={onDisconnect}
-          />
-        ) : selected?.kind === 'opossum' ? (
-          <OpossumChannels
-            target={selected}
-            queueLengthA={queueLengthA}
-            queueLengthB={queueLengthB}
-            firingA={firingA}
-            firingB={firingB}
-            onAdjust={onAdjust}
-            onTogglePlay={onTogglePlay}
-          />
-        ) : (
+      {targets.length === 0 && (
+        <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg)] p-3">
           <div className="py-10 text-center text-sm text-[var(--text-faint)]">
             先从顶部设备栏连接主机
           </div>
+        </div>
         )}
-      </div>
 
       <WaveformPanel
         {...waveformPanel}

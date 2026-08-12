@@ -56,7 +56,7 @@ describe('Control 统一输出控制台', () => {
       />,
     );
 
-    expect(screen.getByText('负鼠 控制台')).toBeTruthy();
+    expect(screen.getAllByText('负鼠').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /一键开火/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'A 通道波形' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'B 通道波形' })).toBeTruthy();
