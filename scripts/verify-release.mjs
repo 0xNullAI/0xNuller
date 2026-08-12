@@ -88,11 +88,12 @@ function verifyProductMetadata() {
     }
   }
 
-  const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const kitVersionWorkflow = readFileSync('.github/workflows/kit-version.yml', 'utf8');
+  const kitReleaseWorkflow = readFileSync('.github/workflows/kit-release.yml', 'utf8');
   const changesetConfig = json('.changeset/config.json');
-  const androidReleaseWorkflow = readFileSync('.github/workflows/android-release.yml', 'utf8');
+  const productReleaseWorkflow = readFileSync('.github/workflows/product-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
-  if (!androidReleaseWorkflow.includes('tag="v$version"')) {
+  if (!productReleaseWorkflow.includes('tag="v$version"')) {
     fail('product release must create the unified source/product tag v<version>');
   }
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
@@ -108,31 +109,43 @@ function verifyProductMetadata() {
     'GIT_COMMITTER_NAME: 0xNull',
     'GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com',
   ]) {
-    if (!releaseWorkflow.includes(required)) {
-      fail(`release workflow does not enforce commit identity: missing ${required}`);
+    if (!kitVersionWorkflow.includes(required) || !kitReleaseWorkflow.includes(required)) {
+      fail(`Kit workflows do not enforce commit identity: missing ${required}`);
     }
   }
   if (changesetConfig.baseBranch !== 'dev') {
     fail('Changesets must use dev as its single npm release branch');
   }
   if (
-    !releaseWorkflow.includes('workflow_dispatch:') ||
-    !/push:\s*\n\s+branches: \[dev\]/.test(releaseWorkflow) ||
-    releaseWorkflow.includes('refs/heads/main') ||
-    releaseWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1 ||
-    !releaseWorkflow.includes('publish: npm run release')
+    !kitVersionWorkflow.includes('workflow_dispatch:') ||
+    !/push:\s*\n\s+branches: \[dev\]/.test(kitVersionWorkflow) ||
+    kitVersionWorkflow.includes('publish:') ||
+    kitVersionWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
   ) {
-    fail('npm release must version and publish only from dev');
+    fail('Kit Version must prepare versions on dev without publishing');
   }
   if (
-    !androidReleaseWorkflow.includes('workflow_dispatch:') ||
-    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(androidReleaseWorkflow) ||
-    !androidReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
+    !kitReleaseWorkflow.includes('workflow_dispatch:') ||
+    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(kitReleaseWorkflow) ||
+    !/branches: \[main\]/.test(kitReleaseWorkflow) ||
+    !kitReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
+    !kitReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
+    !kitReleaseWorkflow.includes('publish: npm run release') ||
+    kitReleaseWorkflow.includes('version: npm run version') ||
+    kitReleaseWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
   ) {
-    fail('Android release must support manual runs and verified main releases');
+    fail('Kit Release must publish consumed package versions only from verified main');
   }
-  if (!androidReleaseWorkflow.includes("should-release == 'true'")) {
-    fail('Android release must skip versions that already have a signed release');
+  if (
+    !productReleaseWorkflow.includes('workflow_dispatch:') ||
+    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(productReleaseWorkflow) ||
+    !/branches: \[main\]/.test(productReleaseWorkflow) ||
+    !productReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
+  ) {
+    fail('Product Release must support manual runs and verified main releases');
+  }
+  if (!productReleaseWorkflow.includes("should-release == 'true'")) {
+    fail('Product Release must skip versions that already have a signed release');
   }
   for (const required of [
     '--title "0xNuller $VERSION"',
@@ -140,8 +153,8 @@ function verifyProductMetadata() {
     '--target "${{ needs.prepare.outputs.source-sha }}"',
     '--latest',
   ]) {
-    if (!androidReleaseWorkflow.includes(required)) {
-      fail(`Android must own the single product Release: missing ${required}`);
+    if (!productReleaseWorkflow.includes(required)) {
+      fail(`Product Release must own the single product release: missing ${required}`);
     }
   }
 

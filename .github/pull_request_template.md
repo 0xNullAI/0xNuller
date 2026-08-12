@@ -12,11 +12,11 @@ PR 标题用 conventional-commit 风格：type(scope): subject
   │ dev  = 开发分支，所有日常 PR 都 base 到这里                │
   │                                                            │
   │ 发布流程：dev 上统一升级产品版本 → dev 直接 PR 到 main →   │
-  │           release-guard 校验 → merge commit → publish      │
+  │           release-guard 校验 → squash → main 发布           │
   └────────────────────────────────────────────────────────────┘
 
-⚠️ 日常 PR 的 base 必须是 dev。只有产品发布使用 dev → main，且必须保留 merge commit；
-不要 squash/rebase，也不再发布后反向 cherry-pick。
+⚠️ 日常 PR 的 base 必须是 dev。只有产品发布使用 dev → main，并按 main 的线性历史规则
+squash 合并。dev 保留开发提交，main 只保留已发布版本快照，不做反向 cherry-pick。
 
 例：feat(protocol): add setLimits() to update strength caps
     fix(web): bluetooth chooser auto-trigger regression
