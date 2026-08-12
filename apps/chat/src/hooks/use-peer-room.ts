@@ -432,6 +432,7 @@ export function usePeerRoom(displayName: string) {
                 wid: data.wid as string,
                 wn: data.wn as string,
                 fr: data.fr as [number, number][],
+                modality: data.mo as 'electrostimulation' | 'vibration' | undefined,
               },
               from,
             );
@@ -684,7 +685,14 @@ export function usePeerRoom(displayName: string) {
 
   const sendWaveform = useCallback(
     (targetPeerId: string, transfer: WaveformTransfer) => {
-      send({ t: 'wave', to: targetPeerId, wid: transfer.wid, wn: transfer.wn, fr: transfer.fr });
+      send({
+        t: 'wave',
+        to: targetPeerId,
+        wid: transfer.wid,
+        wn: transfer.wn,
+        fr: transfer.fr,
+        ...(transfer.modality ? { mo: transfer.modality } : {}),
+      });
     },
     [send],
   );

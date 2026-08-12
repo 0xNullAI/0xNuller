@@ -32,6 +32,11 @@ describe('共享波形库', () => {
     expect((await listCustomWaveforms()).map((w) => w.id)).toEqual(['a']);
   });
 
+  it('保存时保留电击/震动类型，供设置、Chat 和 Control 共用', async () => {
+    await saveCustomWaveform({ ...wave('vibration'), modality: 'vibration' });
+    expect((await listCustomWaveforms())[0]?.modality).toBe('vibration');
+  });
+
   it('同 id 覆盖而不是重复', async () => {
     await saveCustomWaveform(wave('a', '旧名字'));
     await saveCustomWaveform(wave('a', '新名字'));

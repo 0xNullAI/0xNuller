@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@0xnullai/sync": "0.1.0",
+    "@dg-kit/core": "1.14.0",
     "idb-keyval": "^6.2.2",
     "zod": "^4.4.3"
   }

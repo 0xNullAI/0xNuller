@@ -10,21 +10,19 @@
 
 import { strFromU8, unzipSync } from 'fflate';
 import { listBuiltinWaveforms, parsePulseText, pulseToWaveformDefinition } from '@dg-kit/waveforms';
-import type { WaveFrame as KitWaveFrame } from '@dg-kit/core';
+import type {
+  WaveFrame as KitWaveFrame,
+  WaveformDefinition as KitWaveformDefinition,
+} from '@dg-kit/core';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 
 export type WaveFrame = KitWaveFrame;
 
-export interface WaveformDefinition {
-  id: string;
-  name: string;
+export type WaveformDefinition = Omit<KitWaveformDefinition, 'description'> & {
   description: string;
-  frames: WaveFrame[];
-  /** Target output family. Legacy/imported waveforms default to electrostimulation. */
-  modality?: 'electrostimulation' | 'vibration';
   /** true when the waveform was imported from a user-supplied .pulse file. */
   custom?: boolean;
-}
+};
 
 /** Six built-in waveforms shared with DG-Agent and DG-MCP. */
 export const BUILTIN_WAVEFORMS: WaveformDefinition[] = listBuiltinWaveforms().map((wave) => ({

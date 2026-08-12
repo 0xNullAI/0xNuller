@@ -58,8 +58,11 @@ Web Bluetooth requires Chrome or Edge.
 npm run build:kit
 npm run build
 npm run typecheck
-npm run test
+npm test                    # tests related to working-tree changes
+npm run test:module -- chat # one module
+npm run test:full           # complete suite for CI/handoff
 npm run lint
+npm run check:structure
 npm run format
 ```
 
@@ -79,6 +82,8 @@ npm run format
 
 Maintainer documentation is available under [`docs`](./docs). The complete pre-merge project README
 snapshots are indexed in [`docs/legacy`](./docs/legacy/README.md).
+Repository boundaries and test conventions are maintained in [`AGENTS.md`](./AGENTS.md),
+[`docs/architecture.md`](./docs/architecture.md), and [`docs/testing.md`](./docs/testing.md).
 
 The compatibility release replaces only the `0xnullai.com` root site. Legacy subdomains remain
 online. DG-Kit and DG-MCP now live in this repository and are published to npm as

@@ -2,13 +2,18 @@
 // Public types (used by the UI) keep long field names; the wire format (inside
 // use-peer-room) uses short keys to shrink the payload.
 
-import type { DeviceKind, OpossumVibrationPatternName } from '@dg-kit/core';
+import type {
+  DeviceKind,
+  OpossumVibrationPatternName,
+  PlayMode,
+  WaveformModality,
+} from '@dg-kit/core';
 
 // Re-exported so components (SensorCard/OpossumControl/LedColorPicker, ...) reference the
 // same enum instead of each importing '@dg-kit/core' on their own. Note: this is the BLE
 // device kind enum itself (the room protocol uses it as the "which device is this command
 // for" routing discriminator), not a new room-protocol concept.
-export type { DeviceKind };
+export type { DeviceKind, PlayMode };
 
 /** Media attached to a chat message (image/audio). The blob lives in R2; this holds the already-resolved, directly accessible URL. */
 export interface ChatMedia {
@@ -70,8 +75,6 @@ export type CmdAction =
   | 'vibrate_burst' // one-shot pulse: v=target strength, ms=duration (default 500ms), then falls back automatically
   // set_led is meaningful for paw-prints / civet-edging / opossum alike; kind tells them apart.
   | 'set_led';
-
-export type PlayMode = 'single' | 'list' | 'random';
 
 /**
  * Device command. `target` is carried by the topic (cmd/{peerId}), not by the payload.
@@ -137,12 +140,15 @@ export interface WaveformTransfer {
   wn: string;
   /** waveform frames [strength, frequency][] */
   fr: [number, number][];
+  /** Preserve the output family when sharing custom content with another Chat peer. */
+  modality?: WaveformModality;
 }
 
 export interface WaveformCatalogEntry {
   id: string;
   name: string;
   custom: boolean;
+  modality?: WaveformModality;
 }
 
 /** Sensor kind (paw-prints / civet-edging). A member has only one sensor connected at a time (v1 simplification). */

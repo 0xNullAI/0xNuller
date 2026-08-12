@@ -607,6 +607,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         name: transfer.wn,
         description: '',
         frames: transfer.fr,
+        modality: transfer.modality ?? 'electrostimulation',
         custom: true,
       });
     },
@@ -675,6 +676,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
           id: w.id,
           name: w.name,
           custom: !!w.custom,
+          modality: w.modality ?? 'electrostimulation',
         })),
         queueA,
         queueB,

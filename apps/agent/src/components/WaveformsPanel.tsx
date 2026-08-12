@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WaveformDefinition } from '@dg-agent/core';
 import { Pencil, Store, Trash2, Upload } from 'lucide-react';
 import { Button, MarketImportDialog } from '@0xnullai/ui';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
+import { getWaveformModality } from '@dg-kit/core';
 
 interface WaveformsPanelProps {
   waveforms: WaveformDefinition[];
@@ -22,6 +23,18 @@ export function WaveformsPanel({
   onEdit,
 }: WaveformsPanelProps) {
   const [marketOpen, setMarketOpen] = useState(false);
+  const [modalityFilter, setModalityFilter] = useState<'all' | 'electrostimulation' | 'vibration'>(
+    'all',
+  );
+  const visibleWaveforms = useMemo(
+    () =>
+      waveforms.filter(
+        (waveform) =>
+          modalityFilter === 'all' ||
+          getWaveformModality(waveform) === modalityFilter,
+      ),
+    [modalityFilter, waveforms],
+  );
 
   async function handleMarketImport(item: MarketItem) {
     const { frames } = item.content as MarketWaveformContent;
@@ -39,14 +52,37 @@ export function WaveformsPanel({
       <section className="settings-row-card">
         <h3 className="settings-card-legend">波形库</h3>
 
-        {waveforms.length === 0 && (
+        <div className="mb-3 flex rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-0.5">
+          {(
+            [
+              ['all', '全部'],
+              ['electrostimulation', '电击'],
+              ['vibration', '震动'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setModalityFilter(value)}
+              className={`flex-1 rounded-[var(--radius-sm)] px-2 py-1.5 text-xs transition-colors ${
+                modalityFilter === value
+                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent)]'
+                  : 'text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text-soft)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {visibleWaveforms.length === 0 && (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">
-            还没有可用波形，点击下方按钮导入
+            {waveforms.length === 0 ? '还没有可用波形，点击下方按钮导入' : '此分类暂无波形'}
           </div>
         )}
 
         <div className="space-y-1.5">
-          {waveforms.map((waveform) => {
+          {visibleWaveforms.map((waveform) => {
             const isCustom = customWaveforms.some((c) => c.id === waveform.id);
             return (
               <div key={waveform.id} className="group flex items-center gap-1">
@@ -56,7 +92,7 @@ export function WaveformsPanel({
                     <div className="text-sm text-[var(--text)]">{waveform.name}</div>
                     <div className="mt-0.5 truncate text-[12px] text-[var(--text-faint)]">
                       {waveform.id} · {waveform.frames.length} 帧 ·{' '}
-                      {waveform.modality === 'vibration' ? '震动' : '电击'}
+                      {getWaveformModality(waveform) === 'vibration' ? '震动' : '电击'}
                     </div>
                   </div>
                 </div>
@@ -110,6 +146,7 @@ export function WaveformsPanel({
         open={marketOpen}
         onOpenChange={setMarketOpen}
         type="waveform"
+        modality={modalityFilter === 'all' ? undefined : modalityFilter}
         onImport={handleMarketImport}
       />
     </div>

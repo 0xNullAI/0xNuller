@@ -1,0 +1,31 @@
+{
+  "sourceMaxLines": 500,
+  "testMaxLines": 800,
+  "oversizedFiles": {
+    "apps/agent/src/App.tsx": 1097,
+    "apps/agent/src/components/ChatPanel.tsx": 705,
+    "apps/chat/src/App.tsx": 1133,
+    "apps/chat/src/components/MemberControl.tsx": 763,
+    "apps/chat/src/hooks/use-peer-room.ts": 907,
+    "apps/chat/src/lib/bluetooth.ts": 1209,
+    "apps/chat/worker/room-do.ts": 683,
+    "apps/control/src/App.tsx": 557,
+    "apps/control/src/components/CoyoteControl.tsx": 681,
+    "apps/market/src/web/components/UploadDialog.tsx": 703,
+    "apps/voice/src/lib/realtime/base-realtime-session.ts": 502,
+    "packages/agent/audio-browser/src/dashscope-proxy.ts": 832,
+    "packages/agent/providers-openai-http/src/index.ts": 607,
+    "packages/agent/runtime/src/agent-runtime.ts": 1147,
+    "packages/agent/runtime/src/runtime-tool-executor.ts": 933,
+    "packages/agent/runtime/src/runtime.test.ts": 2456,
+    "packages/agent/storage-browser/src/browser-settings-store.ts": 512,
+    "packages/kit/protocol/src/opossum.ts": 578,
+    "packages/kit/tools/src/registry.ts": 1030,
+    "packages/kit/transport-tauri-blec/src/client.test.ts": 895,
+    "packages/kit/transport-tauri-blec/src/client.ts": 504,
+    "packages/platform/auth/src/index.ts": 603,
+    "packages/platform/llm-providers/src/index.ts": 581,
+    "workers/auth/src/index.test.ts": 1465,
+    "workers/auth/src/index.ts": 2547
+  }
+}

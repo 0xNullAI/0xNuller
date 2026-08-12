@@ -20,11 +20,12 @@ jobs:
       - run: npm run verify:release
       - run: npm run verify:brand
       - run: npm run verify:packages
+      - run: npm run check:structure
       - name: Check formatting of changed files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run test
+      - run: npm run test:full
       - run: npm run build

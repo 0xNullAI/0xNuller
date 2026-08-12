@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
@@ -11,21 +11,48 @@ import type {
   ChannelRotationWaveforms,
 } from '../../chat/src/hooks/use-channel-rotation';
 import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
-import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
-import { OutputDeviceSection, type OutputTarget } from '@control/components/OutputDeviceSection';
+import {
+  isWaveformCompatibleWithDevice,
+  type WaveformDefinition,
+  type WaveformModality,
+} from '@dg-kit/core';
+import {
+  OutputDeviceSection,
+  type OutputPanelState,
+  type OutputTarget,
+} from '@control/components/OutputDeviceSection';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
 
+function waveformsForOutput(
+  target: OutputTarget | null,
+  allWaveforms: WaveformDefinition[],
+): WaveformDefinition[] {
+  // A Coyote consumes electrostimulation definitions; an Opossum consumes
+  // vibration envelopes. Legacy definitions without a modality remain
+  // electrostimulation for backwards compatibility.
+  return target
+    ? allWaveforms.filter((waveform) => isWaveformCompatibleWithDevice(target.kind, waveform))
+    : allWaveforms;
+}
+
+function playbackIdForTarget(target: OutputTarget | null): string | null {
+  // Waveform definitions are shared by modality through useWaveforms, but
+  // playback state belongs to the physical output. Never key two Coyotes to
+  // one playlist: their queue, mode, interval and current index are separate.
+  return target?.id ?? null;
+}
+
 /**
  * Control — drive your own device, directly.
  *
  * No AI deciding anything, no room full of people, no game. The whole module is
- * one screen with the Coyote controls followed by auxiliary devices rather
- * than tabs, because the reason to open it is to reach a control right now.
- * Connection, disconnection and shared safety settings live in the shell's
- * one top device strip.
+ * one screen of complete device pages: each output owns its two channels,
+ * waveform library and fire controls, and the pages move horizontally when
+ * more than one device is attached. Connection, disconnection and shared
+ * safety settings live in the shell's one top device strip.
  *
  * Everything below the UI is borrowed rather than rebuilt: `useDevice` owns the
  * BLE session and the `DeviceCommandQueue` that every write goes through,
@@ -45,8 +72,12 @@ export default function App() {
   const waveforms = useWaveforms();
 
   const devicePlayback = useDevicePlayback();
-  const [waveTab, setWaveTab] = useState<'A' | 'B'>('A');
+  // Each physical output page remembers its own channel tab and playback state.
+  // The waveform definitions themselves come from the shared, modality-aware
+  // library; queue/mode/interval state is intentionally per device.
+  const [waveTabs, setWaveTabs] = useState<Record<string, 'A' | 'B'>>({});
   const [marketOpen, setMarketOpen] = useState(false);
+  const [marketModality, setMarketModality] = useState<WaveformModality>('electrostimulation');
 
   // Which output host the shared console drives. Sensors deliberately never
   // enter this deck; their one useful value lives in the global device bar.
@@ -70,31 +101,35 @@ export default function App() {
     return subscribeDeviceSafety(apply);
   }, []);
 
-  const outputTargets: OutputTarget[] = [
-    ...coyotes.map((coyote, index) => ({
-      id: `coyote:${coyote.id}`,
-      kind: 'coyote' as const,
-      label: coyotes.length > 1 ? `郊狼 ${index + 1}` : '郊狼',
-      coyote,
-    })),
-    ...(device.opossum?.connected
-      ? [
-          {
-            id: 'opossum' as const,
-            kind: 'opossum' as const,
-            label: '负鼠',
-            opossum: device.opossum,
-            limitA: opossumLimits.a,
-            limitB: opossumLimits.b,
-          },
-        ]
-      : []),
-  ];
+  const outputTargets = useMemo<OutputTarget[]>(
+    () => [
+      ...coyotes.map((coyote, index) => ({
+        id: `coyote:${coyote.id}`,
+        kind: 'coyote' as const,
+        label: coyotes.length > 1 ? `郊狼 ${index + 1}` : '郊狼',
+        coyote,
+      })),
+      ...(device.opossum?.connected
+        ? [
+            {
+              id: 'opossum' as const,
+              kind: 'opossum' as const,
+              label: '负鼠',
+              opossum: device.opossum,
+              limitA: opossumLimits.a,
+              limitB: opossumLimits.b,
+            },
+          ]
+        : []),
+    ],
+    [coyotes, device.opossum, opossumLimits],
+  );
   const selectedOutput =
     outputTargets.find((target) => target.id === selectedOutputId) ?? outputTargets[0] ?? null;
   const selectedCoyote = selectedOutput?.kind === 'coyote' ? selectedOutput.coyote : null;
-  const playbackA = devicePlayback.get(selectedOutput?.id ?? null, 'A');
-  const playbackB = devicePlayback.get(selectedOutput?.id ?? null, 'B');
+  const selectedPlaybackId = playbackIdForTarget(selectedOutput);
+  const playbackA = devicePlayback.get(selectedPlaybackId, 'A');
+  const playbackB = devicePlayback.get(selectedPlaybackId, 'B');
 
   // Device control is a lease that follows the current module. Losing it has to
   // stop more than the output: the playlist timer is the one thing in here that
@@ -197,9 +232,8 @@ export default function App() {
   // effect is enough to keep them fresh: the timer fires minutes apart, so
   // being one commit behind cannot matter.
   //
-  // It drives the *selected* host, the same one the waveform panel targets —
-  // rotating a playlist on a device the panel is not pointing at would change
-  // what somebody feels with nothing on screen indicating which device moved.
+  // It drives the selected host. The queue is shared by Coyotes, but output
+  // remains addressed to the page's specific Bluetooth device.
   const rotationDevice: ChannelRotationDevice = {
     connected: Boolean(selectedCoyote?.connected),
     setWave: (channel, frames, id, loop) =>
@@ -260,18 +294,19 @@ export default function App() {
     [coyotes, device, released],
   );
 
-  const adjustSelected = useCallback(
-    (channel: 'A' | 'B', delta: number) => {
-      if (!selectedOutput || released) return;
-      if (selectedOutput.kind === 'coyote') {
-        adjustStrength(selectedOutput.coyote.id, channel, delta);
+  const adjustOutput = useCallback(
+    (targetId: string, channel: 'A' | 'B', delta: number) => {
+      if (released) return;
+      const target = outputTargets.find((candidate) => candidate.id === targetId);
+      if (!target) return;
+      if (target.kind === 'coyote') {
+        adjustStrength(target.coyote.id, channel, delta);
         return;
       }
-      const current =
-        channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
+      const current = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
       device.setOpossumIntensity(channel, current + delta);
     },
-    [adjustStrength, device, released, selectedOutput],
+    [adjustStrength, device, outputTargets, released],
   );
 
   const startChannel = useCallback(
@@ -285,41 +320,50 @@ export default function App() {
   );
 
   const togglePlay = useCallback(
-    (channel: 'A' | 'B') => {
-      const playback = channel === 'A' ? playbackA : playbackB;
-      if (!selectedOutput) return;
-      if (selectedOutput.kind === 'opossum') {
-        const intensity =
-          channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
+    (targetId: string, channel: 'A' | 'B') => {
+      const target = outputTargets.find((candidate) => candidate.id === targetId);
+      if (!target) return;
+      const playback = devicePlayback.get(targetId, channel);
+      if (target.kind === 'opossum') {
+        const intensity = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
         if (intensity > 0) {
           stopOpossumFire(channel);
           device.opossumStop(channel);
           return;
         }
-        const id = startWaveformId(playback.queue, playback.index) ?? waveforms.allWaveforms[0]?.id;
+        const id = startWaveformId(playback.queue, playback.index);
         const waveform = id ? waveforms.getWaveform(id) : null;
-        if (!waveform) return;
-        device.setOpossumWaveform(channel, waveform.frames, waveform.id);
+        if (waveform?.modality === 'vibration') {
+          device.setOpossumWaveform(channel, waveform.frames, waveform.id);
+        } else {
+          // Opossum has safe built-in rhythm envelopes even before a Market
+          // vibration waveform is imported. Keep the selected rhythm alive
+          // when the user presses the channel play button in that state.
+          const pattern =
+            channel === 'A'
+              ? (target.opossum.patternA ?? 'constant')
+              : (target.opossum.patternB ?? 'constant');
+          device.setOpossumPattern(channel, pattern);
+        }
         const limit = channel === 'A' ? opossumLimits.a : opossumLimits.b;
         device.setOpossumIntensity(channel, Math.min(limit, 5));
         return;
       }
-      const target = selectedOutput.coyote;
-      const playing = channel === 'A' ? target.waveActiveA : target.waveActiveB;
+      const coyote = target.coyote;
+      const playing = channel === 'A' ? coyote.waveActiveA : coyote.waveActiveB;
       if (playing) {
         stopFire(channel);
-        device.stopWave(channel, target.id);
+        device.stopWave(channel, coyote.id);
         return;
       }
       const id = startWaveformId(playback.queue, playback.index);
-      if (id) startChannel(target.id, channel, id);
+      if (id) startChannel(coyote.id, channel, id);
     },
     [
       device,
+      devicePlayback,
       opossumLimits,
-      playbackA,
-      playbackB,
-      selectedOutput,
+      outputTargets,
       startChannel,
       stopFire,
       stopOpossumFire,
@@ -328,61 +372,144 @@ export default function App() {
   );
 
   const toggleWaveform = useCallback(
-    (waveform: WaveformDefinition) => {
-      const playback = waveTab === 'A' ? playbackA : playbackB;
+    (targetId: string, channel: 'A' | 'B', waveform: WaveformDefinition) => {
+      const target = outputTargets.find((candidate) => candidate.id === targetId);
+      if (!target || (waveform.modality === 'vibration') !== (target.kind === 'opossum')) return;
+      const playback = devicePlayback.get(targetId, channel);
       const playing =
-        selectedOutput?.kind === 'coyote'
-          ? waveTab === 'A'
-            ? selectedOutput.coyote.waveActiveA
-            : selectedOutput.coyote.waveActiveB
-          : selectedOutput?.kind === 'opossum'
-            ? (waveTab === 'A'
-                ? selectedOutput.opossum.intensityA
-                : selectedOutput.opossum.intensityB) > 0
-            : false;
+        target.kind === 'coyote'
+          ? channel === 'A'
+            ? target.coyote.waveActiveA
+            : target.coyote.waveActiveB
+          : (channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB) > 0;
       const added = !playback.queue.includes(waveform.id);
       playback.toggle(waveform.id);
       // Adding one while the channel is already running switches to it right
       // away — otherwise the tap looks like it did nothing until the next
       // rotation, which for a 10-minute interval reads as broken.
-      if (added && playing && selectedOutput?.kind === 'coyote') {
-        startChannel(selectedOutput.coyote.id, waveTab, waveform.id);
-      } else if (added && playing && selectedOutput?.kind === 'opossum') {
-        device.setOpossumWaveform(waveTab, waveform.frames, waveform.id);
+      if (added && playing && target.kind === 'coyote') {
+        startChannel(target.coyote.id, channel, waveform.id);
+      } else if (added && playing && target.kind === 'opossum') {
+        device.setOpossumWaveform(channel, waveform.frames, waveform.id);
       }
     },
-    [waveTab, playbackA, playbackB, selectedOutput, startChannel, device],
+    [device, devicePlayback, outputTargets, startChannel],
   );
 
-  const startSelectedFire = useCallback(
-    (channel: 'A' | 'B', boost: number) => {
-      if (!selectedOutput || released) return;
-      if (selectedOutput.kind === 'coyote') {
-        startFire(selectedOutput.coyote.id, channel, boost);
+  const startOutputFire = useCallback(
+    (targetId: string, channel: 'A' | 'B', boost: number) => {
+      if (released) return;
+      const target = outputTargets.find((candidate) => candidate.id === targetId);
+      if (!target) return;
+      if (target.kind === 'coyote') {
+        startFire(target.coyote.id, channel, boost);
         return;
       }
-      const current =
-        channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
+      const current = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
       opossumFireBaseline.current[channel] = current;
       device.setOpossumIntensity(channel, current + boost);
       setOpossumFiring((state) => ({ ...state, [channel]: true }));
     },
-    [device, released, selectedOutput, startFire],
+    [device, outputTargets, released, startFire],
   );
 
-  const stopSelectedFire = useCallback(
-    (channel: 'A' | 'B') => {
-      if (selectedOutput?.kind === 'coyote') stopFire(channel);
-      else stopOpossumFire(channel);
+  const stopOutputFire = useCallback(
+    (targetId: string, channel: 'A' | 'B') => {
+      const target = outputTargets.find((candidate) => candidate.id === targetId);
+      if (target?.kind === 'coyote') stopFire(channel);
+      if (target?.kind === 'opossum') stopOpossumFire(channel);
     },
-    [selectedOutput, stopFire, stopOpossumFire],
+    [outputTargets, stopFire, stopOpossumFire],
   );
 
-  const activePlayback = waveTab === 'A' ? playbackA : playbackB;
+  const panelForTarget = (target: OutputTarget): OutputPanelState => {
+    const playbackId = playbackIdForTarget(target);
+    const playbackAForTarget = devicePlayback.get(playbackId, 'A');
+    const playbackBForTarget = devicePlayback.get(playbackId, 'B');
+    const tab = waveTabs[target.id] ?? 'A';
+    const activePlayback = tab === 'A' ? playbackAForTarget : playbackBForTarget;
+    const compatibleWaveforms = waveformsForOutput(target, waveforms.allWaveforms);
+
+    return {
+      waveTab: tab,
+      onWaveTabChange: (channel) =>
+        setWaveTabs((current) => ({ ...current, [target.id]: channel })),
+      waveforms: compatibleWaveforms,
+      queue: activePlayback.queue,
+      queueA: playbackAForTarget.queue,
+      queueB: playbackBForTarget.queue,
+      activeWaveId:
+        target.kind === 'coyote'
+          ? tab === 'A'
+            ? target.coyote.waveIdA
+            : target.coyote.waveIdB
+          : tab === 'A'
+            ? target.opossum.waveIdA
+            : target.opossum.waveIdB,
+      playMode: activePlayback.mode,
+      intervalSec: activePlayback.intervalSec,
+      onPlayModeChange: activePlayback.setMode,
+      onIntervalChange: activePlayback.setIntervalSec,
+      onToggleWaveform: (waveform) => toggleWaveform(target.id, tab, waveform),
+      onRemoveWaveform: waveforms.removeWaveform,
+      onImportFile: waveforms.importFile,
+      onOpenMarket: () => {
+        setMarketModality(target.kind === 'opossum' ? 'vibration' : 'electrostimulation');
+        setMarketOpen(true);
+      },
+      fireEnabledA:
+        target.kind === 'coyote'
+          ? Boolean(target.coyote.connected && target.coyote.waveActiveA)
+          : true,
+      fireEnabledB:
+        target.kind === 'coyote'
+          ? Boolean(target.coyote.connected && target.coyote.waveActiveB)
+          : true,
+      fireLimitA: target.kind === 'coyote' ? target.coyote.limitA : target.limitA,
+      fireLimitB: target.kind === 'coyote' ? target.coyote.limitB : target.limitB,
+      firingA: target.kind === 'coyote' ? firingDeviceIds.A === target.coyote.id : opossumFiring.A,
+      firingB: target.kind === 'coyote' ? firingDeviceIds.B === target.coyote.id : opossumFiring.B,
+      onFireStart: (channel, boost) => startOutputFire(target.id, channel, boost),
+      onFireStop: (channel) => stopOutputFire(target.id, channel),
+    };
+  };
+
+  const emptyPlaybackA = devicePlayback.get(null, 'A');
+  const emptyPlaybackB = devicePlayback.get(null, 'B');
+  const emptyTab = waveTabs.__none__ ?? 'A';
+  const emptyActivePlayback = emptyTab === 'A' ? emptyPlaybackA : emptyPlaybackB;
+  const emptyPanel: OutputPanelState = {
+    waveTab: emptyTab,
+    onWaveTabChange: (channel) => setWaveTabs((current) => ({ ...current, __none__: channel })),
+    waveforms: waveformsForOutput(null, waveforms.allWaveforms),
+    queue: emptyActivePlayback.queue,
+    queueA: emptyPlaybackA.queue,
+    queueB: emptyPlaybackB.queue,
+    activeWaveId: null,
+    playMode: emptyActivePlayback.mode,
+    intervalSec: emptyActivePlayback.intervalSec,
+    onPlayModeChange: emptyActivePlayback.setMode,
+    onIntervalChange: emptyActivePlayback.setIntervalSec,
+    onToggleWaveform: () => undefined,
+    onRemoveWaveform: waveforms.removeWaveform,
+    onImportFile: waveforms.importFile,
+    onOpenMarket: () => {
+      setMarketModality('electrostimulation');
+      setMarketOpen(true);
+    },
+    fireEnabledA: false,
+    fireEnabledB: false,
+    fireLimitA: 0,
+    fireLimitB: 0,
+    firingA: false,
+    firingB: false,
+    onFireStart: () => undefined,
+    onFireStop: () => undefined,
+  };
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[520px] flex-col gap-6 px-4 py-5">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-3 py-5 sm:px-4">
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}
@@ -393,56 +520,27 @@ export default function App() {
             stopOpossumFire('B');
             setSelectedOutputId(id);
           }}
-          queueLengthA={playbackA.queue.length}
-          queueLengthB={playbackB.queue.length}
-          onAdjust={adjustSelected}
+          panelForTarget={panelForTarget}
+          emptyPanel={emptyPanel}
+          onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
-          onSetOpossumPattern={(channel, pattern) => {
-            if (selectedOutput?.kind === 'opossum') device.setOpossumPattern(channel, pattern);
+          onSetOpossumPattern={(targetId, channel, pattern) => {
+            if (targetId === 'opossum') device.setOpossumPattern(channel, pattern);
           }}
-          firingA={
-            selectedOutput?.kind === 'coyote'
-              ? firingDeviceIds.A === selectedOutput.coyote.id
-              : opossumFiring.A
-          }
-          firingB={
-            selectedOutput?.kind === 'coyote'
-              ? firingDeviceIds.B === selectedOutput.coyote.id
-              : opossumFiring.B
-          }
-          onFireStart={startSelectedFire}
-          onFireStop={stopSelectedFire}
-          onStop={() => {
-            if (selectedOutput?.kind === 'coyote') stopCoyote(selectedOutput.coyote.id);
-            else device.opossumStop();
+          onStop={(targetId) => {
+            const target = outputTargets.find((candidate) => candidate.id === targetId);
+            if (target?.kind === 'coyote') stopCoyote(target.coyote.id);
+            if (target?.kind === 'opossum') {
+              stopOpossumFire('A');
+              stopOpossumFire('B');
+              device.opossumStop();
+            }
           }}
-          onDisconnect={() => {
-            if (selectedOutput?.kind === 'coyote') disconnectCoyote(selectedOutput.coyote.id);
-            else device.disconnectOpossum();
+          onDisconnect={(targetId) => {
+            const target = outputTargets.find((candidate) => candidate.id === targetId);
+            if (target?.kind === 'coyote') disconnectCoyote(target.coyote.id);
+            if (target?.kind === 'opossum') device.disconnectOpossum();
           }}
-          waveTab={waveTab}
-          onWaveTabChange={setWaveTab}
-          waveforms={waveforms.allWaveforms}
-          queue={activePlayback.queue}
-          activeWaveId={
-            selectedOutput?.kind === 'coyote'
-              ? waveTab === 'A'
-                ? selectedOutput.coyote.waveIdA
-                : selectedOutput.coyote.waveIdB
-              : selectedOutput?.kind === 'opossum'
-                ? waveTab === 'A'
-                  ? selectedOutput.opossum.waveIdA
-                  : selectedOutput.opossum.waveIdB
-                : null
-          }
-          playMode={activePlayback.mode}
-          intervalSec={activePlayback.intervalSec}
-          onPlayModeChange={activePlayback.setMode}
-          onIntervalChange={activePlayback.setIntervalSec}
-          onToggleWaveform={toggleWaveform}
-          onRemoveWaveform={waveforms.removeWaveform}
-          onImportFile={waveforms.importFile}
-          onOpenMarket={() => setMarketOpen(true)}
         />
       </div>
 
@@ -450,6 +548,7 @@ export default function App() {
         open={marketOpen}
         onOpenChange={setMarketOpen}
         type="waveform"
+        modality={marketModality}
         onImport={waveforms.addMarketWaveform}
       />
     </div>

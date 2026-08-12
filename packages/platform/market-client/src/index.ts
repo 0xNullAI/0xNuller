@@ -11,6 +11,9 @@
 // override with VITE_API_BASE_URL.
 
 import { apiBaseUrl } from '@0xnullai/settings';
+import type { WaveformModality } from '@dg-kit/core';
+
+export type { WaveformModality } from '@dg-kit/core';
 
 export const marketBaseUrl = (): string => apiBaseUrl();
 
@@ -20,7 +23,7 @@ export interface MarketWaveformContent {
   // Waveform frames: [encoded frequency 10-240, strength 0-100][] —
   // identical to @dg-kit/core's WaveFrame.
   frames: [number, number][];
-  modality?: 'electrostimulation' | 'vibration';
+  modality?: WaveformModality;
   pulse?: string;
 }
 
@@ -51,6 +54,8 @@ export interface MarketItem {
 
 export interface FetchMarketParams {
   type: MarketItemType;
+  /** Optional output-family filter for waveform imports. */
+  modality?: WaveformModality;
   q?: string;
   sort?: 'new' | 'popular';
   limit?: number;
@@ -60,6 +65,7 @@ export interface FetchMarketParams {
 
 export async function fetchMarketItems(params: FetchMarketParams): Promise<MarketItem[]> {
   const search = new URLSearchParams({ type: params.type });
+  if (params.modality && params.type === 'waveform') search.set('modality', params.modality);
   if (params.q) search.set('q', params.q);
   if (params.sort) search.set('sort', params.sort);
   search.set('limit', String(params.limit ?? 50));

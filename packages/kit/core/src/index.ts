@@ -11,6 +11,9 @@
 
 export type Channel = 'A' | 'B';
 
+/** The two output families that can consume a waveform definition. */
+export type WaveformModality = 'electrostimulation' | 'vibration';
+
 /** A single 25 ms wave step: `[encodedFrequency, intensity]`. */
 export type WaveFrame = [number, number];
 
@@ -21,8 +24,20 @@ export interface WaveformDefinition {
   /** Sequence of 25 ms steps. */
   frames: WaveFrame[];
   /** Intended output family; old definitions are treated as electrostimulation. */
-  modality?: 'electrostimulation' | 'vibration';
+  modality?: WaveformModality;
+  /** UI-only marker used by browser libraries; ignored by device transports. */
+  custom?: boolean;
 }
+
+export {
+  DEFAULT_PLAY_INTERVAL_SEC,
+  DEFAULT_WAVEFORM_MODALITY,
+  getWaveformModality,
+  isWaveformCompatibleWithDevice,
+  startWaveformId,
+  toggleQueueEntry,
+} from './waveform-playback.js';
+export type { PlayMode } from './waveform-playback.js';
 
 // ---------------------------------------------------------------------------
 // Device state

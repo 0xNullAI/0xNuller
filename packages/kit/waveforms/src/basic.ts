@@ -19,6 +19,7 @@ const BUILTIN_WAVEFORMS: WaveformDefinition[] = [
       [10, 0],
       [10, 0],
     ],
+    modality: 'electrostimulation',
   },
   {
     id: 'tide',
@@ -48,24 +49,28 @@ const BUILTIN_WAVEFORMS: WaveformDefinition[] = [
       [40, 76],
       [42, 68],
     ],
+    modality: 'electrostimulation',
   },
   {
     id: 'pulse_low',
     name: '低脉冲',
     description: '轻柔的规律节奏',
     frames: Array.from({ length: 10 }, () => [10, 30] as [number, number]),
+    modality: 'electrostimulation',
   },
   {
     id: 'pulse_mid',
     name: '中脉冲',
     description: '中等强度的规律节奏',
     frames: Array.from({ length: 10 }, () => [10, 60] as [number, number]),
+    modality: 'electrostimulation',
   },
   {
     id: 'pulse_high',
     name: '高脉冲',
     description: '强烈的规律节奏',
     frames: Array.from({ length: 10 }, () => [10, 100] as [number, number]),
+    modality: 'electrostimulation',
   },
   {
     id: 'tap',
@@ -79,6 +84,7 @@ const BUILTIN_WAVEFORMS: WaveformDefinition[] = [
       [10, 0],
       [10, 0],
     ],
+    modality: 'electrostimulation',
   },
 ];
 

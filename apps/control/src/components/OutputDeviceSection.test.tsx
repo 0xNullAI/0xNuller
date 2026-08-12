@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { OutputDeviceSection, type OutputTarget } from './OutputDeviceSection';
+import {
+  OutputDeviceSection,
+  type OutputPanelState,
+  type OutputTarget,
+} from './OutputDeviceSection';
 
 const opossum: OutputTarget = {
   id: 'opossum',
@@ -25,34 +29,43 @@ const opossum: OutputTarget = {
 
 describe('Control 统一输出控制台', () => {
   it('负鼠使用和郊狼一致的双通道、波形与开火结构，并且没有灯光颜色', () => {
+    const panel: OutputPanelState = {
+      waveTab: 'A',
+      onWaveTabChange: vi.fn(),
+      waveforms: [],
+      queue: ['breath'],
+      queueA: ['breath'],
+      queueB: [],
+      activeWaveId: 'breath',
+      playMode: 'single',
+      intervalSec: 10,
+      onPlayModeChange: vi.fn(),
+      onIntervalChange: vi.fn(),
+      onToggleWaveform: vi.fn(),
+      onRemoveWaveform: vi.fn(),
+      onImportFile: vi.fn(async () => null),
+      onOpenMarket: vi.fn(),
+      fireEnabledA: true,
+      fireEnabledB: true,
+      fireLimitA: 40,
+      fireLimitB: 60,
+      firingA: false,
+      firingB: false,
+      onFireStart: vi.fn(),
+      onFireStop: vi.fn(),
+    };
+
     render(
       <OutputDeviceSection
         targets={[opossum]}
         selected={opossum}
         onSelect={vi.fn()}
-        queueLengthA={1}
-        queueLengthB={1}
-        firingA={false}
-        firingB={false}
+        panelForTarget={() => panel}
+        emptyPanel={panel}
         onAdjust={vi.fn()}
         onTogglePlay={vi.fn()}
-        onFireStart={vi.fn()}
-        onFireStop={vi.fn()}
         onStop={vi.fn()}
         onDisconnect={vi.fn()}
-        waveTab="A"
-        onWaveTabChange={vi.fn()}
-        waveforms={[]}
-        queue={['breath']}
-        activeWaveId="breath"
-        playMode="single"
-        intervalSec={10}
-        onPlayModeChange={vi.fn()}
-        onIntervalChange={vi.fn()}
-        onToggleWaveform={vi.fn()}
-        onRemoveWaveform={vi.fn()}
-        onImportFile={vi.fn(async () => null)}
-        onOpenMarket={vi.fn()}
       />,
     );
 

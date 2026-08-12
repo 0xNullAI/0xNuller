@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
-import type { PlayMode } from '../../../chat/src/lib/protocol';
-import { toggleQueueEntry } from './use-playback';
+import { DEFAULT_PLAY_INTERVAL_SEC, toggleQueueEntry, type PlayMode } from '@dg-kit/core';
 
 export interface DevicePlayback {
   queue: string[];
@@ -14,7 +13,12 @@ export interface DevicePlayback {
 }
 
 type Stored = Omit<DevicePlayback, 'setMode' | 'setIntervalSec' | 'setIndex' | 'toggle'>;
-const blank = (): Stored => ({ queue: [], mode: 'single', intervalSec: 30, index: 0 });
+const blank = (): Stored => ({
+  queue: [],
+  mode: 'single',
+  intervalSec: DEFAULT_PLAY_INTERVAL_SEC,
+  index: 0,
+});
 
 /** Independent playlist state for each physical output and channel. */
 export function useDevicePlayback() {

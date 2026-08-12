@@ -16,8 +16,7 @@ import {
 } from 'lucide-react';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
-import type { WaveformDefinition } from '../../../chat/src/lib/waveforms';
-import type { PlayMode } from '../../../chat/src/lib/protocol';
+import type { PlayMode, WaveformDefinition } from '@dg-kit/core';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
 import { isCoyoteOutputActive } from '@dg-kit/core';
 
@@ -44,13 +43,12 @@ interface CoyoteControlProps {
   /** Human-readable shell label; raw BLE names are kept out of everyday controls. */
   displayName: string;
   /**
-   * True while more than one host is attached. It turns on the per-device
-   * header (name, battery, 断开, 归零) and the "the waveform panel below drives
-   * this one" affordance — all of which are noise when there is only one
-   * device and nothing to tell apart.
+   * Kept for the legacy CoyoteSection composition. The current output deck
+   * renders one complete device page in OutputDeviceSection and supplies the
+   * compact channel body (`multi={false}`) beneath its own device header.
    */
   multi: boolean;
-  /** Whether the shared waveform panel currently targets this host. */
+  /** Whether this host is the currently focused page. */
   selected: boolean;
   onSelect: (deviceId: string) => void;
   queueLengthA: number;
@@ -71,9 +69,8 @@ interface CoyoteControlProps {
  * shape people already know from Chat. What is new is that there is one of
  * these per attached host: every reading, every cap and every button here is
  * addressed by `coyote.id`, so two hosts can never end up driving each other.
- * The waveform library is deliberately NOT in here (see `WaveformPanel`): it is
- * a library, and duplicating the whole grid per device would bury the controls
- * people actually reach for.
+ * The waveform library is rendered by the enclosing complete device page
+ * (see `WaveformPanel`); this component stays focused on the two live rings.
  */
 export function CoyoteControl({
   coyote,
@@ -237,12 +234,9 @@ export interface WaveformPanelProps {
 }
 
 /**
- * The shared waveform library.
- *
- * One panel for the whole module rather than one per host: the library and the
- * playlist are a property of "what I want to feel", not of a particular piece
- * of hardware, and repeating a 20-tile grid per device would push the strength
- * controls off the screen.
+ * One device's waveform library and playback panel. OutputDeviceSection mounts
+ * one instance per horizontal device page, so queues and modality never leak
+ * between a Coyote and an Opossum (or between two Coyotes).
  *
  * Global zero-output lives in the shell device bar so it does not duplicate or
  * disappear between modules. Per-device zero remains in multi-device headers.
@@ -584,7 +578,8 @@ interface CoyoteSectionProps extends Omit<
 }
 
 /**
- * Section two: every attached Coyote, then the shared waveform library.
+ * Legacy composition for callers that still want a Coyote list followed by a
+ * single panel. The unified Control deck uses OutputDeviceSection instead.
  *
  * With nothing attached this renders a single disabled-looking placeholder
  * block, exactly as the one-device version used to — the module is unusable

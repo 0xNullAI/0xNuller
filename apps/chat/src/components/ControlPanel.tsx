@@ -124,8 +124,20 @@ export function ControlPanel({
       ? waveforms
       : (
           member?.waveformCatalog ??
-          BUILTIN_WAVEFORMS.map((w) => ({ id: w.id, name: w.name, custom: false }))
-        ).map((w) => ({ id: w.id, name: w.name, custom: !!w.custom, description: '', frames: [] }));
+          BUILTIN_WAVEFORMS.map((w) => ({
+            id: w.id,
+            name: w.name,
+            custom: false,
+            modality: 'electrostimulation' as const,
+          }))
+        ).map((w) => ({
+          id: w.id,
+          name: w.name,
+          custom: !!w.custom,
+          modality: w.modality ?? 'electrostimulation',
+          description: '',
+          frames: [],
+        }));
 
     return (
       <MemberControl

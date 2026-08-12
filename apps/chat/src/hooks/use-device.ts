@@ -1,4 +1,6 @@
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import type { DeviceLinkRule } from '@dg-kit/core';
+import { DeviceLifecycleGuard } from '@dg-kit/safety';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   DeviceSession,
@@ -11,7 +13,6 @@ import {
   type OpossumSummary,
 } from '../lib/bluetooth';
 import type { DeviceKind } from '../lib/protocol';
-import { DeviceLifecycleGuard } from '@dg-kit/safety';
 
 /**
  * Field-by-field comparison of two host lists, so an unchanged tick can reuse
@@ -92,9 +93,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [limitB, setLimitB] = useState(() => loadDeviceSafety().maxStrengthB);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
   const [opossum, setOpossum] = useState<OpossumSummary | null>(null);
-  const [deviceLink, setDeviceLinkState] = useState<import('@dg-kit/core').DeviceLinkRule | null>(
-    null,
-  );
+  const [deviceLink, setDeviceLinkState] = useState<DeviceLinkRule | null>(null);
   const [firePolicy, setFirePolicyState] = useState<'sum' | 'max' | 'avg'>(
     () => (localStorage.getItem('dg-fire-policy') as 'sum' | 'max' | 'avg' | null) ?? 'max',
   );
@@ -359,7 +358,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     [],
   );
 
-  const setDeviceLink = useCallback((rule: import('@dg-kit/core').DeviceLinkRule) => {
+  const setDeviceLink = useCallback((rule: DeviceLinkRule) => {
     sessionRef.current?.setDeviceLinkRule(rule);
     setDeviceLinkState({ ...rule });
   }, []);
