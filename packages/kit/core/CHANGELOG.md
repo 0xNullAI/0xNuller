@@ -1,5 +1,11 @@
 # @dg-kit/core
 
+## 1.15.0
+
+### Minor Changes
+
+- d29dd12: 统一电击/震动波形类型、设备兼容规则与跨模块播放队列基础能力，并标注内置波形类型。
+
 ## 1.14.0
 
 - Add shared device-picker cancellation helpers.
