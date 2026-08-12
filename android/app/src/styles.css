@@ -30,7 +30,7 @@ html[data-keyboard-open] #shl-root {
 #nx-splash {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-splash);
   display: grid;
   place-items: center;
   background: var(--bg);

@@ -45,7 +45,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub tag, release title, APK `versionName`, and internal code all advance
-together: `android-v6.0.4`, `0xNuller 6.0.4`, `6.0.4`, and `6000004`.
+together: `android-v6.0.5`, `0xNuller 6.0.5`, `6.0.5`, and `6000005`.
 
 ## Prerequisites
 
@@ -72,7 +72,10 @@ npm run android:init      # regenerates src-tauri/gen/android/, then prepares it
 
 The `gen/android/` directory is regenerated and gitignored. `npm run android:prepare`
 deterministically applies [`AndroidManifest.template.xml`](./AndroidManifest.template.xml),
-sets minSdk 26, and injects [`signing.gradle.kts.template`](./signing.gradle.kts.template).
+sets minSdk 26, injects [`signing.gradle.kts.template`](./signing.gradle.kts.template), and
+restores [`MainActivity.template.kt`](./MainActivity.template.kt). The activity applies system-bar
+and display-cutout insets at the native WebView boundary, including on older WebView versions whose
+CSS safe-area variables do not expose three-button navigation insets.
 Both root Android commands run it automatically; do not invoke the workspace command directly
 for a release.
 

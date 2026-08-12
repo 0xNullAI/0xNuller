@@ -1,4 +1,4 @@
-import { cn, useOverlayContainer } from '@0xnullai/ui';
+import { Z_OVERLAY, Z_OVERLAY_PANEL, cn, useOverlayContainer } from '@0xnullai/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -63,9 +63,11 @@ export function SessionSearchDialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal container={useOverlayContainer()}>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[var(--z-module-overlay)] bg-[var(--overlay-scrim)] backdrop-blur-[1.5px] animate-in fade-in-0 duration-[var(--dur)]" />
+        <DialogPrimitive.Overlay
+          className={`fixed inset-0 ${Z_OVERLAY} bg-[var(--overlay-scrim)] backdrop-blur-[1.5px] animate-in fade-in-0 duration-[var(--dur)]`}
+        />
         <DialogPrimitive.Content
-          className="fixed inset-x-4 top-[max(env(safe-area-inset-top),9dvh)] z-[calc(var(--z-module-overlay)+1)] mx-auto max-w-[500px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-[var(--dur-mid)]"
+          className={`fixed inset-x-4 top-[max(env(safe-area-inset-top),9dvh)] ${Z_OVERLAY_PANEL} mx-auto max-w-[500px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-soft)] animate-in fade-in-0 slide-in-from-top-2 duration-[var(--dur-mid)]`}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             inputRef.current?.focus();

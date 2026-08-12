@@ -17,7 +17,15 @@ import {
   Vibrate,
   Zap,
 } from 'lucide-react';
-import { ChannelStrengthBar, DeviceStatusChip, Button, Input, cn, useInShell } from '@0xnullai/ui';
+import {
+  ChannelStrengthBar,
+  DeviceStatusChip,
+  Button,
+  Input,
+  Z_LOCAL_POPOVER,
+  cn,
+  useInShell,
+} from '@0xnullai/ui';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
 
@@ -411,7 +419,9 @@ export function ChatPanel({
                     />
                   </button>
                   {sceneDropdownOpen && (
-                    <div className="absolute left-0 top-full z-10 mt-1 w-[180px] overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg">
+                    <div
+                      className={`absolute left-0 top-full ${Z_LOCAL_POPOVER} mt-1 w-[180px] overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg`}
+                    >
                       {allPresets.map((preset) => (
                         <button
                           key={preset.id}
