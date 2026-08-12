@@ -12,10 +12,7 @@ import type {
 } from '../../chat/src/hooks/use-channel-rotation';
 import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
 import type { WaveformDefinition } from '../../chat/src/lib/waveforms';
-import {
-  OutputDeviceSection,
-  type OutputTarget,
-} from '@control/components/OutputDeviceSection';
+import { OutputDeviceSection, type OutputTarget } from '@control/components/OutputDeviceSection';
 import { useChannelPlayback, startWaveformId } from '@control/hooks/use-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
@@ -269,9 +266,7 @@ export default function App() {
         return;
       }
       const current =
-        channel === 'A'
-          ? selectedOutput.opossum.intensityA
-          : selectedOutput.opossum.intensityB;
+        channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
       device.setOpossumIntensity(channel, current + delta);
     },
     [adjustStrength, device, released, selectedOutput],
@@ -293,9 +288,7 @@ export default function App() {
       if (!selectedOutput) return;
       if (selectedOutput.kind === 'opossum') {
         const intensity =
-          channel === 'A'
-            ? selectedOutput.opossum.intensityA
-            : selectedOutput.opossum.intensityB;
+          channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
         if (intensity > 0) {
           stopOpossumFire(channel);
           device.opossumStop(channel);
@@ -367,9 +360,7 @@ export default function App() {
         return;
       }
       const current =
-        channel === 'A'
-          ? selectedOutput.opossum.intensityA
-          : selectedOutput.opossum.intensityB;
+        channel === 'A' ? selectedOutput.opossum.intensityA : selectedOutput.opossum.intensityB;
       opossumFireBaseline.current[channel] = current;
       device.setOpossumIntensity(channel, current + boost);
       setOpossumFiring((state) => ({ ...state, [channel]: true }));
@@ -448,7 +439,6 @@ export default function App() {
           onImportFile={waveforms.importFile}
           onOpenMarket={() => setMarketOpen(true)}
         />
-
       </div>
 
       <MarketImportDialog

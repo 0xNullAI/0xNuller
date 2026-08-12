@@ -1,18 +1,8 @@
 import { useRef } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  BatteryMedium,
-  Pause,
-  Play,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, BatteryMedium, Pause, Play } from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '../../../chat/src/lib/bluetooth';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
-import {
-  CoyoteControl,
-  WaveformPanel,
-  type WaveformPanelProps,
-} from './CoyoteControl';
+import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
 
 export type OutputTarget =
   | { id: string; kind: 'coyote'; label: string; coyote: CoyoteSummary }
@@ -126,92 +116,93 @@ export function OutputDeviceSection({
             onScroll={(event) => selectNearest(event.currentTarget)}
             aria-label="选择输出设备"
           >
-          {targets.map((target) => {
-            const active = target.id === selected?.id;
-            const battery = target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery;
-            const valueA =
-              target.kind === 'coyote' ? target.coyote.strengthA : target.opossum.intensityA;
-            const valueB =
-              target.kind === 'coyote' ? target.coyote.strengthB : target.opossum.intensityB;
-            return (
-              <div
-                key={target.id}
-                data-output-id={target.id}
-                className={`min-w-[88%] snap-center rounded-[var(--radius-md)] border p-3 transition-colors sm:min-w-[62%] ${
-                  active
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                    : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(target.id)}
-                  className="flex min-h-9 w-full touch-manipulation items-center gap-2 text-left"
-                  aria-pressed={active}
+            {targets.map((target) => {
+              const active = target.id === selected?.id;
+              const battery =
+                target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery;
+              const valueA =
+                target.kind === 'coyote' ? target.coyote.strengthA : target.opossum.intensityA;
+              const valueB =
+                target.kind === 'coyote' ? target.coyote.strengthB : target.opossum.intensityB;
+              return (
+                <div
+                  key={target.id}
+                  data-output-id={target.id}
+                  className={`min-w-[88%] snap-center rounded-[var(--radius-md)] border p-3 transition-colors sm:min-w-[62%] ${
+                    active
+                      ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                      : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
+                  }`}
                 >
-                  <span className="h-2 w-2 rounded-full bg-[var(--success)]" aria-hidden />
-                  <span className="flex-1 text-sm font-semibold text-[var(--text)]">
-                    {target.label}
-                  </span>
-                  {battery != null && (
-                    <span className="flex items-center gap-1 text-[11px] text-[var(--text-faint)]">
-                      <BatteryMedium size={12} /> {battery}%
+                  <button
+                    type="button"
+                    onClick={() => onSelect(target.id)}
+                    className="flex min-h-9 w-full touch-manipulation items-center gap-2 text-left"
+                    aria-pressed={active}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[var(--success)]" aria-hidden />
+                    <span className="flex-1 text-sm font-semibold text-[var(--text)]">
+                      {target.label}
                     </span>
-                  )}
-                  <span className="font-mono text-xs tabular-nums text-[var(--text-soft)]">
-                    A {valueA} · B {valueB}
-                  </span>
-                </button>
-                <div className="mt-2 border-t border-[var(--surface-border)] pt-3">
-                  {target.kind === 'coyote' ? (
-                    <CoyoteControl
-                      coyote={target.coyote}
-                      displayName={target.label}
-                      multi={false}
-                      selected
-                      onSelect={onSelect}
-                      queueLengthA={queueLengthA}
-                      queueLengthB={queueLengthB}
-                      firingA={target.id === selected?.id ? firingA : false}
-                      firingB={target.id === selected?.id ? firingB : false}
-                      onAdjustStrength={(_id, channel, delta) => {
-                        onSelect(target.id);
-                        onAdjust(channel, delta);
-                      }}
-                      onTogglePlay={(_id, channel) => {
-                        onSelect(target.id);
-                        onTogglePlay(channel);
-                      }}
-                      onStopDevice={() => {
-                        onSelect(target.id);
-                        onStop();
-                      }}
-                      onDisconnect={() => {
-                        onSelect(target.id);
-                        onDisconnect();
-                      }}
-                    />
-                  ) : (
-                    <OpossumChannels
-                      target={target}
-                      queueLengthA={queueLengthA}
-                      queueLengthB={queueLengthB}
-                      firingA={target.id === selected?.id ? firingA : false}
-                      firingB={target.id === selected?.id ? firingB : false}
-                      onAdjust={(channel, delta) => {
-                        onSelect(target.id);
-                        onAdjust(channel, delta);
-                      }}
-                      onTogglePlay={(channel) => {
-                        onSelect(target.id);
-                        onTogglePlay(channel);
-                      }}
-                    />
-                  )}
+                    {battery != null && (
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--text-faint)]">
+                        <BatteryMedium size={12} /> {battery}%
+                      </span>
+                    )}
+                    <span className="font-mono text-xs tabular-nums text-[var(--text-soft)]">
+                      A {valueA} · B {valueB}
+                    </span>
+                  </button>
+                  <div className="mt-2 border-t border-[var(--surface-border)] pt-3">
+                    {target.kind === 'coyote' ? (
+                      <CoyoteControl
+                        coyote={target.coyote}
+                        displayName={target.label}
+                        multi={false}
+                        selected
+                        onSelect={onSelect}
+                        queueLengthA={queueLengthA}
+                        queueLengthB={queueLengthB}
+                        firingA={target.id === selected?.id ? firingA : false}
+                        firingB={target.id === selected?.id ? firingB : false}
+                        onAdjustStrength={(_id, channel, delta) => {
+                          onSelect(target.id);
+                          onAdjust(channel, delta);
+                        }}
+                        onTogglePlay={(_id, channel) => {
+                          onSelect(target.id);
+                          onTogglePlay(channel);
+                        }}
+                        onStopDevice={() => {
+                          onSelect(target.id);
+                          onStop();
+                        }}
+                        onDisconnect={() => {
+                          onSelect(target.id);
+                          onDisconnect();
+                        }}
+                      />
+                    ) : (
+                      <OpossumChannels
+                        target={target}
+                        queueLengthA={queueLengthA}
+                        queueLengthB={queueLengthB}
+                        firingA={target.id === selected?.id ? firingA : false}
+                        firingB={target.id === selected?.id ? firingB : false}
+                        onAdjust={(channel, delta) => {
+                          onSelect(target.id);
+                          onAdjust(channel, delta);
+                        }}
+                        onTogglePlay={(channel) => {
+                          onSelect(target.id);
+                          onTogglePlay(channel);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </div>
           {targets.length > 1 && (
             <>
@@ -246,15 +237,15 @@ export function OutputDeviceSection({
             先从顶部设备栏连接主机
           </div>
         </div>
-        )}
+      )}
 
       <WaveformPanel
         {...waveformPanel}
         targetName={selected?.label ?? null}
         fireEnabledA={Boolean(selected)}
         fireEnabledB={Boolean(selected)}
-        fireLimitA={selected?.kind === 'coyote' ? selected.coyote.limitA : selected?.limitA ?? 0}
-        fireLimitB={selected?.kind === 'coyote' ? selected.coyote.limitB : selected?.limitB ?? 0}
+        fireLimitA={selected?.kind === 'coyote' ? selected.coyote.limitA : (selected?.limitA ?? 0)}
+        fireLimitB={selected?.kind === 'coyote' ? selected.coyote.limitB : (selected?.limitB ?? 0)}
         firingA={firingA}
         firingB={firingB}
         onFireStart={onFireStart}

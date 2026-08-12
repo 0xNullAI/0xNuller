@@ -337,9 +337,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
                 kind: 'opossum',
                 name: '负鼠',
                 connected: true,
-                ...(typeof d.opossum.battery === 'number'
-                  ? { battery: d.opossum.battery }
-                  : {}),
+                ...(typeof d.opossum.battery === 'number' ? { battery: d.opossum.battery } : {}),
                 active: (d.opossum.intensityA ?? 0) > 0 || (d.opossum.intensityB ?? 0) > 0,
                 channels: [
                   { label: 'A', value: d.opossum.intensityA, max: d.opossum.limitA },
