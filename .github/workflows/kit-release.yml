@@ -1,0 +1,79 @@
+name: Kit Release
+
+# Package publication is a production action. It runs only for the exact main commit that passed CI.
+# Product GitHub Releases are owned by Product Release and are never created here.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: kit-release-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: npm-production
+    steps:
+      - name: Resolve the verified main commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - name: Refuse unversioned package changes
+        run: npm run verify:changesets:consumed
+      - run: npm run verify:packages
+      - id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: npm run release
+          setupGitUser: false
+          createGithubReleases: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: 0xNull
+          GIT_AUTHOR_EMAIL: 271426072+0xNullAI@users.noreply.github.com
+          GIT_COMMITTER_NAME: 0xNull
+          GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+
+      - name: Release summary
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          {
+            echo '## Kit packages released from main'
+            echo ''
+            echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "- \(.name)@\(.version) → https://www.npmjs.com/package/\(.name)/v/\(.version)"'
+          } >> "$GITHUB_STEP_SUMMARY"

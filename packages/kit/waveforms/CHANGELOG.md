@@ -1,5 +1,13 @@
 # @dg-kit/waveforms
 
+## 1.15.0
+
+### Patch Changes
+
+- d29dd12: 统一电击/震动波形类型、设备兼容规则与跨模块播放队列基础能力，并标注内置波形类型。
+- Updated dependencies [d29dd12]
+  - @dg-kit/core@1.15.0
+
 ## 1.14.0
 
 - Align dependencies with the 1.14.0 fixed release group.

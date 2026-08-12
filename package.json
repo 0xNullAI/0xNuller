@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.0.8",
+  "version": "6.0.9",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
@@ -48,6 +48,7 @@
     "smoke:production": "node scripts/smoke-production.mjs",
     "verify:brand": "node scripts/verify-brand.mjs",
     "verify:packages": "npm run build:kit && npm run build -w dg-mcp && node scripts/verify-publish-packages.mjs",
+    "verify:changesets:consumed": "node scripts/verify-changesets-consumed.mjs",
     "check:routes": "node scripts/check-routes.mjs",
     "check:structure": "node scripts/check-architecture.mjs && node scripts/check-test-discovery.mjs",
     "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",

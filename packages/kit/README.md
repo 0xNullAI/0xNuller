@@ -40,8 +40,8 @@ await client.connect();
 ## 版本与发布
 
 所有 `@dg-kit/*` 包使用固定版本组，并与 `dg-mcp` 遵循同一套 Changesets 发布规则。
-`dev` 自动创建或更新版本 PR；版本改动进入 `main` 后，GitHub Actions 在 `npm-production`
-环境构建、打包验证并发布到 npm 的 `latest` dist-tag。
+`dev` 只自动创建或更新 Version PR，不发布；版本化代码随产品快照进入 `main` 并通过 CI 后，
+GitHub Actions 才在 `npm-production` 环境构建、打包验证并发布到 npm 的 `latest` dist-tag。
 
 包主页：[npm `@dg-kit/core`](https://www.npmjs.com/package/@dg-kit/core) ·
 [源代码](https://github.com/0xNullAI/0xNuller/tree/main/packages/kit)
@@ -52,5 +52,5 @@ DG-Kit is the independently installable TypeScript device SDK inside 0xNuller. T
 used without the unified web UI in browser, Node.js, and Tauri applications. Choose packages from the
 table above; each linked README documents its public entry points and runtime requirements. All
 `@dg-kit/*` packages share a fixed version and follow the same Changesets release policy as
-`dg-mcp`; packages are published from the `npm-production` environment after the version PR reaches
-`main`.
+`dg-mcp`; dev only prepares versions, and packages are published from the `npm-production`
+environment after the versioned main snapshot passes CI.
