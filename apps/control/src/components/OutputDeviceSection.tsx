@@ -229,20 +229,18 @@ export function OutputDeviceSection({
         </div>
       )}
 
-      {selected ? (
-        <WaveformPanel
-          {...waveformPanel}
-          targetName={selected.label}
-          fireEnabledA
-          fireEnabledB
-          fireLimitA={selected.kind === 'coyote' ? selected.coyote.limitA : selected.limitA}
-          fireLimitB={selected.kind === 'coyote' ? selected.coyote.limitB : selected.limitB}
-          firingA={firingA}
-          firingB={firingB}
-          onFireStart={onFireStart}
-          onFireStop={onFireStop}
-        />
-      ) : null}
+      <WaveformPanel
+        {...waveformPanel}
+        targetName={selected?.label ?? null}
+        fireEnabledA={Boolean(selected)}
+        fireEnabledB={Boolean(selected)}
+        fireLimitA={selected?.kind === 'coyote' ? selected.coyote.limitA : (selected?.limitA ?? 0)}
+        fireLimitB={selected?.kind === 'coyote' ? selected.coyote.limitB : (selected?.limitB ?? 0)}
+        firingA={firingA}
+        firingB={firingB}
+        onFireStart={onFireStart}
+        onFireStop={onFireStop}
+      />
     </section>
   );
 }
