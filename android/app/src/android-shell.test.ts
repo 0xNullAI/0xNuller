@@ -40,9 +40,7 @@ describe('Android shell integration', () => {
     expect(activity).toContain(
       '.setInsets(handledTypes or WindowInsetsCompat.Type.ime(), Insets.NONE)',
     );
-    expect(activity).toContain(
-      'maxOf(insets.bottom, imeInsets.bottom)',
-    );
+    expect(activity).toContain('maxOf(insets.bottom, imeInsets.bottom)');
     expect(activity).toContain('WindowInsetsCompat.Type.ime()');
     expect(activity).toContain('ViewCompat.requestApplyInsets(webView)');
     expect(activity).toContain('webView.addJavascriptInterface(AndroidSystemBridge()');

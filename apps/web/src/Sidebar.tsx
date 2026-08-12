@@ -28,8 +28,7 @@ import {
 } from '@0xnullai/auth';
 import { MODULES } from './routes';
 
-export const ANDROID_DOWNLOAD_URL =
-  `https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-v${productPackage.version}.apk`;
+export const ANDROID_DOWNLOAD_URL = `https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-v${productPackage.version}.apk`;
 
 /**
  * The sidebar. It is the only vertical bar in the app, with the content area to
