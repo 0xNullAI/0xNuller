@@ -296,7 +296,7 @@ export default function App() {
           device.opossumStop(channel);
           return;
         }
-        const id = startWaveformId(playback.queue, playback.index);
+        const id = startWaveformId(playback.queue, playback.index) ?? waveforms.allWaveforms[0]?.id;
         const waveform = id ? waveforms.getWaveform(id) : null;
         if (!waveform) return;
         device.setOpossumWaveform(channel, waveform.frames, waveform.id);

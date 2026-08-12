@@ -229,29 +229,20 @@ export function OutputDeviceSection({
         </div>
       )}
 
-      <div
-        className={
-          selected ? undefined : 'rounded-[var(--radius-md)] bg-[var(--bg-elevated)] opacity-60'
-        }
-        aria-disabled={!selected}
-      >
+      {selected ? (
         <WaveformPanel
           {...waveformPanel}
-          targetName={selected?.label ?? null}
-          fireEnabledA={Boolean(selected)}
-          fireEnabledB={Boolean(selected)}
-          fireLimitA={
-            selected?.kind === 'coyote' ? selected.coyote.limitA : (selected?.limitA ?? 0)
-          }
-          fireLimitB={
-            selected?.kind === 'coyote' ? selected.coyote.limitB : (selected?.limitB ?? 0)
-          }
+          targetName={selected.label}
+          fireEnabledA
+          fireEnabledB
+          fireLimitA={selected.kind === 'coyote' ? selected.coyote.limitA : selected.limitA}
+          fireLimitB={selected.kind === 'coyote' ? selected.coyote.limitB : selected.limitB}
           firingA={firingA}
           firingB={firingB}
           onFireStart={onFireStart}
           onFireStop={onFireStop}
         />
-      </div>
+      ) : null}
     </section>
   );
 }
