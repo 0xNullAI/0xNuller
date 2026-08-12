@@ -132,7 +132,7 @@ function showBackToast(text: string): void {
       color: '#f4f4f5',
       borderRadius: '999px',
       fontSize: '13px',
-      zIndex: '99999',
+      zIndex: 'var(--z-native-toast)',
       pointerEvents: 'none',
       transition: 'opacity 200ms',
       opacity: '0',

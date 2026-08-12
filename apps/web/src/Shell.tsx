@@ -12,6 +12,8 @@ import {
   StopFailureBanner,
   useOverlayRoot,
   useModuleOverlayLayer,
+  Z_SHELL,
+  Z_SHELL_PANEL,
 } from '@0xnullai/ui';
 import {
   me,
@@ -346,11 +348,11 @@ export function Shell() {
           {narrow && drawerOpen && (
             <>
               <div
-                className="fixed inset-0 z-[var(--z-shell)] bg-[var(--overlay-scrim)]"
+                className={`fixed inset-0 ${Z_SHELL} bg-[var(--overlay-scrim)]`}
                 onClick={() => setDrawerOpen(false)}
                 aria-hidden
               />
-              <div className="fixed inset-y-0 left-0 z-[calc(var(--z-shell)+1)] w-[min(280px,80vw)]">
+              <div className={`fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}>
                 {sidebar}
               </div>
             </>

@@ -123,10 +123,22 @@
   --sidebar-w: 264px;
   --sidebar-w-collapsed: 56px;
 
-  --z-module-overlay: 100;
-  --z-shell: 200;
+  /* One global stacking scale. Components consume the semantic variables below
+   * instead of inventing numeric z-index values. Keep this order monotonic. */
+  --z-local-popover: 20;
+  --z-floating-status: 40;
+  --z-shell: 100;
+  --z-shell-panel: 110;
+  --z-shell-popover: 120;
+  --z-module-overlay: 200;
+  --z-overlay-panel: 201;
+  --z-overlay-stacked: 210;
+  --z-overlay-popover: 220;
   --z-toast: 300;
   --z-stop: 900;
+  --z-native-overlay: 1000;
+  --z-splash: 1100;
+  --z-native-toast: 1200;
 
   /* Backdrops. Three modules each used their own black (bg-black/40 · bg-black/50 · hand-written rgba). */
   --overlay-scrim: rgba(0, 0, 0, 0.4);

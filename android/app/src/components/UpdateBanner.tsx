@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Alert, AlertDescription, Button } from '@0xnullai/ui';
+import { Alert, AlertDescription, Button, Z_TOAST } from '@0xnullai/ui';
 import { TauriUpdateChecker, type AndroidUpdateStatus } from '../services/update-checker.js';
 
 // Module-level singleton: one poll loop for the app's lifetime, independent
@@ -29,7 +29,9 @@ export function UpdateBanner() {
   if (!status.hasUpdate) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-[env(safe-area-inset-top)]">
+    <div
+      className={`pointer-events-none fixed inset-x-0 top-0 ${Z_TOAST} flex justify-center px-3 pt-[env(safe-area-inset-top)]`}
+    >
       <Alert
         variant="info"
         className="pointer-events-auto mt-2 w-fit max-w-[calc(100%-1rem)] text-center shadow-[var(--shadow)] sm:max-w-[60%]"
