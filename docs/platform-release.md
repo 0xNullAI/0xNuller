@@ -22,7 +22,7 @@
 网页版下载入口使用稳定地址：
 
 ```text
-https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-v6.0.6.apk
+https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-vX.Y.Z.apk
 ```
 
 因此产品 Release 必须始终是 Latest；APK 使用明确的版本化文件名
