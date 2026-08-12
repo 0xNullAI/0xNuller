@@ -11,11 +11,12 @@ PR 标题用 conventional-commit 风格：type(scope): subject
   │ main = 当前线上 / 已发布版本（默认查看分支）               │
   │ dev  = 开发分支，所有日常 PR 都 base 到这里                │
   │                                                            │
-  │ 发布流程：dev 上 npm version bump → PR base=main →         │
-  │           release-guard 校验 → 合并 → publish/deploy       │
+  │ 发布流程：dev 上统一升级产品版本 → dev 直接 PR 到 main →   │
+  │           release-guard 校验 → merge commit → publish      │
   └────────────────────────────────────────────────────────────┘
 
-⚠️ GitHub 新建 PR 时 base 默认是 main，请记得手动改成 dev（除非你正在做发布）。
+⚠️ 日常 PR 的 base 必须是 dev。只有产品发布使用 dev → main，且必须保留 merge commit；
+不要 squash/rebase，也不再发布后反向 cherry-pick。
 
 例：feat(protocol): add setLimits() to update strength caps
     fix(web): bluetooth chooser auto-trigger regression

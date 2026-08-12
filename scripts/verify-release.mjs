@@ -95,6 +95,9 @@ function verifyProductMetadata() {
   if (!autoTagWorkflow.includes('tag="v$v"')) {
     fail('auto-tag must create the platform source tag v<version>');
   }
+  if (autoTagWorkflow.includes('gh release create')) {
+    fail('source tagging must not create a second user-facing GitHub Release');
+  }
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'android-v'")) {
     fail('Android updater must only consume android-v<version> releases');
   }
@@ -134,6 +137,16 @@ function verifyProductMetadata() {
   }
   if (!androidReleaseWorkflow.includes("should-release == 'true'")) {
     fail('Android release must skip versions that already have a signed release');
+  }
+  for (const required of [
+    '--title "0xNuller $VERSION"',
+    '--notes-file "docs/releases/$VERSION.md"',
+    '--target "${{ needs.prepare.outputs.source-sha }}"',
+    '--latest',
+  ]) {
+    if (!androidReleaseWorkflow.includes(required)) {
+      fail(`Android must own the single product Release: missing ${required}`);
+    }
   }
 
   return root.version;

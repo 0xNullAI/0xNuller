@@ -46,6 +46,8 @@ way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub tag, release title, APK `versionName`, and internal code all advance
 together: `android-v6.0.5`, `0xNuller 6.0.5`, `6.0.5`, and `6000005`.
+The separate `v6.0.5` source boundary is a Git tag only; it must not create a
+second GitHub Release. The Android-tagged Release owns the APK and the Latest badge.
 
 ## Prerequisites
 
@@ -96,8 +98,10 @@ seconds, versus a two-minute Gradle run that reports the wrong cause.
 ## Release builds
 
 `gen/android/` is regenerated from scratch and gitignored. The checked-in preparation script
-re-applies release signing and fails a release Gradle task when any signing variable is absent;
-an unsigned APK can no longer look like a successful release build.
+re-applies the 0xNuller launcher icons, release signing, and native compatibility settings. It
+fails a release Gradle task when any signing variable is absent; an unsigned APK can no longer
+look like a successful release build. Do not edit generated `mipmap-*` resources directly: the
+canonical launcher source is `src-tauri/icons/icon.png` and preparation regenerates all densities.
 
 To produce an installable release APK, load these environment variables before building
 (keystore path + passwords are kept outside the repo, mode 600, and never committed):

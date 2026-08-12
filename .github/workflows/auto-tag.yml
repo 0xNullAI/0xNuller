@@ -1,9 +1,9 @@
-name: Auto-tag main
+name: Tag platform source
 
-# After a release lands on main, push a git tag matching package.json's
-# version AND publish a GitHub Release for it (so the repo's homepage
-# shows the "Latest" badge and listings are visible under /releases).
-# Idempotent: existing tag/release is skipped.
+# After a verified release lands on main, push the immutable source tag
+# v<version>. This workflow intentionally does NOT create a GitHub Release:
+# Android Release owns the one user-facing 0xNuller Release and its APK.
+# Idempotent: an existing source tag is skipped.
 
 on:
   workflow_dispatch:
@@ -70,35 +70,11 @@ jobs:
           git tag -a "$tag" -m "Release $tag"
           git push origin "$tag"
 
-      - name: Create GitHub Release (if absent)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ steps.version.outputs.tag }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "::notice::Release $tag already exists, skipping."
-            exit 0
-          fi
-          # Pull commit messages since the previous tag for the release notes.
-          prev=$(git tag --sort=-creatordate | grep -v "^$tag$" | { head -1; cat >/dev/null; } || true)
-          if [ -n "$prev" ]; then
-            notes=$(git log --pretty=format:'- %s' "$prev..HEAD")
-            range="$prev → $tag"
-          else
-            notes=$(git log -n 20 --pretty=format:'- %s')
-            range="initial → $tag"
-          fi
-          gh release create "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$tag" \
-            --notes "$(printf 'Released from \`main\` via auto-tag.yml.\n\n## Changes (%s)\n\n%s\n' "$range" "$notes")" \
-            --latest
-
       - name: Summary
         run: |
           {
-            echo "## 🏷️ Tagged \`${{ steps.version.outputs.tag }}\`"
+            echo "## Source tagged \`${{ steps.version.outputs.tag }}\`"
             echo ""
-            echo "GitHub Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag }}"
+            echo "Source: https://github.com/${GITHUB_REPOSITORY}/tree/${{ steps.version.outputs.tag }}"
+            echo "User-facing Release and APK are owned by android-release.yml."
           } >> "$GITHUB_STEP_SUMMARY"

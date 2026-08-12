@@ -43,7 +43,10 @@ export default defineConfig({
     host: '0.0.0.0',
   },
   build: {
-    target: 'es2022',
+    // minSdk 26 includes Android 8-era WebViews. Keeping the bundle at the
+    // first broadly usable dynamic-import generation prevents newer syntax
+    // from failing before React can dismiss the static splash screen.
+    target: 'chrome64',
     sourcemap: true,
     outDir: 'dist',
   },

@@ -1,5 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
@@ -8,10 +17,17 @@ const gradlePath = join(generated, 'build.gradle.kts');
 const manifestPath = join(generated, 'src/main/AndroidManifest.xml');
 const mainActivityPath = join(generated, 'src/main/java/ai/nullai/dgagent/MainActivity.kt');
 const provenancePath = join(generated, 'src/main/assets/0xnuller-build.json');
+const resourcesPath = join(generated, 'src/main/res');
 const signingTemplatePath = join(root, 'android/app/signing.gradle.kts.template');
 const manifestTemplatePath = join(root, 'android/app/AndroidManifest.template.xml');
 const mainActivityTemplatePath = join(root, 'android/app/MainActivity.template.kt');
 const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
+const iconPath = join(root, 'android/app/src-tauri/icons/icon.png');
+const tauriCliPath = join(
+  root,
+  'node_modules/.bin',
+  process.platform === 'win32' ? 'tauri.cmd' : 'tauri',
+);
 const releaseBuild = process.argv.includes('--release');
 
 for (const path of [gradlePath, manifestPath, mainActivityPath]) {
@@ -62,7 +78,27 @@ const missingNodes = requiredNodes.filter((node) => {
 if (missingNodes.length > 0) {
   const insertion = missingNodes.map((node) => `    ${node.replace(/\n\s*/g, ' ')}`).join('\n');
   manifest = manifest.replace(/\n\s*<application\b/, `\n\n${insertion}\n\n    <application`);
-  writeFileSync(manifestPath, manifest);
+}
+if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
+  manifest = manifest.replace(
+    /(<application\s*\n)/,
+    '$1        android:roundIcon="@mipmap/ic_launcher_round"\n',
+  );
+}
+writeFileSync(manifestPath, manifest);
+
+// `tauri android init` leaves Android Studio's green robot launchers in the
+// generated project. Generate every density and adaptive-icon resource from
+// the canonical 0xNuller icon, then overlay those resources after each init.
+const generatedIcons = mkdtempSync(join(tmpdir(), '0xnuller-icons-'));
+try {
+  execFileSync(tauriCliPath, ['icon', iconPath, '--output', generatedIcons], {
+    cwd: join(root, 'android/app'),
+    stdio: 'pipe',
+  });
+  cpSync(join(generatedIcons, 'android'), resourcesPath, { recursive: true, force: true });
+} finally {
+  rmSync(generatedIcons, { recursive: true, force: true });
 }
 
 let gradle = readFileSync(gradlePath, 'utf8');
@@ -143,6 +179,18 @@ for (const required of [
 if (!gradle.includes('minSdk = 26') || !gradle.includes(signingMarker)) {
   throw new Error('generated Android Gradle configuration is incomplete');
 }
+for (const required of [
+  'mipmap-anydpi-v26/ic_launcher.xml',
+  'mipmap-mdpi/ic_launcher.png',
+  'mipmap-xxxhdpi/ic_launcher_foreground.png',
+]) {
+  if (!existsSync(join(resourcesPath, required))) {
+    throw new Error(`Android project is missing generated 0xNuller launcher icon: ${required}`);
+  }
+}
+if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
+  throw new Error('Android manifest is missing the branded round launcher icon');
+}
 const mainActivity = readFileSync(mainActivityPath, 'utf8');
 for (const required of [
   'WindowInsetsCompat.Type.systemBars()',
@@ -155,5 +203,5 @@ for (const required of [
 }
 
 console.log(
-  `Android project prepared: BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
 );

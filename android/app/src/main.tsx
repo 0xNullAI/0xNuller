@@ -14,6 +14,7 @@ import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';
 import { requestDeviceTauri } from './request-device-tauri';
 import { createTauriTransport } from './tauri-transport';
 import { wrapWithLifecycleSafety } from './lifecycle-safety';
+import { SplashDismiss } from './SplashDismiss';
 import {
   installAndroidShellBehaviours,
   withBlePermissionHelp,
@@ -38,17 +39,6 @@ import './styles.css';
  */
 
 installAndroidShellBehaviours();
-
-// Fade out the splash screen from index.html once React has committed its first frame.
-queueMicrotask(() => {
-  requestAnimationFrame(() => {
-    const splash = document.getElementById('nx-splash');
-    if (splash) {
-      splash.classList.add('nx-splash-loaded');
-      setTimeout(() => splash.remove(), 250);
-    }
-  });
-});
 
 // Inlined by Vite at build time. Android requests carry no browser Origin, so
 // the free proxy relies on this signature to tell "our client" from "anyone".
@@ -126,6 +116,7 @@ const bridge = {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <SplashDismiss />
     <UpdateBanner />
     <NativeBridgeProvider bridge={bridge}>
       <Shell />

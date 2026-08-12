@@ -7,6 +7,7 @@ import {
   UserRound,
   Users,
   BookOpen,
+  Download,
   LogIn,
   Plus,
 } from 'lucide-react';
@@ -25,6 +26,9 @@ import {
   type DmConversation,
 } from '@0xnullai/auth';
 import { MODULES } from './routes';
+
+export const ANDROID_DOWNLOAD_URL =
+  'https://github.com/0xNullAI/0xNuller/releases/latest/download/app-universal-release.apk';
 
 /**
  * The sidebar. It is the only vertical bar in the app, with the content area to
@@ -192,6 +196,12 @@ function AccountButton({
       run: onOpenSettings,
     },
     { key: 'docs', icon: <BookOpen className="h-4 w-4" />, label: '说明', run: onOpenDocs },
+    {
+      key: 'download',
+      icon: <Download className="h-4 w-4" />,
+      label: '下载 Android 版',
+      href: ANDROID_DOWNLOAD_URL,
+    },
   ];
 
   return (
@@ -217,21 +227,47 @@ function AccountButton({
           role="menu"
           className={`absolute bottom-[calc(100%+4px)] left-0 ${Z_SHELL_POPOVER} w-[200px] rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-panel)]`}
         >
-          {items.map((it) => (
-            <button
-              key={it.key}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                it.run();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[var(--radius-ctl)] px-2.5 py-2 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
-            >
-              <span className="shrink-0 text-[var(--text-faint)]">{it.icon}</span>
-              {it.label}
-            </button>
-          ))}
+          {items.map((it) => {
+            const content = (
+              <>
+                <span className="shrink-0 text-[var(--text-faint)]">{it.icon}</span>
+                {it.label}
+              </>
+            );
+            const className =
+              'flex w-full items-center gap-2.5 rounded-[var(--radius-ctl)] px-2.5 py-2 text-left text-sm text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
+
+            if ('href' in it) {
+              return (
+                <a
+                  key={it.key}
+                  role="menuitem"
+                  href={it.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setOpen(false)}
+                  className={className}
+                >
+                  {content}
+                </a>
+              );
+            }
+
+            return (
+              <button
+                key={it.key}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  it.run();
+                }}
+                className={className}
+              >
+                {content}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
