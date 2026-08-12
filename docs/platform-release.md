@@ -3,6 +3,10 @@
 这份文档只描述 0xNuller 产品版本。`@dg-kit/*` 与 `dg-mcp` 是 npm 包，使用 changesets，
 不创建 0xNuller 产品 Release。
 
+npm 包只有一条发布线：changesets 在 `dev` 创建 `changeset-release/dev` Version PR；合并后
+由 `dev` 发布到 npm。`main` 不运行 npm 发布，也不创建 `changeset-release/main`。产品发布
+PR 如果仍包含未消费的 `.changeset/*.md` 会被 Release Guard 拒绝，必须先合并 Version PR。
+
 ## 分支职责
 
 - `main`：线上唯一真源。它的 HEAD 必须对应当前已发布或正在发布的产品版本。
@@ -33,7 +37,8 @@ https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-vX.Y.Z.ap
 1. 所有待发布功能先进入 `dev`，且 `dev` CI 为绿色。
 2. 在 `dev` 上统一更新根 package、Android package、Cargo、Tauri、lockfile 与 `versionCode`，
    新增 `docs/releases/X.Y.Z.md`。
-3. 创建唯一允许进入 `main` 的产品发布 PR：`dev → main`。
+3. 如果存在 npm Version PR，先合并它并确认 npm 发布成功；再创建唯一允许进入 `main` 的
+   产品发布 PR：`dev → main`。
 4. Release Guard 验证版本递增和元数据一致；CI 全绿后使用 merge commit 合并。
 5. `main` CI 成功后并行执行 Cloudflare 部署和统一产品 Release；发布工作流构建签名 APK，
    再一次性创建 `vX.Y.Z` tag/Release。

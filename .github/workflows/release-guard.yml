@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: '22.19.0'
 
+      - name: Require npm Version PRs to be consumed
+        run: npm run verify:changesets:consumed
+
       - name: Verify release metadata and version increases
         run: |
           set -euo pipefail

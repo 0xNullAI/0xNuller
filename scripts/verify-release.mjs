@@ -89,6 +89,7 @@ function verifyProductMetadata() {
   }
 
   const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const changesetConfig = json('.changeset/config.json');
   const androidReleaseWorkflow = readFileSync('.github/workflows/android-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
   if (!androidReleaseWorkflow.includes('tag="v$version"')) {
@@ -111,11 +112,17 @@ function verifyProductMetadata() {
       fail(`release workflow does not enforce commit identity: missing ${required}`);
     }
   }
+  if (changesetConfig.baseBranch !== 'dev') {
+    fail('Changesets must use dev as its single npm release branch');
+  }
   if (
     !releaseWorkflow.includes('workflow_dispatch:') ||
-    !/push:\s*\n\s+branches: \[dev, main\]/.test(releaseWorkflow)
+    !/push:\s*\n\s+branches: \[dev\]/.test(releaseWorkflow) ||
+    releaseWorkflow.includes('refs/heads/main') ||
+    releaseWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1 ||
+    !releaseWorkflow.includes('publish: npm run release')
   ) {
-    fail('release must support manual runs and dev/main push after the external cutover');
+    fail('npm release must version and publish only from dev');
   }
   if (
     !androidReleaseWorkflow.includes('workflow_dispatch:') ||
