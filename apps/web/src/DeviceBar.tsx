@@ -178,7 +178,10 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
   const kindSeen = new Map<string, number>();
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+    <div
+      id="shl-device-bar"
+      className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
+    >
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
         {/* Stop goes at the far left (first in reading order). It is the primary reason
           this bar exists, not an accessory feature. */}
