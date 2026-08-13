@@ -1,6 +1,7 @@
 name: CI · Repository
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [dev, main]
@@ -20,7 +21,7 @@ jobs:
       - run: npm run check:structure
       - name: Check formatting of changed files
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/dev' }}
         run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
       - run: npm run test:repository
