@@ -1,0 +1,35 @@
+name: Require verified main source
+description: Refuse production work unless the selected SHA is current main and Repository CI passed.
+inputs:
+  source-sha:
+    description: Commit selected by the triggering domain CI
+    required: true
+  github-token:
+    description: Token used to inspect Repository CI
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        SOURCE_SHA: ${{ inputs.source-sha }}
+      run: |
+        set -euo pipefail
+        git fetch origin main
+        test "$SOURCE_SHA" = "$(git rev-parse origin/main)" || {
+          echo "Production source $SOURCE_SHA is not current main" >&2
+          exit 1
+        }
+        for attempt in $(seq 1 40); do
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-repository.yml/runs?head_sha=$SOURCE_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "pending"')
+          if [ "$conclusion" = success ]; then exit 0; fi
+          if [ "$conclusion" != pending ]; then
+            echo "CI · Repository failed for $SOURCE_SHA: $conclusion" >&2
+            exit 1
+          fi
+          echo "Waiting for CI · Repository ($attempt/40)"
+          sleep 15
+        done
+        echo "CI · Repository did not finish for $SOURCE_SHA" >&2
+        exit 1

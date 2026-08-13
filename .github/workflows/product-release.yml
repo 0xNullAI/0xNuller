@@ -1,156 +1,170 @@
-name: Product Release
+name: Release · 0xNuller
+
+# Web and Android are one product release. Both are built from the exact verified
+# main commit and share the root product version. npm packages are not handled here.
 
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI · Product]
     types: [completed]
     branches: [main]
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
-  group: product-release-main
+  group: release-product-main
   cancel-in-progress: false
 
 jobs:
-  prepare:
+  release:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    outputs:
-      should-release: ${{ steps.release.outputs.should-release }}
-      version: ${{ steps.release.outputs.version }}
-      source-sha: ${{ steps.source.outputs.sha }}
+    timeout-minutes: 50
+    environment: production
     steps:
-      - name: Resolve the verified main commit
+      - name: Resolve verified main commit
         id: source
         env:
           EVENT_NAME: ${{ github.event_name }}
           VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
           CURRENT_SHA: ${{ github.sha }}
         run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_run" ]; then
-            echo "sha=$VERIFIED_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
-          fi
+          if [ "$EVENT_NAME" = workflow_run ]; then sha="$VERIFIED_SHA"; else sha="$CURRENT_SHA"; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
           ref: ${{ steps.source.outputs.sha }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22.19.0'
-
-      - name: Check whether this version is new
-        id: release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          version=$(node -p "require('./package.json').version")
-          tag="v$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "should-release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Product Release $tag already exists; no build is needed."
-          else
-            echo "should-release=true" >> "$GITHUB_OUTPUT"
-          fi
-
-  release:
-    needs: prepare
-    if: needs.prepare.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.source-sha }}
           fetch-depth: 0
+
+      - name: Require exact main source and repository CI
+        uses: ./.github/actions/require-main-source
+        with:
+          source-sha: ${{ steps.source.outputs.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v6
         with:
           node-version: '22.19.0'
           cache: npm
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
 
-      - name: Restore signing keystore
+      - run: npm ci
+
+      - name: Detect new product version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::0xNuller $version is already released."
+          else
+            test -f "docs/releases/$version.md" || { echo "Missing docs/releases/$version.md" >&2; exit 1; }
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build production Web
+        if: steps.version.outputs.publish == 'true'
+        run: npm run web:build:release
+
+      - name: Restore Android signing keystore
+        if: steps.version.outputs.publish == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing production secret ANDROID_KEYSTORE_BASE64' >&2; exit 1; }
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing ANDROID_KEYSTORE_BASE64' >&2; exit 1; }
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dg-agent-release.jks"
 
-      - run: npm ci
-
-      - name: Generate Android project
-        run: npm run android:init
-
-      - name: Build signed arm64 APK
+      - name: Build signed Android APK
+        if: steps.version.outputs.publish == 'true'
         env:
           DG_AGENT_KEYSTORE: ${{ runner.temp }}/dg-agent-release.jks
           DG_AGENT_ALIAS: ${{ secrets.DG_AGENT_ALIAS }}
           DG_AGENT_STORE_PASS: ${{ secrets.DG_AGENT_STORE_PASS }}
           DG_AGENT_KEY_PASS: ${{ secrets.DG_AGENT_KEY_PASS }}
-        run: npm run android:build -- --apk --target aarch64
+        run: |
+          npm run android:init
+          npm run android:build -- --apk --target aarch64
 
-      - name: Verify signed APK
+      - name: Verify and name APK
+        if: steps.version.outputs.publish == 'true'
         id: apk
         run: |
-          set -euo pipefail
           apk='android/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk'
           npm run verify:android:apk -- "$apk" | tee apk-verification.json
-          version=$(node -p "require('./package.json').version")
-          artifact="$RUNNER_TEMP/0xnuller-v$version.apk"
+          artifact="$RUNNER_TEMP/0xnuller-v${{ steps.version.outputs.version }}.apk"
           install -m 0644 "$apk" "$artifact"
           echo "path=$artifact" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Create unified GitHub Release
+      - name: Require Cloudflare credentials
+        if: steps.version.outputs.publish == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN' >&2; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID' >&2; exit 1; }
+
+      - name: Deploy product services and Web
+        if: steps.version.outputs.publish == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler deploy --config workers/auth/wrangler.jsonc
+          npx wrangler deploy --config apps/chat/wrangler.jsonc
+          npx wrangler deploy --config workers/llm-proxy/wrangler.toml
+          npx wrangler deploy --config apps/market/wrangler.jsonc
+          npx wrangler deploy --config apps/voice/wrangler.jsonc
+          npx wrangler deploy --config apps/web/wrangler.jsonc
+
+      - name: Verify deployed product version
+        if: steps.version.outputs.publish == 'true'
+        env:
+          EXPECTED_PRODUCT_VERSION: ${{ steps.version.outputs.version }}
+          EXPECTED_BUILD_ID: ${{ steps.source.outputs.sha }}
+        run: npm run smoke:production
+
+      - name: Create product GitHub Release
+        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APK: ${{ steps.apk.outputs.path }}
-          TAG: ${{ steps.apk.outputs.tag }}
-          VERSION: ${{ steps.apk.outputs.version }}
         run: |
-          set -euo pipefail
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; refusing to replace a signed artifact." >&2
-            exit 1
-          fi
-          gh release create "$TAG" "$APK" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "${{ needs.prepare.outputs.source-sha }}" \
-            --title "0xNuller $VERSION" \
-            --notes-file "docs/releases/$VERSION.md" \
+          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.apk.outputs.path }}" \
+            --target "${{ steps.source.outputs.sha }}" \
+            --title "0xNuller ${{ steps.version.outputs.version }}" \
+            --notes-file "docs/releases/${{ steps.version.outputs.version }}.md" \
             --latest
 
       - name: Summary
+        if: steps.version.outputs.publish == 'true'
         run: |
           {
-            echo '## Product release published'
+            echo '## 0xNuller product released'
             echo ''
-            echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.apk.outputs.tag }}"
-            echo ''
-            echo '```json'
-            cat apk-verification.json
-            echo '```'
+            echo '- Web: https://0xnullai.com'
+            echo '- Android: `0xnuller-v${{ steps.version.outputs.version }}.apk`'
+            echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
+            echo '- Source: `${{ steps.source.outputs.sha }}`'
           } >> "$GITHUB_STEP_SUMMARY"
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

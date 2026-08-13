@@ -38,7 +38,19 @@ waveform-playback.test.ts
 - Android/Web 差异：共享行为测试一次，各平台适配边界分别测试。
 - 播放、脉冲、重试、重连和超时必须使用假时钟，不等待真实时间。
 
-## 三级执行方式
+## 四个 CI 责任域
+
+| CI                | 范围                                     | 主要门禁                                 |
+| ----------------- | ---------------------------------------- | ---------------------------------------- |
+| `CI · Repository` | 全仓维护配置                             | 格式、Lint、结构、测试发现、tooling 测试 |
+| `CI · Product`    | Web、Android、产品 apps/packages/workers | 类型、产品测试、Web 构建、版本/品牌/路由 |
+| `CI · DG-Kit`     | `packages/kit`                           | Kit 测试、构建、npm tarball              |
+| `CI · DG-MCP`     | `apps/mcp`                               | MCP 测试、构建、npm tarball              |
+
+Kit 是 Product 和 MCP 的底层依赖，因此 Kit 改动同时触发三个专项 CI；这只验证消费者兼容，
+不会在 Product/MCP 版本未变化时发布它们。
+
+## 执行方式
 
 ### 一级：改动相关测试
 
@@ -64,7 +76,16 @@ npm run test:related -- packages/kit/core/src/waveform-playback.ts
 npm run test:watch
 ```
 
-### 二级：模块测试
+### 二级：责任域或模块测试
+
+```bash
+npm run test:repository
+npm run test:product
+npm run test:kit
+npm run test:mcp
+```
+
+责任域命令对应 GitHub 上四个独立 CI，适合交付前定位问题。进一步聚焦一个模块时使用：
 
 ```bash
 npm run test:module -- control
@@ -80,6 +101,8 @@ npm run test:module -- kit platform
 
 ```bash
 npm run test:full
+# 等价的明确别名
+npm run test:all
 ```
 
 先重建 DG-Kit，再运行所有 Vitest project。CI、交付前验证和公共包跨模块改动必须使用这一层。

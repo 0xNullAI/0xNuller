@@ -1,33 +1,28 @@
-# DG-Kit 与 MCP 发布归属
+# DG-Kit 与 DG-MCP npm 发布
 
-发布权已经从旧仓迁移到 `0xNullAI/0xNuller`。
+DG-Kit 与 DG-MCP 的源码和 npm 发布权已经迁移到 `0xNullAI/0xNuller`。旧仓保持归档，旧版本
+继续留在 npm；本仓不再为 npm 包创建 GitHub Release 或 tag。
 
-## 当前状态
+## 两条独立版本线
 
-- 旧 DG-Kit 仓已归档，Release workflow 已手动停用。
-- 旧 DG-MCP 仓已归档，Auto-tag 与 Publish workflow 已手动停用。
-- `@dg-kit/*` 与 `dg-mcp` 的版本准备由 `.github/workflows/kit-version.yml` 管理。
-- npm 生产发布由 `.github/workflows/kit-release.yml` 管理，与产品 Release 完全分离。
-- npm 已发布的包继续保留，旧版本不会删除或覆盖。
+- DG-Kit：七个 `@dg-kit/*` 包组成固定版本组，同步版本。
+- DG-MCP：单独的 `dg-mcp` 版本，可在不升级 Kit 时发布。
 
-## 统一日常发布
+Changesets 在 `dev` 只准备版本和 CHANGELOG。实际发布只允许读取当前 `main` HEAD：
 
-功能 PR 携带 changeset 合并到 `dev` 后，`Kit Version` 自动创建或更新 Version PR。
-合并 Version PR 只消费 changeset、更新版本与 CHANGELOG，不发布。版本化代码随产品发布
-PR squash 进入 `main`，该提交通过 CI 后，`Kit Release` 才执行 `changeset publish`。
-发布 tag 使用匿名 `0xNull` noreply 身份，npm 产物带 provenance。
+- `Publish · DG-Kit` 只验证和发布 Kit 工作区。
+- `Publish · DG-MCP` 只验证和发布 MCP 工作区。
 
-DG-Kit 固定版本组与独立版本号的 MCP 都遵循相同准则：功能改动必须附带 changeset；只有
-经过验证的 `main` 提交才能进入 `npm-production` 环境。npm 已存在的版本由 changesets 自动
-跳过，禁止覆盖。`Kit Release` 不创建 `vX.Y.Z` 或 0xNuller GitHub Release。
+两条工作流都先查询 npm。版本已存在时跳过，不覆盖；没有新版本时不是失败。若 Kit 和 MCP
+同时升级，应先确认 Kit 已可从 npm 获取，再发布依赖它的 MCP。
 
 ## 验证
 
 ```bash
+npm run verify:kit
+npm run verify:mcp
 npm view @dg-kit/core version
-npm view @dg-kit/safety version
 npm view dg-mcp version
 ```
 
-若发布任务失败，先检查 npm 上的实际版本和 workflow summary；不要通过删除 tag 或覆盖已发布
-版本恢复。
+失败恢复以 npm 实际状态为准，重新运行对应独立工作流；不要删除产品 tag 或创建 npm Release。
