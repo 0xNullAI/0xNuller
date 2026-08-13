@@ -21,10 +21,10 @@ import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
 import { isCoyoteOutputActive } from '@dg-kit/core';
 
 const RING_CLASS =
-  'flex h-[110px] w-[110px] flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
+  'flex h-24 w-24 flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
 
 const STRENGTH_BTN_CLASS =
-  'flex h-11 w-11 select-none items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] active:scale-[0.92] disabled:cursor-not-allowed disabled:opacity-30';
+  'flex h-10 w-10 select-none items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] active:scale-[0.92] disabled:cursor-not-allowed disabled:opacity-30';
 
 const MODE_BUTTONS: { mode: PlayMode; label: string; title: string }[] = [
   { mode: 'single', label: '单曲', title: '单曲循环' },
@@ -231,6 +231,8 @@ export interface WaveformPanelProps {
   firingB: boolean;
   onFireStart: (channel: 'A' | 'B', boost: number) => void;
   onFireStop: (channel: 'A' | 'B') => void;
+  /** Renders the complete familiar console before a physical device is attached. */
+  disabled?: boolean;
 }
 
 /**
@@ -264,6 +266,7 @@ export function WaveformPanel({
   firingB,
   onFireStart,
   onFireStop,
+  disabled = false,
 }: WaveformPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fireBoostA, setFireBoostA] = useState(5);
@@ -277,7 +280,7 @@ export function WaveformPanel({
     const configuredBoost = channel === 'A' ? fireBoostA : fireBoostB;
     const boost = limit > 0 ? Math.min(configuredBoost, limit) : configuredBoost;
     const setBoost = channel === 'A' ? setFireBoostA : setFireBoostB;
-    const disabled = !enabled || boost <= 0;
+    const fireDisabled = disabled || !enabled || boost <= 0;
     const stop = () => onFireStop(channel);
 
     return (
@@ -307,7 +310,7 @@ export function WaveformPanel({
         </div>
         <button
           type="button"
-          disabled={disabled}
+          disabled={fireDisabled}
           aria-pressed={firing}
           onPointerDown={(event) => {
             event.preventDefault();
@@ -360,15 +363,18 @@ export function WaveformPanel({
       <div
         key={waveform.id}
         role="button"
-        tabIndex={0}
-        onClick={() => onToggleWaveform(waveform)}
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled}
+        onClick={() => {
+          if (!disabled) onToggleWaveform(waveform);
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
             onToggleWaveform(waveform);
           }
         }}
-        className={`group relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border-[1.5px] px-1 pt-3 pb-2.5 transition-all active:scale-95 ${
+        className={`group relative flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border-[1.5px] px-1 pt-3 pb-2.5 transition-all ${disabled ? 'cursor-not-allowed' : 'cursor-pointer active:scale-95'} ${
           active
             ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
             : queued
@@ -391,7 +397,7 @@ export function WaveformPanel({
             {queue.indexOf(waveform.id) + 1}
           </span>
         )}
-        {!queued && (
+        {!queued && !disabled && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -411,10 +417,11 @@ export function WaveformPanel({
   const customs = waveforms.filter((w) => w.custom);
 
   return (
-    <>
+    <div className={disabled ? 'opacity-55' : undefined} aria-disabled={disabled || undefined}>
       <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3">
         <button
           type="button"
+          disabled={disabled}
           aria-expanded={fireOpen}
           aria-controls="control-fire-panel"
           onClick={() => {
@@ -452,6 +459,7 @@ export function WaveformPanel({
         {(['A', 'B'] as const).map((channel) => (
           <button
             key={channel}
+            disabled={disabled}
             onClick={() => onWaveTabChange(channel)}
             className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
               waveTab === channel
@@ -476,6 +484,7 @@ export function WaveformPanel({
           {MODE_BUTTONS.map(({ mode, label, title }) => (
             <button
               key={mode}
+              disabled={disabled}
               onClick={() => onPlayModeChange(mode)}
               className={`flex h-7 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-[11px] transition-colors ${
                 playMode === mode
@@ -492,6 +501,7 @@ export function WaveformPanel({
           <div className="flex items-center gap-1.5">
             <Timer size={12} className="text-[var(--text-faint)]" />
             <select
+              disabled={disabled}
               value={intervalSec}
               onChange={(e) => onIntervalChange(Number(e.target.value))}
               className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg)] px-1.5 py-0.5 text-[11px] text-[var(--text)] outline-none"
@@ -515,18 +525,21 @@ export function WaveformPanel({
           </p>
           <div className="flex items-center gap-1">
             <button
+              disabled={disabled}
               onClick={onOpenMarket}
               className="flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
             >
               <Store size={12} /> 从市场导入
             </button>
             <button
+              disabled={disabled}
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
             >
               <Upload size={12} /> 导入波形
             </button>
             <input
+              disabled={disabled}
               ref={fileInputRef}
               type="file"
               accept=".pulse,.zip"
@@ -546,7 +559,7 @@ export function WaveformPanel({
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

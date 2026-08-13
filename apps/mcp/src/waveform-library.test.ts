@@ -17,14 +17,15 @@ describe('NodeWaveformLibrary', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('list() returns the 6 built-ins by default', async () => {
+  it('list() returns electrostimulation and vibration built-ins by default', async () => {
     const lib = new NodeWaveformLibrary();
     const all = await lib.list();
     const ids = all.map((w) => w.id);
     expect(ids).toEqual(
       expect.arrayContaining(['breath', 'tide', 'pulse_low', 'pulse_mid', 'pulse_high', 'tap']),
     );
-    expect(all.length).toBe(6);
+    expect(all.length).toBe(11);
+    expect(all.filter((waveform) => waveform.modality === 'vibration')).toHaveLength(5);
   });
 
   it('getById() returns null for unknown ids', async () => {
@@ -53,7 +54,7 @@ describe('NodeWaveformLibrary', () => {
     });
     const found = await lib.getById('custom-test');
     expect(found?.name).toBe('测试波形');
-    expect((await lib.list()).length).toBe(7);
+    expect((await lib.list()).length).toBe(12);
   });
 
   it('importPath() parses a single .pulse file', async () => {
@@ -64,7 +65,7 @@ describe('NodeWaveformLibrary', () => {
     expect(result.errors).toEqual([]);
     expect(result.loaded.length).toBe(1);
     const all = await lib.list();
-    expect(all.length).toBe(7);
+    expect(all.length).toBe(12);
   });
 
   it('importPath() handles a .zip with multiple .pulse files', async () => {
@@ -119,6 +120,6 @@ describe('NodeWaveformLibrary', () => {
     await mkdir(persistDir, { recursive: true });
     const lib = new NodeWaveformLibrary({ persistDir });
     await expect(lib.init()).resolves.not.toThrow();
-    expect((await lib.list()).length).toBe(6);
+    expect((await lib.list()).length).toBe(11);
   });
 });
