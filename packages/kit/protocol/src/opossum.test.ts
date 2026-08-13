@@ -331,6 +331,26 @@ describe('OpossumVibrateAdapter B0 tick loop and vibration patterns', () => {
     expect(writes.at(-1)?.slice(8, 12)).toEqual([0, 0, 0, 0]);
   });
 
+  it('keeps the wave pattern active across complete cycles', async () => {
+    const adapter = new OpossumVibrateAdapter();
+    const { writes } = await connectAdapter(adapter);
+    const adapterInternal = adapter as unknown as { performTick(): Promise<void> };
+
+    await adapter.setIntensity(200, 'unchanged');
+    adapter.setVibrationPattern('A', 'wave');
+    writes.length = 0;
+
+    // A 40-sample envelope consumes four samples per tick. The first packet
+    // after ten ticks therefore starts the second cycle and must equal the
+    // first packet rather than falling silent after one pass.
+    await adapterInternal.performTick();
+    const first = writes.at(-1)?.slice(8, 12);
+    for (let i = 0; i < 10; i++) await adapterInternal.performTick();
+
+    expect(writes.at(-1)?.slice(8, 12)).toEqual(first);
+    expect(first?.every((value) => value > 0)).toBe(true);
+  });
+
   it('onConnected writes a 0x50 button-reporting-enable packet so D0 notifications start arriving', async () => {
     const adapter = new OpossumVibrateAdapter();
     const { writes } = await connectAdapter(adapter);

@@ -121,7 +121,7 @@ describe('TauriBlecDeviceClient.connect', () => {
     expect(protocol.connectedContext).toBeNull();
   });
 
-  it('filters devices by namePrefixes', async () => {
+  it('filters named devices and hides an unverified anonymous fallback', async () => {
     const api = makeApi({
       startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
         setTimeout(
@@ -130,6 +130,11 @@ describe('TauriBlecDeviceClient.connect', () => {
               makeDevice({ address: 'A', name: '47L1210000XX' }),
               makeDevice({ address: 'B', name: 'AirPods' }),
               makeDevice({ address: 'C', name: 'D-LAB ESTIM01' }),
+              makeDevice({
+                address: 'D',
+                name: '',
+                manufacturerData: { 65535: Array(8).fill(0) },
+              }),
             ]),
           5,
         );

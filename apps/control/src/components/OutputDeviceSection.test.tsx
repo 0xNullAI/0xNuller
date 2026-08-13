@@ -73,6 +73,7 @@ describe('Control 统一输出控制台', () => {
     expect(screen.getByRole('button', { name: /一键开火/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'A 通道波形' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'B 通道波形' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: /通道节奏/ })).toBeNull();
     expect(screen.queryByText('灯光颜色')).toBeNull();
     expect(screen.queryByRole('button', { name: /归零/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /断开/ })).toBeNull();

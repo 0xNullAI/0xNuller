@@ -70,6 +70,37 @@ export interface RequestDgLabDeviceTauriOptions {
 /** @see RequestedDevice — the shared shape every cross-kind picker returns. */
 export type RequestedDgLabDeviceTauri = RequestedDevice;
 
+const GAP_SERVICE_UUID = '00001800-0000-1000-8000-00805f9b34fb';
+const GAP_DEVICE_NAME_UUID = '00002a00-0000-1000-8000-00805f9b34fb';
+const COYOTE_V3_IDENTIFYING_SERVICES = [
+  '00002003-0000-1000-8000-00805f9b34fb',
+  '00002004-0000-1000-8000-00805f9b34fb',
+] as const;
+
+/**
+ * Identifies the nameless Coyote V3 hardware seen on Android by its complete
+ * service fingerprint. The generic 0x180c service is shared by other DG-Lab
+ * devices, so it must never be enough on its own to guess a device kind.
+ */
+export function detectAnonymousDgLabKind(services: string[]): ReturnType<typeof detectDeviceKind> {
+  const normalized = new Set(services.map((uuid) => uuid.toLowerCase()));
+  return COYOTE_V3_IDENTIFYING_SERVICES.every((uuid) => normalized.has(uuid))
+    ? 'coyote'
+    : 'unknown';
+}
+
+async function readGattDeviceName(
+  api: Awaited<ReturnType<typeof resolvePluginBlec>>,
+  address: string,
+): Promise<string> {
+  try {
+    const bytes = await api.read(GAP_DEVICE_NAME_UUID, GAP_SERVICE_UUID, address);
+    return new TextDecoder().decode(Uint8Array.from(bytes)).replace(/\0+$/g, '').trim();
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Opens ONE plugin-blec scan scoped to every known DG-Lab device kind,
  * lets the host UI pick a device, connects it, and identifies which kind
@@ -98,10 +129,8 @@ export async function requestDgLabDeviceTauri(
   if (!picked) {
     throw new Error(DEVICE_PICKER_CANCELLED_MESSAGE);
   }
-  const { address, name } = picked;
-
-  const kind = detectDeviceKind(name);
-  if (kind === 'unknown') {
+  const { address, name, services } = picked;
+  if (name.trim() && detectDeviceKind(name) === 'unknown') {
     throw new Error('未识别的设备，请确认选择了正确的 DG-Lab 设备');
   }
 
@@ -112,7 +141,27 @@ export async function requestDgLabDeviceTauri(
   await api.connect(address, () => {
     shim?.fireDisconnect();
   });
-  shim = createGattShim({ address, name, api, onDisconnect: () => undefined });
+  // Android 11/MIUI sometimes omits the GAP name from advertisements and only
+  // exposes it after GATT connects. Refresh before classifying the device.
+  const connected = await api.connectedDevices().catch(() => []);
+  const refreshedName = connected.find((device) => device.address === address)?.name?.trim();
+  const gattName = await readGattDeviceName(api, address);
+  const resolvedName =
+    [name.trim(), refreshedName, gattName].find(
+      (candidate) => candidate && detectDeviceKind(candidate) !== 'unknown',
+    ) ?? '';
+  const kind = resolvedName ? detectDeviceKind(resolvedName) : detectAnonymousDgLabKind(services);
+  if (kind === 'unknown') {
+    await api.disconnect(address).catch(() => undefined);
+    throw new Error('已连接到设备，但无法识别型号；请选择名称为 47L12x 或 D-LAB ESTIM 的设备');
+  }
+  // Protocol adapters still classify the BluetoothDevice facade by its
+  // canonical advertised prefix. Preserve that invariant internally even
+  // when Android omitted the local name; product UI renders the device kind
+  // label separately and does not expose this compatibility fallback.
+  const deviceName =
+    resolvedName || (kind === 'coyote' ? `${V3_DEVICE_NAME_PREFIX}-Android` : 'DG-Lab');
+  shim = createGattShim({ address, name: deviceName, api, onDisconnect: () => undefined });
 
   return { kind, device: shim.device, server: shim.server };
 }

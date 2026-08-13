@@ -34,11 +34,6 @@ interface Props {
   emptyPanel: OutputPanelState;
   onAdjust: (targetId: string, channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (targetId: string, channel: 'A' | 'B') => void;
-  onSetOpossumPattern?: (
-    targetId: string,
-    channel: 'A' | 'B',
-    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
-  ) => void;
   onStop: (targetId: string) => void;
   onDisconnect: (targetId: string) => void;
 }
@@ -61,7 +56,6 @@ export function OutputDeviceSection({
   emptyPanel,
   onAdjust,
   onTogglePlay,
-  onSetOpossumPattern,
   onStop,
   onDisconnect,
 }: Props) {
@@ -223,6 +217,8 @@ export function OutputDeviceSection({
                       ) : (
                         <OpossumChannels
                           target={target}
+                          queueLengthA={panel.queueA.length}
+                          queueLengthB={panel.queueB.length}
                           firingA={active && panel.firingA}
                           firingB={active && panel.firingB}
                           onAdjust={(channel, delta) => {
@@ -232,10 +228,6 @@ export function OutputDeviceSection({
                           onTogglePlay={(channel) => {
                             onSelect(target.id);
                             onTogglePlay(target.id, channel);
-                          }}
-                          onSetPattern={(channel, pattern) => {
-                            onSelect(target.id);
-                            onSetOpossumPattern?.(target.id, channel, pattern);
                           }}
                         />
                       )}
@@ -287,21 +279,20 @@ export function OutputDeviceSection({
 
 function OpossumChannels({
   target,
+  queueLengthA,
+  queueLengthB,
   firingA,
   firingB,
   onAdjust,
   onTogglePlay,
-  onSetPattern,
 }: {
   target: Extract<OutputTarget, { kind: 'opossum' }>;
+  queueLengthA: number;
+  queueLengthB: number;
   firingA: boolean;
   firingB: boolean;
   onAdjust: (channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (channel: 'A' | 'B') => void;
-  onSetPattern: (
-    channel: 'A' | 'B',
-    pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
-  ) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-6">
@@ -309,12 +300,13 @@ function OpossumChannels({
         const value = channel === 'A' ? target.opossum.intensityA : target.opossum.intensityB;
         const limit = channel === 'A' ? target.limitA : target.limitB;
         const firing = channel === 'A' ? firingA : firingB;
-        const pattern = channel === 'A' ? target.opossum.patternA : target.opossum.patternB;
+        const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
         return (
           <div key={channel} className="flex flex-col items-center">
             <button
               type="button"
               onClick={() => onTogglePlay(channel)}
+              disabled={value <= 0 && queueLength === 0}
               className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-30 ${
                 value > 0
                   ? 'bg-[var(--danger)] text-white'
@@ -346,23 +338,6 @@ function OpossumChannels({
                 +
               </RepeatButton>
             </div>
-            <select
-              className="mt-2 rounded border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px] text-[var(--text-soft)]"
-              value={pattern ?? 'constant'}
-              onChange={(event) =>
-                onSetPattern(
-                  channel,
-                  event.target.value as 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
-                )
-              }
-              aria-label={`${channel} 通道节奏`}
-            >
-              <option value="constant">恒定</option>
-              <option value="pulse">脉冲</option>
-              <option value="wave">波浪</option>
-              <option value="ramp">渐强</option>
-              <option value="heartbeat">心跳</option>
-            </select>
           </div>
         );
       })}
