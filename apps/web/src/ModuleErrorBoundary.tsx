@@ -26,6 +26,13 @@ interface State {
   error: Error | null;
 }
 
+/** Vite/Chromium messages emitted when a tab still references a replaced hash chunk. */
+export function isStaleModuleLoadError(error: Error): boolean {
+  return /dynamically imported module|importing a module script|failed to fetch.*module|chunkloaderror/i.test(
+    error.message,
+  );
+}
+
 export class ModuleErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
@@ -45,6 +52,7 @@ export class ModuleErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const staleModule = isStaleModuleLoadError(error);
 
     return (
       <div
@@ -54,7 +62,9 @@ export class ModuleErrorBoundary extends Component<Props, State> {
         <div>
           <h2 className="text-lg font-semibold">{this.props.label} 加载失败</h2>
           <p className="mt-2 max-w-md text-sm text-[var(--text-soft)]">
-            模块发生错误，设备已停止，其他模块不受影响
+            {staleModule
+              ? '应用已更新，当前页面仍引用旧模块。重新加载后会使用最新版本。'
+              : '模块发生错误，设备已停止，其他模块不受影响'}
           </p>
         </div>
         <pre className="max-w-full overflow-x-auto rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-left text-xs text-[var(--text-faint)]">
@@ -62,10 +72,13 @@ export class ModuleErrorBoundary extends Component<Props, State> {
         </pre>
         <button
           type="button"
-          onClick={() => this.setState({ error: null })}
+          onClick={() => {
+            if (staleModule) window.location.reload();
+            else this.setState({ error: null });
+          }}
           className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
         >
-          重试
+          {staleModule ? '重新加载' : '重试'}
         </button>
       </div>
     );

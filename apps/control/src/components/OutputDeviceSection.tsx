@@ -1,13 +1,5 @@
 import { useRef } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  BatteryMedium,
-  BluetoothOff,
-  Pause,
-  Play,
-  RotateCcw,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, BatteryMedium, Pause, Play } from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '../../../chat/src/lib/bluetooth';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
@@ -52,15 +44,14 @@ interface Props {
 }
 
 const RING =
-  'flex h-[110px] w-[110px] flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)]';
+  'flex h-24 w-24 flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)]';
 const STEP =
-  'flex h-11 w-11 items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl text-[var(--text)] active:scale-[0.92] disabled:opacity-30';
+  'flex h-10 w-10 items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl text-[var(--text)] active:scale-[0.92] disabled:opacity-30';
 
 /**
- * Each horizontal slide is a complete, self-contained device console:
- * connection status, two channels, fire controls, and that device's own
- * waveform library. A new device adds a new page rather than sharing a
- * waveform panel with the current page.
+ * Each horizontal slide is one compact physical-device controller. The
+ * selected device's independently keyed fire, queue and waveform controls sit
+ * directly below the deck, outside the tinted hardware card.
  */
 export function OutputDeviceSection({
   targets,
@@ -109,32 +100,10 @@ export function OutputDeviceSection({
     const slide = findSlide(next.id);
     slide?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   };
-
-  const renderDeviceActions = (target: OutputTarget) => (
-    <div className="flex shrink-0 items-center gap-1">
-      <button
-        type="button"
-        onClick={() => onStop(target.id)}
-        className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-        title={`只把 ${target.label} 归零`}
-      >
-        <RotateCcw size={11} className="text-[var(--danger)]" />
-        归零
-      </button>
-      <button
-        type="button"
-        onClick={() => onDisconnect(target.id)}
-        className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-        title={`断开 ${target.label}`}
-      >
-        <BluetoothOff size={11} />
-        断开
-      </button>
-    </div>
-  );
+  const selectedPanel = selected ? panelForTarget(selected) : null;
 
   return (
-    <section>
+    <section className="mx-auto w-full max-w-[680px]">
       <div className="mb-2 flex items-center justify-between">
         <div>
           <h2 className="text-xs font-medium tracking-wide text-[var(--text-faint)]">主机</h2>
@@ -175,144 +144,141 @@ export function OutputDeviceSection({
         )}
       </div>
 
-      {targets.length > 0 ? (
-        <div className="relative mx-auto w-full">
-          <div
-            ref={scrollRef}
-            className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            onScroll={(event) => selectNearest(event.currentTarget)}
-            aria-label="选择输出设备"
-          >
-            {targets.map((target) => {
-              const active = target.id === selected?.id;
-              const panel = panelForTarget(target);
-              const battery =
-                target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery;
-              const valueA =
-                target.kind === 'coyote' ? target.coyote.strengthA : target.opossum.intensityA;
-              const valueB =
-                target.kind === 'coyote' ? target.coyote.strengthB : target.opossum.intensityB;
-              return (
-                <article
-                  key={target.id}
-                  data-output-id={target.id}
-                  className={`min-w-full snap-center rounded-[var(--radius-md)] border p-3 transition-colors ${
-                    active
-                      ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                      : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
-                  }`}
-                >
-                  <header className="flex min-h-9 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelect(target.id)}
-                      className="flex min-w-0 flex-1 touch-manipulation items-center gap-2 text-left"
-                      aria-pressed={active}
-                    >
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full bg-[var(--success)]"
-                        aria-hidden
-                      />
-                      <span className="truncate text-sm font-semibold text-[var(--text)]">
-                        {target.label}
-                      </span>
-                      {battery != null && (
-                        <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-faint)]">
-                          <BatteryMedium size={12} /> {battery}%
+      {targets.length > 0 && selected && selectedPanel ? (
+        <>
+          <div className="relative mx-auto w-full">
+            <div
+              ref={scrollRef}
+              className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              onScroll={(event) => selectNearest(event.currentTarget)}
+              aria-label="选择输出设备"
+            >
+              {targets.map((target) => {
+                const active = target.id === selected?.id;
+                const panel = panelForTarget(target);
+                const battery =
+                  target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery;
+                const valueA =
+                  target.kind === 'coyote' ? target.coyote.strengthA : target.opossum.intensityA;
+                const valueB =
+                  target.kind === 'coyote' ? target.coyote.strengthB : target.opossum.intensityB;
+                return (
+                  <article
+                    key={target.id}
+                    data-output-id={target.id}
+                    className={`min-w-full snap-center rounded-[var(--radius-md)] border p-4 transition-colors ${
+                      active
+                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                        : 'border-[var(--surface-border)] bg-[var(--bg-elevated)]'
+                    }`}
+                  >
+                    <header className="flex min-h-9 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onSelect(target.id)}
+                        className="flex min-w-0 flex-1 touch-manipulation items-center gap-2 text-left"
+                        aria-pressed={active}
+                      >
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full bg-[var(--success)]"
+                          aria-hidden
+                        />
+                        <span className="truncate text-sm font-semibold text-[var(--text)]">
+                          {target.label}
                         </span>
+                        {battery != null && (
+                          <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-faint)]">
+                            <BatteryMedium size={12} /> {battery}%
+                          </span>
+                        )}
+                        <span className="font-mono text-xs tabular-nums text-[var(--text-soft)]">
+                          A {valueA} · B {valueB}
+                        </span>
+                      </button>
+                    </header>
+
+                    <div className="mt-3 border-t border-[var(--surface-border)] pt-3">
+                      {target.kind === 'coyote' ? (
+                        <CoyoteControl
+                          coyote={target.coyote}
+                          displayName={target.label}
+                          multi={false}
+                          selected={active}
+                          onSelect={onSelect}
+                          queueLengthA={panel.queueA.length}
+                          queueLengthB={panel.queueB.length}
+                          firingA={active && panel.firingA}
+                          firingB={active && panel.firingB}
+                          onAdjustStrength={(deviceId, channel, delta) => {
+                            onSelect(target.id);
+                            onAdjust(target.id, channel, delta);
+                          }}
+                          onTogglePlay={(deviceId, channel) => {
+                            onSelect(target.id);
+                            onTogglePlay(target.id, channel);
+                          }}
+                          onStopDevice={() => onStop(target.id)}
+                          onDisconnect={() => onDisconnect(target.id)}
+                        />
+                      ) : (
+                        <OpossumChannels
+                          target={target}
+                          firingA={active && panel.firingA}
+                          firingB={active && panel.firingB}
+                          onAdjust={(channel, delta) => {
+                            onSelect(target.id);
+                            onAdjust(target.id, channel, delta);
+                          }}
+                          onTogglePlay={(channel) => {
+                            onSelect(target.id);
+                            onTogglePlay(target.id, channel);
+                          }}
+                          onSetPattern={(channel, pattern) => {
+                            onSelect(target.id);
+                            onSetOpossumPattern?.(target.id, channel, pattern);
+                          }}
+                        />
                       )}
-                      <span className="font-mono text-xs tabular-nums text-[var(--text-soft)]">
-                        A {valueA} · B {valueB}
-                      </span>
-                    </button>
-                    {renderDeviceActions(target)}
-                  </header>
-
-                  <div className="mt-3 border-t border-[var(--surface-border)] pt-3">
-                    {target.kind === 'coyote' ? (
-                      <CoyoteControl
-                        coyote={target.coyote}
-                        displayName={target.label}
-                        multi={false}
-                        selected={active}
-                        onSelect={onSelect}
-                        queueLengthA={panel.queueA.length}
-                        queueLengthB={panel.queueB.length}
-                        firingA={active && panel.firingA}
-                        firingB={active && panel.firingB}
-                        onAdjustStrength={(deviceId, channel, delta) => {
-                          onSelect(target.id);
-                          onAdjust(target.id, channel, delta);
-                        }}
-                        onTogglePlay={(deviceId, channel) => {
-                          onSelect(target.id);
-                          onTogglePlay(target.id, channel);
-                        }}
-                        onStopDevice={() => onStop(target.id)}
-                        onDisconnect={() => onDisconnect(target.id)}
-                      />
-                    ) : (
-                      <OpossumChannels
-                        target={target}
-                        firingA={active && panel.firingA}
-                        firingB={active && panel.firingB}
-                        onAdjust={(channel, delta) => {
-                          onSelect(target.id);
-                          onAdjust(target.id, channel, delta);
-                        }}
-                        onTogglePlay={(channel) => {
-                          onSelect(target.id);
-                          onTogglePlay(target.id, channel);
-                        }}
-                        onSetPattern={(channel, pattern) => {
-                          onSelect(target.id);
-                          onSetOpossumPattern?.(target.id, channel, pattern);
-                        }}
-                        onStop={() => onStop(target.id)}
-                      />
-                    )}
-                  </div>
-
-                  <WaveformPanel
-                    {...panel}
-                    targetName={target.label}
-                    onFireStart={(channel, boost) => {
-                      onSelect(target.id);
-                      panel.onFireStart(channel, boost);
-                    }}
-                    onFireStop={(channel) => panel.onFireStop(channel)}
-                  />
-                </article>
-              );
-            })}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            {targets.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="上一个设备页"
+                  onClick={() => moveTarget(-1)}
+                  className="absolute left-1 top-1/2 z-[var(--z-local-popover)] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
+                >
+                  <ArrowLeft size={17} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="下一个设备页"
+                  onClick={() => moveTarget(1)}
+                  className="absolute right-1 top-1/2 z-[var(--z-local-popover)] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
+                >
+                  <ArrowRight size={17} />
+                </button>
+              </>
+            )}
           </div>
-          {targets.length > 1 && (
-            <>
-              <button
-                type="button"
-                aria-label="上一个设备页"
-                onClick={() => moveTarget(-1)}
-                className="absolute left-1 top-1/2 z-[var(--z-local-popover)] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
-              >
-                <ArrowLeft size={17} />
-              </button>
-              <button
-                type="button"
-                aria-label="下一个设备页"
-                onClick={() => moveTarget(1)}
-                className="absolute right-1 top-1/2 z-[var(--z-local-popover)] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)]/95 text-[var(--text)] shadow-sm touch-manipulation hover:bg-[var(--accent-soft)]"
-              >
-                <ArrowRight size={17} />
-              </button>
-            </>
-          )}
-        </div>
+          <WaveformPanel
+            {...selectedPanel}
+            targetName={targets.length > 1 ? selected.label : null}
+            onFireStart={(channel, boost) => {
+              onSelect(selected.id);
+              selectedPanel.onFireStart(channel, boost);
+            }}
+            onFireStop={selectedPanel.onFireStop}
+          />
+        </>
       ) : (
         <>
-          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--surface-border)] bg-[var(--bg-elevated)] p-5 text-center text-sm text-[var(--text-faint)]">
-            连接郊狼或负鼠后，在这里切换完整控制页
-          </div>
-          <WaveformPanel {...emptyPanel} targetName={null} />
+          <DefaultCoyoteConsole />
+          <WaveformPanel {...emptyPanel} targetName={null} disabled />
         </>
       )}
     </section>
@@ -326,7 +292,6 @@ function OpossumChannels({
   onAdjust,
   onTogglePlay,
   onSetPattern,
-  onStop,
 }: {
   target: Extract<OutputTarget, { kind: 'opossum' }>;
   firingA: boolean;
@@ -337,7 +302,6 @@ function OpossumChannels({
     channel: 'A' | 'B',
     pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat',
   ) => void;
-  onStop: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-6">
@@ -402,15 +366,39 @@ function OpossumChannels({
           </div>
         );
       })}
-      <button
-        type="button"
-        onClick={onStop}
-        className="flex h-9 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 text-xs text-[var(--text)] hover:bg-[var(--bg-soft)]"
-        title="负鼠两个通道归零"
-      >
-        <RotateCcw size={13} className="text-[var(--danger)]" />
-        归零
-      </button>
     </div>
+  );
+}
+
+/** A truthful default state: the familiar Coyote console, present but inert. */
+function DefaultCoyoteConsole() {
+  return (
+    <article
+      aria-label="未连接的郊狼控制台"
+      className="rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 text-[var(--text-faint)]"
+    >
+      <header className="flex min-h-9 items-center gap-2 border-b border-[var(--surface-border)] pb-3">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--surface-border)]" aria-hidden />
+        <span className="text-sm font-semibold">郊狼</span>
+        <span className="ml-auto text-[11px]">未连接 · 请从顶部连接设备</span>
+      </header>
+      <div className="mt-3 flex items-center justify-center gap-5 opacity-55" aria-disabled>
+        {(['A', 'B'] as const).map((channel) => (
+          <div key={channel} className="flex flex-col items-center">
+            <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface-border)]/60">
+              <Play size={16} fill="currentColor" />
+            </span>
+            <div className={RING}>
+              <span className="text-2xl font-bold tabular-nums">0</span>
+              <span className="text-[10px]">{channel}:0</span>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <span className={STEP}>−</span>
+              <span className={STEP}>+</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
   );
 }

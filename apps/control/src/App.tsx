@@ -33,9 +33,9 @@ function waveformsForOutput(
   // A Coyote consumes electrostimulation definitions; an Opossum consumes
   // vibration envelopes. Legacy definitions without a modality remain
   // electrostimulation for backwards compatibility.
-  return target
-    ? allWaveforms.filter((waveform) => isWaveformCompatibleWithDevice(target.kind, waveform))
-    : allWaveforms;
+  return allWaveforms.filter((waveform) =>
+    isWaveformCompatibleWithDevice(target?.kind ?? 'coyote', waveform),
+  );
 }
 
 function playbackIdForTarget(target: OutputTarget | null): string | null {
@@ -509,7 +509,7 @@ export default function App() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-3 py-5 sm:px-4">
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}

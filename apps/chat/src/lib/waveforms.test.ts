@@ -8,9 +8,25 @@ import {
 } from './waveforms';
 
 describe('BUILTIN_WAVEFORMS', () => {
-  it('contains the 6 expected waveform ids', () => {
+  it('contains separate electrostimulation and vibration defaults', () => {
     const ids = BUILTIN_WAVEFORMS.map((w) => w.id);
-    expect(ids).toEqual(['breath', 'tide', 'pulse_low', 'pulse_mid', 'pulse_high', 'tap']);
+    expect(ids).toEqual([
+      'breath',
+      'tide',
+      'pulse_low',
+      'pulse_mid',
+      'pulse_high',
+      'tap',
+      'vibration_constant',
+      'vibration_pulse',
+      'vibration_wave',
+      'vibration_ramp',
+      'vibration_heartbeat',
+    ]);
+    expect(BUILTIN_WAVEFORMS.filter((wave) => wave.modality === 'electrostimulation')).toHaveLength(
+      6,
+    );
+    expect(BUILTIN_WAVEFORMS.filter((wave) => wave.modality === 'vibration')).toHaveLength(5);
   });
 
   it('every waveform has frames', () => {
