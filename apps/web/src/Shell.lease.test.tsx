@@ -115,6 +115,21 @@ afterEach(async () => {
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
 
 describe('外壳与设备控制权', () => {
+  it('把设备状态栏放在模块标题操作行下方', async () => {
+    fakeModule('agent', [COYOTE]);
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    const actions = document.getElementById('shl-actions');
+    const deviceBar = document.getElementById('shl-device-bar');
+    expect(actions).toBeTruthy();
+    expect(deviceBar).toBeTruthy();
+    expect(
+      actions!.compareDocumentPosition(deviceBar!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   it('在说明下面提供始终指向最新版 APK 的 Android 下载入口', async () => {
     await act(async () => {
       render(<Shell />);

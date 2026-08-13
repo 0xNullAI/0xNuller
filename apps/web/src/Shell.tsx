@@ -284,10 +284,9 @@ export function Shell() {
           {!narrow && <div id="shl-side">{sidebar}</div>}
 
           <main id="shl-slot">
-            <DeviceBar activeSessionId={activeId} />
-
             {/* The module's own buttons land here. On narrow screens the drawer toggle
-              shares this row. */}
+              and current module name share this first row. Device state belongs
+              directly underneath it, before the module content. */}
             <div id="shl-actions">
               {narrow && (
                 <button
@@ -309,6 +308,8 @@ export function Shell() {
               <div className="min-w-0 flex-1" />
               <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
             </div>
+
+            <DeviceBar activeSessionId={activeId} />
 
             <div id="shl-content">
               {activeId === null ? <Home onOpen={go} /> : null}
