@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import type { DiscoveredDevice } from '@dg-kit/transport-tauri-blec';
 import './DevicePicker.css';
 
@@ -11,46 +10,58 @@ interface Props {
 }
 
 export function DevicePicker({ open, devices, scanning, onSelect, onCancel }: Props) {
-  const sorted = useMemo(
-    () => [...devices].sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999)),
-    [devices],
-  );
   if (!open) return null;
   return (
-    <div className="dgaa-picker-backdrop" role="dialog" aria-modal="true">
+    <div
+      className="dgaa-picker-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dgaa-picker-title"
+    >
       <div className="dgaa-picker-panel">
-        {/* Reused for all 4 device kinds (Coyote + the 3 aux kinds, each
-            scanning with its own name-prefix filter) — generic title since
-            the caller already told the user which kind via the preceding
-            kind picker. */}
-        <header className="dgaa-picker-header">选择设备</header>
+        <header className="dgaa-picker-header">
+          <span className="dgaa-picker-mark" aria-hidden="true">
+            ⌁
+          </span>
+          <span className="dgaa-picker-heading">
+            <strong id="dgaa-picker-title">连接设备</strong>
+            <small>{scanning ? '正在搜索附近的 DG-Lab 设备' : '选择设备并建立蓝牙连接'}</small>
+          </span>
+          <button className="dgaa-picker-close" type="button" aria-label="关闭" onClick={onCancel}>
+            ×
+          </button>
+        </header>
         <ul className="dgaa-picker-list">
-          {sorted.length === 0 ? (
+          {devices.length === 0 ? (
             <li className="dgaa-picker-empty" aria-live="polite">
               {scanning
-                ? '正在扫描附近设备…'
-                : '扫描完成，未发现设备 — 请确认设备已开机并按住按键开启广播'}
+                ? '正在扫描…'
+                : '没有发现可连接设备。请确认设备未连接其他手机或电脑，并已进入配对状态。'}
             </li>
           ) : (
-            sorted.map((d) => (
-              <li key={d.address}>
-                <button
-                  className="dgaa-picker-row"
-                  type="button"
-                  onClick={() => onSelect(d.address)}
-                >
-                  <span className="dgaa-picker-name">{d.name || '未知设备'}</span>
+            devices.map((d) => (
+              <li className="dgaa-picker-row" key={d.address}>
+                <span className="dgaa-picker-info">
+                  <span className="dgaa-picker-name">{d.name || 'DG-Lab 设备'}</span>
                   <span className="dgaa-picker-meta">
                     {d.address} · RSSI {d.rssi}
                   </span>
+                </span>
+                <button
+                  className="dgaa-picker-connect"
+                  type="button"
+                  onClick={() => onSelect(d.address)}
+                >
+                  连接
                 </button>
               </li>
             ))
           )}
         </ul>
         <footer className="dgaa-picker-footer">
+          <span className="dgaa-picker-hint">仅显示 0xNuller 支持的设备</span>
           <button className="dgaa-picker-cancel" type="button" onClick={onCancel}>
-            取消
+            关闭
           </button>
         </footer>
       </div>

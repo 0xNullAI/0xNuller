@@ -1,10 +1,10 @@
 # @dg-kit/waveforms
 
-Runtime-agnostic waveform helpers for DG-Lab Coyote.
+Runtime-agnostic waveform helpers for DG-Lab Coyote and Opossum.
 
 ## What's inside
 
-- **`createBasicWaveformLibrary()`** — six built-in waveforms (`breath`, `tide`, `pulse_low`, `pulse_mid`, `pulse_high`, `tap`) implementing the `WaveformLibrary` interface.
+- **`createBasicWaveformLibrary()`** — six electrostimulation waveforms for Coyote plus five vibration envelopes for Opossum, implementing the `WaveformLibrary` interface.
 - **`compileWaveformDesign(segments)`** — takes a list of `ramp` / `hold` / `pulse` / `silence` segments and produces a `WaveFrame[]` on a 25 ms grid. Used by the `design_wave` LLM tool.
 - **`parsePulseText(content)`** — parses a single `.pulse` file (DG-Lab's "Dungeonlab+pulse:" text format) and returns frames + the embedded display name.
 

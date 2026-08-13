@@ -154,6 +154,8 @@ interface AndroidSystemBridge {
   getSdkInt(): number;
   isLocationEnabled(): boolean;
   isBlePermissionPermanentlyDenied(): boolean;
+  hasBleScanPermission(): boolean;
+  requestBleScanPermission(): void;
   openAppSettings(): void;
   openBluetoothSettings(): void;
   openLocationSettings(): void;
@@ -170,6 +172,8 @@ export interface BlePlatform {
   getSdkInt(): number;
   isLocationEnabled(): boolean;
   isPermissionPermanentlyDenied(): boolean;
+  hasBleScanPermission(): boolean;
+  requestBleScanPermission(): void;
   openAppSettings(): void;
   openBluetoothSettings(): void;
   openLocationSettings(): void;
@@ -190,6 +194,8 @@ const defaultBlePlatform: BlePlatform = {
   isLocationEnabled: () => window.AndroidSystem?.isLocationEnabled() ?? true,
   isPermissionPermanentlyDenied: () =>
     window.AndroidSystem?.isBlePermissionPermanentlyDenied() ?? false,
+  hasBleScanPermission: () => window.AndroidSystem?.hasBleScanPermission() ?? true,
+  requestBleScanPermission: () => window.AndroidSystem?.requestBleScanPermission(),
   openAppSettings: () => window.AndroidSystem?.openAppSettings(),
   openBluetoothSettings: () => window.AndroidSystem?.openBluetoothSettings(),
   openLocationSettings: () => window.AndroidSystem?.openLocationSettings(),
@@ -312,6 +318,25 @@ export async function withBlePermissionHelp<T>(
     throw new Error('定位服务已关闭，无法扫描蓝牙设备');
   }
 
+  // plugin-blec's Rust command currently drops its Android `allowIbeacons`
+  // argument before calling the mobile plugin. On Android <= 11 that makes
+  // checkPermissions() report success without requesting location, followed
+  // by a valid-looking scan that can never return advertisements. Ask through
+  // the Activity bridge first, then automatically continue after the system
+  // permission sheet closes.
+  if (!platform.hasBleScanPermission()) {
+    platform.requestBleScanPermission();
+    const granted = await waitForBlePermission(platform);
+    if (!granted) {
+      const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
+      await showBleGuidance(`请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`, {
+        label: '打开应用设置',
+        run: platform.openAppSettings,
+      });
+      throw new Error(`未授予${permissionName}`);
+    }
+  }
+
   try {
     return await connectCall();
   } catch (error) {
@@ -343,6 +368,15 @@ export async function withBlePermissionHelp<T>(
     }
     throw error;
   }
+}
+
+async function waitForBlePermission(platform: BlePlatform, timeoutMs = 20_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (platform.hasBleScanPermission()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return platform.hasBleScanPermission();
 }
 
 /** Decorate connect in place so prototype methods remain available to Agent. */

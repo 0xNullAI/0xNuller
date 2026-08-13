@@ -26,6 +26,11 @@ import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
 import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
 
+// A value of 5 becomes a B0 ceiling of only 2.5/100 in the Opossum protocol,
+// which is below the physical start threshold of many vibration motors. Start
+// at a clearly perceptible but still safety-capped level instead.
+const DEFAULT_OPOSSUM_START_INTENSITY = 30;
+
 function waveformsForOutput(
   target: OutputTarget | null,
   allWaveforms: WaveformDefinition[],
@@ -33,9 +38,9 @@ function waveformsForOutput(
   // A Coyote consumes electrostimulation definitions; an Opossum consumes
   // vibration envelopes. Legacy definitions without a modality remain
   // electrostimulation for backwards compatibility.
-  return target
-    ? allWaveforms.filter((waveform) => isWaveformCompatibleWithDevice(target.kind, waveform))
-    : allWaveforms;
+  return allWaveforms.filter((waveform) =>
+    isWaveformCompatibleWithDevice(target?.kind ?? 'coyote', waveform),
+  );
 }
 
 function playbackIdForTarget(target: OutputTarget | null): string | null {
@@ -335,18 +340,9 @@ export default function App() {
         const waveform = id ? waveforms.getWaveform(id) : null;
         if (waveform?.modality === 'vibration') {
           device.setOpossumWaveform(channel, waveform.frames, waveform.id);
-        } else {
-          // Opossum has safe built-in rhythm envelopes even before a Market
-          // vibration waveform is imported. Keep the selected rhythm alive
-          // when the user presses the channel play button in that state.
-          const pattern =
-            channel === 'A'
-              ? (target.opossum.patternA ?? 'constant')
-              : (target.opossum.patternB ?? 'constant');
-          device.setOpossumPattern(channel, pattern);
-        }
+        } else return;
         const limit = channel === 'A' ? opossumLimits.a : opossumLimits.b;
-        device.setOpossumIntensity(channel, Math.min(limit, 5));
+        device.setOpossumIntensity(channel, Math.min(limit, DEFAULT_OPOSSUM_START_INTENSITY));
         return;
       }
       const coyote = target.coyote;
@@ -509,7 +505,7 @@ export default function App() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-3 py-5 sm:px-4">
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}
@@ -524,9 +520,6 @@ export default function App() {
           emptyPanel={emptyPanel}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
-          onSetOpossumPattern={(targetId, channel, pattern) => {
-            if (targetId === 'opossum') device.setOpossumPattern(channel, pattern);
-          }}
           onStop={(targetId) => {
             const target = outputTargets.find((candidate) => candidate.id === targetId);
             if (target?.kind === 'coyote') stopCoyote(target.coyote.id);

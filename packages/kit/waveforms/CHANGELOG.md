@@ -1,5 +1,15 @@
 # @dg-kit/waveforms
 
+## 1.16.0
+
+### Minor Changes
+
+- 2fead7c: Add five modality-tagged Opossum vibration presets to the shared waveform library.
+
+### Patch Changes
+
+- @dg-kit/core@1.16.0
+
 ## 1.15.0
 
 ### Patch Changes

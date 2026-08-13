@@ -1,7 +1,7 @@
-name: Kit Version
+name: NPM Version Preparation
 
-# dev is an integration branch. It may prepare package versions, but it never publishes them.
-# Pending changesets are collected into one Version PR targeting dev.
+# dev may prepare package manifests and changelogs, but it never publishes artifacts.
+# DG-Kit and DG-MCP remain independent versions inside one Changesets Version PR.
 
 on:
   workflow_dispatch:
@@ -16,6 +16,7 @@ jobs:
   version:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
@@ -33,7 +34,7 @@ jobs:
         with:
           version: npm run version
           commit: 'chore: version npm packages'
-          title: 'chore: version npm packages'
+          title: 'chore: prepare npm package versions'
           setupGitUser: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,3 +42,11 @@ jobs:
           GIT_AUTHOR_EMAIL: 271426072+0xNullAI@users.noreply.github.com
           GIT_COMMITTER_NAME: 0xNull
           GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com
+      - name: Run CI for the generated Version PR
+        if: steps.changesets.outputs.hasChangesets == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for workflow in ci-repository.yml ci-product.yml ci-kit.yml ci-mcp.yml; do
+            gh workflow run "$workflow" --ref changeset-release/dev
+          done

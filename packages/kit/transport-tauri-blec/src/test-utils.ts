@@ -10,6 +10,7 @@ export function makeApi(overrides: Partial<PluginBlecApi> = {}): PluginBlecApi {
     connect: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
     connectedDevices: vi.fn().mockResolvedValue([]),
+    listServices: vi.fn().mockResolvedValue([]),
     getDeviceConnectionUpdates: vi.fn().mockResolvedValue(undefined),
     send: vi.fn().mockResolvedValue(undefined),
     read: vi.fn().mockResolvedValue([]),

@@ -11,33 +11,78 @@
   inset: 0;
   background: color-mix(in srgb, var(--text) 55%, transparent);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   z-index: var(--z-native-overlay);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
 }
 
 .dgaa-picker-panel {
   background: var(--bg-elevated);
   color: var(--text);
-  width: 100%;
-  max-width: 480px;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  padding: 16px;
+  width: min(100%, 460px);
+  border-radius: var(--radius-lg);
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: min(70dvh, calc(var(--android-viewport-height, 100dvh) - 1rem));
+  max-height: min(72dvh, calc(var(--android-viewport-height, 100dvh) - 40px));
   box-shadow: var(--shadow-panel);
-  border-top: 1px solid var(--surface-border);
+  border: 1px solid var(--surface-border);
 }
 
 .dgaa-picker-header {
   font-size: 18px;
-  font-weight: 600;
-  padding-bottom: 8px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--surface-border);
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dgaa-picker-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.dgaa-picker-heading {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dgaa-picker-heading strong {
+  font-size: 18px;
+}
+
+.dgaa-picker-heading small {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.dgaa-picker-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-strong);
+  color: var(--text-soft);
+  font-size: 24px;
+  cursor: pointer;
 }
 
 .dgaa-picker-list {
@@ -50,22 +95,23 @@
 
 .dgaa-picker-row {
   width: 100%;
-  text-align: left;
   background: var(--bg-strong);
   color: var(--text);
   border: 1px solid var(--surface-border);
   padding: 12px;
   border-radius: var(--radius-sm);
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
-  cursor: pointer;
 }
 
-.dgaa-picker-row:active {
-  background: var(--accent-hover);
-  border-color: var(--accent);
+.dgaa-picker-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dgaa-picker-name {
@@ -79,8 +125,27 @@
   color: var(--text-soft);
 }
 
+.dgaa-picker-connect {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dgaa-picker-connect:active {
+  background: var(--accent-hover);
+}
+
 .dgaa-picker-empty {
-  padding: 32px 16px;
+  min-height: 180px;
+  padding: 32px 20px;
+  display: grid;
+  place-items: center;
   text-align: center;
   color: var(--text-soft);
   font-size: 14px;
@@ -88,9 +153,16 @@
 
 .dgaa-picker-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding-top: 8px;
   border-top: 1px solid var(--surface-border);
+}
+
+.dgaa-picker-hint {
+  color: var(--text-soft);
+  font-size: 11px;
 }
 
 .dgaa-picker-cancel {

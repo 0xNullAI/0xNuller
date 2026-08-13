@@ -64,9 +64,11 @@ named source file and is re-exported from `index.ts`.
 
 ## Growth control
 
-- New source files should stay at or below 500 lines; test files at or below 800 lines.
-- Existing exceptions are frozen in `config/architecture-budgets.json`: they may shrink, but must not
-  grow. Split by responsibility instead of raising a ceiling during routine feature work.
+- File size is a review signal, not a hard CI limit. Split a module when it owns unrelated behavior,
+  has unclear boundaries, or becomes difficult to test and navigate—not merely because it crosses an
+  arbitrary line count.
+- Prefer cohesive modules with explicit names and narrow public APIs. A longer cohesive protocol or
+  orchestration module can be clearer than several artificial fragments.
 - React components render; hooks coordinate UI state; pure state transitions and domain decisions
   belong in plain TypeScript modules.
 - Avoid generic `utils.ts`, `helpers.ts`, or `common.ts`. Name modules after the owned behavior.
@@ -96,12 +98,13 @@ Do not publish a release from an unverified dirty worktree.
 
 ## Versioning and release
 
-- `dev` is integration-only. `main` is the sole production publishing branch for npm, Cloudflare,
-  and signed product artifacts.
+- `dev` is development and integration only. `main` is the sole production source for npm,
+  Cloudflare, and signed product artifacts.
 - Product releases use merge commits from `dev -> main`, tagged `vX.Y.Z`, with one GitHub Release
   and an APK named `0xnuller-vX.Y.Z.apk`. Never squash or rebase a product release PR.
-- Kit Version PRs may update package versions on `dev`, but Kit packages publish only after the
-  promoted main commit passes CI. Kit publication never creates a product GitHub Release.
+- NPM Version Preparation PRs may update package versions on `dev`, but DG-Kit and DG-MCP publish
+  through separate workflows only after the promoted main commit passes their own CI. npm
+  publication never creates a GitHub tag or Release.
 - Public changes to `packages/kit/*` or `apps/mcp` need an appropriate changeset.
 - Never publish, deploy, rewrite history, or delete user work unless the user explicitly requests it.
 

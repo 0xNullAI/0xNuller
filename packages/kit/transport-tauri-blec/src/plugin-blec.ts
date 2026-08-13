@@ -21,6 +21,11 @@ export interface BleDeviceInfo {
 
 export type WriteType = 'withResponse' | 'withoutResponse';
 
+export interface BleGattServiceInfo {
+  uuid: string;
+  characteristics: Array<{ uuid: string; descriptors: string[]; properties: number }>;
+}
+
 export interface PluginBlecApi {
   /**
    * `askIfDenied=true` triggers the system permission dialog if the app does
@@ -48,6 +53,11 @@ export interface PluginBlecApi {
   disconnect: (address?: string) => Promise<void>;
   /** List every currently-connected device, across all addresses. */
   connectedDevices: () => Promise<BleDeviceInfo[]>;
+  /**
+   * Discover a candidate's GATT services. The native plugin temporarily
+   * connects and disconnects when the device is not already connected.
+   */
+  listServices: (address: string) => Promise<BleGattServiceInfo[]>;
   /**
    * Per-device connection state stream. Unlike a hypothetical aggregate
    * "connected" flag, this only fires for `address`, so it stays correct
@@ -130,6 +140,11 @@ function mapModule(mod: PluginBlecModule): PluginBlecApi {
       mod.connect(address, onDisconnect, legacyAndroidNeedsLocation()),
     disconnect: (address) => mod.disconnect(address),
     connectedDevices: () => mod.connectedDevices(),
+    listServices: async (address) => {
+      const result = await mod.listServices(address);
+      if (typeof result === 'string') return JSON.parse(result) as BleGattServiceInfo[];
+      return result;
+    },
     getDeviceConnectionUpdates: (address, handler) =>
       mod.getDeviceConnectionUpdates(address, handler),
     send: (characteristic, data, writeType, service, address) =>

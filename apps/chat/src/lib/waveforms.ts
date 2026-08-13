@@ -24,13 +24,13 @@ export type WaveformDefinition = Omit<KitWaveformDefinition, 'description'> & {
   custom?: boolean;
 };
 
-/** Six built-in waveforms shared with DG-Agent and DG-MCP. */
+/** Modality-aware built-ins shared with Control, Agent, Voice and MCP. */
 export const BUILTIN_WAVEFORMS: WaveformDefinition[] = listBuiltinWaveforms().map((wave) => ({
   id: wave.id,
   name: wave.name,
   description: wave.description ?? '',
   frames: wave.frames,
-  modality: 'electrostimulation',
+  modality: wave.modality ?? 'electrostimulation',
 }));
 
 export function parsePulseFile(content: string): WaveformDefinition | null {

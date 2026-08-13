@@ -86,6 +86,59 @@ const BUILTIN_WAVEFORMS: WaveformDefinition[] = [
     ],
     modality: 'electrostimulation',
   },
+  {
+    id: 'vibration_constant',
+    name: '持续',
+    description: '稳定持续的震动输出',
+    frames: [[10, 100]],
+    modality: 'vibration',
+  },
+  {
+    id: 'vibration_pulse',
+    name: '缓拍',
+    description: '半秒震动、半秒停顿的舒缓节奏',
+    frames: [
+      ...Array.from({ length: 20 }, () => [10, 100] as [number, number]),
+      ...Array.from({ length: 20 }, () => [10, 0] as [number, number]),
+    ],
+    modality: 'vibration',
+  },
+  {
+    id: 'vibration_wave',
+    name: '波浪',
+    description: '一秒完成一次平滑起伏，并保持马达可起振的低谷',
+    frames: Array.from(
+      { length: 40 },
+      (_, index) =>
+        [10, Math.round(35 + 32.5 * (1 + Math.sin((index / 40) * 2 * Math.PI)))] as [
+          number,
+          number,
+        ],
+    ),
+    modality: 'vibration',
+  },
+  {
+    id: 'vibration_ramp',
+    name: '渐强',
+    description: '从可感知的轻震逐步推进到强震',
+    frames: Array.from(
+      { length: 40 },
+      (_, index) => [10, Math.round(30 + ((index + 1) / 40) * 70)] as [number, number],
+    ),
+    modality: 'vibration',
+  },
+  {
+    id: 'vibration_heartbeat',
+    name: '心跳',
+    description: '两次短促震动后停顿',
+    frames: [
+      ...Array.from({ length: 6 }, () => [10, 100] as [number, number]),
+      ...Array.from({ length: 6 }, () => [10, 0] as [number, number]),
+      ...Array.from({ length: 6 }, () => [10, 80] as [number, number]),
+      ...Array.from({ length: 30 }, () => [10, 0] as [number, number]),
+    ],
+    modality: 'vibration',
+  },
 ];
 
 class BasicWaveformLibrary implements WaveformLibrary {

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
-const packages = [
+const kitPackages = [
   ['@dg-kit/core', 'packages/kit/core'],
   ['@dg-kit/protocol', 'packages/kit/protocol'],
   ['@dg-kit/waveforms', 'packages/kit/waveforms'],
@@ -9,8 +9,11 @@ const packages = [
   ['@dg-kit/transport-webbluetooth', 'packages/kit/transport-webbluetooth'],
   ['@dg-kit/transport-tauri-blec', 'packages/kit/transport-tauri-blec'],
   ['@dg-kit/safety', 'packages/kit/safety'],
-  ['dg-mcp', 'apps/mcp'],
 ];
+const mcpPackages = [['dg-mcp', 'apps/mcp']];
+const scope = process.argv.find((argument) => argument.startsWith('--scope='))?.slice(8) ?? 'all';
+if (!['all', 'kit', 'mcp'].includes(scope)) throw new Error(`unknown package scope: ${scope}`);
+const packages = [...(scope === 'mcp' ? [] : kitPackages), ...(scope === 'kit' ? [] : mcpPackages)];
 
 function fail(message) {
   throw new Error(message);

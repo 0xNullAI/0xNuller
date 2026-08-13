@@ -9,6 +9,19 @@ export interface DiscoveredDevice {
 }
 
 /**
+ * Official DG-Lab Android fallback for devices whose AD 0x09 local name is
+ * absent: accept AD 0xFF manufacturer payloads whose complete value is 8-16
+ * bytes. Android exposes the two-byte company identifier as the map key, so
+ * each value here is valid when it contributes another 6-14 bytes.
+ */
+export function hasOfficialDgLabManufacturerFallback(device: BleDeviceInfo): boolean {
+  return Object.values(device.manufacturerData ?? {}).some((payload) => {
+    const completeLength = 2 + payload.length;
+    return completeLength >= 8 && completeLength <= 16;
+  });
+}
+
+/**
  * Live controller passed to `selectDevice`. The picker UI subscribes for
  * incremental device updates while the scan is still in progress.
  */
@@ -54,28 +67,65 @@ export interface ScanAndSelectOptions {
 export async function scanAndSelectDevice(
   api: PluginBlecApi,
   options: ScanAndSelectOptions,
-): Promise<{ address: string; name: string } | null> {
+): Promise<{ address: string; name: string; services: string[] } | null> {
   const seen = new Map<string, BleDeviceInfo>();
+  const anonymousCandidates = new Map<string, BleDeviceInfo>();
+  const discoveryOrder = new Map<string, number>();
+  let nextDiscoveryOrder = 0;
+  let orderFrozen = false;
   const scanDuration = options.scanDurationMs ?? 8000;
   const prefixes = options.namePrefixes;
   const updateListeners = new Set<(devices: DiscoveredDevice[]) => void>();
   const scanningListeners = new Set<(scanning: boolean) => void>();
   let scanning = true;
+  let selectionFinished = false;
+  const verification = { inFlight: null as Promise<void> | null };
 
   const toDiscovered = (): DiscoveredDevice[] =>
-    [...seen.values()].map((d) => ({
-      address: d.address,
-      name: d.name,
-      rssi: d.rssi,
-      isConnected: d.isConnected,
-      services: d.services,
-    }));
+    [...seen.values()]
+      // Never reorder visible rows while a user is about to tap one. RSSI
+      // changes many times per second; sorting every update can move another
+      // address under the finger between pointer-down and click.
+      .sort(
+        (a, b) =>
+          (discoveryOrder.get(a.address) ?? Number.MAX_SAFE_INTEGER) -
+          (discoveryOrder.get(b.address) ?? Number.MAX_SAFE_INTEGER),
+      )
+      .map((d) => ({
+        address: d.address,
+        name: d.name,
+        rssi: d.rssi,
+        isConnected: d.isConnected,
+        services: d.services,
+      }));
 
   // Kick off the scan; handler appends devices and notifies listeners.
-  const scanPromise = api.startScan((devices) => {
+  const radioStartPromise = api.startScan((devices) => {
     let changed = false;
     for (const d of devices) {
-      if (prefixes && !prefixes.some((p) => d.name.startsWith(p))) continue;
+      // Match the official Android scanner: prefer AD 0x09 names, but retain
+      // its AD 0xFF length fallback for nameless devices. A selected anonymous
+      // candidate is still verified after GATT connect before it is exposed as
+      // a usable device.
+      const name = d.name.trim();
+      const supportedName = Boolean(
+        name && (!prefixes || prefixes.some((prefix) => name.startsWith(prefix))),
+      );
+      const supportedAnonymous = !name && hasOfficialDgLabManufacturerFallback(d);
+      if (!supportedName && !supportedAnonymous) {
+        continue;
+      }
+      // The official app accepts this manufacturer-length fallback as a
+      // candidate, but treating it as a confirmed identity makes unrelated
+      // beacons appear as DG-Lab devices. Keep anonymous candidates hidden
+      // until their GATT services prove they are part of the supported family.
+      if (supportedAnonymous && !supportedName) {
+        anonymousCandidates.set(d.address, d);
+        continue;
+      }
+      if (orderFrozen && !discoveryOrder.has(d.address)) {
+        discoveryOrder.set(d.address, nextDiscoveryOrder++);
+      }
       const prev = seen.get(d.address);
       if (!prev || hasMaterialChange(prev, d)) changed = true;
       seen.set(d.address, d);
@@ -85,6 +135,46 @@ export async function scanAndSelectDevice(
       for (const fn of updateListeners) fn(snapshot);
     }
   }, scanDuration);
+  const verifyAnonymousCandidates = async () => {
+    const candidates = [...anonymousCandidates.values()]
+      .sort((a, b) => b.rssi - a.rssi)
+      .slice(0, 8);
+    // Android BLE stacks are especially prone to GATT 133 when temporary
+    // verification connections overlap. Probe strictly one at a time and
+    // stop as soon as the picker resolves so verification never competes with
+    // the real connection the user just requested.
+    for (const candidate of candidates) {
+      if (selectionFinished) break;
+      try {
+        const services = await api.listServices(candidate.address);
+        if (selectionFinished) break;
+        if (!hasSupportedDgLabGatt(services.map((service) => service.uuid))) continue;
+        seen.set(candidate.address, {
+          ...candidate,
+          services: services.map((service) => service.uuid),
+        });
+        if (!discoveryOrder.has(candidate.address)) {
+          discoveryOrder.set(candidate.address, nextDiscoveryOrder++);
+        }
+        const snapshot = toDiscovered();
+        for (const fn of updateListeners) fn(snapshot);
+      } catch {
+        // A failed/foreign candidate remains hidden. listServices performs
+        // its own temporary disconnect on successful probes.
+      }
+    }
+  };
+  // plugin-blec's `startScan()` resolves when the native scan has STARTED,
+  // not when its timeout has elapsed. Keep the JS lifecycle alive for the
+  // requested window, stop radio discovery before opening temporary GATT
+  // verification connections, and only then mark scanning complete.
+  const scanPromise = radioStartPromise.then(async () => {
+    await new Promise((resolve) => setTimeout(resolve, scanDuration));
+    await api.stopScan().catch(() => undefined);
+    if (selectionFinished) return;
+    verification.inFlight = verifyAnonymousCandidates();
+    await verification.inFlight;
+  });
   const markScanComplete = () => {
     scanning = false;
     for (const fn of scanningListeners) fn(false);
@@ -93,6 +183,22 @@ export async function scanAndSelectDevice(
 
   let address: string | null;
   try {
+    // A mocked or already-completed scan may resolve synchronously. Give its
+    // post-scan GATT verification a chance to publish before taking the
+    // initial picker snapshot; real radio scans remain live for their normal
+    // timeout and are unaffected.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Let Android collect an initial radio snapshot, rank that snapshot once,
+    // then freeze row order. This keeps the strongest candidates visible
+    // without letting live RSSI changes move a different device under a tap.
+    if (/Android/i.test(globalThis.navigator?.userAgent ?? '')) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(900, scanDuration)));
+    }
+    for (const device of [...seen.values()].sort((a, b) => b.rssi - a.rssi)) {
+      discoveryOrder.set(device.address, nextDiscoveryOrder++);
+    }
+    orderFrozen = true;
     address = await options.selectDevice({
       get initial() {
         return toDiscovered();
@@ -114,15 +220,31 @@ export async function scanAndSelectDevice(
       },
     });
   } finally {
-    // Always stop the scan once the user has chosen / cancelled.
-    await scanPromise.catch(() => undefined);
+    // A named device can be selected before the timed scan ends. Do not make
+    // that fast path wait for the remaining window, and prevent the delayed
+    // anonymous verifier from opening GATT probes after the picker is gone.
+    selectionFinished = true;
     await api.stopScan().catch(() => undefined);
+    // listServices cannot be cancelled once Android has opened its temporary
+    // GATT connection. Wait for that single in-flight probe to close before
+    // the caller opens the selected device's permanent connection.
+    await verification.inFlight?.catch(() => undefined);
   }
 
   if (!address) return null;
 
   const chosen = seen.get(address);
-  return { address, name: chosen?.name ?? '' };
+  return { address, name: chosen?.name ?? '', services: chosen?.services ?? [] };
+}
+
+const SUPPORTED_DG_LAB_GATT_SERVICES = new Set([
+  '0000180c-0000-1000-8000-00805f9b34fb',
+  '0000ff0a-0000-1000-8000-00805f9b34fb',
+  '955a180b-0fe2-f5aa-a094-84b8d4f3e8ad',
+]);
+
+export function hasSupportedDgLabGatt(services: readonly string[]): boolean {
+  return services.some((uuid) => SUPPORTED_DG_LAB_GATT_SERVICES.has(uuid.toLowerCase()));
 }
 
 function hasMaterialChange(prev: BleDeviceInfo, next: BleDeviceInfo): boolean {

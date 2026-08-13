@@ -1,0 +1,63 @@
+name: Publish · DG-MCP
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI · DG-MCP]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-dg-mcp-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: npm-production
+    steps:
+      - name: Resolve verified main commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_run ]; then sha="$VERIFIED_SHA"; else sha="$CURRENT_SHA"; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+      - name: Require exact main source and repository CI
+        uses: ./.github/actions/require-main-source
+        with:
+          source-sha: ${{ steps.source.outputs.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run verify:changesets:consumed
+      - run: npm run verify:mcp
+      - name: Publish DG-MCP when its version changed
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+        run: |
+          version=$(node -p "require('./apps/mcp/package.json').version")
+          if npm view "dg-mcp@$version" version >/dev/null 2>&1; then
+            echo "dg-mcp@$version already published"
+          else
+            npm publish --workspace dg-mcp --access public --provenance
+          fi

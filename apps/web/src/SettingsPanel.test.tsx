@@ -7,6 +7,7 @@ import {
 } from '@0xnullai/ui';
 import { SettingsPanel } from './settings/SettingsPanel';
 import type { AuthUser } from '@0xnullai/auth';
+import productPackage from '../../../package.json';
 
 function ModuleSettingsFixtures() {
   const claims: Array<ModuleSettingsClaim & { content: string; navigation?: boolean }> = [
@@ -53,7 +54,7 @@ describe('统一设置顺序', () => {
       within(navigation)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['账户', '外观', 'AI', '波形', '场景', '设备安全', '数据']);
+    ).toEqual(['账户', '外观', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
     expect(within(navigation).queryByRole('button', { name: '传感器' })).toBeNull();
   });
 
@@ -71,6 +72,14 @@ describe('统一设置顺序', () => {
       within(navigation)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['账户', '管理', '外观', 'AI', '波形', '场景', '设备安全', '数据']);
+    ).toEqual(['账户', '管理', '外观', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
+  });
+
+  it('在关于页显示统一产品版本和下载入口', async () => {
+    renderSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '关于' }));
+
+    expect(screen.getByText(`v${productPackage.version}`)).toBeTruthy();
+    expect(screen.getByRole('link', { name: '下载 Android 版' })).toBeTruthy();
   });
 });
