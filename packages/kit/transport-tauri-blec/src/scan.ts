@@ -1,5 +1,9 @@
 import type { BleDeviceInfo, PluginBlecApi } from './plugin-blec.js';
 
+const PREWARM_CACHE_TTL_MS = 30_000;
+const prewarmedDevices = new Map<string, { device: BleDeviceInfo; seenAt: number }>();
+let prewarmScan: { api: PluginBlecApi; done: Promise<void> } | null = null;
+
 export interface DiscoveredDevice {
   address: string;
   name: string;
@@ -56,6 +60,66 @@ export interface ScanAndSelectOptions {
   scanDurationMs?: number;
 }
 
+export interface PrewarmScanOptions {
+  namePrefixes?: string[];
+  scanDurationMs?: number;
+}
+
+/**
+ * Quietly collect named DG-Lab advertisements while the Android shell starts.
+ * Permission is checked without prompting; the normal connect action remains
+ * responsible for explaining and requesting missing platform permission.
+ */
+export async function prewarmDeviceScan(
+  api: PluginBlecApi,
+  options: PrewarmScanOptions = {},
+): Promise<void> {
+  if (prewarmScan) return;
+  if (!(await api.checkPermissions(false))) return;
+
+  const prefixes = options.namePrefixes;
+  const duration = options.scanDurationMs ?? 8000;
+  const done = api
+    .startScan((devices) => {
+      const seenAt = Date.now();
+      for (const device of devices) {
+        const name = device.name.trim();
+        if (!name || (prefixes && !prefixes.some((prefix) => name.startsWith(prefix)))) continue;
+        prewarmedDevices.set(device.address, { device, seenAt });
+      }
+    }, duration)
+    .then(() => new Promise<void>((resolve) => setTimeout(resolve, duration)))
+    .finally(() => {
+      if (prewarmScan?.done === done) prewarmScan = null;
+    });
+  prewarmScan = { api, done };
+  void done.catch(() => undefined);
+}
+
+async function stopPrewarmScan(): Promise<void> {
+  const active = prewarmScan;
+  if (!active) return;
+  prewarmScan = null;
+  await active.api.stopScan().catch(() => undefined);
+}
+
+function freshPrewarmedDevices(now = Date.now()): BleDeviceInfo[] {
+  const fresh: BleDeviceInfo[] = [];
+  for (const [address, cached] of prewarmedDevices) {
+    if (now - cached.seenAt > PREWARM_CACHE_TTL_MS) {
+      prewarmedDevices.delete(address);
+    } else {
+      fresh.push(cached.device);
+    }
+  }
+  return fresh;
+}
+
+export function __resetPrewarmScanForTests(): void {
+  prewarmedDevices.clear();
+  prewarmScan = null;
+}
+
 /**
  * Shared scan → live device picker flow, used by `TauriBlecDeviceClient`
  * (Coyote) and `connectTauriAuxDevice` (Opossum/sensor clients) alike, so
@@ -80,6 +144,16 @@ export async function scanAndSelectDevice(
   let scanning = true;
   let selectionFinished = false;
   const verification = { inFlight: null as Promise<void> | null };
+
+  // A startup scan may still own Android's single scanner callback. Stop it
+  // before replacing the callback, then seed the picker with its fresh named
+  // results so a common reconnect does not pay another discovery delay.
+  await stopPrewarmScan();
+  for (const device of freshPrewarmedDevices()) {
+    const name = device.name.trim();
+    if (prefixes && !prefixes.some((prefix) => name.startsWith(prefix))) continue;
+    seen.set(device.address, device);
+  }
 
   const toDiscovered = (): DiscoveredDevice[] =>
     [...seen.values()]
@@ -192,7 +266,7 @@ export async function scanAndSelectDevice(
     // Let Android collect an initial radio snapshot, rank that snapshot once,
     // then freeze row order. This keeps the strongest candidates visible
     // without letting live RSSI changes move a different device under a tap.
-    if (/Android/i.test(globalThis.navigator?.userAgent ?? '')) {
+    if (seen.size === 0 && /Android/i.test(globalThis.navigator?.userAgent ?? '')) {
       await new Promise((resolve) => setTimeout(resolve, Math.min(900, scanDuration)));
     }
     for (const device of [...seen.values()].sort((a, b) => b.rssi - a.rssi)) {

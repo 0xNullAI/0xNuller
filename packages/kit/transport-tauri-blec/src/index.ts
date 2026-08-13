@@ -8,7 +8,9 @@ export { getTauriBlecAvailability, type TauriBlecAvailability } from './availabi
 export { PluginBlecCharacteristic } from './characteristic.js';
 export { createGattShim } from './gatt-shim.js';
 export {
+  prewarmDeviceScan,
   scanAndSelectDevice,
+  __resetPrewarmScanForTests,
   type DeviceSelectionController,
   type DiscoveredDevice,
   type ScanAndSelectOptions,
@@ -27,6 +29,7 @@ export {
   type TauriAuxDeviceConnectOptions,
 } from './aux-connect.js';
 export {
+  prewarmDgLabDeviceScan,
   requestDgLabDeviceTauri,
   DG_LAB_TAURI_NAME_PREFIXES,
   type RequestDgLabDeviceTauriOptions,
