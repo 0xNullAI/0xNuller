@@ -19,6 +19,7 @@ import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
 import type { PlayMode, WaveformDefinition } from '@dg-kit/core';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
 import { isCoyoteOutputActive } from '@dg-kit/core';
+import { CoyotePlaceholderChannels } from './CoyotePlaceholderChannels';
 
 const RING_CLASS =
   'flex h-24 w-24 flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
@@ -628,7 +629,7 @@ export function CoyoteSection({
       </h2>
 
       {coyotes.length === 0 ? (
-        <PlaceholderChannels />
+        <CoyotePlaceholderChannels />
       ) : (
         <div className="flex flex-col gap-3">
           {coyotes.map((coyote) => (
@@ -668,26 +669,5 @@ export function CoyoteSection({
         onFireStop={onFireStop}
       />
     </section>
-  );
-}
-
-/** The nothing-attached stand-in: the same two rings, inert. */
-function PlaceholderChannels() {
-  return (
-    <div className="flex items-center justify-center gap-6 opacity-40">
-      {(['A', 'B'] as const).map((channel) => (
-        <div key={channel} className="flex flex-col items-center">
-          <div className="mb-2 h-9 w-9 rounded-full bg-[var(--bg-soft)]" />
-          <div className={RING_CLASS}>
-            <span className="text-2xl font-bold tabular-nums text-[var(--text)]">0</span>
-            <span className="text-[10px] text-[var(--text-faint)]">{channel}</span>
-          </div>
-          <div className="mt-3 flex items-center gap-3">
-            <span className={STRENGTH_BTN_CLASS}>−</span>
-            <span className={STRENGTH_BTN_CLASS}>+</span>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
