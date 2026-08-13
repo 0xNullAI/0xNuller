@@ -64,9 +64,11 @@ named source file and is re-exported from `index.ts`.
 
 ## Growth control
 
-- New source files should stay at or below 500 lines; test files at or below 800 lines.
-- Existing exceptions are frozen in `config/architecture-budgets.json`: they may shrink, but must not
-  grow. Split by responsibility instead of raising a ceiling during routine feature work.
+- File size is a review signal, not a hard CI limit. Split a module when it owns unrelated behavior,
+  has unclear boundaries, or becomes difficult to test and navigate—not merely because it crosses an
+  arbitrary line count.
+- Prefer cohesive modules with explicit names and narrow public APIs. A longer cohesive protocol or
+  orchestration module can be clearer than several artificial fragments.
 - React components render; hooks coordinate UI state; pure state transitions and domain decisions
   belong in plain TypeScript modules.
 - Avoid generic `utils.ts`, `helpers.ts`, or `common.ts`. Name modules after the owned behavior.
