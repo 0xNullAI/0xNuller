@@ -8,6 +8,7 @@ import {
   TauriBlecOpossumClient,
   TauriBlecPawPrintsClient,
   TauriBlecCivetEdgingClient,
+  prewarmDgLabDeviceScan,
 } from '@dg-kit/transport-tauri-blec';
 import { showDevicePicker } from './components/show-device-picker';
 import { UpdateBanner } from './components/UpdateBanner';
@@ -40,6 +41,11 @@ import './styles.css';
  */
 
 installAndroidShellBehaviours();
+// If Bluetooth permission was granted on an earlier run, begin collecting
+// named DG-Lab advertisements behind the splash screen. Missing permission is
+// deliberately not requested here; the user's first connect action owns that
+// system prompt and its explanatory UI.
+void prewarmDgLabDeviceScan().catch(() => undefined);
 
 // Inlined by Vite at build time. Android requests carry no browser Origin, so
 // the free proxy relies on this signature to tell "our client" from "anyone".
