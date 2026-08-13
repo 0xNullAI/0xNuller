@@ -1,5 +1,9 @@
+import { retry } from './lib/retry.mjs';
+
 const base = (process.env.PRODUCTION_ORIGIN ?? 'https://0xnullai.com').replace(/\/$/, '');
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 15_000);
+const versionAttempts = Number(process.env.SMOKE_VERSION_ATTEMPTS ?? 6);
+const versionRetryDelayMs = Number(process.env.SMOKE_VERSION_RETRY_DELAY_MS ?? 5_000);
 const expectedVersion = process.env.EXPECTED_PRODUCT_VERSION;
 const expectedBuildId = process.env.EXPECTED_BUILD_ID;
 
@@ -32,21 +36,35 @@ function json(path, body) {
 
 const checks = [];
 
-const web = await request('/version.json', 200);
-const webVersion = json('/version.json', web.body);
-assert(/^[0-9a-f]{40}$/.test(webVersion.buildId), 'invalid Web buildId');
-if (expectedVersion) {
-  assert(
-    webVersion.version === expectedVersion,
-    `Web is ${webVersion.version}, expected ${expectedVersion}`,
-  );
-}
-if (expectedBuildId) {
-  assert(
-    webVersion.buildId === expectedBuildId,
-    `Web build is ${webVersion.buildId}, expected ${expectedBuildId}`,
-  );
-}
+const { web } = await retry(
+  async () => {
+    const response = await request('/version.json', 200);
+    const version = json('/version.json', response.body);
+    assert(/^[0-9a-f]{40}$/.test(version.buildId), 'invalid Web buildId');
+    if (expectedVersion) {
+      assert(
+        version.version === expectedVersion,
+        `Web is ${version.version}, expected ${expectedVersion}`,
+      );
+    }
+    if (expectedBuildId) {
+      assert(
+        version.buildId === expectedBuildId,
+        `Web build is ${version.buildId}, expected ${expectedBuildId}`,
+      );
+    }
+    return { web: response };
+  },
+  {
+    attempts: versionAttempts,
+    delayMs: versionRetryDelayMs,
+    onRetry(error, attempt, attempts) {
+      console.warn(
+        `Web version not ready (${attempt}/${attempts}): ${error instanceof Error ? error.message : error}`,
+      );
+    },
+  },
+);
 checks.push(['web', web.durationMs]);
 
 const auth = await request('/api/auth/me', 200);
