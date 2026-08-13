@@ -32,4 +32,4 @@ tauri-plugin-opener = "2"
 # the JS bindings now pass an `address` parameter the upstream 0.4 Rust
 # plugin doesn't understand). Interim measure until the fork is published to
 # crates.io or upstreamed.
-tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", branch = "main" }
+tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "4db7f46" }

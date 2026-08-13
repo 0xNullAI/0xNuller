@@ -24,6 +24,7 @@ export function showDevicePicker(controller: DeviceSelectionController): Promise
     let unsubscribe: (() => void) | null = null;
     let unsubscribeScanning: (() => void) | null = null;
     let scanning = controller.scanning;
+    let didResetScroll = false;
 
     const render = () => {
       root!.render(
@@ -35,6 +36,15 @@ export function showDevicePicker(controller: DeviceSelectionController): Promise
           onCancel: () => close(null),
         }),
       );
+      if (!didResetScroll) {
+        didResetScroll = true;
+        // The host/root is reused between scans. Reset the retained scroll
+        // offset after the first render so the visible first row and the
+        // submitted address cannot diverge across repeated attempts.
+        queueMicrotask(() => {
+          host?.querySelector<HTMLElement>('.dgaa-picker-list')?.scrollTo({ top: 0 });
+        });
+      }
     };
 
     const close = (value: string | null): void => {

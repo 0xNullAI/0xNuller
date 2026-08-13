@@ -106,21 +106,24 @@ const BUILTIN_WAVEFORMS: WaveformDefinition[] = [
   {
     id: 'vibration_wave',
     name: '波浪',
-    description: '一秒完成一次平滑起伏',
+    description: '一秒完成一次平滑起伏，并保持马达可起振的低谷',
     frames: Array.from(
       { length: 40 },
       (_, index) =>
-        [10, Math.round(50 + 50 * Math.sin((index / 40) * 2 * Math.PI))] as [number, number],
+        [10, Math.round(35 + 32.5 * (1 + Math.sin((index / 40) * 2 * Math.PI)))] as [
+          number,
+          number,
+        ],
     ),
     modality: 'vibration',
   },
   {
     id: 'vibration_ramp',
     name: '渐强',
-    description: '从轻到强逐步推进',
+    description: '从可感知的轻震逐步推进到强震',
     frames: Array.from(
       { length: 40 },
-      (_, index) => [10, Math.round(((index + 1) / 40) * 100)] as [number, number],
+      (_, index) => [10, Math.round(30 + ((index + 1) / 40) * 70)] as [number, number],
     ),
     modality: 'vibration',
   },

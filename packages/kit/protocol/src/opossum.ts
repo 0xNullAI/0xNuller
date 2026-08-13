@@ -109,10 +109,15 @@ const BUTTON_BITS: ReadonlyArray<readonly [OpossumButton, number]> = [
 export const OPOSSUM_VIBRATION_PATTERNS: Record<OpossumVibrationPatternName, readonly number[]> = {
   constant: [100],
   pulse: [...Array(20).fill(100), ...Array(20).fill(0)],
+  // Continuous motor patterns deliberately keep a non-zero baseline. A DC
+  // vibration motor that has coasted to a stop often cannot restart from the
+  // first tiny PWM samples even though those samples are mathematically
+  // non-zero; 30-35% is a reliable physical re-start region while B3 remains
+  // the independent, safety-capped strength ceiling.
   wave: Array.from({ length: 40 }, (_, i) =>
-    Math.round(50 + 50 * Math.sin((i / 40) * 2 * Math.PI)),
+    Math.round(35 + 32.5 * (1 + Math.sin((i / 40) * 2 * Math.PI))),
   ),
-  ramp: Array.from({ length: 40 }, (_, i) => Math.round(((i + 1) / 40) * 100)),
+  ramp: Array.from({ length: 40 }, (_, i) => Math.round(30 + ((i + 1) / 40) * 70)),
   heartbeat: [
     ...Array(6).fill(100),
     ...Array(6).fill(0),

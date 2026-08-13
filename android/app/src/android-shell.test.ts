@@ -14,6 +14,8 @@ function blePlatform(overrides: Partial<BlePlatform> = {}): BlePlatform {
     getSdkInt: () => 31,
     isLocationEnabled: () => true,
     isPermissionPermanentlyDenied: () => false,
+    hasBleScanPermission: () => true,
+    requestBleScanPermission: vi.fn(),
     openAppSettings: vi.fn(),
     openBluetoothSettings: vi.fn(),
     openLocationSettings: vi.fn(),
@@ -47,6 +49,29 @@ describe('Android shell integration', () => {
     expect(activity).toContain('Settings.ACTION_APPLICATION_DETAILS_SETTINGS');
     expect(activity).toContain('Settings.ACTION_BLUETOOTH_SETTINGS');
     expect(activity).toContain('Settings.ACTION_LOCATION_SOURCE_SETTINGS');
+    expect(activity).toContain('fun hasBleScanPermission()');
+    expect(activity).toContain('fun requestBleScanPermission()');
+  });
+
+  it('requests the native Android BLE permission before scanning', async () => {
+    const connect = vi.fn(async () => undefined);
+    const requestBleScanPermission = vi.fn();
+    let granted = false;
+    requestBleScanPermission.mockImplementation(() => {
+      granted = true;
+    });
+
+    await withBlePermissionHelp(
+      connect,
+      blePlatform({
+        getSdkInt: () => 30,
+        hasBleScanPermission: () => granted,
+        requestBleScanPermission,
+      }),
+    );
+
+    expect(requestBleScanPermission).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledOnce();
   });
 
   it('keeps prototype device methods while decorating connect', async () => {

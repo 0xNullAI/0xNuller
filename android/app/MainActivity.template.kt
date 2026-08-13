@@ -75,6 +75,26 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun hasBleScanPermission(): Boolean {
+      val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Manifest.permission.BLUETOOTH_SCAN
+      } else {
+        Manifest.permission.ACCESS_FINE_LOCATION
+      }
+      return checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    @JavascriptInterface
+    fun requestBleScanPermission() {
+      val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+      } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+      }
+      runOnUiThread { requestPermissions(permissions, BLE_PERMISSION_REQUEST_CODE) }
+    }
+
+    @JavascriptInterface
     fun openAppSettings() = launchSettings(
       Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
     )
@@ -88,5 +108,9 @@ class MainActivity : TauriActivity() {
     private fun launchSettings(intent: Intent) {
       runOnUiThread { startActivity(intent) }
     }
+  }
+
+  private companion object {
+    const val BLE_PERMISSION_REQUEST_CODE = 4101
   }
 }
