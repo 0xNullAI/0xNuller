@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const ignoredDirectories = new Set([
@@ -37,20 +37,4 @@ export function isSourceFile(file) {
 
 export function isTestFile(file) {
   return testPattern.test(file);
-}
-
-export function countFileLines(root, file) {
-  return readFileSync(path.join(root, file), 'utf8').split(/\r?\n/).length;
-}
-
-export function findBudgetViolations({ files, lineCounts, oversizedFiles, sourceMax, testMax }) {
-  const violations = [];
-  for (const file of files.filter(isSourceFile)) {
-    const defaultLimit = isTestFile(file) ? testMax : sourceMax;
-    const limit = oversizedFiles[file] ?? defaultLimit;
-    if (lineCounts[file] > limit) {
-      violations.push({ file, lines: lineCounts[file], limit });
-    }
-  }
-  return violations.sort((left, right) => left.file.localeCompare(right.file));
 }
