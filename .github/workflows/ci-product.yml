@@ -1,0 +1,52 @@
+name: CI · Product
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.scope.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/detect-domain-changes.mjs product "$BASE_SHA"
+
+  product:
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:release
+      - run: npm run verify:brand
+      - run: npm run check:routes
+      - run: npm run typecheck:product
+      - run: npm run test:product
+      - run: npm run build:product:web
+
+  product-gate:
+    if: always()
+    needs: [changes, product]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require affected Product checks
+        env:
+          CHANGED: ${{ needs.changes.outputs.changed }}
+          RESULT: ${{ needs.product.result }}
+        run: |
+          if [ "$CHANGED" = true ]; then test "$RESULT" = success; else test "$RESULT" = skipped; fi

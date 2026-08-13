@@ -32,14 +32,18 @@ export function resolveBuildId(localPrefix: string): string {
 }
 
 /** Emits the `version.json` the update checker polls, next to the bundle. */
-export function emitVersionJson(buildId: string): Plugin {
+export function emitVersionJson(buildId: string, productVersion?: string): Plugin {
   return {
     name: 'emit-version-json',
     generateBundle() {
       this.emitFile({
         type: 'asset',
         fileName: 'version.json',
-        source: JSON.stringify({ buildId }, null, 2),
+        source: JSON.stringify(
+          { buildId, ...(productVersion ? { version: productVersion } : {}) },
+          null,
+          2,
+        ),
       });
     },
   };

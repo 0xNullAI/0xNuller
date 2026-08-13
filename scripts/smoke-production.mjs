@@ -1,5 +1,7 @@
 const base = (process.env.PRODUCTION_ORIGIN ?? 'https://0xnullai.com').replace(/\/$/, '');
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 15_000);
+const expectedVersion = process.env.EXPECTED_PRODUCT_VERSION;
+const expectedBuildId = process.env.EXPECTED_BUILD_ID;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -31,7 +33,20 @@ function json(path, body) {
 const checks = [];
 
 const web = await request('/version.json', 200);
-assert(/^[0-9a-f]{40}$/.test(json('/version.json', web.body).buildId), 'invalid Web buildId');
+const webVersion = json('/version.json', web.body);
+assert(/^[0-9a-f]{40}$/.test(webVersion.buildId), 'invalid Web buildId');
+if (expectedVersion) {
+  assert(
+    webVersion.version === expectedVersion,
+    `Web is ${webVersion.version}, expected ${expectedVersion}`,
+  );
+}
+if (expectedBuildId) {
+  assert(
+    webVersion.buildId === expectedBuildId,
+    `Web build is ${webVersion.buildId}, expected ${expectedBuildId}`,
+  );
+}
 checks.push(['web', web.durationMs]);
 
 const auth = await request('/api/auth/me', 200);

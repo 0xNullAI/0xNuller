@@ -90,6 +90,10 @@ function verifyProductMetadata() {
 
   const kitVersionWorkflow = readFileSync('.github/workflows/kit-version.yml', 'utf8');
   const kitReleaseWorkflow = readFileSync('.github/workflows/kit-release.yml', 'utf8');
+  const mcpReleaseWorkflow = readFileSync('.github/workflows/mcp-release.yml', 'utf8');
+  const productCiWorkflow = readFileSync('.github/workflows/ci-product.yml', 'utf8');
+  const kitCiWorkflow = readFileSync('.github/workflows/ci-kit.yml', 'utf8');
+  const mcpCiWorkflow = readFileSync('.github/workflows/ci-mcp.yml', 'utf8');
   const changesetConfig = json('.changeset/config.json');
   const productReleaseWorkflow = readFileSync('.github/workflows/product-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
@@ -109,8 +113,8 @@ function verifyProductMetadata() {
     'GIT_COMMITTER_NAME: 0xNull',
     'GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com',
   ]) {
-    if (!kitVersionWorkflow.includes(required) || !kitReleaseWorkflow.includes(required)) {
-      fail(`Kit workflows do not enforce commit identity: missing ${required}`);
+    if (!kitVersionWorkflow.includes(required)) {
+      fail(`npm version preparation does not enforce commit identity: missing ${required}`);
     }
   }
   if (changesetConfig.baseBranch !== 'dev') {
@@ -126,36 +130,61 @@ function verifyProductMetadata() {
   }
   if (
     !kitReleaseWorkflow.includes('workflow_dispatch:') ||
-    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(kitReleaseWorkflow) ||
+    !kitReleaseWorkflow.includes('workflows: [CI · DG-Kit]') ||
     !/branches: \[main\]/.test(kitReleaseWorkflow) ||
     !kitReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
     !kitReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
-    !kitReleaseWorkflow.includes('publish: npm run release') ||
-    kitReleaseWorkflow.includes('version: npm run version') ||
-    kitReleaseWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
+    !kitReleaseWorkflow.includes('npm publish --workspace "$name"') ||
+    kitReleaseWorkflow.includes('changesets/action') ||
+    kitReleaseWorkflow.includes('gh release create')
   ) {
-    fail('Kit Release must publish consumed package versions only from verified main');
+    fail('DG-Kit must publish changed npm packages only from verified main');
+  }
+  if (
+    !mcpReleaseWorkflow.includes('workflow_dispatch:') ||
+    !mcpReleaseWorkflow.includes('workflows: [CI · DG-MCP]') ||
+    !/branches: \[main\]/.test(mcpReleaseWorkflow) ||
+    !mcpReleaseWorkflow.includes('npm publish --workspace dg-mcp') ||
+    mcpReleaseWorkflow.includes('changesets/action') ||
+    mcpReleaseWorkflow.includes('gh release create')
+  ) {
+    fail('DG-MCP must publish its changed npm version only from verified main');
   }
   if (
     !productReleaseWorkflow.includes('workflow_dispatch:') ||
-    !/workflow_run:\s*\n\s+workflows: \[CI\]/.test(productReleaseWorkflow) ||
+    !productReleaseWorkflow.includes('workflows: [CI · Product]') ||
     !/branches: \[main\]/.test(productReleaseWorkflow) ||
     !productReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
   ) {
     fail('Product Release must support manual runs and verified main releases');
   }
-  if (!productReleaseWorkflow.includes("should-release == 'true'")) {
+  if (!productReleaseWorkflow.includes("steps.version.outputs.publish == 'true'")) {
     fail('Product Release must skip versions that already have a signed release');
   }
   for (const required of [
-    '--title "0xNuller $VERSION"',
-    '--notes-file "docs/releases/$VERSION.md"',
-    '--target "${{ needs.prepare.outputs.source-sha }}"',
+    '--title "0xNuller ${{ steps.version.outputs.version }}"',
+    '--notes-file "docs/releases/${{ steps.version.outputs.version }}.md"',
+    '--target "${{ steps.source.outputs.sha }}"',
     '--latest',
   ]) {
     if (!productReleaseWorkflow.includes(required)) {
       fail(`Product Release must own the single product release: missing ${required}`);
     }
+  }
+  if (
+    !productReleaseWorkflow.includes('npm run web:build:release') ||
+    !productReleaseWorkflow.includes('npm run android:build') ||
+    !productReleaseWorkflow.includes('npx wrangler deploy --config apps/web/wrangler.jsonc') ||
+    productReleaseWorkflow.includes('npm publish')
+  ) {
+    fail('0xNuller release must synchronously deliver Web and Android without publishing npm');
+  }
+  if (
+    !productCiWorkflow.startsWith('name: CI · Product') ||
+    !kitCiWorkflow.startsWith('name: CI · DG-Kit') ||
+    !mcpCiWorkflow.startsWith('name: CI · DG-MCP')
+  ) {
+    fail('Product, DG-Kit, and DG-MCP CI must remain separately visible');
   }
 
   return root.version;

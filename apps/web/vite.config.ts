@@ -5,6 +5,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
+import productPackage from '../../package.json';
 
 /**
  * The unified shell. The four modules' source trees still live under
@@ -63,7 +64,7 @@ export default defineConfig({
     },
   },
   define: { __BUILD_ID__: JSON.stringify(buildId) },
-  plugins: [react(), tailwindcss(), emitVersionJson(buildId)],
+  plugins: [react(), tailwindcss(), emitVersionJson(buildId, productPackage.version)],
   build: { outDir: 'dist', emptyOutDir: true, target: 'esnext' },
   server: { port: 5170, proxy },
 });

@@ -1,7 +1,7 @@
 name: Release Guard
 
-# Runs on every PR that targets `main`. main is reserved for releases, so a
-# PR landing there MUST increase a releasable version. The shared verifier also
+# Runs on every PR that targets `main`. main is reserved for production promotion,
+# so a PR landing there MUST increase the Product, DG-Kit, or DG-MCP version. The verifier also
 # rejects product-version drift between npm, Cargo, Tauri and Android's versionCode.
 
 on:
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '22.19.0'
 
-      - name: Require npm Version PRs to be consumed
+      - name: Require npm version preparation to be consumed
         run: npm run verify:changesets:consumed
 
       - name: Verify release metadata and version increases

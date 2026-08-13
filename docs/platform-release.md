@@ -1,52 +1,74 @@
-# 0xNuller 平台发布规范
+# 0xNuller 发布体系
 
-这份文档只描述 0xNuller 产品版本。`@dg-kit/*` 与 `dg-mcp` 是 npm 包，使用 changesets，
-不创建 0xNuller 产品 Release。
+仓库有三条独立版本线、四类交付物。所有生产发布都只从通过对应 CI 的 `main` commit
+执行；`dev` 只用于开发、集成、版本准备和测试。
 
-npm 包只有一条发布线：`Kit Version` 在 `dev` 创建 `changeset-release/dev` Version PR，
-只更新包版本和 CHANGELOG，不发布。版本化后的代码随产品发布 PR 进入 `main`，主分支 CI
-通过后由独立的 `Kit Release` 发布到 npm。产品 GitHub Release 由 `Product Release` 独占，
-两者不会复用标签或 Release。
+| 发布线   | 交付物              | 版本来源                   | 发布位置                    |
+| -------- | ------------------- | -------------------------- | --------------------------- |
+| 0xNuller | Web + Android APK   | 根 `package.json`          | Cloudflare + GitHub Release |
+| DG-Kit   | 7 个 `@dg-kit/*` 包 | Kit 固定 Changesets 版本组 | npm                         |
+| DG-MCP   | `dg-mcp`            | `apps/mcp/package.json`    | npm                         |
+
+DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只展示 0xNuller 产品。
 
 ## 分支职责
 
-- `main`：发布分支和线上唯一真源。它的 HEAD 必须对应当前已发布或正在发布的产品版本；
-  npm、网页和 APK 生产发布只允许从这里发生。
-- `dev`：下一版本的集成分支。所有日常功能、修复和文档 PR 都以它为 base。
-- 功能分支：从最新 `dev` 创建，CI 通过后可以 squash 合并回 `dev`。
+- 功能分支从 `dev` 创建，只合并回 `dev`。
+- `dev` 可以包含 changeset、下一产品版本和发布说明，但不能部署或发布任何产物。
+- `main` 是唯一生产源，只接受 `dev → main` 发布 PR，并使用 merge commit。
+- 手动发布同样校验目标 SHA 等于当前 `main` HEAD，不能选择其他分支绕过。
 
-`main` 不接收普通功能分支。发布时在 `dev` 上统一升级产品版本并补发布说明，然后直接创建
-`dev → main` PR。该 PR 必须使用 **merge commit**，让 `main` 真实包含已经验证的 `dev`
-历史。这样两个长期分支保持同一祖先链，下一次发布不会因 squash 复制提交而产生伪冲突。
-普通功能 PR 仍可 squash 到 `dev`。
+## 0xNuller 产品发布
 
-## 一个版本只对应一个 tag 和一个 Release
-
-`vX.Y.Z` 同时是不可变源码边界和唯一面向用户的 GitHub Release。Release 标题为
-`0xNuller X.Y.Z`，包含签名 APK，并标记为 Latest。GitHub 会自动为这个 tag 提供源码归档，
-不再创建 `android-vX.Y.Z` 或第二个源码 Release。
-
-网页版下载入口使用稳定地址：
+Web 和 Android 是同一个产品版本，必须来自同一个 `main` commit：
 
 ```text
-https://github.com/0xNullAI/0xNuller/releases/latest/download/0xnuller-vX.Y.Z.apk
+根 package:             6.1.0
+Web version.json:       6.1.0 + main commit SHA
+Android versionName:    6.1.0
+Android versionCode:    6001000
+Git tag:                v6.1.0
+APK:                    0xnuller-v6.1.0.apk
+Release 标题:           0xNuller 6.1.0
 ```
 
-因此产品 Release 必须始终是 Latest；APK 使用明确的版本化文件名
-`0xnuller-vX.Y.Z.apk`，网页版链接随产品版本一起更新。
+`Release · 0xNuller` 在 `CI · Product` 和 `CI · Repository` 对同一 main SHA 成功后运行：
 
-## 发布顺序
+1. 检查 `vX.Y.Z` 尚未发布。
+2. 构建 Web 和签名 Android APK。
+3. 验证 APK 包名、版本、签名、ABI、权限和源码 SHA。
+4. 部署产品 Workers 与 Web。
+5. 用 `/version.json` 核对线上产品版本和源码 SHA。
+6. 创建唯一 GitHub Release，附件只放版本化 APK；源码归档由 GitHub 自动提供。
 
-1. 所有待发布功能先进入 `dev`，且 `dev` CI 为绿色。
-2. 在 `dev` 上统一更新根 package、Android package、Cargo、Tauri、lockfile 与 `versionCode`，
-   新增 `docs/releases/X.Y.Z.md`。
-3. 如果存在 npm Version PR，先合并它；此时只更新版本与 CHANGELOG，不发布 npm。
-4. 创建唯一允许进入 `main` 的产品发布 PR：`dev → main`。Release Guard 验证无待消费
-   changeset、产品版本递增和元数据一致；CI 全绿后使用 merge commit 合并。
-5. `main` CI 成功后并行启动三条相互隔离的生产流程：`Product Release` 构建签名 APK 并
-   创建唯一 `vX.Y.Z` 产品 Release；`Kit Release` 仅发布尚未上线的 npm 包；
-   `Deploy Cloudflare` 更新线上服务。
-6. 校验产品 Release 目标 commit、APK 签名/摘要、npm 包版本，并执行生产烟测。
+产品版本未变化时工作流正常跳过，不能覆盖已有 APK 或 Release。
 
-生产修复也必须在 `dev` 完成并升级产品版本，仍然通过同一条 `dev → main` 路径发布；
-不要直接提交 main，也不要创建第二条长期发布线。
+## DG-Kit npm 发布
+
+七个 `@dg-kit/*` 包是固定版本组。任一公开 Kit 包需要发布时，Changesets 同步更新全组版本。
+版本准备 PR 可以在 `dev` 生成，但 `Publish · DG-Kit` 只在版本化代码进入 `main`、对应 CI
+通过后发布。工作流逐包查询 npm，已存在的版本跳过，缺失的版本发布，因此部分失败可安全重试。
+
+## DG-MCP npm 发布
+
+`dg-mcp` 使用独立版本。`Publish · DG-MCP` 只在 `apps/mcp/package.json` 的版本尚未存在于
+npm 时发布。MCP 依赖的 Kit 版本必须先能从 npm 安装；MCP 发布不改变产品或 Kit 版本。
+
+## 可选择的发布入口
+
+GitHub Actions 保留三个独立入口：
+
+- `Release · 0xNuller`
+- `Publish · DG-Kit`
+- `Publish · DG-MCP`
+
+它们可由 main 对应 CI 自动触发，也可手动重试；手动执行不放宽 main、CI、版本不可变等门禁。
+
+## 发布准备顺序
+
+1. 功能和 changeset 合并到 `dev`。
+2. 合并 `NPM Version Preparation` PR，消费 changeset并更新 npm 包版本/CHANGELOG。
+3. 若发布产品，同时更新统一产品版本和 `docs/releases/X.Y.Z.md`。
+4. 创建 `dev → main` PR；Release Guard 验证至少一条版本线递增。
+5. merge commit 合入 `main`。
+6. main 的分域 CI 根据改动运行，对应发布线只发布自身版本发生变化的交付物。

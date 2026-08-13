@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Cpu, LayoutTemplate, Palette, ShieldAlert, ShieldCheck, UserRound, X } from 'lucide-react';
+import {
+  Cpu,
+  Info,
+  LayoutTemplate,
+  Palette,
+  ShieldAlert,
+  ShieldCheck,
+  UserRound,
+  X,
+} from 'lucide-react';
 import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
 import { AppearanceTab } from './AppearanceTab';
@@ -8,6 +17,7 @@ import { SafetyTab } from './SafetyTab';
 import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
 import { AdminContent } from './AdminContent';
+import { AboutTab } from './AboutTab';
 
 /**
  * The software's one and only settings panel.
@@ -31,6 +41,7 @@ const TABS = [
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
+  { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
 ] as const;
 
 export function SettingsPanel({

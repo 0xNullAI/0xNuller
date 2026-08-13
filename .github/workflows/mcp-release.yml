@@ -1,9 +1,9 @@
-name: Publish · DG-Kit
+name: Publish · DG-MCP
 
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [CI · DG-Kit]
+    workflows: [CI · DG-MCP]
     types: [completed]
     branches: [main]
 
@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-dg-kit-main
+  group: publish-dg-mcp-main
   cancel-in-progress: false
 
 jobs:
@@ -49,19 +49,15 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run verify:changesets:consumed
-      - run: npm run verify:kit
-      - name: Publish changed DG-Kit packages
+      - run: npm run verify:mcp
+      - name: Publish DG-MCP when its version changed
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
         run: |
-          packages=(core protocol safety tools transport-tauri-blec transport-webbluetooth waveforms)
-          for package in "${packages[@]}"; do
-            name="@dg-kit/$package"
-            version=$(node -p "require('./packages/kit/$package/package.json').version")
-            if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "$name@$version already published"
-            else
-              npm publish --workspace "$name" --access public --provenance
-            fi
-          done
+          version=$(node -p "require('./apps/mcp/package.json').version")
+          if npm view "dg-mcp@$version" version >/dev/null 2>&1; then
+            echo "dg-mcp@$version already published"
+          else
+            npm publish --workspace dg-mcp --access public --provenance
+          fi
