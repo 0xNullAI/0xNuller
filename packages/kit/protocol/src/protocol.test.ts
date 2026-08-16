@@ -329,6 +329,7 @@ describe('CoyoteV2ProtocolAdapter', () => {
     });
 
     expect(protocol.getState().connected).toBe(true);
+    expect(protocol.getState().battery).toBeUndefined();
     expect(strengthWrites[0]).toEqual([0, 0, 0]);
 
     protocolInternal.pendingStrA = 10;
@@ -422,6 +423,7 @@ describe('CoyoteV3ProtocolAdapter connect handshake', () => {
     });
 
     expect(protocol.getState().connected).toBe(true);
+    expect(protocol.getState().battery).toBeUndefined();
     expect(writes[0]).toEqual(Array.from(V3_INIT_PACKET));
     expect(writes[1]?.[0]).toBe(0xbf);
 

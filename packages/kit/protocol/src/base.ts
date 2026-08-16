@@ -370,7 +370,8 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
       this.state.battery = value.getUint8(0);
       this.emit();
     } catch {
-      this.state.battery = 0;
+      this.state.battery = undefined;
+      this.emit();
     }
   }
 

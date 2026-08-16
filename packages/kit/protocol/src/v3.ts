@@ -43,7 +43,7 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
         this.batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
         await this.readBattery();
       } catch {
-        this.state.battery = 0;
+        this.state.battery = undefined;
       }
 
       this.resetProtocolState();
