@@ -1,5 +1,13 @@
 # @dg-kit/safety
 
+## 1.16.1
+
+### Patch Changes
+
+- Updated dependencies [8341b9a]
+  - @dg-kit/protocol@1.16.1
+  - @dg-kit/core@1.16.1
+
 ## 1.16.0
 
 ### Patch Changes

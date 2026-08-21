@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "@0xnullai/settings": "0.1.0",
-    "@dg-kit/core": "1.16.0"
+    "@dg-kit/core": "1.16.1"
   }
 }

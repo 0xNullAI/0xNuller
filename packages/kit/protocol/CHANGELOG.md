@@ -1,5 +1,14 @@
 # @dg-kit/protocol
 
+## 1.16.1
+
+### Patch Changes
+
+- 8341b9a: Read DG-Lab battery levels from the standard BLE Battery Service and preserve an unavailable reading instead of reporting a false 0%.
+
+  Recover from Chromium's `GATT Server is disconnected` service-discovery race by reconnecting before retrying the protocol handshake.
+  - @dg-kit/core@1.16.1
+
 ## 1.16.0
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.16.1
+
+### Patch Changes
+
+- 73ce38e: Prewarm Android BLE discovery after startup permission checks and reuse fresh named DG-Lab results when the user opens the device picker.
+- Updated dependencies [8341b9a]
+  - @dg-kit/protocol@1.16.1
+  - @dg-kit/core@1.16.1
+
 ## 1.16.0
 
 ### Patch Changes

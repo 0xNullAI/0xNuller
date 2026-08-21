@@ -215,6 +215,27 @@ describe('WebBluetoothDeviceClient GATT-ready retry', () => {
     expect(protocol.onConnected).toHaveBeenCalledTimes(2);
   });
 
+  it('reconnects before retrying Chromium’s exact disconnected-server failure', async () => {
+    const { nav, device, protocol } = setup();
+    protocol.onConnected.mockImplementationOnce(async () => {
+      device.gatt.connected = false;
+      throw new Error(
+        'GATT Server is disconnected. Cannot retrieve services. (Re)connect first with `device.gatt.connect`',
+      );
+    });
+
+    const client = new WebBluetoothDeviceClient({
+      protocol: protocol as any,
+      navigatorRef: nav as any,
+      gattReadyRetryOptions: { gattReadyInitialDelayMs: 0, gattReadyIntervalMs: 0 },
+    });
+
+    await client.connect();
+
+    expect(device.gatt.connect).toHaveBeenCalledTimes(2);
+    expect(protocol.onConnected).toHaveBeenCalledTimes(2);
+  });
+
   it('does not retry and surfaces a non-transient onConnected error immediately', async () => {
     const { nav, protocol } = setup();
     protocol.onConnected.mockRejectedValue(new Error('未授予蓝牙权限'));

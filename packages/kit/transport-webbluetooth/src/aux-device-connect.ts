@@ -120,10 +120,16 @@ export async function attachAuxDevice(
   }
 
   try {
-    await runWithGattReadyRetry(
-      () => adapter.onConnected({ device: nextDevice, server }),
-      gattReadyRetryOptions ?? {},
-    );
+    let activeServer = server;
+    await runWithGattReadyRetry(async () => {
+      // A disconnected server object does not become usable merely by
+      // repeating getPrimaryService(); reconnect before retrying discovery.
+      if (!gatt?.connected) {
+        if (!gatt) throw new Error('所选蓝牙设备不支持 GATT');
+        activeServer = await gatt.connect();
+      }
+      await adapter.onConnected({ device: nextDevice, server: activeServer });
+    }, gattReadyRetryOptions ?? {});
   } catch (error) {
     if (shouldReplacePrevious && isGattConnected(previousDevice)) {
       previousDevice.addEventListener('gattserverdisconnected', onGattDisconnected);

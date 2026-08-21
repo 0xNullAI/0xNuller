@@ -1,5 +1,11 @@
 # @dg-kit/waveforms
 
+## 1.16.1
+
+### Patch Changes
+
+- @dg-kit/core@1.16.1
+
 ## 1.16.0
 
 ### Minor Changes

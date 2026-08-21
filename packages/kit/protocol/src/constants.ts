@@ -7,8 +7,11 @@ export const V3_SENSOR_NAME_PREFIX = '47L120';
 export const V3_PRIMARY_SERVICE = '0000180c-0000-1000-8000-00805f9b34fb';
 export const V3_WRITE_CHAR = '0000150a-0000-1000-8000-00805f9b34fb';
 export const V3_NOTIFY_CHAR = '0000150b-0000-1000-8000-00805f9b34fb';
-export const V3_BATTERY_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb';
-export const V3_BATTERY_CHAR = '00001500-0000-1000-8000-00805f9b34fb';
+// DG-Lab devices expose battery through the Bluetooth SIG Battery Service.
+// 0x180A is the Device Information service; the previous 0x180A/0x1500 pair
+// never resolved on real hardware and made every failed read look like 0%.
+export const V3_BATTERY_SERVICE = '0000180f-0000-1000-8000-00805f9b34fb';
+export const V3_BATTERY_CHAR = '00002a19-0000-1000-8000-00805f9b34fb';
 
 // Other 47L12x-family devices (dungeonlab-open/dglab-bluetooth-protocol).
 // They all share the exact same GATT skeleton as Coyote V3 — service 0x180C,

@@ -34,7 +34,7 @@ import {
 } from '@dg-kit/protocol';
 import { createGattShim } from './gatt-shim.js';
 import { resolvePluginBlec } from './plugin-blec.js';
-import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
+import { prewarmDeviceScan, scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
 import { DEVICE_PICKER_CANCELLED_MESSAGE } from '@dg-kit/core';
 
 /**
@@ -50,6 +50,15 @@ export const DG_LAB_TAURI_NAME_PREFIXES: string[] = [
   OPOSSUM_DEVICE_NAME_PREFIX,
   V2_DEVICE_NAME_PREFIX,
 ];
+
+/** Start a permission-silent all-kind scan for the Android shell cache. */
+export async function prewarmDgLabDeviceScan(scanDurationMs = 8000): Promise<void> {
+  const api = await resolvePluginBlec();
+  await prewarmDeviceScan(api, {
+    namePrefixes: DG_LAB_TAURI_NAME_PREFIXES,
+    scanDurationMs,
+  });
+}
 
 export interface RequestDgLabDeviceTauriOptions {
   /**
