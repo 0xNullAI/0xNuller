@@ -9,7 +9,7 @@
   "dependencies": {
     "@0xnullai/waveforms": "0.1.0",
     "@dg-agent/core": "0.1.0",
-    "@dg-kit/waveforms": "^1.16.0",
+    "@dg-kit/waveforms": "^1.16.1",
     "fflate": "^0.8.2",
     "zod": "^4.4.3"
   },
