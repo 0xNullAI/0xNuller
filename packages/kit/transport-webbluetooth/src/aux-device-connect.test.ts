@@ -3,6 +3,10 @@ import { attachAuxDevice, type ConnectableAdapter } from './aux-device-connect.j
 
 class FakeGatt {
   connected = true;
+  connect = vi.fn(async () => {
+    this.connected = true;
+    return this;
+  });
   disconnect = vi.fn(() => {
     this.connected = false;
   });
@@ -35,6 +39,25 @@ describe('attachAuxDevice GATT-ready retry', () => {
 
     expect(onConnected).toHaveBeenCalledTimes(2);
     expect(result).toBe(device);
+  });
+
+  it('reconnects before retrying Chromium’s disconnected-server error', async () => {
+    const device = new FakeDevice();
+    const onConnected = vi.fn().mockImplementationOnce(async () => {
+      device.gatt.connected = false;
+      throw new Error(
+        'GATT Server is disconnected. Cannot retrieve services. (Re)connect first with `device.gatt.connect`',
+      );
+    });
+    const adapter = fakeAdapter(onConnected);
+
+    await attachAuxDevice(device, device.gatt, adapter, null, () => undefined, {
+      gattReadyInitialDelayMs: 0,
+      gattReadyIntervalMs: 0,
+    });
+
+    expect(device.gatt.connect).toHaveBeenCalledTimes(1);
+    expect(onConnected).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a non-transient onConnected error and disconnects', async () => {

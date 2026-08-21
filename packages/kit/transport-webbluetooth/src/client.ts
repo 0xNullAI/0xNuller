@@ -164,10 +164,17 @@ export class WebBluetoothDeviceClient implements DeviceClient {
     }
 
     try {
-      await runWithGattReadyRetry(
-        () => this.options.protocol.onConnected({ device: nextDevice, server }),
-        this.options.gattReadyRetryOptions ?? {},
-      );
+      let activeServer = server;
+      await runWithGattReadyRetry(async () => {
+        // Chrome can drop the GATT link after connect() resolves but before
+        // service discovery starts. A retry against the old server can never
+        // recover; establish a fresh server before repeating the handshake.
+        if (!nextDevice.gatt?.connected) {
+          if (!nextDevice.gatt) throw new Error('所选蓝牙设备不支持 GATT');
+          activeServer = await nextDevice.gatt.connect();
+        }
+        await this.options.protocol.onConnected({ device: nextDevice, server: activeServer });
+      }, this.options.gattReadyRetryOptions ?? {});
     } catch (error) {
       if (shouldReplacePrevious && isGattConnected(previousDevice)) {
         previousDevice.addEventListener('gattserverdisconnected', this.onDisconnected);
@@ -301,7 +308,11 @@ export class WebBluetoothDeviceClient implements DeviceClient {
         this.reconnecting = false;
         return;
       }
-      await this.options.protocol.onConnected({ device, server });
+      let activeServer = server;
+      await runWithGattReadyRetry(async () => {
+        if (!gatt.connected) activeServer = await gatt.connect();
+        await this.options.protocol.onConnected({ device, server: activeServer });
+      }, this.options.gattReadyRetryOptions ?? {});
       this.reconnecting = false;
       this.options.onReconnectStateChange?.('reconnected');
     } catch {

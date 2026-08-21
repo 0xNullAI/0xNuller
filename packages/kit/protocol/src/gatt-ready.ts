@@ -39,6 +39,9 @@ export const DEFAULT_GATT_READY_ERROR_PATTERNS = [
   'characteristic not found',
   'no such characteristic',
   'not connected',
+  // Chromium's exact Web Bluetooth wording when the link drops between
+  // gatt.connect() resolving and service discovery beginning.
+  'gatt server is disconnected',
 ];
 
 export async function runWithGattReadyRetry(
