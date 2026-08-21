@@ -9,10 +9,10 @@
   "dependencies": {
     "@dg-agent/core": "0.1.0",
     "@dg-agent/waveforms": "0.1.0",
-    "@dg-kit/core": "^1.16.0",
-    "@dg-kit/protocol": "^1.16.0",
-    "@dg-kit/safety": "1.16.0",
-    "@dg-kit/tools": "^1.16.0"
+    "@dg-kit/core": "^1.16.1",
+    "@dg-kit/protocol": "^1.16.1",
+    "@dg-kit/safety": "1.16.1",
+    "@dg-kit/tools": "^1.16.1"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
