@@ -9,6 +9,7 @@ import {
   createEmptySensorState,
   type DeviceClient,
   type DeviceKind,
+  type DeviceState,
   type PermissionDecision,
   type DeviceLinkRule,
   DEFAULT_DEVICE_LINK_RULE,
@@ -254,7 +255,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       if (deviceId === 'opossum') return disconnectOpossum();
       if (deviceId === 'paw-prints') return disconnectPawPrints();
       if (deviceId === 'civet-edging') return disconnectCivetEdging();
-      return disconnectDevice();
+      return disconnectDevice(deviceId);
     },
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
@@ -270,22 +271,18 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     // Fed to the shell's device bar. One slot per device — the user has to be able to
     // see at a glance what is attached to them.
     devices: () => [
-      ...(deviceState.connected
-        ? [
-            {
-              id: 'coyote',
-              kind: 'coyote',
-              name: deviceState.deviceName ?? '郊狼',
-              connected: true,
-              battery: deviceState.battery,
-              active: deviceState.strengthA > 0 || deviceState.strengthB > 0,
-              channels: [
-                { label: 'A', value: deviceState.strengthA, max: settings.maxStrengthA },
-                { label: 'B', value: deviceState.strengthB, max: settings.maxStrengthB },
-              ],
-            },
-          ]
-        : []),
+      ...connectedCoyoteStates(device, deviceState).map(({ id, state }) => ({
+        id,
+        kind: 'coyote' as const,
+        name: state.deviceName ?? '郊狼',
+        connected: true,
+        battery: state.battery,
+        active: state.strengthA > 0 || state.strengthB > 0,
+        channels: [
+          { label: 'A', value: state.strengthA, max: settings.maxStrengthA },
+          { label: 'B', value: state.strengthB, max: settings.maxStrengthB },
+        ],
+      })),
       ...(opossumState.connected
         ? [
             {
@@ -548,18 +545,25 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     refreshCurrentSession,
   ]);
 
-  const disconnectDevice = useCallback(async (): Promise<void> => {
-    try {
-      setErrorMessage(null);
-      await client.disconnectDevice();
-      setStatusMessage('设备已断开');
-      if (activeSessionId) {
-        await refreshCurrentSession(activeSessionId);
+  const disconnectDevice = useCallback(
+    async (deviceId?: string): Promise<void> => {
+      try {
+        setErrorMessage(null);
+        if (deviceId && supportsPerCoyoteDisconnect(device)) {
+          await device.disconnectDeviceById(deviceId);
+        } else {
+          await client.disconnectDevice();
+        }
+        setStatusMessage('设备已断开');
+        if (activeSessionId) {
+          await refreshCurrentSession(activeSessionId);
+        }
+      } catch (error) {
+        setErrorMessage(formatUiErrorMessage(error));
       }
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-    }
-  }, [activeSessionId, client, refreshCurrentSession]);
+    },
+    [activeSessionId, client, device, refreshCurrentSession],
+  );
 
   const disconnectOpossum = useCallback(async (): Promise<void> => {
     try {
@@ -1093,4 +1097,26 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       )}
     </>
   );
+}
+
+interface MultiCoyoteSnapshotClient {
+  getConnectedCoyotes(): Array<{ id: string; state: DeviceState }>;
+  disconnectDeviceById(deviceId: string): Promise<void>;
+}
+
+function supportsPerCoyoteDisconnect(
+  client: DeviceClient,
+): client is DeviceClient & MultiCoyoteSnapshotClient {
+  return (
+    typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function' &&
+    typeof (client as Partial<MultiCoyoteSnapshotClient>).disconnectDeviceById === 'function'
+  );
+}
+
+function connectedCoyoteStates(
+  client: DeviceClient,
+  fallback: DeviceState,
+): Array<{ id: string; state: DeviceState }> {
+  if (supportsPerCoyoteDisconnect(client)) return client.getConnectedCoyotes();
+  return fallback.connected ? [{ id: 'coyote', state: fallback }] : [];
 }

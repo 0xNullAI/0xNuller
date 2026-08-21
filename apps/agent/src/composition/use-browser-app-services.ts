@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import {
   createBrowserServices,
+  MultiCoyoteDeviceClient,
   type BrowserServices,
   type BrowserServicesOptions,
   type PermissionRequestInput,
 } from '@dg-agent/agent-browser';
 import type { MessageOrigin } from '@dg-agent/bridge';
 import type { DeviceClient, PermissionDecision } from '@dg-agent/core';
-import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
 import {
   WebBluetoothCivetEdgingClient,
   WebBluetoothDeviceClient,
@@ -96,10 +96,11 @@ export function useBrowserAppServices(
   const createDeviceClient = servicesOverrides?.createDeviceClient;
   const deviceRef = useRef<DeviceClient | null>(null);
   if (deviceRef.current === null) {
-    const protocol = new CoyoteProtocolAdapter();
-    deviceRef.current = createDeviceClient
-      ? createDeviceClient(protocol)
-      : new WebBluetoothDeviceClient({ protocol, autoReconnect: true });
+    deviceRef.current = new MultiCoyoteDeviceClient((protocol) =>
+      createDeviceClient
+        ? createDeviceClient(protocol)
+        : new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
+    );
   }
   const device = deviceRef.current;
 
