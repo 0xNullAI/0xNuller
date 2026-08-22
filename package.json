@@ -46,7 +46,7 @@
     "format:check:changed": "node scripts/check-format-changed.mjs",
     "clean": "rm -rf packages/*/*/dist packages/*/*/tsconfig.tsbuildinfo apps/*/dist",
     "changeset": "changeset",
-    "version": "changeset version && npm install --package-lock-only --ignore-scripts",
+    "version": "changeset version && node scripts/sync-workspace-lock.mjs",
     "web:build:release": "node scripts/run-release-build.mjs web",
     "android:init": "npm run tauri -w @0xnullai/android -- android init --ci && npm run android:prepare",
     "android:prepare": "node scripts/prepare-android-release.mjs",
