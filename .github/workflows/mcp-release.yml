@@ -42,6 +42,7 @@ jobs:
         with:
           source-sha: ${{ steps.source.outputs.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          required-workflow: ci-mcp.yml
       - uses: actions/setup-node@v6
         with:
           node-version: '22.19.0'
@@ -50,6 +51,41 @@ jobs:
       - run: npm ci
       - run: npm run verify:changesets:consumed
       - run: npm run verify:mcp
+      - name: Wait for the current DG-Kit dependencies on npm
+        run: |
+          set -euo pipefail
+          mapfile -t dependencies < <(
+            node -e "const p=require('./apps/mcp/package.json'); console.log(Object.keys(p.dependencies).filter((name) => name.startsWith('@dg-kit/')).join('\\n'))"
+          )
+          for name in "${dependencies[@]}"; do
+            package=${name#@dg-kit/}
+            version=$(node -p "require('./packages/kit/$package/package.json').version")
+            range=$(node -p "require('./apps/mcp/package.json').dependencies['$name']")
+            available=false
+            for attempt in $(seq 1 40); do
+              if npm view "$name@$version" version >/dev/null 2>&1; then
+                available=true
+                break
+              fi
+              echo "Waiting for $name@$version on npm ($attempt/40)"
+              sleep 15
+            done
+            test "$available" = true || {
+              echo "$name@$version is not available on npm" >&2
+              exit 1
+            }
+            versions=$(npm view "$name@$range" version --json)
+            node -e "const v=JSON.parse(process.argv[1]); if (!(Array.isArray(v) ? v : [v]).includes(process.argv[2])) process.exit(1)" "$versions" "$version" || {
+              echo "$name range $range does not include current version $version" >&2
+              exit 1
+            }
+          done
+      - name: Reconfirm current main source
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          git fetch origin main
+          test "$SOURCE_SHA" = "$(git rev-parse origin/main)"
       - name: Publish DG-MCP when its version changed
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
