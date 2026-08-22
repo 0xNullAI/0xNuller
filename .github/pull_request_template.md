@@ -15,8 +15,9 @@ PR 标题用 conventional-commit 风格：type(scope): subject
   │           release-guard 校验 → merge commit → main 发布     │
   └────────────────────────────────────────────────────────────┘
 
-⚠️ 日常 PR 的 base 必须是 dev。只有产品发布使用 dev → main，并必须使用 merge commit，
-让 main 真实包含已验证的 dev 历史；不要 squash/rebase，也不做反向 cherry-pick。
+⚠️ 日常 PR 的 base 必须是 dev。只有维护者晋升 Product、DG-Kit 或 DG-MCP 版本时使用
+`dev → main`，并必须使用 merge commit，让 main 真实包含已验证的 dev 历史；不要
+squash/rebase，也不做反向 cherry-pick。
 
 例：feat(protocol): add setLimits() to update strength caps
     fix(web): bluetooth chooser auto-trigger regression
@@ -40,7 +41,7 @@ PR 标题用 conventional-commit 风格：type(scope): subject
 
 <!--
 - 是否破坏 API？是 → 加 `breaking-change` 标签，PR 标题改 `feat!` 或 `fix!`
-- 是否需要 changeset / changelog？（改动 packages/kit/* 或 apps/mcp 必加）
+- 是否需要 changeset / changelog？（`packages/kit/*` 或 `apps/mcp` 的公共行为、API、依赖变化必加）
 - 是否影响下游消费者？列举一下
 -->
 
