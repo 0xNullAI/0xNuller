@@ -4,11 +4,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-09",
   "routes": [
-    { "pattern": "agent.0xnullai.com", "custom_domain": true },
+    { "pattern": "agent.0xnullai.com/*", "zone_name": "0xnullai.com" },
     { "pattern": "chat.0xnullai.com", "custom_domain": true },
     { "pattern": "voice.0xnullai.com", "custom_domain": true },
     { "pattern": "market.0xnullai.com", "custom_domain": true },
-    { "pattern": "wiki.0xnullai.com", "custom_domain": true },
+    { "pattern": "wiki.0xnullai.com/*", "zone_name": "0xnullai.com" },
   ],
   "services": [{ "binding": "MIGRATION", "service": "0xnullai-browser-migration" }],
   "workers_dev": true,

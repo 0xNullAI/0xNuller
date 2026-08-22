@@ -123,7 +123,7 @@ WebSocket 和非导航请求返回退役响应，不再依赖历史 Worker 或 P
 
 主站首次加载时通过 `workers/browser-migration` 在各旧 origin 的受限 `.well-known` 端点迁移白名单
 localStorage 与 IndexedDB 数据。该端点长期保留，旧域由 `workers/legacy-compat` 的 Custom Domain
-维持 DNS、TLS 和永久跳转，因此删除历史站点不会阻止长期未上线用户迁移浏览器数据。
+或 Worker Route 维持 TLS 和永久跳转，因此删除历史站点不会阻止长期未上线用户迁移浏览器数据。
 
 Market 新旧版本共用 `dg-market` D1；Chat 新旧版本共用 `dg-chat-media` R2。旧版非保留 Chat
 房间原本会在空置十分钟后删除消息和媒体，不是永久历史库。删除历史 Worker 时不得删除这两个

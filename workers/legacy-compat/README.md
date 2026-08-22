@@ -4,4 +4,4 @@
 其他非导航请求返回退役响应，不再依赖旧 Worker 或 Pages。
 
 Browser Migration 的 `.well-known` 路径始终转发到专用迁移 Worker。五个旧域由本 Worker 的
-Custom Domain 长期维持 DNS、TLS、浏览器数据迁移和搜索引擎跳转。
+Custom Domain 或 Worker Route 长期维持 TLS、浏览器数据迁移和搜索引擎跳转。
