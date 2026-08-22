@@ -143,7 +143,7 @@ export function Shell() {
       ? 'account'
       : null;
   });
-  const [docsOpen, setDocsOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(() => pathname === '/wiki');
   // Whose profile is open, by username. The shell owns this surface because it
   // is reachable from Chat's member list, from contacts and from the account
   // dialog, and there must be exactly one of it.
@@ -374,7 +374,14 @@ export function Shell() {
                 onClose={() => setSettingsTab(null)}
               />
             )}
-            {docsOpen && <DocsDialog onClose={() => setDocsOpen(false)} />}
+            {docsOpen && (
+              <DocsDialog
+                onClose={() => {
+                  setDocsOpen(false);
+                  if (pathname === '/wiki') navigate('/');
+                }}
+              />
+            )}
             {/* Public profiles remain readable while signed out. */}
             {profileUsername && (
               <ProfileDialog
