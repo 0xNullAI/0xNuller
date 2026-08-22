@@ -1,5 +1,5 @@
 ---
-"@dg-kit/protocol": patch
+'@dg-kit/protocol': patch
 ---
 
 ⚠️ **Bug fix — Coyote V2 byte order.**

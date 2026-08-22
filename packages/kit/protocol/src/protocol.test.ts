@@ -400,15 +400,30 @@ describe('CoyoteV2ProtocolAdapter', () => {
 
     // A=10, B=0 → (102 << 11) | 0 = 0x33000, little-endian bytes.
     expect(strengthWrites.at(-1)).toEqual([0x00, 0x30, 0x03]);
-    // A 波形帧 [100,10] → X=5/Y=95/Z=3 → 0x18BE5, little-endian, written to 1506.
+    // A frame [100,10] → X=5/Y=95/Z=3 → 0x18BE5, written to 1506 (waveBChar).
     expect(waveBWrites.at(-1)).toEqual([0xe5, 0x8b, 0x01]);
-    // B 无波形 → 1505 写静默。
+    // An inactive B channel writes silence to 1505 (waveAChar).
     expect(waveAWrites.at(-1)).toEqual([0x00, 0x00, 0x00]);
 
     protocolInternal.pendingStrB = 10;
+    protocolInternal.waveState.B = {
+      frames: [[200, 20]],
+      index: 0,
+      loop: true,
+      active: true,
+    };
     await protocolInternal.onTick();
+
     // A=10, B=10 → 0x33066, little-endian bytes.
     expect(strengthWrites.at(-1)).toEqual([0x66, 0x30, 0x03]);
+    // B frame [200,20] → X=12/Y=588/Z=6 → 0x3498C, written to 1505 (waveAChar).
+    expect(waveAWrites.at(-1)).toEqual([0x8c, 0x49, 0x03]);
+
+    protocolInternal.pendingStrA = 0;
+    protocolInternal.pendingStrB = 20;
+    await protocolInternal.onTick();
+    // A=0, B=20 → 0x000CD, little-endian bytes.
+    expect(strengthWrites.at(-1)).toEqual([0xcd, 0x00, 0x00]);
 
     await protocol.onDisconnected();
   });
@@ -425,13 +440,13 @@ describe('CoyoteV2ProtocolAdapter', () => {
       connected: true,
     };
 
-    // [0x00, 0x30, 0x03] little-endian → 0x033000 → A=102/2047≈10, B=0.
+    // [0xCD, 0x30, 0x03] little-endian → A=102, B=205; scale back to 10 and 20.
     protocolInternal.handleV2StrengthNotification({
-      target: { value: new DataView(Uint8Array.from([0x00, 0x30, 0x03]).buffer) },
+      target: { value: new DataView(Uint8Array.from([0xcd, 0x30, 0x03]).buffer) },
     } as unknown as Event);
 
     expect(protocol.getState().strengthA).toBe(10);
-    expect(protocol.getState().strengthB).toBe(0);
+    expect(protocol.getState().strengthB).toBe(20);
   });
 
   it('rolls back to a disconnected state when early V2 initialization fails', async () => {
