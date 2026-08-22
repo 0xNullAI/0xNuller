@@ -56,7 +56,9 @@ npm run release:data:preflight -- \
 3. LLM Proxy（依赖 Auth 的账户额度）
 4. Market
 5. Voice（启用体验服务时）
-6. Web
+6. Browser Migration（旧子域存储导出端点）
+7. Legacy Compat（旧域网页跳转与旧 API 代理）
+8. Web
 
 `main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
@@ -108,18 +110,24 @@ npm run account:role -- --remote-write \
 
 不要自动把第一个注册账户设为管理员。
 
-## 兼容发布
+## 旧域迁移
 
-6.0 只替换 `0xnullai.com` 和 `www.0xnullai.com`。历史子域可以继续运行旧版本：
+历史子域已永久迁移：网页导航以 `308` 跳到统一主站的对应模块并保留查询参数；旧 API、
+WebSocket 和非导航请求返回退役响应，不再依赖历史 Worker 或 Pages。
 
-- `agent.0xnullai.com`
-- `voice.0xnullai.com`
-- `chat.0xnullai.com`
-- `market.0xnullai.com`
-- `wiki.0xnullai.com`
+- `agent.0xnullai.com` → `/agent`
+- `voice.0xnullai.com` → `/voice`
+- `chat.0xnullai.com` → `/chat`
+- `market.0xnullai.com` → `/market`
+- `wiki.0xnullai.com` → `/wiki`
 
-切换根域时不要删除旧 Pages 项目、Worker、存储或 DNS。先观察新版稳定运行，再归档不再维护
-的旧 GitHub 仓库；归档不是删除，也不代表历史站点下线。
+主站首次加载时通过 `workers/browser-migration` 在各旧 origin 的受限 `.well-known` 端点迁移白名单
+localStorage 与 IndexedDB 数据。该端点长期保留，旧域由 `workers/legacy-compat` 的 Custom Domain
+或 Worker Route 维持 TLS 和永久跳转，因此删除历史站点不会阻止长期未上线用户迁移浏览器数据。
+
+Market 新旧版本共用 `dg-market` D1；Chat 新旧版本共用 `dg-chat-media` R2。旧版非保留 Chat
+房间原本会在空置十分钟后删除消息和媒体，不是永久历史库。删除历史 Worker 时不得删除这两个
+仍由当前产品使用的共享存储。
 
 DG-Kit 的迁移与 DG-MCP 的对外发布必须单独确认，不随主站发布自动执行。
 

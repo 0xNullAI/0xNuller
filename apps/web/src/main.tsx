@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './shell.css';
 import { Shell } from './Shell';
+import { runLegacyBrowserMigration } from './browser-data-migration';
 
 // A tab opened before a deployment can still hold an index chunk that points
 // at the previous Agent/Voice/etc. hash. Vite reports that exact case before
@@ -28,8 +29,13 @@ window.addEventListener('vite:preloadError', (event) => {
   window.location.reload();
 });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Shell />
-  </StrictMode>,
-);
+async function bootstrap(): Promise<void> {
+  await runLegacyBrowserMigration();
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <Shell />
+    </StrictMode>,
+  );
+}
+
+void bootstrap();
