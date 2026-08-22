@@ -341,6 +341,99 @@ describe('CoyoteV2ProtocolAdapter', () => {
     await protocol.onDisconnected();
   });
 
+  it('writes V2 strength and wave packets little-endian (A wave on 1506, B wave on 1505)', async () => {
+    const strengthWrites: number[][] = [];
+    const waveAWrites: number[][] = [];
+    const waveBWrites: number[][] = [];
+    const strengthChar = new MockResponseOnlyCharacteristic(async (value) => {
+      strengthWrites.push(Array.from(value));
+    });
+    const waveAChar = new MockResponseOnlyCharacteristic(async (value) => {
+      waveAWrites.push(Array.from(value));
+    });
+    const waveBChar = new MockResponseOnlyCharacteristic(async (value) => {
+      waveBWrites.push(Array.from(value));
+    });
+
+    const protocol = new CoyoteV2ProtocolAdapter();
+    const protocolInternal = protocol as unknown as {
+      pendingStrA: number;
+      pendingStrB: number;
+      waveState: {
+        A: { frames: [number, number][] | null; index: number; loop: boolean; active: boolean };
+        B: { frames: [number, number][] | null; index: number; loop: boolean; active: boolean };
+      };
+      onTick(): Promise<void>;
+    };
+
+    await protocol.onConnected({
+      device: { name: 'D-LAB ESTIM01', id: 'v2-device' } as unknown as EventTarget & {
+        id?: string;
+        name?: string;
+      },
+      server: {
+        connected: true,
+        async getPrimaryService(service: string) {
+          if (service !== V2_PRIMARY_SERVICE) {
+            throw new Error('battery unavailable');
+          }
+          return {
+            async getCharacteristic(characteristic: string) {
+              if (characteristic === V2_STRENGTH_CHAR) return strengthChar;
+              if (characteristic === V2_WAVE_A_CHAR) return waveAChar;
+              if (characteristic === V2_WAVE_B_CHAR) return waveBChar;
+              throw new Error(`unknown characteristic: ${characteristic}`);
+            },
+          };
+        },
+      },
+    });
+
+    protocolInternal.pendingStrA = 10;
+    protocolInternal.waveState.A = {
+      frames: [[100, 10]],
+      index: 0,
+      loop: true,
+      active: true,
+    };
+    await protocolInternal.onTick();
+
+    // A=10, B=0 → (102 << 11) | 0 = 0x33000, little-endian bytes.
+    expect(strengthWrites.at(-1)).toEqual([0x00, 0x30, 0x03]);
+    // A 波形帧 [100,10] → X=5/Y=95/Z=3 → 0x18BE5, little-endian, written to 1506.
+    expect(waveBWrites.at(-1)).toEqual([0xe5, 0x8b, 0x01]);
+    // B 无波形 → 1505 写静默。
+    expect(waveAWrites.at(-1)).toEqual([0x00, 0x00, 0x00]);
+
+    protocolInternal.pendingStrB = 10;
+    await protocolInternal.onTick();
+    // A=10, B=10 → 0x33066, little-endian bytes.
+    expect(strengthWrites.at(-1)).toEqual([0x66, 0x30, 0x03]);
+
+    await protocol.onDisconnected();
+  });
+
+  it('parses V2 strength notifications as little-endian', async () => {
+    const protocol = new CoyoteV2ProtocolAdapter();
+    const protocolInternal = protocol as unknown as {
+      state: ReturnType<typeof createEmptyDeviceState>;
+      handleV2StrengthNotification(event: Event): void;
+    };
+
+    protocolInternal.state = {
+      ...createEmptyDeviceState(),
+      connected: true,
+    };
+
+    // [0x00, 0x30, 0x03] little-endian → 0x033000 → A=102/2047≈10, B=0.
+    protocolInternal.handleV2StrengthNotification({
+      target: { value: new DataView(Uint8Array.from([0x00, 0x30, 0x03]).buffer) },
+    } as unknown as Event);
+
+    expect(protocol.getState().strengthA).toBe(10);
+    expect(protocol.getState().strengthB).toBe(0);
+  });
+
   it('rolls back to a disconnected state when early V2 initialization fails', async () => {
     const protocol = new CoyoteV2ProtocolAdapter();
 
