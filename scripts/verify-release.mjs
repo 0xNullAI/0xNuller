@@ -122,9 +122,9 @@ function verifyProductMetadata() {
   }
   if (
     !root.scripts?.version?.includes('changeset version') ||
-    !root.scripts?.version?.includes('npm install --package-lock-only --ignore-scripts')
+    !root.scripts?.version?.includes('node scripts/sync-workspace-lock.mjs')
   ) {
-    fail('npm version preparation must refresh package-lock.json after Changesets');
+    fail('npm version preparation must sync package-lock.json after Changesets');
   }
   if (
     !kitVersionWorkflow.includes('workflow_dispatch:') ||
