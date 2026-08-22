@@ -19,6 +19,7 @@ import type { ToolCall, ToolExecutionPlan } from '@dg-kit/core';
 import type { DeviceManager } from './device-manager.js';
 import { type ConnectedDevice } from './device-manager.js';
 import type { NodeWaveformLibrary } from './waveform-library.js';
+import { DG_MCP_VERSION } from './version.js';
 
 export interface DgMcpServerOptions {
   deviceManager: DeviceManager;
@@ -49,7 +50,7 @@ export function createDgMcpServer(options: DgMcpServerOptions): Server {
   const server = new Server(
     {
       name: 'dg-mcp',
-      version: '1.1.0',
+      version: DG_MCP_VERSION,
     },
     {
       capabilities: {

@@ -47,6 +47,7 @@ jobs:
         with:
           source-sha: ${{ steps.source.outputs.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          required-workflow: ci-product.yml
 
       - uses: actions/setup-node@v6
         with:
@@ -112,6 +113,14 @@ jobs:
           artifact="$RUNNER_TEMP/0xnuller-v${{ steps.version.outputs.version }}.apk"
           install -m 0644 "$apk" "$artifact"
           echo "path=$artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Reconfirm current main source
+        if: steps.version.outputs.publish == 'true'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          git fetch origin main
+          test "$SOURCE_SHA" = "$(git rev-parse origin/main)"
 
       - name: Require Cloudflare credentials
         if: steps.version.outputs.publish == 'true'

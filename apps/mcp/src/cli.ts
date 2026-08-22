@@ -14,6 +14,7 @@ import { existsSync, statSync } from 'node:fs';
 import { DeviceManager } from './device-manager.js';
 import { NodeWaveformLibrary } from './waveform-library.js';
 import { runStdioServer } from './server.js';
+import { DG_MCP_VERSION } from './version.js';
 
 interface ParsedArgs {
   waveformPaths: string[];
@@ -41,7 +42,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       printHelp();
       process.exit(0);
     } else if (arg === '--version' || arg === '-v') {
-      console.log('dg-mcp 1.1.0');
+      console.log(`dg-mcp ${DG_MCP_VERSION}`);
       process.exit(0);
     } else if (arg && arg.startsWith('--')) {
       console.error(`unknown flag: ${arg}`);

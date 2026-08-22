@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/android",
-  "version": "6.0.11",
+  "version": "6.0.12",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,8 +17,8 @@
     "@0xnullai/web": "*",
     "@dg-agent/core": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
-    "@dg-kit/protocol": "^1.16.1",
-    "@dg-kit/transport-tauri-blec": "^1.16.1",
+    "@dg-kit/protocol": "^1.16.2",
+    "@dg-kit/transport-tauri-blec": "^1.16.2",
     "@mnlphlp/plugin-blec": "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git#main",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.4",

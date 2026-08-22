@@ -176,24 +176,24 @@ export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     }
   }
 
-  // NOTE (unverified, do not "fix" without a real V2 device): the V3 doc's
-  // own migration note says "与 V2 协议不同的是，数据无需进行大小端转换"
-  // ("unlike V2, this data needs no endian conversion"), implying V2's
-  // 3-byte packed values are expected little-endian on the wire. Both
-  // encoders below emit big-endian (most-significant byte first). This is
-  // long-standing, presumably-working behavior with no V2 hardware
-  // available this session to confirm either reading against — flagged
-  // here rather than changed.
+  // V2 wire format is little-endian: the 3-byte packed values are sent
+  // least-significant byte first, even though the V2 doc describes the bit
+  // fields (A 21-11, B 10-0) in big-endian terms. Confirmed against the
+  // official community protocol doc's "与 V2 协议不同的是，数据无需进行
+  // 大小端转换" migration note and multiple real-world implementations
+  // (shilapi/DGLAB-python-driver, hyperzlib/DG-Lab-Coyote-Game-Hub,
+  // erotronik/CoyoStim), and confirmed on real Coyote 2.0 hardware:
+  // single A/B output works and dual-channel no longer spikes to full power.
   private encodeV2Strength(a: number, b: number): Uint8Array {
     const valueA = Math.round((this.clamp(a, 0, 200) * 2047) / 200);
     const valueB = Math.round((this.clamp(b, 0, 200) * 2047) / 200);
     const combined = (valueA << 11) | valueB;
-    return new Uint8Array([(combined >> 16) & 0xff, (combined >> 8) & 0xff, combined & 0xff]);
+    return new Uint8Array([combined & 0xff, (combined >> 8) & 0xff, (combined >> 16) & 0xff]);
   }
 
   private encodeV2Wave(x: number, y: number, z: number): Uint8Array {
     const packed = ((z & 0x1f) << 15) | ((y & 0x3ff) << 5) | (x & 0x1f);
-    return new Uint8Array([(packed >> 16) & 0xff, (packed >> 8) & 0xff, packed & 0xff]);
+    return new Uint8Array([packed & 0xff, (packed >> 8) & 0xff, (packed >> 16) & 0xff]);
   }
 
   private decodeV3Freq(encoded: number): number {
@@ -217,7 +217,7 @@ export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     const value = target?.value;
     if (!value || value.byteLength < 3) return;
 
-    const raw = (value.getUint8(0) << 16) | (value.getUint8(1) << 8) | value.getUint8(2);
+    const raw = value.getUint8(0) | (value.getUint8(1) << 8) | (value.getUint8(2) << 16);
     const rawA = (raw >> 11) & 0x7ff;
     const rawB = raw & 0x7ff;
     const nextStrengthA = Math.round((rawA * 200) / 2047);

@@ -16,6 +16,7 @@ import type { Peripheral } from '@stoprocent/noble';
 import { createDgMcpServer } from './server.js';
 import { DeviceManager, type ConnectedDevice } from './device-manager.js';
 import { NodeWaveformLibrary } from './waveform-library.js';
+import { DG_MCP_VERSION } from './version.js';
 
 // --- Fake GATT context (no noble involved) ----------------------------------
 //
@@ -175,6 +176,14 @@ function parseToolResult(result: Awaited<ReturnType<Client['callTool']>>): Recor
   }
   return JSON.parse(first.text) as Record<string, unknown>;
 }
+
+describe('server metadata', () => {
+  it('reports the version from the package manifest', async () => {
+    const { client } = await createHarness();
+
+    expect(client.getServerVersion()).toEqual({ name: 'dg-mcp', version: DG_MCP_VERSION });
+  });
+});
 
 describe('opossum tool dispatch (plan.type === "opossum")', () => {
   it('vibrate_start sets the requested channel and leaves the other unchanged', async () => {

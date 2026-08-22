@@ -72,6 +72,18 @@ for (const [name, directory] of packages) {
     /(?:^|\/)\w+\.test\.(?:js|d\.ts)(?:\.map)?$/.test(file),
   );
   if (leakedTests.length) fail(`${name}: tarball contains test output: ${leakedTests.join(', ')}`);
+  if (name === 'dg-mcp') {
+    const reportedVersion = execFileSync(
+      process.execPath,
+      [`${directory}/dist/cli.js`, '--version'],
+      {
+        encoding: 'utf8',
+      },
+    ).trim();
+    if (reportedVersion !== `${name} ${manifest.version}`) {
+      fail(`${name}: CLI reports ${JSON.stringify(reportedVersion)}, expected ${manifest.version}`);
+    }
+  }
   console.log(`${packed.id}: ${packed.entryCount} files, ${packed.size} packed bytes`);
 }
 

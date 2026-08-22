@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.0.11",
+  "version": "6.0.12",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
@@ -46,7 +46,7 @@
     "format:check:changed": "node scripts/check-format-changed.mjs",
     "clean": "rm -rf packages/*/*/dist packages/*/*/tsconfig.tsbuildinfo apps/*/dist",
     "changeset": "changeset",
-    "version": "changeset version",
+    "version": "changeset version && node scripts/sync-workspace-lock.mjs",
     "web:build:release": "node scripts/run-release-build.mjs web",
     "android:init": "npm run tauri -w @0xnullai/android -- android init --ci && npm run android:prepare",
     "android:prepare": "node scripts/prepare-android-release.mjs",
