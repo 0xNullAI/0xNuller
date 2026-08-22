@@ -42,6 +42,7 @@ jobs:
         with:
           source-sha: ${{ steps.source.outputs.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          required-workflow: ci-kit.yml
       - uses: actions/setup-node@v6
         with:
           node-version: '22.19.0'
@@ -50,6 +51,12 @@ jobs:
       - run: npm ci
       - run: npm run verify:changesets:consumed
       - run: npm run verify:kit
+      - name: Reconfirm current main source
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          git fetch origin main
+          test "$SOURCE_SHA" = "$(git rev-parse origin/main)"
       - name: Publish changed DG-Kit packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -121,6 +121,12 @@ function verifyProductMetadata() {
     fail('Changesets must use dev as its single npm release branch');
   }
   if (
+    !root.scripts?.version?.includes('changeset version') ||
+    !root.scripts?.version?.includes('npm install --package-lock-only --ignore-scripts')
+  ) {
+    fail('npm version preparation must refresh package-lock.json after Changesets');
+  }
+  if (
     !kitVersionWorkflow.includes('workflow_dispatch:') ||
     !/push:\s*\n\s+branches: \[dev\]/.test(kitVersionWorkflow) ||
     kitVersionWorkflow.includes('publish:') ||
@@ -134,6 +140,9 @@ function verifyProductMetadata() {
     !/branches: \[main\]/.test(kitReleaseWorkflow) ||
     !kitReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
     !kitReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
+    !kitReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
+    !kitReleaseWorkflow.includes('required-workflow: ci-kit.yml') ||
+    !kitReleaseWorkflow.includes('name: Reconfirm current main source') ||
     !kitReleaseWorkflow.includes('npm publish --workspace "$name"') ||
     kitReleaseWorkflow.includes('changesets/action') ||
     kitReleaseWorkflow.includes('gh release create')
@@ -144,6 +153,13 @@ function verifyProductMetadata() {
     !mcpReleaseWorkflow.includes('workflow_dispatch:') ||
     !mcpReleaseWorkflow.includes('workflows: [CI · DG-MCP]') ||
     !/branches: \[main\]/.test(mcpReleaseWorkflow) ||
+    !mcpReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
+    !mcpReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
+    !mcpReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
+    !mcpReleaseWorkflow.includes('required-workflow: ci-mcp.yml') ||
+    !mcpReleaseWorkflow.includes("name.startsWith('@dg-kit/')") ||
+    !mcpReleaseWorkflow.includes('npm view "$name@$version" version') ||
+    !mcpReleaseWorkflow.includes('name: Reconfirm current main source') ||
     !mcpReleaseWorkflow.includes('npm publish --workspace dg-mcp') ||
     mcpReleaseWorkflow.includes('changesets/action') ||
     mcpReleaseWorkflow.includes('gh release create')
@@ -154,7 +170,10 @@ function verifyProductMetadata() {
     !productReleaseWorkflow.includes('workflow_dispatch:') ||
     !productReleaseWorkflow.includes('workflows: [CI · Product]') ||
     !/branches: \[main\]/.test(productReleaseWorkflow) ||
-    !productReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'")
+    !productReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
+    !productReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
+    !productReleaseWorkflow.includes('required-workflow: ci-product.yml') ||
+    !productReleaseWorkflow.includes('name: Reconfirm current main source')
   ) {
     fail('Product Release must support manual runs and verified main releases');
   }

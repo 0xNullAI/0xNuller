@@ -52,7 +52,8 @@ Release 标题:           0xNuller 6.1.0
 ## DG-MCP npm 发布
 
 `dg-mcp` 使用独立版本。`Publish · DG-MCP` 只在 `apps/mcp/package.json` 的版本尚未存在于
-npm 时发布。MCP 依赖的 Kit 版本必须先能从 npm 安装；MCP 发布不改变产品或 Kit 版本。
+npm 时发布。发布前工作流会等待当前源码中的 MCP Kit 依赖版本全部可从 npm 获取，避免同一
+`main` SHA 的 Kit 与 MCP 并行发布产生不可安装窗口。MCP 发布不改变产品或 Kit 版本。
 
 ## 可选择的发布入口
 
@@ -62,7 +63,8 @@ GitHub Actions 保留三个独立入口：
 - `Publish · DG-Kit`
 - `Publish · DG-MCP`
 
-它们可由 main 对应 CI 自动触发，也可手动重试；手动执行不放宽 main、CI、版本不可变等门禁。
+它们可由 main 对应 CI 自动触发，也可手动重试；手动执行仍要求所选 SHA 是当前 `main` tip，
+并要求 Repository CI 和对应 Product/Kit/MCP 责任域 CI 对同一 SHA 成功，不放宽版本不可变等门禁。
 
 ## 发布准备顺序
 
@@ -72,3 +74,5 @@ GitHub Actions 保留三个独立入口：
 4. 创建 `dev → main` PR；Release Guard 验证至少一条版本线递增。
 5. merge commit 合入 `main`。
 6. main 的分域 CI 根据改动运行，对应发布线只发布自身版本发生变化的交付物。
+7. 同批包含 Kit 与 MCP 时，Kit 先在 npm 可用；MCP 工作流自动等待后再发布。Product 从同一
+   monorepo SHA 构建，不等待 npm 包发布。
