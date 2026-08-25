@@ -57,6 +57,8 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
     waveActiveB: false,
   },
   opossum: { connected: false, battery: 0, intensityA: 0, intensityB: 0 },
+  coyotes: [],
+  opossumTarget: null,
 };
 
 type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
@@ -124,6 +126,7 @@ export function App() {
   const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
   const [durationMinutes, setDurationMinutes] = useState(5);
   const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
+  const [targetId, setTargetId] = useState('');
   const [channel, setChannel] = useState<'A' | 'B'>('A');
   const [intensityCap, setIntensityCap] = useState(10);
   const [allowEnhanced, setAllowEnhanced] = useState(false);
@@ -229,10 +232,10 @@ export function App() {
   useSafetySession({
     id: 'video',
     label: 'Video',
-    isActive: () => devices.coyote.connected || devices.opossum.connected,
+    isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
-    connect: () => service.connect(),
-    disconnect: (deviceId) => service.disconnect(deviceId === 'opossum' ? 'opossum' : 'coyote'),
+    connect: () => service.connect().then(() => undefined),
+    disconnect: (deviceId) => service.disconnect(deviceId),
     onRevoke: async () => {
       session.failSafeStop('lease-loss');
       await service.stop('lease-loss');
@@ -242,10 +245,12 @@ export function App() {
 
   useEffect(() => {
     if (!grant) return;
-    const connected =
-      grant.targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+    const connected = [
+      ...devices.coyotes,
+      ...(devices.opossumTarget ? [devices.opossumTarget] : []),
+    ].some((target) => target.kind === grant.targetKind && target.targetId === grant.targetId);
     if (!connected) session.failSafeStop('device-loss');
-  }, [devices.coyote.connected, devices.opossum.connected, grant, session]);
+  }, [devices.coyotes, devices.opossumTarget, grant, session]);
 
   useEffect(() => {
     if ((cameraState === 'off' || cameraState === 'error') && visual.status === 'running') {
@@ -275,8 +280,14 @@ export function App() {
     };
   }, [service, stopEverything]);
 
-  const targetConnected =
-    targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+  const connectedTargets = [
+    ...devices.coyotes,
+    ...(devices.opossumTarget ? [devices.opossumTarget] : []),
+  ];
+  const selectedTarget = connectedTargets.find(
+    (target) => target.kind === targetKind && target.targetId === targetId,
+  );
+  const targetConnected = selectedTarget !== undefined;
   const targetSafetyCap =
     targetKind === 'coyote'
       ? channel === 'A'
@@ -298,6 +309,7 @@ export function App() {
       await grantDeviceLease('video');
       const next = await service.authorize({
         targetKind,
+        targetId,
         channel,
         intensityCap: effectiveIntensityCap,
         allowEnhanced,
@@ -348,8 +360,9 @@ export function App() {
   async function connect(kind: VideoOutputKind) {
     try {
       setLocalError(null);
-      await service.connect(kind);
-      setTargetKind(kind);
+      const target = await service.connect(kind);
+      setTargetKind(target.kind);
+      setTargetId(target.targetId);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
     }
@@ -398,12 +411,13 @@ export function App() {
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium">设备授权</span>
               <div className="flex gap-1.5">
-                {!devices.coyote.connected && (
+                {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
                   <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                    <Link className="h-3.5 w-3.5" /> 郊狼
+                    <Link className="h-3.5 w-3.5" />
+                    {devices.coyotes.length > 0 ? '添加郊狼' : '郊狼'}
                   </Button>
                 )}
-                {!devices.opossum.connected && (
+                {!devices.opossumTarget && (
                   <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
                     <Link className="h-3.5 w-3.5" /> 负鼠
                   </Button>
@@ -415,15 +429,24 @@ export function App() {
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
                 目标
                 <select
-                  value={targetKind}
-                  onChange={(event) => setTargetKind(event.target.value as VideoOutputKind)}
+                  value={targetId}
+                  onChange={(event) => {
+                    const nextTarget = connectedTargets.find(
+                      (target) => target.targetId === event.target.value,
+                    );
+                    setTargetId(event.target.value);
+                    if (nextTarget) setTargetKind(nextTarget.kind);
+                  }}
                   disabled={visual.status === 'running'}
                   className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
                 >
-                  <option value="coyote">郊狼{devices.coyote.connected ? ' · 已连接' : ''}</option>
-                  <option value="opossum">
-                    负鼠{devices.opossum.connected ? ' · 已连接' : ''}
-                  </option>
+                  <option value="">请选择已连接目标</option>
+                  {connectedTargets.map((target) => (
+                    <option key={target.targetId} value={target.targetId}>
+                      {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name} ·{' '}
+                      {target.targetId}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
@@ -558,7 +581,7 @@ export function App() {
           <div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-soft)]">
             状态：{statusLabel(visual)} · {visual.steps} 次观察
             {grant && !grant.revoked
-              ? ` · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
+              ? ` · 目标 ${grant.targetId} · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
               : ' · 未授权'}
           </div>
 

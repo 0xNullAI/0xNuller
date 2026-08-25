@@ -126,6 +126,9 @@ const bridge = {
   },
   video: {
     createControlService: (options: BrowserVideoControlOptions) => {
+      // Keep one native Coyote client: the shared Video service assigns an
+      // opaque ID per connection and rejects a second target when this
+      // transport composition cannot independently prove multiple identities.
       const device = withConnectPermissionHelp(
         wrapWithLifecycleSafety(
           new TauriBlecDeviceClient({

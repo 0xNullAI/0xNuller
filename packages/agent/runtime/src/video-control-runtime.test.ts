@@ -19,6 +19,7 @@ import {
   VideoControlRuntime,
   narrowVideoToolDefinitions,
   type VideoControlSafetyLimits,
+  type VideoControlTargetRouter,
 } from './video-control-runtime.js';
 import { VideoControlGrant } from './video-control-grant.js';
 
@@ -107,13 +108,37 @@ function createRuntime(input: {
   permission?: PermissionService;
   onEffectSettled?: (output: string | null) => void;
   onEvent?: (event: unknown) => void;
+  targetRouter?: VideoControlTargetRouter;
 }) {
+  const device = input.device ?? createDevice();
+  const opossum = input.opossum ?? createOpossum();
+  const targetRouter: VideoControlTargetRouter = input.targetRouter ?? {
+    selectTarget: async (kind, targetId) =>
+      targetId === `${kind}-session-1` &&
+      (kind === 'coyote'
+        ? (await device.getState()).connected
+        : (await opossum.getState()).connected),
+    getCoyoteState: async (targetId) =>
+      targetId === 'coyote-session-1' ? device.getState() : null,
+    getOpossumState: async (targetId) =>
+      targetId === 'opossum-session-1' ? opossum.getState() : null,
+    executeCoyote: async (targetId, command) =>
+      targetId === 'coyote-session-1' ? device.execute(command) : null,
+    executeOpossum: async (targetId, command) =>
+      targetId === 'opossum-session-1' ? opossum.execute(command) : null,
+    stopTarget: async (kind, targetId) => {
+      if (targetId !== `${kind}-session-1`) return false;
+      await (kind === 'coyote' ? device.emergencyStop() : opossum.emergencyStop());
+      return true;
+    },
+  };
   return new VideoControlRuntime({
-    device: input.device ?? createDevice(),
-    opossum: input.opossum ?? createOpossum(),
+    device,
+    opossum,
     getLlm: () => input.llm,
     getSafetyLimits: () => SAFETY,
     hasLease: () => true,
+    targetRouter,
     permission: input.permission,
     onEffectSettled: (_call, output) => input.onEffectSettled?.(output),
     onRuntimeEvent: input.onEvent,
@@ -123,6 +148,7 @@ function createRuntime(input: {
 async function authorize(runtime: VideoControlRuntime): Promise<void> {
   await runtime.authorize({
     targetKind: 'coyote',
+    targetId: 'coyote-session-1',
     channel: 'A',
     intensityCap: 30,
     allowEnhanced: true,
@@ -135,7 +161,7 @@ async function authorize(runtime: VideoControlRuntime): Promise<void> {
 }
 
 async function flushAsyncWork(): Promise<void> {
-  for (let index = 0; index < 10; index += 1) await Promise.resolve();
+  for (let index = 0; index < 30; index += 1) await Promise.resolve();
 }
 
 describe('VideoControlRuntime', () => {
@@ -173,8 +199,7 @@ describe('VideoControlRuntime', () => {
     await authorize(runtime);
 
     await expect(runtime.observe(FRAME)).resolves.toBe('继续保持节奏。');
-    await flushAsyncWork();
-    expect(execute).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     expect(settled).not.toHaveBeenCalled();
     await expect(runtime.observe(FRAME)).resolves.toBe('已看到下一帧。');
     expect(llm.runTurn).toHaveBeenCalledTimes(2);
@@ -274,6 +299,7 @@ describe('Video tool definitions', () => {
     const shared = await createDefaultToolRegistry({}).listDefinitions();
     const grant = new VideoControlGrant({
       targetKind: 'coyote',
+      targetId: 'coyote-session-1',
       channel: 'B',
       intensityCap: 25,
       allowEnhanced: false,

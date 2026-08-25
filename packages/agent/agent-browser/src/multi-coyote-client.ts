@@ -119,6 +119,13 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     }
   }
 
+  async emergencyStopDeviceById(deviceId: string): Promise<boolean> {
+    const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
+    if (!slot) return false;
+    await slot.client.emergencyStop();
+    return true;
+  }
+
   selectDeviceById(deviceId: string): void {
     const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
     if (!slot) throw new Error('目标郊狼未连接');
@@ -131,16 +138,35 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     return primary ? primary.client.getState() : createEmptyDeviceState();
   }
 
+  async getDeviceStateById(deviceId: string): Promise<DeviceState | null> {
+    const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
+    return slot ? slot.client.getState() : null;
+  }
+
   async execute(command: DeviceCommand): Promise<DeviceCommandResult> {
     const primary = this.primarySlot();
     if (!primary) throw new Error('设备未连接');
     return primary.client.execute(command);
   }
 
+  async executeDeviceById(
+    deviceId: string,
+    command: DeviceCommand,
+  ): Promise<DeviceCommandResult | null> {
+    const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
+    return slot ? slot.client.execute(command) : null;
+  }
+
   async emergencyStop(): Promise<void> {
     // Never let one unreachable host prevent the stop command reaching the
-    // others. This is the Agent and shell panic-button path.
-    await Promise.allSettled(this.connectedSlots().map((slot) => slot.client.emergencyStop()));
+    // others. Report a failure only after every connected host was attempted.
+    const results = await Promise.allSettled(
+      this.connectedSlots().map((slot) => slot.client.emergencyStop()),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) throw failure.reason;
   }
 
   onStateChanged(listener: (state: DeviceState) => void): () => void {

@@ -333,7 +333,7 @@ function clamp01(value: number): number {
 function PreviewPanel({ label, children }: { label: string; children: ReactNode }) {
   return (
     <figure className="relative min-h-[240px] overflow-hidden bg-black">
-      <figcaption className="absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white">
+      <figcaption className="absolute left-2 top-2 z-[var(--z-local-popover)] rounded bg-black/60 px-2 py-1 text-xs text-white">
         {label}
       </figcaption>
       {children}

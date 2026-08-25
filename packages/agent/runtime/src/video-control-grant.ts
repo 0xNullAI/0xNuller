@@ -12,6 +12,8 @@ export type VideoControlTargetKind = Extract<DeviceKind, 'coyote' | 'opossum'>;
 
 export interface VideoControlGrantInput {
   targetKind: VideoControlTargetKind;
+  /** Opaque identity for one physical connection; never persisted or reused. */
+  targetId: string;
   channel: Channel;
   intensityCap: number;
   /** Allows positive adjustments after the initial, safety-capped start. */
@@ -57,6 +59,7 @@ export class VideoControlGrant {
     this.snapshot = {
       id: `video-grant-${issuedAt}-${Math.random().toString(36).slice(2, 8)}`,
       targetKind: input.targetKind,
+      targetId: requireTargetId(input.targetId),
       channel: input.channel === 'B' ? 'B' : 'A',
       intensityCap: clampInteger(input.intensityCap, 0, safetyCap),
       allowEnhanced: input.allowEnhanced === true,
@@ -152,6 +155,12 @@ export class VideoControlGrant {
         return false;
     }
   }
+}
+
+function requireTargetId(value: string): string {
+  const targetId = value.trim();
+  if (!targetId) throw new Error('Video 控制授权必须指定物理目标');
+  return targetId;
 }
 
 function clampInteger(value: number, minimum: number, maximum: number): number {
