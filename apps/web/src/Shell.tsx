@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { LogIn, Menu } from 'lucide-react';
 import {
   useTheme,
@@ -152,6 +152,8 @@ export function Shell() {
   // screens it defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   const [actionsRef, actionsContainer] = useModuleActionsContainer();
 
@@ -213,6 +215,23 @@ export function Shell() {
     setLastRoute({ id: activeId, narrow });
     if (drawerOpen) setDrawerOpen(false);
   }
+
+  useEffect(() => {
+    if (!narrow || !drawerOpen) return;
+    const drawerTrigger = drawerTriggerRef.current;
+    const focusTimer = window.setTimeout(() => {
+      drawerRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus();
+    }, 0);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', closeOnEscape);
+      drawerTrigger?.focus();
+    };
+  }, [drawerOpen, narrow]);
 
   // Where a module's UI needs a settings entry point (the Chat host's button for
   // configuring the AI), it opens **this** panel instead of the module standing up
@@ -283,16 +302,22 @@ export function Shell() {
             is a drawer over the content and takes up no layout width. */}
           {!narrow && <div id="shl-side">{sidebar}</div>}
 
-          <main id="shl-slot">
+          <main
+            id="shl-slot"
+            aria-label={MODULES.find((module) => module.id === activeId)?.label ?? '首页'}
+          >
             {/* The module's own buttons land here. On narrow screens the drawer toggle
               and current module name share this first row. Device state belongs
               directly underneath it, before the module content. */}
             <div id="shl-actions">
               {narrow && (
                 <button
+                  ref={drawerTriggerRef}
                   type="button"
                   onClick={() => setDrawerOpen(true)}
                   aria-label="打开侧边栏"
+                  aria-controls="shl-drawer"
+                  aria-expanded={drawerOpen}
                   // With only the module name, the top of a narrow screen is a couple of
                   // lone words and nobody can tell they are tappable.
                   // The touch target also has to be big enough: 44px is the lower bound
@@ -353,9 +378,14 @@ export function Shell() {
                 onClick={() => setDrawerOpen(false)}
                 aria-hidden
               />
-              <div className={`fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}>
+              <aside
+                ref={drawerRef}
+                id="shl-drawer"
+                aria-label="主导航"
+                className={`shl-drawer fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}
+              >
                 {sidebar}
-              </div>
+              </aside>
             </>
           )}
 
