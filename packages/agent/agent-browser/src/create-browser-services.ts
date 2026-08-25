@@ -34,6 +34,7 @@ import type {
   OpossumClient,
   PawPrintsClient,
   SavedPromptPreset,
+  DeviceExecutionGate,
 } from '@dg-agent/runtime';
 import {
   BrowserSessionStore,
@@ -42,6 +43,7 @@ import {
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
+import { AiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 export interface PermissionRequestInput {
   toolName: string;
@@ -90,6 +92,10 @@ export interface BrowserServicesOptions {
   opossum?: OpossumClient;
   pawPrints?: PawPrintsClient;
   civetEdging?: CivetEdgingClient;
+  /** Optional final boundary check, typically backed by the shell's module lease. */
+  deviceExecutionGate?: DeviceExecutionGate;
+  /** Shell-owned generic runtime; binding is lazy and uses the Agent module id. */
+  deviceRuntimeProvider?: DeviceRuntimeProvider;
   /**
    * If true, speech recognition / synthesis are stubbed with no-op controllers
    * and capabilities report nothing supported. Used by shells (Android WebView)
@@ -130,6 +136,7 @@ export interface BrowserServices {
 class UnavailableAgentClient implements AgentClient {
   readonly transport = 'embedded' as const;
   readonly supportsLiveEvents = false;
+  readonly capabilities = { imageInput: false };
 
   constructor(private readonly message: string) {}
 
@@ -269,6 +276,14 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     registry: bridgeRegistry,
   });
 
+  const deviceRuntimeProvider = options.deviceRuntimeProvider;
+  const deviceRuntimeTools = deviceRuntimeProvider
+    ? new AiDeviceToolAdapter({
+        tools: () => deviceRuntimeProvider.forModule('agent'),
+        snapshot: () => deviceRuntimeProvider.current()?.snapshot() ?? null,
+      })
+    : undefined;
+
   let client: AgentClient;
   try {
     client = createBrowserAgentClient({
@@ -282,6 +297,8 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       sessionTraceStore,
       waveformLibrary,
       permissionService: bridgePermissionService,
+      deviceExecutionGate: options.deviceExecutionGate,
+      deviceRuntimeTools,
       freeProxySecret: options.freeProxySecret,
     });
   } catch (error) {

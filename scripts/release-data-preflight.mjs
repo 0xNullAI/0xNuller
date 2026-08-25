@@ -75,11 +75,12 @@ const currentMarketIndexes = [
   'idx_items_visible_popular',
 ];
 const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
-const marketCurrentLedger = [
+const marketPreSeedLedger = [
   ...marketBaseline,
   '0002_browse_indexes.sql',
   '0003_separate_security_domains.sql',
 ];
+const marketCurrentLedger = [...marketPreSeedLedger, '0004_seed_mistbound_scenario.sql'];
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
 const marketItems = scalar(market, 3, 'n');
@@ -156,6 +157,13 @@ const marketState = (() => {
     sameOrder(marketLedger, marketBaseline)
   ) {
     return 'baseline';
+  }
+  if (
+    sameNames(marketColumns, currentMarketColumns) &&
+    sameOrder(marketIndexes, currentMarketIndexes) &&
+    sameOrder(marketLedger, marketPreSeedLedger)
+  ) {
+    return 'pre-seed';
   }
   if (
     sameNames(marketColumns, currentMarketColumns) &&

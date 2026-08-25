@@ -3,6 +3,7 @@ import { TauriBlecDeviceClient, type DiscoveredDevice } from './client.js';
 import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
 import { requestDgLabDeviceTauri } from './request-device.js';
 import { makeApi, makeDevice } from './test-utils.js';
+import { __setScannerCoordinationForTests } from './scanner-coordination.js';
 
 class FakeProtocol {
   public connectedContext: { deviceName: string } | null = null;
@@ -38,10 +39,18 @@ class FakeProtocol {
   }
 }
 
-afterEach(() => __setPluginBlecForTests(undefined));
+afterEach(() => {
+  __setPluginBlecForTests(undefined);
+  __setScannerCoordinationForTests(undefined);
+});
 
 describe('TauriBlecDeviceClient.connect', () => {
-  it('checks permissions, scans, lets UI pick, then connects', async () => {
+  it('checks permissions, scans, releases ownership, then connects', async () => {
+    const coordination = {
+      claim: vi.fn().mockResolvedValue('lease-1'),
+      release: vi.fn().mockResolvedValue(undefined),
+    };
+    __setScannerCoordinationForTests(coordination);
     const api = makeApi({
       startScan: vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
         // simulate plugin-blec emitting device immediately
@@ -84,7 +93,11 @@ describe('TauriBlecDeviceClient.connect', () => {
     expect(api.checkPermissions).toHaveBeenCalledWith(true);
     expect(api.startScan).toHaveBeenCalled();
     expect(api.stopScan).toHaveBeenCalled();
+    expect(coordination.release).toHaveBeenCalledWith('lease-1');
     expect(api.connect).toHaveBeenCalledWith('AA:BB:CC', expect.any(Function));
+    expect(coordination.release.mock.invocationCallOrder[0]).toBeLessThan(
+      (api.connect as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!,
+    );
     expect(protocol.connectedContext?.deviceName).toBe('47L1210000XX');
   });
 

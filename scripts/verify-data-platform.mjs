@@ -199,6 +199,20 @@ assert(
   ).includes('idx_items_visible_popular'),
   'market: popular browse does not use idx_items_visible_popular',
 );
+const seededScenario = market.db
+  .prepare('SELECT type, hidden, content FROM items WHERE id = ?')
+  .get('mistbound-menagerie-guide');
+assert(
+  seededScenario?.type === 'scenario' && seededScenario.hidden === 0,
+  'market: fresh migrations did not create the public v6.1 scenario',
+);
+const seededContent = JSON.parse(seededScenario.content);
+assert(
+  typeof seededContent.prompt === 'string' &&
+    seededContent.prompt.trim().length > 0 &&
+    seededContent.prompt.length <= 12_000,
+  'market: seeded scenario prompt is invalid',
+);
 
 const snapshot = new DatabaseSync(':memory:');
 const marketSnapshotSql = readFileSync(join(root, 'apps/market/schema.sql'), 'utf8');
@@ -220,7 +234,7 @@ assert(
 
 // Actual production path (2026-08-09 inventory): raw schema, 44 rows, edit_key_hash
 // already present, and no d1_migrations table. Recreate it; bootstrap only the ledger;
-// then apply 0002/0003 and prove rows plus schema are preserved.
+// then apply 0002-0004 and prove rows plus schema are preserved.
 const marketUpgrade = new DatabaseSync(':memory:');
 marketUpgrade.exec(readFileSync(join(root, 'apps/market/migrations/0000_init.sql'), 'utf8'));
 marketUpgrade.exec(
@@ -243,13 +257,25 @@ marketUpgrade.exec(
 marketUpgrade.exec(
   readFileSync(join(root, 'apps/market/migrations/0003_separate_security_domains.sql'), 'utf8'),
 );
+const marketSeedMigration = readFileSync(
+  join(root, 'apps/market/migrations/0004_seed_mistbound_scenario.sql'),
+  'utf8',
+);
+marketUpgrade.exec(marketSeedMigration);
+marketUpgrade.exec(marketSeedMigration);
 assert(
   JSON.stringify(names(marketUpgrade, 'index')) === JSON.stringify(names(market.db, 'index')),
-  'market: raw-ledger bootstrap plus 0002/0003 differs from fresh migration path',
+  'market: raw-ledger bootstrap plus 0002-0004 differs from fresh migration path',
 );
 assert(
-  marketUpgrade.prepare('SELECT COUNT(*) AS n FROM items').get().n === 44,
+  marketUpgrade.prepare("SELECT COUNT(*) AS n FROM items WHERE id LIKE 'raw-%'").get().n === 44,
   'market: raw-ledger bootstrap changed the 44 existing item rows',
+);
+assert(
+  marketUpgrade
+    .prepare('SELECT COUNT(*) AS n FROM items WHERE id = ? AND type = ? AND hidden = 0')
+    .get('mistbound-menagerie-guide', 'scenario').n === 1,
+  'market: v6.1 scenario seed was not idempotent on an existing database',
 );
 assert(
   marketUpgrade
@@ -275,7 +301,7 @@ console.log(
     authMigrations: auth.files,
     marketMigrations: market.files,
     authUpgrade: '0001-0003 -> current',
-    marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-0003',
+    marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-0004 (0004 rerun idempotently)',
   }),
 );
 

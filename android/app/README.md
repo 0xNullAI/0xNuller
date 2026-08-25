@@ -1,7 +1,7 @@
 # @0xnullai/android
 
-The Android app. **One APK containing all six modules** — Control, Agent,
-Voice, Chat, Playground, Market — not one APK per module.
+The Android app. **One APK containing all seven modules** — Control, Agent,
+Voice, Video, Chat, Playground, Market — not one APK per module.
 
 ## Why this exists
 
@@ -45,14 +45,14 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v6.0.14`, `0xNuller 6.0.14`, `6.0.14`, and `6000014`.
+code all advance together: `v6.2.0`, `0xNuller 6.2.0`, `6.2.0`, and `6002000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed APK and Latest badge.
 
 ## Prerequisites
 
 - Node.js 22.19+
-- Rust 1.78+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
+- Rust 1.88+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - Android SDK with platform 34/35/36 + build-tools 34/35
 - Android NDK 26.x (set `NDK_HOME` or `ANDROID_NDK_HOME`)
 - `cargo install tauri-cli --version "^2"`
@@ -77,7 +77,9 @@ deterministically applies [`AndroidManifest.template.xml`](./AndroidManifest.tem
 sets minSdk 26, injects [`signing.gradle.kts.template`](./signing.gradle.kts.template), and
 restores [`MainActivity.template.kt`](./MainActivity.template.kt). The activity applies system-bar
 and display-cutout insets at the native WebView boundary, including on older WebView versions whose
-CSS safe-area variables do not expose three-button navigation insets.
+CSS safe-area variables do not expose three-button navigation insets. Preparation also resolves the
+Cargo.lock-selected btleplug 0.12 package, copies its JNI-only Java sources into the generated
+project, and restores the required R8 keep rules. Those generated sources remain untracked.
 Both root Android commands run it automatically; do not invoke the workspace command directly
 for a release.
 
@@ -171,3 +173,45 @@ Android Tauri is different: when the user swipes home / locks the screen, the ho
 - Tauri `app://paused` event from `lib.rs` on `RunEvent::ExitRequested` (belt-and-braces)
 
 The wrapper is transparent: every method except `disconnect()` forwards unchanged. `disconnect()` additionally detaches the listeners so they don't leak across reconnects.
+
+## Experimental embedded device backend
+
+The APK includes the Buttplug 10.0.3 backend through the
+`experimental-buttplug-gate0` Cargo feature. Product use remains default-off behind a separate
+local-only setting: a normal launch neither initializes the native session nor scans. The matching
+[`ButtplugDeviceBackend`](./src/buttplug-device-backend.ts) is injected once into the unified
+shell's shared `@0xnullai/device-runtime`; only an explicit Control scan after opt-in opens it.
+
+The strict v1 IPC surface contains initialize/close, scan start/stop, topology, disconnect,
+Vibrate, stop-feature, stop-all, and Battery/RSSI reads. Unknown fields and stale session, topology,
+or safety generations are rejected. Device and feature IDs are random and scoped to one native
+connection appearance. Only exact `deviceId` + `featureId` Vibrate writes are accepted; native
+quantization rounds down to the advertised step count.
+
+Battery and RSSI capabilities are published only when the Buttplug feature declares the `Read`
+command. Failed or timed-out reads remain `null`; no value is inferred. Unsupported capabilities,
+Raw messages, arbitrary protocol/BLE bytes, addresses, websocket, serial, HID, XInput, automatic
+reconnect, output restoration, and name-based brand/capability guesses are not exposed.
+
+Buttplug 10 does not expose safe per-device transport disconnect through its client API. A validated
+DeviceRuntime disconnect therefore performs global stop and ends the entire embedded session. This
+is intentionally stronger than pretending one BLE link was released or bypassing Buttplug with raw
+transport access. The resulting topology is terminal and a new runtime must be explicitly created.
+
+Every structural topology transition advances both native topology and safety generations and
+preempts output with global stop before publishing. Telemetry-only refreshes preserve both
+fences. Stop-feature and stop-all do not require a current generation fence; an unknown feature stop
+falls back to global stop. Stop failures latch the native session, report terminal loss to the
+shared runtime, and always retain `hardwareState: "unknown"`.
+
+`ScanCoordinator` is the single ownership seam for the Buttplug and DG plugin scanners. Both paths
+claim a generation-scoped lease before scanning, release only after confirmed stop/cleanup, and
+retain ownership when scanner state is uncertain. Native Android lifecycle cleanup stops the active
+scanner before releasing its lease. The commands remain present in default builds, where they
+preserve plugin-blec behavior without compiling the experimental backend.
+
+btleplug 0.12 requires JNI initialization after Tauri loads the Rust library. The Activity also
+requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension. The
+shared shell safety controller independently stops on lease handoff and browser/Tauri lifecycle
+signals. No physical-device or Android lifecycle validation has been performed. See
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

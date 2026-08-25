@@ -312,12 +312,34 @@ export type LlmConversationItem =
   | { kind: 'function_call'; callId: string; name: string; argumentsJson: string }
   | { kind: 'function_call_output'; callId: string; output: string };
 
+export type LlmImageMediaType = 'image/jpeg' | 'image/webp';
+
+/**
+ * One ephemeral camera frame for the current model turn. The base64 payload is
+ * deliberately not part of ConversationMessage or SessionSnapshot, so storage,
+ * sync and exports cannot accidentally retain camera data.
+ */
+export interface LlmImageInput {
+  mediaType: LlmImageMediaType;
+  data: string;
+  width: number;
+  height: number;
+  byteLength: number;
+}
+
+export interface LlmCapabilities {
+  /** Unknown/omitted capabilities fail closed. */
+  imageInput: boolean;
+}
+
 export interface LlmTurnInput {
   session: SessionSnapshot;
   message: string;
   context: ActionContext;
   instructions: string;
   tools: ToolDefinition[];
+  /** Ephemeral for this request only; never copy into session or conversation. */
+  image?: LlmImageInput;
   onTextDelta?: (accumulated: string) => void;
   onRawRequest?: (body: unknown) => void;
   abortSignal?: AbortSignal;
@@ -333,6 +355,8 @@ export interface LlmTurnResult {
 }
 
 export interface LlmClient {
+  /** Omitted capabilities are treated as unsupported for backward compatibility. */
+  readonly capabilities?: LlmCapabilities;
   runTurn(input: LlmTurnInput): Promise<LlmTurnResult>;
 }
 

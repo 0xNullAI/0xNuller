@@ -1,5 +1,13 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.16.3
+
+### Patch Changes
+
+- 684491b: Coordinate plugin-blec scans with the Android native scanner owner and retain ownership when scan cleanup cannot be confirmed.
+  - @dg-kit/core@1.16.3
+  - @dg-kit/protocol@1.16.3
+
 ## 1.16.2
 
 ### Patch Changes

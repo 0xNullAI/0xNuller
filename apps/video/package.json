@@ -1,0 +1,33 @@
+{
+  "name": "0xnullai-video",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "无图片持久化的短时摄像头视觉闭环控制模块",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@0xnullai/device-runtime": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
+    "@0xnullai/ui": "0.1.0",
+    "@dg-agent/agent-browser": "0.1.0",
+    "@dg-agent/core": "0.1.0",
+    "@dg-agent/runtime": "0.1.0",
+    "@dg-kit/safety": "1.16.3",
+    "lucide-react": "^1.11.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
+  }
+}

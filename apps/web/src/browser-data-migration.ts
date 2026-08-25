@@ -247,16 +247,22 @@ async function clearWaveformMigrationMarker(): Promise<void> {
   }
 }
 
+export function isLegacyLocalStorageKeyAllowed(sourceOrigin: string, key: string): boolean {
+  const source = SOURCES.find((candidate) => candidate.origin === sourceOrigin);
+  if (!source) return false;
+  return (
+    (source.keys as ReadonlySet<string>).has(key) ||
+    SHARED_KEYS.has(key) ||
+    source.prefixes.some((prefix) => key.startsWith(prefix))
+  );
+}
+
 async function importPayload(
   source: (typeof SOURCES)[number],
   payload: MigrationPayload,
 ): Promise<void> {
   for (const [key, legacy] of Object.entries(payload.localStorage)) {
-    const allowed =
-      (source.keys as ReadonlySet<string>).has(key) ||
-      SHARED_KEYS.has(key) ||
-      source.prefixes.some((prefix) => key.startsWith(prefix));
-    if (!allowed || typeof legacy !== 'string') continue;
+    if (!isLegacyLocalStorageKeyAllowed(source.origin, key) || typeof legacy !== 'string') continue;
     const next = mergeLegacyLocalValue(key, localStorage.getItem(key), legacy);
     if (next !== null) localStorage.setItem(key, next);
   }

@@ -2,7 +2,13 @@ import './polyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
-import { NativeBridgeProvider } from '@0xnullai/native';
+import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
+import { createUnifiedShellEmbeddedDeviceRuntime } from '@0xnullai/web/embedded-device-runtime';
+import {
+  createBrowserVideoControl,
+  type BrowserVideoControlOptions,
+} from '@dg-agent/agent-browser';
+import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
 import {
   TauriBlecDeviceClient,
   TauriBlecOpossumClient,
@@ -15,7 +21,8 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';
 import { requestDeviceTauri } from './request-device-tauri';
 import { createTauriTransport } from './tauri-transport';
-import { wrapWithLifecycleSafety } from './lifecycle-safety';
+import { attachAndroidDeviceRuntimeLifecycle, wrapWithLifecycleSafety } from './lifecycle-safety';
+import { ButtplugDeviceBackend } from './buttplug-device-backend';
 import { SplashDismiss } from './SplashDismiss';
 import {
   installAndroidShellBehaviours,
@@ -25,7 +32,7 @@ import {
 import './styles.css';
 
 /**
- * The unified Android app: one APK, six modules.
+ * The unified Android app: one APK, seven modules.
  *
  * Before the merge there were three separately packaged APKs (Agent / Chat /
  * Voice); the user had to install three of them, connect the device once in
@@ -47,6 +54,13 @@ installAndroidShellBehaviours();
 // system prompt and its explanatory UI.
 void prewarmDgLabDeviceScan().catch(() => undefined);
 
+// One provider/controller pair for the whole APK. Constructing it does not invoke the native
+// backend; the local default-off setting and a later human scan action gate initialization.
+const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
+  backendFactory: () => new ButtplugDeviceBackend(),
+  attachNativeLifecycle: attachAndroidDeviceRuntimeLifecycle,
+});
+
 // Inlined by Vite at build time. Android requests carry no browser Origin, so
 // the free proxy relies on this signature to tell "our client" from "anyone".
 const freeProxySecret = import.meta.env.VITE_DG_PROXY_SECRET;
@@ -61,6 +75,7 @@ const freeProxySecret = import.meta.env.VITE_DG_PROXY_SECRET;
  * then throws "is not a function".
  */
 const bridge = {
+  deviceRuntime: embeddedDevices.deviceRuntime,
   agent: {
     servicesOverrides: {
       disableSpeech: true,
@@ -119,7 +134,34 @@ const bridge = {
   voice: {
     transport: createTauriTransport(),
   },
-};
+  video: {
+    createControlService: (options: BrowserVideoControlOptions) => {
+      // Keep one native Coyote client: the shared Video service assigns an
+      // opaque ID per connection and rejects a second target when this
+      // transport composition cannot independently prove multiple identities.
+      const device = withConnectPermissionHelp(
+        wrapWithLifecycleSafety(
+          new TauriBlecDeviceClient({
+            protocol: new CoyoteProtocolAdapter(),
+            selectDevice: showDevicePicker,
+            namePrefixes: ['47L121', 'D-LAB'],
+            scanDurationMs: 8000,
+          }),
+        ),
+      );
+      const opossum = withConnectPermissionHelp(
+        new TauriBlecOpossumClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
+      );
+      return createBrowserVideoControl({
+        ...options,
+        device,
+        opossum,
+        connectOutputDevice: (clients) =>
+          withBlePermissionHelp(() => connectAnyDgLabDeviceTauri(clients)),
+      });
+    },
+  },
+} satisfies NativeBridge;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

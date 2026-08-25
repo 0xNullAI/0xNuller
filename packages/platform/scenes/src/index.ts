@@ -32,7 +32,6 @@ import {
   pushContent,
   pushContentPreferences,
 } from '@0xnullai/sync';
-import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 
 export interface SceneLibrary {
   /** Scenes the user wrote. */
@@ -258,23 +257,50 @@ function loadScenesWithoutSync(): SceneLibrary {
   return emptyLibrary();
 }
 
-/** Add or select one Market scenario without duplicating a previous import. */
-export function withImportedMarketScene(current: SceneLibrary, item: MarketItem): SceneLibrary {
-  const id = `market-${item.id}`;
-  const existing = current.scenes.some((scene) => scene.id === id);
-  if (existing) return { ...current, selectedId: id };
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
 
-  const prompt = (item.content as MarketScenarioContent).prompt;
+/** Validate and add or select one Market scenario without duplicating a previous import. */
+export function withImportedMarketScene(current: SceneLibrary, item: unknown): SceneLibrary {
+  if (!isPlainObject(item) || item.type !== 'scenario') return current;
+
+  const rawId = item.id;
+  const rawName = item.name;
+  if (
+    typeof rawId !== 'string' ||
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(rawId) ||
+    typeof rawName !== 'string'
+  ) {
+    return current;
+  }
+  const name = rawName.trim();
+  if (!name || name.length > 60 || !isPlainObject(item.content)) return current;
+
+  const rawPrompt = item.content.prompt;
+  if (typeof rawPrompt !== 'string') return current;
+  const prompt = rawPrompt.trim();
+  if (!prompt || prompt.length > 12_000) return current;
+
+  const id = `market-${rawId}`;
+  const existing = current.scenes.some((scene) => scene.id === id);
+  if (existing) return current.selectedId === id ? current : { ...current, selectedId: id };
+
+  const rawIcon = typeof item.icon === 'string' ? item.icon.trim() : '';
+  const icon = rawIcon && rawIcon.length <= 8 ? rawIcon : '📝';
   return {
     ...current,
     selectedId: id,
-    scenes: [...current.scenes, { id, name: item.name, icon: item.icon || '📝', prompt }],
+    scenes: [...current.scenes, { id, name, icon, prompt }],
   };
 }
 
 export function updateScenes(updater: (prev: SceneLibrary) => SceneLibrary): SceneLibrary {
   const prev = loadScenes();
   const next = updater(prev);
+  if (next === prev) return prev;
   saveScenes(next);
   const nextIds = new Set(next.scenes.map((scene) => scene.id));
   void pushContent(

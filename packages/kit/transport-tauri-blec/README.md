@@ -6,6 +6,10 @@ Mirror of `@dg-kit/transport-webbluetooth` for non-browser runtimes (Tauri Andro
 
 The host application owns the device-picker UI: every client in this package calls back into a `selectDevice` function it receives from the constructor. Web Bluetooth's native chooser does not exist outside the browser.
 
+## Native scanner coordination
+
+Every plugin-blec scan claims the host's `dg_blec_claim_scanner` command before starting and calls `dg_blec_release_scanner` only after scan stop and post-scan cleanup succeed. The Android host registers these commands in default and experimental builds so plugin-blec and the embedded Buttplug backend cannot scan concurrently. Stop failures deliberately retain the native lease. Hosts embedding this transport must provide the same claim/release command contract.
+
 ## Multiple concurrent connections
 
 Upstream `@mnlphlp/plugin-blec` only tracks one connected device at a time. This package is pinned to [`0xNullAI/tauri-plugin-blec-multi`](https://github.com/0xNullAI/tauri-plugin-blec-multi), a fork that lets several devices stay connected concurrently (each call scoped by BLE address), so a Coyote host and an auxiliary device (Opossum vibrate controller, paw-prints, civet-edging) can be connected at the same time from the same app.

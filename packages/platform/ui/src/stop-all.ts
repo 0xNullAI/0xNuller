@@ -43,6 +43,12 @@ export function subscribeStopFailure(listener: () => void): () => void {
   };
 }
 
+/** Add a failed stop reported by a shell-level lifecycle controller. */
+export function reportStopFailure(label: string): void {
+  if (!label || failedLabels.includes(label)) return;
+  publish([...failedLabels, label]);
+}
+
 /** Dismiss the warning. Only the user does this — never clear it on their behalf. */
 export function clearStopFailure(): void {
   publish([]);

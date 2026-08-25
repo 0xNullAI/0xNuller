@@ -105,15 +105,17 @@ export async function deleteItem(id: string): Promise<void> {
   await req(`/api/items/${id}`, { method: 'DELETE' });
 }
 
-export type AdminItemStatus = 'all' | 'hidden';
+export type AdminItemType = 'waveform' | 'scenario';
+export type AdminItemStatus = 'all' | 'visible' | 'hidden';
 
 export async function fetchAdminItems(input: {
+  type: AdminItemType;
   status: AdminItemStatus;
   q?: string;
   offset?: number;
   limit?: number;
 }): Promise<{ items: MarketAdminItem[]; nextOffset: number | null }> {
-  const params = new URLSearchParams({ status: input.status });
+  const params = new URLSearchParams({ type: input.type, status: input.status });
   if (input.q) params.set('q', input.q);
   if (input.offset) params.set('offset', String(input.offset));
   if (input.limit) params.set('limit', String(input.limit));

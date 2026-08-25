@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
+import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 /**
  * The single entry point where the native (Tauri) shell injects Bluetooth
@@ -26,6 +27,8 @@ import type { ReactNode } from 'react';
  */
 
 export interface NativeBridge {
+  /** Shell-owned optional embedded runtime shared by every product surface. */
+  deviceRuntime?: EmbeddedDeviceRuntimeProvider;
   /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
   agent?: {
     servicesOverrides?: unknown;
@@ -40,34 +43,40 @@ export interface NativeBridge {
   voice?: {
     transport?: unknown;
   };
+  /** Video's injection: creates the same control service with native BLE clients. */
+  video?: {
+    createControlService?: unknown;
+  };
 }
 
-const Ctx = createContext<NativeBridge | null>(null);
+interface BridgeContextValue {
+  bridge: NativeBridge;
+  native: boolean;
+}
+
+const Ctx = createContext<BridgeContextValue | null>(null);
 
 export function NativeBridgeProvider({
   bridge,
   children,
+  native = true,
 }: {
   bridge: NativeBridge;
   children: ReactNode;
+  /** Web also supplies the shared runtime through this seam without pretending to be Tauri. */
+  native?: boolean;
 }) {
-  return <Ctx.Provider value={bridge}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ bridge, native }}>{children}</Ctx.Provider>;
 }
 
-/** Get native capabilities. The web build returns an empty object — callers must treat every field as optional. */
+/** Get shell capabilities. Standalone module builds return an empty object. */
 export function useNativeBridge(): NativeBridge {
-  return useContext(Ctx) ?? EMPTY;
+  return useContext(Ctx)?.bridge ?? EMPTY;
 }
 
 const EMPTY: NativeBridge = {};
 
-/**
- * Whether we run inside the native shell.
- *
- * Used for copy differences, e.g. the settings note "mobile always stops
- * output regardless of this setting" — Android lifecycle safety is
- * unconditional and deliberately overrides user preference.
- */
+/** Whether the active shell is native rather than Web. */
 export function useIsNative(): boolean {
-  return useContext(Ctx) !== null;
+  return useContext(Ctx)?.native ?? false;
 }

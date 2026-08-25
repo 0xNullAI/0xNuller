@@ -5,11 +5,12 @@
   "type": "module",
   "description": "直接控制自己的设备：连接、双通道强度、波形播放。没有 AI，也没有别人。",
   "dependencies": {
+    "@0xnullai/device-runtime": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
-    "@dg-kit/core": "1.16.2",
-    "@dg-kit/safety": "1.16.2",
+    "@dg-kit/core": "1.16.3",
+    "@dg-kit/safety": "1.16.3",
     "lucide-react": "^1.11.0"
   },
   "peerDependencies": {

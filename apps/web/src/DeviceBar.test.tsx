@@ -193,6 +193,16 @@ describe('设备栏', () => {
     expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
   });
 
+  it('运行时无法证明输出状态时显示未知，不伪装成待机', () => {
+    connectFake('embedded-device-runtime', [
+      { id: 'generic-1', kind: 'embedded-device', name: 'Exact Generic Device', connected: true },
+    ]);
+    render(<DeviceBar />);
+    expect(screen.getByText('Exact Generic Device')).toBeTruthy();
+    expect(screen.getByText('状态未知')).toBeTruthy();
+    expect(screen.queryByText('待机')).toBeNull();
+  });
+
   it('设备来自多个模块时标出各自属于哪个模块', () => {
     connectFake('agent', [COYOTE]);
     connectFake('chat', [{ id: 'c2', kind: 'coyote', name: '另一台', connected: true }]);

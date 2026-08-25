@@ -35,10 +35,13 @@ function ModuleSettingsFixtures() {
   ));
 }
 
-function renderSettings(user: AuthUser | null = null) {
+function renderSettings(
+  user: AuthUser | null = null,
+  initialTab?: 'ai-agent' | 'ai-voice' | 'ai-video',
+) {
   render(
     <ModuleSettingsProvider>
-      <SettingsPanel user={user} onUser={vi.fn()} onClose={vi.fn()} />
+      <SettingsPanel initialTab={initialTab} user={user} onUser={vi.fn()} onClose={vi.fn()} />
       <ModuleSettingsFixtures />
     </ModuleSettingsProvider>,
   );
@@ -56,6 +59,13 @@ describe('统一设置顺序', () => {
         .map((button) => button.textContent),
     ).toEqual(['账户', '外观', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
     expect(within(navigation).queryByRole('button', { name: '传感器' })).toBeNull();
+  });
+
+  it('模块入口可直接路由到对应 AI 子设置', () => {
+    renderSettings(null, 'ai-video');
+    expect(screen.getByRole('button', { name: 'AI' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('tab', { name: 'Video' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'Video 视觉模型' })).toBeTruthy();
   });
 
   it('把传感器配置放进设备安全页', async () => {

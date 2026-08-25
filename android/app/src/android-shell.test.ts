@@ -51,6 +51,38 @@ describe('Android shell integration', () => {
     expect(activity).toContain('Settings.ACTION_LOCATION_SOURCE_SETTINGS');
     expect(activity).toContain('fun hasBleScanPermission()');
     expect(activity).toContain('fun requestBleScanPermission()');
+    expect(activity).toContain('fun hasCameraPermission()');
+    expect(activity).toContain('fun requestCameraPermission()');
+    expect(activity).toContain('private external fun initializeButtplugGate0(): Boolean');
+    expect(activity).toContain('private external fun requestNativeLifecycleSafety(): Boolean');
+    expect(activity).toContain('override fun onPause()');
+    expect(activity).toContain('requestNativeLifecycleSafety()');
+
+    const manifest = readFileSync(
+      resolve(process.cwd(), 'android/app/AndroidManifest.template.xml'),
+      'utf8',
+    );
+    expect(manifest).toContain('android.permission.CAMERA');
+    expect(manifest).toContain('android.hardware.camera.any');
+    expect(manifest).toContain('android:required="false"');
+  });
+
+  it('sources the Cargo-locked btleplug Android bridge with JNI keep rules', () => {
+    const prepareScript = readFileSync(
+      resolve(process.cwd(), 'scripts/prepare-android-release.mjs'),
+      'utf8',
+    );
+    const proguard = readFileSync(
+      resolve(process.cwd(), 'android/app/proguard-rules.pro.template'),
+      'utf8',
+    );
+
+    expect(prepareScript).toContain("lockedCargoPackage('btleplug', '0.12.0')");
+    expect(prepareScript).toContain('src/droidplug/java/src/main/java');
+    expect(proguard).toContain('-keep class com.nonpolynomial.**');
+    expect(proguard).toContain('-keep class io.github.gedgygedgy.**');
+    expect(proguard).toContain('native boolean initializeButtplugGate0()');
+    expect(proguard).toContain('native boolean requestNativeLifecycleSafety()');
   });
 
   it('requests the native Android BLE permission before scanning', async () => {

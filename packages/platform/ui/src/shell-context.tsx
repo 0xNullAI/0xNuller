@@ -16,7 +16,8 @@ import type { ReactNode } from 'react';
  * forms.
  */
 
-export type ShellSettingsTab = 'account' | 'appearance' | 'ai' | 'scenes' | 'safety';
+export type ShellSettingsTab =
+  'account' | 'appearance' | 'ai' | 'ai-agent' | 'ai-voice' | 'ai-video' | 'scenes' | 'safety';
 
 interface ShellChrome {
   inShell: boolean;

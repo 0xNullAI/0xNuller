@@ -1,8 +1,42 @@
 import type { BleDeviceInfo, PluginBlecApi } from './plugin-blec.js';
+import { DgScannerLease } from './scanner-coordination.js';
 
 const PREWARM_CACHE_TTL_MS = 30_000;
 const prewarmedDevices = new Map<string, { device: BleDeviceInfo; seenAt: number }>();
-let prewarmScan: { api: PluginBlecApi; done: Promise<void> } | null = null;
+
+interface CancellableScanWindow {
+  done: Promise<boolean>;
+  cancel(): void;
+}
+
+interface ActivePrewarmScan {
+  api: PluginBlecApi;
+  lease: DgScannerLease;
+  window: CancellableScanWindow;
+  done: Promise<void>;
+}
+
+let prewarmScan: ActivePrewarmScan | null = null;
+
+function createScanWindow(durationMs: number): CancellableScanWindow {
+  let finish: ((elapsed: boolean) => void) | null = null;
+  const done = new Promise<boolean>((resolve) => {
+    finish = resolve;
+  });
+  const timer = setTimeout(() => {
+    finish?.(true);
+    finish = null;
+  }, durationMs);
+  return {
+    done,
+    cancel() {
+      if (!finish) return;
+      clearTimeout(timer);
+      finish(false);
+      finish = null;
+    },
+  };
+}
 
 export interface DiscoveredDevice {
   address: string;
@@ -79,28 +113,39 @@ export async function prewarmDeviceScan(
 
   const prefixes = options.namePrefixes;
   const duration = options.scanDurationMs ?? 8000;
-  const done = api
-    .startScan((devices) => {
+  const lease = await DgScannerLease.claim();
+  try {
+    await api.startScan((devices) => {
       const seenAt = Date.now();
       for (const device of devices) {
         const name = device.name.trim();
         if (!name || (prefixes && !prefixes.some((prefix) => name.startsWith(prefix)))) continue;
         prewarmedDevices.set(device.address, { device, seenAt });
       }
-    }, duration)
-    .then(() => new Promise<void>((resolve) => setTimeout(resolve, duration)))
+    }, duration);
+  } catch (error) {
+    await lease.cleanup(() => api.stopScan());
+    throw error;
+  }
+
+  const window = createScanWindow(duration);
+  let active: ActivePrewarmScan | null = null;
+  const done = window.done
+    .then(() => lease.cleanup(() => api.stopScan()))
     .finally(() => {
-      if (prewarmScan?.done === done) prewarmScan = null;
+      if (prewarmScan === active && lease.isReleased) prewarmScan = null;
     });
-  prewarmScan = { api, done };
+  active = { api, lease, window, done };
+  prewarmScan = active;
   void done.catch(() => undefined);
 }
 
 async function stopPrewarmScan(): Promise<void> {
   const active = prewarmScan;
   if (!active) return;
-  prewarmScan = null;
-  await active.api.stopScan().catch(() => undefined);
+  active.window.cancel();
+  await active.done;
+  if (prewarmScan === active && active.lease.isReleased) prewarmScan = null;
 }
 
 function freshPrewarmedDevices(now = Date.now()): BleDeviceInfo[] {
@@ -117,6 +162,7 @@ function freshPrewarmedDevices(now = Date.now()): BleDeviceInfo[] {
 
 export function __resetPrewarmScanForTests(): void {
   prewarmedDevices.clear();
+  prewarmScan?.window.cancel();
   prewarmScan = null;
 }
 
@@ -173,42 +219,53 @@ export async function scanAndSelectDevice(
         services: d.services,
       }));
 
-  // Kick off the scan; handler appends devices and notifies listeners.
-  const radioStartPromise = api.startScan((devices) => {
-    let changed = false;
-    for (const d of devices) {
-      // Match the official Android scanner: prefer AD 0x09 names, but retain
-      // its AD 0xFF length fallback for nameless devices. A selected anonymous
-      // candidate is still verified after GATT connect before it is exposed as
-      // a usable device.
-      const name = d.name.trim();
-      const supportedName = Boolean(
-        name && (!prefixes || prefixes.some((prefix) => name.startsWith(prefix))),
-      );
-      const supportedAnonymous = !name && hasOfficialDgLabManufacturerFallback(d);
-      if (!supportedName && !supportedAnonymous) {
-        continue;
+  // Native ownership is claimed before plugin-blec can register Android's
+  // single scanner callback. A competing backend (or a parallel DG scan)
+  // therefore fails before touching the radio.
+  const lease = await DgScannerLease.claim();
+  try {
+    await api.startScan((devices) => {
+      let changed = false;
+      for (const d of devices) {
+        // Match the official Android scanner: prefer AD 0x09 names, but retain
+        // its AD 0xFF length fallback for nameless devices. A selected anonymous
+        // candidate is still verified after GATT connect before it is exposed as
+        // a usable device.
+        const name = d.name.trim();
+        const supportedName = Boolean(
+          name && (!prefixes || prefixes.some((prefix) => name.startsWith(prefix))),
+        );
+        const supportedAnonymous = !name && hasOfficialDgLabManufacturerFallback(d);
+        if (!supportedName && !supportedAnonymous) {
+          continue;
+        }
+        // The official app accepts this manufacturer-length fallback as a
+        // candidate, but treating it as a confirmed identity makes unrelated
+        // beacons appear as DG-Lab devices. Keep anonymous candidates hidden
+        // until their GATT services prove they are part of the supported family.
+        if (supportedAnonymous && !supportedName) {
+          anonymousCandidates.set(d.address, d);
+          continue;
+        }
+        if (orderFrozen && !discoveryOrder.has(d.address)) {
+          discoveryOrder.set(d.address, nextDiscoveryOrder++);
+        }
+        const prev = seen.get(d.address);
+        if (!prev || hasMaterialChange(prev, d)) changed = true;
+        seen.set(d.address, d);
       }
-      // The official app accepts this manufacturer-length fallback as a
-      // candidate, but treating it as a confirmed identity makes unrelated
-      // beacons appear as DG-Lab devices. Keep anonymous candidates hidden
-      // until their GATT services prove they are part of the supported family.
-      if (supportedAnonymous && !supportedName) {
-        anonymousCandidates.set(d.address, d);
-        continue;
+      if (changed) {
+        const snapshot = toDiscovered();
+        for (const fn of updateListeners) fn(snapshot);
       }
-      if (orderFrozen && !discoveryOrder.has(d.address)) {
-        discoveryOrder.set(d.address, nextDiscoveryOrder++);
-      }
-      const prev = seen.get(d.address);
-      if (!prev || hasMaterialChange(prev, d)) changed = true;
-      seen.set(d.address, d);
-    }
-    if (changed) {
-      const snapshot = toDiscovered();
-      for (const fn of updateListeners) fn(snapshot);
-    }
-  }, scanDuration);
+    }, scanDuration);
+  } catch (error) {
+    // A rejected start can still leave platform scanner state uncertain.
+    // Confirm stop before releasing; a failed stop intentionally keeps the
+    // native claim held so Buttplug continues to fail closed.
+    await lease.cleanup(() => api.stopScan());
+    throw error;
+  }
   const verifyAnonymousCandidates = async () => {
     const candidates = [...anonymousCandidates.values()]
       .sort((a, b) => b.rssi - a.rssi)
@@ -239,23 +296,33 @@ export async function scanAndSelectDevice(
     }
   };
   // plugin-blec's `startScan()` resolves when the native scan has STARTED,
-  // not when its timeout has elapsed. Keep the JS lifecycle alive for the
-  // requested window, stop radio discovery before opening temporary GATT
-  // verification connections, and only then mark scanning complete.
-  const scanPromise = radioStartPromise.then(async () => {
-    await new Promise((resolve) => setTimeout(resolve, scanDuration));
-    await api.stopScan().catch(() => undefined);
-    if (selectionFinished) return;
-    verification.inFlight = verifyAnonymousCandidates();
-    await verification.inFlight;
-  });
-  const markScanComplete = () => {
-    scanning = false;
-    for (const fn of scanningListeners) fn(false);
-  };
-  void scanPromise.then(markScanComplete, markScanComplete);
+  // not when its timeout has elapsed. A cancellable window avoids a delayed
+  // stop from an early picker choice tearing down a newer backend's scan.
+  const scanWindow = createScanWindow(scanDuration);
+  const scanCompletion = scanWindow.done
+    .then((elapsed) =>
+      lease.cleanup(
+        () => api.stopScan(),
+        elapsed && !selectionFinished
+          ? async () => {
+              verification.inFlight = verifyAnonymousCandidates();
+              await verification.inFlight;
+            }
+          : undefined,
+      ),
+    )
+    .then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    )
+    .finally(() => {
+      scanning = false;
+      for (const fn of scanningListeners) fn(false);
+    });
 
-  let address: string | null;
+  let address: string | null = null;
+  let selectionFailed = false;
+  let selectionError: unknown;
   try {
     // A mocked or already-completed scan may resolve synchronously. Give its
     // post-scan GATT verification a chance to publish before taking the
@@ -293,18 +360,19 @@ export async function scanAndSelectDevice(
         };
       },
     });
-  } finally {
-    // A named device can be selected before the timed scan ends. Do not make
-    // that fast path wait for the remaining window, and prevent the delayed
-    // anonymous verifier from opening GATT probes after the picker is gone.
-    selectionFinished = true;
-    await api.stopScan().catch(() => undefined);
-    // listServices cannot be cancelled once Android has opened its temporary
-    // GATT connection. Wait for that single in-flight probe to close before
-    // the caller opens the selected device's permanent connection.
-    await verification.inFlight?.catch(() => undefined);
+  } catch (error) {
+    selectionFailed = true;
+    selectionError = error;
   }
 
+  // A named device can be selected before the timed scan ends. Cancel the
+  // timer, then wait for confirmed stop, any in-flight GATT verification,
+  // and native ownership release before connecting or reporting cancel.
+  selectionFinished = true;
+  scanWindow.cancel();
+  const completion = await scanCompletion;
+  if (!completion.ok) throw completion.error;
+  if (selectionFailed) throw selectionError;
   if (!address) return null;
 
   const chosen = seen.get(address);

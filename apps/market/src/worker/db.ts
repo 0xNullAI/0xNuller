@@ -83,8 +83,12 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   return (results ?? []).map(rowToItem);
 }
 
+export type AdminItemType = 'waveform' | 'scenario';
+export type AdminItemStatus = 'all' | 'visible' | 'hidden';
+
 export interface AdminListParams {
-  status: 'all' | 'hidden';
+  type: AdminItemType;
+  status: AdminItemStatus;
   q?: string;
   limit: number;
   offset: number;
@@ -96,6 +100,15 @@ export async function listAdminItems(
 ): Promise<MarketAdminItem[]> {
   const where: string[] = [];
   const binds: unknown[] = [];
+  if (params.type === 'waveform') {
+    where.push('type = ?');
+    binds.push('waveform');
+  } else {
+    // The admin's scenario category intentionally groups solo and multiplayer scenes.
+    where.push('type IN (?, ?)');
+    binds.push('scenario', 'multi-scene');
+  }
+  if (params.status === 'visible') where.push('hidden = 0');
   if (params.status === 'hidden') where.push('hidden = 1');
   if (params.q) {
     where.push('(name LIKE ? OR description LIKE ? OR author LIKE ?)');

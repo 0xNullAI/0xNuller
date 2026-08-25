@@ -6,7 +6,8 @@ import {
   updateDeviceSafety,
   type DeviceSafetySettings,
 } from '@0xnullai/settings';
-import { ModuleSettingsSlot } from '@0xnullai/ui';
+import { useNativeBridge } from '@0xnullai/native';
+import { ModuleSettingsSlot, reportStopFailure } from '@0xnullai/ui';
 
 /**
  * Device safety. The only setting in the whole software that directly affects a
@@ -151,8 +152,15 @@ function Group({
 
 export function SafetyTab() {
   const [settings, setSettings] = useState<DeviceSafetySettings>(loadDeviceSafety);
+  const deviceRuntime = useNativeBridge().deviceRuntime;
+  const [experimentalEnabled, setExperimentalEnabled] = useState(
+    () => deviceRuntime?.isEnabled() ?? false,
+  );
+  const [experimentalBusy, setExperimentalBusy] = useState(false);
+  const [experimentalError, setExperimentalError] = useState<string | null>(null);
 
   useEffect(() => subscribeDeviceSafety(setSettings), []);
+  useEffect(() => deviceRuntime?.subscribeEnabled(setExperimentalEnabled), [deviceRuntime]);
 
   function patch(p: Partial<DeviceSafetySettings>) {
     setSettings(updateDeviceSafety((prev) => ({ ...prev, ...p })));
@@ -197,6 +205,46 @@ export function SafetyTab() {
             <option value="allow-all">完全放行（不推荐）</option>
           </select>
         </label>
+      </section>
+
+      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
+        <h3 className="text-sm font-semibold">Experimental Device</h3>
+        <p className="mt-1 text-xs leading-5 text-[var(--text-soft)]">
+          启用本机嵌入式通用振动设备支持。此开关仅保存在当前浏览器或 App，不会同步、导出或迁移。
+        </p>
+        <label className="mt-3 flex items-center justify-between gap-4">
+          <span className="text-sm">启用嵌入式设备（实验性）</span>
+          <input
+            type="checkbox"
+            checked={experimentalEnabled}
+            disabled={!deviceRuntime || experimentalBusy}
+            onChange={(event) => {
+              if (!deviceRuntime) return;
+              const enabled = event.target.checked;
+              setExperimentalBusy(true);
+              setExperimentalError(null);
+              void deviceRuntime
+                .setEnabled(enabled)
+                .then(() => setExperimentalEnabled(enabled))
+                .catch((error: unknown) => {
+                  if (!enabled) reportStopFailure('实验设备');
+                  setExperimentalError(
+                    error instanceof Error ? error.message : '无法更新实验设备设置',
+                  );
+                })
+                .finally(() => setExperimentalBusy(false));
+            }}
+            className="accent-[var(--accent)]"
+          />
+        </label>
+        {!deviceRuntime && (
+          <p className="mt-2 text-xs text-[var(--text-faint)]">当前入口不提供嵌入式设备运行时。</p>
+        )}
+        {experimentalError && (
+          <p role="alert" className="mt-2 text-xs text-[var(--danger)]">
+            {experimentalError}
+          </p>
+        )}
       </section>
 
       <button

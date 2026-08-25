@@ -97,13 +97,25 @@ function isShockBurstTool(toolName: string): boolean {
   return toolName === 'shock_burst' || toolName === 'burst';
 }
 
+function isStopTool(toolName: string): boolean {
+  return (
+    toolName === 'shock_stop' ||
+    toolName === 'stop' ||
+    toolName === 'vibrate_stop' ||
+    toolName === 'device_stop' ||
+    toolName === 'device_emergency_stop'
+  );
+}
+
 export function consumeTurnQuota(
   toolName: string,
   turnState: TurnState,
   config: ToolCallConfig,
   toolArgs?: Record<string, unknown>,
 ): string | null {
-  if (turnState.totalToolCalls >= config.maxToolCallsPerTurn) {
+  // Stop tools are a safety escape hatch. They remain reachable after the
+  // model has exhausted its ordinary tool budget and do not consume it.
+  if (!isStopTool(toolName) && turnState.totalToolCalls >= config.maxToolCallsPerTurn) {
     return `本回合工具调用总数已达上限 (${config.maxToolCallsPerTurn})，本次调用被拒绝。请直接回复用户，不要再发起工具调用。`;
   }
 
@@ -141,7 +153,9 @@ export function consumeTurnQuota(
     }
   }
 
-  turnState.totalToolCalls += 1;
+  if (!isStopTool(toolName)) {
+    turnState.totalToolCalls += 1;
+  }
   if (isShockAdjustTool(toolName)) {
     turnState.adjustStrengthCalls += 1;
   }

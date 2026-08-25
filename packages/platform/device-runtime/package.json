@@ -1,0 +1,18 @@
+{
+  "name": "@0xnullai/device-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SDK-free multi-backend device discovery, fencing, and output safety runtime.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dg-kit/safety": "1.16.3",
+    "buttplug": "4.0.2",
+    "buttplug-wasm": "3.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
