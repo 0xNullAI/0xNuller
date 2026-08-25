@@ -9,3 +9,4 @@ export * from './safety-controller.js';
 export * from './web-buttplug-backend.js';
 export * from './web-embedded-settings.js';
 export * from './web-runtime-provider.js';
+export * from './attached-device-state.js';

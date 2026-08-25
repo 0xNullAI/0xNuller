@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@dg-kit/core": "1.16.3",
     "@dg-kit/safety": "1.16.3",
     "buttplug": "4.0.2",
     "buttplug-wasm": "3.0.0"

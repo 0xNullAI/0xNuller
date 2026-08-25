@@ -34,7 +34,7 @@ npm run build -w @0xnullai/web
 src/App.tsx                 设备会话、控制权和页面组合
 src/components/            郊狼、波形、负鼠和传感器界面
 src/hooks/                 波形播放与按住开火逻辑
-src/lib/attached-devices.ts 顶部设备横栏使用的设备摘要
+@0xnullai/device-runtime    顶部设备横栏的共享状态契约与设备摘要
 ```
 
 蓝牙与协议实现复用 Chat 的 `DeviceSession`，避免在模块间维护多份设备状态和安全逻辑。

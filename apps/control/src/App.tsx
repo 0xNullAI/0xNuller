@@ -25,7 +25,7 @@ import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
-import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
+import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
 
 // A value of 5 becomes a B0 ceiling of only 2.5/100 in the Opossum protocol,
 // which is below the physical start threshold of many vibration motors. Start

@@ -60,7 +60,7 @@ vi.mock('../../chat/src/hooks/use-device', () => ({
   useDevice: () => mocks.device,
 }));
 
-vi.mock('../../control/src/lib/attached-devices', () => ({
+vi.mock('@0xnullai/device-runtime', () => ({
   holdsAnyDevice: ({ coyotes, sensor, opossum }: typeof mocks.device) =>
     coyotes.some((device) => device.connected) || Boolean(sensor?.connected || opossum?.connected),
   attachedDeviceSummaries: () => [],

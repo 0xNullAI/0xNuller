@@ -31,7 +31,7 @@ npm run build -w @0xnullai/web
 src/App.tsx                 device session, lease, and screen composition
 src/components/            Coyote, waveform, Opossum, and sensor UI
 src/hooks/                 playback and momentary-fire behavior
-src/lib/attached-devices.ts summaries consumed by the global device bar
+@0xnullai/device-runtime    shared state contracts and summaries for the global device bar
 ```
 
 ## License

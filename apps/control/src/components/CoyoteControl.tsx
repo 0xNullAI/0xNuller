@@ -15,7 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
-import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
+import type { CoyoteSummary } from '@0xnullai/device-runtime';
 import type { PlayMode, WaveformDefinition } from '@dg-kit/core';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
 import { isCoyoteOutputActive } from '@dg-kit/core';

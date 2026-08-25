@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { ArrowLeft, ArrowRight, BatteryMedium, Pause, Play } from 'lucide-react';
-import type { CoyoteSummary, OpossumSummary } from '../../../chat/src/lib/bluetooth';
+import type { CoyoteSummary, OpossumSummary } from '@0xnullai/device-runtime';
 import { RepeatButton } from '../../../chat/src/components/RepeatControls';
 import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
 

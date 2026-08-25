@@ -35,6 +35,21 @@ import type {
   DeviceLinkRule,
 } from '@dg-kit/core';
 import { DEFAULT_DEVICE_LINK_RULE } from '@dg-kit/core';
+import type {
+  CoyoteSummary,
+  DeviceVersion,
+  OpossumSummary,
+  SensorKind,
+  SensorSummary,
+} from '@0xnullai/device-runtime';
+
+export type {
+  CoyoteSummary,
+  DeviceVersion,
+  OpossumSummary,
+  SensorKind,
+  SensorSummary,
+} from '@0xnullai/device-runtime';
 
 /**
  * Optional override hook for non-browser runtimes (Tauri Android shell).
@@ -60,8 +75,6 @@ export type { RequestedDevice };
  */
 export type RequestDeviceFn = () => Promise<RequestedDevice>;
 
-export type DeviceVersion = 'v2' | 'v3';
-
 export interface DeviceInfo {
   version: DeviceVersion;
   name: string;
@@ -85,23 +98,6 @@ interface ChannelLocalState {
  * Carries `id` because a session may now hold several Coyotes at once: every
  * row the user sees, and every targeted command, is addressed by this.
  */
-export interface CoyoteSummary {
-  /** Stable device identity — see `DGLabDevice.id`. */
-  id: string;
-  name: string;
-  version: DeviceVersion;
-  connected: boolean;
-  battery: number | null;
-  strengthA: number;
-  strengthB: number;
-  limitA: number;
-  limitB: number;
-  waveActiveA: boolean;
-  waveActiveB: boolean;
-  waveIdA: string | null;
-  waveIdB: string | null;
-}
-
 export class DGLabDevice {
   private readonly protocol = new CoyoteProtocolAdapter();
   private readonly client: DeviceClient;
@@ -430,38 +426,6 @@ function hasConnectDevice(client: DeviceClient): client is DeviceClient & {
 // ---------------------------------------------------------------------------
 // Multi-device session (Coyote + optional sensor + optional Opossum)
 // ---------------------------------------------------------------------------
-
-export type SensorKind = Extract<DeviceKind, 'paw-prints' | 'civet-edging'>;
-
-export interface SensorSummary {
-  kind: SensorKind;
-  connected: boolean;
-  deviceName: string;
-  battery: number | null;
-  /** Human-readable summary of the most recent reading. Informational only. */
-  lastEvent: string | null;
-  /** Raw numeric value of the last reading, when the reading type has one
-   *  (civet-edging pressure in kPa; paw-prints trigger parameterValue). */
-  lastValue: number | null;
-  lastEventAt: number | null;
-}
-
-export interface OpossumSummary {
-  connected: boolean;
-  deviceName: string;
-  battery: number | null;
-  intensityA: number;
-  intensityB: number;
-  limitA: number;
-  limitB: number;
-  waveIdA: string | null;
-  waveIdB: string | null;
-  /** Names of buttons currently reported pressed, joined with '+', or null. */
-  lastButtons: string | null;
-  lastButtonsAt: number | null;
-  patternA?: OpossumVibrationPatternName;
-  patternB?: OpossumVibrationPatternName;
-}
 
 export interface DeviceSessionSafetyLimits {
   strengthA: number;

@@ -14,6 +14,10 @@ The reusable AI adapter is a positive allowlist containing only `device_snapshot
 Voice inject trusted local tool-call IDs and require exact opaque `deviceId` + `featureId` values.
 Scan, disconnect, labels, native identifiers, and Raw operations are not model tools.
 
+The package also owns the product-wide attached-device snapshot contracts and their pure mapping to
+the shell safety bus. Control, Chat, and Playground share these display snapshots; the mapper does
+not issue commands or alter output, leases, limits, or stop behavior.
+
 ## Web embedded backend
 
 `WebEmbeddedButtplugBackend` uses the embedded Web Bluetooth stack `buttplug@4.0.2` with
