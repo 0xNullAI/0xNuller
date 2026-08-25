@@ -46,7 +46,7 @@ npm run types:check -w 0xnullai-chat
 ## 代码结构
 
 ```text
-src/components/       房间、消息、成员和设备 UI
+src/components/       房间、消息、成员 UI；ChatAppView 只组合房间/大厅展示
 src/hooks/            房间、设备和波形状态
 src/lib/              WebSocket、媒体与客户端协议
 worker/index.ts       HTTP 与 WebSocket 路由
@@ -54,6 +54,15 @@ worker/room-do.ts     房间和私聊状态
 worker/lobby-do.ts    公开大厅
 worker/media.ts       R2 媒体读写
 ```
+
+`src/App.tsx` 是 Chat 运行时编排入口，负责认证、WebSocket 生命周期、设备持有者校验、权限、
+租约与停止路径；`src/components/ChatAppView.tsx` 只负责房间目录、标题状态和聊天/控制面板的
+展示组合。展示层不得自行放宽或重排设备命令与停止语义。
+
+房间 Agent 与文字 Agent 共用 `@0xnullai/llm-providers` 配置和
+`@dg-agent/agent-browser` 请求工厂，包括 provider dialect、Responses/Chat Completions、免费代理
+账户认证与全局网络代理。房间 prompt、@ 触发、有限工具循环和 owner-side 远程设备授权仍留在
+Chat；它们不是本地 Agent runtime 的同一种会话语义。
 
 媒体上传需要当前 WebSocket 会话签发的能力；仅知道房间号不能写入媒体桶。私聊票据由账户
 服务签发，Chat 只接受有效票据。

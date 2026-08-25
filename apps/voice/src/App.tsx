@@ -1,4 +1,12 @@
-import { Alert, AlertDescription, ModuleActions, useInShell, useSafetySession } from '@0xnullai/ui';
+import {
+  Alert,
+  AlertDescription,
+  DeviceSafetyButton,
+  ModuleActions,
+  OpossumControl,
+  useInShell,
+  useSafetySession,
+} from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
@@ -9,8 +17,6 @@ import { PermissionModal } from '@0xnullai/ui';
 import { useTheme } from '@0xnullai/ui';
 import type { DeviceSessionTransport } from '@voice/lib/device-session';
 import { isCoyoteOutputActive } from '@dg-kit/core';
-import { DeviceSafetyButton } from '../../chat/src/components/DeviceSafetyButton';
-import { OpossumControl } from '../../chat/src/components/OpossumControl';
 
 interface AppProps {
   /**

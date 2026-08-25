@@ -52,12 +52,17 @@ npm run cf:dev -w 0xnullai-voice   # 体验模式 Worker
 src/lib/realtime/       Realtime provider 适配
 src/lib/                音频、设备与工具桥
 src/hooks/              React 状态绑定
-src/components/         通话与设置 UI
+src/components/         通话与设置 UI；共享设备面板来自 @0xnullai/ui
 worker/                 体验模式入口与 TrialSession DO
 ```
 
 体验 Worker 的账户票据、额度和部署配置见 [worker/README.md](worker/README.md)。正式发布前仍需
 用真实 provider 完成浏览器与安卓端到端通话、工具调用和挂断停止验收。
+
+Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、换票/Azure/Zhipu 鉴权和音色
+目录均属实时协议。统一设置只复用 catalog-driven 字段渲染；通用设备则复用
+`@0xnullai/device-runtime` 的 AI schema、调用适配器和输出权限分类，Voice 保留自己的通话权限与
+结束停止生命周期。
 
 ## 部署
 

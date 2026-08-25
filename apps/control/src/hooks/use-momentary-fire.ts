@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
+import type { CoyoteSummary } from '@0xnullai/device-runtime';
 
 interface ActiveFire {
   deviceId: string;

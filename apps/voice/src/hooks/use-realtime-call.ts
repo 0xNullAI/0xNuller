@@ -21,8 +21,9 @@ import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
 import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 import {
-  AiDeviceToolAdapter,
   appendAiDeviceRuntimeStatus,
+  createAiDeviceToolAdapter,
+  createDeviceInteractionId,
   type DeviceRuntimeProvider,
 } from '@0xnullai/device-runtime';
 import {
@@ -83,12 +84,7 @@ export function useRealtimeCall(
   const [waveformLibrary] = useState(() => new BrowserWaveformLibrary());
   const runtimeTools = useMemo(
     () =>
-      deviceRuntimeProvider
-        ? new AiDeviceToolAdapter({
-            tools: () => deviceRuntimeProvider.forModule('voice'),
-            snapshot: () => deviceRuntimeProvider.current()?.snapshot() ?? null,
-          })
-        : undefined,
+      deviceRuntimeProvider ? createAiDeviceToolAdapter(deviceRuntimeProvider, 'voice') : undefined,
     [deviceRuntimeProvider],
   );
 
@@ -121,9 +117,9 @@ export function useRealtimeCall(
       if (genericRuntime) {
         stops.push(
           Promise.resolve().then(() =>
-            genericRuntime
-              .forModule('voice')
-              .actions.emergencyStop({ interactionId: `voice-hangup-${createSessionId()}` }),
+            genericRuntime.forModule('voice').actions.emergencyStop({
+              interactionId: createDeviceInteractionId('voice', 'hangup'),
+            }),
           ),
         );
       }

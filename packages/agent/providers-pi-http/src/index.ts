@@ -11,7 +11,7 @@ import { buildContext, extractReasoning, extractText, extractToolCalls } from '.
 import type { PiAiModelInfo, PiAiProviderKey } from './types.js';
 
 export type { PiAiModelInfo, PiAiProviderKey } from './types.js';
-export { PI_AI_PROVIDER_KEYS } from './registry.js';
+export { PI_AI_PROVIDER_KEYS } from './provider-keys.js';
 
 // `providerKey` is validated against registry.ts's actual known loader keys
 // (not just "is a non-empty string") so a catalog/registry drift throws a
@@ -20,7 +20,7 @@ export { PI_AI_PROVIDER_KEYS } from './registry.js';
 const configSchema = z.object({
   apiKey: z.string().min(1),
   model: z.string().min(1),
-  providerKey: z.enum(PI_AI_PROVIDER_KEYS as [PiAiProviderKey, ...PiAiProviderKey[]]),
+  providerKey: z.enum(PI_AI_PROVIDER_KEYS),
   temperature: z.number().min(0).max(2).default(0.3),
   supportsImageInput: z.boolean().default(false),
   transformUrl: z
@@ -104,6 +104,7 @@ export class PiAiLlmClient implements LlmClient {
     const eventStream = provider.stream(model, context, {
       apiKey: this.config.apiKey,
       temperature: this.config.temperature,
+      maxTokens: input.maxOutputTokens,
       signal: input.abortSignal,
       onPayload: (payload) => {
         input.onRawRequest?.(payload);

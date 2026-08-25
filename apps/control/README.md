@@ -8,6 +8,7 @@
 ## 功能
 
 - 一个顶部设备横栏连接郊狼、爪印、灵猫或负鼠。
+- 未连接输出设备时显示紧凑的连接引导和安全说明，不展示不可操作的控制台。
 - 多台郊狼独立选择、强度调节、波形播放与归零。
 - 负鼠强度、短反馈和辅助设备指示灯控制。
 - 自定义波形、播放队列和 Market 波形导入。
@@ -34,10 +35,11 @@ npm run build -w @0xnullai/web
 src/App.tsx                 设备会话、控制权和页面组合
 src/components/            郊狼、波形、负鼠和传感器界面
 src/hooks/                 波形播放与按住开火逻辑
-src/lib/attached-devices.ts 顶部设备横栏使用的设备摘要
+@0xnullai/device-runtime    顶部设备横栏的共享状态契约与设备摘要
 ```
 
-蓝牙与协议实现复用 Chat 的 `DeviceSession`，避免在模块间维护多份设备状态和安全逻辑。
+蓝牙与协议实现复用 `@0xnullai/device-runtime` 的 `DeviceSession`，避免功能应用互相导入或维护
+多份设备状态和安全逻辑。
 
 ## 协议
 

@@ -4,9 +4,12 @@ import { loadDeviceSafety } from '@0xnullai/settings';
 import { useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { listBuiltinWaveforms } from '@dg-kit/waveforms';
-import { useDevice } from '../../chat/src/hooks/use-device';
-import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
-import { attachedDeviceSummaries, holdsAnyDevice } from '../../control/src/lib/attached-devices';
+import {
+  useDevice,
+  type DeviceClientFactory,
+  type RequestDeviceFn,
+} from '@0xnullai/device-runtime';
+import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
 import { GameDeviceContext, resolveGamePulse, type PulseIntensity } from './use-game-device';
 
 const GAME_WAVEFORMS = new Map(listBuiltinWaveforms().map((waveform) => [waveform.id, waveform]));

@@ -8,3 +8,6 @@ import { listCustomWaveforms, saveCustomWaveform, subscribeWaveforms } from '@0x
 ```
 
 IndexedDB 是本地真源；损坏条目会单独跳过，不会清空整座波形库。
+
+包内同时提供 `useWaveforms` 与 `.pulse`/Market 导入转换；Chat 和 Control 仅作为消费者，
+不再互相借用功能应用内的 hook。

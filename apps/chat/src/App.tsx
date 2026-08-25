@@ -1,4 +1,4 @@
-import { SidebarSection, useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
+import { useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
 import {
   hasDeviceLease,
   subscribeSafetySessions,
@@ -13,27 +13,14 @@ import { useDevice } from './hooks/use-device';
 import { useWaveforms } from './hooks/use-waveforms';
 import { useChannelRotation } from './hooks/use-channel-rotation';
 import { executeCommand, type CommandContext } from './lib/commands';
-import { ShellRoomList } from './components/ShellRoomList';
-import { ShellDmList } from './components/ShellDmList';
 import { markDmRead } from './lib/dm';
-import { CreateRoomDialog } from './components/CreateRoomDialog';
-import { RoomAgentDialog } from './components/RoomAgentDialog';
-import { ChatPanel } from './components/ChatPanel';
-import { ControlPanel } from './components/ControlPanel';
-import { DeviceSafetyButton } from './components/DeviceSafetyButton';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
-import { LogOut, Bot, Settings2 } from 'lucide-react';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
-import type {
-  DeviceCommand,
-  MemberState,
-  CmdAction,
-  PlayMode,
-  WaveformTransfer,
-} from './lib/protocol';
+import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { isCoyoteOutputActive } from '@dg-kit/core';
+import { ChatAppView } from './components/ChatAppView';
 
 export interface AppProps {
   /**
@@ -796,337 +783,43 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     return () => clearInterval(t);
   }, [callApplyFire]);
 
-  const roomTitle = peerRoom.isDm ? (dmPeer?.name ?? '私聊') : peerRoom.groupName || '房间';
-
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
-      {/* The room list is projected into the shell sidebar's 「房间」 section. Before the
-          merge it lived on another page (/lobby) reached by full-page navigation; now you
-          can see which rooms exist as soon as you open the app. */}
-      {/* Conversations, above the rooms. Signed-out users get no section at all — not an
-          empty one — because a conversation is between two accounts and there is nothing
-          here to offer somebody who has none. Everything below this point works either way. */}
-      {signedIn && (
-        <SidebarSection id="direct" title="私聊">
-          <ShellDmList
-            currentRoom={peerRoom.isDm ? peerRoom.roomId : null}
-            onOpen={(peer) => {
-              showChat();
-              void openDm({
-                accountId: peer.id,
-                username: peer.username,
-                displayName: peer.displayName,
-              });
-            }}
-          />
-        </SidebarSection>
-      )}
-
-      <SidebarSection id="rooms" title="房间">
-        <ShellRoomList
-          currentRoom={peerRoom.isDm ? null : peerRoom.roomId}
-          onJoin={(code) => {
-            if (!requireAccount()) return;
-            showChat();
-            setDmPeer(null);
-            peerRoom.join(code);
-          }}
-          onCreate={() => {
-            if (!requireAccount()) return;
-            showChat();
-            setCreateRoomOpen(true);
-          }}
-          onDelete={(code) => {
-            if (peerRoom.roomId === code) peerRoom.leave();
-          }}
-        />
-      </SidebarSection>
-
-      {accountRequired && !signedIn ? (
-        <div
-          role="alert"
-          className="mx-3 mb-2 rounded-[var(--radius-sm)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]"
-        >
-          登录后才能创建、加入房间或发起私聊；公开房间仍可浏览。
-        </div>
-      ) : null}
-
-      {createRoomOpen && (
-        <CreateRoomDialog
-          defaultName={displayName}
-          // claim is what makes the creator the room's durable owner: the server mints a key
-          // and hands it back once, on this connection only. Set here and nowhere else —
-          // joining someone else's room must never ask for it.
-          onCreate={(code, options) => peerRoom.join(code, { ...options, claim: true })}
-          onJoin={(code) => peerRoom.join(code)}
-          onClose={() => setCreateRoomOpen(false)}
-        />
-      )}
-
-      <header className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-sm font-semibold text-[var(--text)]">
-            {roomTitle}
-          </span>
-          {dmError && (
-            <span className="shrink-0 rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-xs text-[var(--danger)]">
-              {dmError}
-            </span>
-          )}
-          {peerRoom.peers.length > 0 ? (
-            <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
-              {peerRoom.isDm ? '对方在线' : `${peerRoom.peers.length + 1} 人在线`}
-            </span>
-          ) : (
-            <span className="rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-faint)]">
-              {peerRoom.isDm ? '对方不在线' : '等待成员'}
-            </span>
-          )}
-        </div>
-        {!inShell && (
-          <div className="flex shrink-0 items-center gap-1">
-            {/* The permanent discussion room has no host and no AI (pure open chat), so hide the AI entry points.
-              Neither does a conversation: the room agent is defined by a group's owner and
-              runs on the host's authority, and a conversation has neither — the server drops
-              the `agent` frame there, so these buttons would be dead controls. */}
-            {!peerRoom.isDm && (
-              <>
-                {/* The room's AI participant. Owner-only, matching the server: its device
-                  commands are authorized on the host's authority, so defining it belongs to
-                  whoever owns the room — a durable key, not whoever happened to join first. */}
-                {peerRoom.canManageGroup && (
-                  <button
-                    onClick={() => setAgentOpen(true)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
-                    title={peerRoom.agent ? `房间 AI：${peerRoom.agent.name}` : '给房间加个 AI'}
-                  >
-                    <Bot className="h-4 w-4" />
-                  </button>
-                )}
-                {/* AI settings (the host configures the model) + the toggle allowing AI to control this device */}
-                {/* Opens the one settings panel (AI page). Chat used to carry its own
-                  dialog for the standalone build, but both wrote the same provider
-                  config while Chat's knew 6 providers to the registry's 23 — pick
-                  one of the other 17 in the shell and Chat's dropdown rendered
-                  blank, then silently rewrote the choice on the next edit.
-                  The button stays where it is — when the host wants to configure
-                  AI, this is already where their hand is. */}
-                <button
-                  onClick={() => openShellSettings('ai')}
-                  className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-                  title="AI 设置"
-                >
-                  <Settings2 className="h-4 w-4" />
-                </button>
-                {device.connected && (
-                  <button
-                    onClick={() => setAllowAi((v) => !v)}
-                    className={`flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
-                    title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许房间内 AI 控制你的设备'}
-                  >
-                    <Bot className="h-3.5 w-3.5" />
-                    {allowAi ? '允许AI' : '禁AI'}
-                  </button>
-                )}
-              </>
-            )}
-            {/* Bluetooth + personal safety settings (merged panel) */}
-            {!inShell && (
-              <DeviceSafetyButton
-                connected={device.connected}
-                deviceName={device.deviceInfo?.name ?? null}
-                battery={device.battery}
-                onDisconnect={() => device.disconnectCoyote()}
-                limitA={device.limitA}
-                limitB={device.limitB}
-                onSetLimit={device.setLimit}
-                firePolicy={device.firePolicy}
-                onSetFirePolicy={device.setFirePolicy}
-                onRestoreDefaults={waveforms.restoreDefaults}
-                sensor={device.sensor}
-                opossum={device.opossum}
-                onConnectDevice={device.connectDevice}
-                onDisconnectSensor={device.disconnectSensor}
-                onDisconnectOpossum={device.disconnectOpossum}
-                deviceLink={device.deviceLink}
-                onSetDeviceLink={device.setDeviceLink}
-              />
-            )}
-            {/* Emergency stop: must be visible whenever either Coyote or Opossum is
-              connected — both are devices that may currently be outputting, and looking
-              at Coyote alone leaves a user who "only connected an Opossum" unable to find
-              the one-tap stop button. */}
-            {!inShell && (device.connected || device.opossum?.connected) && (
-              <button
-                onClick={device.stopAll}
-                className="flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] bg-[var(--danger-soft)] px-2.5 text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80"
-                title="紧急停止"
-              >
-                <span aria-hidden>⏹</span>
-                <span className="hidden sm:inline">停止</span>
-              </button>
-            )}
-            {/* Leave the room */}
-            <button
-              onClick={() => {
-                device.disconnect();
-                peerRoom.leave();
-                setDmPeer(null);
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-              title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        {inShell && peerRoom.roomId && (
-          <button
-            onClick={() => {
-              device.disconnect();
-              peerRoom.leave();
-              setDmPeer(null);
-            }}
-            className="flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-            title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
-          >
-            <LogOut className="h-4 w-4" />
-            <span>{peerRoom.isDm ? '关闭' : '退出'}</span>
-          </button>
-        )}
-      </header>
-
-      {!peerRoom.roomId ? (
-        <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-8">
-          <div className="mx-auto w-full max-w-2xl rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 sm:p-6">
-            <h2 className="text-lg font-semibold">公开房间</h2>
-            <div className="mt-3">
-              <ShellRoomList
-                mode="directory"
-                currentRoom={null}
-                onJoin={(code) => {
-                  if (requireAccount()) peerRoom.join(code);
-                }}
-                onCreate={() => {
-                  if (requireAccount()) setCreateRoomOpen(true);
-                }}
-                onDelete={() => undefined}
-              />
-            </div>
-          </div>
-        </main>
-      ) : (
-        <>
-          {/* Mobile tab bar */}
-          <div className="flex shrink-0 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] lg:hidden">
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`mobile-tab ${activeTab === 'chat' ? 'active' : ''}`}
-            >
-              💬 聊天
-            </button>
-            <button
-              onClick={() => setActiveTab('control')}
-              className={`mobile-tab ${activeTab === 'control' ? 'active' : ''}`}
-            >
-              ⚡ 控制
-            </button>
-          </div>
-          {!inShell && agentOpen && (
-            <RoomAgentDialog
-              agent={peerRoom.agent}
-              onSave={peerRoom.setAgent}
-              onClose={() => setAgentOpen(false)}
-            />
-          )}
-
-          {/* Two panels */}
-          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
-            <div className={`${activeTab !== 'chat' ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col`}>
-              <ChatPanel
-                messages={peerRoom.messages}
-                onSend={(text, mentions) => peerRoom.sendMessage(text, undefined, mentions)}
-                onSendMedia={sendMedia}
-                members={[
-                  { peerId: peerRoom.selfId, name: displayName, username },
-                  ...peerRoom.peers.map((p) => ({
-                    peerId: p,
-                    name: peerRoom.members.get(p)?.displayName || p.slice(0, 6),
-                    username: peerRoom.members.get(p)?.username ?? null,
-                  })),
-                  // The room agent shows up as a pseudo-member so it can be @-mentioned.
-                  ...[...peerRoom.members.values()]
-                    .filter((m) => m.isAi)
-                    .map((m) => ({ peerId: m.peerId, name: m.displayName })),
-                ]}
-                selfId={peerRoom.selfId}
-              />
-            </div>
-            <div
-              className={`${activeTab !== 'control' ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col border-l border-[var(--surface-border)]`}
-            >
-              <ControlPanel
-                key={peerRoom.roomId ?? 'no-room'}
-                members={peerRoom.members}
-                peers={peerRoom.peers}
-                onSendCommand={sendCommand}
-                onSendWaveform={peerRoom.sendWaveform}
-                roomId={peerRoom.roomId}
-                waveforms={waveforms.allWaveforms}
-                onImportWaveform={waveforms.importFile}
-                onImportMarketWaveform={waveforms.addMarketWaveform}
-                onRemoveWaveform={waveforms.removeWaveform}
-                selfState={
-                  {
-                    peerId: 'self',
-                    displayName,
-                    username,
-                    deviceConnected: device.connected,
-                    strengthA: device.strengthA,
-                    strengthB: device.strengthB,
-                    waveA: device.waveIdA,
-                    waveB: device.waveIdB,
-                    battery: device.battery,
-                    queueA,
-                    queueB,
-                    playModeA,
-                    playModeB,
-                    intervalA: intervalASec,
-                    intervalB: intervalBSec,
-                    currentIndexA,
-                    currentIndexB,
-                    firingA,
-                    firingB,
-                    opossumConnected: device.opossum?.connected ?? false,
-                    opossumIntensityA: device.opossum?.intensityA ?? 0,
-                    opossumIntensityB: device.opossum?.intensityB ?? 0,
-                    opossumBattery: device.opossum?.battery ?? null,
-                    opossumLastButtons: device.opossum?.lastButtons ?? null,
-                    sensorKind: device.sensor?.kind,
-                    sensorConnected: device.sensor?.connected ?? false,
-                    sensorBattery: device.sensor?.battery ?? null,
-                    sensorLastEvent: device.sensor?.lastEvent ?? null,
-                    sensorLastValue: device.sensor?.lastValue ?? null,
-                    sensorLastEventAt: device.sensor?.lastEventAt ?? null,
-                  } satisfies MemberState
-                }
-                selfLimitA={device.limitA}
-                selfLimitB={device.limitB}
-                isPublic={peerRoom.isPublic}
-                // The permanent discussion room's visibility is fixed by definition.
-                canManage={peerRoom.canManageGroup}
-                onSetPublic={peerRoom.setGroupPublic}
-                roomName={peerRoom.groupName}
-                onRename={peerRoom.renameGroup}
-                onCloseRoom={peerRoom.closeGroup}
-                // Same panel, same member cards, same device controls — a conversation is a room
-                // with two people in it. Only the parts that make a room joinable are dropped.
-                isDm={peerRoom.isDm}
-              />
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <ChatAppView
+      signedIn={signedIn}
+      accountRequired={accountRequired}
+      createRoomOpen={createRoomOpen}
+      setCreateRoomOpen={setCreateRoomOpen}
+      displayName={displayName}
+      username={username}
+      dmPeer={dmPeer}
+      setDmPeer={setDmPeer}
+      dmError={dmError}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      agentOpen={agentOpen}
+      setAgentOpen={setAgentOpen}
+      inShell={inShell}
+      allowAi={allowAi}
+      setAllowAi={setAllowAi}
+      peerRoom={peerRoom}
+      device={device}
+      waveforms={waveforms}
+      queueA={queueA}
+      queueB={queueB}
+      playModeA={playModeA}
+      playModeB={playModeB}
+      intervalASec={intervalASec}
+      intervalBSec={intervalBSec}
+      currentIndexA={currentIndexA}
+      currentIndexB={currentIndexB}
+      firingA={firingA}
+      firingB={firingB}
+      showChat={showChat}
+      requireAccount={requireAccount}
+      openDm={openDm}
+      openAiSettings={() => openShellSettings('ai')}
+      sendMedia={sendMedia}
+      sendCommand={sendCommand}
+    />
   );
 }

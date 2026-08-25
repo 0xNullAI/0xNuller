@@ -1,5 +1,6 @@
 import {
   MAX_OUTPUT_LEASE_MS,
+  createDeviceInteractionId,
   sanitizeAiDeviceSnapshot,
   type BoundDeviceTools,
   type CommandAck,
@@ -64,6 +65,13 @@ export interface DeviceRuntimeVideoControlInputs {
   scene: DeviceRuntimeVideoScene | null;
 }
 
+export interface DeviceRuntimeVideoAiAction {
+  id: string;
+  action: 'start' | 'stop';
+  intensity?: number;
+  outputLeaseMs?: number;
+}
+
 export interface DeviceRuntimeVideoControlOptions extends DeviceRuntimeVideoControlInputs {
   provider: DeviceRuntimeProvider;
   hasLease: () => boolean;
@@ -120,7 +128,10 @@ export class DeviceRuntimeVideoControlService {
     this.now = options.now ?? Date.now;
     this.interactionIdFactory =
       options.interactionIdFactory ??
-      ((action) => `video-${action}-${this.now().toString(36)}-${++this.interactionSequence}`);
+      ((action) => {
+        this.interactionSequence += 1;
+        return createDeviceInteractionId('video', `${action}-${this.interactionSequence}`);
+      });
     this.setTimer =
       options.setTimer ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
     this.clearTimer = options.clearTimer ?? ((handle) => globalThis.clearTimeout(handle as number));
@@ -158,6 +169,19 @@ export class DeviceRuntimeVideoControlService {
     const tools = await this.ensureRuntime();
     const ack = await tools.actions.scan({ interactionId: this.interactionId('scan') });
     if (ack.status !== 'applied') throw new Error(`嵌入设备扫描失败：${ack.code}`);
+    return cloneSnapshot(tools.actions.snapshot());
+  }
+
+  /** Stop an authorized feature before asking the shared runtime to disconnect its device. */
+  async disconnectDevice(deviceId: DeviceId): Promise<DeviceSnapshot> {
+    const grant = this.grant?.getSnapshot();
+    if (grant?.deviceId === deviceId && !grant.revoked) await this.stop('device-loss');
+    const tools = await this.ensureRuntime();
+    const ack = await tools.actions.disconnect({
+      interactionId: this.interactionId('disconnect'),
+      deviceId,
+    });
+    if (ack.status !== 'applied') throw new Error(`嵌入设备断开失败：${ack.code}`);
     return cloneSnapshot(tools.actions.snapshot());
   }
 
@@ -206,6 +230,42 @@ export class DeviceRuntimeVideoControlService {
     }
     this.invalidateContinuations();
     return this.generation;
+  }
+
+  async executeAiAction(
+    grant: DeviceRuntimeVideoGrantInput,
+    action: DeviceRuntimeVideoAiAction,
+  ): Promise<unknown> {
+    const current = this.getGrant();
+    if (
+      !current ||
+      current.revoked ||
+      current.deviceId !== grant.deviceId ||
+      current.featureId !== grant.featureId
+    ) {
+      if (current && !current.revoked) await this.stop('device-loss');
+      await this.authorize(grant);
+    }
+    const generation = await this.beginRun();
+    return this.executeEffect(
+      action.action === 'stop'
+        ? {
+            id: action.id,
+            name: 'device_stop',
+            args: { deviceId: grant.deviceId, featureId: grant.featureId },
+          }
+        : {
+            id: action.id,
+            name: 'device_vibrate',
+            args: {
+              deviceId: grant.deviceId,
+              featureId: grant.featureId,
+              intensity: action.intensity ?? 0,
+              outputLeaseMs: action.outputLeaseMs ?? 1,
+            },
+          },
+      generation,
+    );
   }
 
   async observe(image: LlmImageInput, externalSignal?: AbortSignal): Promise<string> {

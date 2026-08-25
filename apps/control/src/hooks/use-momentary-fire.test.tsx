@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { CoyoteSummary } from '../../../chat/src/lib/bluetooth';
+import type { CoyoteSummary } from '@0xnullai/device-runtime';
 import { useMomentaryFire } from './use-momentary-fire';
 
 function coyote(overrides: Partial<CoyoteSummary> = {}): CoyoteSummary {

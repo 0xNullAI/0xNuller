@@ -43,7 +43,7 @@ import {
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
-import { AiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import { createAiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 export interface PermissionRequestInput {
   toolName: string;
@@ -278,10 +278,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
 
   const deviceRuntimeProvider = options.deviceRuntimeProvider;
   const deviceRuntimeTools = deviceRuntimeProvider
-    ? new AiDeviceToolAdapter({
-        tools: () => deviceRuntimeProvider.forModule('agent'),
-        snapshot: () => deviceRuntimeProvider.current()?.snapshot() ?? null,
-      })
+    ? createAiDeviceToolAdapter(deviceRuntimeProvider, 'agent')
     : undefined;
 
   let client: AgentClient;

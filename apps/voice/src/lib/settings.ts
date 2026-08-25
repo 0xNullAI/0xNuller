@@ -1,4 +1,9 @@
-import { effectivePermissionMode, loadDeviceSafety, updateDeviceSafety } from '@0xnullai/settings';
+import {
+  loadDeviceSafetySections,
+  saveDeviceSafetySections,
+  type CoyoteSafetySettings,
+  type OpossumSafetySettings,
+} from '@0xnullai/settings';
 /**
  * localStorage-backed settings, namespaced `dg-voice-*` per DG-Chat's
  * CLAUDE.md convention (avoid key collisions between the DG family's
@@ -17,22 +22,7 @@ export const SETTINGS_STORAGE_KEY = 'dg-voice-settings';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
 
-export interface CoyoteSafetySettings {
-  maxStrengthA: number;
-  maxStrengthB: number;
-  maxColdStartStrength: number;
-  maxAdjustStep: number;
-  maxBurstDurationMs: number;
-  maxBurstStrengthAbsolute: number;
-  maxBurstStrengthRelative: number;
-}
-
-export interface OpossumSafetySettings {
-  maxColdStartIntensity: number;
-  maxAdjustStep: number;
-  maxIntensityA: number;
-  maxIntensityB: number;
-}
+export type { CoyoteSafetySettings, OpossumSafetySettings } from '@0xnullai/settings';
 
 export interface VoiceSettings {
   activeProviderId: RealtimeProviderId;
@@ -117,25 +107,12 @@ export function loadSettings(): VoiceSettings {
   // storage yet, so the caps a new user set in Agent were completely invisible
   // over in Voice, and since the defaults happen to be sensible it was very
   // hard to notice.
-  const shared = loadDeviceSafety();
+  const shared = loadDeviceSafetySections();
   const withShared = (base: VoiceSettings): VoiceSettings => ({
     ...base,
-    coyoteSafety: {
-      maxStrengthA: shared.maxStrengthA,
-      maxStrengthB: shared.maxStrengthB,
-      maxColdStartStrength: shared.maxColdStartStrength,
-      maxAdjustStep: shared.maxAdjustStep,
-      maxBurstDurationMs: shared.maxBurstDurationMs,
-      maxBurstStrengthAbsolute: shared.maxBurstStrengthAbsolute,
-      maxBurstStrengthRelative: shared.maxBurstStrengthRelative,
-    },
-    opossumSafety: {
-      maxColdStartIntensity: shared.maxColdStartIntensity,
-      maxAdjustStep: shared.maxOpossumAdjustStep,
-      maxIntensityA: shared.maxIntensityA,
-      maxIntensityB: shared.maxIntensityB,
-    },
-    permissionMode: effectivePermissionMode(shared),
+    coyoteSafety: shared.coyoteSafety,
+    opossumSafety: shared.opossumSafety,
+    permissionMode: shared.permissionMode,
   });
 
   try {
@@ -160,20 +137,6 @@ export function saveSettings(settings: VoiceSettings): void {
   // stays in this module's own blob (same shape, harmless), but reads always
   // take the shared value — when the two disagree the source of truth wins,
   // not whoever wrote last.
-  updateDeviceSafety((prev) => ({
-    ...prev,
-    maxStrengthA: settings.coyoteSafety.maxStrengthA,
-    maxStrengthB: settings.coyoteSafety.maxStrengthB,
-    maxColdStartStrength: settings.coyoteSafety.maxColdStartStrength,
-    maxAdjustStep: settings.coyoteSafety.maxAdjustStep,
-    maxBurstDurationMs: settings.coyoteSafety.maxBurstDurationMs,
-    maxBurstStrengthAbsolute: settings.coyoteSafety.maxBurstStrengthAbsolute,
-    maxBurstStrengthRelative: settings.coyoteSafety.maxBurstStrengthRelative,
-    maxColdStartIntensity: settings.opossumSafety.maxColdStartIntensity,
-    maxOpossumAdjustStep: settings.opossumSafety.maxAdjustStep,
-    maxIntensityA: settings.opossumSafety.maxIntensityA,
-    maxIntensityB: settings.opossumSafety.maxIntensityB,
-    permissionMode: settings.permissionMode,
-  }));
+  saveDeviceSafetySections(settings);
   window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }

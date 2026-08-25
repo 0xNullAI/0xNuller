@@ -34,7 +34,7 @@ npm run types:check -w 0xnullai-chat
 ## Layout
 
 ```text
-src/components/       room, message, member, and device UI
+src/components/       room/member UI; ChatAppView composes room/lobby presentation only
 src/hooks/            room, device, and waveform state
 src/lib/              WebSocket, media, and client protocol
 worker/index.ts       HTTP and WebSocket routing
@@ -42,6 +42,11 @@ worker/room-do.ts     room and direct-message state
 worker/lobby-do.ts    public lobby
 worker/media.ts       R2 media access
 ```
+
+`src/App.tsx` is Chat's runtime orchestrator for authentication, WebSocket lifecycle, device-owner
+validation, permissions, leases, and stop paths. `src/components/ChatAppView.tsx` only composes the
+room directory, header status, and chat/control panels; it must not relax or reorder device commands
+or stop semantics.
 
 Media uploads require a capability issued by the current WebSocket session. Direct-message tickets
 are minted by the account service and verified by Chat.

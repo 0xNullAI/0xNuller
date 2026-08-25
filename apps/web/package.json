@@ -6,7 +6,7 @@
   "description": "统一外壳：常驻导航 + 七模块按路由挂载",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/verify-web-bundle.mjs",
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "vitest run",
@@ -22,7 +22,7 @@
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
-    "@dg-agent/providers-openai-http": "0.1.0",
+    "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/providers-pi-http": "0.1.0",
     "@dg-agent/storage-browser": "0.1.0",
     "@dg-kit/core": "1.16.3",

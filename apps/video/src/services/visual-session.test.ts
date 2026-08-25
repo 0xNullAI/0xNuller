@@ -149,6 +149,22 @@ describe('VisualSession fail-safe stops', () => {
     expect(stop).toHaveBeenCalledWith('device-loss');
   });
 
+  it('halts visual continuations without duplicating a coordinator-owned stop', () => {
+    const stop = vi.fn();
+    const session = new VisualSession({
+      capture: vi.fn().mockResolvedValue(undefined),
+      interpret: vi.fn(),
+      stopAuthorizedTargets: stop,
+      onChange: vi.fn(),
+    });
+
+    session.start(10_000);
+    session.haltAfterExternalStop('device-loss');
+
+    expect(session.getSnapshot()).toMatchObject({ status: 'stopped', stopReason: 'device-loss' });
+    expect(stop).not.toHaveBeenCalled();
+  });
+
   it('watchdog-stops a session with no successful observation', async () => {
     vi.useFakeTimers();
     const stop = vi.fn();

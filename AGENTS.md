@@ -91,9 +91,75 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
 - Browser/Tauri transport differences: the matching `packages/kit/transport-*` package.
 - Shared waveform and tool semantics: `packages/kit/waveforms` and `packages/kit/tools`.
 - Product permissions and browser-wide services: `packages/platform/*`.
+- Shared DG-Lab product sessions, React device hooks, and channel rotation:
+  `packages/platform/device-runtime`; feature apps may consume or compatibility-re-export them, but
+  must not import another app's implementation.
+- Shared waveform import/library hooks belong in `packages/platform/waveforms`; reusable device
+  controls such as press-and-hold repeat belong in `packages/platform/ui`.
+- Shared device snapshots belong in `packages/platform/device-runtime`, shared device panels with
+  injected actions in `packages/platform/ui`, and cross-module safety persistence/adapters in
+  `packages/platform/settings`. Feature apps consume these contracts and may keep narrow compatibility
+  re-exports during migration; they must not import another app for device UI or settings behavior.
+- Generic-device consumers use `DeviceRuntimeModuleBinding` for lazy module binding and snapshot
+  subscriptions, `createAiDeviceToolAdapter` for Agent/Voice model exposure, and
+  `genericDeviceSafetyPolicy` / `genericDeviceIntensityCap` for normalized safety settings. Do not
+  duplicate provider startup, AI allowlists/display names, permission classification, interaction-ID
+  generation, or percentage-to-normalized cap arithmetic in feature apps. Video snapshots every
+  currently connected output capability into one ephemeral allowlist; each model tool call supplies
+  an exact target identity. The coordinator must stop the previous target/channel before routing to a
+  different one, and topology/runtime identity changes revoke the whole allowlist and stop all output.
+- Cross-module output selection uses `UnifiedOutputTarget` from device-runtime and
+  `OutputTargetPicker` from UI. Coyote, Opossum, and generic runtime capabilities appear in one target
+  list; feature apps keep connection, authorization, lease, and stop ownership. Selection never means
+  fan-out: authorize only the exact selected identity, and stop the old grant before switching or
+  disconnecting it. Safety caps must be projected from the shared device-safety settings by modality.
+  Read-only AI surfaces use `OutputCapabilityList` and must not require a human to preselect the
+  model's target; Control remains the interactive consumer of `OutputTargetPicker`.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
+- Text provider identity, defaults, capability allowlists, scoped local/session-key persistence, and
+  subscriptions belong in `packages/platform/llm-providers`. Browser client creation, dialect routing,
+  proxy application, model discovery, and connection probes belong in `packages/agent/agent-browser`;
+  Agent, Chat, Video, and shell settings must consume those boundaries instead of constructing model
+  request URLs or provider branches themselves.
+- Agent and Chat share the text-provider profile. Video keeps a separately keyed, versioned profile
+  because image input must fail closed, but reuses the same catalog, browser client, discovery, and
+  persistence mechanics. Voice Realtime keeps its protocol-specific catalog/session settings; only
+  catalog-driven settings rendering and platform-safe device adapters are shared with text surfaces.
+- AI access to generic devices goes through `@0xnullai/device-runtime`'s positive allowlist, schema
+  adapter, output-increasing permission set, opaque target IDs, and bound module tools. Feature code
+  may adapt results to its runtime, but must not duplicate capability schemas or gate stop/emergency
+  stop behind ordinary output permission.
+- Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in
+  `apps/agent/src/App.tsx`; the standalone mobile/desktop and unified-shell conversation navigation
+  projections belong in `apps/agent/src/components/SessionNavigation.tsx` and receive lifecycle
+  callbacks from the entry rather than owning them. Unified-shell settings and diagnostics
+  registration belongs in `apps/agent/src/components/AgentModuleProjections.tsx`; it receives prepared
+  view models/actions and owns only visual disclosure state, never device/session lifecycles or
+  persistence decisions.
+- Inside `packages/agent/runtime`, keep `AgentRuntime` as the session/lifecycle facade. Bounded LLM
+  and tool iterations belong in the turn coordinator, tool permission/policy/device dispatch belongs
+  in the tool executor, pure device-tool availability belongs in `device-tool-availability.ts`,
+  bounded shared clamp resolution belongs in `runtime-policy-resolution.ts`, and pure context/quota
+  transitions belong in turn state. Preserve the
+  provider-complete -> abort check -> tool-execute ordering and cover coordinator event/skip behavior
+  with direct regression tests when changing these boundaries.
 - Rendering and interaction state used by only one surface: that app's `src` directory.
+- In Market, `apps/market/src/web/components/UploadDialog.tsx` coordinates upload UI state,
+  authenticated network calls, and close/refresh callbacks. Portable template generation, uploaded
+  file/archive parsing, and manual-form payload validation belong in the pure
+  `apps/market/src/web/upload-model.ts`; ownership, edit authorization, and persistence remain API
+  and Worker responsibilities.
+- Feature setup panels receive prepared typed view models and explicit actions from their app
+  coordinator. Keep authorization, leases, target identity, effective safety limits, and lifecycle
+  stop decisions in the coordinator or shared safety service rather than recomputing them in a
+  presentational child.
+- In Chat, keep `apps/chat/src/App.tsx` as the runtime orchestrator for auth, Room WebSocket/DM
+  lifecycle, owner-side validation, permissions, leases, command routing, and stop paths.
+  `components/ChatAppView.tsx` owns room/lobby presentation composition only; it may invoke the
+  supplied callbacks but must not duplicate or reorder their safety and transport decisions.
+- Disconnected device surfaces should show one clear connection path and safety context; do not render
+  a full faded or disabled control console that implies hardware is present or malfunctioning.
 - Node BLE and MCP-specific orchestration: `apps/mcp`.
 
 Keep public package entrypoints as barrels, not implementations. A cohesive behavior gets a named
@@ -126,6 +192,11 @@ stops are safety-critical. If the task does not clearly authorize such a change,
 Put unit/component tests beside source as `name.test.ts(x)`. Use a local `__tests__` directory only for
 cross-file composition tests. Test observable contracts, not private implementation trivia.
 
+- Split large cross-domain test files by observable responsibility (for example session/context,
+  device safety, timers, and multi-device behavior) so Vitest can schedule the suites independently.
+  Keep reusable fakes and builders in an explicitly named adjacent `*.test-support.ts` file; support
+  files must not register tests or hide responsibility boundaries. A structural split must preserve
+  every distinct assertion and safety case, with test counts checked before and after.
 - Protocol and transport changes require byte-level or adapter tests.
 - Cross-surface device changes need shared-domain tests plus focused consumer tests.
 - Tests must be deterministic; fake time, storage, BLE, network, and randomness at the boundary.
@@ -133,14 +204,19 @@ cross-file composition tests. Test observable contracts, not private implementat
 
 Use the narrowest useful command while iterating:
 
-| Scope         | Commands                                                                         |
-| ------------- | -------------------------------------------------------------------------------- |
-| Changed files | `npm test`                                                                       |
-| One module    | `npm run test:module -- <name>`                                                  |
-| Repository    | `npm run test:repository`, `npm run check:structure`, `npm run lint`             |
-| Product       | `npm run typecheck:product`, `npm run test:product`, `npm run build:product:web` |
-| DG-Kit        | `npm run verify:kit`, `npm run typecheck:kit`, `npm run test:kit`                |
-| DG-MCP        | `npm run verify:mcp`, `npm run typecheck:mcp`, `npm run test:mcp`                |
+| Tier              | Commands                                | Required use                     |
+| ----------------- | --------------------------------------- | -------------------------------- |
+| Local fast        | `npm test` or `npm run test:fast`       | Editing loop only                |
+| One module        | `npm run test:module -- <name>`         | Completed feature slice          |
+| PR affected       | `npm run test:affected -- --base=<ref>` | Before submitting a focused PR   |
+| Main/handoff full | `npm run test:full`                     | Substantial changes and releases |
+
+Affected selection must follow workspace reverse dependencies. A shared Kit/platform change expands
+to its consumers; unknown runtime files and global test configuration fail safe to the full applicable
+suite. Never exclude safety, authorization, lease, lifecycle-stop, or emergency-stop coverage to make
+a test tier faster. CI and root orchestration may prepare DG-Kit once and use a `:prepared` command,
+but must not skip the corresponding build or tests. See `docs/testing.md` for responsibility-domain
+and CI commands.
 
 A Kit behavior change requires Kit, Product, and MCP compatibility coverage. Before handoff of a
 substantial change, run:
@@ -162,11 +238,22 @@ If it could not be run, say so explicitly.
   difficult to understand and test, not at an arbitrary line count.
 - React components render; hooks coordinate UI state; pure transitions and domain decisions belong
   in plain TypeScript modules.
+- Disconnected device surfaces show a compact, actionable empty state; do not render a wall of
+  faded controls that cannot work. Connecting must never imply or automatically produce output.
+- Responsive shell changes are checked at a desktop viewport and at 390×844. Keep primary module
+  choices visible without horizontal overflow, and account for mobile safe areas.
+- Mobile drawers and modal navigation expose their expanded/controlled relationship, focus an
+  intentional first target, close on Escape, and return focus to the trigger.
 - Prefer narrow APIs and delete completed compatibility paths. Do not add a parallel abstraction
   without a migration and deletion plan.
+- Browser builds must replace Node-only dependency fallbacks at the composition boundary. Provider
+  SDKs and device WASM stay behind the user action that needs them; enforce that reachability from
+  the generated manifest instead of hiding bundle growth by raising chunk warning limits.
 - Do not hand-edit or commit `dist`, `target`, `src-tauri/gen`, `.astro`, `.wrangler`, build-info,
   caches, or other generated output.
 - Do not edit `docs/legacy` as part of current product work.
+- Keep maintained documents reachable from `docs/README.md`; new standalone design or operations
+  notes must be linked from that index or the owning package README.
 
 ## Changesets and releases
 

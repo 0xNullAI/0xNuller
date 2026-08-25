@@ -10,17 +10,66 @@ import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import { OpenAiHttpLlmClient } from '@dg-agent/providers-openai-http';
 import {
   PI_AI_PROVIDER_KEYS,
-  PiAiLlmClient,
   type PiAiProviderKey,
-} from '@dg-agent/providers-pi-http';
+} from '@dg-agent/providers-pi-http/provider-keys';
 
 class UnavailableLlmClient implements LlmClient {
   readonly capabilities = { imageInput: false };
+  private readonly message: string;
 
-  constructor(private readonly message: string) {}
+  constructor(message: string) {
+    this.message = message;
+  }
 
   async runTurn(_input: LlmTurnInput): Promise<LlmTurnResult> {
     throw new Error(this.message);
+  }
+}
+
+/**
+ * Keeps pi-ai and every provider factory outside the normal Agent route. The
+ * selected runtime is fetched only when a pi-ai-backed provider starts a turn;
+ * OpenAI-compatible providers never download it.
+ */
+class LazyPiAiLlmClient implements LlmClient {
+  readonly capabilities;
+  private clientPromise?: Promise<LlmClient>;
+  private readonly config: {
+    apiKey: string;
+    model: string;
+    providerKey: PiAiProviderKey;
+    temperature: number;
+    supportsImageInput: boolean;
+    transformUrl: (url: string) => string;
+  };
+
+  constructor(config: {
+    apiKey: string;
+    model: string;
+    providerKey: PiAiProviderKey;
+    temperature: number;
+    supportsImageInput: boolean;
+    transformUrl: (url: string) => string;
+  }) {
+    this.config = config;
+    this.capabilities = { imageInput: config.supportsImageInput };
+  }
+
+  async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
+    const client = await this.loadClient();
+    return client.runTurn(input);
+  }
+
+  private loadClient(): Promise<LlmClient> {
+    if (!this.clientPromise) {
+      this.clientPromise = import('@dg-agent/providers-pi-http')
+        .then(({ PiAiLlmClient }) => new PiAiLlmClient(this.config))
+        .catch((error: unknown) => {
+          this.clientPromise = undefined;
+          throw error;
+        });
+    }
+    return this.clientPromise;
   }
 }
 
@@ -66,7 +115,14 @@ export interface CreateBrowserLlmClientOptions {
 
 /** Browser-only provider composition shared by Agent and read-only visual modules. */
 export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): LlmClient {
-  const provider = resolveProviderRuntimeSettings(options.provider);
+  let provider;
+  try {
+    provider = resolveProviderRuntimeSettings(options.provider);
+  } catch (error) {
+    return new UnavailableLlmClient(
+      formatProviderConfigError(error, options.provider.providerId, 'openai-compat'),
+    );
+  }
   const temperature = options.temperature ?? 0.3;
 
   if (!provider.browserSupported) {
@@ -85,8 +141,22 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
         `当前服务提供方“${provider.providerId}”配置无效：内部提供方标识不受支持，请重新选择服务提供方或联系开发者`,
       );
     }
+    if (
+      !provider.model.trim() ||
+      !Number.isFinite(temperature) ||
+      temperature < 0 ||
+      temperature > 2
+    ) {
+      return new UnavailableLlmClient(
+        formatProviderConfigError(
+          new Error('invalid pi-ai settings'),
+          provider.providerId,
+          provider.dialect,
+        ),
+      );
+    }
     try {
-      return new PiAiLlmClient({
+      return new LazyPiAiLlmClient({
         apiKey: provider.apiKey,
         model: provider.model,
         providerKey: provider.piProviderKey,

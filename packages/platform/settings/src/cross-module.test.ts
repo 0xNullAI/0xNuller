@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BrowserAppSettingsStore } from '@dg-agent/storage-browser';
-import { loadSettings, saveSettings } from '../../../../apps/voice/src/lib/settings';
 import { loadDeviceSafety, updateDeviceSafety } from './device-safety';
+import { loadDeviceSafetySections, saveDeviceSafetySections } from './device-safety-sections';
 
 /**
  * Cross-module consistency of safety settings.
@@ -12,30 +12,29 @@ import { loadDeviceSafety, updateDeviceSafety } from './device-safety';
  * Agent, switch to Voice, it must still be 30. Only putting the two storage
  * layers side by side can test that.
  *
- * This file imports Voice's settings module across packages instead of
- * copying its shape — a copy would be a fourth source of truth, and this
- * file exists precisely to prevent that.
+ * The shared nested contract lives beside the canonical store, so this package can validate
+ * both Agent's flat compatibility view and the device-panel view without importing an app.
  */
 
 beforeEach(() => localStorage.clear());
 
-describe('三个模块共享同一份设备安全设置', () => {
+describe('设备模块共享同一份安全设置', () => {
   it('Agent 里调的上限，Voice 立刻看到', () => {
     const agent = new BrowserAppSettingsStore();
     const before = agent.load();
     agent.save({ ...before, maxStrengthA: 30, maxColdStartStrength: 5 });
 
-    const voice = loadSettings();
-    expect(voice.coyoteSafety.maxStrengthA).toBe(30);
-    expect(voice.coyoteSafety.maxColdStartStrength).toBe(5);
+    const sections = loadDeviceSafetySections();
+    expect(sections.coyoteSafety.maxStrengthA).toBe(30);
+    expect(sections.coyoteSafety.maxColdStartStrength).toBe(5);
   });
 
-  it('Voice 里调的上限，Agent 立刻看到', () => {
-    const voice = loadSettings();
-    saveSettings({
-      ...voice,
+  it('分组设备契约里调的上限，Agent 立刻看到', () => {
+    const sections = loadDeviceSafetySections();
+    saveDeviceSafetySections({
+      ...sections,
       coyoteSafety: {
-        ...voice.coyoteSafety,
+        ...sections.coyoteSafety,
         maxStrengthA: 20,
         maxStrengthB: 25,
         maxColdStartStrength: 4,
@@ -59,16 +58,16 @@ describe('三个模块共享同一份设备安全设置', () => {
     updateDeviceSafety((prev) => ({ ...prev, maxIntensityA: 22, maxOpossumAdjustStep: 4 }));
 
     const agent = new BrowserAppSettingsStore().load();
-    const voice = loadSettings();
+    const sections = loadDeviceSafetySections();
     expect(agent.maxOpossumIntensityA).toBe(22);
     expect(agent.maxOpossumAdjustStep).toBe(4);
-    expect(voice.opossumSafety.maxIntensityA).toBe(22);
-    expect(voice.opossumSafety.maxAdjustStep).toBe(4);
+    expect(sections.opossumSafety.maxIntensityA).toBe(22);
+    expect(sections.opossumSafety.maxAdjustStep).toBe(4);
   });
 
   it('allow-all 在任何一个模块写入后都不过夜', () => {
-    const voice = loadSettings();
-    saveSettings({ ...voice, permissionMode: 'allow-all' });
+    const sections = loadDeviceSafetySections();
+    saveDeviceSafetySections({ ...sections, permissionMode: 'allow-all' });
     // Voice used to persist it permanently. Post-merge we adopt Agent's
     // strict semantics, or the "dangerous mode does not survive overnight"
     // guarantee silently disappears just because a different module wrote

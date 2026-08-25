@@ -139,6 +139,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
           : undefined,
       tool_choice: input.tools.length > 0 ? 'auto' : undefined,
       parallel_tool_calls: input.tools.length > 0 ? true : undefined,
+      max_tokens: input.maxOutputTokens,
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);
@@ -201,6 +202,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
           : undefined,
       tool_choice: input.tools.length > 0 ? 'auto' : undefined,
       parallel_tool_calls: input.tools.length > 0 ? true : undefined,
+      max_output_tokens: input.maxOutputTokens,
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);
@@ -460,11 +462,11 @@ export interface ListModelsOptions {
 }
 
 export class ListModelsError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: unknown,
-  ) {
+  override readonly cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
     super(message);
+    this.cause = cause;
     this.name = 'ListModelsError';
   }
 }
@@ -547,11 +549,11 @@ export interface TestConnectionOptions {
 }
 
 export class ConnectionTestError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: unknown,
-  ) {
+  override readonly cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
     super(message);
+    this.cause = cause;
     this.name = 'ConnectionTestError';
   }
 }

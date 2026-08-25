@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { DeviceSafetyButton } from '../../../chat/src/components/DeviceSafetyButton';
+import { DeviceSafetyButton } from '@0xnullai/ui';
 
 describe('Voice 统一设备入口', () => {
   it('复用设备安全面板且只声明 Voice 支持的设备', () => {

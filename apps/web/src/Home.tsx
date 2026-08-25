@@ -3,6 +3,21 @@ import { MODULES } from './routes';
 
 const VISITED_KEY = '0xnullai-visited';
 
+const HOME_GROUPS = [
+  {
+    id: 'control',
+    title: '控制与协作',
+    description: '从手动控制开始，或交给对话、语音和视觉协助。',
+    modules: ['control', 'agent', 'voice', 'video'],
+  },
+  {
+    id: 'connect',
+    title: '连接与探索',
+    description: '进入多人互动，发现社区内容，或把设备接入游戏。',
+    modules: ['chat', 'market', 'playground'],
+  },
+] as const;
+
 /**
  * The root path. It has two modes, a first-visit introduction and a
  * returning-visitor grid — anonymous use is a hard constraint, so having
@@ -33,18 +48,11 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
 
   return (
     <div className="shl-home h-full overflow-y-auto">
-      {/* Centred vertically while the content is shorter than the viewport,
-          top-aligned and scrolling once it is not. Seven cards leave a lot of
-          room at 1440px, and letting them sit against the top edge reads as
-          a page that failed to finish loading. */}
-      <div className="flex min-h-full flex-col justify-center">
-        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-10 px-5 py-12 sm:py-16">
-          <header className="flex flex-col gap-3">
+      <div className="shl-home-layout">
+        <header className="shl-home-header">
+          <div className="shl-home-identity">
             <div className="flex items-center gap-3">
-              <span
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-[0_0_24px_var(--accent-soft)]"
-                aria-hidden
-              >
+              <span className="shl-home-mark" aria-hidden>
                 <svg viewBox="0 0 40 20" className="h-5 w-8">
                   <path
                     d="M2 10h6l3-7 6 14 6-14 4 7h11"
@@ -56,40 +64,71 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                   />
                 </svg>
               </span>
-              <h1
-                className="text-3xl font-semibold tracking-tight sm:text-4xl"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                {returning ? (
-                  <>
-                    <span className="text-[var(--accent-strong)]">欢迎</span>回来
-                  </>
-                ) : (
-                  <span className="text-[var(--accent-strong)]">0xNuller</span>
-                )}
-              </h1>
+              <div>
+                <p className="shl-home-eyebrow">统一设备工作台</p>
+                <h1 className="shl-home-title" style={{ fontFamily: 'var(--font-display)' }}>
+                  {returning ? (
+                    <>
+                      <span className="text-[var(--accent-strong)]">欢迎</span>回来
+                    </>
+                  ) : (
+                    <span className="text-[var(--accent-strong)]">0xNuller</span>
+                  )}
+                </h1>
+              </div>
             </div>
-            {!returning ? (
-              <p className="max-w-[52ch] text-[var(--text-soft)]">
-                一次连接，所有模块共用设备、安全设置和波形库
-              </p>
-            ) : null}
-          </header>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {MODULES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => onOpen(m.id)}
-                className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-5 py-4 text-left transition-colors duration-[var(--dur)] hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              >
-                <span className="font-medium text-[var(--accent-strong)]">{m.label}</span>
-                <span className="text-sm text-[var(--text-soft)]">{m.blurb}</span>
-              </button>
-            ))}
+            <p className="shl-home-intro">
+              {returning
+                ? '继续使用共用设备、安全设置和波形库。'
+                : '一次连接，所有模块共用设备、安全设置和波形库。'}
+            </p>
           </div>
-        </div>
+          <p className="shl-home-summary" aria-label="可用模块数量">
+            <strong>{MODULES.length}</strong>
+            <span>个模块</span>
+          </p>
+        </header>
+
+        <nav className="shl-home-nav" aria-label="功能模块">
+          {HOME_GROUPS.map((group) => (
+            <section
+              key={group.id}
+              className="shl-home-group"
+              aria-labelledby={`${group.id}-title`}
+            >
+              <div className="shl-home-group-heading">
+                <h2 id={`${group.id}-title`}>{group.title}</h2>
+                <p>{group.description}</p>
+              </div>
+              <ul className="shl-home-grid">
+                {group.modules.map((id, index) => {
+                  const module = MODULES.find((candidate) => candidate.id === id);
+                  if (!module) return null;
+                  return (
+                    <li key={module.id}>
+                      <button
+                        type="button"
+                        onClick={() => onOpen(module.id)}
+                        className="shl-home-card"
+                      >
+                        <span className="shl-home-card-index" aria-hidden>
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <span className="shl-home-card-copy">
+                          <span className="shl-home-card-title">{module.label}</span>
+                          <span className="shl-home-card-blurb">{module.blurb}</span>
+                        </span>
+                        <span className="shl-home-card-arrow" aria-hidden>
+                          ↗
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </nav>
       </div>
     </div>
   );

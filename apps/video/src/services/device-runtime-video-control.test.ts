@@ -293,6 +293,28 @@ describe('DeviceRuntime Video grant and model boundary', () => {
 });
 
 describe('DeviceRuntime Video fail-safe lifecycle', () => {
+  it('stops an authorized feature before disconnecting its generic device', async () => {
+    const harness = backendHarness();
+    await harness.start();
+    const ids = target(harness.provider);
+    const service = createService(harness.provider, llmWithCalls([]));
+    const order: string[] = [];
+    harness.session.stopFeature = vi.fn(async () => {
+      order.push('stop');
+    });
+    harness.session.disconnect = vi.fn(async () => {
+      order.push('disconnect');
+    });
+    await service.authorize(grantInput(ids.deviceId, ids.featureId));
+
+    await service.disconnectDevice(ids.deviceId);
+
+    // Video stops the exact grant, then the shared runtime applies its own
+    // disconnect fence. Both confirmations must precede transport teardown.
+    expect(order).toEqual(['stop', 'stop', 'disconnect']);
+    expect(service.getGrant()?.revoked).toBe(true);
+  });
+
   it('rejects a stale same-name reconnect and escalates stale identity to global stop', async () => {
     const harness = backendHarness();
     await harness.start();
