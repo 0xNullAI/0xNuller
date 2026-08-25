@@ -18,7 +18,7 @@
     "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/core": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
-    "@dg-kit/safety": "1.16.2",
+    "@dg-kit/safety": "1.16.3",
     "lucide-react": "^1.11.0"
   },
   "peerDependencies": {
