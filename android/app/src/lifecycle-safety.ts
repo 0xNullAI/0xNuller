@@ -107,6 +107,12 @@ async function attachTauriListener(stop: Stopper): Promise<LifecycleListener> {
   }
 }
 
+/** Attach the native pause signal to the shell-owned embedded DeviceRuntime controller. */
+export async function attachAndroidDeviceRuntimeLifecycle(stop: () => void): Promise<() => void> {
+  const listener = await attachTauriListener(async () => stop());
+  return () => listener.detach();
+}
+
 /**
  * Wrap a `DeviceClient` so any lifecycle transition that suspends the
  * webview triggers an emergencyStop before suspension takes effect.

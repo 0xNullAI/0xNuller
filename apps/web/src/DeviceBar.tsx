@@ -45,8 +45,10 @@ function useConnectedDevices() {
 
 /** DeviceSummary.kind is a free-form string — a module may report a kind kit
  *  does not know about — so fall back to the raw value instead of blanking. */
-function kindLabel(kind: string): string {
-  return (DEVICE_KIND_DISPLAY_NAME as Record<string, string>)[kind] ?? kind;
+function kindLabel(device: DeviceSummary): string {
+  return (
+    (DEVICE_KIND_DISPLAY_NAME as Record<string, string>)[device.kind] ?? device.name ?? device.kind
+  );
 }
 
 /**
@@ -73,12 +75,13 @@ function DeviceChip({
   disconnecting: boolean;
   onDisconnect?: () => void;
 }) {
-  const active = Boolean(device.active);
+  const active = device.active;
+  const activeKnown = typeof active === 'boolean';
   return (
     <div
       className={
         'flex min-w-0 shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] border px-2.5 py-1.5 ' +
-        (active
+        (active === true
           ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
           : 'border-transparent bg-[var(--bg-soft)]')
       }
@@ -86,7 +89,11 @@ function DeviceChip({
       <span
         className={
           'h-1.5 w-1.5 shrink-0 rounded-full ' +
-          (active ? 'bg-[var(--accent)]' : 'bg-[var(--success)]')
+          (active === true
+            ? 'bg-[var(--accent)]'
+            : activeKnown
+              ? 'bg-[var(--success)]'
+              : 'bg-[var(--text-faint)]')
         }
         aria-hidden
       />
@@ -121,7 +128,7 @@ function DeviceChip({
         </span>
       ))}
       <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
-        {active ? '输出中' : '待机'}
+        {active === true ? '输出中' : activeKnown ? '待机' : '状态未知'}
       </span>
       {typeof device.battery === 'number' && (
         <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-faint)]">
@@ -216,7 +223,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
           {rows.map(({ group, device }) => {
             const ordinal = (kindSeen.get(device.kind) ?? 0) + 1;
             kindSeen.set(device.kind, ordinal);
-            const baseLabel = kindLabel(device.kind);
+            const baseLabel = kindLabel(device);
             const displayLabel =
               (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
             const session = safetySessionById(group.sessionId);

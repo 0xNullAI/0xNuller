@@ -14,9 +14,11 @@ export type EmbeddedButtplugUnsupportedCode =
 
 export class EmbeddedButtplugUnsupportedError extends Error {
   override readonly name = 'EmbeddedButtplugUnsupportedError';
+  readonly code: EmbeddedButtplugUnsupportedCode;
 
-  constructor(readonly code: EmbeddedButtplugUnsupportedCode) {
+  constructor(code: EmbeddedButtplugUnsupportedCode) {
     super(code);
+    this.code = code;
   }
 }
 

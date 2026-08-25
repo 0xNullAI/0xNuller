@@ -121,4 +121,22 @@ describe('Web embedded device opt-in', () => {
       WebEmbeddedDevicesDisabledError,
     );
   });
+
+  it('does not persist false when stop/close cannot be confirmed', async () => {
+    const storage = memoryStorage();
+    const harness = backendHarness();
+    const provider = new WebEmbeddedDeviceRuntimeProvider({
+      storage,
+      backendFactory: () => harness.backend,
+      executorOptions: executorOptions(),
+    });
+    await provider.setEnabled(true);
+    await provider.start();
+    vi.mocked(harness.session.stopAll).mockRejectedValueOnce(new Error('stop failed'));
+
+    await expect(provider.setEnabled(false)).rejects.toThrow('stop failed');
+    await expect(provider.setEnabled(false)).rejects.toThrow('stop failed');
+    expect(harness.session.stopAll).toHaveBeenCalledTimes(1);
+    expect(readWebEmbeddedDevicesEnabled(storage)).toBe(true);
+  });
 });

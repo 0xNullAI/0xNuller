@@ -39,6 +39,8 @@ export interface WebEmbeddedDeviceRuntimeProviderOptions {
 export class WebEmbeddedDeviceRuntimeProvider {
   private readonly storage: LocalDeviceSettingStorage | null | undefined;
   private readonly shared: SharedDeviceRuntimeProvider;
+  private readonly settingListeners = new Set<(enabled: boolean) => void>();
+  private disableFailure: unknown = null;
 
   constructor(options: WebEmbeddedDeviceRuntimeProviderOptions) {
     this.storage = options.storage;
@@ -54,10 +56,26 @@ export class WebEmbeddedDeviceRuntimeProvider {
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
-    if (!enabled) await this.shared.stop();
+    if (!enabled) {
+      if (this.disableFailure) throw this.disableFailure;
+      try {
+        await this.shared.stop();
+      } catch (error) {
+        // Do not let a second click clear the opt-in after an unconfirmed stop.
+        // A full process reload is required to establish a fresh safety state.
+        this.disableFailure = error;
+        throw error;
+      }
+    }
     if (!writeWebEmbeddedDevicesEnabled(enabled, this.storage)) {
       throw new WebEmbeddedDeviceSettingError();
     }
+    for (const listener of this.settingListeners) listener(enabled);
+  }
+
+  subscribeEnabled(listener: (enabled: boolean) => void): () => void {
+    this.settingListeners.add(listener);
+    return () => this.settingListeners.delete(listener);
   }
 
   current(): SharedDeviceRuntime | null {

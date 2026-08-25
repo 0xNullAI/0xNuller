@@ -176,10 +176,11 @@ The wrapper is transparent: every method except `disconnect()` forwards unchange
 
 ## Experimental embedded device backend
 
-The native crate contains a default-off Buttplug 10.0.3 backend behind the
-`experimental-buttplug-gate0` Cargo feature. Normal builds do not compile its command module. The
-matching [`ButtplugDeviceBackend`](./src/buttplug-device-backend.ts) implements the private
-`@0xnullai/device-runtime` backend contract, but no product composition injects it yet.
+The APK includes the Buttplug 10.0.3 backend through the
+`experimental-buttplug-gate0` Cargo feature. Product use remains default-off behind a separate
+local-only setting: a normal launch neither initializes the native session nor scans. The matching
+[`ButtplugDeviceBackend`](./src/buttplug-device-backend.ts) is injected once into the unified
+shell's shared `@0xnullai/device-runtime`; only an explicit Control scan after opt-in opens it.
 
 The strict v1 IPC surface contains initialize/close, scan start/stop, topology, disconnect,
 Vibrate, stop-feature, stop-all, and Battery/RSSI reads. Unknown fields and stale session, topology,
@@ -209,6 +210,7 @@ retains ownership when scanner state is uncertain. The existing DG plugin-blec p
 routing that adapter through the coordinator remains a prerequisite before product enablement.
 
 btleplug 0.12 requires JNI initialization after Tauri loads the Rust library. The Activity also
-requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension; the JNI
-entry points are no-ops in default builds. No physical-device or Android lifecycle validation has
-been performed. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension. The
+shared shell safety controller independently stops on lease handoff and browser/Tauri lifecycle
+signals. No physical-device or Android lifecycle validation has been performed. See
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

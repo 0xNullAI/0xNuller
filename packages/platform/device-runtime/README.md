@@ -32,4 +32,8 @@ Video. Its experimental setting is versioned in local storage, defaults off for 
 inaccessible storage, and is never synchronized remotely. Enabling the setting does not start a scan
 or load the backend; a user-initiated surface action must start the shared runtime and scan.
 
+`EmbeddedDeviceRuntimeSafetyController` is constructed beside that provider before React render. It
+registers one safety session, stops on every shared lease epoch and page/app lifecycle transition,
+and reports connected devices without inferring whether physical output is active.
+
 Third-party attribution is in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
