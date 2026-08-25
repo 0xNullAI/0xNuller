@@ -7,6 +7,7 @@ Direct control for connected DG-Lab devices without a room, voice session, or AI
 ## Features
 
 - One top device bar for Coyote, paw-prints, civet-edging, and Opossum devices.
+- A compact connection and safety empty state instead of inert controls when no output is attached.
 - Independent selection and control of multiple Coyotes.
 - Strength, waveform, Opossum feedback, indicator color, and emergency stop controls.
 - Shared custom waveforms, playback queues, and Market waveform import.

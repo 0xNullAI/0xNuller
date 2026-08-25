@@ -108,6 +108,8 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   provider-complete -> abort check -> tool-execute ordering and cover coordinator event/skip behavior
   with direct regression tests when changing these boundaries.
 - Rendering and interaction state used by only one surface: that app's `src` directory.
+- Disconnected device surfaces should show one clear connection path and safety context; do not render
+  a full faded or disabled control console that implies hardware is present or malfunctioning.
 - Node BLE and MCP-specific orchestration: `apps/mcp`.
 
 Keep public package entrypoints as barrels, not implementations. A cohesive behavior gets a named

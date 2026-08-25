@@ -471,39 +471,6 @@ export default function App() {
     };
   };
 
-  const emptyPlaybackA = devicePlayback.get(null, 'A');
-  const emptyPlaybackB = devicePlayback.get(null, 'B');
-  const emptyTab = waveTabs.__none__ ?? 'A';
-  const emptyActivePlayback = emptyTab === 'A' ? emptyPlaybackA : emptyPlaybackB;
-  const emptyPanel: OutputPanelState = {
-    waveTab: emptyTab,
-    onWaveTabChange: (channel) => setWaveTabs((current) => ({ ...current, __none__: channel })),
-    waveforms: waveformsForOutput(null, waveforms.allWaveforms),
-    queue: emptyActivePlayback.queue,
-    queueA: emptyPlaybackA.queue,
-    queueB: emptyPlaybackB.queue,
-    activeWaveId: null,
-    playMode: emptyActivePlayback.mode,
-    intervalSec: emptyActivePlayback.intervalSec,
-    onPlayModeChange: emptyActivePlayback.setMode,
-    onIntervalChange: emptyActivePlayback.setIntervalSec,
-    onToggleWaveform: () => undefined,
-    onRemoveWaveform: waveforms.removeWaveform,
-    onImportFile: waveforms.importFile,
-    onOpenMarket: () => {
-      setMarketModality('electrostimulation');
-      setMarketOpen(true);
-    },
-    fireEnabledA: false,
-    fireEnabledB: false,
-    fireLimitA: 0,
-    fireLimitB: 0,
-    firingA: false,
-    firingB: false,
-    onFireStart: () => undefined,
-    onFireStop: () => undefined,
-  };
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
@@ -520,7 +487,7 @@ export default function App() {
             setSelectedOutputId(id);
           }}
           panelForTarget={panelForTarget}
-          emptyPanel={emptyPanel}
+          onConnect={device.connectDevice}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
           onStop={(targetId) => {
