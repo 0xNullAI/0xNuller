@@ -168,7 +168,7 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   },
   {
     id: 'deepseek',
-    name: 'DeepSeek',
+    name: 'DeepSeek（不推荐，存在幻觉）',
     hint: '默认使用 Chat Completions 兼容模式',
     browserSupported: true,
     dialect: 'openai-compat',

@@ -22,10 +22,11 @@ describe('BUILTIN_PROMPT_PRESETS', () => {
     }
   });
 
-  it('all preset ids are unique', () => {
+  it('all preset ids are unique and Hell Island is no longer bundled', () => {
     const ids = BUILTIN_PROMPT_PRESETS.map((p) => p.id);
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);
+    expect(ids).not.toContain('hell-island');
   });
 });
 

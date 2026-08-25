@@ -17,7 +17,9 @@ interface AttachCapableDeviceClient extends DeviceClient {
 }
 
 interface CoyoteSlot {
+  /** Aggregate-local id. Unlike some BLE transports, this is always unique. */
   id: string;
+  sourceDevice?: BluetoothDeviceLike;
   client: DeviceClient;
   state: DeviceState;
   unsubscribe: () => void;
@@ -42,6 +44,7 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
   private readonly slots: CoyoteSlot[] = [];
   private readonly listeners = new Set<(state: DeviceState) => void>();
   private nextFallbackId = 1;
+  private selectedSlotId: string | null = null;
 
   constructor(private readonly createClient: CoyoteDeviceClientFactory) {}
 
@@ -53,7 +56,7 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     const slot = this.createSlot(`coyote-${this.nextFallbackId++}`);
     try {
       await slot.client.connect();
-      slot.id = clientDeviceId(slot.client) ?? slot.id;
+      slot.id = this.uniqueSlotId(clientDeviceId(slot.client) ?? slot.id, slot);
       slot.state = await slot.client.getState();
       this.emit();
     } catch (error) {
@@ -67,7 +70,11 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     server: BluetoothRemoteGATTServerLike,
   ): Promise<void> {
     const requestedId = device.id?.trim() || `coyote-${this.nextFallbackId++}`;
-    const existing = this.slots.find((slot) => slot.id === requestedId);
+    // A reconnect of the exact same BluetoothDevice belongs to its old slot.
+    // Different hosts can nevertheless expose the same transport id (notably
+    // through some native BLE adapters), so id equality alone must never merge
+    // two physical devices into one client.
+    const existing = this.slots.find((slot) => slot.sourceDevice === device);
     if (existing) {
       const client = asAttachCapable(existing.client);
       await client.connectDevice(device, server);
@@ -76,11 +83,11 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
       return;
     }
 
-    const slot = this.createSlot(requestedId);
+    const slot = this.createSlot(this.uniqueSlotId(requestedId), device);
     try {
       const client = asAttachCapable(slot.client);
       await client.connectDevice(device, server);
-      slot.id = clientDeviceId(slot.client) ?? requestedId;
+      slot.id = this.uniqueSlotId(clientDeviceId(slot.client) ?? requestedId, slot);
       slot.state = await slot.client.getState();
       this.emit();
     } catch (error) {
@@ -112,6 +119,13 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     }
   }
 
+  selectDeviceById(deviceId: string): void {
+    const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
+    if (!slot) throw new Error('目标郊狼未连接');
+    this.selectedSlotId = slot.id;
+    this.emit();
+  }
+
   async getState(): Promise<DeviceState> {
     const primary = this.primarySlot();
     return primary ? primary.client.getState() : createEmptyDeviceState();
@@ -139,10 +153,11 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     return this.connectedSlots().map((slot) => ({ id: slot.id, state: { ...slot.state } }));
   }
 
-  private createSlot(id: string): CoyoteSlot {
+  private createSlot(id: string, sourceDevice?: BluetoothDeviceLike): CoyoteSlot {
     const client = this.createClient(new CoyoteProtocolAdapter());
     const slot: CoyoteSlot = {
       id,
+      sourceDevice,
       client,
       state: createEmptyDeviceState(),
       unsubscribe: () => undefined,
@@ -155,17 +170,27 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     return slot;
   }
 
+  private uniqueSlotId(candidate: string, current?: CoyoteSlot): string {
+    const used = new Set(this.slots.filter((slot) => slot !== current).map((slot) => slot.id));
+    if (!used.has(candidate)) return candidate;
+    let suffix = 2;
+    while (used.has(`${candidate}#${suffix}`)) suffix += 1;
+    return `${candidate}#${suffix}`;
+  }
+
   private connectedSlots(): CoyoteSlot[] {
     return this.slots.filter((slot) => slot.state.connected);
   }
 
   private primarySlot(): CoyoteSlot | null {
-    return this.connectedSlots()[0] ?? null;
+    const connected = this.connectedSlots();
+    return connected.find((slot) => slot.id === this.selectedSlotId) ?? connected[0] ?? null;
   }
 
   private removeSlot(slot: CoyoteSlot): void {
     const index = this.slots.indexOf(slot);
     if (index >= 0) this.slots.splice(index, 1);
+    if (this.selectedSlotId === slot.id) this.selectedSlotId = null;
     slot.unsubscribe();
   }
 

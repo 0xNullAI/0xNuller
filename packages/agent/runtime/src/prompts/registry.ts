@@ -5,7 +5,6 @@ import { teasePreset } from './presets/tease.js';
 import { rewardPreset } from './presets/reward.js';
 import { edgingPreset } from './presets/edging.js';
 import { companionPreset } from './presets/companion.js';
-import { hellIslandPreset } from './presets/hell-island.js';
 
 export const BUILTIN_PROMPT_PRESETS: PromptPreset[] = [
   gentlePreset,
@@ -14,7 +13,6 @@ export const BUILTIN_PROMPT_PRESETS: PromptPreset[] = [
   rewardPreset,
   edgingPreset,
   companionPreset,
-  hellIslandPreset,
 ];
 
 export function getBuiltinPromptPresetById(id: string): PromptPreset | undefined {

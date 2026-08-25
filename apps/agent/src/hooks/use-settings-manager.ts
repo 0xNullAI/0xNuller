@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserAppSettingsStore, type BrowserAppSettings } from '@dg-agent/storage-browser';
 import { subscribeLlmConfig } from '@0xnullai/llm-providers';
+import { subscribeDeviceSafety } from '@0xnullai/settings';
 
 interface UseSettingsManagerResult {
   settingsDraft: BrowserAppSettings;
@@ -10,7 +11,6 @@ interface UseSettingsManagerResult {
   settingsStore: BrowserAppSettingsStore;
   resetSettings: (onDone: () => void) => void;
   flushSettingsDraft: () => void;
-  clearSessionPermissionOverride: () => void;
 }
 
 export function useSettingsManager(): UseSettingsManagerResult {
@@ -34,15 +34,19 @@ export function useSettingsManager(): UseSettingsManagerResult {
     [settingsStore],
   );
 
-  useEffect(
-    () =>
-      subscribeLlmConfig(() => {
-        const next = settingsStore.load();
-        setSettings(next);
-        setSettingsDraft(next);
-      }),
-    [settingsStore],
-  );
+  useEffect(() => {
+    const reload = () => {
+      const next = settingsStore.load();
+      setSettings(next);
+      setSettingsDraft(next);
+    };
+    const unsubscribeLlm = subscribeLlmConfig(reload);
+    const unsubscribeSafety = subscribeDeviceSafety(reload);
+    return () => {
+      unsubscribeLlm();
+      unsubscribeSafety();
+    };
+  }, [settingsStore]);
 
   function resetSettings(onDone: () => void): void {
     const next = settingsStore.reset();
@@ -79,12 +83,6 @@ export function useSettingsManager(): UseSettingsManagerResult {
     }
   }
 
-  function clearSessionPermissionOverride(): void {
-    const nextSettings = settingsStore.clearSessionPermissionModeOverride();
-    setSettingsDraft(nextSettings);
-    setSettings(nextSettings);
-  }
-
   return {
     settingsDraft,
     setSettingsDraft,
@@ -93,6 +91,5 @@ export function useSettingsManager(): UseSettingsManagerResult {
     settingsStore,
     resetSettings,
     flushSettingsDraft,
-    clearSessionPermissionOverride,
   };
 }

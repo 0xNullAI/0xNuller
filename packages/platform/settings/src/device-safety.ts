@@ -83,6 +83,11 @@ export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
 };
 
 const KEY = '0xnullai.device-safety';
+const TIMED_PERMISSION_WINDOW_MS = 5 * 60 * 1000;
+
+// Dangerous full-allow is intentionally process-local: it survives panel,
+// module and conversation remounts, but never a page reload or browser restart.
+let sessionPermissionModeOverride: 'allow-all' | null = null;
 
 /**
  * `allow-all` never survives a restart.
@@ -241,7 +246,15 @@ export function loadDeviceSafety(): DeviceSafetySettings {
   if (typeof localStorage === 'undefined') return { ...DEFAULT_DEVICE_SAFETY };
   try {
     const own = localStorage.getItem(KEY);
-    if (own) return coerce(JSON.parse(own));
+    if (own) {
+      const persisted = coerce(JSON.parse(own));
+      return sessionPermissionModeOverride
+        ? { ...persisted, permissionMode: sessionPermissionModeOverride }
+        : persisted;
+    }
+    // No canonical record means a fresh page/test context. Fail closed instead
+    // of allowing an orphaned in-memory override to outlive its settings.
+    sessionPermissionModeOverride = null;
     const migrated = migrate();
     if (migrated) {
       saveDeviceSafety(migrated);
@@ -255,17 +268,24 @@ export function loadDeviceSafety(): DeviceSafetySettings {
 }
 
 export function saveDeviceSafety(next: DeviceSafetySettings): DeviceSafetySettings {
-  const persisted: DeviceSafetySettings = {
+  sessionPermissionModeOverride = next.permissionMode === 'allow-all' ? 'allow-all' : null;
+  const effective: DeviceSafetySettings = {
     ...next,
-    permissionMode: persistableMode(next.permissionMode),
+    ...(next.permissionMode === 'timed' && !next.permissionModeExpiresAt
+      ? { permissionModeExpiresAt: Date.now() + TIMED_PERMISSION_WINDOW_MS }
+      : {}),
+  };
+  const persisted: DeviceSafetySettings = {
+    ...effective,
+    permissionMode: persistableMode(effective.permissionMode),
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(persisted));
   } catch {
     // If the write fails the values still apply for this session.
   }
-  for (const l of listeners) l(next);
-  return next;
+  for (const l of listeners) l(effective);
+  return effective;
 }
 
 export function updateDeviceSafety(
