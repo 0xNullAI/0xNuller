@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ModuleSettingsProvider,
   ModuleSettingsSection,
@@ -8,6 +8,7 @@ import {
 import { SettingsPanel } from './settings/SettingsPanel';
 import type { AuthUser } from '@0xnullai/auth';
 import productPackage from '../../../package.json';
+import { loadProxy } from '@0xnullai/settings';
 
 function ModuleSettingsFixtures() {
   const claims: Array<ModuleSettingsClaim & { content: string; navigation?: boolean }> = [
@@ -48,7 +49,9 @@ function renderSettings(
 }
 
 describe('统一设置顺序', () => {
-  it('按账户、外观、AI、波形、场景、设备安全、数据排列', async () => {
+  beforeEach(() => localStorage.clear());
+
+  it('按账户、通用、AI、波形、场景、设备安全、数据排列', async () => {
     renderSettings();
     const navigation = screen.getByRole('navigation');
 
@@ -57,8 +60,25 @@ describe('统一设置顺序', () => {
       within(navigation)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['账户', '外观', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
+    ).toEqual(['账户', '通用', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
     expect(within(navigation).queryByRole('button', { name: '传感器' })).toBeNull();
+  });
+
+  it('把所有 AI 共用的网络代理放进通用设置', () => {
+    renderSettings();
+    expect(screen.getByText('AI 网络代理')).toBeTruthy();
+    expect(screen.getByText('Agent、Voice 和 Video 共用此代理，无需分别设置。')).toBeTruthy();
+    const enabled = screen.getByRole('checkbox', { name: 'AI 网络代理' });
+    expect((enabled as HTMLInputElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('反向代理地址'), {
+      target: { value: 'https://proxy.example' },
+    });
+    expect((enabled as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(enabled);
+    expect(loadProxy()).toEqual({ enabled: true, httpBaseUrl: 'https://proxy.example' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI' }));
+    expect(screen.queryByText('AI 网络代理')).toBeNull();
   });
 
   it('模块入口可直接路由到对应 AI 子设置', () => {
@@ -82,7 +102,7 @@ describe('统一设置顺序', () => {
       within(navigation)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['账户', '管理', '外观', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
+    ).toEqual(['账户', '管理', '通用', 'AI', '波形', '场景', '设备安全', '数据', '关于']);
   });
 
   it('在关于页显示统一产品版本和下载入口', async () => {
@@ -90,6 +110,8 @@ describe('统一设置顺序', () => {
     fireEvent.click(await screen.findByRole('button', { name: '关于' }));
 
     expect(screen.getByText(`v${productPackage.version}`)).toBeTruthy();
+    expect(screen.getByText('通用设备（实验性）')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: '启用通用设备' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '下载 Android 版' })).toBeTruthy();
   });
 });

@@ -115,6 +115,7 @@ export class VideoControlRuntime {
   private readonly toolExecutor: RuntimeToolExecutor;
   private grant: VideoControlGrant | null = null;
   private generation = 0;
+  private stopsInFlight = 0;
   private emergencyLatched = false;
   private globalStopInProgress = false;
   private readonly lastStopTargets: Partial<
@@ -213,13 +214,20 @@ export class VideoControlRuntime {
   }
 
   async authorize(input: VideoControlGrantInput): Promise<VideoControlGrantSnapshot> {
+    const authorizationGeneration = this.generation;
     if (!(await this.options.targetRouter.selectTarget(input.targetKind, input.targetId))) {
       throw new Error('授权物理目标已断开或身份已失效');
+    }
+    if (authorizationGeneration !== this.generation) {
+      throw new DOMException('Video authorization cancelled', 'AbortError');
     }
     const targetState =
       input.targetKind === 'coyote'
         ? await this.options.targetRouter.getCoyoteState(input.targetId)
         : await this.options.targetRouter.getOpossumState(input.targetId);
+    if (authorizationGeneration !== this.generation) {
+      throw new DOMException('Video authorization cancelled', 'AbortError');
+    }
     if (!targetState?.connected) throw new Error('授权目标设备未连接');
 
     this.invalidateContinuations();
@@ -248,6 +256,7 @@ export class VideoControlRuntime {
   }
 
   beginRun(): number {
+    if (this.stopsInFlight > 0) throw new Error('正在确认设备已停止，请稍后继续');
     if (this.emergencyLatched) throw new Error('紧急停止已锁定，请重新授权后再开始');
     if (!this.grant?.isActive()) throw new Error('控制授权不存在或已过期');
     if (!this.options.hasLease()) throw new Error('Video 当前没有设备控制权');
@@ -327,23 +336,28 @@ export class VideoControlRuntime {
       | 'lease-loss'
       | 'unmount',
   ): Promise<void> {
-    const target = this.grant?.getSnapshot();
-    this.invalidateContinuations();
-    if (reason !== 'pause' && reason !== 'stop') this.grant?.revoke();
+    this.stopsInFlight += 1;
     try {
-      await this.stopAuthorizedTarget(target);
-    } catch (error) {
-      this.emergencyLatched = true;
-      this.grant?.revoke();
-      let globalStopError: unknown;
+      const target = this.grant?.getSnapshot();
+      this.invalidateContinuations();
+      if (reason !== 'pause' && reason !== 'stop') this.grant?.revoke();
       try {
-        await this.stopAllTargets();
-      } catch (stopError) {
-        globalStopError = stopError;
+        await this.stopAuthorizedTarget(target);
+      } catch (error) {
+        this.emergencyLatched = true;
+        this.grant?.revoke();
+        let globalStopError: unknown;
+        try {
+          await this.stopAllTargets();
+        } catch (stopError) {
+          globalStopError = stopError;
+        }
+        if (globalStopError) throw globalStopError;
+        if (error instanceof StaleVideoControlTargetError) return;
+        throw error;
       }
-      if (globalStopError) throw globalStopError;
-      if (error instanceof StaleVideoControlTargetError) return;
-      throw error;
+    } finally {
+      this.stopsInFlight -= 1;
     }
   }
 

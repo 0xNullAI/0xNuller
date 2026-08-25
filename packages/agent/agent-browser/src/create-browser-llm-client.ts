@@ -1,6 +1,7 @@
 import { authRequestHeaders } from '@0xnullai/auth';
 import {
   createFreeProxyHmacHeaders,
+  resolveProviderRequestUrl,
   resolveProviderRuntimeSettings,
   type ProviderDialect,
   type ProviderSettings,
@@ -91,6 +92,7 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
         providerKey: provider.piProviderKey,
         temperature,
         supportsImageInput: provider.imageInput,
+        transformUrl: resolveProviderRequestUrl,
       });
     } catch (error) {
       return new UnavailableLlmClient(
@@ -122,6 +124,7 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
       temperature,
       extraHeaders,
       supportsImageInput: provider.imageInput,
+      transformUrl: resolveProviderRequestUrl,
     });
   } catch (error) {
     return new UnavailableLlmClient(

@@ -2,7 +2,7 @@
 
 中文 | [English](README.en.md)
 
-`0xNuller` 的统一网页版外壳。Control、Agent、Video、Voice、Chat、Playground 和 Market 在同一
+`0xNuller` 的统一网页版外壳。Control、Chat、Agent、Voice、Video、Market 和 Playground 在同一
 SPA 中按路由加载，共用侧边栏、账户、设备横栏、设置、主题和弹窗层。
 
 ## 路由
@@ -10,12 +10,12 @@ SPA 中按路由加载，共用侧边栏、账户、设备横栏、设置、主�
 | 路径          | 模块           |
 | ------------- | -------------- |
 | `/control`    | 手动控制       |
-| `/agent`      | 文字 Agent     |
-| `/video`      | 视觉解释       |
-| `/voice`      | 实时语音       |
 | `/chat`       | 房间与私聊     |
-| `/playground` | 游戏互动       |
+| `/agent`      | 文字 Agent     |
+| `/voice`      | 实时语音       |
+| `/video`      | 视觉控制       |
 | `/market`     | 场景与波形社区 |
+| `/playground` | 游戏互动       |
 
 主站为 <https://0xnullai.com>。兼容发布只替换根站；`agent.`、`voice.`、`chat.`、
 `market.` 与 `wiki.` 历史子域继续运行旧版。

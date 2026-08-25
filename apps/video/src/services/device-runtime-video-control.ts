@@ -104,6 +104,7 @@ export class DeviceRuntimeVideoControlService {
   private grant: DeviceRuntimeVideoGrant | null = null;
   private grantSessionId: string | null = null;
   private generation = 0;
+  private stopsInFlight = 0;
   private activeInference: AbortController | null = null;
   private appliedIntensity = 0;
   private nonEnhancedCeiling: number | null = null;
@@ -162,7 +163,11 @@ export class DeviceRuntimeVideoControlService {
 
   async authorize(input: unknown): Promise<DeviceRuntimeVideoGrantSnapshot> {
     const value = parseGrantInput(input);
+    const authorizationGeneration = this.generation;
     await this.ensureRuntime();
+    if (authorizationGeneration !== this.generation) {
+      throw new DOMException('Video authorization cancelled', 'AbortError');
+    }
     const target = this.requireLiveVibrateFeature(value.deviceId, value.featureId);
     if (target.feature.faulted) throw new Error('授权振动功能已锁定，请重新连接设备');
 
@@ -190,6 +195,7 @@ export class DeviceRuntimeVideoControlService {
   }
 
   async beginRun(): Promise<number> {
+    if (this.stopsInFlight > 0) throw new Error('正在确认设备已停止，请稍后继续');
     if (this.emergencyLatched) throw new Error('紧急停止已锁定，请重新授权后再开始');
     if (!this.grant?.isActive()) throw new Error('控制授权不存在或已过期');
     if (!this.hasLease()) throw new Error('Video 当前没有设备控制权');
@@ -255,29 +261,34 @@ export class DeviceRuntimeVideoControlService {
   }
 
   async stop(reason: VisualSafetyStopReason): Promise<void> {
-    const grant = this.grant?.getSnapshot();
-    this.invalidateContinuations();
-    if (reason !== 'pause' && reason !== 'stop') {
-      this.grant?.revoke();
-      this.clearDeadline();
-    }
-    if (!grant) return;
-
-    if (!this.isExactLiveVibrateFeature(grant.deviceId, grant.featureId)) {
-      await this.escalateStaleIdentity(new Error('授权物理目标已断开或身份已失效'));
-      return;
-    }
-
+    this.stopsInFlight += 1;
     try {
-      const ack = await this.requireTools().actions.stop({
-        interactionId: this.interactionId('stop'),
-        deviceId: grant.deviceId,
-        featureId: grant.featureId,
-      });
-      this.requireStoppedAck(ack);
-      this.appliedIntensity = 0;
-    } catch (error) {
-      await this.latchStopFailure(error);
+      const grant = this.grant?.getSnapshot();
+      this.invalidateContinuations();
+      if (reason !== 'pause' && reason !== 'stop') {
+        this.grant?.revoke();
+        this.clearDeadline();
+      }
+      if (!grant) return;
+
+      if (!this.isExactLiveVibrateFeature(grant.deviceId, grant.featureId)) {
+        await this.escalateStaleIdentity(new Error('授权物理目标已断开或身份已失效'));
+        return;
+      }
+
+      try {
+        const ack = await this.requireTools().actions.stop({
+          interactionId: this.interactionId('stop'),
+          deviceId: grant.deviceId,
+          featureId: grant.featureId,
+        });
+        this.requireStoppedAck(ack);
+        this.appliedIntensity = 0;
+      } catch (error) {
+        await this.latchStopFailure(error);
+      }
+    } finally {
+      this.stopsInFlight -= 1;
     }
   }
 

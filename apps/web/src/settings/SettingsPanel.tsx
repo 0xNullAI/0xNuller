@@ -3,7 +3,7 @@ import {
   Cpu,
   Info,
   LayoutTemplate,
-  Palette,
+  SlidersHorizontal,
   ShieldAlert,
   ShieldCheck,
   UserRound,
@@ -16,7 +16,7 @@ import {
   type ShellSettingsTab,
 } from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
-import { AppearanceTab } from './AppearanceTab';
+import { GeneralTab } from './GeneralTab';
 import { AiTab, type AiSettingsSection } from './AiTab';
 import { SafetyTab } from './SafetyTab';
 import { ScenesTab } from './ScenesTab';
@@ -33,7 +33,7 @@ import { AboutTab } from './AboutTab';
  * only this one entry point, reached from the account menu at the bottom of the
  * sidebar.
  *
- * Navigation follows the way a configuration is used: account and appearance,
+ * Navigation follows the way a configuration is used: account and general preferences,
  * model behavior, waveform and scene content, device boundaries, then data tools.
  * Module-owned pages join this order through their numeric claim rather than being
  * appended as a second group.
@@ -42,7 +42,7 @@ import { AboutTab } from './AboutTab';
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 5 },
-  { id: 'appearance', label: '外观', icon: Palette, Component: AppearanceTab, order: 10 },
+  { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: GeneralTab, order: 10 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },

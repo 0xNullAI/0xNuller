@@ -88,6 +88,29 @@ describe('OpenAiHttpLlmClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('applies a changed URL transform at every request boundary', async () => {
+    captureRequestBody();
+    let proxy = 'https://proxy-one.example';
+    const client = new OpenAiHttpLlmClient({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      transformUrl: (url) => `${proxy}/${new URL(url).host}/v1`,
+    });
+
+    await client.runTurn(makeTurnInput());
+    proxy = 'https://proxy-two.example';
+    await client.runTurn(makeTurnInput());
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://proxy-one.example/api.openai.com/v1/chat/completions',
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'https://proxy-two.example/api.openai.com/v1/chat/completions',
+    );
+  });
+
   describe('DeepSeek V4 thinking 禁用', () => {
     it('deepseek-v4-flash 请求体包含 thinking: disabled', async () => {
       const captured = captureRequestBody();

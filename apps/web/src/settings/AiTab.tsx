@@ -6,6 +6,7 @@ import {
   getProviderDefinition,
   isLlmConfigured,
   loadLlmConfig,
+  resolveProviderRequestUrl,
   saveLlmConfig,
   subscribeLlmConfig,
   type LlmConfig,
@@ -13,7 +14,6 @@ import {
 } from '@0xnullai/llm-providers';
 import { VoiceProviderSection } from './VoiceProviderSection';
 import { VideoProviderSection } from './VideoProviderSection';
-import { ProxySection } from './ProxySection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
   ConnectionTestError,
@@ -38,13 +38,16 @@ import {
  * pollute each other. Video is separate again: its credentials never copy from Agent
  * and its model must pass the explicit image-input allowlist.
  *
- * The proxy also lives here: what it affects is exactly these model requests. **On
- * the web only an HTTP reverse proxy is viable** — browsers do not let a page pick
- * its own SOCKS proxy, that is an OS-level setting. Giving the web a SOCKS switch
- * means giving it a button that looks usable but can never take effect, so it is
- * disabled here based on the runtime, with the reason spelled out.
+ * Network proxy configuration is global and lives under General settings so every
+ * model surface uses one endpoint instead of asking for the same value three times.
  */
 export type AiSettingsSection = 'agent' | 'voice' | 'video';
+
+const AI_SECTIONS: ReadonlyArray<readonly [AiSettingsSection, string]> = [
+  ['agent', 'Agent'],
+  ['voice', 'Voice'],
+  ['video', 'Video'],
+];
 
 export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSettingsSection }) {
   const [section, setSection] = useState<AiSettingsSection>(initialSection);
@@ -89,19 +92,25 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   return (
     <div className="flex flex-col gap-5">
       <div role="tablist" aria-label="AI 模块" className="grid grid-cols-3 gap-2">
-        {(
-          [
-            ['agent', 'Agent'],
-            ['voice', 'Voice'],
-            ['video', 'Video'],
-          ] as const
-        ).map(([id, label]) => (
+        {AI_SECTIONS.map(([id, label], index) => (
           <button
             key={id}
+            id={`ai-${id}-tab`}
             type="button"
             role="tab"
             aria-selected={section === id}
+            aria-controls={`ai-${id}-panel`}
+            tabIndex={section === id ? 0 : -1}
             onClick={() => setSection(id)}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              const offset = event.key === 'ArrowRight' ? 1 : -1;
+              const next =
+                AI_SECTIONS[(index + offset + AI_SECTIONS.length) % AI_SECTIONS.length]![0];
+              setSection(next);
+              document.getElementById(`ai-${next}-tab`)?.focus();
+            }}
             className={
               'rounded-[var(--radius-ctl)] border px-3 py-2 text-sm ' +
               (section === id
@@ -115,6 +124,9 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
       </div>
 
       <section
+        id="ai-agent-panel"
+        role="tabpanel"
+        aria-labelledby="ai-agent-tab"
         hidden={section !== 'agent'}
         className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
       >
@@ -269,9 +281,16 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
         </div>
       </section>
 
-      {section === 'voice' && <VoiceProviderSection />}
-      {section === 'video' && <VideoProviderSection />}
-      <ProxySection />
+      {section === 'voice' && (
+        <div id="ai-voice-panel" role="tabpanel" aria-labelledby="ai-voice-tab">
+          <VoiceProviderSection />
+        </div>
+      )}
+      {section === 'video' && (
+        <div id="ai-video-panel" role="tabpanel" aria-labelledby="ai-video-tab">
+          <VideoProviderSection />
+        </div>
+      )}
     </div>
   );
 }
@@ -289,7 +308,10 @@ function OpenAiModelField({
   async function refresh() {
     setStatus('正在加载模型…');
     try {
-      const found = await listModels({ baseUrl: config.baseUrl, apiKey: config.apiKey });
+      const found = await listModels({
+        baseUrl: resolveProviderRequestUrl(config.baseUrl),
+        apiKey: config.apiKey,
+      });
       setModels(found);
       setStatus(found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入');
     } catch (error) {
@@ -305,7 +327,7 @@ function OpenAiModelField({
     const started = performance.now();
     try {
       await testConnection({
-        baseUrl: config.baseUrl,
+        baseUrl: resolveProviderRequestUrl(config.baseUrl),
         apiKey: config.apiKey,
         model: config.model,
       });
@@ -353,7 +375,11 @@ function OpenAiModelField({
           测试连接
         </button>
       </div>
-      {status && <span className="text-xs text-[var(--text-faint)]">{status}</span>}
+      {status && (
+        <span role="status" className="text-xs text-[var(--text-faint)]">
+          {status}
+        </span>
+      )}
     </div>
   );
 }

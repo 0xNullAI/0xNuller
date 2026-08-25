@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_PROXY, applyHttpProxy, applyWebSocketProxy, loadProxy, saveProxy } from './proxy';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  DEFAULT_PROXY,
+  applyHttpProxy,
+  applyWebSocketProxy,
+  isValidHttpProxyBaseUrl,
+  loadProxy,
+  saveProxy,
+} from './proxy';
 
 beforeEach(() => localStorage.clear());
 
@@ -12,6 +19,13 @@ describe('代理设置', () => {
     localStorage.setItem('0xnullai.proxy', '{不是 JSON');
     // Failing this way never sends requests somewhere unexpected.
     expect(loadProxy().enabled).toBe(false);
+  });
+
+  it('只接受完整的 HTTP 或 HTTPS 代理地址', () => {
+    expect(isValidHttpProxyBaseUrl('https://proxy.example/path')).toBe(true);
+    expect(isValidHttpProxyBaseUrl('http://127.0.0.1:8080')).toBe(true);
+    expect(isValidHttpProxyBaseUrl('proxy.example')).toBe(false);
+    expect(isValidHttpProxyBaseUrl('socks5://127.0.0.1:1080')).toBe(false);
   });
 
   describe('HTTP 反代地址改写', () => {
@@ -40,10 +54,30 @@ describe('代理设置', () => {
       expect(applyHttpProxy('https://api.x.ai/v1')).toBe('https://api.x.ai/v1');
     });
 
+    it('手动写入非 HTTP 代理协议时保持直连', () => {
+      saveProxy({ enabled: true, httpBaseUrl: 'socks5://127.0.0.1:1080' });
+      expect(applyHttpProxy('https://api.x.ai/v1')).toBe('https://api.x.ai/v1');
+      expect(applyWebSocketProxy('wss://api.x.ai/v1/realtime')).toBe('wss://api.x.ai/v1/realtime');
+    });
+
     it('上游地址不合法时也原样返回', () => {
       saveProxy({ enabled: true, httpBaseUrl: 'http://127.0.0.1:8080' });
       expect(applyHttpProxy('not-a-url')).toBe('not-a-url');
     });
+  });
+
+  it('持久化失败时仍在当前会话应用新代理', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage unavailable', 'QuotaExceededError');
+    });
+    try {
+      saveProxy({ enabled: true, httpBaseUrl: 'https://proxy.example' });
+      expect(applyHttpProxy('https://api.x.ai/v1')).toBe('https://proxy.example/api.x.ai/v1');
+    } finally {
+      setItem.mockRestore();
+      saveProxy(DEFAULT_PROXY);
+      localStorage.clear();
+    }
   });
 
   describe('实时语音连接改写', () => {

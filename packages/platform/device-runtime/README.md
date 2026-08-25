@@ -28,9 +28,10 @@ release command, a requested device disconnect stops output and closes the whole
 reopening is explicit and receives a fresh runtime session identity.
 
 `WebEmbeddedDeviceRuntimeProvider` is the shell-owned singleton seam for Control, Agent, Voice, and
-Video. Its experimental setting is versioned in local storage, defaults off for missing, corrupt, or
-inaccessible storage, and is never synchronized remotely. Enabling the setting does not start a scan
-or load the backend; a user-initiated surface action must start the shared runtime and scan.
+Video. Its only opt-in UI is under **Settings → About**. The versioned local setting defaults off for
+missing, corrupt, or inaccessible storage and is never synchronized remotely. While disabled, the
+experimental Control panel is not rendered. Enabling the setting does not start a scan or load the
+backend; a user-initiated surface action must start the shared runtime and scan.
 
 `EmbeddedDeviceRuntimeSafetyController` is constructed beside that provider before React render. It
 registers one safety session, stops on every shared lease epoch and page/app lifecycle transition,

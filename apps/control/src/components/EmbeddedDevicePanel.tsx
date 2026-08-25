@@ -101,7 +101,7 @@ export function EmbeddedDevicePanel() {
     [],
   );
 
-  if (!provider) return null;
+  if (!provider || !enabled) return null;
 
   return (
     <section
@@ -143,12 +143,6 @@ export function EmbeddedDevicePanel() {
           {scanning ? '扫描中…' : '扫描通用设备'}
         </button>
       </div>
-
-      {!enabled && (
-        <p className="mt-3 text-xs text-[var(--text-faint)]">
-          默认关闭。请先在“设备安全 → Experimental Device”中启用。
-        </p>
-      )}
 
       {error && (
         <p role="alert" className="mt-3 text-xs text-[var(--danger)]">
