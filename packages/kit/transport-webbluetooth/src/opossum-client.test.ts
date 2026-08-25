@@ -5,11 +5,35 @@ import {
   V3_NOTIFY_CHAR,
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
+  type GattReadyRetryOptions,
   type OpossumState,
   type OpossumVibrateAdapter,
 } from '@dg-kit/protocol';
 import { WebBluetoothOpossumClient } from './opossum-client.js';
 import { OPOSSUM_REQUEST_DEVICE_OPTIONS } from './request-device-options.js';
+
+interface ProtocolModule {
+  runWithGattReadyRetry(
+    attempt: () => Promise<void>,
+    options: GattReadyRetryOptions,
+  ): Promise<void>;
+  [name: string]: unknown;
+}
+
+vi.mock('@dg-kit/protocol', async (importOriginal) => {
+  const actual = await importOriginal<ProtocolModule>();
+  return {
+    ...actual,
+    runWithGattReadyRetry: (
+      attempt: () => Promise<void>,
+      options: Parameters<typeof actual.runWithGattReadyRetry>[1],
+    ) =>
+      actual.runWithGattReadyRetry(attempt, {
+        ...options,
+        gattReadyInitialDelayMs: 0,
+      }),
+  };
+});
 
 // Minimal fake GATT characteristic — only the bits `writeCharacteristicValue`
 // / `readValue` in @dg-kit/protocol actually touch. Kept local to this file

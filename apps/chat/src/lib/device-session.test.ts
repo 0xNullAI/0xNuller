@@ -9,8 +9,32 @@ import {
   CIVET_DEVICE_NAME_PREFIX,
   OPOSSUM_DEVICE_NAME_PREFIX,
   V3_DEVICE_NAME_PREFIX,
+  type GattReadyRetryOptions,
 } from '@dg-kit/protocol';
 import { DeviceSession, type RequestDeviceFn } from './bluetooth';
+
+interface ProtocolModule {
+  runWithGattReadyRetry(
+    attempt: () => Promise<void>,
+    options: GattReadyRetryOptions,
+  ): Promise<void>;
+  [name: string]: unknown;
+}
+
+vi.mock('@dg-kit/protocol', async (importOriginal) => {
+  const actual = await importOriginal<ProtocolModule>();
+  return {
+    ...actual,
+    runWithGattReadyRetry: (
+      attempt: () => Promise<void>,
+      options: Parameters<typeof actual.runWithGattReadyRetry>[1],
+    ) =>
+      actual.runWithGattReadyRetry(attempt, {
+        ...options,
+        gattReadyInitialDelayMs: 0,
+      }),
+  };
+});
 
 /**
  * Minimal Web Bluetooth mocks, mirroring the pattern DG-Kit's own adapter
@@ -363,13 +387,7 @@ describe('DeviceSession — multi-device routing', () => {
       (navigator as unknown as { bluetooth?: unknown }).bluetooth = mockBluetoothQueue([device]);
 
       const session = new DeviceSession();
-      // connectDevice() now goes through runWithGattReadyRetry's default
-      // 300ms initial delay (a real setTimeout, captured by fake timers) —
-      // start the promise and pump the clock past it rather than awaiting
-      // directly, or it hangs until vitest's own test timeout.
-      const connecting = session.connectDevice();
-      await vi.advanceTimersByTimeAsync(300);
-      await connecting;
+      await session.connectDevice();
 
       session.opossumBurst('A', 160, 500, 200);
       await vi.advanceTimersByTimeAsync(0);
