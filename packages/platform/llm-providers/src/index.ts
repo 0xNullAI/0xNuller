@@ -403,36 +403,41 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
  * them. The free proxy stays disabled because its upstream model is selected
  * server-side and cannot be verified by this client.
  */
-const IMAGE_MODEL_PREFIXES: Partial<Record<ProviderId, readonly string[]>> = {
-  qwen: ['qwen-vl', 'qwen2.5-vl', 'qwen3-vl', 'qwen3.5-'],
-  doubao: ['doubao-seed-'],
-  openai: ['gpt-4o', 'gpt-4.1', 'gpt-5'],
-  anthropic: ['claude-3-', 'claude-sonnet-4', 'claude-opus-4', 'claude-haiku-4'],
-  google: ['gemini-'],
-  openrouter: ['anthropic/claude-3-', 'anthropic/claude-sonnet-4', 'openai/gpt-4o'],
-  zai: ['glm-4v', 'glm-4.5v'],
-  'zai-coding-cn': ['glm-4v', 'glm-4.5v'],
-  xai: ['grok-vision'],
-  mistral: ['pixtral-'],
+const IMAGE_MODELS: Partial<Record<ProviderId, readonly string[]>> = {
+  qwen: ['qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen3-vl-plus', 'qwen3.5-plus'],
+  doubao: ['doubao-seed-2-0-mini-250415'],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
+  anthropic: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
+  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  openrouter: [
+    'anthropic/claude-sonnet-4.5',
+    'anthropic/claude-opus-4.5',
+    'openai/gpt-4o-mini',
+    'openai/gpt-4o',
+  ],
+  zai: ['glm-4.5v'],
+  'zai-coding-cn': ['glm-4.5v'],
+  xai: ['grok-2-vision-1212'],
+  mistral: ['pixtral-large-latest'],
 };
 
 export const PROVIDER_DEFINITIONS: ProviderDefinition[] = PROVIDER_DEFINITION_INPUTS.map(
   (provider) => ({
     ...provider,
-    imageInput: IMAGE_MODEL_PREFIXES[provider.id]?.length ? 'known-models' : 'none',
+    imageInput: IMAGE_MODELS[provider.id]?.length ? 'known-models' : 'none',
   }),
 );
 
-export function supportsProviderModelImageInput(
-  providerId: ProviderId,
-  model: string,
-): boolean {
+/** Models whose image support is explicitly known. Unknown ids always fail closed. */
+export function getProviderImageModels(providerId: ProviderId): readonly string[] {
+  return IMAGE_MODELS[providerId] ?? [];
+}
+
+export function supportsProviderModelImageInput(providerId: ProviderId, model: string): boolean {
   const normalizedModel = model.trim().toLowerCase();
   if (!normalizedModel) return false;
-  return Boolean(
-    IMAGE_MODEL_PREFIXES[providerId]?.some((prefix) =>
-      normalizedModel.startsWith(prefix.toLowerCase()),
-    ),
+  return getProviderImageModels(providerId).some(
+    (knownModel) => knownModel.toLowerCase() === normalizedModel,
   );
 }
 
@@ -623,3 +628,4 @@ function bufferToHex(buf: ArrayBuffer): string {
 }
 
 export * from './config-store';
+export * from './video-config-store';

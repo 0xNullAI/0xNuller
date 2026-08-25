@@ -10,11 +10,11 @@ import {
 } from 'lucide-react';
 import { Button, useOpenShellSettings } from '@0xnullai/ui';
 import {
-  isLlmConfigured,
-  loadLlmConfig,
+  isVideoLlmConfigured,
+  loadVideoLlmConfig,
   normalizeProviderSettings,
-  subscribeLlmConfig,
-  type LlmConfig,
+  subscribeVideoLlmConfig,
+  type VideoLlmConfig,
   type ProviderId,
 } from '@0xnullai/llm-providers';
 import { createBrowserLlmClient } from '@dg-agent/agent-browser';
@@ -35,7 +35,7 @@ const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   error: null,
 };
 
-function llmForConfig(config: LlmConfig): LlmClient {
+function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
     providerId: config.providerId as ProviderId,
     apiKey: config.apiKey,
@@ -63,7 +63,7 @@ function useStopWhenModuleHidden(stop: () => void) {
 }
 
 export function App() {
-  const [config, setConfig] = useState(loadLlmConfig);
+  const [config, setConfig] = useState(loadVideoLlmConfig);
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
   const [intervalSeconds, setIntervalSeconds] = useState(15);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
@@ -71,7 +71,7 @@ export function App() {
   const [localError, setLocalError] = useState<string | null>(null);
   const openSettings = useOpenShellSettings();
 
-  useEffect(() => subscribeLlmConfig(setConfig), []);
+  useEffect(() => subscribeVideoLlmConfig(setConfig), []);
 
   const llm = useMemo(() => {
     try {
@@ -80,7 +80,9 @@ export function App() {
       return null;
     }
   }, [config]);
-  const visionEnabled = Boolean(isLlmConfigured(config) && llm?.capabilities?.imageInput === true);
+  const visionEnabled = Boolean(
+    isVideoLlmConfigured(config) && llm?.capabilities?.imageInput === true,
+  );
   const {
     videoRef,
     state: cameraState,
@@ -254,7 +256,7 @@ export function App() {
             </div>
             <button
               type="button"
-              onClick={() => openSettings('ai')}
+              onClick={() => openSettings('ai-video')}
               aria-label="打开 AI 设置"
               className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
             >
@@ -302,7 +304,7 @@ export function App() {
 
           {!visionEnabled && (
             <p className="rounded-[var(--radius-sm)] bg-[var(--accent-soft)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
-              当前文本模型未明确支持图片输入。请在 AI 设置中选择受支持的视觉模型。
+              Video 配置未完成或模型未明确支持图片输入。请在 AI → Video 中选择受支持的视觉模型。
             </p>
           )}
           {error && <p className="text-sm text-[var(--danger)]">{error}</p>}

@@ -57,6 +57,7 @@ describe('providers-catalog', () => {
     expect(supportsProviderModelImageInput('anthropic', 'claude-sonnet-4-5')).toBe(true);
     expect(supportsProviderModelImageInput('custom', 'gpt-4o-mini')).toBe(false);
     expect(supportsProviderModelImageInput('openai', 'unknown-model')).toBe(false);
+    expect(supportsProviderModelImageInput('openai', 'gpt-4o-private-preview')).toBe(false);
     expect(resolveProviderRuntimeSettings(createProviderSettings('free')).imageInput).toBe(false);
     expect(getProviderDefinition('free')?.imageInput).toBe('none');
   });
