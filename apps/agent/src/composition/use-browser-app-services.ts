@@ -18,6 +18,7 @@ import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agen
 import { currentDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { SavedScene } from '@0xnullai/scenes';
+import type { NativeBridge } from '@0xnullai/native';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
 
 export interface PendingPermissionRequest {
@@ -60,6 +61,7 @@ export interface UseBrowserAppServicesOptions {
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
+  deviceRuntimeProvider?: NativeBridge['deviceRuntime'];
 }
 
 export interface UseBrowserAppServicesResult extends BrowserServices {
@@ -70,8 +72,14 @@ export interface UseBrowserAppServicesResult extends BrowserServices {
 export function useBrowserAppServices(
   options: UseBrowserAppServicesOptions,
 ): UseBrowserAppServicesResult {
-  const { resolveBridgeSessionId, settings, scenes, setPendingPermission, servicesOverrides } =
-    options;
+  const {
+    resolveBridgeSessionId,
+    settings,
+    scenes,
+    setPendingPermission,
+    servicesOverrides,
+    deviceRuntimeProvider,
+  } = options;
 
   const disableUpdateChecker = servicesOverrides?.disableUpdateChecker ?? false;
   const updateChecker = useMemo(
@@ -156,6 +164,7 @@ export function useBrowserAppServices(
         // A standalone build has no shell lease holder; inside the shell a
         // different holder must block every non-stop command at the boundary.
         deviceExecutionGate: () => currentDeviceLease() === null || hasDeviceLease('agent'),
+        deviceRuntimeProvider,
         resolveBridgeSessionId,
         onPermissionRequest: (input) =>
           new Promise<PermissionDecision>((resolve) => {
@@ -174,6 +183,7 @@ export function useBrowserAppServices(
       resolveBridgeSessionId,
       setPendingPermission,
       servicesOverrides,
+      deviceRuntimeProvider,
     ],
   );
 

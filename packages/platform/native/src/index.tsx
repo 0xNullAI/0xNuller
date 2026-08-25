@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
+import type { SharedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 /**
  * The single entry point where the native (Tauri) shell injects Bluetooth
@@ -26,6 +27,11 @@ import type { ReactNode } from 'react';
  */
 
 export interface NativeBridge {
+  /**
+   * Optional shell-owned generic runtime shared by every module. Product
+   * modules bind their own module id; they never construct a second runtime.
+   */
+  deviceRuntime?: SharedDeviceRuntimeProvider;
   /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
   agent?: {
     servicesOverrides?: unknown;

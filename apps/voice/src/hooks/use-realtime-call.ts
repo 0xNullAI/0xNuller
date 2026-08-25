@@ -1,5 +1,5 @@
 import { loadScenes } from '@0xnullai/scenes';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
@@ -20,6 +20,15 @@ import type {
 import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
 import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
+import {
+  AiDeviceToolAdapter,
+  appendAiDeviceRuntimeStatus,
+  type SharedDeviceRuntimeProvider,
+} from '@0xnullai/device-runtime';
+import {
+  listVoiceToolDefinitions,
+  VoiceCompositeToolExecutor,
+} from '@voice/lib/device-runtime-tools';
 
 export interface PendingPermissionRequest {
   input: PermissionRequest;
@@ -53,7 +62,11 @@ function createSessionId(): string {
  * A fresh `ToolExecutor`/permission grant per call means switching devices
  * or re-authorizing between calls can't leak stale timed grants forward.
  */
-export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSettings) {
+export function useRealtimeCall(
+  deviceSession: DeviceSession,
+  settings: VoiceSettings,
+  deviceRuntimeProvider?: SharedDeviceRuntimeProvider,
+) {
   const [state, setState] = useState<RealtimeCallState>({
     status: 'idle',
     error: null,
@@ -68,6 +81,16 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
   const guardStopRef = useRef<(() => void) | null>(null);
   const deviceWatchStopRef = useRef<(() => void) | null>(null);
   const [waveformLibrary] = useState(() => new BrowserWaveformLibrary());
+  const runtimeTools = useMemo(
+    () =>
+      deviceRuntimeProvider
+        ? new AiDeviceToolAdapter({
+            tools: () => deviceRuntimeProvider.forModule('voice'),
+            snapshot: () => deviceRuntimeProvider.current()?.snapshot() ?? null,
+          })
+        : undefined,
+    [deviceRuntimeProvider],
+  );
 
   const resolvePermission = useCallback((decision: PermissionDecision) => {
     const pending = pendingPermissionRef.current;
@@ -91,7 +114,20 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       deviceWatchStopRef.current = null;
       sessionRef.current?.disconnect();
       sessionRef.current = null;
-      await deviceSession.emergencyStop();
+      const genericRuntime = deviceRuntimeProvider?.current();
+      const stops: Promise<unknown>[] = [
+        Promise.resolve().then(() => deviceSession.emergencyStop()),
+      ];
+      if (genericRuntime) {
+        stops.push(
+          Promise.resolve().then(() =>
+            genericRuntime
+              .forModule('voice')
+              .actions.emergencyStop({ interactionId: `voice-hangup-${createSessionId()}` }),
+          ),
+        );
+      }
+      await Promise.allSettled(stops);
       setState((prev) => ({
         ...prev,
         status: 'ended',
@@ -102,7 +138,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
         speaking: false,
       }));
     },
-    [deviceSession],
+    [deviceRuntimeProvider, deviceSession],
   );
 
   const startCall = useCallback(async () => {
@@ -161,7 +197,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     });
 
     const registry = createVoiceToolRegistry({ waveformLibrary });
-    const executor = new ToolExecutor({
+    const legacyExecutor = new ToolExecutor({
       session: deviceSession,
       registry,
       policyEngine: new PolicyEngine(createDefaultPolicyRules(settings.coyoteSafety)),
@@ -201,13 +237,26 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
     const sceneLib = loadScenes();
     const preset = getAnyPromptPresetById(sceneLib.selectedId, sceneLib.scenes);
     const buildInstructions = async () =>
-      buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
-        coyoteSafety: settings.coyoteSafety,
-        opossumSafety: settings.opossumSafety,
-      });
+      appendAiDeviceRuntimeStatus(
+        buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
+          coyoteSafety: settings.coyoteSafety,
+          opossumSafety: settings.opossumSafety,
+        }),
+        runtimeTools?.snapshot() ?? null,
+      );
+    const executor = new VoiceCompositeToolExecutor({
+      legacy: legacyExecutor,
+      runtime: runtimeTools,
+      permission,
+      context,
+      onRuntimeToolComplete: async () => {
+        const current = sessionRef.current;
+        if (current) current.updateInstructions(await buildInstructions());
+      },
+    });
 
     try {
-      const tools = await registry.listDefinitions();
+      const tools = await listVoiceToolDefinitions(registry, runtimeTools);
       const session = await createRealtimeSession({
         settings: providerSettings,
         tools,
@@ -241,7 +290,7 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [deviceSession, hangUp, settings, waveformLibrary]);
+  }, [deviceSession, hangUp, runtimeTools, settings, waveformLibrary]);
 
   return { state, startCall, hangUp, pendingPermission, resolvePermission };
 }

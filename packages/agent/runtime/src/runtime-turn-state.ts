@@ -98,7 +98,13 @@ function isShockBurstTool(toolName: string): boolean {
 }
 
 function isStopTool(toolName: string): boolean {
-  return toolName === 'shock_stop' || toolName === 'stop' || toolName === 'vibrate_stop';
+  return (
+    toolName === 'shock_stop' ||
+    toolName === 'stop' ||
+    toolName === 'vibrate_stop' ||
+    toolName === 'device_stop' ||
+    toolName === 'device_emergency_stop'
+  );
 }
 
 export function consumeTurnQuota(

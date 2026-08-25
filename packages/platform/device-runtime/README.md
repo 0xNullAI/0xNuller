@@ -9,6 +9,11 @@ telemetry-only Battery/RSSI refreshes preserve fences. A failed stop latches the
 backend runtime is created. The runtime does not reconnect devices, restore output, expose raw
 commands, or depend on an agent/tool SDK.
 
+The reusable AI adapter is a positive allowlist containing only `device_snapshot`, `device_vibrate`,
+`device_stop`, and `device_emergency_stop`. Model schemas never contain `interactionId`; Agent and
+Voice inject trusted local tool-call IDs and require exact opaque `deviceId` + `featureId` values.
+Scan, disconnect, labels, native identifiers, and Raw operations are not model tools.
+
 ## Web embedded backend
 
 `WebEmbeddedButtplugBackend` uses the embedded Web Bluetooth stack `buttplug@4.0.2` with

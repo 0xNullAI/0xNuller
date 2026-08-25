@@ -24,6 +24,11 @@ import {
 } from '@dg-agent/runtime';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { createBuildBrowserInstructions } from './build-browser-instructions.js';
+import { appendAiDeviceRuntimeStatus, type AiDeviceToolAdapter } from '@0xnullai/device-runtime';
+import {
+  AGENT_RUNTIME_PERMISSION_TOOL_NAMES,
+  DeviceRuntimeToolRegistry,
+} from './device-runtime-tool-registry.js';
 
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
@@ -43,6 +48,8 @@ export interface CreateBrowserAgentClientOptions {
   permissionService?: PermissionService;
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
+  /** Optional adapter over the shell-owned shared generic device runtime. */
+  deviceRuntimeTools?: AiDeviceToolAdapter;
   /**
    * Shared secret used to sign requests to the free-tier proxy. Only the
    * Tauri Android shell supplies this (via a build-time env var); web
@@ -59,6 +66,31 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     temperature: settings.temperature,
     freeProxySecret: options.freeProxySecret,
   });
+  const legacyToolRegistry = createDefaultToolRegistryWithDeps({
+    waveformLibrary: options.waveformLibrary,
+    toolDefinitionHints: {
+      maxColdStartStrength: settings.maxColdStartStrength,
+      maxAdjustStrengthStep: settings.maxAdjustStrengthStep,
+      maxAdjustStrengthCallsPerTurn: settings.maxAdjustStrengthCallsPerTurn,
+      maxBurstDurationMs: settings.maxBurstDurationMs,
+      maxBurstCallsPerTurn: settings.maxBurstCallsPerTurn,
+      maxVibrateStartIntensity: settings.maxOpossumColdStartIntensity,
+      maxVibrateAdjustStep: settings.maxOpossumAdjustStep,
+      maxVibrateAdjustCallsPerTurn: settings.maxVibrateAdjustCallsPerTurn,
+      maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
+    },
+  });
+  const toolRegistry = options.deviceRuntimeTools
+    ? new DeviceRuntimeToolRegistry(legacyToolRegistry, options.deviceRuntimeTools)
+    : legacyToolRegistry;
+  const buildBaseInstructions = createBuildBrowserInstructions({
+    promptPresetId: scenes.selectedId,
+    savedPromptPresets: scenes.saved,
+    maxStrengthA: settings.maxStrengthA,
+    maxStrengthB: settings.maxStrengthB,
+    maxOpossumIntensityA: settings.maxOpossumIntensityA,
+    maxOpossumIntensityB: settings.maxOpossumIntensityB,
+  });
 
   return createEmbeddedAgentClient({
     device: options.device,
@@ -66,21 +98,11 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     pawPrints: options.pawPrints,
     civetEdging: options.civetEdging,
     llm,
-    toolRegistry: createDefaultToolRegistryWithDeps({
-      waveformLibrary: options.waveformLibrary,
-      toolDefinitionHints: {
-        maxColdStartStrength: settings.maxColdStartStrength,
-        maxAdjustStrengthStep: settings.maxAdjustStrengthStep,
-        maxAdjustStrengthCallsPerTurn: settings.maxAdjustStrengthCallsPerTurn,
-        maxBurstDurationMs: settings.maxBurstDurationMs,
-        maxBurstCallsPerTurn: settings.maxBurstCallsPerTurn,
-        maxVibrateStartIntensity: settings.maxOpossumColdStartIntensity,
-        maxVibrateAdjustStep: settings.maxOpossumAdjustStep,
-        maxVibrateAdjustCallsPerTurn: settings.maxVibrateAdjustCallsPerTurn,
-        maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
-      },
-    }),
+    toolRegistry,
     deviceExecutionGate: options.deviceExecutionGate,
+    permissionRequiredToolNames: options.deviceRuntimeTools
+      ? AGENT_RUNTIME_PERMISSION_TOOL_NAMES
+      : undefined,
     permission:
       options.permissionService ??
       new BrowserPermissionService({
@@ -105,14 +127,11 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         maxAdjustStep: settings.maxOpossumAdjustStep,
       }),
     ),
-    buildInstructions: createBuildBrowserInstructions({
-      promptPresetId: scenes.selectedId,
-      savedPromptPresets: scenes.saved,
-      maxStrengthA: settings.maxStrengthA,
-      maxStrengthB: settings.maxStrengthB,
-      maxOpossumIntensityA: settings.maxOpossumIntensityA,
-      maxOpossumIntensityB: settings.maxOpossumIntensityB,
-    }),
+    buildInstructions: (input) =>
+      appendAiDeviceRuntimeStatus(
+        buildBaseInstructions(input),
+        options.deviceRuntimeTools?.snapshot() ?? null,
+      ),
     toolCallConfig: {
       maxToolIterations: settings.maxToolIterations,
       maxToolCallsPerTurn: settings.maxToolCallsPerTurn,

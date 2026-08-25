@@ -28,7 +28,7 @@ const INTERACTION = { type: 'string', minLength: 1, maxLength: 128 } as const;
 const DEVICE_ID = { type: 'string', minLength: 1, maxLength: 160 } as const;
 const FEATURE_ID = { type: 'string', minLength: 1, maxLength: 160 } as const;
 
-/** SDK-neutral catalog consumed unchanged by Agent, Voice, and Video adapters. */
+/** Full SDK-neutral catalog; AI adapters derive a smaller positive allowlist from it. */
 export const DEVICE_TOOL_CATALOG: readonly DeviceToolDefinition[] = [
   {
     name: 'device_snapshot',
