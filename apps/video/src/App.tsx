@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Camera,
-  CameraOff,
-  CirclePause,
-  CirclePlay,
-  Link,
-  ScanEye,
-  Settings,
-  ShieldAlert,
-  SwitchCamera,
-} from 'lucide-react';
+import { CirclePause, CirclePlay, Link, Settings, ShieldAlert } from 'lucide-react';
 import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
@@ -31,7 +21,12 @@ import {
   type VideoOutputKind,
 } from '@dg-agent/agent-browser';
 import type { LlmClient } from '@dg-agent/core';
+import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
+import {
+  DEFAULT_CAMERA_FRAME_SETTINGS,
+  type CameraFrameSettings,
+} from './services/camera-frame.js';
 import {
   VisualSession,
   type VisualSafetyStopReason,
@@ -62,6 +57,8 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
     waveActiveB: false,
   },
   opossum: { connected: false, battery: 0, intensityA: 0, intensityB: 0 },
+  coyotes: [],
+  opossumTarget: null,
 };
 
 type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
@@ -122,10 +119,14 @@ export function App() {
   const [safety, setSafety] = useState(toVideoSafety);
   const [sceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
+  const [frameSettings, setFrameSettings] = useState<CameraFrameSettings>(() => ({
+    ...DEFAULT_CAMERA_FRAME_SETTINGS,
+  }));
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
   const [durationMinutes, setDurationMinutes] = useState(5);
   const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
+  const [targetId, setTargetId] = useState('');
   const [channel, setChannel] = useState<'A' | 'B'>('A');
   const [intensityCap, setIntensityCap] = useState(10);
   const [allowEnhanced, setAllowEnhanced] = useState(false);
@@ -168,12 +169,13 @@ export function App() {
   );
   const {
     videoRef,
+    processedPreviewRef,
     state: cameraState,
     error: cameraError,
     start: startCamera,
     stop: stopCamera,
     capture: cameraCapture,
-  } = useCameraPreview(visionEnabled, facingMode);
+  } = useCameraPreview(visionEnabled, facingMode, frameSettings);
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
@@ -210,6 +212,12 @@ export function App() {
       }),
   );
 
+  useEffect(() => {
+    if (cameraState !== 'on') return;
+    const timer = window.setTimeout(() => void session.captureNow(), 120);
+    return () => window.clearTimeout(timer);
+  }, [cameraState, frameSettings, session]);
+
   const emergencyStop = useCallback(async () => {
     session.emergencyStop();
     setGrant(null);
@@ -224,10 +232,10 @@ export function App() {
   useSafetySession({
     id: 'video',
     label: 'Video',
-    isActive: () => devices.coyote.connected || devices.opossum.connected,
+    isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
-    connect: () => service.connect(),
-    disconnect: (deviceId) => service.disconnect(deviceId === 'opossum' ? 'opossum' : 'coyote'),
+    connect: () => service.connect().then(() => undefined),
+    disconnect: (deviceId) => service.disconnect(deviceId),
     onRevoke: async () => {
       session.failSafeStop('lease-loss');
       await service.stop('lease-loss');
@@ -237,10 +245,12 @@ export function App() {
 
   useEffect(() => {
     if (!grant) return;
-    const connected =
-      grant.targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+    const connected = [
+      ...devices.coyotes,
+      ...(devices.opossumTarget ? [devices.opossumTarget] : []),
+    ].some((target) => target.kind === grant.targetKind && target.targetId === grant.targetId);
     if (!connected) session.failSafeStop('device-loss');
-  }, [devices.coyote.connected, devices.opossum.connected, grant, session]);
+  }, [devices.coyotes, devices.opossumTarget, grant, session]);
 
   useEffect(() => {
     if ((cameraState === 'off' || cameraState === 'error') && visual.status === 'running') {
@@ -270,8 +280,14 @@ export function App() {
     };
   }, [service, stopEverything]);
 
-  const targetConnected =
-    targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+  const connectedTargets = [
+    ...devices.coyotes,
+    ...(devices.opossumTarget ? [devices.opossumTarget] : []),
+  ];
+  const selectedTarget = connectedTargets.find(
+    (target) => target.kind === targetKind && target.targetId === targetId,
+  );
+  const targetConnected = selectedTarget !== undefined;
   const targetSafetyCap =
     targetKind === 'coyote'
       ? channel === 'A'
@@ -293,6 +309,7 @@ export function App() {
       await grantDeviceLease('video');
       const next = await service.authorize({
         targetKind,
+        targetId,
         channel,
         intensityCap: effectiveIntensityCap,
         allowEnhanced,
@@ -343,8 +360,9 @@ export function App() {
   async function connect(kind: VideoOutputKind) {
     try {
       setLocalError(null);
-      await service.connect(kind);
-      setTargetKind(kind);
+      const target = await service.connect(kind);
+      setTargetKind(target.kind);
+      setTargetId(target.targetId);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
     }
@@ -356,72 +374,20 @@ export function App() {
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
       <div className="mx-auto grid min-h-full w-full max-w-[1180px] gap-5 p-4 md:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] md:p-6">
-        <section className="flex min-h-[420px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)]">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border)] px-4 py-3">
-            <div>
-              <h1 className="font-semibold">Video</h1>
-              <p className="text-xs text-[var(--text-faint)]">最新画面驱动的短时闭环场景</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
-                镜头
-                <select
-                  value={facingMode}
-                  onChange={(event) => setFacingMode(event.target.value as CameraFacingMode)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5"
-                >
-                  <option value="environment">后置</option>
-                  <option value="user">前置</option>
-                </select>
-              </label>
-              <SwitchCamera className="h-4 w-4 text-[var(--text-faint)]" aria-hidden />
-            </div>
-          </header>
-
-          <div className="relative flex min-h-[300px] flex-1 items-center justify-center bg-black">
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              aria-label="实时摄像头预览"
-              className="h-full max-h-[70dvh] w-full object-contain"
-            />
-            {cameraState !== 'on' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 px-6 text-center text-white">
-                <Camera className="h-9 w-9 opacity-75" />
-                <p className="text-sm">
-                  {cameraState === 'starting' ? '正在请求摄像头…' : '摄像头保持关闭'}
-                </p>
-                <Button
-                  onClick={() => void startCamera()}
-                  disabled={!visionEnabled || cameraState === 'starting'}
-                >
-                  开启摄像头
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <footer className="flex flex-wrap items-center gap-2 border-t border-[var(--surface-border)] p-3">
-            {cameraState === 'on' ? (
-              <Button variant="secondary" onClick={() => stopEverything('hidden')}>
-                <CameraOff className="h-4 w-4" /> 关闭
-              </Button>
-            ) : null}
-            <Button
-              variant="secondary"
-              onClick={() => void captureManually()}
-              disabled={cameraState !== 'on'}
-            >
-              <ScanEye className="h-4 w-4" /> 手动采集
-            </Button>
-            <span className="ml-auto text-xs text-[var(--text-faint)]">
-              {frame
-                ? `最新帧 ${new Date(frame.capturedAt).toLocaleTimeString()} · ${frame.width}×${frame.height} · ${Math.ceil(frame.byteLength / 1024)}KB`
-                : '尚未采集画面'}
-            </span>
-          </footer>
-        </section>
+        <CameraWorkbench
+          videoRef={videoRef}
+          processedPreviewRef={processedPreviewRef}
+          cameraState={cameraState}
+          visionEnabled={visionEnabled}
+          facingMode={facingMode}
+          settings={frameSettings}
+          latestFrame={frame}
+          onFacingModeChange={setFacingMode}
+          onSettingsChange={setFrameSettings}
+          onStartCamera={() => void startCamera()}
+          onStopCamera={() => stopEverything('hidden')}
+          onCapture={() => void captureManually()}
+        />
 
         <aside className="flex flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-4">
           <div className="flex items-start justify-between gap-3">
@@ -445,12 +411,13 @@ export function App() {
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium">设备授权</span>
               <div className="flex gap-1.5">
-                {!devices.coyote.connected && (
+                {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
                   <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                    <Link className="h-3.5 w-3.5" /> 郊狼
+                    <Link className="h-3.5 w-3.5" />
+                    {devices.coyotes.length > 0 ? '添加郊狼' : '郊狼'}
                   </Button>
                 )}
-                {!devices.opossum.connected && (
+                {!devices.opossumTarget && (
                   <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
                     <Link className="h-3.5 w-3.5" /> 负鼠
                   </Button>
@@ -462,15 +429,24 @@ export function App() {
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
                 目标
                 <select
-                  value={targetKind}
-                  onChange={(event) => setTargetKind(event.target.value as VideoOutputKind)}
+                  value={targetId}
+                  onChange={(event) => {
+                    const nextTarget = connectedTargets.find(
+                      (target) => target.targetId === event.target.value,
+                    );
+                    setTargetId(event.target.value);
+                    if (nextTarget) setTargetKind(nextTarget.kind);
+                  }}
                   disabled={visual.status === 'running'}
                   className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
                 >
-                  <option value="coyote">郊狼{devices.coyote.connected ? ' · 已连接' : ''}</option>
-                  <option value="opossum">
-                    负鼠{devices.opossum.connected ? ' · 已连接' : ''}
-                  </option>
+                  <option value="">请选择已连接目标</option>
+                  {connectedTargets.map((target) => (
+                    <option key={target.targetId} value={target.targetId}>
+                      {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name} ·{' '}
+                      {target.targetId}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
@@ -605,7 +581,7 @@ export function App() {
           <div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-soft)]">
             状态：{statusLabel(visual)} · {visual.steps} 次观察
             {grant && !grant.revoked
-              ? ` · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
+              ? ` · 目标 ${grant.targetId} · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
               : ' · 未授权'}
           </div>
 

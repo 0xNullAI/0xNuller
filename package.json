@@ -1,9 +1,9 @@
 {
   "name": "0xnuller",
-  "version": "6.0.14",
+  "version": "6.1.0",
   "private": true,
   "type": "module",
-  "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
+  "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
   "license": "MIT",
   "repository": {
     "type": "git",

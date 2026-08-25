@@ -127,6 +127,37 @@ describe('MultiCoyoteDeviceClient', () => {
     expect(children[1]!.emergencyStop).toHaveBeenCalledTimes(1);
   });
 
+  it('attempts every emergency stop before reporting an unreachable host', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+    await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
+    await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
+    children[0]!.emergencyStop.mockRejectedValueOnce(new Error('unreachable'));
+
+    await expect(aggregate.emergencyStop()).rejects.toThrow('unreachable');
+    expect(children[0]!.emergencyStop).toHaveBeenCalledTimes(1);
+    expect(children[1]!.emergencyStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let an exact stale write fall back to another connected host', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+    await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
+    await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
+    await aggregate.disconnectDeviceById('coyote-b');
+
+    await expect(aggregate.executeDeviceById('coyote-b', { type: 'stop' })).resolves.toBeNull();
+    expect(children[0]!.execute).not.toHaveBeenCalled();
+  });
+
   it('disconnects one host by stable id without dropping the other', async () => {
     const children: FakeChildClient[] = [];
     const aggregate = new MultiCoyoteDeviceClient(() => {

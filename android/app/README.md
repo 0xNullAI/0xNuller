@@ -1,7 +1,7 @@
 # @0xnullai/android
 
-The Android app. **One APK containing all six modules** — Control, Agent,
-Voice, Chat, Playground, Market — not one APK per module.
+The Android app. **One APK containing all seven modules** — Control, Agent,
+Voice, Video, Chat, Playground, Market — not one APK per module.
 
 ## Why this exists
 
@@ -45,7 +45,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v6.0.14`, `0xNuller 6.0.14`, `6.0.14`, and `6000014`.
+code all advance together: `v6.1.0`, `0xNuller 6.1.0`, `6.1.0`, and `6001000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed APK and Latest badge.
 

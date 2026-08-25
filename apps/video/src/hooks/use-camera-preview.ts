@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LlmImageInput } from '@dg-agent/core';
-import { captureCameraFrame } from '../services/camera-frame.js';
+import { captureCameraFrame, type CameraFrameSettings } from '../services/camera-frame.js';
+import { FramePreviewUrl } from '../services/frame-preview-url.js';
 
 export type CameraFacingMode = 'user' | 'environment';
 export type CameraPreviewState = 'off' | 'starting' | 'on' | 'error';
@@ -20,10 +21,18 @@ export function cameraEnvironmentError(): string | null {
   return null;
 }
 
-export function useCameraPreview(enabled: boolean, facingMode: CameraFacingMode) {
+export function useCameraPreview(
+  enabled: boolean,
+  facingMode: CameraFacingMode,
+  frameSettings: CameraFrameSettings,
+) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const processedPreviewRef = useRef<HTMLImageElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestIdRef = useRef(0);
+  const settingsRef = useRef(frameSettings);
+  const previewUrlRef = useRef<FramePreviewUrl | null>(null);
+  settingsRef.current = frameSettings;
   const [state, setState] = useState<CameraPreviewState>('off');
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +42,7 @@ export function useCameraPreview(enabled: boolean, facingMode: CameraFacingMode)
     streamRef.current = null;
     stopCameraStream(stream);
     if (videoRef.current) videoRef.current.srcObject = null;
+    previewUrlRef.current?.clear(processedPreviewRef.current);
     setState('off');
     setError(null);
   }, []);
@@ -87,7 +97,10 @@ export function useCameraPreview(enabled: boolean, facingMode: CameraFacingMode)
 
   const capture = useCallback(async (): Promise<LlmImageInput | undefined> => {
     if (!streamRef.current || !videoRef.current) return undefined;
-    return captureCameraFrame(videoRef.current);
+    const frame = await captureCameraFrame(videoRef.current, settingsRef.current);
+    const preview = (previewUrlRef.current ??= new FramePreviewUrl());
+    preview.show(frame.previewBlob, processedPreviewRef.current);
+    return frame.image;
   }, []);
 
   useEffect(() => {
@@ -124,5 +137,5 @@ export function useCameraPreview(enabled: boolean, facingMode: CameraFacingMode)
     stop();
   }, [facingMode, stop]);
 
-  return { videoRef, state, error, start, stop, capture };
+  return { videoRef, processedPreviewRef, state, error, start, stop, capture };
 }

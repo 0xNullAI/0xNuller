@@ -25,6 +25,7 @@ describe('VideoControlGrant', () => {
     const grant = new VideoControlGrant(
       {
         targetKind: 'coyote',
+        targetId: 'coyote-session-1',
         channel: 'B',
         intensityCap: 180,
         allowEnhanced: true,
@@ -37,6 +38,7 @@ describe('VideoControlGrant', () => {
     ).getSnapshot();
 
     expect(grant).toMatchObject({
+      targetId: 'coyote-session-1',
       channel: 'B',
       intensityCap: 42,
       durationMs: VIDEO_CONTROL_MAX_DURATION_MS,
@@ -47,11 +49,29 @@ describe('VideoControlGrant', () => {
     });
   });
 
+  it('rejects a grant without an exact physical target identity', () => {
+    expect(
+      () =>
+        new VideoControlGrant({
+          targetKind: 'coyote',
+          targetId: '   ',
+          channel: 'A',
+          intensityCap: 10,
+          allowEnhanced: false,
+          allowBurst: false,
+          durationMs: 60_000,
+          cadenceMs: 10_000,
+          captureIntervalMs: 1_000,
+        }),
+    ).toThrow('必须指定物理目标');
+  });
+
   it('expires and revokes only in memory', () => {
     let now = 0;
     const grant = new VideoControlGrant(
       {
         targetKind: 'opossum',
+        targetId: 'opossum-session-1',
         channel: 'A',
         intensityCap: 20,
         allowEnhanced: false,
@@ -72,6 +92,7 @@ describe('VideoControlGrant', () => {
   it('enforces target, channel, cap and enhanced/burst flags at the final command gate', async () => {
     const grant = new VideoControlGrant({
       targetKind: 'opossum',
+      targetId: 'opossum-session-2',
       channel: 'A',
       intensityCap: 30,
       allowEnhanced: false,

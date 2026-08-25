@@ -2,8 +2,12 @@ import {
   createEmptyDeviceState,
   type ActionContext,
   type DeviceClient,
+  type DeviceCommand,
+  type DeviceCommandResult,
+  type DeviceState,
   type LlmClient,
   type LlmImageInput,
+  type OpossumCommand,
   type PermissionService,
   type RuntimeEvent,
   type SessionSnapshot,
@@ -12,6 +16,7 @@ import {
   type ToolDefinition,
   type WaveformLibrary,
 } from '@dg-agent/core';
+import { createEmptyOpossumState, type OpossumState } from '@dg-kit/protocol';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
 import {
   DeviceCommandQueue,
@@ -19,7 +24,7 @@ import {
   OpossumPolicyEngine,
   PolicyEngine,
 } from '@dg-kit/safety';
-import type { OpossumClient } from './device-clients.js';
+import type { OpossumClient, OpossumCommandResult } from './device-clients.js';
 import { RuntimeToolExecutor, type DeviceExecutionGateInput } from './runtime-tool-executor.js';
 import { createTurnState, type TurnState } from './runtime-turn-state.js';
 import { resolveToolCallConfig, type ToolCallConfigInput } from './tool-call-config.js';
@@ -58,6 +63,23 @@ export interface VideoControlScene {
   prompt: string;
 }
 
+export interface VideoControlTargetRouter {
+  /** Selects the exact live physical client and returns false for stale identities. */
+  selectTarget(
+    kind: VideoControlGrantSnapshot['targetKind'],
+    targetId: string,
+  ): boolean | Promise<boolean>;
+  getCoyoteState(targetId: string): Promise<DeviceState | null>;
+  getOpossumState(targetId: string): Promise<OpossumState | null>;
+  executeCoyote(targetId: string, command: DeviceCommand): Promise<DeviceCommandResult | null>;
+  executeOpossum(targetId: string, command: OpossumCommand): Promise<OpossumCommandResult | null>;
+  /** Stops only that physical client; false means identity can no longer be proven. */
+  stopTarget(
+    kind: VideoControlGrantSnapshot['targetKind'],
+    targetId: string,
+  ): boolean | Promise<boolean>;
+}
+
 export interface VideoControlRuntimeOptions {
   device: DeviceClient;
   opossum: OpossumClient;
@@ -65,6 +87,7 @@ export interface VideoControlRuntimeOptions {
   getSafetyLimits: () => VideoControlSafetyLimits;
   getScene?: () => VideoControlScene | null;
   hasLease: () => boolean;
+  targetRouter: VideoControlTargetRouter;
   waveformLibrary?: WaveformLibrary;
   toolRegistry?: ToolRegistry;
   policyEngine?: PolicyEngine;
@@ -86,11 +109,17 @@ export class VideoControlRuntime {
   private readonly now: () => number;
   private readonly queue: DeviceCommandQueue;
   private readonly opossumQueue: OpossumCommandQueue;
+  private readonly runtimeDevice: DeviceClient;
+  private readonly runtimeOpossum: OpossumClient;
   private readonly toolRegistry: ToolRegistry;
   private readonly toolExecutor: RuntimeToolExecutor;
   private grant: VideoControlGrant | null = null;
   private generation = 0;
   private emergencyLatched = false;
+  private globalStopInProgress = false;
+  private readonly lastStopTargets: Partial<
+    Record<VideoControlGrantSnapshot['targetKind'], VideoControlGrantSnapshot>
+  > = {};
   private activeInference: AbortController | null = null;
   private readonly effectControllers = new Set<AbortController>();
   private readonly effectGenerations = new Map<string, number>();
@@ -106,8 +135,10 @@ export class VideoControlRuntime {
     this.now = options.now ?? Date.now;
     this.session.createdAt = this.now();
     this.session.updatedAt = this.session.createdAt;
-    this.queue = new DeviceCommandQueue(options.device);
-    this.opossumQueue = new OpossumCommandQueue(options.opossum);
+    this.runtimeDevice = this.createTargetedDeviceClient();
+    this.runtimeOpossum = this.createTargetedOpossumClient();
+    this.queue = new DeviceCommandQueue(this.runtimeDevice);
+    this.opossumQueue = new OpossumCommandQueue(this.runtimeOpossum);
     const safety = options.getSafetyLimits();
     this.toolRegistry =
       options.toolRegistry ??
@@ -163,8 +194,8 @@ export class VideoControlRuntime {
     });
 
     this.toolExecutor = new RuntimeToolExecutor({
-      device: options.device,
-      opossum: options.opossum,
+      device: this.runtimeDevice,
+      opossum: this.runtimeOpossum,
       permission,
       queue: this.queue,
       opossumQueue: this.opossumQueue,
@@ -182,11 +213,14 @@ export class VideoControlRuntime {
   }
 
   async authorize(input: VideoControlGrantInput): Promise<VideoControlGrantSnapshot> {
-    const connected =
+    if (!(await this.options.targetRouter.selectTarget(input.targetKind, input.targetId))) {
+      throw new Error('授权物理目标已断开或身份已失效');
+    }
+    const targetState =
       input.targetKind === 'coyote'
-        ? (await this.options.device.getState()).connected
-        : (await this.options.opossum.getState()).connected;
-    if (!connected) throw new Error('授权目标设备未连接');
+        ? await this.options.targetRouter.getCoyoteState(input.targetId)
+        : await this.options.targetRouter.getOpossumState(input.targetId);
+    if (!targetState?.connected) throw new Error('授权目标设备未连接');
 
     this.invalidateContinuations();
     this.grant?.revoke();
@@ -201,6 +235,7 @@ export class VideoControlRuntime {
           : safety.maxIntensityB;
     this.grant = new VideoControlGrant(input, { now: this.now, safetyIntensityCap });
     this.emergencyLatched = false;
+    this.globalStopInProgress = false;
     return this.grant.getSnapshot();
   }
 
@@ -236,7 +271,7 @@ export class VideoControlRuntime {
     externalSignal?.addEventListener('abort', abort, { once: true });
 
     try {
-      this.session.deviceState = await this.options.device.getState();
+      this.session.deviceState = await this.runtimeDevice.getState();
       const definitions = narrowVideoToolDefinitions(
         await this.toolRegistry.listDefinitions(),
         grant,
@@ -292,14 +327,22 @@ export class VideoControlRuntime {
       | 'lease-loss'
       | 'unmount',
   ): Promise<void> {
-    const targetKind = this.grant?.getSnapshot().targetKind;
+    const target = this.grant?.getSnapshot();
     this.invalidateContinuations();
     if (reason !== 'pause' && reason !== 'stop') this.grant?.revoke();
     try {
-      await this.stopTarget(targetKind);
+      await this.stopAuthorizedTarget(target);
     } catch (error) {
       this.emergencyLatched = true;
       this.grant?.revoke();
+      let globalStopError: unknown;
+      try {
+        await this.stopAllTargets();
+      } catch (stopError) {
+        globalStopError = stopError;
+      }
+      if (globalStopError) throw globalStopError;
+      if (error instanceof StaleVideoControlTargetError) return;
       throw error;
     }
   }
@@ -309,12 +352,111 @@ export class VideoControlRuntime {
     this.grant?.revoke();
     this.invalidateContinuations();
     // A Video emergency is global: another connected target may still contain
-    // queued output even when the current grant names only one device kind.
-    await this.stopTarget(undefined);
+    // queued output even when the current grant names only one physical device.
+    await this.stopAllTargets();
   }
 
   async dispose(): Promise<void> {
     await this.stop('unmount');
+  }
+
+  private createTargetedDeviceClient(): DeviceClient {
+    const source = this.options.device;
+    return {
+      connect: () => source.connect(),
+      disconnect: () => source.disconnect(),
+      getState: async () => {
+        const target = await this.targetForState('coyote');
+        if (!target) return createEmptyDeviceState();
+        const state = await this.options.targetRouter.getCoyoteState(target.targetId);
+        if (!state) throw new StaleVideoControlTargetError();
+        return state;
+      },
+      execute: async (command) => {
+        const target = await this.selectActiveTarget('coyote');
+        const result = await this.options.targetRouter.executeCoyote(target.targetId, command);
+        if (!result) throw new StaleVideoControlTargetError();
+        return result;
+      },
+      emergencyStop: async () => {
+        if (this.globalStopInProgress) return source.emergencyStop();
+        await this.stopLastTarget('coyote');
+      },
+      onStateChanged: (listener) => source.onStateChanged(listener),
+    };
+  }
+
+  private createTargetedOpossumClient(): OpossumClient {
+    const source = this.options.opossum;
+    return {
+      connect: () => source.connect(),
+      disconnect: () => source.disconnect(),
+      getState: async () => {
+        const target = await this.targetForState('opossum');
+        if (!target) return createEmptyOpossumState();
+        const state = await this.options.targetRouter.getOpossumState(target.targetId);
+        if (!state) throw new StaleVideoControlTargetError();
+        return state;
+      },
+      execute: async (command) => {
+        const target = await this.selectActiveTarget('opossum');
+        const result = await this.options.targetRouter.executeOpossum(target.targetId, command);
+        if (!result) throw new StaleVideoControlTargetError();
+        return result;
+      },
+      emergencyStop: async () => {
+        if (this.globalStopInProgress) return source.emergencyStop();
+        await this.stopLastTarget('opossum');
+      },
+      setIndicatorColor: async () => {
+        throw new Error('Video 不允许控制设备指示灯');
+      },
+      onStateChanged: (listener) => source.onStateChanged(listener),
+      ...(source.subscribeButtons
+        ? { subscribeButtons: (listener) => source.subscribeButtons!(listener) }
+        : {}),
+    };
+  }
+
+  private async selectActiveTarget(
+    kind: VideoControlGrantSnapshot['targetKind'],
+  ): Promise<VideoControlGrantSnapshot> {
+    const grant = this.grant;
+    if (!grant?.isActive()) throw new StaleVideoControlTargetError();
+    const target = grant.getSnapshot();
+    if (
+      target.targetKind !== kind ||
+      !(await this.options.targetRouter.selectTarget(kind, target.targetId))
+    ) {
+      throw new StaleVideoControlTargetError();
+    }
+    return target;
+  }
+
+  private async targetForState(
+    kind: VideoControlGrantSnapshot['targetKind'],
+  ): Promise<VideoControlGrantSnapshot | null> {
+    if (this.globalStopInProgress) return null;
+    const grant = this.grant;
+    const activeTarget = grant?.isActive() ? grant.getSnapshot() : undefined;
+    if (activeTarget && activeTarget.targetKind !== kind) return null;
+    const target = activeTarget ?? this.lastStopTargets[kind];
+    if (!target) return null;
+    if (!(await this.options.targetRouter.selectTarget(kind, target.targetId))) {
+      throw new StaleVideoControlTargetError();
+    }
+    return target;
+  }
+
+  private async stopLastTarget(kind: VideoControlGrantSnapshot['targetKind']): Promise<void> {
+    const target = this.lastStopTargets[kind] ?? this.grant?.getSnapshot();
+    if (
+      !target ||
+      target.targetKind !== kind ||
+      !(await this.options.targetRouter.stopTarget(kind, target.targetId))
+    ) {
+      throw new StaleVideoControlTargetError();
+    }
   }
 
   private invalidateContinuations(): void {
@@ -373,6 +515,12 @@ export class VideoControlRuntime {
     if (!grant) return false;
     const safety = this.options.getSafetyLimits();
     const snapshot = grant.getSnapshot();
+    if (
+      input.deviceKind !== snapshot.targetKind ||
+      !(await this.options.targetRouter.selectTarget(snapshot.targetKind, snapshot.targetId))
+    ) {
+      return false;
+    }
     const intensityCap =
       snapshot.targetKind === 'coyote'
         ? snapshot.channel === 'A'
@@ -385,26 +533,33 @@ export class VideoControlRuntime {
       input,
       async () => {
         if (snapshot.targetKind === 'coyote') {
-          const state = await this.options.device.getState();
+          const state = await this.runtimeDevice.getState();
           return snapshot.channel === 'A' ? state.strengthA : state.strengthB;
         }
-        const state = await this.options.opossum.getState();
+        const state = await this.runtimeOpossum.getState();
         return snapshot.channel === 'A' ? state.intensityA : state.intensityB;
       },
       { intensityCap, maxBurstDurationMs: safety.maxBurstDurationMs },
     );
   }
 
-  private async stopTarget(
-    targetKind: VideoControlGrantSnapshot['targetKind'] | undefined,
-  ): Promise<void> {
-    const stops =
-      targetKind === 'coyote'
-        ? [this.queue.emergencyStop()]
-        : targetKind === 'opossum'
-          ? [this.opossumQueue.emergencyStop()]
-          : [this.queue.emergencyStop(), this.opossumQueue.emergencyStop()];
-    const results = await Promise.allSettled(stops);
+  private async stopAuthorizedTarget(target: VideoControlGrantSnapshot | undefined): Promise<void> {
+    if (!target) {
+      await this.stopAllTargets();
+      return;
+    }
+    this.lastStopTargets[target.targetKind] = target;
+    await (target.targetKind === 'coyote'
+      ? this.queue.emergencyStop()
+      : this.opossumQueue.emergencyStop());
+  }
+
+  private async stopAllTargets(): Promise<void> {
+    this.globalStopInProgress = true;
+    const results = await Promise.allSettled([
+      this.queue.emergencyStop(),
+      this.opossumQueue.emergencyStop(),
+    ]);
     const failure = results.find(
       (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
@@ -412,12 +567,15 @@ export class VideoControlRuntime {
   }
 
   private async buildObservationPrompt(grant: VideoControlGrantSnapshot): Promise<string> {
+    if (!(await this.options.targetRouter.selectTarget(grant.targetKind, grant.targetId))) {
+      throw new Error('授权物理目标已断开或身份已失效');
+    }
     if (grant.targetKind === 'coyote') {
-      const state = await this.options.device.getState();
+      const state = await this.runtimeDevice.getState();
       const value = grant.channel === 'A' ? state.strengthA : state.strengthB;
       return `观察最新画面并继续当前场景。当前授权目标：郊狼 ${grant.channel} 通道，当前强度 ${value}，授权上限 ${grant.intensityCap}。只依据画面中可见事实决定保持、降低、停止或推进。`;
     }
-    const state = await this.options.opossum.getState();
+    const state = await this.runtimeOpossum.getState();
     const value = grant.channel === 'A' ? state.intensityA : state.intensityB;
     return `观察最新画面并继续当前场景。当前授权目标：负鼠 ${grant.channel} 通道，当前强度 ${value}，授权上限 ${grant.intensityCap}。只依据画面中可见事实决定保持、降低、停止或推进。`;
   }
@@ -488,6 +646,13 @@ export function narrowVideoToolDefinitions(
       },
     ];
   });
+}
+
+class StaleVideoControlTargetError extends Error {
+  constructor() {
+    super('授权物理目标已断开或身份已失效');
+    this.name = 'StaleVideoControlTargetError';
+  }
 }
 
 const NO_TRACE_STORE: SessionTraceStore = {
