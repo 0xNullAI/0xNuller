@@ -3,3 +3,7 @@ export * from './schemas.js';
 export * from './manager.js';
 export * from './executor.js';
 export * from './tool-provider.js';
+export * from './runtime-provider.js';
+export * from './web-buttplug-backend.js';
+export * from './web-embedded-settings.js';
+export * from './web-runtime-provider.js';

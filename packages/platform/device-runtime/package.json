@@ -8,7 +8,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@dg-kit/safety": "1.16.2"
+    "@dg-kit/safety": "1.16.2",
+    "buttplug": "4.0.2",
+    "buttplug-wasm": "3.0.0"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
