@@ -56,11 +56,8 @@ vi.mock('@dg-kit/waveforms', () => ({
   ],
 }));
 
-vi.mock('../../chat/src/hooks/use-device', () => ({
-  useDevice: () => mocks.device,
-}));
-
 vi.mock('@0xnullai/device-runtime', () => ({
+  useDevice: () => mocks.device,
   holdsAnyDevice: ({ coyotes, sensor, opossum }: typeof mocks.device) =>
     coyotes.some((device) => device.connected) || Boolean(sensor?.connected || opossum?.connected),
   attachedDeviceSummaries: () => [],

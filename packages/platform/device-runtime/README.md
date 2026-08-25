@@ -18,6 +18,11 @@ The package also owns the product-wide attached-device snapshot contracts and th
 the shell safety bus. Control, Chat, and Playground share these display snapshots; the mapper does
 not issue commands or alter output, leases, limits, or stop behavior.
 
+The DG-Lab product session (`DeviceSession` and `useDevice`) is also canonical here. It owns the
+single command queue, per-device Coyote routing, Opossum/sensor adapters, live safety caps, lifecycle
+stop guard, and browser/native transport injection seam used by Control, Chat, and Playground.
+Feature apps may keep compatibility re-exports, but reusable session code must not live in an app.
+
 ## Web embedded backend
 
 `WebEmbeddedButtplugBackend` uses the embedded Web Bluetooth stack `buttplug@4.0.2` with

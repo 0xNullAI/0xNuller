@@ -91,6 +91,11 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
 - Browser/Tauri transport differences: the matching `packages/kit/transport-*` package.
 - Shared waveform and tool semantics: `packages/kit/waveforms` and `packages/kit/tools`.
 - Product permissions and browser-wide services: `packages/platform/*`.
+- Shared DG-Lab product sessions, React device hooks, and channel rotation:
+  `packages/platform/device-runtime`; feature apps may consume or compatibility-re-export them, but
+  must not import another app's implementation.
+- Shared waveform import/library hooks belong in `packages/platform/waveforms`; reusable device
+  controls such as press-and-hold repeat belong in `packages/platform/ui`.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
 - Rendering and interaction state used by only one surface: that app's `src` directory.

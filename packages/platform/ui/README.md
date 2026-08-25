@@ -9,3 +9,5 @@ import '@0xnullai/ui/styles/base.css';
 ```
 
 React 与 React DOM 为 peer dependency；应用应只加载一份主题样式。
+
+设备界面共用的 `RepeatButton`、`useRepeatAction` 和 `IntensityRing` 也由此包统一提供。

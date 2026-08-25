@@ -3,14 +3,14 @@ import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useDevice } from '../../chat/src/hooks/use-device';
-import { useWaveforms } from '../../chat/src/hooks/use-waveforms';
-import { useChannelRotation } from '../../chat/src/hooks/use-channel-rotation';
+import { useDevice, useChannelRotation } from '@0xnullai/device-runtime';
+import { useWaveforms } from '@0xnullai/waveforms';
 import type {
   ChannelRotationDevice,
   ChannelRotationWaveforms,
-} from '../../chat/src/hooks/use-channel-rotation';
-import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
+  DeviceClientFactory,
+  RequestDeviceFn,
+} from '@0xnullai/device-runtime';
 import {
   isWaveformCompatibleWithDevice,
   type WaveformDefinition,
@@ -68,8 +68,8 @@ function playbackIdForTarget(target: OutputTarget | null): string | null {
  */
 export default function App() {
   // Android has no Web Bluetooth; the native shell injects a plugin-blec client
-  // through NativeBridge. Control reuses Chat's seam because it runs on Chat's
-  // DeviceSession — this is the same seam, not a fourth one.
+  // through NativeBridge. Control uses the platform DeviceSession's shared
+  // transport seam rather than creating another device owner.
   const native = useNativeBridge();
   const device = useDevice({
     clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,

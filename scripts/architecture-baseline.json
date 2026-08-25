@@ -3,62 +3,6 @@
   "violations": [
     {
       "rule": "app-to-app",
-      "importer": "apps/control/src/App.tsx",
-      "specifier": "../../chat/src/hooks/use-channel-rotation",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-channel-rotation|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/control/src/App.tsx",
-      "specifier": "../../chat/src/hooks/use-device",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-device|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/control/src/App.tsx",
-      "specifier": "../../chat/src/hooks/use-waveforms",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-waveforms|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/control/src/App.tsx",
-      "specifier": "../../chat/src/lib/bluetooth",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/lib/bluetooth|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/control/src/components/CoyoteControl.tsx",
-      "specifier": "../../../chat/src/components/RepeatControls",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/components/CoyoteControl.tsx|../../../chat/src/components/RepeatControls|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/control/src/components/OutputDeviceSection.tsx",
-      "specifier": "../../../chat/src/components/RepeatControls",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/control/src/components/OutputDeviceSection.tsx|../../../chat/src/components/RepeatControls|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/playground/src/GameDeviceProvider.tsx",
-      "specifier": "../../chat/src/hooks/use-device",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/playground/src/GameDeviceProvider.tsx|../../chat/src/hooks/use-device|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/playground/src/GameDeviceProvider.tsx",
-      "specifier": "../../chat/src/lib/bluetooth",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/playground/src/GameDeviceProvider.tsx|../../chat/src/lib/bluetooth|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
       "importer": "apps/voice/src/App.tsx",
       "specifier": "../../chat/src/components/DeviceSafetyButton",
       "target": "apps/chat",

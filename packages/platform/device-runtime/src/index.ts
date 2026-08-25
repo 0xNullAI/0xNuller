@@ -10,3 +10,6 @@ export * from './web-buttplug-backend.js';
 export * from './web-embedded-settings.js';
 export * from './web-runtime-provider.js';
 export * from './attached-device-state.js';
+export * from './device-session.js';
+export * from './use-device.js';
+export * from './use-channel-rotation.js';

@@ -5,7 +5,7 @@ import {
   loadCustomWaveforms,
   saveCustomWaveforms,
   type WaveformDefinition,
-} from './waveforms';
+} from './product-library';
 
 describe('BUILTIN_WAVEFORMS', () => {
   it('contains separate electrostimulation and vibration defaults', () => {

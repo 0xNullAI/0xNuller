@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RepeatButton } from './RepeatControls';
+import { RepeatButton } from './repeat-controls';
 
 afterEach(() => {
   vi.useRealTimers();

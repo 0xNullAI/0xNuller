@@ -11,7 +11,7 @@ import {
   V3_DEVICE_NAME_PREFIX,
   type GattReadyRetryOptions,
 } from '@dg-kit/protocol';
-import { DeviceSession, type RequestDeviceFn } from './bluetooth';
+import { DeviceSession, type RequestDeviceFn } from './device-session';
 
 interface ProtocolModule {
   runWithGattReadyRetry(

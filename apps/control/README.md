@@ -37,7 +37,8 @@ src/hooks/                 波形播放与按住开火逻辑
 @0xnullai/device-runtime    顶部设备横栏的共享状态契约与设备摘要
 ```
 
-蓝牙与协议实现复用 Chat 的 `DeviceSession`，避免在模块间维护多份设备状态和安全逻辑。
+蓝牙与协议实现复用 `@0xnullai/device-runtime` 的 `DeviceSession`，避免功能应用互相导入或维护
+多份设备状态和安全逻辑。
 
 ## 协议
 

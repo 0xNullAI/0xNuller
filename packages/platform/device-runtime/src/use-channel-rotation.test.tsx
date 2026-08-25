@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { RefObject } from 'react';
 import { useChannelRotation } from './use-channel-rotation';
 import type { ChannelRotationDevice, ChannelRotationWaveforms } from './use-channel-rotation';
-import type { PlayMode } from '../lib/protocol';
+import type { PlayMode } from '@dg-kit/core';
 
 function makeDevice(connected = true) {
   const setWave = vi.fn();
