@@ -24,6 +24,7 @@ Video 是主站与独立部署共用的短时视觉闭环模块，使用「软�
 
 ```text
 src/App.tsx                                      Video 授权、会话与生命周期组合
+src/components/VideoSetupPanel.tsx               纯展示设置表单与 typed view model/action 边界
 src/components/CameraWorkbench.tsx               单一处理后画面与结束操作
 src/hooks/use-camera-preview.ts                  浏览器采集、预览资源和摄像头生命周期
 src/services/camera-frame.ts                     帧几何、像素处理、压缩与大小限制
@@ -37,3 +38,5 @@ apps/web/src/modules/video.tsx                   统一外壳入口
 ```
 
 Video 不依赖其他产品 app；模型输入合同与设备执行组合位于 `packages/agent`。
+设置面板不持有授权、租约或设备安全决策；`App` 计算有效上限、目标可用性与启动行为后，
+通过显式 view model 和 action 回调交给面板展示。

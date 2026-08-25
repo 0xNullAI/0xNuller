@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CirclePause, CirclePlay, Link, Settings, ShieldAlert } from 'lucide-react';
+import { CirclePause, CirclePlay, ShieldAlert } from 'lucide-react';
 import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
@@ -24,6 +24,7 @@ import {
 import type { LlmClient } from '@dg-agent/core';
 import { getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
+import { VideoSetupPanel, type VideoTargetFamily } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
 import {
@@ -66,8 +67,6 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
 
 type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
 type ActiveGrantSnapshot = GrantSnapshot | DeviceRuntimeVideoGrantSnapshot;
-type VideoTargetFamily = 'dg-lab' | 'embedded';
-
 const FIXED_CAMERA_FRAME_SETTINGS = Object.freeze({
   ...DEFAULT_CAMERA_FRAME_SETTINGS,
   cropPreset: '16:9' as const,
@@ -617,6 +616,17 @@ export function App() {
 
   const error = localError ?? cameraError ?? visual.error;
   const frame = visual.latestFrame;
+  const activateSetup = () => {
+    if (visionEnabled && targetConnected) {
+      void beginExperience();
+      return;
+    }
+    startOperationRef.current += 1;
+    autoStartRef.current = null;
+    setGrant(null);
+    setEmbeddedGrant(null);
+    void startCamera();
+  };
 
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
@@ -680,237 +690,72 @@ export function App() {
             )}
           </div>
         ) : (
-          <section className="mx-auto flex max-w-[680px] flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-5">
-            <header className="flex items-center justify-between gap-3">
-              <div>
-                <h1 className="font-semibold">Video 设置</h1>
-                <p className="mt-1 text-xs text-[var(--text-faint)]">确认后直接显示处理画面</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => openSettings('ai-video')}
-                aria-label="打开 AI 设置"
-                className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-            </header>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                摄像头
-                <select
-                  value={facingMode}
-                  onChange={(event) => setFacingMode(event.target.value as CameraFacingMode)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="environment">后置</option>
-                  <option value="user">前置</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                输出
-                <select
-                  value={targetFamily}
-                  onChange={(event) => setTargetFamily(event.target.value as VideoTargetFamily)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="dg-lab">郊狼 / 负鼠</option>
-                  {genericService && <option value="embedded">通用设备</option>}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {targetFamily === 'embedded' ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void discoverEmbeddedDevices()}
-                >
-                  <Link className="h-3.5 w-3.5" /> 查找设备
-                </Button>
-              ) : (
-                <>
-                  {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
-                    <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                      <Link className="h-3.5 w-3.5" />
-                      {devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼'}
-                    </Button>
-                  )}
-                  {!devices.opossumTarget && (
-                    <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
-                      <Link className="h-3.5 w-3.5" /> 连接负鼠
-                    </Button>
-                  )}
-                </>
-              )}
-              <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
-            </div>
-
-            {targetFamily === 'embedded' ? (
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                振动功能
-                <select
-                  value={embeddedFeatureId}
-                  onChange={(event) => {
-                    const next = embeddedTargets.find(
-                      (target) => target.featureId === event.target.value,
-                    );
-                    setEmbeddedFeatureId(event.target.value);
-                    if (next) setEmbeddedDeviceId(next.deviceId);
-                  }}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="">请选择</option>
-                  {embeddedTargets.map((target, index) => (
-                    <option key={target.featureId} value={target.featureId}>
-                      {target.name} · 振动 {index + 1}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                  目标
-                  <select
-                    value={targetId}
-                    onChange={(event) => {
-                      const nextTarget = connectedTargets.find(
-                        (target) => target.targetId === event.target.value,
-                      );
-                      setTargetId(event.target.value);
-                      if (nextTarget) setTargetKind(nextTarget.kind);
-                    }}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                  >
-                    <option value="">请选择</option>
-                    {connectedTargets.map((target) => (
-                      <option key={target.targetId} value={target.targetId}>
-                        {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                  通道
-                  <select
-                    value={channel}
-                    onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                  >
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                  </select>
-                </label>
-              </div>
-            )}
-
-            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-              强度上限 ·{' '}
-              {targetFamily === 'embedded'
-                ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
-                : `${effectiveIntensityCap}/${targetSafetyCap}`}
-              <input
-                type="range"
-                min={0}
-                max={targetFamily === 'embedded' ? 1 : targetSafetyCap}
-                step={targetFamily === 'embedded' ? 0.01 : 1}
-                value={
-                  targetFamily === 'embedded'
-                    ? effectiveEmbeddedIntensityCap
-                    : effectiveIntensityCap
-                }
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (targetFamily === 'embedded') setEmbeddedIntensityCap(value);
-                  else setIntensityCap(value);
-                }}
-              />
-            </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                时长
-                <select
-                  value={durationMinutes}
-                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  {[1, 5, 10, 15].map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {minutes} 分钟
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                观察间隔
-                <select
-                  value={cadenceSeconds}
-                  onChange={(event) => setCadenceSeconds(Number(event.target.value))}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  {[5, 10, 15, 30].map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds} 秒
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-wrap gap-4 text-xs text-[var(--text-soft)]">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={allowEnhanced}
-                  onChange={(event) => setAllowEnhanced(event.target.checked)}
-                />
-                允许增强
-              </label>
-              {targetFamily === 'dg-lab' && (
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={allowBurst}
-                    onChange={(event) => setAllowBurst(event.target.checked)}
-                  />
-                  允许脉冲
-                </label>
-              )}
-            </div>
-
-            {!visionEnabled && (
-              <button
-                type="button"
-                onClick={() => openSettings('ai-video')}
-                className="text-left text-xs text-[var(--accent-strong)] underline underline-offset-2"
-              >
-                完成视觉模型设置后可启用 AI 控制
-              </button>
-            )}
-            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-
-            <Button
-              onClick={() => {
-                if (visionEnabled && targetConnected) {
-                  void beginExperience();
-                } else {
-                  startOperationRef.current += 1;
-                  autoStartRef.current = null;
-                  setGrant(null);
-                  setEmbeddedGrant(null);
-                  void startCamera();
-                }
-              }}
-              disabled={cameraState === 'starting'}
-            >
-              <CirclePlay className="h-4 w-4" />
-              {visionEnabled && targetConnected ? '开启' : '预览摄像头'}
-            </Button>
-          </section>
+          <VideoSetupPanel
+            view={{
+              facingMode,
+              targetFamily,
+              embeddedAvailable: genericService !== null,
+              showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
+              coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
+              showOpossumConnect: devices.opossumTarget === null,
+              targetOptions: connectedTargets.map((target) => ({
+                value: target.targetId,
+                label: `${target.kind === 'coyote' ? '郊狼' : '负鼠'} · ${target.name}`,
+              })),
+              selectedTargetId: targetId,
+              channel,
+              embeddedFeatureOptions: embeddedTargets.map((target, index) => ({
+                value: target.featureId,
+                label: `${target.name} · 振动 ${index + 1}`,
+              })),
+              selectedEmbeddedFeatureId: embeddedFeatureId,
+              intensityLabel:
+                targetFamily === 'embedded'
+                  ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
+                  : `${effectiveIntensityCap}/${targetSafetyCap}`,
+              intensityMax: targetFamily === 'embedded' ? 1 : targetSafetyCap,
+              intensityStep: targetFamily === 'embedded' ? 0.01 : 1,
+              intensityValue:
+                targetFamily === 'embedded' ? effectiveEmbeddedIntensityCap : effectiveIntensityCap,
+              durationMinutes,
+              cadenceSeconds,
+              allowEnhanced,
+              allowBurst,
+              visionEnabled,
+              error,
+              ctaLabel: visionEnabled && targetConnected ? '开启' : '预览摄像头',
+              ctaDisabled: cameraState === 'starting',
+            }}
+            actions={{
+              openVideoSettings: () => openSettings('ai-video'),
+              setFacingMode,
+              setTargetFamily,
+              connect: (kind) => void connect(kind),
+              discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
+              selectTarget: (nextTargetId) => {
+                const nextTarget = connectedTargets.find(
+                  (target) => target.targetId === nextTargetId,
+                );
+                setTargetId(nextTargetId);
+                if (nextTarget) setTargetKind(nextTarget.kind);
+              },
+              selectEmbeddedFeature: (nextFeatureId) => {
+                const next = embeddedTargets.find((target) => target.featureId === nextFeatureId);
+                setEmbeddedFeatureId(nextFeatureId);
+                if (next) setEmbeddedDeviceId(next.deviceId);
+              },
+              setChannel,
+              setIntensity: (value) => {
+                if (targetFamily === 'embedded') setEmbeddedIntensityCap(value);
+                else setIntensityCap(value);
+              },
+              setDurationMinutes,
+              setCadenceSeconds,
+              setAllowEnhanced,
+              setAllowBurst,
+              activate: activateSetup,
+            }}
+          />
         )}
       </div>
     </div>
