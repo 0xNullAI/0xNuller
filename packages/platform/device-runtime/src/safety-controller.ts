@@ -144,6 +144,11 @@ export class EmbeddedDeviceRuntimeSafetyController {
 function summariesFromSnapshot(snapshot: DeviceSnapshot): DeviceSummary[] {
   return snapshot.devices.map((device) => {
     const battery = device.capabilities.find((capability) => capability.kind === 'battery');
+    const readings = device.capabilities.flatMap((capability) =>
+      capability.kind === 'rssi' && capability.value !== null
+        ? [{ label: 'RSSI', value: capability.value, unit: 'dBm' }]
+        : [],
+    );
     return {
       id: device.deviceId,
       kind: 'embedded-device',
@@ -152,6 +157,7 @@ function summariesFromSnapshot(snapshot: DeviceSnapshot): DeviceSummary[] {
       ...(battery?.kind === 'battery' && battery.value !== null
         ? { battery: Math.round(battery.value * 100) }
         : {}),
+      ...(readings.length > 0 ? { readings } : {}),
       // `active` is absent: a transport acknowledgement cannot prove physical idle/output state.
     };
   });
