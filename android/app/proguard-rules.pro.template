@@ -1,0 +1,7 @@
+# btleplug 0.12 Java classes are reached only through JNI. R8 cannot infer
+# these references from the Rust library, so release builds must keep them.
+-keep class com.nonpolynomial.** { *; }
+-keep class io.github.gedgygedgy.** { *; }
+-keepclassmembers class ai.nullai.dgagent.MainActivity {
+  native boolean initializeButtplugGate0();
+}

@@ -52,7 +52,7 @@ the workflow attaches the signed APK and Latest badge.
 ## Prerequisites
 
 - Node.js 22.19+
-- Rust 1.78+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
+- Rust 1.88+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - Android SDK with platform 34/35/36 + build-tools 34/35
 - Android NDK 26.x (set `NDK_HOME` or `ANDROID_NDK_HOME`)
 - `cargo install tauri-cli --version "^2"`
@@ -77,7 +77,9 @@ deterministically applies [`AndroidManifest.template.xml`](./AndroidManifest.tem
 sets minSdk 26, injects [`signing.gradle.kts.template`](./signing.gradle.kts.template), and
 restores [`MainActivity.template.kt`](./MainActivity.template.kt). The activity applies system-bar
 and display-cutout insets at the native WebView boundary, including on older WebView versions whose
-CSS safe-area variables do not expose three-button navigation insets.
+CSS safe-area variables do not expose three-button navigation insets. Preparation also resolves the
+Cargo.lock-selected btleplug 0.12 package, copies its JNI-only Java sources into the generated
+project, and restores the required R8 keep rules. Those generated sources remain untracked.
 Both root Android commands run it automatically; do not invoke the workspace command directly
 for a release.
 
@@ -171,3 +173,34 @@ Android Tauri is different: when the user swipes home / locks the screen, the ho
 - Tauri `app://paused` event from `lib.rs` on `RunEvent::ExitRequested` (belt-and-braces)
 
 The wrapper is transparent: every method except `disconnect()` forwards unchanged. `disconnect()` additionally detaches the listeners so they don't leak across reconnects.
+
+## Experimental Buttplug Gate 0
+
+The native crate contains an internal-only Buttplug 10.0.3 spike behind the
+`experimental-buttplug-gate0` Cargo feature. Normal builds do not compile its command module, and no
+TypeScript or product module invokes it. The only commands registered by the feature are:
+
+- `experimental_buttplug_initialize`
+- `experimental_buttplug_start_scan`
+- `experimental_buttplug_stop_scan`
+- `experimental_buttplug_list_devices`
+- `experimental_buttplug_stop_all`
+
+The v1 request schema rejects unknown fields and uses an opaque session ID, monotonically increasing
+scan generation, and per-generation opaque device IDs. Device results expose only names, connection
+state, and normalized Vibrate/Battery/RSSI capability flags. There is no command for Raw messages,
+arbitrary bytes, connect, vibration output, websocket, serial, HID, Lovense, XInput, automatic scan,
+automatic reconnect, or output restoration. Stop-all does not require a current session token; its
+acknowledgement always reports `hardwareState: "unknown"` because a protocol acknowledgement is not
+physical-device confirmation.
+
+`ScanCoordinator` is the single ownership seam for the Buttplug and DG plugin scanners. Gate 0
+claims it before scanning and retains ownership if stop state is uncertain. The existing DG
+plugin-blec path is intentionally unchanged; because Gate 0 has no product caller, it cannot race in
+shipping builds. Routing DG scan acquisition through this seam is a hard prerequisite before any
+Buttplug UI enablement.
+
+btleplug 0.12 requires one Android JNI initialization after Tauri loads the native library, which
+`MainActivity.template.kt` performs. It does not require activity `onPause`, `onStop`, or `onDestroy`
+callbacks, so this spike adds none and leaves the existing DG lifecycle emergency-stop path intact.
+No hardware validation has been performed. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

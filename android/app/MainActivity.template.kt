@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -21,7 +22,16 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+
+    // btleplug 0.12 registers its JNI callbacks and captures Android's global
+    // BLE adapter here. The Rust entry point is a no-op unless Gate 0 was
+    // compiled in, so normal builds keep the experiment unreachable.
+    if (!initializeButtplugGate0()) {
+      Log.d(TAG, "Buttplug Gate 0 is disabled or native initialization failed")
+    }
   }
+
+  private external fun initializeButtplugGate0(): Boolean
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
@@ -122,6 +132,7 @@ class MainActivity : TauriActivity() {
   }
 
   private companion object {
+    const val TAG = "0xNuller"
     const val BLE_PERMISSION_REQUEST_CODE = 4101
     const val CAMERA_PERMISSION_REQUEST_CODE = 4102
   }

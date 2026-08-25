@@ -9,18 +9,25 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const generated = join(root, 'android/app/src-tauri/gen/android/app');
 const gradlePath = join(generated, 'build.gradle.kts');
 const manifestPath = join(generated, 'src/main/AndroidManifest.xml');
-const mainActivityPath = join(generated, 'src/main/java/ai/nullai/dgagent/MainActivity.kt');
-const provenancePath = join(generated, 'src/main/assets/0xnuller-build.json');
+const generatedJavaPath = join(generated, 'src/main/java');
+const mainActivityPath = join(generatedJavaPath, 'ai/nullai/dgagent/MainActivity.kt');
+const generatedAssetsPath = join(generated, 'src/main/assets');
+const provenancePath = join(generatedAssetsPath, '0xnuller-build.json');
 const resourcesPath = join(generated, 'src/main/res');
 const signingTemplatePath = join(root, 'android/app/signing.gradle.kts.template');
 const manifestTemplatePath = join(root, 'android/app/AndroidManifest.template.xml');
 const mainActivityTemplatePath = join(root, 'android/app/MainActivity.template.kt');
+const proguardTemplatePath = join(root, 'android/app/proguard-rules.pro.template');
+const proguardPath = join(generated, 'proguard-rules.pro');
+const thirdPartyNoticePath = join(root, 'android/app/THIRD_PARTY_NOTICES.md');
+const btleplugLicensePath = join(root, 'android/app/licenses/btleplug-0.12.0-LICENSE.md');
+const cargoManifestPath = join(root, 'android/app/src-tauri/Cargo.toml');
 const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
 const iconPath = join(root, 'android/app/src-tauri/icons/icon.png');
 const tauriCliPath = join(
@@ -41,12 +48,48 @@ if (readFileSync(mainActivityPath, 'utf8') !== mainActivityTemplate) {
   writeFileSync(mainActivityPath, mainActivityTemplate);
 }
 
+// btleplug 0.12's Android backend is hybrid Rust/Java. Resolve the source via
+// Cargo metadata so the Java copied into the generated project is exactly the
+// registry package selected by Cargo.lock; generated sources remain untracked.
+const btleplugRoot = lockedCargoPackage('btleplug', '0.12.0');
+const btleplugJavaPath = join(btleplugRoot, 'src/droidplug/java/src/main/java');
+if (!existsSync(btleplugJavaPath)) {
+  throw new Error(`locked btleplug package has no Android Java sources: ${btleplugJavaPath}`);
+}
+for (const packagePath of ['com/nonpolynomial/btleplug', 'io/github/gedgygedgy']) {
+  rmSync(join(generatedJavaPath, packagePath), { recursive: true, force: true });
+}
+cpSync(btleplugJavaPath, generatedJavaPath, { recursive: true, force: true });
+cpSync(proguardTemplatePath, proguardPath, { force: true });
+
 function attribute(node, name) {
   return node.match(new RegExp(`${name}="([^"]+)"`))?.[1] ?? null;
 }
 
 function git(...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+}
+
+function lockedCargoPackage(name, version) {
+  const metadata = JSON.parse(
+    execFileSync(
+      'cargo',
+      ['metadata', '--locked', '--format-version', '1', '--manifest-path', cargoManifestPath],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    ),
+  );
+  const cargoPackage = metadata.packages.find(
+    (candidate) => candidate.name === name && candidate.version === version,
+  );
+  if (!cargoPackage || !cargoPackage.source?.startsWith('registry+')) {
+    throw new Error(`Cargo.lock must resolve registry package ${name} ${version}`);
+  }
+  return dirname(cargoPackage.manifest_path);
 }
 
 function kotlinBlocks(source, name) {
@@ -153,7 +196,9 @@ if (releaseBuild && worktreeChanges) {
   throw new Error('release APK must be built from a clean worktree');
 }
 const tauri = JSON.parse(readFileSync(tauriPath, 'utf8'));
-mkdirSync(join(generated, 'src/main/assets'), { recursive: true });
+mkdirSync(generatedAssetsPath, { recursive: true });
+cpSync(thirdPartyNoticePath, join(generatedAssetsPath, 'THIRD_PARTY_NOTICES.md'));
+cpSync(btleplugLicensePath, join(generatedAssetsPath, 'btleplug-0.12.0-LICENSE.md'));
 writeFileSync(
   provenancePath,
   `${JSON.stringify(
@@ -198,12 +243,35 @@ for (const required of [
   'WindowInsetsCompat.Type.ime()',
   'maxOf(insets.bottom, imeInsets.bottom)',
   'webView.addJavascriptInterface(AndroidSystemBridge()',
+  'initializeButtplugGate0()',
 ]) {
   if (!mainActivity.includes(required)) {
     throw new Error(`Android MainActivity is missing native inset handling: ${required}`);
   }
 }
+for (const required of ['THIRD_PARTY_NOTICES.md', 'btleplug-0.12.0-LICENSE.md']) {
+  if (!existsSync(join(generatedAssetsPath, required))) {
+    throw new Error(`Android project is missing packaged third-party notice: ${required}`);
+  }
+}
+for (const required of [
+  'com/nonpolynomial/btleplug/android/impl/Adapter.java',
+  'io/github/gedgygedgy/rust/future/Future.java',
+]) {
+  if (!existsSync(join(generatedJavaPath, required))) {
+    throw new Error(`Android project is missing locked btleplug Java source: ${required}`);
+  }
+}
+const proguard = readFileSync(proguardPath, 'utf8');
+for (const required of [
+  '-keep class com.nonpolynomial.**',
+  '-keep class io.github.gedgygedgy.**',
+]) {
+  if (!proguard.includes(required)) {
+    throw new Error(`Android project is missing btleplug Proguard rule: ${required}`);
+  }
+}
 
 console.log(
-  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, locked btleplug 0.12 Java, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
 );
