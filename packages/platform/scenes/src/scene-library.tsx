@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { newSceneId, type SavedScene } from './index.js';
+import { newSceneId, withImportedMarketScene, type SavedScene } from './index.js';
 import { useScenes } from './use-scenes.js';
 import { Check, EyeOff, FileText, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
 import { Button, Input, Textarea, MarketImportDialog, Z_LOCAL_POPOVER, cn } from '@0xnullai/ui';
-import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
+import type { MarketItem } from '@0xnullai/market-client';
 
 const DEFAULT_CUSTOM_ICON = '📝';
 
@@ -91,11 +91,9 @@ interface SceneLibraryProps {
   /**
    * Each module's own built-in scenes.
    *
-   * The seven personas are the same set in Agent and Voice (ids / names /
-   * icons match); only the bodies differ — Voice's are rewritten for
-   * speech. Hence a prop rather than a hard import from one side: a hard
-   * import shows the other side the wrong built-in list, an error visible
-   * only by comparing the two modules item by item.
+   * Each surface owns its supported built-in list and copy (Voice copy is
+   * rewritten for speech). Hence a prop rather than a hard import from one
+   * side: a hard import can expose a scene the other module does not support.
    */
   builtins: BuiltinScene[];
   /** Notification after a successful delete. The delete itself runs directly against the shared library. */
@@ -200,21 +198,7 @@ export function SceneLibrary({ builtins, onNotify }: SceneLibraryProps) {
   }
 
   function importFromMarket(item: MarketItem) {
-    const id = `market-${item.id}`;
-    const prompt = (item.content as MarketScenarioContent).prompt;
-    updateScenes((current) => {
-      if (current.scenes.some((p) => p.id === id)) {
-        return { ...current, selectedId: id };
-      }
-      return {
-        ...current,
-        selectedId: id,
-        scenes: [
-          ...current.scenes,
-          { id, name: item.name, icon: item.icon || DEFAULT_CUSTOM_ICON, prompt },
-        ],
-      };
-    });
+    updateScenes((current) => withImportedMarketScene(current, item));
   }
 
   return (

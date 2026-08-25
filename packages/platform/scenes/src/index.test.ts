@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadScenes, newSceneId, saveScenes, subscribeScenes, updateScenes } from './index';
+import {
+  loadScenes,
+  newSceneId,
+  saveScenes,
+  subscribeScenes,
+  updateScenes,
+  withImportedMarketScene,
+} from './index';
 
 beforeEach(() => localStorage.clear());
 
@@ -102,6 +109,26 @@ describe('共享场景库', () => {
       // Migration wrote our own key; the legacy keys no longer matter.
       expect(loadScenes().scenes.map((s) => s.id)).toEqual(['one']);
     });
+  });
+
+  it('导入市场场景后立即选中，重复导入不会复制', () => {
+    const item = {
+      id: 'monster',
+      type: 'scenario' as const,
+      name: 'Monster',
+      icon: '🐙',
+      tags: [],
+      content: { prompt: 'roleplay' },
+      downloads: 0,
+      createdAt: 0,
+    };
+    const first = withImportedMarketScene(loadScenes(), item);
+    const second = withImportedMarketScene(first, item);
+
+    expect(second.selectedId).toBe('market-monster');
+    expect(second.scenes).toEqual([
+      { id: 'market-monster', name: 'Monster', icon: '🐙', prompt: 'roleplay' },
+    ]);
   });
 
   it('订阅能收到同文档内的改动', () => {

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { PromptPreset, SavedPromptPreset } from '@dg-agent/runtime';
+import type { MarketItem } from '@0xnullai/market-client';
 import {
   ArrowUp,
   AudioLines,
@@ -14,6 +15,7 @@ import {
   PanelLeft,
   PawPrint,
   Settings,
+  Store,
   Vibrate,
   Zap,
 } from 'lucide-react';
@@ -22,6 +24,7 @@ import {
   DeviceStatusChip,
   Button,
   Input,
+  MarketImportDialog,
   Z_LOCAL_POPOVER,
   cn,
   useInShell,
@@ -65,6 +68,10 @@ interface ChatPanelProps {
   builtinPresets: PromptPreset[];
   savedPresets: SavedPromptPreset[];
   onPresetChange: (id: string) => void;
+  onImportPreset: (item: MarketItem) => void;
+  coyoteTargets: Array<{ id: string; label: string }>;
+  activeCoyoteId: string | null;
+  onCoyoteTargetChange: (id: string) => void;
 }
 
 const MESSAGE_BATCH_SIZE = 120;
@@ -154,6 +161,10 @@ export function ChatPanel({
   builtinPresets,
   savedPresets,
   onPresetChange,
+  onImportPreset,
+  coyoteTargets,
+  activeCoyoteId,
+  onCoyoteTargetChange,
 }: ChatPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const welcomeInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +178,7 @@ export function ChatPanel({
   const renderedMessages = timelineItems.slice(-visibleMessageCount);
   const voiceModeAvailable = speechRecognitionEnabled && speechRecognitionSupported;
   const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
+  const [marketImportOpen, setMarketImportOpen] = useState(false);
   const sceneDropdownRef = useRef<HTMLDivElement>(null);
   const [leaving, setLeaving] = useState(false);
 
@@ -392,6 +404,26 @@ export function ChatPanel({
           </div>
         )}
 
+      {coyoteTargets.length > 1 && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+          <label htmlFor="agent-coyote-target" className="text-xs text-[var(--text-soft)]">
+            AI 控制设备
+          </label>
+          <select
+            id="agent-coyote-target"
+            value={activeCoyoteId ?? coyoteTargets[0]?.id}
+            onChange={(event) => onCoyoteTargetChange(event.target.value)}
+            className="rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-2 py-1 text-xs text-[var(--text)]"
+          >
+            {coyoteTargets.map((target) => (
+              <option key={target.id} value={target.id}>
+                {target.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {isWelcome ? (
         /* ===== Welcome centered state ===== */
         <>
@@ -444,6 +476,17 @@ export function ChatPanel({
                           )}
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2.5 border-t border-[var(--surface-border)] px-3 py-2 text-left text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-soft)]"
+                        onClick={() => {
+                          setSceneDropdownOpen(false);
+                          setMarketImportOpen(true);
+                        }}
+                      >
+                        <Store className="h-3.5 w-3.5 shrink-0" />
+                        <span>从市场导入</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -667,6 +710,16 @@ export function ChatPanel({
           )}
         </>
       )}
+
+      <MarketImportDialog
+        open={marketImportOpen}
+        onOpenChange={setMarketImportOpen}
+        type="scenario"
+        onImport={(item) => {
+          onImportPreset(item);
+          setMarketImportOpen(false);
+        }}
+      />
     </div>
   );
 }

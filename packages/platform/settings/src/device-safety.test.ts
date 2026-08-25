@@ -89,13 +89,12 @@ describe('共享设备安全设置', () => {
   });
 
   describe('allow-all 不过夜', () => {
-    it('落盘时降级为 confirm', () => {
+    it('当前页面保持 allow-all，但落盘降级为 confirm', () => {
       saveDeviceSafety({ ...DEFAULT_DEVICE_SAFETY, permissionMode: 'allow-all' });
-      // Pre-merge Voice persisted it permanently: still full-allow after a
-      // refresh. We adopt Agent's strict semantics, or the "dangerous mode
-      // does not survive overnight" guarantee silently vanishes in the
-      // merge.
-      expect(loadDeviceSafety().permissionMode).toBe('confirm');
+
+      expect(loadDeviceSafety().permissionMode).toBe('allow-all');
+      const persisted = JSON.parse(localStorage.getItem('0xnullai.device-safety')!);
+      expect(persisted.permissionMode).toBe('confirm');
     });
 
     it('从 Agent 迁移时同样降级', () => {
@@ -108,6 +107,16 @@ describe('共享设备安全设置', () => {
   });
 
   describe('timed 模式到期', () => {
+    it('写入时自动补五分钟到期时间', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const saved = saveDeviceSafety({
+        ...DEFAULT_DEVICE_SAFETY,
+        permissionMode: 'timed',
+      });
+      expect(saved.permissionModeExpiresAt).toBe(Date.now() + 5 * 60 * 1000);
+    });
+
     it('未到期时仍是 timed', () => {
       const s = {
         ...DEFAULT_DEVICE_SAFETY,

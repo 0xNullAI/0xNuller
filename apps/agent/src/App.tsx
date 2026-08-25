@@ -28,6 +28,7 @@ import {
 } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { ShellSessionList } from './components/ShellSessionList.js';
+import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
@@ -132,7 +133,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     settingsStore,
     resetSettings: resetSettingsManager,
     flushSettingsDraft,
-    clearSessionPermissionOverride,
   } = useSettingsManager();
 
   const [pendingPermission, setPendingPermission] = useState<PendingPermissionRequest | null>(null);
@@ -147,6 +147,14 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   // Voice sees the same set, and one broken scene no longer drags the whole settings
   // object back to its defaults (that blob also holds the strength caps).
   const [sceneLib, updateSceneLib] = useScenes();
+  useEffect(() => {
+    const selectedExists =
+      BUILTIN_PROMPT_PRESETS.some((preset) => preset.id === sceneLib.selectedId) ||
+      sceneLib.scenes.some((scene) => scene.id === sceneLib.selectedId);
+    if (!selectedExists) {
+      updateSceneLib((current) => ({ ...current, selectedId: 'gentle' }));
+    }
+  }, [sceneLib.scenes, sceneLib.selectedId, updateSceneLib]);
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
     () => inShell || !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
@@ -233,6 +241,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   const busy = pendingSend || replyBusy;
   const deviceState = liveDeviceState ?? createEmptyDeviceState();
+  const connectedCoyotes = connectedCoyoteStates(device, deviceState);
+  const activeCoyoteId = supportsCoyoteSelection(device) ? device.deviceId : null;
   const opossumState = useAuxDeviceState(opossum, createEmptyOpossumState());
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
@@ -674,7 +684,9 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   async function createNewSession(): Promise<void> {
     flushSettingsDraft();
     setEditingWaveform(null);
-    clearSessionPermissionOverride();
+    // Per-command/timed grants are conversation-scoped, but the explicit
+    // "完全放行" mode is a browser-session setting and must survive creating
+    // or switching conversations.
     resetPermissionGrants();
 
     if (activeSessionId) {
@@ -1072,6 +1084,26 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               )}
               savedPresets={sceneLib.scenes}
               onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
+              onImportPreset={(item) =>
+                updateSceneLib((prev) => withImportedMarketScene(prev, item))
+              }
+              coyoteTargets={connectedCoyotes.map(({ id, state }, index) => ({
+                id,
+                label:
+                  connectedCoyotes.length > 1
+                    ? `${state.deviceName ?? '郊狼'} ${index + 1}`
+                    : (state.deviceName ?? '郊狼'),
+              }))}
+              activeCoyoteId={activeCoyoteId}
+              onCoyoteTargetChange={(id) => {
+                if (!supportsCoyoteSelection(device)) return;
+                try {
+                  device.selectDeviceById(id);
+                  setStatusMessage('已切换 AI 控制设备');
+                } catch (error) {
+                  setErrorMessage(formatUiErrorMessage(error));
+                }
+              }}
             />
           </section>
         </section>
@@ -1104,12 +1136,26 @@ interface MultiCoyoteSnapshotClient {
   disconnectDeviceById(deviceId: string): Promise<void>;
 }
 
+interface MultiCoyoteSelectionClient extends MultiCoyoteSnapshotClient {
+  readonly deviceId: string | null;
+  selectDeviceById(deviceId: string): void;
+}
+
 function supportsPerCoyoteDisconnect(
   client: DeviceClient,
 ): client is DeviceClient & MultiCoyoteSnapshotClient {
   return (
     typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function' &&
     typeof (client as Partial<MultiCoyoteSnapshotClient>).disconnectDeviceById === 'function'
+  );
+}
+
+function supportsCoyoteSelection(
+  client: DeviceClient,
+): client is DeviceClient & MultiCoyoteSelectionClient {
+  return (
+    supportsPerCoyoteDisconnect(client) &&
+    typeof (client as Partial<MultiCoyoteSelectionClient>).selectDeviceById === 'function'
   );
 }
 

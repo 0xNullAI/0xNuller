@@ -73,7 +73,9 @@ describe('三个模块共享同一份设备安全设置', () => {
     // strict semantics, or the "dangerous mode does not survive overnight"
     // guarantee silently disappears just because a different module wrote
     // the value.
-    expect(loadDeviceSafety().permissionMode).toBe('confirm');
-    expect(new BrowserAppSettingsStore().load().permissionMode).toBe('confirm');
+    expect(loadDeviceSafety().permissionMode).toBe('allow-all');
+    expect(new BrowserAppSettingsStore().load().permissionMode).toBe('allow-all');
+    const persisted = JSON.parse(localStorage.getItem('0xnullai.device-safety')!);
+    expect(persisted.permissionMode).toBe('confirm');
   });
 });
