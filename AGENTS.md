@@ -182,6 +182,12 @@ If it could not be run, say so explicitly.
   difficult to understand and test, not at an arbitrary line count.
 - React components render; hooks coordinate UI state; pure transitions and domain decisions belong
   in plain TypeScript modules.
+- Disconnected device surfaces show a compact, actionable empty state; do not render a wall of
+  faded controls that cannot work. Connecting must never imply or automatically produce output.
+- Responsive shell changes are checked at a desktop viewport and at 390×844. Keep primary module
+  choices visible without horizontal overflow, and account for mobile safe areas.
+- Mobile drawers and modal navigation expose their expanded/controlled relationship, focus an
+  intentional first target, close on Escape, and return focus to the trigger.
 - Prefer narrow APIs and delete completed compatibility paths. Do not add a parallel abstraction
   without a migration and deletion plan.
 - Browser builds must replace Node-only dependency fallbacks at the composition boundary. Provider
