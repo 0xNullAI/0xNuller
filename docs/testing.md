@@ -29,6 +29,12 @@ waveform-playback.test.ts
 或 `scripts` 下的所有 test/spec 文件都必须出现在 `npm run check:structure` 中；若漏跑，应修正
 对应 Vitest project 的 include。
 
+当一个测试文件跨越多个可独立理解的职责时，按外部行为域拆成相邻 suite，例如会话/上下文、
+设备安全策略、定时与系统触发、多设备和传感器。共享 fake、builder 与内存存储放进明确命名的
+`*.test-support.ts`，支持文件只提供 fixture，不注册 `describe`/`it`。拆分是结构变更，不是
+覆盖率压缩：不同语义的断言、安全拒绝、clamp、急停和生命周期用例必须原样保留，并在拆分前后
+核对测试数。这样每个 suite 可单独运行，也能由 Vitest 跨文件并行调度。
+
 ## 回归测试要求
 
 - 用最小且稳定的 fixture 重现原始失败。

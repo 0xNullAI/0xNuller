@@ -188,6 +188,11 @@ stops are safety-critical. If the task does not clearly authorize such a change,
 Put unit/component tests beside source as `name.test.ts(x)`. Use a local `__tests__` directory only for
 cross-file composition tests. Test observable contracts, not private implementation trivia.
 
+- Split large cross-domain test files by observable responsibility (for example session/context,
+  device safety, timers, and multi-device behavior) so Vitest can schedule the suites independently.
+  Keep reusable fakes and builders in an explicitly named adjacent `*.test-support.ts` file; support
+  files must not register tests or hide responsibility boundaries. A structural split must preserve
+  every distinct assertion and safety case, with test counts checked before and after.
 - Protocol and transport changes require byte-level or adapter tests.
 - Cross-surface device changes need shared-domain tests plus focused consumer tests.
 - Tests must be deterministic; fake time, storage, BLE, network, and randomness at the boundary.
