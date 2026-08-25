@@ -1,20 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bluetooth, LoaderCircle, Unplug } from 'lucide-react';
 import { useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import type {
-  BoundDeviceTools,
-  DeviceSnapshot,
-  FeatureId,
-  RuntimeDevice,
+import {
+  createDeviceInteractionId,
+  DeviceRuntimeModuleBinding,
+  genericDeviceIntensityCap,
+  type BoundDeviceTools,
+  type DeviceSnapshot,
+  type FeatureId,
+  type RuntimeDevice,
 } from '@0xnullai/device-runtime';
 
 const OUTPUT_LEASE_MS = 1_000;
-
-function interactionId(action: string): string {
-  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-  return `control-human/${action}/${random}`.slice(0, 128);
-}
 
 /** Separate generic-device UI. Existing Coyote/Opossum controls remain untouched below it. */
 export function EmbeddedDevicePanel() {
@@ -24,21 +22,19 @@ export function EmbeddedDevicePanel() {
     () => provider?.current()?.snapshot() ?? null,
   );
   const [intensities, setIntensities] = useState<Record<string, number>>({});
-  const [intensityCap, setIntensityCap] = useState(
-    () => Math.min(loadDeviceSafety().maxIntensityA, loadDeviceSafety().maxIntensityB) / 200,
+  const [intensityCap, setIntensityCap] = useState(() =>
+    genericDeviceIntensityCap(loadDeviceSafety()),
   );
   const [scanning, setScanning] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const toolsRef = useRef<BoundDeviceTools | null>(null);
-  const openingRef = useRef<Promise<BoundDeviceTools> | null>(null);
-  const unsubscribeSnapshotRef = useRef<(() => void) | null>(null);
+  const binding = useMemo(
+    () => (provider && enabled ? new DeviceRuntimeModuleBinding(provider, 'control') : null),
+    [enabled, provider],
+  );
 
   useEffect(
-    () =>
-      subscribeDeviceSafety((settings) =>
-        setIntensityCap(Math.min(settings.maxIntensityA, settings.maxIntensityB) / 200),
-      ),
+    () => subscribeDeviceSafety((settings) => setIntensityCap(genericDeviceIntensityCap(settings))),
     [],
   );
 
@@ -47,58 +43,40 @@ export function EmbeddedDevicePanel() {
     return provider.subscribeEnabled((next) => {
       setEnabled(next);
       if (!next) {
-        toolsRef.current = null;
-        openingRef.current = null;
-        unsubscribeSnapshotRef.current?.();
-        unsubscribeSnapshotRef.current = null;
         setSnapshot(null);
         setIntensities({});
       }
     });
   }, [provider]);
 
-  useEffect(
-    () => () => {
-      unsubscribeSnapshotRef.current?.();
-    },
-    [],
-  );
+  useEffect(() => {
+    if (!binding) return;
+    const unsubscribe = binding.subscribe(setSnapshot);
+    return () => {
+      unsubscribe();
+      binding.dispose();
+    };
+  }, [binding]);
 
   const ensureTools = useCallback(async (): Promise<BoundDeviceTools> => {
-    if (!provider) throw new Error('当前入口不提供嵌入式设备运行时');
-    if (toolsRef.current) return toolsRef.current;
-    if (openingRef.current) return openingRef.current;
-    const opening = provider.forModule('control').then((tools) => {
-      const runtime = provider.current();
-      if (!runtime) throw new Error('嵌入式设备运行时未启动');
-      toolsRef.current = tools;
-      setSnapshot(runtime.snapshot());
-      unsubscribeSnapshotRef.current?.();
-      unsubscribeSnapshotRef.current = runtime.manager.subscribe(setSnapshot);
-      return tools;
-    });
-    openingRef.current = opening;
-    try {
-      return await opening;
-    } finally {
-      if (openingRef.current === opening) openingRef.current = null;
-    }
-  }, [provider]);
+    if (!binding) throw new Error('当前入口不提供嵌入式设备运行时');
+    return binding.tools();
+  }, [binding]);
 
   const stopFeature = useCallback(
     async (deviceId: RuntimeDevice['deviceId'], featureId: FeatureId) => {
       // Release can happen while the one-shot backend is still opening. Wait
       // for that same opening promise so a late vibrate cannot land unopposed.
-      const tools = toolsRef.current ?? (await openingRef.current);
-      if (!tools) return;
+      if (!binding) return;
+      const tools = await binding.tools();
       const ack = await tools.actions.stop({
-        interactionId: interactionId('release-stop'),
+        interactionId: createDeviceInteractionId('control-human', 'release-stop'),
         deviceId,
         featureId,
       });
       if (ack.status !== 'stopped') throw new Error(`停止失败：${ack.code}`);
     },
-    [],
+    [binding],
   );
 
   if (!provider || !enabled) return null;
@@ -124,9 +102,11 @@ export function EmbeddedDevicePanel() {
             setError(null);
             void ensureTools()
               .then((tools) =>
-                tools.actions.scan({ interactionId: interactionId('scan') }).then((ack) => {
-                  if (ack.status !== 'applied') throw new Error(`扫描失败：${ack.code}`);
-                }),
+                tools.actions
+                  .scan({ interactionId: createDeviceInteractionId('control-human', 'scan') })
+                  .then((ack) => {
+                    if (ack.status !== 'applied') throw new Error(`扫描失败：${ack.code}`);
+                  }),
               )
               .catch((reason: unknown) =>
                 setError(reason instanceof Error ? reason.message : '无法扫描通用设备'),
@@ -176,7 +156,7 @@ export function EmbeddedDevicePanel() {
                   .then((tools) =>
                     tools.actions
                       .disconnect({
-                        interactionId: interactionId('disconnect'),
+                        interactionId: createDeviceInteractionId('control-human', 'disconnect'),
                         deviceId: device.deviceId,
                       })
                       .then((ack) => {
@@ -270,7 +250,7 @@ export function EmbeddedDevicePanel() {
                         .then((tools) =>
                           tools.actions
                             .vibrate({
-                              interactionId: interactionId('vibrate'),
+                              interactionId: createDeviceInteractionId('control-human', 'vibrate'),
                               deviceId: device.deviceId,
                               featureId: capability.featureId,
                               intensity,

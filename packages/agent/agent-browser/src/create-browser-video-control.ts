@@ -6,6 +6,7 @@ import type {
   LlmClient,
   LlmImageInput,
   OpossumCommand,
+  ToolCall,
 } from '@dg-agent/core';
 import { createEmptyDeviceState } from '@dg-agent/core';
 import { createEmptyOpossumState, type OpossumState } from '@dg-kit/protocol';
@@ -78,6 +79,14 @@ export interface BrowserVideoDeviceSnapshot {
 }
 
 export type VideoOutputKind = 'coyote' | 'opossum';
+
+export interface BrowserVideoAiAction {
+  id: string;
+  action: 'start' | 'adjust' | 'stop' | 'burst';
+  channel: 'A' | 'B';
+  value?: number;
+  durationMs?: number;
+}
 
 interface MultiCoyoteTargetClient extends DeviceClient {
   getConnectedCoyotes(): ConnectedCoyote[];
@@ -273,6 +282,31 @@ export class BrowserVideoControlService {
 
   authorize(input: VideoControlGrantInput): Promise<VideoControlGrantSnapshot> {
     return this.runtime.authorize(input);
+  }
+
+  async executeAiAction(
+    target: BrowserVideoOutputTarget,
+    action: BrowserVideoAiAction,
+    grant: Omit<VideoControlGrantInput, 'targetKind' | 'targetId' | 'channel'>,
+  ): Promise<string> {
+    const current = this.runtime.getGrant();
+    if (
+      !current ||
+      current.revoked ||
+      current.targetKind !== target.kind ||
+      current.targetId !== target.targetId ||
+      current.channel !== action.channel
+    ) {
+      if (current && !current.revoked) await this.runtime.stop('device-loss');
+      await this.runtime.authorize({
+        ...grant,
+        targetKind: target.kind,
+        targetId: target.targetId,
+        channel: action.channel,
+      });
+    }
+    const toolCall = toLegacyVideoToolCall(target.kind, action);
+    return this.runtime.executeAuthorizedTool(toolCall);
   }
 
   getGrant(): VideoControlGrantSnapshot | null {
@@ -483,6 +517,48 @@ function isMultiCoyoteTargetClient(device: DeviceClient): device is MultiCoyoteT
     typeof candidate.disconnectDeviceById === 'function' &&
     typeof candidate.emergencyStopDeviceById === 'function'
   );
+}
+
+function toLegacyVideoToolCall(kind: VideoOutputKind, action: BrowserVideoAiAction): ToolCall {
+  const value = action.value ?? 0;
+  if (kind === 'coyote') {
+    const names = {
+      start: 'shock_start',
+      adjust: 'shock_adjust',
+      stop: 'shock_stop',
+      burst: 'shock_burst',
+    } as const;
+    return {
+      id: action.id,
+      name: names[action.action],
+      args:
+        action.action === 'start'
+          ? { channel: action.channel, strength: value }
+          : action.action === 'adjust'
+            ? { channel: action.channel, delta: value }
+            : action.action === 'burst'
+              ? { channel: action.channel, strength: value, durationMs: action.durationMs ?? 0 }
+              : { channel: action.channel },
+    };
+  }
+  const names = {
+    start: 'vibrate_start',
+    adjust: 'vibrate_adjust',
+    stop: 'vibrate_stop',
+    burst: 'vibrate_burst',
+  } as const;
+  return {
+    id: action.id,
+    name: names[action.action],
+    args:
+      action.action === 'start'
+        ? { channel: action.channel, intensity: value }
+        : action.action === 'adjust'
+          ? { channel: action.channel, delta: value }
+          : action.action === 'burst'
+            ? { channel: action.channel, intensity: value, durationMs: action.durationMs ?? 0 }
+            : { channel: action.channel },
+  };
 }
 
 function emptySnapshot(): BrowserVideoDeviceSnapshot {

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Input, SettingSelect } from '@0xnullai/ui';
 import {
-  PROVIDER_DEFINITIONS,
   createProviderSettings,
+  getBrowserProviderDefinitions,
   getProviderDefinition,
   isLlmConfigured,
   loadLlmConfig,
-  resolveProviderRequestUrl,
   saveLlmConfig,
   subscribeLlmConfig,
   type LlmConfig,
@@ -16,16 +15,11 @@ import { VoiceProviderSection } from './VoiceProviderSection';
 import { VideoProviderSection } from './VideoProviderSection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
-  ConnectionTestError,
-  ListModelsError,
-  listModels,
-  testConnection,
-} from '@dg-agent/providers-openai-http';
-import {
-  listModelsForProvider,
-  type PiAiModelInfo,
-  type PiAiProviderKey,
-} from '@dg-agent/providers-pi-http';
+  discoverBrowserProviderModels,
+  testBrowserProviderConnection,
+} from '@dg-agent/agent-browser/llm';
+import type { PiAiModelInfo } from '@dg-agent/providers-pi-http';
+import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCredentialFields';
 
 /**
  * AI configuration. Agent, Voice and Video are selected here but keep separate stores.
@@ -81,13 +75,15 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
 
   const def = getProviderDefinition(config.providerId as ProviderId);
   const isFree = config.providerId === 'free';
-  const providerOptions = PROVIDER_DEFINITIONS.filter(
-    (provider) =>
-      provider.browserSupported &&
-      (!providerQuery.trim() ||
-        provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
-        provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
-  ).map((provider) => ({ value: provider.id, label: provider.name }));
+  const providerOptions = getBrowserProviderDefinitions()
+    .filter(
+      (provider) =>
+        provider.browserSupported &&
+        (!providerQuery.trim() ||
+          provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
+          provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
+    )
+    .map((provider) => ({ value: provider.id, label: provider.name }));
 
   return (
     <div className="flex flex-col gap-5">
@@ -166,67 +162,25 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
 
         {!isFree && (
           <div className="mt-3 flex flex-col gap-3">
-            {def?.fields
-              .filter((field) => field.key !== 'model' && field.key !== 'apiKey')
-              .map((field) => (
-                <label key={field.key} className="flex flex-col gap-1.5">
-                  <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
-                  {field.type === 'select' ? (
-                    <SettingSelect
-                      value={String(config[field.key as 'endpoint' | 'useStrict'])}
-                      onValueChange={(value) =>
-                        update(
-                          field.key === 'useStrict'
-                            ? { useStrict: value === 'true' }
-                            : { endpoint: value as LlmConfig['endpoint'] },
-                        )
-                      }
-                      options={field.options ?? []}
-                    />
-                  ) : (
-                    <Input
-                      type="text"
-                      value={(config[field.key as keyof LlmConfig] as string) ?? ''}
-                      placeholder={field.placeholder}
-                      onChange={(e) =>
-                        update({ [field.key]: e.target.value } as Partial<LlmConfig>)
-                      }
-                    />
-                  )}
-                </label>
-              ))}
-            {def?.fields.some((field) => field.key === 'apiKey') && (
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs text-[var(--text-soft)]">API 密钥</span>
-                <Input
-                  type="password"
-                  value={config.apiKey}
-                  onChange={(e) => update({ apiKey: e.target.value })}
-                />
-              </label>
-            )}
+            <ProviderCredentialFields
+              config={{ ...config, providerId: config.providerId as ProviderId }}
+              definition={def}
+              update={update}
+            />
             <label className="flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">模型</span>
               {def?.dialect === 'pi-ai' && def.piProviderKey ? (
-                <PiModelField
-                  config={config}
-                  providerKey={def.piProviderKey as PiAiProviderKey}
-                  update={update}
-                />
+                <PiModelField config={config} update={update} />
               ) : (
                 <OpenAiModelField config={config} update={update} />
               )}
             </label>
-            {def?.fields.some((field) => field.key === 'apiKey') && (
-              <label className="flex items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
-                <span>在当前设备记住 API 密钥</span>
-                <input
-                  type="checkbox"
-                  checked={config.rememberApiKey}
-                  onChange={(event) => update({ rememberApiKey: event.target.checked })}
-                />
-              </label>
-            )}
+            <ProviderRememberApiKey
+              config={{ ...config, providerId: config.providerId as ProviderId }}
+              definition={def}
+              label="在当前设备记住 API 密钥"
+              update={update}
+            />
           </div>
         )}
 
@@ -308,17 +262,17 @@ function OpenAiModelField({
   async function refresh() {
     setStatus('正在加载模型…');
     try {
-      const found = await listModels({
-        baseUrl: resolveProviderRequestUrl(config.baseUrl),
-        apiKey: config.apiKey,
-      });
+      const found = (
+        await discoverBrowserProviderModels({
+          ...config,
+          providerId: config.providerId as ProviderId,
+        })
+      ).ids;
       setModels(found);
       setStatus(found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入');
     } catch (error) {
       setModels(null);
-      setStatus(
-        `加载失败：${error instanceof ListModelsError || error instanceof Error ? error.message : '未知错误'}`,
-      );
+      setStatus(`加载失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -326,16 +280,13 @@ function OpenAiModelField({
     setStatus('正在测试连接…');
     const started = performance.now();
     try {
-      await testConnection({
-        baseUrl: resolveProviderRequestUrl(config.baseUrl),
-        apiKey: config.apiKey,
-        model: config.model,
+      await testBrowserProviderConnection({
+        ...config,
+        providerId: config.providerId as ProviderId,
       });
       setStatus(`连接成功 · ${Math.round(performance.now() - started)} ms`);
     } catch (error) {
-      setStatus(
-        `连接失败：${error instanceof ConnectionTestError || error instanceof Error ? error.message : '未知错误'}`,
-      );
+      setStatus(`连接失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -386,11 +337,9 @@ function OpenAiModelField({
 
 function PiModelField({
   config,
-  providerKey,
   update,
 }: {
   config: LlmConfig;
-  providerKey: PiAiProviderKey;
   update: (patch: Partial<LlmConfig>) => void;
 }) {
   const [models, setModels] = useState<PiAiModelInfo[] | null>(null);
@@ -399,7 +348,11 @@ function PiModelField({
   async function inspect() {
     setError('');
     try {
-      setModels(await listModelsForProvider(providerKey));
+      const catalog = await discoverBrowserProviderModels({
+        ...config,
+        providerId: config.providerId as ProviderId,
+      });
+      setModels(catalog.details ?? []);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '未知错误');
     }

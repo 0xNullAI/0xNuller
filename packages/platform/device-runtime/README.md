@@ -14,6 +14,46 @@ The reusable AI adapter is a positive allowlist containing only `device_snapshot
 Voice inject trusted local tool-call IDs and require exact opaque `deviceId` + `featureId` values.
 Scan, disconnect, labels, native identifiers, and Raw operations are not model tools.
 
+`createAiDeviceToolAdapter` is the canonical Agent/Voice binding. It stays lazy during model
+composition, reads only an already-open snapshot for instructions, and starts the provider only when
+a tool is actually invoked. Tool display names and the output-increasing permission classification
+also live here so provider integrations cannot silently expose different AI capabilities.
+
+`DeviceRuntimeModuleBinding` is the canonical human-surface binding. It coalesces startup, binds a
+module once, owns one snapshot subscription, and follows an explicitly restarted provider. It never
+scans, reconnects, grants permission, or hides command acknowledgements. Use
+`createDeviceInteractionId` for bounded human/lifecycle command IDs.
+
+`genericDeviceSafetyPolicy` and `genericDeviceIntensityCap` are the canonical conversion from shared
+device-safety settings to normalized generic output. A generic feature has no A/B identity, so the
+lower channel cap wins. Non-finite values fail closed, increases/cold starts remain bounded, and the
+runtime executor still performs the final clamp immediately before native I/O.
+
+## Consumer ownership matrix
+
+| Consumer            | Shared behavior                                                                                      | Deliberately local behavior                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Web / Android shell | One provider, manager, executor, lease/lifecycle safety controller, settings policy                  | Web Buttplug and Tauri command/event translation                                |
+| Control             | Module binding, snapshot stream, scan/disconnect/vibrate/stop actions, settings cap, interaction IDs | Rendering and pointer-release interaction state                                 |
+| Agent               | AI adapter, model allowlist/schema/status, display names, permission classification                  | Agent quotas, traces, aborts, and upper consent UI                              |
+| Voice               | Same AI adapter, allowlist/schema/status, permission classification                                  | Realtime tool bridge, call consent UI, and hang-up lifecycle                    |
+| Video               | Shared provider/executor/sanitized snapshot and exact opaque targets                                 | One-target grant, visual cadence, stale-identity escalation, and run lifecycle  |
+| Chat                | Shared DG-Lab session only; generic runtime is intentionally not model/room accessible               | Owner-side room validation and remote-command safety                            |
+| Playground          | Shared DG-Lab session and safety settings only                                                       | Game pulse semantics; generic runtime is not an interchangeable waveform target |
+
+Chat and Playground are intentionally absent from the generic runtime permission allowlist. Enabling
+them is a new safety/product capability, not a reuse refactor: it requires an explicit target model,
+owner-side validation, lease semantics, and stop coverage first.
+
+The package also owns the product-wide attached-device snapshot contracts and their pure mapping to
+the shell safety bus. Control, Chat, and Playground share these display snapshots; the mapper does
+not issue commands or alter output, leases, limits, or stop behavior.
+
+The DG-Lab product session (`DeviceSession` and `useDevice`) is also canonical here. It owns the
+single command queue, per-device Coyote routing, Opossum/sensor adapters, live safety caps, lifecycle
+stop guard, and browser/native transport injection seam used by Control, Chat, and Playground.
+Feature apps may keep compatibility re-exports, but reusable session code must not live in an app.
+
 ## Web embedded backend
 
 `WebEmbeddedButtplugBackend` uses the embedded Web Bluetooth stack `buttplug@4.0.2` with

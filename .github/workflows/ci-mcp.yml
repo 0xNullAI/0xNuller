@@ -34,8 +34,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify:mcp
-      - run: npm run typecheck:mcp
-      - run: node scripts/run-vitest.mjs run --project=dg-mcp
+      - name: Typecheck DG-MCP against prepared Kit
+        run: node scripts/run-workspace-domain.mjs typecheck mcp
+      - name: Test affected DG-MCP projects on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=mcp --prepared
+      - name: Test the full DG-MCP domain on protected branches
+        if: github.event_name != 'pull_request'
+        run: npm run test:mcp:prepared
 
   mcp-gate:
     if: always()

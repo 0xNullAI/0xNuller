@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceKind, ToolDefinition } from '@dg-agent/core';
-import { filterToolDefinitionsByConnectedDevices } from './runtime-tool-executor.js';
+import { filterToolDefinitionsByConnectedDevices } from './device-tool-availability.js';
 
 function def(
   name: string,

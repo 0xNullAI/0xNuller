@@ -1,27 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Input, SettingSelect } from '@0xnullai/ui';
+import { SettingSelect } from '@0xnullai/ui';
 import {
-  PROVIDER_DEFINITIONS,
   VIDEO_LLM_CONFIG_VERSION,
   createProviderSettings,
   filterVideoModelIds,
+  getBrowserProviderDefinitions,
   getProviderDefinition,
   getProviderImageModels,
   isVideoLlmConfigured,
   loadVideoLlmConfig,
-  resolveProviderRequestUrl,
   saveVideoLlmConfig,
   subscribeVideoLlmConfig,
   supportsProviderModelImageInput,
   type ProviderId,
   type VideoLlmConfig,
 } from '@0xnullai/llm-providers';
-import { ListModelsError, listModels } from '@dg-agent/providers-openai-http';
-import { listModelsForProvider, type PiAiProviderKey } from '@dg-agent/providers-pi-http';
+import { discoverBrowserProviderModels } from '@dg-agent/agent-browser/llm';
+import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCredentialFields';
 
-const VIDEO_PROVIDERS = PROVIDER_DEFINITIONS.filter(
-  (provider) => provider.browserSupported && provider.imageInput === 'known-models',
-);
+const VIDEO_PROVIDERS = getBrowserProviderDefinitions({ requireImageInput: true });
 
 export function VideoProviderSection() {
   const [config, setConfig] = useState<VideoLlmConfig>(loadVideoLlmConfig);
@@ -71,15 +68,12 @@ export function VideoProviderSection() {
     if (!definition) return;
     setStatus('正在加载模型…');
     try {
-      const found =
-        definition.dialect === 'pi-ai' && definition.piProviderKey
-          ? (await listModelsForProvider(definition.piProviderKey as PiAiProviderKey)).map(
-              (model) => model.id,
-            )
-          : await listModels({
-              baseUrl: resolveProviderRequestUrl(config.baseUrl),
-              apiKey: config.apiKey,
-            });
+      const found = (
+        await discoverBrowserProviderModels({
+          ...config,
+          providerId: definition.id,
+        })
+      ).ids;
       const filtered = filterVideoModelIds(definition.id, found);
       setDiscoveredModels(filtered);
       setStatus(
@@ -89,9 +83,7 @@ export function VideoProviderSection() {
       );
     } catch (error) {
       setDiscoveredModels(null);
-      setStatus(
-        `加载失败：${error instanceof ListModelsError || error instanceof Error ? error.message : '未知错误'}`,
-      );
+      setStatus(`加载失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -115,43 +107,11 @@ export function VideoProviderSection() {
           />
         </label>
 
-        {definition?.fields
-          .filter((field) => field.key !== 'model' && field.key !== 'apiKey')
-          .map((field) => (
-            <label key={field.key} className="flex flex-col gap-1.5">
-              <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
-              {field.type === 'select' ? (
-                <SettingSelect
-                  value={String(config[field.key as 'endpoint' | 'useStrict'])}
-                  onValueChange={(value) =>
-                    update(
-                      field.key === 'useStrict'
-                        ? { useStrict: value === 'true' }
-                        : { endpoint: value as VideoLlmConfig['endpoint'] },
-                    )
-                  }
-                  options={field.options ?? []}
-                />
-              ) : (
-                <Input
-                  value={(config[field.key as keyof VideoLlmConfig] as string) ?? ''}
-                  placeholder={field.placeholder}
-                  onChange={(event) => update({ [field.key]: event.target.value })}
-                />
-              )}
-            </label>
-          ))}
-
-        {definition?.fields.some((field) => field.key === 'apiKey') && (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">API 密钥</span>
-            <Input
-              type="password"
-              value={config.apiKey}
-              onChange={(event) => update({ apiKey: event.target.value })}
-            />
-          </label>
-        )}
+        <ProviderCredentialFields
+          config={{ ...config, providerId: config.providerId as ProviderId }}
+          definition={definition}
+          update={update}
+        />
 
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-[var(--text-soft)]">视觉模型</span>
@@ -200,16 +160,12 @@ export function VideoProviderSection() {
           </span>
         )}
 
-        {definition?.fields.some((field) => field.key === 'apiKey') && (
-          <label className="flex items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
-            <span>仅在当前设备记住 API 密钥</span>
-            <input
-              type="checkbox"
-              checked={config.rememberApiKey}
-              onChange={(event) => update({ rememberApiKey: event.target.checked })}
-            />
-          </label>
-        )}
+        <ProviderRememberApiKey
+          config={{ ...config, providerId: config.providerId as ProviderId }}
+          definition={definition}
+          label="仅在当前设备记住 API 密钥"
+          update={update}
+        />
       </div>
 
       {!isVideoLlmConfigured(config) && (

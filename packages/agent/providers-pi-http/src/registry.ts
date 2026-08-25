@@ -13,7 +13,7 @@ import type { PiAiModelInfo, PiAiProviderKey } from './types.js';
  * installed package: e.g. `providers/anthropic.js` imports
  * `api/anthropic-messages.lazy.js`, not `@anthropic-ai/sdk` itself).
  */
-const LOADERS: Record<PiAiProviderKey, () => Promise<Provider<Api>>> = {
+const LOADERS = {
   anthropic: () =>
     import('@earendil-works/pi-ai/providers/anthropic').then((m) => m.anthropicProvider()),
   google: () => import('@earendil-works/pi-ai/providers/google').then((m) => m.googleProvider()),
@@ -41,7 +41,7 @@ const LOADERS: Record<PiAiProviderKey, () => Promise<Provider<Api>>> = {
   fireworks: () =>
     import('@earendil-works/pi-ai/providers/fireworks').then((m) => m.fireworksProvider()),
   xiaomi: () => import('@earendil-works/pi-ai/providers/xiaomi').then((m) => m.xiaomiProvider()),
-};
+} satisfies Record<PiAiProviderKey, () => Promise<Provider<Api>>>;
 
 /**
  * The authoritative set of provider keys this package actually knows how to
@@ -54,7 +54,7 @@ const LOADERS: Record<PiAiProviderKey, () => Promise<Provider<Api>>> = {
  * raw error that bypasses `create-browser-agent-client.ts`'s friendly
  * Chinese config-error formatting entirely.
  */
-export const PI_AI_PROVIDER_KEYS = Object.keys(LOADERS) as PiAiProviderKey[];
+export { PI_AI_PROVIDER_KEYS } from './provider-keys.js';
 
 const cache = new Map<PiAiProviderKey, Promise<Provider<Api>>>();
 

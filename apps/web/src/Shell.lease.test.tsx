@@ -128,6 +128,46 @@ describe('外壳与设备控制权', () => {
     expect(
       actions!.compareDocumentPosition(deviceBar!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+    expect(screen.getByRole('main', { name: 'Agent' })).toBeTruthy();
+  });
+
+  it('窄屏抽屉支持 Escape 关闭并把焦点交还触发按钮', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) =>
+        ({
+          matches: query === '(max-width: 767px)',
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList,
+    });
+
+    try {
+      await act(async () => {
+        render(<Shell />);
+      });
+      const trigger = screen.getByRole('button', { name: '打开侧边栏' });
+      fireEvent.click(trigger);
+
+      expect(screen.getByRole('complementary', { name: '主导航' })).toBeTruthy();
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      expect(screen.queryByRole('complementary', { name: '主导航' })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      cleanup();
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
   });
 
   it('在说明下面提供始终指向最新版 APK 的 Android 下载入口', async () => {

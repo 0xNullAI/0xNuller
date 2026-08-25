@@ -8,6 +8,9 @@ import {
   pushContentPreferences,
 } from '@0xnullai/sync';
 
+export * from './product-library.js';
+export * from './use-waveforms.js';
+
 /**
  * The shared custom-waveform library.
  *

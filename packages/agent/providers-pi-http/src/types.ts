@@ -20,24 +20,7 @@
  *   OAuth device flows, cloud IAM) and don't fit this app's "paste a key in
  *   settings" UX.
  */
-export type PiAiProviderKey =
-  | 'anthropic'
-  | 'google'
-  | 'openrouter'
-  | 'groq'
-  | 'moonshotai'
-  | 'moonshotai-cn'
-  | 'zai'
-  | 'zai-coding-cn'
-  | 'minimax'
-  | 'minimax-cn'
-  | 'xai'
-  | 'cerebras'
-  | 'together'
-  | 'huggingface'
-  | 'mistral'
-  | 'fireworks'
-  | 'xiaomi';
+export type { PiAiProviderKey } from './provider-keys.js';
 
 /**
  * Trimmed-down view of a pi-ai catalog entry, safe to surface in the model

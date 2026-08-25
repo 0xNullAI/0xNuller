@@ -82,7 +82,7 @@ npm run format
 - [`packages/kit`](./packages/kit/README.md) — DG-Kit 公共包与独立使用指南
 - [`workers`](./workers/README.md) — Cloudflare 后端服务
 
-维护者文档位于 [`docs`](./docs)；合并前各项目的完整 README 快照见
+维护者文档从 [`docs/README.md`](./docs/README.md) 进入；合并前各项目的完整 README 快照见
 [`docs/legacy`](./docs/legacy/README.md)。
 产品分支职责与唯一 Release 流程见 [`docs/platform-release.md`](./docs/platform-release.md)。
 仓库分层、代码归属和测试规范见 [`AGENTS.md`](./AGENTS.md)、

@@ -171,7 +171,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
           return;
         }
         // Run the tools, feed the results back in, and go another round.
-        llmMessages.push({ role: 'assistant', content: res.text || '' });
+        llmMessages.push({ role: 'assistant', content: res.text || '', toolCalls: res.toolCalls });
         for (const call of res.toolCalls) {
           const result = applyTool(roleId, call, cur.deviceTargets, cur.sendCommandAs);
           llmMessages.push({

@@ -17,38 +17,21 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import {
-  ModuleActions,
-  ModuleSettingsSection,
-  SidebarSection,
-  useInShell,
-  useOpenShellSettings,
-  useSafetySession,
-  useTheme,
-} from '@0xnullai/ui';
+import { useInShell, useOpenShellSettings, useSafetySession, useTheme } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
-import { ShellSessionList } from './components/ShellSessionList.js';
 import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { AudioWaveform, Bug, Database, X } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNotice } from '@0xnullai/ui';
-import { SessionPanel } from './components/SessionPanel.js';
+import { SessionNavigation } from './components/SessionNavigation.js';
+import { AgentModuleProjections } from './components/AgentModuleProjections.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
 import { ResetSettingsDialog } from './components/ResetSettingsDialog.js';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@0xnullai/ui';
 import {
   useBrowserAppServices,
   type PendingPermissionRequest,
@@ -77,10 +60,6 @@ import {
 } from './utils/session-transfer.js';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { SessionSnapshot } from '@dg-agent/core';
-import { SensorsTab } from './components/settings/SensorsTab.js';
-import { WaveformsPanel } from './components/WaveformsPanel.js';
-import { DebugPanel } from './components/DebugPanel.js';
-import { DataTab } from './components/settings/DataTab.js';
 
 export interface AppProps {
   /**
@@ -160,7 +139,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   );
   const [text, setText] = useState('');
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -857,6 +835,15 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setSafetyNoticeAccepted(true);
   }
 
+  const sessionNavigation = {
+    sessions: savedSessions,
+    activeSessionId,
+    onSelect: selectSession,
+    onRename: (sessionId: string, title: string | null) => void renameSession(sessionId, title),
+    onDelete: (sessionId: string) => void deleteSession(sessionId),
+    onCreate: () => void createNewSession(),
+  };
+
   return (
     <>
       <main
@@ -888,108 +875,51 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           onConfirm={resetSettings}
         />
 
-        {/* Settings that belong in the one shell panel but read this module's
-            live state — the settings draft, the waveform list, the session
-            list. Declared here, placed there. Rendered unconditionally rather
-            than only while Agent's own workspace is open, because the shell's
-            panel can be opened from anywhere. */}
-        {/* Diagnostics, not settings — see DebugPanel. Projected onto the
-            shell's toolbar; Agent previously declared no ModuleActions at all,
-            which is why its own panels were unreachable inside the shell. */}
-        <ModuleActions>
-          <button
-            type="button"
-            onClick={() => setDebugPanelOpen(true)}
-            aria-label="打开调试面板"
-            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-            title="调试面板"
-          >
-            <Bug className="h-4 w-4" />
-          </button>
-        </ModuleActions>
-
-        {debugPanelOpen && (
-          <DebugPanel
-            onClose={() => setDebugPanelOpen(false)}
-            bridge={{ settingsDraft, setSettingsDraft }}
-            bridgeLogs={{ bridgeLogs, bridgeStatus, settings }}
-            modelLogs={{
+        <AgentModuleProjections
+          debug={{
+            bridge: { settingsDraft, setSettingsDraft },
+            bridgeLogs: { bridgeLogs, bridgeStatus, settings },
+            modelLogs: {
               settingsDraft,
               setSettingsDraft,
               turns: modelLog.turns,
               onClear: modelLog.clear,
-            }}
-          />
-        )}
-
-        <ModuleSettingsSection id="agent-sensors" label="传感器" navigation={false}>
-          <SensorsTab
-            settingsDraft={settingsDraft}
-            setSettingsDraft={setSettingsDraft}
-            sensorTriggersEnabled={sensorTriggersEnabled}
-            onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
-            deviceLinkRule={deviceLinkRule}
-            onSetDeviceLinkRule={setDeviceLinkRule}
-          />
-        </ModuleSettingsSection>
-
-        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={30}>
-          <WaveformsPanel
-            waveforms={waveforms}
-            customWaveforms={customWaveforms}
-            onImport={(files) => void importWaveformFiles(files)}
-            onImportFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
-            onRemove={(id) => void removeWaveform(id)}
-            onEdit={openWaveformEditor}
-          />
-        </ModuleSettingsSection>
-
-        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={60}>
-          <DataTab
-            sessions={savedSessions.filter(isSessionListEntry).map((session) => ({
+            },
+          }}
+          sensors={{
+            settingsDraft,
+            setSettingsDraft,
+            sensorTriggersEnabled,
+            onToggleSensorTriggers: (enabled) => void toggleSensorTriggers(enabled),
+            deviceLinkRule,
+            onSetDeviceLinkRule: setDeviceLinkRule,
+          }}
+          waveforms={{
+            waveforms,
+            customWaveforms,
+            onImport: (files) => void importWaveformFiles(files),
+            onImportFromMarket: (waveform) => void importWaveformFromMarket(waveform),
+            onRemove: (id) => void removeWaveform(id),
+            onEdit: openWaveformEditor,
+          }}
+          data={{
+            sessions: savedSessions.filter(isSessionListEntry).map((session) => ({
               id: session.id,
               title: getSessionTitle(session),
               updatedAt: session.updatedAt,
-            }))}
-            onExport={(ids) => void exportSessions(ids)}
-            onImport={(file) => void importSessions(file)}
-          />
-        </ModuleSettingsSection>
+            })),
+            onExport: (ids) => void exportSessions(ids),
+            onImport: (file) => void importSessions(file),
+          }}
+        />
 
-        {/* ===== Sidebar sheet (mobile) ===== */}
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetContent
-            side="left"
-            className="dg-sidebar-sheet flex h-full w-screen max-w-none flex-col overflow-hidden bg-[var(--bg-elevated)] p-0 pt-[env(safe-area-inset-top)] sm:max-w-[420px] [&>button]:hidden"
-          >
-            <SheetHeader className="px-5 pt-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <SheetTitle>历史记录</SheetTitle>
-                  <SheetDescription className="sr-only">
-                    选择历史对话，或者新建一条会话
-                  </SheetDescription>
-                </div>
-                <SheetClose className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">关闭</span>
-                </SheetClose>
-              </div>
-            </SheetHeader>
-            <div className="mt-1 min-h-0 flex-1">
-              <SessionPanel
-                savedSessions={savedSessions}
-                activeSessionId={activeSessionId}
-                onSelectSession={selectSession}
-                onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
-                onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-                onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openShellSettings()}
-                detached={true}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <SessionNavigation
+          variant="mobile"
+          {...sessionNavigation}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          onOpenSettings={() => openShellSettings()}
+        />
 
         {/* ===== Main layout ===== */}
         {/* In the shell only one column is left: the sidebar is owned by the shell and the
@@ -1007,27 +937,15 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             } as React.CSSProperties
           }
         >
-          {/* Desktop sidebar */}
-          <aside
-            className={
-              inShell
-                ? 'hidden'
-                : 'dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block'
-            }
-          >
-            <SessionPanel
-              savedSessions={savedSessions}
-              activeSessionId={activeSessionId}
-              onSelectSession={selectSession}
-              onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
-              onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-              onCreateSession={() => void createNewSession()}
-              onOpenSettings={() => openShellSettings()}
+          {!inShell && (
+            <SessionNavigation
+              variant="desktop"
+              {...sessionNavigation}
               collapsed={sidebarCollapsed}
               onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
-              detached={false}
+              onOpenSettings={() => openShellSettings()}
             />
-          </aside>
+          )}
 
           {/* Chat section */}
           <section className="relative flex min-h-0 min-w-0 overflow-hidden">
@@ -1109,16 +1027,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           be confirmed a second time on entering Agent. */}
       {/* The session list is projected into the shell sidebar's 「对话」 section. The module
           no longer draws a sidebar of its own. */}
-      <SidebarSection id="conversations" title="对话">
-        <ShellSessionList
-          sessions={savedSessions}
-          activeId={activeSessionId}
-          onSelect={selectSession}
-          onRename={(id, title) => void renameSession(id, title)}
-          onDelete={(id) => void deleteSession(id)}
-          onCreate={() => void createNewSession()}
-        />
-      </SidebarSection>
+      <SessionNavigation variant="shell" {...sessionNavigation} />
 
       {!inShell && !safetyNoticeAccepted && (
         <SafetyNotice moduleId="agent" onAccept={handleSafetyNoticeAccept} />

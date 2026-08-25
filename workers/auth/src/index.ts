@@ -1,4 +1,4 @@
-import { hashPassword, verifyPassword } from './password';
+import { hashPassword } from './password';
 import {
   DM_DIGEST_MAX_ROOMS,
   DM_TICKET_TTL_MS,
@@ -7,6 +7,31 @@ import {
   verifyDmTicket,
 } from './dm-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { registrationConflict, validateCredentials } from './account-validation';
+import { decodeContentCursor, encodeContentCursor } from './content-cursor';
+import { corsHeaders, err, json, readBodyBounded } from './http';
+import { sessionCookie } from './session-credentials';
+import {
+  cleanupPendingPhoto,
+  finalizeAccountDeletion,
+  finishPhotoUpload,
+  recordDeletionFailure,
+  reservePhotoSlot,
+  runAuthMaintenance,
+} from './photo-lifecycle';
+import {
+  currentUser,
+  login,
+  logout,
+  newToken,
+  publicUser,
+  sessionUser,
+  sha256Hex,
+  type UserRow,
+} from './session-domain';
+
+export { registrationConflict } from './account-validation';
+export { runAuthMaintenance } from './photo-lifecycle';
 
 /**
  * 0xNullAI account service.
@@ -61,9 +86,6 @@ export interface Env extends Cloudflare.Env {
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILS_PER_USERNAME = 8;
-const MAX_FAILS_PER_IP = 30;
 const REGISTER_WINDOW_MS = 60 * 60 * 1000;
 const MAX_REGISTRATIONS_PER_IP = 5;
 const MIN_PASSWORD_LEN = 8;
@@ -90,9 +112,6 @@ const MAX_BLOCKS = 200;
 const MAX_ALBUM_PHOTOS = 60;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const MAX_PHOTO_CAPTION = 200;
-const STALE_PHOTO_UPLOAD_MS = 60 * 60 * 1000;
-const MAINTENANCE_BATCH_SIZE = 100;
-const ACCOUNT_DELETION_BATCH_SIZE = 25;
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const CONTENT_PAGE_SIZE = 500;
 const CONTENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -103,312 +122,6 @@ const MAX_AGENT_SESSION_BYTES = 2 * 1024 * 1024;
 const AGENT_SESSION_PAGE_SIZE = 200;
 const CHAT_ROOM_CODE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_CHAT_ROOM_NAME = 80;
-
-function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
-  });
-}
-
-function err(message: string, status: number, headers: HeadersInit = {}): Response {
-  return json({ error: message }, status, headers);
-}
-
-/**
- * Echo the concrete origin rather than `*` — credentialed requests and a wildcard
- * origin cannot coexist.
- */
-function corsHeaders(request: Request, env: Env): Record<string, string> {
-  const origin = request.headers.get('Origin') ?? '';
-  const allowed = env.ALLOWED_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!origin || !allowed.includes(origin)) return {};
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    // Authorization must be on the allowlist: leave it out and the browser blocks
-    // the request outright at the preflight stage, which shows up as "the request
-    // never even went out" rather than a catchable 401.
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility',
-    Vary: 'Origin',
-  };
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function newToken(): string {
-  return [...crypto.getRandomValues(new Uint8Array(32))]
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-async function readBodyBounded(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
-  const declared = Number(request.headers.get('content-length') ?? '0');
-  if (Number.isFinite(declared) && declared > maxBytes) return null;
-  if (!request.body) return new ArrayBuffer(0);
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const joined = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return joined.buffer;
-}
-
-/** Delete every object under a prefix without reusing a cursor after mutating the listing. */
-async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<void> {
-  while (true) {
-    const listed = await bucket.list({ prefix, limit: 1000 });
-    if (listed.objects.length === 0) return;
-    await bucket.delete(listed.objects.map((o) => o.key));
-  }
-}
-
-interface PendingPhotoRow {
-  id: string;
-  object_key: string;
-}
-
-/** R2 first, row second: a failed delete always leaves a durable retry record. */
-async function cleanupPendingPhoto(env: Env, row: PendingPhotoRow): Promise<void> {
-  await env.PHOTOS.delete(row.object_key);
-  await env.DB.prepare("DELETE FROM user_photos WHERE id = ? AND status = 'uploading'")
-    .bind(row.id)
-    .run();
-}
-
-async function reservePhotoSlot(
-  env: Env,
-  params: {
-    id: string;
-    userId: string;
-    objectKey: string;
-    caption: string | null;
-    visibility: 'public' | 'private';
-    purpose: 'album' | 'avatar';
-    createdAt: number;
-  },
-): Promise<boolean> {
-  await env.DB.prepare(
-    `WITH RECURSIVE slots(slot) AS (
-       VALUES(0) UNION ALL SELECT slot + 1 FROM slots WHERE slot < 59
-     )
-     INSERT INTO user_photos
-       (id, user_id, object_key, caption, visibility, purpose, created_at, slot, status)
-     SELECT ?, ?, ?, ?, ?, ?, ?, slots.slot, 'uploading'
-       FROM slots
-      WHERE NOT EXISTS (
-              SELECT 1 FROM user_photos p WHERE p.user_id = ? AND p.slot = slots.slot
-            )
-        AND NOT EXISTS (
-              SELECT 1 FROM account_deletions d WHERE d.user_id = ?
-            )
-      ORDER BY slots.slot
-      LIMIT 1`,
-  )
-    .bind(
-      params.id,
-      params.userId,
-      params.objectKey,
-      params.caption,
-      params.visibility,
-      params.purpose,
-      params.createdAt,
-      params.userId,
-      params.userId,
-    )
-    .run();
-  return (
-    (await env.DB.prepare("SELECT 1 FROM user_photos WHERE id = ? AND status = 'uploading'")
-      .bind(params.id)
-      .first()) != null
-  );
-}
-
-async function finishPhotoUpload(env: Env, id: string, userId: string): Promise<boolean> {
-  await env.DB.prepare(
-    `UPDATE user_photos SET status = 'ready'
-      WHERE id = ? AND user_id = ? AND status = 'uploading'
-        AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = ?)`,
-  )
-    .bind(id, userId, userId)
-    .run();
-  return (
-    (await env.DB.prepare("SELECT 1 FROM user_photos WHERE id = ? AND status = 'ready'")
-      .bind(id)
-      .first()) != null
-  );
-}
-
-async function finalizeAccountDeletion(env: Env, userId: string): Promise<void> {
-  await deleteR2Prefix(env.PHOTOS, `users/${userId}/photos/`);
-  await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
-}
-
-async function recordDeletionFailure(env: Env, userId: string): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE account_deletions
-        SET attempts = attempts + 1, last_error_at = ?
-      WHERE user_id = ?`,
-  )
-    .bind(Date.now(), userId)
-    .run();
-}
-
-/** Exported for deterministic local tests; production calls it from the daily cron. */
-export async function runAuthMaintenance(env: Env, now = Date.now()): Promise<void> {
-  const stale = await env.DB.prepare(
-    `SELECT id, object_key FROM user_photos
-      WHERE status = 'uploading' AND created_at < ?
-      ORDER BY created_at, id LIMIT ?`,
-  )
-    .bind(now - STALE_PHOTO_UPLOAD_MS, MAINTENANCE_BATCH_SIZE)
-    .all<PendingPhotoRow>();
-  for (const row of stale.results ?? []) {
-    try {
-      await cleanupPendingPhoto(env, row);
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          level: 'error',
-          event: 'photo_cleanup_retry_failed',
-          photoId: row.id,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  }
-
-  const deletions = await env.DB.prepare(
-    `SELECT user_id FROM account_deletions
-      ORDER BY requested_at, user_id LIMIT ?`,
-  )
-    .bind(ACCOUNT_DELETION_BATCH_SIZE)
-    .all<{ user_id: string }>();
-  for (const row of deletions.results ?? []) {
-    try {
-      await finalizeAccountDeletion(env, row.user_id);
-    } catch (error) {
-      await recordDeletionFailure(env, row.user_id);
-      console.error(
-        JSON.stringify({
-          level: 'error',
-          event: 'account_deletion_retry_failed',
-          userId: row.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  }
-}
-
-interface ContentCursor {
-  updatedAt: number;
-  id: string;
-}
-
-function encodeContentCursor(cursor: ContentCursor): string {
-  return btoa(JSON.stringify([cursor.updatedAt, cursor.id]))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function decodeContentCursor(value: string | null): ContentCursor | null {
-  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  try {
-    const padded = value
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const parsed = JSON.parse(atob(padded)) as unknown;
-    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
-    const updatedAt = Number(parsed[0]);
-    const id = parsed[1];
-    return Number.isSafeInteger(updatedAt) && updatedAt >= 0 && typeof id === 'string'
-      ? { updatedAt, id }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Read the session token. Two carriers:
- * - Cookie — the web side, shared by every module under the same registrable domain
- * - Bearer — the Android side. The Tauri WebView's origin is a local scheme, so it
- *   cannot get cookies for the web domain; the session layer therefore has to
- *   support both carriers from the start and cannot be cookie-only.
- */
-function readToken(request: Request): string | null {
-  const auth = request.headers.get('Authorization');
-  if (auth?.startsWith('Bearer ')) return auth.slice(7).trim() || null;
-  const cookie = request.headers.get('Cookie') ?? '';
-  const m = /(?:^|;\s*)0xn_session=([^;]+)/.exec(cookie);
-  return m?.[1] ?? null;
-}
-
-function sessionCookie(token: string, maxAgeSec: number): string {
-  // Domain spans the subdomains so the four modules share one login state.
-  // SameSite=Lax is enough — requests between subdomains of the same registrable
-  // domain count as same-site, while cross-site requests do not carry it, which is
-  // exactly what we want.
-  return [
-    `0xn_session=${token}`,
-    'Path=/',
-    'Domain=.0xnullai.com',
-    'HttpOnly',
-    'Secure',
-    'SameSite=Lax',
-    `Max-Age=${maxAgeSec}`,
-  ].join('; ');
-}
-
-interface UserRow {
-  id: string;
-  username: string;
-  display_name: string;
-  password_hash: string;
-  created_at: number;
-  banned_at: number | null;
-  ban_reason: string | null;
-  role: 'user' | 'admin';
-  email: string | null;
-  email_verified_at: number | null;
-}
-
-async function currentUser(request: Request, env: Env): Promise<UserRow | null> {
-  const token = readToken(request);
-  if (!token) return null;
-  const row = await env.DB.prepare(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ? AND s.expires_at > ?
-       AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id)`,
-  )
-    .bind(await sha256Hex(token), Date.now())
-    .first<UserRow>();
-  return row ?? null;
-}
 
 export interface MarketClaimCredentials {
   authorization: string | null;
@@ -650,20 +363,6 @@ function publicProfile(row: Record<string, unknown>) {
     location: row.location ?? null,
     links: row.links ? (JSON.parse(String(row.links)) as string[]) : [],
     visibility: row.visibility === 'public' ? 'public' : 'private',
-  };
-}
-
-function publicUser(u: UserRow) {
-  return { id: u.id, username: u.username, displayName: u.display_name };
-}
-
-function sessionUser(u: UserRow, emailAvailable = false) {
-  return {
-    ...publicUser(u),
-    role: u.role,
-    email: u.email,
-    emailVerified: Boolean(u.email_verified_at),
-    emailAvailable,
   };
 }
 
@@ -968,27 +667,9 @@ function contactListSql(direction: 'following' | 'followers'): string {
  LIMIT ? OFFSET ?`;
 }
 
-function validateCredentials(username: unknown, password: unknown): string | null {
-  if (typeof username !== 'string' || !/^[a-zA-Z0-9_-]{3,24}$/.test(username)) {
-    return '用户名需为 3–24 位字母、数字、下划线或连字符';
-  }
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LEN) {
-    return `密码至少 ${MIN_PASSWORD_LEN} 位`;
-  }
-  return null;
-}
-
-export function registrationConflict(error: unknown): 'username' | 'email' | null {
-  const message = error instanceof Error ? error.message : String(error);
-  if (!/unique constraint/i.test(message)) return null;
-  if (/users\.username|username/i.test(message)) return 'username';
-  if (/idx_users_email_unique|users\.email|email/i.test(message)) return 'email';
-  return null;
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const cors = corsHeaders(request, env);
+    const cors = corsHeaders(request, env.ALLOWED_ORIGINS);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
@@ -1207,82 +888,7 @@ export default {
 
       // ── Login ──
       if (path === '/api/auth/login' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-        const username = typeof body.username === 'string' ? body.username.toLowerCase() : '';
-        const password = typeof body.password === 'string' ? body.password : '';
-        if (!username || !password) return err('缺少用户名或密码', 400, cors);
-
-        const since = Date.now() - LOGIN_WINDOW_MS;
-        const [byName, byIp] = await Promise.all([
-          env.DB.prepare(
-            'SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND ok = 0 AND created_at >= ?',
-          )
-            .bind(username, since)
-            .first<{ n: number }>(),
-          env.DB.prepare(
-            'SELECT COUNT(*) AS n FROM login_attempts WHERE ip_hash = ? AND ok = 0 AND created_at >= ?',
-          )
-            .bind(ipHash, since)
-            .first<{ n: number }>(),
-        ]);
-        // Two-dimensional rate limiting: limit by username only and the attacker
-        // just switches names and keeps hammering; limit by IP only and distributed
-        // credential stuffing walks straight around it.
-        if ((byName?.n ?? 0) >= MAX_FAILS_PER_USERNAME || (byIp?.n ?? 0) >= MAX_FAILS_PER_IP) {
-          return err('尝试过于频繁，请稍后再试', 429, cors);
-        }
-
-        const user = await env.DB.prepare('SELECT * FROM users WHERE username = ?')
-          .bind(username)
-          .first<UserRow>();
-
-        const record = (ok: boolean) =>
-          env.DB.prepare(
-            'INSERT INTO login_attempts (username, ip_hash, ok, created_at) VALUES (?, ?, ?, ?)',
-          )
-            .bind(username, ipHash, ok ? 1 : 0, Date.now())
-            .run();
-
-        if (!user) {
-          // Run a hash even when the user does not exist, so response time cannot
-          // be used to tell "no such user" apart from "wrong password".
-          await hashPassword(password);
-          await record(false);
-          return err('用户名或密码错误', 401, cors);
-        }
-        if (user.banned_at) {
-          return err(`账号已被封禁：${user.ban_reason ?? '未说明原因'}`, 403, cors);
-        }
-
-        const { ok, needsUpgrade } = await verifyPassword(password, user.password_hash);
-        await record(ok);
-        if (!ok) return err('用户名或密码错误', 401, cors);
-
-        if (needsUpgrade) {
-          // Once the iteration count is raised, old hashes are silently upgraded on
-          // the next successful login — the user never has to change their password.
-          await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-            .bind(await hashPassword(password), user.id)
-            .run();
-        }
-
-        const token = newToken();
-        await env.DB.prepare(
-          'INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)',
-        )
-          .bind(
-            await sha256Hex(token),
-            user.id,
-            Date.now(),
-            Date.now() + SESSION_TTL_MS,
-            request.headers.get('User-Agent')?.slice(0, 200) ?? null,
-          )
-          .run();
-
-        return json({ user: sessionUser(user, Boolean(env.EMAIL)), token }, 200, {
-          ...cors,
-          'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
-        });
+        return login(request, env, ipHash, cors);
       }
 
       // ── Current user ──
@@ -1381,13 +987,7 @@ export default {
 
       // ── Logout ──
       if (path === '/api/auth/logout' && request.method === 'POST') {
-        const token = readToken(request);
-        if (token) {
-          await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?')
-            .bind(await sha256Hex(token))
-            .run();
-        }
-        return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
+        return logout(request, env, cors);
       }
 
       // ── Profile ──

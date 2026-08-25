@@ -343,6 +343,8 @@ export interface LlmTurnInput {
   onTextDelta?: (accumulated: string) => void;
   onRawRequest?: (body: unknown) => void;
   abortSignal?: AbortSignal;
+  /** Optional per-turn output ceiling for compact embedded agents such as room assistants. */
+  maxOutputTokens?: number;
   conversation?: LlmConversationItem[];
 }
 

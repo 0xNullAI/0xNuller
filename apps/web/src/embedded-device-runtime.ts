@@ -1,5 +1,6 @@
 import {
   EmbeddedDeviceRuntimeSafetyController,
+  genericDeviceSafetyPolicy,
   WebEmbeddedDeviceRuntimeProvider,
   type DeviceBackend,
   type DeviceRuntimeExecutorOptions,
@@ -25,17 +26,7 @@ export function embeddedDeviceExecutorOptions(): DeviceRuntimeExecutorOptions {
         ['control', 'agent', 'voice', 'video'].includes(request.moduleId) ? 'allow' : 'deny',
     },
     safetyPolicy: () => {
-      const settings = loadDeviceSafety();
-      return {
-        // A generic feature has no A/B identity, so enforce the lower configured vibration cap.
-        intensityCap: Math.min(
-          1,
-          Math.max(0, Math.min(settings.maxIntensityA, settings.maxIntensityB)) / 200,
-        ),
-        maxIncrease: Math.min(1, Math.max(0, settings.maxOpossumAdjustStep) / 200),
-        coldStartCap: Math.min(1, Math.max(0, settings.maxColdStartIntensity) / 200),
-        maxOutputLeaseMs: Math.max(1, Math.min(5_000, Math.floor(settings.maxBurstDurationMs))),
-      };
+      return genericDeviceSafetyPolicy(loadDeviceSafety());
     },
     leaseSnapshot: currentDeviceLeaseSnapshot,
   };

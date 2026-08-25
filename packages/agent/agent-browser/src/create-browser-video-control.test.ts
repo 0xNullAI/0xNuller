@@ -174,6 +174,40 @@ function grantInput(targetId: string) {
 }
 
 describe('BrowserVideoControlService physical targets', () => {
+  it('stops the previous exact target before an AI action re-authorizes another Coyote', async () => {
+    const children: FakeCoyoteClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeCoyoteClient(`transport-${children.length + 1}`);
+      children.push(child);
+      return child;
+    });
+    const service = createService({ device: aggregate });
+    const first = await service.connect('coyote');
+    const second = await service.connect('coyote');
+    const grant = {
+      intensityCap: 30,
+      allowEnhanced: true,
+      allowBurst: false,
+      durationMs: 60_000,
+      cadenceMs: 10_000,
+      captureIntervalMs: 1_000,
+    };
+
+    await service.executeAiAction(
+      first,
+      { id: 'first', action: 'start', channel: 'A', value: 5 },
+      grant,
+    );
+    await service.executeAiAction(
+      second,
+      { id: 'second', action: 'start', channel: 'A', value: 5 },
+      grant,
+    );
+
+    expect(children[0]!.emergencyStop).toHaveBeenCalledTimes(1);
+    expect(children[1]!.execute).toHaveBeenCalledTimes(1);
+  });
+
   it('exposes two Coyotes with opaque connection IDs and routes tools to the selected one', async () => {
     const children: FakeCoyoteClient[] = [];
     const ids = ['transport-a', 'transport-b'];

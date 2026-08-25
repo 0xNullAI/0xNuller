@@ -1,6 +1,5 @@
 import type {
   DeviceClient,
-  DeviceKind,
   LlmConversationItem,
   LlmClient,
   LlmImageInput,
@@ -16,7 +15,6 @@ import type { OpossumState } from '@dg-kit/protocol';
 import {
   createEmptyDeviceState,
   createMessage,
-  isDeviceToolName,
   isSensorTriggersEnabled,
   mergeBridgeOriginMetadata,
   SESSION_TITLE_METADATA_KEY,
@@ -41,12 +39,8 @@ import {
   REPLY_ABORTED_ERROR_MESSAGE,
   REPLY_ABORTED_NOTE,
   throwIfAborted,
-  TOOL_LOOP_EXHAUSTED_MESSAGE,
 } from './runtime-errors.js';
 import {
-  DEVICE_KIND_DISPLAY_NAME,
-  filterToolDefinitionsByConnectedDevices,
-  resolveRequiredDeviceKind,
   RuntimeToolExecutor,
   type DeviceExecutionGate,
   type TimerFiredTrigger,
@@ -68,23 +62,15 @@ import {
   type ToolCallConfig,
   type ToolCallConfigInput,
 } from './tool-call-config.js';
-import {
-  buildConversationItems,
-  collectTurnToolCalls,
-  createTurnState,
-  type TurnState,
-  type TurnToolCallSummary,
-} from './runtime-turn-state.js';
 import { InMemorySessionTraceStore } from './session-trace.js';
 import { DeviceLinkEngine } from './device-link-engine.js';
-import {
-  normalizeSessionHistory,
-  appendAssistantMessage,
-  appendSkippedToolOutputs,
-} from './session-history.js';
+import { normalizeSessionHistory, appendAssistantMessage } from './session-history.js';
 import { createDefaultToolRegistryWithDeps } from './tool-registry.js';
 import type { ToolRegistry } from './tool-registry.js';
-import { redactModelData } from './redact-model-data.js';
+import {
+  RuntimeTurnCoordinator,
+  type BuildTurnInstructionsInput,
+} from './runtime-turn-coordinator.js';
 
 export interface AgentRuntimeOptions {
   device: DeviceClient;
@@ -96,22 +82,7 @@ export interface AgentRuntimeOptions {
   civetEdging?: CivetEdgingClient;
   llm: LlmClient;
   permission: PermissionService;
-  buildInstructions?: (input: {
-    session: SessionSnapshot;
-    context: ActionContext;
-    isFirstIteration: boolean;
-    turnToolCalls: readonly TurnToolCallSummary[];
-    /** Present only when an Opossum client is configured, connected or not. */
-    opossumState?: OpossumState;
-    /** Present only when a paw-prints client is configured, connected or not. */
-    pawPrintsState?: SensorState;
-    /** Present only when a civet-edging client is configured, connected or not. */
-    civetEdgingState?: SensorState;
-    /** Rolling 60s trigger-count summary; absent until the buffer has at least one reading. */
-    pawPrintsSummary?: string;
-    /** Rolling 30s pressure trend summary; absent until the buffer has at least one reading. */
-    civetSummary?: string;
-  }) => string;
+  buildInstructions?: (input: BuildTurnInstructionsInput) => string;
   waveformLibrary?: WaveformLibrary;
   sessionStore?: SessionStore;
   sessionTraceStore?: SessionTraceStore;
@@ -166,6 +137,7 @@ export class AgentRuntime {
   private readonly toolRegistry: ToolRegistry;
   private readonly toolCallConfig: ToolCallConfig;
   private readonly toolExecutor: RuntimeToolExecutor;
+  private readonly turnCoordinator: RuntimeTurnCoordinator;
   private readonly activeTurns = new Map<string, AbortController>();
   private readonly sessionGenerations = new Map<string, number>();
   private readonly pendingSystemWork = new Map<string, QueuedSystemWork[]>();
@@ -232,6 +204,18 @@ export class AgentRuntime {
       traceStore: this.traces,
       deviceExecutionGate: options.deviceExecutionGate ?? (() => true),
       permissionRequiredToolNames: options.permissionRequiredToolNames,
+    });
+    this.turnCoordinator = new RuntimeTurnCoordinator({
+      device: options.device,
+      llm: options.llm,
+      toolRegistry: this.toolRegistry,
+      toolExecutor: this.toolExecutor,
+      toolCallConfig: this.toolCallConfig,
+      modelContextStrategy: options.modelContextStrategy,
+      buildInstructions: options.buildInstructions,
+      getInstructionDeviceState: () => this.getAuxDeviceStatesForInstructions(),
+      saveSession: (session) => this.saveSessionIfAvailable(session),
+      emit: (event) => this.events.emit(event),
     });
 
     this.disposeDeviceListener = options.device.onStateChanged((state) => {
@@ -558,13 +542,13 @@ export class AgentRuntime {
     this.activeTurns.set(session.id, abortController);
 
     try {
-      const turnResult = await this.runToolLoop(
+      const turnResult = await this.turnCoordinator.run({
         session,
-        input,
+        turn: input,
         turnStartIndex,
         ephemeralInput,
-        abortController.signal,
-      );
+        abortSignal: abortController.signal,
+      });
       throwIfAborted(abortController.signal);
 
       const assistantMessage = appendAssistantMessage(
@@ -631,258 +615,6 @@ export class AgentRuntime {
         void this.drainSystemWork(session.id);
       });
     }
-  }
-
-  private async runToolLoop(
-    session: SessionSnapshot,
-    input: SendUserMessageInput,
-    turnStartIndex: number,
-    ephemeralInput: LlmConversationItem | null,
-    abortSignal?: AbortSignal,
-  ): Promise<{ finalAssistantText: string }> {
-    const turnState = createTurnState();
-
-    for (let iteration = 0; iteration < this.toolCallConfig.maxToolIterations; iteration++) {
-      throwIfAborted(abortSignal);
-
-      session.deviceState = await this.options.device.getState();
-
-      const instructions =
-        this.options.buildInstructions?.({
-          session,
-          context: input.context,
-          isFirstIteration: iteration === 0,
-          turnToolCalls: collectTurnToolCalls(turnState),
-          ...(await this.getAuxDeviceStatesForInstructions()),
-        }) ?? '';
-      const tools =
-        input.context.sourceType === 'system' || input.image
-          ? []
-          : filterToolDefinitionsByConnectedDevices(
-              await this.toolRegistry.listDefinitions(),
-              await this.toolExecutor.getConnectedDeviceKinds(session),
-            );
-      const conversation = buildConversationItems(
-        session,
-        turnState,
-        iteration === 0 ? ephemeralInput : null,
-        this.options.modelContextStrategy,
-      );
-
-      const messageSummary = conversation.map((item) => ({
-        role:
-          item.kind === 'message'
-            ? item.role
-            : item.kind === 'function_call'
-              ? 'tool_call'
-              : 'tool_result',
-        content:
-          item.kind === 'message'
-            ? item.content
-            : item.kind === 'function_call'
-              ? `${item.name}(${item.argumentsJson})`
-              : item.output,
-        toolCallCount:
-          item.kind === 'message' && item.toolCalls?.length ? item.toolCalls.length : undefined,
-      }));
-
-      this.events.emit({
-        type: 'llm-turn-start',
-        sessionId: session.id,
-        iteration,
-        instructions,
-        messages: messageSummary,
-        toolNames: tools.map((t) => t.name),
-      });
-
-      let capturedRequest: unknown;
-
-      const llmResult = await this.options.llm.runTurn({
-        session,
-        message: input.text,
-        context: input.context,
-        instructions,
-        tools,
-        conversation,
-        image: iteration === 0 ? input.image : undefined,
-        abortSignal,
-        onTextDelta: (content) => {
-          this.events.emit({
-            type: 'assistant-message-delta',
-            sessionId: session.id,
-            content,
-          });
-        },
-        onRawRequest: (body) => {
-          capturedRequest = body;
-        },
-      });
-
-      this.events.emit({
-        type: 'llm-turn-complete',
-        sessionId: session.id,
-        iteration,
-        assistantMessage: llmResult.assistantMessage,
-        toolCalls: llmResult.toolCalls ?? [],
-        rawRequest: redactModelData(capturedRequest),
-        rawResponse: redactModelData(llmResult.rawResponse),
-      });
-
-      throwIfAborted(abortSignal);
-
-      if ((llmResult.toolCalls ?? []).length === 0) {
-        return {
-          finalAssistantText: llmResult.assistantMessage,
-        };
-      }
-
-      const iterationItems: LlmConversationItem[] = [];
-      const iterationAssistantContent = llmResult.assistantMessage;
-      const hasTextOrReasoning =
-        iterationAssistantContent.trim().length > 0 ||
-        (llmResult.reasoningContent?.trim().length ?? 0) > 0;
-      const hasToolCalls = (llmResult.toolCalls?.length ?? 0) > 0;
-      const iterationHasAssistantState = hasTextOrReasoning || hasToolCalls;
-
-      if (iterationHasAssistantState) {
-        if (hasTextOrReasoning) {
-          appendAssistantMessage(
-            session,
-            {
-              content: iterationAssistantContent,
-              reasoningContent: llmResult.reasoningContent,
-              toolCalls: llmResult.toolCalls,
-            },
-            turnStartIndex,
-          );
-        }
-        iterationItems.push({
-          kind: 'message',
-          role: 'assistant',
-          content: iterationAssistantContent,
-          reasoningContent: llmResult.reasoningContent,
-          toolCalls: llmResult.toolCalls,
-        });
-        session.updatedAt = Date.now();
-        await this.saveSessionIfAvailable(session);
-        this.events.emit({
-          type: 'session-updated',
-          sessionId: session.id,
-        });
-      }
-
-      const toolCalls = llmResult.toolCalls ?? [];
-      for (let index = 0; index < toolCalls.length; index += 1) {
-        const toolCall = toolCalls[index];
-        if (!toolCall) continue;
-        const output = await this.toolExecutor.execute({
-          session,
-          toolCall,
-          context: input.context,
-          turnState,
-          abortSignal,
-        });
-        const deniedTrigger = getEphemeralDeniedTrigger(toolCall, output);
-        if (deniedTrigger) {
-          iterationItems.push({
-            kind: 'function_call_output',
-            callId: toolCall.id,
-            output,
-          });
-          appendSkippedToolOutputs(
-            iterationItems,
-            toolCalls.slice(index + 1),
-            'Skipped after an earlier tool call was denied.',
-          );
-          turnState.workingItems.push(...iterationItems);
-          return this.runEphemeralNoToolFollowUp(
-            session,
-            input,
-            turnState,
-            deniedTrigger,
-            abortSignal,
-          );
-        }
-        const disconnectedDeviceKind = getDisconnectedDeviceKind(
-          toolCall.name,
-          toolCall.args,
-          output,
-        );
-        if (disconnectedDeviceKind !== undefined) {
-          iterationItems.push({
-            kind: 'function_call_output',
-            callId: toolCall.id,
-            output,
-          });
-          appendSkippedToolOutputs(
-            iterationItems,
-            toolCalls.slice(index + 1),
-            'Skipped because the device is not connected.',
-          );
-          turnState.workingItems.push(...iterationItems);
-          return {
-            finalAssistantText: buildDeviceDisconnectedMessage(disconnectedDeviceKind),
-          };
-        }
-
-        iterationItems.push({
-          kind: 'function_call_output',
-          callId: toolCall.id,
-          output,
-        });
-      }
-
-      turnState.workingItems.push(...iterationItems);
-    }
-
-    return {
-      finalAssistantText: TOOL_LOOP_EXHAUSTED_MESSAGE,
-    };
-  }
-
-  private async runEphemeralNoToolFollowUp(
-    session: SessionSnapshot,
-    input: SendUserMessageInput,
-    turnState: TurnState,
-    triggerText: string,
-    abortSignal?: AbortSignal,
-  ): Promise<{ finalAssistantText: string }> {
-    const llmResult = await this.options.llm.runTurn({
-      session,
-      message: triggerText,
-      context: input.context,
-      instructions:
-        this.options.buildInstructions?.({
-          session,
-          context: input.context,
-          isFirstIteration: false,
-          turnToolCalls: collectTurnToolCalls(turnState),
-          ...(await this.getAuxDeviceStatesForInstructions()),
-        }) ?? '',
-      tools: [],
-      conversation: buildConversationItems(
-        session,
-        turnState,
-        {
-          kind: 'message',
-          role: 'user',
-          content: triggerText,
-        },
-        this.options.modelContextStrategy,
-      ),
-      abortSignal,
-      onTextDelta: (content) => {
-        this.events.emit({
-          type: 'assistant-message-delta',
-          sessionId: session.id,
-          content,
-        });
-      },
-    });
-
-    return {
-      finalAssistantText: llmResult.assistantMessage,
-    };
   }
 
   private async processTimerTrigger(trigger: TimerFiredTrigger): Promise<void> {
@@ -1213,59 +945,4 @@ function buildSensorTriggerPrompt(trigger: SensorFiredTrigger, trendSummary?: st
  * invariant by throwing (queue instead, mirroring the existing 'system' case). */
 function isInternallyTriggeredSourceType(sourceType: SourceType): boolean {
   return sourceType === 'system' || sourceType === 'sensor';
-}
-
-function getEphemeralDeniedTrigger(toolCall: { name: string }, output: string): string | null {
-  try {
-    const parsed = JSON.parse(output) as {
-      error?: string;
-      _meta?: { kind?: string };
-    };
-    const kind = parsed._meta?.kind;
-    if ((kind !== 'tool-denied' && kind !== 'tool-failed') || !parsed.error) {
-      return null;
-    }
-    if (parsed.error === '设备未连接') {
-      return null;
-    }
-
-    return [
-      `[内部提醒] 刚才请求的工具“${toolCall.name}”未执行。`,
-      `原因：${parsed.error}`,
-      kind === 'tool-failed'
-        ? '请直接向用户解释执行失败的原因，不要再次调用工具，也不要假装已经成功。'
-        : '请直接向用户解释这一步没有执行，不要再次调用工具，也不要假装已经成功。',
-    ].join('\n');
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Tri-state on purpose: `undefined` means "this output isn't a disconnected-
- * device denial at all, keep going normally"; `null`/a `DeviceKind` both
- * mean "stop the turn", differing only in whether we know which device kind
- * to name in the guidance message (set_indicator_color with a malformed
- * `deviceKind` arg can't be resolved, so it falls back to a generic name).
- */
-function getDisconnectedDeviceKind(
-  toolName: string,
-  args: Record<string, unknown>,
-  output: string,
-): DeviceKind | null | undefined {
-  if (!isDeviceToolName(toolName)) return undefined;
-
-  try {
-    const parsed = JSON.parse(output) as { error?: string };
-    if (parsed.error !== '设备未连接') return undefined;
-  } catch {
-    return undefined;
-  }
-
-  return resolveRequiredDeviceKind(toolName, args);
-}
-
-function buildDeviceDisconnectedMessage(kind: DeviceKind | null): string {
-  const name = kind ? DEVICE_KIND_DISPLAY_NAME[kind] : '设备';
-  return `设备未连接，请先点击输入框旁的蓝牙图标连接${name}。`;
 }

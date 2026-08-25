@@ -1,0 +1,4 @@
+{
+  "description": "Known dependency violations. New violations fail CI; remove entries as debt is fixed.",
+  "violations": []
+}

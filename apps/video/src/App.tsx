@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CirclePause, CirclePlay, Link, Settings, ShieldAlert } from 'lucide-react';
+import { CirclePause, CirclePlay, ShieldAlert } from 'lucide-react';
 import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
@@ -13,7 +13,14 @@ import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useNativeBridge } from '@0xnullai/native';
 import { useScenes } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
-import type { DeviceSnapshot } from '@0xnullai/device-runtime';
+import {
+  createUnifiedOutputTargets,
+  genericDeviceIntensityCap,
+  genericDeviceSafetyPolicy,
+  outputTargetSafetyControl,
+  type DeviceSnapshot,
+  type UnifiedOutputTarget,
+} from '@0xnullai/device-runtime';
 import {
   createBrowserLlmClient,
   createBrowserVideoControl,
@@ -24,17 +31,16 @@ import {
 import type { LlmClient } from '@dg-agent/core';
 import { getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
+import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
+import { VisualSession, type VisualSessionSnapshot } from './services/visual-session.js';
+import { DeviceRuntimeVideoControlService } from './services/device-runtime-video-control.js';
 import {
-  VisualSession,
-  type VisualSafetyStopReason,
-  type VisualSessionSnapshot,
-} from './services/visual-session.js';
-import {
-  DeviceRuntimeVideoControlService,
-  type DeviceRuntimeVideoGrantSnapshot,
-} from './services/device-runtime-video-control.js';
+  VideoAiDeviceRouter,
+  type VideoAiAllowedTarget,
+  type VideoAiRoutingGrantSnapshot,
+} from './services/video-ai-device-router.js';
 
 const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   status: 'idle',
@@ -63,10 +69,6 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
   coyotes: [],
   opossumTarget: null,
 };
-
-type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
-type ActiveGrantSnapshot = GrantSnapshot | DeviceRuntimeVideoGrantSnapshot;
-type VideoTargetFamily = 'dg-lab' | 'embedded';
 
 const FIXED_CAMERA_FRAME_SETTINGS = Object.freeze({
   ...DEFAULT_CAMERA_FRAME_SETTINGS,
@@ -133,23 +135,15 @@ export function App() {
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const captureIntervalMs = 1_000;
   const [durationMinutes, setDurationMinutes] = useState(5);
-  const [targetFamily, setTargetFamily] = useState<VideoTargetFamily>('dg-lab');
-  const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
-  const [targetId, setTargetId] = useState('');
-  const [embeddedDeviceId, setEmbeddedDeviceId] = useState('');
-  const [embeddedFeatureId, setEmbeddedFeatureId] = useState('');
-  const [channel, setChannel] = useState<'A' | 'B'>('A');
-  const [intensityCap, setIntensityCap] = useState(10);
-  const [embeddedIntensityCap, setEmbeddedIntensityCap] = useState(0.2);
   const [allowEnhanced, setAllowEnhanced] = useState(false);
   const [allowBurst, setAllowBurst] = useState(false);
-  const [grant, setGrant] = useState<GrantSnapshot | null>(null);
-  const [embeddedGrant, setEmbeddedGrant] = useState<DeviceRuntimeVideoGrantSnapshot | null>(null);
+  const [routingGrant, setRoutingGrant] = useState<VideoAiRoutingGrantSnapshot | null>(null);
   const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
   const [embeddedDevices, setEmbeddedDevices] = useState<DeviceSnapshot | null>(null);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const outputTargetsRef = useRef<UnifiedOutputTarget[]>([]);
   const startOperationRef = useRef(0);
   const autoStartRef = useRef<number | null>(null);
   const lifecycleEffectRef = useRef(0);
@@ -197,12 +191,9 @@ export function App() {
             llm: null,
             scene: null,
             hasLease: () => hasDeviceLease('video'),
-            getSafetyIntensityCap: () => {
-              const current = loadDeviceSafety();
-              return Math.min(current.maxIntensityA, current.maxIntensityB) / 200;
-            },
+            getSafetyIntensityCap: () => genericDeviceIntensityCap(loadDeviceSafety()),
             getMaxOutputLeaseMs: () =>
-              Math.min(5_000, Math.max(1, loadDeviceSafety().maxBurstDurationMs)),
+              genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
           })
         : null,
     [native.deviceRuntime],
@@ -214,15 +205,73 @@ export function App() {
     if (!genericService) return;
     return genericService.subscribe(setEmbeddedDevices);
   }, [genericService]);
-  const currentControl = useCallback((): VideoTargetFamily | null => {
-    const now = Date.now();
-    const genericGrant = genericService?.getGrant();
-    if (genericGrant && !genericGrant.revoked && now < genericGrant.expiresAt) return 'embedded';
-    const dgLabGrant = service.getGrant();
-    if (dgLabGrant && !dgLabGrant.revoked && now < dgLabGrant.expiresAt) return 'dg-lab';
-    return null;
-  }, [genericService, service]);
-
+  const [aiRouter] = useState(
+    () =>
+      new VideoAiDeviceRouter({
+        getLlm: () => null,
+        getTargets: () => [],
+        hasLease: () => hasDeviceLease('video'),
+        invoke: async (action, masterGrant) => {
+          const remaining = Math.max(1_000, masterGrant.expiresAt - Date.now());
+          if (action.target.kind === 'embedded') {
+            if (!genericService) throw new Error('通用设备运行时不可用');
+            return genericService.executeAiAction(
+              {
+                deviceId: action.target.deviceId,
+                featureId: action.target.featureId,
+                intensityCap: Math.min(action.target.capA, action.target.capB),
+                allowEnhanced: masterGrant.allowEnhanced,
+                durationMs: remaining,
+                cadenceMs: masterGrant.cadenceMs,
+                captureIntervalMs: masterGrant.captureIntervalMs,
+              },
+              {
+                id: action.id,
+                action: action.action === 'stop' ? 'stop' : 'start',
+                intensity: action.value,
+                outputLeaseMs: Math.min(loadDeviceSafety().maxBurstDurationMs, 5_000),
+              },
+            );
+          }
+          const target = service
+            .getTargets()
+            .find(
+              (candidate) =>
+                candidate.kind === action.target.kind &&
+                candidate.targetId === action.target.targetId,
+            );
+          if (!target) throw new Error('授权物理目标已断开或身份已失效');
+          return service.executeAiAction(
+            target,
+            {
+              id: action.id,
+              action: action.action,
+              channel: action.channel,
+              value: action.value,
+              durationMs: action.durationMs,
+            },
+            {
+              intensityCap: action.channel === 'A' ? action.target.capA : action.target.capB,
+              allowEnhanced: masterGrant.allowEnhanced,
+              allowBurst: masterGrant.allowBurst,
+              durationMs: remaining,
+              cadenceMs: masterGrant.cadenceMs,
+              captureIntervalMs: masterGrant.captureIntervalMs,
+            },
+          );
+        },
+        stopAll: async () => {
+          const results = await Promise.allSettled([
+            service.emergencyStop(),
+            ...(genericService ? [genericService.emergencyStop()] : []),
+          ]);
+          const failure = results.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          );
+          if (failure) throw failure.reason;
+        },
+      }),
+  );
   const visionEnabled = Boolean(
     isVideoLlmConfigured(config) && llm?.capabilities?.imageInput === true,
   );
@@ -238,14 +287,11 @@ export function App() {
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
-      const text =
-        currentControl() === 'embedded'
-          ? await genericService!.observe(image, signal)
-          : await service.observe(image, signal);
+      const text = await aiRouter.observe(image, signal);
       setObservations((current) => [...current, { step: current.length + 1, text }].slice(-20));
       return text;
     },
-    [currentControl, genericService, service],
+    [aiRouter],
   );
 
   const [session] = useState(
@@ -256,11 +302,7 @@ export function App() {
         stopAuthorizedTargets: async (reason) => {
           if (reason === 'emergency') return;
           try {
-            if (currentControl() === 'embedded') {
-              await genericService?.stop(reason as VisualSafetyStopReason);
-            } else {
-              await service.stop(reason as VisualSafetyStopReason);
-            }
+            await aiRouter.stop();
           } catch {
             setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
           }
@@ -272,8 +314,7 @@ export function App() {
             snapshot.stopReason !== 'pause' &&
             snapshot.stopReason !== 'stop'
           ) {
-            setGrant(null);
-            setEmbeddedGrant(null);
+            setRoutingGrant(null);
           }
         },
       }),
@@ -289,12 +330,8 @@ export function App() {
     startOperationRef.current += 1;
     autoStartRef.current = null;
     session.emergencyStop();
-    setGrant(null);
-    setEmbeddedGrant(null);
-    const results = await Promise.allSettled([
-      service.emergencyStop(),
-      ...(genericService ? [genericService.emergencyStop()] : []),
-    ]);
+    setRoutingGrant(null);
+    const results = await Promise.allSettled([aiRouter.emergencyStop()]);
     const failure = results.find(
       (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
@@ -302,7 +339,7 @@ export function App() {
       setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
       throw failure.reason;
     }
-  }, [genericService, service, session]);
+  }, [aiRouter, session]);
 
   useSafetySession({
     id: 'video',
@@ -316,55 +353,37 @@ export function App() {
     onRevoke: async () => {
       startOperationRef.current += 1;
       autoStartRef.current = null;
-      session.failSafeStop('lease-loss');
-      const results = await Promise.allSettled([
-        service.stop('lease-loss'),
-        ...(genericService ? [genericService.stop('lease-loss')] : []),
-      ]);
-      const failure = results.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (failure) throw failure.reason;
+      try {
+        await aiRouter.stop();
+      } finally {
+        session.haltAfterExternalStop('lease-loss');
+        setRoutingGrant(null);
+      }
     },
     devices: () => service.getDeviceSummaries(safety),
   });
 
   useEffect(() => {
-    if (!grant) return;
-    const connected = [
-      ...devices.coyotes,
-      ...(devices.opossumTarget ? [devices.opossumTarget] : []),
-    ].some((target) => target.kind === grant.targetKind && target.targetId === grant.targetId);
-    if (!connected) session.failSafeStop('device-loss');
-  }, [devices.coyotes, devices.opossumTarget, grant, session]);
-
-  useEffect(() => {
-    if (!embeddedGrant) return;
-    const connected = embeddedDevices?.devices.some(
-      (device) =>
-        device.deviceId === embeddedGrant.deviceId &&
-        device.capabilities.some(
-          (feature) => feature.kind === 'vibrate' && feature.featureId === embeddedGrant.featureId,
-        ),
-    );
-    if (!connected) session.failSafeStop('device-loss');
-  }, [embeddedDevices, embeddedGrant, session]);
+    if (!routingGrant || routingGrant.revoked) return;
+    const live = new Set(outputTargetsRef.current.map(({ id }) => id));
+    if (routingGrant.targets.some(({ id }) => !live.has(id))) {
+      session.failSafeStop('device-loss');
+      setRoutingGrant(null);
+    }
+  }, [devices, embeddedDevices, routingGrant, session]);
 
   useEffect(() => {
     if (
       (cameraState === 'off' || cameraState === 'error') &&
-      (visual.status === 'running' ||
-        visual.status === 'paused' ||
-        grant !== null ||
-        embeddedGrant !== null)
+      (visual.status === 'running' || visual.status === 'paused' || routingGrant !== null)
     ) {
       startOperationRef.current += 1;
       autoStartRef.current = null;
       // VisualSession synchronously publishes the safety stop; its onChange
-      // callback clears both grant snapshots in one place.
+      // callback clears the routing grant snapshot in one place.
       session.failSafeStop('camera-ended');
     }
-  }, [cameraState, embeddedGrant, grant, session, visual.status]);
+  }, [cameraState, routingGrant, session, visual.status]);
 
   const stopEverything = useCallback(
     (reason: 'hidden' | 'unmount' = 'hidden') => {
@@ -380,6 +399,7 @@ export function App() {
 
   useEffect(() => {
     const effectEpoch = ++lifecycleEffectRef.current;
+    const lifecycleRef = lifecycleEffectRef;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') stopEverything('hidden');
     };
@@ -389,67 +409,41 @@ export function App() {
       stopEverything('unmount');
       queueMicrotask(() => {
         // React StrictMode immediately replays effects with the same service instances.
-        if (lifecycleEffectRef.current !== effectEpoch) return;
+        if (lifecycleRef.current !== effectEpoch) return;
         void service.dispose();
         void genericService?.dispose();
       });
     };
   }, [genericService, service, stopEverything]);
 
-  const connectedTargets = [
+  const dgLabTargets = [
     ...devices.coyotes,
     ...(devices.opossumTarget ? [devices.opossumTarget] : []),
   ];
-  const selectedTarget = connectedTargets.find(
-    (target) => target.kind === targetKind && target.targetId === targetId,
+  const outputTargets = createUnifiedOutputTargets(
+    dgLabTargets.map((target) => ({
+      kind: target.kind,
+      targetId: target.targetId,
+      name: target.name,
+      battery: target.state.battery,
+      active:
+        target.kind === 'coyote'
+          ? target.state.strengthA > 0 || target.state.strengthB > 0
+          : target.state.intensityA > 0 || target.state.intensityB > 0,
+    })),
+    embeddedDevices,
   );
-  const embeddedTargets =
-    embeddedDevices?.devices.flatMap((device) =>
-      device.capabilities.flatMap((feature) =>
-        feature.kind === 'vibrate'
-          ? [
-              {
-                deviceId: device.deviceId,
-                featureId: feature.featureId,
-                name: device.name,
-                feature,
-              },
-            ]
-          : [],
-      ),
-    ) ?? [];
-  const selectedEmbeddedTarget = embeddedTargets.find(
-    (target) => target.deviceId === embeddedDeviceId && target.featureId === embeddedFeatureId,
-  );
-  const targetConnected =
-    targetFamily === 'embedded'
-      ? selectedEmbeddedTarget !== undefined
-      : selectedTarget !== undefined;
-  const targetSafetyCap =
-    targetKind === 'coyote'
-      ? channel === 'A'
-        ? safety.maxStrengthA
-        : safety.maxStrengthB
-      : channel === 'A'
-        ? safety.maxIntensityA
-        : safety.maxIntensityB;
-
-  const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), targetSafetyCap);
-  const embeddedSafetyCap = Math.min(safety.maxIntensityA, safety.maxIntensityB) / 200;
-  const effectiveEmbeddedIntensityCap = Math.min(
-    embeddedSafetyCap,
-    Math.max(0, embeddedIntensityCap),
-  );
-  const activeGrant = targetFamily === 'embedded' ? embeddedGrant : grant;
-
-  async function stopPreviousControl(next: VideoTargetFamily) {
-    const current = currentControl();
-    if (!current || current === next) return;
-    if (current === 'embedded') await genericService?.stop('device-loss');
-    else await service.stop('device-loss');
-    setGrant(null);
-    setEmbeddedGrant(null);
-  }
+  const allowedTargets: VideoAiAllowedTarget[] = outputTargets.map((target) => ({
+    ...target,
+    capA: outputTargetSafetyControl(target, 'A', safety).max,
+    capB: outputTargetSafetyControl(target, 'B', safety).max,
+  }));
+  const targetConnected = allowedTargets.length > 0;
+  const activeGrant = routingGrant;
+  useEffect(() => {
+    outputTargetsRef.current = outputTargets;
+    aiRouter.updateInputs(llm, outputTargets);
+  }, [aiRouter, llm, outputTargets]);
 
   async function compensateCancelledStart() {
     try {
@@ -459,7 +453,7 @@ export function App() {
     }
   }
 
-  async function authorizeControl(operation: number): Promise<ActiveGrantSnapshot | null> {
+  async function authorizeControl(operation: number): Promise<VideoAiRoutingGrantSnapshot | null> {
     if (!targetConnected) {
       setLocalError('请选择输出功能');
       return null;
@@ -468,46 +462,20 @@ export function App() {
       setLocalError(null);
       await grantDeviceLease('video');
       if (operation !== startOperationRef.current) return null;
-      await stopPreviousControl(targetFamily);
-      if (operation !== startOperationRef.current) return null;
-
-      let authorized: ActiveGrantSnapshot;
-      if (targetFamily === 'embedded') {
-        if (!genericService || !selectedEmbeddedTarget) throw new Error('通用设备运行时不可用');
-        authorized = await genericService.authorize({
-          deviceId: selectedEmbeddedTarget.deviceId,
-          featureId: selectedEmbeddedTarget.featureId,
-          intensityCap: effectiveEmbeddedIntensityCap,
-          allowEnhanced,
-          durationMs: durationMinutes * 60_000,
-          cadenceMs: cadenceSeconds * 1000,
-          captureIntervalMs,
-        });
-      } else {
-        authorized = await service.authorize({
-          targetKind,
-          targetId,
-          channel,
-          intensityCap: effectiveIntensityCap,
-          allowEnhanced,
-          allowBurst,
-          durationMs: durationMinutes * 60_000,
-          cadenceMs: cadenceSeconds * 1000,
-          captureIntervalMs,
-        });
-      }
+      const authorized = await aiRouter.authorize({
+        targets: allowedTargets,
+        allowEnhanced,
+        allowBurst,
+        durationMs: durationMinutes * 60_000,
+        cadenceMs: cadenceSeconds * 1000,
+        captureIntervalMs,
+      });
 
       if (operation !== startOperationRef.current) {
         await compensateCancelledStart();
         return null;
       }
-      if (targetFamily === 'embedded') {
-        setGrant(null);
-        setEmbeddedGrant(authorized as DeviceRuntimeVideoGrantSnapshot);
-      } else {
-        setEmbeddedGrant(null);
-        setGrant(authorized as GrantSnapshot);
-      }
+      setRoutingGrant(authorized);
       session.resetEmergencyLatch();
       return authorized;
     } catch (error) {
@@ -519,7 +487,7 @@ export function App() {
   }
 
   async function startSession(
-    authorizedGrant: ActiveGrantSnapshot | null,
+    authorizedGrant: VideoAiRoutingGrantSnapshot | null,
     now: number,
     operation: number,
   ) {
@@ -528,15 +496,9 @@ export function App() {
       setLocalError('授权已失效');
       return;
     }
-    if (currentControl() !== targetFamily) {
-      setLocalError('当前目标尚未获得本次 Video 授权');
-      return;
-    }
     try {
       setLocalError(null);
       if (visual.status !== 'paused') setObservations([]);
-      if (targetFamily === 'embedded') await genericService!.beginRun();
-      else service.beginRun();
       if (operation !== startOperationRef.current) {
         await compensateCancelledStart();
         return;
@@ -560,8 +522,7 @@ export function App() {
     }
     const operation = ++startOperationRef.current;
     autoStartRef.current = operation;
-    setGrant(null);
-    setEmbeddedGrant(null);
+    setRoutingGrant(null);
     setObservations([]);
     await startCamera();
   }
@@ -582,10 +543,7 @@ export function App() {
   async function connect(kind: VideoOutputKind) {
     try {
       setLocalError(null);
-      const target = await service.connect(kind);
-      setTargetFamily('dg-lab');
-      setTargetKind(target.kind);
-      setTargetId(target.targetId);
+      await service.connect(kind);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
     }
@@ -598,17 +556,6 @@ export function App() {
       await grantDeviceLease('video');
       const snapshot = await genericService.discoverDevices();
       setEmbeddedDevices(snapshot);
-      const first = snapshot.devices.flatMap((device) =>
-        device.capabilities.flatMap((feature) =>
-          feature.kind === 'vibrate'
-            ? [{ deviceId: device.deviceId, featureId: feature.featureId }]
-            : [],
-        ),
-      )[0];
-      if (first) {
-        setEmbeddedDeviceId(first.deviceId);
-        setEmbeddedFeatureId(first.featureId);
-      }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
     }
@@ -616,6 +563,16 @@ export function App() {
 
   const error = localError ?? cameraError ?? visual.error;
   const frame = visual.latestFrame;
+  const activateSetup = () => {
+    if (visionEnabled && targetConnected) {
+      void beginExperience();
+      return;
+    }
+    startOperationRef.current += 1;
+    autoStartRef.current = null;
+    setRoutingGrant(null);
+    void startCamera();
+  };
 
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
@@ -637,8 +594,7 @@ export function App() {
                 startOperationRef.current += 1;
                 autoStartRef.current = null;
                 session.failSafeStop('camera-ended');
-                setGrant(null);
-                setEmbeddedGrant(null);
+                setRoutingGrant(null);
                 stopCamera();
               }}
             />
@@ -679,237 +635,35 @@ export function App() {
             )}
           </div>
         ) : (
-          <section className="mx-auto flex max-w-[680px] flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-5">
-            <header className="flex items-center justify-between gap-3">
-              <div>
-                <h1 className="font-semibold">Video 设置</h1>
-                <p className="mt-1 text-xs text-[var(--text-faint)]">确认后直接显示处理画面</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => openSettings('ai-video')}
-                aria-label="打开 AI 设置"
-                className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-            </header>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                摄像头
-                <select
-                  value={facingMode}
-                  onChange={(event) => setFacingMode(event.target.value as CameraFacingMode)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="environment">后置</option>
-                  <option value="user">前置</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                输出
-                <select
-                  value={targetFamily}
-                  onChange={(event) => setTargetFamily(event.target.value as VideoTargetFamily)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="dg-lab">郊狼 / 负鼠</option>
-                  {genericService && <option value="embedded">通用设备</option>}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {targetFamily === 'embedded' ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void discoverEmbeddedDevices()}
-                >
-                  <Link className="h-3.5 w-3.5" /> 查找设备
-                </Button>
-              ) : (
-                <>
-                  {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
-                    <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                      <Link className="h-3.5 w-3.5" />
-                      {devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼'}
-                    </Button>
-                  )}
-                  {!devices.opossumTarget && (
-                    <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
-                      <Link className="h-3.5 w-3.5" /> 连接负鼠
-                    </Button>
-                  )}
-                </>
-              )}
-              <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
-            </div>
-
-            {targetFamily === 'embedded' ? (
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                振动功能
-                <select
-                  value={embeddedFeatureId}
-                  onChange={(event) => {
-                    const next = embeddedTargets.find(
-                      (target) => target.featureId === event.target.value,
-                    );
-                    setEmbeddedFeatureId(event.target.value);
-                    if (next) setEmbeddedDeviceId(next.deviceId);
-                  }}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  <option value="">请选择</option>
-                  {embeddedTargets.map((target, index) => (
-                    <option key={target.featureId} value={target.featureId}>
-                      {target.name} · 振动 {index + 1}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                  目标
-                  <select
-                    value={targetId}
-                    onChange={(event) => {
-                      const nextTarget = connectedTargets.find(
-                        (target) => target.targetId === event.target.value,
-                      );
-                      setTargetId(event.target.value);
-                      if (nextTarget) setTargetKind(nextTarget.kind);
-                    }}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                  >
-                    <option value="">请选择</option>
-                    {connectedTargets.map((target) => (
-                      <option key={target.targetId} value={target.targetId}>
-                        {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                  通道
-                  <select
-                    value={channel}
-                    onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                  >
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                  </select>
-                </label>
-              </div>
-            )}
-
-            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-              强度上限 ·{' '}
-              {targetFamily === 'embedded'
-                ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
-                : `${effectiveIntensityCap}/${targetSafetyCap}`}
-              <input
-                type="range"
-                min={0}
-                max={targetFamily === 'embedded' ? 1 : targetSafetyCap}
-                step={targetFamily === 'embedded' ? 0.01 : 1}
-                value={
-                  targetFamily === 'embedded'
-                    ? effectiveEmbeddedIntensityCap
-                    : effectiveIntensityCap
-                }
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (targetFamily === 'embedded') setEmbeddedIntensityCap(value);
-                  else setIntensityCap(value);
-                }}
-              />
-            </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                时长
-                <select
-                  value={durationMinutes}
-                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  {[1, 5, 10, 15].map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {minutes} 分钟
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                观察间隔
-                <select
-                  value={cadenceSeconds}
-                  onChange={(event) => setCadenceSeconds(Number(event.target.value))}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
-                >
-                  {[5, 10, 15, 30].map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds} 秒
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-wrap gap-4 text-xs text-[var(--text-soft)]">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={allowEnhanced}
-                  onChange={(event) => setAllowEnhanced(event.target.checked)}
-                />
-                允许增强
-              </label>
-              {targetFamily === 'dg-lab' && (
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={allowBurst}
-                    onChange={(event) => setAllowBurst(event.target.checked)}
-                  />
-                  允许脉冲
-                </label>
-              )}
-            </div>
-
-            {!visionEnabled && (
-              <button
-                type="button"
-                onClick={() => openSettings('ai-video')}
-                className="text-left text-xs text-[var(--accent-strong)] underline underline-offset-2"
-              >
-                完成视觉模型设置后可启用 AI 控制
-              </button>
-            )}
-            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-
-            <Button
-              onClick={() => {
-                if (visionEnabled && targetConnected) {
-                  void beginExperience();
-                } else {
-                  startOperationRef.current += 1;
-                  autoStartRef.current = null;
-                  setGrant(null);
-                  setEmbeddedGrant(null);
-                  void startCamera();
-                }
-              }}
-              disabled={cameraState === 'starting'}
-            >
-              <CirclePlay className="h-4 w-4" />
-              {visionEnabled && targetConnected ? '开启' : '预览摄像头'}
-            </Button>
-          </section>
+          <VideoSetupPanel
+            view={{
+              facingMode,
+              embeddedAvailable: genericService !== null,
+              showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
+              coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
+              showOpossumConnect: devices.opossumTarget === null,
+              targets: outputTargets,
+              durationMinutes,
+              cadenceSeconds,
+              allowEnhanced,
+              allowBurst,
+              visionEnabled,
+              error,
+              ctaLabel: visionEnabled && targetConnected ? '开启' : '预览摄像头',
+              ctaDisabled: cameraState === 'starting',
+            }}
+            actions={{
+              openVideoSettings: () => openSettings('ai-video'),
+              setFacingMode,
+              connect: (kind) => void connect(kind),
+              discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
+              setDurationMinutes,
+              setCadenceSeconds,
+              setAllowEnhanced,
+              setAllowBurst,
+              activate: activateSetup,
+            }}
+          />
         )}
       </div>
     </div>
@@ -944,5 +698,3 @@ function stopReasonLabel(reason: NonNullable<VisualSessionSnapshot['stopReason']
     emergency: '紧急停止',
   }[reason];
 }
-
-export default App;

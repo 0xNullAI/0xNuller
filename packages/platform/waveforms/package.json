@@ -11,8 +11,11 @@
     "react": "^19.2.5"
   },
   "dependencies": {
+    "@0xnullai/market-client": "0.1.0",
     "@0xnullai/sync": "0.1.0",
     "@dg-kit/core": "1.16.3",
+    "@dg-kit/waveforms": "1.16.3",
+    "fflate": "^0.8.2",
     "idb-keyval": "^6.2.2",
     "zod": "^4.4.3"
   }

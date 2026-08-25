@@ -35,7 +35,14 @@ jobs:
       - run: npm ci
       - run: npm run verify:kit
       - run: npm run typecheck:kit
-      - run: node scripts/run-vitest.mjs run --project=kit
+      - name: Test affected Kit projects on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=kit --prepared
+      - name: Test the full Kit domain on protected branches
+        if: github.event_name != 'pull_request'
+        run: npm run test:kit:prepared
 
   kit-gate:
     if: always()

@@ -5,6 +5,7 @@ import {
   V3_NOTIFY_CHAR,
   V3_PRIMARY_SERVICE,
   V3_WRITE_CHAR,
+  type GattReadyRetryOptions,
 } from '@dg-kit/protocol';
 import type { SensorState } from '@dg-kit/core';
 import { WebBluetoothCivetEdgingClient, WebBluetoothPawPrintsClient } from './sensor-client.js';
@@ -12,6 +13,29 @@ import {
   CIVET_EDGING_REQUEST_DEVICE_OPTIONS,
   PAW_PRINTS_REQUEST_DEVICE_OPTIONS,
 } from './request-device-options.js';
+
+interface ProtocolModule {
+  runWithGattReadyRetry(
+    attempt: () => Promise<void>,
+    options: GattReadyRetryOptions,
+  ): Promise<void>;
+  [name: string]: unknown;
+}
+
+vi.mock('@dg-kit/protocol', async (importOriginal) => {
+  const actual = await importOriginal<ProtocolModule>();
+  return {
+    ...actual,
+    runWithGattReadyRetry: (
+      attempt: () => Promise<void>,
+      options: Parameters<typeof actual.runWithGattReadyRetry>[1],
+    ) =>
+      actual.runWithGattReadyRetry(attempt, {
+        ...options,
+        gattReadyInitialDelayMs: 0,
+      }),
+  };
+});
 
 // Minimal fake GATT characteristic, kept local to this file (mirrors
 // DG-Kit's own adapter test convention of not sharing mocks across files).

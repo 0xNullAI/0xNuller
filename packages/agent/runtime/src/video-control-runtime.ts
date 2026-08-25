@@ -318,6 +318,27 @@ export class VideoControlRuntime {
     }
   }
 
+  /** Execute one already-targeted Video tool call and await the final safety boundary. */
+  async executeAuthorizedTool(toolCall: ToolCall): Promise<string> {
+    const generation = this.beginRun();
+    const context: ActionContext = {
+      sessionId: VIDEO_SESSION_ID,
+      sourceType: 'web',
+      traceId: `video-direct-${generation}-${this.now()}`,
+    };
+    this.effectGenerations.set(context.traceId, generation);
+    try {
+      return await this.toolExecutor.execute({
+        session: this.session,
+        toolCall,
+        context,
+        turnState: createTurnState(),
+      });
+    } finally {
+      this.effectGenerations.delete(context.traceId);
+    }
+  }
+
   abortInference(): void {
     this.activeInference?.abort();
     this.activeInference = null;

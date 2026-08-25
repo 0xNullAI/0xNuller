@@ -1,28 +1,21 @@
 import type { JSX } from 'react';
 import { useRef, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
-import { unzipSync, strFromU8 } from 'fflate';
-import type { BatchUploadPayload, ItemType, UploadPayload } from '../../shared/schema';
+import type { BatchUploadPayload, ItemType } from '../../shared/schema';
 import { parsePulseText } from '../../shared/pulse';
 import { batchUploadItems, uploadItem } from '../api';
+import {
+  buildManualUploadPayload,
+  createUploadTemplate,
+  parseUploadFile,
+  parseWaveInput,
+  readPulseFromFile,
+  type AiMode,
+  type Frame,
+  type UploadRole,
+  type WaveformModality,
+} from '../upload-model';
 import { WaveformPreview } from './WaveformPreview';
-
-type Frame = [number, number];
-
-// Pull the .pulse text out of an uploaded file: read a .pulse directly, take the first
-// .pulse entry out of a .zip.
-async function readPulseFromFile(file: File): Promise<{ text: string; embeddedName: string }> {
-  if (/\.zip$/i.test(file.name)) {
-    const buf = new Uint8Array(await file.arrayBuffer());
-    const entries = unzipSync(buf);
-    const pulseName = Object.keys(entries).find((n) => /\.pulse$/i.test(n) && !n.startsWith('__'));
-    if (!pulseName) throw new Error('压缩包里没有找到 .pulse 文件');
-    const text = strFromU8(entries[pulseName]!);
-    return { text, embeddedName: pulseName.replace(/.*\//, '').replace(/\.pulse$/i, '') };
-  }
-  const text = await file.text();
-  return { text, embeddedName: file.name.replace(/\.pulse$/i, '') };
-}
 
 interface Props {
   onClose: () => void;
@@ -30,26 +23,9 @@ interface Props {
   onChanged: () => void; // file batch upload succeeded -> refresh the list (stay open so the results are visible / more can be uploaded)
 }
 
-// Parse waveform frames out of user input: accepts .pulse text, or a frames JSON array
-// pasted directly.
-function parseWaveInput(text: string): { frames: Frame[]; pulse?: string } {
-  const trimmed = text.trim();
-  if (/^Dungeonlab\+pulse:/i.test(trimmed)) {
-    const { frames } = parsePulseText(trimmed);
-    return { frames: frames as Frame[], pulse: trimmed };
-  }
-  // Try it as JSON: either {frames:[...]} or a bare [[f,s],...]
-  const data = JSON.parse(trimmed) as unknown;
-  const frames = Array.isArray(data) ? data : (data as { frames?: unknown }).frames;
-  if (!Array.isArray(frames)) throw new Error('JSON 中找不到 frames 数组');
-  return { frames: frames as Frame[] };
-}
-
 export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Element {
   const [type, setType] = useState<ItemType>('waveform');
-  const [waveformModality, setWaveformModality] = useState<'electrostimulation' | 'vibration'>(
-    'electrostimulation',
-  );
+  const [waveformModality, setWaveformModality] = useState<WaveformModality>('electrostimulation');
   const [name, setName] = useState('');
   const [author, setAuthor] = useState('');
   const [description, setDescription] = useState('');
@@ -66,8 +42,8 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
   const [setting, setSetting] = useState('');
   const [playerMin, setPlayerMin] = useState('2');
   const [playerMax, setPlayerMax] = useState('4');
-  const [aiMode, setAiMode] = useState<'none' | 'solo' | 'multi'>('none');
-  const [roles, setRoles] = useState<{ name: string; description: string; aiPlayable: boolean }[]>([
+  const [aiMode, setAiMode] = useState<AiMode>('none');
+  const [roles, setRoles] = useState<UploadRole[]>([
     { name: '', description: '', aiPlayable: false },
   ]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -91,73 +67,6 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     URL.revokeObjectURL(url);
   };
 
-  // JSON template for the current type: filled in with sample content that uploads as-is,
-  // so the user just edits the fields.
-  // Fields common to all types: name (required) / author (uploader nickname) /
-  // description / tags.
-  const templateFor = (t: ItemType): unknown => {
-    if (t === 'waveform')
-      return {
-        type: 'waveform',
-        name: '示例波形 · 渐强脉冲',
-        author: '你的昵称（可选，留空则匿名）',
-        description: '由弱到强再回落的循环脉冲，适合作为前戏铺垫。',
-        tags: ['渐强', '节奏感'],
-        // frames: [encodedFrequency(10..240), strength(0..100)], one frame is about 25ms. Can be swapped for pulse text instead.
-        content: {
-          modality: waveformModality,
-          frames: [
-            [10, 20],
-            [15, 40],
-            [20, 60],
-            [25, 80],
-            [20, 60],
-            [15, 40],
-          ],
-          pulse: '',
-        },
-      };
-    if (t === 'scenario')
-      return {
-        type: 'scenario',
-        name: '示例场景 · 雨夜便利店',
-        author: '你的昵称（可选，留空则匿名）',
-        description: '深夜值班的便利店店员，与一位常客之间的暧昧拉扯。',
-        icon: '🎭',
-        tags: ['DG Agent', '日常', '都市'],
-        content: {
-          prompt:
-            '你是一家深夜便利店的店员，店里只剩你和一位每晚都来的熟客。外面下着大雨，气氛安静而暧昧。请以第一人称展开这段相遇…',
-        },
-      };
-    return {
-      type: 'multi-scene',
-      name: '示例多人场景 · 末日避难所',
-      author: '你的昵称（可选，留空则匿名）',
-      description: '资源枯竭的地下避难所里，幸存者们为生存与权力博弈。',
-      icon: '🎬',
-      tags: ['末日', '生存', '权谋'],
-      content: {
-        setting:
-          '一座末日后的地下避难所，物资濒临耗尽，外面是被污染的废土。幸存者必须在猜疑与合作之间做出选择。',
-        playerCount: { min: 2, max: 4 },
-        aiMode: 'none', // none = humans only / solo = a single AI / multi = several AIs
-        roles: [
-          {
-            name: '避难所主管',
-            description: '掌握物资分配权的冷静领袖，信奉秩序高于一切。',
-            aiPlayable: false,
-          },
-          {
-            name: '流浪医生',
-            description: '唯一懂医术的外来者，立场暧昧、动机成谜。',
-            aiPlayable: true,
-          },
-        ],
-      },
-    };
-  };
-
   const downloadTemplate = () => {
     const fn =
       type === 'waveform'
@@ -165,103 +74,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         : type === 'scenario'
           ? '单人场景模板.json'
           : '多人场景模板.json';
-    downloadText(fn, JSON.stringify(templateFor(type), null, 2));
-  };
-
-  // —— Upload: zip / single JSON / single .pulse are all detected automatically and
-  // published through the same batch path ——
-
-  const baseName = (n: string) => n.replace(/.*\//, '');
-
-  // One piece of .pulse text -> one waveform item (name taken from the embedded name,
-  // falling back to the file name).
-  const pulseToItem = (text: string, fallbackName: string): unknown => {
-    const { frames, name: embedded } = parsePulseText(text);
-    return {
-      type: 'waveform',
-      name: embedded || fallbackName,
-      content: { frames, pulse: text, modality: waveformModality },
-    };
-  };
-
-  // One piece of JSON text -> an array of items (a single object -> [object], an array ->
-  // as-is).
-  const parseItemsJson = (text: string): unknown[] => {
-    const data = JSON.parse(text) as unknown;
-    return Array.isArray(data) ? data : [data];
-  };
-
-  // If a waveform item references a .pulse inside the archive by file name (content.pulse /
-  // pulse / file), or gives the pulse text directly, parse out the frames and fill them in
-  // automatically; otherwise pass it through unchanged for the backend to validate.
-  const resolveWaveItem = (
-    it: Record<string, unknown>,
-    pulseMap: Record<string, string>,
-    used: Set<string>,
-  ): unknown => {
-    if (it.type !== 'waveform') return it;
-    const c = (it.content ?? {}) as Record<string, unknown>;
-    if (Array.isArray(c.frames) && c.frames.length) return it; // frames already inlined
-    const candidates = [c.pulse, (it as { file?: unknown }).file, (c as { file?: unknown }).file];
-    for (const cand of candidates) {
-      if (typeof cand !== 'string') continue;
-      const key = baseName(cand);
-      if (pulseMap[key]) {
-        used.add(key);
-        const text = pulseMap[key]!;
-        return {
-          ...it,
-          content: {
-            ...c,
-            frames: parsePulseText(text).frames,
-            pulse: text,
-            modality: c.modality ?? waveformModality,
-          },
-        };
-      }
-      if (/^Dungeonlab\+pulse:/i.test(cand)) {
-        return {
-          ...it,
-          content: {
-            ...c,
-            frames: parsePulseText(cand).frames,
-            pulse: cand,
-            modality: c.modality ?? waveformModality,
-          },
-        };
-      }
-    }
-    return it;
-  };
-
-  // Any uploaded file -> an array of items to publish.
-  const parseUploadFile = async (file: File): Promise<unknown[]> => {
-    if (/\.zip$/i.test(file.name)) {
-      const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
-      const names = Object.keys(entries).filter(
-        (n) => !baseName(n).startsWith('__') && !n.endsWith('/'),
-      );
-      const pulseMap: Record<string, string> = {};
-      for (const n of names)
-        if (/\.pulse$/i.test(n)) pulseMap[baseName(n)] = strFromU8(entries[n]!);
-      const used = new Set<string>();
-      const items: unknown[] = [];
-      for (const n of names) {
-        if (!/\.json$/i.test(n)) continue;
-        for (const it of parseItemsJson(strFromU8(entries[n]!)))
-          items.push(resolveWaveItem((it ?? {}) as Record<string, unknown>, pulseMap, used));
-      }
-      // Each .pulse not referenced by any JSON becomes a waveform item of its own
-      for (const [key, text] of Object.entries(pulseMap))
-        if (!used.has(key)) items.push(pulseToItem(text, key.replace(/\.pulse$/i, '')));
-      return items;
-    }
-    if (/\.pulse$/i.test(file.name)) {
-      return [pulseToItem(await file.text(), file.name.replace(/\.pulse$/i, ''))];
-    }
-    return parseItemsJson(await file.text()).map((it) =>
-      resolveWaveItem((it ?? {}) as Record<string, unknown>, {}, new Set()),
-    );
+    downloadText(fn, JSON.stringify(createUploadTemplate(type, waveformModality), null, 2));
   };
 
   // The 「上传」 button: pick a file -> parse automatically -> publish as a batch (both
@@ -272,7 +85,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     setError('');
     setBatchMsg('');
     try {
-      const items = await parseUploadFile(file);
+      const items = await parseUploadFile(file, waveformModality);
       if (items.length === 0) throw new Error('文件里没有可上传的条目');
       if (items.length > 50) throw new Error(`一次最多 50 条，当前 ${items.length} 条`);
       setBusy(true);
@@ -324,64 +137,24 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
     setError('');
     if (!name.trim()) return setError('请填写名称');
 
-    const tags = tagsText
-      .split(/[,，\s]+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .slice(0, 20);
-
-    let payload: UploadPayload;
+    let payload;
     try {
-      if (type === 'waveform') {
-        const { frames, pulse } = parseWaveInput(waveInput);
-        payload = {
-          type: 'waveform',
-          name: name.trim(),
-          description: description.trim() || undefined,
-          author: author.trim() || undefined,
-          tags,
-          content: { frames, pulse, modality: waveformModality },
-        };
-      } else if (type === 'scenario') {
-        if (!prompt.trim()) return setError('请填写场景提示词');
-        // Single-player scenes always carry the 'DG Agent' tag (deduped, capped at 20).
-        const scenarioTags = tags.includes('DG Agent') ? tags : ['DG Agent', ...tags].slice(0, 20);
-        payload = {
-          type: 'scenario',
-          name: name.trim(),
-          description: description.trim() || undefined,
-          author: author.trim() || undefined,
-          icon: icon.trim() || undefined,
-          tags: scenarioTags,
-          content: { prompt: prompt.trim() },
-        };
-      } else {
-        if (!setting.trim()) return setError('请填写世界观');
-        const cleanRoles = roles
-          .filter((r) => r.name.trim())
-          .map((r) => ({
-            name: r.name.trim(),
-            description: r.description.trim() || undefined,
-            aiPlayable: r.aiPlayable || undefined,
-          }));
-        if (cleanRoles.length === 0) return setError('至少填写一个角色');
-        const mn = Math.max(1, Number(playerMin) || 1);
-        const mx = Math.max(mn, Number(playerMax) || mn);
-        payload = {
-          type: 'multi-scene',
-          name: name.trim(),
-          description: description.trim() || undefined,
-          author: author.trim() || undefined,
-          icon: icon.trim() || undefined,
-          tags,
-          content: {
-            setting: setting.trim(),
-            roles: cleanRoles,
-            playerCount: { min: mn, max: mx },
-            aiMode,
-          },
-        };
-      }
+      payload = buildManualUploadPayload({
+        type,
+        waveformModality,
+        name,
+        author,
+        description,
+        icon,
+        tagsText,
+        waveInput,
+        prompt,
+        setting,
+        playerMin,
+        playerMax,
+        aiMode,
+        roles,
+      });
     } catch (e) {
       return setError((e as Error).message);
     }
@@ -616,10 +389,7 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                   </label>
                   <label className="field">
                     <span>AI 参与</span>
-                    <select
-                      value={aiMode}
-                      onChange={(e) => setAiMode(e.target.value as 'none' | 'solo' | 'multi')}
-                    >
+                    <select value={aiMode} onChange={(e) => setAiMode(e.target.value as AiMode)}>
                       <option value="none">纯人（无 AI）</option>
                       <option value="solo">单个 AI</option>
                       <option value="multi">多个 AI</option>

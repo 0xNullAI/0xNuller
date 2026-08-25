@@ -445,6 +445,17 @@ export function getProviderDefinition(id: ProviderId): ProviderDefinition | unde
   return PROVIDER_DEFINITIONS.find((provider) => provider.id === id);
 }
 
+/** Shared capability-filtered catalog used by every browser settings surface. */
+export function getBrowserProviderDefinitions(options?: {
+  requireImageInput?: boolean;
+}): ProviderDefinition[] {
+  return PROVIDER_DEFINITIONS.filter(
+    (provider) =>
+      provider.browserSupported &&
+      (!options?.requireImageInput || provider.imageInput === 'known-models'),
+  );
+}
+
 export function createProviderSettings(providerId: ProviderId): ProviderSettings {
   return normalizeProviderSettings({
     ...BASE_PROVIDER_SETTINGS,

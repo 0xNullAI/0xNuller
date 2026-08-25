@@ -6,6 +6,10 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./llm": "./src/llm.ts"
+  },
   "dependencies": {
     "@0xnullai/auth": "0.1.0",
     "@0xnullai/device-runtime": "0.1.0",
@@ -20,7 +24,9 @@
     "@dg-agent/runtime": "0.1.0",
     "@dg-agent/storage-browser": "0.1.0",
     "@dg-agent/waveforms": "0.1.0",
+    "@dg-kit/core": "1.16.3",
     "@dg-kit/protocol": "^1.16.3",
+    "@dg-kit/safety": "1.16.3",
     "@dg-kit/transport-webbluetooth": "^1.16.3"
   },
   "devDependencies": {

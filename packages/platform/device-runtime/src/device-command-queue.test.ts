@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeviceClient, DeviceCommand, DeviceState } from '@dg-kit/core';
-import { DGLabDevice } from './bluetooth';
+import { DGLabDevice } from './device-session';
 
 /**
  * Chat's device writes must all go through `DeviceCommandQueue`.
@@ -83,7 +83,7 @@ function makeGatedClient() {
   };
 }
 
-describe('Chat 的设备命令队列', () => {
+describe('共享设备会话的命令队列', () => {
   it('急停会作废已经排在路上的指令', async () => {
     const gated = makeGatedClient();
     const device = new DGLabDevice(() => gated.client);

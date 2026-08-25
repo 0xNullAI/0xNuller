@@ -33,12 +33,23 @@ jobs:
           node-version: '22.19.0'
           cache: npm
       - run: npm ci
+      - name: Prepare DG-Kit once
+        run: npm run build:kit
       - run: npm run verify:release
       - run: npm run verify:brand
       - run: npm run check:routes
-      - run: npm run typecheck:product
-      - run: npm run test:product
-      - run: npm run build:product:web
+      - name: Typecheck Product against prepared Kit
+        run: node scripts/run-workspace-domain.mjs typecheck product
+      - name: Test affected Product projects on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=product --prepared
+      - name: Test the full Product domain on protected branches
+        if: github.event_name != 'pull_request'
+        run: npm run test:product:prepared
+      - name: Build Web against prepared Kit
+        run: npm run build -w @0xnullai/web
 
   product-gate:
     if: always()

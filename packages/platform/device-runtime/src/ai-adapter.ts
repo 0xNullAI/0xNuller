@@ -1,4 +1,5 @@
 import type { DeviceSnapshot } from './contracts.js';
+import type { DeviceRuntimeProvider } from './runtime-provider.js';
 import type { BoundDeviceTools, DeviceToolDefinition, DeviceToolName } from './tool-provider.js';
 import { DEVICE_TOOL_CATALOG } from './tool-provider.js';
 
@@ -14,6 +15,19 @@ export const AI_DEVICE_TOOL_NAMES = [
 ] as const satisfies readonly DeviceToolName[];
 
 export type AiDeviceToolName = (typeof AI_DEVICE_TOOL_NAMES)[number];
+
+/** Shared product copy for permission prompts and tool registries. */
+export const AI_DEVICE_TOOL_DISPLAY_NAMES: Readonly<Record<AiDeviceToolName, string>> = {
+  device_snapshot: '读取通用设备状态',
+  device_vibrate: '通用设备振动',
+  device_stop: '停止通用设备功能',
+  device_emergency_stop: '紧急停止通用设备',
+};
+
+/** Only output-increasing generic tools need the surface's upper consent gate. */
+export const AI_DEVICE_PERMISSION_TOOL_NAMES: ReadonlySet<AiDeviceToolName> = new Set([
+  'device_vibrate',
+]);
 
 export interface AiDeviceToolDefinition {
   name: AiDeviceToolName;
@@ -132,6 +146,22 @@ export class AiDeviceToolAdapter {
     }
     return tools.invoke(call.name, { ...call.args, interactionId: call.id });
   }
+}
+
+/** Bind one AI surface lazily to the shell-owned runtime without starting hardware on composition. */
+export function createAiDeviceToolAdapter(
+  provider: DeviceRuntimeProvider,
+  moduleId: string,
+): AiDeviceToolAdapter {
+  if (!moduleId) throw new Error('AI device module id must not be empty');
+  return new AiDeviceToolAdapter({
+    tools: () => provider.forModule(moduleId),
+    snapshot: () => provider.current()?.snapshot() ?? null,
+  });
+}
+
+export function aiDeviceToolRequiresPermission(name: string): name is AiDeviceToolName {
+  return isAiDeviceToolName(name) && AI_DEVICE_PERMISSION_TOOL_NAMES.has(name);
 }
 
 export function sanitizeAiDeviceSnapshot(snapshot: DeviceSnapshot): DeviceSnapshot {

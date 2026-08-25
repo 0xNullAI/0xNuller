@@ -5,6 +5,7 @@ import {
   FREE_TRIAL_PROXY_URL,
   createFreeProxyHmacHeaders,
   createProviderSettings,
+  getBrowserProviderDefinitions,
   getProviderDefinition,
   normalizeProviderSettings,
   providerRequiresUserApiKey,
@@ -60,6 +61,17 @@ describe('providers-catalog', () => {
     expect(supportsProviderModelImageInput('openai', 'gpt-4o-private-preview')).toBe(false);
     expect(resolveProviderRuntimeSettings(createProviderSettings('free')).imageInput).toBe(false);
     expect(getProviderDefinition('free')?.imageInput).toBe('none');
+    expect(getBrowserProviderDefinitions({ requireImageInput: true })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'openai' }),
+        expect.objectContaining({ id: 'anthropic' }),
+      ]),
+    );
+    expect(
+      getBrowserProviderDefinitions({ requireImageInput: true }).every(
+        (provider) => provider.browserSupported && provider.imageInput === 'known-models',
+      ),
+    ).toBe(true);
   });
 
   it('labels DeepSeek as not recommended because of hallucinations', () => {

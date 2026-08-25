@@ -7,6 +7,7 @@ import {
 } from '../../../voice/src/lib/realtime/providers';
 import { useProviderVoices } from '../../../voice/src/hooks/use-provider-voices';
 import { loadSettings, saveSettings, type VoiceSettings } from '../../../voice/src/lib/settings';
+import { ProviderFieldControls } from './ProviderFieldControls';
 
 /**
  * Voice (realtime) provider.
@@ -66,17 +67,13 @@ export function VoiceProviderSection() {
           options={REALTIME_PROVIDER_DEFINITIONS.map((p) => ({ value: p.id, label: p.name }))}
         />
 
-        {def?.fields.map((field) => (
-          <label key={field.key} className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">{field.label}</span>
-            <Input
-              type={field.key === 'apiKey' ? 'password' : 'text'}
-              value={(current?.[field.key] as string) ?? ''}
-              placeholder={field.placeholder}
-              onChange={(e) => setField(field.key, e.target.value)}
-            />
-          </label>
-        ))}
+        <ProviderFieldControls
+          fields={def?.fields ?? []}
+          getValue={(key) => (current?.[key as keyof typeof current] as string) ?? ''}
+          onValueChange={(key, value) =>
+            setField(key as 'apiKey' | 'model' | 'baseUrl' | 'deployment', value)
+          }
+        />
 
         {/* Voice and speed follow the provider (every provider has a different voice
             table), so they stay in this group instead of getting their own section —

@@ -3,14 +3,14 @@ import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useDevice } from '../../chat/src/hooks/use-device';
-import { useWaveforms } from '../../chat/src/hooks/use-waveforms';
-import { useChannelRotation } from '../../chat/src/hooks/use-channel-rotation';
+import { useDevice, useChannelRotation } from '@0xnullai/device-runtime';
+import { useWaveforms } from '@0xnullai/waveforms';
 import type {
   ChannelRotationDevice,
   ChannelRotationWaveforms,
-} from '../../chat/src/hooks/use-channel-rotation';
-import type { DeviceClientFactory, RequestDeviceFn } from '../../chat/src/lib/bluetooth';
+  DeviceClientFactory,
+  RequestDeviceFn,
+} from '@0xnullai/device-runtime';
 import {
   isWaveformCompatibleWithDevice,
   type WaveformDefinition,
@@ -25,7 +25,7 @@ import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
-import { attachedDeviceSummaries, holdsAnyDevice } from '@control/lib/attached-devices';
+import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
 
 // A value of 5 becomes a B0 ceiling of only 2.5/100 in the Opossum protocol,
 // which is below the physical start threshold of many vibration motors. Start
@@ -68,8 +68,8 @@ function playbackIdForTarget(target: OutputTarget | null): string | null {
  */
 export default function App() {
   // Android has no Web Bluetooth; the native shell injects a plugin-blec client
-  // through NativeBridge. Control reuses Chat's seam because it runs on Chat's
-  // DeviceSession — this is the same seam, not a fourth one.
+  // through NativeBridge. Control uses the platform DeviceSession's shared
+  // transport seam rather than creating another device owner.
   const native = useNativeBridge();
   const device = useDevice({
     clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
@@ -471,39 +471,6 @@ export default function App() {
     };
   };
 
-  const emptyPlaybackA = devicePlayback.get(null, 'A');
-  const emptyPlaybackB = devicePlayback.get(null, 'B');
-  const emptyTab = waveTabs.__none__ ?? 'A';
-  const emptyActivePlayback = emptyTab === 'A' ? emptyPlaybackA : emptyPlaybackB;
-  const emptyPanel: OutputPanelState = {
-    waveTab: emptyTab,
-    onWaveTabChange: (channel) => setWaveTabs((current) => ({ ...current, __none__: channel })),
-    waveforms: waveformsForOutput(null, waveforms.allWaveforms),
-    queue: emptyActivePlayback.queue,
-    queueA: emptyPlaybackA.queue,
-    queueB: emptyPlaybackB.queue,
-    activeWaveId: null,
-    playMode: emptyActivePlayback.mode,
-    intervalSec: emptyActivePlayback.intervalSec,
-    onPlayModeChange: emptyActivePlayback.setMode,
-    onIntervalChange: emptyActivePlayback.setIntervalSec,
-    onToggleWaveform: () => undefined,
-    onRemoveWaveform: waveforms.removeWaveform,
-    onImportFile: waveforms.importFile,
-    onOpenMarket: () => {
-      setMarketModality('electrostimulation');
-      setMarketOpen(true);
-    },
-    fireEnabledA: false,
-    fireEnabledB: false,
-    fireLimitA: 0,
-    fireLimitB: 0,
-    firingA: false,
-    firingB: false,
-    onFireStart: () => undefined,
-    onFireStop: () => undefined,
-  };
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
@@ -520,7 +487,7 @@ export default function App() {
             setSelectedOutputId(id);
           }}
           panelForTarget={panelForTarget}
-          emptyPanel={emptyPanel}
+          onConnect={device.connectDevice}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
           onStop={(targetId) => {

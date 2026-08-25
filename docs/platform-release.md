@@ -23,13 +23,13 @@ DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只�
 Web 和 Android 是同一个产品版本，必须来自同一个 `main` commit：
 
 ```text
-根 package:             6.2.1
-Web version.json:       6.2.1 + main commit SHA
-Android versionName:    6.2.1
-Android versionCode:    6002001
-Git tag:                v6.2.1
-APK:                    0xnuller-v6.2.1.apk
-Release 标题:           0xNuller 6.2.1
+根 package:             6.3.0
+Web version.json:       6.3.0 + main commit SHA
+Android versionName:    6.3.0
+Android versionCode:    6003000
+Git tag:                v6.3.0
+APK:                    0xnuller-v6.3.0.apk
+Release 标题:           0xNuller 6.3.0
 ```
 
 `Release · 0xNuller` 在 `CI · Product` 和 `CI · Repository` 对同一 main SHA 成功后运行：
