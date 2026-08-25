@@ -6,7 +6,7 @@
   "description": "统一外壳：常驻导航 + 七模块按路由挂载",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/verify-web-bundle.mjs",
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "vitest run",

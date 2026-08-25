@@ -17,7 +17,7 @@ import {
   type VideoLlmConfig,
 } from '@0xnullai/llm-providers';
 import { ListModelsError, listModels } from '@dg-agent/providers-openai-http';
-import { listModelsForProvider, type PiAiProviderKey } from '@dg-agent/providers-pi-http';
+import type { PiAiProviderKey } from '@dg-agent/providers-pi-http/provider-keys';
 
 const VIDEO_PROVIDERS = PROVIDER_DEFINITIONS.filter(
   (provider) => provider.browserSupported && provider.imageInput === 'known-models',
@@ -73,9 +73,11 @@ export function VideoProviderSection() {
     try {
       const found =
         definition.dialect === 'pi-ai' && definition.piProviderKey
-          ? (await listModelsForProvider(definition.piProviderKey as PiAiProviderKey)).map(
-              (model) => model.id,
-            )
+          ? (
+              await import('@dg-agent/providers-pi-http').then(({ listModelsForProvider }) =>
+                listModelsForProvider(definition.piProviderKey as PiAiProviderKey),
+              )
+            ).map((model) => model.id)
           : await listModels({
               baseUrl: resolveProviderRequestUrl(config.baseUrl),
               apiKey: config.apiKey,

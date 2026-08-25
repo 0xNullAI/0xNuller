@@ -21,11 +21,8 @@ import {
   listModels,
   testConnection,
 } from '@dg-agent/providers-openai-http';
-import {
-  listModelsForProvider,
-  type PiAiModelInfo,
-  type PiAiProviderKey,
-} from '@dg-agent/providers-pi-http';
+import type { PiAiModelInfo } from '@dg-agent/providers-pi-http';
+import type { PiAiProviderKey } from '@dg-agent/providers-pi-http/provider-keys';
 
 /**
  * AI configuration. Agent, Voice and Video are selected here but keep separate stores.
@@ -399,6 +396,7 @@ function PiModelField({
   async function inspect() {
     setError('');
     try {
+      const { listModelsForProvider } = await import('@dg-agent/providers-pi-http');
       setModels(await listModelsForProvider(providerKey));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '未知错误');

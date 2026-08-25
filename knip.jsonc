@@ -17,6 +17,10 @@
     "apps/market": {
       "entry": ["worker-configuration.d.ts"],
     },
+    "apps/web": {
+      // Vite resolves pi-ai's Node-only environment module to this browser entry by absolute path.
+      "entry": ["src/browser-provider-env.ts"],
+    },
     "apps/voice": {
       "entry": ["scripts/*.mjs"],
     },

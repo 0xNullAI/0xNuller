@@ -184,6 +184,9 @@ If it could not be run, say so explicitly.
   in plain TypeScript modules.
 - Prefer narrow APIs and delete completed compatibility paths. Do not add a parallel abstraction
   without a migration and deletion plan.
+- Browser builds must replace Node-only dependency fallbacks at the composition boundary. Provider
+  SDKs and device WASM stay behind the user action that needs them; enforce that reachability from
+  the generated manifest instead of hiding bundle growth by raising chunk warning limits.
 - Do not hand-edit or commit `dist`, `target`, `src-tauri/gen`, `.astro`, `.wrangler`, build-info,
   caches, or other generated output.
 - Do not edit `docs/legacy` as part of current product work.

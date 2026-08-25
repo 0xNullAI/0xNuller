@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
@@ -18,6 +18,26 @@ import productPackage from '../../package.json' with { type: 'json' };
  * nor the build reports it.
  */
 const buildId = resolveBuildId('local');
+
+function replacePiAiNodeEnvironmentFallback(): Plugin {
+  const browserProviderEnv = path.resolve(import.meta.dirname, 'src/browser-provider-env.ts');
+  const piAiPathSegment = '/@earendil-works/pi-ai/dist/';
+
+  return {
+    name: 'browser-pi-ai-provider-env',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      const normalizedImporter = importer?.replaceAll('\\', '/');
+      if (
+        normalizedImporter?.includes(piAiPathSegment) &&
+        source.endsWith('/utils/provider-env.js')
+      ) {
+        return browserProviderEnv;
+      }
+      return null;
+    },
+  };
+}
 
 /**
  * Optional dev proxy onto locally-running Workers.
@@ -64,7 +84,12 @@ export default defineConfig({
     },
   },
   define: { __BUILD_ID__: JSON.stringify(buildId) },
-  plugins: [react(), tailwindcss(), emitVersionJson(buildId, productPackage.version)],
-  build: { outDir: 'dist', emptyOutDir: true, target: 'esnext' },
+  plugins: [
+    replacePiAiNodeEnvironmentFallback(),
+    react(),
+    tailwindcss(),
+    emitVersionJson(buildId, productPackage.version),
+  ],
+  build: { outDir: 'dist', emptyOutDir: true, target: 'esnext', manifest: true },
   server: { port: 5170, proxy },
 });

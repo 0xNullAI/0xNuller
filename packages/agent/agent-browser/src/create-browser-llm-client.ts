@@ -10,9 +10,8 @@ import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import { OpenAiHttpLlmClient } from '@dg-agent/providers-openai-http';
 import {
   PI_AI_PROVIDER_KEYS,
-  PiAiLlmClient,
   type PiAiProviderKey,
-} from '@dg-agent/providers-pi-http';
+} from '@dg-agent/providers-pi-http/provider-keys';
 
 class UnavailableLlmClient implements LlmClient {
   readonly capabilities = { imageInput: false };
@@ -21,6 +20,46 @@ class UnavailableLlmClient implements LlmClient {
 
   async runTurn(_input: LlmTurnInput): Promise<LlmTurnResult> {
     throw new Error(this.message);
+  }
+}
+
+/**
+ * Keeps pi-ai and every provider factory outside the normal Agent route. The
+ * selected runtime is fetched only when a pi-ai-backed provider starts a turn;
+ * OpenAI-compatible providers never download it.
+ */
+class LazyPiAiLlmClient implements LlmClient {
+  readonly capabilities;
+  private clientPromise?: Promise<LlmClient>;
+
+  constructor(
+    private readonly config: {
+      apiKey: string;
+      model: string;
+      providerKey: PiAiProviderKey;
+      temperature: number;
+      supportsImageInput: boolean;
+      transformUrl: (url: string) => string;
+    },
+  ) {
+    this.capabilities = { imageInput: config.supportsImageInput };
+  }
+
+  async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
+    const client = await this.loadClient();
+    return client.runTurn(input);
+  }
+
+  private loadClient(): Promise<LlmClient> {
+    if (!this.clientPromise) {
+      this.clientPromise = import('@dg-agent/providers-pi-http')
+        .then(({ PiAiLlmClient }) => new PiAiLlmClient(this.config))
+        .catch((error: unknown) => {
+          this.clientPromise = undefined;
+          throw error;
+        });
+    }
+    return this.clientPromise;
   }
 }
 
@@ -85,8 +124,22 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
         `当前服务提供方“${provider.providerId}”配置无效：内部提供方标识不受支持，请重新选择服务提供方或联系开发者`,
       );
     }
+    if (
+      !provider.model.trim() ||
+      !Number.isFinite(temperature) ||
+      temperature < 0 ||
+      temperature > 2
+    ) {
+      return new UnavailableLlmClient(
+        formatProviderConfigError(
+          new Error('invalid pi-ai settings'),
+          provider.providerId,
+          provider.dialect,
+        ),
+      );
+    }
     try {
-      return new PiAiLlmClient({
+      return new LazyPiAiLlmClient({
         apiKey: provider.apiKey,
         model: provider.model,
         providerKey: provider.piProviderKey,
