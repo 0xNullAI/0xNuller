@@ -46,7 +46,7 @@ npm run types:check -w 0xnullai-chat
 ## 代码结构
 
 ```text
-src/components/       房间、消息、成员 UI；共享设备面板来自 @0xnullai/ui
+src/components/       房间、消息、成员 UI；ChatAppView 只组合房间/大厅展示
 src/hooks/            房间、设备和波形状态
 src/lib/              WebSocket、媒体与客户端协议
 worker/index.ts       HTTP 与 WebSocket 路由
@@ -54,6 +54,10 @@ worker/room-do.ts     房间和私聊状态
 worker/lobby-do.ts    公开大厅
 worker/media.ts       R2 媒体读写
 ```
+
+`src/App.tsx` 是 Chat 运行时编排入口，负责认证、WebSocket 生命周期、设备持有者校验、权限、
+租约与停止路径；`src/components/ChatAppView.tsx` 只负责房间目录、标题状态和聊天/控制面板的
+展示组合。展示层不得自行放宽或重排设备命令与停止语义。
 
 媒体上传需要当前 WebSocket 会话签发的能力；仅知道房间号不能写入媒体桶。私聊票据由账户
 服务签发，Chat 只接受有效票据。

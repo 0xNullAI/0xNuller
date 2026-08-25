@@ -112,6 +112,10 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   coordinator. Keep authorization, leases, target identity, effective safety limits, and lifecycle
   stop decisions in the coordinator or shared safety service rather than recomputing them in a
   presentational child.
+- In Chat, keep `apps/chat/src/App.tsx` as the runtime orchestrator for auth, Room WebSocket/DM
+  lifecycle, owner-side validation, permissions, leases, command routing, and stop paths.
+  `components/ChatAppView.tsx` owns room/lobby presentation composition only; it may invoke the
+  supplied callbacks but must not duplicate or reorder their safety and transport decisions.
 - Disconnected device surfaces should show one clear connection path and safety context; do not render
   a full faded or disabled control console that implies hardware is present or malfunctioning.
 - Node BLE and MCP-specific orchestration: `apps/mcp`.
