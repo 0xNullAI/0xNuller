@@ -34,6 +34,7 @@ import type {
   OpossumClient,
   PawPrintsClient,
   SavedPromptPreset,
+  DeviceExecutionGate,
 } from '@dg-agent/runtime';
 import {
   BrowserSessionStore,
@@ -90,6 +91,8 @@ export interface BrowserServicesOptions {
   opossum?: OpossumClient;
   pawPrints?: PawPrintsClient;
   civetEdging?: CivetEdgingClient;
+  /** Optional final boundary check, typically backed by the shell's module lease. */
+  deviceExecutionGate?: DeviceExecutionGate;
   /**
    * If true, speech recognition / synthesis are stubbed with no-op controllers
    * and capabilities report nothing supported. Used by shells (Android WebView)
@@ -130,6 +133,7 @@ export interface BrowserServices {
 class UnavailableAgentClient implements AgentClient {
   readonly transport = 'embedded' as const;
   readonly supportsLiveEvents = false;
+  readonly capabilities = { imageInput: false };
 
   constructor(private readonly message: string) {}
 
@@ -282,6 +286,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       sessionTraceStore,
       waveformLibrary,
       permissionService: bridgePermissionService,
+      deviceExecutionGate: options.deviceExecutionGate,
       freeProxySecret: options.freeProxySecret,
     });
   } catch (error) {

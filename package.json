@@ -1,9 +1,9 @@
 {
   "name": "0xnuller",
-  "version": "6.0.14",
+  "version": "6.1.0",
   "private": true,
   "type": "module",
-  "description": "0xNullAI 平台 monorepo：六模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
+  "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,7 +37,7 @@
     "test:repository": "node scripts/run-vitest.mjs run --project=tooling",
     "test:kit": "npm run build:kit && node scripts/run-vitest.mjs run --project=kit",
     "test:mcp": "npm run build:kit && node scripts/run-vitest.mjs run --project=dg-mcp",
-    "test:product": "npm run build:kit && node scripts/run-vitest.mjs run --project=@dg-agent/web --project=android --project=auth --project=0xnullai-chat --project=control --project=market --project=playground --project=0xnullai-voice --project=web --project=agent-packages --project=platform --project=worker-proxies",
+    "test:product": "npm run build:kit && node scripts/run-vitest.mjs run --project=@dg-agent/web --project=android --project=auth --project=0xnullai-chat --project=control --project=market --project=playground --project=video --project=0xnullai-voice --project=web --project=agent-packages --project=platform --project=worker-proxies",
     "test:all": "npm run test:full",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

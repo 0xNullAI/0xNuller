@@ -2,7 +2,7 @@
 
 中文 | [English](README.en.md)
 
-`0xNuller` 的统一网页版外壳。Control、Agent、Voice、Chat、Playground 和 Market 在同一
+`0xNuller` 的统一网页版外壳。Control、Agent、Video、Voice、Chat、Playground 和 Market 在同一
 SPA 中按路由加载，共用侧边栏、账户、设备横栏、设置、主题和弹窗层。
 
 ## 路由
@@ -11,6 +11,7 @@ SPA 中按路由加载，共用侧边栏、账户、设备横栏、设置、主�
 | ------------- | -------------- |
 | `/control`    | 手动控制       |
 | `/agent`      | 文字 Agent     |
+| `/video`      | 视觉解释       |
 | `/voice`      | 实时语音       |
 | `/chat`       | 房间与私聊     |
 | `/playground` | 游戏互动       |

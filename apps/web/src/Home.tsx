@@ -34,7 +34,7 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <div className="shl-home h-full overflow-y-auto">
       {/* Centred vertically while the content is shorter than the viewport,
-          top-aligned and scrolling once it is not. Six cards leave a lot of
+          top-aligned and scrolling once it is not. Seven cards leave a lot of
           room at 1440px, and letting them sit against the top edge reads as
           a page that failed to finish loading. */}
       <div className="flex min-h-full flex-col justify-center">

@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/android",
-  "version": "6.0.14",
+  "version": "6.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "@0xnullai/native": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/web": "*",
+    "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/core": "0.1.0",
     "@dg-agent/runtime": "0.1.0",
     "@dg-kit/protocol": "^1.16.2",

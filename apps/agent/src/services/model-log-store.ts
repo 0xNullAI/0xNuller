@@ -1,4 +1,5 @@
 import type { RuntimeEvent, ToolCall } from '@dg-agent/core';
+import { redactModelData } from '@dg-agent/runtime';
 
 const STORAGE_KEY = 'dg-agent.model-logs';
 
@@ -92,7 +93,7 @@ export function appendModelLogEvent(current: ModelLogTurn[], event: RuntimeEvent
       response: {
         assistantMessage: event.assistantMessage,
         toolCalls: event.toolCalls,
-        rawResponse: event.rawResponse,
+        rawResponse: redactModelData(event.rawResponse),
       },
     };
     const next = [...current, orphan];
@@ -106,12 +107,17 @@ export function appendModelLogEvent(current: ModelLogTurn[], event: RuntimeEvent
           ...t,
           completedAt: Date.now(),
           request: t.request
-            ? { ...t.request, rawRequest: event.rawRequest }
-            : { instructions: '', messages: [], toolNames: [], rawRequest: event.rawRequest },
+            ? { ...t.request, rawRequest: redactModelData(event.rawRequest) }
+            : {
+                instructions: '',
+                messages: [],
+                toolNames: [],
+                rawRequest: redactModelData(event.rawRequest),
+              },
           response: {
             assistantMessage: event.assistantMessage,
             toolCalls: event.toolCalls,
-            rawResponse: event.rawResponse,
+            rawResponse: redactModelData(event.rawResponse),
           },
         }
       : t,

@@ -22,6 +22,7 @@ const configSchema = z.object({
   model: z.string().min(1),
   providerKey: z.enum(PI_AI_PROVIDER_KEYS as [PiAiProviderKey, ...PiAiProviderKey[]]),
   temperature: z.number().min(0).max(2).default(0.3),
+  supportsImageInput: z.boolean().default(false),
 });
 
 export interface PiAiLlmClientConfig {
@@ -29,6 +30,8 @@ export interface PiAiLlmClientConfig {
   model: string;
   providerKey: PiAiProviderKey;
   temperature?: number;
+  /** Must be resolved from an explicit provider+model capability allowlist. */
+  supportsImageInput?: boolean;
 }
 
 /**
@@ -56,29 +59,45 @@ export interface PiAiLlmClientConfig {
  */
 export class PiAiLlmClient implements LlmClient {
   private readonly config: z.infer<typeof configSchema>;
+  readonly capabilities;
 
   constructor(inputConfig: PiAiLlmClientConfig) {
     this.config = configSchema.parse(inputConfig);
+    this.capabilities = { imageInput: this.config.supportsImageInput };
   }
 
   async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
     validateApiKey(this.config.apiKey);
+    if (input.image && !this.capabilities.imageInput) {
+      throw new Error('当前模型未明确支持图片输入，请切换到支持视觉的模型');
+    }
+    if (
+      input.image &&
+      (input.image.byteLength > 250 * 1024 ||
+        encodedImageByteLength(input.image.data) > 250 * 1024 ||
+        Math.max(input.image.width, input.image.height) > 768 ||
+        (input.image.mediaType !== 'image/jpeg' && input.image.mediaType !== 'image/webp') ||
+        !input.image.data)
+    ) {
+      throw new Error('图片不符合视觉输入限制（最大边长 768，最大 250KB）');
+    }
 
     const provider = await loadPiAiProvider(this.config.providerKey);
     const model = resolvePiAiModel(provider, this.config.model);
+    if (input.image && !model.input.includes('image')) {
+      throw new Error('当前模型目录未声明图片输入能力，请切换到支持视觉的模型');
+    }
     const context = buildContext(input, {
       api: model.api,
       provider: model.provider,
       model: model.id,
     });
 
-    let capturedPayload: unknown;
     const eventStream = provider.stream(model, context, {
       apiKey: this.config.apiKey,
       temperature: this.config.temperature,
       signal: input.abortSignal,
       onPayload: (payload) => {
-        capturedPayload = payload;
         input.onRawRequest?.(payload);
         return undefined;
       },
@@ -131,9 +150,16 @@ export class PiAiLlmClient implements LlmClient {
         const calls = extractToolCalls(message);
         return calls.length > 0 ? calls : undefined;
       })(),
-      rawResponse: { request: capturedPayload, response: message },
+      // Request diagnostics flow through onRawRequest, where the runtime
+      // recursively redacts image bytes before emitting model-log events.
+      rawResponse: { response: message },
     };
   }
+}
+
+function encodedImageByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
 }
 
 function validateApiKey(apiKey: string): void {

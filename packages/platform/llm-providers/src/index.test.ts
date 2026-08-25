@@ -9,6 +9,7 @@ import {
   normalizeProviderSettings,
   providerRequiresUserApiKey,
   resolveProviderRuntimeSettings,
+  supportsProviderModelImageInput,
 } from './index.js';
 
 describe('providers-catalog', () => {
@@ -49,6 +50,16 @@ describe('providers-catalog', () => {
     expect(runtime.baseUrl).toBe(FREE_TRIAL_PROXY_URL + '/v1');
     expect(runtime.endpoint).toBe('chat/completions');
     expect(runtime.browserSupported).toBe(true);
+  });
+
+  it('resolves vision only for explicitly allowed provider+model pairs', () => {
+    expect(supportsProviderModelImageInput('openai', 'gpt-4o-mini')).toBe(true);
+    expect(supportsProviderModelImageInput('anthropic', 'claude-sonnet-4-5')).toBe(true);
+    expect(supportsProviderModelImageInput('custom', 'gpt-4o-mini')).toBe(false);
+    expect(supportsProviderModelImageInput('openai', 'unknown-model')).toBe(false);
+    expect(supportsProviderModelImageInput('openai', 'gpt-4o-private-preview')).toBe(false);
+    expect(resolveProviderRuntimeSettings(createProviderSettings('free')).imageInput).toBe(false);
+    expect(getProviderDefinition('free')?.imageInput).toBe('none');
   });
 
   it('labels DeepSeek as not recommended because of hallucinations', () => {

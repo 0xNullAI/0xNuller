@@ -15,6 +15,7 @@ import {
   WebBluetoothPawPrintsClient,
 } from '@dg-kit/transport-webbluetooth';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
+import { currentDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { SavedScene } from '@0xnullai/scenes';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
@@ -152,6 +153,9 @@ export function useBrowserAppServices(
         opossum,
         pawPrints,
         civetEdging,
+        // A standalone build has no shell lease holder; inside the shell a
+        // different holder must block every non-stop command at the boundary.
+        deviceExecutionGate: () => currentDeviceLease() === null || hasDeviceLease('agent'),
         resolveBridgeSessionId,
         onPermissionRequest: (input) =>
           new Promise<PermissionDecision>((resolve) => {

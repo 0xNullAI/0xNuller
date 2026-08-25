@@ -8,14 +8,22 @@ import {
   fetchAdminItems,
   setItemHidden,
   type AdminItemStatus,
+  type AdminItemType,
 } from '../../../market/src/web/api';
 
+const CATEGORIES: Array<{ id: AdminItemType; label: string }> = [
+  { id: 'waveform', label: '波形' },
+  { id: 'scenario', label: '场景' },
+];
+
 const FILTERS: Array<{ id: AdminItemStatus; label: string }> = [
-  { id: 'hidden', label: '已隐藏' },
   { id: 'all', label: '全部' },
+  { id: 'visible', label: '公开' },
+  { id: 'hidden', label: '已隐藏' },
 ];
 
 export function AdminContent() {
+  const [type, setType] = useState<AdminItemType>('waveform');
   const [status, setStatus] = useState<AdminItemStatus>('all');
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
@@ -27,8 +35,8 @@ export function AdminContent() {
   const [stats, setStats] = useState<AdminStats | null>(null);
 
   const requestPage = useCallback(
-    (offset = 0) => fetchAdminItems({ status, q: query || undefined, offset, limit: 20 }),
-    [query, status],
+    (offset = 0) => fetchAdminItems({ type, status, q: query || undefined, offset, limit: 20 }),
+    [query, status, type],
   );
 
   const load = useCallback(
@@ -131,7 +139,41 @@ export function AdminContent() {
           </h2>
           <p className="mt-1 text-xs text-[var(--text-faint)]">Market</p>
         </div>
-        <div className="flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] p-1">
+        <div
+          aria-label="内容分类"
+          className="flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] p-1"
+        >
+          {CATEGORIES.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-pressed={type === category.id}
+              onClick={() => {
+                if (type === category.id) {
+                  void load();
+                  return;
+                }
+                setLoading(true);
+                setType(category.id);
+              }}
+              className={
+                'min-h-[36px] rounded-[calc(var(--radius-ctl)-4px)] px-3 text-xs font-medium transition-colors ' +
+                (type === category.id
+                  ? 'bg-[var(--accent-soft)] text-[var(--text)]'
+                  : 'text-[var(--text-soft)] hover:text-[var(--text)]')
+              }
+            >
+              {category.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <div
+          aria-label="可见性"
+          className="flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] p-1"
+        >
           {FILTERS.map((filter) => (
             <button
               key={filter.id}

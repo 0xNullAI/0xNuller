@@ -24,6 +24,7 @@ const ITEM = {
 
 describe('管理员内容管理', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(fetchAdminItems).mockResolvedValue({ items: [ITEM], nextOffset: null });
     vi.mocked(setItemHidden).mockResolvedValue();
     vi.mocked(deleteItem).mockResolvedValue();
@@ -37,6 +38,7 @@ describe('管理员内容管理', () => {
     render(<AdminContent />);
     expect(await screen.findByText('测试波形')).toBeTruthy();
     expect(fetchAdminItems).toHaveBeenCalledWith({
+      type: 'waveform',
       status: 'all',
       q: undefined,
       offset: 0,
@@ -45,6 +47,33 @@ describe('管理员内容管理', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '隐藏 测试波形' }));
     await vi.waitFor(() => expect(setItemHidden).toHaveBeenCalledWith('item-1', true));
+  });
+
+  it('分类和可见性筛选交给服务端', async () => {
+    render(<AdminContent />);
+    await screen.findByText('测试波形');
+
+    fireEvent.click(screen.getByRole('button', { name: '场景' }));
+    await vi.waitFor(() =>
+      expect(fetchAdminItems).toHaveBeenCalledWith({
+        type: 'scenario',
+        status: 'all',
+        q: undefined,
+        offset: 0,
+        limit: 20,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '公开' }));
+    await vi.waitFor(() =>
+      expect(fetchAdminItems).toHaveBeenCalledWith({
+        type: 'scenario',
+        status: 'visible',
+        q: undefined,
+        offset: 0,
+        limit: 20,
+      }),
+    );
   });
 
   it('删除前明确确认', async () => {

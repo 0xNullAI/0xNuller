@@ -40,6 +40,10 @@ export interface NativeBridge {
   voice?: {
     transport?: unknown;
   };
+  /** Video's injection: creates the same control service with native BLE clients. */
+  video?: {
+    createControlService?: unknown;
+  };
 }
 
 const Ctx = createContext<NativeBridge | null>(null);

@@ -25,8 +25,9 @@ import {
 export interface ConnectAnyDeviceClients {
   device: DeviceClient;
   opossum: OpossumClient;
-  pawPrints: PawPrintsClient;
-  civetEdging: CivetEdgingClient;
+  /** Omit sensor clients when a feature intentionally supports outputs only. */
+  pawPrints?: PawPrintsClient;
+  civetEdging?: CivetEdgingClient;
 }
 
 export interface ConnectAnyDeviceResult {
@@ -58,6 +59,7 @@ export async function connectAnyDgLabDevice(
           : clients.civetEdging;
 
   if (!supportsConnectDevice(target)) {
+    if (device.gatt?.connected) device.gatt.disconnect();
     throw new Error(`当前环境不支持连接${DEVICE_KIND_DISPLAY_NAME[kind]}设备`);
   }
 

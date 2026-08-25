@@ -85,6 +85,17 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun hasCameraPermission(): Boolean =
+      checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    @JavascriptInterface
+    fun requestCameraPermission() {
+      runOnUiThread {
+        requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
+      }
+    }
+
+    @JavascriptInterface
     fun requestBleScanPermission() {
       val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
@@ -112,5 +123,6 @@ class MainActivity : TauriActivity() {
 
   private companion object {
     const val BLE_PERMISSION_REQUEST_CODE = 4101
+    const val CAMERA_PERMISSION_REQUEST_CODE = 4102
   }
 }

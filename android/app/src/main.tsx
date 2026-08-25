@@ -4,6 +4,11 @@ import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
 import { NativeBridgeProvider } from '@0xnullai/native';
 import {
+  createBrowserVideoControl,
+  type BrowserVideoControlOptions,
+} from '@dg-agent/agent-browser';
+import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
+import {
   TauriBlecDeviceClient,
   TauriBlecOpossumClient,
   TauriBlecPawPrintsClient,
@@ -25,7 +30,7 @@ import {
 import './styles.css';
 
 /**
- * The unified Android app: one APK, six modules.
+ * The unified Android app: one APK, seven modules.
  *
  * Before the merge there were three separately packaged APKs (Agent / Chat /
  * Voice); the user had to install three of them, connect the device once in
@@ -118,6 +123,33 @@ const bridge = {
   },
   voice: {
     transport: createTauriTransport(),
+  },
+  video: {
+    createControlService: (options: BrowserVideoControlOptions) => {
+      // Keep one native Coyote client: the shared Video service assigns an
+      // opaque ID per connection and rejects a second target when this
+      // transport composition cannot independently prove multiple identities.
+      const device = withConnectPermissionHelp(
+        wrapWithLifecycleSafety(
+          new TauriBlecDeviceClient({
+            protocol: new CoyoteProtocolAdapter(),
+            selectDevice: showDevicePicker,
+            namePrefixes: ['47L121', 'D-LAB'],
+            scanDurationMs: 8000,
+          }),
+        ),
+      );
+      const opossum = withConnectPermissionHelp(
+        new TauriBlecOpossumClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
+      );
+      return createBrowserVideoControl({
+        ...options,
+        device,
+        opossum,
+        connectOutputDevice: (clients) =>
+          withBlePermissionHelp(() => connectAnyDgLabDeviceTauri(clients)),
+      });
+    },
   },
 };
 

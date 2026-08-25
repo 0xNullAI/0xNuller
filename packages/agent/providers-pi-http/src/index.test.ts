@@ -1,6 +1,7 @@
 import { createEmptyDeviceState } from '@dg-agent/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PiAiLlmClient } from './index.js';
+import { buildContext } from './serialization.js';
 
 /**
  * Contract-test suite mirroring providers-openai-http/src/index.test.ts's
@@ -147,6 +148,35 @@ function stubFetchOnce(
     }),
   );
 }
+
+describe('pi-ai vision serialization', () => {
+  it('attaches the ephemeral frame only to the latest user message', () => {
+    const context = buildContext(
+      makeTurnInput({
+        conversation: [
+          { kind: 'message', role: 'user', content: 'old' },
+          { kind: 'message', role: 'assistant', content: 'reply' },
+          { kind: 'message', role: 'user', content: 'current' },
+        ],
+        image: {
+          mediaType: 'image/webp',
+          data: 'aGVsbG8=',
+          width: 640,
+          height: 480,
+          byteLength: 5,
+        },
+      }),
+      { api: 'anthropic-messages', provider: 'anthropic', model: 'claude-sonnet-4-5' },
+    );
+
+    expect(context.messages[0]?.content).toBe('old');
+    expect(context.messages[2]?.content).toEqual([
+      { type: 'text', text: 'current' },
+      { type: 'image', data: 'aGVsbG8=', mimeType: 'image/webp' },
+    ]);
+    expect(context.tools).toBeUndefined();
+  });
+});
 
 describe('PiAiLlmClient (anthropic)', () => {
   beforeEach(() => {

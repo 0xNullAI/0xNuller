@@ -109,12 +109,15 @@ export default {
 
       if (pathname === '/api/items/admin' && request.method === 'GET') {
         await requireMarketAdmin(request, env);
+        const requestedType = url.searchParams.get('type');
+        const type = requestedType === 'scenario' ? 'scenario' : 'waveform';
         const requestedStatus = url.searchParams.get('status');
-        const status = requestedStatus === 'hidden' ? 'hidden' : 'all';
+        const status =
+          requestedStatus === 'hidden' || requestedStatus === 'visible' ? requestedStatus : 'all';
         const q = url.searchParams.get('q')?.trim() || undefined;
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-        const items = await listAdminItems(env.DB, { status, q, limit, offset });
+        const items = await listAdminItems(env.DB, { type, status, q, limit, offset });
         return json({ items, nextOffset: items.length === limit ? offset + limit : null });
       }
 

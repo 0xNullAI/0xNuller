@@ -9,10 +9,15 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { ModuleSettingsSlot, Overlay, useModuleSettingsClaims } from '@0xnullai/ui';
+import {
+  ModuleSettingsSlot,
+  Overlay,
+  useModuleSettingsClaims,
+  type ShellSettingsTab,
+} from '@0xnullai/ui';
 import type { AuthUser } from '@0xnullai/auth';
 import { AppearanceTab } from './AppearanceTab';
-import { AiTab } from './AiTab';
+import { AiTab, type AiSettingsSection } from './AiTab';
 import { SafetyTab } from './SafetyTab';
 import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
@@ -50,13 +55,15 @@ export function SettingsPanel({
   onUser,
   onClose,
 }: {
-  /** Which page to land on when opened. Settings entry points inside modules (e.g. the Chat host configuring AI) point straight at the matching page. */
-  initialTab?: (typeof TABS)[number]['id'];
+  /** Which page to land on when opened. AI entry points may target one module subsection. */
+  initialTab?: ShellSettingsTab;
   user: AuthUser | null;
   onUser: (user: AuthUser | null) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<string>(initialTab);
+  const initialAiSection: AiSettingsSection =
+    initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : 'agent';
+  const [tab, setTab] = useState<string>(initialTab.startsWith('ai-') ? 'ai' : initialTab);
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
@@ -136,6 +143,8 @@ export function SettingsPanel({
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
             {resolvedTab === 'account' ? (
               <AccountContent user={user} onUser={onUser} onDone={onClose} />
+            ) : resolvedTab === 'ai' ? (
+              <AiTab initialSection={initialAiSection} />
             ) : Active ? (
               <Active />
             ) : null}

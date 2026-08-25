@@ -156,6 +156,8 @@ interface AndroidSystemBridge {
   isBlePermissionPermanentlyDenied(): boolean;
   hasBleScanPermission(): boolean;
   requestBleScanPermission(): void;
+  hasCameraPermission(): boolean;
+  requestCameraPermission(): void;
   openAppSettings(): void;
   openBluetoothSettings(): void;
   openLocationSettings(): void;

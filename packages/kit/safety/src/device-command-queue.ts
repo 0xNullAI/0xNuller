@@ -26,29 +26,31 @@ export interface SerialCommandQueueOptions<TCommand, TResult> {
  * `emergencyStop`) skip the line entirely: it bumps a generation counter
  * and runs immediately via `run()` rather than `execute()`, and any
  * already-queued-but-not-yet-run task notices its generation is stale and
- * resolves with `skippedResult()` instead of actually executing. Extracted
- * from `DeviceCommandQueue` (which needs the interrupt) and reused as a
- * plain FIFO by `OpossumCommandQueue` (which doesn't — see its own doc
- * comment for why).
+ * resolves with `skippedResult()` instead of actually executing. The public
+ * `interrupt()` method provides the same protection for out-of-band stops,
+ * including Opossum's runtime-wide emergency stop.
  */
 export class SerialCommandQueue<TCommand, TResult> {
   private tail: Promise<void> = Promise.resolve();
   private generation = 0;
+  private activeInterrupt: Pick<
+    PriorityInterrupt<TCommand, TResult>,
+    'run' | 'skippedResult'
+  > | null = null;
 
   constructor(private readonly options: SerialCommandQueueOptions<TCommand, TResult>) {}
 
   async enqueue(command: TCommand): Promise<TResult> {
     const interrupt = this.options.priorityInterrupt;
     if (interrupt?.matches(command)) {
-      this.generation += 1;
-      return interrupt.run(command);
+      return this.interrupt(() => interrupt.run(command), interrupt.skippedResult);
     }
 
     const generation = this.generation;
 
     const task = this.tail.then(async () => {
-      if (interrupt && generation !== this.generation) {
-        return interrupt.skippedResult();
+      if (generation !== this.generation && this.activeInterrupt) {
+        return this.activeInterrupt.skippedResult();
       }
 
       const startedAt = this.generation;
@@ -64,9 +66,9 @@ export class SerialCommandQueue<TCommand, TResult> {
       // A packet already sent cannot be recalled; what we can do is stop
       // again right after. Emergency stop must be idempotent, so a duplicate
       // stop is safe — a missed one is not.
-      if (interrupt && startedAt !== this.generation) {
-        await interrupt.run(command);
-        return interrupt.skippedResult();
+      if (startedAt !== this.generation && this.activeInterrupt) {
+        await this.activeInterrupt.run(command);
+        return this.activeInterrupt.skippedResult();
       }
 
       return result;
@@ -78,6 +80,23 @@ export class SerialCommandQueue<TCommand, TResult> {
     );
 
     return task;
+  }
+
+  /**
+   * Preempts queued work and invalidates an already-running continuation.
+   * The interrupt runs immediately; if an older command completes later,
+   * the queue runs it once more to restore the safe state.
+   */
+  async interrupt(
+    run: () => Promise<TResult>,
+    skippedResult: () => Promise<TResult>,
+  ): Promise<TResult> {
+    this.generation += 1;
+    this.activeInterrupt = {
+      run: () => run(),
+      skippedResult,
+    };
+    return run();
   }
 }
 
@@ -107,17 +126,17 @@ export class DeviceCommandQueue {
   async enqueue(command: DeviceCommand): Promise<DeviceCommandResult> {
     return this.queue.enqueue(command);
   }
+
+  async emergencyStop(): Promise<DeviceCommandResult> {
+    return this.enqueue({ type: 'emergencyStop' });
+  }
 }
 
 /**
- * Serializes Opossum vibration commands the same way `DeviceCommandQueue`
- * serializes Coyote commands, so concurrent `vibrate_*` tool calls can't
- * race each other's writes. No `emergencyStop`-style generation bump is
- * needed here: Opossum has no command analogous to Coyote's `emergencyStop`
- * variant in its own command union (`vibrate_stop` already exists for that),
- * and the runtime-wide panic button calls `OpossumClient.emergencyStop()`
- * directly (see `AgentRuntime.emergencyStop`), bypassing the queue exactly
- * like Coyote's does.
+ * Serializes Opossum vibration commands and exposes an out-of-band emergency
+ * interrupt. The interrupt uses the same generation preemption as Coyote, so
+ * queued work is skipped and an in-flight write that lands late is followed
+ * by another stop instead of restoring vibration.
  */
 export class OpossumCommandQueue {
   private readonly queue: SerialCommandQueue<OpossumCommand, OpossumCommandResult>;
@@ -130,5 +149,15 @@ export class OpossumCommandQueue {
 
   async enqueue(command: OpossumCommand): Promise<OpossumCommandResult> {
     return this.queue.enqueue(command);
+  }
+
+  async emergencyStop(): Promise<OpossumCommandResult> {
+    const stoppedResult = async (): Promise<OpossumCommandResult> => ({
+      state: await this.device.getState(),
+    });
+    return this.queue.interrupt(async () => {
+      await this.device.emergencyStop();
+      return stoppedResult();
+    }, stoppedResult);
   }
 }

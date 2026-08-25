@@ -12,6 +12,7 @@ import {
   type ProviderId,
 } from '@0xnullai/llm-providers';
 import { VoiceProviderSection } from './VoiceProviderSection';
+import { VideoProviderSection } from './VideoProviderSection';
 import { ProxySection } from './ProxySection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
@@ -27,14 +28,15 @@ import {
 } from '@dg-agent/providers-pi-http';
 
 /**
- * AI configuration. Text and voice both live here.
+ * AI configuration. Agent, Voice and Video are selected here but keep separate stores.
  *
  * Agent and Chat share this text config — before the merge each side stored its
  * own, so a user who configured it in one place had to configure it again in the
  * other. The voice one is a separate set of endpoints and auth (the realtime
  * protocol), so it is a sibling section rather than being mixed into the same group
  * of fields: forcing them into one group makes the two sides' required fields
- * pollute each other.
+ * pollute each other. Video is separate again: its credentials never copy from Agent
+ * and its model must pass the explicit image-input allowlist.
  *
  * The proxy also lives here: what it affects is exactly these model requests. **On
  * the web only an HTTP reverse proxy is viable** — browsers do not let a page pick
@@ -42,7 +44,10 @@ import {
  * means giving it a button that looks usable but can never take effect, so it is
  * disabled here based on the runtime, with the reason spelled out.
  */
-export function AiTab() {
+export type AiSettingsSection = 'agent' | 'voice' | 'video';
+
+export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSettingsSection }) {
+  const [section, setSection] = useState<AiSettingsSection>(initialSection);
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
   const behaviorStore = useMemo(() => new BrowserAppSettingsStore(), []);
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
@@ -83,7 +88,36 @@ export function AiTab() {
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
+      <div role="tablist" aria-label="AI 模块" className="grid grid-cols-3 gap-2">
+        {(
+          [
+            ['agent', 'Agent'],
+            ['voice', 'Voice'],
+            ['video', 'Video'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={section === id}
+            onClick={() => setSection(id)}
+            className={
+              'rounded-[var(--radius-ctl)] border px-3 py-2 text-sm ' +
+              (section === id
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]'
+                : 'border-[var(--surface-border)] text-[var(--text-soft)]')
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section
+        hidden={section !== 'agent'}
+        className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
+      >
         <h3 className="text-sm font-semibold">文本模型</h3>
         <div className="mt-3 grid gap-2">
           <Input
@@ -235,7 +269,8 @@ export function AiTab() {
         </div>
       </section>
 
-      <VoiceProviderSection />
+      {section === 'voice' && <VoiceProviderSection />}
+      {section === 'video' && <VideoProviderSection />}
       <ProxySection />
     </div>
   );

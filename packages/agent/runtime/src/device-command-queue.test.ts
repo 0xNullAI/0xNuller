@@ -221,4 +221,36 @@ describe('OpossumCommandQueue', () => {
     expect(secondResult.state.intensityA).toBe(5);
     expect(callCount).toBe(2);
   });
+
+  it('re-stops after an in-flight command lands and skips older queued work', async () => {
+    const device = new ScriptedOpossumClient();
+    let resolveFirst: ((value: OpossumCommandResult) => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    device.executeImpl = async (command) => {
+      if (command.type === 'vibrateStart') {
+        markStarted?.();
+        return new Promise<OpossumCommandResult>((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return { state: device.state };
+    };
+    const queue = new OpossumCommandQueue(device);
+
+    const first = queue.enqueue({ type: 'vibrateStart', channel: 'A', intensity: 10 });
+    const queued = queue.enqueue({ type: 'vibrateAdjust', channel: 'A', delta: 5 });
+    await started;
+    const emergency = queue.emergencyStop();
+    resolveFirst?.({ state: createOpossumState({ intensityA: 10 }) });
+
+    await first;
+    await queued;
+    await emergency;
+
+    expect(device.emergencyStopCount).toBe(2);
+    expect(device.executed).toHaveLength(1);
+  });
 });

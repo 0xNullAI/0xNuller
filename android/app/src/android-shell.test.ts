@@ -51,6 +51,16 @@ describe('Android shell integration', () => {
     expect(activity).toContain('Settings.ACTION_LOCATION_SOURCE_SETTINGS');
     expect(activity).toContain('fun hasBleScanPermission()');
     expect(activity).toContain('fun requestBleScanPermission()');
+    expect(activity).toContain('fun hasCameraPermission()');
+    expect(activity).toContain('fun requestCameraPermission()');
+
+    const manifest = readFileSync(
+      resolve(process.cwd(), 'android/app/AndroidManifest.template.xml'),
+      'utf8',
+    );
+    expect(manifest).toContain('android.permission.CAMERA');
+    expect(manifest).toContain('android.hardware.camera.any');
+    expect(manifest).toContain('android:required="false"');
   });
 
   it('requests the native Android BLE permission before scanning', async () => {
