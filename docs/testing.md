@@ -111,6 +111,9 @@ npm run test:affected -- --base="$BASE_SHA" --domain=product --prepared
 `repository`、`product`、`kit`、`mcp` 四个 `--domain` 对应四条 CI。PR 使用反向依赖闭包；
 `dev`/`main` 推送和手工触发仍运行完整责任域。
 
+根 `npm run build` 同样只准备一次 DG-Kit，再按 Product 与 MCP 责任域构建；内部
+`build:prepared` 只供已经完成 Kit 准备的编排调用，不应单独作为干净 checkout 的交付验证。
+
 责任域全量命令仍可用于交付前定位：
 
 ```bash

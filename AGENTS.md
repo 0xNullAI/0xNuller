@@ -159,8 +159,9 @@ Use the narrowest useful command while iterating:
 Affected selection must follow workspace reverse dependencies. A shared Kit/platform change expands
 to its consumers; unknown runtime files and global test configuration fail safe to the full applicable
 suite. Never exclude safety, authorization, lease, lifecycle-stop, or emergency-stop coverage to make
-a test tier faster. CI may prepare DG-Kit once and use a `:prepared` command, but must not skip the
-corresponding tests. See `docs/testing.md` for responsibility-domain and CI commands.
+a test tier faster. CI and root orchestration may prepare DG-Kit once and use a `:prepared` command,
+but must not skip the corresponding build or tests. See `docs/testing.md` for responsibility-domain
+and CI commands.
 
 A Kit behavior change requires Kit, Product, and MCP compatibility coverage. Before handoff of a
 substantial change, run:
