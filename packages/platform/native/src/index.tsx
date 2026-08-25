@@ -27,7 +27,7 @@ import type { WebEmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime'
  */
 
 export interface NativeBridge {
-  /** Shell-owned optional embedded runtime shared by all modules. */
+  /** Shell-owned optional embedded runtime shared by every product surface. */
   deviceRuntime?: WebEmbeddedDeviceRuntimeProvider;
   /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
   agent?: {

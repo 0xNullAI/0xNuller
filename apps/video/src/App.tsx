@@ -12,7 +12,8 @@ import {
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useNativeBridge } from '@0xnullai/native';
 import { useScenes } from '@0xnullai/scenes/react';
-import { grantDeviceLease } from '@dg-kit/safety';
+import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
+import type { DeviceSnapshot } from '@0xnullai/device-runtime';
 import {
   createBrowserLlmClient,
   createBrowserVideoControl,
@@ -21,6 +22,7 @@ import {
   type VideoOutputKind,
 } from '@dg-agent/agent-browser';
 import type { LlmClient } from '@dg-agent/core';
+import { getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import {
@@ -32,6 +34,10 @@ import {
   type VisualSafetyStopReason,
   type VisualSessionSnapshot,
 } from './services/visual-session.js';
+import {
+  DeviceRuntimeVideoControlService,
+  type DeviceRuntimeVideoGrantSnapshot,
+} from './services/device-runtime-video-control.js';
 
 const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   status: 'idle',
@@ -62,6 +68,7 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
 };
 
 type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
+type VideoTargetFamily = 'dg-lab' | 'embedded';
 
 function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
@@ -125,14 +132,20 @@ export function App() {
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
   const [durationMinutes, setDurationMinutes] = useState(5);
+  const [targetFamily, setTargetFamily] = useState<VideoTargetFamily>('dg-lab');
   const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
   const [targetId, setTargetId] = useState('');
+  const [embeddedDeviceId, setEmbeddedDeviceId] = useState('');
+  const [embeddedFeatureId, setEmbeddedFeatureId] = useState('');
   const [channel, setChannel] = useState<'A' | 'B'>('A');
   const [intensityCap, setIntensityCap] = useState(10);
+  const [embeddedIntensityCap, setEmbeddedIntensityCap] = useState(0.2);
   const [allowEnhanced, setAllowEnhanced] = useState(false);
   const [allowBurst, setAllowBurst] = useState(false);
   const [grant, setGrant] = useState<GrantSnapshot | null>(null);
+  const [embeddedGrant, setEmbeddedGrant] = useState<DeviceRuntimeVideoGrantSnapshot | null>(null);
   const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
+  const [embeddedDevices, setEmbeddedDevices] = useState<DeviceSnapshot | null>(null);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -164,6 +177,38 @@ export function App() {
   }, [llm, safety, sceneLibrary, service]);
   useEffect(() => service.subscribe(setDevices), [service]);
 
+  const embeddedScene = useMemo(() => {
+    const selected = getAnyPromptPresetById(sceneLibrary.selectedId, sceneLibrary.scenes);
+    return selected ? { name: selected.name, prompt: selected.prompt } : null;
+  }, [sceneLibrary]);
+  const genericService = useMemo(
+    () =>
+      native.deviceRuntime
+        ? new DeviceRuntimeVideoControlService({
+            provider: native.deviceRuntime,
+            llm: null,
+            scene: null,
+            hasLease: () => hasDeviceLease('video'),
+          })
+        : null,
+    [native.deviceRuntime],
+  );
+  useEffect(() => {
+    genericService?.updateInputs({ llm, scene: embeddedScene });
+  }, [embeddedScene, genericService, llm]);
+  useEffect(() => {
+    if (!genericService) return;
+    return genericService.subscribe(setEmbeddedDevices);
+  }, [genericService]);
+  const currentControl = useCallback((): VideoTargetFamily | null => {
+    const now = Date.now();
+    const genericGrant = genericService?.getGrant();
+    if (genericGrant && !genericGrant.revoked && now < genericGrant.expiresAt) return 'embedded';
+    const dgLabGrant = service.getGrant();
+    if (dgLabGrant && !dgLabGrant.revoked && now < dgLabGrant.expiresAt) return 'dg-lab';
+    return null;
+  }, [genericService, service]);
+
   const visionEnabled = Boolean(
     isVideoLlmConfigured(config) && llm?.capabilities?.imageInput === true,
   );
@@ -179,11 +224,14 @@ export function App() {
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
-      const text = await service.observe(image, signal);
+      const text =
+        currentControl() === 'embedded'
+          ? await genericService!.observe(image, signal)
+          : await service.observe(image, signal);
       setObservations((current) => [...current, { step: current.length + 1, text }].slice(-20));
       return text;
     },
-    [service],
+    [currentControl, genericService, service],
   );
 
   const [session] = useState(
@@ -194,7 +242,11 @@ export function App() {
         stopAuthorizedTargets: async (reason) => {
           if (reason === 'emergency') return;
           try {
-            await service.stop(reason as VisualSafetyStopReason);
+            if (currentControl() === 'embedded') {
+              await genericService?.stop(reason as VisualSafetyStopReason);
+            } else {
+              await service.stop(reason as VisualSafetyStopReason);
+            }
           } catch {
             setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
           }
@@ -207,6 +259,7 @@ export function App() {
             snapshot.stopReason !== 'stop'
           ) {
             setGrant(null);
+            setEmbeddedGrant(null);
           }
         },
       }),
@@ -221,24 +274,39 @@ export function App() {
   const emergencyStop = useCallback(async () => {
     session.emergencyStop();
     setGrant(null);
-    try {
-      await service.emergencyStop();
-    } catch (error) {
+    setEmbeddedGrant(null);
+    const results = await Promise.allSettled([
+      service.emergencyStop(),
+      ...(genericService ? [genericService.emergencyStop()] : []),
+    ]);
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) {
       setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
-      throw error;
+      throw failure.reason;
     }
-  }, [service, session]);
+  }, [genericService, service, session]);
 
   useSafetySession({
     id: 'video',
     label: 'Video',
+    // Generic devices are listed and stopped by the shell-owned runtime safety
+    // session. Keep this module session responsible only for its legacy DG links.
     isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
     connect: () => service.connect().then(() => undefined),
     disconnect: (deviceId) => service.disconnect(deviceId),
     onRevoke: async () => {
       session.failSafeStop('lease-loss');
-      await service.stop('lease-loss');
+      const results = await Promise.allSettled([
+        service.stop('lease-loss'),
+        ...(genericService ? [genericService.stop('lease-loss')] : []),
+      ]);
+      const failure = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (failure) throw failure.reason;
     },
     devices: () => service.getDeviceSummaries(safety),
   });
@@ -251,6 +319,18 @@ export function App() {
     ].some((target) => target.kind === grant.targetKind && target.targetId === grant.targetId);
     if (!connected) session.failSafeStop('device-loss');
   }, [devices.coyotes, devices.opossumTarget, grant, session]);
+
+  useEffect(() => {
+    if (!embeddedGrant) return;
+    const connected = embeddedDevices?.devices.some(
+      (device) =>
+        device.deviceId === embeddedGrant.deviceId &&
+        device.capabilities.some(
+          (feature) => feature.kind === 'vibrate' && feature.featureId === embeddedGrant.featureId,
+        ),
+    );
+    if (!connected) session.failSafeStop('device-loss');
+  }, [embeddedDevices, embeddedGrant, session]);
 
   useEffect(() => {
     if ((cameraState === 'off' || cameraState === 'error') && visual.status === 'running') {
@@ -277,8 +357,9 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       stopEverything('unmount');
       void service.dispose();
+      void genericService?.dispose();
     };
-  }, [service, stopEverything]);
+  }, [genericService, service, stopEverything]);
 
   const connectedTargets = [
     ...devices.coyotes,
@@ -287,7 +368,28 @@ export function App() {
   const selectedTarget = connectedTargets.find(
     (target) => target.kind === targetKind && target.targetId === targetId,
   );
-  const targetConnected = selectedTarget !== undefined;
+  const embeddedTargets =
+    embeddedDevices?.devices.flatMap((device) =>
+      device.capabilities.flatMap((feature) =>
+        feature.kind === 'vibrate'
+          ? [
+              {
+                deviceId: device.deviceId,
+                featureId: feature.featureId,
+                name: device.name,
+                feature,
+              },
+            ]
+          : [],
+      ),
+    ) ?? [];
+  const selectedEmbeddedTarget = embeddedTargets.find(
+    (target) => target.deviceId === embeddedDeviceId && target.featureId === embeddedFeatureId,
+  );
+  const targetConnected =
+    targetFamily === 'embedded'
+      ? selectedEmbeddedTarget !== undefined
+      : selectedTarget !== undefined;
   const targetSafetyCap =
     targetKind === 'coyote'
       ? channel === 'A'
@@ -298,28 +400,56 @@ export function App() {
         : safety.maxIntensityB;
 
   const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), targetSafetyCap);
+  const effectiveEmbeddedIntensityCap = Math.min(1, Math.max(0, embeddedIntensityCap));
+  const activeGrant = targetFamily === 'embedded' ? embeddedGrant : grant;
+
+  async function stopPreviousControl(next: VideoTargetFamily) {
+    const current = currentControl();
+    if (!current || current === next) return;
+    if (current === 'embedded') await genericService?.stop('device-loss');
+    else await service.stop('device-loss');
+    setGrant(null);
+    setEmbeddedGrant(null);
+  }
 
   async function authorizeControl() {
     if (!targetConnected) {
-      setLocalError('请先连接要授权的输出设备');
+      setLocalError('请先选择要授权的输出功能');
       return;
     }
     try {
       setLocalError(null);
       await grantDeviceLease('video');
-      const next = await service.authorize({
-        targetKind,
-        targetId,
-        channel,
-        intensityCap: effectiveIntensityCap,
-        allowEnhanced,
-        allowBurst,
-        durationMs: durationMinutes * 60_000,
-        cadenceMs: cadenceSeconds * 1000,
-        captureIntervalMs,
-      });
+      await stopPreviousControl(targetFamily);
+      if (targetFamily === 'embedded') {
+        if (!genericService || !selectedEmbeddedTarget) throw new Error('通用设备运行时不可用');
+        const next = await genericService.authorize({
+          deviceId: selectedEmbeddedTarget.deviceId,
+          featureId: selectedEmbeddedTarget.featureId,
+          intensityCap: effectiveEmbeddedIntensityCap,
+          allowEnhanced,
+          durationMs: durationMinutes * 60_000,
+          cadenceMs: cadenceSeconds * 1000,
+          captureIntervalMs,
+        });
+        setGrant(null);
+        setEmbeddedGrant(next);
+      } else {
+        const next = await service.authorize({
+          targetKind,
+          targetId,
+          channel,
+          intensityCap: effectiveIntensityCap,
+          allowEnhanced,
+          allowBurst,
+          durationMs: durationMinutes * 60_000,
+          cadenceMs: cadenceSeconds * 1000,
+          captureIntervalMs,
+        });
+        setEmbeddedGrant(null);
+        setGrant(next);
+      }
       session.resetEmergencyLatch();
-      setGrant(next);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法创建控制授权');
     }
@@ -330,18 +460,23 @@ export function App() {
       setLocalError('请先开启摄像头并确认实时预览');
       return;
     }
-    if (!grant || grant.revoked || Date.now() >= grant.expiresAt) {
-      setLocalError('请先确认目标、通道与上限并授权');
+    if (!activeGrant || activeGrant.revoked || Date.now() >= activeGrant.expiresAt) {
+      setLocalError('请先确认目标、功能与上限并授权');
+      return;
+    }
+    if (currentControl() !== targetFamily) {
+      setLocalError('当前目标尚未获得本次 Video 授权');
       return;
     }
     try {
       setLocalError(null);
       if (visual.status !== 'paused') setObservations([]);
-      service.beginRun();
+      if (targetFamily === 'embedded') await genericService!.beginRun();
+      else service.beginRun();
       session.start(
-        grant.cadenceMs,
-        Math.max(1_000, grant.expiresAt - Date.now()),
-        grant.captureIntervalMs,
+        activeGrant.cadenceMs,
+        Math.max(1_000, activeGrant.expiresAt - Date.now()),
+        activeGrant.captureIntervalMs,
       );
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法开始视觉控制');
@@ -361,10 +496,34 @@ export function App() {
     try {
       setLocalError(null);
       const target = await service.connect(kind);
+      setTargetFamily('dg-lab');
       setTargetKind(target.kind);
       setTargetId(target.targetId);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
+    }
+  }
+
+  async function discoverEmbeddedDevices() {
+    if (!genericService) return;
+    try {
+      setLocalError(null);
+      await grantDeviceLease('video');
+      const snapshot = await genericService.discoverDevices();
+      setEmbeddedDevices(snapshot);
+      const first = snapshot.devices.flatMap((device) =>
+        device.capabilities.flatMap((feature) =>
+          feature.kind === 'vibrate'
+            ? [{ deviceId: device.deviceId, featureId: feature.featureId }]
+            : [],
+        ),
+      )[0];
+      if (first) {
+        setEmbeddedDeviceId(first.deviceId);
+        setEmbeddedFeatureId(first.featureId);
+      }
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
     }
   }
 
@@ -408,72 +567,138 @@ export function App() {
           </div>
 
           <div className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+              输出类型
+              <select
+                value={targetFamily}
+                onChange={(event) => setTargetFamily(event.target.value as VideoTargetFamily)}
+                disabled={visual.status === 'running'}
+                className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+              >
+                <option value="dg-lab">郊狼 / 负鼠</option>
+                {genericService && <option value="embedded">通用嵌入设备</option>}
+              </select>
+            </label>
+
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium">设备授权</span>
               <div className="flex gap-1.5">
-                {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
-                  <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                    <Link className="h-3.5 w-3.5" />
-                    {devices.coyotes.length > 0 ? '添加郊狼' : '郊狼'}
+                {targetFamily === 'embedded' ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void discoverEmbeddedDevices()}
+                    disabled={visual.status === 'running'}
+                  >
+                    <Link className="h-3.5 w-3.5" /> 查找设备
                   </Button>
-                )}
-                {!devices.opossumTarget && (
-                  <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
-                    <Link className="h-3.5 w-3.5" /> 负鼠
-                  </Button>
+                ) : (
+                  <>
+                    {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
+                      <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
+                        <Link className="h-3.5 w-3.5" />
+                        {devices.coyotes.length > 0 ? '添加郊狼' : '郊狼'}
+                      </Button>
+                    )}
+                    {!devices.opossumTarget && (
+                      <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
+                        <Link className="h-3.5 w-3.5" /> 负鼠
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            {targetFamily === 'embedded' ? (
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                目标
+                通用振动功能
                 <select
-                  value={targetId}
+                  value={embeddedFeatureId}
                   onChange={(event) => {
-                    const nextTarget = connectedTargets.find(
-                      (target) => target.targetId === event.target.value,
+                    const next = embeddedTargets.find(
+                      (target) => target.featureId === event.target.value,
                     );
-                    setTargetId(event.target.value);
-                    if (nextTarget) setTargetKind(nextTarget.kind);
+                    setEmbeddedFeatureId(event.target.value);
+                    if (next) setEmbeddedDeviceId(next.deviceId);
                   }}
                   disabled={visual.status === 'running'}
                   className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
                 >
-                  <option value="">请选择已连接目标</option>
-                  {connectedTargets.map((target) => (
-                    <option key={target.targetId} value={target.targetId}>
-                      {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name} ·{' '}
-                      {target.targetId}
+                  <option value="">请选择已发现的振动功能</option>
+                  {embeddedTargets.map((target, index) => (
+                    <option key={target.featureId} value={target.featureId}>
+                      {target.name} · 振动 {index + 1} · {target.deviceId}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                通道
-                <select
-                  value={channel}
-                  onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
-                  disabled={visual.status === 'running'}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
-                >
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                </select>
-              </label>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                  目标
+                  <select
+                    value={targetId}
+                    onChange={(event) => {
+                      const nextTarget = connectedTargets.find(
+                        (target) => target.targetId === event.target.value,
+                      );
+                      setTargetId(event.target.value);
+                      if (nextTarget) setTargetKind(nextTarget.kind);
+                    }}
+                    disabled={visual.status === 'running'}
+                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                  >
+                    <option value="">请选择已连接目标</option>
+                    {connectedTargets.map((target) => (
+                      <option key={target.targetId} value={target.targetId}>
+                        {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name} ·{' '}
+                        {target.targetId}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                  通道
+                  <select
+                    value={channel}
+                    onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
+                    disabled={visual.status === 'running'}
+                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                  >
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                  </select>
+                </label>
+              </div>
+            )}
 
-            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-              强度上限 · {effectiveIntensityCap}/{targetSafetyCap}
-              <input
-                type="range"
-                min={0}
-                max={targetSafetyCap}
-                value={effectiveIntensityCap}
-                onChange={(event) => setIntensityCap(Number(event.target.value))}
-                disabled={visual.status === 'running'}
-              />
-            </label>
+            {targetFamily === 'embedded' ? (
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                归一化强度上限 · {Math.round(effectiveEmbeddedIntensityCap * 100)}%
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={effectiveEmbeddedIntensityCap}
+                  onChange={(event) => setEmbeddedIntensityCap(Number(event.target.value))}
+                  disabled={visual.status === 'running'}
+                />
+              </label>
+            ) : (
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                强度上限 · {effectiveIntensityCap}/{targetSafetyCap}
+                <input
+                  type="range"
+                  min={0}
+                  max={targetSafetyCap}
+                  value={effectiveIntensityCap}
+                  onChange={(event) => setIntensityCap(Number(event.target.value))}
+                  disabled={visual.status === 'running'}
+                />
+              </label>
+            )}
 
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
@@ -532,23 +757,25 @@ export function App() {
                 />
                 允许小步增强
               </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={allowBurst}
-                  onChange={(event) => setAllowBurst(event.target.checked)}
-                  disabled={visual.status === 'running'}
-                />
-                允许短时脉冲
-              </label>
+              {targetFamily === 'dg-lab' && (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allowBurst}
+                    onChange={(event) => setAllowBurst(event.target.checked)}
+                    disabled={visual.status === 'running'}
+                  />
+                  允许短时脉冲
+                </label>
+              )}
             </div>
 
             <Button
-              variant={grant ? 'secondary' : 'default'}
+              variant={activeGrant ? 'secondary' : 'default'}
               onClick={() => void authorizeControl()}
               disabled={!visionEnabled || !targetConnected || visual.status === 'running'}
             >
-              {grant ? '重新授权' : '确认并授权'}
+              {activeGrant ? '重新授权' : '确认并授权'}
             </Button>
           </div>
 
@@ -558,7 +785,10 @@ export function App() {
                 <CirclePause className="h-4 w-4" /> 暂停
               </Button>
             ) : (
-              <Button onClick={() => void startSession()} disabled={!grant || cameraState !== 'on'}>
+              <Button
+                onClick={() => void startSession()}
+                disabled={!activeGrant || cameraState !== 'on'}
+              >
                 <CirclePlay className="h-4 w-4" />
                 {visual.status === 'paused' ? '继续' : '开始'}
               </Button>
@@ -580,8 +810,8 @@ export function App() {
 
           <div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-soft)]">
             状态：{statusLabel(visual)} · {visual.steps} 次观察
-            {grant && !grant.revoked
-              ? ` · 目标 ${grant.targetId} · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
+            {activeGrant && !activeGrant.revoked
+              ? ` · 目标 ${targetFamily === 'embedded' ? embeddedGrant?.featureId : grant?.targetId} · 授权至 ${new Date(activeGrant.expiresAt).toLocaleTimeString()}`
               : ' · 未授权'}
           </div>
 

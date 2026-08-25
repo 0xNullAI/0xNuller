@@ -7,5 +7,5 @@ Video 的原生蓝牙桥接上下文。
 import { NativeBridgeProvider, useNativeBridge } from '@0xnullai/native';
 ```
 
-所有能力均为可选；网页环境会安全返回空桥接。外壳还可通过 `deviceRuntime` 注入唯一的
-`SharedDeviceRuntimeProvider`，各模块只绑定自己的 module id，不另建后端会话。
+所有能力均为可选；独立模块环境会安全返回空桥接。统一外壳通过顶层 `deviceRuntime` 注入唯一的
+共享设备运行时，供 Control、Agent、Voice 与 Video 绑定各自的 module id；各模块仍须独立收窄授权与模型能力。

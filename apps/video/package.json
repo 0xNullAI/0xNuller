@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@0xnullai/device-runtime": "0.1.0",
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "@0xnullai/scenes": "0.1.0",
@@ -16,6 +17,7 @@
     "@0xnullai/ui": "0.1.0",
     "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/core": "0.1.0",
+    "@dg-agent/runtime": "0.1.0",
     "@dg-kit/safety": "1.16.2",
     "lucide-react": "^1.11.0"
   },
