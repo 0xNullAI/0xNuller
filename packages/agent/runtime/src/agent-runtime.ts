@@ -3,6 +3,7 @@ import type {
   DeviceKind,
   LlmConversationItem,
   LlmClient,
+  LlmImageInput,
   Logger,
   PermissionService,
   SensorState,
@@ -83,6 +84,7 @@ import {
 } from './session-history.js';
 import { createDefaultToolRegistryWithDeps } from './tool-registry.js';
 import type { ToolRegistry } from './tool-registry.js';
+import { redactModelData } from './redact-model-data.js';
 
 export interface AgentRuntimeOptions {
   device: DeviceClient;
@@ -135,6 +137,8 @@ export interface SendUserMessageInput {
   text: string;
   context: ActionContext;
   persistMessage?: boolean;
+  /** One ephemeral visual frame. This field is never copied into SessionSnapshot. */
+  image?: LlmImageInput;
 }
 
 export type { TurnToolCallSummary } from './runtime-turn-state.js';
@@ -152,6 +156,7 @@ const defaultLogger: Logger = {
 };
 
 export class AgentRuntime {
+  readonly capabilities;
   private readonly events = new InMemoryEventBus();
   private readonly sessions: SessionStore;
   private readonly traces: SessionTraceStore;
@@ -176,6 +181,7 @@ export class AgentRuntime {
   private disposed = false;
 
   constructor(private readonly options: AgentRuntimeOptions) {
+    this.capabilities = { imageInput: options.llm.capabilities?.imageInput === true };
     this.sessions = options.sessionStore ?? new InMemorySessionStore();
     this.traces = options.sessionTraceStore ?? new InMemorySessionTraceStore();
     this.queue = new DeviceCommandQueue(options.device);
@@ -491,6 +497,9 @@ export class AgentRuntime {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
       throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
     }
+    if (input.image && !this.capabilities.imageInput) {
+      throw new Error('当前模型未明确支持图片输入，请切换到支持视觉的模型');
+    }
 
     if (this.isSessionDeleted(input.sessionId)) {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) {
@@ -644,7 +653,7 @@ export class AgentRuntime {
           ...(await this.getAuxDeviceStatesForInstructions()),
         }) ?? '';
       const tools =
-        input.context.sourceType === 'system'
+        input.context.sourceType === 'system' || input.image
           ? []
           : filterToolDefinitionsByConnectedDevices(
               await this.toolRegistry.listDefinitions(),
@@ -692,6 +701,7 @@ export class AgentRuntime {
         instructions,
         tools,
         conversation,
+        image: iteration === 0 ? input.image : undefined,
         abortSignal,
         onTextDelta: (content) => {
           this.events.emit({
@@ -711,8 +721,8 @@ export class AgentRuntime {
         iteration,
         assistantMessage: llmResult.assistantMessage,
         toolCalls: llmResult.toolCalls ?? [],
-        rawRequest: capturedRequest,
-        rawResponse: llmResult.rawResponse,
+        rawRequest: redactModelData(capturedRequest),
+        rawResponse: redactModelData(llmResult.rawResponse),
       });
 
       throwIfAborted(abortSignal);

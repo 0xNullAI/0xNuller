@@ -133,6 +133,7 @@ export interface BrowserServices {
 class UnavailableAgentClient implements AgentClient {
   readonly transport = 'embedded' as const;
   readonly supportsLiveEvents = false;
+  readonly capabilities = { imageInput: false };
 
   constructor(private readonly message: string) {}
 

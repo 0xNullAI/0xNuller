@@ -57,6 +57,8 @@ export interface ProviderDefinition {
   browserSupported: boolean;
   fields: ProviderFieldDefinition[];
   dialect: ProviderDialect;
+  /** Provider-level vision policy. Model ids still have to match the allowlist below. */
+  imageInput: 'known-models' | 'none';
   /**
    * Loosely typed (not `PiAiProviderKey`) so this package doesn't have to
    * depend on `providers-pi-http` just for a string literal union — the
@@ -79,6 +81,8 @@ export interface ProviderRuntimeSettings extends ProviderSettings {
   browserSupported: boolean;
   dialect: ProviderDialect;
   piProviderKey?: string;
+  /** Fail-closed capability resolved from both provider and normalized model id. */
+  imageInput: boolean;
 }
 
 const PROVIDER_IDS = [
@@ -147,7 +151,7 @@ function piAiFields(
   ];
 }
 
-export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
+const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> = [
   {
     id: 'free',
     name: '免费体验',
@@ -393,6 +397,45 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   },
 ];
 
+/**
+ * Explicit vision allowlist. An absent provider or an unrecognized model id
+ * is not assumed to support images, even when its API dialect could serialize
+ * them. The free proxy stays disabled because its upstream model is selected
+ * server-side and cannot be verified by this client.
+ */
+const IMAGE_MODEL_PREFIXES: Partial<Record<ProviderId, readonly string[]>> = {
+  qwen: ['qwen-vl', 'qwen2.5-vl', 'qwen3-vl', 'qwen3.5-'],
+  doubao: ['doubao-seed-'],
+  openai: ['gpt-4o', 'gpt-4.1', 'gpt-5'],
+  anthropic: ['claude-3-', 'claude-sonnet-4', 'claude-opus-4', 'claude-haiku-4'],
+  google: ['gemini-'],
+  openrouter: ['anthropic/claude-3-', 'anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+  zai: ['glm-4v', 'glm-4.5v'],
+  'zai-coding-cn': ['glm-4v', 'glm-4.5v'],
+  xai: ['grok-vision'],
+  mistral: ['pixtral-'],
+};
+
+export const PROVIDER_DEFINITIONS: ProviderDefinition[] = PROVIDER_DEFINITION_INPUTS.map(
+  (provider) => ({
+    ...provider,
+    imageInput: IMAGE_MODEL_PREFIXES[provider.id]?.length ? 'known-models' : 'none',
+  }),
+);
+
+export function supportsProviderModelImageInput(
+  providerId: ProviderId,
+  model: string,
+): boolean {
+  const normalizedModel = model.trim().toLowerCase();
+  if (!normalizedModel) return false;
+  return Boolean(
+    IMAGE_MODEL_PREFIXES[providerId]?.some((prefix) =>
+      normalizedModel.startsWith(prefix.toLowerCase()),
+    ),
+  );
+}
+
 export function getProviderDefinition(id: ProviderId): ProviderDefinition | undefined {
   return PROVIDER_DEFINITIONS.find((provider) => provider.id === id);
 }
@@ -514,6 +557,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
       useStrict: false,
       browserSupported: true,
       dialect,
+      imageInput: false,
     };
   }
 
@@ -523,6 +567,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
     browserSupported: isProviderUsableInBrowser(normalized),
     dialect,
     piProviderKey: definition?.piProviderKey,
+    imageInput: supportsProviderModelImageInput(normalized.providerId, normalized.model),
   };
 }
 

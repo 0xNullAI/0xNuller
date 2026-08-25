@@ -24,6 +24,7 @@ const configSchema = z.object({
   extraHeaders: z
     .custom<() => Record<string, string> | Promise<Record<string, string>>>()
     .optional(),
+  supportsImageInput: z.boolean().default(false),
 });
 
 const chatResponseSchema = z.object({
@@ -79,13 +80,17 @@ export interface OpenAiHttpLlmClientConfig {
    * attach an HMAC signature; ordinary providers leave this unset.
    */
   extraHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  /** Must be resolved from an explicit provider+model capability allowlist. */
+  supportsImageInput?: boolean;
 }
 
 export class OpenAiHttpLlmClient implements LlmClient {
   private readonly config: z.infer<typeof configSchema>;
+  readonly capabilities;
 
   constructor(inputConfig: OpenAiHttpLlmClientConfig) {
     this.config = configSchema.parse(inputConfig);
+    this.capabilities = { imageInput: this.config.supportsImageInput };
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {
@@ -100,6 +105,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
 
   async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
     validateApiKey(this.config.apiKey);
+    validateImageInput(input, this.capabilities.imageInput);
     if (this.config.endpoint === 'responses') {
       return this.runResponsesTurn(input);
     }
@@ -116,6 +122,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
         input.conversation ?? toConversationItems(input.session),
         input.instructions,
         { includeReasoningContent: shouldIncludeReasoningContent(this.config) },
+        input.image,
       ),
       tools:
         input.tools.length > 0
@@ -171,7 +178,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
     const streaming = typeof input.onTextDelta === 'function';
     const requestBody = {
       model: this.config.model,
-      input: toResponsesInput(input.conversation ?? toConversationItems(input.session)),
+      input: toResponsesInput(
+        input.conversation ?? toConversationItems(input.session),
+        input.image,
+      ),
       instructions: input.instructions,
       store: false,
       temperature: this.config.temperature,
@@ -391,6 +401,27 @@ async function parseChatCompletionsStream(
       args: parseArguments(toolCall.arguments),
     })),
   };
+}
+
+function validateImageInput(input: LlmTurnInput, supported: boolean): void {
+  if (!input.image) return;
+  if (!supported) {
+    throw new Error('当前模型未明确支持图片输入，请切换到支持视觉的模型');
+  }
+  if (
+    input.image.byteLength > 250 * 1024 ||
+    encodedImageByteLength(input.image.data) > 250 * 1024 ||
+    Math.max(input.image.width, input.image.height) > 768 ||
+    (input.image.mediaType !== 'image/jpeg' && input.image.mediaType !== 'image/webp') ||
+    !input.image.data
+  ) {
+    throw new Error('图片不符合视觉输入限制（最大边长 768，最大 250KB）');
+  }
+}
+
+function encodedImageByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
 }
 
 function validateApiKey(apiKey: string): void {

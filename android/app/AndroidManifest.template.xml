@@ -18,6 +18,8 @@
     * ACCESS_*_LOCATION — Android 6-11 (API 23-30) required Location to
       run any BLE scan. Capped at SDK 30 since 12+ uses BLUETOOTH_SCAN
       with neverForLocation instead.
+    * CAMERA — only requested after the user explicitly enables Agent's local
+      preview. Camera hardware remains optional and capture failures stay closed.
     * INTERNET — outbound LLM API calls.
     * uses-feature bluetooth_le required="false" — we want the app to
       install on emulators and devices without BLE, where it can still
@@ -29,6 +31,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Android 12+ (API 31+) BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -46,6 +49,8 @@
                      android:maxSdkVersion="30" />
 
     <uses-feature android:name="android.hardware.bluetooth_le"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any"
                   android:required="false" />
 
     <!--

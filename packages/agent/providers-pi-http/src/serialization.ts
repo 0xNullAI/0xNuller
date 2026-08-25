@@ -9,6 +9,7 @@ import type {
   Api,
   AssistantMessage,
   Context,
+  ImageContent,
   Message,
   TextContent,
   ThinkingContent,
@@ -85,6 +86,7 @@ export function buildContext(input: LlmTurnInput, options: BuildContextOptions):
   const conversation = input.conversation ?? toConversationItems(input.session);
   const messages: Message[] = [];
   const toolNameByCallId = new Map<string, string>();
+  const imageTargetIndex = findLastUserMessageIndex(conversation);
   let timestamp = 0;
 
   const assistantEnvelope = {
@@ -95,7 +97,7 @@ export function buildContext(input: LlmTurnInput, options: BuildContextOptions):
     stopReason: 'stop' as const,
   };
 
-  for (const item of conversation) {
+  for (const [index, item] of conversation.entries()) {
     if (item.kind === 'message') {
       // Persisted system-role messages are filtered out of model context
       // upstream (runtime-turn-state.ts `shouldSkipModelContextMessage`), so
@@ -103,7 +105,19 @@ export function buildContext(input: LlmTurnInput, options: BuildContextOptions):
       if (item.role === 'system') continue;
 
       if (item.role === 'user') {
-        messages.push({ role: 'user', content: item.content, timestamp: timestamp++ });
+        const image: ImageContent | undefined =
+          input.image && index === imageTargetIndex
+            ? {
+                type: 'image',
+                data: input.image.data,
+                mimeType: input.image.mediaType,
+              }
+            : undefined;
+        messages.push({
+          role: 'user',
+          content: image ? [{ type: 'text', text: item.content }, image] : item.content,
+          timestamp: timestamp++,
+        });
         continue;
       }
 
@@ -155,6 +169,14 @@ export function buildContext(input: LlmTurnInput, options: BuildContextOptions):
     messages,
     tools: input.tools.length > 0 ? input.tools.map(toPiTool) : undefined,
   };
+}
+
+function findLastUserMessageIndex(conversation: LlmConversationItem[]): number {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const item = conversation[index];
+    if (item?.kind === 'message' && item.role === 'user') return index;
+  }
+  return -1;
 }
 
 export function extractText(message: AssistantMessage): string {

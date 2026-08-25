@@ -1,4 +1,4 @@
-import type { LlmConversationItem } from '@dg-agent/core';
+import type { LlmConversationItem, LlmImageInput } from '@dg-agent/core';
 import type { SessionSnapshot, ToolDefinition, ToolCall } from '@dg-agent/core';
 import { repairJson } from './repair-json.js';
 import { strictify, widenWithNull } from './schema-utils.js';
@@ -7,8 +7,10 @@ export function toChatMessages(
   conversation: LlmConversationItem[],
   instructions: string,
   options: { includeReasoningContent: boolean },
+  image?: LlmImageInput,
 ): Array<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = [];
+  const imageTargetIndex = findLastUserMessageIndex(conversation);
 
   if (instructions.trim()) {
     messages.push({
@@ -17,11 +19,20 @@ export function toChatMessages(
     });
   }
 
-  for (const item of conversation) {
+  for (const [index, item] of conversation.entries()) {
     if (item.kind === 'message') {
       const message: Record<string, unknown> = {
         role: item.role,
-        content: item.content,
+        content:
+          image && index === imageTargetIndex
+            ? [
+                { type: 'text', text: item.content },
+                {
+                  type: 'image_url',
+                  image_url: { url: imageDataUrl(image), detail: 'auto' },
+                },
+              ]
+            : item.content,
       };
       if (item.role === 'assistant') {
         if (item.reasoningContent && options.includeReasoningContent) {
@@ -72,13 +83,21 @@ export function toChatMessages(
 
 export function toResponsesInput(
   conversation: LlmConversationItem[],
+  image?: LlmImageInput,
 ): Array<Record<string, unknown>> {
-  return conversation.flatMap((item) => {
+  const imageTargetIndex = findLastUserMessageIndex(conversation);
+  return conversation.flatMap((item, index) => {
     if (item.kind === 'message') {
       const items: Array<Record<string, unknown>> = [
         {
           role: item.role,
-          content: item.content,
+          content:
+            image && index === imageTargetIndex
+              ? [
+                  { type: 'input_text', text: item.content },
+                  { type: 'input_image', image_url: imageDataUrl(image), detail: 'auto' },
+                ]
+              : item.content,
         },
       ];
 
@@ -115,6 +134,18 @@ export function toResponsesInput(
       },
     ];
   });
+}
+
+function findLastUserMessageIndex(conversation: LlmConversationItem[]): number {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const item = conversation[index];
+    if (item?.kind === 'message' && item.role === 'user') return index;
+  }
+  return -1;
+}
+
+function imageDataUrl(image: LlmImageInput): string {
+  return `data:${image.mediaType};base64,${image.data}`;
 }
 
 export function toResponsesTool(tool: ToolDefinition, useStrict: boolean): Record<string, unknown> {

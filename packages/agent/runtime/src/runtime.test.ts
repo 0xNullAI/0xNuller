@@ -467,6 +467,20 @@ class AbortableLlm implements LlmClient {
   }
 }
 
+class VisionProbeLlm implements LlmClient {
+  readonly capabilities = { imageInput: true };
+  inputs: Array<Parameters<LlmClient['runTurn']>[0]> = [];
+
+  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
+    this.inputs.push(input);
+    input.onRawRequest?.({ messages: [{ content: [{ type: 'image', data: input.image?.data }] }] });
+    return {
+      assistantMessage: '我看到了画面。',
+      rawResponse: { echoed: `data:${input.image?.mediaType};base64,${input.image?.data}` },
+    };
+  }
+}
+
 class FailingLlm implements LlmClient {
   async runTurn(): Promise<never> {
     throw new Error('Provider HTTP error 401: unauthorized');
@@ -549,6 +563,74 @@ function createScriptedMessages(
 }
 
 describe('AgentRuntime', () => {
+  it('keeps a visual frame ephemeral, disables tools, and redacts recursive model logs', async () => {
+    const llm = new VisionProbeLlm();
+    const store = new TestSessionStore();
+    const events: RuntimeEvent[] = [];
+    const runtime = new AgentRuntime({
+      device: new TestDevice(),
+      llm,
+      permission: new TestPermission(),
+      sessionStore: store,
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+    runtime.subscribe((event) => events.push(event));
+
+    await runtime.sendUserMessage({
+      sessionId: 'vision',
+      text: '画面里有什么？',
+      image: {
+        mediaType: 'image/jpeg',
+        data: 'camera-secret-base64',
+        width: 640,
+        height: 480,
+        byteLength: 16,
+      },
+      context: { sessionId: 'vision', sourceType: 'web', traceId: 'vision-1' },
+    });
+
+    expect(llm.inputs).toHaveLength(1);
+    expect(llm.inputs[0]?.tools).toEqual([]);
+    expect(llm.inputs[0]?.image?.data).toBe('camera-secret-base64');
+    const snapshot = await runtime.getSessionSnapshot('vision');
+    expect(JSON.stringify(snapshot)).not.toContain('camera-secret-base64');
+    expect(snapshot.messages.map((message) => message.content)).toEqual([
+      '画面里有什么？',
+      '我看到了画面。',
+    ]);
+    const complete = events.find((event) => event.type === 'llm-turn-complete');
+    expect(JSON.stringify(complete)).not.toContain('camera-secret-base64');
+    expect(JSON.stringify(complete)).toContain('[REDACTED_IMAGE]');
+  });
+
+  it('rejects an image with unknown capability before creating a session or calling the model', async () => {
+    const llm = new ContextProbeLlm();
+    const store = new TestSessionStore();
+    const runtime = new AgentRuntime({
+      device: new TestDevice(),
+      llm,
+      permission: new TestPermission(),
+      sessionStore: store,
+    });
+
+    await expect(
+      runtime.sendUserMessage({
+        sessionId: 'unsupported-vision',
+        text: 'look',
+        image: {
+          mediaType: 'image/webp',
+          data: 'secret',
+          width: 1,
+          height: 1,
+          byteLength: 6,
+        },
+        context: { sessionId: 'unsupported-vision', sourceType: 'web', traceId: 'vision-2' },
+      }),
+    ).rejects.toThrow(/未明确支持图片输入/);
+    expect(llm.conversations).toEqual([]);
+    expect(await store.list()).toEqual([]);
+  });
+
   it('runs tool iterations until a final assistant answer is produced', async () => {
     const runtime = new AgentRuntime({
       device: new TestDevice(),

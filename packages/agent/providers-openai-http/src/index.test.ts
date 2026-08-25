@@ -22,6 +22,14 @@ const EMPTY_CONTEXT = {
   deviceState: createEmptyDeviceState(),
 };
 
+const TEST_IMAGE = {
+  mediaType: 'image/jpeg' as const,
+  data: 'aGVsbG8=',
+  width: 640,
+  height: 480,
+  byteLength: 5,
+};
+
 const MOCK_CHAT_RESPONSE = {
   choices: [{ message: { role: 'assistant', content: 'ok', reasoning_content: null } }],
 };
@@ -167,6 +175,78 @@ describe('OpenAiHttpLlmClient', () => {
         (m) => m.role === 'assistant' && Array.isArray(m.tool_calls),
       );
       expect(assistantMsg?.reasoning_content).toBe('<think>thinking...</think>');
+    });
+  });
+
+  describe('vision serialization and capability gate', () => {
+    it('serializes one image on the latest user message for Chat Completions', async () => {
+      const captured = captureRequestBody();
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini',
+        supportsImageInput: true,
+      });
+
+      await client.runTurn({ ...makeTurnInput(), image: TEST_IMAGE });
+
+      const messages = captured.body?.messages as Array<Record<string, unknown>>;
+      expect(messages[0]?.content).toEqual([
+        { type: 'text', text: 'hello' },
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/jpeg;base64,aGVsbG8=', detail: 'auto' },
+        },
+      ]);
+      expect(captured.body?.tools).toBeUndefined();
+    });
+
+    it('serializes one input_image block for Responses', async () => {
+      let body: Record<string, unknown> | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+          body = JSON.parse(init.body as string) as Record<string, unknown>;
+          return {
+            ok: true,
+            json: async () => ({ output: [], output_text: 'ok' }),
+            body: null,
+          };
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini',
+        endpoint: 'responses',
+        supportsImageInput: true,
+      });
+
+      await client.runTurn({ ...makeTurnInput(), image: TEST_IMAGE });
+
+      expect((body?.input as Array<Record<string, unknown>>)[0]?.content).toEqual([
+        { type: 'input_text', text: 'hello' },
+        {
+          type: 'input_image',
+          image_url: 'data:image/jpeg;base64,aGVsbG8=',
+          detail: 'auto',
+        },
+      ]);
+    });
+
+    it('rejects unknown image capability before fetch', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'unknown-model',
+      });
+
+      await expect(client.runTurn({ ...makeTurnInput(), image: TEST_IMAGE })).rejects.toThrow(
+        /未明确支持图片输入/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 

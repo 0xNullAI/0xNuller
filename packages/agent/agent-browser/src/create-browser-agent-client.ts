@@ -39,6 +39,8 @@ import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { createBuildBrowserInstructions } from './build-browser-instructions.js';
 
 class UnavailableLlmClient implements LlmClient {
+  readonly capabilities = { imageInput: false };
+
   constructor(private readonly message: string) {}
 
   async runTurn(_input: LlmTurnInput): Promise<LlmTurnResult> {
@@ -166,6 +168,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
           model: provider.model,
           providerKey: provider.piProviderKey,
           temperature: settings.temperature,
+          supportsImageInput: provider.imageInput,
         });
       } catch (error) {
         llm = new UnavailableLlmClient(
@@ -195,6 +198,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         useStrict: provider.useStrict,
         temperature: settings.temperature,
         extraHeaders,
+        supportsImageInput: provider.imageInput,
       });
     } catch (error) {
       llm = new UnavailableLlmClient(

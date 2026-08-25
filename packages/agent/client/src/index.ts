@@ -1,5 +1,6 @@
 import type {
   DeviceLinkRule,
+  LlmCapabilities,
   RuntimeEvent,
   RuntimeTraceEntry,
   SessionSnapshot,
@@ -13,6 +14,7 @@ import {
 export interface AgentClient {
   readonly transport: 'embedded' | 'http';
   readonly supportsLiveEvents: boolean;
+  readonly capabilities: LlmCapabilities;
   listSessions(): Promise<SessionSnapshot[]>;
   getSessionSnapshot(sessionId: string): Promise<SessionSnapshot>;
   getSessionTrace(sessionId: string): Promise<RuntimeTraceEntry[]>;
@@ -47,6 +49,10 @@ class EmbeddedAgentClient implements AgentClient {
   readonly supportsLiveEvents = true;
 
   constructor(private readonly runtime: AgentRuntime) {}
+
+  get capabilities(): LlmCapabilities {
+    return this.runtime.capabilities;
+  }
 
   listSessions(): Promise<SessionSnapshot[]> {
     return this.runtime.listSessions();

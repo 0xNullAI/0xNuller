@@ -7,6 +7,8 @@ import {
   ArrowUp,
   AudioLines,
   Bluetooth,
+  Camera,
+  CameraOff,
   ChevronDown,
   Check,
   Gauge,
@@ -41,6 +43,11 @@ interface ChatPanelProps {
   onToggleVoiceMode: () => void;
   onSend: () => void;
   busy: boolean;
+  cameraSupported: boolean;
+  cameraState: 'off' | 'starting' | 'on' | 'error';
+  cameraError: string | null;
+  cameraVideoRef: React.RefObject<HTMLVideoElement | null>;
+  onToggleCamera: () => void;
   speechRecognitionEnabled: boolean;
   voiceMode: boolean;
   voiceState: 'idle' | 'listening' | 'ready' | 'sending' | 'speaking';
@@ -134,6 +141,11 @@ export function ChatPanel({
   onToggleVoiceMode,
   onSend,
   busy,
+  cameraSupported,
+  cameraState,
+  cameraError,
+  cameraVideoRef,
+  onToggleCamera,
   speechRecognitionEnabled,
   voiceMode,
   voiceState: _voiceState,
@@ -404,6 +416,41 @@ export function ChatPanel({
           </div>
         )}
 
+      {cameraState !== 'off' && (
+        <div className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
+          <div className="mx-auto flex max-w-[800px] items-center gap-3">
+            {cameraState === 'on' || cameraState === 'starting' ? (
+              <video
+                ref={cameraVideoRef}
+                muted
+                playsInline
+                aria-label="本地摄像头预览"
+                className="h-20 w-28 shrink-0 rounded-[var(--radius-xs)] bg-black object-cover"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1 text-xs text-[var(--text-soft)]">
+              <div className="font-medium text-[var(--text)]">
+                {cameraState === 'on'
+                  ? '摄像头已开启 · 发送时采样一帧'
+                  : cameraState === 'starting'
+                    ? '正在开启摄像头…'
+                    : '摄像头未开启'}
+              </div>
+              {cameraError && <div className="mt-1 text-[var(--danger)]">{cameraError}</div>}
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onToggleCamera}
+              aria-label="关闭摄像头"
+            >
+              <CameraOff className="h-4 w-4" />
+              关闭
+            </Button>
+          </div>
+        </div>
+      )}
+
       {coyoteTargets.length > 1 && (
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2">
           <label htmlFor="agent-coyote-target" className="text-xs text-[var(--text-soft)]">
@@ -515,6 +562,21 @@ export function ChatPanel({
                   placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
                   className="!h-11 flex-1 rounded-full text-[14px] sm:!h-12 sm:text-[15px]"
                 />
+                <Button
+                  variant={cameraState === 'on' ? 'default' : 'secondary'}
+                  size="icon"
+                  className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
+                  disabled={busy || (!cameraSupported && cameraState === 'off')}
+                  onClick={onToggleCamera}
+                  aria-label={cameraState === 'on' ? '关闭摄像头' : '开启摄像头'}
+                  title={cameraSupported ? '开启本地摄像头预览' : '当前模型未声明图片能力'}
+                >
+                  {cameraState === 'on' ? (
+                    <CameraOff className="h-4.5 w-4.5" />
+                  ) : (
+                    <Camera className="h-4.5 w-4.5" />
+                  )}
+                </Button>
                 {voiceMode ? (
                   <Button
                     variant="destructive"
@@ -652,6 +714,21 @@ export function ChatPanel({
               placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
               className="!h-10 flex-1 rounded-full"
             />
+            <Button
+              variant={cameraState === 'on' ? 'default' : 'secondary'}
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
+              disabled={busy || (!cameraSupported && cameraState === 'off')}
+              onClick={onToggleCamera}
+              aria-label={cameraState === 'on' ? '关闭摄像头' : '开启摄像头'}
+              title={cameraSupported ? '开启本地摄像头预览' : '当前模型未声明图片能力'}
+            >
+              {cameraState === 'on' ? (
+                <CameraOff className="h-4 w-4" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+            </Button>
             {!inShell && !deviceState.connected && (
               <Button
                 variant="secondary"

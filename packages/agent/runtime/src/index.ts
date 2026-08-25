@@ -4,6 +4,7 @@ export * from './device-clients.js';
 export * from './event-bus.js';
 export * from './in-memory-session-store.js';
 export * from './prompts/index.js';
+export * from './redact-model-data.js';
 export * from './sensor-trigger-engine.js';
 export * from './device-link-engine.js';
 export * from './session-trace.js';
