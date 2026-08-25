@@ -129,4 +129,21 @@ describe('VideoSetupPanel', () => {
     expect(actions.discoverEmbeddedDevices).toHaveBeenCalledOnce();
     expect(actions.activate).toHaveBeenCalledOnce();
   });
+
+  it('hides only the generic-device entry when the shared experiment is disabled', () => {
+    const actions = createActions();
+    render(
+      <VideoSetupPanel
+        view={{
+          ...baseView,
+          embeddedAvailable: false,
+        }}
+        actions={actions}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '查找通用设备' })).toBeNull();
+    expect(screen.getByRole('button', { name: '添加郊狼' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '连接负鼠' })).toBeTruthy();
+  });
 });

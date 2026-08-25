@@ -1,15 +1,11 @@
-import { useState, useSyncExternalStore } from 'react';
-import { useNativeBridge } from '@0xnullai/native';
+import { useState } from 'react';
+import { useEmbeddedDeviceRuntimeEnabled, useNativeBridge } from '@0xnullai/native';
 import { reportStopFailure } from '@0xnullai/ui';
 
 /** One local opt-in for the shell-owned runtime shared by every device-capable module. */
 export function ExperimentalDeviceSection() {
   const deviceRuntime = useNativeBridge().deviceRuntime;
-  const enabled = useSyncExternalStore(
-    (listener) => deviceRuntime?.subscribeEnabled(listener) ?? (() => undefined),
-    () => deviceRuntime?.isEnabled() ?? false,
-    () => false,
-  );
+  const enabled = useEmbeddedDeviceRuntimeEnabled();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bluetooth, LoaderCircle, Unplug } from 'lucide-react';
-import { useNativeBridge } from '@0xnullai/native';
+import { useEmbeddedDeviceRuntimeEnabled, useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import {
   createDeviceInteractionId,
@@ -8,6 +8,7 @@ import {
   genericDeviceIntensityCap,
   type BoundDeviceTools,
   type DeviceSnapshot,
+  type EmbeddedDeviceRuntimeProvider,
   type FeatureId,
   type RuntimeDevice,
 } from '@0xnullai/device-runtime';
@@ -17,7 +18,13 @@ const OUTPUT_LEASE_MS = 1_000;
 /** Separate generic-device UI. Existing Coyote/Opossum controls remain untouched below it. */
 export function EmbeddedDevicePanel() {
   const provider = useNativeBridge().deviceRuntime;
-  const [enabled, setEnabled] = useState(() => provider?.isEnabled() ?? false);
+  const enabled = useEmbeddedDeviceRuntimeEnabled();
+
+  if (!provider || !enabled) return null;
+  return <EnabledEmbeddedDevicePanel provider={provider} />;
+}
+
+function EnabledEmbeddedDevicePanel({ provider }: { provider: EmbeddedDeviceRuntimeProvider }) {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot | null>(
     () => provider?.current()?.snapshot() ?? null,
   );
@@ -28,10 +35,7 @@ export function EmbeddedDevicePanel() {
   const [scanning, setScanning] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const binding = useMemo(
-    () => (provider && enabled ? new DeviceRuntimeModuleBinding(provider, 'control') : null),
-    [enabled, provider],
-  );
+  const binding = useMemo(() => new DeviceRuntimeModuleBinding(provider, 'control'), [provider]);
 
   useEffect(
     () => subscribeDeviceSafety((settings) => setIntensityCap(genericDeviceIntensityCap(settings))),
@@ -39,18 +43,6 @@ export function EmbeddedDevicePanel() {
   );
 
   useEffect(() => {
-    if (!provider) return;
-    return provider.subscribeEnabled((next) => {
-      setEnabled(next);
-      if (!next) {
-        setSnapshot(null);
-        setIntensities({});
-      }
-    });
-  }, [provider]);
-
-  useEffect(() => {
-    if (!binding) return;
     const unsubscribe = binding.subscribe(setSnapshot);
     return () => {
       unsubscribe();
@@ -59,7 +51,6 @@ export function EmbeddedDevicePanel() {
   }, [binding]);
 
   const ensureTools = useCallback(async (): Promise<BoundDeviceTools> => {
-    if (!binding) throw new Error('当前入口不提供嵌入式设备运行时');
     return binding.tools();
   }, [binding]);
 
@@ -67,7 +58,6 @@ export function EmbeddedDevicePanel() {
     async (deviceId: RuntimeDevice['deviceId'], featureId: FeatureId) => {
       // Release can happen while the one-shot backend is still opening. Wait
       // for that same opening promise so a late vibrate cannot land unopposed.
-      if (!binding) return;
       const tools = await binding.tools();
       const ack = await tools.actions.stop({
         interactionId: createDeviceInteractionId('control-human', 'release-stop'),
@@ -78,8 +68,6 @@ export function EmbeddedDevicePanel() {
     },
     [binding],
   );
-
-  if (!provider || !enabled) return null;
 
   return (
     <section
@@ -95,7 +83,7 @@ export function EmbeddedDevicePanel() {
         </div>
         <button
           type="button"
-          disabled={!enabled || scanning}
+          disabled={scanning}
           onClick={() => {
             if (scanning) return;
             setScanning(true);
@@ -130,7 +118,7 @@ export function EmbeddedDevicePanel() {
         </p>
       )}
 
-      {enabled && snapshot && snapshot.devices.length === 0 && (
+      {snapshot && snapshot.devices.length === 0 && (
         <p className="mt-3 text-xs text-[var(--text-faint)]">尚未发现通用设备。</p>
       )}
 

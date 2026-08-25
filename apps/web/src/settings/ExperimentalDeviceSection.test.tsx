@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NativeBridgeProvider } from '@0xnullai/native';
 import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import { clearStopFailure, stopFailureLabels } from '@0xnullai/ui';
 import { ExperimentalDeviceSection } from './ExperimentalDeviceSection';
 
 function providerHarness() {
@@ -39,9 +40,10 @@ describe('ExperimentalDeviceSection', () => {
     expect((toggle as HTMLInputElement).checked).toBe(true);
   });
 
-  it('shows a failed update without pretending the setting changed', async () => {
+  it('keeps the shared opt-in enabled and reports when disable cannot confirm stop', async () => {
+    clearStopFailure();
     const provider = {
-      isEnabled: () => false,
+      isEnabled: () => true,
       setEnabled: vi.fn(async () => {
         throw new Error('停止确认失败');
       }),
@@ -55,6 +57,8 @@ describe('ExperimentalDeviceSection', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: '启用通用设备' }));
     expect((await screen.findByRole('alert')).textContent).toContain('停止确认失败');
-    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+    expect(stopFailureLabels()).toContain('实验设备');
+    clearStopFailure();
   });
 });
