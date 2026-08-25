@@ -27,6 +27,7 @@ function options(providerId: RealtimeProviderId): RealtimeSessionOptions {
 // Test subclasses expose the protected hooks so the wire shapes can be
 // asserted without opening a real WebSocket.
 class ProbeOpenAi extends OpenAiRealtimeSession {
+  sent: Array<Record<string, unknown>> = [];
   session() {
     return this['buildSessionUpdate']() as { session: Record<string, unknown> };
   }
@@ -36,8 +37,12 @@ class ProbeOpenAi extends OpenAiRealtimeSession {
   outputItem(id: string, out: string) {
     return this['functionCallOutputItem'](id, out);
   }
+  protected override send(payload: Record<string, unknown>) {
+    this.sent.push(payload);
+  }
 }
 class ProbeGlm extends GlmRealtimeSession {
+  sent: Array<Record<string, unknown>> = [];
   session() {
     return this['buildSessionUpdate']() as { session: Record<string, unknown> };
   }
@@ -50,6 +55,9 @@ class ProbeGlm extends GlmRealtimeSession {
   feed(msg: Record<string, unknown>) {
     this['handleMessage'](JSON.stringify(msg));
   }
+  protected override send(payload: Record<string, unknown>) {
+    this.sent.push(payload);
+  }
 }
 
 const EXPECTED_TOOL = {
@@ -60,6 +68,19 @@ const EXPECTED_TOOL = {
 };
 
 describe('every dialect declares tools for tool calling', () => {
+  it.each([
+    ['xAI flat', () => new ProbeOpenAi('xai', options('xai'))],
+    ['OpenAI nested', () => new ProbeOpenAi('openai', options('openai'))],
+    ['GLM', () => new ProbeGlm(options('zhipu'))],
+  ])('updates instructions and the tool allowlist together for %s', (_label, createProbe) => {
+    const probe = createProbe();
+    probe.updateConfiguration({ instructions: '设备拓扑已更新', tools: [] });
+
+    const update = probe.sent.at(-1) as { session: Record<string, unknown> };
+    expect(update.session.instructions).toBe('设备拓扑已更新');
+    expect(update.session.tools).toEqual([]);
+  });
+
   it('xAI (flat shape) includes the tools array + tool_choice auto', () => {
     const { session } = new ProbeOpenAi('xai', options('xai')).session();
     expect(session.tools).toEqual([EXPECTED_TOOL]);

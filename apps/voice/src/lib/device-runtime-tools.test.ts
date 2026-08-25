@@ -1,18 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AiDeviceToolAdapter, type BoundDeviceTools } from '@0xnullai/device-runtime';
+import {
+  AiDeviceToolAdapter,
+  type BoundDeviceTools,
+  type DeviceSnapshot,
+} from '@0xnullai/device-runtime';
+import { createEmptyDeviceState } from '@dg-kit/core';
+import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { ToolRegistry } from '@dg-kit/tools';
-import { listVoiceToolDefinitions, VoiceCompositeToolExecutor } from './device-runtime-tools.js';
+import {
+  listVoiceToolDefinitions,
+  voiceToolAvailability,
+  VoiceCompositeToolExecutor,
+} from './device-runtime-tools.js';
 
 const context = { sessionId: 'voice', sourceType: 'web' as const, traceId: 'voice-trace' };
 
-function runtimeHarness() {
+function runtimeHarness(snapshot?: DeviceSnapshot) {
   const invoke = vi.fn(async (_name: string, input: unknown) => ({ input }));
   const tools = { invoke } as unknown as BoundDeviceTools;
-  return { adapter: new AiDeviceToolAdapter({ tools: () => tools }), invoke };
+  return {
+    adapter: new AiDeviceToolAdapter({ tools: () => tools, snapshot: () => snapshot ?? null }),
+    invoke,
+  };
 }
 
+const disconnectedState = {
+  coyote: createEmptyDeviceState(),
+  opossum: createEmptyOpossumState(),
+};
+
+const genericSnapshot = {
+  version: 1,
+  sessionId: 'session',
+  sequence: 1,
+  topologyGeneration: 1,
+  safetyGeneration: 1,
+  devices: [
+    {
+      deviceId: 'device',
+      name: 'device',
+      capabilities: [{ kind: 'vibrate', featureId: 'feature', stepCount: 10, faulted: false }],
+    },
+  ],
+} as unknown as DeviceSnapshot;
+
 describe('Voice generic device tools', () => {
-  it('converts the allowlist to Voice definitions without replacing legacy DG tools', async () => {
+  it('converts the generic allowlist without retaining disconnected legacy device tools', async () => {
     const registry = new ToolRegistry();
     registry.register({
       name: 'shock_stop',
@@ -23,14 +56,65 @@ describe('Voice generic device tools', () => {
       },
       toExecutionPlan: () => ({ type: 'inline', output: 'legacy' }),
     });
-    const { adapter } = runtimeHarness();
-    expect((await listVoiceToolDefinitions(registry, adapter)).map((tool) => tool.name)).toEqual([
-      'shock_stop',
+    const { adapter } = runtimeHarness(genericSnapshot);
+    const availability = voiceToolAvailability(disconnectedState, adapter, true);
+    expect(
+      (await listVoiceToolDefinitions(registry, availability, adapter)).map((tool) => tool.name),
+    ).toEqual(['device_snapshot', 'device_vibrate', 'device_stop', 'device_emergency_stop']);
+  });
+
+  it('only exposes tools for connected legacy devices and enabled usable generic capabilities', async () => {
+    const registry = new ToolRegistry();
+    for (const name of ['shock_start', 'vibrate_start', 'timer']) {
+      registry.register({
+        name,
+        definition: { name, description: name, parameters: {} },
+        toExecutionPlan: () => ({ type: 'inline', output: name }),
+      });
+    }
+    const { adapter } = runtimeHarness(genericSnapshot);
+
+    const none = voiceToolAvailability(disconnectedState, adapter, false);
+    expect(
+      (await listVoiceToolDefinitions(registry, none, adapter)).map((tool) => tool.name),
+    ).toEqual(['timer']);
+
+    const coyote = voiceToolAvailability(
+      { ...disconnectedState, coyote: { ...disconnectedState.coyote, connected: true } },
+      adapter,
+      false,
+    );
+    expect(
+      (await listVoiceToolDefinitions(registry, coyote, adapter)).map((tool) => tool.name),
+    ).toEqual(['shock_start', 'timer']);
+
+    const generic = voiceToolAvailability(disconnectedState, adapter, true);
+    expect(
+      (await listVoiceToolDefinitions(registry, generic, adapter)).map((tool) => tool.name),
+    ).toEqual([
+      'timer',
       'device_snapshot',
       'device_vibrate',
       'device_stop',
       'device_emergency_stop',
     ]);
+
+    const faultedSnapshot = {
+      ...genericSnapshot,
+      devices: genericSnapshot.devices.map((device) => ({
+        ...device,
+        capabilities: device.capabilities.map((capability) => ({
+          ...capability,
+          faulted: true,
+        })),
+      })),
+    } as unknown as DeviceSnapshot;
+    const faulted = voiceToolAvailability(
+      disconnectedState,
+      runtimeHarness(faultedSnapshot).adapter,
+      true,
+    );
+    expect(faulted.generic).toBe(false);
   });
 
   it('routes runtime names with the provider call id and leaves legacy names unchanged', async () => {

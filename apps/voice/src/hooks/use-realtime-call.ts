@@ -24,10 +24,11 @@ import {
   appendAiDeviceRuntimeStatus,
   createAiDeviceToolAdapter,
   createDeviceInteractionId,
-  type DeviceRuntimeProvider,
+  type EmbeddedDeviceRuntimeProvider,
 } from '@0xnullai/device-runtime';
 import {
   listVoiceToolDefinitions,
+  voiceToolAvailability,
   VoiceCompositeToolExecutor,
 } from '@voice/lib/device-runtime-tools';
 
@@ -66,7 +67,7 @@ function createSessionId(): string {
 export function useRealtimeCall(
   deviceSession: DeviceSession,
   settings: VoiceSettings,
-  deviceRuntimeProvider?: DeviceRuntimeProvider,
+  deviceRuntimeProvider?: EmbeddedDeviceRuntimeProvider,
 ) {
   const [state, setState] = useState<RealtimeCallState>({
     status: 'idle',
@@ -237,14 +238,38 @@ export function useRealtimeCall(
     // any more — a persona written in Agent is usable here too.
     const sceneLib = loadScenes();
     const preset = getAnyPromptPresetById(sceneLib.selectedId, sceneLib.scenes);
-    const buildInstructions = async () =>
-      appendAiDeviceRuntimeStatus(
-        buildVoiceInstructions(preset?.prompt, await deviceSession.getState(), {
+    const buildConfiguration = async () => {
+      const deviceState = await deviceSession.getState();
+      const availability = voiceToolAvailability(
+        deviceState,
+        runtimeTools,
+        deviceRuntimeProvider?.isEnabled() ?? false,
+      );
+      const runtimeSnapshot = availability.generic ? (runtimeTools?.snapshot() ?? null) : null;
+      const instructions = appendAiDeviceRuntimeStatus(
+        buildVoiceInstructions(preset?.prompt, deviceState, {
           coyoteSafety: settings.coyoteSafety,
           opossumSafety: settings.opossumSafety,
         }),
-        runtimeTools?.snapshot() ?? null,
+        runtimeSnapshot,
       );
+      return {
+        instructions,
+        tools: await listVoiceToolDefinitions(registry, availability, runtimeTools),
+        topologyKey: JSON.stringify({
+          coyote: availability.coyote,
+          opossum: availability.opossum,
+          genericSessionId: runtimeSnapshot?.sessionId ?? null,
+          genericTopologyGeneration: runtimeSnapshot?.topologyGeneration ?? null,
+          genericTargets:
+            runtimeSnapshot?.devices.flatMap((device) =>
+              device.capabilities
+                .filter((capability) => capability.kind === 'vibrate' && !capability.faulted)
+                .map((capability) => [device.deviceId, capability.featureId]),
+            ) ?? [],
+        }),
+      };
+    };
     const executor = new VoiceCompositeToolExecutor({
       legacy: legacyExecutor,
       runtime: runtimeTools,
@@ -252,16 +277,16 @@ export function useRealtimeCall(
       context,
       onRuntimeToolComplete: async () => {
         const current = sessionRef.current;
-        if (current) current.updateInstructions(await buildInstructions());
+        if (current) current.updateConfiguration(await buildConfiguration());
       },
     });
 
     try {
-      const tools = await listVoiceToolDefinitions(registry, runtimeTools);
+      const initialConfiguration = await buildConfiguration();
       const session = await createRealtimeSession({
         settings: providerSettings,
-        tools,
-        instructions: await buildInstructions(),
+        tools: initialConfiguration.tools,
+        instructions: initialConfiguration.instructions,
         events,
       });
 
@@ -274,16 +299,51 @@ export function useRealtimeCall(
         onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断'),
       }).start();
 
-      // Keep the model's [当前设备状态] block current as strength/connection
-      // state changes mid-call — debounced so a burst of rapid state changes
-      // (e.g. a fast adjust_strength sequence) doesn't flood session.update.
+      // Keep both the status text and tool allowlist synchronized. Every
+      // supported dialect sends both fields in session.update, so a device
+      // disconnect removes its tools instead of relying on execution-time
+      // rejection alone.
       let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-      deviceWatchStopRef.current = deviceSession.onChanged(() => {
+      let refreshRevision = 0;
+      let currentTopologyKey = initialConfiguration.topologyKey;
+      let runtimeSnapshotStop: (() => void) | null = null;
+      let watchedRuntime = deviceRuntimeProvider?.current() ?? null;
+      const refresh = () => {
         if (refreshTimer) clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(() => {
-          void buildInstructions().then((text) => sessionRef.current?.updateInstructions(text));
-        }, 1500);
+        const revision = ++refreshRevision;
+        void buildConfiguration().then((configuration) => {
+          if (revision !== refreshRevision) return;
+          if (configuration.topologyKey !== currentTopologyKey) {
+            currentTopologyKey = configuration.topologyKey;
+            sessionRef.current?.updateConfiguration(configuration);
+            return;
+          }
+          refreshTimer = setTimeout(
+            () => sessionRef.current?.updateConfiguration(configuration),
+            1500,
+          );
+        });
+      };
+      const bindRuntimeSnapshot = () => {
+        const current = deviceRuntimeProvider?.current() ?? null;
+        if (current === watchedRuntime && runtimeSnapshotStop) return;
+        runtimeSnapshotStop?.();
+        runtimeSnapshotStop = null;
+        watchedRuntime = current;
+        if (current) runtimeSnapshotStop = current.manager.subscribe(refresh);
+      };
+      bindRuntimeSnapshot();
+      const stopLegacyWatch = deviceSession.onChanged(refresh);
+      const stopEnabledWatch = deviceRuntimeProvider?.subscribeEnabled(() => {
+        bindRuntimeSnapshot();
+        refresh();
       });
+      deviceWatchStopRef.current = () => {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        stopLegacyWatch();
+        stopEnabledWatch?.();
+        runtimeSnapshotStop?.();
+      };
     } catch (error) {
       setState((prev) => ({
         ...prev,

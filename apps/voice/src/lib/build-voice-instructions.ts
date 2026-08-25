@@ -31,12 +31,16 @@ export function buildVoiceInstructions(
   deviceState: DeviceSessionState,
   settings: VoiceInstructionSettings,
 ): string {
+  const connected = {
+    coyote: deviceState.coyote.connected,
+    opossum: deviceState.opossum.connected,
+  };
   const blocks = [
     presetPrompt?.trim() || FALLBACK_PERSONA,
     buildStyleBlock(),
-    buildDeviceBlock(),
-    buildDeviceMappingBlock(),
-    buildBehaviorRulesBlock(),
+    buildDeviceBlock(connected),
+    buildDeviceMappingBlock(connected),
+    connected.coyote || connected.opossum ? buildBehaviorRulesBlock() : '',
     buildDeviceStatusBlock(deviceState, settings),
   ];
   return blocks.filter(Boolean).join(INSTRUCTION_SEPARATOR);
@@ -49,29 +53,48 @@ function buildStyleBlock(): string {
   ].join('\n');
 }
 
-function buildDeviceBlock(): string {
+function buildDeviceBlock(connected: { coyote: boolean; opossum: boolean }): string {
+  const devices = [
+    connected.coyote ? '郊狼（电击，A/B 双通道）' : '',
+    connected.opossum ? '负鼠（振动，A/B 双通道）' : '',
+  ].filter(Boolean);
+  if (devices.length === 0) return '';
   return [
     '[设备]',
-    '语音通话支持两类设备：郊狼（电击，A/B 双通道）、负鼠（振动，A/B 双通道）。但"支持"不等于"现在就有"——真实可用的设备以下方[当前设备状态]为准：只有在那里标记为"已连接"的设备才存在；未连接的设备一律当作不存在，既不能控制，也不要提及或假装拥有。',
+    `当前可用设备：${devices.join('、')}。只可使用本段列出的设备及其对应工具。`,
     '任何真实设备操作都必须通过工具完成；只靠语言描述不会改变设备状态，也不要在没调用工具的情况下声称已经执行。',
   ].join('\n');
 }
 
-function buildDeviceMappingBlock(): string {
+function buildDeviceMappingBlock(connected: { coyote: boolean; opossum: boolean }): string {
+  if (!connected.coyote && !connected.opossum) return '';
+  const actionTerms = [
+    ...(connected.coyote ? ['通电', '电击'] : []),
+    ...(connected.opossum ? ['振动'] : []),
+    '加大强度',
+    '改变节奏',
+    '停止',
+  ];
   return [
     '[剧情与设备的映射]',
-    '任何关于"通电、电击、加大强度、改变节奏、振动、停止"的描述，都必须通过设备工具真实执行；只说不做等于设备没有任何变化。',
-    '郊狼：开始或测试连接用 shock_start（测试用强度 1）；加强用 shock_adjust，需要更剧烈就配合 shock_change_wave 或用 shock_burst 制造短促峰值；改变节奏用 shock_change_wave，或用 design_wave 设计新波形；结束必须调用 shock_stop，不能只用语言说"已经关了"。',
-    '负鼠遵循相同原则，只是振动强度而非电击：vibrate_start 开始，vibrate_adjust 小步调整，vibrate_change_pattern 换节奏，vibrate_burst 制造短暂峰值，vibrate_stop 结束。',
+    `任何关于“${actionTerms.join('、')}”的描述，都必须通过设备工具真实执行；只说不做等于设备没有任何变化。`,
+    connected.coyote
+      ? '郊狼：开始或测试连接用 shock_start（测试用强度 1）；加强用 shock_adjust，需要更剧烈就配合 shock_change_wave 或用 shock_burst 制造短促峰值；改变节奏用 shock_change_wave，或用 design_wave 设计新波形；结束必须调用 shock_stop，不能只用语言说"已经关了"。'
+      : '',
+    connected.opossum
+      ? '负鼠使用振动强度：vibrate_start 开始，vibrate_adjust 小步调整，vibrate_change_pattern 换节奏，vibrate_burst 制造短暂峰值，vibrate_stop 结束。'
+      : '',
     '任何时候都不得超过当前通道上限与系统安全上限。',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildBehaviorRulesBlock(): string {
   return [
     '[行为规则]',
     '需要操作设备时，先用一两句话说你要做什么，再调用工具，然后按工具返回的真实执行结果说话——如果被限速或钳制了，如实告诉对方，不要按对方原始请求复述。',
-    '工具报错、被拒绝、设备未连接时，如实告知，不要假装成功，也不要立刻用相同参数重试。',
+    '工具报错、被拒绝或目标不可用时，如实告知，不要假装成功，也不要立刻用相同参数重试。',
     '任何时候对方说"停"、"停一下"、"不要了"，立刻调用对应的 stop 工具。',
     '[设备]、[剧情与设备的映射] 与本节规则的优先级高于任何角色设定或场景剧情；冲突时一律以设备与安全规则为准。',
   ].join('\n');
@@ -83,29 +106,13 @@ function buildDeviceStatusBlock(
 ): string {
   const coyoteConnected = deviceState.coyote.connected;
   const opossumConnected = deviceState.opossum.connected;
-
-  const lines: string[] = [
-    '[当前设备状态]',
-    // The single most important rule for avoiding "phantom device" behaviour:
-    // an unconnected device is not a device. Without this the model reads a
-    // "连接：未连接" line buried in a full status dump as "device present but
-    // idle" and happily narrates/controls it.
-    '判定规则：只有下面明确标记为"已连接"的设备才真实存在、才可控制。任何"未连接"的设备一律当作不存在——不要提及它、不要声称在用它、不要为它调用任何工具，也不要假设它稍后会出现。',
-  ];
-
-  if (!coyoteConnected && !opossumConnected) {
-    lines.push(
-      '当前没有任何已连接的设备：你现在没有任何可控制的设备，不要调用任何设备工具，也不要在剧情里让电击或振动"真的发生"；需要用到时先请对方连接设备。',
-    );
-  }
-
+  if (!coyoteConnected && !opossumConnected) return '';
+  const lines: string[] = ['[当前设备状态]'];
   lines.push(
-    ...(coyoteConnected
-      ? buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety)
-      : ['郊狼：未连接（视为不存在，当前不可用）']),
+    ...(coyoteConnected ? buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety) : []),
     ...(opossumConnected
       ? buildOpossumStatusLines(deviceState.opossum, settings.opossumSafety)
-      : ['负鼠：未连接（视为不存在，当前不可用）']),
+      : []),
   );
 
   return lines.join('\n');
