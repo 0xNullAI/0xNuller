@@ -133,14 +133,18 @@ cross-file composition tests. Test observable contracts, not private implementat
 
 Use the narrowest useful command while iterating:
 
-| Scope         | Commands                                                                         |
-| ------------- | -------------------------------------------------------------------------------- |
-| Changed files | `npm test`                                                                       |
-| One module    | `npm run test:module -- <name>`                                                  |
-| Repository    | `npm run test:repository`, `npm run check:structure`, `npm run lint`             |
-| Product       | `npm run typecheck:product`, `npm run test:product`, `npm run build:product:web` |
-| DG-Kit        | `npm run verify:kit`, `npm run typecheck:kit`, `npm run test:kit`                |
-| DG-MCP        | `npm run verify:mcp`, `npm run typecheck:mcp`, `npm run test:mcp`                |
+| Tier              | Commands                                | Required use                     |
+| ----------------- | --------------------------------------- | -------------------------------- |
+| Local fast        | `npm test` or `npm run test:fast`       | Editing loop only                |
+| One module        | `npm run test:module -- <name>`         | Completed feature slice          |
+| PR affected       | `npm run test:affected -- --base=<ref>` | Before submitting a focused PR   |
+| Main/handoff full | `npm run test:full`                     | Substantial changes and releases |
+
+Affected selection must follow workspace reverse dependencies. A shared Kit/platform change expands
+to its consumers; unknown runtime files and global test configuration fail safe to the full applicable
+suite. Never exclude safety, authorization, lease, lifecycle-stop, or emergency-stop coverage to make
+a test tier faster. CI may prepare DG-Kit once and use a `:prepared` command, but must not skip the
+corresponding tests. See `docs/testing.md` for responsibility-domain and CI commands.
 
 A Kit behavior change requires Kit, Product, and MCP compatibility coverage. Before handoff of a
 substantial change, run:

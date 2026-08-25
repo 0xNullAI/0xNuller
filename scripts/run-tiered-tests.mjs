@@ -76,6 +76,12 @@ function saveHashes(files) {
 if (mode === 'changed' || mode === 'watch') {
   const base = parseBase(rawArgs);
   const changed = changedFiles(base);
+  const globalTestConfigChanged = touchesGlobalTestConfig(changed);
+  if (globalTestConfigChanged) {
+    console.warn(
+      'Shared test configuration changed. The local fast tier cannot prove the suite; run test:full before handoff.',
+    );
+  }
   const allRelated = selectRelatedFiles(changed)
     .filter((file) => !isGlobalTestFile(file))
     .filter((file) => existsSync(path.join(root, file)));
@@ -87,11 +93,6 @@ if (mode === 'changed' || mode === 'watch') {
     process.exit(0);
   }
 
-  if (touchesGlobalTestConfig(changed)) {
-    console.warn(
-      'Shared test configuration changed. The quick tier will test product changes only; run test:full before handoff.',
-    );
-  }
   console.log(
     `Running tests related to ${related.length} newly changed file(s)` +
       (useCache ? ' (use --all to retest the whole worktree).' : '.'),

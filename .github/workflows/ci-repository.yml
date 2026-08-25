@@ -25,4 +25,11 @@ jobs:
         run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
       - run: npm run check:dead-code
-      - run: npm run test:repository
+      - name: Test affected repository tooling on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=repository --prepared
+      - name: Test all repository tooling on protected branches
+        if: github.event_name != 'pull_request'
+        run: npm run test:repository

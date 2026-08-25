@@ -50,12 +50,14 @@ waveform-playback.test.ts
 Kit 是 Product 和 MCP 的底层依赖，因此 Kit 改动同时触发三个专项 CI；这只验证消费者兼容，
 不会在 Product/MCP 版本未变化时发布它们。
 
-## 执行方式
+## 四层执行方式
 
-### 一级：改动相关测试
+### 一级：本地快速反馈
 
 ```bash
 npm test
+# 语义相同、用途更明确的别名
+npm run test:fast
 ```
 
 只读取工作区中已跟踪和未跟踪的改动，并记住上一次一级测试成功时的文件摘要。再次执行时只测
@@ -76,16 +78,10 @@ npm run test:related -- packages/kit/core/src/waveform-playback.ts
 npm run test:watch
 ```
 
-### 二级：责任域或模块测试
+这一层只服务编辑循环，不是提交门禁。它按文件归属缩小范围并缓存成功结果；共享层改动在交付前
+必须继续执行三级 `affected` 或四级 `full`，不能用一级结果替代消费者兼容验证。
 
-```bash
-npm run test:repository
-npm run test:product
-npm run test:kit
-npm run test:mcp
-```
-
-责任域命令对应 GitHub 上四个独立 CI，适合交付前定位问题。进一步聚焦一个模块时使用：
+### 二级：模块测试
 
 ```bash
 npm run test:module -- control
@@ -97,7 +93,34 @@ npm run test:module -- kit platform
 `auth`、`chat`、`control`、`kit`、`market`、`mcp`、`platform`、`playground`、`tooling`、
 `voice`、`web`。
 
-### 三级：全量测试
+### 三级：PR 受影响测试
+
+```bash
+npm run test:affected -- --base=origin/dev
+```
+
+这一层读取 workspace manifest 构建反向依赖图：例如 `packages/kit/core` 的变更不仅运行 Kit，
+还会运行依赖它的平台包、产品 app 和 MCP 测试。全局 Vitest/setup、根依赖/TypeScript 配置或无法
+映射的运行时代码会保守回退到全量；文档改动可以明确得到空测试集合。若在 CI job 中已经准备过
+DG-Kit，可附加 `--prepared`，确保每个 job 只构建一次：
+
+```bash
+npm run test:affected -- --base="$BASE_SHA" --domain=product --prepared
+```
+
+`repository`、`product`、`kit`、`mcp` 四个 `--domain` 对应四条 CI。PR 使用反向依赖闭包；
+`dev`/`main` 推送和手工触发仍运行完整责任域。
+
+责任域全量命令仍可用于交付前定位：
+
+```bash
+npm run test:repository
+npm run test:product
+npm run test:kit
+npm run test:mcp
+```
+
+### 四级：主干与交付全量测试
 
 ```bash
 npm run test:full
@@ -105,7 +128,8 @@ npm run test:full
 npm run test:all
 ```
 
-先重建 DG-Kit，再运行所有 Vitest project。CI、交付前验证和公共包跨模块改动必须使用这一层。
+先重建 DG-Kit，再运行所有 Vitest project。`dev`/`main` 的四个责任域 CI 合起来覆盖同一完整
+集合；交付前验证、全局测试配置改动和无法可靠分析影响范围的改动必须显式使用这一层。
 
 交付前完整命令为：
 
