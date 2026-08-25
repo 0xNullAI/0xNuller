@@ -268,8 +268,12 @@ describe('DeviceRuntimeExecutor safety boundary', () => {
     await grantDeviceLease('agent');
     const runtime = await runtimeHarness({ leaseSnapshot: currentDeviceLeaseSnapshot });
     const command = runtime.command();
+    const before = currentDeviceLeaseSnapshot();
     await grantDeviceLease('voice');
     await grantDeviceLease('agent');
+    const after = currentDeviceLeaseSnapshot();
+    expect(after.holder).toBe(before.holder);
+    expect(after.epoch).toBeGreaterThan(before.epoch);
 
     await expect(runtime.executor.execute(command)).resolves.toMatchObject({
       status: 'rejected',
