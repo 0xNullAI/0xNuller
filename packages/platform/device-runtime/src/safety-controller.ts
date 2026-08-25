@@ -5,12 +5,12 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import type { CommandAck, DeviceSnapshot } from './contracts.js';
-import type { WebEmbeddedDeviceRuntimeProvider } from './web-runtime-provider.js';
+import type { EmbeddedDeviceRuntimeProvider } from './web-runtime-provider.js';
 
 export const EMBEDDED_DEVICE_SAFETY_SESSION_ID = 'embedded-device-runtime';
 
 export interface EmbeddedDeviceRuntimeSafetyControllerOptions {
-  provider: WebEmbeddedDeviceRuntimeProvider;
+  provider: EmbeddedDeviceRuntimeProvider;
   label?: string;
   document?: Document;
   window?: Window;
@@ -26,7 +26,7 @@ export interface EmbeddedDeviceRuntimeSafetyControllerOptions {
  * safety sessions.
  */
 export class EmbeddedDeviceRuntimeSafetyController {
-  private readonly provider: WebEmbeddedDeviceRuntimeProvider;
+  private readonly provider: EmbeddedDeviceRuntimeProvider;
   private readonly reportStopFailure?: (error: unknown) => void;
   private readonly document?: Document;
   private readonly window?: Window;

@@ -75,7 +75,9 @@ export function EmbeddedDevicePanel() {
 
   const stopFeature = useCallback(
     async (deviceId: RuntimeDevice['deviceId'], featureId: FeatureId) => {
-      const tools = toolsRef.current;
+      // Release can happen while the one-shot backend is still opening. Wait
+      // for that same opening promise so a late vibrate cannot land unopposed.
+      const tools = toolsRef.current ?? (await openingRef.current);
       if (!tools) return;
       const ack = await tools.actions.stop({
         interactionId: interactionId('release-stop'),

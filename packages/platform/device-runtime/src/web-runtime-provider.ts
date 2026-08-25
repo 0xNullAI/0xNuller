@@ -1,10 +1,10 @@
 import type { DeviceBackend, DeviceRuntimeExecutorOptions } from './contracts.js';
-import { type SharedDeviceRuntime, SharedDeviceRuntimeProvider } from './runtime-provider.js';
-import type { BoundDeviceTools } from './tool-provider.js';
 import {
-  WebEmbeddedButtplugBackend,
-  type WebEmbeddedButtplugBackendOptions,
-} from './web-buttplug-backend.js';
+  type DeviceRuntimeProvider,
+  type SharedDeviceRuntime,
+  SharedDeviceRuntimeProvider,
+} from './runtime-provider.js';
+import type { BoundDeviceTools } from './tool-provider.js';
 import {
   type LocalDeviceSettingStorage,
   readWebEmbeddedDevicesEnabled,
@@ -30,13 +30,20 @@ export class WebEmbeddedDeviceSettingError extends Error {
 export interface WebEmbeddedDeviceRuntimeProviderOptions {
   executorOptions: DeviceRuntimeExecutorOptions;
   storage?: LocalDeviceSettingStorage | null;
-  backendOptions?: WebEmbeddedButtplugBackendOptions;
-  /** @internal Allows deterministic provider tests without a browser or hardware. */
-  backendFactory?: () => DeviceBackend;
+  /** Factory remains untouched until the local opt-in is enabled and a module starts the runtime. */
+  backendFactory: () => DeviceBackend;
+}
+
+export interface EmbeddedDeviceRuntimeProvider extends DeviceRuntimeProvider {
+  isEnabled(): boolean;
+  setEnabled(enabled: boolean): Promise<void>;
+  subscribeEnabled(listener: (enabled: boolean) => void): () => void;
+  stop(): Promise<void>;
+  restart(): Promise<SharedDeviceRuntime>;
 }
 
 /** Default-off, browser-local owner for the single embedded device runtime. */
-export class WebEmbeddedDeviceRuntimeProvider {
+export class WebEmbeddedDeviceRuntimeProvider implements EmbeddedDeviceRuntimeProvider {
   private readonly storage: LocalDeviceSettingStorage | null | undefined;
   private readonly shared: SharedDeviceRuntimeProvider;
   private readonly settingListeners = new Set<(enabled: boolean) => void>();
@@ -46,8 +53,7 @@ export class WebEmbeddedDeviceRuntimeProvider {
     this.storage = options.storage;
     this.shared = new SharedDeviceRuntimeProvider({
       executorOptions: options.executorOptions,
-      backendFactory:
-        options.backendFactory ?? (() => new WebEmbeddedButtplugBackend(options.backendOptions)),
+      backendFactory: options.backendFactory,
     });
   }
 

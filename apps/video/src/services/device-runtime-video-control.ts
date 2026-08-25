@@ -7,7 +7,7 @@ import {
   type FeatureId,
   type RuntimeEvent,
   type SharedDeviceRuntime,
-  type SharedDeviceRuntimeProvider,
+  type DeviceRuntimeProvider,
 } from '@0xnullai/device-runtime';
 import {
   createEmptyDeviceState,
@@ -64,7 +64,7 @@ export interface DeviceRuntimeVideoControlInputs {
 }
 
 export interface DeviceRuntimeVideoControlOptions extends DeviceRuntimeVideoControlInputs {
-  provider: SharedDeviceRuntimeProvider;
+  provider: DeviceRuntimeProvider;
   hasLease: () => boolean;
   getSafetyIntensityCap?: () => number;
   getMaxOutputLeaseMs?: () => number;
@@ -81,7 +81,7 @@ export interface DeviceRuntimeVideoControlOptions extends DeviceRuntimeVideoCont
  * only one exact vibration feature plus stop paths.
  */
 export class DeviceRuntimeVideoControlService {
-  private readonly provider: SharedDeviceRuntimeProvider;
+  private readonly provider: DeviceRuntimeProvider;
   private readonly hasLease: () => boolean;
   private readonly getSafetyIntensityCap: () => number;
   private readonly getMaxOutputLeaseMs: () => number;

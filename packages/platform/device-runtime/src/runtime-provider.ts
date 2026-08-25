@@ -11,6 +11,12 @@ export interface SharedDeviceRuntime {
   forModule(moduleId: string): BoundDeviceTools;
 }
 
+export interface DeviceRuntimeProvider {
+  current(): SharedDeviceRuntime | null;
+  start(): Promise<SharedDeviceRuntime>;
+  forModule(moduleId: string): Promise<BoundDeviceTools>;
+}
+
 export interface SharedDeviceRuntimeProviderOptions {
   backendFactory: () => DeviceBackend;
   executorOptions: DeviceRuntimeExecutorOptions;
@@ -22,7 +28,7 @@ export interface SharedDeviceRuntimeProviderOptions {
  * Calls made by multiple surfaces share one manager, executor, backend session,
  * lease boundary, watchdog set, and stop barrier. Reopening is always explicit.
  */
-export class SharedDeviceRuntimeProvider {
+export class SharedDeviceRuntimeProvider implements DeviceRuntimeProvider {
   private runtime: SharedDeviceRuntime | null = null;
   private opening: Promise<SharedDeviceRuntime> | null = null;
   private readonly options: SharedDeviceRuntimeProviderOptions;

@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
-import type { WebEmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 /**
  * The single entry point where the native (Tauri) shell injects Bluetooth
@@ -28,7 +28,7 @@ import type { WebEmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime'
 
 export interface NativeBridge {
   /** Shell-owned optional embedded runtime shared by every product surface. */
-  deviceRuntime?: WebEmbeddedDeviceRuntimeProvider;
+  deviceRuntime?: EmbeddedDeviceRuntimeProvider;
   /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
   agent?: {
     servicesOverrides?: unknown;

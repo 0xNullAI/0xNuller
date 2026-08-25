@@ -43,7 +43,7 @@ import {
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
-import { AiDeviceToolAdapter, type SharedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import { AiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
 
 export interface PermissionRequestInput {
   toolName: string;
@@ -95,7 +95,7 @@ export interface BrowserServicesOptions {
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
   /** Shell-owned generic runtime; binding is lazy and uses the Agent module id. */
-  deviceRuntimeProvider?: SharedDeviceRuntimeProvider;
+  deviceRuntimeProvider?: DeviceRuntimeProvider;
   /**
    * If true, speech recognition / synthesis are stubbed with no-op controllers
    * and capabilities report nothing supported. Used by shells (Android WebView)

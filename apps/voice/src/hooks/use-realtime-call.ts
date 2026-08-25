@@ -23,7 +23,7 @@ import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-k
 import {
   AiDeviceToolAdapter,
   appendAiDeviceRuntimeStatus,
-  type SharedDeviceRuntimeProvider,
+  type DeviceRuntimeProvider,
 } from '@0xnullai/device-runtime';
 import {
   listVoiceToolDefinitions,
@@ -65,7 +65,7 @@ function createSessionId(): string {
 export function useRealtimeCall(
   deviceSession: DeviceSession,
   settings: VoiceSettings,
-  deviceRuntimeProvider?: SharedDeviceRuntimeProvider,
+  deviceRuntimeProvider?: DeviceRuntimeProvider,
 ) {
   const [state, setState] = useState<RealtimeCallState>({
     status: 'idle',
@@ -127,14 +127,19 @@ export function useRealtimeCall(
           ),
         );
       }
-      await Promise.allSettled(stops);
+      const stopResults = await Promise.allSettled(stops);
+      const stopFailed = stopResults.some(
+        (result) =>
+          result.status === 'rejected' ||
+          (result.value !== null &&
+            typeof result.value === 'object' &&
+            'status' in result.value &&
+            result.value.status === 'faulted'),
+      );
       setState((prev) => ({
         ...prev,
         status: 'ended',
-        // A user hang-up, background safety stop, or module switch is a
-        // normal lifecycle transition. The optional reason is for internal
-        // diagnostics, not a service failure to render as a red alert.
-        error: null,
+        error: stopFailed ? '无法确认设备已停止，请立即断开设备或取下设备' : null,
         speaking: false,
       }));
     },

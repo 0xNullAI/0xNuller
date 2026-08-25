@@ -18,10 +18,11 @@ export interface UnifiedShellEmbeddedDeviceRuntimeOptions {
 /** Product policy shared by the Web and Android shell compositions. */
 export function embeddedDeviceExecutorOptions(): DeviceRuntimeExecutorOptions {
   return {
-    // This first integration exposes only Control's direct human UI. Agent, Voice, Video, rooms,
-    // and remote callers remain denied until their separate permission adapters are integrated.
+    // Each AI surface performs its own permission/grant check first. This final
+    // provider allowlist prevents any other module or room path reaching output.
     permissionPolicy: {
-      authorize: async (request) => (request.moduleId === 'control' ? 'allow' : 'deny'),
+      authorize: async (request) =>
+        ['control', 'agent', 'voice', 'video'].includes(request.moduleId) ? 'allow' : 'deny',
     },
     safetyPolicy: () => {
       const settings = loadDeviceSafety();
