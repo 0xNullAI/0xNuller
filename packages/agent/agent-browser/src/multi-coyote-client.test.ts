@@ -55,6 +55,59 @@ describe('MultiCoyoteDeviceClient', () => {
     expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual(['coyote-a', 'coyote-b']);
   });
 
+  it('keeps separate hosts when a transport reports the same device id', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+
+    await aggregate.connectDevice(device('duplicate-id', '47L121-A'), server);
+    await aggregate.connectDevice(device('duplicate-id', '47L121-B'), server);
+
+    expect(children).toHaveLength(2);
+    expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual([
+      'duplicate-id',
+      'duplicate-id#2',
+    ]);
+  });
+
+  it('reuses a slot only when reconnecting the exact same Bluetooth device', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+    const sameDevice = device('coyote-a', '47L121-A');
+
+    await aggregate.connectDevice(sameDevice, server);
+    await aggregate.connectDevice(sameDevice, server);
+
+    expect(children).toHaveLength(1);
+    expect(children[0]!.connectDevice).toHaveBeenCalledTimes(2);
+  });
+
+  it('routes ordinary AI commands to the user-selected host', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+    await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
+    await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
+
+    aggregate.selectDeviceById('coyote-b');
+    await aggregate.execute({ type: 'stop' });
+
+    expect(aggregate.deviceId).toBe('coyote-b');
+    expect(children[0]!.execute).not.toHaveBeenCalled();
+    expect(children[1]!.execute).toHaveBeenCalledTimes(1);
+    expect(() => aggregate.selectDeviceById('missing')).toThrow('目标郊狼未连接');
+  });
+
   it('keeps legacy commands on the primary host and emergency-stops every host', async () => {
     const children: FakeChildClient[] = [];
     const aggregate = new MultiCoyoteDeviceClient(() => {

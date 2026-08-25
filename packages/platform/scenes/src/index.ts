@@ -14,11 +14,10 @@
  * user's strength caps. Here each scene parses independently; a bad one is
  * dropped, the rest survive.
  *
- * Built-in personas do NOT live here. The seven built-in ids match on both
- * sides (gentle / dominant / tease / reward / edging / companion /
- * hell-island) but the copy differs — Voice's was rewritten for TTS (short
- * sentences, no markdown). What is shared is "which one the user picked"
- * and "the ones the user wrote", not the copy itself.
+ * Built-in personas do NOT live here. Agent and Voice own their respective
+ * built-in lists and copy; only "which one the user picked" and the scenes
+ * the user wrote are shared. A module therefore validates a shared selected
+ * id against the built-ins it actually supports.
  */
 
 export interface SavedScene {
@@ -33,6 +32,7 @@ import {
   pushContent,
   pushContentPreferences,
 } from '@0xnullai/sync';
+import type { MarketItem, MarketScenarioContent } from '@0xnullai/market-client';
 
 export interface SceneLibrary {
   /** Scenes the user wrote. */
@@ -256,6 +256,20 @@ function loadScenesWithoutSync(): SceneLibrary {
     /* fall through */
   }
   return emptyLibrary();
+}
+
+/** Add or select one Market scenario without duplicating a previous import. */
+export function withImportedMarketScene(current: SceneLibrary, item: MarketItem): SceneLibrary {
+  const id = `market-${item.id}`;
+  const existing = current.scenes.some((scene) => scene.id === id);
+  if (existing) return { ...current, selectedId: id };
+
+  const prompt = (item.content as MarketScenarioContent).prompt;
+  return {
+    ...current,
+    selectedId: id,
+    scenes: [...current.scenes, { id, name: item.name, icon: item.icon || '📝', prompt }],
+  };
 }
 
 export function updateScenes(updater: (prev: SceneLibrary) => SceneLibrary): SceneLibrary {

@@ -51,6 +51,10 @@ describe('providers-catalog', () => {
     expect(runtime.browserSupported).toBe(true);
   });
 
+  it('labels DeepSeek as not recommended because of hallucinations', () => {
+    expect(getProviderDefinition('deepseek')?.name).toBe('DeepSeek（不推荐，存在幻觉）');
+  });
+
   it('uses deepseek-v4-pro as the default deepseek model', () => {
     const normalized = normalizeProviderSettings({
       ...createProviderSettings('deepseek'),

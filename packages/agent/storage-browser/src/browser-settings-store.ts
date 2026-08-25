@@ -41,7 +41,8 @@ export class BrowserAppSettingsStore {
   private readonly localStorageRef: StorageLike | undefined;
   private readonly sessionStorageRef: StorageLike | undefined;
   private readonly defaults: BrowserAppSettings;
-  private sessionPermissionModeOverride: BrowserAppSettings['permissionMode'] | null = null;
+  /** Fallback for injected/non-browser stores where shared localStorage is unavailable. */
+  private sessionPermissionModeOverride: 'allow-all' | null = null;
   private runtimeApiKeys: Partial<Record<ProviderId, string>> = {};
   private runtimeVoiceApiKey = '';
 
@@ -91,7 +92,7 @@ export class BrowserAppSettingsStore {
       ...(llm ? { endpoint: llm.endpoint, useStrict: llm.useStrict } : {}),
     });
     providerConfigs[activeProviderId] = activeProvider;
-    const effectivePermissionState = this.resolvePermissionState(persisted);
+    const effectivePermissionState = this.resolvePermissionState(safety);
 
     return {
       ...this.defaults,
@@ -305,6 +306,8 @@ export class BrowserAppSettingsStore {
 
   reset(): BrowserAppSettings {
     this.sessionPermissionModeOverride = null;
+    const safety = loadDeviceSafety();
+    saveDeviceSafety({ ...safety, permissionMode: 'confirm', permissionModeExpiresAt: undefined });
     this.runtimeApiKeys = {};
     this.runtimeVoiceApiKey = '';
     this.localStorageRef?.removeItem(SETTINGS_KEY);
@@ -317,6 +320,14 @@ export class BrowserAppSettingsStore {
 
   clearSessionPermissionModeOverride(): BrowserAppSettings {
     this.sessionPermissionModeOverride = null;
+    const safety = loadDeviceSafety();
+    if (safety.permissionMode === 'allow-all') {
+      saveDeviceSafety({
+        ...safety,
+        permissionMode: 'confirm',
+        permissionModeExpiresAt: undefined,
+      });
+    }
     return this.load();
   }
 
@@ -470,42 +481,28 @@ export class BrowserAppSettingsStore {
   }
 
   private resolvePermissionState(
-    persisted: PersistedBrowserAppSettings | null,
+    safety: ReturnType<typeof loadDeviceSafety>,
   ): Pick<BrowserAppSettings, 'permissionMode' | 'permissionModeExpiresAt'> {
-    if (this.sessionPermissionModeOverride === 'allow-all') {
-      return {
-        permissionMode: 'allow-all',
-        permissionModeExpiresAt: undefined,
-      };
+    if (
+      this.sessionPermissionModeOverride === 'allow-all' ||
+      safety.permissionMode === 'allow-all'
+    ) {
+      return { permissionMode: 'allow-all', permissionModeExpiresAt: undefined };
     }
 
-    const persistedMode = persisted?.permissionMode ?? this.defaults.permissionMode;
-    const persistedExpiry = persisted?.permissionModeExpiresAt;
-
-    if (persistedMode === 'allow-all') {
-      return {
-        permissionMode: 'confirm',
-        permissionModeExpiresAt: undefined,
-      };
-    }
-
-    if (persistedMode === 'timed') {
-      if (typeof persistedExpiry === 'number' && Date.now() < persistedExpiry) {
+    if (safety.permissionMode === 'timed') {
+      if (
+        typeof safety.permissionModeExpiresAt === 'number' &&
+        Date.now() < safety.permissionModeExpiresAt
+      ) {
         return {
           permissionMode: 'timed',
-          permissionModeExpiresAt: persistedExpiry,
+          permissionModeExpiresAt: safety.permissionModeExpiresAt,
         };
       }
-
-      return {
-        permissionMode: 'confirm',
-        permissionModeExpiresAt: undefined,
-      };
+      return { permissionMode: 'confirm', permissionModeExpiresAt: undefined };
     }
 
-    return {
-      permissionMode: 'confirm',
-      permissionModeExpiresAt: undefined,
-    };
+    return { permissionMode: 'confirm', permissionModeExpiresAt: undefined };
   }
 }
