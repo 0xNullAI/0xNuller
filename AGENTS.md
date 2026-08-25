@@ -196,6 +196,8 @@ If it could not be run, say so explicitly.
 - Do not hand-edit or commit `dist`, `target`, `src-tauri/gen`, `.astro`, `.wrangler`, build-info,
   caches, or other generated output.
 - Do not edit `docs/legacy` as part of current product work.
+- Keep maintained documents reachable from `docs/README.md`; new standalone design or operations
+  notes must be linked from that index or the owning package README.
 
 ## Changesets and releases
 
