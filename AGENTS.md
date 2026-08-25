@@ -104,13 +104,17 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   subscriptions, `createAiDeviceToolAdapter` for Agent/Voice model exposure, and
   `genericDeviceSafetyPolicy` / `genericDeviceIntensityCap` for normalized safety settings. Do not
   duplicate provider startup, AI allowlists/display names, permission classification, interaction-ID
-  generation, or percentage-to-normalized cap arithmetic in feature apps. Video keeps its explicit
-  one-target visual grant and stale-identity stop escalation above these shared primitives.
+  generation, or percentage-to-normalized cap arithmetic in feature apps. Video snapshots every
+  currently connected output capability into one ephemeral allowlist; each model tool call supplies
+  an exact target identity. The coordinator must stop the previous target/channel before routing to a
+  different one, and topology/runtime identity changes revoke the whole allowlist and stop all output.
 - Cross-module output selection uses `UnifiedOutputTarget` from device-runtime and
   `OutputTargetPicker` from UI. Coyote, Opossum, and generic runtime capabilities appear in one target
   list; feature apps keep connection, authorization, lease, and stop ownership. Selection never means
   fan-out: authorize only the exact selected identity, and stop the old grant before switching or
   disconnecting it. Safety caps must be projected from the shared device-safety settings by modality.
+  Read-only AI surfaces use `OutputCapabilityList` and must not require a human to preselect the
+  model's target; Control remains the interactive consumer of `OutputTargetPicker`.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
 - Text provider identity, defaults, capability allowlists, scoped local/session-key persistence, and

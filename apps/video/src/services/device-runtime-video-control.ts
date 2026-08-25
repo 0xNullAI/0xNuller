@@ -65,6 +65,13 @@ export interface DeviceRuntimeVideoControlInputs {
   scene: DeviceRuntimeVideoScene | null;
 }
 
+export interface DeviceRuntimeVideoAiAction {
+  id: string;
+  action: 'start' | 'stop';
+  intensity?: number;
+  outputLeaseMs?: number;
+}
+
 export interface DeviceRuntimeVideoControlOptions extends DeviceRuntimeVideoControlInputs {
   provider: DeviceRuntimeProvider;
   hasLease: () => boolean;
@@ -223,6 +230,42 @@ export class DeviceRuntimeVideoControlService {
     }
     this.invalidateContinuations();
     return this.generation;
+  }
+
+  async executeAiAction(
+    grant: DeviceRuntimeVideoGrantInput,
+    action: DeviceRuntimeVideoAiAction,
+  ): Promise<unknown> {
+    const current = this.getGrant();
+    if (
+      !current ||
+      current.revoked ||
+      current.deviceId !== grant.deviceId ||
+      current.featureId !== grant.featureId
+    ) {
+      if (current && !current.revoked) await this.stop('device-loss');
+      await this.authorize(grant);
+    }
+    const generation = await this.beginRun();
+    return this.executeEffect(
+      action.action === 'stop'
+        ? {
+            id: action.id,
+            name: 'device_stop',
+            args: { deviceId: grant.deviceId, featureId: grant.featureId },
+          }
+        : {
+            id: action.id,
+            name: 'device_vibrate',
+            args: {
+              deviceId: grant.deviceId,
+              featureId: grant.featureId,
+              intensity: action.intensity ?? 0,
+              outputLeaseMs: action.outputLeaseMs ?? 1,
+            },
+          },
+      generation,
+    );
   }
 
   async observe(image: LlmImageInput, externalSignal?: AbortSignal): Promise<string> {

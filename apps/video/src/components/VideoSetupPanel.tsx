@@ -1,6 +1,6 @@
 import { CirclePlay, Link, Settings } from 'lucide-react';
-import type { UnifiedOutputKind, UnifiedOutputTarget } from '@0xnullai/device-runtime';
-import { Button, OutputTargetPicker } from '@0xnullai/ui';
+import type { UnifiedOutputTarget } from '@0xnullai/device-runtime';
+import { Button, OutputCapabilityList } from '@0xnullai/ui';
 import type { VideoOutputKind } from '@dg-agent/agent-browser';
 import type { CameraFacingMode } from '../hooks/use-camera-preview.js';
 
@@ -10,14 +10,10 @@ export interface VideoSetupPanelViewModel {
   showCoyoteConnect: boolean;
   coyoteConnectLabel: string;
   showOpossumConnect: boolean;
-  targets: readonly Pick<UnifiedOutputTarget, 'id' | 'kind' | 'label' | 'battery' | 'active'>[];
-  selectedTargetId: string;
-  selectedTargetKind: UnifiedOutputKind | null;
-  channel: 'A' | 'B';
-  intensityLabel: string;
-  intensityMax: number;
-  intensityStep: number;
-  intensityValue: number;
+  targets: readonly Pick<
+    UnifiedOutputTarget,
+    'id' | 'kind' | 'label' | 'battery' | 'active' | 'modality'
+  >[];
   durationMinutes: number;
   cadenceSeconds: number;
   allowEnhanced: boolean;
@@ -33,10 +29,6 @@ export interface VideoSetupPanelActions {
   setFacingMode: (value: CameraFacingMode) => void;
   connect: (kind: VideoOutputKind) => void;
   discoverEmbeddedDevices: () => void;
-  selectTarget: (targetId: string) => void;
-  disconnectTarget: (targetId: string) => void | Promise<void>;
-  setChannel: (channel: 'A' | 'B') => void;
-  setIntensity: (value: number) => void;
   setDurationMinutes: (value: number) => void;
   setCadenceSeconds: (value: number) => void;
   setAllowEnhanced: (value: boolean) => void;
@@ -109,43 +101,10 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
         <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
       </div>
 
-      <div
-        className={
-          view.selectedTargetKind === 'embedded' ? '' : 'grid gap-3 sm:grid-cols-[1fr_120px]'
-        }
-      >
-        <OutputTargetPicker
-          targets={view.targets}
-          selectedId={view.selectedTargetId}
-          onSelect={actions.selectTarget}
-          onDisconnect={actions.disconnectTarget}
-        />
-        {view.selectedTargetKind !== 'embedded' && (
-          <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-            通道
-            <select
-              value={view.channel}
-              onChange={(event) => actions.setChannel(event.target.value as 'A' | 'B')}
-              className={selectClassName}
-            >
-              <option value="A">A</option>
-              <option value="B">B</option>
-            </select>
-          </label>
-        )}
-      </div>
-
-      <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-        强度上限 · {view.intensityLabel}
-        <input
-          type="range"
-          min={0}
-          max={view.intensityMax}
-          step={view.intensityStep}
-          value={view.intensityValue}
-          onChange={(event) => actions.setIntensity(Number(event.target.value))}
-        />
-      </label>
+      <OutputCapabilityList targets={view.targets} />
+      <p className="text-xs text-[var(--text-faint)]">
+        AI 每次操作会从本次授权快照中明确选择一个目标与通道；安全上限沿用设备与安全设置。
+      </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-xs text-[var(--text-soft)]">
@@ -187,16 +146,14 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
           />
           允许增强
         </label>
-        {view.selectedTargetKind !== 'embedded' && (
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={view.allowBurst}
-              onChange={(event) => actions.setAllowBurst(event.target.checked)}
-            />
-            允许脉冲
-          </label>
-        )}
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={view.allowBurst}
+            onChange={(event) => actions.setAllowBurst(event.target.checked)}
+          />
+          允许脉冲
+        </label>
       </div>
 
       {!view.visionEnabled && (

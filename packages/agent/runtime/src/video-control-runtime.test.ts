@@ -216,6 +216,23 @@ describe('VideoControlRuntime', () => {
     await expect(pending).resolves.toBe('ok');
   });
 
+  it('registers and removes exactly one external abort listener', async () => {
+    const llm: LlmClient = {
+      capabilities: { imageInput: true },
+      runTurn: vi.fn(async () => ({ assistantMessage: 'ok' })),
+    };
+    const runtime = createRuntime({ llm });
+    await authorize(runtime);
+    const external = new AbortController();
+    const add = vi.spyOn(external.signal, 'addEventListener');
+    const remove = vi.spyOn(external.signal, 'removeEventListener');
+
+    await runtime.observe(FRAME, external.signal);
+
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
   it('returns the observation without waiting for asynchronous tool execution', async () => {
     const execution = deferred<{ state: DeviceState }>();
     const execute = vi.fn((_command: DeviceCommand) => execution.promise);

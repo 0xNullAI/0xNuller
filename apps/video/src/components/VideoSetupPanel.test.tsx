@@ -20,6 +20,7 @@ const baseView: VideoSetupPanelViewModel = {
       label: '郊狼 · Alpha',
       battery: 80,
       active: false,
+      modality: 'electrostimulation',
     },
     {
       id: 'opossum/opossum-1',
@@ -27,15 +28,9 @@ const baseView: VideoSetupPanelViewModel = {
       label: '负鼠 · Beta',
       battery: null,
       active: false,
+      modality: 'vibration',
     },
   ],
-  selectedTargetId: 'coyote/coyote-1',
-  selectedTargetKind: 'coyote',
-  channel: 'B',
-  intensityLabel: '8/20',
-  intensityMax: 20,
-  intensityStep: 1,
-  intensityValue: 8,
   durationMinutes: 5,
   cadenceSeconds: 10,
   allowEnhanced: false,
@@ -52,10 +47,6 @@ function createActions(): VideoSetupPanelActions {
     setFacingMode: vi.fn(),
     connect: vi.fn(),
     discoverEmbeddedDevices: vi.fn(),
-    selectTarget: vi.fn(),
-    disconnectTarget: vi.fn(),
-    setChannel: vi.fn(),
-    setIntensity: vi.fn(),
     setDurationMinutes: vi.fn(),
     setCadenceSeconds: vi.fn(),
     setAllowEnhanced: vi.fn(),
@@ -72,27 +63,15 @@ describe('VideoSetupPanel', () => {
     render(<VideoSetupPanel view={baseView} actions={actions} />);
 
     expect(screen.getByRole('region', { name: 'Video 设置' })).toBeTruthy();
-    expect(screen.getByRole('combobox', { name: '输出设备' })).toHaveProperty(
-      'value',
-      'coyote/coyote-1',
-    );
-    expect(screen.getByRole('combobox', { name: '通道' })).toHaveProperty('value', 'B');
-    expect(screen.getByRole('slider', { name: '强度上限 · 8/20' })).toHaveProperty('max', '20');
+    expect(screen.getByRole('region', { name: '已连接输出能力' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: '输出设备' })).toBeNull();
 
     fireEvent.change(screen.getByRole('combobox', { name: '摄像头' }), {
       target: { value: 'user' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: '输出设备' }), {
-      target: { value: 'opossum/opossum-1' },
-    });
-    fireEvent.change(screen.getByRole('slider', { name: '强度上限 · 8/20' }), {
-      target: { value: '6' },
-    });
     fireEvent.click(screen.getByRole('checkbox', { name: '允许增强' }));
 
     expect(actions.setFacingMode).toHaveBeenCalledWith('user');
-    expect(actions.selectTarget).toHaveBeenCalledWith('opossum/opossum-1');
-    expect(actions.setIntensity).toHaveBeenCalledWith(6);
     expect(actions.setAllowEnhanced).toHaveBeenCalledWith(true);
   });
 
@@ -120,7 +99,7 @@ describe('VideoSetupPanel', () => {
     expect(actions.activate).not.toHaveBeenCalled();
   });
 
-  it('lists an embedded capability in the same target selector', () => {
+  it('lists embedded capability read-only without requiring a human target selection', () => {
     const actions = createActions();
     render(
       <VideoSetupPanel
@@ -134,25 +113,16 @@ describe('VideoSetupPanel', () => {
               label: '通用设备 · Demo · 振动 1',
               battery: null,
               active: false,
+              modality: 'vibration',
             },
           ],
-          selectedTargetId: 'embedded/device/vibrate-1',
-          selectedTargetKind: 'embedded',
-          intensityLabel: '20%',
-          intensityMax: 1,
-          intensityStep: 0.01,
-          intensityValue: 0.2,
         }}
         actions={actions}
       />,
     );
 
-    expect(screen.getByRole('combobox', { name: '输出设备' })).toHaveProperty(
-      'value',
-      'embedded/device/vibrate-1',
-    );
-    expect(screen.queryByRole('checkbox', { name: '允许脉冲' })).toBeNull();
-    expect(screen.queryByRole('combobox', { name: '通道' })).toBeNull();
+    expect(screen.getByText('通用设备 · Demo · 振动 1')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: '允许脉冲' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '查找通用设备' }));
     fireEvent.click(screen.getByRole('button', { name: '开启' }));

@@ -18,8 +18,6 @@ import {
   genericDeviceIntensityCap,
   genericDeviceSafetyPolicy,
   outputTargetSafetyControl,
-  resolveUnifiedOutputTarget,
-  unifiedOutputIdentity,
   type DeviceSnapshot,
   type UnifiedOutputTarget,
 } from '@0xnullai/device-runtime';
@@ -36,16 +34,13 @@ import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
+import { VisualSession, type VisualSessionSnapshot } from './services/visual-session.js';
+import { DeviceRuntimeVideoControlService } from './services/device-runtime-video-control.js';
 import {
-  VisualSession,
-  type VisualSafetyStopReason,
-  type VisualSessionSnapshot,
-} from './services/visual-session.js';
-import {
-  DeviceRuntimeVideoControlService,
-  type DeviceRuntimeVideoGrantSnapshot,
-} from './services/device-runtime-video-control.js';
-import { switchVideoOutputTarget } from './services/output-target-selection.js';
+  VideoAiDeviceRouter,
+  type VideoAiAllowedTarget,
+  type VideoAiRoutingGrantSnapshot,
+} from './services/video-ai-device-router.js';
 
 const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   status: 'idle',
@@ -75,8 +70,6 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
   opossumTarget: null,
 };
 
-type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
-type ActiveGrantSnapshot = GrantSnapshot | DeviceRuntimeVideoGrantSnapshot;
 const FIXED_CAMERA_FRAME_SETTINGS = Object.freeze({
   ...DEFAULT_CAMERA_FRAME_SETTINGS,
   cropPreset: '16:9' as const,
@@ -142,19 +135,15 @@ export function App() {
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const captureIntervalMs = 1_000;
   const [durationMinutes, setDurationMinutes] = useState(5);
-  const [selectedOutputId, setSelectedOutputId] = useState<string | null>(null);
-  const [channel, setChannel] = useState<'A' | 'B'>('A');
-  const [intensityCap, setIntensityCap] = useState(10);
-  const [embeddedIntensityCap, setEmbeddedIntensityCap] = useState(0.2);
   const [allowEnhanced, setAllowEnhanced] = useState(false);
   const [allowBurst, setAllowBurst] = useState(false);
-  const [grant, setGrant] = useState<GrantSnapshot | null>(null);
-  const [embeddedGrant, setEmbeddedGrant] = useState<DeviceRuntimeVideoGrantSnapshot | null>(null);
+  const [routingGrant, setRoutingGrant] = useState<VideoAiRoutingGrantSnapshot | null>(null);
   const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
   const [embeddedDevices, setEmbeddedDevices] = useState<DeviceSnapshot | null>(null);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const outputTargetsRef = useRef<UnifiedOutputTarget[]>([]);
   const startOperationRef = useRef(0);
   const autoStartRef = useRef<number | null>(null);
   const lifecycleEffectRef = useRef(0);
@@ -203,7 +192,8 @@ export function App() {
             scene: null,
             hasLease: () => hasDeviceLease('video'),
             getSafetyIntensityCap: () => genericDeviceIntensityCap(loadDeviceSafety()),
-            getMaxOutputLeaseMs: () => genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
+            getMaxOutputLeaseMs: () =>
+              genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
           })
         : null,
     [native.deviceRuntime],
@@ -215,15 +205,73 @@ export function App() {
     if (!genericService) return;
     return genericService.subscribe(setEmbeddedDevices);
   }, [genericService]);
-  const currentControl = useCallback((): 'dg-lab' | 'embedded' | null => {
-    const now = Date.now();
-    const genericGrant = genericService?.getGrant();
-    if (genericGrant && !genericGrant.revoked && now < genericGrant.expiresAt) return 'embedded';
-    const dgLabGrant = service.getGrant();
-    if (dgLabGrant && !dgLabGrant.revoked && now < dgLabGrant.expiresAt) return 'dg-lab';
-    return null;
-  }, [genericService, service]);
-
+  const [aiRouter] = useState(
+    () =>
+      new VideoAiDeviceRouter({
+        getLlm: () => null,
+        getTargets: () => [],
+        hasLease: () => hasDeviceLease('video'),
+        invoke: async (action, masterGrant) => {
+          const remaining = Math.max(1_000, masterGrant.expiresAt - Date.now());
+          if (action.target.kind === 'embedded') {
+            if (!genericService) throw new Error('通用设备运行时不可用');
+            return genericService.executeAiAction(
+              {
+                deviceId: action.target.deviceId,
+                featureId: action.target.featureId,
+                intensityCap: Math.min(action.target.capA, action.target.capB),
+                allowEnhanced: masterGrant.allowEnhanced,
+                durationMs: remaining,
+                cadenceMs: masterGrant.cadenceMs,
+                captureIntervalMs: masterGrant.captureIntervalMs,
+              },
+              {
+                id: action.id,
+                action: action.action === 'stop' ? 'stop' : 'start',
+                intensity: action.value,
+                outputLeaseMs: Math.min(loadDeviceSafety().maxBurstDurationMs, 5_000),
+              },
+            );
+          }
+          const target = service
+            .getTargets()
+            .find(
+              (candidate) =>
+                candidate.kind === action.target.kind &&
+                candidate.targetId === action.target.targetId,
+            );
+          if (!target) throw new Error('授权物理目标已断开或身份已失效');
+          return service.executeAiAction(
+            target,
+            {
+              id: action.id,
+              action: action.action,
+              channel: action.channel,
+              value: action.value,
+              durationMs: action.durationMs,
+            },
+            {
+              intensityCap: action.channel === 'A' ? action.target.capA : action.target.capB,
+              allowEnhanced: masterGrant.allowEnhanced,
+              allowBurst: masterGrant.allowBurst,
+              durationMs: remaining,
+              cadenceMs: masterGrant.cadenceMs,
+              captureIntervalMs: masterGrant.captureIntervalMs,
+            },
+          );
+        },
+        stopAll: async () => {
+          const results = await Promise.allSettled([
+            service.emergencyStop(),
+            ...(genericService ? [genericService.emergencyStop()] : []),
+          ]);
+          const failure = results.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          );
+          if (failure) throw failure.reason;
+        },
+      }),
+  );
   const visionEnabled = Boolean(
     isVideoLlmConfigured(config) && llm?.capabilities?.imageInput === true,
   );
@@ -239,14 +287,11 @@ export function App() {
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
-      const text =
-        currentControl() === 'embedded'
-          ? await genericService!.observe(image, signal)
-          : await service.observe(image, signal);
+      const text = await aiRouter.observe(image, signal);
       setObservations((current) => [...current, { step: current.length + 1, text }].slice(-20));
       return text;
     },
-    [currentControl, genericService, service],
+    [aiRouter],
   );
 
   const [session] = useState(
@@ -257,11 +302,7 @@ export function App() {
         stopAuthorizedTargets: async (reason) => {
           if (reason === 'emergency') return;
           try {
-            if (currentControl() === 'embedded') {
-              await genericService?.stop(reason as VisualSafetyStopReason);
-            } else {
-              await service.stop(reason as VisualSafetyStopReason);
-            }
+            await aiRouter.stop();
           } catch {
             setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
           }
@@ -273,8 +314,7 @@ export function App() {
             snapshot.stopReason !== 'pause' &&
             snapshot.stopReason !== 'stop'
           ) {
-            setGrant(null);
-            setEmbeddedGrant(null);
+            setRoutingGrant(null);
           }
         },
       }),
@@ -290,12 +330,8 @@ export function App() {
     startOperationRef.current += 1;
     autoStartRef.current = null;
     session.emergencyStop();
-    setGrant(null);
-    setEmbeddedGrant(null);
-    const results = await Promise.allSettled([
-      service.emergencyStop(),
-      ...(genericService ? [genericService.emergencyStop()] : []),
-    ]);
+    setRoutingGrant(null);
+    const results = await Promise.allSettled([aiRouter.emergencyStop()]);
     const failure = results.find(
       (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
@@ -303,7 +339,7 @@ export function App() {
       setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
       throw failure.reason;
     }
-  }, [genericService, service, session]);
+  }, [aiRouter, session]);
 
   useSafetySession({
     id: 'video',
@@ -317,55 +353,37 @@ export function App() {
     onRevoke: async () => {
       startOperationRef.current += 1;
       autoStartRef.current = null;
-      session.failSafeStop('lease-loss');
-      const results = await Promise.allSettled([
-        service.stop('lease-loss'),
-        ...(genericService ? [genericService.stop('lease-loss')] : []),
-      ]);
-      const failure = results.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (failure) throw failure.reason;
+      try {
+        await aiRouter.stop();
+      } finally {
+        session.haltAfterExternalStop('lease-loss');
+        setRoutingGrant(null);
+      }
     },
     devices: () => service.getDeviceSummaries(safety),
   });
 
   useEffect(() => {
-    if (!grant) return;
-    const connected = [
-      ...devices.coyotes,
-      ...(devices.opossumTarget ? [devices.opossumTarget] : []),
-    ].some((target) => target.kind === grant.targetKind && target.targetId === grant.targetId);
-    if (!connected) session.failSafeStop('device-loss');
-  }, [devices.coyotes, devices.opossumTarget, grant, session]);
-
-  useEffect(() => {
-    if (!embeddedGrant) return;
-    const connected = embeddedDevices?.devices.some(
-      (device) =>
-        device.deviceId === embeddedGrant.deviceId &&
-        device.capabilities.some(
-          (feature) => feature.kind === 'vibrate' && feature.featureId === embeddedGrant.featureId,
-        ),
-    );
-    if (!connected) session.failSafeStop('device-loss');
-  }, [embeddedDevices, embeddedGrant, session]);
+    if (!routingGrant || routingGrant.revoked) return;
+    const live = new Set(outputTargetsRef.current.map(({ id }) => id));
+    if (routingGrant.targets.some(({ id }) => !live.has(id))) {
+      session.failSafeStop('device-loss');
+      setRoutingGrant(null);
+    }
+  }, [devices, embeddedDevices, routingGrant, session]);
 
   useEffect(() => {
     if (
       (cameraState === 'off' || cameraState === 'error') &&
-      (visual.status === 'running' ||
-        visual.status === 'paused' ||
-        grant !== null ||
-        embeddedGrant !== null)
+      (visual.status === 'running' || visual.status === 'paused' || routingGrant !== null)
     ) {
       startOperationRef.current += 1;
       autoStartRef.current = null;
       // VisualSession synchronously publishes the safety stop; its onChange
-      // callback clears both grant snapshots in one place.
+      // callback clears the routing grant snapshot in one place.
       session.failSafeStop('camera-ended');
     }
-  }, [cameraState, embeddedGrant, grant, session, visual.status]);
+  }, [cameraState, routingGrant, session, visual.status]);
 
   const stopEverything = useCallback(
     (reason: 'hidden' | 'unmount' = 'hidden') => {
@@ -415,25 +433,17 @@ export function App() {
     })),
     embeddedDevices,
   );
-  const selectedOutput = resolveUnifiedOutputTarget(outputTargets, selectedOutputId);
-  const targetConnected = selectedOutput !== null;
-  const safetyControl = outputTargetSafetyControl(selectedOutput, channel, safety);
-  const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), safetyControl.max);
-  const effectiveEmbeddedIntensityCap = Math.min(
-    safetyControl.max,
-    Math.max(0, embeddedIntensityCap),
-  );
-  const activeGrant = embeddedGrant ?? grant;
-  const selectedControlFamily = selectedOutput?.kind === 'embedded' ? 'embedded' : 'dg-lab';
-
-  async function stopPreviousControl(next: 'dg-lab' | 'embedded') {
-    const current = currentControl();
-    if (!current || current === next) return;
-    if (current === 'embedded') await genericService?.stop('device-loss');
-    else await service.stop('device-loss');
-    setGrant(null);
-    setEmbeddedGrant(null);
-  }
+  const allowedTargets: VideoAiAllowedTarget[] = outputTargets.map((target) => ({
+    ...target,
+    capA: outputTargetSafetyControl(target, 'A', safety).max,
+    capB: outputTargetSafetyControl(target, 'B', safety).max,
+  }));
+  const targetConnected = allowedTargets.length > 0;
+  const activeGrant = routingGrant;
+  useEffect(() => {
+    outputTargetsRef.current = outputTargets;
+    aiRouter.updateInputs(llm, outputTargets);
+  }, [aiRouter, llm, outputTargets]);
 
   async function compensateCancelledStart() {
     try {
@@ -443,7 +453,7 @@ export function App() {
     }
   }
 
-  async function authorizeControl(operation: number): Promise<ActiveGrantSnapshot | null> {
+  async function authorizeControl(operation: number): Promise<VideoAiRoutingGrantSnapshot | null> {
     if (!targetConnected) {
       setLocalError('请选择输出功能');
       return null;
@@ -452,47 +462,20 @@ export function App() {
       setLocalError(null);
       await grantDeviceLease('video');
       if (operation !== startOperationRef.current) return null;
-      await stopPreviousControl(selectedControlFamily);
-      if (operation !== startOperationRef.current) return null;
-
-      let authorized: ActiveGrantSnapshot;
-      if (selectedOutput?.kind === 'embedded') {
-        if (!genericService) throw new Error('通用设备运行时不可用');
-        authorized = await genericService.authorize({
-          deviceId: selectedOutput.deviceId,
-          featureId: selectedOutput.featureId,
-          intensityCap: effectiveEmbeddedIntensityCap,
-          allowEnhanced,
-          durationMs: durationMinutes * 60_000,
-          cadenceMs: cadenceSeconds * 1000,
-          captureIntervalMs,
-        });
-      } else {
-        if (!selectedOutput) throw new Error('请选择输出功能');
-        authorized = await service.authorize({
-          targetKind: selectedOutput.kind,
-          targetId: selectedOutput.targetId,
-          channel,
-          intensityCap: effectiveIntensityCap,
-          allowEnhanced,
-          allowBurst,
-          durationMs: durationMinutes * 60_000,
-          cadenceMs: cadenceSeconds * 1000,
-          captureIntervalMs,
-        });
-      }
+      const authorized = await aiRouter.authorize({
+        targets: allowedTargets,
+        allowEnhanced,
+        allowBurst,
+        durationMs: durationMinutes * 60_000,
+        cadenceMs: cadenceSeconds * 1000,
+        captureIntervalMs,
+      });
 
       if (operation !== startOperationRef.current) {
         await compensateCancelledStart();
         return null;
       }
-      if (selectedOutput?.kind === 'embedded') {
-        setGrant(null);
-        setEmbeddedGrant(authorized as DeviceRuntimeVideoGrantSnapshot);
-      } else {
-        setEmbeddedGrant(null);
-        setGrant(authorized as GrantSnapshot);
-      }
+      setRoutingGrant(authorized);
       session.resetEmergencyLatch();
       return authorized;
     } catch (error) {
@@ -504,7 +487,7 @@ export function App() {
   }
 
   async function startSession(
-    authorizedGrant: ActiveGrantSnapshot | null,
+    authorizedGrant: VideoAiRoutingGrantSnapshot | null,
     now: number,
     operation: number,
   ) {
@@ -513,15 +496,9 @@ export function App() {
       setLocalError('授权已失效');
       return;
     }
-    if (currentControl() !== selectedControlFamily) {
-      setLocalError('当前目标尚未获得本次 Video 授权');
-      return;
-    }
     try {
       setLocalError(null);
       if (visual.status !== 'paused') setObservations([]);
-      if (selectedOutput?.kind === 'embedded') await genericService!.beginRun();
-      else service.beginRun();
       if (operation !== startOperationRef.current) {
         await compensateCancelledStart();
         return;
@@ -545,8 +522,7 @@ export function App() {
     }
     const operation = ++startOperationRef.current;
     autoStartRef.current = operation;
-    setGrant(null);
-    setEmbeddedGrant(null);
+    setRoutingGrant(null);
     setObservations([]);
     await startCamera();
   }
@@ -564,42 +540,10 @@ export function App() {
     }
   });
 
-  async function stopBeforeTargetChange(): Promise<void> {
-    const current = currentControl();
-    if (!current) return;
-    startOperationRef.current += 1;
-    autoStartRef.current = null;
-    try {
-      if (current === 'embedded') await genericService?.stop('device-loss');
-      else await service.stop('device-loss');
-    } finally {
-      session.haltAfterExternalStop('device-loss');
-    }
-  }
-
-  async function selectOutputSafely(nextId: string): Promise<void> {
-    try {
-      setLocalError(null);
-      await switchVideoOutputTarget(
-        selectedOutput?.id ?? null,
-        nextId,
-        stopBeforeTargetChange,
-        () => {
-          setGrant(null);
-          setEmbeddedGrant(null);
-        },
-        setSelectedOutputId,
-      );
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : '无法安全切换输出目标');
-    }
-  }
-
   async function connect(kind: VideoOutputKind) {
     try {
       setLocalError(null);
-      const target = await service.connect(kind);
-      await selectOutputSafely(unifiedOutputIdentity(target.kind, target.targetId));
+      await service.connect(kind);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
     }
@@ -612,46 +556,8 @@ export function App() {
       await grantDeviceLease('video');
       const snapshot = await genericService.discoverDevices();
       setEmbeddedDevices(snapshot);
-      const first = snapshot.devices.flatMap((device) =>
-        device.capabilities.flatMap((feature) =>
-          feature.kind === 'vibrate'
-            ? [{ deviceId: device.deviceId, featureId: feature.featureId }]
-            : [],
-        ),
-      )[0];
-      if (first) {
-        await selectOutputSafely(
-          unifiedOutputIdentity('embedded', first.deviceId, first.featureId),
-        );
-      }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
-    }
-  }
-
-  async function disconnectOutput(target: UnifiedOutputTarget): Promise<void> {
-    try {
-      setLocalError(null);
-      if (selectedOutput?.id === target.id) {
-        try {
-          await stopBeforeTargetChange();
-        } finally {
-          setGrant(null);
-          setEmbeddedGrant(null);
-        }
-      }
-      if (target.kind === 'embedded') {
-        if (!genericService) throw new Error('通用设备运行时不可用');
-        await genericService.disconnectDevice(target.deviceId);
-      } else {
-        await service.disconnect(target.targetId);
-      }
-      if (selectedOutput?.id === target.id) {
-        const fallback = outputTargets.find((candidate) => candidate.id !== target.id) ?? null;
-        setSelectedOutputId(fallback?.id ?? null);
-      }
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : '设备断开失败');
     }
   }
 
@@ -664,8 +570,7 @@ export function App() {
     }
     startOperationRef.current += 1;
     autoStartRef.current = null;
-    setGrant(null);
-    setEmbeddedGrant(null);
+    setRoutingGrant(null);
     void startCamera();
   };
 
@@ -689,8 +594,7 @@ export function App() {
                 startOperationRef.current += 1;
                 autoStartRef.current = null;
                 session.failSafeStop('camera-ended');
-                setGrant(null);
-                setEmbeddedGrant(null);
+                setRoutingGrant(null);
                 stopCamera();
               }}
             />
@@ -739,18 +643,6 @@ export function App() {
               coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
               showOpossumConnect: devices.opossumTarget === null,
               targets: outputTargets,
-              selectedTargetId: selectedOutput?.id ?? '',
-              selectedTargetKind: selectedOutput?.kind ?? null,
-              channel,
-              intensityLabel: safetyControl.normalized
-                ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
-                : `${effectiveIntensityCap}/${safetyControl.max}`,
-              intensityMax: safetyControl.max,
-              intensityStep: safetyControl.step,
-              intensityValue:
-                selectedOutput?.kind === 'embedded'
-                  ? effectiveEmbeddedIntensityCap
-                  : effectiveIntensityCap,
               durationMinutes,
               cadenceSeconds,
               allowEnhanced,
@@ -765,16 +657,6 @@ export function App() {
               setFacingMode,
               connect: (kind) => void connect(kind),
               discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
-              selectTarget: (nextTargetId) => void selectOutputSafely(nextTargetId),
-              disconnectTarget: (targetId) => {
-                const target = outputTargets.find((candidate) => candidate.id === targetId);
-                if (target) return disconnectOutput(target);
-              },
-              setChannel,
-              setIntensity: (value) => {
-                if (selectedOutput?.kind === 'embedded') setEmbeddedIntensityCap(value);
-                else setIntensityCap(value);
-              },
               setDurationMinutes,
               setCadenceSeconds,
               setAllowEnhanced,

@@ -17,6 +17,7 @@ export * from './components/emergency-stop';
 export * from './components/device-safety-button';
 export * from './components/opossum-control';
 export * from './components/output-target-picker';
+export * from './components/output-capability-list';
 export * from './components/popover';
 export * from './components/badge';
 export * from './components/button';
