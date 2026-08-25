@@ -9,19 +9,29 @@ import {
 
 const baseView: VideoSetupPanelViewModel = {
   facingMode: 'environment',
-  targetFamily: 'dg-lab',
   embeddedAvailable: true,
   showCoyoteConnect: true,
   coyoteConnectLabel: '添加郊狼',
   showOpossumConnect: true,
-  targetOptions: [
-    { value: 'coyote-1', label: '郊狼 · Alpha' },
-    { value: 'opossum-1', label: '负鼠 · Beta' },
+  targets: [
+    {
+      id: 'coyote/coyote-1',
+      kind: 'coyote',
+      label: '郊狼 · Alpha',
+      battery: 80,
+      active: false,
+    },
+    {
+      id: 'opossum/opossum-1',
+      kind: 'opossum',
+      label: '负鼠 · Beta',
+      battery: null,
+      active: false,
+    },
   ],
-  selectedTargetId: 'coyote-1',
+  selectedTargetId: 'coyote/coyote-1',
+  selectedTargetKind: 'coyote',
   channel: 'B',
-  embeddedFeatureOptions: [{ value: 'vibrate-1', label: 'Demo · 振动 1' }],
-  selectedEmbeddedFeatureId: '',
   intensityLabel: '8/20',
   intensityMax: 20,
   intensityStep: 1,
@@ -40,11 +50,10 @@ function createActions(): VideoSetupPanelActions {
   return {
     openVideoSettings: vi.fn(),
     setFacingMode: vi.fn(),
-    setTargetFamily: vi.fn(),
     connect: vi.fn(),
     discoverEmbeddedDevices: vi.fn(),
     selectTarget: vi.fn(),
-    selectEmbeddedFeature: vi.fn(),
+    disconnectTarget: vi.fn(),
     setChannel: vi.fn(),
     setIntensity: vi.fn(),
     setDurationMinutes: vi.fn(),
@@ -63,15 +72,18 @@ describe('VideoSetupPanel', () => {
     render(<VideoSetupPanel view={baseView} actions={actions} />);
 
     expect(screen.getByRole('region', { name: 'Video 设置' })).toBeTruthy();
-    expect(screen.getByRole('combobox', { name: '目标' })).toHaveProperty('value', 'coyote-1');
+    expect(screen.getByRole('combobox', { name: '输出设备' })).toHaveProperty(
+      'value',
+      'coyote/coyote-1',
+    );
     expect(screen.getByRole('combobox', { name: '通道' })).toHaveProperty('value', 'B');
     expect(screen.getByRole('slider', { name: '强度上限 · 8/20' })).toHaveProperty('max', '20');
 
     fireEvent.change(screen.getByRole('combobox', { name: '摄像头' }), {
       target: { value: 'user' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: '目标' }), {
-      target: { value: 'opossum-1' },
+    fireEvent.change(screen.getByRole('combobox', { name: '输出设备' }), {
+      target: { value: 'opossum/opossum-1' },
     });
     fireEvent.change(screen.getByRole('slider', { name: '强度上限 · 8/20' }), {
       target: { value: '6' },
@@ -79,7 +91,7 @@ describe('VideoSetupPanel', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '允许增强' }));
 
     expect(actions.setFacingMode).toHaveBeenCalledWith('user');
-    expect(actions.selectTarget).toHaveBeenCalledWith('opossum-1');
+    expect(actions.selectTarget).toHaveBeenCalledWith('opossum/opossum-1');
     expect(actions.setIntensity).toHaveBeenCalledWith(6);
     expect(actions.setAllowEnhanced).toHaveBeenCalledWith(true);
   });
@@ -108,14 +120,24 @@ describe('VideoSetupPanel', () => {
     expect(actions.activate).not.toHaveBeenCalled();
   });
 
-  it('renders only the embedded target controls when the parent selects that family', () => {
+  it('lists an embedded capability in the same target selector', () => {
     const actions = createActions();
     render(
       <VideoSetupPanel
         view={{
           ...baseView,
-          targetFamily: 'embedded',
-          selectedEmbeddedFeatureId: 'vibrate-1',
+          targets: [
+            ...baseView.targets,
+            {
+              id: 'embedded/device/vibrate-1',
+              kind: 'embedded',
+              label: '通用设备 · Demo · 振动 1',
+              battery: null,
+              active: false,
+            },
+          ],
+          selectedTargetId: 'embedded/device/vibrate-1',
+          selectedTargetKind: 'embedded',
           intensityLabel: '20%',
           intensityMax: 1,
           intensityStep: 0.01,
@@ -125,11 +147,14 @@ describe('VideoSetupPanel', () => {
       />,
     );
 
-    expect(screen.getByRole('combobox', { name: '振动功能' })).toHaveProperty('value', 'vibrate-1');
-    expect(screen.queryByRole('combobox', { name: '目标' })).toBeNull();
+    expect(screen.getByRole('combobox', { name: '输出设备' })).toHaveProperty(
+      'value',
+      'embedded/device/vibrate-1',
+    );
     expect(screen.queryByRole('checkbox', { name: '允许脉冲' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: '通道' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '查找设备' }));
+    fireEvent.click(screen.getByRole('button', { name: '查找通用设备' }));
     fireEvent.click(screen.getByRole('button', { name: '开启' }));
     expect(actions.discoverEmbeddedDevices).toHaveBeenCalledOnce();
     expect(actions.activate).toHaveBeenCalledOnce();

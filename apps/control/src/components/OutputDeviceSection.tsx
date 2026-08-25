@@ -9,7 +9,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '@0xnullai/device-runtime';
-import { RepeatButton } from '@0xnullai/ui';
+import { OutputTargetPicker, RepeatButton } from '@0xnullai/ui';
 import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
 
 export type OutputTarget =
@@ -133,35 +133,33 @@ export function OutputDeviceSection({
             </p>
           )}
         </div>
-        {targets.length > 1 && (
-          <div className="flex gap-1" aria-label="设备页面">
-            {targets.map((target) => (
-              <button
-                key={target.id}
-                type="button"
-                aria-label={`切换到 ${target.label}`}
-                aria-pressed={target.id === selected?.id}
-                onClick={() => {
-                  onSelect(target.id);
-                  findSlide(target.id)?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'nearest',
-                    inline: 'center',
-                  });
-                }}
-                className={`h-1.5 rounded-full transition-all ${
-                  target.id === selected?.id
-                    ? 'w-5 bg-[var(--accent)]'
-                    : 'w-1.5 bg-[var(--surface-border)]'
-                }`}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       {targets.length > 0 && selected && selectedPanel ? (
         <>
+          <div className="mb-3">
+            <OutputTargetPicker
+              targets={targets.map((target) => ({
+                id: target.id,
+                kind: target.kind,
+                label: target.label,
+                battery: target.kind === 'coyote' ? target.coyote.battery : target.opossum.battery,
+                active:
+                  target.kind === 'coyote'
+                    ? target.coyote.strengthA > 0 || target.coyote.strengthB > 0
+                    : target.opossum.intensityA > 0 || target.opossum.intensityB > 0,
+              }))}
+              selectedId={selected.id}
+              onSelect={(targetId) => {
+                onSelect(targetId);
+                findSlide(targetId)?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'nearest',
+                  inline: 'center',
+                });
+              }}
+            />
+          </div>
           <div className="relative mx-auto w-full">
             <div
               ref={scrollRef}

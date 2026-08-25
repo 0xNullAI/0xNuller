@@ -148,6 +148,17 @@ export class VisualSession {
     this.halt('stopped', reason);
   }
 
+  /**
+   * Halt capture/inference after the coordinator has directly attempted the
+   * target stop. This avoids issuing a second stop through the callback while
+   * still invalidating every visual continuation before a selection changes.
+   */
+  haltAfterExternalStop(
+    reason: Exclude<VisualSafetyStopReason, 'pause' | 'stop' | 'unmount'>,
+  ): void {
+    this.halt('stopped', reason, { requestStop: false });
+  }
+
   emergencyStop(): void {
     this.halt('stopped', 'emergency', { emergencyLatched: true });
   }
@@ -298,7 +309,7 @@ export class VisualSession {
   private halt(
     status: VisualSessionStatus,
     reason: VisualSafetyStopReason | 'emergency',
-    options: { reset?: boolean; emergencyLatched?: boolean } = {},
+    options: { reset?: boolean; emergencyLatched?: boolean; requestStop?: boolean } = {},
   ): void {
     this.generation += 1;
     this.clearTimers();
@@ -317,7 +328,7 @@ export class VisualSession {
           emergencyLatched: options.emergencyLatched ?? this.snapshot.emergencyLatched,
           stopReason: reason,
         };
-    this.requestStop(reason);
+    if (options.requestStop !== false) this.requestStop(reason);
     this.emit();
   }
 

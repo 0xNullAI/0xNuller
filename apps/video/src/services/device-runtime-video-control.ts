@@ -161,6 +161,19 @@ export class DeviceRuntimeVideoControlService {
     return cloneSnapshot(tools.actions.snapshot());
   }
 
+  /** Stop an authorized feature before asking the shared runtime to disconnect its device. */
+  async disconnectDevice(deviceId: DeviceId): Promise<DeviceSnapshot> {
+    const grant = this.grant?.getSnapshot();
+    if (grant?.deviceId === deviceId && !grant.revoked) await this.stop('device-loss');
+    const tools = await this.ensureRuntime();
+    const ack = await tools.actions.disconnect({
+      interactionId: this.interactionId('disconnect'),
+      deviceId,
+    });
+    if (ack.status !== 'applied') throw new Error(`嵌入设备断开失败：${ack.code}`);
+    return cloneSnapshot(tools.actions.snapshot());
+  }
+
   async authorize(input: unknown): Promise<DeviceRuntimeVideoGrantSnapshot> {
     const value = parseGrantInput(input);
     const authorizationGeneration = this.generation;

@@ -106,6 +106,11 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   duplicate provider startup, AI allowlists/display names, permission classification, interaction-ID
   generation, or percentage-to-normalized cap arithmetic in feature apps. Video keeps its explicit
   one-target visual grant and stale-identity stop escalation above these shared primitives.
+- Cross-module output selection uses `UnifiedOutputTarget` from device-runtime and
+  `OutputTargetPicker` from UI. Coyote, Opossum, and generic runtime capabilities appear in one target
+  list; feature apps keep connection, authorization, lease, and stop ownership. Selection never means
+  fan-out: authorize only the exact selected identity, and stop the old grant before switching or
+  disconnecting it. Safety caps must be projected from the shared device-safety settings by modality.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
 - Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in

@@ -12,6 +12,7 @@ export * from './web-runtime-provider.js';
 export * from './device-policy.js';
 export * from './module-binding.js';
 export * from './attached-device-state.js';
+export * from './output-targets.js';
 export * from './device-session.js';
 export * from './use-device.js';
 export * from './use-channel-rotation.js';

@@ -1,27 +1,19 @@
 import { CirclePlay, Link, Settings } from 'lucide-react';
-import { Button } from '@0xnullai/ui';
+import type { UnifiedOutputKind, UnifiedOutputTarget } from '@0xnullai/device-runtime';
+import { Button, OutputTargetPicker } from '@0xnullai/ui';
 import type { VideoOutputKind } from '@dg-agent/agent-browser';
 import type { CameraFacingMode } from '../hooks/use-camera-preview.js';
 
-export type VideoTargetFamily = 'dg-lab' | 'embedded';
-
-export interface VideoSetupOption {
-  value: string;
-  label: string;
-}
-
 export interface VideoSetupPanelViewModel {
   facingMode: CameraFacingMode;
-  targetFamily: VideoTargetFamily;
   embeddedAvailable: boolean;
   showCoyoteConnect: boolean;
   coyoteConnectLabel: string;
   showOpossumConnect: boolean;
-  targetOptions: readonly VideoSetupOption[];
+  targets: readonly Pick<UnifiedOutputTarget, 'id' | 'kind' | 'label' | 'battery' | 'active'>[];
   selectedTargetId: string;
+  selectedTargetKind: UnifiedOutputKind | null;
   channel: 'A' | 'B';
-  embeddedFeatureOptions: readonly VideoSetupOption[];
-  selectedEmbeddedFeatureId: string;
   intensityLabel: string;
   intensityMax: number;
   intensityStep: number;
@@ -39,11 +31,10 @@ export interface VideoSetupPanelViewModel {
 export interface VideoSetupPanelActions {
   openVideoSettings: () => void;
   setFacingMode: (value: CameraFacingMode) => void;
-  setTargetFamily: (value: VideoTargetFamily) => void;
   connect: (kind: VideoOutputKind) => void;
   discoverEmbeddedDevices: () => void;
   selectTarget: (targetId: string) => void;
-  selectEmbeddedFeature: (featureId: string) => void;
+  disconnectTarget: (targetId: string) => void | Promise<void>;
   setChannel: (channel: 'A' | 'B') => void;
   setIntensity: (value: number) => void;
   setDurationMinutes: (value: number) => void;
@@ -84,7 +75,7 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
         </button>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <label className="grid gap-1 text-xs text-[var(--text-soft)]">
           摄像头
           <select
@@ -96,75 +87,40 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
             <option value="user">前置</option>
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-          输出
-          <select
-            value={view.targetFamily}
-            onChange={(event) => actions.setTargetFamily(event.target.value as VideoTargetFamily)}
-            className={selectClassName}
-          >
-            <option value="dg-lab">郊狼 / 负鼠</option>
-            {view.embeddedAvailable && <option value="embedded">通用设备</option>}
-          </select>
-        </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {view.targetFamily === 'embedded' ? (
-          <Button size="sm" variant="secondary" onClick={actions.discoverEmbeddedDevices}>
-            <Link aria-hidden="true" className="h-3.5 w-3.5" /> 查找设备
+        {view.showCoyoteConnect && (
+          <Button size="sm" variant="secondary" onClick={() => actions.connect('coyote')}>
+            <Link aria-hidden="true" className="h-3.5 w-3.5" />
+            {view.coyoteConnectLabel}
           </Button>
-        ) : (
-          <>
-            {view.showCoyoteConnect && (
-              <Button size="sm" variant="secondary" onClick={() => actions.connect('coyote')}>
-                <Link aria-hidden="true" className="h-3.5 w-3.5" />
-                {view.coyoteConnectLabel}
-              </Button>
-            )}
-            {view.showOpossumConnect && (
-              <Button size="sm" variant="secondary" onClick={() => actions.connect('opossum')}>
-                <Link aria-hidden="true" className="h-3.5 w-3.5" /> 连接负鼠
-              </Button>
-            )}
-          </>
+        )}
+        {view.showOpossumConnect && (
+          <Button size="sm" variant="secondary" onClick={() => actions.connect('opossum')}>
+            <Link aria-hidden="true" className="h-3.5 w-3.5" /> 连接负鼠
+          </Button>
+        )}
+        {view.embeddedAvailable && (
+          <Button size="sm" variant="secondary" onClick={actions.discoverEmbeddedDevices}>
+            <Link aria-hidden="true" className="h-3.5 w-3.5" /> 查找通用设备
+          </Button>
         )}
         <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
       </div>
 
-      {view.targetFamily === 'embedded' ? (
-        <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-          振动功能
-          <select
-            value={view.selectedEmbeddedFeatureId}
-            onChange={(event) => actions.selectEmbeddedFeature(event.target.value)}
-            className={selectClassName}
-          >
-            <option value="">请选择</option>
-            {view.embeddedFeatureOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-          <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-            目标
-            <select
-              value={view.selectedTargetId}
-              onChange={(event) => actions.selectTarget(event.target.value)}
-              className={selectClassName}
-            >
-              <option value="">请选择</option>
-              {view.targetOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+      <div
+        className={
+          view.selectedTargetKind === 'embedded' ? '' : 'grid gap-3 sm:grid-cols-[1fr_120px]'
+        }
+      >
+        <OutputTargetPicker
+          targets={view.targets}
+          selectedId={view.selectedTargetId}
+          onSelect={actions.selectTarget}
+          onDisconnect={actions.disconnectTarget}
+        />
+        {view.selectedTargetKind !== 'embedded' && (
           <label className="grid gap-1 text-xs text-[var(--text-soft)]">
             通道
             <select
@@ -176,8 +132,8 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
               <option value="B">B</option>
             </select>
           </label>
-        </div>
-      )}
+        )}
+      </div>
 
       <label className="grid gap-1 text-xs text-[var(--text-soft)]">
         强度上限 · {view.intensityLabel}
@@ -231,7 +187,7 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
           />
           允许增强
         </label>
-        {view.targetFamily === 'dg-lab' && (
+        {view.selectedTargetKind !== 'embedded' && (
           <label className="flex items-center gap-2">
             <input
               type="checkbox"

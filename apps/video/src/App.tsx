@@ -13,7 +13,14 @@ import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useNativeBridge } from '@0xnullai/native';
 import { useScenes } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
-import type { DeviceSnapshot } from '@0xnullai/device-runtime';
+import {
+  createUnifiedOutputTargets,
+  outputTargetSafetyControl,
+  resolveUnifiedOutputTarget,
+  unifiedOutputIdentity,
+  type DeviceSnapshot,
+  type UnifiedOutputTarget,
+} from '@0xnullai/device-runtime';
 import {
   createBrowserLlmClient,
   createBrowserVideoControl,
@@ -24,7 +31,7 @@ import {
 import type { LlmClient } from '@dg-agent/core';
 import { getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
-import { VideoSetupPanel, type VideoTargetFamily } from './components/VideoSetupPanel.js';
+import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
 import {
@@ -36,6 +43,7 @@ import {
   DeviceRuntimeVideoControlService,
   type DeviceRuntimeVideoGrantSnapshot,
 } from './services/device-runtime-video-control.js';
+import { switchVideoOutputTarget } from './services/output-target-selection.js';
 
 const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   status: 'idle',
@@ -132,11 +140,7 @@ export function App() {
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const captureIntervalMs = 1_000;
   const [durationMinutes, setDurationMinutes] = useState(5);
-  const [targetFamily, setTargetFamily] = useState<VideoTargetFamily>('dg-lab');
-  const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
-  const [targetId, setTargetId] = useState('');
-  const [embeddedDeviceId, setEmbeddedDeviceId] = useState('');
-  const [embeddedFeatureId, setEmbeddedFeatureId] = useState('');
+  const [selectedOutputId, setSelectedOutputId] = useState<string | null>(null);
   const [channel, setChannel] = useState<'A' | 'B'>('A');
   const [intensityCap, setIntensityCap] = useState(10);
   const [embeddedIntensityCap, setEmbeddedIntensityCap] = useState(0.2);
@@ -213,7 +217,7 @@ export function App() {
     if (!genericService) return;
     return genericService.subscribe(setEmbeddedDevices);
   }, [genericService]);
-  const currentControl = useCallback((): VideoTargetFamily | null => {
+  const currentControl = useCallback((): 'dg-lab' | 'embedded' | null => {
     const now = Date.now();
     const genericGrant = genericService?.getGrant();
     if (genericGrant && !genericGrant.revoked && now < genericGrant.expiresAt) return 'embedded';
@@ -396,53 +400,35 @@ export function App() {
     };
   }, [genericService, service, stopEverything]);
 
-  const connectedTargets = [
+  const dgLabTargets = [
     ...devices.coyotes,
     ...(devices.opossumTarget ? [devices.opossumTarget] : []),
   ];
-  const selectedTarget = connectedTargets.find(
-    (target) => target.kind === targetKind && target.targetId === targetId,
+  const outputTargets = createUnifiedOutputTargets(
+    dgLabTargets.map((target) => ({
+      kind: target.kind,
+      targetId: target.targetId,
+      name: target.name,
+      battery: target.state.battery,
+      active:
+        target.kind === 'coyote'
+          ? target.state.strengthA > 0 || target.state.strengthB > 0
+          : target.state.intensityA > 0 || target.state.intensityB > 0,
+    })),
+    embeddedDevices,
   );
-  const embeddedTargets =
-    embeddedDevices?.devices.flatMap((device) =>
-      device.capabilities.flatMap((feature) =>
-        feature.kind === 'vibrate'
-          ? [
-              {
-                deviceId: device.deviceId,
-                featureId: feature.featureId,
-                name: device.name,
-                feature,
-              },
-            ]
-          : [],
-      ),
-    ) ?? [];
-  const selectedEmbeddedTarget = embeddedTargets.find(
-    (target) => target.deviceId === embeddedDeviceId && target.featureId === embeddedFeatureId,
-  );
-  const targetConnected =
-    targetFamily === 'embedded'
-      ? selectedEmbeddedTarget !== undefined
-      : selectedTarget !== undefined;
-  const targetSafetyCap =
-    targetKind === 'coyote'
-      ? channel === 'A'
-        ? safety.maxStrengthA
-        : safety.maxStrengthB
-      : channel === 'A'
-        ? safety.maxIntensityA
-        : safety.maxIntensityB;
-
-  const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), targetSafetyCap);
-  const embeddedSafetyCap = Math.min(safety.maxIntensityA, safety.maxIntensityB) / 200;
+  const selectedOutput = resolveUnifiedOutputTarget(outputTargets, selectedOutputId);
+  const targetConnected = selectedOutput !== null;
+  const safetyControl = outputTargetSafetyControl(selectedOutput, channel, safety);
+  const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), safetyControl.max);
   const effectiveEmbeddedIntensityCap = Math.min(
-    embeddedSafetyCap,
+    safetyControl.max,
     Math.max(0, embeddedIntensityCap),
   );
-  const activeGrant = targetFamily === 'embedded' ? embeddedGrant : grant;
+  const activeGrant = embeddedGrant ?? grant;
+  const selectedControlFamily = selectedOutput?.kind === 'embedded' ? 'embedded' : 'dg-lab';
 
-  async function stopPreviousControl(next: VideoTargetFamily) {
+  async function stopPreviousControl(next: 'dg-lab' | 'embedded') {
     const current = currentControl();
     if (!current || current === next) return;
     if (current === 'embedded') await genericService?.stop('device-loss');
@@ -468,15 +454,15 @@ export function App() {
       setLocalError(null);
       await grantDeviceLease('video');
       if (operation !== startOperationRef.current) return null;
-      await stopPreviousControl(targetFamily);
+      await stopPreviousControl(selectedControlFamily);
       if (operation !== startOperationRef.current) return null;
 
       let authorized: ActiveGrantSnapshot;
-      if (targetFamily === 'embedded') {
-        if (!genericService || !selectedEmbeddedTarget) throw new Error('通用设备运行时不可用');
+      if (selectedOutput?.kind === 'embedded') {
+        if (!genericService) throw new Error('通用设备运行时不可用');
         authorized = await genericService.authorize({
-          deviceId: selectedEmbeddedTarget.deviceId,
-          featureId: selectedEmbeddedTarget.featureId,
+          deviceId: selectedOutput.deviceId,
+          featureId: selectedOutput.featureId,
           intensityCap: effectiveEmbeddedIntensityCap,
           allowEnhanced,
           durationMs: durationMinutes * 60_000,
@@ -484,9 +470,10 @@ export function App() {
           captureIntervalMs,
         });
       } else {
+        if (!selectedOutput) throw new Error('请选择输出功能');
         authorized = await service.authorize({
-          targetKind,
-          targetId,
+          targetKind: selectedOutput.kind,
+          targetId: selectedOutput.targetId,
           channel,
           intensityCap: effectiveIntensityCap,
           allowEnhanced,
@@ -501,7 +488,7 @@ export function App() {
         await compensateCancelledStart();
         return null;
       }
-      if (targetFamily === 'embedded') {
+      if (selectedOutput?.kind === 'embedded') {
         setGrant(null);
         setEmbeddedGrant(authorized as DeviceRuntimeVideoGrantSnapshot);
       } else {
@@ -528,14 +515,14 @@ export function App() {
       setLocalError('授权已失效');
       return;
     }
-    if (currentControl() !== targetFamily) {
+    if (currentControl() !== selectedControlFamily) {
       setLocalError('当前目标尚未获得本次 Video 授权');
       return;
     }
     try {
       setLocalError(null);
       if (visual.status !== 'paused') setObservations([]);
-      if (targetFamily === 'embedded') await genericService!.beginRun();
+      if (selectedOutput?.kind === 'embedded') await genericService!.beginRun();
       else service.beginRun();
       if (operation !== startOperationRef.current) {
         await compensateCancelledStart();
@@ -579,13 +566,42 @@ export function App() {
     }
   });
 
+  async function stopBeforeTargetChange(): Promise<void> {
+    const current = currentControl();
+    if (!current) return;
+    startOperationRef.current += 1;
+    autoStartRef.current = null;
+    try {
+      if (current === 'embedded') await genericService?.stop('device-loss');
+      else await service.stop('device-loss');
+    } finally {
+      session.haltAfterExternalStop('device-loss');
+    }
+  }
+
+  async function selectOutputSafely(nextId: string): Promise<void> {
+    try {
+      setLocalError(null);
+      await switchVideoOutputTarget(
+        selectedOutput?.id ?? null,
+        nextId,
+        stopBeforeTargetChange,
+        () => {
+          setGrant(null);
+          setEmbeddedGrant(null);
+        },
+        setSelectedOutputId,
+      );
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '无法安全切换输出目标');
+    }
+  }
+
   async function connect(kind: VideoOutputKind) {
     try {
       setLocalError(null);
       const target = await service.connect(kind);
-      setTargetFamily('dg-lab');
-      setTargetKind(target.kind);
-      setTargetId(target.targetId);
+      await selectOutputSafely(unifiedOutputIdentity(target.kind, target.targetId));
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '设备连接失败');
     }
@@ -606,11 +622,38 @@ export function App() {
         ),
       )[0];
       if (first) {
-        setEmbeddedDeviceId(first.deviceId);
-        setEmbeddedFeatureId(first.featureId);
+        await selectOutputSafely(
+          unifiedOutputIdentity('embedded', first.deviceId, first.featureId),
+        );
       }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
+    }
+  }
+
+  async function disconnectOutput(target: UnifiedOutputTarget): Promise<void> {
+    try {
+      setLocalError(null);
+      if (selectedOutput?.id === target.id) {
+        try {
+          await stopBeforeTargetChange();
+        } finally {
+          setGrant(null);
+          setEmbeddedGrant(null);
+        }
+      }
+      if (target.kind === 'embedded') {
+        if (!genericService) throw new Error('通用设备运行时不可用');
+        await genericService.disconnectDevice(target.deviceId);
+      } else {
+        await service.disconnect(target.targetId);
+      }
+      if (selectedOutput?.id === target.id) {
+        const fallback = outputTargets.find((candidate) => candidate.id !== target.id) ?? null;
+        setSelectedOutputId(fallback?.id ?? null);
+      }
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '设备断开失败');
     }
   }
 
@@ -693,30 +736,23 @@ export function App() {
           <VideoSetupPanel
             view={{
               facingMode,
-              targetFamily,
               embeddedAvailable: genericService !== null,
               showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
               coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
               showOpossumConnect: devices.opossumTarget === null,
-              targetOptions: connectedTargets.map((target) => ({
-                value: target.targetId,
-                label: `${target.kind === 'coyote' ? '郊狼' : '负鼠'} · ${target.name}`,
-              })),
-              selectedTargetId: targetId,
+              targets: outputTargets,
+              selectedTargetId: selectedOutput?.id ?? '',
+              selectedTargetKind: selectedOutput?.kind ?? null,
               channel,
-              embeddedFeatureOptions: embeddedTargets.map((target, index) => ({
-                value: target.featureId,
-                label: `${target.name} · 振动 ${index + 1}`,
-              })),
-              selectedEmbeddedFeatureId: embeddedFeatureId,
-              intensityLabel:
-                targetFamily === 'embedded'
-                  ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
-                  : `${effectiveIntensityCap}/${targetSafetyCap}`,
-              intensityMax: targetFamily === 'embedded' ? 1 : targetSafetyCap,
-              intensityStep: targetFamily === 'embedded' ? 0.01 : 1,
+              intensityLabel: safetyControl.normalized
+                ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
+                : `${effectiveIntensityCap}/${safetyControl.max}`,
+              intensityMax: safetyControl.max,
+              intensityStep: safetyControl.step,
               intensityValue:
-                targetFamily === 'embedded' ? effectiveEmbeddedIntensityCap : effectiveIntensityCap,
+                selectedOutput?.kind === 'embedded'
+                  ? effectiveEmbeddedIntensityCap
+                  : effectiveIntensityCap,
               durationMinutes,
               cadenceSeconds,
               allowEnhanced,
@@ -729,24 +765,16 @@ export function App() {
             actions={{
               openVideoSettings: () => openSettings('ai-video'),
               setFacingMode,
-              setTargetFamily,
               connect: (kind) => void connect(kind),
               discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
-              selectTarget: (nextTargetId) => {
-                const nextTarget = connectedTargets.find(
-                  (target) => target.targetId === nextTargetId,
-                );
-                setTargetId(nextTargetId);
-                if (nextTarget) setTargetKind(nextTarget.kind);
-              },
-              selectEmbeddedFeature: (nextFeatureId) => {
-                const next = embeddedTargets.find((target) => target.featureId === nextFeatureId);
-                setEmbeddedFeatureId(nextFeatureId);
-                if (next) setEmbeddedDeviceId(next.deviceId);
+              selectTarget: (nextTargetId) => void selectOutputSafely(nextTargetId),
+              disconnectTarget: (targetId) => {
+                const target = outputTargets.find((candidate) => candidate.id === targetId);
+                if (target) return disconnectOutput(target);
               },
               setChannel,
               setIntensity: (value) => {
-                if (targetFamily === 'embedded') setEmbeddedIntensityCap(value);
+                if (selectedOutput?.kind === 'embedded') setEmbeddedIntensityCap(value);
                 else setIntensityCap(value);
               },
               setDurationMinutes,
