@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Gauge, Zap, RotateCcw, BatteryMedium } from 'lucide-react';
+import { IntensityRing, RepeatButton } from './repeat-controls';
 
 export interface OpossumControlProps {
   connected: boolean;
@@ -22,83 +23,6 @@ export interface OpossumControlProps {
 
 const BURST_STRENGTH_RATIO = 0.8;
 const BURST_DURATION_MS = 500;
-const RING_RADIUS = 40;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-function RepeatButton({ onAction, children }: { onAction: () => void; children: ReactNode }) {
-  const delayRef = useRef<number | null>(null);
-  const intervalRef = useRef<number | null>(null);
-  const actionRef = useRef(onAction);
-  // Keep hold-to-repeat commands on the latest channel state without waiting one effect cycle.
-  actionRef.current = onAction;
-
-  const stop = useCallback(() => {
-    if (delayRef.current) window.clearTimeout(delayRef.current);
-    if (intervalRef.current) window.clearInterval(intervalRef.current);
-    delayRef.current = null;
-    intervalRef.current = null;
-  }, []);
-  const start = useCallback(() => {
-    stop();
-    actionRef.current();
-    delayRef.current = window.setTimeout(() => {
-      intervalRef.current = window.setInterval(() => actionRef.current(), 100);
-    }, 400);
-  }, [stop]);
-  useEffect(() => stop, [stop]);
-
-  return (
-    <button
-      onPointerDown={start}
-      onPointerUp={stop}
-      onPointerLeave={stop}
-      onPointerCancel={stop}
-      onContextMenu={(event) => event.preventDefault()}
-      className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xs text-[var(--text)] hover:border-[var(--accent)] active:scale-90"
-      style={{ touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function IntensityRing({ label, value, limit }: { label: string; value: number; limit: number }) {
-  const percentage = limit > 0 ? Math.min(1, value / limit) : 0;
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: 96, height: 96 }}>
-      <svg className="absolute inset-0" viewBox="0 0 96 96">
-        <circle
-          cx="48"
-          cy="48"
-          r={RING_RADIUS}
-          fill="none"
-          stroke="var(--surface-border)"
-          strokeWidth="6"
-        />
-        <circle
-          cx="48"
-          cy="48"
-          r={RING_RADIUS}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeDasharray={RING_CIRCUMFERENCE}
-          strokeDashoffset={RING_CIRCUMFERENCE * (1 - percentage)}
-          transform="rotate(-90 48 48)"
-          className="transition-all duration-[var(--dur)]"
-        />
-      </svg>
-      <div className="flex flex-col items-center">
-        <span className="text-xl font-bold tabular-nums text-[var(--text)]">{value}</span>
-        <span className="text-[10px] text-[var(--text-faint)]">
-          {label}:{limit}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Control panel for the Opossum (dual-channel vibration controller). Adapted from
  * MemberControl's dual-channel strength rings: range 0-200 (reusing the Coyote's limitA/limitB
