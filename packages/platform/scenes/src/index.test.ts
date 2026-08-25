@@ -111,24 +111,59 @@ describe('共享场景库', () => {
     });
   });
 
-  it('导入市场场景后立即选中，重复导入不会复制', () => {
+  it('导入市场场景后立即选中，重复导入按确定 id 去重', () => {
     const item = {
       id: 'monster',
       type: 'scenario' as const,
-      name: 'Monster',
+      name: ' Monster ',
       icon: '🐙',
       tags: [],
-      content: { prompt: 'roleplay' },
+      content: { prompt: '  roleplay  ' },
       downloads: 0,
       createdAt: 0,
     };
     const first = withImportedMarketScene(loadScenes(), item);
-    const second = withImportedMarketScene(first, item);
+    const second = withImportedMarketScene(first, {
+      ...item,
+      name: 'Changed upstream',
+      content: { prompt: 'replacement' },
+    });
 
     expect(second.selectedId).toBe('market-monster');
     expect(second.scenes).toEqual([
       { id: 'market-monster', name: 'Monster', icon: '🐙', prompt: 'roleplay' },
     ]);
+  });
+
+  it('拒绝畸形市场导入且不写存储或改变选择', () => {
+    const initial = {
+      scenes: [{ id: 'kept', name: 'Kept', prompt: 'safe' }],
+      selectedId: 'kept',
+      hiddenBuiltinIds: [],
+    };
+    localStorage.setItem('0xnullai.scenes', JSON.stringify(initial));
+    const before = localStorage.getItem('0xnullai.scenes');
+    const invalidItems: unknown[] = [
+      null,
+      { id: 'wave', type: 'waveform', name: 'Wave', content: { prompt: 'x' } },
+      { id: '../escape', type: 'scenario', name: 'Bad id', content: { prompt: 'x' } },
+      { id: 'blank-name', type: 'scenario', name: '   ', content: { prompt: 'x' } },
+      { id: 'null-content', type: 'scenario', name: 'Null', content: null },
+      { id: 'array-content', type: 'scenario', name: 'Array', content: [{ prompt: 'x' }] },
+      { id: 'blank-prompt', type: 'scenario', name: 'Blank', content: { prompt: '   ' } },
+      {
+        id: 'long-prompt',
+        type: 'scenario',
+        name: 'Long',
+        content: { prompt: 'x'.repeat(12_001) },
+      },
+    ];
+
+    for (const item of invalidItems) {
+      const result = updateScenes((current) => withImportedMarketScene(current, item));
+      expect(result).toEqual(initial);
+      expect(localStorage.getItem('0xnullai.scenes')).toBe(before);
+    }
   });
 
   it('订阅能收到同文档内的改动', () => {
