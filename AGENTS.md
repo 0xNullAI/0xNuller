@@ -108,6 +108,16 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   currently connected output capability into one ephemeral allowlist; each model tool call supplies
   an exact target identity. The coordinator must stop the previous target/channel before routing to a
   different one, and topology/runtime identity changes revoke the whole allowlist and stop all output.
+- Generic-device opt-in has exactly one shell-owned, local-only switch under **Settings -> About**.
+  Control, Agent, Voice, and Video must subscribe to that same provider state; feature apps must not
+  add their own switch. Disabling it removes generic-device UI, model context, tool definitions, and
+  runtime startup/scan paths, but must not disable Video itself or the Coyote/Opossum paths.
+- Model-visible device context is a positive snapshot of current availability, never a catalog of
+  configured or previously seen hardware. Instructions, status blocks, tool definitions, and target
+  IDs may include only devices that are connected, enabled, and healthy for the exact capability.
+  Omit unavailable devices entirely instead of describing them as disconnected. Revalidate this on
+  every Agent turn and update Voice instructions plus its tool allowlist atomically when topology
+  changes; execution-time safety checks remain mandatory.
 - Cross-module output selection uses `UnifiedOutputTarget` from device-runtime and
   `OutputTargetPicker` from UI. Coyote, Opossum, and generic runtime capabilities appear in one target
   list; feature apps keep connection, authorization, lease, and stop ownership. Selection never means

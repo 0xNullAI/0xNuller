@@ -70,8 +70,16 @@ reopening is explicit and receives a fresh runtime session identity.
 `WebEmbeddedDeviceRuntimeProvider` is the shell-owned singleton seam for Control, Agent, Voice, and
 Video. Its only opt-in UI is under **Settings → About**. The versioned local setting defaults off for
 missing, corrupt, or inaccessible storage and is never synchronized remotely. While disabled, the
-experimental Control panel is not rendered. Enabling the setting does not start a scan or load the
-backend; a user-initiated surface action must start the shared runtime and scan.
+generic-device entry points are not rendered in any consumer, model tools/context stay absent, and
+the backend cannot be loaded or scanned. Enabling the setting does not start a scan or load the
+backend; a user-initiated Control or Video action must start the shared runtime and scan. Video itself
+and the legacy Coyote/Opossum paths are not experimental and remain available in either state.
+
+Model exposure is connected-only. `createAiDeviceToolAdapter` returns no definitions or status unless
+the provider is enabled and the current snapshot contains a healthy vibration capability. Agent
+re-evaluates this at every request; Voice replaces instructions and tool definitions together when
+device topology changes. Configured, disconnected, faulted, stale, or previously seen targets must
+not be named to the model, while execution still revalidates identity, permission, lease, and safety.
 
 `EmbeddedDeviceRuntimeSafetyController` is constructed beside that provider before React render. It
 registers one safety session, stops on every shared lease epoch and page/app lifecycle transition,

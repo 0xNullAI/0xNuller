@@ -64,6 +64,10 @@ Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、�
 `@0xnullai/device-runtime` 的 AI schema、调用适配器和输出权限分类，Voice 保留自己的通话权限与
 结束停止生命周期。
 
+Realtime 会话只声明当前已连接且可用设备的说明与工具。设备连接、断开或通用设备拓扑变化时，
+Voice 会在原会话中同时更新 instructions 和 tools，不靠“未连接”文字提示或仅在执行阶段拒绝。
+通用设备沿用「软件设置 → 关于」的唯一全局本机开关；Voice 内没有独立开关。
+
 ## 部署
 
 新主站的 `0xnullai-voice` 只接管 `/api/realtime`；历史 `dg-voice` 与旧子域继续运行。
