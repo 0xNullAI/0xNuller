@@ -8,7 +8,6 @@ import {
   type RuntimeEvent,
   type SessionSnapshot,
   type ToolCall,
-  type ToolDefinition,
   type ToolExecutionPlan,
 } from '@dg-agent/core';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
@@ -18,200 +17,21 @@ import { consumeTurnQuota, type TurnState } from './runtime-turn-state.js';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 import type { ToolCallConfig } from './tool-call-config.js';
 import type { ToolRegistry } from './tool-registry.js';
+import {
+  filterToolDefinitionsByConnectedDevices,
+  resolveRequiredDeviceKind,
+} from './device-tool-availability.js';
+import {
+  POLICY_NOT_CONVERGED_REASON,
+  POLICY_RESOLVE_MAX_ITERATIONS,
+  resolvePolicyDecision,
+} from './runtime-policy-resolution.js';
 
 export { DEVICE_KIND_DISPLAY_NAME } from './device-clients.js';
 
-/**
- * Which device kind a given LLM tool call targets. Coyote tools map
- * statically; `set_indicator_color` is polymorphic (its `deviceKind` arg
- * picks the target), and everything else (timer, design_wave) needs no
- * device at all. Exported so `agent-runtime.ts` can build the same
- * "please connect X" guidance message when a turn stops on a disconnected
- * device.
- */
-export function resolveRequiredDeviceKind(
-  toolName: string,
-  args: Record<string, unknown> | undefined,
-): DeviceKind | null {
-  // The lower half of the coyote group is the pre-1.9.0 names — the
-  // registry's aliases still execute those, so the connection gate must
-  // keep recognizing them too.
-  switch (toolName) {
-    case 'shock_start':
-    case 'shock_stop':
-    case 'shock_adjust':
-    case 'shock_change_wave':
-    case 'shock_burst':
-    case 'start':
-    case 'stop':
-    case 'adjust_strength':
-    case 'change_wave':
-    case 'burst':
-      return 'coyote';
-    case 'vibrate_start':
-    case 'vibrate_stop':
-    case 'vibrate_adjust':
-    case 'vibrate_change_pattern':
-    case 'vibrate_burst':
-      return 'opossum';
-    case 'set_indicator_color': {
-      const kind = args?.deviceKind;
-      return kind === 'paw-prints' || kind === 'civet-edging' || kind === 'opossum' ? kind : null;
-    }
-    default:
-      return null;
-  }
-}
-
-const LED_CAPABLE_DEVICE_KINDS = ['paw-prints', 'civet-edging', 'opossum'] as const;
-
-/**
- * Filters (and, for `set_indicator_color`, narrows) the tool definitions
- * sent to the LLM so it only ever sees tools for device kinds that are
- * actually connected right now. Device-tool calls were already denied at
- * execution time when the target wasn't connected (`isDeviceKindConnected`
- * below) — but that meant the LLM could still see and attempt e.g.
- * `vibrate_start` with no Opossum connected, burning a turn on a call that
- * was always going to fail. Tools that need no device (`timer`,
- * `design_wave`) are unaffected.
- */
-export function filterToolDefinitionsByConnectedDevices(
-  definitions: ToolDefinition[],
-  connectedKinds: ReadonlySet<DeviceKind>,
-): ToolDefinition[] {
-  const result: ToolDefinition[] = [];
-  for (const definition of definitions) {
-    if (definition.name === 'set_indicator_color') {
-      const allowedKinds = LED_CAPABLE_DEVICE_KINDS.filter((kind) => connectedKinds.has(kind));
-      if (allowedKinds.length === 0) continue;
-      result.push(narrowIndicatorColorDeviceKindEnum(definition, allowedKinds));
-      continue;
-    }
-
-    const requiredKind = resolveRequiredDeviceKind(definition.name, undefined);
-    if (requiredKind && !connectedKinds.has(requiredKind)) continue;
-    result.push(definition);
-  }
-  return result;
-}
-
-/**
- * `set_indicator_color` targets whichever device kind its `deviceKind`
- * argument names, so it can't be dropped outright the way a
- * single-device-kind tool can — instead narrow the parameter's enum to only
- * the kinds actually connected, so the LLM can't pick a disconnected target
- * and get an immediate denial.
- */
-function narrowIndicatorColorDeviceKindEnum(
-  definition: ToolDefinition,
-  allowedKinds: readonly DeviceKind[],
-): ToolDefinition {
-  const parameters = definition.parameters as {
-    properties?: Record<string, unknown>;
-  };
-  const deviceKindProperty = parameters.properties?.deviceKind as
-    Record<string, unknown> | undefined;
-  if (!deviceKindProperty) return definition;
-
-  return {
-    ...definition,
-    parameters: {
-      ...definition.parameters,
-      properties: {
-        ...parameters.properties,
-        deviceKind: { ...deviceKindProperty, enum: allowedKinds },
-      },
-    },
-  };
-}
-
-// Clamp rules are convergent in practice (each pass narrows the command),
-// but bound the loop in case a custom rule keeps clamping. 4 is enough for
-// the worst real chain — burst-strength-cap → user-strength-cap → step-adjust
-// → permission-gate — with one slot of safety margin.
-const POLICY_RESOLVE_MAX_ITERATIONS = 4;
-
-type PolicyLoopDecision<TCommand> =
-  | { type: 'allow' }
-  | { type: 'deny'; reason: string }
-  | { type: 'clamp'; command: TCommand; reason: string }
-  | { type: 'require-confirm'; reason: string };
-
-interface PolicyResolution<TCommand> {
-  /** Final command after any clamps (identical to the input if none fired). */
-  command: TCommand;
-  clampedFrom?: { command: TCommand; reason: string };
-  /** Individual clamp reasons, for callers that log more than the joined string. */
-  clampReasons: string[];
-  /** Set on a genuine `deny` decision, or (see `exhausted`) a non-convergent loop. */
-  denyReason?: string;
-  needsConfirm: boolean;
-  confirmReason: string;
-  /** True if the loop hit `maxIterations` without reaching allow/deny/require-confirm. */
-  exhausted: boolean;
-}
-
-const POLICY_NOT_CONVERGED_REASON = '策略评估未收敛（clamp 规则未稳定），本次调用被拒绝。';
-
-/**
- * Repeatedly evaluates a policy decision, applying each `clamp` in turn,
- * until it hits allow/deny/require-confirm or exhausts `maxIterations` — so
- * a clamp doesn't short-circuit a later rule (especially permission-gate).
- * The old code returned at the first non-null rule, which meant any clamp
- * would skip the user's "每次询问" confirmation prompt (issue #65) and could
- * mask a tighter cap from a later rule (e.g. channel strength cap after a
- * burst-specific cap).
- *
- * `PolicyEngine`/`OpossumPolicyEngine` themselves stay separate, non-generic
- * classes (see policy-engine.ts's doc comment on why) — this only extracts
- * the loop that *consumes* whichever engine's decisions, which is identical
- * between the two callers below regardless of command shape.
- */
-function resolvePolicyDecision<TCommand>(
-  initialCommand: TCommand,
-  maxIterations: number,
-  evaluate: (command: TCommand) => PolicyLoopDecision<TCommand>,
-): PolicyResolution<TCommand> {
-  let command = initialCommand;
-  const clampReasons: string[] = [];
-  let needsConfirm = false;
-  let confirmReason = '';
-  let denyReason: string | undefined;
-  let exhausted = true;
-
-  for (let iter = 0; iter < maxIterations; iter += 1) {
-    const decision = evaluate(command);
-
-    if (decision.type === 'allow') {
-      exhausted = false;
-      break;
-    }
-    if (decision.type === 'deny') {
-      denyReason = decision.reason;
-      exhausted = false;
-      break;
-    }
-    if (decision.type === 'require-confirm') {
-      needsConfirm = true;
-      confirmReason = decision.reason;
-      exhausted = false;
-      break;
-    }
-    clampReasons.push(decision.reason);
-    command = decision.command;
-  }
-
-  if (exhausted) {
-    denyReason = POLICY_NOT_CONVERGED_REASON;
-  }
-
-  const clampedFrom =
-    clampReasons.length > 0
-      ? { command: initialCommand, reason: clampReasons.join('; ') }
-      : undefined;
-
-  return { command, clampedFrom, clampReasons, denyReason, needsConfirm, confirmReason, exhausted };
-}
+// Keep the established module-level API stable while the pure availability
+// policy lives in its own testable module.
+export { filterToolDefinitionsByConnectedDevices, resolveRequiredDeviceKind };
 
 interface ScheduledTimer {
   sessionId: string;

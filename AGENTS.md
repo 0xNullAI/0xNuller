@@ -108,7 +108,9 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   callbacks from the entry rather than owning them.
 - Inside `packages/agent/runtime`, keep `AgentRuntime` as the session/lifecycle facade. Bounded LLM
   and tool iterations belong in the turn coordinator, tool permission/policy/device dispatch belongs
-  in the tool executor, and pure context/quota transitions belong in turn state. Preserve the
+  in the tool executor, pure device-tool availability belongs in `device-tool-availability.ts`,
+  bounded shared clamp resolution belongs in `runtime-policy-resolution.ts`, and pure context/quota
+  transitions belong in turn state. Preserve the
   provider-complete -> abort check -> tool-execute ordering and cover coordinator event/skip behavior
   with direct regression tests when changing these boundaries.
 - Rendering and interaction state used by only one surface: that app's `src` directory.

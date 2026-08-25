@@ -8,3 +8,7 @@ import { AgentRuntime } from '@dg-agent/runtime';
 ```
 
 设备命令仍由 `@dg-kit/safety` 与权限服务执行，本包不会因登录状态自动授予控制权。
+
+运行时内部边界：`runtime-tool-executor.ts` 只编排权限、租约、事件、追踪与设备分发；
+`device-tool-availability.ts` 负责纯设备目标解析和模型工具可见性；
+`runtime-policy-resolution.ts` 负责 Coyote/Opossum 共用的有界 clamp 收敛，并在不收敛时拒绝执行。
