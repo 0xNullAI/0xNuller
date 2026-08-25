@@ -58,6 +58,10 @@ src/docs/            用户文档
 设计令牌和通用组件位于 `packages/platform/ui`。模块不应重复实现外壳已经提供的设备连接、
 设置或导航入口。
 
+AI 设置按 Agent、Voice、Video 分 profile 展示，但三者共用 catalog-driven 字段控件；Agent 与
+Video 的模型发现走 `@dg-agent/agent-browser`。设置 UI 不直接拼 provider 请求地址或复制 provider
+SDK 分支。
+
 ## 部署
 
 生产构建由 Cloudflare Workers Static Assets 托管。后端 API 由更具体的路径路由接管；

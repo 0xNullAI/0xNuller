@@ -15,8 +15,11 @@ import {
 
 class UnavailableLlmClient implements LlmClient {
   readonly capabilities = { imageInput: false };
+  private readonly message: string;
 
-  constructor(private readonly message: string) {}
+  constructor(message: string) {
+    this.message = message;
+  }
 
   async runTurn(_input: LlmTurnInput): Promise<LlmTurnResult> {
     throw new Error(this.message);
@@ -31,17 +34,24 @@ class UnavailableLlmClient implements LlmClient {
 class LazyPiAiLlmClient implements LlmClient {
   readonly capabilities;
   private clientPromise?: Promise<LlmClient>;
+  private readonly config: {
+    apiKey: string;
+    model: string;
+    providerKey: PiAiProviderKey;
+    temperature: number;
+    supportsImageInput: boolean;
+    transformUrl: (url: string) => string;
+  };
 
-  constructor(
-    private readonly config: {
-      apiKey: string;
-      model: string;
-      providerKey: PiAiProviderKey;
-      temperature: number;
-      supportsImageInput: boolean;
-      transformUrl: (url: string) => string;
-    },
-  ) {
+  constructor(config: {
+    apiKey: string;
+    model: string;
+    providerKey: PiAiProviderKey;
+    temperature: number;
+    supportsImageInput: boolean;
+    transformUrl: (url: string) => string;
+  }) {
+    this.config = config;
     this.capabilities = { imageInput: config.supportsImageInput };
   }
 
@@ -105,7 +115,14 @@ export interface CreateBrowserLlmClientOptions {
 
 /** Browser-only provider composition shared by Agent and read-only visual modules. */
 export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): LlmClient {
-  const provider = resolveProviderRuntimeSettings(options.provider);
+  let provider;
+  try {
+    provider = resolveProviderRuntimeSettings(options.provider);
+  } catch (error) {
+    return new UnavailableLlmClient(
+      formatProviderConfigError(error, options.provider.providerId, 'openai-compat'),
+    );
+  }
   const temperature = options.temperature ?? 0.3;
 
   if (!provider.browserSupported) {

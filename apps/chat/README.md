@@ -59,6 +59,11 @@ worker/media.ts       R2 媒体读写
 租约与停止路径；`src/components/ChatAppView.tsx` 只负责房间目录、标题状态和聊天/控制面板的
 展示组合。展示层不得自行放宽或重排设备命令与停止语义。
 
+房间 Agent 与文字 Agent 共用 `@0xnullai/llm-providers` 配置和
+`@dg-agent/agent-browser` 请求工厂，包括 provider dialect、Responses/Chat Completions、免费代理
+账户认证与全局网络代理。房间 prompt、@ 触发、有限工具循环和 owner-side 远程设备授权仍留在
+Chat；它们不是本地 Agent runtime 的同一种会话语义。
+
 媒体上传需要当前 WebSocket 会话签发的能力；仅知道房间号不能写入媒体桶。私聊票据由账户
 服务签发，Chat 只接受有效票据。
 

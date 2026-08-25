@@ -26,6 +26,8 @@
     "@0xnullai/sync": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/waveforms": "0.1.0",
+    "@dg-agent/agent-browser": "0.1.0",
+    "@dg-agent/core": "0.1.0",
     "@dg-kit/core": "^1.16.3",
     "@dg-kit/safety": "1.16.3",
     "lucide-react": "^1.11.0",

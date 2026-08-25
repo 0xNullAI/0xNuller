@@ -45,3 +45,7 @@ apps/web/src/modules/video.tsx                   统一外壳入口
 Video 不依赖其他产品 app；模型输入合同与设备执行组合位于 `packages/agent`。
 设置面板不持有授权、租约或设备安全决策；`App` 计算有效上限、目标可用性与启动行为后，
 通过显式 view model 和 action 回调交给面板展示。
+
+Video 的凭据 profile 继续与 Agent/Chat 隔离，但复用 platform provider 目录/scoped store 和
+agent-browser client/model discovery。只有明确 image-capable 的 provider/model 能通过；视觉帧、
+目标 grant、lease、授权代次和失效停止升级仍是 Video 专属边界。

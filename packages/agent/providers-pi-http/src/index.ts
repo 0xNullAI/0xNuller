@@ -104,6 +104,7 @@ export class PiAiLlmClient implements LlmClient {
     const eventStream = provider.stream(model, context, {
       apiKey: this.config.apiKey,
       temperature: this.config.temperature,
+      maxTokens: input.maxOutputTokens,
       signal: input.abortSignal,
       onPayload: (payload) => {
         input.onRawRequest?.(payload);

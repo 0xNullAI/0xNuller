@@ -6,6 +6,7 @@ import {
   type ProviderEndpoint,
   type ProviderId,
 } from './index';
+import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
 export const VIDEO_LLM_CONFIG_VERSION = 1 as const;
 
@@ -22,8 +23,6 @@ export interface VideoLlmConfig {
 
 const KEY = '0xnullai.video-llm-config.v1';
 const SESSION_KEY = '0xnullai.video-llm-api-key.v1';
-const listeners = new Set<(config: VideoLlmConfig) => void>();
-
 export function defaultVideoLlmConfig(): VideoLlmConfig {
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
@@ -50,55 +49,30 @@ function coerceVideoLlmConfig(raw: unknown): VideoLlmConfig | null {
   };
 }
 
-export function loadVideoLlmConfig(): VideoLlmConfig {
-  if (typeof localStorage === 'undefined') return defaultVideoLlmConfig();
-  try {
-    const stored = coerceVideoLlmConfig(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
-    if (!stored) return defaultVideoLlmConfig();
-    const sessionApiKey =
-      typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(SESSION_KEY) ?? '');
-    return { ...stored, apiKey: stored.rememberApiKey ? stored.apiKey : sessionApiKey };
-  } catch {
-    return defaultVideoLlmConfig();
-  }
-}
-
-export function saveVideoLlmConfig(config: VideoLlmConfig): void {
-  const normalized: VideoLlmConfig = {
+const store = createScopedProviderConfigStore<VideoLlmConfig>({
+  localStorageKey: KEY,
+  sessionStorageKey: SESSION_KEY,
+  createDefault: defaultVideoLlmConfig,
+  coerce: coerceVideoLlmConfig,
+  normalize: (config) => ({
     ...config,
     version: VIDEO_LLM_CONFIG_VERSION,
     endpoint: config.endpoint === 'responses' ? 'responses' : 'chat/completions',
     useStrict: config.useStrict === true,
     rememberApiKey: config.rememberApiKey === true,
-  };
-  try {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({
-        ...normalized,
-        apiKey: normalized.rememberApiKey ? normalized.apiKey : '',
-      }),
-    );
-    if (typeof sessionStorage !== 'undefined') {
-      if (normalized.rememberApiKey) sessionStorage.removeItem(SESSION_KEY);
-      else sessionStorage.setItem(SESSION_KEY, normalized.apiKey);
-    }
-  } catch {
-    // Storage can be unavailable. The active page still receives the in-memory value.
-  }
-  for (const listener of listeners) listener(normalized);
+  }),
+});
+
+export function loadVideoLlmConfig(): VideoLlmConfig {
+  return store.load();
+}
+
+export function saveVideoLlmConfig(config: VideoLlmConfig): void {
+  store.save(config);
 }
 
 export function subscribeVideoLlmConfig(listener: (config: VideoLlmConfig) => void): () => void {
-  listeners.add(listener);
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === KEY) listener(loadVideoLlmConfig());
-  };
-  if (typeof window !== 'undefined') window.addEventListener('storage', onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage);
-  };
+  return store.subscribe(listener);
 }
 
 export function filterVideoModelIds(providerId: string, models: readonly string[]): string[] {

@@ -1,5 +1,6 @@
 import type { ProviderId } from './index';
 import { FREE_TRIAL_MODEL, FREE_TRIAL_PROXY_URL, getProviderDefinition } from './index';
+import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
 /**
  * LLM configuration shared across modules.
@@ -35,8 +36,6 @@ const SESSION_KEY = '0xnullai.llm-api-key';
 /** Per-module keys from before the merge, migrated once on read. */
 const LEGACY_KEYS = ['dg-chat-ai-config', 'dg-agent.provider-settings'];
 
-const listeners = new Set<(c: LlmConfig) => void>();
-
 export function defaultLlmConfig(): LlmConfig {
   return {
     providerId: 'free',
@@ -65,15 +64,24 @@ function coerce(raw: unknown): LlmConfig | null {
   };
 }
 
+const store = createScopedProviderConfigStore<LlmConfig>({
+  localStorageKey: KEY,
+  sessionStorageKey: SESSION_KEY,
+  createDefault: defaultLlmConfig,
+  coerce,
+  normalize: (config) => ({
+    ...config,
+    endpoint: config.endpoint ?? 'chat/completions',
+    useStrict: config.useStrict ?? false,
+    rememberApiKey: config.rememberApiKey ?? true,
+  }),
+});
+
 export function loadLlmConfig(): LlmConfig {
+  const own = store.readStored();
+  if (own) return own;
   if (typeof localStorage === 'undefined') return defaultLlmConfig();
   try {
-    const own = coerce(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
-    if (own) {
-      const sessionKey =
-        typeof sessionStorage === 'undefined' ? '' : (sessionStorage.getItem(SESSION_KEY) ?? '');
-      return { ...own, apiKey: own.rememberApiKey ? own.apiKey : sessionKey };
-    }
     // One-time migration: copy a legacy key over, write the new key, and
     // never read the legacy keys again.
     for (const legacy of LEGACY_KEYS) {
@@ -114,26 +122,7 @@ export function saveLlmConfig(config: LlmConfig): void {
   // Treat a missing preference as the legacy behavior (remember the key),
   // rather than silently moving the key to session storage and losing it on
   // the next tab or process.
-  const normalized: LlmConfig = {
-    ...config,
-    endpoint: config.endpoint ?? 'chat/completions',
-    useStrict: config.useStrict ?? false,
-    rememberApiKey: config.rememberApiKey ?? true,
-  };
-  try {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ ...normalized, apiKey: normalized.rememberApiKey ? normalized.apiKey : '' }),
-    );
-    if (typeof sessionStorage !== 'undefined') {
-      if (normalized.rememberApiKey) sessionStorage.removeItem(SESSION_KEY);
-      else sessionStorage.setItem(SESSION_KEY, normalized.apiKey);
-    }
-  } catch {
-    // Private browsing / quota exceeded: a failed write must not block
-    // use; the config still applies for this session.
-  }
-  for (const l of listeners) l(normalized);
+  store.save(config);
 }
 
 /**
@@ -142,15 +131,7 @@ export function saveLlmConfig(config: LlmConfig): void {
  * "change the provider in the Agent tab, the Chat tab follows".
  */
 export function subscribeLlmConfig(listener: (c: LlmConfig) => void): () => void {
-  listeners.add(listener);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) listener(loadLlmConfig());
-  };
-  window.addEventListener('storage', onStorage);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener('storage', onStorage);
-  };
+  return store.subscribe(listener);
 }
 
 /** Whether the config is usable. The free provider needs no key; the rest do. */

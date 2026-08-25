@@ -113,6 +113,19 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   disconnecting it. Safety caps must be projected from the shared device-safety settings by modality.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
+- Text provider identity, defaults, capability allowlists, scoped local/session-key persistence, and
+  subscriptions belong in `packages/platform/llm-providers`. Browser client creation, dialect routing,
+  proxy application, model discovery, and connection probes belong in `packages/agent/agent-browser`;
+  Agent, Chat, Video, and shell settings must consume those boundaries instead of constructing model
+  request URLs or provider branches themselves.
+- Agent and Chat share the text-provider profile. Video keeps a separately keyed, versioned profile
+  because image input must fail closed, but reuses the same catalog, browser client, discovery, and
+  persistence mechanics. Voice Realtime keeps its protocol-specific catalog/session settings; only
+  catalog-driven settings rendering and platform-safe device adapters are shared with text surfaces.
+- AI access to generic devices goes through `@0xnullai/device-runtime`'s positive allowlist, schema
+  adapter, output-increasing permission set, opaque target IDs, and bound module tools. Feature code
+  may adapt results to its runtime, but must not duplicate capability schemas or gate stop/emergency
+  stop behind ordinary output permission.
 - Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in
   `apps/agent/src/App.tsx`; the standalone mobile/desktop and unified-shell conversation navigation
   projections belong in `apps/agent/src/components/SessionNavigation.tsx` and receive lifecycle
