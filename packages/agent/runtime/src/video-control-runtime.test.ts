@@ -165,6 +165,42 @@ async function flushAsyncWork(): Promise<void> {
 }
 
 describe('VideoControlRuntime', () => {
+  it('does not let delayed target authorization clear a newer emergency latch', async () => {
+    const selected = deferred<boolean>();
+    const device = createDevice();
+    const targetRouter: VideoControlTargetRouter = {
+      selectTarget: () => selected.promise,
+      getCoyoteState: async () => createConnectedCoyote(),
+      getOpossumState: async () => null,
+      executeCoyote: async (_targetId, command) => device.execute(command),
+      executeOpossum: async () => null,
+      stopTarget: async () => true,
+    };
+    const runtime = createRuntime({
+      llm: { capabilities: { imageInput: true }, runTurn: vi.fn() },
+      device,
+      targetRouter,
+    });
+    const pending = runtime.authorize({
+      targetKind: 'coyote',
+      targetId: 'coyote-session-1',
+      channel: 'A',
+      intensityCap: 30,
+      allowEnhanced: true,
+      allowBurst: false,
+      durationMs: 60_000,
+      cadenceMs: 10_000,
+      captureIntervalMs: 1_000,
+    });
+
+    await runtime.emergencyStop();
+    selected.resolve(true);
+
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(runtime.getGrant()).toBeNull();
+    expect(runtime.isEmergencyLatched()).toBe(true);
+  });
+
   it('keeps inference single-flight', async () => {
     const first = deferred<{ assistantMessage: string }>();
     const llm: LlmClient = {
@@ -237,6 +273,24 @@ describe('VideoControlRuntime', () => {
     expect(device.emergencyStop).toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(() => runtime.beginRun()).toThrow('紧急停止已锁定');
+  });
+
+  it('blocks resume until a paused target has confirmed stop', async () => {
+    const device = createDevice();
+    const runtime = createRuntime({
+      llm: { capabilities: { imageInput: true }, runTurn: vi.fn() },
+      device,
+    });
+    await authorize(runtime);
+    const stopped = deferred<void>();
+    device.emergencyStop.mockImplementation(() => stopped.promise);
+
+    const stopping = runtime.stop('pause');
+    await vi.waitFor(() => expect(device.emergencyStop).toHaveBeenCalledOnce());
+    expect(() => runtime.beginRun()).toThrow('正在确认设备已停止');
+    stopped.resolve();
+    await stopping;
+    expect(() => runtime.beginRun()).not.toThrow();
   });
 
   it('emergency-stops both output families even when only one target was authorized', async () => {

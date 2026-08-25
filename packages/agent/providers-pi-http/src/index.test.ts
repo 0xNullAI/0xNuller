@@ -206,6 +206,25 @@ describe('PiAiLlmClient (anthropic)', () => {
     expect(result.toolCalls).toBeUndefined();
   });
 
+  it('routes the native provider model URL through the supplied global transform', async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      anthropicSseResponse(ANTHROPIC_TEXT_REPLY_EVENTS),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const client = new PiAiLlmClient({
+      apiKey: 'sk-ant-test',
+      model: 'claude-sonnet-4-5',
+      providerKey: 'anthropic',
+      transformUrl: (url) => `https://proxy.example/${new URL(url).host}`,
+    });
+
+    await client.runTurn(makeTurnInput());
+
+    expect(String(fetch.mock.calls[0]?.[0])).toMatch(
+      /^https:\/\/proxy\.example\/api\.anthropic\.com/,
+    );
+  });
+
   it('resolves the full text correctly when no onTextDelta callback is supplied', async () => {
     // Regression: runTurn used to always iterate the stream for deltas
     // regardless of whether a caller wanted them; this exercises the

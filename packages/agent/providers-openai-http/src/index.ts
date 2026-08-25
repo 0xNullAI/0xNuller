@@ -25,6 +25,9 @@ const configSchema = z.object({
     .custom<() => Record<string, string> | Promise<Record<string, string>>>()
     .optional(),
   supportsImageInput: z.boolean().default(false),
+  transformUrl: z
+    .custom<(url: string) => string>((value) => typeof value === 'function')
+    .optional(),
 });
 
 const chatResponseSchema = z.object({
@@ -82,6 +85,8 @@ export interface OpenAiHttpLlmClientConfig {
   extraHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
   /** Must be resolved from an explicit provider+model capability allowlist. */
   supportsImageInput?: boolean;
+  /** Applied at request time so a changed global proxy takes effect immediately. */
+  transformUrl?: (url: string) => string;
 }
 
 export class OpenAiHttpLlmClient implements LlmClient {
@@ -91,6 +96,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
   constructor(inputConfig: OpenAiHttpLlmClientConfig) {
     this.config = configSchema.parse(inputConfig);
     this.capabilities = { imageInput: this.config.supportsImageInput };
+  }
+
+  private requestBaseUrl(): string {
+    return this.config.transformUrl?.(this.config.baseUrl) ?? this.config.baseUrl;
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {
@@ -133,9 +142,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    const baseUrl = this.requestBaseUrl();
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      credentials: accountProxyCredentials(this.config.baseUrl),
+      credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
       headers: await this.buildHeaders(),
       body: JSON.stringify(requestBody),
@@ -194,9 +204,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);
-    const response = await fetch(`${this.config.baseUrl}/responses`, {
+    const baseUrl = this.requestBaseUrl();
+    const response = await fetch(`${baseUrl}/responses`, {
       method: 'POST',
-      credentials: accountProxyCredentials(this.config.baseUrl),
+      credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
       headers: await this.buildHeaders(),
       body: JSON.stringify(requestBody),

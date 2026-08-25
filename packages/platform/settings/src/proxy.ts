@@ -42,6 +42,7 @@ export const DEFAULT_PROXY: ProxySettings = {
 };
 
 const KEY = '0xnullai.proxy';
+let volatileProxy: ProxySettings | null = null;
 const listeners = new Set<(s: ProxySettings) => void>();
 
 function coerce(raw: unknown): ProxySettings {
@@ -54,6 +55,7 @@ function coerce(raw: unknown): ProxySettings {
 }
 
 export function loadProxy(): ProxySettings {
+  if (volatileProxy) return { ...volatileProxy };
   if (typeof localStorage === 'undefined') return { ...DEFAULT_PROXY };
   try {
     const raw = localStorage.getItem(KEY);
@@ -66,13 +68,16 @@ export function loadProxy(): ProxySettings {
 }
 
 export function saveProxy(next: ProxySettings): ProxySettings {
+  const normalized = coerce(next);
   try {
-    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.setItem(KEY, JSON.stringify(normalized));
+    volatileProxy = null;
   } catch {
-    // If the write fails the values still apply for this session.
+    // Keep the setting effective for this session even when storage is unavailable.
+    volatileProxy = normalized;
   }
-  for (const l of listeners) l(next);
-  return next;
+  for (const l of listeners) l(normalized);
+  return normalized;
 }
 
 export function updateProxy(updater: (prev: ProxySettings) => ProxySettings): ProxySettings {
@@ -82,7 +87,9 @@ export function updateProxy(updater: (prev: ProxySettings) => ProxySettings): Pr
 export function subscribeProxy(listener: (s: ProxySettings) => void): () => void {
   listeners.add(listener);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) listener(loadProxy());
+    if (e.key !== KEY) return;
+    volatileProxy = null;
+    listener(loadProxy());
   };
   window.addEventListener('storage', onStorage);
   return () => {
@@ -98,6 +105,15 @@ export function subscribeProxy(listener: (s: ProxySettings) => void): () => void
  * broken proxy config should look like "proxy not used", never like
  * requests going to a mistyped destination.
  */
+export function isValidHttpProxyBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.host);
+  } catch {
+    return false;
+  }
+}
+
 export function applyHttpProxy(url: string, proxy: ProxySettings = loadProxy()): string {
   return applyReverseProxy(url, proxy, 'http');
 }
@@ -112,11 +128,10 @@ function applyReverseProxy(
   proxy: ProxySettings,
   transport: 'http' | 'websocket',
 ): string {
-  if (!proxy.enabled || !proxy.httpBaseUrl.trim()) return url;
+  if (!proxy.enabled || !isValidHttpProxyBaseUrl(proxy.httpBaseUrl)) return url;
   try {
     const base = new URL(proxy.httpBaseUrl.trim());
     const target = new URL(url);
-    if (!['http:', 'https:', 'ws:', 'wss:'].includes(base.protocol)) return url;
     if (
       (transport === 'http' && !['http:', 'https:'].includes(target.protocol)) ||
       (transport === 'websocket' && !['ws:', 'wss:'].includes(target.protocol))

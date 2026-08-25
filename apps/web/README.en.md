@@ -2,19 +2,20 @@
 
 [中文](README.md) | English
 
-The unified SPA for Control, Agent, Voice, Chat, Playground, and Market. Modules share navigation,
-account state, the device bar, settings, themes, and overlays.
+The unified SPA for Control, Chat, Agent, Voice, Video, Market, and Playground. Modules share
+navigation, account state, the device bar, settings, themes, and overlays.
 
 ## Routes
 
 | Path          | Module                         |
 | ------------- | ------------------------------ |
 | `/control`    | manual control                 |
+| `/chat`       | rooms and direct messages      |
 | `/agent`      | text Agent                     |
 | `/voice`      | realtime voice                 |
-| `/chat`       | rooms and direct messages      |
-| `/playground` | games                          |
+| `/video`      | visual control                 |
 | `/market`     | community scenes and waveforms |
+| `/playground` | games                          |
 
 The compatibility release replaces only <https://0xnullai.com>. Legacy subdomains remain online.
 

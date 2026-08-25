@@ -20,11 +20,12 @@
 | Module         | Purpose                               |
 | -------------- | ------------------------------------- |
 | **Control**    | Manual device control                 |
+| **Chat**       | Rooms, direct messages, and sharing   |
 | **Agent**      | Text interaction with AI              |
 | **Voice**      | Realtime voice interaction            |
-| **Chat**       | Rooms, direct messages, and sharing   |
-| **Playground** | Game interactions                     |
+| **Video**      | Camera-based visual control           |
 | **Market**     | Browse and share scenes and waveforms |
+| **Playground** | Game interactions                     |
 
 New users should begin with Control and review the device safety limits before use.
 

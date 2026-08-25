@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NativeBridgeProvider } from '@0xnullai/native';
 import {
@@ -76,7 +76,7 @@ function runtimeHarness() {
 }
 
 describe('EmbeddedDevicePanel', () => {
-  it('does not initialize the backend while the local experiment remains default-off', () => {
+  it('stays hidden and does not initialize the backend until the local experiment is enabled', async () => {
     const runtime = runtimeHarness();
     render(
       <NativeBridgeProvider bridge={{ deviceRuntime: runtime.provider }} native={false}>
@@ -84,9 +84,11 @@ describe('EmbeddedDevicePanel', () => {
       </NativeBridgeProvider>,
     );
 
-    expect(
-      (screen.getByRole('button', { name: '扫描通用设备' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.queryByRole('button', { name: '扫描通用设备' })).toBeNull();
+    expect(runtime.backend.openSession).not.toHaveBeenCalled();
+
+    await act(() => runtime.provider.setEnabled(true));
+    expect(await screen.findByRole('button', { name: '扫描通用设备' })).toBeTruthy();
     expect(runtime.backend.openSession).not.toHaveBeenCalled();
   });
 
