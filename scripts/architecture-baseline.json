@@ -1,0 +1,152 @@
+{
+  "description": "Known dependency violations. New violations fail CI; remove entries as debt is fixed.",
+  "violations": [
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/App.tsx",
+      "specifier": "../../chat/src/hooks/use-channel-rotation",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-channel-rotation|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/App.tsx",
+      "specifier": "../../chat/src/hooks/use-device",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-device|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/App.tsx",
+      "specifier": "../../chat/src/hooks/use-waveforms",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/hooks/use-waveforms|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/App.tsx",
+      "specifier": "../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/App.tsx|../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/components/CoyoteControl.tsx",
+      "specifier": "../../../chat/src/components/RepeatControls",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/components/CoyoteControl.tsx|../../../chat/src/components/RepeatControls|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/components/CoyoteControl.tsx",
+      "specifier": "../../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/components/CoyoteControl.tsx|../../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/components/OutputDeviceSection.tsx",
+      "specifier": "../../../chat/src/components/RepeatControls",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/components/OutputDeviceSection.tsx|../../../chat/src/components/RepeatControls|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/components/OutputDeviceSection.tsx",
+      "specifier": "../../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/components/OutputDeviceSection.tsx|../../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/hooks/use-momentary-fire.test.tsx",
+      "specifier": "../../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/hooks/use-momentary-fire.test.tsx|../../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/control/src/hooks/use-momentary-fire.ts",
+      "specifier": "../../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/control/src/hooks/use-momentary-fire.ts|../../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/playground/src/GameDeviceProvider.tsx",
+      "specifier": "../../chat/src/hooks/use-device",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/playground/src/GameDeviceProvider.tsx|../../chat/src/hooks/use-device|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/playground/src/GameDeviceProvider.tsx",
+      "specifier": "../../chat/src/lib/bluetooth",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/playground/src/GameDeviceProvider.tsx|../../chat/src/lib/bluetooth|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/playground/src/GameDeviceProvider.tsx",
+      "specifier": "../../control/src/lib/attached-devices",
+      "target": "apps/control",
+      "id": "app-to-app|apps/playground/src/GameDeviceProvider.tsx|../../control/src/lib/attached-devices|apps/control"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/voice/src/App.tsx",
+      "specifier": "../../chat/src/components/DeviceSafetyButton",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/voice/src/App.tsx|../../chat/src/components/DeviceSafetyButton|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/voice/src/App.tsx",
+      "specifier": "../../chat/src/components/OpossumControl",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/voice/src/App.tsx|../../chat/src/components/OpossumControl|apps/chat"
+    },
+    {
+      "rule": "app-to-app",
+      "importer": "apps/voice/src/components/VoiceDeviceButton.test.tsx",
+      "specifier": "../../../chat/src/components/DeviceSafetyButton",
+      "target": "apps/chat",
+      "id": "app-to-app|apps/voice/src/components/VoiceDeviceButton.test.tsx|../../../chat/src/components/DeviceSafetyButton|apps/chat"
+    },
+    {
+      "rule": "platform-to-app",
+      "importer": "packages/platform/settings/src/cross-module.test.ts",
+      "specifier": "../../../../apps/voice/src/lib/settings",
+      "target": "apps/voice",
+      "id": "platform-to-app|packages/platform/settings/src/cross-module.test.ts|../../../../apps/voice/src/lib/settings|apps/voice"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "importer": "apps/agent/src/hooks/use-settings-manager.test.tsx",
+      "specifier": "@0xnullai/settings",
+      "target": "packages/platform/settings",
+      "id": "undeclared-workspace-dependency|apps/agent/src/hooks/use-settings-manager.test.tsx|@0xnullai/settings|packages/platform/settings"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "importer": "apps/agent/src/hooks/use-settings-manager.ts",
+      "specifier": "@0xnullai/settings",
+      "target": "packages/platform/settings",
+      "id": "undeclared-workspace-dependency|apps/agent/src/hooks/use-settings-manager.ts|@0xnullai/settings|packages/platform/settings"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "importer": "packages/agent/agent-browser/src/create-browser-video-control.test.ts",
+      "specifier": "@dg-kit/core",
+      "target": "packages/kit/core",
+      "id": "undeclared-workspace-dependency|packages/agent/agent-browser/src/create-browser-video-control.test.ts|@dg-kit/core|packages/kit/core"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "importer": "packages/agent/agent-browser/src/create-browser-video-control.ts",
+      "specifier": "@dg-kit/safety",
+      "target": "packages/kit/safety",
+      "id": "undeclared-workspace-dependency|packages/agent/agent-browser/src/create-browser-video-control.ts|@dg-kit/safety|packages/kit/safety"
+    }
+  ]
+}
