@@ -7,6 +7,12 @@ import {
   verifyDmTicket,
 } from './dm-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { registrationConflict, validateCredentials } from './account-validation';
+import { decodeContentCursor, encodeContentCursor } from './content-cursor';
+import { corsHeaders, err, json, readBodyBounded } from './http';
+import { readToken, sessionCookie } from './session-credentials';
+
+export { registrationConflict } from './account-validation';
 
 /**
  * 0xNullAI account service.
@@ -104,39 +110,6 @@ const AGENT_SESSION_PAGE_SIZE = 200;
 const CHAT_ROOM_CODE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_CHAT_ROOM_NAME = 80;
 
-function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
-  });
-}
-
-function err(message: string, status: number, headers: HeadersInit = {}): Response {
-  return json({ error: message }, status, headers);
-}
-
-/**
- * Echo the concrete origin rather than `*` — credentialed requests and a wildcard
- * origin cannot coexist.
- */
-function corsHeaders(request: Request, env: Env): Record<string, string> {
-  const origin = request.headers.get('Origin') ?? '';
-  const allowed = env.ALLOWED_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!origin || !allowed.includes(origin)) return {};
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    // Authorization must be on the allowlist: leave it out and the browser blocks
-    // the request outright at the preflight stage, which shows up as "the request
-    // never even went out" rather than a catchable 401.
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility',
-    Vary: 'Origin',
-  };
-}
-
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -146,33 +119,6 @@ function newToken(): string {
   return [...crypto.getRandomValues(new Uint8Array(32))]
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-}
-
-async function readBodyBounded(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
-  const declared = Number(request.headers.get('content-length') ?? '0');
-  if (Number.isFinite(declared) && declared > maxBytes) return null;
-  if (!request.body) return new ArrayBuffer(0);
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const joined = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return joined.buffer;
 }
 
 /** Delete every object under a prefix without reusing a cursor after mutating the listing. */
@@ -320,68 +266,6 @@ export async function runAuthMaintenance(env: Env, now = Date.now()): Promise<vo
       );
     }
   }
-}
-
-interface ContentCursor {
-  updatedAt: number;
-  id: string;
-}
-
-function encodeContentCursor(cursor: ContentCursor): string {
-  return btoa(JSON.stringify([cursor.updatedAt, cursor.id]))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function decodeContentCursor(value: string | null): ContentCursor | null {
-  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  try {
-    const padded = value
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const parsed = JSON.parse(atob(padded)) as unknown;
-    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
-    const updatedAt = Number(parsed[0]);
-    const id = parsed[1];
-    return Number.isSafeInteger(updatedAt) && updatedAt >= 0 && typeof id === 'string'
-      ? { updatedAt, id }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Read the session token. Two carriers:
- * - Cookie — the web side, shared by every module under the same registrable domain
- * - Bearer — the Android side. The Tauri WebView's origin is a local scheme, so it
- *   cannot get cookies for the web domain; the session layer therefore has to
- *   support both carriers from the start and cannot be cookie-only.
- */
-function readToken(request: Request): string | null {
-  const auth = request.headers.get('Authorization');
-  if (auth?.startsWith('Bearer ')) return auth.slice(7).trim() || null;
-  const cookie = request.headers.get('Cookie') ?? '';
-  const m = /(?:^|;\s*)0xn_session=([^;]+)/.exec(cookie);
-  return m?.[1] ?? null;
-}
-
-function sessionCookie(token: string, maxAgeSec: number): string {
-  // Domain spans the subdomains so the four modules share one login state.
-  // SameSite=Lax is enough — requests between subdomains of the same registrable
-  // domain count as same-site, while cross-site requests do not carry it, which is
-  // exactly what we want.
-  return [
-    `0xn_session=${token}`,
-    'Path=/',
-    'Domain=.0xnullai.com',
-    'HttpOnly',
-    'Secure',
-    'SameSite=Lax',
-    `Max-Age=${maxAgeSec}`,
-  ].join('; ');
 }
 
 interface UserRow {
@@ -968,27 +852,9 @@ function contactListSql(direction: 'following' | 'followers'): string {
  LIMIT ? OFFSET ?`;
 }
 
-function validateCredentials(username: unknown, password: unknown): string | null {
-  if (typeof username !== 'string' || !/^[a-zA-Z0-9_-]{3,24}$/.test(username)) {
-    return '用户名需为 3–24 位字母、数字、下划线或连字符';
-  }
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LEN) {
-    return `密码至少 ${MIN_PASSWORD_LEN} 位`;
-  }
-  return null;
-}
-
-export function registrationConflict(error: unknown): 'username' | 'email' | null {
-  const message = error instanceof Error ? error.message : String(error);
-  if (!/unique constraint/i.test(message)) return null;
-  if (/users\.username|username/i.test(message)) return 'username';
-  if (/idx_users_email_unique|users\.email|email/i.test(message)) return 'email';
-  return null;
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const cors = corsHeaders(request, env);
+    const cors = corsHeaders(request, env.ALLOWED_ORIGINS);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
