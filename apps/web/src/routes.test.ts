@@ -6,7 +6,7 @@ describe('Video route', () => {
     expect(moduleIdFromPath('/video')).toBe('video');
     expect(MODULES.find((module) => module.id === 'video')).toMatchObject({
       label: 'Video',
-      blurb: '摄像头视觉解释',
+      blurb: '摄像头视觉闭环场景',
     });
   });
 });

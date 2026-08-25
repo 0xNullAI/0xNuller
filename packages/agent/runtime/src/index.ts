@@ -10,4 +10,12 @@ export * from './device-link-engine.js';
 export * from './session-trace.js';
 export * from './tool-call-config.js';
 export * from './tool-registry.js';
-export type { DeviceExecutionGate, DeviceExecutionGateInput } from './runtime-tool-executor.js';
+export * from './video-control-grant.js';
+export * from './video-control-runtime.js';
+export {
+  RuntimeToolExecutor,
+  type DeviceExecutionGate,
+  type DeviceExecutionGateInput,
+  type ExecuteToolCallInput,
+  type RuntimeToolExecutorOptions,
+} from './runtime-tool-executor.js';

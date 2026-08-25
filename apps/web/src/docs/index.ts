@@ -37,7 +37,7 @@ export const DOCS: Doc[] = [
   { id: 'intro', label: '介绍', blurb: '安全与开始使用', markdown: intro },
   { id: 'control', label: 'Control', blurb: '自己控制自己的设备', markdown: control },
   { id: 'agent', label: 'Agent', blurb: '打字，AI 帮你操作', markdown: agent },
-  { id: 'video', label: 'Video', blurb: '摄像头视觉解释', markdown: video },
+  { id: 'video', label: 'Video', blurb: '摄像头视觉闭环场景', markdown: video },
   { id: 'voice', label: 'Voice', blurb: '说话代替打字', markdown: voice },
   { id: 'chat', label: 'Chat', blurb: '房间与私聊', markdown: chat },
   { id: 'playground', label: 'Playground', blurb: '把设备接进游戏', markdown: playground },

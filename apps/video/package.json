@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "短时、只读、无持久化的摄像头视觉解释模块",
+  "description": "无图片持久化的短时摄像头视觉闭环控制模块",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/native": "0.1.0",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@dg-agent/agent-browser": "0.1.0",
     "@dg-agent/core": "0.1.0",
+    "@dg-kit/safety": "1.16.2",
     "lucide-react": "^1.11.0"
   },
   "peerDependencies": {

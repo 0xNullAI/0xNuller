@@ -41,7 +41,7 @@ export const MODULES: ModuleRoute[] = [
   {
     id: 'video',
     label: 'Video',
-    blurb: '摄像头视觉解释',
+    blurb: '摄像头视觉闭环场景',
     Component: lazy(() => import('./modules/video')),
   },
   {

@@ -31,8 +31,8 @@ import { showDevicePicker } from './components/show-device-picker';
 export interface ConnectAnyDeviceTauriClients {
   device: DeviceClient;
   opossum: OpossumClient;
-  pawPrints: PawPrintsClient;
-  civetEdging: CivetEdgingClient;
+  pawPrints?: PawPrintsClient;
+  civetEdging?: CivetEdgingClient;
 }
 
 interface SupportsConnectDevice {
@@ -62,6 +62,7 @@ export async function connectAnyDgLabDeviceTauri(
           : clients.civetEdging;
 
   if (!supportsConnectDevice(target)) {
+    if (device.gatt?.connected) device.gatt.disconnect();
     throw new Error(`当前环境不支持连接${DEVICE_KIND_DISPLAY_NAME[kind]}设备`);
   }
 

@@ -4,11 +4,13 @@ import {
   CameraOff,
   CirclePause,
   CirclePlay,
+  Link,
   ScanEye,
   Settings,
+  ShieldAlert,
   SwitchCamera,
 } from 'lucide-react';
-import { Button, useOpenShellSettings } from '@0xnullai/ui';
+import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
   loadVideoLlmConfig,
@@ -17,12 +19,22 @@ import {
   type VideoLlmConfig,
   type ProviderId,
 } from '@0xnullai/llm-providers';
-import { createBrowserLlmClient } from '@dg-agent/agent-browser';
-import { createEmptyDeviceState, type LlmClient, type LlmImageInput } from '@dg-agent/core';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import { useNativeBridge } from '@0xnullai/native';
+import { useScenes } from '@0xnullai/scenes/react';
+import { grantDeviceLease } from '@dg-kit/safety';
+import {
+  createBrowserLlmClient,
+  createBrowserVideoControl,
+  type BrowserVideoControlService,
+  type BrowserVideoDeviceSnapshot,
+  type VideoOutputKind,
+} from '@dg-agent/agent-browser';
+import type { LlmClient } from '@dg-agent/core';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
 import {
   VisualSession,
-  VISUAL_SESSION_MAX_STEPS,
+  type VisualSafetyStopReason,
   type VisualSessionSnapshot,
 } from './services/visual-session.js';
 
@@ -32,8 +44,27 @@ const INITIAL_VISUAL_STATE: VisualSessionSnapshot = {
   requestInFlight: false,
   latestFrame: null,
   latestExplanation: '',
+  consecutiveModelFailures: 0,
+  emergencyLatched: false,
+  stopReason: null,
   error: null,
 };
+
+const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
+  coyote: {
+    connected: false,
+    battery: 0,
+    strengthA: 0,
+    strengthB: 0,
+    limitA: 0,
+    limitB: 0,
+    waveActiveA: false,
+    waveActiveB: false,
+  },
+  opossum: { connected: false, battery: 0, intensityA: 0, intensityB: 0 },
+};
+
+type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
 
 function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
@@ -45,6 +76,30 @@ function llmForConfig(config: VideoLlmConfig): LlmClient {
     useStrict: config.useStrict,
   });
   return createBrowserLlmClient({ provider, temperature: 0.2 });
+}
+
+function toVideoSafety() {
+  const safety = loadDeviceSafety();
+  return {
+    maxStrengthA: safety.maxStrengthA,
+    maxStrengthB: safety.maxStrengthB,
+    maxColdStartStrength: safety.maxColdStartStrength,
+    maxAdjustStep: safety.maxAdjustStep,
+    maxBurstDurationMs: safety.maxBurstDurationMs,
+    maxBurstStrengthAbsolute: safety.maxBurstStrengthAbsolute,
+    maxBurstStrengthRelative: safety.maxBurstStrengthRelative,
+    maxIntensityA: safety.maxIntensityA,
+    maxIntensityB: safety.maxIntensityB,
+    maxColdStartIntensity: safety.maxColdStartIntensity,
+    maxOpossumAdjustStep: safety.maxOpossumAdjustStep,
+    maxToolIterations: safety.maxToolIterations,
+    maxToolCallsPerTurn: safety.maxToolCallsPerTurn,
+    maxAdjustStrengthCallsPerTurn: safety.maxAdjustStrengthCallsPerTurn,
+    maxBurstCallsPerTurn: safety.maxBurstCallsPerTurn,
+    maxVibrateAdjustCallsPerTurn: safety.maxVibrateAdjustCallsPerTurn,
+    maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
+    burstRequiresActiveChannel: safety.burstRequiresActiveChannel,
+  };
 }
 
 function useStopWhenModuleHidden(stop: () => void) {
@@ -64,14 +119,29 @@ function useStopWhenModuleHidden(stop: () => void) {
 
 export function App() {
   const [config, setConfig] = useState(loadVideoLlmConfig);
+  const [safety, setSafety] = useState(toVideoSafety);
+  const [sceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
-  const [intervalSeconds, setIntervalSeconds] = useState(15);
+  const [cadenceSeconds, setCadenceSeconds] = useState(10);
+  const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
+  const [durationMinutes, setDurationMinutes] = useState(5);
+  const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
+  const [channel, setChannel] = useState<'A' | 'B'>('A');
+  const [intensityCap, setIntensityCap] = useState(10);
+  const [allowEnhanced, setAllowEnhanced] = useState(false);
+  const [allowBurst, setAllowBurst] = useState(false);
+  const [grant, setGrant] = useState<GrantSnapshot | null>(null);
+  const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
   const openSettings = useOpenShellSettings();
+  const native = useNativeBridge();
+  const createControlService = (native.video?.createControlService ??
+    createBrowserVideoControl) as typeof createBrowserVideoControl;
 
   useEffect(() => subscribeVideoLlmConfig(setConfig), []);
+  useEffect(() => subscribeDeviceSafety(() => setSafety(toVideoSafety())), []);
 
   const llm = useMemo(() => {
     try {
@@ -80,6 +150,19 @@ export function App() {
       return null;
     }
   }, [config]);
+  const [service] = useState(() =>
+    createControlService({
+      getLlm: () => llm,
+      getSafetyLimits: () => safety,
+      getSceneLibrary: () => sceneLibrary,
+    }),
+  );
+
+  useEffect(() => {
+    service.updateInputs({ llm, safetyLimits: safety, sceneLibrary });
+  }, [llm, safety, sceneLibrary, service]);
+  useEffect(() => service.subscribe(setDevices), [service]);
+
   const visionEnabled = Boolean(
     isVideoLlmConfigured(config) && llm?.capabilities?.imageInput === true,
   );
@@ -93,75 +176,159 @@ export function App() {
   } = useCameraPreview(visionEnabled, facingMode);
 
   const interpret = useCallback(
-    async (image: LlmImageInput, signal: AbortSignal) => {
-      if (!llm?.capabilities?.imageInput) throw new Error('当前模型未声明图片输入能力');
-      const now = Date.now();
-      const prompt = '请解释当前画面中可直接观察到的内容与变化；不确定的信息请明确说明。';
-      const result = await llm.runTurn({
-        session: {
-          id: 'video-ephemeral',
-          createdAt: now,
-          updatedAt: now,
-          messages: [],
-          deviceState: createEmptyDeviceState(),
-        },
-        message: prompt,
-        context: { sessionId: 'video-ephemeral', sourceType: 'web', traceId: `video-${now}` },
-        instructions:
-          '你是只读视觉解释器。仅描述画面中可见内容，不推断身份或敏感属性，不请求或调用任何工具。回答简洁、具体。',
-        tools: [],
-        image,
-        abortSignal: signal,
-        conversation: [{ kind: 'message', role: 'user', content: prompt }],
-      });
-      const text = result.assistantMessage.trim() || '模型未返回文字说明';
-      setObservations((current) =>
-        [...current, { step: current.length + 1, text }].slice(-VISUAL_SESSION_MAX_STEPS),
-      );
+    async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
+      const text = await service.observe(image, signal);
+      setObservations((current) => [...current, { step: current.length + 1, text }].slice(-20));
       return text;
     },
-    [llm],
+    [service],
   );
 
-  const session = useMemo(
+  const [session] = useState(
     () =>
       new VisualSession({
         capture: cameraCapture,
         interpret,
-        onChange: (snapshot) => setVisual({ ...snapshot }),
+        stopAuthorizedTargets: async (reason) => {
+          if (reason === 'emergency') return;
+          try {
+            await service.stop(reason as VisualSafetyStopReason);
+          } catch {
+            setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
+          }
+        },
+        onChange: (snapshot) => {
+          setVisual(snapshot);
+          if (
+            snapshot.stopReason &&
+            snapshot.stopReason !== 'pause' &&
+            snapshot.stopReason !== 'stop'
+          ) {
+            setGrant(null);
+          }
+        },
       }),
-    [cameraCapture, interpret],
   );
 
-  useEffect(() => {
-    if (cameraState === 'off' || cameraState === 'error') session.stop();
-  }, [cameraState, session]);
+  const emergencyStop = useCallback(async () => {
+    session.emergencyStop();
+    setGrant(null);
+    try {
+      await service.emergencyStop();
+    } catch (error) {
+      setLocalError('无法确认设备已停止，请立即断开设备或取下电极');
+      throw error;
+    }
+  }, [service, session]);
 
-  const stopEverything = useCallback(() => {
-    session.stop();
-    stopCamera();
-  }, [session, stopCamera]);
-  const rootRef = useStopWhenModuleHidden(stopEverything);
+  useSafetySession({
+    id: 'video',
+    label: 'Video',
+    isActive: () => devices.coyote.connected || devices.opossum.connected,
+    stop: emergencyStop,
+    connect: () => service.connect(),
+    disconnect: (deviceId) => service.disconnect(deviceId === 'opossum' ? 'opossum' : 'coyote'),
+    onRevoke: async () => {
+      session.failSafeStop('lease-loss');
+      await service.stop('lease-loss');
+    },
+    devices: () => service.getDeviceSummaries(safety),
+  });
+
+  useEffect(() => {
+    if (!grant) return;
+    const connected =
+      grant.targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+    if (!connected) session.failSafeStop('device-loss');
+  }, [devices.coyote.connected, devices.opossum.connected, grant, session]);
+
+  useEffect(() => {
+    if ((cameraState === 'off' || cameraState === 'error') && visual.status === 'running') {
+      session.failSafeStop('camera-ended');
+    }
+  }, [cameraState, session, visual.status]);
+
+  const stopEverything = useCallback(
+    (reason: 'hidden' | 'unmount' = 'hidden') => {
+      if (reason === 'hidden') session.failSafeStop('hidden');
+      else session.stop('unmount');
+      stopCamera();
+    },
+    [session, stopCamera],
+  );
+  const rootRef = useStopWhenModuleHidden(() => stopEverything('hidden'));
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') stopEverything();
+      if (document.visibilityState === 'hidden') stopEverything('hidden');
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
-      stopEverything();
+      stopEverything('unmount');
+      void service.dispose();
     };
-  }, [stopEverything]);
+  }, [service, stopEverything]);
 
-  function startSession() {
+  const targetConnected =
+    targetKind === 'coyote' ? devices.coyote.connected : devices.opossum.connected;
+  const targetSafetyCap =
+    targetKind === 'coyote'
+      ? channel === 'A'
+        ? safety.maxStrengthA
+        : safety.maxStrengthB
+      : channel === 'A'
+        ? safety.maxIntensityA
+        : safety.maxIntensityB;
+
+  const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), targetSafetyCap);
+
+  async function authorizeControl() {
+    if (!targetConnected) {
+      setLocalError('请先连接要授权的输出设备');
+      return;
+    }
+    try {
+      setLocalError(null);
+      await grantDeviceLease('video');
+      const next = await service.authorize({
+        targetKind,
+        channel,
+        intensityCap: effectiveIntensityCap,
+        allowEnhanced,
+        allowBurst,
+        durationMs: durationMinutes * 60_000,
+        cadenceMs: cadenceSeconds * 1000,
+        captureIntervalMs,
+      });
+      session.resetEmergencyLatch();
+      setGrant(next);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '无法创建控制授权');
+    }
+  }
+
+  async function startSession() {
     if (cameraState !== 'on') {
       setLocalError('请先开启摄像头并确认实时预览');
       return;
     }
-    setLocalError(null);
-    if (visual.status !== 'paused') setObservations([]);
-    session.start(intervalSeconds * 1000);
+    if (!grant || grant.revoked || Date.now() >= grant.expiresAt) {
+      setLocalError('请先确认目标、通道与上限并授权');
+      return;
+    }
+    try {
+      setLocalError(null);
+      if (visual.status !== 'paused') setObservations([]);
+      service.beginRun();
+      session.start(
+        grant.cadenceMs,
+        Math.max(1_000, grant.expiresAt - Date.now()),
+        grant.captureIntervalMs,
+      );
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '无法开始视觉控制');
+    }
   }
 
   async function captureManually() {
@@ -173,17 +340,27 @@ export function App() {
     await session.captureNow();
   }
 
+  async function connect(kind: VideoOutputKind) {
+    try {
+      setLocalError(null);
+      await service.connect(kind);
+      setTargetKind(kind);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '设备连接失败');
+    }
+  }
+
   const error = localError ?? cameraError ?? visual.error;
   const frame = visual.latestFrame;
 
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
-      <div className="mx-auto grid min-h-full w-full max-w-[1100px] gap-5 p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] md:p-6">
+      <div className="mx-auto grid min-h-full w-full max-w-[1180px] gap-5 p-4 md:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] md:p-6">
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)]">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border)] px-4 py-3">
             <div>
               <h1 className="font-semibold">Video</h1>
-              <p className="text-xs text-[var(--text-faint)]">短时、只读的实时视觉解释</p>
+              <p className="text-xs text-[var(--text-faint)]">最新画面驱动的短时闭环场景</p>
             </div>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
@@ -227,7 +404,7 @@ export function App() {
 
           <footer className="flex flex-wrap items-center gap-2 border-t border-[var(--surface-border)] p-3">
             {cameraState === 'on' ? (
-              <Button variant="secondary" onClick={stopEverything}>
+              <Button variant="secondary" onClick={() => stopEverything('hidden')}>
                 <CameraOff className="h-4 w-4" /> 关闭
               </Button>
             ) : null}
@@ -249,9 +426,9 @@ export function App() {
         <aside className="flex flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-semibold">视觉解释</h2>
+              <h2 className="font-semibold">视觉控制</h2>
               <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-                每次最多 3 步、90 秒；请求间隔不少于 10 秒。画面不会保存或同步。
+                每次授权最长 15 分钟。新画面替换旧画面，图片不会保存、同步或进入历史。
               </p>
             </div>
             <button
@@ -264,19 +441,140 @@ export function App() {
             </button>
           </div>
 
-          <label className="grid gap-1.5 text-xs text-[var(--text-soft)]">
-            自动采样间隔
-            <select
-              value={intervalSeconds}
-              onChange={(event) => setIntervalSeconds(Number(event.target.value))}
-              disabled={visual.status === 'running'}
-              className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
+          <div className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium">设备授权</span>
+              <div className="flex gap-1.5">
+                {!devices.coyote.connected && (
+                  <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
+                    <Link className="h-3.5 w-3.5" /> 郊狼
+                  </Button>
+                )}
+                {!devices.opossum.connected && (
+                  <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
+                    <Link className="h-3.5 w-3.5" /> 负鼠
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                目标
+                <select
+                  value={targetKind}
+                  onChange={(event) => setTargetKind(event.target.value as VideoOutputKind)}
+                  disabled={visual.status === 'running'}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                >
+                  <option value="coyote">郊狼{devices.coyote.connected ? ' · 已连接' : ''}</option>
+                  <option value="opossum">
+                    负鼠{devices.opossum.connected ? ' · 已连接' : ''}
+                  </option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                通道
+                <select
+                  value={channel}
+                  onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
+                  disabled={visual.status === 'running'}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                >
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+              强度上限 · {effectiveIntensityCap}/{targetSafetyCap}
+              <input
+                type="range"
+                min={0}
+                max={targetSafetyCap}
+                value={effectiveIntensityCap}
+                onChange={(event) => setIntensityCap(Number(event.target.value))}
+                disabled={visual.status === 'running'}
+              />
+            </label>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                授权时长
+                <select
+                  value={durationMinutes}
+                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                  disabled={visual.status === 'running'}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                >
+                  {[1, 5, 10, 15].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes} 分钟
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                模型节奏
+                <select
+                  value={cadenceSeconds}
+                  onChange={(event) => setCadenceSeconds(Number(event.target.value))}
+                  disabled={visual.status === 'running'}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                >
+                  <option value={5}>5 秒</option>
+                  <option value={10}>10 秒</option>
+                  <option value={15}>15 秒</option>
+                  <option value={30}>30 秒</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                最新帧刷新
+                <select
+                  value={captureIntervalMs}
+                  onChange={(event) => setCaptureIntervalMs(Number(event.target.value))}
+                  disabled={visual.status === 'running'}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                >
+                  <option value={200}>0.2 秒</option>
+                  <option value={500}>0.5 秒</option>
+                  <option value={1000}>1 秒</option>
+                  <option value={2000}>2 秒</option>
+                  <option value={5000}>5 秒</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-4 text-xs text-[var(--text-soft)]">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allowEnhanced}
+                  onChange={(event) => setAllowEnhanced(event.target.checked)}
+                  disabled={visual.status === 'running'}
+                />
+                允许小步增强
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allowBurst}
+                  onChange={(event) => setAllowBurst(event.target.checked)}
+                  disabled={visual.status === 'running'}
+                />
+                允许短时脉冲
+              </label>
+            </div>
+
+            <Button
+              variant={grant ? 'secondary' : 'default'}
+              onClick={() => void authorizeControl()}
+              disabled={!visionEnabled || !targetConnected || visual.status === 'running'}
             >
-              <option value={10}>10 秒</option>
-              <option value={15}>15 秒</option>
-              <option value={30}>30 秒</option>
-            </select>
-          </label>
+              {grant ? '重新授权' : '确认并授权'}
+            </Button>
+          </div>
 
           <div className="flex flex-wrap gap-2">
             {visual.status === 'running' ? (
@@ -284,9 +582,9 @@ export function App() {
                 <CirclePause className="h-4 w-4" /> 暂停
               </Button>
             ) : (
-              <Button onClick={startSession} disabled={!visionEnabled || cameraState !== 'on'}>
+              <Button onClick={() => void startSession()} disabled={!grant || cameraState !== 'on'}>
                 <CirclePlay className="h-4 w-4" />
-                {visual.status === 'paused' ? '继续' : '开始解释'}
+                {visual.status === 'paused' ? '继续' : '开始'}
               </Button>
             )}
             <Button
@@ -296,23 +594,32 @@ export function App() {
             >
               停止
             </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void emergencyStop().catch(() => undefined)}
+            >
+              <ShieldAlert className="h-4 w-4" /> 紧急停止
+            </Button>
           </div>
 
           <div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-soft)]">
-            状态：{statusLabel(visual)} · {visual.steps}/{VISUAL_SESSION_MAX_STEPS} 步
+            状态：{statusLabel(visual)} · {visual.steps} 次观察
+            {grant && !grant.revoked
+              ? ` · 授权至 ${new Date(grant.expiresAt).toLocaleTimeString()}`
+              : ' · 未授权'}
           </div>
 
           {!visionEnabled && (
             <p className="rounded-[var(--radius-sm)] bg-[var(--accent-soft)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
-              Video 配置未完成或模型未明确支持图片输入。请在 AI → Video 中选择受支持的视觉模型。
+              当前文本模型未明确支持图片输入。请在 AI 设置中选择受支持的视觉模型。
             </p>
           )}
           {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+          <div className="min-h-[120px] flex-1 space-y-3 overflow-y-auto">
             {observations.length === 0 ? (
               <p className="py-6 text-center text-sm text-[var(--text-faint)]">
-                解释结果仅保留在当前页面
+                场景回应仅保留在当前页面
               </p>
             ) : (
               observations.map((observation) => (
@@ -321,7 +628,7 @@ export function App() {
                   className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
                 >
                   <div className="mb-1 text-xs font-medium text-[var(--accent-strong)]">
-                    第 {observation.step} 步
+                    第 {observation.step} 次
                   </div>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed">{observation.text}</p>
                 </article>
@@ -335,14 +642,32 @@ export function App() {
 }
 
 function statusLabel(snapshot: VisualSessionSnapshot): string {
-  if (snapshot.requestInFlight) return '解释中';
-  return {
+  if (snapshot.requestInFlight) return '观察中';
+  if (snapshot.emergencyLatched) return '紧急停止已锁定';
+  const label = {
     idle: '未开始',
-    running: '等待采样',
+    running: '等待最新画面',
     paused: '已暂停',
-    complete: '已完成',
+    stopped: '已安全停止',
     error: '出错',
   }[snapshot.status];
+  return snapshot.stopReason ? `${label}（${stopReasonLabel(snapshot.stopReason)}）` : label;
+}
+
+function stopReasonLabel(reason: NonNullable<VisualSessionSnapshot['stopReason']>): string {
+  return {
+    pause: '暂停',
+    stop: '手动停止',
+    hidden: '页面隐藏',
+    'camera-ended': '摄像头结束',
+    'device-loss': '设备断开',
+    'grant-expired': '授权到期',
+    watchdog: '观察超时',
+    'model-failures': '模型连续失败',
+    'lease-loss': '控制权已转移',
+    unmount: '页面关闭',
+    emergency: '紧急停止',
+  }[reason];
 }
 
 export default App;
