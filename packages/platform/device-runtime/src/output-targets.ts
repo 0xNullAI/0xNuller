@@ -1,5 +1,6 @@
 import type { DeviceSafetySettings } from '@0xnullai/settings';
 import type { DeviceSnapshot, FeatureId } from './contracts.js';
+import { genericDeviceIntensityCap } from './device-policy.js';
 
 export type UnifiedOutputKind = 'coyote' | 'opossum' | 'embedded';
 export type UnifiedOutputModality = 'electrostimulation' | 'vibration';
@@ -131,7 +132,7 @@ export function outputTargetSafetyControl(
   }
   if (target?.kind === 'embedded') {
     return {
-      max: Math.min(safety.maxIntensityA, safety.maxIntensityB) / 200,
+      max: genericDeviceIntensityCap(safety),
       step: 0.01,
       normalized: true,
     };

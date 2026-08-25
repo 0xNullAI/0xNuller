@@ -8,7 +8,9 @@ import type { DeviceSafetyPolicy } from './contracts.js';
  * Keep this conversion at the final runtime boundary so Web, Android, human controls, and AI grants
  * cannot drift by reimplementing the arithmetic in each surface.
  */
-export function genericDeviceIntensityCap(settings: DeviceSafetySettings): number {
+export function genericDeviceIntensityCap(
+  settings: Pick<DeviceSafetySettings, 'maxIntensityA' | 'maxIntensityB'>,
+): number {
   return Math.min(
     normalizedSetting(settings.maxIntensityA),
     normalizedSetting(settings.maxIntensityB),

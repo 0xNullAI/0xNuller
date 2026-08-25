@@ -1,5 +1,6 @@
 import {
   MAX_OUTPUT_LEASE_MS,
+  createDeviceInteractionId,
   sanitizeAiDeviceSnapshot,
   type BoundDeviceTools,
   type CommandAck,
@@ -120,7 +121,10 @@ export class DeviceRuntimeVideoControlService {
     this.now = options.now ?? Date.now;
     this.interactionIdFactory =
       options.interactionIdFactory ??
-      ((action) => `video-${action}-${this.now().toString(36)}-${++this.interactionSequence}`);
+      ((action) => {
+        this.interactionSequence += 1;
+        return createDeviceInteractionId('video', `${action}-${this.interactionSequence}`);
+      });
     this.setTimer =
       options.setTimer ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
     this.clearTimer = options.clearTimer ?? ((handle) => globalThis.clearTimeout(handle as number));

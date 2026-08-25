@@ -15,6 +15,8 @@ import { useScenes } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import {
   createUnifiedOutputTargets,
+  genericDeviceIntensityCap,
+  genericDeviceSafetyPolicy,
   outputTargetSafetyControl,
   resolveUnifiedOutputTarget,
   unifiedOutputIdentity,
@@ -200,12 +202,8 @@ export function App() {
             llm: null,
             scene: null,
             hasLease: () => hasDeviceLease('video'),
-            getSafetyIntensityCap: () => {
-              const current = loadDeviceSafety();
-              return Math.min(current.maxIntensityA, current.maxIntensityB) / 200;
-            },
-            getMaxOutputLeaseMs: () =>
-              Math.min(5_000, Math.max(1, loadDeviceSafety().maxBurstDurationMs)),
+            getSafetyIntensityCap: () => genericDeviceIntensityCap(loadDeviceSafety()),
+            getMaxOutputLeaseMs: () => genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
           })
         : null,
     [native.deviceRuntime],
