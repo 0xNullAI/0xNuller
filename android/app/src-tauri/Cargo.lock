@@ -2963,7 +2963,7 @@ checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "nuller-app"
-version = "6.2.0"
+version = "6.2.1"
 dependencies = [
  "btleplug",
  "buttplug_client",
