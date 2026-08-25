@@ -189,6 +189,12 @@ export function App() {
             llm: null,
             scene: null,
             hasLease: () => hasDeviceLease('video'),
+            getSafetyIntensityCap: () => {
+              const current = loadDeviceSafety();
+              return Math.min(current.maxIntensityA, current.maxIntensityB) / 200;
+            },
+            getMaxOutputLeaseMs: () =>
+              Math.min(5_000, Math.max(1, loadDeviceSafety().maxBurstDurationMs)),
           })
         : null,
     [native.deviceRuntime],
@@ -400,7 +406,11 @@ export function App() {
         : safety.maxIntensityB;
 
   const effectiveIntensityCap = Math.min(Math.max(0, intensityCap), targetSafetyCap);
-  const effectiveEmbeddedIntensityCap = Math.min(1, Math.max(0, embeddedIntensityCap));
+  const embeddedSafetyCap = Math.min(safety.maxIntensityA, safety.maxIntensityB) / 200;
+  const effectiveEmbeddedIntensityCap = Math.min(
+    embeddedSafetyCap,
+    Math.max(0, embeddedIntensityCap),
+  );
   const activeGrant = targetFamily === 'embedded' ? embeddedGrant : grant;
 
   async function stopPreviousControl(next: VideoTargetFamily) {

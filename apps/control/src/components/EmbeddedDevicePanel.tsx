@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bluetooth, LoaderCircle, Unplug } from 'lucide-react';
 import { useNativeBridge } from '@0xnullai/native';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import type {
   BoundDeviceTools,
   DeviceSnapshot,
@@ -23,12 +24,23 @@ export function EmbeddedDevicePanel() {
     () => provider?.current()?.snapshot() ?? null,
   );
   const [intensities, setIntensities] = useState<Record<string, number>>({});
+  const [intensityCap, setIntensityCap] = useState(
+    () => Math.min(loadDeviceSafety().maxIntensityA, loadDeviceSafety().maxIntensityB) / 200,
+  );
   const [scanning, setScanning] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toolsRef = useRef<BoundDeviceTools | null>(null);
   const openingRef = useRef<Promise<BoundDeviceTools> | null>(null);
   const unsubscribeSnapshotRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () =>
+      subscribeDeviceSafety((settings) =>
+        setIntensityCap(Math.min(settings.maxIntensityA, settings.maxIntensityB) / 200),
+      ),
+    [],
+  );
 
   useEffect(() => {
     if (!provider) return;
@@ -244,14 +256,17 @@ export function EmbeddedDevicePanel() {
                     aria-label={`${device.name} ${featureLabel} 归一化振动强度`}
                     type="range"
                     min={0}
-                    max={1}
+                    max={intensityCap}
                     step={1 / capability.stepCount}
                     value={value}
                     onPointerDown={(event) =>
                       event.currentTarget.setPointerCapture?.(event.pointerId)
                     }
                     onChange={(event) => {
-                      const intensity = Math.min(1, Math.max(0, Number(event.target.value)));
+                      const intensity = Math.min(
+                        intensityCap,
+                        Math.max(0, Number(event.target.value)),
+                      );
                       setIntensities((current) => ({
                         ...current,
                         [capability.featureId]: intensity,
