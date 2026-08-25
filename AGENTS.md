@@ -117,6 +117,11 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   provider-complete -> abort check -> tool-execute ordering and cover coordinator event/skip behavior
   with direct regression tests when changing these boundaries.
 - Rendering and interaction state used by only one surface: that app's `src` directory.
+- In Market, `apps/market/src/web/components/UploadDialog.tsx` coordinates upload UI state,
+  authenticated network calls, and close/refresh callbacks. Portable template generation, uploaded
+  file/archive parsing, and manual-form payload validation belong in the pure
+  `apps/market/src/web/upload-model.ts`; ownership, edit authorization, and persistence remain API
+  and Worker responsibilities.
 - Feature setup panels receive prepared typed view models and explicit actions from their app
   coordinator. Keep authorization, leases, target identity, effective safety limits, and lifecycle
   stop decisions in the coordinator or shared safety service rather than recomputing them in a

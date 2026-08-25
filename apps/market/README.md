@@ -23,6 +23,10 @@ npm run build -w 0xnullai-market
 
 Worker 使用独立的 `MARKET_IP_PEPPER` 进行上传限流；不要把它写入仓库。
 
+上传界面按职责拆分：`components/UploadDialog.tsx` 只协调表单状态、网络请求和关闭/刷新，
+模板生成、文件/压缩包解析及手动 payload 校验集中在纯 TypeScript 的 `src/web/upload-model.ts`。
+鉴权、账户归属和所有者编辑权限仍由 API 与 Worker 强制执行，前端上传模型不拥有这些决策。
+
 ## API
 
 - `GET /api/items` — 浏览和搜索
