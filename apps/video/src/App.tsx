@@ -380,6 +380,7 @@ export function App() {
 
   useEffect(() => {
     const effectEpoch = ++lifecycleEffectRef.current;
+    const lifecycleRef = lifecycleEffectRef;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') stopEverything('hidden');
     };
@@ -389,7 +390,7 @@ export function App() {
       stopEverything('unmount');
       queueMicrotask(() => {
         // React StrictMode immediately replays effects with the same service instances.
-        if (lifecycleEffectRef.current !== effectEpoch) return;
+        if (lifecycleRef.current !== effectEpoch) return;
         void service.dispose();
         void genericService?.dispose();
       });
@@ -944,5 +945,3 @@ function stopReasonLabel(reason: NonNullable<VisualSessionSnapshot['stopReason']
     emergency: '紧急停止',
   }[reason];
 }
-
-export default App;

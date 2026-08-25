@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
-import productPackage from '../../package.json';
+import productPackage from '../../package.json' with { type: 'json' };
 
 /**
  * The unified shell. The four modules' source trees still live under

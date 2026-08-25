@@ -39,7 +39,7 @@
     "test:mcp": "npm run build:kit && node scripts/run-vitest.mjs run --project=dg-mcp",
     "test:product": "npm run build:kit && node scripts/run-vitest.mjs run --project=@dg-agent/web --project=android --project=auth --project=0xnullai-chat --project=control --project=market --project=playground --project=video --project=0xnullai-voice --project=web --project=agent-packages --project=platform --project=worker-proxies",
     "test:all": "npm run test:full",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

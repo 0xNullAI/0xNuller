@@ -24,4 +24,5 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/dev' }}
         run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
+      - run: npm run check:dead-code
       - run: npm run test:repository
