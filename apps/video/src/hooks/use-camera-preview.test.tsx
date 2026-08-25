@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_CAMERA_FRAME_SETTINGS } from '../services/camera-frame.js';
 import { cameraEnvironmentError, useCameraPreview } from './use-camera-preview.js';
 
 function mediaStream() {
@@ -39,7 +40,9 @@ describe('camera preview lifecycle', () => {
   it('only requests a camera after explicit start and uses the selected lens', async () => {
     const { stream, track } = mediaStream();
     const getUserMedia = installMediaDevices(stream);
-    const { result } = renderHook(() => useCameraPreview(true, 'user'));
+    const { result } = renderHook(() =>
+      useCameraPreview(true, 'user', { ...DEFAULT_CAMERA_FRAME_SETTINGS }),
+    );
     expect(getUserMedia).not.toHaveBeenCalled();
 
     await act(async () => result.current.start());
@@ -57,7 +60,9 @@ describe('camera preview lifecycle', () => {
   it('stops active tracks when the module unmounts', async () => {
     const { stream, track } = mediaStream();
     installMediaDevices(stream);
-    const { result, unmount } = renderHook(() => useCameraPreview(true, 'environment'));
+    const { result, unmount } = renderHook(() =>
+      useCameraPreview(true, 'environment', { ...DEFAULT_CAMERA_FRAME_SETTINGS }),
+    );
     await act(async () => result.current.start());
     unmount();
     expect(track.stop).toHaveBeenCalledOnce();

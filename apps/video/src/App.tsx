@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Camera,
-  CameraOff,
-  CirclePause,
-  CirclePlay,
-  Link,
-  ScanEye,
-  Settings,
-  ShieldAlert,
-  SwitchCamera,
-} from 'lucide-react';
+import { CirclePause, CirclePlay, Link, Settings, ShieldAlert } from 'lucide-react';
 import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
@@ -31,7 +21,12 @@ import {
   type VideoOutputKind,
 } from '@dg-agent/agent-browser';
 import type { LlmClient } from '@dg-agent/core';
+import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
+import {
+  DEFAULT_CAMERA_FRAME_SETTINGS,
+  type CameraFrameSettings,
+} from './services/camera-frame.js';
 import {
   VisualSession,
   type VisualSafetyStopReason,
@@ -122,6 +117,9 @@ export function App() {
   const [safety, setSafety] = useState(toVideoSafety);
   const [sceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
+  const [frameSettings, setFrameSettings] = useState<CameraFrameSettings>(() => ({
+    ...DEFAULT_CAMERA_FRAME_SETTINGS,
+  }));
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
   const [durationMinutes, setDurationMinutes] = useState(5);
@@ -168,12 +166,13 @@ export function App() {
   );
   const {
     videoRef,
+    processedPreviewRef,
     state: cameraState,
     error: cameraError,
     start: startCamera,
     stop: stopCamera,
     capture: cameraCapture,
-  } = useCameraPreview(visionEnabled, facingMode);
+  } = useCameraPreview(visionEnabled, facingMode, frameSettings);
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
@@ -209,6 +208,12 @@ export function App() {
         },
       }),
   );
+
+  useEffect(() => {
+    if (cameraState !== 'on') return;
+    const timer = window.setTimeout(() => void session.captureNow(), 120);
+    return () => window.clearTimeout(timer);
+  }, [cameraState, frameSettings, session]);
 
   const emergencyStop = useCallback(async () => {
     session.emergencyStop();
@@ -356,72 +361,20 @@ export function App() {
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
       <div className="mx-auto grid min-h-full w-full max-w-[1180px] gap-5 p-4 md:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] md:p-6">
-        <section className="flex min-h-[420px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)]">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border)] px-4 py-3">
-            <div>
-              <h1 className="font-semibold">Video</h1>
-              <p className="text-xs text-[var(--text-faint)]">最新画面驱动的短时闭环场景</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
-                镜头
-                <select
-                  value={facingMode}
-                  onChange={(event) => setFacingMode(event.target.value as CameraFacingMode)}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1.5"
-                >
-                  <option value="environment">后置</option>
-                  <option value="user">前置</option>
-                </select>
-              </label>
-              <SwitchCamera className="h-4 w-4 text-[var(--text-faint)]" aria-hidden />
-            </div>
-          </header>
-
-          <div className="relative flex min-h-[300px] flex-1 items-center justify-center bg-black">
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              aria-label="实时摄像头预览"
-              className="h-full max-h-[70dvh] w-full object-contain"
-            />
-            {cameraState !== 'on' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 px-6 text-center text-white">
-                <Camera className="h-9 w-9 opacity-75" />
-                <p className="text-sm">
-                  {cameraState === 'starting' ? '正在请求摄像头…' : '摄像头保持关闭'}
-                </p>
-                <Button
-                  onClick={() => void startCamera()}
-                  disabled={!visionEnabled || cameraState === 'starting'}
-                >
-                  开启摄像头
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <footer className="flex flex-wrap items-center gap-2 border-t border-[var(--surface-border)] p-3">
-            {cameraState === 'on' ? (
-              <Button variant="secondary" onClick={() => stopEverything('hidden')}>
-                <CameraOff className="h-4 w-4" /> 关闭
-              </Button>
-            ) : null}
-            <Button
-              variant="secondary"
-              onClick={() => void captureManually()}
-              disabled={cameraState !== 'on'}
-            >
-              <ScanEye className="h-4 w-4" /> 手动采集
-            </Button>
-            <span className="ml-auto text-xs text-[var(--text-faint)]">
-              {frame
-                ? `最新帧 ${new Date(frame.capturedAt).toLocaleTimeString()} · ${frame.width}×${frame.height} · ${Math.ceil(frame.byteLength / 1024)}KB`
-                : '尚未采集画面'}
-            </span>
-          </footer>
-        </section>
+        <CameraWorkbench
+          videoRef={videoRef}
+          processedPreviewRef={processedPreviewRef}
+          cameraState={cameraState}
+          visionEnabled={visionEnabled}
+          facingMode={facingMode}
+          settings={frameSettings}
+          latestFrame={frame}
+          onFacingModeChange={setFacingMode}
+          onSettingsChange={setFrameSettings}
+          onStartCamera={() => void startCamera()}
+          onStopCamera={() => stopEverything('hidden')}
+          onCapture={() => void captureManually()}
+        />
 
         <aside className="flex flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-4">
           <div className="flex items-start justify-between gap-3">

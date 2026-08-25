@@ -4,7 +4,9 @@ Video 是主站与独立部署共用的短时视觉闭环模块，使用「软�
 
 ## 行为
 
-- 用户显式开启前置或后置摄像头，页面提供实时本地预览。
+- 用户显式开启前置或后置摄像头，页面并列显示原始画面与模型实际输入的本地预览。
+- 当前页面可临时调整镜像、±90° 旋转、亮度、对比度、阴影、高光、锐化、裁剪中心与输出分辨率；刷新页面恢复默认值。
+- 摄像头帧按「源画面 → 裁剪 → 变换 → 调整 → 压缩」处理，模型输入与处理后预览来自同一个压缩结果。
 - 摄像头以 0.2–5 秒的独立频率刷新内存中的最新帧；模型按 5、10、15 或 30 秒节奏保持单飞，请求期间的新帧会替换待处理旧帧。
 - 仅可选择浏览器支持且模型 ID 明确列入图片输入清单的服务商与模型；未知、自定义、纯文本和免费模型均不可启动。
 - 控制前必须在内存中授权目标设备、通道、强度上限、时长、模型节奏以及增强/脉冲能力；单次最长 15 分钟。
@@ -19,9 +21,11 @@ Video 是主站与独立部署共用的短时视觉闭环模块，使用「软�
 ## 结构
 
 ```text
-src/App.tsx                                      Video 界面、授权与生命周期
-src/hooks/use-camera-preview.ts                  浏览器采集和摄像头生命周期
-src/services/camera-frame.ts                     单帧压缩与大小限制
+src/App.tsx                                      Video 授权、会话与生命周期组合
+src/components/CameraWorkbench.tsx               双预览与会话内画面控制
+src/hooks/use-camera-preview.ts                  浏览器采集、预览资源和摄像头生命周期
+src/services/camera-frame.ts                     帧几何、像素处理、压缩与大小限制
+src/services/frame-preview-url.ts                处理后预览的对象 URL 生命周期
 src/services/visual-session.ts                   最新值调度、单飞、看门狗与失败停止
 packages/agent/runtime/src/video-control-*.ts    内存授权与安全工具执行
 packages/agent/agent-browser/src/create-browser-video-control.ts
