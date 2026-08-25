@@ -1,6 +1,6 @@
 {
   "name": "@dg-kit/safety",
-  "version": "1.16.2",
+  "version": "1.16.3",
   "description": "DG-Lab 设备安全链：策略引擎、默认上限策略、串行命令队列",
   "license": "MIT",
   "author": "0xNullAI",
@@ -32,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@dg-kit/core": "1.16.2",
-    "@dg-kit/protocol": "1.16.2"
+    "@dg-kit/core": "1.16.3",
+    "@dg-kit/protocol": "1.16.3"
   }
 }

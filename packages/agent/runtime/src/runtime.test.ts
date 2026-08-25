@@ -27,6 +27,7 @@ import type {
   OpossumCommandResult,
   PawPrintsClient,
 } from './device-clients.js';
+import { ToolRegistry } from './tool-registry.js';
 
 class TestDevice implements DeviceClient {
   private state: DeviceState;
@@ -563,6 +564,48 @@ function createScriptedMessages(
 }
 
 describe('AgentRuntime', () => {
+  it('applies the existing upper permission service before resolving an added runtime tool', async () => {
+    const invoke = vi.fn(() => ({ type: 'inline' as const, output: '{"ok":true}' }));
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register({
+      name: 'device_vibrate',
+      definition: {
+        name: 'device_vibrate',
+        description: 'generic vibration',
+        parameters: { type: 'object', properties: {} },
+      },
+      toExecutionPlan: invoke,
+    });
+    const llm: LlmClient = {
+      async runTurn() {
+        return {
+          assistantMessage: 'runtime call',
+          toolCalls: [{ id: 'runtime-1', name: 'device_vibrate', args: {} }],
+        };
+      },
+    };
+    const runtime = new AgentRuntime({
+      device: new TestDevice(),
+      llm,
+      permission: new DenyingPermission(),
+      toolRegistry,
+      permissionRequiredToolNames: new Set(['device_vibrate']),
+      toolCallConfig: { maxToolIterations: 1 },
+    });
+
+    await runtime.sendUserMessage({
+      sessionId: 'generic-permission',
+      text: 'vibrate',
+      context: {
+        sessionId: 'generic-permission',
+        sourceType: 'web',
+        traceId: 'generic-permission',
+      },
+    });
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('keeps a visual frame ephemeral, disables tools, and redacts recursive model logs', async () => {
     const llm = new VisionProbeLlm();
     const store = new TestSessionStore();

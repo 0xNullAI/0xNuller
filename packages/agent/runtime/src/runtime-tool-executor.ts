@@ -257,6 +257,8 @@ export interface RuntimeToolExecutorOptions {
   traceStore: SessionTraceStore;
   /** Checked at the final transport boundary. Defaults to allow in AgentRuntime. */
   deviceExecutionGate: DeviceExecutionGate;
+  /** Additional state-changing tools that must pass the existing upper permission service. */
+  permissionRequiredToolNames?: ReadonlySet<string>;
 }
 
 export interface ExecuteToolCallInput {
@@ -313,6 +315,28 @@ export class RuntimeToolExecutor {
       const connected = await this.isDeviceKindConnected(requiredKind, session);
       if (!connected) {
         return this.denyToolCall(session, displayToolCall, '设备未连接', context);
+      }
+    }
+
+    // Generic runtime tools resolve to an inline plan because their own
+    // fenced executor owns transport semantics. Ask through Agent's existing
+    // permission service before registry resolution can invoke that executor.
+    if (this.options.permissionRequiredToolNames?.has(toolCall.name)) {
+      const permission = await this.options.permission.request({
+        context,
+        toolName: toolCall.name,
+        toolDisplayName: toolDisplayName,
+        summary: toolDisplayName ?? toolCall.name,
+        args: toolCall.args,
+      });
+      throwIfAborted(abortSignal);
+      if (permission.type === 'deny') {
+        return this.denyToolCall(
+          session,
+          displayToolCall,
+          permission.reason ?? '用户拒绝了本次工具调用',
+          context,
+        );
       }
     }
 

@@ -185,6 +185,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
     servicesOverrides: nativeOverrides,
+    deviceRuntimeProvider: native.deviceRuntime,
   });
 
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckerStatus>(() =>

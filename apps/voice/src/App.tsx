@@ -96,7 +96,7 @@ export function App({ transport }: AppProps = {}) {
         : []),
     ],
   });
-  const call = useRealtimeCall(session, settings);
+  const call = useRealtimeCall(session, settings, native.deviceRuntime);
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
   // hung 'connecting' used to latch these buttons disabled forever. Connecting

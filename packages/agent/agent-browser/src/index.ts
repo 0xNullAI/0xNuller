@@ -4,4 +4,5 @@ export * from './create-browser-agent-client.js';
 export * from './create-browser-llm-client.js';
 export * from './create-browser-services.js';
 export * from './create-browser-video-control.js';
+export * from './device-runtime-tool-registry.js';
 export * from './multi-coyote-client.js';

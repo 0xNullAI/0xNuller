@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeLegacyLocalValue } from './browser-data-migration';
+import { isLegacyLocalStorageKeyAllowed, mergeLegacyLocalValue } from './browser-data-migration';
 
 describe('legacy browser data merge', () => {
   it('does not overwrite an existing scalar setting', () => {
@@ -31,5 +31,14 @@ describe('legacy browser data merge', () => {
 
   it('ignores malformed structured legacy values when current data exists', () => {
     expect(mergeLegacyLocalValue('dg-chat-groups', '[]', 'not-json')).toBe('[]');
+  });
+
+  it('never migrates the separate local-only experimental device setting', () => {
+    expect(
+      isLegacyLocalStorageKeyAllowed(
+        'https://agent.0xnullai.com',
+        '0xnullai.experimental-embedded-devices',
+      ),
+    ).toBe(false);
   });
 });

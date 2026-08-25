@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@dg-kit/safety": "1.16.2"
+    "@dg-kit/safety": "1.16.3"
   }
 }

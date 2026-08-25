@@ -130,6 +130,8 @@ export interface AgentRuntimeOptions {
   deviceLinkRule?: DeviceLinkRule;
   /** Final device-boundary gate, intended for module-lease validation. Defaults to allow. */
   deviceExecutionGate?: DeviceExecutionGate;
+  /** Extra state-changing registry tools routed through the existing permission service. */
+  permissionRequiredToolNames?: ReadonlySet<string>;
 }
 
 export interface SendUserMessageInput {
@@ -229,6 +231,7 @@ export class AgentRuntime {
       getSessionGeneration: (sessionId) => this.getSessionGeneration(sessionId),
       traceStore: this.traces,
       deviceExecutionGate: options.deviceExecutionGate ?? (() => true),
+      permissionRequiredToolNames: options.permissionRequiredToolNames,
     });
 
     this.disposeDeviceListener = options.device.onStateChanged((state) => {

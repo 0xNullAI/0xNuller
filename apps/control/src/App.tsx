@@ -21,6 +21,7 @@ import {
   type OutputPanelState,
   type OutputTarget,
 } from '@control/components/OutputDeviceSection';
+import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
@@ -506,6 +507,8 @@ export default function App() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
+        <EmbeddedDevicePanel />
+
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}
