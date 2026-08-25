@@ -19,6 +19,7 @@ export default defineConfig({
       'apps/market',
       'apps/control',
       'apps/voice',
+      'apps/video',
       'apps/mcp',
       'apps/playground',
       'workers/auth',

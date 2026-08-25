@@ -18,9 +18,12 @@ describe('camera frame contract', () => {
         callback(new Blob([new Uint8Array(128)], { type: mediaType })),
     } as unknown as HTMLCanvasElement;
     vi.stubGlobal('document', { createElement: () => canvas });
-    const video = { videoWidth: 1920, videoHeight: 1080, readyState: 4 } as HTMLVideoElement;
 
-    const frame = await captureCameraFrame(video);
+    const frame = await captureCameraFrame({
+      videoWidth: 1920,
+      videoHeight: 1080,
+      readyState: 4,
+    } as HTMLVideoElement);
 
     expect(Math.max(frame.width, frame.height)).toBe(CAMERA_FRAME_MAX_EDGE);
     expect(frame.byteLength).toBeLessThanOrEqual(CAMERA_FRAME_MAX_BYTES);

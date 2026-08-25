@@ -37,7 +37,7 @@
     "test:repository": "node scripts/run-vitest.mjs run --project=tooling",
     "test:kit": "npm run build:kit && node scripts/run-vitest.mjs run --project=kit",
     "test:mcp": "npm run build:kit && node scripts/run-vitest.mjs run --project=dg-mcp",
-    "test:product": "npm run build:kit && node scripts/run-vitest.mjs run --project=@dg-agent/web --project=android --project=auth --project=0xnullai-chat --project=control --project=market --project=playground --project=0xnullai-voice --project=web --project=agent-packages --project=platform --project=worker-proxies",
+    "test:product": "npm run build:kit && node scripts/run-vitest.mjs run --project=@dg-agent/web --project=android --project=auth --project=0xnullai-chat --project=control --project=market --project=playground --project=video --project=0xnullai-voice --project=web --project=agent-packages --project=platform --project=worker-proxies",
     "test:all": "npm run test:full",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

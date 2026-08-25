@@ -55,7 +55,6 @@ import {
   type ServicesOverrides,
 } from './composition/use-browser-app-services.js';
 import { useAuxDeviceState } from './hooks/use-aux-device-state.js';
-import { useCameraPreview } from './hooks/use-camera-preview.js';
 import { useModelLog } from './hooks/use-model-log.js';
 import { useRuntimeSessionState } from './hooks/use-runtime-session-state.js';
 import { useSettingsManager } from './hooks/use-settings-manager.js';
@@ -77,7 +76,7 @@ import {
   sessionFileName,
 } from './utils/session-transfer.js';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import type { LlmImageInput, SessionSnapshot } from '@dg-agent/core';
+import type { SessionSnapshot } from '@dg-agent/core';
 import { SensorsTab } from './components/settings/SensorsTab.js';
 import { WaveformsPanel } from './components/WaveformsPanel.js';
 import { DebugPanel } from './components/DebugPanel.js';
@@ -191,8 +190,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckerStatus>(() =>
     updateChecker.getStatus(),
   );
-  const camera = useCameraPreview(client.capabilities.imageInput);
-
   const voice = useVoiceController({
     speechRecognition,
     speechSynthesizer,
@@ -273,7 +270,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
     onRevoke: async () => {
-      camera.stop();
       // Switching away from Agent also aborts the in-flight reply, not just the output —
       // a tool-call sequence still running would keep issuing commands in the background
       // while the user believes they already left this module.
@@ -599,10 +595,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   }, [civetEdging]);
 
   const sendTextMessage = useCallback(
-    async (
-      message: string,
-      image?: LlmImageInput,
-    ): Promise<'sent' | 'aborted' | 'failed'> => {
+    async (message: string): Promise<'sent' | 'aborted' | 'failed'> => {
       if (!message.trim() || !activeSessionId) return 'failed';
 
       setPendingSend(true);
@@ -618,7 +611,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             sourceType: 'web',
             traceId: `web-${Date.now()}`,
           },
-          image,
         });
 
         setStatusMessage('消息已发送');
@@ -642,16 +634,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     const draft = text;
     if (!draft.trim()) return;
 
-    let image: LlmImageInput | undefined;
-    try {
-      image = await camera.capture();
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-      return;
-    }
-
     setText('');
-    const result = await sendTextMessage(draft, image);
+    const result = await sendTextMessage(draft);
     if (result === 'failed') {
       setText(draft);
     }
@@ -1066,14 +1050,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onToggleVoiceMode={() => void toggleVoiceMode()}
               onSend={() => void send()}
               busy={busy}
-              cameraSupported={client.capabilities.imageInput}
-              cameraState={camera.state}
-              cameraError={camera.error}
-              cameraVideoRef={camera.videoRef}
-              onToggleCamera={() => {
-                if (camera.state === 'off') void camera.start();
-                else camera.stop();
-              }}
               speechRecognitionEnabled={settings.speechRecognitionEnabled}
               voiceMode={voiceMode}
               voiceState={voiceState}

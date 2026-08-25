@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useCameraPreview } from './use-camera-preview.js';
+import { cameraEnvironmentError, useCameraPreview } from './use-camera-preview.js';
 
 function mediaStream() {
   const track = { stop: vi.fn(), addEventListener: vi.fn() };
@@ -27,20 +27,26 @@ function installMediaDevices(stream: MediaStream) {
   return getUserMedia;
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+afterEach(() => vi.restoreAllMocks());
 
 describe('camera preview lifecycle', () => {
-  it('does not request a camera until the user explicitly starts it, then stops on hide', async () => {
+  it('checks secure context before requesting camera access', () => {
+    vi.stubGlobal('isSecureContext', false);
+    expect(cameraEnvironmentError()).toMatch(/HTTPS/);
+    vi.unstubAllGlobals();
+  });
+
+  it('only requests a camera after explicit start and uses the selected lens', async () => {
     const { stream, track } = mediaStream();
     const getUserMedia = installMediaDevices(stream);
-    const { result } = renderHook(() => useCameraPreview(true));
+    const { result } = renderHook(() => useCameraPreview(true, 'user'));
     expect(getUserMedia).not.toHaveBeenCalled();
 
     await act(async () => result.current.start());
-    expect(getUserMedia).toHaveBeenCalledOnce();
-    expect(result.current.state).toBe('on');
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: { facingMode: { ideal: 'user' } },
+    });
 
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     act(() => document.dispatchEvent(new Event('visibilitychange')));
@@ -51,11 +57,9 @@ describe('camera preview lifecycle', () => {
   it('stops active tracks when the module unmounts', async () => {
     const { stream, track } = mediaStream();
     installMediaDevices(stream);
-    const { result, unmount } = renderHook(() => useCameraPreview(true));
+    const { result, unmount } = renderHook(() => useCameraPreview(true, 'environment'));
     await act(async () => result.current.start());
-
     unmount();
-
     expect(track.stop).toHaveBeenCalledOnce();
   });
 });

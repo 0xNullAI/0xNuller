@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LlmImageInput } from '@dg-agent/core';
 import { captureCameraFrame } from '../services/camera-frame.js';
 
+export type CameraFacingMode = 'user' | 'environment';
 export type CameraPreviewState = 'off' | 'starting' | 'on' | 'error';
 
 interface AndroidCameraBridge {
@@ -13,7 +14,13 @@ export function stopCameraStream(stream: MediaStream | null): void {
   for (const track of stream?.getTracks() ?? []) track.stop();
 }
 
-export function useCameraPreview(enabled: boolean) {
+export function cameraEnvironmentError(): string | null {
+  if (window.isSecureContext === false) return '摄像头仅可在 HTTPS 或 localhost 中使用';
+  if (!navigator.mediaDevices?.getUserMedia) return '当前浏览器不支持摄像头预览';
+  return null;
+}
+
+export function useCameraPreview(enabled: boolean, facingMode: CameraFacingMode) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestIdRef = useRef(0);
@@ -32,12 +39,13 @@ export function useCameraPreview(enabled: boolean) {
 
   const start = useCallback(async () => {
     if (!enabled) {
-      setError('当前模型未明确支持图片输入，请先切换到支持视觉的模型');
+      setError('当前模型未明确支持图片输入，请在 AI 设置中选择视觉模型');
       setState('error');
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('当前浏览器不支持摄像头预览');
+    const environmentError = cameraEnvironmentError();
+    if (environmentError) {
+      setError(environmentError);
       setState('error');
       return;
     }
@@ -50,7 +58,7 @@ export function useCameraPreview(enabled: boolean) {
       if (android && !android.hasCameraPermission()) android.requestCameraPermission();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: 'environment' } },
+        video: { facingMode: { ideal: facingMode } },
       });
       if (requestId !== requestIdRef.current) {
         stopCameraStream(stream);
@@ -62,9 +70,8 @@ export function useCameraPreview(enabled: boolean) {
       }
       stopCameraStream(streamRef.current);
       streamRef.current = stream;
-      for (const track of stream.getVideoTracks()) {
+      for (const track of stream.getVideoTracks())
         track.addEventListener('ended', stop, { once: true });
-      }
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -76,12 +83,12 @@ export function useCameraPreview(enabled: boolean) {
       setError(cause instanceof Error ? cause.message : '无法开启摄像头');
       setState('error');
     }
-  }, [enabled, stop]);
+  }, [enabled, facingMode, stop]);
 
   const capture = useCallback(async (): Promise<LlmImageInput | undefined> => {
-    if (state !== 'on' || !streamRef.current || !videoRef.current) return undefined;
+    if (!streamRef.current || !videoRef.current) return undefined;
     return captureCameraFrame(videoRef.current);
-  }, [state]);
+  }, []);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -112,6 +119,10 @@ export function useCameraPreview(enabled: boolean) {
   useEffect(() => {
     if (!enabled) stop();
   }, [enabled, stop]);
+
+  useEffect(() => {
+    stop();
+  }, [facingMode, stop]);
 
   return { videoRef, state, error, start, stop, capture };
 }

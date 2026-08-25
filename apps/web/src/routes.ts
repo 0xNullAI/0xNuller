@@ -39,6 +39,12 @@ export const MODULES: ModuleRoute[] = [
     Component: lazy(() => import('./modules/agent')),
   },
   {
+    id: 'video',
+    label: 'Video',
+    blurb: '摄像头视觉解释',
+    Component: lazy(() => import('./modules/video')),
+  },
+  {
     id: 'voice',
     label: 'Voice',
     blurb: '实时语音通话',

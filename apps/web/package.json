@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "统一外壳：常驻导航 + 六模块按路由挂载",
+  "description": "统一外壳：常驻导航 + 七模块按路由挂载",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

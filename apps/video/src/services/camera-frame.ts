@@ -7,13 +7,16 @@ const SCALES = [1, 0.85, 0.7, 0.55] as const;
 const QUALITIES = [0.82, 0.68, 0.54, 0.4] as const;
 const MEDIA_TYPES: LlmImageMediaType[] = ['image/webp', 'image/jpeg'];
 
-/** Capture exactly one bounded, compressed frame from an already-active preview. */
+/** Capture one bounded frame. The returned image is intended for one request only. */
 export async function captureCameraFrame(video: HTMLVideoElement): Promise<LlmImageInput> {
   if (video.videoWidth <= 0 || video.videoHeight <= 0 || video.readyState < 2) {
     throw new Error('摄像头画面尚未就绪，请稍后重试');
   }
 
-  const baseScale = Math.min(1, CAMERA_FRAME_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight));
+  const baseScale = Math.min(
+    1,
+    CAMERA_FRAME_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight),
+  );
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('当前环境无法处理摄像头画面');
@@ -26,8 +29,6 @@ export async function captureCameraFrame(video: HTMLVideoElement): Promise<LlmIm
     for (const mediaType of MEDIA_TYPES) {
       for (const quality of QUALITIES) {
         const blob = await canvasToBlob(canvas, mediaType, quality);
-        // Browsers that do not support WebP may silently return PNG. PNG is
-        // intentionally rejected because this contract only permits JPEG/WebP.
         if (blob.type !== mediaType || blob.size > CAMERA_FRAME_MAX_BYTES) continue;
         return {
           mediaType,

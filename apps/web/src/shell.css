@@ -19,6 +19,7 @@
 @source '../../../packages/platform/ui/src';
 @source '../../control/src';
 @source '../../agent/src';
+@source '../../video/src';
 @source '../../chat/src';
 @source '../../voice/src';
 @source '../../playground/src';

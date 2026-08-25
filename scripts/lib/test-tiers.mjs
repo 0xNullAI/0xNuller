@@ -12,6 +12,7 @@ export const TEST_PROJECT_ALIASES = {
   platform: 'platform',
   playground: 'playground',
   tooling: 'tooling',
+  video: 'video',
   voice: '0xnullai-voice',
   web: 'web',
 };
@@ -24,6 +25,7 @@ const projectPathRules = [
   ['apps/market/', 'market'],
   ['apps/mcp/', 'dg-mcp'],
   ['apps/playground/', 'playground'],
+  ['apps/video/', 'video'],
   ['apps/voice/', '0xnullai-voice'],
   ['apps/web/', 'web'],
   ['packages/agent/', 'agent-packages'],
