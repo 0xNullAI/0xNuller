@@ -54,6 +54,8 @@ export interface AiDeviceToolAdapterOptions {
   tools: () => BoundDeviceTools | Promise<BoundDeviceTools>;
   /** Returns only an already-open runtime snapshot; it must not start a backend. */
   snapshot?: () => DeviceSnapshot | null;
+  /** Local feature gate; disabled adapters expose no model surface. */
+  enabled?: () => boolean;
 }
 
 const AI_NAME_SET: ReadonlySet<string> = new Set(AI_DEVICE_TOOL_NAMES);
@@ -125,11 +127,17 @@ export class AiDeviceToolAdapter {
   }
 
   definitions(): ModelDeviceToolDefinition[] {
-    return toModelDeviceToolDefinitions();
+    return this.isAvailable() ? toModelDeviceToolDefinitions() : [];
   }
 
   snapshot(): DeviceSnapshot | null {
-    return this.options.snapshot?.() ?? null;
+    if (this.options.enabled?.() === false) return null;
+    const snapshot = this.options.snapshot?.() ?? null;
+    return snapshot && hasUsableAiDeviceTarget(snapshot) ? snapshot : null;
+  }
+
+  isAvailable(): boolean {
+    return this.snapshot() !== null;
   }
 
   async invoke(call: AiDeviceToolCall): Promise<unknown> {
@@ -157,7 +165,15 @@ export function createAiDeviceToolAdapter(
   return new AiDeviceToolAdapter({
     tools: () => provider.forModule(moduleId),
     snapshot: () => provider.current()?.snapshot() ?? null,
+    enabled: () => provider.isEnabled?.() ?? true,
   });
+}
+
+/** Models only need generic device context when they can address a healthy output feature. */
+export function hasUsableAiDeviceTarget(snapshot: DeviceSnapshot): boolean {
+  return snapshot.devices.some((device) =>
+    device.capabilities.some((capability) => capability.kind === 'vibrate' && !capability.faulted),
+  );
 }
 
 export function aiDeviceToolRequiresPermission(name: string): name is AiDeviceToolName {
@@ -185,7 +201,7 @@ export function appendAiDeviceRuntimeStatus(
   instructions: string,
   snapshot: DeviceSnapshot | null,
 ): string {
-  if (!snapshot) return instructions;
+  if (!snapshot || !hasUsableAiDeviceTarget(snapshot)) return instructions;
   const status = formatAiDeviceRuntimeStatus(snapshot);
   return instructions ? `${instructions}\n\n${status}` : status;
 }

@@ -24,16 +24,18 @@ function createCoordinator(input: {
   llm: LlmClient;
   execute?: ReturnType<typeof vi.fn>;
   emit?: (event: RuntimeEvent) => void;
+  toolRegistry?: ToolRegistry;
+  getConnectedDeviceKinds?: () => Promise<Set<'coyote'>>;
 }) {
   const execute = input.execute ?? vi.fn(async () => JSON.stringify({ ok: true }));
   const saveSession = vi.fn(async () => undefined);
   const coordinator = new RuntimeTurnCoordinator({
     device: { getState: async () => createEmptyDeviceState() },
     llm: input.llm,
-    toolRegistry: new ToolRegistry(),
+    toolRegistry: input.toolRegistry ?? new ToolRegistry(),
     toolExecutor: {
       execute,
-      getConnectedDeviceKinds: async () => new Set(),
+      getConnectedDeviceKinds: input.getConnectedDeviceKinds ?? (async () => new Set()),
     },
     toolCallConfig: resolveToolCallConfig({ maxToolIterations: 3 }),
     getInstructionDeviceState: async () => ({}),
@@ -174,5 +176,60 @@ describe('RuntimeTurnCoordinator', () => {
         }),
       ]),
     );
+  });
+
+  it('removes a disconnected device tool from the very next model request', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'shock_stop',
+      definition: {
+        name: 'shock_stop',
+        description: 'stop connected Coyote',
+        parameters: { type: 'object', properties: {} },
+      },
+      toExecutionPlan: () => ({ type: 'inline', output: 'stopped' }),
+    });
+    registry.register({
+      name: 'timer',
+      definition: {
+        name: 'timer',
+        description: 'device-independent timer',
+        parameters: { type: 'object', properties: {} },
+      },
+      toExecutionPlan: () => ({ type: 'inline', output: 'timer set' }),
+    });
+
+    let connected = true;
+    const requests: string[][] = [];
+    const llm: LlmClient = {
+      async runTurn(input) {
+        requests.push(input.tools.map((tool) => tool.name));
+        return requests.length === 1
+          ? {
+              assistantMessage: '',
+              toolCalls: [{ id: 'timer-call', name: 'timer', args: {} }],
+            }
+          : { assistantMessage: 'done' };
+      },
+    };
+    const execute = vi.fn(async () => {
+      connected = false;
+      return JSON.stringify({ ok: true });
+    });
+    const { coordinator } = createCoordinator({
+      llm,
+      execute,
+      toolRegistry: registry,
+      getConnectedDeviceKinds: async () => new Set(connected ? ['coyote'] : []),
+    });
+
+    await coordinator.run({
+      session: createSession(),
+      turn,
+      turnStartIndex: -1,
+      ephemeralInput: null,
+    });
+
+    expect(requests).toEqual([['shock_stop', 'timer'], ['timer']]);
   });
 });

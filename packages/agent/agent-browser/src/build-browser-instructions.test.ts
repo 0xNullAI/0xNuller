@@ -49,21 +49,50 @@ const settings = {
 };
 
 describe('createBuildBrowserInstructions', () => {
-  it('Coyote-only: never mentions Opossum or sensors', () => {
+  it('omits every device capability, mapping, and status block when nothing is connected', () => {
     const build = createBuildBrowserInstructions(settings);
-    const instructions = build(baseInput());
+    const instructions = build(
+      baseInput({
+        opossumState: createEmptyOpossumState(),
+        pawPrintsState: createEmptySensorState(),
+        civetEdgingState: createEmptySensorState(),
+      }),
+    );
 
-    expect(instructions).toContain('郊狼（Coyote）');
+    expect(instructions).not.toContain('[设备]');
+    expect(instructions).not.toContain('[剧情与设备的映射]');
+    expect(instructions).not.toContain('[当前设备状态]');
+    expect(instructions).not.toContain('郊狼');
     expect(instructions).not.toContain('负鼠');
     expect(instructions).not.toContain('爪印');
     expect(instructions).not.toContain('灵猫');
-    expect(instructions).not.toContain('vibrate_start');
+    expect(instructions).not.toContain('shock_start');
+  });
+
+  it('Coyote-only: mentions only the connected Coyote', () => {
+    const build = createBuildBrowserInstructions(settings);
+    const instructions = build(
+      baseInput({
+        session: session({
+          deviceState: { ...createEmptyDeviceState(), connected: true },
+        }),
+      }),
+    );
+
+    expect(instructions).toContain('郊狼（Coyote）');
+    expect(instructions).toContain('shock_start');
+    expect(instructions).not.toContain('负鼠');
+    expect(instructions).not.toContain('爪印');
+    expect(instructions).not.toContain('灵猫');
   });
 
   it('Coyote + Opossum: mentions Opossum mapping and status, still no sensors', () => {
     const build = createBuildBrowserInstructions(settings);
     const instructions = build(
       baseInput({
+        session: session({
+          deviceState: { ...createEmptyDeviceState(), connected: true },
+        }),
         opossumState: {
           ...createEmptyOpossumState(),
           connected: true,
@@ -85,7 +114,7 @@ describe('createBuildBrowserInstructions', () => {
     expect(instructions).not.toContain('灵猫');
   });
 
-  it('all four device kinds: mentions every device and surfaces the last sensor reading', () => {
+  it('mentions connected device kinds and omits a configured-but-disconnected sensor', () => {
     const build = createBuildBrowserInstructions(settings);
     const metadata = withSensorLastReading(undefined, 'paw-prints', {
       summary: '按钮触发（事件1）',
@@ -94,7 +123,10 @@ describe('createBuildBrowserInstructions', () => {
 
     const instructions = build(
       baseInput({
-        session: session({ metadata }),
+        session: session({
+          metadata,
+          deviceState: { ...createEmptyDeviceState(), connected: true },
+        }),
         opossumState: { ...createEmptyOpossumState(), connected: true },
         pawPrintsState: { ...createEmptySensorState(), connected: true, deviceName: '47L120001' },
         civetEdgingState: { ...createEmptySensorState(), connected: false },
@@ -103,11 +135,31 @@ describe('createBuildBrowserInstructions', () => {
 
     expect(instructions).toContain('负鼠（Opossum）');
     expect(instructions).toContain('爪印（按键 / 姿态传感器）');
-    expect(instructions).toContain('灵猫（压力传感器）');
+    expect(instructions).not.toContain('灵猫（压力传感器）');
     expect(instructions).toContain('按钮触发（事件1）');
     expect(instructions).toContain('内部提醒');
-    // civet-edging is configured but disconnected — still described, status shows 未连接.
-    expect(instructions).toContain('灵猫：');
+    expect(instructions).not.toContain('灵猫：');
+    expect(instructions).not.toContain('未连接');
+  });
+
+  it('removes a previously connected auxiliary device from the next instruction build', () => {
+    const build = createBuildBrowserInstructions(settings);
+    const connected = build(
+      baseInput({
+        opossumState: { ...createEmptyOpossumState(), connected: true },
+      }),
+    );
+    const disconnected = build(
+      baseInput({
+        opossumState: { ...createEmptyOpossumState(), connected: false },
+      }),
+    );
+
+    expect(connected).toContain('负鼠（Opossum）');
+    expect(connected).toContain('vibrate_start');
+    expect(disconnected).not.toContain('负鼠');
+    expect(disconnected).not.toContain('vibrate_start');
+    expect(disconnected).not.toContain('[当前设备状态]');
   });
 
   it('a sensor with no recorded reading yet reports 暂无', () => {
@@ -119,6 +171,11 @@ describe('createBuildBrowserInstructions', () => {
     );
 
     expect(instructions).toContain('最近读数：暂无');
+    expect(instructions).toContain('连接的传感器（爪印）');
+    expect(instructions).not.toContain('灵猫');
+    expect(instructions).not.toContain('郊狼');
+    expect(instructions).not.toContain('负鼠');
+    expect(instructions).toContain('不要声称执行了任何输出动作');
   });
 
   it('shows the named opossum pattern per channel with a Chinese label', () => {

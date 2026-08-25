@@ -719,13 +719,7 @@ export class AgentRuntime {
     );
   }
 
-  /**
-   * Fetches current Opossum/sensor state for `buildInstructions`, omitting a
-   * key entirely when that device kind was never configured for this runtime
-   * (as opposed to configured-but-disconnected, which still reports state —
-   * `buildInstructions` uses presence-vs-absence to decide whether to
-   * mention a device kind at all).
-   */
+  /** Fetches live auxiliary state; instruction composition filters disconnected devices. */
   private async getAuxDeviceStatesForInstructions(): Promise<{
     opossumState?: OpossumState;
     pawPrintsState?: SensorState;

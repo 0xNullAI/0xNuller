@@ -207,7 +207,8 @@ describe('AI device adapter allowlist', () => {
     expect((agentSnapshot as DeviceSnapshot).sessionId).toBe(
       (voiceSnapshot as DeviceSnapshot).sessionId,
     );
-    expect(agent.snapshot()?.sessionId).toBe((agentSnapshot as DeviceSnapshot).sessionId);
+    // An empty runtime is deliberately absent from model context even after it has opened.
+    expect(agent.snapshot()).toBeNull();
   });
 
   it('appends only opaque runtime IDs and capabilities to existing instructions', () => {
@@ -243,5 +244,67 @@ describe('AI device adapter allowlist', () => {
     expect(sanitized.devices[0]!.name).toBe('Connected device');
     expect(JSON.stringify(sanitized)).not.toContain('Private device label');
     expect(appendAiDeviceRuntimeStatus(original, null)).toBe(original);
+    expect(appendAiDeviceRuntimeStatus(original, { ...snapshot, devices: [] })).toBe(original);
+  });
+
+  it('exposes no model tools while disabled, disconnected, or lacking a healthy vibration target', () => {
+    let enabled = false;
+    let snapshot: DeviceSnapshot | null = null;
+    const adapter = new AiDeviceToolAdapter({
+      tools: () => ({ invoke: vi.fn() }) as unknown as BoundDeviceTools,
+      enabled: () => enabled,
+      snapshot: () => snapshot,
+    });
+
+    expect(adapter.definitions()).toEqual([]);
+    enabled = true;
+    snapshot = {
+      version: 1,
+      sessionId: 'session' as DeviceSnapshot['sessionId'],
+      sequence: 1,
+      topologyGeneration: 1,
+      safetyGeneration: 1,
+      devices: [],
+    };
+    expect(adapter.definitions()).toEqual([]);
+
+    snapshot = {
+      ...snapshot,
+      devices: [
+        {
+          deviceId: 'device' as DeviceSnapshot['devices'][number]['deviceId'],
+          name: 'device',
+          capabilities: [
+            { kind: 'battery', featureId: 'battery' as never, value: 80 },
+            { kind: 'vibrate', featureId: 'vibrate' as never, stepCount: 20, faulted: true },
+          ],
+        },
+      ],
+    };
+    expect(adapter.definitions()).toEqual([]);
+
+    snapshot = {
+      ...snapshot,
+      devices: [
+        {
+          ...snapshot.devices[0]!,
+          capabilities: [
+            snapshot.devices[0]!.capabilities[0]!,
+            {
+              kind: 'vibrate',
+              featureId: 'vibrate' as never,
+              stepCount: 20,
+              faulted: false,
+            },
+          ],
+        },
+      ],
+    };
+    expect(adapter.definitions().map((definition) => definition.name)).toEqual([
+      'device_snapshot',
+      'device_vibrate',
+      'device_stop',
+      'device_emergency_stop',
+    ]);
   });
 });
