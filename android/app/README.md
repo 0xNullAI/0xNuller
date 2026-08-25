@@ -204,10 +204,11 @@ fences. Stop-feature and stop-all do not require a current generation fence; an 
 falls back to global stop. Stop failures latch the native session, report terminal loss to the
 shared runtime, and always retain `hardwareState: "unknown"`.
 
-`ScanCoordinator` remains the single ownership seam for the Buttplug and DG plugin scanners. The
-backend claims it before scanning, releases it only after confirmed stop/session teardown, and
-retains ownership when scanner state is uncertain. The existing DG plugin-blec path is unchanged;
-routing that adapter through the coordinator remains a prerequisite before product enablement.
+`ScanCoordinator` is the single ownership seam for the Buttplug and DG plugin scanners. Both paths
+claim a generation-scoped lease before scanning, release only after confirmed stop/cleanup, and
+retain ownership when scanner state is uncertain. Native Android lifecycle cleanup stops the active
+scanner before releasing its lease. The commands remain present in default builds, where they
+preserve plugin-blec behavior without compiling the experimental backend.
 
 btleplug 0.12 requires JNI initialization after Tauri loads the Rust library. The Activity also
 requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension. The

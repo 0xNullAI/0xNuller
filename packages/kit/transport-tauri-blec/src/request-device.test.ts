@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DG_LAB_TAURI_NAME_PREFIXES,
   detectAnonymousDgLabKind,
@@ -6,6 +6,15 @@ import {
 } from './request-device.js';
 import { __setPluginBlecForTests, type BleDeviceInfo } from './plugin-blec.js';
 import { makeApi, makeDevice } from './test-utils.js';
+import {
+  __setScannerCoordinationForTests,
+  type ScannerCoordinationApi,
+} from './scanner-coordination.js';
+
+afterEach(() => {
+  __setPluginBlecForTests(undefined);
+  __setScannerCoordinationForTests(undefined);
+});
 
 function scanHandlerWith(devices: BleDeviceInfo[]) {
   return vi.fn().mockImplementation(async (handler: (devices: BleDeviceInfo[]) => void) => {
@@ -192,14 +201,20 @@ describe('requestDgLabDeviceTauri', () => {
     expect(api.connect).not.toHaveBeenCalled();
   });
 
-  it('throws when BLE permission is denied, without scanning', async () => {
+  it('throws when BLE permission is denied, without claiming or scanning', async () => {
     const api = makeApi({ checkPermissions: vi.fn().mockResolvedValue(false) });
+    const coordination: ScannerCoordinationApi = {
+      claim: vi.fn().mockResolvedValue('lease-1'),
+      release: vi.fn().mockResolvedValue(undefined),
+    };
     __setPluginBlecForTests(api);
+    __setScannerCoordinationForTests(coordination);
 
     await expect(
       requestDgLabDeviceTauri({ selectDevice: vi.fn(), scanDurationMs: 50 }),
     ).rejects.toThrow(/权限/);
 
+    expect(coordination.claim).not.toHaveBeenCalled();
     expect(api.startScan).not.toHaveBeenCalled();
   });
 

@@ -54,9 +54,9 @@ describe('Android shell integration', () => {
     expect(activity).toContain('fun hasCameraPermission()');
     expect(activity).toContain('fun requestCameraPermission()');
     expect(activity).toContain('private external fun initializeButtplugGate0(): Boolean');
-    expect(activity).toContain('private external fun requestButtplugGate0GlobalStop(): Boolean');
+    expect(activity).toContain('private external fun requestNativeLifecycleSafety(): Boolean');
     expect(activity).toContain('override fun onPause()');
-    expect(activity).toContain('requestButtplugGate0GlobalStop()');
+    expect(activity).toContain('requestNativeLifecycleSafety()');
 
     const manifest = readFileSync(
       resolve(process.cwd(), 'android/app/AndroidManifest.template.xml'),
@@ -82,7 +82,7 @@ describe('Android shell integration', () => {
     expect(proguard).toContain('-keep class com.nonpolynomial.**');
     expect(proguard).toContain('-keep class io.github.gedgygedgy.**');
     expect(proguard).toContain('native boolean initializeButtplugGate0()');
-    expect(proguard).toContain('native boolean requestButtplugGate0GlobalStop()');
+    expect(proguard).toContain('native boolean requestNativeLifecycleSafety()');
   });
 
   it('requests the native Android BLE permission before scanning', async () => {

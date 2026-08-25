@@ -1,5 +1,4 @@
 mod registry;
-pub(crate) mod scan_coordinator;
 mod schema;
 
 use self::{
@@ -7,12 +6,15 @@ use self::{
         ConnectionRegistry, DeviceDescriptor, FeatureDescriptor, TelemetryKind, TelemetryValue,
         VibrateTarget,
     },
-    scan_coordinator::{ScanCoordinator, ScannerOwner},
     schema::{
         validate_intensity, validate_schema, DeviceRequest, FenceRequest, GateError, GlobalAck,
         GlobalRequest, HardwareState, InitializeRequest, InitializeResponse, NativeEvent,
         OperationAck, ScanAck, StopFeatureRequest, VibrateRequest, MAX_STEP_COUNT, SCHEMA_VERSION,
     },
+};
+use crate::scan_coordinator::{
+    claim_dg_plugin_blec_scanner, release_dg_plugin_blec_scanner, DgScannerClaim,
+    DgScannerReleaseRequest, ScanCoordinator, ScannerCoordinationError, ScannerLease, ScannerOwner,
 };
 use buttplug_client::{
     device::{ClientDeviceCommandValue, ClientDeviceOutputCommand},
@@ -54,6 +56,7 @@ struct GateSession {
     client: Arc<ButtplugClient>,
     scanning: bool,
     scan_transition: bool,
+    scanner_lease: Option<ScannerLease>,
     output_blocked: bool,
     output_faulted: bool,
     terminal: bool,
@@ -63,6 +66,21 @@ struct GateSession {
     events: Channel<NativeEvent>,
 }
 
+#[tauri::command]
+fn dg_blec_claim_scanner(
+    coordinator: State<'_, ScanCoordinator>,
+) -> Result<DgScannerClaim, ScannerCoordinationError> {
+    claim_dg_plugin_blec_scanner(&coordinator)
+}
+
+#[tauri::command]
+fn dg_blec_release_scanner(
+    coordinator: State<'_, ScanCoordinator>,
+    request: DgScannerReleaseRequest,
+) -> Result<(), ScannerCoordinationError> {
+    release_dg_plugin_blec_scanner(&coordinator, request)
+}
+
 pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     let state = GateState::default();
     let coordinator = ScanCoordinator::default();
@@ -70,7 +88,8 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
     #[cfg(target_os = "android")]
     crate::buttplug_android::install_lifecycle_stop_handler({
         let state = state.clone();
-        move || request_lifecycle_stop(state.clone())
+        let coordinator = coordinator.clone();
+        move || request_lifecycle_stop(state.clone(), coordinator.clone())
     });
 
     builder
@@ -86,6 +105,8 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
             experimental_buttplug_stop_feature,
             experimental_buttplug_stop_all,
             experimental_buttplug_close,
+            dg_blec_claim_scanner,
+            dg_blec_release_scanner,
         ])
 }
 
@@ -138,6 +159,7 @@ async fn experimental_buttplug_initialize(
         client: client.clone(),
         scanning: false,
         scan_transition: false,
+        scanner_lease: None,
         output_blocked: false,
         output_faulted: false,
         terminal: false,
@@ -185,13 +207,14 @@ async fn experimental_buttplug_start_scan(
         if session.scanning {
             return Ok(scan_ack(session));
         }
-        coordinator.try_claim(ScannerOwner::Buttplug).map_err(|_| {
+        let scanner_lease = coordinator.try_claim(ScannerOwner::Buttplug).map_err(|_| {
             GateError::new(
                 "scanner_in_use",
                 "the BLE scanner is owned by another backend",
             )
         })?;
         session.scan_transition = true;
+        session.scanner_lease = Some(scanner_lease);
         (
             session.client.clone(),
             session.id.clone(),
@@ -211,7 +234,7 @@ async fn experimental_buttplug_start_scan(
         }
         Err(error) => {
             log::error!("embedded Buttplug scan start failed: {error}");
-            coordinator.release(ScannerOwner::Buttplug);
+            release_session_scanner_lease(&state, &coordinator, &session_id);
             clear_scan_transition(&state, &session_id, topology_generation, safety_generation);
             Err(GateError::new(
                 "scan_start_failed",
@@ -228,7 +251,7 @@ async fn experimental_buttplug_stop_scan(
     request: FenceRequest,
 ) -> Result<ScanAck, GateError> {
     validate_schema(request.schema_version)?;
-    let (client, session_id, topology_generation, safety_generation) = {
+    let (client, scanner_lease, session_id, topology_generation, safety_generation) = {
         let mut inner = lock_inner(&state);
         let session = checked_fence_mut(&mut inner, &request)?;
         if session.scan_transition {
@@ -240,9 +263,16 @@ async fn experimental_buttplug_stop_scan(
         if !session.scanning {
             return Ok(scan_ack(session));
         }
+        let scanner_lease = session.scanner_lease.ok_or_else(|| {
+            GateError::new(
+                "scanner_lease_missing",
+                "the native scanner ownership lease is unavailable",
+            )
+        })?;
         session.scan_transition = true;
         (
             session.client.clone(),
+            scanner_lease,
             session.id.clone(),
             session.topology_generation,
             session.safety_generation,
@@ -251,10 +281,13 @@ async fn experimental_buttplug_stop_scan(
 
     match client.stop_scanning().await {
         Ok(()) => {
-            coordinator.release(ScannerOwner::Buttplug);
+            coordinator.release(scanner_lease);
             let mut inner = lock_inner(&state);
             let session = inner.session.as_mut().ok_or_else(not_initialized)?;
             validate_generation(session, &session_id, topology_generation, safety_generation)?;
+            if session.scanner_lease == Some(scanner_lease) {
+                session.scanner_lease = None;
+            }
             session.scanning = false;
             session.scan_transition = false;
             Ok(scan_ack(session))
@@ -456,6 +489,21 @@ async fn experimental_buttplug_close(
     Ok(global_ack(&state))
 }
 
+fn release_session_scanner_lease(
+    state: &GateState,
+    coordinator: &ScanCoordinator,
+    session_id: &str,
+) {
+    let lease = {
+        let mut inner = lock_inner(state);
+        matching_session_mut(&mut inner, session_id)
+            .and_then(|session| session.scanner_lease.take())
+    };
+    if let Some(lease) = lease {
+        coordinator.release(lease);
+    }
+}
+
 async fn handle_client_event(
     state: &GateState,
     coordinator: &ScanCoordinator,
@@ -488,7 +536,7 @@ async fn handle_client_event(
             }
         }
         ButtplugClientEvent::ScanningFinished => {
-            coordinator.release(ScannerOwner::Buttplug);
+            release_session_scanner_lease(state, coordinator, session_id);
             let mut inner = lock_inner(state);
             if let Some(session) = matching_session_mut(&mut inner, session_id) {
                 session.scanning = false;
@@ -496,7 +544,7 @@ async fn handle_client_event(
             }
         }
         ButtplugClientEvent::ServerDisconnect | ButtplugClientEvent::PingTimeout => {
-            coordinator.release(ScannerOwner::Buttplug);
+            release_session_scanner_lease(state, coordinator, session_id);
             mark_terminal(state, session_id, "native-session-ended", true);
         }
         ButtplugClientEvent::Error(error) => {
@@ -507,7 +555,7 @@ async fn handle_client_event(
 }
 
 fn handle_event_stream_end(state: &GateState, coordinator: &ScanCoordinator, session_id: &str) {
-    coordinator.release(ScannerOwner::Buttplug);
+    release_session_scanner_lease(state, coordinator, session_id);
     let should_mark = lock_inner(state)
         .session
         .as_ref()
@@ -776,7 +824,7 @@ async fn close_transport(
         session.output_blocked = true;
         (
             session.client.clone(),
-            session.scanning,
+            session.scanner_lease.is_some(),
             NativeEvent::SessionEnded {
                 schema_version: SCHEMA_VERSION,
                 session_id: session.id.clone(),
@@ -806,7 +854,7 @@ async fn close_transport(
         ));
     }
 
-    coordinator.release(ScannerOwner::Buttplug);
+    release_session_scanner_lease(state, coordinator, session_id);
     let channel = {
         let mut inner = lock_inner(state);
         let Some(session) = inner.session.as_ref() else {
@@ -836,10 +884,33 @@ async fn fail_session(state: &GateState, session_id: &str, reason: &str) {
 }
 
 #[cfg(target_os = "android")]
-fn request_lifecycle_stop(state: GateState) {
+fn request_lifecycle_stop(state: GateState, coordinator: ScanCoordinator) {
     tauri::async_runtime::spawn(async move {
+        if coordinator
+            .lease()
+            .is_some_and(|lease| lease.owner() == ScannerOwner::DgPluginBlec)
+        {
+            // Scanner cleanup and output stop are independent. A DG scan may
+            // coexist with an already-connected embedded output device.
+            crate::scan_coordinator::request_dg_lifecycle_cleanup(coordinator.clone());
+        }
+
         if let Err(error) = run_global_stop(&state).await {
             log::error!("embedded Buttplug lifecycle stop failed: {}", error.message);
+        }
+        let session_id = lock_inner(&state)
+            .session
+            .as_ref()
+            .map(|session| session.id.clone());
+        if let Some(session_id) = session_id {
+            if let Err(error) =
+                close_transport(&state, &coordinator, &session_id, "android-lifecycle").await
+            {
+                log::error!(
+                    "embedded Buttplug lifecycle teardown failed: {}",
+                    error.message
+                );
+            }
         }
     });
 }
@@ -1213,6 +1284,7 @@ mod tests {
             client,
             scanning: false,
             scan_transition: false,
+            scanner_lease: None,
             output_blocked: false,
             output_faulted: false,
             terminal: false,
