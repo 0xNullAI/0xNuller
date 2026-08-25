@@ -106,9 +106,8 @@ describe('attachedDeviceSummaries', () => {
 
   it('requires strength and waveform on the same Coyote channel to report active output', () => {
     expect(
-      attachedDeviceSummaries(
-        state({ coyotes: [coyote({ strengthA: 5, waveActiveB: true })] }),
-      )[0]?.active,
+      attachedDeviceSummaries(state({ coyotes: [coyote({ strengthA: 5, waveActiveB: true })] }))[0]
+        ?.active,
     ).toBe(false);
   });
 
