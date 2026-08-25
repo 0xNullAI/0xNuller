@@ -1,5 +1,11 @@
 # @dg-kit/protocol
 
+## 1.16.3
+
+### Patch Changes
+
+- @dg-kit/core@1.16.3
+
 ## 1.16.2
 
 ### Patch Changes

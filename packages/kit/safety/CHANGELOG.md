@@ -1,5 +1,13 @@
 # @dg-kit/safety
 
+## 1.16.3
+
+### Patch Changes
+
+- b13fc20: Add generation-based emergency-stop preemption to the Opossum command queue and expose explicit queue emergency-stop methods for safe runtime teardown.
+  - @dg-kit/core@1.16.3
+  - @dg-kit/protocol@1.16.3
+
 ## 1.16.2
 
 ### Patch Changes

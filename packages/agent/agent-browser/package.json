@@ -19,8 +19,8 @@
     "@dg-agent/runtime": "0.1.0",
     "@dg-agent/storage-browser": "0.1.0",
     "@dg-agent/waveforms": "0.1.0",
-    "@dg-kit/protocol": "^1.16.2",
-    "@dg-kit/transport-webbluetooth": "^1.16.2"
+    "@dg-kit/protocol": "^1.16.3",
+    "@dg-kit/transport-webbluetooth": "^1.16.3"
   },
   "devDependencies": {
     "zod": "^4.4.3"
