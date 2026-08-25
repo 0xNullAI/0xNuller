@@ -1,4 +1,4 @@
-import { hashPassword, verifyPassword } from './password';
+import { hashPassword } from './password';
 import {
   DM_DIGEST_MAX_ROOMS,
   DM_TICKET_TTL_MS,
@@ -10,7 +10,17 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { registrationConflict, validateCredentials } from './account-validation';
 import { decodeContentCursor, encodeContentCursor } from './content-cursor';
 import { corsHeaders, err, json, readBodyBounded } from './http';
-import { readToken, sessionCookie } from './session-credentials';
+import { sessionCookie } from './session-credentials';
+import {
+  currentUser,
+  login,
+  logout,
+  newToken,
+  publicUser,
+  sessionUser,
+  sha256Hex,
+  type UserRow,
+} from './session-domain';
 
 export { registrationConflict } from './account-validation';
 
@@ -67,9 +77,6 @@ export interface Env extends Cloudflare.Env {
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILS_PER_USERNAME = 8;
-const MAX_FAILS_PER_IP = 30;
 const REGISTER_WINDOW_MS = 60 * 60 * 1000;
 const MAX_REGISTRATIONS_PER_IP = 5;
 const MIN_PASSWORD_LEN = 8;
@@ -109,17 +116,6 @@ const MAX_AGENT_SESSION_BYTES = 2 * 1024 * 1024;
 const AGENT_SESSION_PAGE_SIZE = 200;
 const CHAT_ROOM_CODE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_CHAT_ROOM_NAME = 80;
-
-async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function newToken(): string {
-  return [...crypto.getRandomValues(new Uint8Array(32))]
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 /** Delete every object under a prefix without reusing a cursor after mutating the listing. */
 async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<void> {
@@ -266,32 +262,6 @@ export async function runAuthMaintenance(env: Env, now = Date.now()): Promise<vo
       );
     }
   }
-}
-
-interface UserRow {
-  id: string;
-  username: string;
-  display_name: string;
-  password_hash: string;
-  created_at: number;
-  banned_at: number | null;
-  ban_reason: string | null;
-  role: 'user' | 'admin';
-  email: string | null;
-  email_verified_at: number | null;
-}
-
-async function currentUser(request: Request, env: Env): Promise<UserRow | null> {
-  const token = readToken(request);
-  if (!token) return null;
-  const row = await env.DB.prepare(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ? AND s.expires_at > ?
-       AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id)`,
-  )
-    .bind(await sha256Hex(token), Date.now())
-    .first<UserRow>();
-  return row ?? null;
 }
 
 export interface MarketClaimCredentials {
@@ -534,20 +504,6 @@ function publicProfile(row: Record<string, unknown>) {
     location: row.location ?? null,
     links: row.links ? (JSON.parse(String(row.links)) as string[]) : [],
     visibility: row.visibility === 'public' ? 'public' : 'private',
-  };
-}
-
-function publicUser(u: UserRow) {
-  return { id: u.id, username: u.username, displayName: u.display_name };
-}
-
-function sessionUser(u: UserRow, emailAvailable = false) {
-  return {
-    ...publicUser(u),
-    role: u.role,
-    email: u.email,
-    emailVerified: Boolean(u.email_verified_at),
-    emailAvailable,
   };
 }
 
@@ -1073,82 +1029,7 @@ export default {
 
       // ── Login ──
       if (path === '/api/auth/login' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-        const username = typeof body.username === 'string' ? body.username.toLowerCase() : '';
-        const password = typeof body.password === 'string' ? body.password : '';
-        if (!username || !password) return err('缺少用户名或密码', 400, cors);
-
-        const since = Date.now() - LOGIN_WINDOW_MS;
-        const [byName, byIp] = await Promise.all([
-          env.DB.prepare(
-            'SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND ok = 0 AND created_at >= ?',
-          )
-            .bind(username, since)
-            .first<{ n: number }>(),
-          env.DB.prepare(
-            'SELECT COUNT(*) AS n FROM login_attempts WHERE ip_hash = ? AND ok = 0 AND created_at >= ?',
-          )
-            .bind(ipHash, since)
-            .first<{ n: number }>(),
-        ]);
-        // Two-dimensional rate limiting: limit by username only and the attacker
-        // just switches names and keeps hammering; limit by IP only and distributed
-        // credential stuffing walks straight around it.
-        if ((byName?.n ?? 0) >= MAX_FAILS_PER_USERNAME || (byIp?.n ?? 0) >= MAX_FAILS_PER_IP) {
-          return err('尝试过于频繁，请稍后再试', 429, cors);
-        }
-
-        const user = await env.DB.prepare('SELECT * FROM users WHERE username = ?')
-          .bind(username)
-          .first<UserRow>();
-
-        const record = (ok: boolean) =>
-          env.DB.prepare(
-            'INSERT INTO login_attempts (username, ip_hash, ok, created_at) VALUES (?, ?, ?, ?)',
-          )
-            .bind(username, ipHash, ok ? 1 : 0, Date.now())
-            .run();
-
-        if (!user) {
-          // Run a hash even when the user does not exist, so response time cannot
-          // be used to tell "no such user" apart from "wrong password".
-          await hashPassword(password);
-          await record(false);
-          return err('用户名或密码错误', 401, cors);
-        }
-        if (user.banned_at) {
-          return err(`账号已被封禁：${user.ban_reason ?? '未说明原因'}`, 403, cors);
-        }
-
-        const { ok, needsUpgrade } = await verifyPassword(password, user.password_hash);
-        await record(ok);
-        if (!ok) return err('用户名或密码错误', 401, cors);
-
-        if (needsUpgrade) {
-          // Once the iteration count is raised, old hashes are silently upgraded on
-          // the next successful login — the user never has to change their password.
-          await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-            .bind(await hashPassword(password), user.id)
-            .run();
-        }
-
-        const token = newToken();
-        await env.DB.prepare(
-          'INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)',
-        )
-          .bind(
-            await sha256Hex(token),
-            user.id,
-            Date.now(),
-            Date.now() + SESSION_TTL_MS,
-            request.headers.get('User-Agent')?.slice(0, 200) ?? null,
-          )
-          .run();
-
-        return json({ user: sessionUser(user, Boolean(env.EMAIL)), token }, 200, {
-          ...cors,
-          'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000),
-        });
+        return login(request, env, ipHash, cors);
       }
 
       // ── Current user ──
@@ -1247,13 +1128,7 @@ export default {
 
       // ── Logout ──
       if (path === '/api/auth/logout' && request.method === 'POST') {
-        const token = readToken(request);
-        if (token) {
-          await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?')
-            .bind(await sha256Hex(token))
-            .run();
-        }
-        return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
+        return logout(request, env, cors);
       }
 
       // ── Profile ──
