@@ -4,4 +4,5 @@
 -keep class io.github.gedgygedgy.** { *; }
 -keepclassmembers class ai.nullai.dgagent.MainActivity {
   native boolean initializeButtplugGate0();
+  native boolean requestButtplugGate0GlobalStop();
 }

@@ -32,6 +32,21 @@ class MainActivity : TauriActivity() {
   }
 
   private external fun initializeButtplugGate0(): Boolean
+  private external fun requestButtplugGate0GlobalStop(): Boolean
+
+  override fun onPause() {
+    // Native output must stop before Android suspends the WebView and its JS
+    // timers. The default build's JNI symbol is a no-op.
+    if (!requestButtplugGate0GlobalStop()) {
+      Log.d(TAG, "Buttplug native lifecycle stop is disabled or unavailable")
+    }
+    super.onPause()
+  }
+
+  override fun onDestroy() {
+    requestButtplugGate0GlobalStop()
+    super.onDestroy()
+  }
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)

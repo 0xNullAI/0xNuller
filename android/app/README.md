@@ -174,33 +174,41 @@ Android Tauri is different: when the user swipes home / locks the screen, the ho
 
 The wrapper is transparent: every method except `disconnect()` forwards unchanged. `disconnect()` additionally detaches the listeners so they don't leak across reconnects.
 
-## Experimental Buttplug Gate 0
+## Experimental embedded device backend
 
-The native crate contains an internal-only Buttplug 10.0.3 spike behind the
-`experimental-buttplug-gate0` Cargo feature. Normal builds do not compile its command module, and no
-TypeScript or product module invokes it. The only commands registered by the feature are:
+The native crate contains a default-off Buttplug 10.0.3 backend behind the
+`experimental-buttplug-gate0` Cargo feature. Normal builds do not compile its command module. The
+matching [`ButtplugDeviceBackend`](./src/buttplug-device-backend.ts) implements the private
+`@0xnullai/device-runtime` backend contract, but no product composition injects it yet.
 
-- `experimental_buttplug_initialize`
-- `experimental_buttplug_start_scan`
-- `experimental_buttplug_stop_scan`
-- `experimental_buttplug_list_devices`
-- `experimental_buttplug_stop_all`
+The strict v1 IPC surface contains initialize/close, scan start/stop, topology, disconnect,
+Vibrate, stop-feature, stop-all, and Battery/RSSI reads. Unknown fields and stale session, topology,
+or safety generations are rejected. Device and feature IDs are random and scoped to one native
+connection appearance. Only exact `deviceId` + `featureId` Vibrate writes are accepted; native
+quantization rounds down to the advertised step count.
 
-The v1 request schema rejects unknown fields and uses an opaque session ID, monotonically increasing
-scan generation, and per-generation opaque device IDs. Device results expose only names, connection
-state, and normalized Vibrate/Battery/RSSI capability flags. There is no command for Raw messages,
-arbitrary bytes, connect, vibration output, websocket, serial, HID, Lovense, XInput, automatic scan,
-automatic reconnect, or output restoration. Stop-all does not require a current session token; its
-acknowledgement always reports `hardwareState: "unknown"` because a protocol acknowledgement is not
-physical-device confirmation.
+Battery and RSSI capabilities are published only when the Buttplug feature declares the `Read`
+command. Failed or timed-out reads remain `null`; no value is inferred. Unsupported capabilities,
+Raw messages, arbitrary protocol/BLE bytes, addresses, websocket, serial, HID, XInput, automatic
+reconnect, output restoration, and name-based brand/capability guesses are not exposed.
 
-`ScanCoordinator` is the single ownership seam for the Buttplug and DG plugin scanners. Gate 0
-claims it before scanning and retains ownership if stop state is uncertain. The existing DG
-plugin-blec path is intentionally unchanged; because Gate 0 has no product caller, it cannot race in
-shipping builds. Routing DG scan acquisition through this seam is a hard prerequisite before any
-Buttplug UI enablement.
+Buttplug 10 does not expose safe per-device transport disconnect through its client API. A validated
+DeviceRuntime disconnect therefore performs global stop and ends the entire embedded session. This
+is intentionally stronger than pretending one BLE link was released or bypassing Buttplug with raw
+transport access. The resulting topology is terminal and a new runtime must be explicitly created.
 
-btleplug 0.12 requires one Android JNI initialization after Tauri loads the native library, which
-`MainActivity.template.kt` performs. It does not require activity `onPause`, `onStop`, or `onDestroy`
-callbacks, so this spike adds none and leaves the existing DG lifecycle emergency-stop path intact.
-No hardware validation has been performed. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Every structural topology transition advances both native topology and safety generations and
+preempts output with global stop before publishing. Telemetry-only refreshes preserve both
+fences. Stop-feature and stop-all do not require a current generation fence; an unknown feature stop
+falls back to global stop. Stop failures latch the native session, report terminal loss to the
+shared runtime, and always retain `hardwareState: "unknown"`.
+
+`ScanCoordinator` remains the single ownership seam for the Buttplug and DG plugin scanners. The
+backend claims it before scanning, releases it only after confirmed stop/session teardown, and
+retains ownership when scanner state is uncertain. The existing DG plugin-blec path is unchanged;
+routing that adapter through the coordinator remains a prerequisite before product enablement.
+
+btleplug 0.12 requires JNI initialization after Tauri loads the Rust library. The Activity also
+requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension; the JNI
+entry points are no-ops in default builds. No physical-device or Android lifecycle validation has
+been performed. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

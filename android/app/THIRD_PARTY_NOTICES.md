@@ -1,7 +1,9 @@
 # Android third-party notices
 
-The experimental Buttplug Gate 0 feature adds the following locked dependencies. Versions and
-checksums are authoritative in [`src-tauri/Cargo.lock`](./src-tauri/Cargo.lock).
+The default-off experimental embedded device backend adds the following locked dependencies.
+Only the btleplug hardware manager is compiled; websocket, serial, HID, XInput, and remote-service
+managers are not included. Versions and checksums are authoritative in
+[`src-tauri/Cargo.lock`](./src-tauri/Cargo.lock).
 
 | Component                                                                  | Locked version | License                           | Source                                   |
 | -------------------------------------------------------------------------- | -------------: | --------------------------------- | ---------------------------------------- |

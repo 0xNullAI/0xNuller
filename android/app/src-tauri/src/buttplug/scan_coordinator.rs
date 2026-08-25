@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// BLE scanner ownership shared by the experimental backend and the existing DG path.
 ///
@@ -12,9 +12,9 @@ pub(crate) enum ScannerOwner {
     DgPluginBlec,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct ScanCoordinator {
-    owner: Mutex<Option<ScannerOwner>>,
+    owner: Arc<Mutex<Option<ScannerOwner>>>,
 }
 
 impl ScanCoordinator {

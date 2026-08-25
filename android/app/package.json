@@ -12,6 +12,7 @@
     "android:build": "tauri android build"
   },
   "dependencies": {
+    "@0xnullai/device-runtime": "0.1.0",
     "@0xnullai/native": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/web": "*",

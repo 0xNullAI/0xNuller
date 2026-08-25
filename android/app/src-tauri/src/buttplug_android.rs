@@ -8,22 +8,34 @@ use jni::{
 #[cfg(feature = "experimental-buttplug-gate0")]
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
 };
 
 #[cfg(feature = "experimental-buttplug-gate0")]
 static READY: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "experimental-buttplug-gate0")]
+static LIFECYCLE_STOP: OnceLock<Arc<dyn Fn() + Send + Sync>> = OnceLock::new();
 
 #[cfg(feature = "experimental-buttplug-gate0")]
 pub(crate) fn ready() -> bool {
     READY.load(Ordering::Acquire)
 }
 
+#[cfg(feature = "experimental-buttplug-gate0")]
+pub(crate) fn install_lifecycle_stop_handler(handler: impl Fn() + Send + Sync + 'static) {
+    if LIFECYCLE_STOP.set(Arc::new(handler)).is_err() {
+        log::error!("Buttplug lifecycle stop handler was registered more than once");
+    }
+}
+
 /// Initializes btleplug's Android JNI bridge after Tauri has loaded the Rust library.
 ///
 /// The symbol remains present in ordinary builds so the checked-in Activity template
-/// never depends on a Gradle-time feature switch. Without Gate 0 it returns false and
-/// performs no BLE work.
+/// never depends on a Gradle-time feature switch. Without the experimental feature it
+/// returns false and performs no BLE work.
 #[no_mangle]
 pub extern "system" fn Java_ai_nullai_dgagent_MainActivity_initializeButtplugGate0(
     env: JNIEnv,
@@ -38,11 +50,11 @@ pub extern "system" fn Java_ai_nullai_dgagent_MainActivity_initializeButtplugGat
                 JNI_TRUE
             }
             Ok(Err(error)) => {
-                log::error!("Buttplug Gate 0 JNI initialization failed: {error}");
+                log::error!("Buttplug Android JNI initialization failed: {error}");
                 JNI_FALSE
             }
             Err(_) => {
-                log::error!("Buttplug Gate 0 JNI initialization panicked");
+                log::error!("Buttplug Android JNI initialization panicked");
                 JNI_FALSE
             }
         }
@@ -53,4 +65,32 @@ pub extern "system" fn Java_ai_nullai_dgagent_MainActivity_initializeButtplugGat
         let _ = env;
         JNI_FALSE
     }
+}
+
+/// Schedules the native global stop before Android suspends the WebView.
+///
+/// This JNI symbol also remains in default builds, where it is a no-op. The
+/// callback never blocks Android's main thread; stop failure is recorded by the
+/// Rust session and emitted through its terminal event channel.
+#[no_mangle]
+pub extern "system" fn Java_ai_nullai_dgagent_MainActivity_requestButtplugGate0GlobalStop(
+    _env: JNIEnv,
+    _activity: JObject,
+) -> jboolean {
+    #[cfg(feature = "experimental-buttplug-gate0")]
+    {
+        let Some(handler) = LIFECYCLE_STOP.get().cloned() else {
+            return JNI_FALSE;
+        };
+        return match catch_unwind(AssertUnwindSafe(|| handler())) {
+            Ok(()) => JNI_TRUE,
+            Err(_) => {
+                log::error!("Buttplug Android lifecycle stop scheduling panicked");
+                JNI_FALSE
+            }
+        };
+    }
+
+    #[cfg(not(feature = "experimental-buttplug-gate0"))]
+    JNI_FALSE
 }
