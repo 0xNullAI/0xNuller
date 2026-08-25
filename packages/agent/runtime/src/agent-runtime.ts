@@ -47,6 +47,7 @@ import {
   filterToolDefinitionsByConnectedDevices,
   resolveRequiredDeviceKind,
   RuntimeToolExecutor,
+  type DeviceExecutionGate,
   type TimerFiredTrigger,
 } from './runtime-tool-executor.js';
 import {
@@ -125,6 +126,8 @@ export interface AgentRuntimeOptions {
   >;
   /** Optional, explicit sensor/button → Opossum direct-control rule. */
   deviceLinkRule?: DeviceLinkRule;
+  /** Final device-boundary gate, intended for module-lease validation. Defaults to allow. */
+  deviceExecutionGate?: DeviceExecutionGate;
 }
 
 export interface SendUserMessageInput {
@@ -157,6 +160,7 @@ export class AgentRuntime {
   private readonly toolCallConfig: ToolCallConfig;
   private readonly toolExecutor: RuntimeToolExecutor;
   private readonly activeTurns = new Map<string, AbortController>();
+  private readonly sessionGenerations = new Map<string, number>();
   private readonly pendingSystemWork = new Map<string, QueuedSystemWork[]>();
   private readonly drainingSessions = new Set<string>();
   private readonly deletedSessionIds = new Set<string>();
@@ -182,6 +186,7 @@ export class AgentRuntime {
         opossum: options.opossum,
         pawPrints: options.pawPrints,
         civetEdging: options.civetEdging,
+        canExecute: () => this.canExecuteDeviceLink(),
       });
     }
     this.toolRegistry =
@@ -210,8 +215,14 @@ export class AgentRuntime {
         this.events.emit(event);
       },
       enqueueTimerTrigger: (trigger) =>
-        this.enqueueSystemWork(trigger.sessionId, { kind: 'timer-fired', trigger }),
+        this.enqueueSystemWork(trigger.sessionId, {
+          kind: 'timer-fired',
+          trigger,
+          generation: trigger.generation,
+        }),
+      getSessionGeneration: (sessionId) => this.getSessionGeneration(sessionId),
       traceStore: this.traces,
+      deviceExecutionGate: options.deviceExecutionGate ?? (() => true),
     });
 
     this.disposeDeviceListener = options.device.onStateChanged((state) => {
@@ -248,6 +259,9 @@ export class AgentRuntime {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const sessionId of this.sessionGenerations.keys()) {
+      this.bumpSessionGeneration(sessionId);
+    }
     this.disposeDeviceListener();
     for (const unsubscribe of this.disposeSensorBufferListeners.splice(0)) {
       unsubscribe();
@@ -261,6 +275,8 @@ export class AgentRuntime {
     }
     this.activeTurns.clear();
     this.pendingSystemWork.clear();
+    // Keep the synchronous public API while still failing safe on teardown.
+    void this.stopDevicesBestEffort();
   }
 
   /** Update the local sensor → Opossum bridge without rebuilding the runtime. */
@@ -271,6 +287,7 @@ export class AgentRuntime {
         opossum: this.options.opossum,
         pawPrints: this.options.pawPrints,
         civetEdging: this.options.civetEdging,
+        canExecute: () => this.canExecuteDeviceLink(),
       });
     } else {
       this.deviceLinkEngine.setRule(rule);
@@ -325,7 +342,11 @@ export class AgentRuntime {
       civetEdging: this.options.civetEdging,
       ...this.options.sensorTriggerOptions,
       onTrigger: (trigger) =>
-        this.enqueueSystemWork(trigger.sessionId, { kind: 'sensor-fired', trigger }),
+        this.enqueueSystemWork(trigger.sessionId, {
+          kind: 'sensor-fired',
+          trigger,
+          generation: this.getSessionGeneration(trigger.sessionId),
+        }),
     });
     this.sensorTriggerSessionId = sessionId;
   }
@@ -426,18 +447,32 @@ export class AgentRuntime {
   }
 
   async emergencyStop(sessionId: string): Promise<void> {
-    this.toolExecutor.cancelScheduledTimers(sessionId);
-    const result = await this.queue.enqueue({ type: 'emergencyStop' });
-    this.events.emit({
-      type: 'device-command-executed',
-      sessionId,
-      command: { type: 'emergencyStop' },
-      result,
-    });
-    // Best-effort: the panic button should also silence Opossum vibration,
-    // not just Coyote stim. Bypasses the opossum queue the same way Coyote's
-    // emergencyStop bypasses `DeviceCommandQueue`'s normal serialization.
-    await this.options.opossum?.emergencyStop();
+    // Latch first: continuations created before this line stay stale even if
+    // their provider or permission promise ignores AbortSignal.
+    const affectedSessions = new Set([...this.sessionGenerations.keys(), sessionId]);
+    for (const affectedSessionId of affectedSessions) {
+      this.bumpSessionGeneration(affectedSessionId);
+    }
+    for (const controller of this.activeTurns.values()) {
+      controller.abort();
+    }
+    this.pendingSystemWork.clear();
+    this.toolExecutor.cancelScheduledTimers();
+    this.teardownSensorTriggerEngine();
+    const linkRule = this.deviceLinkEngine?.getRule();
+    if (linkRule?.enabled) {
+      this.deviceLinkEngine?.setRule({ ...linkRule, enabled: false });
+    }
+
+    const result = await this.stopDevicesBestEffort();
+    if (result) {
+      this.events.emit({
+        type: 'device-command-executed',
+        sessionId,
+        command: { type: 'emergencyStop' },
+        result,
+      });
+    }
   }
 
   async abortCurrentReply(sessionId: string): Promise<void> {
@@ -445,6 +480,18 @@ export class AgentRuntime {
   }
 
   async sendUserMessage(input: SendUserMessageInput): Promise<void> {
+    return this.sendUserMessageAtGeneration(input, this.getSessionGeneration(input.sessionId));
+  }
+
+  private async sendUserMessageAtGeneration(
+    input: SendUserMessageInput,
+    expectedGeneration: number,
+  ): Promise<void> {
+    if (expectedGeneration !== this.getSessionGeneration(input.sessionId)) {
+      if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
+      throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
+    }
+
     if (this.isSessionDeleted(input.sessionId)) {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) {
         return;
@@ -454,13 +501,21 @@ export class AgentRuntime {
 
     if (this.activeTurns.has(input.sessionId)) {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) {
-        this.enqueueSystemWork(input.sessionId, { kind: 'follow-up', input });
+        this.enqueueSystemWork(input.sessionId, {
+          kind: 'follow-up',
+          input,
+          generation: expectedGeneration,
+        });
         return;
       }
       throw new Error('当前会话已有回复正在进行中');
     }
 
     const session = await this.ensureSession(input.sessionId);
+    if (expectedGeneration !== this.getSessionGeneration(input.sessionId)) {
+      if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
+      throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
+    }
     session.metadata = mergeBridgeOriginMetadata(session.metadata, input.context);
     const persistIncomingMessage = input.persistMessage ?? input.context.sourceType !== 'system';
     const incomingMessage = persistIncomingMessage ? createIncomingMessage(input) : null;
@@ -818,7 +873,10 @@ export class AgentRuntime {
   }
 
   private async processTimerTrigger(trigger: TimerFiredTrigger): Promise<void> {
-    if (this.isSessionDeleted(trigger.sessionId)) {
+    if (
+      trigger.generation !== this.getSessionGeneration(trigger.sessionId) ||
+      this.isSessionDeleted(trigger.sessionId)
+    ) {
       return;
     }
     await this.ensureSession(trigger.sessionId);
@@ -832,16 +890,19 @@ export class AgentRuntime {
       firedAt: trigger.firedAt,
     });
 
-    await this.sendUserMessage({
-      sessionId: trigger.sessionId,
-      text: buildTimerTriggerPrompt(trigger),
-      context: {
+    await this.sendUserMessageAtGeneration(
+      {
         sessionId: trigger.sessionId,
-        sourceType: 'system',
-        traceId: `timer-${trigger.firedAt}`,
+        text: buildTimerTriggerPrompt(trigger),
+        context: {
+          sessionId: trigger.sessionId,
+          sourceType: 'system',
+          traceId: `timer-${trigger.firedAt}`,
+        },
+        persistMessage: false,
       },
-      persistMessage: false,
-    });
+      trigger.generation,
+    );
   }
 
   /**
@@ -851,8 +912,14 @@ export class AgentRuntime {
    * written into `session.messages` (see docs/architecture.md's "ephemeral
    * trigger" concept).
    */
-  private async processSensorTrigger(trigger: SensorFiredTrigger): Promise<void> {
-    if (this.isSessionDeleted(trigger.sessionId)) {
+  private async processSensorTrigger(
+    trigger: SensorFiredTrigger,
+    expectedGeneration: number,
+  ): Promise<void> {
+    if (
+      expectedGeneration !== this.getSessionGeneration(trigger.sessionId) ||
+      this.isSessionDeleted(trigger.sessionId)
+    ) {
       return;
     }
     // Defense in depth: even though `setSensorTriggersEnabled(false)` tears
@@ -892,16 +959,19 @@ export class AgentRuntime {
         : trigger.deviceKind === 'civet-edging'
           ? civetSummary
           : undefined;
-    await this.sendUserMessage({
-      sessionId: trigger.sessionId,
-      text: buildSensorTriggerPrompt(trigger, trendSummary),
-      context: {
+    await this.sendUserMessageAtGeneration(
+      {
         sessionId: trigger.sessionId,
-        sourceType: 'sensor',
-        traceId: `sensor-${trigger.firedAt}`,
+        text: buildSensorTriggerPrompt(trigger, trendSummary),
+        context: {
+          sessionId: trigger.sessionId,
+          sourceType: 'sensor',
+          traceId: `sensor-${trigger.firedAt}`,
+        },
+        persistMessage: false,
       },
-      persistMessage: false,
-    });
+      expectedGeneration,
+    );
   }
 
   /**
@@ -959,6 +1029,7 @@ export class AgentRuntime {
   }
 
   private enqueueSystemWork(sessionId: string, work: QueuedSystemWork): void {
+    if (work.generation !== this.getSessionGeneration(sessionId)) return;
     const queue = this.pendingSystemWork.get(sessionId) ?? [];
     queue.push(work);
     this.pendingSystemWork.set(sessionId, queue);
@@ -991,6 +1062,9 @@ export class AgentRuntime {
           this.pendingSystemWork.delete(sessionId);
           break;
         }
+        if (next.generation !== this.getSessionGeneration(sessionId)) {
+          continue;
+        }
         if (!currentQueue || currentQueue.length === 0) {
           this.pendingSystemWork.delete(sessionId);
         } else {
@@ -1003,11 +1077,11 @@ export class AgentRuntime {
         }
 
         if (next.kind === 'sensor-fired') {
-          await this.processSensorTrigger(next.trigger);
+          await this.processSensorTrigger(next.trigger, next.generation);
           continue;
         }
 
-        await this.sendUserMessage(next.input);
+        await this.sendUserMessageAtGeneration(next.input, next.generation);
       }
     } finally {
       this.drainingSessions.delete(sessionId);
@@ -1031,6 +1105,41 @@ export class AgentRuntime {
     await this.sessions.save(session);
   }
 
+  private canExecuteDeviceLink(): boolean | Promise<boolean> {
+    if (!this.options.deviceExecutionGate) return true;
+    const sessionId = this.sensorTriggerSessionId ?? 'device-link';
+    return this.options.deviceExecutionGate({
+      sessionId,
+      context: { sessionId, sourceType: 'sensor', traceId: 'device-link' },
+      deviceKind: 'opossum',
+      toolName: 'device-link',
+      command: { type: 'vibrateStart', channel: 'A', intensity: 0 },
+    });
+  }
+
+  private getSessionGeneration(sessionId: string): number {
+    const existing = this.sessionGenerations.get(sessionId);
+    if (existing !== undefined) return existing;
+    this.sessionGenerations.set(sessionId, 0);
+    return 0;
+  }
+
+  private bumpSessionGeneration(sessionId: string): number {
+    const next = this.getSessionGeneration(sessionId) + 1;
+    this.sessionGenerations.set(sessionId, next);
+    return next;
+  }
+
+  private async stopDevicesBestEffort(): Promise<Awaited<
+    ReturnType<DeviceCommandQueue['emergencyStop']>
+  > | null> {
+    const [coyote] = await Promise.allSettled([
+      this.queue.emergencyStop(),
+      this.opossumQueue?.emergencyStop() ?? Promise.resolve(undefined),
+    ]);
+    return coyote.status === 'fulfilled' ? coyote.value : null;
+  }
+
   private isSessionDeleted(sessionId: string): boolean {
     return this.deletedSessionIds.has(sessionId);
   }
@@ -1040,14 +1149,17 @@ type QueuedSystemWork =
   | {
       kind: 'follow-up';
       input: SendUserMessageInput;
+      generation: number;
     }
   | {
       kind: 'timer-fired';
       trigger: TimerFiredTrigger;
+      generation: number;
     }
   | {
       kind: 'sensor-fired';
       trigger: SensorFiredTrigger;
+      generation: number;
     };
 
 function createIncomingMessage(input: SendUserMessageInput): ConversationMessage {

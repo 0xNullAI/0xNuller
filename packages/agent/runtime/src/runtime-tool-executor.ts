@@ -216,6 +216,7 @@ function resolvePolicyDecision<TCommand>(
 interface ScheduledTimer {
   sessionId: string;
   timer: ReturnType<typeof setTimeout>;
+  generation: number;
 }
 
 export interface TimerFiredTrigger {
@@ -223,7 +224,19 @@ export interface TimerFiredTrigger {
   label: string;
   seconds: number;
   firedAt: number;
+  /** Runtime continuation generation captured when the timer was scheduled. */
+  generation: number;
 }
+
+export interface DeviceExecutionGateInput {
+  sessionId: string;
+  context: ActionContext;
+  deviceKind: DeviceKind;
+  toolName: string;
+  command: DeviceCommand | OpossumCommand | { type: 'setIndicatorColor'; color: number };
+}
+
+export type DeviceExecutionGate = (input: DeviceExecutionGateInput) => boolean | Promise<boolean>;
 
 export interface RuntimeToolExecutorOptions {
   device: DeviceClient;
@@ -240,7 +253,10 @@ export interface RuntimeToolExecutorOptions {
   toolCallConfig: ToolCallConfig;
   emit: (event: RuntimeEvent) => void;
   enqueueTimerTrigger: (trigger: TimerFiredTrigger) => void;
+  getSessionGeneration: (sessionId: string) => number;
   traceStore: SessionTraceStore;
+  /** Checked at the final transport boundary. Defaults to allow in AgentRuntime. */
+  deviceExecutionGate: DeviceExecutionGate;
 }
 
 export interface ExecuteToolCallInput {
@@ -353,6 +369,7 @@ export class RuntimeToolExecutor {
         context,
         deviceKind: planResult.plan.deviceKind,
         color: planResult.plan.color,
+        abortSignal,
       });
     }
 
@@ -494,6 +511,7 @@ export class RuntimeToolExecutor {
     });
     const dueAt = Date.now() + command.seconds * 1000;
     const timerId = `${session.id}:${command.label}:${dueAt}`;
+    const generation = this.options.getSessionGeneration(session.id);
     const timer = setTimeout(() => {
       const firedAt = Date.now();
       this.scheduledTimers.delete(timerId);
@@ -508,8 +526,14 @@ export class RuntimeToolExecutor {
         label: command.label,
         seconds: command.seconds,
         firedAt,
+        generation,
       });
     }, command.seconds * 1000);
+    this.scheduledTimers.set(timerId, {
+      sessionId: session.id,
+      timer,
+      generation,
+    });
     await this.options.traceStore.append(session.id, {
       kind: 'timer-scheduled',
       turnId: context.traceId,
@@ -519,10 +543,6 @@ export class RuntimeToolExecutor {
       dueAt,
     });
 
-    this.scheduledTimers.set(timerId, {
-      sessionId: session.id,
-      timer,
-    });
     this.options.emit({
       type: 'timer-scheduled',
       sessionId: session.id,
@@ -607,6 +627,10 @@ export class RuntimeToolExecutor {
     }
 
     throwIfAborted(abortSignal);
+    if (!(await this.canExecuteDeviceCommand(session, context, toolCall, 'opossum', command))) {
+      return this.denyToolCall(session, toolCall, '当前模块已失去设备控制权', context);
+    }
+    throwIfAborted(abortSignal);
 
     this.options.emit({
       type: 'tool-call-executing',
@@ -674,12 +698,24 @@ export class RuntimeToolExecutor {
     context: ActionContext;
     deviceKind: DeviceKind;
     color: number;
+    abortSignal?: AbortSignal;
   }): Promise<string> {
-    const { session, toolCall, context, deviceKind, color } = input;
+    const { session, toolCall, context, deviceKind, color, abortSignal } = input;
     const client = this.getIndicatorCapableClient(deviceKind);
     if (!client) {
       return this.denyToolCall(session, toolCall, '设备未连接', context);
     }
+
+    throwIfAborted(abortSignal);
+    if (
+      !(await this.canExecuteDeviceCommand(session, context, toolCall, deviceKind, {
+        type: 'setIndicatorColor',
+        color,
+      }))
+    ) {
+      return this.denyToolCall(session, toolCall, '当前模块已失去设备控制权', context);
+    }
+    throwIfAborted(abortSignal);
 
     this.options.emit({
       type: 'tool-call-executing',
@@ -808,6 +844,10 @@ export class RuntimeToolExecutor {
     }
 
     throwIfAborted(abortSignal);
+    if (!(await this.canExecuteDeviceCommand(session, context, toolCall, 'coyote', command))) {
+      return this.denyToolCall(session, toolCall, '当前模块已失去设备控制权', context);
+    }
+    throwIfAborted(abortSignal);
 
     this.options.emit({
       type: 'tool-call-executing',
@@ -883,6 +923,30 @@ export class RuntimeToolExecutor {
         },
       });
     }
+  }
+
+  private async canExecuteDeviceCommand(
+    session: SessionSnapshot,
+    context: ActionContext,
+    toolCall: ToolCall,
+    deviceKind: DeviceKind,
+    command: DeviceExecutionGateInput['command'],
+  ): Promise<boolean> {
+    // Lease loss must never make a stop path unreachable.
+    if (
+      command.type === 'stop' ||
+      command.type === 'emergencyStop' ||
+      command.type === 'vibrateStop'
+    ) {
+      return true;
+    }
+    return this.options.deviceExecutionGate({
+      sessionId: session.id,
+      context,
+      deviceKind,
+      toolName: toolCall.name,
+      command,
+    });
   }
 
   private async denyToolCall(

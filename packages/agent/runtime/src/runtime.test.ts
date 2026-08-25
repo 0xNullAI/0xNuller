@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DeviceClient, LlmClient, PermissionService, SessionStore } from '@dg-agent/core';
 import { AgentRuntime } from './agent-runtime.js';
 import { createDefaultPolicyRules } from '@dg-kit/safety';
@@ -725,6 +725,33 @@ describe('AgentRuntime', () => {
     });
   });
 
+  it('checks an injected module lease gate at the final device boundary', async () => {
+    const device = new TestDevice();
+    const executed: DeviceCommand[] = [];
+    const originalExecute = device.execute.bind(device);
+    device.execute = async (command) => {
+      executed.push(command);
+      return originalExecute(command);
+    };
+    const runtime = new AgentRuntime({
+      device,
+      llm: new TestLlm(),
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+      deviceExecutionGate: () => false,
+      toolCallConfig: { maxToolIterations: 1 },
+    });
+
+    await runtime.sendUserMessage({
+      sessionId: 'lease-gate',
+      text: '启动',
+      context: { sessionId: 'lease-gate', sourceType: 'cli', traceId: 'lease-gate' },
+    });
+
+    expect(executed).toEqual([]);
+    expect((await device.getState()).strengthA).toBe(0);
+  });
+
   it('clamps cold start strength before executing device command', async () => {
     const runtime = new AgentRuntime({
       device: new TestDevice(),
@@ -748,6 +775,99 @@ describe('AgentRuntime', () => {
 
     const session = await runtime.getSessionSnapshot('test');
     expect(session.deviceState.strengthA).toBe(10);
+  });
+
+  it('invalidates a permission continuation before stopping devices', async () => {
+    let resolvePermission: ((decision: { type: 'approve-once' }) => void) | undefined;
+    let markRequested: (() => void) | undefined;
+    const requested = new Promise<void>((resolve) => {
+      markRequested = resolve;
+    });
+    const permission: PermissionService = {
+      request: async () => {
+        markRequested?.();
+        return new Promise((resolve) => {
+          resolvePermission = resolve;
+        });
+      },
+    };
+    const device = new TestDevice();
+    const executed: DeviceCommand[] = [];
+    const originalExecute = device.execute.bind(device);
+    device.execute = async (command) => {
+      executed.push(command);
+      return originalExecute(command);
+    };
+    const runtime = new AgentRuntime({
+      device,
+      llm: new TestLlm(),
+      permission,
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+
+    const reply = runtime.sendUserMessage({
+      sessionId: 'permission-stop',
+      text: '启动',
+      context: { sessionId: 'permission-stop', sourceType: 'cli', traceId: 'permission-stop' },
+    });
+    await requested;
+    await runtime.emergencyStop('permission-stop');
+    resolvePermission?.({ type: 'approve-once' });
+
+    await expect(reply).rejects.toThrow('已停止当前回复');
+    expect(executed).toEqual([]);
+    expect((await device.getState()).strengthA).toBe(0);
+  });
+
+  it('invalidates a late provider result even when the provider ignores AbortSignal', async () => {
+    let resolveTurn: ((result: Awaited<ReturnType<LlmClient['runTurn']>>) => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const llm: LlmClient = {
+      runTurn: async () => {
+        markStarted?.();
+        return new Promise((resolve) => {
+          resolveTurn = resolve;
+        });
+      },
+    };
+    const device = new TestDevice();
+    const executed: DeviceCommand[] = [];
+    const originalExecute = device.execute.bind(device);
+    device.execute = async (command) => {
+      executed.push(command);
+      return originalExecute(command);
+    };
+    const runtime = new AgentRuntime({
+      device,
+      llm,
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+    const reply = runtime.sendUserMessage({
+      sessionId: 'late-llm-stop',
+      text: '启动',
+      context: { sessionId: 'late-llm-stop', sourceType: 'cli', traceId: 'late-llm-stop' },
+    });
+    await started;
+    // Device output is runtime-global: a panic from another visible session
+    // must invalidate this session's late provider continuation too.
+    await runtime.emergencyStop('panic-button-session');
+    resolveTurn?.({
+      assistantMessage: '启动',
+      toolCalls: [
+        {
+          id: 'late-tool',
+          name: 'shock_start',
+          args: { channel: 'A', strength: 10, waveformId: 'pulse_mid', loop: true },
+        },
+      ],
+    });
+
+    await expect(reply).rejects.toThrow('已停止当前回复');
+    expect(executed).toEqual([]);
   });
 
   it('aborts an in-flight assistant reply and records the abort note', async () => {
@@ -1269,8 +1389,37 @@ describe('AgentRuntime', () => {
     expect(parsed.notes.some((note: string) => note.startsWith('policy-clamped:'))).toBe(true);
   });
 
-  it('releases its device-state listener on dispose so multiple runtimes can share one device', async () => {
-    const device = new TestDevice();
+  it('cancels scheduled timer continuations during emergency stop', async () => {
+    vi.useFakeTimers();
+    try {
+      const llm = new TimerFollowUpLlm();
+      const runtime = new AgentRuntime({
+        device: new TestDevice(),
+        llm,
+        permission: new TestPermission(),
+        waveformLibrary: createBasicWaveformLibrary(),
+      });
+      await runtime.sendUserMessage({
+        sessionId: 'cancel-timer-stop',
+        text: '等一秒',
+        context: {
+          sessionId: 'cancel-timer-stop',
+          sourceType: 'cli',
+          traceId: 'cancel-timer-stop',
+        },
+      });
+
+      await runtime.emergencyStop('cancel-timer-stop');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(llm.toolCountsBySource.filter((call) => call.sourceType === 'system')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases its device-state listener and safely stops output on dispose', async () => {
+    const device = new TestDevice({ strengthA: 20, waveActiveA: true });
     expect(device.listenerCount).toBe(0);
 
     const first = new AgentRuntime({
@@ -1290,7 +1439,9 @@ describe('AgentRuntime', () => {
     expect(device.listenerCount).toBe(2);
 
     first.dispose();
+    await Promise.resolve();
     expect(device.listenerCount).toBe(1);
+    expect((await device.getState()).strengthA).toBe(0);
 
     second.dispose();
     expect(device.listenerCount).toBe(0);
@@ -2295,6 +2446,24 @@ describe('AgentRuntime multi-device (opossum / sensors)', () => {
     const denied = events.filter((event) => event.type === 'tool-call-denied');
     expect(denied).toHaveLength(1);
     expect(denied[0] && 'reason' in denied[0] ? denied[0].reason : '').toContain('vibrate_adjust');
+  });
+
+  it('emergency stop silences Opossum even when the Coyote stop fails', async () => {
+    const device = new TestDevice();
+    device.emergencyStop = async () => {
+      throw new Error('Coyote transport failed');
+    };
+    const opossum = new TestOpossumClient({ intensityA: 40, intensityB: 20 });
+    const runtime = new AgentRuntime({
+      device,
+      opossum,
+      llm: new TestLlm(),
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+    });
+
+    await expect(runtime.emergencyStop('best-effort-stop')).resolves.toBeUndefined();
+    expect((await opossum.getState()).intensityA).toBe(0);
   });
 
   it('emergency stop also silences a connected opossum device', async () => {

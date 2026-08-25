@@ -13,6 +13,7 @@ export class DeviceLinkEngine {
   private active = false;
   private lastFiredAt = Number.NEGATIVE_INFINITY;
   private pulseTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
   private readonly unsubscribers: Array<() => void> = [];
 
   constructor(
@@ -22,6 +23,7 @@ export class DeviceLinkEngine {
       pawPrints?: PawPrintsClient;
       civetEdging?: CivetEdgingClient;
       now?: () => number;
+      canExecute?: () => boolean | Promise<boolean>;
     },
   ) {
     this.rule = { ...options.rule };
@@ -48,6 +50,8 @@ export class DeviceLinkEngine {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.active = false;
     this.clearPulseTimer();
     for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
   }
@@ -55,13 +59,13 @@ export class DeviceLinkEngine {
   private onSensor(reading: PawPrintsReading | CivetPressureReading): void {
     if (!this.rule.enabled || this.rule.source === 'opossum-button') return;
     if (this.rule.source === 'paw-button') {
-      if (reading.type === 'trigger') this.fire();
+      if (reading.type === 'trigger') void this.fire();
       return;
     }
     if (reading.type !== 'pressure') return;
     if (!this.active && reading.kPa >= this.rule.thresholdKPa) {
       this.active = true;
-      this.fire();
+      void this.fire();
     } else if (this.active && reading.kPa <= this.rule.releaseKPa) {
       this.active = false;
       void this.stop();
@@ -70,13 +74,16 @@ export class DeviceLinkEngine {
 
   private onButton(event: OpossumButtonEvent): void {
     if (this.rule.enabled && this.rule.source === 'opossum-button' && event.pressed.size > 0) {
-      this.fire();
+      void this.fire();
     }
   }
 
-  private fire(): void {
+  private async fire(): Promise<void> {
     const opossum = this.options.opossum;
-    if (!opossum) return;
+    if (!opossum || !this.rule.enabled || this.disposed) return;
+    if (this.options.canExecute && !(await this.options.canExecute())) return;
+    // The gate may have yielded while a lease revocation/emergency stop disabled the rule.
+    if (!this.rule.enabled || this.disposed) return;
     const now = this.options.now?.() ?? Date.now();
     if (now - this.lastFiredAt < this.rule.cooldownMs) return;
     this.lastFiredAt = now;

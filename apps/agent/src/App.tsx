@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type BridgeLogEntry,
   type BridgeManagerStatus,
@@ -423,28 +423,12 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     saveWaveformEdits,
   } = waveformManager;
 
-  const safetyGuard = useMemo(
-    () =>
-      new DeviceLifecycleGuard({
-        onStop: async (reason) => {
-          await performLifecycleStop(reason);
-        },
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
   // The theme is no longer applied by this module — it is a cross-module global setting
   // owned solely by @0xnullai/ui's store. Here we only subscribe so this module follows
   // along; writes go straight to the store from the settings panel. If we kept applying
   // it locally, switching back to this module would override the shell's choice with our
   // own stale value.
   useTheme();
-
-  useEffect(() => {
-    if (!safetyNoticeAccepted) return;
-    return safetyGuard.start();
-  }, [safetyGuard, safetyNoticeAccepted]);
 
   useEffect(() => {
     const unsubscribe = updateChecker.subscribe(setUpdateStatus);
@@ -500,19 +484,31 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     [pendingPermission],
   );
 
-  async function performLifecycleStop(reason: 'leave-page' | 'background-hidden'): Promise<void> {
-    denyPendingPermissionRequest('当前回复已在页面离开前台时终止');
-    stopAllVoiceActivity({ disableMode: true });
+  useEffect(() => {
+    if (!safetyNoticeAccepted) return;
+    const guard = new DeviceLifecycleGuard({
+      onStop: async (reason) => {
+        denyPendingPermissionRequest('当前回复已在页面离开前台时终止');
+        stopAllVoiceActivity({ disableMode: true });
 
-    if (activeSessionId) {
-      await client.abortCurrentReply(activeSessionId);
-      await client.emergencyStop(activeSessionId);
-    }
+        if (activeSessionId) {
+          await client.abortCurrentReply(activeSessionId);
+          await client.emergencyStop(activeSessionId);
+        }
 
-    if (reason === 'background-hidden') {
-      setStatusMessage('应用切到后台后，已自动停止当前输出');
-    }
-  }
+        if (reason === 'background-hidden') {
+          setStatusMessage('应用切到后台后，已自动停止当前输出');
+        }
+      },
+    });
+    return guard.start();
+  }, [
+    activeSessionId,
+    client,
+    denyPendingPermissionRequest,
+    safetyNoticeAccepted,
+    stopAllVoiceActivity,
+  ]);
 
   /**
    * Single unified connect entry point: one chooser scoped to all four

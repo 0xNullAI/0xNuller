@@ -33,6 +33,7 @@ import {
   type CivetEdgingClient,
   type OpossumClient,
   type PawPrintsClient,
+  type DeviceExecutionGate,
 } from '@dg-agent/runtime';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { createBuildBrowserInstructions } from './build-browser-instructions.js';
@@ -122,6 +123,8 @@ export interface CreateBrowserAgentClientOptions {
   sessionTraceStore?: SessionTraceStore;
   waveformLibrary: WaveformLibrary;
   permissionService?: PermissionService;
+  /** Optional final boundary check, typically backed by the shell's module lease. */
+  deviceExecutionGate?: DeviceExecutionGate;
   /**
    * Shared secret used to sign requests to the free-tier proxy. Only the
    * Tauri Android shell supplies this (via a build-time env var); web
@@ -220,6 +223,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
       },
     }),
+    deviceExecutionGate: options.deviceExecutionGate,
     permission:
       options.permissionService ??
       new BrowserPermissionService({
