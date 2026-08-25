@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   currentDeviceLease,
+  currentDeviceLeaseSnapshot,
   grantDeviceLease,
   hasDeviceLease,
   registerSafetySession,
@@ -63,11 +64,24 @@ describe('设备控制权租约', () => {
     expect(agent.onRevoke).toHaveBeenCalledTimes(1);
   });
 
-  it('重复授予同一个不会重复撤权', async () => {
+  it('重复授予同一个不会重复撤权或推进 epoch', async () => {
     const agent = session('agent');
     await grantDeviceLease('agent');
+    const granted = currentDeviceLeaseSnapshot();
     await grantDeviceLease('agent');
     expect(agent.onRevoke).not.toHaveBeenCalled();
+    expect(currentDeviceLeaseSnapshot()).toEqual(granted);
+  });
+
+  it('epoch 能识别 holder 相同的 ABA 租约', async () => {
+    await grantDeviceLease('agent');
+    const before = currentDeviceLeaseSnapshot();
+    await grantDeviceLease('chat');
+    await grantDeviceLease('agent');
+    const after = currentDeviceLeaseSnapshot();
+
+    expect(after.holder).toBe('agent');
+    expect(after.epoch).toBeGreaterThan(before.epoch);
   });
 
   it('交回 null 时也撤权——停在首页等于没人能下指令', async () => {

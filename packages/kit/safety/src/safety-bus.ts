@@ -117,6 +117,17 @@ const listeners = new Set<() => void>();
  * same as disconnecting.
  */
 let leaseHolder: string | null = null;
+/**
+ * Monotonic fencing token for the module lease. A holder name alone cannot
+ * distinguish agent → chat → agent from one uninterrupted agent lease.
+ */
+let leaseEpoch = 0;
+
+/** Atomic snapshot used by native-write boundaries to reject lease ABA. */
+export interface DeviceLeaseSnapshot {
+  holder: string | null;
+  epoch: number;
+}
 
 function notify(): void {
   for (const l of listeners) l();
@@ -217,6 +228,7 @@ export async function grantDeviceLease(moduleId: string | null): Promise<void> {
   if (leaseHolder === moduleId) return;
   const previous = leaseHolder;
   leaseHolder = moduleId;
+  leaseEpoch += 1;
   notify();
 
   if (!previous) return;
@@ -253,6 +265,16 @@ export function hasDeviceLease(moduleId: string): boolean {
 
 export function currentDeviceLease(): string | null {
   return leaseHolder;
+}
+
+/**
+ * Read the holder and its fencing epoch atomically.
+ *
+ * Consumers that perform asynchronous work must capture this snapshot and
+ * compare both fields again immediately before reaching a native write.
+ */
+export function currentDeviceLeaseSnapshot(): DeviceLeaseSnapshot {
+  return { holder: leaseHolder, epoch: leaseEpoch };
 }
 
 /** Subscribe to registry changes (module mount/unmount, lease transfer). */
