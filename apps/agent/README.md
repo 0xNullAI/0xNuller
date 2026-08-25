@@ -44,6 +44,8 @@ npm test
 
 ```text
 apps/agent/                         独立前端入口
+apps/agent/src/components/SessionNavigation.tsx
+                                    移动端、桌面端和统一外壳的会话导航视图
 packages/agent/runtime/             Agent 循环与工具调度
 packages/agent/client/              会话客户端
 packages/agent/providers-*/         模型适配器
@@ -54,6 +56,9 @@ apps/web/src/modules/agent.tsx      统一外壳入口
 
 设备协议、传输和安全能力来自 `packages/kit`；共享 UI、设置、场景和账户能力来自
 `packages/platform`。
+
+`App.tsx` 保留会话生命周期、权限与停止顺序；`SessionNavigation` 只把入口提供的会话操作
+投影为移动端抽屉、独立版桌面侧栏或统一外壳列表，不执行运行时工具或设备操作。
 
 旧版记录迁移步骤见[聊天记录迁移说明](../../docs/agent-history-migration.md)。
 

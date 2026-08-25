@@ -102,6 +102,10 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   re-exports during migration; they must not import another app for device UI or settings behavior.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
+- Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in
+  `apps/agent/src/App.tsx`; the standalone mobile/desktop and unified-shell conversation navigation
+  projections belong in `apps/agent/src/components/SessionNavigation.tsx` and receive lifecycle
+  callbacks from the entry rather than owning them.
 - Inside `packages/agent/runtime`, keep `AgentRuntime` as the session/lifecycle facade. Bounded LLM
   and tool iterations belong in the turn coordinator, tool permission/policy/device dispatch belongs
   in the tool executor, and pure context/quota transitions belong in turn state. Preserve the

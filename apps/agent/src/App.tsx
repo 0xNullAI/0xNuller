@@ -20,35 +20,25 @@ import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agen
 import {
   ModuleActions,
   ModuleSettingsSection,
-  SidebarSection,
   useInShell,
   useOpenShellSettings,
   useSafetySession,
   useTheme,
 } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
-import { ShellSessionList } from './components/ShellSessionList.js';
 import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { AudioWaveform, Bug, Database, X } from 'lucide-react';
+import { AudioWaveform, Bug, Database } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNotice } from '@0xnullai/ui';
-import { SessionPanel } from './components/SessionPanel.js';
+import { SessionNavigation } from './components/SessionNavigation.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
 import { ResetSettingsDialog } from './components/ResetSettingsDialog.js';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@0xnullai/ui';
 import {
   useBrowserAppServices,
   type PendingPermissionRequest,
@@ -857,6 +847,15 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setSafetyNoticeAccepted(true);
   }
 
+  const sessionNavigation = {
+    sessions: savedSessions,
+    activeSessionId,
+    onSelect: selectSession,
+    onRename: (sessionId: string, title: string | null) => void renameSession(sessionId, title),
+    onDelete: (sessionId: string) => void deleteSession(sessionId),
+    onCreate: () => void createNewSession(),
+  };
+
   return (
     <>
       <main
@@ -956,40 +955,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           />
         </ModuleSettingsSection>
 
-        {/* ===== Sidebar sheet (mobile) ===== */}
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetContent
-            side="left"
-            className="dg-sidebar-sheet flex h-full w-screen max-w-none flex-col overflow-hidden bg-[var(--bg-elevated)] p-0 pt-[env(safe-area-inset-top)] sm:max-w-[420px] [&>button]:hidden"
-          >
-            <SheetHeader className="px-5 pt-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <SheetTitle>历史记录</SheetTitle>
-                  <SheetDescription className="sr-only">
-                    选择历史对话，或者新建一条会话
-                  </SheetDescription>
-                </div>
-                <SheetClose className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] border border-[var(--surface-border)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">关闭</span>
-                </SheetClose>
-              </div>
-            </SheetHeader>
-            <div className="mt-1 min-h-0 flex-1">
-              <SessionPanel
-                savedSessions={savedSessions}
-                activeSessionId={activeSessionId}
-                onSelectSession={selectSession}
-                onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
-                onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-                onCreateSession={() => void createNewSession()}
-                onOpenSettings={() => openShellSettings()}
-                detached={true}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <SessionNavigation
+          variant="mobile"
+          {...sessionNavigation}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          onOpenSettings={() => openShellSettings()}
+        />
 
         {/* ===== Main layout ===== */}
         {/* In the shell only one column is left: the sidebar is owned by the shell and the
@@ -1007,27 +979,15 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
             } as React.CSSProperties
           }
         >
-          {/* Desktop sidebar */}
-          <aside
-            className={
-              inShell
-                ? 'hidden'
-                : 'dg-sidebar-shell hidden min-h-0 overflow-hidden border-r border-[var(--surface-border)] lg:block'
-            }
-          >
-            <SessionPanel
-              savedSessions={savedSessions}
-              activeSessionId={activeSessionId}
-              onSelectSession={selectSession}
-              onRenameSession={(sessionId, title) => void renameSession(sessionId, title)}
-              onDeleteSession={(sessionId) => void deleteSession(sessionId)}
-              onCreateSession={() => void createNewSession()}
-              onOpenSettings={() => openShellSettings()}
+          {!inShell && (
+            <SessionNavigation
+              variant="desktop"
+              {...sessionNavigation}
               collapsed={sidebarCollapsed}
               onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
-              detached={false}
+              onOpenSettings={() => openShellSettings()}
             />
-          </aside>
+          )}
 
           {/* Chat section */}
           <section className="relative flex min-h-0 min-w-0 overflow-hidden">
@@ -1109,16 +1069,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           be confirmed a second time on entering Agent. */}
       {/* The session list is projected into the shell sidebar's 「对话」 section. The module
           no longer draws a sidebar of its own. */}
-      <SidebarSection id="conversations" title="对话">
-        <ShellSessionList
-          sessions={savedSessions}
-          activeId={activeSessionId}
-          onSelect={selectSession}
-          onRename={(id, title) => void renameSession(id, title)}
-          onDelete={(id) => void deleteSession(id)}
-          onCreate={() => void createNewSession()}
-        />
-      </SidebarSection>
+      <SessionNavigation variant="shell" {...sessionNavigation} />
 
       {!inShell && !safetyNoticeAccepted && (
         <SafetyNotice moduleId="agent" onAccept={handleSafetyNoticeAccept} />

@@ -36,6 +36,8 @@ npm test
 
 ```text
 apps/agent/                         standalone frontend
+apps/agent/src/components/SessionNavigation.tsx
+                                    mobile, desktop, and unified-shell session navigation views
 packages/agent/runtime/             agent loop and tool scheduling
 packages/agent/client/              conversation client
 packages/agent/providers-*/         model adapters
@@ -43,6 +45,10 @@ packages/agent/storage-browser/     browser persistence
 packages/agent/waveforms/           waveform capabilities
 apps/web/src/modules/agent.tsx      unified-shell entry
 ```
+
+`App.tsx` retains session lifecycle, permission, and stop ordering. `SessionNavigation` only
+projects the session actions supplied by the entry into a mobile drawer, standalone desktop
+sidebar, or unified-shell list; it does not execute runtime tools or device operations.
 
 ## License
 
