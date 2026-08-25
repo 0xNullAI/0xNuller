@@ -105,7 +105,10 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
 - Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in
   `apps/agent/src/App.tsx`; the standalone mobile/desktop and unified-shell conversation navigation
   projections belong in `apps/agent/src/components/SessionNavigation.tsx` and receive lifecycle
-  callbacks from the entry rather than owning them.
+  callbacks from the entry rather than owning them. Unified-shell settings and diagnostics
+  registration belongs in `apps/agent/src/components/AgentModuleProjections.tsx`; it receives prepared
+  view models/actions and owns only visual disclosure state, never device/session lifecycles or
+  persistence decisions.
 - Inside `packages/agent/runtime`, keep `AgentRuntime` as the session/lifecycle facade. Bounded LLM
   and tool iterations belong in the turn coordinator, tool permission/policy/device dispatch belongs
   in the tool executor, pure device-tool availability belongs in `device-tool-availability.ts`,

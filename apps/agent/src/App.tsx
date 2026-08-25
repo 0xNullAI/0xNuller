@@ -17,25 +17,18 @@ import {
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import {
-  ModuleActions,
-  ModuleSettingsSection,
-  useInShell,
-  useOpenShellSettings,
-  useSafetySession,
-  useTheme,
-} from '@0xnullai/ui';
+import { useInShell, useOpenShellSettings, useSafetySession, useTheme } from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
-import { AudioWaveform, Bug, Database } from 'lucide-react';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNotice } from '@0xnullai/ui';
 import { SessionNavigation } from './components/SessionNavigation.js';
+import { AgentModuleProjections } from './components/AgentModuleProjections.js';
 import { FloatingStatusBar } from './components/FloatingStatusBar.js';
 import { WaveformEditorDialog } from './components/WaveformEditorDialog.js';
 import { ResetSettingsDialog } from './components/ResetSettingsDialog.js';
@@ -67,10 +60,6 @@ import {
 } from './utils/session-transfer.js';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { SessionSnapshot } from '@dg-agent/core';
-import { SensorsTab } from './components/settings/SensorsTab.js';
-import { WaveformsPanel } from './components/WaveformsPanel.js';
-import { DebugPanel } from './components/DebugPanel.js';
-import { DataTab } from './components/settings/DataTab.js';
 
 export interface AppProps {
   /**
@@ -150,7 +139,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   );
   const [text, setText] = useState('');
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -887,73 +875,43 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           onConfirm={resetSettings}
         />
 
-        {/* Settings that belong in the one shell panel but read this module's
-            live state — the settings draft, the waveform list, the session
-            list. Declared here, placed there. Rendered unconditionally rather
-            than only while Agent's own workspace is open, because the shell's
-            panel can be opened from anywhere. */}
-        {/* Diagnostics, not settings — see DebugPanel. Projected onto the
-            shell's toolbar; Agent previously declared no ModuleActions at all,
-            which is why its own panels were unreachable inside the shell. */}
-        <ModuleActions>
-          <button
-            type="button"
-            onClick={() => setDebugPanelOpen(true)}
-            aria-label="打开调试面板"
-            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-            title="调试面板"
-          >
-            <Bug className="h-4 w-4" />
-          </button>
-        </ModuleActions>
-
-        {debugPanelOpen && (
-          <DebugPanel
-            onClose={() => setDebugPanelOpen(false)}
-            bridge={{ settingsDraft, setSettingsDraft }}
-            bridgeLogs={{ bridgeLogs, bridgeStatus, settings }}
-            modelLogs={{
+        <AgentModuleProjections
+          debug={{
+            bridge: { settingsDraft, setSettingsDraft },
+            bridgeLogs: { bridgeLogs, bridgeStatus, settings },
+            modelLogs: {
               settingsDraft,
               setSettingsDraft,
               turns: modelLog.turns,
               onClear: modelLog.clear,
-            }}
-          />
-        )}
-
-        <ModuleSettingsSection id="agent-sensors" label="传感器" navigation={false}>
-          <SensorsTab
-            settingsDraft={settingsDraft}
-            setSettingsDraft={setSettingsDraft}
-            sensorTriggersEnabled={sensorTriggersEnabled}
-            onToggleSensorTriggers={(enabled) => void toggleSensorTriggers(enabled)}
-            deviceLinkRule={deviceLinkRule}
-            onSetDeviceLinkRule={setDeviceLinkRule}
-          />
-        </ModuleSettingsSection>
-
-        <ModuleSettingsSection id="agent-waveforms" label="波形" icon={AudioWaveform} order={30}>
-          <WaveformsPanel
-            waveforms={waveforms}
-            customWaveforms={customWaveforms}
-            onImport={(files) => void importWaveformFiles(files)}
-            onImportFromMarket={(waveform) => void importWaveformFromMarket(waveform)}
-            onRemove={(id) => void removeWaveform(id)}
-            onEdit={openWaveformEditor}
-          />
-        </ModuleSettingsSection>
-
-        <ModuleSettingsSection id="agent-data" label="数据" icon={Database} order={60}>
-          <DataTab
-            sessions={savedSessions.filter(isSessionListEntry).map((session) => ({
+            },
+          }}
+          sensors={{
+            settingsDraft,
+            setSettingsDraft,
+            sensorTriggersEnabled,
+            onToggleSensorTriggers: (enabled) => void toggleSensorTriggers(enabled),
+            deviceLinkRule,
+            onSetDeviceLinkRule: setDeviceLinkRule,
+          }}
+          waveforms={{
+            waveforms,
+            customWaveforms,
+            onImport: (files) => void importWaveformFiles(files),
+            onImportFromMarket: (waveform) => void importWaveformFromMarket(waveform),
+            onRemove: (id) => void removeWaveform(id),
+            onEdit: openWaveformEditor,
+          }}
+          data={{
+            sessions: savedSessions.filter(isSessionListEntry).map((session) => ({
               id: session.id,
               title: getSessionTitle(session),
               updatedAt: session.updatedAt,
-            }))}
-            onExport={(ids) => void exportSessions(ids)}
-            onImport={(file) => void importSessions(file)}
-          />
-        </ModuleSettingsSection>
+            })),
+            onExport: (ids) => void exportSessions(ids),
+            onImport: (file) => void importSessions(file),
+          }}
+        />
 
         <SessionNavigation
           variant="mobile"
