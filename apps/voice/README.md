@@ -52,7 +52,7 @@ npm run cf:dev -w 0xnullai-voice   # 体验模式 Worker
 src/lib/realtime/       Realtime provider 适配
 src/lib/                音频、设备与工具桥
 src/hooks/              React 状态绑定
-src/components/         通话与设置 UI
+src/components/         通话与设置 UI；共享设备面板来自 @0xnullai/ui
 worker/                 体验模式入口与 TrialSession DO
 ```
 

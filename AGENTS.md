@@ -96,6 +96,10 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   must not import another app's implementation.
 - Shared waveform import/library hooks belong in `packages/platform/waveforms`; reusable device
   controls such as press-and-hold repeat belong in `packages/platform/ui`.
+- Shared device snapshots belong in `packages/platform/device-runtime`, shared device panels with
+  injected actions in `packages/platform/ui`, and cross-module safety persistence/adapters in
+  `packages/platform/settings`. Feature apps consume these contracts and may keep narrow compatibility
+  re-exports during migration; they must not import another app for device UI or settings behavior.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
 - Rendering and interaction state used by only one surface: that app's `src` directory.

@@ -46,7 +46,7 @@ npm run types:check -w 0xnullai-chat
 ## 代码结构
 
 ```text
-src/components/       房间、消息、成员和设备 UI
+src/components/       房间、消息、成员 UI；共享设备面板来自 @0xnullai/ui
 src/hooks/            房间、设备和波形状态
 src/lib/              WebSocket、媒体与客户端协议
 worker/index.ts       HTTP 与 WebSocket 路由

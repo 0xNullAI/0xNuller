@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { loadDeviceSafety, updateDeviceSafety } from '@0xnullai/settings';
 import {
   createDefaultSettings,
   loadSettings,
@@ -30,6 +31,56 @@ describe('settings persistence', () => {
     expect(loaded.activeProviderId).toBe('openai');
     expect(loaded.providers.openai.apiKey).toBe('sk-test');
     expect(loaded.coyoteSafety.maxStrengthA).toBe(30);
+  });
+
+  it('reads the platform safety contract as the source of truth', () => {
+    updateDeviceSafety((previous) => ({
+      ...previous,
+      maxStrengthA: 21,
+      maxAdjustStep: 4,
+      maxIntensityB: 23,
+      maxOpossumAdjustStep: 5,
+    }));
+
+    const loaded = loadSettings();
+    expect(loaded.coyoteSafety.maxStrengthA).toBe(21);
+    expect(loaded.coyoteSafety.maxAdjustStep).toBe(4);
+    expect(loaded.opossumSafety.maxIntensityB).toBe(23);
+    expect(loaded.opossumSafety.maxAdjustStep).toBe(5);
+  });
+
+  it('writes every nested safety field through the platform adapter', () => {
+    const settings = createDefaultSettings();
+    settings.coyoteSafety = {
+      maxStrengthA: 20,
+      maxStrengthB: 21,
+      maxColdStartStrength: 3,
+      maxAdjustStep: 4,
+      maxBurstDurationMs: 600,
+      maxBurstStrengthAbsolute: 22,
+      maxBurstStrengthRelative: 5,
+    };
+    settings.opossumSafety = {
+      maxColdStartIntensity: 6,
+      maxAdjustStep: 7,
+      maxIntensityA: 23,
+      maxIntensityB: 24,
+    };
+
+    saveSettings(settings);
+    expect(loadDeviceSafety()).toMatchObject({
+      maxStrengthA: 20,
+      maxStrengthB: 21,
+      maxColdStartStrength: 3,
+      maxAdjustStep: 4,
+      maxBurstDurationMs: 600,
+      maxBurstStrengthAbsolute: 22,
+      maxBurstStrengthRelative: 5,
+      maxColdStartIntensity: 6,
+      maxOpossumAdjustStep: 7,
+      maxIntensityA: 23,
+      maxIntensityB: 24,
+    });
   });
 
   it('falls back to defaults instead of throwing on malformed stored JSON', () => {

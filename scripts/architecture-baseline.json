@@ -1,33 +1,4 @@
 {
   "description": "Known dependency violations. New violations fail CI; remove entries as debt is fixed.",
-  "violations": [
-    {
-      "rule": "app-to-app",
-      "importer": "apps/voice/src/App.tsx",
-      "specifier": "../../chat/src/components/DeviceSafetyButton",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/voice/src/App.tsx|../../chat/src/components/DeviceSafetyButton|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/voice/src/App.tsx",
-      "specifier": "../../chat/src/components/OpossumControl",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/voice/src/App.tsx|../../chat/src/components/OpossumControl|apps/chat"
-    },
-    {
-      "rule": "app-to-app",
-      "importer": "apps/voice/src/components/VoiceDeviceButton.test.tsx",
-      "specifier": "../../../chat/src/components/DeviceSafetyButton",
-      "target": "apps/chat",
-      "id": "app-to-app|apps/voice/src/components/VoiceDeviceButton.test.tsx|../../../chat/src/components/DeviceSafetyButton|apps/chat"
-    },
-    {
-      "rule": "platform-to-app",
-      "importer": "packages/platform/settings/src/cross-module.test.ts",
-      "specifier": "../../../../apps/voice/src/lib/settings",
-      "target": "apps/voice",
-      "id": "platform-to-app|packages/platform/settings/src/cross-module.test.ts|../../../../apps/voice/src/lib/settings|apps/voice"
-    }
-  ]
+  "violations": []
 }
