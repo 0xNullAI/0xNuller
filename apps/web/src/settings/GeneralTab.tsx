@@ -1,4 +1,5 @@
 import { useTheme } from '@0xnullai/ui';
+import { ProxySection } from './ProxySection';
 
 const THEMES = [
   { value: 'auto', label: '跟随系统' },
@@ -6,7 +7,7 @@ const THEMES = [
   { value: 'light', label: '浅色' },
 ] as const;
 
-export function AppearanceTab() {
+export function GeneralTab() {
   const { mode, setMode } = useTheme();
 
   return (
@@ -37,6 +38,8 @@ export function AppearanceTab() {
           ))}
         </div>
       </section>
+
+      <ProxySection />
     </div>
   );
 }

@@ -35,14 +35,23 @@ describe('统一 AI 设置', () => {
 
   it('在 Agent、Voice、Video 之间切换且默认保持现有 Agent 设置', () => {
     render(<AiTab />);
-    expect(screen.getByRole('tab', { name: 'Agent' }).getAttribute('aria-selected')).toBe('true');
+    const agentTab = screen.getByRole('tab', { name: 'Agent' });
+    expect(agentTab.getAttribute('aria-selected')).toBe('true');
+    expect(agentTab.getAttribute('aria-controls')).toBe('ai-agent-panel');
     expect(screen.getByRole('heading', { name: '文本模型' })).toBeTruthy();
+
+    fireEvent.keyDown(agentTab, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Voice' }).getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Voice' }));
+    expect(screen.getByRole('heading', { name: '语音模型' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Voice' }));
     expect(screen.getByRole('heading', { name: '语音模型' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Video' }));
     expect(screen.getByRole('heading', { name: 'Video 视觉模型' })).toBeTruthy();
+    expect(screen.getByText('API 密钥')).toBeTruthy();
+    expect(screen.queryByText('Video API 密钥')).toBeNull();
   });
 
   it('Agent 设置变更不会改写 Video 配置', () => {

@@ -374,6 +374,37 @@ describe('DeviceRuntime Video fail-safe lifecycle', () => {
     expect(harness.session.writeVibrate).toHaveBeenCalledTimes(1);
   });
 
+  it('does not let an authorization continuation clear a newer emergency latch', async () => {
+    const harness = backendHarness();
+    await harness.start();
+    const ids = target(harness.provider);
+    const service = createService(harness.provider, llmWithCalls([]));
+
+    const pending = service.authorize(grantInput(ids.deviceId, ids.featureId));
+    await service.emergencyStop();
+
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(service.getGrant()).toBeNull();
+    expect(service.isEmergencyLatched()).toBe(true);
+  });
+
+  it('blocks resume until a paused target has confirmed stop', async () => {
+    const harness = backendHarness();
+    await harness.start();
+    const ids = target(harness.provider);
+    const service = createService(harness.provider, llmWithCalls([]));
+    await service.authorize(grantInput(ids.deviceId, ids.featureId));
+    const stopped = deferred<void>();
+    harness.session.stopFeature = vi.fn(() => stopped.promise);
+
+    const stopping = service.stop('pause');
+    await vi.waitFor(() => expect(harness.session.stopFeature).toHaveBeenCalledOnce());
+    await expect(service.beginRun()).rejects.toThrow('正在确认设备已停止');
+    stopped.resolve();
+    await stopping;
+    await expect(service.beginRun()).resolves.toBeTypeOf('number');
+  });
+
   it('keeps emergency stop global across every embedded device', async () => {
     const harness = backendHarness([
       vibrateDevice('native-one'),

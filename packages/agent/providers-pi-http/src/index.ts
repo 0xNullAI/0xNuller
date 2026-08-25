@@ -23,6 +23,9 @@ const configSchema = z.object({
   providerKey: z.enum(PI_AI_PROVIDER_KEYS as [PiAiProviderKey, ...PiAiProviderKey[]]),
   temperature: z.number().min(0).max(2).default(0.3),
   supportsImageInput: z.boolean().default(false),
+  transformUrl: z
+    .custom<(url: string) => string>((value) => typeof value === 'function')
+    .optional(),
 });
 
 export interface PiAiLlmClientConfig {
@@ -32,6 +35,8 @@ export interface PiAiLlmClientConfig {
   temperature?: number;
   /** Must be resolved from an explicit provider+model capability allowlist. */
   supportsImageInput?: boolean;
+  /** Browser composition may route every provider URL through one global reverse proxy. */
+  transformUrl?: (url: string) => string;
 }
 
 /**
@@ -83,7 +88,10 @@ export class PiAiLlmClient implements LlmClient {
     }
 
     const provider = await loadPiAiProvider(this.config.providerKey);
-    const model = resolvePiAiModel(provider, this.config.model);
+    const resolvedModel = resolvePiAiModel(provider, this.config.model);
+    const model = this.config.transformUrl
+      ? { ...resolvedModel, baseUrl: this.config.transformUrl(resolvedModel.baseUrl) }
+      : resolvedModel;
     if (input.image && !model.input.includes('image')) {
       throw new Error('当前模型目录未声明图片输入能力，请切换到支持视觉的模型');
     }

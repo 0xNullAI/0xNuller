@@ -20,10 +20,8 @@ export interface ModuleRoute {
  * The app switcher, in display order.
  *
  * The order is deliberate and is the order the products are meant to be
- * discovered in — Control first because driving your own device is the plainest
- * thing this software does and needs no account, no room and no model key, then
- * Agent as the simplest way to hand that over, and Market last because it is
- * where you go once you know what you want.
+ * discovered in — direct control first, then communication and assisted control,
+ * followed by content discovery and the developer playground.
  */
 export const MODULES: ModuleRoute[] = [
   {
@@ -33,16 +31,16 @@ export const MODULES: ModuleRoute[] = [
     Component: lazy(() => import('./modules/control')),
   },
   {
+    id: 'chat',
+    label: 'Chat',
+    blurb: '多人房间远程控制',
+    Component: lazy(() => import('./modules/chat')),
+  },
+  {
     id: 'agent',
     label: 'Agent',
     blurb: '对话控制设备',
     Component: lazy(() => import('./modules/agent')),
-  },
-  {
-    id: 'video',
-    label: 'Video',
-    blurb: '摄像头视觉闭环场景',
-    Component: lazy(() => import('./modules/video')),
   },
   {
     id: 'voice',
@@ -51,22 +49,22 @@ export const MODULES: ModuleRoute[] = [
     Component: lazy(() => import('./modules/voice')),
   },
   {
-    id: 'chat',
-    label: 'Chat',
-    blurb: '多人房间远程控制',
-    Component: lazy(() => import('./modules/chat')),
-  },
-  {
-    id: 'playground',
-    label: 'Playground',
-    blurb: '把设备接进游戏',
-    Component: lazy(() => import('./modules/playground')),
+    id: 'video',
+    label: 'Video',
+    blurb: '摄像头视觉闭环场景',
+    Component: lazy(() => import('./modules/video')),
   },
   {
     id: 'market',
     label: 'Market',
     blurb: '波形与场景社区',
     Component: lazy(() => import('./modules/market')),
+  },
+  {
+    id: 'playground',
+    label: 'Playground',
+    blurb: '把设备接进游戏',
+    Component: lazy(() => import('./modules/playground')),
   },
 ];
 

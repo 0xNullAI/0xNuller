@@ -9,6 +9,7 @@ import {
   getProviderImageModels,
   isVideoLlmConfigured,
   loadVideoLlmConfig,
+  resolveProviderRequestUrl,
   saveVideoLlmConfig,
   subscribeVideoLlmConfig,
   supportsProviderModelImageInput,
@@ -75,7 +76,10 @@ export function VideoProviderSection() {
           ? (await listModelsForProvider(definition.piProviderKey as PiAiProviderKey)).map(
               (model) => model.id,
             )
-          : await listModels({ baseUrl: config.baseUrl, apiKey: config.apiKey });
+          : await listModels({
+              baseUrl: resolveProviderRequestUrl(config.baseUrl),
+              apiKey: config.apiKey,
+            });
       const filtered = filterVideoModelIds(definition.id, found);
       setDiscoveredModels(filtered);
       setStatus(
@@ -140,7 +144,7 @@ export function VideoProviderSection() {
 
         {definition?.fields.some((field) => field.key === 'apiKey') && (
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">Video API 密钥</span>
+            <span className="text-xs text-[var(--text-soft)]">API 密钥</span>
             <Input
               type="password"
               value={config.apiKey}
@@ -190,11 +194,15 @@ export function VideoProviderSection() {
         >
           刷新视觉模型列表
         </button>
-        {status && <span className="text-xs text-[var(--text-faint)]">{status}</span>}
+        {status && (
+          <span role="status" className="text-xs text-[var(--text-faint)]">
+            {status}
+          </span>
+        )}
 
         {definition?.fields.some((field) => field.key === 'apiKey') && (
           <label className="flex items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
-            <span>仅在当前设备记住 Video API 密钥</span>
+            <span>仅在当前设备记住 API 密钥</span>
             <input
               type="checkbox"
               checked={config.rememberApiKey}

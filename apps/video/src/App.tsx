@@ -25,10 +25,7 @@ import type { LlmClient } from '@dg-agent/core';
 import { getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
-import {
-  DEFAULT_CAMERA_FRAME_SETTINGS,
-  type CameraFrameSettings,
-} from './services/camera-frame.js';
+import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
 import {
   VisualSession,
   type VisualSafetyStopReason,
@@ -68,7 +65,14 @@ const EMPTY_DEVICE_SNAPSHOT: BrowserVideoDeviceSnapshot = {
 };
 
 type GrantSnapshot = NonNullable<ReturnType<BrowserVideoControlService['getGrant']>>;
+type ActiveGrantSnapshot = GrantSnapshot | DeviceRuntimeVideoGrantSnapshot;
 type VideoTargetFamily = 'dg-lab' | 'embedded';
+
+const FIXED_CAMERA_FRAME_SETTINGS = Object.freeze({
+  ...DEFAULT_CAMERA_FRAME_SETTINGS,
+  cropPreset: '16:9' as const,
+  outputMaxEdge: 768,
+});
 
 function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
@@ -126,11 +130,8 @@ export function App() {
   const [safety, setSafety] = useState(toVideoSafety);
   const [sceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
-  const [frameSettings, setFrameSettings] = useState<CameraFrameSettings>(() => ({
-    ...DEFAULT_CAMERA_FRAME_SETTINGS,
-  }));
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
-  const [captureIntervalMs, setCaptureIntervalMs] = useState(1_000);
+  const captureIntervalMs = 1_000;
   const [durationMinutes, setDurationMinutes] = useState(5);
   const [targetFamily, setTargetFamily] = useState<VideoTargetFamily>('dg-lab');
   const [targetKind, setTargetKind] = useState<VideoOutputKind>('coyote');
@@ -149,6 +150,13 @@ export function App() {
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const startOperationRef = useRef(0);
+  const autoStartRef = useRef<number | null>(null);
+  const lifecycleEffectRef = useRef(0);
+  const invalidatePendingStart = useCallback(() => {
+    startOperationRef.current += 1;
+    autoStartRef.current = null;
+  }, []);
   const openSettings = useOpenShellSettings();
   const native = useNativeBridge();
   const createControlService = (native.video?.createControlService ??
@@ -226,7 +234,7 @@ export function App() {
     start: startCamera,
     stop: stopCamera,
     capture: cameraCapture,
-  } = useCameraPreview(visionEnabled, facingMode, frameSettings);
+  } = useCameraPreview(facingMode, FIXED_CAMERA_FRAME_SETTINGS, invalidatePendingStart);
 
   const interpret = useCallback(
     async (image: Parameters<BrowserVideoControlService['observe']>[0], signal: AbortSignal) => {
@@ -275,9 +283,11 @@ export function App() {
     if (cameraState !== 'on') return;
     const timer = window.setTimeout(() => void session.captureNow(), 120);
     return () => window.clearTimeout(timer);
-  }, [cameraState, frameSettings, session]);
+  }, [cameraState, session]);
 
   const emergencyStop = useCallback(async () => {
+    startOperationRef.current += 1;
+    autoStartRef.current = null;
     session.emergencyStop();
     setGrant(null);
     setEmbeddedGrant(null);
@@ -304,6 +314,8 @@ export function App() {
     connect: () => service.connect().then(() => undefined),
     disconnect: (deviceId) => service.disconnect(deviceId),
     onRevoke: async () => {
+      startOperationRef.current += 1;
+      autoStartRef.current = null;
       session.failSafeStop('lease-loss');
       const results = await Promise.allSettled([
         service.stop('lease-loss'),
@@ -339,13 +351,25 @@ export function App() {
   }, [embeddedDevices, embeddedGrant, session]);
 
   useEffect(() => {
-    if ((cameraState === 'off' || cameraState === 'error') && visual.status === 'running') {
+    if (
+      (cameraState === 'off' || cameraState === 'error') &&
+      (visual.status === 'running' ||
+        visual.status === 'paused' ||
+        grant !== null ||
+        embeddedGrant !== null)
+    ) {
+      startOperationRef.current += 1;
+      autoStartRef.current = null;
+      // VisualSession synchronously publishes the safety stop; its onChange
+      // callback clears both grant snapshots in one place.
       session.failSafeStop('camera-ended');
     }
-  }, [cameraState, session, visual.status]);
+  }, [cameraState, embeddedGrant, grant, session, visual.status]);
 
   const stopEverything = useCallback(
     (reason: 'hidden' | 'unmount' = 'hidden') => {
+      startOperationRef.current += 1;
+      autoStartRef.current = null;
       if (reason === 'hidden') session.failSafeStop('hidden');
       else session.stop('unmount');
       stopCamera();
@@ -355,6 +379,7 @@ export function App() {
   const rootRef = useStopWhenModuleHidden(() => stopEverything('hidden'));
 
   useEffect(() => {
+    const effectEpoch = ++lifecycleEffectRef.current;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') stopEverything('hidden');
     };
@@ -362,8 +387,12 @@ export function App() {
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       stopEverything('unmount');
-      void service.dispose();
-      void genericService?.dispose();
+      queueMicrotask(() => {
+        // React StrictMode immediately replays effects with the same service instances.
+        if (lifecycleEffectRef.current !== effectEpoch) return;
+        void service.dispose();
+        void genericService?.dispose();
+      });
     };
   }, [genericService, service, stopEverything]);
 
@@ -422,18 +451,30 @@ export function App() {
     setEmbeddedGrant(null);
   }
 
-  async function authorizeControl() {
+  async function compensateCancelledStart() {
+    try {
+      await emergencyStop();
+    } catch {
+      // emergencyStop already reports and latches failures.
+    }
+  }
+
+  async function authorizeControl(operation: number): Promise<ActiveGrantSnapshot | null> {
     if (!targetConnected) {
-      setLocalError('请先选择要授权的输出功能');
-      return;
+      setLocalError('请选择输出功能');
+      return null;
     }
     try {
       setLocalError(null);
       await grantDeviceLease('video');
+      if (operation !== startOperationRef.current) return null;
       await stopPreviousControl(targetFamily);
+      if (operation !== startOperationRef.current) return null;
+
+      let authorized: ActiveGrantSnapshot;
       if (targetFamily === 'embedded') {
         if (!genericService || !selectedEmbeddedTarget) throw new Error('通用设备运行时不可用');
-        const next = await genericService.authorize({
+        authorized = await genericService.authorize({
           deviceId: selectedEmbeddedTarget.deviceId,
           featureId: selectedEmbeddedTarget.featureId,
           intensityCap: effectiveEmbeddedIntensityCap,
@@ -442,10 +483,8 @@ export function App() {
           cadenceMs: cadenceSeconds * 1000,
           captureIntervalMs,
         });
-        setGrant(null);
-        setEmbeddedGrant(next);
       } else {
-        const next = await service.authorize({
+        authorized = await service.authorize({
           targetKind,
           targetId,
           channel,
@@ -456,22 +495,37 @@ export function App() {
           cadenceMs: cadenceSeconds * 1000,
           captureIntervalMs,
         });
+      }
+
+      if (operation !== startOperationRef.current) {
+        await compensateCancelledStart();
+        return null;
+      }
+      if (targetFamily === 'embedded') {
+        setGrant(null);
+        setEmbeddedGrant(authorized as DeviceRuntimeVideoGrantSnapshot);
+      } else {
         setEmbeddedGrant(null);
-        setGrant(next);
+        setGrant(authorized as GrantSnapshot);
       }
       session.resetEmergencyLatch();
+      return authorized;
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : '无法创建控制授权');
+      if (operation === startOperationRef.current) {
+        setLocalError(error instanceof Error ? error.message : '无法创建控制授权');
+      }
+      return null;
     }
   }
 
-  async function startSession() {
-    if (cameraState !== 'on') {
-      setLocalError('请先开启摄像头并确认实时预览');
-      return;
-    }
-    if (!activeGrant || activeGrant.revoked || Date.now() >= activeGrant.expiresAt) {
-      setLocalError('请先确认目标、功能与上限并授权');
+  async function startSession(
+    authorizedGrant: ActiveGrantSnapshot | null,
+    now: number,
+    operation: number,
+  ) {
+    if (cameraState !== 'on' || operation !== startOperationRef.current) return;
+    if (!authorizedGrant || authorizedGrant.revoked || now >= authorizedGrant.expiresAt) {
+      setLocalError('授权已失效');
       return;
     }
     if (currentControl() !== targetFamily) {
@@ -483,24 +537,47 @@ export function App() {
       if (visual.status !== 'paused') setObservations([]);
       if (targetFamily === 'embedded') await genericService!.beginRun();
       else service.beginRun();
+      if (operation !== startOperationRef.current) {
+        await compensateCancelledStart();
+        return;
+      }
       session.start(
-        activeGrant.cadenceMs,
-        Math.max(1_000, activeGrant.expiresAt - Date.now()),
-        activeGrant.captureIntervalMs,
+        authorizedGrant.cadenceMs,
+        Math.max(1_000, authorizedGrant.expiresAt - now),
+        authorizedGrant.captureIntervalMs,
       );
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : '无法开始视觉控制');
+      if (operation === startOperationRef.current) {
+        setLocalError(error instanceof Error ? error.message : '无法开始视觉控制');
+      }
     }
   }
 
-  async function captureManually() {
-    if (cameraState !== 'on') {
-      setLocalError('请先开启摄像头');
+  async function beginExperience() {
+    if (!visionEnabled) {
+      setLocalError('请先完成视觉模型设置');
       return;
     }
-    setLocalError(null);
-    await session.captureNow();
+    const operation = ++startOperationRef.current;
+    autoStartRef.current = operation;
+    setGrant(null);
+    setEmbeddedGrant(null);
+    setObservations([]);
+    await startCamera();
   }
+
+  useEffect(() => {
+    const operation = autoStartRef.current;
+    if (cameraState === 'on' && operation !== null) {
+      autoStartRef.current = null;
+      void authorizeControl(operation).then((authorized) => {
+        if (authorized) return startSession(authorized, Date.now(), operation);
+      });
+    } else if (cameraState === 'error' && operation !== null) {
+      startOperationRef.current += 1;
+      autoStartRef.current = null;
+    }
+  });
 
   async function connect(kind: VideoOutputKind) {
     try {
@@ -542,87 +619,137 @@ export function App() {
 
   return (
     <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
-      <div className="mx-auto grid min-h-full w-full max-w-[1180px] gap-5 p-4 md:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] md:p-6">
-        <CameraWorkbench
-          videoRef={videoRef}
-          processedPreviewRef={processedPreviewRef}
-          cameraState={cameraState}
-          visionEnabled={visionEnabled}
-          facingMode={facingMode}
-          settings={frameSettings}
-          latestFrame={frame}
-          onFacingModeChange={setFacingMode}
-          onSettingsChange={setFrameSettings}
-          onStartCamera={() => void startCamera()}
-          onStopCamera={() => stopEverything('hidden')}
-          onCapture={() => void captureManually()}
+      <div className="mx-auto min-h-full w-full max-w-[960px] p-4 md:p-6">
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          aria-hidden="true"
+          className="pointer-events-none absolute h-px w-px opacity-0"
         />
+        {cameraState === 'on' ? (
+          <div className="flex flex-col gap-3">
+            <CameraWorkbench
+              processedPreviewRef={processedPreviewRef}
+              cameraState={cameraState}
+              latestFrame={frame}
+              onStopCamera={() => {
+                startOperationRef.current += 1;
+                autoStartRef.current = null;
+                session.failSafeStop('camera-ended');
+                setGrant(null);
+                setEmbeddedGrant(null);
+                stopCamera();
+              }}
+            />
 
-        <aside className="flex flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="font-semibold">视觉控制</h2>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-                每次授权最长 15 分钟。新画面替换旧画面，图片不会保存、同步或进入历史。
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => openSettings('ai-video')}
-              aria-label="打开 AI 设置"
-              className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
-            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-              输出类型
-              <select
-                value={targetFamily}
-                onChange={(event) => setTargetFamily(event.target.value as VideoTargetFamily)}
-                disabled={visual.status === 'running'}
-                className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
-              >
-                <option value="dg-lab">郊狼 / 负鼠</option>
-                {genericService && <option value="embedded">通用嵌入设备</option>}
-              </select>
-            </label>
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium">设备授权</span>
-              <div className="flex gap-1.5">
-                {targetFamily === 'embedded' ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void discoverEmbeddedDevices()}
-                    disabled={visual.status === 'running'}
-                  >
-                    <Link className="h-3.5 w-3.5" /> 查找设备
+            <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3">
+              <span className="mr-auto text-xs text-[var(--text-soft)]">
+                {activeGrant ? `${statusLabel(visual)} · ${visual.steps} 次` : '摄像头预览'}
+              </span>
+              {activeGrant &&
+                (visual.status === 'running' ? (
+                  <Button size="sm" variant="secondary" onClick={() => session.pause()}>
+                    <CirclePause className="h-4 w-4" /> 暂停
                   </Button>
                 ) : (
-                  <>
-                    {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
-                      <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
-                        <Link className="h-3.5 w-3.5" />
-                        {devices.coyotes.length > 0 ? '添加郊狼' : '郊狼'}
-                      </Button>
-                    )}
-                    {!devices.opossumTarget && (
-                      <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
-                        <Link className="h-3.5 w-3.5" /> 负鼠
-                      </Button>
-                    )}
-                  </>
-                )}
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void startSession(activeGrant, Date.now(), startOperationRef.current)
+                    }
+                  >
+                    <CirclePlay className="h-4 w-4" /> 继续
+                  </Button>
+                ))}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => void emergencyStop().catch(() => undefined)}
+              >
+                <ShieldAlert className="h-4 w-4" /> 紧急停止
+              </Button>
+            </div>
+
+            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            {observations.at(-1) && (
+              <p className="rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3 text-sm leading-relaxed">
+                {observations.at(-1)?.text}
+              </p>
+            )}
+          </div>
+        ) : (
+          <section className="mx-auto flex max-w-[680px] flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-5">
+            <header className="flex items-center justify-between gap-3">
+              <div>
+                <h1 className="font-semibold">Video 设置</h1>
+                <p className="mt-1 text-xs text-[var(--text-faint)]">确认后直接显示处理画面</p>
               </div>
+              <button
+                type="button"
+                onClick={() => openSettings('ai-video')}
+                aria-label="打开 AI 设置"
+                className="rounded-[var(--radius-ctl)] p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </header>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                摄像头
+                <select
+                  value={facingMode}
+                  onChange={(event) => setFacingMode(event.target.value as CameraFacingMode)}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
+                >
+                  <option value="environment">后置</option>
+                  <option value="user">前置</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+                输出
+                <select
+                  value={targetFamily}
+                  onChange={(event) => setTargetFamily(event.target.value as VideoTargetFamily)}
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
+                >
+                  <option value="dg-lab">郊狼 / 负鼠</option>
+                  {genericService && <option value="embedded">通用设备</option>}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {targetFamily === 'embedded' ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void discoverEmbeddedDevices()}
+                >
+                  <Link className="h-3.5 w-3.5" /> 查找设备
+                </Button>
+              ) : (
+                <>
+                  {(service.supportsMultipleCoyotes() || devices.coyotes.length === 0) && (
+                    <Button size="sm" variant="secondary" onClick={() => void connect('coyote')}>
+                      <Link className="h-3.5 w-3.5" />
+                      {devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼'}
+                    </Button>
+                  )}
+                  {!devices.opossumTarget && (
+                    <Button size="sm" variant="secondary" onClick={() => void connect('opossum')}>
+                      <Link className="h-3.5 w-3.5" /> 连接负鼠
+                    </Button>
+                  )}
+                </>
+              )}
+              <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
             </div>
 
             {targetFamily === 'embedded' ? (
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                通用振动功能
+                振动功能
                 <select
                   value={embeddedFeatureId}
                   onChange={(event) => {
@@ -632,19 +759,18 @@ export function App() {
                     setEmbeddedFeatureId(event.target.value);
                     if (next) setEmbeddedDeviceId(next.deviceId);
                   }}
-                  disabled={visual.status === 'running'}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
                 >
-                  <option value="">请选择已发现的振动功能</option>
+                  <option value="">请选择</option>
                   {embeddedTargets.map((target, index) => (
                     <option key={target.featureId} value={target.featureId}>
-                      {target.name} · 振动 {index + 1} · {target.deviceId}
+                      {target.name} · 振动 {index + 1}
                     </option>
                   ))}
                 </select>
               </label>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
                 <label className="grid gap-1 text-xs text-[var(--text-soft)]">
                   目标
                   <select
@@ -656,14 +782,12 @@ export function App() {
                       setTargetId(event.target.value);
                       if (nextTarget) setTargetKind(nextTarget.kind);
                     }}
-                    disabled={visual.status === 'running'}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
                   >
-                    <option value="">请选择已连接目标</option>
+                    <option value="">请选择</option>
                     {connectedTargets.map((target) => (
                       <option key={target.targetId} value={target.targetId}>
-                        {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name} ·{' '}
-                        {target.targetId}
+                        {target.kind === 'coyote' ? '郊狼' : '负鼠'} · {target.name}
                       </option>
                     ))}
                   </select>
@@ -673,8 +797,7 @@ export function App() {
                   <select
                     value={channel}
                     onChange={(event) => setChannel(event.target.value as 'A' | 'B')}
-                    disabled={visual.status === 'running'}
-                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                    className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
                   >
                     <option value="A">A</option>
                     <option value="B">B</option>
@@ -683,41 +806,36 @@ export function App() {
               </div>
             )}
 
-            {targetFamily === 'embedded' ? (
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                归一化强度上限 · {Math.round(effectiveEmbeddedIntensityCap * 100)}%
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={effectiveEmbeddedIntensityCap}
-                  onChange={(event) => setEmbeddedIntensityCap(Number(event.target.value))}
-                  disabled={visual.status === 'running'}
-                />
-              </label>
-            ) : (
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                强度上限 · {effectiveIntensityCap}/{targetSafetyCap}
-                <input
-                  type="range"
-                  min={0}
-                  max={targetSafetyCap}
-                  value={effectiveIntensityCap}
-                  onChange={(event) => setIntensityCap(Number(event.target.value))}
-                  disabled={visual.status === 'running'}
-                />
-              </label>
-            )}
+            <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+              强度上限 ·{' '}
+              {targetFamily === 'embedded'
+                ? `${Math.round(effectiveEmbeddedIntensityCap * 100)}%`
+                : `${effectiveIntensityCap}/${targetSafetyCap}`}
+              <input
+                type="range"
+                min={0}
+                max={targetFamily === 'embedded' ? 1 : targetSafetyCap}
+                step={targetFamily === 'embedded' ? 0.01 : 1}
+                value={
+                  targetFamily === 'embedded'
+                    ? effectiveEmbeddedIntensityCap
+                    : effectiveIntensityCap
+                }
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (targetFamily === 'embedded') setEmbeddedIntensityCap(value);
+                  else setIntensityCap(value);
+                }}
+              />
+            </label>
 
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                授权时长
+                时长
                 <select
                   value={durationMinutes}
                   onChange={(event) => setDurationMinutes(Number(event.target.value))}
-                  disabled={visual.status === 'running'}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
                 >
                   {[1, 5, 10, 15].map((minutes) => (
                     <option key={minutes} value={minutes}>
@@ -727,32 +845,17 @@ export function App() {
                 </select>
               </label>
               <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                模型节奏
+                观察间隔
                 <select
                   value={cadenceSeconds}
                   onChange={(event) => setCadenceSeconds(Number(event.target.value))}
-                  disabled={visual.status === 'running'}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
+                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
                 >
-                  <option value={5}>5 秒</option>
-                  <option value={10}>10 秒</option>
-                  <option value={15}>15 秒</option>
-                  <option value={30}>30 秒</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-                最新帧刷新
-                <select
-                  value={captureIntervalMs}
-                  onChange={(event) => setCaptureIntervalMs(Number(event.target.value))}
-                  disabled={visual.status === 'running'}
-                  className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-2"
-                >
-                  <option value={200}>0.2 秒</option>
-                  <option value={500}>0.5 秒</option>
-                  <option value={1000}>1 秒</option>
-                  <option value={2000}>2 秒</option>
-                  <option value={5000}>5 秒</option>
+                  {[5, 10, 15, 30].map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {seconds} 秒
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -763,9 +866,8 @@ export function App() {
                   type="checkbox"
                   checked={allowEnhanced}
                   onChange={(event) => setAllowEnhanced(event.target.checked)}
-                  disabled={visual.status === 'running'}
                 />
-                允许小步增强
+                允许增强
               </label>
               {targetFamily === 'dg-lab' && (
                 <label className="flex items-center gap-2">
@@ -773,85 +875,42 @@ export function App() {
                     type="checkbox"
                     checked={allowBurst}
                     onChange={(event) => setAllowBurst(event.target.checked)}
-                    disabled={visual.status === 'running'}
                   />
-                  允许短时脉冲
+                  允许脉冲
                 </label>
               )}
             </div>
 
-            <Button
-              variant={activeGrant ? 'secondary' : 'default'}
-              onClick={() => void authorizeControl()}
-              disabled={!visionEnabled || !targetConnected || visual.status === 'running'}
-            >
-              {activeGrant ? '重新授权' : '确认并授权'}
-            </Button>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {visual.status === 'running' ? (
-              <Button variant="secondary" onClick={() => session.pause()}>
-                <CirclePause className="h-4 w-4" /> 暂停
-              </Button>
-            ) : (
-              <Button
-                onClick={() => void startSession()}
-                disabled={!activeGrant || cameraState !== 'on'}
+            {!visionEnabled && (
+              <button
+                type="button"
+                onClick={() => openSettings('ai-video')}
+                className="text-left text-xs text-[var(--accent-strong)] underline underline-offset-2"
               >
-                <CirclePlay className="h-4 w-4" />
-                {visual.status === 'paused' ? '继续' : '开始'}
-              </Button>
+                完成视觉模型设置后可启用 AI 控制
+              </button>
             )}
+            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+
             <Button
-              variant="secondary"
-              onClick={() => session.stop()}
-              disabled={visual.status === 'idle'}
+              onClick={() => {
+                if (visionEnabled && targetConnected) {
+                  void beginExperience();
+                } else {
+                  startOperationRef.current += 1;
+                  autoStartRef.current = null;
+                  setGrant(null);
+                  setEmbeddedGrant(null);
+                  void startCamera();
+                }
+              }}
+              disabled={cameraState === 'starting'}
             >
-              停止
+              <CirclePlay className="h-4 w-4" />
+              {visionEnabled && targetConnected ? '开启' : '预览摄像头'}
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void emergencyStop().catch(() => undefined)}
-            >
-              <ShieldAlert className="h-4 w-4" /> 紧急停止
-            </Button>
-          </div>
-
-          <div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-soft)]">
-            状态：{statusLabel(visual)} · {visual.steps} 次观察
-            {activeGrant && !activeGrant.revoked
-              ? ` · 目标 ${targetFamily === 'embedded' ? embeddedGrant?.featureId : grant?.targetId} · 授权至 ${new Date(activeGrant.expiresAt).toLocaleTimeString()}`
-              : ' · 未授权'}
-          </div>
-
-          {!visionEnabled && (
-            <p className="rounded-[var(--radius-sm)] bg-[var(--accent-soft)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
-              当前文本模型未明确支持图片输入。请在 AI 设置中选择受支持的视觉模型。
-            </p>
-          )}
-          {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-
-          <div className="min-h-[120px] flex-1 space-y-3 overflow-y-auto">
-            {observations.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[var(--text-faint)]">
-                场景回应仅保留在当前页面
-              </p>
-            ) : (
-              observations.map((observation) => (
-                <article
-                  key={observation.step}
-                  className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
-                >
-                  <div className="mb-1 text-xs font-medium text-[var(--accent-strong)]">
-                    第 {observation.step} 次
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{observation.text}</p>
-                </article>
-              ))
-            )}
-          </div>
-        </aside>
+          </section>
+        )}
       </div>
     </div>
   );

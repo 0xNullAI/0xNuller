@@ -1,4 +1,5 @@
 import { Download, ExternalLink } from 'lucide-react';
+import { ExperimentalDeviceSection } from './ExperimentalDeviceSection';
 import {
   ANDROID_DOWNLOAD_URL,
   PRODUCT_BUILD_ID,
@@ -21,6 +22,7 @@ export function AboutTab() {
           <dd className="break-all font-mono text-xs text-[var(--text-soft)]">{buildLabel}</dd>
         </dl>
       </section>
+      <ExperimentalDeviceSection />
       <section className="flex flex-wrap gap-2 border-t border-[var(--surface-border)] pt-4">
         <a
           href={ANDROID_DOWNLOAD_URL}
