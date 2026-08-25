@@ -126,9 +126,25 @@ export class AiDeviceToolAdapter {
     validateModelArgs(call.name, call.args);
 
     const tools = await this.options.tools();
-    if (call.name === 'device_snapshot') return tools.invoke(call.name, call.args);
+    if (call.name === 'device_snapshot') {
+      const snapshot = (await tools.invoke(call.name, call.args)) as DeviceSnapshot;
+      return sanitizeAiDeviceSnapshot(snapshot);
+    }
     return tools.invoke(call.name, { ...call.args, interactionId: call.id });
   }
+}
+
+export function sanitizeAiDeviceSnapshot(snapshot: DeviceSnapshot): DeviceSnapshot {
+  return {
+    ...snapshot,
+    devices: snapshot.devices.map((device) => ({
+      ...device,
+      // Advertised names may contain brands or user-provided text. Models
+      // receive capabilities and exact opaque IDs only.
+      name: 'Connected device',
+      capabilities: device.capabilities.map((capability) => ({ ...capability })),
+    })),
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   AI_DEVICE_TOOL_CATALOG,
   appendAiDeviceRuntimeStatus,
   isAiDeviceToolName,
+  sanitizeAiDeviceSnapshot,
 } from './ai-adapter.js';
 import type {
   BackendEvent,
@@ -224,6 +225,9 @@ describe('AI device adapter allowlist', () => {
     expect(result).toContain('feature-opaque');
     expect(result).toContain('vibrate');
     expect(result).not.toContain('Private device label');
+    const sanitized = sanitizeAiDeviceSnapshot(snapshot);
+    expect(sanitized.devices[0]!.name).toBe('Connected device');
+    expect(JSON.stringify(sanitized)).not.toContain('Private device label');
     expect(appendAiDeviceRuntimeStatus(original, null)).toBe(original);
   });
 });

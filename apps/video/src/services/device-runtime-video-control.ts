@@ -1,5 +1,6 @@
 import {
   MAX_OUTPUT_LEASE_MS,
+  sanitizeAiDeviceSnapshot,
   type BoundDeviceTools,
   type CommandAck,
   type DeviceId,
@@ -504,9 +505,9 @@ export class DeviceRuntimeVideoControlService {
 
   private snapshotForGrantedTarget(): DeviceSnapshot {
     const grant = this.requireGrantSnapshot();
-    const snapshot = this.requireRuntime().snapshot();
+    const snapshot = sanitizeAiDeviceSnapshot(this.requireRuntime().snapshot());
     return {
-      ...cloneSnapshot(snapshot),
+      ...snapshot,
       devices: snapshot.devices
         .filter(({ deviceId }) => deviceId === grant.deviceId)
         .map((device) => ({
