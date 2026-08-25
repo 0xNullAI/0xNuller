@@ -1,4 +1,9 @@
-import { isAiDeviceToolName, type AiDeviceToolAdapter } from '@0xnullai/device-runtime';
+import {
+  AI_DEVICE_TOOL_DISPLAY_NAMES,
+  aiDeviceToolRequiresPermission,
+  isAiDeviceToolName,
+  type AiDeviceToolAdapter,
+} from '@0xnullai/device-runtime';
 import type { ToolCall, ToolDefinition } from '@dg-kit/core';
 import type { ActionContext, PermissionService } from '@dg-kit/safety';
 import type { ToolRegistry } from '@dg-kit/tools';
@@ -29,11 +34,11 @@ export class VoiceCompositeToolExecutor implements ToolExecutorLike {
       return this.options.legacy.execute(toolCall);
     }
 
-    if (toolCall.name === 'device_vibrate') {
+    if (aiDeviceToolRequiresPermission(toolCall.name)) {
       const decision = await this.options.permission.request({
         context: this.options.context,
         toolName: toolCall.name,
-        summary: '通用设备振动',
+        summary: AI_DEVICE_TOOL_DISPLAY_NAMES[toolCall.name],
         args: toolCall.args,
       });
       if (decision.type === 'deny') {

@@ -100,6 +100,12 @@ Never hide a failure, fabricate device validation, or weaken a check to make wor
   injected actions in `packages/platform/ui`, and cross-module safety persistence/adapters in
   `packages/platform/settings`. Feature apps consume these contracts and may keep narrow compatibility
   re-exports during migration; they must not import another app for device UI or settings behavior.
+- Generic-device consumers use `DeviceRuntimeModuleBinding` for lazy module binding and snapshot
+  subscriptions, `createAiDeviceToolAdapter` for Agent/Voice model exposure, and
+  `genericDeviceSafetyPolicy` / `genericDeviceIntensityCap` for normalized safety settings. Do not
+  duplicate provider startup, AI allowlists/display names, permission classification, interaction-ID
+  generation, or percentage-to-normalized cap arithmetic in feature apps. Video keeps its explicit
+  one-target visual grant and stale-identity stop escalation above these shared primitives.
 - LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
   `packages/agent/agent-browser`.
 - Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in

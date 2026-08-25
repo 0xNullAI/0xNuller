@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AiDeviceToolAdapter,
   AI_DEVICE_TOOL_CATALOG,
+  AI_DEVICE_TOOL_DISPLAY_NAMES,
+  aiDeviceToolRequiresPermission,
   appendAiDeviceRuntimeStatus,
+  createAiDeviceToolAdapter,
   isAiDeviceToolName,
   sanitizeAiDeviceSnapshot,
 } from './ai-adapter.js';
@@ -95,6 +98,13 @@ describe('AI device adapter allowlist', () => {
     ).toEqual(['deviceId', 'featureId', 'intensity', 'outputLeaseMs']);
   });
 
+  it('shares display copy and classifies only output-increasing calls for upper consent', () => {
+    expect(AI_DEVICE_TOOL_DISPLAY_NAMES.device_stop).toBe('停止通用设备功能');
+    expect(aiDeviceToolRequiresPermission('device_vibrate')).toBe(true);
+    expect(aiDeviceToolRequiresPermission('device_stop')).toBe(false);
+    expect(aiDeviceToolRequiresPermission('device_scan')).toBe(false);
+  });
+
   it('requires exact opaque IDs and injects the trusted tool-call ID', async () => {
     const { adapter, invoke } = boundToolsHarness();
     await adapter.invoke({
@@ -183,8 +193,11 @@ describe('AI device adapter allowlist', () => {
         leaseSnapshot: () => ({ holder: 'agent', epoch: 1 }),
       },
     });
-    const agent = new AiDeviceToolAdapter({ tools: () => provider.forModule('agent') });
-    const voice = new AiDeviceToolAdapter({ tools: () => provider.forModule('voice') });
+    const agent = createAiDeviceToolAdapter(provider, 'agent');
+    const voice = createAiDeviceToolAdapter(provider, 'voice');
+
+    expect(agent.snapshot()).toBeNull();
+    expect(harness.backend.openSession).not.toHaveBeenCalled();
 
     const [agentSnapshot, voiceSnapshot] = await Promise.all([
       agent.invoke({ id: 'agent-snapshot', name: 'device_snapshot', args: {} }),
@@ -194,6 +207,7 @@ describe('AI device adapter allowlist', () => {
     expect((agentSnapshot as DeviceSnapshot).sessionId).toBe(
       (voiceSnapshot as DeviceSnapshot).sessionId,
     );
+    expect(agent.snapshot()?.sessionId).toBe((agentSnapshot as DeviceSnapshot).sessionId);
   });
 
   it('appends only opaque runtime IDs and capabilities to existing instructions', () => {

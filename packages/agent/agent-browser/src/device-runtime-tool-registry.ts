@@ -1,20 +1,15 @@
 import {
+  AI_DEVICE_PERMISSION_TOOL_NAMES,
+  AI_DEVICE_TOOL_DISPLAY_NAMES,
   isAiDeviceToolName,
   type AiDeviceToolAdapter,
-  type AiDeviceToolName,
 } from '@0xnullai/device-runtime';
 import type { ToolCall, ToolDefinition, ToolExecutionPlan } from '@dg-agent/core';
 import { ToolRegistry } from '@dg-agent/runtime';
 
 /** Only output-increasing generic tools require Agent's upper permission gate. */
-export const AGENT_RUNTIME_PERMISSION_TOOL_NAMES: ReadonlySet<string> = new Set(['device_vibrate']);
-
-const DISPLAY_NAMES: Record<AiDeviceToolName, string> = {
-  device_snapshot: '读取通用设备状态',
-  device_vibrate: '通用设备振动',
-  device_stop: '停止通用设备功能',
-  device_emergency_stop: '紧急停止通用设备',
-};
+export const AGENT_RUNTIME_PERMISSION_TOOL_NAMES: ReadonlySet<string> =
+  AI_DEVICE_PERMISSION_TOOL_NAMES;
 
 /**
  * One ToolRegistry keeps all legacy DG tools and adds the small generic
@@ -45,7 +40,7 @@ export class DeviceRuntimeToolRegistry extends ToolRegistry {
       ...legacy,
       ...this.runtime.definitions().map<ToolDefinition>((definition) => ({
         name: definition.name,
-        displayName: DISPLAY_NAMES[definition.name],
+        displayName: AI_DEVICE_TOOL_DISPLAY_NAMES[definition.name],
         description: definition.description,
         parameters: definition.parameters as Record<string, unknown>,
       })),
@@ -53,7 +48,9 @@ export class DeviceRuntimeToolRegistry extends ToolRegistry {
   }
 
   override getDisplayName(name: string): string | undefined {
-    return isAiDeviceToolName(name) ? DISPLAY_NAMES[name] : this.legacy.getDisplayName(name);
+    return isAiDeviceToolName(name)
+      ? AI_DEVICE_TOOL_DISPLAY_NAMES[name]
+      : this.legacy.getDisplayName(name);
   }
 
   override summarizeCommand(
