@@ -15,6 +15,7 @@ standalone build.
 - Shared scenes with Voice and shared device/safety state with the other modules.
 - Browser storage for conversations, scenes, and waveforms, with supported account sync.
 - Web Bluetooth in browsers and native BLE in the Android shell.
+- Direct import of conversation ZIP or JSON files exported by the legacy DG-Agent.
 
 The model submits tool requests; the execution layer applies permissions, safety policy, and the
 command queue. Stopping output never depends on a model response.
@@ -49,6 +50,13 @@ apps/web/src/modules/agent.tsx      unified-shell entry
 `App.tsx` retains session lifecycle, permission, and stop ordering. `SessionNavigation` only
 projects the session actions supplied by the entry into a mobile drawer, standalone desktop
 sidebar, or unified-shell list; it does not execute runtime tools or device operations.
+
+## Import old conversations
+
+Export a ZIP from **Settings → Data** in the legacy DG-Agent, then select it from
+**Settings → Data → Import** in 0xNuller. Legacy single-conversation JSON, multi-conversation JSON,
+and current ZIP exports are accepted directly. An invalid file does not clear existing data.
+Account sync includes imported conversations, but never model keys, device connections, or permissions.
 
 ## License
 

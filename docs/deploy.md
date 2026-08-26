@@ -104,6 +104,17 @@ npm run account:role -- --remote-write \
 
 不要自动把第一个注册账户设为管理员。
 
+## 运行观察
+
+- Auth 注册要求唯一邮箱；验证链接 24 小时有效，密码重置链接 30 分钟有效且只能使用一次。
+  找回请求始终返回同一结果，避免泄漏账户是否存在。邮件退信和 suppression list 在 Cloudflare
+  Email Sending 中查看。
+- Chat 要求邮箱已验证；Control、Agent、Playground 和用户自行配置的模型不受此门禁影响。
+- 部署后分别检查 Auth、Chat、Market、Voice 和 Web 的错误率、延迟与异常日志，不能只检查首页。
+- 生产 smoke 定期检查 Web 版本、Auth 匿名契约、Chat 邮箱门禁、Market 查询和 Voice 边界；它不
+  代替 Cloudflare 的错误率观察。
+- 仓库没有内置外部告警接收方。配置通知渠道前，只能声称已采集观测数据，不能声称已有主动告警。
+
 ## 旧域迁移
 
 历史子域已永久迁移。网页导航以 `308` 跳到统一主站的对应模块并保留查询参数；旧 API、
