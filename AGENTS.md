@@ -1,235 +1,120 @@
 # 0xNuller repository guide
 
-This is the root instruction set for maintainers and coding agents. A nested `AGENTS.md` may add
-stricter rules for its subtree, but must not weaken these safety, architecture, or verification rules.
-`docs/legacy` is historical context, never the current source of truth.
+This file contains only rules that apply to nearly every change. Read the nearest package README and
+the routed document below when a task enters that domain. `docs/legacy` is historical context, never
+the current source of truth. A nested `AGENTS.md` may tighten, but not weaken, these rules.
 
-## Start here
+## Before editing
 
-Before changing code:
+1. Run `git status --short --branch`; preserve all existing work and unrelated changes.
+2. Read the target package README, `package.json`, adjacent tests, direct callers, and the relevant
+   document from the routing table below.
+3. Identify whether the change affects device output, safety, permissions, persistence, public APIs,
+   production data, or release behavior.
+4. Fix the narrowest shared source of the behavior instead of patching several surfaces separately.
+5. Use the repository npm version and lockfile. In a fresh checkout use `npm ci`.
 
-1. Run `git status --short --branch`. Preserve existing work; do not reset, clean, overwrite, switch
-   branches, or rewrite history without explicit permission.
-2. Read the nearest `AGENTS.md`, the target package README and `package.json`, adjacent tests, and
-   the direct callers. Search before assuming an API or path exists.
-3. Classify the task as Repository, Product, DG-Kit, or DG-MCP. Identify whether it changes device
-   output, safety, a public API, persistence, permissions, or release behavior.
-4. Find the true source of the behavior and its consumers. Fix the narrowest shared layer rather than
-   patching several surfaces independently.
-5. In a fresh checkout use `npm ci`. DG-Kit is dist-first, so build it before downstream builds or
-   type checks when the command does not already do so.
+Do not reset, clean, overwrite, switch branches, rewrite history, connect hardware, operate production
+accounts, or claim real-device validation unless the user explicitly authorizes it.
 
-Runtime requirements are declared in the root `package.json`. Use the repository's npm version and
-lockfile; do not substitute another package manager.
+## Repository shape
 
-## Repository and release shape
+The monorepo ships three independently versioned deliverables:
 
-One monorepo contains three independently versioned deliverables:
+- Product: Web, Workers, and signed Android APK; versioned from root product metadata.
+- DG-Kit: the fixed Changesets group under `packages/kit/*`.
+- DG-MCP: the independent `apps/mcp` npm package.
 
-- **0xNuller Product**: Web, Workers, and signed Android APK. Its version comes from the root product
-  metadata and is delivered through Cloudflare plus one `vX.Y.Z` GitHub Release.
-- **DG-Kit**: seven public `@dg-kit/*` npm packages in one fixed Changesets version group.
-- **DG-MCP**: the independent public `dg-mcp` npm package under `apps/mcp`.
-
-The dependency direction is:
+Dependency direction:
 
 ```text
+shells -> feature apps -> platform/agent packages -> kit packages
 DG-Kit -> Product
 DG-Kit -> DG-MCP
 ```
 
-Product does not depend on DG-MCP. A Kit change affects all three CI domains for compatibility, but
-does not automatically require all three versions to change.
+Only `apps/web` and `android/app` may compose feature apps. Other apps must not import one another to
+reuse business logic; move shared behavior into the narrowest suitable package.
 
-Repository layout:
+| Need                              | Read                         |
+| --------------------------------- | ---------------------------- |
+| Code ownership or dependency move | `docs/architecture.md`       |
+| Agent runtime, history, or tools  | `docs/agent-architecture.md` |
+| Test placement or command choice  | `docs/testing.md`            |
+| Worker/D1/R2/DO deployment        | `docs/deploy.md`             |
+| Product release                   | `docs/platform-release.md`   |
+| Android release                   | `docs/android-release.md`    |
+| Other maintained documentation    | `docs/README.md`             |
 
-- `apps/*`: user-facing feature modules and deployable applications; `apps/mcp` is the MCP package.
-- `android/app`: Tauri Android shell. It composes product modules and does not own device semantics.
-- `packages/kit/*`: runtime-neutral types, protocol, safety, tools, waveforms, and transports.
-- `packages/agent/*`: model/runtime/provider/storage composition for Agent features.
-- `packages/platform/*`: product-wide browser services and shared UI/data clients.
-- `workers/*`, `apps/*/worker`, and `apps/*/src/worker`: independently deployed Cloudflare backends.
-- `scripts/*`: repository, release, and verification tooling.
-- `docs/*`: maintained design and operations documentation.
+Package entrypoints are export barrels, not implementation files. Prefer behavior-named modules over
+generic `utils.ts`, `helpers.ts`, or `common.ts` files.
 
-The intended product dependency direction is:
+## Shared ownership
 
-```text
-shells -> feature apps -> platform/agent packages -> kit packages
+- `packages/kit/core`: runtime-neutral contracts and state primitives.
+- `packages/kit/protocol`: device bytes and protocol behavior.
+- `packages/kit/safety`: limits, permissions, queues, leases, and stop ordering.
+- `packages/kit/transport-*`: Web Bluetooth and Tauri transport differences.
+- `packages/platform/*`: product-wide settings, services, shared device sessions, and reusable UI.
+- `packages/agent/*`: Agent runtime, providers, storage, bridge, and browser composition.
+- `apps/*`: feature-specific rendering and orchestration; reusable semantics do not stay here.
+
+State used by one component stays local; state shared across features belongs in a platform or domain
+package. React components render, hooks coordinate, and pure domain decisions remain testable without
+React. Persistence uses the existing settings/sync/storage boundary, not new direct `localStorage` or
+IndexedDB access in feature components.
+
+## Device and AI invariants
+
+Device output, strength, duration, permission, queues, leases, and lifecycle stops are safety-critical.
+
+- Coyote is `electrostimulation`; Opossum and generic vibration devices are `vibration`.
+- Device queues and playback state are isolated per physical identity; only waveform definitions are
+  shared by modality.
+- Treat AI, rooms, games, Workers, remote peers, synchronized data, and device reconnects as untrusted.
+  Revalidate identity, permission, lease, policy, and limits at the final owner-side execution boundary.
+- Start, increase, resume, and extend fail closed. Stop and emergency stop stay reachable and preempt
+  ordinary work, including after permission denial, stale work, disconnect, backgrounding, or errors.
+- Never weaken limits, stop paths, or permission prompts to make a demo or test pass.
+
+Generic-device opt-in has one local-only switch under **Settings -> About**. Control, Agent, Voice,
+and Video subscribe to the same provider state; feature apps do not add private switches. Disabling it
+removes generic UI, model context/tools, and backend startup/scan paths without disabling Video,
+Coyote, or Opossum.
+
+Model-visible device data is a positive snapshot of current availability. Instructions, status,
+tools, and target IDs include only connected, enabled, healthy capabilities; omit unavailable devices
+instead of describing them as disconnected. Agent recomputes this every turn, Voice updates
+instructions and tools atomically on topology changes, and Video revalidates its ephemeral target
+allowlist before every write.
+
+Multi-target selection never implies fan-out. A model action addresses one exact physical identity and
+channel/capability. Stop the previous target before switching; an identity/topology change revokes the
+old grant. Human selection alone is not authorization, and execution checks remain mandatory even when
+the model schema is narrowed.
+
+## Working and testing
+
+Use this loop: understand -> plan -> implement -> narrow tests -> affected/full tests -> review diff ->
+handoff. Bug fixes and observable changes need a regression test that fails on the old behavior.
+
+- Put tests beside source as `name.test.ts(x)`; reserve local `__tests__` for app-level composition.
+- Test observable contracts, safety failures, and stop behavior; fake time, storage, BLE, network, and
+  randomness at their boundaries.
+- Split mixed test files by responsibility without deleting distinct assertions. Test support files
+  must not register tests.
+- Never silence, exclude, or wrap a failure in `|| true`.
+
+Common commands:
+
+```bash
+npm test                              # fast changed-file loop
+npm run test:module -- <name>         # completed module slice
+npm run test:affected -- --base=<ref> # focused PR boundary
+npm run test:full                     # substantial handoff or release
 ```
 
-Do not import another app to reuse business logic. The compositor shells (`apps/web` and
-`android/app`) are the only exceptions. Move reusable behavior into the narrowest appropriate
-package.
-
-## Task workflow
-
-Use this loop for implementation work:
-
-1. **Understand**: reproduce the issue or state the observable contract. Trace the source, adapters,
-   and consumers before designing a fix.
-2. **Plan**: choose the smallest complete slice. Note safety failure modes, compatibility impact,
-   tests, documentation, and changeset requirements.
-3. **Implement**: keep the diff focused and readable. Do not combine unrelated cleanup with the task.
-4. **Test**: bug fixes and observable behavior changes need a regression test that fails on the old
-   behavior. Run narrow tests first, then the affected responsibility domains.
-5. **Review**: inspect `git diff --check`, the full diff, generated-file noise, public exports,
-   dependency ranges, and `git status`.
-6. **Handoff**: report what changed, commands actually run, checks not run, safety/device validation,
-   changeset status, and remaining risks.
-
-Make reasonable local decisions autonomously. Ask before changing a public contract, safety policy,
-production migration, release architecture, or dependency with material operational trade-offs.
-Never hide a failure, fabricate device validation, or weaken a check to make work appear complete.
-
-## Where code belongs
-
-- Runtime-neutral contracts and safety-free state primitives: `packages/kit/core`.
-- BLE bytes, bit packing, and device-specific protocol behavior: `packages/kit/protocol`.
-- Strength policies, command serialization, emergency-stop preemption, leases, and lifecycle guards:
-  `packages/kit/safety`.
-- Browser/Tauri transport differences: the matching `packages/kit/transport-*` package.
-- Shared waveform and tool semantics: `packages/kit/waveforms` and `packages/kit/tools`.
-- Product permissions and browser-wide services: `packages/platform/*`.
-- Shared DG-Lab product sessions, React device hooks, and channel rotation:
-  `packages/platform/device-runtime`; feature apps may consume or compatibility-re-export them, but
-  must not import another app's implementation.
-- Shared waveform import/library hooks belong in `packages/platform/waveforms`; reusable device
-  controls such as press-and-hold repeat belong in `packages/platform/ui`.
-- Shared device snapshots belong in `packages/platform/device-runtime`, shared device panels with
-  injected actions in `packages/platform/ui`, and cross-module safety persistence/adapters in
-  `packages/platform/settings`. Feature apps consume these contracts and may keep narrow compatibility
-  re-exports during migration; they must not import another app for device UI or settings behavior.
-- Generic-device consumers use `DeviceRuntimeModuleBinding` for lazy module binding and snapshot
-  subscriptions, `createAiDeviceToolAdapter` for Agent/Voice model exposure, and
-  `genericDeviceSafetyPolicy` / `genericDeviceIntensityCap` for normalized safety settings. Do not
-  duplicate provider startup, AI allowlists/display names, permission classification, interaction-ID
-  generation, or percentage-to-normalized cap arithmetic in feature apps. Video snapshots every
-  currently connected output capability into one ephemeral allowlist; each model tool call supplies
-  an exact target identity. The coordinator must stop the previous target/channel before routing to a
-  different one, and topology/runtime identity changes revoke the whole allowlist and stop all output.
-- Generic-device opt-in has exactly one shell-owned, local-only switch under **Settings -> About**.
-  Control, Agent, Voice, and Video must subscribe to that same provider state; feature apps must not
-  add their own switch. Disabling it removes generic-device UI, model context, tool definitions, and
-  runtime startup/scan paths, but must not disable Video itself or the Coyote/Opossum paths.
-- Model-visible device context is a positive snapshot of current availability, never a catalog of
-  configured or previously seen hardware. Instructions, status blocks, tool definitions, and target
-  IDs may include only devices that are connected, enabled, and healthy for the exact capability.
-  Omit unavailable devices entirely instead of describing them as disconnected. Revalidate this on
-  every Agent turn and update Voice instructions plus its tool allowlist atomically when topology
-  changes; execution-time safety checks remain mandatory.
-- Cross-module output selection uses `UnifiedOutputTarget` from device-runtime and
-  `OutputTargetPicker` from UI. Coyote, Opossum, and generic runtime capabilities appear in one target
-  list; feature apps keep connection, authorization, lease, and stop ownership. Selection never means
-  fan-out: authorize only the exact selected identity, and stop the old grant before switching or
-  disconnecting it. Safety caps must be projected from the shared device-safety settings by modality.
-  Read-only AI surfaces use `OutputCapabilityList` and must not require a human to preselect the
-  model's target; Control remains the interactive consumer of `OutputTargetPicker`.
-- LLM execution and Agent state: `packages/agent/runtime`; browser wiring belongs in
-  `packages/agent/agent-browser`.
-- Text provider identity, defaults, capability allowlists, scoped local/session-key persistence, and
-  subscriptions belong in `packages/platform/llm-providers`. Browser client creation, dialect routing,
-  proxy application, model discovery, and connection probes belong in `packages/agent/agent-browser`;
-  Agent, Chat, Video, and shell settings must consume those boundaries instead of constructing model
-  request URLs or provider branches themselves.
-- Agent and Chat share the text-provider profile. Video keeps a separately keyed, versioned profile
-  because image input must fail closed, but reuses the same catalog, browser client, discovery, and
-  persistence mechanics. Voice Realtime keeps its protocol-specific catalog/session settings; only
-  catalog-driven settings rendering and platform-safe device adapters are shared with text surfaces.
-- AI access to generic devices goes through `@0xnullai/device-runtime`'s positive allowlist, schema
-  adapter, output-increasing permission set, opaque target IDs, and bound module tools. Feature code
-  may adapt results to its runtime, but must not duplicate capability schemas or gate stop/emergency
-  stop behind ordinary output permission.
-- Agent session lifecycle, tool/permission coordination, and safety stop ordering stay in
-  `apps/agent/src/App.tsx`; the standalone mobile/desktop and unified-shell conversation navigation
-  projections belong in `apps/agent/src/components/SessionNavigation.tsx` and receive lifecycle
-  callbacks from the entry rather than owning them. Unified-shell settings and diagnostics
-  registration belongs in `apps/agent/src/components/AgentModuleProjections.tsx`; it receives prepared
-  view models/actions and owns only visual disclosure state, never device/session lifecycles or
-  persistence decisions.
-- Inside `packages/agent/runtime`, keep `AgentRuntime` as the session/lifecycle facade. Bounded LLM
-  and tool iterations belong in the turn coordinator, tool permission/policy/device dispatch belongs
-  in the tool executor, pure device-tool availability belongs in `device-tool-availability.ts`,
-  bounded shared clamp resolution belongs in `runtime-policy-resolution.ts`, and pure context/quota
-  transitions belong in turn state. Preserve the
-  provider-complete -> abort check -> tool-execute ordering and cover coordinator event/skip behavior
-  with direct regression tests when changing these boundaries.
-- Rendering and interaction state used by only one surface: that app's `src` directory.
-- In Market, `apps/market/src/web/components/UploadDialog.tsx` coordinates upload UI state,
-  authenticated network calls, and close/refresh callbacks. Portable template generation, uploaded
-  file/archive parsing, and manual-form payload validation belong in the pure
-  `apps/market/src/web/upload-model.ts`; ownership, edit authorization, and persistence remain API
-  and Worker responsibilities.
-- Feature setup panels receive prepared typed view models and explicit actions from their app
-  coordinator. Keep authorization, leases, target identity, effective safety limits, and lifecycle
-  stop decisions in the coordinator or shared safety service rather than recomputing them in a
-  presentational child.
-- In Chat, keep `apps/chat/src/App.tsx` as the runtime orchestrator for auth, Room WebSocket/DM
-  lifecycle, owner-side validation, permissions, leases, command routing, and stop paths.
-  `components/ChatAppView.tsx` owns room/lobby presentation composition only; it may invoke the
-  supplied callbacks but must not duplicate or reorder their safety and transport decisions.
-- Disconnected device surfaces should show one clear connection path and safety context; do not render
-  a full faded or disabled control console that implies hardware is present or malfunctioning.
-- Node BLE and MCP-specific orchestration: `apps/mcp`.
-
-Keep public package entrypoints as barrels, not implementations. A cohesive behavior gets a named
-source file and is re-exported from `index.ts`. Avoid generic `utils.ts`, `helpers.ts`, and
-`common.ts` modules.
-
-## Device and safety invariants
-
-Output strength, duration, permission grants, remote-command clamping, queues, leases, and lifecycle
-stops are safety-critical. If the task does not clearly authorize such a change, stop and ask.
-
-- Coyote consumes `electrostimulation`; Opossum consumes `vibration`. Legacy untyped waveforms are
-  electrostimulation. Use shared modality helpers rather than duplicating this rule.
-- Playback queue, mode, interval, active channel, and cursor are isolated per connected device. Only
-  waveform definitions are shared by modality.
-- AI, rooms, games, Workers, remote peers, and synchronized data are untrusted inputs. Revalidate and
-  clamp commands on the device owner's side.
-- Start, increase, resume, and extend operations fail closed. Stop and emergency stop must remain
-  reachable and must not be blocked by normal permissions, queues, or failed state.
-- Emergency stop preempts ordinary work and invalidates stale queued work. Disconnect, background,
-  lease loss, module changes, and error paths must preserve stop behavior.
-- Never weaken limits or permission prompts merely to make a test or demo pass.
-- A device feature is incomplete until Control, Chat, Voice/Agent tooling, Web Bluetooth, and Tauri
-  Android have adopted it or explicitly documented why it does not apply.
-- Do not connect hardware, send BLE/MCP device commands, access production rooms/accounts, or claim
-  real-device validation without explicit permission and human supervision.
-
-## Tests and commands
-
-Put unit/component tests beside source as `name.test.ts(x)`. Use a local `__tests__` directory only for
-cross-file composition tests. Test observable contracts, not private implementation trivia.
-
-- Split large cross-domain test files by observable responsibility (for example session/context,
-  device safety, timers, and multi-device behavior) so Vitest can schedule the suites independently.
-  Keep reusable fakes and builders in an explicitly named adjacent `*.test-support.ts` file; support
-  files must not register tests or hide responsibility boundaries. A structural split must preserve
-  every distinct assertion and safety case, with test counts checked before and after.
-- Protocol and transport changes require byte-level or adapter tests.
-- Cross-surface device changes need shared-domain tests plus focused consumer tests.
-- Tests must be deterministic; fake time, storage, BLE, network, and randomness at the boundary.
-- Never silence, exclude, or add `|| true` around a failing test.
-
-Use the narrowest useful command while iterating:
-
-| Tier              | Commands                                | Required use                     |
-| ----------------- | --------------------------------------- | -------------------------------- |
-| Local fast        | `npm test` or `npm run test:fast`       | Editing loop only                |
-| One module        | `npm run test:module -- <name>`         | Completed feature slice          |
-| PR affected       | `npm run test:affected -- --base=<ref>` | Before submitting a focused PR   |
-| Main/handoff full | `npm run test:full`                     | Substantial changes and releases |
-
-Affected selection must follow workspace reverse dependencies. A shared Kit/platform change expands
-to its consumers; unknown runtime files and global test configuration fail safe to the full applicable
-suite. Never exclude safety, authorization, lease, lifecycle-stop, or emergency-stop coverage to make
-a test tier faster. CI and root orchestration may prepare DG-Kit once and use a `:prepared` command,
-but must not skip the corresponding build or tests. See `docs/testing.md` for responsibility-domain
-and CI commands.
-
-A Kit behavior change requires Kit, Product, and MCP compatibility coverage. Before handoff of a
-substantial change, run:
+Before handing off a substantial change run:
 
 ```bash
 npm run check:structure
@@ -239,60 +124,18 @@ npm run test:full
 npm run build
 ```
 
-For visual, Android-native, lifecycle, BLE, or device changes, also report the relevant manual check.
-If it could not be run, say so explicitly.
+Also report any visual, Android, lifecycle, BLE, production, or real-device check that was not run.
 
-## Growth and generated files
+## Files, releases, and handoff
 
-- File size is a review signal, not a hard limit. Split when a module owns unrelated behavior or is
-  difficult to understand and test, not at an arbitrary line count.
-- React components render; hooks coordinate UI state; pure transitions and domain decisions belong
-  in plain TypeScript modules.
-- Disconnected device surfaces show a compact, actionable empty state; do not render a wall of
-  faded controls that cannot work. Connecting must never imply or automatically produce output.
-- Responsive shell changes are checked at a desktop viewport and at 390×844. Keep primary module
-  choices visible without horizontal overflow, and account for mobile safe areas.
-- Mobile drawers and modal navigation expose their expanded/controlled relationship, focus an
-  intentional first target, close on Escape, and return focus to the trigger.
-- Prefer narrow APIs and delete completed compatibility paths. Do not add a parallel abstraction
-  without a migration and deletion plan.
-- Browser builds must replace Node-only dependency fallbacks at the composition boundary. Provider
-  SDKs and device WASM stay behind the user action that needs them; enforce that reachability from
-  the generated manifest instead of hiding bundle growth by raising chunk warning limits.
-- Do not hand-edit or commit `dist`, `target`, `src-tauri/gen`, `.astro`, `.wrangler`, build-info,
-  caches, or other generated output.
-- Do not edit `docs/legacy` as part of current product work.
-- Keep maintained documents reachable from `docs/README.md`; new standalone design or operations
-  notes must be linked from that index or the owning package README.
+Do not hand-edit or commit generated `dist`, `target`, `src-tauri/gen`, `.astro`, `.wrangler`, build
+info, or caches. Do not update `docs/legacy`. Keep maintained documents reachable from
+`docs/README.md` or an owning package README.
 
-## Changesets and releases
+Feature branches start from and merge into `dev`; `main` is the production source. Kit and MCP public
+behavior changes need their own Changesets. Product versioning is separate. Unless explicitly asked,
+do not version, deploy, publish, push, merge, tag, create a Release, or trigger a release workflow.
 
-Feature branches start from `dev` and merge back to `dev`. `main` is the sole production source and
-accepts only maintainer-controlled `dev -> main` release PRs.
-
-- Public behavior/API/dependency changes under `packages/kit/*` need a changeset for the directly
-  affected Kit package. The fixed group will version all seven Kit packages together.
-- Public behavior/API/dependency changes under `apps/mcp` need a `dg-mcp` changeset.
-- If one change introduces a Kit API/fix and makes MCP consume it, add changesets for both release
-  lines. If MCP adopts an already-versioned Kit change, only MCP needs a new changeset. In either
-  case, update MCP's minimum Kit ranges; Kit must be available on npm before MCP publication.
-- Product versions are prepared separately and must keep root, Android, Tauri, Cargo, lockfile,
-  versionCode, and release notes synchronized.
-- Contributors add `.changeset/*.md`; they do not hand-edit generated npm versions or changelogs.
-
-Unless the user explicitly requests a release operation, do not run `npm run version`, merge a PR,
-trigger a workflow, deploy, publish npm, create a tag/Release, push remote changes, or alter production.
-Never squash or rebase a `dev -> main` product release PR. See `CONTRIBUTING.md` and
-`docs/platform-release.md` for the exact maintainer sequence.
-
-## Handoff checklist
-
-A final report must state:
-
-- the behavior changed and why it belongs in that layer;
-- safety failure modes and stop paths, when applicable;
-- tests/builds/format/lint commands actually run and their results;
-- hardware, Android, visual, or production checks not run;
-- public API, dependency, documentation, and changeset impact;
-- remaining risks or follow-up work;
-- whether pre-existing user changes were preserved.
+The final report states: behavior and layer changed, safety/stop implications, commands actually run,
+checks not run, API/dependency/docs/changeset impact, remaining risks, and preservation of pre-existing
+work. Never hide a failure or fabricate validation.
