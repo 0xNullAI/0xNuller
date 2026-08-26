@@ -3,7 +3,7 @@ name: Publish · DG-MCP
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [CI · DG-MCP]
+    workflows: [CI]
     types: [completed]
     branches: [main]
 
@@ -37,12 +37,11 @@ jobs:
         with:
           ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
-      - name: Require exact main source and repository CI
+      - name: Require exact main source and CI
         uses: ./.github/actions/require-main-source
         with:
           source-sha: ${{ steps.source.outputs.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          required-workflow: ci-mcp.yml
       - uses: actions/setup-node@v6
         with:
           node-version: '22.19.0'

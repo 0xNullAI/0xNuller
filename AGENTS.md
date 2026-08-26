@@ -31,6 +31,9 @@ browser storage. Package entrypoints are export barrels; prefer behavior-named m
 Keep shell UI compact: empty toolbars collapse, long sidebar lists are hideable and scroll inside
 their section, and changed layouts are checked locally at desktop and narrow widths.
 
+CI stays unified in `.github/workflows/ci.yml`; keep domain detection instead of adding another
+push/PR workflow. Version preparation runs only for changesets.
+
 | Work                        | Read                                                  |
 | --------------------------- | ----------------------------------------------------- |
 | Ownership and dependencies  | `docs/architecture.md`                                |

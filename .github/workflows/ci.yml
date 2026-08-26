@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+
+      - name: Detect affected release domains
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: |
+          for domain in product kit mcp; do
+            changed=$(node scripts/detect-domain-changes.mjs "$domain" "$BASE_SHA" | sed -n 's/^changed=//p')
+            echo "$domain=$changed" >> "$GITHUB_OUTPUT"
+          done
+
+      - run: npm run check:structure
+      - name: Check formatting of changed files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: npm run format:check:changed -- --base="$BASE_SHA"
+      - run: npm run lint
+      - run: npm run check:dead-code
+      - name: Test affected repository tooling
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=repository --prepared
+      - name: Test repository tooling
+        if: github.event_name != 'pull_request'
+        run: npm run test:repository
+
+      - name: Prepare Product dependencies
+        if: steps.changes.outputs.product == 'true'
+        run: npm run build:kit
+      - name: Verify Product metadata
+        if: steps.changes.outputs.product == 'true'
+        run: npm run verify:release && npm run verify:brand && npm run check:routes
+      - name: Typecheck Product
+        if: steps.changes.outputs.product == 'true'
+        run: node scripts/run-workspace-domain.mjs typecheck product
+      - name: Test affected Product projects
+        if: github.event_name == 'pull_request' && steps.changes.outputs.product == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=product --prepared
+      - name: Test Product
+        if: github.event_name != 'pull_request' && steps.changes.outputs.product == 'true'
+        run: npm run test:product:prepared
+      - name: Build Web
+        if: steps.changes.outputs.product == 'true'
+        run: npm run build -w @0xnullai/web
+
+      - name: Verify DG-Kit
+        if: steps.changes.outputs.kit == 'true'
+        run: npm run verify:kit && npm run typecheck:kit
+      - name: Test affected DG-Kit projects
+        if: github.event_name == 'pull_request' && steps.changes.outputs.kit == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=kit --prepared
+      - name: Test DG-Kit
+        if: github.event_name != 'pull_request' && steps.changes.outputs.kit == 'true'
+        run: npm run test:kit:prepared
+
+      - name: Verify DG-MCP
+        if: steps.changes.outputs.mcp == 'true'
+        run: npm run verify:mcp
+      - name: Typecheck DG-MCP
+        if: steps.changes.outputs.mcp == 'true'
+        run: node scripts/run-workspace-domain.mjs typecheck mcp
+      - name: Test affected DG-MCP projects
+        if: github.event_name == 'pull_request' && steps.changes.outputs.mcp == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run test:affected -- --base="$BASE_SHA" --domain=mcp --prepared
+      - name: Test DG-MCP
+        if: github.event_name != 'pull_request' && steps.changes.outputs.mcp == 'true'
+        run: npm run test:mcp:prepared

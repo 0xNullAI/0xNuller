@@ -1,16 +1,12 @@
 name: Require verified main source
-description: Refuse production work unless the selected SHA is current main and Repository CI passed.
+description: Refuse production work unless the selected SHA is current main and unified CI passed.
 inputs:
   source-sha:
-    description: Commit selected by the triggering domain CI
+    description: Commit selected by the triggering unified CI
     required: true
   github-token:
     description: Token used to inspect required CI workflows
     required: true
-  required-workflow:
-    description: Optional domain CI workflow file that must pass for the same SHA
-    required: false
-    default: ''
 runs:
   using: composite
   steps:
@@ -18,7 +14,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         SOURCE_SHA: ${{ inputs.source-sha }}
-        REQUIRED_WORKFLOW: ${{ inputs.required-workflow }}
       run: |
         set -euo pipefail
         git fetch origin main
@@ -26,31 +21,18 @@ runs:
           echo "Production source $SOURCE_SHA is not current main" >&2
           exit 1
         }
-        workflows=(ci-repository.yml)
-        if [ -n "$REQUIRED_WORKFLOW" ]; then
-          [[ "$REQUIRED_WORKFLOW" =~ ^ci-(product|kit|mcp)\.yml$ ]] || {
-            echo "Unsupported required workflow: $REQUIRED_WORKFLOW" >&2
-            exit 1
-          }
-          workflows+=("$REQUIRED_WORKFLOW")
-        fi
-        for workflow in "${workflows[@]}"; do
-          passed=false
-          for attempt in $(seq 1 40); do
-            conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$SOURCE_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "pending"')
-            if [ "$conclusion" = success ]; then
-              passed=true
-              break
-            fi
-            if [ "$conclusion" != pending ]; then
-              echo "$workflow failed for $SOURCE_SHA: $conclusion" >&2
-              exit 1
-            fi
-            echo "Waiting for $workflow ($attempt/40)"
-            sleep 15
-          done
-          if [ "$passed" != true ]; then
-            echo "$workflow did not finish for $SOURCE_SHA" >&2
+        passed=false
+        for attempt in $(seq 1 40); do
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "pending"')
+          if [ "$conclusion" = success ]; then
+            passed=true
+            break
+          fi
+          if [ "$conclusion" != pending ]; then
+            echo "CI failed for $SOURCE_SHA: $conclusion" >&2
             exit 1
           fi
+          echo "Waiting for CI ($attempt/40)"
+          sleep 15
         done
+        test "$passed" = true || { echo "CI did not finish for $SOURCE_SHA" >&2; exit 1; }

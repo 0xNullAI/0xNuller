@@ -91,9 +91,7 @@ function verifyProductMetadata() {
   const kitVersionWorkflow = readFileSync('.github/workflows/kit-version.yml', 'utf8');
   const kitReleaseWorkflow = readFileSync('.github/workflows/kit-release.yml', 'utf8');
   const mcpReleaseWorkflow = readFileSync('.github/workflows/mcp-release.yml', 'utf8');
-  const productCiWorkflow = readFileSync('.github/workflows/ci-product.yml', 'utf8');
-  const kitCiWorkflow = readFileSync('.github/workflows/ci-kit.yml', 'utf8');
-  const mcpCiWorkflow = readFileSync('.github/workflows/ci-mcp.yml', 'utf8');
+  const ciWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8');
   const changesetConfig = json('.changeset/config.json');
   const productReleaseWorkflow = readFileSync('.github/workflows/product-release.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
@@ -129,6 +127,7 @@ function verifyProductMetadata() {
   if (
     !kitVersionWorkflow.includes('workflow_dispatch:') ||
     !/push:\s*\n\s+branches: \[dev\]/.test(kitVersionWorkflow) ||
+    !kitVersionWorkflow.includes("paths: ['.changeset/**']") ||
     kitVersionWorkflow.includes('publish:') ||
     kitVersionWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
   ) {
@@ -136,12 +135,11 @@ function verifyProductMetadata() {
   }
   if (
     !kitReleaseWorkflow.includes('workflow_dispatch:') ||
-    !kitReleaseWorkflow.includes('workflows: [CI · DG-Kit]') ||
+    !kitReleaseWorkflow.includes('workflows: [CI]') ||
     !/branches: \[main\]/.test(kitReleaseWorkflow) ||
     !kitReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
     !kitReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
     !kitReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
-    !kitReleaseWorkflow.includes('required-workflow: ci-kit.yml') ||
     !kitReleaseWorkflow.includes('name: Reconfirm current main source') ||
     !kitReleaseWorkflow.includes('npm publish --workspace "$name"') ||
     kitReleaseWorkflow.includes('changesets/action') ||
@@ -151,12 +149,11 @@ function verifyProductMetadata() {
   }
   if (
     !mcpReleaseWorkflow.includes('workflow_dispatch:') ||
-    !mcpReleaseWorkflow.includes('workflows: [CI · DG-MCP]') ||
+    !mcpReleaseWorkflow.includes('workflows: [CI]') ||
     !/branches: \[main\]/.test(mcpReleaseWorkflow) ||
     !mcpReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
     !mcpReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
     !mcpReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
-    !mcpReleaseWorkflow.includes('required-workflow: ci-mcp.yml') ||
     !mcpReleaseWorkflow.includes("name.startsWith('@dg-kit/')") ||
     !mcpReleaseWorkflow.includes('npm view "$name@$version" version') ||
     !mcpReleaseWorkflow.includes('name: Reconfirm current main source') ||
@@ -168,11 +165,10 @@ function verifyProductMetadata() {
   }
   if (
     !productReleaseWorkflow.includes('workflow_dispatch:') ||
-    !productReleaseWorkflow.includes('workflows: [CI · Product]') ||
+    !productReleaseWorkflow.includes('workflows: [CI]') ||
     !/branches: \[main\]/.test(productReleaseWorkflow) ||
     !productReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
     !productReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
-    !productReleaseWorkflow.includes('required-workflow: ci-product.yml') ||
     !productReleaseWorkflow.includes('name: Reconfirm current main source')
   ) {
     fail('Product Release must support manual runs and verified main releases');
@@ -199,11 +195,13 @@ function verifyProductMetadata() {
     fail('0xNuller release must synchronously deliver Web and Android without publishing npm');
   }
   if (
-    !productCiWorkflow.startsWith('name: CI · Product') ||
-    !kitCiWorkflow.startsWith('name: CI · DG-Kit') ||
-    !mcpCiWorkflow.startsWith('name: CI · DG-MCP')
+    !ciWorkflow.startsWith('name: CI') ||
+    !ciWorkflow.includes('node scripts/detect-domain-changes.mjs "$domain"') ||
+    !ciWorkflow.includes('npm run test:product:prepared') ||
+    !ciWorkflow.includes('npm run test:kit:prepared') ||
+    !ciWorkflow.includes('npm run test:mcp:prepared')
   ) {
-    fail('Product, DG-Kit, and DG-MCP CI must remain separately visible');
+    fail('Unified CI must detect and verify Product, DG-Kit, and DG-MCP changes');
   }
 
   return root.version;

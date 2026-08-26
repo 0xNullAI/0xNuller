@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [dev]
+    paths: ['.changeset/**']
 
 concurrency:
   group: kit-version-dev
@@ -47,6 +48,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for workflow in ci-repository.yml ci-product.yml ci-kit.yml ci-mcp.yml; do
-            gh workflow run "$workflow" --ref changeset-release/dev
-          done
+          gh workflow run ci.yml --ref changeset-release/dev
