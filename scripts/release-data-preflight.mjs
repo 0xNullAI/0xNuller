@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const confirm = '--confirm=dg-market,0xnullai-auth';
+const requireCurrent = process.argv.includes('--require-current');
 
 if (!process.argv.includes('--remote-readonly') || !process.argv.includes(confirm)) {
   console.error(
@@ -189,6 +190,12 @@ const authState = sameOrder(authLedger, legacyAuthLedger)
 if (authState === 'unknown') {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
 }
+if (requireCurrent && marketState !== 'current') {
+  errors.push(`Market migrations are not current: ${marketState}`);
+}
+if (requireCurrent && authState !== 'current') {
+  errors.push(`Auth migrations are not current: ${authState}`);
+}
 if (scalar(auth, 1, 'n') !== 0) errors.push('Auth 0006 blocker: duplicate photo object_key');
 if (scalar(auth, 2, 'n') !== 0) errors.push('Auth 0007 blocker: account with >60 photos');
 if (scalar(auth, 3, 'n') !== 0) errors.push('Auth blocker: blank photo object_key');
@@ -231,7 +238,7 @@ console.log(
               authState === 'current'
                 ? 'Auth schema is current; do not reapply its migrations.'
                 : 'Apply pending Auth migrations.',
-              marketState === 'current' ? null : 'Apply Market 0002-0003 migrations.',
+              marketState === 'current' ? null : 'Apply all pending Market migrations.',
               'Create 0xnullai-profile-photos before deploying Auth.',
               'Deploy chat, then auth, then market.',
             ].filter(Boolean),

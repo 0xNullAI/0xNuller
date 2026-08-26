@@ -82,6 +82,13 @@ const market = await request('/api/items?limit=1', 200);
 assert(Array.isArray(json('/api/items', market.body).items), 'Market items response is invalid');
 checks.push(['market', market.durationMs]);
 
+const seededScenario = await request('/api/items/mistbound-menagerie-guide', 200);
+assert(
+  json('/api/items/mistbound-menagerie-guide', seededScenario.body).item?.type === 'scenario',
+  'Market release scenario is missing or invalid',
+);
+checks.push(['market-scenario', seededScenario.durationMs]);
+
 const voice = await request('/api/realtime', 426);
 assert(voice.body.includes('WebSocket upgrade'), 'Voice upgrade boundary changed');
 checks.push(['voice', voice.durationMs]);

@@ -41,10 +41,11 @@ npm run check:routes
 
 ```bash
 npm run release:data:preflight -- \
-  --remote-readonly --confirm=dg-market,0xnullai-auth
+  --remote-readonly --confirm=dg-market,0xnullai-auth --require-current
 ```
 
-迁移记录必须与远端数据库实际结构一致。不要修改已经发布的 migration，也不要用
+该发布门禁只执行读取；数据库不是当前版本时会阻止 Worker 与 GitHub Release 发布。先备份并按
+“数据迁移”应用所有待处理 migration，再重新运行。不要修改已经发布的 migration，也不要用
 `schema.sql` 代替 Wrangler migrations。
 
 ## 部署顺序
