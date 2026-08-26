@@ -2,12 +2,12 @@
 
 中文 | [English](README.en.md)
 
-基于 Cloudflare Durable Objects 的房间、公开大厅和私聊模块，可在明确授权后远程控制房间
-成员共享的设备。Chat 要求登录且邮箱已验证；浏览器和 Android 都先由 Auth 签发短期 admission
-ticket，房间、公开目录和私聊在 Worker 入口再次校验，不能通过自定义客户端绕过。
+基于 Cloudflare Durable Objects 的房间、公开大厅和私聊模块。成员明确授权后，房间还可以控制其
+共享的设备。Chat 要求登录且邮箱已验证；浏览器和 Android 使用 Auth 签发的短期 admission ticket，
+房间、公开目录和私聊会在 Worker 入口重新校验。
 
 - 统一主站：<https://0xnullai.com/chat>
-- 历史独立版：<https://chat.0xnullai.com>
+- 历史地址（跳转主站）：<https://chat.0xnullai.com>
 
 ## 功能
 
@@ -18,15 +18,20 @@ ticket，房间、公开目录和私聊在 Worker 入口再次校验，不能通
 - 房主设置、房间 Agent 和场景支持。
 - 桌面与移动端布局。
 
-房间中的设备操作必须由设备持有者授权，并经过持有者设备上的安全策略。离开房间、撤销授权、
-切换模块或停止输出都会结束相应控制。
-
 ## 使用
 
 1. 登录账户后打开 Chat。
 2. 从侧边栏创建房间、加入房间或进入公开大厅。
 3. 互相关注后，可从用户主页发起私聊；已有私聊显示在侧边栏。
 4. 需要共享设备时，从顶部横栏连接设备，再在房间内明确授权。
+
+## 设备控制与安全
+
+设备操作必须由持有者授权，并在持有者设备上重新检查设备身份、连接状态、Chat 租约和安全策略。
+离开房间、撤销授权、切换模块或停止输出都会结束相应控制。
+
+房间 AI 看到的是当前授权的物理设备实例。即使显示名称相同，每个实例也有独立的临时目标 ID；
+一次调用只能选择一个明确目标，不会按名称回退、选择主设备或广播。设备拓扑变化后，旧目标立即失效。
 
 ## 本地开发
 
@@ -55,28 +60,20 @@ worker/lobby-do.ts    公开大厅
 worker/media.ts       R2 媒体读写
 ```
 
-`src/App.tsx` 是 Chat 运行时编排入口，负责认证、WebSocket 生命周期、设备持有者校验、权限、
-租约与停止路径；`src/components/ChatAppView.tsx` 只负责房间目录、标题状态和聊天/控制面板的
-展示组合。展示层不得自行放宽或重排设备命令与停止语义。
+`src/App.tsx` 负责认证、WebSocket 生命周期、设备持有者校验、租约和停止路径；
+`src/components/ChatAppView.tsx` 只组合界面，不得改变设备命令或停止语义。
 
 房间 Agent 与文字 Agent 共用 `@0xnullai/llm-providers` 配置和
-`@dg-agent/agent-browser` 请求工厂，包括 provider dialect、Responses/Chat Completions、免费代理
-账户认证与全局网络代理。房间 prompt、@ 触发、有限工具循环和 owner-side 远程设备授权仍留在
-Chat；它们不是本地 Agent runtime 的同一种会话语义。
-
-房间 AI 的设备列表按物理实例发布，而不是按成员、设备类型或显示名称合并。每个工具调用使用由
-`peerId + deviceId` 生成的临时 opaque `targetId`，房主发送前会用最新房间快照重验一次，设备
-所有者执行前还会重验本机 AI 授权、精确设备身份、连接状态、Chat 租约与安全策略。旧客户端或
-没有发布精确物理身份的成员不会进入 AI 工具列表；未知身份不会回退到主设备，也不会广播到同类
-设备。
+`@dg-agent/agent-browser` 请求工厂。房间 prompt、@ 触发、有限工具循环和设备持有者侧授权仍由
+Chat 负责，不要把它们并入本地 Agent 会话运行时。
 
 媒体上传需要当前 WebSocket 会话签发的能力；仅知道房间号不能写入媒体桶。私聊票据由账户
 服务签发，Chat 只接受有效票据。
 
 ## 部署
 
-Chat 使用 `RoomDO`、`LobbyDO` 和 `dg-chat-media`。新主站的 `0xnullai-chat` Worker 与历史
-`dg-chat` Worker 并行，旧子域不删除。部署顺序和密钥要求见 [部署文档](../../docs/deploy.md)。
+Chat 使用 `RoomDO`、`LobbyDO` 和共享的 `dg-chat-media` R2。旧域仍用于跳转和浏览器数据迁移，
+不得随新 Worker 一起删除。部署顺序、共享存储和密钥要求见 [部署文档](../../docs/deploy.md)。
 
 ## 协议
 

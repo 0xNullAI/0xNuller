@@ -1,92 +1,94 @@
 # @0xnullai/device-runtime
 
-Private, SDK-free device runtime shared by product surfaces. It normalizes only vibration, battery,
-and RSSI capabilities, keeps backend handles private, fences every output write by session,
-topology, safety, and module-lease generations, and exposes one transport-neutral tool provider.
+Private, transport-neutral device runtime shared by the product surfaces. Browser and native shells
+inject the backend; feature apps consume normalized vibration, battery, and RSSI capabilities without
+seeing backend handles or raw commands.
 
-Backends are injected by browser or native shells. Structural backend changes preempt output;
-telemetry-only Battery/RSSI refreshes preserve fences. A failed stop latches the executor until a new
-backend runtime is created. The runtime does not reconnect devices, restore output, expose raw
-commands, or depend on an agent/tool SDK.
+## Safety contract
 
-The reusable AI adapter is a positive allowlist containing only `device_snapshot`, `device_vibrate`,
-`device_stop`, and `device_emergency_stop`. Model schemas never contain `interactionId`; Agent and
-Voice inject trusted local tool-call IDs and require exact opaque `deviceId` + `featureId` values.
-Scan, disconnect, labels, native identifiers, and Raw operations are not model tools.
-The model snapshot contains only devices with at least one connected, non-faulted vibration feature;
-faulted vibration features and telemetry-only instances are omitted. Equal display names never merge
-instances: `deviceId` plus `featureId` remains the only routable identity, and final execution checks
-that identity again against the current topology, lease, permission, and safety generations.
+Every output write is checked against the current runtime session, device topology, safety settings,
+permission, and module lease. Structural backend changes stop output and invalidate old targets;
+Battery/RSSI refreshes do not. A failed stop locks the executor until the shell creates a new backend
+runtime.
 
-`createAiDeviceToolAdapter` is the canonical Agent/Voice binding. It stays lazy during model
-composition, reads only an already-open snapshot for instructions, and starts the provider only when
-a tool is actually invoked. Tool display names and the output-increasing permission classification
-also live here so provider integrations cannot silently expose different AI capabilities.
+The runtime never reconnects a device, restores output, grants permission, or exposes scan, disconnect,
+labels, native identifiers, protocol messages, or Raw operations to a model. It also does not depend on
+an agent/tool SDK.
 
-`DeviceRuntimeModuleBinding` is the canonical human-surface binding. It coalesces startup, binds a
-module once, owns one snapshot subscription, and follows an explicitly restarted provider. It never
-scans, reconnects, grants permission, or hides command acknowledgements. Use
-`createDeviceInteractionId` for bounded human/lifecycle command IDs.
+Physical instances are never merged by display name. `deviceId` and `featureId` are opaque, short-lived
+routing identities, and execution revalidates both immediately before native I/O.
 
-`genericDeviceSafetyPolicy` and `genericDeviceIntensityCap` are the canonical conversion from shared
-device-safety settings to normalized generic output. A generic feature has no A/B identity, so the
-lower channel cap wins. Non-finite values fail closed, increases/cold starts remain bounded, and the
-runtime executor still performs the final clamp immediately before native I/O.
+## Choose the integration
 
-## Consumer ownership matrix
+- Use `DeviceRuntimeModuleBinding` for human-operated surfaces. It starts the provider at most once,
+  binds one module lease, and owns one snapshot subscription. Call `createDeviceInteractionId` for
+  bounded human and lifecycle commands.
+- Use `createAiDeviceToolAdapter` for Agent or Voice. It is the canonical tool schema, display-name,
+  and permission-classification boundary.
+- Use `genericDeviceSafetyPolicy` and `genericDeviceIntensityCap` to convert shared safety settings to
+  normalized generic output. Generic devices have no A/B channel identity, so the lower channel cap
+  wins. Non-finite values fail closed, and increases and cold starts remain bounded; the executor still
+  performs the final clamp.
 
-| Consumer            | Shared behavior                                                                                      | Deliberately local behavior                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Web / Android shell | One provider, manager, executor, lease/lifecycle safety controller, settings policy                  | Web Buttplug and Tauri command/event translation                                |
-| Control             | Module binding, snapshot stream, scan/disconnect/vibrate/stop actions, settings cap, interaction IDs | Rendering and pointer-release interaction state                                 |
-| Agent               | AI adapter, model allowlist/schema/status, display names, permission classification                  | Agent quotas, traces, aborts, and upper consent UI                              |
-| Voice               | Same AI adapter, allowlist/schema/status, permission classification                                  | Realtime tool bridge, call consent UI, and hang-up lifecycle                    |
-| Video               | Shared provider/executor/sanitized snapshot and exact opaque targets                                 | One-target grant, visual cadence, stale-identity escalation, and run lifecycle  |
-| Chat                | Shared DG-Lab session only; generic runtime is intentionally not model/room accessible               | Owner-side room validation and remote-command safety                            |
-| Playground          | Shared DG-Lab session and safety settings only                                                       | Game pulse semantics; generic runtime is not an interchangeable waveform target |
+Neither binding scans, reconnects, grants permission, or hides command acknowledgements.
 
-Chat and Playground are intentionally absent from the generic runtime permission allowlist. Enabling
-them is a new safety/product capability, not a reuse refactor: it requires an explicit target model,
-owner-side validation, lease semantics, and stop coverage first.
+## AI exposure
 
-The package also owns the product-wide attached-device snapshot contracts and their pure mapping to
-the shell safety bus. Control, Chat, and Playground share these display snapshots; the mapper does
-not issue commands or alter output, leases, limits, or stop behavior.
+The AI adapter exposes only `device_snapshot`, `device_vibrate`, `device_stop`, and
+`device_emergency_stop`. Tool schemas require exact `deviceId` and `featureId` values and never include
+the trusted local `interactionId` injected by Agent or Voice.
 
-The DG-Lab product session (`DeviceSession` and `useDevice`) is also canonical here. It owns the
-single command queue, per-device Coyote routing, Opossum/sensor adapters, live safety caps, lifecycle
-stop guard, and browser/native transport injection seam used by Control, Chat, and Playground.
-Feature apps may keep compatibility re-exports, but reusable session code must not live in an app.
+Definitions and status are available only when the provider is enabled and the current snapshot has a
+connected, healthy vibration feature. Disconnected, faulted, stale, telemetry-only, or previously seen
+targets are omitted. The adapter reads an already-open snapshot while composing model instructions and
+starts the provider only if a tool is invoked. Agent reevaluates exposure for every request; Voice
+replaces instructions and tools together when topology changes.
 
-## Web embedded backend
+## Ownership by consumer
 
-`WebEmbeddedButtplugBackend` uses the embedded Web Bluetooth stack `buttplug@4.0.2` with
-`buttplug-wasm@3.0.0`; it does not accept an Intiface URL or any WebSocket endpoint. The WASM stack
-is loaded only after a secure Web Bluetooth browser passes support checks.
+| Consumer            | Uses from this package                                               | Remains local                                                          |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Web / Android shell | Provider, manager, executor, lease/lifecycle safety, settings policy | Web Buttplug and Tauri command/event translation                       |
+| Control             | Module binding, snapshots, actions, settings cap, interaction IDs    | Rendering and pointer-release state                                    |
+| Agent               | AI adapter, schemas/status, display names, permission classification | Quotas, traces, aborts, and upper consent UI                           |
+| Voice               | The same AI adapter and permission classification                    | Realtime bridge, call consent UI, and hang-up lifecycle                |
+| Video               | Provider, executor, sanitized snapshots, and exact opaque targets    | One-target grant, visual cadence, stale-target handling, run lifecycle |
+| Chat                | Attached-device snapshots and the shared DG-Lab session only         | Room authorization and owner-side remote-command safety                |
+| Playground          | Shared DG-Lab session and safety settings only                       | Game pulse semantics                                                   |
 
-The backend publishes generic device labels and only Vibrate, readable Battery, and readable RSSI
-features. Runtime `deviceId` and `featureId` values are opaque and replaced after a device
-reappears. Package-native identifiers, feature descriptors, Raw commands, protocol messages, and
-branding guesses do not cross the runtime boundary. Because the pinned protocol has no per-device
-release command, a requested device disconnect stops output and closes the whole embedded session;
-reopening is explicit and receives a fresh runtime session identity.
+Chat and Playground are deliberately excluded from the generic-runtime permission allowlist. Adding
+generic targets to either app is a new product capability, not a reuse refactor; it requires an explicit
+target model, owner-side validation, lease semantics, and stop coverage.
 
-`WebEmbeddedDeviceRuntimeProvider` is the shell-owned singleton seam for Control, Agent, Voice, and
-Video. Its only opt-in UI is under **Settings → About**. The versioned local setting defaults off for
-missing, corrupt, or inaccessible storage and is never synchronized remotely. While disabled, the
-generic-device entry points are not rendered in any consumer, model tools/context stay absent, and
-the backend cannot be loaded or scanned. Enabling the setting does not start a scan or load the
-backend; a user-initiated Control or Video action must start the shared runtime and scan. Video itself
-and the legacy Coyote/Opossum paths are not experimental and remain available in either state.
+This package also owns the product-wide attached-device snapshot contract and its pure mapping to the
+shell safety bus. Control, Chat, and Playground use those display snapshots; the mapper never issues
+commands or changes output, leases, limits, or stop behavior.
 
-Model exposure is connected-only. `createAiDeviceToolAdapter` returns no definitions or status unless
-the provider is enabled and the current snapshot contains a healthy vibration capability. Agent
-re-evaluates this at every request; Voice replaces instructions and tool definitions together when
-device topology changes. Configured, disconnected, faulted, stale, or previously seen targets must
-not be named to the model, while execution still revalidates identity, permission, lease, and safety.
+The canonical DG-Lab product session (`DeviceSession` and `useDevice`) lives here as well. It owns one
+command queue, per-device Coyote routing, Opossum/sensor adapters, live safety caps, the lifecycle stop
+guard, and browser/native transport injection used by Control, Chat, and Playground. Apps may keep
+compatibility re-exports, but reusable session code belongs in this package.
 
-`EmbeddedDeviceRuntimeSafetyController` is constructed beside that provider before React render. It
-registers one safety session, stops on every shared lease epoch and page/app lifecycle transition,
-and reports connected devices without inferring whether physical output is active.
+## Embedded Web Bluetooth backend
+
+`WebEmbeddedButtplugBackend` embeds `buttplug@4.0.2` with `buttplug-wasm@3.0.0`; it accepts neither an
+Intiface URL nor a WebSocket endpoint. The WASM stack loads only after a secure browser passes Web
+Bluetooth support checks.
+
+Only generic labels and Vibrate, readable Battery, and readable RSSI features cross the runtime
+boundary. Runtime IDs are replaced whenever a device reappears. Because the pinned protocol has no
+per-device release command, disconnecting one device first stops output and then closes the entire
+embedded session. Reopening is explicit and creates a fresh runtime identity.
+
+`WebEmbeddedDeviceRuntimeProvider` is the shell-owned singleton used by Control, Agent, Voice, and
+Video. Its versioned opt-in appears only under **Settings -> About**, defaults off when storage is
+missing, corrupt, or inaccessible, and is never synchronized. When disabled, generic-device UI,
+model context/tools, backend loading, and scanning remain unavailable. Enabling it does not load the
+backend or start scanning; only an explicit Control or Video action does that. Video and the legacy
+Coyote/Opossum paths remain available in either state.
+
+The shell creates `EmbeddedDeviceRuntimeSafetyController` beside the provider before React renders.
+It registers one safety session, stops on every shared lease epoch and page/app lifecycle transition,
+and reports connected devices without claiming that physical output is active.
 
 Third-party attribution is in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
