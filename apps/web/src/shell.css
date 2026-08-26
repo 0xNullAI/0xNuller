@@ -543,6 +543,13 @@
     padding-block: 0.375rem;
   }
 
+  /* Portal anchors keep this row structurally non-empty even when a module has no
+     toolbar action. Collapse that otherwise blank strip; a real button (including
+     the narrow-screen menu trigger) restores the normal toolbar padding. */
+  #shl-actions:not(:empty):not(:has(button)) {
+    padding-block: 0;
+  }
+
   #shl-root[data-narrow] #shl-actions:not(:empty) {
     padding-top: calc(0.375rem + env(safe-area-inset-top));
   }

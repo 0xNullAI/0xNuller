@@ -28,6 +28,9 @@ stay testable without React. Use existing settings/sync/storage boundaries, not 
 browser storage. Package entrypoints are export barrels; prefer behavior-named modules over generic
 `utils`, `helpers`, or `common` files.
 
+Keep shell UI compact: empty toolbars collapse, long sidebar lists are hideable and scroll inside
+their section, and changed layouts are checked locally at desktop and narrow widths.
+
 | Work                        | Read                                                  |
 | --------------------------- | ----------------------------------------------------- |
 | Ownership and dependencies  | `docs/architecture.md`                                |

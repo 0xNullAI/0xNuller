@@ -10,9 +10,6 @@ import {
 } from './AgentModuleProjections.js';
 
 vi.mock('@0xnullai/ui', () => ({
-  ModuleActions: ({ children }: { children: ReactNode }) => (
-    <div data-testid="module-actions">{children}</div>
-  ),
   ModuleSettingsSection: ({
     id,
     label,
@@ -114,6 +111,7 @@ describe('AgentModuleProjections', () => {
     expect(screen.getByTestId('agent-sensors').getAttribute('aria-label')).toBe('传感器');
     expect(screen.getByTestId('agent-waveforms').getAttribute('aria-label')).toBe('波形');
     expect(screen.getByTestId('agent-data').getAttribute('aria-label')).toBe('数据');
+    expect(screen.getByTestId('agent-diagnostics').getAttribute('aria-label')).toBe('诊断');
 
     fireEvent.click(screen.getByText('启用传感器'));
     fireEvent.click(screen.getByText('导出会话'));

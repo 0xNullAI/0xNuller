@@ -1,6 +1,6 @@
 import { useState, type ComponentProps } from 'react';
 import { AudioWaveform, Bug, Database } from 'lucide-react';
-import { ModuleActions, ModuleSettingsSection } from '@0xnullai/ui';
+import { ModuleSettingsSection } from '@0xnullai/ui';
 import { DataTab } from './settings/DataTab.js';
 import { DebugPanel } from './DebugPanel.js';
 import { SensorsTab } from './settings/SensorsTab.js';
@@ -32,17 +32,17 @@ export function AgentModuleProjections({
 
   return (
     <>
-      <ModuleActions>
+      <ModuleSettingsSection id="agent-diagnostics" label="诊断" icon={Bug} order={70}>
         <button
           type="button"
           onClick={() => setDebugPanelOpen(true)}
           aria-label="打开调试面板"
-          className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-          title="调试面板"
+          className="flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 text-sm font-medium text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
         >
           <Bug className="h-4 w-4" />
+          打开调试面板
         </button>
-      </ModuleActions>
+      </ModuleSettingsSection>
 
       {debugPanelOpen && <DebugPanel {...debug} onClose={() => setDebugPanelOpen(false)} />}
 
