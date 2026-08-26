@@ -52,7 +52,10 @@ describe('MultiCoyoteDeviceClient', () => {
     await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
 
     expect(children).toHaveLength(2);
-    expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual(['coyote-a', 'coyote-b']);
+    const ids = aggregate.getConnectedCoyotes().map(({ id }) => id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.join(' ')).not.toMatch(/coyote-a|coyote-b/);
   });
 
   it('keeps separate hosts when a transport reports the same device id', async () => {
@@ -67,10 +70,9 @@ describe('MultiCoyoteDeviceClient', () => {
     await aggregate.connectDevice(device('duplicate-id', '47L121-B'), server);
 
     expect(children).toHaveLength(2);
-    expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual([
-      'duplicate-id',
-      'duplicate-id#2',
-    ]);
+    const ids = aggregate.getConnectedCoyotes().map(({ id }) => id);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.join(' ')).not.toContain('duplicate-id');
   });
 
   it('reuses a slot only when reconnecting the exact same Bluetooth device', async () => {
@@ -99,10 +101,11 @@ describe('MultiCoyoteDeviceClient', () => {
     await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
     await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
 
-    aggregate.selectDeviceById('coyote-b');
+    const secondTarget = aggregate.getConnectedCoyotes()[1]!.id;
+    aggregate.selectDeviceById(secondTarget);
     await aggregate.execute({ type: 'stop' });
 
-    expect(aggregate.deviceId).toBe('coyote-b');
+    expect(aggregate.deviceId).toBe(secondTarget);
     expect(children[0]!.execute).not.toHaveBeenCalled();
     expect(children[1]!.execute).toHaveBeenCalledTimes(1);
     expect(() => aggregate.selectDeviceById('missing')).toThrow('目标郊狼未连接');
@@ -152,9 +155,10 @@ describe('MultiCoyoteDeviceClient', () => {
     });
     await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
     await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
-    await aggregate.disconnectDeviceById('coyote-b');
+    const staleTarget = aggregate.getConnectedCoyotes()[1]!.id;
+    await aggregate.disconnectDeviceById(staleTarget);
 
-    await expect(aggregate.executeDeviceById('coyote-b', { type: 'stop' })).resolves.toBeNull();
+    await expect(aggregate.executeDeviceById(staleTarget, { type: 'stop' })).resolves.toBeNull();
     expect(children[0]!.execute).not.toHaveBeenCalled();
   });
 
@@ -168,10 +172,11 @@ describe('MultiCoyoteDeviceClient', () => {
     await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
     await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
 
-    await aggregate.disconnectDeviceById('coyote-a');
+    const [firstTarget, secondTarget] = aggregate.getConnectedCoyotes().map(({ id }) => id);
+    await aggregate.disconnectDeviceById(firstTarget!);
 
     expect(children[0]!.disconnect).toHaveBeenCalledTimes(1);
     expect(children[1]!.disconnect).not.toHaveBeenCalled();
-    expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual(['coyote-b']);
+    expect(aggregate.getConnectedCoyotes().map(({ id }) => id)).toEqual([secondTarget]);
   });
 });

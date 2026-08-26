@@ -15,6 +15,7 @@ import { useChannelRotation } from './hooks/use-channel-rotation';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { markDmRead } from './lib/dm';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
+import { resolveRoomAiCoyoteTarget, roomAgentDeviceTargetId } from './lib/room-agent-device-tools';
 import { uploadMedia } from './lib/media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
@@ -430,6 +431,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
+      const roomAiCommand = peerId.startsWith('ai:');
+      const aiTarget = roomAiCommand
+        ? resolveRoomAiCoyoteTarget(allowAi, cmd, deviceRef.current.coyotes)
+        : null;
+      if (roomAiCommand && (!aiTarget || !['adjust_strength', 'stop'].includes(cmd.action))) {
+        return;
+      }
       // Hard-reject when we do not hold the device lease. **It has to be blocked here**
       // rather than by only disabling UI buttons: commands from other people in the room
       // and from the AI travel over the WebRTC data channel and never touch the UI.
@@ -437,6 +445,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       // Stop commands are the exception — handing off control must not take away other
       // people's ability to stop your device.
       if (!hasDeviceLease('chat') && cmd.action !== 'fire_release' && cmd.action !== 'stop') {
+        return;
+      }
+      if (roomAiCommand && cmd.action === 'stop') {
+        deviceRef.current.stopCoyote(aiTarget!.id);
         return;
       }
       // Queue intent: update the local authoritative state. broadcastStateSlow syncs it
@@ -491,22 +503,23 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       // increment gets wiped out on release.
       if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
+        const targetState = aiTarget ?? dev;
         const channel = cmd.c;
         let delta = cmd.v;
         // Evaluated on the device holder's side, the only side that can be
         // trusted with the cap (CLAUDE.md constraint 2).
-        if (peerId.startsWith('ai:')) {
+        if (roomAiCommand) {
           const decision = policyRef.current?.evaluate({
             context: { sessionId: 'chat-room', sourceType: 'api', traceId: peerId },
             command: { type: 'adjustStrength', channel, delta },
             deviceState: {
-              connected: dev.connected,
-              strengthA: dev.strengthA,
-              strengthB: dev.strengthB,
-              limitA: dev.limitA,
-              limitB: dev.limitB,
-              waveActiveA: dev.waveActiveA,
-              waveActiveB: dev.waveActiveB,
+              connected: targetState.connected,
+              strengthA: targetState.strengthA,
+              strengthB: targetState.strengthB,
+              limitA: targetState.limitA,
+              limitB: targetState.limitB,
+              waveActiveA: targetState.waveActiveA,
+              waveActiveB: targetState.waveActiveB,
             },
           });
           if (decision && decision.type !== 'allow') {
@@ -518,7 +531,12 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
             }
           }
         }
-        const limit = channel === 'A' ? dev.limitA : dev.limitB;
+        const limit = channel === 'A' ? targetState.limitA : targetState.limitB;
+        if (aiTarget) {
+          const current = channel === 'A' ? aiTarget.strengthA : aiTarget.strengthB;
+          dev.setStrength(channel, Math.max(0, Math.min(limit, current + delta)), aiTarget.id);
+          return;
+        }
         const boosts = channel === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (boosts.size > 0) {
           const baseRef = channel === 'A' ? baselineARef : baselineBRef;
@@ -560,7 +578,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       };
       executeCommand(cmd, ctx);
     },
-    [callApplyFire, notifyLocal],
+    [allowAi, callApplyFire, notifyLocal],
   );
 
   useEffect(() => {
@@ -658,6 +676,11 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         displayName,
         username,
         deviceConnected: device.connected && !deviceReleased,
+        coyotes: deviceReleased
+          ? []
+          : device.coyotes
+              .filter(({ connected }) => connected)
+              .map(({ id, name }) => ({ deviceId: id, name })),
         battery: device.battery,
         waveformCatalog: waveformsRef.current.allWaveforms.map((w) => ({
           id: w.id,
@@ -696,6 +719,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     device.connected,
     deviceReleased,
     device.battery,
+    device.coyotes,
     waveforms.allWaveforms.length,
     queueA,
     queueB,
@@ -719,9 +743,17 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }, [allowAi]);
 
   // The room agent's brain (only actually runs in the host's browser; triggered by @-ing it).
-  const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()]
-    .filter((m) => !m.isAi && m.deviceConnected && m.allowAi)
-    .map((m) => ({ peerId: m.peerId, name: m.displayName || m.peerId.slice(0, 6) }));
+  const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()].flatMap(
+    (member) =>
+      !member.isAi && member.allowAi
+        ? (member.coyotes ?? []).map(({ deviceId, name }) => ({
+            targetId: roomAgentDeviceTargetId(member.peerId, deviceId),
+            peerId: member.peerId,
+            deviceId,
+            name: `${member.displayName || member.peerId.slice(0, 6)} · ${name}`,
+          }))
+        : [],
+  );
   useRoomAgents({
     isHost: peerRoom.isHost,
     agent: peerRoom.agent,

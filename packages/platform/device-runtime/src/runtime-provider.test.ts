@@ -138,5 +138,8 @@ describe('Web embedded device opt-in', () => {
     await expect(provider.setEnabled(false)).rejects.toThrow('stop failed');
     expect(harness.session.stopAll).toHaveBeenCalledTimes(1);
     expect(readWebEmbeddedDevicesEnabled(storage)).toBe(true);
+    await expect(provider.start()).rejects.toThrow('stop failed');
+    await expect(provider.restart()).rejects.toThrow('stop failed');
+    expect(harness.backend.openSession).toHaveBeenCalledTimes(1);
   });
 });

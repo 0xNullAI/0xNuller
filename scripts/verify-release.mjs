@@ -100,6 +100,16 @@ function verifyProductMetadata() {
   if (!productReleaseWorkflow.includes('tag="v$version"')) {
     fail('product release must create the unified source/product tag v<version>');
   }
+  for (const required of [
+    'release:data:preflight',
+    '--remote-readonly',
+    '--confirm=dg-market,0xnullai-auth',
+    '--require-current',
+  ]) {
+    if (!productReleaseWorkflow.includes(required)) {
+      fail(`product release must gate deployment on current data migrations: missing ${required}`);
+    }
+  }
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
     fail('Android updater must only consume unified v<version> releases');
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LlmClient, RuntimeEvent } from '@dg-agent/core';
+import type { CoyoteTargetRouter, LlmClient, RuntimeEvent } from '@dg-agent/core';
 import { createBasicWaveformLibrary } from '@dg-agent/waveforms';
 import { createDefaultPolicyRules, PolicyEngine } from '@dg-kit/safety';
 import { AgentRuntime } from './agent-runtime.js';
@@ -18,6 +18,113 @@ import {
 } from './runtime.test-support.js';
 
 describe('AgentRuntime Coyote safety policy and burst execution', () => {
+  it('revalidates and executes one exact Coyote target through policy, permission, and lease gate', async () => {
+    const first = new TestDevice({ deviceName: '相同名称' });
+    const second = new TestDevice({
+      deviceName: '相同名称',
+      strengthA: 10,
+      waveActiveA: true,
+      currentWaveA: 'pulse_mid',
+    });
+    const targets = new Map([
+      ['opaque/first', first],
+      ['opaque/second', second],
+    ]);
+    const router: CoyoteTargetRouter = {
+      listTargets: async () =>
+        Promise.all(
+          [...targets].map(async ([targetId, device]) => ({
+            targetId,
+            state: await device.getState(),
+          })),
+        ),
+      getTargetState: async (targetId) => targets.get(targetId)?.getState() ?? null,
+      executeTarget: async (targetId, command) => targets.get(targetId)?.execute(command) ?? null,
+      emergencyStopTarget: async (targetId) => {
+        const device = targets.get(targetId);
+        if (!device) return false;
+        await device.emergencyStop();
+        return true;
+      },
+    };
+    const llm: LlmClient = {
+      async runTurn() {
+        return {
+          assistantMessage: '',
+          toolCalls: [
+            {
+              id: 'exact-adjust',
+              name: 'shock_adjust',
+              args: { targetId: 'opaque/second', channel: 'A', delta: 2 },
+            },
+          ],
+        };
+      },
+    };
+    const gate = vi.fn(() => true);
+    const runtime = new AgentRuntime({
+      device: first,
+      coyoteTargetRouter: router,
+      llm,
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+      deviceExecutionGate: gate,
+      toolCallConfig: { maxToolIterations: 1 },
+    });
+    const firstExecute = vi.spyOn(first, 'execute');
+    const secondExecute = vi.spyOn(second, 'execute');
+    const secondEmergencyStop = vi.spyOn(second, 'emergencyStop');
+
+    await runtime.sendUserMessage({
+      sessionId: 'exact-target',
+      text: '停止第二台',
+      context: { sessionId: 'exact-target', sourceType: 'web', traceId: 'exact-target' },
+    });
+
+    expect(firstExecute).not.toHaveBeenCalled();
+    expect(secondExecute).toHaveBeenCalledTimes(1);
+    expect(gate).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceKind: 'coyote', targetId: 'opaque/second' }),
+    );
+    await runtime.emergencyStop('exact-target');
+    expect(secondEmergencyStop).toHaveBeenCalled();
+  });
+
+  it('fails a stale targetId closed without falling back or broadcasting', async () => {
+    const first = new TestDevice({ deviceName: '相同名称' });
+    const executeTarget = vi.fn(async () => null);
+    const router: CoyoteTargetRouter = {
+      listTargets: async () => [{ targetId: 'opaque/current', state: await first.getState() }],
+      getTargetState: async () => null,
+      executeTarget,
+      emergencyStopTarget: async () => false,
+    };
+    const runtime = new AgentRuntime({
+      device: first,
+      coyoteTargetRouter: router,
+      llm: {
+        async runTurn() {
+          return {
+            assistantMessage: '',
+            toolCalls: [{ id: 'stale', name: 'shock_stop', args: { targetId: 'opaque/stale' } }],
+          };
+        },
+      },
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+      toolCallConfig: { maxToolIterations: 1 },
+    });
+    const firstExecute = vi.spyOn(first, 'execute');
+
+    await runtime.sendUserMessage({
+      sessionId: 'stale-target',
+      text: '停止旧目标',
+      context: { sessionId: 'stale-target', sourceType: 'web', traceId: 'stale-target' },
+    });
+
+    expect(firstExecute).not.toHaveBeenCalled();
+    expect(executeTarget).not.toHaveBeenCalled();
+  });
   it('enforces configurable per-turn shock_adjust quotas', async () => {
     const runtime = new AgentRuntime({
       device: new TestDevice({ strengthA: 10, waveActiveA: true, currentWaveA: 'pulse_mid' }),

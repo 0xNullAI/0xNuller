@@ -36,27 +36,28 @@ export type CoyoteDeviceClientFactory = (protocol: CoyoteProtocolAdapter) => Dev
  * Agent-facing aggregate for any number of Coyote hosts.
  *
  * Each host owns a separate protocol adapter and transport client, preserving
- * independent queues, limits and emergency-stop paths. The ordinary
- * DeviceClient surface continues to address the first connected host so old
- * Agent tools remain compatible; emergencyStop/disconnect cover every host.
+ * independent transports and emergency-stop paths. The ordinary DeviceClient
+ * surface remains for UI compatibility; model calls use the exact-target APIs
+ * and never fall back to this primary selection.
  */
 export class MultiCoyoteDeviceClient implements DeviceClient {
   private readonly slots: CoyoteSlot[] = [];
   private readonly listeners = new Set<(state: DeviceState) => void>();
-  private nextFallbackId = 1;
   private selectedSlotId: string | null = null;
 
-  constructor(private readonly createClient: CoyoteDeviceClientFactory) {}
+  constructor(
+    private readonly createClient: CoyoteDeviceClientFactory,
+    private readonly createTargetId: () => string = defaultTargetId,
+  ) {}
 
   get deviceId(): string | null {
     return this.primarySlot()?.id ?? null;
   }
 
   async connect(): Promise<void> {
-    const slot = this.createSlot(`coyote-${this.nextFallbackId++}`);
+    const slot = this.createSlot(this.nextOpaqueTargetId());
     try {
       await slot.client.connect();
-      slot.id = this.uniqueSlotId(clientDeviceId(slot.client) ?? slot.id, slot);
       slot.state = await slot.client.getState();
       this.emit();
     } catch (error) {
@@ -69,7 +70,6 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     device: BluetoothDeviceLike,
     server: BluetoothRemoteGATTServerLike,
   ): Promise<void> {
-    const requestedId = device.id?.trim() || `coyote-${this.nextFallbackId++}`;
     // A reconnect of the exact same BluetoothDevice belongs to its old slot.
     // Different hosts can nevertheless expose the same transport id (notably
     // through some native BLE adapters), so id equality alone must never merge
@@ -83,11 +83,10 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
       return;
     }
 
-    const slot = this.createSlot(this.uniqueSlotId(requestedId), device);
+    const slot = this.createSlot(this.nextOpaqueTargetId(), device);
     try {
       const client = asAttachCapable(slot.client);
       await client.connectDevice(device, server);
-      slot.id = this.uniqueSlotId(clientDeviceId(slot.client) ?? requestedId, slot);
       slot.state = await slot.client.getState();
       this.emit();
     } catch (error) {
@@ -196,12 +195,13 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     return slot;
   }
 
-  private uniqueSlotId(candidate: string, current?: CoyoteSlot): string {
-    const used = new Set(this.slots.filter((slot) => slot !== current).map((slot) => slot.id));
-    if (!used.has(candidate)) return candidate;
-    let suffix = 2;
-    while (used.has(`${candidate}#${suffix}`)) suffix += 1;
-    return `${candidate}#${suffix}`;
+  private nextOpaqueTargetId(): string {
+    const used = new Set(this.slots.map((slot) => slot.id));
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const id = this.createTargetId().trim();
+      if (id && !used.has(id)) return id;
+    }
+    throw new Error('无法分配唯一郊狼目标身份');
   }
 
   private connectedSlots(): CoyoteSlot[] {
@@ -233,7 +233,6 @@ function asAttachCapable(client: DeviceClient): AttachCapableDeviceClient {
   return client as AttachCapableDeviceClient;
 }
 
-function clientDeviceId(client: DeviceClient): string | null {
-  const id = (client as Partial<AttachCapableDeviceClient>).deviceId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
+function defaultTargetId(): string {
+  return `coyote/${crypto.randomUUID()}`;
 }

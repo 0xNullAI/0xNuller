@@ -20,6 +20,7 @@
 import { AudioPlayback, MicCapture, SAMPLE_RATE, base64ToInt16, float32ToInt16 } from './audio.js';
 import { applyWebSocketProxy } from '@0xnullai/settings';
 import type { RealtimeSession, RealtimeSessionOptions } from './realtime-session.js';
+import type { ToolDefinition } from '@dg-kit/core';
 
 export type { RealtimeSessionOptions } from './realtime-session.js';
 
@@ -223,7 +224,12 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
   }
 
   updateInstructions(instructions: string): void {
-    this.options.instructions = instructions;
+    this.updateConfiguration({ instructions, tools: this.options.tools });
+  }
+
+  updateConfiguration(configuration: { instructions: string; tools: ToolDefinition[] }): void {
+    this.options.instructions = configuration.instructions;
+    this.options.tools = configuration.tools;
     this.send(this.buildSessionUpdate());
   }
 

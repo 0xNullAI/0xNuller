@@ -89,6 +89,7 @@ export class WebEmbeddedDeviceRuntimeProvider implements EmbeddedDeviceRuntimePr
   }
 
   async start(): Promise<SharedDeviceRuntime> {
+    if (this.disableFailure) throw this.disableFailure;
     if (!this.isEnabled()) throw new WebEmbeddedDevicesDisabledError();
     return this.shared.start();
   }
@@ -102,6 +103,7 @@ export class WebEmbeddedDeviceRuntimeProvider implements EmbeddedDeviceRuntimePr
   }
 
   async restart(): Promise<SharedDeviceRuntime> {
+    if (this.disableFailure) throw this.disableFailure;
     if (!this.isEnabled()) throw new WebEmbeddedDevicesDisabledError();
     return this.shared.restart();
   }

@@ -17,7 +17,7 @@ interface DeviceStatusBarProps {
   state: DeviceSessionState;
   coyoteSafety: CoyoteSafetySettings;
   opossumSafety: OpossumSafetySettings;
-  onDisconnectCoyote: () => void;
+  onDisconnectCoyote: (targetId: string) => void;
   onDisconnectOpossum: () => void;
 }
 
@@ -28,31 +28,32 @@ export function DeviceStatusBar({
   onDisconnectCoyote,
   onDisconnectOpossum,
 }: DeviceStatusBarProps) {
-  if (!state.coyote.connected && !state.opossum.connected) return null;
+  if (state.coyotes.length === 0 && !state.opossum.connected) return null;
 
   return (
     <DeviceStatusRow>
-      {state.coyote.connected && (
+      {state.coyotes.map(({ targetId, state: coyote }) => (
         <DeviceStatusChip
+          key={targetId}
           icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
-          battery={state.coyote.battery}
-          onClick={onDisconnectCoyote}
+          battery={coyote.battery}
+          onClick={() => onDisconnectCoyote(targetId)}
           title="断开郊狼"
         >
           <div className="flex gap-3 sm:gap-4">
             <ChannelStrengthBar
               channel="A"
-              value={state.coyote.strengthA}
-              max={Math.min(state.coyote.limitA, coyoteSafety.maxStrengthA)}
+              value={coyote.strengthA}
+              max={Math.min(coyote.limitA, coyoteSafety.maxStrengthA)}
             />
             <ChannelStrengthBar
               channel="B"
-              value={state.coyote.strengthB}
-              max={Math.min(state.coyote.limitB, coyoteSafety.maxStrengthB)}
+              value={coyote.strengthB}
+              max={Math.min(coyote.limitB, coyoteSafety.maxStrengthB)}
             />
           </div>
         </DeviceStatusChip>
-      )}
+      ))}
 
       {state.opossum.connected && (
         <DeviceStatusChip

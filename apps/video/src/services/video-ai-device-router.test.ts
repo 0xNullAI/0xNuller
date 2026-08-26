@@ -73,6 +73,7 @@ function harness(
   });
   return {
     router,
+    llm,
     invoked,
     stopAll,
     targets,
@@ -94,6 +95,22 @@ async function authorize(h: ReturnType<typeof harness>, durationMs = 60_000) {
 }
 
 describe('VideoAiDeviceRouter', () => {
+  it('includes the selected scene and built-in continuous-observation contract', async () => {
+    const h = harness([[]]);
+    h.router.updateInputs(h.llm, h.targets, {
+      name: '雾境测试',
+      prompt: '根据最新画面推进原创幻想场景。',
+    });
+    await authorize(h);
+    await h.router.observe(FRAME);
+
+    const input = vi.mocked(h.llm.runTurn).mock.calls[0]?.[0];
+    expect(input?.instructions).toContain('当前选定场景「雾境测试」');
+    expect(input?.instructions).toContain('根据最新画面推进原创幻想场景');
+    expect(input?.instructions).toContain('不等待用户逐轮下令');
+    expect(input?.instructions).toContain('工具请求不代表成功');
+  });
+
   it('lets the model choose an exact target on every call and stops the old route before switching', async () => {
     const h = harness([[call('a', 'coyote/a')], [call('b', 'coyote/b')]]);
     await authorize(h);

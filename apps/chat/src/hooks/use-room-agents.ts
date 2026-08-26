@@ -21,14 +21,15 @@ import type {
   ChatMessage,
 } from '../lib/protocol';
 import { loadAiConfig, isAiConfigured } from '../lib/ai-config';
-import { callLlm, type LlmMessage, type LlmTool, type LlmToolCall } from '../lib/llm-client';
+import { callLlm, type LlmMessage } from '../lib/llm-client';
+import {
+  applyRoomAgentDeviceTool,
+  buildRoomAgentDeviceTools,
+  type AgentDeviceTarget,
+} from '../lib/room-agent-device-tools';
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 
-/** A target device the AI may drive (already authorized for that AI role). */
-export interface AgentDeviceTarget {
-  peerId: string;
-  name: string;
-}
+export type { AgentDeviceTarget } from '../lib/room-agent-device-tools';
 
 interface RoomAgentsOptions {
   isHost: boolean;
@@ -79,46 +80,6 @@ function buildSystemPrompt(agent: RoomAgent, members: Map<string, MemberState>):
   return lines.join('\n');
 }
 
-/** Device tool definitions (offered only when there is an authorized target). */
-function buildTools(targets: AgentDeviceTarget[]): LlmTool[] {
-  if (targets.length === 0) return [];
-  const targetEnum = targets.map((t) => t.peerId);
-  const targetDesc = targets.map((t) => `${t.peerId}=${t.name}`).join('，');
-  return [
-    {
-      type: 'function',
-      function: {
-        name: 'adjust_strength',
-        description: `调整某成员设备某通道的强度（带符号增量，正=增强/负=减弱，设备端会按本地安全上限钳制）。目标：${targetDesc}`,
-        parameters: {
-          type: 'object',
-          properties: {
-            target: { type: 'string', enum: targetEnum, description: '目标成员 peerId' },
-            channel: { type: 'string', enum: ['A', 'B'], description: '通道' },
-            delta: { type: 'number', description: '强度增量，建议绝对值不超过 20' },
-          },
-          required: ['target', 'channel', 'delta'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'stop',
-        description: `停止某成员设备的输出。目标：${targetDesc}`,
-        parameters: {
-          type: 'object',
-          properties: {
-            target: { type: 'string', enum: targetEnum, description: '目标成员 peerId' },
-            channel: { type: 'string', enum: ['A', 'B'], description: '通道（省略=两个通道）' },
-          },
-          required: ['target'],
-        },
-      },
-    },
-  ];
-}
-
 export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> } {
   // Only the top-level effect needs these; the other fields are read inside
   // runTurn via latest.current.
@@ -156,7 +117,7 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
               content: `${m.senderName}：${m.text}`,
             },
       );
-      const tools = buildTools(cur.deviceTargets);
+      const tools = buildRoomAgentDeviceTools(cur.deviceTargets);
       const llmMessages: LlmMessage[] = [{ role: 'system', content: sys }, ...convo];
 
       let rounds = 0;
@@ -173,7 +134,12 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
         // Run the tools, feed the results back in, and go another round.
         llmMessages.push({ role: 'assistant', content: res.text || '', toolCalls: res.toolCalls });
         for (const call of res.toolCalls) {
-          const result = applyTool(roleId, call, cur.deviceTargets, cur.sendCommandAs);
+          const result = applyRoomAgentDeviceTool(
+            roleId,
+            call,
+            latest.current.deviceTargets,
+            latest.current.sendCommandAs,
+          );
           llmMessages.push({
             role: 'tool',
             content: result,
@@ -224,36 +190,4 @@ export function useRoomAgents(opts: RoomAgentsOptions): { thinking: Set<string> 
   }, [isHost, messages, agent, runTurn]);
 
   return { thinking };
-}
-
-/** Run one tool call and return the result text handed back to the LLM. */
-function applyTool(
-  roleId: string,
-  call: LlmToolCall,
-  targets: AgentDeviceTarget[],
-  sendCommandAs: RoomAgentsOptions['sendCommandAs'],
-): string {
-  const target = String(call.arguments.target ?? '');
-  if (!targets.some((t) => t.peerId === target)) return `错误：目标 ${target} 未授权或不存在`;
-  const channel =
-    call.arguments.channel === 'B' ? 'B' : call.arguments.channel === 'A' ? 'A' : undefined;
-  if (call.name === 'adjust_strength') {
-    const delta = Math.max(-50, Math.min(50, Number(call.arguments.delta) || 0));
-    sendCommandAs(roleId, target, 'adjust_strength', { c: channel ?? 'A', v: delta });
-    // Deliberately does not claim the value landed. This runs in the host's
-    // browser; the command still has to cross to the owner, where the shared
-    // policy engine may clamp or reject it, and the host never learns the
-    // result. Telling the model "adjusted by +50" would have it narrate an
-    // effect the person may not have felt.
-    return `已向 ${target} 通道${channel ?? 'A'} 发出调整请求 ${delta > 0 ? '+' : ''}${delta}；实际生效值由对方设备端的安全上限决定，不要断言具体数值。`;
-  }
-  if (call.name === 'stop') {
-    if (channel) sendCommandAs(roleId, target, 'stop', { c: channel });
-    else {
-      sendCommandAs(roleId, target, 'stop', { c: 'A' });
-      sendCommandAs(roleId, target, 'stop', { c: 'B' });
-    }
-    return `已停止 ${target} ${channel ?? '全部'}通道输出`;
-  }
-  return `未知工具：${call.name}`;
 }

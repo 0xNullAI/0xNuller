@@ -154,6 +154,34 @@ export interface WaveformCatalogEntry {
 /** Sensor kind (paw-prints / civet-edging). A member has only one sensor connected at a time (v1 simplification). */
 export type SensorKind = Extract<DeviceKind, 'paw-prints' | 'civet-edging'>;
 
+/** Exact connected Coyote identities advertised to other room members. */
+export interface RoomCoyoteTarget {
+  deviceId: string;
+  name: string;
+}
+
+/** Treat room state as untrusted and never preserve duplicate or malformed identities. */
+export function parseRoomCoyoteTargets(value: unknown): RoomCoyoteTarget[] {
+  if (!Array.isArray(value)) return [];
+  const result: RoomCoyoteTarget[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.slice(0, 16)) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const record = candidate as Record<string, unknown>;
+    const deviceId = typeof record.deviceId === 'string' ? record.deviceId.trim() : '';
+    if (!deviceId || deviceId.length > 256 || seen.has(deviceId)) continue;
+    seen.add(deviceId);
+    result.push({
+      deviceId,
+      name:
+        typeof record.name === 'string' && record.name.trim()
+          ? record.name.trim().slice(0, 120)
+          : '郊狼',
+    });
+  }
+  return result;
+}
+
 /**
  * The complete MemberState (consumed by the UI).
  * On the wire it is split into two topics: fast (broadcast immediately on every change,
@@ -172,6 +200,8 @@ export interface MemberState {
    */
   username?: string | null;
   deviceConnected: boolean;
+  /** Connected physical targets only; absent/empty means no AI-addressable target. */
+  coyotes?: RoomCoyoteTarget[];
   strengthA: number;
   strengthB: number;
   waveA: string | null;
@@ -241,6 +271,7 @@ export interface StateSlow {
   /** Account handle, or null when signed out. Slow rather than fast: it changes only at sign-in. */
   username?: string | null;
   deviceConnected: boolean;
+  coyotes: RoomCoyoteTarget[];
   battery: number | null;
   waveformCatalog?: WaveformCatalogEntry[];
   // —— Added for queue sync ——

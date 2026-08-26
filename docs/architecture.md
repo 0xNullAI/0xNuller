@@ -74,6 +74,15 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 不能因为 UI 或适配器复用而发生迁移。功能 app 不自行拼接 provider endpoint、代理 URL 或复制
 通用设备 capability schema。
 
+通用设备只使用「软件设置 → 关于」中的一个本机开关。Control、Agent、Voice、Video 订阅同一
+provider 状态，不在各模块增加私有开关。关闭时不渲染通用设备入口、不加载或扫描 backend，
+也不向模型提供通用设备说明、状态、工具或目标；Video 本身以及郊狼、负鼠路径不受影响。
+
+AI 设备上下文采用当前可用能力的正向快照。只有当前已连接、功能已启用且 capability 健康的设备
+可以进入 instructions、状态块、工具定义和 target allowlist；未连接、已禁用、已失效或只存在于
+配置中的设备必须完全省略，而不是写成“未连接”。Agent 每轮重新计算；Voice 在拓扑变化时原子
+更新 instructions 与 tools；Video 在开始授权及每次写入前继续核验一次性目标白名单。
+
 ## 文件组织
 
 公共包的 `index.ts` 是稳定导出入口，不承载具体实现。实现文件按行为命名，测试与源码相邻；

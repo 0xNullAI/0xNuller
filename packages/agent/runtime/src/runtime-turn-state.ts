@@ -212,6 +212,11 @@ function normalizeBurstChannel(args?: Record<string, unknown>): 'A' | 'B' {
 function shouldSkipModelContextMessage(message: SessionSnapshot['messages'][number]): boolean {
   if (message.role === 'user') return false;
 
+  // Tool results are intentionally not persisted. Replaying the accompanying
+  // assistant narration without its call/result pair turns statements such as
+  // “already adjusted” into unsupported history that later models imitate.
+  if (message.role === 'assistant' && message.toolCalls?.length) return true;
+
   const content = message.content.trim();
   if (!content) return true;
 

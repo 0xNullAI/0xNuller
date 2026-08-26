@@ -1,5 +1,12 @@
-import type { DeviceClient, Logger, PermissionService, SessionTraceStore } from '@dg-agent/core';
+import type {
+  CoyoteTargetRouter,
+  DeviceClient,
+  Logger,
+  PermissionService,
+  SessionTraceStore,
+} from '@dg-agent/core';
 import {
+  createExactCoyoteDeviceClient,
   isDeviceToolName,
   type ActionContext,
   type DeviceCommand,
@@ -11,7 +18,7 @@ import {
   type ToolExecutionPlan,
 } from '@dg-agent/core';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
-import type { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
+import { DeviceCommandQueue, type OpossumCommandQueue } from '@dg-kit/safety';
 import { throwIfAborted } from './runtime-errors.js';
 import { consumeTurnQuota, type TurnState } from './runtime-turn-state.js';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
@@ -52,6 +59,8 @@ export interface DeviceExecutionGateInput {
   sessionId: string;
   context: ActionContext;
   deviceKind: DeviceKind;
+  /** Exact connection-lifetime identity for Coyote commands. */
+  targetId?: string;
   toolName: string;
   command: DeviceCommand | OpossumCommand | { type: 'setIndicatorColor'; color: number };
 }
@@ -60,6 +69,7 @@ export type DeviceExecutionGate = (input: DeviceExecutionGateInput) => boolean |
 
 export interface RuntimeToolExecutorOptions {
   device: DeviceClient;
+  coyoteTargetRouter?: CoyoteTargetRouter;
   opossum?: OpossumClient;
   pawPrints?: PawPrintsClient;
   civetEdging?: CivetEdgingClient;
@@ -91,6 +101,7 @@ export interface ExecuteToolCallInput {
 
 export class RuntimeToolExecutor {
   private readonly scheduledTimers = new Map<string, ScheduledTimer>();
+  private readonly coyoteTargetQueues = new Map<string, DeviceCommandQueue>();
 
   constructor(private readonly options: RuntimeToolExecutorOptions) {}
 
@@ -242,7 +253,8 @@ export class RuntimeToolExecutor {
   async getConnectedDeviceKinds(session: SessionSnapshot): Promise<Set<DeviceKind>> {
     const connected = new Set<DeviceKind>();
 
-    const coyoteState = await this.options.device.getState();
+    const coyoteTargets = await this.options.coyoteTargetRouter?.listTargets();
+    const coyoteState = coyoteTargets?.[0]?.state ?? (await this.options.device.getState());
     session.deviceState = coyoteState;
     if (coyoteState.connected) connected.add('coyote');
 
@@ -320,6 +332,17 @@ export class RuntimeToolExecutor {
       clearTimeout(scheduled.timer);
       this.scheduledTimers.delete(timerId);
     }
+  }
+
+  /** Invalidates queued/in-flight exact-target work before the aggregate emergency stop returns. */
+  async emergencyStopCoyoteTargetQueues(): Promise<void> {
+    const results = await Promise.allSettled(
+      [...this.coyoteTargetQueues.values()].map((queue) => queue.emergencyStop()),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) throw failure.reason;
   }
 
   private async resolvePlan(
@@ -626,7 +649,16 @@ export class RuntimeToolExecutor {
 
     throwIfAborted(abortSignal);
 
-    const currentState = await this.options.device.getState();
+    const targetId = this.options.coyoteTargetRouter ? readExactTargetId(toolCall.args) : null;
+    if (this.options.coyoteTargetRouter && !targetId) {
+      return this.denyToolCall(session, toolCall, '缺少有效的郊狼 targetId', context);
+    }
+    const currentState = targetId
+      ? await this.options.coyoteTargetRouter!.getTargetState(targetId)
+      : await this.options.device.getState();
+    if (!currentState?.connected) {
+      return this.denyToolCall(session, toolCall, '目标郊狼未连接或身份已失效', context);
+    }
     const burstError = validateBurstExecution(command, currentState, this.options.toolCallConfig);
     if (burstError) {
       return this.denyToolCall(session, toolCall, burstError, context);
@@ -688,7 +720,16 @@ export class RuntimeToolExecutor {
     }
 
     throwIfAborted(abortSignal);
-    if (!(await this.canExecuteDeviceCommand(session, context, toolCall, 'coyote', command))) {
+    if (
+      !(await this.canExecuteDeviceCommand(
+        session,
+        context,
+        toolCall,
+        'coyote',
+        command,
+        targetId ?? undefined,
+      ))
+    ) {
       return this.denyToolCall(session, toolCall, '当前模块已失去设备控制权', context);
     }
     throwIfAborted(abortSignal);
@@ -702,7 +743,9 @@ export class RuntimeToolExecutor {
     });
 
     try {
-      const result = await this.options.queue.enqueue(command);
+      const result = targetId
+        ? await this.getCoyoteTargetQueue(targetId).enqueue(command)
+        : await this.options.queue.enqueue(command);
       session.deviceState = result.state;
 
       this.options.emit({
@@ -769,12 +812,23 @@ export class RuntimeToolExecutor {
     }
   }
 
+  private getCoyoteTargetQueue(targetId: string): DeviceCommandQueue {
+    const existing = this.coyoteTargetQueues.get(targetId);
+    if (existing) return existing;
+    const router = this.options.coyoteTargetRouter!;
+    const exactClient = createExactCoyoteDeviceClient(router, targetId);
+    const queue = new DeviceCommandQueue(exactClient);
+    this.coyoteTargetQueues.set(targetId, queue);
+    return queue;
+  }
+
   private async canExecuteDeviceCommand(
     session: SessionSnapshot,
     context: ActionContext,
     toolCall: ToolCall,
     deviceKind: DeviceKind,
     command: DeviceExecutionGateInput['command'],
+    targetId?: string,
   ): Promise<boolean> {
     // Lease loss must never make a stop path unreachable.
     if (
@@ -788,6 +842,7 @@ export class RuntimeToolExecutor {
       sessionId: session.id,
       context,
       deviceKind,
+      targetId,
       toolName: toolCall.name,
       command,
     });
@@ -823,6 +878,11 @@ export class RuntimeToolExecutor {
       },
     });
   }
+}
+
+function readExactTargetId(args: Record<string, unknown>): string | null {
+  const value = args.targetId;
+  return typeof value === 'string' && value.trim() ? value : null;
 }
 
 function validateBurstExecution(

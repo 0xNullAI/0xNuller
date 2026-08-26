@@ -8,6 +8,7 @@
  */
 
 export * from '@dg-kit/core';
+export * from './coyote-targeting.js';
 
 import type {
   DeviceCommand,

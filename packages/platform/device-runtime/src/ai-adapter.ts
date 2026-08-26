@@ -54,6 +54,8 @@ export interface AiDeviceToolAdapterOptions {
   tools: () => BoundDeviceTools | Promise<BoundDeviceTools>;
   /** Returns only an already-open runtime snapshot; it must not start a backend. */
   snapshot?: () => DeviceSnapshot | null;
+  /** Local feature gate; disabled adapters expose no model surface. */
+  enabled?: () => boolean;
 }
 
 const AI_NAME_SET: ReadonlySet<string> = new Set(AI_DEVICE_TOOL_NAMES);
@@ -125,11 +127,19 @@ export class AiDeviceToolAdapter {
   }
 
   definitions(): ModelDeviceToolDefinition[] {
-    return toModelDeviceToolDefinitions();
+    return this.isAvailable() ? toModelDeviceToolDefinitions() : [];
   }
 
   snapshot(): DeviceSnapshot | null {
-    return this.options.snapshot?.() ?? null;
+    if (this.options.enabled?.() === false) return null;
+    const snapshot = this.options.snapshot?.() ?? null;
+    if (!snapshot) return null;
+    const controllable = sanitizeAiDeviceSnapshot(snapshot);
+    return controllable.devices.length > 0 ? controllable : null;
+  }
+
+  isAvailable(): boolean {
+    return this.snapshot() !== null;
   }
 
   async invoke(call: AiDeviceToolCall): Promise<unknown> {
@@ -157,7 +167,15 @@ export function createAiDeviceToolAdapter(
   return new AiDeviceToolAdapter({
     tools: () => provider.forModule(moduleId),
     snapshot: () => provider.current()?.snapshot() ?? null,
+    enabled: () => provider.isEnabled?.() ?? true,
   });
+}
+
+/** Models only need generic device context when they can address a healthy output feature. */
+export function hasUsableAiDeviceTarget(snapshot: DeviceSnapshot): boolean {
+  return snapshot.devices.some((device) =>
+    device.capabilities.some((capability) => capability.kind === 'vibrate' && !capability.faulted),
+  );
 }
 
 export function aiDeviceToolRequiresPermission(name: string): name is AiDeviceToolName {
@@ -167,13 +185,24 @@ export function aiDeviceToolRequiresPermission(name: string): name is AiDeviceTo
 export function sanitizeAiDeviceSnapshot(snapshot: DeviceSnapshot): DeviceSnapshot {
   return {
     ...snapshot,
-    devices: snapshot.devices.map((device) => ({
-      ...device,
-      // Advertised names may contain brands or user-provided text. Models
-      // receive capabilities and exact opaque IDs only.
-      name: 'Connected device',
-      capabilities: device.capabilities.map((capability) => ({ ...capability })),
-    })),
+    devices: snapshot.devices.flatMap((device) => {
+      const healthyVibration = device.capabilities.filter(
+        (capability) => capability.kind === 'vibrate' && !capability.faulted,
+      );
+      if (healthyVibration.length === 0) return [];
+      return [
+        {
+          ...device,
+          // Advertised names may contain brands or user-provided text. Models
+          // receive capabilities and exact opaque IDs only. Telemetry remains
+          // useful, but faulted output features never enter the model snapshot.
+          name: 'Connected device',
+          capabilities: device.capabilities
+            .filter((capability) => capability.kind !== 'vibrate' || !capability.faulted)
+            .map((capability) => ({ ...capability })),
+        },
+      ];
+    }),
   };
 }
 
@@ -186,16 +215,19 @@ export function appendAiDeviceRuntimeStatus(
   snapshot: DeviceSnapshot | null,
 ): string {
   if (!snapshot) return instructions;
-  const status = formatAiDeviceRuntimeStatus(snapshot);
+  const controllable = sanitizeAiDeviceSnapshot(snapshot);
+  if (controllable.devices.length === 0) return instructions;
+  const status = formatAiDeviceRuntimeStatus(controllable);
   return instructions ? `${instructions}\n\n${status}` : status;
 }
 
 export function formatAiDeviceRuntimeStatus(snapshot: DeviceSnapshot): string {
+  const controllable = sanitizeAiDeviceSnapshot(snapshot);
   const lines = [
     '[通用设备运行时]',
-    `sessionId=${JSON.stringify(snapshot.sessionId)}; devices=${snapshot.devices.length}`,
+    `sessionId=${JSON.stringify(controllable.sessionId)}; devices=${controllable.devices.length}`,
   ];
-  for (const device of snapshot.devices) {
+  for (const device of controllable.devices) {
     const capabilities = device.capabilities.map((capability) => {
       switch (capability.kind) {
         case 'vibrate':

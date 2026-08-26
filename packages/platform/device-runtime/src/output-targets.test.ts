@@ -18,8 +18,8 @@ describe('unified output targets', () => {
   it('combines multiple Coyotes, Opossum and generic capabilities without losing identity', () => {
     const targets = createUnifiedOutputTargets(
       [
-        { kind: 'coyote', targetId: 'coyote-a', name: 'Alpha', battery: 88 },
-        { kind: 'coyote', targetId: 'coyote-b', name: 'Beta', battery: 77 },
+        { kind: 'coyote', targetId: 'coyote-a', name: 'Same name', battery: 88 },
+        { kind: 'coyote', targetId: 'coyote-b', name: 'Same name', battery: 77 },
         { kind: 'opossum', targetId: 'opossum-a', name: 'Gamma', battery: 66 },
       ],
       {
@@ -35,6 +35,12 @@ describe('unified output targets', () => {
             capabilities: [
               { kind: 'vibrate', featureId: 'motor-a' as FeatureId, stepCount: 20, faulted: false },
               { kind: 'vibrate', featureId: 'motor-b' as FeatureId, stepCount: 20, faulted: false },
+              {
+                kind: 'vibrate',
+                featureId: 'motor-fault' as FeatureId,
+                stepCount: 20,
+                faulted: true,
+              },
             ],
           },
         ],

@@ -85,7 +85,7 @@ export function createUnifiedOutputTargets(
     const battery = device.capabilities.find((feature) => feature.kind === 'battery');
     const vibrationFeatures = device.capabilities.filter(
       (feature): feature is Extract<typeof feature, { kind: 'vibrate' }> =>
-        feature.kind === 'vibrate',
+        feature.kind === 'vibrate' && !feature.faulted,
     );
     vibrationFeatures.forEach((feature, index) => {
       targets.push({

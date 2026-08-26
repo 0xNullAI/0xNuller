@@ -1,7 +1,7 @@
 # 部署
 
-0xNuller 使用一个统一 Web 外壳和多个独立 Cloudflare Worker。独立 Worker 保留各自的
-存储与 Durable Object 命名空间，避免部署一个模块时影响其他模块。
+本页供发布维护者使用。0xNuller 由一个统一 Web 外壳和多个独立 Cloudflare Worker 组成；
+各 Worker 保留自己的存储和 Durable Object 命名空间，因此按服务发布和回滚，不做整站替换。
 
 ## 路由
 
@@ -37,19 +37,20 @@ npm run verify:data
 npm run check:routes
 ```
 
-生产数据库升级前必须先备份，并运行只读门禁：
+生产数据库升级前必须先取得可验证的备份，再运行只读门禁：
 
 ```bash
 npm run release:data:preflight -- \
-  --remote-readonly --confirm=dg-market,0xnullai-auth
+  --remote-readonly --confirm=dg-market,0xnullai-auth --require-current
 ```
 
-迁移记录必须与远端数据库实际结构一致。不要修改已经发布的 migration，也不要用
-`schema.sql` 代替 Wrangler migrations。
+该门禁只读取生产库；数据库不是当前版本时会阻止 Worker 和 GitHub Release 发布。此时按
+“数据迁移”应用所有待处理 migration，再重新运行门禁。不要修改已经发布的 migration，也不要
+用 `schema.sql` 代替 Wrangler migrations。
 
 ## 部署顺序
 
-后端先于 Web 外壳。服务绑定要求使用以下顺序：
+后端必须先于 Web 外壳，服务绑定要求使用以下顺序：
 
 1. Auth（先提供向后兼容的票据/API）
 2. Chat
@@ -64,13 +65,13 @@ npm run release:data:preflight -- \
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
 始终最后发布，因此任一后端失败都不会把尚未验证的静态外壳推到生产。
 
-Web 发布产物使用当前 Git commit 作为构建编号，并拒绝从未提交的代码构建：
+Web 发布产物使用当前 Git commit 作为构建编号，并拒绝从有未提交修改的工作区构建：
 
 ```bash
 npm run web:build:release
 ```
 
-建议先上传不接流量的版本，完成烟测后再提升同一个版本：
+手工发布时，先上传不接流量的版本，完成烟测后再提升同一个版本：
 
 ```bash
 wrangler versions upload --config <wrangler-config> \
@@ -95,8 +96,8 @@ wrangler d1 migrations apply dg-market --remote \
   --config apps/market/wrangler.jsonc
 ```
 
-升级已有生产库时，以只读门禁输出为准；遇到 migration 账本与表结构不一致时先停止，
-不要通过重复执行或改写旧 migration 强行继续。
+以只读门禁输出为准。migration 账本与表结构不一致时立即停止，不要通过重复执行或改写旧
+migration 强行继续。
 
 ## 首位管理员
 
@@ -112,8 +113,8 @@ npm run account:role -- --remote-write \
 
 ## 旧域迁移
 
-历史子域已永久迁移：网页导航以 `308` 跳到统一主站的对应模块并保留查询参数；旧 API、
-WebSocket 和非导航请求返回退役响应，不再依赖历史 Worker 或 Pages。
+历史子域已永久迁移。网页导航以 `308` 跳到统一主站的对应模块并保留查询参数；旧 API、
+WebSocket 和非导航请求返回退役响应。
 
 - `agent.0xnullai.com` → `/agent`
 - `voice.0xnullai.com` → `/voice`
@@ -146,5 +147,5 @@ GitHub Actions 的 `Roll back Cloudflare service` 工作流接受固定服务名
 D1 migration 和 Durable Object 数据不会随 Worker 代码回滚。migration 必须向前兼容，
 上线前也必须保留可验证的数据库备份。
 
-Worker 回滚不会撤销 D1 migration。若新代码依赖新列，migration 必须先保持旧代码可运行，完成
-观察后再启用新行为；不得把代码回滚当作数据库恢复方案。
+若新代码依赖新列，migration 必须先保持旧代码可运行，完成观察后再启用新行为；不得把代码回滚
+当作数据库恢复方案。
