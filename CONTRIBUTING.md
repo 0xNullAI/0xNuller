@@ -187,7 +187,7 @@ Product、DG-Kit、DG-MCP 可以同批进入 `main`，但版本号保持独立�
 
 1. 确认 `.changeset` 没有待消费文件；
 2. 创建唯一的 `dev → main` 发布 PR；
-3. Release Guard 校验来源分支、版本增长和产品元数据；
+3. Release Guard 校验来源分支、产品元数据，并禁止版本倒退；维护性提交不强制再次涨版本号；
 4. Repository、Product、Kit、MCP 的必要 CI 全部通过；
 5. 必须使用 merge commit，禁止 squash 或 rebase 发布 PR。
 

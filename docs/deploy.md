@@ -37,16 +37,9 @@ npm run verify:data
 npm run check:routes
 ```
 
-生产数据库升级前必须先取得可验证的备份，再运行只读门禁：
-
-```bash
-npm run release:data:preflight -- \
-  --remote-readonly --confirm=dg-market,0xnullai-auth --require-current
-```
-
-该门禁只读取生产库；数据库不是当前版本时会阻止 Worker 和 GitHub Release 发布。此时按
-“数据迁移”应用所有待处理 migration，再重新运行门禁。不要修改已经发布的 migration，也不要
-用 `schema.sql` 代替 Wrangler migrations。
+生产数据库迁移与产品发布分开管理。GitHub 发布任务不会查询或修改 D1；需要升级数据库时，
+由具有 Cloudflare 数据权限的维护者先取得可验证的备份，再按“数据迁移”单独执行。不要修改
+已经发布的 migration，也不要用 `schema.sql` 代替 Wrangler migrations。
 
 ## 部署顺序
 

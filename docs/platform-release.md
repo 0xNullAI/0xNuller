@@ -71,7 +71,7 @@ GitHub Actions 保留三个独立入口：
 1. 功能和 changeset 合并到 `dev`。
 2. 合并 `NPM Version Preparation` PR，消费 changeset并更新 npm 包版本/CHANGELOG。
 3. 若发布产品，同时更新统一产品版本和 `docs/releases/X.Y.Z.md`。
-4. 创建 `dev → main` PR；Release Guard 验证至少一条版本线递增。
+4. 创建 `dev → main` PR；Release Guard 验证产品元数据并禁止版本倒退，维护性提交可保持版本不变。
 5. merge commit 合入 `main`。
 6. main 的分域 CI 根据改动运行，对应发布线只发布自身版本发生变化的交付物。
 7. 同批包含 Kit 与 MCP 时，Kit 先在 npm 可用；MCP 工作流自动等待后再发布。Product 从同一

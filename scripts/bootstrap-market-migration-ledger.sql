@@ -1,5 +1,5 @@
 -- Production Market predates Wrangler's migration ledger. Run this file only after
--- `npm run release:data:preflight -- --remote-readonly` confirms:
+-- manually confirming from a backup or read-only database inspection that:
 --   * items has the raw schema through edit_key_hash
 --   * d1_migrations does not exist
 --

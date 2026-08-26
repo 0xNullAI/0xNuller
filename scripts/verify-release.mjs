@@ -100,16 +100,6 @@ function verifyProductMetadata() {
   if (!productReleaseWorkflow.includes('tag="v$version"')) {
     fail('product release must create the unified source/product tag v<version>');
   }
-  for (const required of [
-    'release:data:preflight',
-    '--remote-readonly',
-    '--confirm=dg-market,0xnullai-auth',
-    '--require-current',
-  ]) {
-    if (!productReleaseWorkflow.includes(required)) {
-      fail(`product release must gate deployment on current data migrations: missing ${required}`);
-    }
-  }
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
     fail('Android updater must only consume unified v<version> releases');
   }
@@ -256,7 +246,6 @@ function verifyBumps(base) {
     if (comparison < 0) fail(`${path} decreases from ${previous} to ${current}`);
     if (comparison > 0) bumps.push(`${path}: ${previous} -> ${current}`);
   }
-  if (bumps.length === 0) fail(`no releasable package version increased relative to ${base}`);
   return bumps;
 }
 
@@ -266,3 +255,4 @@ const bumps = baseFlag ? verifyBumps(baseFlag.slice('--base='.length)) : [];
 console.log(`release metadata OK: 0xNuller ${version}`);
 console.log(`tag boundary OK: unified source/product v${version} with Android APK`);
 for (const bump of bumps) console.log(`version bump: ${bump}`);
+if (baseFlag && bumps.length === 0) console.log('version bump: none (maintenance promotion)');

@@ -65,7 +65,6 @@
     "check:structure": "node scripts/check-architecture.mjs && node scripts/check-test-discovery.mjs",
     "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
     "verify:data": "node scripts/verify-data-platform.mjs",
-    "release:data:preflight": "node scripts/release-data-preflight.mjs",
     "account:role": "node scripts/set-account-role.mjs"
   },
   "devDependencies": {
