@@ -101,6 +101,8 @@ function verifyProductMetadata() {
     fail('product release must create the unified source/product tag v<version>');
   }
   for (const required of [
+    'Verify Cloudflare API token',
+    '/user/tokens/verify',
     'release:data:preflight',
     '--remote-readonly',
     '--confirm=dg-market,0xnullai-auth',
@@ -109,6 +111,18 @@ function verifyProductMetadata() {
     if (!productReleaseWorkflow.includes(required)) {
       fail(`product release must gate deployment on current data migrations: missing ${required}`);
     }
+  }
+  const cloudflareTokenGate = productReleaseWorkflow.indexOf('Verify Cloudflare API token');
+  const dataGate = productReleaseWorkflow.indexOf('Require current production data migrations');
+  const androidBuild = productReleaseWorkflow.indexOf('Build signed Android APK');
+  const productionDeploy = productReleaseWorkflow.indexOf('Deploy product services and Web');
+  if (
+    cloudflareTokenGate < 0 ||
+    dataGate < cloudflareTokenGate ||
+    androidBuild < dataGate ||
+    productionDeploy < androidBuild
+  ) {
+    fail('product release must verify Cloudflare and production data before building or deploying');
   }
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
     fail('Android updater must only consume unified v<version> releases');
