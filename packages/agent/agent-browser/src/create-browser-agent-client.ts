@@ -29,6 +29,7 @@ import {
   AGENT_RUNTIME_PERMISSION_TOOL_NAMES,
   DeviceRuntimeToolRegistry,
 } from './device-runtime-tool-registry.js';
+import { CoyoteTargetToolRegistry, createCoyoteTargetRouter } from './coyote-target-routing.js';
 
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
@@ -80,9 +81,11 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
       maxVibrateBurstCallsPerTurn: settings.maxVibrateBurstCallsPerTurn,
     },
   });
+  const coyoteTargetRouter = createCoyoteTargetRouter(options.device);
+  const targetedToolRegistry = new CoyoteTargetToolRegistry(legacyToolRegistry, coyoteTargetRouter);
   const toolRegistry = options.deviceRuntimeTools
-    ? new DeviceRuntimeToolRegistry(legacyToolRegistry, options.deviceRuntimeTools)
-    : legacyToolRegistry;
+    ? new DeviceRuntimeToolRegistry(targetedToolRegistry, options.deviceRuntimeTools)
+    : targetedToolRegistry;
   const buildBaseInstructions = createBuildBrowserInstructions({
     promptPresetId: scenes.selectedId,
     savedPromptPresets: scenes.saved,
@@ -94,6 +97,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
 
   return createEmbeddedAgentClient({
     device: options.device,
+    coyoteTargetRouter,
     opossum: options.opossum,
     pawPrints: options.pawPrints,
     civetEdging: options.civetEdging,

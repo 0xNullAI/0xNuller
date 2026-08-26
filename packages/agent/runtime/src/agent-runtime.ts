@@ -1,4 +1,5 @@
 import type {
+  CoyoteTargetRouter,
   DeviceClient,
   LlmConversationItem,
   LlmClient,
@@ -74,6 +75,8 @@ import {
 
 export interface AgentRuntimeOptions {
   device: DeviceClient;
+  /** Exact Coyote target enumeration and execution boundary. */
+  coyoteTargetRouter?: CoyoteTargetRouter;
   /** At most one connected Opossum vibration controller, alongside Coyote. */
   opossum?: OpossumClient;
   /** At most one connected paw-prints button/motion sensor, alongside Coyote. */
@@ -180,6 +183,7 @@ export class AgentRuntime {
     const logger = options.logger ?? defaultLogger;
     this.toolExecutor = new RuntimeToolExecutor({
       device: options.device,
+      coyoteTargetRouter: options.coyoteTargetRouter,
       opossum: options.opossum,
       pawPrints: options.pawPrints,
       civetEdging: options.civetEdging,
@@ -721,19 +725,28 @@ export class AgentRuntime {
 
   /** Fetches live auxiliary state; instruction composition filters disconnected devices. */
   private async getAuxDeviceStatesForInstructions(): Promise<{
+    coyoteTargets?: Awaited<ReturnType<CoyoteTargetRouter['listTargets']>>;
     opossumState?: OpossumState;
     pawPrintsState?: SensorState;
     civetEdgingState?: SensorState;
     pawPrintsSummary?: string;
     civetSummary?: string;
   }> {
-    const [opossumState, pawPrintsState, civetEdgingState] = await Promise.all([
+    const [coyoteTargets, opossumState, pawPrintsState, civetEdgingState] = await Promise.all([
+      this.options.coyoteTargetRouter?.listTargets(),
       this.options.opossum?.getState(),
       this.options.pawPrints?.getState(),
       this.options.civetEdging?.getState(),
     ]);
     const { pawPrintsSummary, civetSummary } = this.getSensorSummaries();
-    return { opossumState, pawPrintsState, civetEdgingState, pawPrintsSummary, civetSummary };
+    return {
+      coyoteTargets,
+      opossumState,
+      pawPrintsState,
+      civetEdgingState,
+      pawPrintsSummary,
+      civetSummary,
+    };
   }
 
   /** Synchronous — the buffers already hold everything they need in memory. */
@@ -873,7 +886,10 @@ export class AgentRuntime {
     ReturnType<DeviceCommandQueue['emergencyStop']>
   > | null> {
     const [coyote] = await Promise.allSettled([
-      this.queue.emergencyStop(),
+      Promise.all([
+        this.queue.emergencyStop(),
+        this.toolExecutor.emergencyStopCoyoteTargetQueues(),
+      ]).then(([result]) => result),
       this.opossumQueue?.emergencyStop() ?? Promise.resolve(undefined),
     ]);
     return coyote.status === 'fulfilled' ? coyote.value : null;

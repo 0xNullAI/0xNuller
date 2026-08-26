@@ -1,4 +1,9 @@
-import type { ActionContext, SensorState, SessionSnapshot } from '@dg-agent/core';
+import type {
+  ActionContext,
+  CoyoteTargetSnapshot,
+  SensorState,
+  SessionSnapshot,
+} from '@dg-agent/core';
 import { getSensorLastReading } from '@dg-agent/core';
 import { getAnyPromptPresetById, type SavedPromptPreset } from '@dg-agent/runtime';
 import type { TurnToolCallSummary } from '@dg-agent/runtime';
@@ -19,6 +24,7 @@ export interface BrowserInstructionsInput {
   context: ActionContext;
   isFirstIteration: boolean;
   turnToolCalls: readonly TurnToolCallSummary[];
+  coyoteTargets?: CoyoteTargetSnapshot[];
   /** Current Opossum state; disconnected devices are omitted from model context. */
   opossumState?: OpossumState;
   /** Current paw-prints state; disconnected devices are omitted from model context. */
@@ -62,9 +68,10 @@ export function createBuildBrowserInstructions(settings: BrowserInstructionSetti
 function buildDeviceBlock(input: BrowserInstructionsInput): string {
   const lines = ['[设备]'];
 
-  if (input.session.deviceState.connected) {
+  const coyotes = connectedCoyoteTargets(input);
+  if (coyotes.length > 0) {
     lines.push(
-      '你控制的是一台 DG-Lab 郊狼（Coyote）电击设备，支持 A / B 双通道独立控制电击强度与波形。',
+      `当前连接了 ${coyotes.length} 台 DG-Lab 郊狼（Coyote）电击设备，每台支持 A / B 双通道独立控制。每次工具调用必须指定下方状态中的精确 targetId，且只能控制一个目标。`,
     );
   }
 
@@ -91,10 +98,11 @@ function buildDeviceBlock(input: BrowserInstructionsInput): string {
 function buildDeviceMappingBlock(input: BrowserInstructionsInput): string {
   const lines = ['[剧情与设备的映射]'];
 
-  if (input.session.deviceState.connected) {
+  if (connectedCoyoteTargets(input).length > 0) {
     lines.push(
       '无论当前是什么角色或场景，任何关于"通电 / 电击 / 加大电流 / 改变节奏 / 停止"的描述，都必须通过设备工具真实执行；只写文字而不调用工具，等于设备没有任何变化。',
       '郊狼（电击）：',
+      '每个 shock_* 工具都必须逐字填写当前状态中的 targetId；同名设备也是独立实例，不得合并、猜测或同时广播。',
       '1. 开始施加电击 / 测试连接：调用 shock_start 启动对应通道，并用 shock_adjust 设到目标强度（测试连接时设为 1）。',
       '2. 增强电击 / 推向更高：用 shock_adjust 提升强度；需要更剧烈时配合 shock_change_wave 切换更强烈的波形，或用 shock_burst 制造短促的强峰值。',
       '3. 改变节奏 / 频率：用 shock_change_wave 切换波形，或用 design_wave 设计贴合当前情节的节奏。',
@@ -122,7 +130,7 @@ function buildDeviceMappingBlock(input: BrowserInstructionsInput): string {
       input.civetEdgingState?.connected ? '灵猫' : '',
     ].filter(Boolean);
     const outputs = [
-      input.session.deviceState.connected ? '郊狼' : '',
+      connectedCoyoteTargets(input).length > 0 ? '郊狼' : '',
       input.opossumState?.connected ? '负鼠' : '',
     ].filter(Boolean);
     lines.push(
@@ -154,7 +162,7 @@ function buildBehaviorRulesBlock(hasDevices: boolean): string {
 
 function hasConnectedDevice(input: BrowserInstructionsInput): boolean {
   return Boolean(
-    input.session.deviceState.connected ||
+    connectedCoyoteTargets(input).length > 0 ||
     input.opossumState?.connected ||
     input.pawPrintsState?.connected ||
     input.civetEdgingState?.connected,
@@ -204,16 +212,16 @@ function buildDeviceStatusBlock(
     'maxStrengthA' | 'maxStrengthB' | 'maxOpossumIntensityA' | 'maxOpossumIntensityB'
   >,
 ): string {
-  const device = input.session.deviceState;
-  const effectiveCapA = Math.min(device.limitA, settings.maxStrengthA);
-  const effectiveCapB = Math.min(device.limitB, settings.maxStrengthB);
-  const battery = typeof device.battery === 'number' ? `${device.battery}%` : '未知';
   const lines = ['[当前设备状态]'];
 
-  if (device.connected) {
+  for (const [index, target] of connectedCoyoteTargets(input).entries()) {
+    const device = target.state;
+    const effectiveCapA = Math.min(device.limitA, settings.maxStrengthA);
+    const effectiveCapB = Math.min(device.limitB, settings.maxStrengthB);
+    const battery = typeof device.battery === 'number' ? `${device.battery}%` : '未知';
     const connection = `已连接${device.deviceName ? `（${device.deviceName}）` : ''}`;
     lines.push(
-      '郊狼：',
+      `郊狼 ${index + 1}：targetId=${JSON.stringify(target.targetId)}`,
       `  连接：${connection}`,
       `  电量：${battery}`,
       `  A 通道：强度 ${device.strengthA} / 上限 ${effectiveCapA}，波形${device.waveActiveA ? '运行中' : '已停止'}，当前波形 ${device.currentWaveA ?? '-'}`,
@@ -261,6 +269,13 @@ function buildDeviceStatusBlock(
   }
 
   return lines.length === 1 ? '' : lines.join('\n');
+}
+
+function connectedCoyoteTargets(input: BrowserInstructionsInput): CoyoteTargetSnapshot[] {
+  if (input.coyoteTargets) return input.coyoteTargets.filter(({ state }) => state.connected);
+  return input.session.deviceState.connected
+    ? [{ targetId: 'legacy-single-coyote', state: input.session.deviceState }]
+    : [];
 }
 
 const OPOSSUM_PATTERN_LABELS: Record<string, string> = {

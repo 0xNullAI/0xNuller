@@ -86,6 +86,40 @@ describe('createBuildBrowserInstructions', () => {
     expect(instructions).not.toContain('灵猫');
   });
 
+  it('lists same-name Coyote instances separately by opaque targetId and independent state', () => {
+    const build = createBuildBrowserInstructions(settings);
+    const instructions = build(
+      baseInput({
+        coyoteTargets: [
+          {
+            targetId: 'opaque/one',
+            state: {
+              ...createEmptyDeviceState(),
+              connected: true,
+              deviceName: '相同名称',
+              strengthA: 7,
+            },
+          },
+          {
+            targetId: 'opaque/two',
+            state: {
+              ...createEmptyDeviceState(),
+              connected: true,
+              deviceName: '相同名称',
+              strengthA: 19,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(instructions).toContain('targetId="opaque/one"');
+    expect(instructions).toContain('targetId="opaque/two"');
+    expect(instructions).toContain('强度 7 / 上限 50');
+    expect(instructions).toContain('强度 19 / 上限 50');
+    expect(instructions).toContain('同名设备也是独立实例');
+  });
+
   it('Coyote + Opossum: mentions Opossum mapping and status, still no sensors', () => {
     const build = createBuildBrowserInstructions(settings);
     const instructions = build(

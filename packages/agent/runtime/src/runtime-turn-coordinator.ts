@@ -1,5 +1,6 @@
 import type {
   ActionContext,
+  CoyoteTargetSnapshot,
   DeviceClient,
   LlmClient,
   LlmConversationItem,
@@ -31,6 +32,8 @@ import type { ToolCallConfig } from './tool-call-config.js';
 import type { ToolRegistry } from './tool-registry.js';
 
 export interface TurnInstructionDeviceState {
+  /** Every currently connected Coyote instance, preserving opaque identities. */
+  coyoteTargets?: CoyoteTargetSnapshot[];
   /** Present only when an Opossum client is configured, connected or not. */
   opossumState?: OpossumState;
   /** Present only when a paw-prints client is configured, connected or not. */
