@@ -6,6 +6,11 @@ export type VideoAiAllowedTarget = UnifiedOutputTarget & {
   capB: number;
 };
 
+export interface VideoAiScene {
+  name: string;
+  prompt: string;
+}
+
 export interface VideoAiRoutingGrantInput {
   targets: readonly VideoAiAllowedTarget[];
   allowEnhanced: boolean;
@@ -49,14 +54,20 @@ export class VideoAiDeviceRouter {
   private readonly now: () => number;
   private llm: LlmClient | null = null;
   private targets: readonly UnifiedOutputTarget[] = [];
+  private scene: VideoAiScene | null = null;
 
   constructor(private readonly options: Options) {
     this.now = options.now ?? Date.now;
   }
 
-  updateInputs(llm: LlmClient | null, targets: readonly UnifiedOutputTarget[]): void {
+  updateInputs(
+    llm: LlmClient | null,
+    targets: readonly UnifiedOutputTarget[],
+    scene: VideoAiScene | null = null,
+  ): void {
     this.llm = llm;
     this.targets = targets.map((target) => ({ ...target }));
+    this.scene = scene ? { ...scene } : null;
   }
 
   async authorize(input: VideoAiRoutingGrantInput): Promise<VideoAiRoutingGrantSnapshot> {
@@ -125,8 +136,7 @@ export class VideoAiDeviceRouter {
           sourceType: 'web',
           traceId: `video-route-${generation}-${this.now()}`,
         },
-        instructions:
-          '只依据最新画面决定是否控制。每次调用必须逐字使用已授权 targetId；不得猜测或改写身份。画面含糊、拒绝、不适或异常时只停止，不得提高。',
+        instructions: buildVideoAiInstructions(this.scene),
         tools: [toolDefinition(grant)],
         image,
         abortSignal: controller.signal,
@@ -244,6 +254,11 @@ export class VideoAiDeviceRouter {
     this.activeInference?.abort();
     this.activeInference = null;
   }
+}
+
+export function buildVideoAiInstructions(scene: VideoAiScene | null): string {
+  const sceneText = scene ? `当前选定场景「${scene.name}」：\n${scene.prompt}\n\n` : '';
+  return `${sceneText}你是连续观察最新画面的场景主持者，不等待用户逐轮下令；每次新帧只推进一小步。只依据当前画面决定是否控制，不假设上一帧仍成立。每次调用必须逐字使用已授权 targetId，不得猜测或改写身份。画面含糊、拒绝、不适、危险或设备异常时只停止，不得提高。工具请求不代表成功，只能根据真实执行结果叙述。`;
 }
 
 function toolDefinition(grant: VideoAiRoutingGrantSnapshot): ToolDefinition {

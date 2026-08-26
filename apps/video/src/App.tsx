@@ -476,8 +476,8 @@ export function App() {
   const activeGrant = routingGrant;
   useEffect(() => {
     outputTargetsRef.current = outputTargets;
-    aiRouter.updateInputs(llm, outputTargets);
-  }, [aiRouter, llm, outputTargets]);
+    aiRouter.updateInputs(llm, outputTargets, embeddedScene);
+  }, [aiRouter, embeddedScene, llm, outputTargets]);
 
   async function compensateCancelledStart() {
     try {
