@@ -60,9 +60,8 @@ npm run dev -w @0xnullai/web
 npm run build:kit
 npm run build
 npm run typecheck
-npm test                    # 当前改动相关测试
-npm run test:module -- chat # 单模块测试
-npm run test:full           # 全量测试，CI/交付前使用
+npm test          # 当前分支受影响的测试
+npm run test:full # 完整测试，CI/交付前使用
 npm run lint
 npm run check:structure
 npm run format

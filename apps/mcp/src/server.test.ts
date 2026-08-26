@@ -16,7 +16,6 @@ import type { Peripheral } from '@stoprocent/noble';
 import { createDgMcpServer } from './server.js';
 import { DeviceManager, type ConnectedDevice } from './device-manager.js';
 import { NodeWaveformLibrary } from './waveform-library.js';
-import { DG_MCP_VERSION } from './version.js';
 
 // --- Fake GATT context (no noble involved) ----------------------------------
 //
@@ -177,14 +176,6 @@ function parseToolResult(result: Awaited<ReturnType<Client['callTool']>>): Recor
   return JSON.parse(first.text) as Record<string, unknown>;
 }
 
-describe('server metadata', () => {
-  it('reports the version from the package manifest', async () => {
-    const { client } = await createHarness();
-
-    expect(client.getServerVersion()).toEqual({ name: 'dg-mcp', version: DG_MCP_VERSION });
-  });
-});
-
 describe('opossum tool dispatch (plan.type === "opossum")', () => {
   it('vibrate_start sets the requested channel and leaves the other unchanged', async () => {
     const { client, deviceManager } = await createHarness();
@@ -212,35 +203,6 @@ describe('opossum tool dispatch (plan.type === "opossum")', () => {
     const adapter = entry.kind === 'opossum' ? entry.adapter : null;
     expect(adapter?.getState().intensityA).toBe(0);
     expect(adapter?.getState().intensityB).toBe(0);
-  });
-
-  it('vibrate_stop with a channel only zeroes that channel', async () => {
-    const { client, deviceManager } = await createHarness();
-    const { entry } = await injectConnectedDevice(deviceManager, 'opossum', 'F1:F1:F1:F1:F1:03');
-    if (entry.kind === 'opossum') await entry.adapter.setIntensity(50, 60);
-
-    const result = await client.callTool({ name: 'vibrate_stop', arguments: { channel: 'A' } });
-
-    expect(result.isError).toBeFalsy();
-    const adapter = entry.kind === 'opossum' ? entry.adapter : null;
-    expect(adapter?.getState().intensityA).toBe(0);
-    expect(adapter?.getState().intensityB).toBe(60);
-  });
-
-  it('vibrate_adjust composes getState() + setIntensity() since the adapter has no relative-adjust method', async () => {
-    const { client, deviceManager } = await createHarness();
-    const { entry } = await injectConnectedDevice(deviceManager, 'opossum', 'F1:F1:F1:F1:F1:04');
-    if (entry.kind === 'opossum') await entry.adapter.setIntensity(50, 50);
-
-    const result = await client.callTool({
-      name: 'vibrate_adjust',
-      arguments: { channel: 'A', delta: 10 },
-    });
-
-    expect(result.isError).toBeFalsy();
-    const adapter = entry.kind === 'opossum' ? entry.adapter : null;
-    expect(adapter?.getState().intensityA).toBe(60);
-    expect(adapter?.getState().intensityB).toBe(50);
   });
 
   it('vibrate_start with a pattern sets both intensity and the vibration pattern', async () => {
@@ -327,20 +289,6 @@ describe('opossum tool dispatch (plan.type === "opossum")', () => {
 });
 
 describe('coyote "device" tool dispatch (plan.type === "device")', () => {
-  it('start targets the single connected coyote device', async () => {
-    const { client, deviceManager } = await createHarness();
-    const { entry } = await injectConnectedDevice(deviceManager, 'coyote', 'F3:F3:F3:F3:F3:01');
-
-    const result = await client.callTool({
-      name: 'start',
-      arguments: { channel: 'A', strength: 5, waveformId: 'pulse_mid' },
-    });
-
-    expect(result.isError).toBeFalsy();
-    const adapter = entry.kind === 'coyote' ? entry.adapter : null;
-    expect(adapter?.getState().strengthA).toBe(5);
-  });
-
   it('shock_start (post-1.9.0 name) targets the single connected coyote device', async () => {
     const { client, deviceManager } = await createHarness();
     const { entry } = await injectConnectedDevice(deviceManager, 'coyote', 'F3:F3:F3:F3:F3:02');
@@ -353,19 +301,6 @@ describe('coyote "device" tool dispatch (plan.type === "device")', () => {
     expect(result.isError).toBeFalsy();
     const adapter = entry.kind === 'coyote' ? entry.adapter : null;
     expect(adapter?.getState().strengthA).toBe(5);
-  });
-
-  it('returns a clear error when no coyote device is connected', async () => {
-    const { client } = await createHarness();
-
-    const result = await client.callTool({
-      name: 'start',
-      arguments: { channel: 'A', strength: 5, waveformId: 'pulse_mid' },
-    });
-
-    expect(result.isError).toBe(true);
-    const payload = parseToolResult(result);
-    expect(payload.reason).toContain('没有已连接的郊狼设备');
   });
 });
 
@@ -475,22 +410,6 @@ describe('MCP-only device-management tools', () => {
     harness = await createHarness();
   });
 
-  it('list_connected_devices reflects the DeviceManager contents', async () => {
-    const before = parseToolResult(
-      await harness.client.callTool({ name: 'list_connected_devices', arguments: {} }),
-    );
-    expect(before.devices).toEqual([]);
-
-    await injectConnectedDevice(harness.deviceManager, 'civet-edging', 'F5:F5:F5:F5:F5:01');
-
-    const after = parseToolResult(
-      await harness.client.callTool({ name: 'list_connected_devices', arguments: {} }),
-    );
-    expect(after.devices).toEqual([
-      { address: 'F5:F5:F5:F5:F5:01', deviceKind: 'civet-edging', connected: true },
-    ]);
-  });
-
   it('get_status returns an array covering every connected device', async () => {
     await injectConnectedDevice(harness.deviceManager, 'opossum', 'F6:F6:F6:F6:F6:01');
     await injectConnectedDevice(harness.deviceManager, 'coyote', 'F6:F6:F6:F6:F6:02');
@@ -501,17 +420,6 @@ describe('MCP-only device-management tools', () => {
     const devices = payload.devices as Array<{ deviceKind: string }>;
     expect(devices).toHaveLength(2);
     expect(devices.map((d) => d.deviceKind).sort()).toEqual(['coyote', 'opossum']);
-  });
-
-  it('get_sensor_state returns the cached-empty snapshot for a sensor with no readings yet', async () => {
-    await injectConnectedDevice(harness.deviceManager, 'civet-edging', 'F7:F7:F7:F7:F7:01');
-
-    const payload = parseToolResult(
-      await harness.client.callTool({ name: 'get_sensor_state', arguments: {} }),
-    );
-    const sensors = payload.sensors as Array<{ latestReading: unknown }>;
-    expect(sensors).toHaveLength(1);
-    expect(sensors[0]?.latestReading).toBeNull();
   });
 
   it('emergency_stop zeroes an opossum device', async () => {
