@@ -9,8 +9,5 @@
   },
   "dependencies": {
     "@0xnullai/permissions": "0.1.0"
-  },
-  "devDependencies": {
-    "@dg-agent/storage-browser": "0.1.0"
   }
 }
