@@ -45,6 +45,8 @@ export const TEST_PROJECTS = [
   'tooling',
 ];
 
+export const TEST_DOMAINS = ['all', 'repository', 'product', 'kit', 'mcp'];
+
 const fullSuiteFiles = new Set([
   'package.json',
   'package-lock.json',
