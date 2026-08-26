@@ -306,35 +306,37 @@ export function Shell() {
             id="shl-slot"
             aria-label={MODULES.find((module) => module.id === activeId)?.label ?? '首页'}
           >
-            {/* The module's own buttons land here. On narrow screens the drawer toggle
-              and current module name share this first row. Device state belongs
-              directly underneath it, before the module content. */}
-            <div id="shl-actions">
-              {narrow && (
-                <button
-                  ref={drawerTriggerRef}
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  aria-label="打开侧边栏"
-                  aria-controls="shl-drawer"
-                  aria-expanded={drawerOpen}
-                  // With only the module name, the top of a narrow screen is a couple of
-                  // lone words and nobody can tell they are tappable.
-                  // The touch target also has to be big enough: 44px is the lower bound
-                  // both iOS and Android recommend.
-                  className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                >
-                  <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
-                  <span className="truncate">
-                    {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
-                  </span>
-                </button>
-              )}
-              <div className="min-w-0 flex-1" />
-              <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
-            </div>
+            {/* Wide screens stack module actions above device state. Narrow screens use
+              the same wrapper as one compact toolbar, while the device section keeps
+              its own horizontal overflow for multiple connected devices. */}
+            <div id="shl-topbar">
+              <div id="shl-actions">
+                {narrow && (
+                  <button
+                    ref={drawerTriggerRef}
+                    type="button"
+                    onClick={() => setDrawerOpen(true)}
+                    aria-label="打开侧边栏"
+                    aria-controls="shl-drawer"
+                    aria-expanded={drawerOpen}
+                    // With only the module name, the top of a narrow screen is a couple of
+                    // lone words and nobody can tell they are tappable.
+                    // The touch target also has to be big enough: 44px is the lower bound
+                    // both iOS and Android recommend.
+                    className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
+                    <span className="truncate">
+                      {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+                    </span>
+                  </button>
+                )}
+                <div className="min-w-0 flex-1" />
+                <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+              </div>
 
-            <DeviceBar activeSessionId={activeId} />
+              <DeviceBar activeSessionId={activeId} />
+            </div>
 
             <div id="shl-content">
               {activeId === null ? <Home onOpen={go} /> : null}
