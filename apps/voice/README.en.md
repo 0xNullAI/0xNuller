@@ -41,6 +41,9 @@ end-to-end browser and Android checks with a real provider, including a tool cal
 
 ## AI device target boundaries
 
+- Realtime sessions expose only devices that are connected and usable now. Voice updates the
+  instructions and tool list together when devices connect, disconnect, or change topology;
+  disconnected, faulted, and merely configured devices do not remain in model context.
 - Coyote uses the same `MultiCoyoteDeviceClient` and exact-target router as Agent, so multiple
   same-kind or same-name devices can remain connected. Every connection owns an opaque `targetId`,
   protocol client, command queue, and stop path. Model tools must copy one current `targetId`
