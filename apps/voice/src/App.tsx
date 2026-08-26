@@ -47,10 +47,11 @@ export function App({ transport }: AppProps = {}) {
   useSafetySession({
     id: 'voice',
     label: 'Voice',
-    isActive: () => Boolean(state.coyote?.connected || state.opossum?.connected),
+    isActive: () => Boolean(state.coyotes.length > 0 || state.opossum?.connected),
     stop: emergencyStop,
     connect: connectDevice,
-    disconnect: (deviceId) => (deviceId === 'opossum' ? disconnectOpossum() : disconnectCoyote()),
+    disconnect: (deviceId) =>
+      deviceId === 'opossum' ? disconnectOpossum() : disconnectCoyote(deviceId),
     onRevoke: async () => {
       // Hang the call up before stopping output when switching away from
       // Voice. Stopping output alone leaves the call connected: the model keeps
@@ -60,22 +61,18 @@ export function App({ transport }: AppProps = {}) {
       await emergencyStop();
     },
     devices: () => [
-      ...(state.coyote?.connected
-        ? [
-            {
-              id: 'coyote',
-              kind: 'coyote',
-              name: state.coyote.deviceName ?? '郊狼',
-              connected: true,
-              battery: state.coyote.battery,
-              active: isCoyoteOutputActive(state.coyote),
-              channels: [
-                { label: 'A', value: state.coyote.strengthA, max: state.coyote.limitA },
-                { label: 'B', value: state.coyote.strengthB, max: state.coyote.limitB },
-              ],
-            },
-          ]
-        : []),
+      ...state.coyotes.map(({ targetId, state: coyote }) => ({
+        id: targetId,
+        kind: 'coyote',
+        name: coyote.deviceName ?? '郊狼',
+        connected: true,
+        battery: coyote.battery,
+        active: isCoyoteOutputActive(coyote),
+        channels: [
+          { label: 'A', value: coyote.strengthA, max: coyote.limitA },
+          { label: 'B', value: coyote.strengthB, max: coyote.limitB },
+        ],
+      })),
       ...(state.opossum?.connected
         ? [
             {
@@ -129,7 +126,7 @@ export function App({ transport }: AppProps = {}) {
             connected={state.coyote.connected}
             deviceName={state.coyote.deviceName ?? null}
             battery={state.coyote.battery ?? null}
-            onDisconnect={() => void disconnectCoyote()}
+            onDisconnect={() => void disconnectCoyote(state.coyotes[0]?.targetId)}
             limitA={settings.coyoteSafety.maxStrengthA}
             limitB={settings.coyoteSafety.maxStrengthB}
             onSetLimit={(channel, value) =>
@@ -171,7 +168,7 @@ export function App({ transport }: AppProps = {}) {
           state={state}
           coyoteSafety={settings.coyoteSafety}
           opossumSafety={settings.opossumSafety}
-          onDisconnectCoyote={() => void disconnectCoyote()}
+          onDisconnectCoyote={(targetId) => void disconnectCoyote(targetId)}
           onDisconnectOpossum={() => void disconnectOpossum()}
         />
       )}

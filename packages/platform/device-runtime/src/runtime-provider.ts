@@ -12,6 +12,8 @@ export interface SharedDeviceRuntime {
 }
 
 export interface DeviceRuntimeProvider {
+  /** Optional local experiment gate. Providers without a gate are considered enabled. */
+  isEnabled?(): boolean;
   current(): SharedDeviceRuntime | null;
   start(): Promise<SharedDeviceRuntime>;
   forModule(moduleId: string): Promise<BoundDeviceTools>;

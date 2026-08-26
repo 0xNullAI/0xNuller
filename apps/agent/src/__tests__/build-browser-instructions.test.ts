@@ -76,14 +76,14 @@ describe('createBuildBrowserInstructions', () => {
     expect(output).not.toContain('[系统触发说明]');
   });
 
-  it('empty tool calls includes (无) and no-pretend warning', () => {
+  it('empty tool calls states that no action succeeded', () => {
     const build = createBuildBrowserInstructions(makeSettings());
     const output = build(makeInput({ turnToolCalls: [] }));
-    expect(output).toContain('(无)');
-    expect(output).toContain('没有真正执行过');
+    expect(output).toContain('成功工具动作：无');
+    expect(output).toContain('不得声称已经启动、调整、切换或停止设备');
   });
 
-  it('non-empty tool calls shows numbered list and verification prompt', () => {
+  it('non-empty tool calls distinguishes a request from successful execution', () => {
     const build = createBuildBrowserInstructions(makeSettings());
     const output = build(
       makeInput({
@@ -91,7 +91,8 @@ describe('createBuildBrowserInstructions', () => {
       }),
     );
     expect(output).toContain('1. shock_adjust(');
-    expect(output).toContain('声称已经完成的动作');
+    expect(output).toContain('请求不等于成功');
+    expect(output).toContain('只以对应工具结果为准');
   });
 
   it('always includes 剧情与设备的映射 block regardless of preset', () => {

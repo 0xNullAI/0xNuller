@@ -10,7 +10,7 @@ import {
   type ProviderId,
 } from '@0xnullai/llm-providers';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useNativeBridge } from '@0xnullai/native';
+import { useEmbeddedDeviceRuntimeEnabled, useNativeBridge } from '@0xnullai/native';
 import { useScenes } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import {
@@ -29,7 +29,7 @@ import {
   type VideoOutputKind,
 } from '@dg-agent/agent-browser';
 import type { LlmClient } from '@dg-agent/core';
-import { getAnyPromptPresetById } from '@dg-agent/runtime';
+import { BUILTIN_PROMPT_PRESETS, getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
@@ -75,6 +75,22 @@ const FIXED_CAMERA_FRAME_SETTINGS = Object.freeze({
   cropPreset: '16:9' as const,
   outputMaxEdge: 768,
 });
+
+class GenericVideoServiceSlot {
+  private value: DeviceRuntimeVideoControlService | null = null;
+
+  get(): DeviceRuntimeVideoControlService | null {
+    return this.value;
+  }
+
+  set(service: DeviceRuntimeVideoControlService | null): void {
+    this.value = service;
+  }
+
+  clear(service: DeviceRuntimeVideoControlService): void {
+    if (this.value === service) this.value = null;
+  }
+}
 
 function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
@@ -130,7 +146,7 @@ function useStopWhenModuleHidden(stop: () => void) {
 export function App() {
   const [config, setConfig] = useState(loadVideoLlmConfig);
   const [safety, setSafety] = useState(toVideoSafety);
-  const [sceneLibrary] = useScenes();
+  const [sceneLibrary, updateSceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const captureIntervalMs = 1_000;
@@ -139,7 +155,10 @@ export function App() {
   const [allowBurst, setAllowBurst] = useState(false);
   const [routingGrant, setRoutingGrant] = useState<VideoAiRoutingGrantSnapshot | null>(null);
   const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
-  const [embeddedDevices, setEmbeddedDevices] = useState<DeviceSnapshot | null>(null);
+  const [embeddedDeviceState, setEmbeddedDeviceState] = useState<{
+    service: DeviceRuntimeVideoControlService;
+    snapshot: DeviceSnapshot;
+  } | null>(null);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -153,6 +172,7 @@ export function App() {
   }, []);
   const openSettings = useOpenShellSettings();
   const native = useNativeBridge();
+  const genericDevicesEnabled = useEmbeddedDeviceRuntimeEnabled();
   const createControlService = (native.video?.createControlService ??
     createBrowserVideoControl) as typeof createBrowserVideoControl;
 
@@ -183,9 +203,21 @@ export function App() {
     const selected = getAnyPromptPresetById(sceneLibrary.selectedId, sceneLibrary.scenes);
     return selected ? { name: selected.name, prompt: selected.prompt } : null;
   }, [sceneLibrary]);
+  const sceneOptions = useMemo(
+    () => [
+      ...BUILTIN_PROMPT_PRESETS.filter(
+        (scene) => !sceneLibrary.hiddenBuiltinIds.includes(scene.id),
+      ),
+      ...sceneLibrary.scenes,
+    ],
+    [sceneLibrary.hiddenBuiltinIds, sceneLibrary.scenes],
+  );
+  const selectedSceneId = sceneOptions.some((scene) => scene.id === sceneLibrary.selectedId)
+    ? sceneLibrary.selectedId
+    : '';
   const genericService = useMemo(
     () =>
-      native.deviceRuntime
+      native.deviceRuntime && genericDevicesEnabled
         ? new DeviceRuntimeVideoControlService({
             provider: native.deviceRuntime,
             llm: null,
@@ -196,15 +228,28 @@ export function App() {
               genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
           })
         : null,
-    [native.deviceRuntime],
+    [genericDevicesEnabled, native.deviceRuntime],
   );
+  const [genericServiceSlot] = useState(() => new GenericVideoServiceSlot());
+  const embeddedDevices =
+    genericService && embeddedDeviceState?.service === genericService
+      ? embeddedDeviceState.snapshot
+      : null;
   useEffect(() => {
     genericService?.updateInputs({ llm, scene: embeddedScene });
   }, [embeddedScene, genericService, llm]);
   useEffect(() => {
+    genericServiceSlot.set(genericService);
     if (!genericService) return;
-    return genericService.subscribe(setEmbeddedDevices);
-  }, [genericService]);
+    const unsubscribe = genericService.subscribe((snapshot) =>
+      setEmbeddedDeviceState({ service: genericService, snapshot }),
+    );
+    return () => {
+      genericServiceSlot.clear(genericService);
+      unsubscribe();
+      void genericService.dispose();
+    };
+  }, [genericService, genericServiceSlot]);
   const [aiRouter] = useState(
     () =>
       new VideoAiDeviceRouter({
@@ -214,8 +259,9 @@ export function App() {
         invoke: async (action, masterGrant) => {
           const remaining = Math.max(1_000, masterGrant.expiresAt - Date.now());
           if (action.target.kind === 'embedded') {
-            if (!genericService) throw new Error('通用设备运行时不可用');
-            return genericService.executeAiAction(
+            const currentGenericService = genericServiceSlot.get();
+            if (!currentGenericService) throw new Error('通用设备运行时不可用');
+            return currentGenericService.executeAiAction(
               {
                 deviceId: action.target.deviceId,
                 featureId: action.target.featureId,
@@ -261,9 +307,10 @@ export function App() {
           );
         },
         stopAll: async () => {
+          const currentGenericService = genericServiceSlot.get();
           const results = await Promise.allSettled([
             service.emergencyStop(),
-            ...(genericService ? [genericService.emergencyStop()] : []),
+            ...(currentGenericService ? [currentGenericService.emergencyStop()] : []),
           ]);
           const failure = results.find(
             (result): result is PromiseRejectedResult => result.status === 'rejected',
@@ -411,10 +458,9 @@ export function App() {
         // React StrictMode immediately replays effects with the same service instances.
         if (lifecycleRef.current !== effectEpoch) return;
         void service.dispose();
-        void genericService?.dispose();
       });
     };
-  }, [genericService, service, stopEverything]);
+  }, [service, stopEverything]);
 
   const dgLabTargets = [
     ...devices.coyotes,
@@ -431,7 +477,7 @@ export function App() {
           ? target.state.strengthA > 0 || target.state.strengthB > 0
           : target.state.intensityA > 0 || target.state.intensityB > 0,
     })),
-    embeddedDevices,
+    genericService ? embeddedDevices : null,
   );
   const allowedTargets: VideoAiAllowedTarget[] = outputTargets.map((target) => ({
     ...target,
@@ -442,8 +488,8 @@ export function App() {
   const activeGrant = routingGrant;
   useEffect(() => {
     outputTargetsRef.current = outputTargets;
-    aiRouter.updateInputs(llm, outputTargets);
-  }, [aiRouter, llm, outputTargets]);
+    aiRouter.updateInputs(llm, outputTargets, embeddedScene);
+  }, [aiRouter, embeddedScene, llm, outputTargets]);
 
   async function compensateCancelledStart() {
     try {
@@ -550,12 +596,12 @@ export function App() {
   }
 
   async function discoverEmbeddedDevices() {
-    if (!genericService) return;
+    if (!genericDevicesEnabled || !genericService) return;
     try {
       setLocalError(null);
       await grantDeviceLease('video');
       const snapshot = await genericService.discoverDevices();
-      setEmbeddedDevices(snapshot);
+      setEmbeddedDeviceState({ service: genericService, snapshot });
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
     }
@@ -637,8 +683,10 @@ export function App() {
         ) : (
           <VideoSetupPanel
             view={{
+              scenes: sceneOptions,
+              selectedSceneId,
               facingMode,
-              embeddedAvailable: genericService !== null,
+              embeddedAvailable: genericDevicesEnabled && genericService !== null,
               showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
               coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
               showOpossumConnect: devices.opossumTarget === null,
@@ -654,6 +702,9 @@ export function App() {
             }}
             actions={{
               openVideoSettings: () => openSettings('ai-video'),
+              openSceneSettings: () => openSettings('scenes'),
+              selectScene: (id) =>
+                updateSceneLibrary((current) => ({ ...current, selectedId: id })),
               setFacingMode,
               connect: (kind) => void connect(kind),
               discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),

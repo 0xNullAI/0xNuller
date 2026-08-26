@@ -11,7 +11,7 @@
  * passthrough as its Web Bluetooth counterpart — so no branching is needed
  * anywhere but here.
  */
-import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
+import { MultiCoyoteDeviceClient } from '@dg-agent/agent-browser';
 import {
   TauriBlecDeviceClient,
   TauriBlecOpossumClient,
@@ -25,11 +25,14 @@ const SCAN_DURATION_MS = 8000;
 
 export function createTauriTransport(): DeviceSessionTransport {
   return {
-    coyote: new TauriBlecDeviceClient({
-      protocol: new CoyoteProtocolAdapter(),
-      selectDevice: showDevicePicker,
-      scanDurationMs: SCAN_DURATION_MS,
-    }),
+    coyote: new MultiCoyoteDeviceClient(
+      (protocol) =>
+        new TauriBlecDeviceClient({
+          protocol,
+          selectDevice: showDevicePicker,
+          scanDurationMs: SCAN_DURATION_MS,
+        }),
+    ),
     opossum: new TauriBlecOpossumClient({
       selectDevice: showDevicePicker,
       scanDurationMs: SCAN_DURATION_MS,

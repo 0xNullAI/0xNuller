@@ -65,6 +65,8 @@ export interface RealtimeSession {
    * connect; safe to call as often as the debounced caller wants.
    */
   updateInstructions(instructions: string): void;
+  /** Atomically refreshes the model-visible instructions and tool allowlist. */
+  updateConfiguration(configuration: { instructions: string; tools: ToolDefinition[] }): void;
 }
 
 export interface RealtimeSessionOptions {

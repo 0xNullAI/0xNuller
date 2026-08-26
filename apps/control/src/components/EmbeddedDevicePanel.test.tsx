@@ -90,6 +90,10 @@ describe('EmbeddedDevicePanel', () => {
     await act(() => runtime.provider.setEnabled(true));
     expect(await screen.findByRole('button', { name: '扫描通用设备' })).toBeTruthy();
     expect(runtime.backend.openSession).not.toHaveBeenCalled();
+
+    await act(() => runtime.provider.setEnabled(false));
+    expect(screen.queryByRole('button', { name: '扫描通用设备' })).toBeNull();
+    expect(runtime.backend.openSession).not.toHaveBeenCalled();
   });
 
   it('lists every exact device feature and stops vibration on pointer release', async () => {

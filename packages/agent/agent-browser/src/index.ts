@@ -1,6 +1,7 @@
 export * from './build-browser-instructions.js';
 export * from './browser-provider-models.js';
 export * from './connect-any-device.js';
+export * from './coyote-target-routing.js';
 export * from './create-browser-agent-client.js';
 export * from './create-browser-llm-client.js';
 export * from './create-browser-services.js';

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const confirm = '--confirm=dg-market,0xnullai-auth';
+const requireCurrent = process.argv.includes('--require-current');
 
 if (!process.argv.includes('--remote-readonly') || !process.argv.includes(confirm)) {
   console.error(
@@ -75,12 +76,11 @@ const currentMarketIndexes = [
   'idx_items_visible_popular',
 ];
 const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
-const marketPreSeedLedger = [
+const marketCurrentLedger = [
   ...marketBaseline,
   '0002_browse_indexes.sql',
   '0003_separate_security_domains.sql',
 ];
-const marketCurrentLedger = [...marketPreSeedLedger, '0004_seed_mistbound_scenario.sql'];
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
 const marketItems = scalar(market, 3, 'n');
@@ -133,6 +133,9 @@ const currentAuthLedger = [
   '0011_agent_sessions.sql',
   '0012_photo_purpose.sql',
   '0013_content_entities.sql',
+  '0014_registration_rate_limit.sql',
+  '0015_email_actions.sql',
+  '0016_ai_usage.sql',
 ];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];
@@ -161,13 +164,6 @@ const marketState = (() => {
   if (
     sameNames(marketColumns, currentMarketColumns) &&
     sameOrder(marketIndexes, currentMarketIndexes) &&
-    sameOrder(marketLedger, marketPreSeedLedger)
-  ) {
-    return 'pre-seed';
-  }
-  if (
-    sameNames(marketColumns, currentMarketColumns) &&
-    sameOrder(marketIndexes, currentMarketIndexes) &&
     sameOrder(marketLedger, marketCurrentLedger)
   ) {
     return 'current';
@@ -188,6 +184,12 @@ const authState = sameOrder(authLedger, legacyAuthLedger)
     : 'unknown';
 if (authState === 'unknown') {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
+}
+if (requireCurrent && marketState !== 'current') {
+  errors.push(`Market migrations are not current: ${marketState}`);
+}
+if (requireCurrent && authState !== 'current') {
+  errors.push(`Auth migrations are not current: ${authState}`);
 }
 if (scalar(auth, 1, 'n') !== 0) errors.push('Auth 0006 blocker: duplicate photo object_key');
 if (scalar(auth, 2, 'n') !== 0) errors.push('Auth 0007 blocker: account with >60 photos');
@@ -217,7 +219,7 @@ console.log(
         ? []
         : marketState === 'current' && authState === 'current'
           ? [
-              'Both D1 databases are at the 6.0 schema; do not reapply migrations.',
+              'Both D1 databases are at the current product schema; do not reapply migrations.',
               'Confirm the 0xnullai-profile-photos bucket exists.',
               'Deploy chat, then auth, then market.',
             ]
@@ -231,7 +233,7 @@ console.log(
               authState === 'current'
                 ? 'Auth schema is current; do not reapply its migrations.'
                 : 'Apply pending Auth migrations.',
-              marketState === 'current' ? null : 'Apply Market 0002-0003 migrations.',
+              marketState === 'current' ? null : 'Apply all pending Market migrations.',
               'Create 0xnullai-profile-photos before deploying Auth.',
               'Deploy chat, then auth, then market.',
             ].filter(Boolean),
