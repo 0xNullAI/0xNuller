@@ -37,7 +37,7 @@ jobs:
       - name: Require npm version preparation to be consumed
         run: npm run verify:changesets:consumed
 
-      - name: Verify release metadata and version increases
+      - name: Verify release metadata and non-decreasing versions
         run: |
           set -euo pipefail
           git fetch origin main:refs/remotes/origin/main

@@ -13,8 +13,8 @@ DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只�
 
 ## 分支职责
 
-- 功能分支从 `dev` 创建，只合并回 `dev`。
-- `dev` 可以包含 changeset、下一产品版本和发布说明，但不能部署或发布任何产物。
+- 维护者可把已验证提交直接推到 `dev`；需要评审时，功能分支从 `dev` 创建并合并回 `dev`。
+- `dev` 不受分支保护，可以包含 changeset、下一产品版本和发布说明，但不能部署或发布任何产物。
 - `main` 是唯一生产源，只接受 `dev → main` 发布 PR，并使用 merge commit。
 - 手动发布同样校验目标 SHA 等于当前 `main` HEAD，不能选择其他分支绕过。
 
@@ -71,7 +71,7 @@ GitHub Actions 保留三个独立入口：
 1. 功能和 changeset 合并到 `dev`。
 2. 合并 `NPM Version Preparation` PR，消费 changeset并更新 npm 包版本/CHANGELOG。
 3. 若发布产品，同时更新统一产品版本和 `docs/releases/X.Y.Z.md`。
-4. 创建 `dev → main` PR；Release Guard 验证至少一条版本线递增。
+4. 创建 `dev → main` PR；Release Guard 验证产品元数据并禁止版本倒退，维护性提交可保持版本不变。
 5. merge commit 合入 `main`。
 6. main 的分域 CI 根据改动运行，对应发布线只发布自身版本发生变化的交付物。
 7. 同批包含 Kit 与 MCP 时，Kit 先在 npm 可用；MCP 工作流自动等待后再发布。Product 从同一

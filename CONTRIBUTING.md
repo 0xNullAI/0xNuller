@@ -77,7 +77,8 @@ DG-Kit 是 dist-first；下游类型检查或构建前应先执行 `npm run buil
 
 ## 分支、提交与 PR
 
-普通 PR 的 base 必须是 `dev`。只有维护者的正式发布 PR 可以使用 `dev → main`。
+`dev` 是不受保护的集成分支：维护者完成本地验证后可直接提交；需要评审的功能分支 PR
+以 `dev` 为 base。`main` 受保护，只接受维护者的 `dev → main` 正式发布 PR。
 
 建议分支名：`feat/...`、`fix/...`、`docs/...`、`chore/...`。提交和 PR 标题使用 Conventional Commits：
 
@@ -158,7 +159,7 @@ npm run build
 
 ### 1. 集成到 dev
 
-1. 功能分支从 `dev` 创建并通过 PR 合回 `dev`。
+1. 维护者可把已验证提交直接推到 `dev`；需要独立评审时，从 `dev` 创建功能分支并通过 PR 合回。
 2. 确认安全、兼容性、文档和 changeset 完整。
 3. `dev` 只做集成和版本准备，不发布任何生产产物。
 
@@ -166,7 +167,7 @@ npm run build
 
 1. `NPM Version Preparation` 在 `dev` push 后创建或更新 `changeset-release/dev` PR。
 2. Bot PR 消费 changeset、更新 DG-Kit/DG-MCP manifest、内部依赖和 CHANGELOG。
-3. 审查版本级别、依赖范围和 release note；四套 CI 通过后按仓库保护规则合回 `dev`。
+3. 审查版本级别、依赖范围和 release note；CI 通过后合回 `dev`。
 4. 这是正常的两阶段 Changesets 流程，不是重复发布；此时 npm 仍未发布。
 
 DG-Kit 与 MCP 同批变化时，MCP manifest 必须声明包含所需 Kit API/修复的最低兼容范围。
@@ -186,7 +187,7 @@ Product、DG-Kit、DG-MCP 可以同批进入 `main`，但版本号保持独立�
 
 1. 确认 `.changeset` 没有待消费文件；
 2. 创建唯一的 `dev → main` 发布 PR；
-3. Release Guard 校验来源分支、版本增长和产品元数据；
+3. Release Guard 校验来源分支、产品元数据，并禁止版本倒退；维护性提交不强制再次涨版本号；
 4. Repository、Product、Kit、MCP 的必要 CI 全部通过；
 5. 必须使用 merge commit，禁止 squash 或 rebase 发布 PR。
 
