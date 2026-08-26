@@ -81,7 +81,6 @@ const marketCurrentLedger = [
   '0002_browse_indexes.sql',
   '0003_separate_security_domains.sql',
 ];
-const marketLegacySeedLedger = [...marketCurrentLedger, '0004_seed_mistbound_scenario.sql'];
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
 const marketItems = scalar(market, 3, 'n');
@@ -169,13 +168,6 @@ const marketState = (() => {
   ) {
     return 'current';
   }
-  if (
-    sameNames(marketColumns, currentMarketColumns) &&
-    sameOrder(marketIndexes, currentMarketIndexes) &&
-    sameOrder(marketLedger, marketLegacySeedLedger)
-  ) {
-    return 'legacy-seeded';
-  }
   return 'unknown';
 })();
 
@@ -193,7 +185,7 @@ const authState = sameOrder(authLedger, legacyAuthLedger)
 if (authState === 'unknown') {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
 }
-if (requireCurrent && marketState !== 'current' && marketState !== 'legacy-seeded') {
+if (requireCurrent && marketState !== 'current') {
   errors.push(`Market migrations are not current: ${marketState}`);
 }
 if (requireCurrent && authState !== 'current') {
@@ -225,7 +217,7 @@ console.log(
       errors,
       next: errors.length
         ? []
-        : (marketState === 'current' || marketState === 'legacy-seeded') && authState === 'current'
+        : marketState === 'current' && authState === 'current'
           ? [
               'Both D1 databases are at the current product schema; do not reapply migrations.',
               'Confirm the 0xnullai-profile-photos bucket exists.',
@@ -241,9 +233,7 @@ console.log(
               authState === 'current'
                 ? 'Auth schema is current; do not reapply its migrations.'
                 : 'Apply pending Auth migrations.',
-              marketState === 'current' || marketState === 'legacy-seeded'
-                ? null
-                : 'Apply all pending Market migrations.',
+              marketState === 'current' ? null : 'Apply all pending Market migrations.',
               'Create 0xnullai-profile-photos before deploying Auth.',
               'Deploy chat, then auth, then market.',
             ].filter(Boolean),
