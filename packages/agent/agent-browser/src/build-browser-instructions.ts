@@ -306,18 +306,15 @@ function buildSensorStatusLines(
 
 function buildTurnToolUsageBlock(calls: readonly TurnToolCallSummary[]): string {
   if (calls.length === 0) {
-    return [
-      '[本回合已调用工具]',
-      '(无)',
-      '这表示你本回合还没有真正执行过任何工具动作；不要提前声称"已经帮你调整好了"。',
-    ].join('\n');
+    return ['[本回合执行事实]', '成功工具动作：无。不得声称已经启动、调整、切换或停止设备。'].join(
+      '\n',
+    );
   }
 
   const lines = calls.map((call, index) => `${index + 1}. ${call.name}(${call.argsJson})`);
   return [
-    '[本回合已调用工具]',
+    '[本回合工具请求]',
     ...lines,
-    '生成回复前请对照这份清单：你声称已经完成的动作，必须能在上面找到对应调用。',
-    '如果上面已经做过一次主要动作，下一步通常是解释结果并询问反馈，而不是继续叠加动作。',
+    '请求不等于成功；完成事实只以对应工具结果为准。解释结果后等待反馈，不要继续叠加动作。',
   ].join('\n');
 }

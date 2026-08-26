@@ -33,8 +33,8 @@ runtime 仍是默认路径；CLI 或 daemon 目前不是交付物。
 ## 不变量
 
 - UI 调用 Agent client，不自行构造协议帧，也不绕过安全层。
-- `session.messages` 只存正常对话；工具结果、拒绝、失败、定时器进入 session trace；临时触发
-  信息不持久化成用户可见历史。
+- `session.messages` 只存用户可见对话；工具结果、拒绝、失败、定时器进入 session trace；临时触发
+  信息不持久化。模型上下文不得把缺少配对结果的历史工具叙述重新当成普通助手事实。
 - runtime 和 provider 包不依赖 React 或 app 源码。
 - 设备队列和播放状态按设备隔离；波形定义只按类型共享，与 Control、Chat、Voice 使用同一规则。
 - 浏览器/Tauri 差异终止于组合或 transport 层，不进入工具语义。
