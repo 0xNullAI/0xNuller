@@ -125,11 +125,10 @@ Kit 改动会触发 Product、Kit、MCP 三套 CI，这是下游兼容验证，�
 
 ## 验证要求
 
-迭代时运行最窄的相关测试：
+迭代时运行当前分支受影响的测试：
 
 ```bash
 npm test
-npm run test:module -- <module>
 ```
 
 按责任域验证：
