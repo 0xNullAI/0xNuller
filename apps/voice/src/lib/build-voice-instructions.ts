@@ -32,7 +32,7 @@ export function buildVoiceInstructions(
   settings: VoiceInstructionSettings,
 ): string {
   const connected = {
-    coyote: deviceState.coyote.connected,
+    coyote: deviceState.coyotes.length > 0,
     opossum: deviceState.opossum.connected,
   };
   const blocks = [
@@ -55,7 +55,7 @@ function buildStyleBlock(): string {
 
 function buildDeviceBlock(connected: { coyote: boolean; opossum: boolean }): string {
   const devices = [
-    connected.coyote ? '郊狼（电击，A/B 双通道）' : '',
+    connected.coyote ? '郊狼（电击，A/B 双通道；每次工具调用必须指定一个 targetId）' : '',
     connected.opossum ? '负鼠（振动，A/B 双通道）' : '',
   ].filter(Boolean);
   if (devices.length === 0) return '';
@@ -104,12 +104,14 @@ function buildDeviceStatusBlock(
   deviceState: DeviceSessionState,
   settings: VoiceInstructionSettings,
 ): string {
-  const coyoteConnected = deviceState.coyote.connected;
+  const coyoteConnected = deviceState.coyotes.length > 0;
   const opossumConnected = deviceState.opossum.connected;
   if (!coyoteConnected && !opossumConnected) return '';
   const lines: string[] = ['[当前设备状态]'];
   lines.push(
-    ...(coyoteConnected ? buildCoyoteStatusLines(deviceState.coyote, settings.coyoteSafety) : []),
+    ...deviceState.coyotes.flatMap((target) =>
+      buildCoyoteStatusLines(target.targetId, target.state, settings.coyoteSafety),
+    ),
     ...(opossumConnected
       ? buildOpossumStatusLines(deviceState.opossum, settings.opossumSafety)
       : []),
@@ -118,17 +120,18 @@ function buildDeviceStatusBlock(
   return lines.join('\n');
 }
 
-function buildCoyoteStatusLines(device: DeviceState, safety: CoyoteSafetySettings): string[] {
+function buildCoyoteStatusLines(
+  targetId: string,
+  device: DeviceState,
+  safety: CoyoteSafetySettings,
+): string[] {
   const effectiveCapA = Math.min(device.limitA, safety.maxStrengthA);
   const effectiveCapB = Math.min(device.limitB, safety.maxStrengthB);
   const battery = typeof device.battery === 'number' ? `${device.battery}%` : '未知';
-  const connection = device.connected
-    ? `已连接${device.deviceName ? `（${device.deviceName}）` : ''}`
-    : '未连接';
 
   return [
-    '郊狼：',
-    `  连接：${connection}`,
+    `郊狼 targetId=${JSON.stringify(targetId)}：`,
+    '  连接：已连接',
     `  电量：${battery}`,
     `  A 通道：强度 ${device.strengthA} / 上限 ${effectiveCapA}，波形${device.waveActiveA ? '运行中' : '已停止'}，当前波形 ${device.currentWaveA ?? '-'}`,
     `  B 通道：强度 ${device.strengthB} / 上限 ${effectiveCapB}，波形${device.waveActiveB ? '运行中' : '已停止'}，当前波形 ${device.currentWaveB ?? '-'}`,

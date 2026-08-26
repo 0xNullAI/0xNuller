@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { createEmptyDeviceState } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DeviceSession } from '@voice/lib/device-session';
+import type { DeviceSession, DeviceSessionState } from '@voice/lib/device-session';
 import { createDefaultSettings, type VoiceSettings } from '@voice/lib/settings';
 import type { RealtimeSession, RealtimeSessionOptions } from '@voice/lib/realtime/realtime-session';
 import { useRealtimeCall } from './use-realtime-call';
@@ -35,7 +35,8 @@ describe('useRealtimeCall 正常结束', () => {
   });
 
   it('updates the model tool allowlist on topology changes without reconnecting', async () => {
-    let state = {
+    let state: DeviceSessionState = {
+      coyotes: [],
       coyote: createEmptyDeviceState(),
       opossum: createEmptyOpossumState(),
     };
@@ -44,6 +45,7 @@ describe('useRealtimeCall 正常结束', () => {
       coyote: {},
       opossum: {},
       getState: vi.fn(async () => state),
+      listCoyoteTargets: vi.fn(async () => state.coyotes),
       onChanged: vi.fn((listener: () => void) => {
         changed = listener;
         return vi.fn();
@@ -73,7 +75,12 @@ describe('useRealtimeCall 正常结束', () => {
       expect.arrayContaining(['shock_start', 'vibrate_start']),
     );
 
-    state = { ...state, coyote: { ...state.coyote, connected: true } };
+    const connectedCoyote = { ...state.coyote, connected: true };
+    state = {
+      ...state,
+      coyotes: [{ targetId: 'coyote/opaque-1', state: connectedCoyote }],
+      coyote: connectedCoyote,
+    };
     act(() => changed());
     await waitFor(() =>
       expect(updateConfiguration).toHaveBeenLastCalledWith(
@@ -87,7 +94,32 @@ describe('useRealtimeCall 正常结束', () => {
     };
     expect(connectedUpdate.tools.map((tool) => tool.name)).not.toContain('vibrate_start');
 
-    state = { ...state, coyote: { ...state.coyote, connected: false } };
+    state = {
+      ...state,
+      coyotes: [...state.coyotes, { targetId: 'coyote/opaque-2', state: { ...connectedCoyote } }],
+    };
+    act(() => changed());
+    await waitFor(() => {
+      const latest = updateConfiguration.mock.calls.at(-1)?.[0] as {
+        instructions: string;
+        tools: Array<{
+          name: string;
+          parameters: { properties?: { targetId?: { enum?: string[] } } };
+        }>;
+      };
+      const shockStart = latest.tools.find((tool) => tool.name === 'shock_start');
+      expect(shockStart?.parameters.properties?.targetId?.enum).toEqual([
+        'coyote/opaque-1',
+        'coyote/opaque-2',
+      ]);
+      expect(latest.instructions).toContain('coyote/opaque-2');
+    });
+
+    state = {
+      ...state,
+      coyotes: [],
+      coyote: { ...state.coyote, connected: false },
+    };
     act(() => changed());
     await waitFor(() => {
       const latest = updateConfiguration.mock.calls.at(-1)?.[0] as {

@@ -1,83 +1,120 @@
+import { MultiCoyoteDeviceClient } from '@dg-agent/agent-browser';
 import { createEmptyDeviceState, type DeviceState } from '@dg-kit/core';
-import { createEmptyOpossumState, type OpossumState } from '@dg-kit/protocol';
+import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceSession, type DeviceSessionTransport } from './device-session.js';
 
-function transportHarness(initialCoyoteConnected = false) {
-  let coyoteState: DeviceState = {
-    ...createEmptyDeviceState(),
-    connected: initialCoyoteConnected,
-    deviceName: initialCoyoteConnected ? 'Same advertised name' : undefined,
-  };
-  const opossumState: OpossumState = createEmptyOpossumState();
-  let coyoteListener: (state: DeviceState) => void = () => undefined;
-  const disconnectPicked = vi.fn();
-  const pickedDevice = Object.assign(new EventTarget(), {
-    id: 'native-id-hidden-from-model',
-    name: 'Same advertised name',
-    gatt: { connected: true, connect: vi.fn(), disconnect: disconnectPicked },
+class FakeCoyoteClient {
+  state: DeviceState = createEmptyDeviceState();
+  private readonly listeners = new Set<(state: DeviceState) => void>();
+  connect = vi.fn();
+  disconnect = vi.fn(async () => {
+    this.state = { ...this.state, connected: false };
+    this.emit();
   });
-  const server = { connected: true, getPrimaryService: vi.fn() };
-  const coyote = {
-    connect: vi.fn(),
-    connectDevice: vi.fn(async () => {
-      coyoteState = { ...coyoteState, connected: true, deviceName: 'Same advertised name' };
-      coyoteListener(coyoteState);
-    }),
-    disconnect: vi.fn(async () => {
-      coyoteState = { ...coyoteState, connected: false };
-      coyoteListener(coyoteState);
-    }),
-    getState: vi.fn(async () => coyoteState),
-    execute: vi.fn(),
-    emergencyStop: vi.fn(async () => undefined),
-    onStateChanged: vi.fn((listener: (state: DeviceState) => void) => {
-      coyoteListener = listener;
-      return vi.fn();
-    }),
-  };
-  const opossum = {
-    connect: vi.fn(),
-    connectDevice: vi.fn(),
-    disconnect: vi.fn(),
-    getState: vi.fn(async () => opossumState),
-    execute: vi.fn(),
-    emergencyStop: vi.fn(),
-    setIndicatorColor: vi.fn(),
-    onStateChanged: vi.fn(() => vi.fn()),
-  };
-  const transport = {
-    coyote,
-    opossum,
-    requestDevice: vi.fn(async () => ({ kind: 'coyote', device: pickedDevice, server })),
-  } as unknown as DeviceSessionTransport;
-  return { transport, coyote, opossum, disconnectPicked };
+  getState = vi.fn(async () => this.state);
+  execute = vi.fn(async () => ({ state: this.state, notes: [] }));
+  emergencyStop = vi.fn(async () => undefined);
+  connectDevice = vi.fn(async (device: { name?: string }) => {
+    this.state = { ...createEmptyDeviceState(), connected: true, deviceName: device.name };
+    this.emit();
+  });
+  onStateChanged(listener: (state: DeviceState) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  private emit() {
+    for (const listener of this.listeners) listener(this.state);
+  }
 }
 
-describe('Voice legacy device single-instance identity', () => {
-  it('rejects a second same-kind device without merging or replacing the connected target', async () => {
-    const { transport, coyote, disconnectPicked } = transportHarness(true);
+function transportHarness() {
+  const children: FakeCoyoteClient[] = [];
+  let targetSequence = 0;
+  const coyote = new MultiCoyoteDeviceClient(
+    () => {
+      const child = new FakeCoyoteClient();
+      children.push(child);
+      return child;
+    },
+    () => `coyote/opaque-${++targetSequence}`,
+  );
+  const pickedDevices = [1, 2].map((number) =>
+    Object.assign(new EventTarget(), {
+      id: 'same-native-id',
+      name: 'Same advertised name',
+      marker: number,
+    }),
+  );
+  let pickIndex = 0;
+  const opossumState = createEmptyOpossumState();
+  const transport = {
+    coyote,
+    opossum: {
+      connect: vi.fn(),
+      connectDevice: vi.fn(),
+      disconnect: vi.fn(),
+      getState: vi.fn(async () => opossumState),
+      execute: vi.fn(),
+      emergencyStop: vi.fn(),
+      setIndicatorColor: vi.fn(),
+      onStateChanged: vi.fn(() => vi.fn()),
+    },
+    requestDevice: vi.fn(async () => ({
+      kind: 'coyote',
+      device: pickedDevices[pickIndex++]!,
+      server: { connected: true, getPrimaryService: vi.fn() },
+    })),
+  } as unknown as DeviceSessionTransport;
+  return { transport, children };
+}
+
+describe('Voice multi-Coyote identity and routing', () => {
+  it('keeps two same-kind same-name devices as separate opaque targets', async () => {
+    const { transport, children } = transportHarness();
     const session = new DeviceSession(transport);
 
-    await expect(session.connectDevice()).rejects.toThrow('当前只支持一台郊狼');
-    expect(coyote.connectDevice).not.toHaveBeenCalled();
-    expect(disconnectPicked).toHaveBeenCalledTimes(1);
+    await session.connectDevice();
+    await session.connectDevice();
+    const targets = await session.listCoyoteTargets();
+
+    expect(children).toHaveLength(2);
+    expect(targets.map(({ targetId }) => targetId)).toEqual(['coyote/opaque-1', 'coyote/opaque-2']);
+    expect(targets[0]?.state.deviceName).toBe(targets[1]?.state.deviceName);
+    expect(targets.map(({ targetId }) => targetId).join()).not.toContain('same-native-id');
+    expect(targets.map(({ targetId }) => targetId).join()).not.toContain('Same advertised name');
   });
 
-  it('issues a new opaque identity after disconnect and reconnect even when names match', async () => {
-    const { transport } = transportHarness();
+  it('disconnects one exact target without dropping the other', async () => {
+    const { transport, children } = transportHarness();
     const session = new DeviceSession(transport);
-
     await session.connectDevice();
-    const first = session.currentTargetId('coyote');
-    await session.disconnectCoyote();
-    expect(session.currentTargetId('coyote')).toBeNull();
     await session.connectDevice();
-    const second = session.currentTargetId('coyote');
+    const [first, second] = await session.listCoyoteTargets();
 
-    expect(first).toMatch(/^voice-coyote\//);
-    expect(second).toMatch(/^voice-coyote\//);
-    expect(second).not.toBe(first);
-    expect(first).not.toContain('Same advertised name');
+    await session.disconnectCoyote(first!.targetId);
+
+    expect(children[0]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(children[1]!.disconnect).not.toHaveBeenCalled();
+    expect((await session.listCoyoteTargets()).map(({ targetId }) => targetId)).toEqual([
+      second!.targetId,
+    ]);
+  });
+
+  it('executes on one exact same-name target without selecting or fanning out', async () => {
+    const { transport, children } = transportHarness();
+    const session = new DeviceSession(transport);
+    await session.connectDevice();
+    await session.connectDevice();
+    const [, second] = await session.listCoyoteTargets();
+
+    await session.coyoteTargetRouter.executeTarget(second!.targetId, {
+      type: 'adjustStrength',
+      channel: 'A',
+      delta: 1,
+    });
+
+    expect(children[0]!.execute).not.toHaveBeenCalled();
+    expect(children[1]!.execute).toHaveBeenCalledTimes(1);
   });
 });

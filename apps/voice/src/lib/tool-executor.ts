@@ -6,12 +6,9 @@
  * constructed with `createSlidingWindowRateLimitPolicy`, so it's already
  * enforced inside `registry.resolve()` before a plan is ever returned.
  *
- * Deliberately does not attempt `filterToolDefinitionsByConnectedDevices`
- * (DG-Agent's approach of hiding tools for disconnected devices) — the
- * realtime session declares all tools once at connect time and most
- * providers can't update the tool list mid-session, so unconnected devices
- * are instead denied here with a clear reason, which becomes the model's
- * own signal not to retry.
+ * The realtime layer exposes connected-only definitions and refreshes them
+ * when topology changes. These execution-time checks remain as the final
+ * identity and lease fence against races after model selection or approval.
  */
 import type {
   DeviceCommand,
@@ -21,11 +18,12 @@ import type {
   ToolCall,
   ToolExecutionPlan,
 } from '@dg-kit/core';
+import { createExactCoyoteDeviceClient } from '@dg-agent/core';
 import { DEVICE_KIND_DISPLAY_NAME } from '@dg-kit/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import type { ToolRegistry } from '@dg-kit/tools';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
-import type { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
+import { DeviceCommandQueue, type OpossumCommandQueue } from '@dg-kit/safety';
 import type { DeviceSession } from './device-session.js';
 import {
   currentDeviceLeaseSnapshot,
@@ -42,7 +40,6 @@ export interface ToolExecutorOptions {
   policyEngine: PolicyEngine;
   opossumPolicyEngine: OpossumPolicyEngine;
   permission: PermissionService;
-  deviceQueue: DeviceCommandQueue;
   opossumQueue: OpossumCommandQueue;
   context: ActionContext;
 }
@@ -132,7 +129,20 @@ function describeOpossumCommand(command: OpossumCommand): string {
 }
 
 export class ToolExecutor {
+  private readonly coyoteTargetQueues = new Map<string, DeviceCommandQueue>();
+
   constructor(private readonly options: ToolExecutorOptions) {}
+
+  /** Invalidates every exact-target queue before a call-level stop completes. */
+  async emergencyStopCoyoteTargetQueues(): Promise<void> {
+    const results = await Promise.allSettled(
+      [...this.coyoteTargetQueues.values()].map((queue) => queue.emergencyStop()),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) throw failure.reason;
+  }
 
   async execute(toolCall: ToolCall): Promise<ToolExecutionResult> {
     const output = await this.resolveAndRun(toolCall);
@@ -144,14 +154,20 @@ export class ToolExecutor {
     const stopOnlyTool = STOP_TOOL_NAMES.has(toolCall.name);
     let targetId: string | null = null;
     if (requiredKind) {
-      if (!stopOnlyTool) {
+      if (requiredKind === 'coyote') {
+        targetId = readTargetId(toolCall.args);
+        if (!targetId) return this.deny('缺少有效的郊狼 targetId');
+        if (!stopOnlyTool && !(await this.options.session.getCoyoteTargetState(targetId))) {
+          return this.deny('目标郊狼未连接或身份已失效');
+        }
+      } else if (!stopOnlyTool) {
         const connected = await this.isKindConnected(requiredKind);
         if (!connected) {
           return this.deny(`${DEVICE_KIND_DISPLAY_NAME[requiredKind]}未连接`);
         }
       }
-      if (requiredKind === 'coyote' || requiredKind === 'opossum') {
-        targetId = this.options.session.currentTargetId(requiredKind);
+      if (requiredKind === 'opossum') {
+        targetId = this.options.session.currentOpossumTargetId();
         if (!targetId && !stopOnlyTool) return this.deny('设备身份尚未建立，请断开后重新连接');
       }
     }
@@ -206,7 +222,9 @@ export class ToolExecutor {
     if (!stopOnly && (!targetId || !this.leaseAllowsVoice(leaseFence!))) {
       return this.deny('Voice 当前不持有设备控制权');
     }
-    const deviceState = await this.options.session.coyote.getState();
+    if (!targetId) return this.deny('缺少有效的郊狼 targetId');
+    const deviceState = await this.options.session.getCoyoteTargetState(targetId);
+    if (!deviceState) return this.deny('目标郊狼未连接或身份已失效');
     const resolved = await this.resolvePolicy(deviceState, command);
     if (resolved.type === 'deny') return this.deny(resolved.reason);
 
@@ -227,7 +245,7 @@ export class ToolExecutor {
     }
 
     try {
-      const result = await this.options.deviceQueue.enqueue(resolved.command);
+      const result = await this.getCoyoteTargetQueue(targetId).enqueue(resolved.command);
       return JSON.stringify({
         ok: resolved.clampedFrom ? 'clamped' : true,
         command: resolved.command,
@@ -339,7 +357,9 @@ export class ToolExecutor {
     targetId: string,
     lease: DeviceLeaseSnapshot,
   ): Promise<boolean> {
-    const state = await this.options.session.getState();
+    const coyoteState =
+      kind === 'coyote' ? await this.options.session.getCoyoteTargetState(targetId) : null;
+    const state = kind === 'opossum' ? await this.options.session.getState() : null;
     const currentLease = currentDeviceLeaseSnapshot();
     if (
       currentLease.holder !== lease.holder ||
@@ -348,8 +368,19 @@ export class ToolExecutor {
     ) {
       return false;
     }
-    if (this.options.session.currentTargetId(kind) !== targetId) return false;
-    return kind === 'coyote' ? state.coyote.connected : state.opossum.connected;
+    if (kind === 'coyote') return coyoteState?.connected === true;
+    if (this.options.session.currentOpossumTargetId() !== targetId) return false;
+    return state?.opossum.connected === true;
+  }
+
+  private getCoyoteTargetQueue(targetId: string): DeviceCommandQueue {
+    const existing = this.coyoteTargetQueues.get(targetId);
+    if (existing) return existing;
+    const queue = new DeviceCommandQueue(
+      createExactCoyoteDeviceClient(this.options.session.coyoteTargetRouter, targetId),
+    );
+    this.coyoteTargetQueues.set(targetId, queue);
+    return queue;
   }
 
   /** Re-evaluates after each clamp so a clamp can't short-circuit a later `require-confirm` rule. */
@@ -429,4 +460,9 @@ export class ToolExecutor {
     const reason = error instanceof Error ? error.message : String(error);
     return JSON.stringify({ error: reason, _meta: { kind: 'tool-failed' } });
   }
+}
+
+function readTargetId(args: Record<string, unknown>): string | null {
+  const value = args.targetId;
+  return typeof value === 'string' && value.trim() ? value : null;
 }

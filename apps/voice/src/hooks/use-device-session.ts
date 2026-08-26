@@ -8,6 +8,7 @@ import {
 } from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
+  coyotes: [],
   coyote: createEmptyDeviceState(),
   opossum: createEmptyOpossumState(),
 };
@@ -65,10 +66,13 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
-  const disconnectCoyote = useCallback(async () => {
-    await session.disconnectCoyote();
-    refresh();
-  }, [session, refresh]);
+  const disconnectCoyote = useCallback(
+    async (targetId?: string) => {
+      await session.disconnectCoyote(targetId);
+      refresh();
+    },
+    [session, refresh],
+  );
 
   const disconnectOpossum = useCallback(async () => {
     await session.disconnectOpossum();

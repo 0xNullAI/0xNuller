@@ -20,14 +20,28 @@ function harness(plan: ToolExecutionPlan) {
     definition: { name: 'test', description: 'test', parameters: {} },
     toExecutionPlan: () => plan,
   });
-  const deviceQueue = {
-    enqueue: vi.fn(async () => ({ state: coyoteState, notes: [] })),
+  const coyoteTargetRouter = {
+    listTargets: vi.fn(async () => (targetId ? [{ targetId, state: coyoteState }] : [])),
+    getTargetState: vi.fn(async (requestedId: string) =>
+      requestedId === targetId ? coyoteState : null,
+    ),
+    executeTarget: vi.fn(async (requestedId: string, command: DeviceCommand) =>
+      requestedId === targetId ? { state: coyoteState, notes: [], command } : null,
+    ),
+    emergencyStopTarget: vi.fn(async (requestedId: string) => requestedId === targetId),
   };
   const session = {
     coyote: { getState: vi.fn(async () => coyoteState) },
     opossum: { getState: vi.fn(async () => opossumState) },
-    getState: vi.fn(async () => ({ coyote: coyoteState, opossum: opossumState })),
-    currentTargetId: vi.fn(() => targetId),
+    getState: vi.fn(async () => ({
+      coyotes: targetId ? [{ targetId, state: coyoteState }] : [],
+      coyote: coyoteState,
+      opossum: opossumState,
+    })),
+    listCoyoteTargets: coyoteTargetRouter.listTargets,
+    getCoyoteTargetState: coyoteTargetRouter.getTargetState,
+    coyoteTargetRouter,
+    currentOpossumTargetId: vi.fn(() => null),
   } as unknown as DeviceSession;
   const permission = { request: vi.fn(async () => ({ type: 'approve-once' as const })) };
   const policyEngine = {
@@ -43,13 +57,12 @@ function harness(plan: ToolExecutionPlan) {
     policyEngine: policyEngine as never,
     opossumPolicyEngine: { evaluate: vi.fn() } as never,
     permission,
-    deviceQueue: deviceQueue as never,
     opossumQueue: { enqueue: vi.fn() } as never,
     context: { sessionId: 'voice', sourceType: 'web', traceId: 'voice-test' },
   });
   return {
     executor,
-    deviceQueue,
+    coyoteTargetRouter,
     permission,
     setTargetId: (value: string | null) => {
       targetId = value;
@@ -67,11 +80,15 @@ describe('Voice legacy execution fences', () => {
       return { type: 'approve-once' as const };
     });
 
-    const result = await test.executor.execute({ id: 'call', name: 'shock_adjust', args: {} });
+    const result = await test.executor.execute({
+      id: 'call',
+      name: 'shock_adjust',
+      args: { targetId: 'voice-coyote/first' },
+    });
     expect(JSON.parse(result.output)).toMatchObject({
       error: expect.stringContaining('身份或控制权已变化'),
     });
-    expect(test.deviceQueue.enqueue).not.toHaveBeenCalled();
+    expect(test.coyoteTargetRouter.executeTarget).not.toHaveBeenCalled();
   });
 
   it('rejects an approved output when the module lease changes before dispatch', async () => {
@@ -83,20 +100,44 @@ describe('Voice legacy execution fences', () => {
       return { type: 'approve-once' as const };
     });
 
-    const result = await test.executor.execute({ id: 'call', name: 'shock_adjust', args: {} });
+    const result = await test.executor.execute({
+      id: 'call',
+      name: 'shock_adjust',
+      args: { targetId: 'voice-coyote/first' },
+    });
     expect(JSON.parse(result.output)).toMatchObject({
       error: expect.stringContaining('身份或控制权已变化'),
     });
-    expect(test.deviceQueue.enqueue).not.toHaveBeenCalled();
+    expect(test.coyoteTargetRouter.executeTarget).not.toHaveBeenCalled();
   });
 
-  it('keeps stop reachable after lease loss and connection identity revocation', async () => {
+  it('keeps exact-target stop reachable after lease loss', async () => {
     await grantDeviceLease('control');
     const test = harness({ type: 'device', command: { type: 'stop', channel: 'A' } });
-    test.setTargetId(null);
-
-    const result = await test.executor.execute({ id: 'stop', name: 'shock_stop', args: {} });
+    const result = await test.executor.execute({
+      id: 'stop',
+      name: 'shock_stop',
+      args: { targetId: 'voice-coyote/first' },
+    });
     expect(JSON.parse(result.output)).toMatchObject({ ok: true });
-    expect(test.deviceQueue.enqueue).toHaveBeenCalledWith({ type: 'stop', channel: 'A' });
+    expect(test.coyoteTargetRouter.executeTarget).toHaveBeenCalledWith('voice-coyote/first', {
+      type: 'stop',
+      channel: 'A',
+    });
+  });
+
+  it('interrupts every created exact-target queue during call-level emergency stop', async () => {
+    await grantDeviceLease('voice');
+    const command: DeviceCommand = { type: 'adjustStrength', channel: 'A', delta: 1 };
+    const test = harness({ type: 'device', command });
+    await test.executor.execute({
+      id: 'call',
+      name: 'shock_adjust',
+      args: { targetId: 'voice-coyote/first' },
+    });
+
+    await test.executor.emergencyStopCoyoteTargetQueues();
+
+    expect(test.coyoteTargetRouter.emergencyStopTarget).toHaveBeenCalledWith('voice-coyote/first');
   });
 });

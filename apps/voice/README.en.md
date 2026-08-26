@@ -41,11 +41,14 @@ end-to-end browser and Android checks with a real provider, including a tool cal
 
 ## AI device target boundaries
 
-- Coyote and Opossum retain the DG-Lab transport's single-client boundary: Voice can hold at most
-  one instance of each kind. A second device of the same kind is rejected until the old one is
-  disconnected, so queued work or approval cannot migrate to replacement hardware. Reconnects get
-  a new local opaque identity; advertised names are never identities and same-name devices are not
-  merged.
+- Coyote uses the same `MultiCoyoteDeviceClient` and exact-target router as Agent, so multiple
+  same-kind or same-name devices can remain connected. Every connection owns an opaque `targetId`,
+  protocol client, command queue, and stop path. Model tools must copy one current `targetId`
+  exactly; they never select by name, merge devices, broadcast, or fan out. Web and Android use the
+  same composition.
+- Opossum's transport remains a single-client boundary, so Voice currently connects one Opossum at
+  a time. Reconnects receive a new local opaque identity and stale identity cannot migrate to new
+  hardware.
 - The generic runtime supports multiple devices and vibration features. The model receives a
   separate opaque `deviceId` and `featureId` for every target and every call selects exactly one ID
   pair. Names are omitted from model state, and calls never broadcast or fan out.

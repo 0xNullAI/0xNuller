@@ -3,7 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
-import { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
+import { OpossumCommandQueue } from '@dg-kit/safety';
 import { ToolExecutor } from '@voice/lib/tool-executor';
 import { createVoiceToolRegistry } from '@voice/lib/tool-registry';
 import { BrowserWaveformLibrary } from '@voice/lib/waveform-library';
@@ -31,6 +31,7 @@ import {
   voiceToolAvailability,
   VoiceCompositeToolExecutor,
 } from '@voice/lib/device-runtime-tools';
+import { CoyoteTargetToolRegistry } from '@dg-agent/agent-browser';
 
 export interface PendingPermissionRequest {
   input: PermissionRequest;
@@ -82,6 +83,7 @@ export function useRealtimeCall(
   const sessionRef = useRef<RealtimeSession | null>(null);
   const guardStopRef = useRef<(() => void) | null>(null);
   const deviceWatchStopRef = useRef<(() => void) | null>(null);
+  const coyoteQueueStopRef = useRef<(() => Promise<void>) | null>(null);
   const [waveformLibrary] = useState(() => new BrowserWaveformLibrary());
   const runtimeTools = useMemo(
     () =>
@@ -113,7 +115,16 @@ export function useRealtimeCall(
       sessionRef.current = null;
       const genericRuntime = deviceRuntimeProvider?.current();
       const stops: Promise<unknown>[] = [
-        Promise.resolve().then(() => deviceSession.emergencyStop()),
+        Promise.resolve().then(async () => {
+          const results = await Promise.allSettled([
+            coyoteQueueStopRef.current?.() ?? Promise.resolve(),
+            deviceSession.emergencyStop(),
+          ]);
+          const failure = results.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          );
+          if (failure) throw failure.reason;
+        }),
       ];
       if (genericRuntime) {
         stops.push(
@@ -198,7 +209,9 @@ export function useRealtimeCall(
         }),
     });
 
-    const registry = createVoiceToolRegistry({ waveformLibrary });
+    const registry = new CoyoteTargetToolRegistry(createVoiceToolRegistry({ waveformLibrary }), {
+      listTargets: () => deviceSession.listCoyoteTargets(),
+    });
     const legacyExecutor = new ToolExecutor({
       session: deviceSession,
       registry,
@@ -207,10 +220,10 @@ export function useRealtimeCall(
         createDefaultOpossumPolicyRules(settings.opossumSafety),
       ),
       permission,
-      deviceQueue: new DeviceCommandQueue(deviceSession.coyote),
       opossumQueue: new OpossumCommandQueue(deviceSession.opossum),
       context,
     });
+    coyoteQueueStopRef.current = () => legacyExecutor.emergencyStopCoyoteTargetQueues();
 
     const events: RealtimeSessionEvents = {
       onOpen: () => setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() })),
@@ -258,6 +271,7 @@ export function useRealtimeCall(
         tools: await listVoiceToolDefinitions(registry, availability, runtimeTools),
         topologyKey: JSON.stringify({
           coyote: availability.coyote,
+          coyoteTargets: deviceState.coyotes.map(({ targetId }) => targetId),
           opossum: availability.opossum,
           genericSessionId: runtimeSnapshot?.sessionId ?? null,
           genericTopologyGeneration: runtimeSnapshot?.topologyGeneration ?? null,

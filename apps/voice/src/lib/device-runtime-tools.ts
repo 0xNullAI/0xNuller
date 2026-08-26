@@ -48,7 +48,7 @@ export function voiceToolAvailability(
   genericEnabled = false,
 ): VoiceToolAvailability {
   return {
-    coyote: state.coyote.connected,
+    coyote: state.coyotes.length > 0,
     opossum: state.opossum.connected,
     generic: genericEnabled && hasUsableGenericVibration(runtime),
   };

@@ -1,6 +1,6 @@
 /**
- * Unified device layer: holds one client per supported DG-Lab device kind
- * (Coyote + Opossum, connectable simultaneously and independently) and
+ * Unified device layer: holds a shared multi-Coyote aggregate plus one
+ * Opossum client (connectable simultaneously and independently) and
  * exposes a single "connect a device" entry point that opens ONE chooser,
  * auto-detects which kind was picked, and routes it to the matching client.
  *
@@ -26,14 +26,20 @@
  * `DeviceSessionTransport` isolates.
  */
 import {
-  CoyoteProtocolAdapter,
   type BluetoothDeviceLike,
   type BluetoothRemoteGATTServerLike,
   type OpossumClient,
   type OpossumState,
   type RequestedDevice,
 } from '@dg-kit/protocol';
-import type { DeviceClient, DeviceKind, DeviceState } from '@dg-kit/core';
+import {
+  createEmptyDeviceState,
+  type DeviceClient,
+  type DeviceKind,
+  type DeviceState,
+} from '@dg-kit/core';
+import type { CoyoteTargetRouter, CoyoteTargetSnapshot } from '@dg-agent/core';
+import { createCoyoteTargetRouter, MultiCoyoteDeviceClient } from '@dg-agent/agent-browser';
 import {
   WebBluetoothDeviceClient,
   WebBluetoothOpossumClient,
@@ -41,6 +47,8 @@ import {
 } from '@dg-kit/transport-webbluetooth';
 
 export interface DeviceSessionState {
+  coyotes: CoyoteTargetSnapshot[];
+  /** Primary compatibility projection for existing single-device UI. */
   coyote: DeviceState;
   opossum: OpossumState;
 }
@@ -71,10 +79,9 @@ export interface DeviceSessionTransport {
 /** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
 export function createWebBluetoothTransport(): DeviceSessionTransport {
   return {
-    coyote: new WebBluetoothDeviceClient({
-      protocol: new CoyoteProtocolAdapter(),
-      autoReconnect: true,
-    }),
+    coyote: new MultiCoyoteDeviceClient(
+      (protocol) => new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
+    ),
     opossum: new WebBluetoothOpossumClient(),
     requestDevice: () => requestDgLabDevice(),
   };
@@ -85,29 +92,25 @@ const SENSOR_KIND_DISPLAY_NAME: Partial<Record<DeviceKind, string>> = {
   'civet-edging': '灵猫',
 };
 
-/** Owns exactly one client per supported kind and lets both be connected at once. */
+/** Owns exact Coyote targets plus the transport-limited single Opossum client. */
 export class DeviceSession {
   readonly coyote: DeviceSessionTransport['coyote'];
   readonly opossum: DeviceSessionTransport['opossum'];
 
   private readonly requestDevice: DeviceSessionTransport['requestDevice'];
+  readonly coyoteTargetRouter: CoyoteTargetRouter;
   private readonly listeners = new Set<() => void>();
-  private readonly targetIds: Record<'coyote' | 'opossum', string | null> = {
-    coyote: null,
-    opossum: null,
-  };
+  private opossumTargetId: string | null = null;
 
   constructor(transport: DeviceSessionTransport = createWebBluetoothTransport()) {
     this.coyote = transport.coyote;
     this.opossum = transport.opossum;
     this.requestDevice = transport.requestDevice;
+    this.coyoteTargetRouter = createCoyoteTargetRouter(this.coyote);
 
-    this.coyote.onStateChanged((state) => {
-      this.updateTargetIdentity('coyote', state.connected);
-      this.emit();
-    });
+    this.coyote.onStateChanged(() => this.emit());
     this.opossum.onStateChanged((state) => {
-      this.updateTargetIdentity('opossum', state.connected);
+      this.updateOpossumTargetIdentity(state.connected);
       this.emit();
     });
   }
@@ -126,8 +129,16 @@ export class DeviceSession {
    * intentionally unrelated to the advertised device name and changes after
    * every disconnect/reconnect so an approval cannot migrate to new hardware.
    */
-  currentTargetId(kind: 'coyote' | 'opossum'): string | null {
-    return this.targetIds[kind];
+  currentOpossumTargetId(): string | null {
+    return this.opossumTargetId;
+  }
+
+  listCoyoteTargets(): Promise<CoyoteTargetSnapshot[]> {
+    return this.coyoteTargetRouter.listTargets();
+  }
+
+  getCoyoteTargetState(targetId: string): Promise<DeviceState | null> {
+    return this.coyoteTargetRouter.getTargetState(targetId);
   }
 
   /**
@@ -140,12 +151,7 @@ export class DeviceSession {
 
     switch (kind) {
       case 'coyote': {
-        if ((await this.coyote.getState()).connected) {
-          device.gatt?.disconnect();
-          throw new Error('语音通话当前只支持一台郊狼；请先断开现有设备再连接另一台');
-        }
         await this.coyote.connectDevice(device, server);
-        this.updateTargetIdentity('coyote', true);
         break;
       }
       case 'opossum': {
@@ -154,7 +160,7 @@ export class DeviceSession {
           throw new Error('语音通话当前只支持一台负鼠；请先断开现有设备再连接另一台');
         }
         await this.opossum.connectDevice(device, server);
-        this.updateTargetIdentity('opossum', true);
+        this.updateOpossumTargetIdentity(true);
         break;
       }
       case 'paw-prints':
@@ -166,40 +172,53 @@ export class DeviceSession {
     return { kind, name: device.name ?? '' };
   }
 
-  async disconnectCoyote(): Promise<void> {
-    await this.coyote.disconnect();
-    this.updateTargetIdentity('coyote', false);
+  async disconnectCoyote(targetId?: string): Promise<void> {
+    const multi = this.coyote as DeviceClient & {
+      disconnectDeviceById?: (id: string) => Promise<void>;
+    };
+    if (targetId && multi.disconnectDeviceById) await multi.disconnectDeviceById(targetId);
+    else await this.coyote.disconnect();
   }
 
   async disconnectOpossum(): Promise<void> {
     await this.opossum.disconnect();
-    this.updateTargetIdentity('opossum', false);
+    this.updateOpossumTargetIdentity(false);
   }
 
-  /** Panic button: stop both devices immediately. */
+  /** Panic button: stop every Coyote target and the Opossum immediately. */
   async emergencyStop(): Promise<void> {
-    await Promise.all([
-      this.coyote.emergencyStop().catch(() => undefined),
-      this.opossum.emergencyStop().catch(() => undefined),
+    const results = await Promise.allSettled([
+      this.coyote.emergencyStop(),
+      this.opossum.emergencyStop(),
     ]);
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) throw failure.reason;
   }
 
   async getState(): Promise<DeviceSessionState> {
-    const [coyote, opossum] = await Promise.all([this.coyote.getState(), this.opossum.getState()]);
-    this.updateTargetIdentity('coyote', coyote.connected);
-    this.updateTargetIdentity('opossum', opossum.connected);
-    return { coyote, opossum };
+    const [coyotes, opossum] = await Promise.all([
+      this.coyoteTargetRouter.listTargets(),
+      this.opossum.getState(),
+    ]);
+    this.updateOpossumTargetIdentity(opossum.connected);
+    return {
+      coyotes,
+      coyote: coyotes[0]?.state ?? createEmptyDeviceState(),
+      opossum,
+    };
   }
 
-  private updateTargetIdentity(kind: 'coyote' | 'opossum', connected: boolean): void {
+  private updateOpossumTargetIdentity(connected: boolean): void {
     if (!connected) {
-      this.targetIds[kind] = null;
+      this.opossumTargetId = null;
       return;
     }
-    if (this.targetIds[kind]) return;
+    if (this.opossumTargetId) return;
     const entropy =
       globalThis.crypto?.randomUUID?.() ??
       `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    this.targetIds[kind] = `voice-${kind}/${entropy}`;
+    this.opossumTargetId = `voice-opossum/${entropy}`;
   }
 }

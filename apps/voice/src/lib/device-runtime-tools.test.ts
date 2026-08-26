@@ -26,6 +26,7 @@ function runtimeHarness(snapshot?: DeviceSnapshot) {
 }
 
 const disconnectedState = {
+  coyotes: [],
   coyote: createEmptyDeviceState(),
   opossum: createEmptyOpossumState(),
 };
@@ -81,7 +82,16 @@ describe('Voice generic device tools', () => {
     ).toEqual(['timer']);
 
     const coyote = voiceToolAvailability(
-      { ...disconnectedState, coyote: { ...disconnectedState.coyote, connected: true } },
+      {
+        ...disconnectedState,
+        coyotes: [
+          {
+            targetId: 'coyote/opaque',
+            state: { ...disconnectedState.coyote, connected: true },
+          },
+        ],
+        coyote: { ...disconnectedState.coyote, connected: true },
+      },
       adapter,
       false,
     );
