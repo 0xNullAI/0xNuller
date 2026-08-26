@@ -13,8 +13,8 @@ DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只�
 
 ## 分支职责
 
-- 功能分支从 `dev` 创建，只合并回 `dev`。
-- `dev` 可以包含 changeset、下一产品版本和发布说明，但不能部署或发布任何产物。
+- 维护者可把已验证提交直接推到 `dev`；需要评审时，功能分支从 `dev` 创建并合并回 `dev`。
+- `dev` 不受分支保护，可以包含 changeset、下一产品版本和发布说明，但不能部署或发布任何产物。
 - `main` 是唯一生产源，只接受 `dev → main` 发布 PR，并使用 merge commit。
 - 手动发布同样校验目标 SHA 等于当前 `main` HEAD，不能选择其他分支绕过。
 

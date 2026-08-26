@@ -69,8 +69,8 @@ npm run test:full
 npm run build
 ```
 
-Do not commit generated output or edit `docs/legacy`. Keep maintained docs indexed. Feature branches
-start from and merge into `dev`; `main` is production. Kit/MCP public changes need Changesets. Unless
+Do not commit generated output or edit `docs/legacy`. Keep maintained docs indexed. Maintainers may
+push verified commits to `dev`; only `main` requires a `dev → main` release PR. Kit/MCP public changes need Changesets. Unless
 explicitly requested, do not version, deploy, publish, push, merge, tag, or trigger releases.
 
 The handoff reports behavior, safety impact, commands run, checks not run, API/dependency/docs impact,
