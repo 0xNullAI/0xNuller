@@ -1,8 +1,8 @@
 name: Release Guard
 
 # Runs on every PR that targets `main`. main is reserved for production promotion,
-# so a PR landing there MUST increase the Product, DG-Kit, or DG-MCP version. The verifier also
-# rejects product-version drift between npm, Cargo, Tauri and Android's versionCode.
+# so only dev may promote into it. Versions may stay unchanged for maintenance promotions, while
+# the verifier rejects version decreases and product drift between npm, Cargo, Tauri and Android.
 
 on:
   pull_request:

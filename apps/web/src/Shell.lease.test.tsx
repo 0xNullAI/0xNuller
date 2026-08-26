@@ -115,7 +115,7 @@ afterEach(async () => {
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
 
 describe('外壳与设备控制权', () => {
-  it('把设备状态栏放在模块标题操作行下方', async () => {
+  it('把设备状态和模块操作归入同一个顶部栏', async () => {
     fakeModule('agent', [COYOTE]);
     await act(async () => {
       render(<Shell />);
@@ -123,8 +123,11 @@ describe('外壳与设备控制权', () => {
 
     const actions = document.getElementById('shl-actions');
     const deviceBar = document.getElementById('shl-device-bar');
+    const topbar = document.getElementById('shl-topbar');
     expect(actions).toBeTruthy();
     expect(deviceBar).toBeTruthy();
+    expect(actions!.parentElement).toBe(topbar);
+    expect(deviceBar!.parentElement).toBe(topbar);
     expect(
       actions!.compareDocumentPosition(deviceBar!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);

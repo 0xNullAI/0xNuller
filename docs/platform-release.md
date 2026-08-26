@@ -32,7 +32,7 @@ APK:                    0xnuller-v6.3.0.apk
 Release 标题:           0xNuller 6.3.0
 ```
 
-`Release · 0xNuller` 在 `CI · Product` 和 `CI · Repository` 对同一 main SHA 成功后运行：
+`Release · 0xNuller` 在统一 `CI` 对同一 main SHA 成功后运行：
 
 1. 检查 `vX.Y.Z` 尚未发布。
 2. 构建 Web 和签名 Android APK。
@@ -55,6 +55,18 @@ Release 标题:           0xNuller 6.3.0
 npm 时发布。发布前工作流会等待当前源码中的 MCP Kit 依赖版本全部可从 npm 获取，避免同一
 `main` SHA 的 Kit 与 MCP 并行发布产生不可安装窗口。MCP 发布不改变产品或 Kit 版本。
 
+Kit 与 MCP 的源码和 npm 发布权都在本仓；旧仓只保留归档。发布后可用以下命令确认 npm 状态：
+
+```bash
+npm run verify:kit
+npm run verify:mcp
+npm view @dg-kit/core version
+npm view dg-mcp version
+```
+
+重试以 npm 上已存在的版本为准，不覆盖版本，也不为 npm 包创建产品 tag 或 GitHub Release。
+Kit 与 MCP 同时升级时，先确保 Kit 已可安装，再重试 MCP；不要绕过依赖可用性检查。
+
 ## 可选择的发布入口
 
 GitHub Actions 保留三个独立入口：
@@ -63,8 +75,8 @@ GitHub Actions 保留三个独立入口：
 - `Publish · DG-Kit`
 - `Publish · DG-MCP`
 
-它们可由 main 对应 CI 自动触发，也可手动重试；手动执行仍要求所选 SHA 是当前 `main` tip，
-并要求 Repository CI 和对应 Product/Kit/MCP 责任域 CI 对同一 SHA 成功，不放宽版本不可变等门禁。
+它们可由 main 的统一 CI 自动触发，也可手动重试；手动执行仍要求所选 SHA 是当前 `main` tip，
+并要求统一 CI 对同一 SHA 成功，不放宽版本不可变等门禁。
 
 ## 发布准备顺序
 
@@ -73,6 +85,6 @@ GitHub Actions 保留三个独立入口：
 3. 若发布产品，同时更新统一产品版本和 `docs/releases/X.Y.Z.md`。
 4. 创建 `dev → main` PR；Release Guard 验证产品元数据并禁止版本倒退，维护性提交可保持版本不变。
 5. merge commit 合入 `main`。
-6. main 的分域 CI 根据改动运行，对应发布线只发布自身版本发生变化的交付物。
+6. main 的统一 CI 根据改动运行相应责任域，对应发布线只发布自身版本发生变化的交付物。
 7. 同批包含 Kit 与 MCP 时，Kit 先在 npm 可用；MCP 工作流自动等待后再发布。Product 从同一
    monorepo SHA 构建，不等待 npm 包发布。

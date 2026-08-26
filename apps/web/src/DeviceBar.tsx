@@ -80,7 +80,7 @@ function DeviceChip({
   return (
     <div
       className={
-        'flex min-w-0 shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] border px-2.5 py-1.5 ' +
+        'flex min-w-0 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-2 py-1 ' +
         (active === true
           ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
           : 'border-transparent bg-[var(--bg-soft)]')
@@ -141,7 +141,7 @@ function DeviceChip({
           type="button"
           disabled={disconnecting}
           onClick={onDisconnect}
-          className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-strong)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-strong)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
           aria-label={`断开${displayLabel}`}
           title={`断开${displayLabel}`}
         >
@@ -187,7 +187,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
   return (
     <div
       id="shl-device-bar"
-      className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2"
+      className="flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2.5 py-1"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
         {/* Stop goes at the far left (first in reading order). It is the primary reason
@@ -203,7 +203,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
                 setStopping(false);
               }
             }}
-            className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+            className={`flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
               hasActiveOutput
                 ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
                 : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
@@ -304,7 +304,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
               });
             }
           }}
-          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          className="ml-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-2.5 py-1 text-xs font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
           title={total > 0 ? '连接其他设备' : '连接设备'}
         >
           {connecting ? (

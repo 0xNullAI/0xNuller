@@ -13,20 +13,20 @@ const RULES = {
     /^workers\//,
     /^brand\//,
     /^docs\/(?:platform-release|android-release|testing)\.md$/,
-    /^\.github\/workflows\/(?:ci-product|product-release|rollback-cloudflare)\.yml$/,
+    /^\.github\/workflows\/(?:ci|product-release|rollback-cloudflare)\.yml$/,
   ],
   kit: [
     /^packages\/kit\//,
     /^\.changeset\//,
-    /^docs\/(?:platform-release|kit-release-switchover|testing)\.md$/,
-    /^\.github\/workflows\/(?:ci-kit|kit-release|kit-version)\.yml$/,
+    /^docs\/(?:platform-release|testing)\.md$/,
+    /^\.github\/workflows\/(?:ci|kit-release|kit-version)\.yml$/,
   ],
   mcp: [
     /^apps\/mcp\//,
     /^packages\/kit\//,
     /^\.changeset\//,
-    /^docs\/(?:platform-release|kit-release-switchover|testing)\.md$/,
-    /^\.github\/workflows\/(?:ci-mcp|mcp-release|kit-version)\.yml$/,
+    /^docs\/(?:platform-release|testing)\.md$/,
+    /^\.github\/workflows\/(?:ci|mcp-release|kit-version)\.yml$/,
   ],
 };
 

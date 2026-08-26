@@ -6,7 +6,7 @@ name: Release · 0xNuller
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [CI · Product]
+    workflows: [CI]
     types: [completed]
     branches: [main]
 
@@ -42,12 +42,11 @@ jobs:
           ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
 
-      - name: Require exact main source and repository CI
+      - name: Require exact main source and CI
         uses: ./.github/actions/require-main-source
         with:
           source-sha: ${{ steps.source.outputs.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          required-workflow: ci-product.yml
 
       - uses: actions/setup-node@v6
         with:

@@ -1,7 +1,7 @@
 # 0xNuller repository guide
 
 These are the repository-wide rules. Read the nearest package README and the routed document before
-working in a domain. `docs/legacy` is historical only. Nested `AGENTS.md` files may tighten these rules.
+working in a domain. Nested `AGENTS.md` files may tighten these rules.
 
 ## Start
 
@@ -27,6 +27,12 @@ move shared behavior into the narrowest package. React renders, hooks coordinate
 stay testable without React. Use existing settings/sync/storage boundaries, not direct feature-level
 browser storage. Package entrypoints are export barrels; prefer behavior-named modules over generic
 `utils`, `helpers`, or `common` files.
+
+Keep shell UI compact: empty toolbars collapse, long sidebar lists are hideable and scroll inside
+their section, and changed layouts are checked locally at desktop and narrow widths.
+
+CI stays unified in `.github/workflows/ci.yml`; keep domain detection instead of adding another
+push/PR workflow. Version preparation runs only for changesets.
 
 | Work                        | Read                                                  |
 | --------------------------- | ----------------------------------------------------- |
@@ -69,7 +75,7 @@ npm run test:full
 npm run build
 ```
 
-Do not commit generated output or edit `docs/legacy`. Keep maintained docs indexed. Maintainers may
+Do not commit generated output. Keep maintained docs indexed. Maintainers may
 push verified commits to `dev`; only `main` requires a `dev → main` release PR. Kit/MCP public changes need Changesets. Unless
 explicitly requested, do not version, deploy, publish, push, merge, tag, or trigger releases.
 

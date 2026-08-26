@@ -2,14 +2,14 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planAffectedTests } from './lib/test-impact.mjs';
+import { planAffectedTests, TEST_DOMAINS } from './lib/test-impact.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const domain = valueFor('--domain') ?? 'all';
 const prepared = args.includes('--prepared');
 
-if (!['all', 'repository', 'product', 'kit', 'mcp'].includes(domain)) {
+if (!TEST_DOMAINS.includes(domain)) {
   console.error(`Unknown test domain: ${domain}`);
   process.exit(2);
 }

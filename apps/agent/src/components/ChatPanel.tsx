@@ -425,9 +425,9 @@ export function ChatPanel({
       )}
 
       {isWelcome ? (
-        /* ===== Welcome centered state ===== */
+        /* ===== Welcome state ===== */
         <>
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 overflow-y-auto px-4 py-6 sm:py-8">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-7 overflow-y-auto px-4 pb-6 pt-[clamp(3.5rem,18vh,10rem)]">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 Agent</h2>
             </div>

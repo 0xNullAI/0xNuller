@@ -527,6 +527,13 @@
     overflow: hidden;
   }
 
+  #shl-topbar {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    min-width: 0;
+  }
+
   /* The row of module buttons. With no buttons its height collapses to 0, leaving
      no blank strip. */
   #shl-actions {
@@ -543,8 +550,38 @@
     padding-block: 0.375rem;
   }
 
+  /* Portal anchors keep this row structurally non-empty even when a module has no
+     toolbar action. Collapse that otherwise blank strip; a real button (including
+     the narrow-screen menu trigger) restores the normal toolbar padding. */
+  #shl-actions:not(:empty):not(:has(button)) {
+    padding-block: 0;
+  }
+
+  #shl-root[data-narrow] #shl-topbar {
+    flex-direction: row;
+    align-items: center;
+    border-bottom: 1px solid var(--surface-border);
+    background: var(--bg-elevated);
+  }
+
+  #shl-root[data-narrow] #shl-actions {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
   #shl-root[data-narrow] #shl-actions:not(:empty) {
-    padding-top: calc(0.375rem + env(safe-area-inset-top));
+    padding-block: 0.125rem;
+    padding-top: calc(0.125rem + env(safe-area-inset-top));
+  }
+
+  #shl-root[data-narrow] #shl-device-bar {
+    min-width: 0;
+    max-width: 72%;
+    flex: 0 1 auto;
+    border-bottom: 0;
+    background: transparent;
+    padding-left: 0;
+    padding-top: calc(0.25rem + env(safe-area-inset-top));
   }
 
   .shl-drawer {
