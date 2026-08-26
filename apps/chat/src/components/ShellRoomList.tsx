@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { LogOut, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { ChevronDown, LogOut, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import {
   fetchLobbyRooms,
   subscribeLobby,
@@ -14,8 +14,9 @@ import { forgetGroup, GROUPS_CHANGED_EVENT, loadKnownGroups, syncKnownGroups } f
  * Before the merge, entering Chat meant first meeting a centered card: type a nickname, then
  * create or join a room; the public room list lived on another page (`/lobby`), reached by
  * full-page navigation back and forth. With a unified account there is no need to ask for a
- * nickname any more, and the room list should not be hidden on another page either — you should
- * see which rooms exist the moment you open it.
+ * nickname any more, and the room list should not require navigating to another page. The sidebar
+ * keeps that directory collapsed until requested so a large public lobby cannot crowd out the rest
+ * of the navigation.
  *
  * The permanent public room sorts first and is labeled as such: it guarantees there is always
  * somewhere to go, so a new user is never left staring at an empty list with nothing to do.
@@ -57,6 +58,8 @@ export function ShellRoomList({
   const [status, setStatus] = useState<LobbyStatus>('connecting');
   const [listRevision, setListRevision] = useState(0);
   const [pendingRoom, setPendingRoom] = useState<string | null>(null);
+  const [directoryOpen, setDirectoryOpen] = useState(mode === 'directory');
+  const directoryId = useId();
 
   useEffect(() => {
     // Take one REST snapshot first, then hand over to the WS for live updates — waiting on the
@@ -86,6 +89,7 @@ export function ShellRoomList({
   const knownCodes = new Set(knownGroups.map((group) => group.code));
   const ordered = buildVisibleRooms(knownGroups, rooms, mode);
   const showingDirectory = mode === 'directory' || knownGroups.length === 0;
+  const showRooms = !showingDirectory || directoryOpen;
   void listRevision;
 
   return (
@@ -100,68 +104,88 @@ export function ShellRoomList({
       </button>
 
       {showingDirectory && rooms.length > 0 ? (
-        <p className="px-2 pb-1 pt-2 text-[11px] text-[var(--text-faint)]">
-          {knownGroups.length === 0 && mode === 'memberships'
-            ? '尚未加入房间，以下是公开房间'
-            : '公开房间'}
-        </p>
-      ) : null}
-
-      {ordered.map((room) => (
-        <div
-          key={room.code}
-          className={
-            'group flex items-center rounded-[var(--radius-ctl)] text-sm transition-colors ' +
-            (room.code === currentRoom
-              ? 'bg-[var(--accent-soft)]'
-              : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
-          }
-        >
+        <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2">
+          <p className="min-w-0 text-[11px] text-[var(--text-faint)]">
+            {knownGroups.length === 0 && mode === 'memberships' ? '尚未加入房间' : '公开房间'}
+          </p>
           <button
             type="button"
-            disabled={pendingRoom === room.code && currentRoom !== room.code}
-            aria-busy={pendingRoom === room.code && currentRoom !== room.code}
-            onClick={() => {
-              if (room.code === currentRoom) return;
-              setPendingRoom(room.code);
-              onJoin(room.code);
-            }}
-            className="flex min-h-11 min-w-0 flex-1 touch-manipulation items-center gap-2 px-2 py-2 text-left active:bg-[var(--accent-soft)] disabled:opacity-70"
+            aria-expanded={directoryOpen}
+            aria-controls={directoryId}
+            onClick={() => setDirectoryOpen((open) => !open)}
+            className="flex shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-1.5 py-1 text-[11px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
           >
-            <span className="min-w-0 flex-1 truncate">{room.name || room.code}</span>
-            {pendingRoom === room.code && currentRoom !== room.code && (
-              <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--accent)]">
-                <RefreshCw className="h-3 w-3 animate-spin" /> 进入中
-              </span>
-            )}
-            {room.count > 0 && (
-              <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
-                <Users className="h-3 w-3" />
-                {room.count}
-              </span>
-            )}
+            {directoryOpen ? '隐藏' : '显示'}公开房间（{rooms.length}）
+            <ChevronDown
+              className={`h-3 w-3 transition-transform ${directoryOpen ? 'rotate-180' : ''}`}
+            />
           </button>
-          {knownCodes.has(room.code) || room.code === currentRoom ? (
+        </div>
+      ) : null}
+
+      <div
+        id={showingDirectory ? directoryId : undefined}
+        hidden={!showRooms}
+        className={
+          showingDirectory ? 'max-h-64 overflow-y-auto overscroll-contain pr-1' : undefined
+        }
+      >
+        {ordered.map((room) => (
+          <div
+            key={room.code}
+            className={
+              'group flex items-center rounded-[var(--radius-ctl)] text-sm transition-colors ' +
+              (room.code === currentRoom
+                ? 'bg-[var(--accent-soft)]'
+                : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
+            }
+          >
             <button
               type="button"
-              aria-label={`${room.code === currentRoom ? '退出' : '删除'}房间 ${room.name || room.code}`}
-              title={room.code === currentRoom ? '退出房间' : '从列表删除'}
+              disabled={pendingRoom === room.code && currentRoom !== room.code}
+              aria-busy={pendingRoom === room.code && currentRoom !== room.code}
               onClick={() => {
-                forgetGroup(room.code);
-                setListRevision((value) => value + 1);
-                onDelete(room.code);
+                if (room.code === currentRoom) return;
+                setPendingRoom(room.code);
+                onJoin(room.code);
               }}
-              className="mr-1 flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] opacity-100 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100"
+              className="flex min-h-11 min-w-0 flex-1 touch-manipulation items-center gap-2 px-2 py-2 text-left active:bg-[var(--accent-soft)] disabled:opacity-70"
             >
-              {room.code === currentRoom ? (
-                <LogOut className="h-3.5 w-3.5" />
-              ) : (
-                <Trash2 className="h-3.5 w-3.5" />
+              <span className="min-w-0 flex-1 truncate">{room.name || room.code}</span>
+              {pendingRoom === room.code && currentRoom !== room.code && (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--accent)]">
+                  <RefreshCw className="h-3 w-3 animate-spin" /> 进入中
+                </span>
+              )}
+              {room.count > 0 && (
+                <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
+                  <Users className="h-3 w-3" />
+                  {room.count}
+                </span>
               )}
             </button>
-          ) : null}
-        </div>
-      ))}
+            {knownCodes.has(room.code) || room.code === currentRoom ? (
+              <button
+                type="button"
+                aria-label={`${room.code === currentRoom ? '退出' : '删除'}房间 ${room.name || room.code}`}
+                title={room.code === currentRoom ? '退出房间' : '从列表删除'}
+                onClick={() => {
+                  forgetGroup(room.code);
+                  setListRevision((value) => value + 1);
+                  onDelete(room.code);
+                }}
+                className="mr-1 flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] opacity-100 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100"
+              >
+                {room.code === currentRoom ? (
+                  <LogOut className="h-3.5 w-3.5" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
 
       {status === 'connecting' && rooms.length === 0 && (
         <p className="flex items-center gap-1.5 px-2 py-2 text-xs text-[var(--text-faint)]">
