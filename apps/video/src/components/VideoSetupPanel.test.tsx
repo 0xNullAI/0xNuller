@@ -8,6 +8,11 @@ import {
 } from './VideoSetupPanel.js';
 
 const baseView: VideoSetupPanelViewModel = {
+  scenes: [
+    { id: 'gentle', name: '温柔陪伴', icon: '🌙' },
+    { id: 'market-scene', name: '市场场景' },
+  ],
+  selectedSceneId: 'gentle',
   facingMode: 'environment',
   embeddedAvailable: true,
   showCoyoteConnect: true,
@@ -44,6 +49,8 @@ const baseView: VideoSetupPanelViewModel = {
 function createActions(): VideoSetupPanelActions {
   return {
     openVideoSettings: vi.fn(),
+    openSceneSettings: vi.fn(),
+    selectScene: vi.fn(),
     setFacingMode: vi.fn(),
     connect: vi.fn(),
     discoverEmbeddedDevices: vi.fn(),
@@ -69,10 +76,23 @@ describe('VideoSetupPanel', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '摄像头' }), {
       target: { value: 'user' },
     });
+    fireEvent.change(screen.getByRole('combobox', { name: '场景' }), {
+      target: { value: 'market-scene' },
+    });
     fireEvent.click(screen.getByRole('checkbox', { name: '允许增强' }));
 
     expect(actions.setFacingMode).toHaveBeenCalledWith('user');
+    expect(actions.selectScene).toHaveBeenCalledWith('market-scene');
     expect(actions.setAllowEnhanced).toHaveBeenCalledWith(true);
+  });
+
+  it('shows an explicit empty selection instead of silently applying a background', () => {
+    const actions = createActions();
+    render(<VideoSetupPanel view={{ ...baseView, selectedSceneId: '' }} actions={actions} />);
+
+    expect((screen.getByRole('combobox', { name: '场景' }) as HTMLSelectElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: '管理' }));
+    expect(actions.openSceneSettings).toHaveBeenCalledOnce();
   });
 
   it('uses the parent-provided CTA state and exposes settings and errors accessibly', () => {

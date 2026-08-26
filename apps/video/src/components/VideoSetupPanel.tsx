@@ -5,6 +5,8 @@ import type { VideoOutputKind } from '@dg-agent/agent-browser';
 import type { CameraFacingMode } from '../hooks/use-camera-preview.js';
 
 export interface VideoSetupPanelViewModel {
+  scenes: readonly { id: string; name: string; icon?: string }[];
+  selectedSceneId: string;
   facingMode: CameraFacingMode;
   embeddedAvailable: boolean;
   showCoyoteConnect: boolean;
@@ -26,6 +28,8 @@ export interface VideoSetupPanelViewModel {
 
 export interface VideoSetupPanelActions {
   openVideoSettings: () => void;
+  openSceneSettings: () => void;
+  selectScene: (id: string) => void;
   setFacingMode: (value: CameraFacingMode) => void;
   connect: (kind: VideoOutputKind) => void;
   discoverEmbeddedDevices: () => void;
@@ -68,6 +72,30 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
       </header>
 
       <div className="grid gap-3">
+        <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+          场景
+          <div className="flex gap-2">
+            <select
+              aria-label="场景"
+              value={view.selectedSceneId}
+              onChange={(event) => actions.selectScene(event.target.value)}
+              className={`${selectClassName} min-w-0 flex-1`}
+            >
+              <option value="" disabled>
+                选择场景
+              </option>
+              {view.scenes.map((scene) => (
+                <option key={scene.id} value={scene.id}>
+                  {scene.icon ? `${scene.icon} ` : ''}
+                  {scene.name}
+                </option>
+              ))}
+            </select>
+            <Button type="button" size="sm" variant="secondary" onClick={actions.openSceneSettings}>
+              管理
+            </Button>
+          </div>
+        </label>
         <label className="grid gap-1 text-xs text-[var(--text-soft)]">
           摄像头
           <select

@@ -29,7 +29,7 @@ import {
   type VideoOutputKind,
 } from '@dg-agent/agent-browser';
 import type { LlmClient } from '@dg-agent/core';
-import { getAnyPromptPresetById } from '@dg-agent/runtime';
+import { BUILTIN_PROMPT_PRESETS, getAnyPromptPresetById } from '@dg-agent/runtime';
 import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
@@ -146,7 +146,7 @@ function useStopWhenModuleHidden(stop: () => void) {
 export function App() {
   const [config, setConfig] = useState(loadVideoLlmConfig);
   const [safety, setSafety] = useState(toVideoSafety);
-  const [sceneLibrary] = useScenes();
+  const [sceneLibrary, updateSceneLibrary] = useScenes();
   const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
   const [cadenceSeconds, setCadenceSeconds] = useState(10);
   const captureIntervalMs = 1_000;
@@ -203,6 +203,18 @@ export function App() {
     const selected = getAnyPromptPresetById(sceneLibrary.selectedId, sceneLibrary.scenes);
     return selected ? { name: selected.name, prompt: selected.prompt } : null;
   }, [sceneLibrary]);
+  const sceneOptions = useMemo(
+    () => [
+      ...BUILTIN_PROMPT_PRESETS.filter(
+        (scene) => !sceneLibrary.hiddenBuiltinIds.includes(scene.id),
+      ),
+      ...sceneLibrary.scenes,
+    ],
+    [sceneLibrary.hiddenBuiltinIds, sceneLibrary.scenes],
+  );
+  const selectedSceneId = sceneOptions.some((scene) => scene.id === sceneLibrary.selectedId)
+    ? sceneLibrary.selectedId
+    : '';
   const genericService = useMemo(
     () =>
       native.deviceRuntime && genericDevicesEnabled
@@ -671,6 +683,8 @@ export function App() {
         ) : (
           <VideoSetupPanel
             view={{
+              scenes: sceneOptions,
+              selectedSceneId,
               facingMode,
               embeddedAvailable: genericDevicesEnabled && genericService !== null,
               showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
@@ -688,6 +702,9 @@ export function App() {
             }}
             actions={{
               openVideoSettings: () => openSettings('ai-video'),
+              openSceneSettings: () => openSettings('scenes'),
+              selectScene: (id) =>
+                updateSceneLibrary((current) => ({ ...current, selectedId: id })),
               setFacingMode,
               connect: (kind) => void connect(kind),
               discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
