@@ -76,12 +76,12 @@ const currentMarketIndexes = [
   'idx_items_visible_popular',
 ];
 const marketBaseline = ['0000_init.sql', '0001_add_edit_key.sql'];
-const marketPreSeedLedger = [
+const marketCurrentLedger = [
   ...marketBaseline,
   '0002_browse_indexes.sql',
   '0003_separate_security_domains.sql',
 ];
-const marketCurrentLedger = [...marketPreSeedLedger, '0004_seed_mistbound_scenario.sql'];
+const marketLegacySeedLedger = [...marketCurrentLedger, '0004_seed_mistbound_scenario.sql'];
 const marketColumns = rows(market, 0).map((row) => row.name);
 const marketIndexes = rows(market, 1).map((row) => row.name);
 const marketItems = scalar(market, 3, 'n');
@@ -134,6 +134,9 @@ const currentAuthLedger = [
   '0011_agent_sessions.sql',
   '0012_photo_purpose.sql',
   '0013_content_entities.sql',
+  '0014_registration_rate_limit.sql',
+  '0015_email_actions.sql',
+  '0016_ai_usage.sql',
 ];
 const authLedger = rows(auth, 0).map((row) => row.name);
 const errors = [];
@@ -162,16 +165,16 @@ const marketState = (() => {
   if (
     sameNames(marketColumns, currentMarketColumns) &&
     sameOrder(marketIndexes, currentMarketIndexes) &&
-    sameOrder(marketLedger, marketPreSeedLedger)
+    sameOrder(marketLedger, marketCurrentLedger)
   ) {
-    return 'pre-seed';
+    return 'current';
   }
   if (
     sameNames(marketColumns, currentMarketColumns) &&
     sameOrder(marketIndexes, currentMarketIndexes) &&
-    sameOrder(marketLedger, marketCurrentLedger)
+    sameOrder(marketLedger, marketLegacySeedLedger)
   ) {
-    return 'current';
+    return 'legacy-seeded';
   }
   return 'unknown';
 })();
@@ -190,7 +193,7 @@ const authState = sameOrder(authLedger, legacyAuthLedger)
 if (authState === 'unknown') {
   errors.push(`Auth ledger differs: ${JSON.stringify(authLedger)}`);
 }
-if (requireCurrent && marketState !== 'current') {
+if (requireCurrent && marketState !== 'current' && marketState !== 'legacy-seeded') {
   errors.push(`Market migrations are not current: ${marketState}`);
 }
 if (requireCurrent && authState !== 'current') {
@@ -222,9 +225,9 @@ console.log(
       errors,
       next: errors.length
         ? []
-        : marketState === 'current' && authState === 'current'
+        : (marketState === 'current' || marketState === 'legacy-seeded') && authState === 'current'
           ? [
-              'Both D1 databases are at the 6.0 schema; do not reapply migrations.',
+              'Both D1 databases are at the current product schema; do not reapply migrations.',
               'Confirm the 0xnullai-profile-photos bucket exists.',
               'Deploy chat, then auth, then market.',
             ]
@@ -238,7 +241,9 @@ console.log(
               authState === 'current'
                 ? 'Auth schema is current; do not reapply its migrations.'
                 : 'Apply pending Auth migrations.',
-              marketState === 'current' ? null : 'Apply all pending Market migrations.',
+              marketState === 'current' || marketState === 'legacy-seeded'
+                ? null
+                : 'Apply all pending Market migrations.',
               'Create 0xnullai-profile-photos before deploying Auth.',
               'Deploy chat, then auth, then market.',
             ].filter(Boolean),
