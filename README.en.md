@@ -80,8 +80,7 @@ npm run format
 - [`packages/kit`](./packages/kit/README.md) — public DG-Kit packages and standalone usage guide
 - [`workers`](./workers/README.md) — backend services
 
-Maintainer documentation is available under [`docs`](./docs). The complete pre-merge project README
-snapshots are indexed in [`docs/legacy`](./docs/legacy/README.md).
+Maintainer documentation is available under [`docs`](./docs).
 Repository boundaries and test conventions are maintained in [`AGENTS.md`](./AGENTS.md),
 [`docs/architecture.md`](./docs/architecture.md), and [`docs/testing.md`](./docs/testing.md).
 

@@ -50,7 +50,6 @@ export default tseslint.config(
       '**/src-tauri/gen/**',
       '**/.astro/**',
       '**/.wrangler/**',
-      'docs/legacy/**',
     ],
   },
   js.configs.recommended,

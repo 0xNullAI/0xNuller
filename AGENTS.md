@@ -1,7 +1,7 @@
 # 0xNuller repository guide
 
 These are the repository-wide rules. Read the nearest package README and the routed document before
-working in a domain. `docs/legacy` is historical only. Nested `AGENTS.md` files may tighten these rules.
+working in a domain. Nested `AGENTS.md` files may tighten these rules.
 
 ## Start
 
@@ -75,7 +75,7 @@ npm run test:full
 npm run build
 ```
 
-Do not commit generated output or edit `docs/legacy`. Keep maintained docs indexed. Maintainers may
+Do not commit generated output. Keep maintained docs indexed. Maintainers may
 push verified commits to `dev`; only `main` requires a `dev → main` release PR. Kit/MCP public changes need Changesets. Unless
 explicitly requested, do not version, deploy, publish, push, merge, tag, or trigger releases.
 

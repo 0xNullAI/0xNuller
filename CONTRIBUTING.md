@@ -222,5 +222,4 @@ gh release view v<X.Y.Z>
 - 不在普通 PR 中运行 `npm run version`，不手改生成的版本和 CHANGELOG；
 - 不提交密钥、账号、设备地址、生产数据或签名材料；
 - 不修改或提交 `dist`、`target`、`src-tauri/gen`、`.astro`、`.wrangler` 和构建缓存；
-- `docs/legacy` 是历史快照，不作为当前规范，也不要顺手修改；
 - 不重写他人历史、删除他人工作或执行未经授权的外部发布操作。

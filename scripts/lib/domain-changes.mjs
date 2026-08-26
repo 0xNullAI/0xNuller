@@ -18,14 +18,14 @@ const RULES = {
   kit: [
     /^packages\/kit\//,
     /^\.changeset\//,
-    /^docs\/(?:platform-release|kit-release-switchover|testing)\.md$/,
+    /^docs\/(?:platform-release|testing)\.md$/,
     /^\.github\/workflows\/(?:ci|kit-release|kit-version)\.yml$/,
   ],
   mcp: [
     /^apps\/mcp\//,
     /^packages\/kit\//,
     /^\.changeset\//,
-    /^docs\/(?:platform-release|kit-release-switchover|testing)\.md$/,
+    /^docs\/(?:platform-release|testing)\.md$/,
     /^\.github\/workflows\/(?:ci|mcp-release|kit-version)\.yml$/,
   ],
 };
