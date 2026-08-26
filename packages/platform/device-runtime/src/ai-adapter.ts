@@ -133,7 +133,9 @@ export class AiDeviceToolAdapter {
   snapshot(): DeviceSnapshot | null {
     if (this.options.enabled?.() === false) return null;
     const snapshot = this.options.snapshot?.() ?? null;
-    return snapshot && hasUsableAiDeviceTarget(snapshot) ? snapshot : null;
+    if (!snapshot) return null;
+    const controllable = sanitizeAiDeviceSnapshot(snapshot);
+    return controllable.devices.length > 0 ? controllable : null;
   }
 
   isAvailable(): boolean {
@@ -183,13 +185,24 @@ export function aiDeviceToolRequiresPermission(name: string): name is AiDeviceTo
 export function sanitizeAiDeviceSnapshot(snapshot: DeviceSnapshot): DeviceSnapshot {
   return {
     ...snapshot,
-    devices: snapshot.devices.map((device) => ({
-      ...device,
-      // Advertised names may contain brands or user-provided text. Models
-      // receive capabilities and exact opaque IDs only.
-      name: 'Connected device',
-      capabilities: device.capabilities.map((capability) => ({ ...capability })),
-    })),
+    devices: snapshot.devices.flatMap((device) => {
+      const healthyVibration = device.capabilities.filter(
+        (capability) => capability.kind === 'vibrate' && !capability.faulted,
+      );
+      if (healthyVibration.length === 0) return [];
+      return [
+        {
+          ...device,
+          // Advertised names may contain brands or user-provided text. Models
+          // receive capabilities and exact opaque IDs only. Telemetry remains
+          // useful, but faulted output features never enter the model snapshot.
+          name: 'Connected device',
+          capabilities: device.capabilities
+            .filter((capability) => capability.kind !== 'vibrate' || !capability.faulted)
+            .map((capability) => ({ ...capability })),
+        },
+      ];
+    }),
   };
 }
 
@@ -201,17 +214,20 @@ export function appendAiDeviceRuntimeStatus(
   instructions: string,
   snapshot: DeviceSnapshot | null,
 ): string {
-  if (!snapshot || !hasUsableAiDeviceTarget(snapshot)) return instructions;
-  const status = formatAiDeviceRuntimeStatus(snapshot);
+  if (!snapshot) return instructions;
+  const controllable = sanitizeAiDeviceSnapshot(snapshot);
+  if (controllable.devices.length === 0) return instructions;
+  const status = formatAiDeviceRuntimeStatus(controllable);
   return instructions ? `${instructions}\n\n${status}` : status;
 }
 
 export function formatAiDeviceRuntimeStatus(snapshot: DeviceSnapshot): string {
+  const controllable = sanitizeAiDeviceSnapshot(snapshot);
   const lines = [
     '[通用设备运行时]',
-    `sessionId=${JSON.stringify(snapshot.sessionId)}; devices=${snapshot.devices.length}`,
+    `sessionId=${JSON.stringify(controllable.sessionId)}; devices=${controllable.devices.length}`,
   ];
-  for (const device of snapshot.devices) {
+  for (const device of controllable.devices) {
     const capabilities = device.capabilities.map((capability) => {
       switch (capability.kind) {
         case 'vibrate':

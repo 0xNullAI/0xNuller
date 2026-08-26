@@ -307,4 +307,55 @@ describe('AI device adapter allowlist', () => {
       'device_emergency_stop',
     ]);
   });
+
+  it('omits faulted or telemetry-only instances while keeping same-name healthy identities separate', () => {
+    const snapshot: DeviceSnapshot = {
+      version: 1,
+      sessionId: 'session-opaque' as DeviceSnapshot['sessionId'],
+      sequence: 1,
+      topologyGeneration: 1,
+      safetyGeneration: 1,
+      devices: [
+        {
+          deviceId: 'healthy-a' as never,
+          name: '同名设备',
+          capabilities: [
+            { kind: 'vibrate', featureId: 'motor-a' as never, stepCount: 20, faulted: false },
+          ],
+        },
+        {
+          deviceId: 'healthy-b' as never,
+          name: '同名设备',
+          capabilities: [
+            { kind: 'vibrate', featureId: 'motor-b' as never, stepCount: 20, faulted: false },
+          ],
+        },
+        {
+          deviceId: 'faulted' as never,
+          name: '同名设备',
+          capabilities: [
+            { kind: 'vibrate', featureId: 'motor-c' as never, stepCount: 20, faulted: true },
+            { kind: 'battery', featureId: 'battery-c' as never, value: 0.5 },
+          ],
+        },
+      ],
+    };
+
+    const sanitized = sanitizeAiDeviceSnapshot(snapshot);
+    expect(sanitized.devices.map(({ deviceId }) => deviceId)).toEqual(['healthy-a', 'healthy-b']);
+    expect(formatDeviceIds(appendAiDeviceRuntimeStatus('', snapshot))).toEqual([
+      'healthy-a',
+      'healthy-b',
+    ]);
+    expect(
+      appendAiDeviceRuntimeStatus('BASE', {
+        ...snapshot,
+        devices: [snapshot.devices[2]!],
+      }),
+    ).toBe('BASE');
+  });
 });
+
+function formatDeviceIds(status: string): string[] {
+  return [...status.matchAll(/deviceId="([^"]+)"/g)].map((match) => match[1]!);
+}

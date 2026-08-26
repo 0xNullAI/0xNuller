@@ -1,15 +1,16 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { connectRoom, type RoomTransport, type TransportStatus } from '../lib/room-transport';
-import type {
-  ChatMessage,
-  ChatMedia,
-  ChatMention,
-  DeviceCommand,
-  MemberState,
-  CmdAction,
-  WaveformTransfer,
-  StateFast,
-  StateSlow,
+import {
+  parseRoomCoyoteTargets,
+  type ChatMessage,
+  type ChatMedia,
+  type ChatMention,
+  type DeviceCommand,
+  type MemberState,
+  type CmdAction,
+  type WaveformTransfer,
+  type StateFast,
+  type StateSlow,
 } from '../lib/protocol';
 import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
 import {
@@ -480,6 +481,7 @@ export function usePeerRoom(displayName: string) {
                 // means an older client that has no account to report.
                 username: (data.u as string | null | undefined) ?? null,
                 deviceConnected: (data.dc as boolean) ?? cur.deviceConnected,
+                coyotes: parseRoomCoyoteTargets(data.cy),
                 battery: (data.b as number | null) ?? null,
                 waveformCatalog:
                   (data.cat as MemberState['waveformCatalog']) ?? cur.waveformCatalog,
@@ -754,6 +756,7 @@ export function usePeerRoom(displayName: string) {
         // account handle attached to this peer for the rest of the session.
         u: s.username ?? null,
         dc: s.deviceConnected,
+        cy: s.coyotes,
         b: s.battery,
         ...(s.waveformCatalog ? { cat: s.waveformCatalog } : {}),
         qA: s.queueA,
@@ -878,6 +881,7 @@ function emptyMember(peerId: string): MemberState {
     peerId,
     displayName: '',
     deviceConnected: false,
+    coyotes: [],
     strengthA: 0,
     strengthB: 0,
     waveA: null,

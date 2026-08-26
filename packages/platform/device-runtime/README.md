@@ -13,6 +13,10 @@ The reusable AI adapter is a positive allowlist containing only `device_snapshot
 `device_stop`, and `device_emergency_stop`. Model schemas never contain `interactionId`; Agent and
 Voice inject trusted local tool-call IDs and require exact opaque `deviceId` + `featureId` values.
 Scan, disconnect, labels, native identifiers, and Raw operations are not model tools.
+The model snapshot contains only devices with at least one connected, non-faulted vibration feature;
+faulted vibration features and telemetry-only instances are omitted. Equal display names never merge
+instances: `deviceId` plus `featureId` remains the only routable identity, and final execution checks
+that identity again against the current topology, lease, permission, and safety generations.
 
 `createAiDeviceToolAdapter` is the canonical Agent/Voice binding. It stays lazy during model
 composition, reads only an already-open snapshot for instructions, and starts the provider only when

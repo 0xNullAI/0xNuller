@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import type { CmdAction, DeviceCommand, MemberState, StateFast, StateSlow } from './protocol';
+import {
+  parseRoomCoyoteTargets,
+  type CmdAction,
+  type DeviceCommand,
+  type MemberState,
+  type StateFast,
+  type StateSlow,
+} from './protocol';
 
 /**
  * These are mostly type-level regression guards: `satisfies` forces the
@@ -131,6 +138,7 @@ describe('StateFast / StateSlow — wire split for the new fields', () => {
     const slow = {
       displayName: 'Alice',
       deviceConnected: true,
+      coyotes: [{ deviceId: 'opaque-coyote', name: 'Same name' }],
       battery: 80,
       queueA: [],
       queueB: [],
@@ -147,5 +155,19 @@ describe('StateFast / StateSlow — wire split for the new fields', () => {
       sensorBattery: 55,
     } satisfies StateSlow;
     expect(slow.sensorKind).toBe('civet-edging');
+  });
+
+  it('sanitizes exact room Coyote identities without deduplicating by display name', () => {
+    expect(
+      parseRoomCoyoteTargets([
+        { deviceId: 'opaque-a', name: '同名' },
+        { deviceId: 'opaque-b', name: '同名' },
+        { deviceId: 'opaque-a', name: '重复身份' },
+        { deviceId: '', name: '无身份' },
+      ]),
+    ).toEqual([
+      { deviceId: 'opaque-a', name: '同名' },
+      { deviceId: 'opaque-b', name: '同名' },
+    ]);
   });
 });
