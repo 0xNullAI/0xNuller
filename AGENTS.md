@@ -55,15 +55,13 @@ browser storage. Package entrypoints are export barrels; prefer behavior-named m
 
 ## Work and verification
 
-Use: understand -> plan -> implement -> narrow tests -> affected/full tests -> diff review -> handoff.
+Use: understand -> plan -> implement -> affected/full tests -> diff review -> handoff.
 Observable changes need regression tests. Put tests beside source as `name.test.ts(x)`; use `__tests__`
 only for app composition. Test contracts, safety failures, and stops with deterministic boundary fakes.
 Never silence, exclude, or wrap failures in `|| true`.
 
 ```bash
 npm test
-npm run test:module -- <name>
-npm run test:affected -- --base=<ref>
 npm run check:structure
 npm run lint
 npm run typecheck

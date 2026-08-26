@@ -59,9 +59,8 @@ Web Bluetooth requires Chrome or Edge.
 npm run build:kit
 npm run build
 npm run typecheck
-npm test                    # tests related to working-tree changes
-npm run test:module -- chat # one module
-npm run test:full           # complete suite for CI/handoff
+npm test          # tests affected by the current branch
+npm run test:full # complete suite for CI/handoff
 npm run lint
 npm run check:structure
 npm run format
