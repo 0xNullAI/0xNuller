@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AiDeviceToolAdapter,
+  formatAiDeviceRuntimeStatus,
   type BoundDeviceTools,
   type DeviceSnapshot,
 } from '@0xnullai/device-runtime';
@@ -153,6 +154,49 @@ describe('Voice generic device tools', () => {
     const legacyCall = { id: 'old', name: 'shock_stop', args: { channel: 'A' } };
     await executor.execute(legacyCall);
     expect(legacy.execute).toHaveBeenCalledWith(legacyCall);
+  });
+
+  it('routes one exact opaque target when multiple generic devices share the same name', async () => {
+    const sameNameSnapshot = {
+      ...genericSnapshot,
+      devices: ['device-one', 'device-two'].map((deviceId, index) => ({
+        deviceId,
+        name: 'Same advertised name',
+        capabilities: [
+          {
+            kind: 'vibrate',
+            featureId: `feature-${index + 1}`,
+            stepCount: 10,
+            faulted: false,
+          },
+        ],
+      })),
+    } as unknown as DeviceSnapshot;
+    const { adapter, invoke } = runtimeHarness(sameNameSnapshot);
+
+    await adapter.invoke({
+      id: 'voice-exact-target',
+      name: 'device_vibrate',
+      args: {
+        deviceId: 'device-two',
+        featureId: 'feature-2',
+        intensity: 0.25,
+        outputLeaseMs: 300,
+      },
+    });
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('device_vibrate', {
+      interactionId: 'voice-exact-target',
+      deviceId: 'device-two',
+      featureId: 'feature-2',
+      intensity: 0.25,
+      outputLeaseMs: 300,
+    });
+    const promptStatus = formatAiDeviceRuntimeStatus(adapter.snapshot()!);
+    expect(promptStatus).not.toContain('Same advertised name');
+    expect(promptStatus).toContain('device-one');
+    expect(promptStatus).toContain('device-two');
   });
 
   it('keeps runtime vibration behind Voice permission while stop remains reachable', async () => {

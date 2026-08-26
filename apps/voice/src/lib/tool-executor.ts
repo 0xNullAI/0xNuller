@@ -27,7 +27,12 @@ import type { ToolRegistry } from '@dg-kit/tools';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 import type { DeviceCommandQueue, OpossumCommandQueue } from '@dg-kit/safety';
 import type { DeviceSession } from './device-session.js';
-import type { ActionContext, PermissionService } from '@dg-kit/safety';
+import {
+  currentDeviceLeaseSnapshot,
+  type ActionContext,
+  type DeviceLeaseSnapshot,
+  type PermissionService,
+} from '@dg-kit/safety';
 
 const POLICY_RESOLVE_MAX_ITERATIONS = 4;
 
@@ -67,6 +72,7 @@ const VIBRATE_TOOL_NAMES = new Set([
   'vibrate_change_pattern',
   'vibrate_burst',
 ]);
+const STOP_TOOL_NAMES = new Set(['shock_stop', 'stop', 'vibrate_stop']);
 
 /**
  * DG-Voice only wires up Coyote + Opossum (see `device-session.ts` for why
@@ -135,10 +141,18 @@ export class ToolExecutor {
 
   private async resolveAndRun(toolCall: ToolCall): Promise<string> {
     const requiredKind = resolveRequiredDeviceKind(toolCall.name, toolCall.args);
+    const stopOnlyTool = STOP_TOOL_NAMES.has(toolCall.name);
+    let targetId: string | null = null;
     if (requiredKind) {
-      const connected = await this.isKindConnected(requiredKind);
-      if (!connected) {
-        return this.deny(`${DEVICE_KIND_DISPLAY_NAME[requiredKind]}未连接`);
+      if (!stopOnlyTool) {
+        const connected = await this.isKindConnected(requiredKind);
+        if (!connected) {
+          return this.deny(`${DEVICE_KIND_DISPLAY_NAME[requiredKind]}未连接`);
+        }
+      }
+      if (requiredKind === 'coyote' || requiredKind === 'opossum') {
+        targetId = this.options.session.currentTargetId(requiredKind);
+        if (!targetId && !stopOnlyTool) return this.deny('设备身份尚未建立，请断开后重新连接');
       }
     }
 
@@ -151,11 +165,11 @@ export class ToolExecutor {
 
     switch (plan.type) {
       case 'device':
-        return this.executeDeviceCommand(plan.command);
+        return this.executeDeviceCommand(plan.command, targetId);
       case 'opossum':
-        return this.executeOpossumCommand(plan.command);
+        return this.executeOpossumCommand(plan.command, targetId);
       case 'setIndicatorColor':
-        return this.executeSetIndicatorColor(plan.deviceKind, plan.color);
+        return this.executeSetIndicatorColor(plan.deviceKind, plan.color, targetId);
       case 'inline':
         return JSON.stringify({ ok: true, output: plan.output, summary: plan.summary });
       case 'timer':
@@ -183,7 +197,15 @@ export class ToolExecutor {
     }
   }
 
-  private async executeDeviceCommand(command: DeviceCommand): Promise<string> {
+  private async executeDeviceCommand(
+    command: DeviceCommand,
+    targetId: string | null,
+  ): Promise<string> {
+    const stopOnly = command.type === 'stop' || command.type === 'emergencyStop';
+    const leaseFence = stopOnly ? null : this.captureLeaseFence();
+    if (!stopOnly && (!targetId || !this.leaseAllowsVoice(leaseFence!))) {
+      return this.deny('Voice 当前不持有设备控制权');
+    }
     const deviceState = await this.options.session.coyote.getState();
     const resolved = await this.resolvePolicy(deviceState, command);
     if (resolved.type === 'deny') return this.deny(resolved.reason);
@@ -198,6 +220,10 @@ export class ToolExecutor {
       if (decision.type === 'deny') {
         return this.deny(decision.reason ?? '用户拒绝了本次操作');
       }
+    }
+
+    if (!stopOnly && !(await this.revalidateOutputFence('coyote', targetId!, leaseFence!))) {
+      return this.deny('设备连接身份或控制权已变化，本次操作已取消');
     }
 
     try {
@@ -219,7 +245,15 @@ export class ToolExecutor {
     }
   }
 
-  private async executeOpossumCommand(command: OpossumCommand): Promise<string> {
+  private async executeOpossumCommand(
+    command: OpossumCommand,
+    targetId: string | null,
+  ): Promise<string> {
+    const stopOnly = command.type === 'vibrateStop';
+    const leaseFence = stopOnly ? null : this.captureLeaseFence();
+    if (!stopOnly && (!targetId || !this.leaseAllowsVoice(leaseFence!))) {
+      return this.deny('Voice 当前不持有设备控制权');
+    }
     const deviceState = await this.options.session.opossum.getState();
     const resolved = await this.resolveOpossumPolicy(deviceState, command);
     if (resolved.type === 'deny') return this.deny(resolved.reason);
@@ -234,6 +268,10 @@ export class ToolExecutor {
       if (decision.type === 'deny') {
         return this.deny(decision.reason ?? '用户拒绝了本次操作');
       }
+    }
+
+    if (!stopOnly && !(await this.revalidateOutputFence('opossum', targetId!, leaseFence!))) {
+      return this.deny('设备连接身份或控制权已变化，本次操作已取消');
     }
 
     try {
@@ -255,12 +293,24 @@ export class ToolExecutor {
     }
   }
 
-  private async executeSetIndicatorColor(deviceKind: DeviceKind, color: number): Promise<string> {
+  private async executeSetIndicatorColor(
+    deviceKind: DeviceKind,
+    color: number,
+    targetId: string | null,
+  ): Promise<string> {
     if (deviceKind !== 'opossum') {
       // paw-prints/civet-edging aren't wired up in DG-Voice at all (see
       // device-session.ts) — deny with a clear reason instead of touching a
       // client that doesn't exist.
       return this.deny(`语音通话不支持控制${DEVICE_KIND_DISPLAY_NAME[deviceKind]}`);
+    }
+    const leaseFence = this.captureLeaseFence();
+    if (
+      !targetId ||
+      !this.leaseAllowsVoice(leaseFence) ||
+      !(await this.revalidateOutputFence('opossum', targetId, leaseFence))
+    ) {
+      return this.deny('设备连接身份或控制权已变化，本次操作已取消');
     }
     const client = this.options.session.opossum;
     try {
@@ -274,6 +324,32 @@ export class ToolExecutor {
     } catch (error) {
       return this.fail(error);
     }
+  }
+
+  private captureLeaseFence(): DeviceLeaseSnapshot {
+    return currentDeviceLeaseSnapshot();
+  }
+
+  private leaseAllowsVoice(lease: DeviceLeaseSnapshot): boolean {
+    return lease.holder === null || lease.holder === 'voice';
+  }
+
+  private async revalidateOutputFence(
+    kind: 'coyote' | 'opossum',
+    targetId: string,
+    lease: DeviceLeaseSnapshot,
+  ): Promise<boolean> {
+    const state = await this.options.session.getState();
+    const currentLease = currentDeviceLeaseSnapshot();
+    if (
+      currentLease.holder !== lease.holder ||
+      currentLease.epoch !== lease.epoch ||
+      !this.leaseAllowsVoice(currentLease)
+    ) {
+      return false;
+    }
+    if (this.options.session.currentTargetId(kind) !== targetId) return false;
+    return kind === 'coyote' ? state.coyote.connected : state.opossum.connected;
   }
 
   /** Re-evaluates after each clamp so a clamp can't short-circuit a later `require-confirm` rule. */

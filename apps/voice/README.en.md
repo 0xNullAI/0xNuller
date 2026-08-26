@@ -39,6 +39,20 @@ npm run cf:dev -w 0xnullai-voice
 Trial Worker configuration is covered by [worker/README.md](worker/README.md). Before release, run
 end-to-end browser and Android checks with a real provider, including a tool call and hang-up stop.
 
+## AI device target boundaries
+
+- Coyote and Opossum retain the DG-Lab transport's single-client boundary: Voice can hold at most
+  one instance of each kind. A second device of the same kind is rejected until the old one is
+  disconnected, so queued work or approval cannot migrate to replacement hardware. Reconnects get
+  a new local opaque identity; advertised names are never identities and same-name devices are not
+  merged.
+- The generic runtime supports multiple devices and vibration features. The model receives a
+  separate opaque `deviceId` and `featureId` for every target and every call selects exactly one ID
+  pair. Names are omitted from model state, and calls never broadcast or fan out.
+- Immediately before local dispatch, output-increasing calls revalidate connection identity,
+  permission, and the Voice module lease. Identity or lease changes fail closed, while stop and
+  global emergency stop remain reachable outside ordinary output permission and lease gates.
+
 ## Deploy
 
 The new Worker owns only the unified site's `/api/realtime` route. The legacy Worker and subdomain

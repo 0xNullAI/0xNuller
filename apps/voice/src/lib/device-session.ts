@@ -92,14 +92,24 @@ export class DeviceSession {
 
   private readonly requestDevice: DeviceSessionTransport['requestDevice'];
   private readonly listeners = new Set<() => void>();
+  private readonly targetIds: Record<'coyote' | 'opossum', string | null> = {
+    coyote: null,
+    opossum: null,
+  };
 
   constructor(transport: DeviceSessionTransport = createWebBluetoothTransport()) {
     this.coyote = transport.coyote;
     this.opossum = transport.opossum;
     this.requestDevice = transport.requestDevice;
 
-    this.coyote.onStateChanged(() => this.emit());
-    this.opossum.onStateChanged(() => this.emit());
+    this.coyote.onStateChanged((state) => {
+      this.updateTargetIdentity('coyote', state.connected);
+      this.emit();
+    });
+    this.opossum.onStateChanged((state) => {
+      this.updateTargetIdentity('opossum', state.connected);
+      this.emit();
+    });
   }
 
   onChanged(listener: () => void): () => void {
@@ -112,6 +122,15 @@ export class DeviceSession {
   }
 
   /**
+   * Opaque identity for the one connected legacy target of this kind. It is
+   * intentionally unrelated to the advertised device name and changes after
+   * every disconnect/reconnect so an approval cannot migrate to new hardware.
+   */
+  currentTargetId(kind: 'coyote' | 'opossum'): string | null {
+    return this.targetIds[kind];
+  }
+
+  /**
    * Opens one chooser and routes the picked device to the matching client.
    * Call repeatedly to connect the other device kind — each call opens a
    * fresh chooser.
@@ -120,14 +139,27 @@ export class DeviceSession {
     const { kind, device, server } = await this.requestDevice();
 
     switch (kind) {
-      case 'coyote':
+      case 'coyote': {
+        if ((await this.coyote.getState()).connected) {
+          device.gatt?.disconnect();
+          throw new Error('语音通话当前只支持一台郊狼；请先断开现有设备再连接另一台');
+        }
         await this.coyote.connectDevice(device, server);
+        this.updateTargetIdentity('coyote', true);
         break;
-      case 'opossum':
+      }
+      case 'opossum': {
+        if ((await this.opossum.getState()).connected) {
+          device.gatt?.disconnect();
+          throw new Error('语音通话当前只支持一台负鼠；请先断开现有设备再连接另一台');
+        }
         await this.opossum.connectDevice(device, server);
+        this.updateTargetIdentity('opossum', true);
         break;
+      }
       case 'paw-prints':
       case 'civet-edging':
+        device.gatt?.disconnect();
         throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
     }
 
@@ -136,10 +168,12 @@ export class DeviceSession {
 
   async disconnectCoyote(): Promise<void> {
     await this.coyote.disconnect();
+    this.updateTargetIdentity('coyote', false);
   }
 
   async disconnectOpossum(): Promise<void> {
     await this.opossum.disconnect();
+    this.updateTargetIdentity('opossum', false);
   }
 
   /** Panic button: stop both devices immediately. */
@@ -152,6 +186,20 @@ export class DeviceSession {
 
   async getState(): Promise<DeviceSessionState> {
     const [coyote, opossum] = await Promise.all([this.coyote.getState(), this.opossum.getState()]);
+    this.updateTargetIdentity('coyote', coyote.connected);
+    this.updateTargetIdentity('opossum', opossum.connected);
     return { coyote, opossum };
+  }
+
+  private updateTargetIdentity(kind: 'coyote' | 'opossum', connected: boolean): void {
+    if (!connected) {
+      this.targetIds[kind] = null;
+      return;
+    }
+    if (this.targetIds[kind]) return;
+    const entropy =
+      globalThis.crypto?.randomUUID?.() ??
+      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    this.targetIds[kind] = `voice-${kind}/${entropy}`;
   }
 }
