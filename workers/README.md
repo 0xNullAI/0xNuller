@@ -3,16 +3,16 @@
 0xNuller 6.0.0 使用 Cloudflare Workers、Durable Objects、D1、R2 与 Static Assets。每项服务
 有独立配置和最小权限边界，统一通过主站的具体路径提供 API。
 
-| 服务              | 目录                                               | 用途                             |
-| ----------------- | -------------------------------------------------- | -------------------------------- |
-| Web               | [`apps/web`](../apps/web/README.md)                | 主站 SPA 与静态资源              |
-| Auth              | [`workers/auth`](./auth/README.md)                 | 账户、资料、联系人、同步与角色   |
-| Chat              | [`apps/chat`](../apps/chat/README.md)              | 房间、私聊、WebSocket 与媒体     |
-| Market            | [`apps/market`](../apps/market/README.md)          | 场景和波形目录、账户所有权与审核 |
-| Voice             | [`apps/voice`](../apps/voice/README.md)            | 实时语音会话                     |
-| LLM Proxy         | [`workers/llm-proxy`](./llm-proxy)                 | 托管文本模型中继                 |
-| Legacy Compat     | [`workers/legacy-compat`](./legacy-compat)         | 旧域网页跳转与旧 API 代理        |
-| Speech Proxy      | [`workers/speech-proxy`](./speech-proxy)           | 可选的自托管语音中继模板         |
+| 服务          | 目录                                       | 用途                             |
+| ------------- | ------------------------------------------ | -------------------------------- |
+| Web           | [`apps/web`](../apps/web/README.md)        | 主站 SPA 与静态资源              |
+| Auth          | [`workers/auth`](./auth/README.md)         | 账户、资料、联系人、同步与角色   |
+| Chat          | [`apps/chat`](../apps/chat/README.md)      | 房间、私聊、WebSocket 与媒体     |
+| Market        | [`apps/market`](../apps/market/README.md)  | 场景和波形目录、账户所有权与审核 |
+| Voice         | [`apps/voice`](../apps/voice/README.md)    | 实时语音会话                     |
+| LLM Proxy     | [`workers/llm-proxy`](./llm-proxy)         | 托管文本模型中继                 |
+| Legacy Compat | [`workers/legacy-compat`](./legacy-compat) | 旧域网页跳转与旧 API 代理        |
+| Speech Proxy  | [`workers/speech-proxy`](./speech-proxy)   | 可选的自托管语音中继模板         |
 
 ## 本地验证
 
