@@ -6,14 +6,12 @@ const VISITED_KEY = '0xnullai-visited';
 const HOME_GROUPS = [
   {
     id: 'control',
-    title: '控制与协作',
-    description: '从手动控制开始，或交给对话、语音和视觉协助。',
+    title: '单人控制',
     modules: ['control', 'agent', 'voice', 'video'],
   },
   {
     id: 'connect',
-    title: '连接与探索',
-    description: '进入多人互动，发现社区内容，或把设备接入游戏。',
+    title: '多人社区',
     modules: ['chat', 'market', 'playground'],
   },
 ] as const;
@@ -65,7 +63,6 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                 </svg>
               </span>
               <div>
-                <p className="shl-home-eyebrow">统一设备工作台</p>
                 <h1 className="shl-home-title" style={{ fontFamily: 'var(--font-display)' }}>
                   {returning ? (
                     <>
@@ -77,11 +74,6 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                 </h1>
               </div>
             </div>
-            <p className="shl-home-intro">
-              {returning
-                ? '继续使用共用设备、安全设置和波形库。'
-                : '一次连接，所有模块共用设备、安全设置和波形库。'}
-            </p>
           </div>
         </header>
 
@@ -94,7 +86,6 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
             >
               <div className="shl-home-group-heading">
                 <h2 id={`${group.id}-title`}>{group.title}</h2>
-                <p>{group.description}</p>
               </div>
               <ul className="shl-home-grid">
                 {group.modules.map((id) => {
