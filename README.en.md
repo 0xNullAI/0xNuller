@@ -84,8 +84,8 @@ Maintainer documentation is available under [`docs`](./docs).
 Repository boundaries and test conventions are maintained in [`AGENTS.md`](./AGENTS.md),
 [`docs/architecture.md`](./docs/architecture.md), and [`docs/testing.md`](./docs/testing.md).
 
-The compatibility release replaces only the `0xnullai.com` root site. Legacy subdomains remain
-online. DG-Kit and DG-MCP now live in this repository and are published to npm as
+The current product runs on `0xnullai.com`; legacy subdomains only preserve permanent redirects to
+their matching modules. DG-Kit and DG-MCP now live in this repository and are published to npm as
 [`@dg-kit/*`](https://www.npmjs.com/package/@dg-kit/core) and
 [`dg-mcp`](https://www.npmjs.com/package/dg-mcp).
 

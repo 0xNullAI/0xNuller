@@ -50,9 +50,8 @@ npm run check:routes
 3. LLM Proxy（依赖 Auth 的账户额度）
 4. Market
 5. Voice（启用体验服务时）
-6. Browser Migration（旧子域存储导出端点）
-7. Legacy Compat（旧域网页跳转与旧 API 代理）
-8. Web
+6. Legacy Compat（旧域网页跳转与旧 API 退役响应）
+7. Web
 
 `main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
@@ -126,9 +125,9 @@ WebSocket 和非导航请求返回退役响应。
 - `market.0xnullai.com` → `/market`
 - `wiki.0xnullai.com` → `/wiki`
 
-主站首次加载时通过 `workers/browser-migration` 在各旧 origin 的受限 `.well-known` 端点迁移白名单
-localStorage 与 IndexedDB 数据。该端点长期保留，旧域由 `workers/legacy-compat` 的 Custom Domain
-或 Worker Route 维持 TLS 和永久跳转，因此删除历史站点不会阻止长期未上线用户迁移浏览器数据。
+跨域 localStorage 与 IndexedDB 搬运的观察期已经结束，主站不再加载隐藏 iframe，旧域也不再提供
+存储导出端点。`workers/legacy-compat` 只通过 Custom Domain 或 Worker Route 维持 TLS 和永久跳转；
+canonical 账户、Market 与 Chat 数据仍由当前 D1、R2 和 Durable Objects 管理。
 
 Market 新旧版本共用 `dg-market` D1；Chat 新旧版本共用 `dg-chat-media` R2。旧版非保留 Chat
 房间原本会在空置十分钟后删除消息和媒体，不是永久历史库。删除历史 Worker 时不得删除这两个

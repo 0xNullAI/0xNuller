@@ -141,7 +141,6 @@ jobs:
           npx wrangler deploy --config workers/llm-proxy/wrangler.toml
           npx wrangler deploy --config apps/market/wrangler.jsonc
           npx wrangler deploy --config apps/voice/wrangler.jsonc
-          npx wrangler deploy --config workers/browser-migration/wrangler.jsonc
           npx wrangler deploy --config workers/legacy-compat/wrangler.jsonc
           npx wrangler deploy --config apps/web/wrangler.jsonc
 

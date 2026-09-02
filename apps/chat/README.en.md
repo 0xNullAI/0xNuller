@@ -71,9 +71,9 @@ are minted by the account service and verified by Chat.
 
 ## Deploy
 
-Chat uses `RoomDO`, `LobbyDO`, and the shared `dg-chat-media` R2 bucket. The legacy domain remains in
-place for redirects and browser-data migration; do not remove it with the new Worker. See the
-[deployment guide](../../docs/deploy.md) for order, shared storage, and secret requirements.
+Chat uses `RoomDO`, `LobbyDO`, and the shared `dg-chat-media` R2 bucket. The legacy domain only keeps
+a permanent redirect to the unified site. See the [deployment guide](../../docs/deploy.md) for
+order, shared storage, and secret requirements.
 
 ## License
 

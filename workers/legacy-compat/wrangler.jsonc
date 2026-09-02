@@ -10,7 +10,6 @@
     { "pattern": "market.0xnullai.com", "custom_domain": true },
     { "pattern": "wiki.0xnullai.com/*", "zone_name": "0xnullai.com" },
   ],
-  "services": [{ "binding": "MIGRATION", "service": "0xnullai-browser-migration" }],
   "workers_dev": true,
   "observability": { "enabled": true },
 }

@@ -82,7 +82,7 @@ npm run verify:release
 
 ## Cloudflare 与发布
 
-- 6.0.0 只替换 `0xnullai.com` 与 `www`；旧子域在兼容期继续运行；
+- 当前产品只运行在 `0xnullai.com` 与 `www`；旧子域只保留永久跳转；
 - Worker 继续分开部署，避免移动 Durable Object 命名空间；
 - 已发布 migration 不可改写；生产迁移前先只读预检与备份；
 - secrets 只写 Cloudflare，不写仓库、日志或文档；

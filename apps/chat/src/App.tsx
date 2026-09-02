@@ -7,11 +7,10 @@ import {
 } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
 import { dmTicket, me, subscribeDmRequest, type DmRequest } from '@0xnullai/auth';
+import { useChannelRotation, useDevice } from '@0xnullai/device-runtime';
+import { useWaveforms } from '@0xnullai/waveforms';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
-import { useDevice } from './hooks/use-device';
-import { useWaveforms } from './hooks/use-waveforms';
-import { useChannelRotation } from './hooks/use-channel-rotation';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { markDmRead } from './lib/dm';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';

@@ -11,7 +11,6 @@
 | Market            | [`apps/market`](../apps/market/README.md)          | 场景和波形目录、账户所有权与审核 |
 | Voice             | [`apps/voice`](../apps/voice/README.md)            | 实时语音会话                     |
 | LLM Proxy         | [`workers/llm-proxy`](./llm-proxy)                 | 托管文本模型中继                 |
-| Browser Migration | [`workers/browser-migration`](./browser-migration) | 旧子域浏览器数据迁移             |
 | Legacy Compat     | [`workers/legacy-compat`](./legacy-compat)         | 旧域网页跳转与旧 API 代理        |
 | Speech Proxy      | [`workers/speech-proxy`](./speech-proxy)           | 可选的自托管语音中继模板         |
 
@@ -34,8 +33,8 @@ npm run build
 - 先只读检查远端资源、迁移账本和绑定，再备份 D1。
 - 按 [部署文档](../docs/deploy.md) 的依赖顺序迁移和部署。
 - secrets 只写入 Cloudflare，不写入 Git、日志或文档。
-- 兼容期保留 `agent.`、`voice.`、`chat.`、`market.` 与 `wiki.` 旧子域。
-- 只有主站 `0xnullai.com` 与 `www` 切换到 6.0.0。
+- `agent.`、`voice.`、`chat.`、`market.` 与 `wiki.` 旧子域只保留永久跳转。
+- 所有当前产品流量由 `0xnullai.com` 与 `www` 承载。
 
 `workers/speech-proxy` 是用户自托管模板，不是共享生产服务。DG-Kit 与 DG-MCP 的对外迁移仍
 等待单独确认。

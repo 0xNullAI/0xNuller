@@ -1,12 +1,10 @@
 import { useRef, useState } from 'react';
 import {
-  BluetoothOff,
   ChevronDown,
   Pause,
   Play,
   Repeat,
   Repeat1,
-  RotateCcw,
   Shuffle,
   Store,
   Timer,
@@ -18,8 +16,6 @@ import { RepeatButton } from '@0xnullai/ui';
 import type { CoyoteSummary } from '@0xnullai/device-runtime';
 import type { PlayMode, WaveformDefinition } from '@dg-kit/core';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
-import { isCoyoteOutputActive } from '@dg-kit/core';
-import { CoyotePlaceholderChannels } from './CoyotePlaceholderChannels';
 
 const RING_CLASS =
   'flex h-24 w-24 flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
@@ -41,26 +37,12 @@ function ModeIcon({ mode }: { mode: PlayMode }) {
 
 interface CoyoteControlProps {
   coyote: CoyoteSummary;
-  /** Human-readable shell label; raw BLE names are kept out of everyday controls. */
-  displayName: string;
-  /**
-   * Kept for the legacy CoyoteSection composition. The current output deck
-   * renders one complete device page in OutputDeviceSection and supplies the
-   * compact channel body (`multi={false}`) beneath its own device header.
-   */
-  multi: boolean;
-  /** Whether this host is the currently focused page. */
-  selected: boolean;
-  onSelect: (deviceId: string) => void;
   queueLengthA: number;
   queueLengthB: number;
   firingA: boolean;
   firingB: boolean;
-  onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
-  onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
-  /** Zero this host only. The all-devices 归零 stays below, outside this block. */
-  onStopDevice: (deviceId: string) => void;
-  onDisconnect: (deviceId: string) => void;
+  onAdjustStrength: (channel: 'A' | 'B', delta: number) => void;
+  onTogglePlay: (channel: 'A' | 'B') => void;
 }
 
 /**
@@ -75,18 +57,12 @@ interface CoyoteControlProps {
  */
 export function CoyoteControl({
   coyote,
-  displayName,
-  multi,
-  selected,
-  onSelect,
   queueLengthA,
   queueLengthB,
   firingA,
   firingB,
   onAdjustStrength,
   onTogglePlay,
-  onStopDevice,
-  onDisconnect,
 }: CoyoteControlProps) {
   const renderChannel = (channel: 'A' | 'B') => {
     const strength = channel === 'A' ? coyote.strengthA : coyote.strengthB;
@@ -97,7 +73,7 @@ export function CoyoteControl({
     return (
       <div className="flex flex-col items-center">
         <button
-          onClick={() => onTogglePlay(coyote.id, channel)}
+          onClick={() => onTogglePlay(channel)}
           disabled={!coyote.connected || (!playing && queueLength === 0)}
           className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-30 ${
             playing
@@ -126,14 +102,14 @@ export function CoyoteControl({
         </div>
         <div className="mt-3 flex items-center gap-3">
           <RepeatButton
-            onAction={() => onAdjustStrength(coyote.id, channel, -1)}
+            onAction={() => onAdjustStrength(channel, -1)}
             className={STRENGTH_BTN_CLASS}
             disabled={firing}
           >
             −
           </RepeatButton>
           <RepeatButton
-            onAction={() => onAdjustStrength(coyote.id, channel, +1)}
+            onAction={() => onAdjustStrength(channel, +1)}
             className={STRENGTH_BTN_CLASS}
             disabled={firing}
           >
@@ -144,64 +120,10 @@ export function CoyoteControl({
     );
   };
 
-  const body = (
+  return (
     <div className="flex items-center justify-center gap-6">
       {renderChannel('A')}
       {renderChannel('B')}
-    </div>
-  );
-
-  if (!multi) return body;
-
-  return (
-    <div
-      className={`rounded-[var(--radius-md)] border bg-[var(--bg-elevated)] px-3 py-3 transition-colors duration-[var(--dur)] ${
-        selected ? 'border-[var(--accent)]' : 'border-[var(--surface-border)]'
-      }`}
-    >
-      <div className="mb-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onSelect(coyote.id)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          title={selected ? '下方波形面板正作用于这台' : '让下方波形面板作用于这台'}
-        >
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              isCoyoteOutputActive(coyote) ? 'bg-[var(--accent)]' : 'bg-[var(--success)]'
-            }`}
-            aria-hidden
-          />
-          <span className="truncate text-sm font-medium text-[var(--text)]">{displayName}</span>
-          {coyote.battery != null && (
-            <span className="shrink-0 text-[11px] text-[var(--text-faint)]">{coyote.battery}%</span>
-          )}
-          {selected && (
-            <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
-              波形面板
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => onStopDevice(coyote.id)}
-          className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-          title={`只把 ${displayName} 归零`}
-        >
-          <RotateCcw size={11} className="text-[var(--danger)]" />
-          归零
-        </button>
-        <button
-          type="button"
-          onClick={() => onDisconnect(coyote.id)}
-          className="flex h-7 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 text-[11px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-          title={`断开 ${displayName}`}
-        >
-          <BluetoothOff size={11} />
-          断开
-        </button>
-      </div>
-      {body}
     </div>
   );
 }
@@ -561,113 +483,5 @@ export function WaveformPanel({
         )}
       </div>
     </div>
-  );
-}
-
-interface CoyoteSectionProps extends Omit<
-  WaveformPanelProps,
-  | 'targetName'
-  | 'fireEnabledA'
-  | 'fireEnabledB'
-  | 'fireLimitA'
-  | 'fireLimitB'
-  | 'firingA'
-  | 'firingB'
-  | 'onFireStart'
-  | 'onFireStop'
-> {
-  coyotes: CoyoteSummary[];
-  selectedId: string | null;
-  onSelect: (deviceId: string) => void;
-  queueLengthA: number;
-  queueLengthB: number;
-  onAdjustStrength: (deviceId: string, channel: 'A' | 'B', delta: number) => void;
-  onTogglePlay: (deviceId: string, channel: 'A' | 'B') => void;
-  firingDeviceIdA: string | null;
-  firingDeviceIdB: string | null;
-  onFireStart: (deviceId: string, channel: 'A' | 'B', boost: number) => void;
-  onFireStop: (channel: 'A' | 'B') => void;
-  onStopDevice: (deviceId: string) => void;
-  onDisconnect: (deviceId: string) => void;
-}
-
-/**
- * Legacy composition for callers that still want a Coyote list followed by a
- * single panel. The unified Control deck uses OutputDeviceSection instead.
- *
- * With nothing attached this renders a single disabled-looking placeholder
- * block, exactly as the one-device version used to — the module is unusable
- * until something is connected either way, and an empty section with no rings
- * reads as "broken" rather than "not connected yet".
- */
-export function CoyoteSection({
-  coyotes,
-  selectedId,
-  onSelect,
-  queueLengthA,
-  queueLengthB,
-  onAdjustStrength,
-  onTogglePlay,
-  firingDeviceIdA,
-  firingDeviceIdB,
-  onFireStart,
-  onFireStop,
-  onStopDevice,
-  onDisconnect,
-  ...panel
-}: CoyoteSectionProps) {
-  const multi = coyotes.length > 1;
-  const selected = coyotes.find((c) => c.id === selectedId) ?? coyotes[0] ?? null;
-  const displayNames = new Map(
-    coyotes.map((coyote, index) => [coyote.id, multi ? `郊狼 ${index + 1}` : '郊狼']),
-  );
-
-  return (
-    <section>
-      <h2 className="mb-3 text-xs font-medium tracking-wide text-[var(--text-faint)]">
-        郊狼主机{multi ? `（${coyotes.length} 台）` : ''}
-      </h2>
-
-      {coyotes.length === 0 ? (
-        <CoyotePlaceholderChannels />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {coyotes.map((coyote) => (
-            <CoyoteControl
-              key={coyote.id}
-              coyote={coyote}
-              displayName={displayNames.get(coyote.id) ?? '郊狼'}
-              multi={multi}
-              selected={multi && coyote.id === selected?.id}
-              onSelect={onSelect}
-              queueLengthA={queueLengthA}
-              queueLengthB={queueLengthB}
-              firingA={firingDeviceIdA === coyote.id}
-              firingB={firingDeviceIdB === coyote.id}
-              onAdjustStrength={onAdjustStrength}
-              onTogglePlay={onTogglePlay}
-              onStopDevice={onStopDevice}
-              onDisconnect={onDisconnect}
-            />
-          ))}
-        </div>
-      )}
-
-      <WaveformPanel
-        {...panel}
-        targetName={multi && selected ? (displayNames.get(selected.id) ?? '郊狼') : null}
-        queue={panel.queue}
-        fireEnabledA={Boolean(selected?.connected && selected.waveActiveA)}
-        fireEnabledB={Boolean(selected?.connected && selected.waveActiveB)}
-        fireLimitA={selected?.limitA ?? 0}
-        fireLimitB={selected?.limitB ?? 0}
-        firingA={firingDeviceIdA === selected?.id}
-        firingB={firingDeviceIdB === selected?.id}
-        onFireStart={(channel, boost) => {
-          if (selected) onFireStart(selected.id, channel, boost);
-        }}
-        onFireStop={onFireStop}
-      />
-    </section>
   );
 }

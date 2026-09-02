@@ -191,14 +191,6 @@ export default function App() {
     device.stopAll();
   }, [cancelFire, device]);
 
-  const stopCoyote = useCallback(
-    (deviceId: string) => {
-      cancelFire(deviceId);
-      device.stopCoyote(deviceId);
-    },
-    [cancelFire, device],
-  );
-
   const disconnectCoyote = useCallback(
     (deviceId?: string) => {
       if (deviceId) cancelFire(deviceId);
@@ -490,20 +482,6 @@ export default function App() {
           onConnect={device.connectDevice}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
-          onStop={(targetId) => {
-            const target = outputTargets.find((candidate) => candidate.id === targetId);
-            if (target?.kind === 'coyote') stopCoyote(target.coyote.id);
-            if (target?.kind === 'opossum') {
-              stopOpossumFire('A');
-              stopOpossumFire('B');
-              device.opossumStop();
-            }
-          }}
-          onDisconnect={(targetId) => {
-            const target = outputTargets.find((candidate) => candidate.id === targetId);
-            if (target?.kind === 'coyote') disconnectCoyote(target.coyote.id);
-            if (target?.kind === 'opossum') device.disconnectOpossum();
-          }}
         />
       </div>
 
