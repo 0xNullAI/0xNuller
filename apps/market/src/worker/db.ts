@@ -47,7 +47,7 @@ export interface ListParams {
   type?: ItemType;
   modality?: 'electrostimulation' | 'vibration';
   q?: string;
-  sort: 'new' | 'popular';
+  sort: 'new' | 'hot' | 'views' | 'downloads';
   limit: number;
   offset: number;
 }
@@ -72,7 +72,12 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
     binds.push(like, like, like);
   }
 
-  const order = params.sort === 'popular' ? 'downloads DESC, created_at DESC' : 'created_at DESC';
+  const order = {
+    new: 'created_at DESC',
+    hot: '(views + downloads * 4) DESC, created_at DESC',
+    views: 'views DESC, created_at DESC',
+    downloads: 'downloads DESC, created_at DESC',
+  }[params.sort];
   const sql = `SELECT ${ITEM_COLUMNS} FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
   binds.push(params.limit, params.offset);
 

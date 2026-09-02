@@ -22,7 +22,7 @@ export function App(): JSX.Element {
   const [tab, setTab] = useState<TopTab>('scene');
   const [sceneSub, setSceneSub] = useState<SceneSub>('scenario');
   const [waveformModality, setWaveformModality] = useState<WaveformModality>('electrostimulation');
-  const [sort, setSort] = useState<'new' | 'popular'>('new');
+  const [sort, setSort] = useState<'new' | 'hot' | 'views' | 'downloads'>('new');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,10 +148,12 @@ export function App(): JSX.Element {
             <select
               className="sort"
               value={sort}
-              onChange={(e) => setSort(e.target.value as 'new' | 'popular')}
+              onChange={(e) => setSort(e.target.value as 'new' | 'hot' | 'views' | 'downloads')}
             >
               <option value="new">最新</option>
-              <option value="popular">最热</option>
+              <option value="hot">热度</option>
+              <option value="views">浏览</option>
+              <option value="downloads">下载</option>
             </select>
           </div>
 
