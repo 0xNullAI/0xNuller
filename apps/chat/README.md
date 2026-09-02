@@ -7,7 +7,6 @@
 房间、公开目录和私聊会在 Worker 入口重新校验。
 
 - 统一主站：<https://0xnullai.com/chat>
-- 历史地址（跳转主站）：<https://chat.0xnullai.com>
 
 ## 功能
 
@@ -72,8 +71,8 @@ Chat 负责，不要把它们并入本地 Agent 会话运行时。
 
 ## 部署
 
-Chat 使用 `RoomDO`、`LobbyDO` 和共享的 `dg-chat-media` R2。旧域只保留到统一主站的永久跳转；
-部署顺序、共享存储和密钥要求见 [部署文档](../../docs/deploy.md)。
+Chat 使用 `RoomDO`、`LobbyDO` 和共享的 `dg-chat-media` R2。历史独立域名已下线；部署顺序、
+共享存储和密钥要求见 [部署文档](../../docs/deploy.md)。
 
 ## 协议
 

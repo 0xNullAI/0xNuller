@@ -50,8 +50,7 @@ npm run check:routes
 3. LLM Proxy（依赖 Auth 的账户额度）
 4. Market
 5. Voice（启用体验服务时）
-6. Legacy Compat（旧域网页跳转与旧 API 退役响应）
-7. Web
+6. Web
 
 `main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
@@ -114,24 +113,14 @@ npm run account:role -- --remote-write \
   代替 Cloudflare 的错误率观察。
 - 仓库没有内置外部告警接收方。配置通知渠道前，只能声称已采集观测数据，不能声称已有主动告警。
 
-## 旧域迁移
+## 已退役入口
 
-历史子域已永久迁移。网页导航以 `308` 跳到统一主站的对应模块并保留查询参数；旧 API、
-WebSocket 和非导航请求返回退役响应。
+历史子域、旧 API 入口和跨域浏览器数据迁移服务均已下线。当前产品只支持
+`https://0xnullai.com` 与 `https://www.0xnullai.com`，模块通过主站路径访问。
 
-- `agent.0xnullai.com` → `/agent`
-- `voice.0xnullai.com` → `/voice`
-- `chat.0xnullai.com` → `/chat`
-- `market.0xnullai.com` → `/market`
-- `wiki.0xnullai.com` → `/wiki`
-
-跨域 localStorage 与 IndexedDB 搬运的观察期已经结束，主站不再加载隐藏 iframe，旧域也不再提供
-存储导出端点。`workers/legacy-compat` 只通过 Custom Domain 或 Worker Route 维持 TLS 和永久跳转；
-canonical 账户、Market 与 Chat 数据仍由当前 D1、R2 和 Durable Objects 管理。
-
-Market 新旧版本共用 `dg-market` D1；Chat 新旧版本共用 `dg-chat-media` R2。旧版非保留 Chat
-房间原本会在空置十分钟后删除消息和媒体，不是永久历史库。删除历史 Worker 时不得删除这两个
-仍由当前产品使用的共享存储。
+退役入口不拥有 canonical 用户数据。账户、Market、Chat 数据继续由当前的 D1、R2 和 Durable
+Objects 管理；清理历史 Worker 时不得删除 `0xnullai-auth`、`dg-market`、`dg-chat-media` 或现役
+Durable Object 命名空间。
 
 DG-Kit 的迁移与 DG-MCP 的对外发布必须单独确认，不随主站发布自动执行。
 

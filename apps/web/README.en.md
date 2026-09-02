@@ -17,8 +17,8 @@ navigation, account state, the device bar, settings, themes, and overlays.
 | `/market`     | community scenes and waveforms |
 | `/playground` | games                          |
 
-The product runs on <https://0xnullai.com>. Legacy subdomains permanently redirect to their matching
-modules on the unified site.
+The product runs on <https://0xnullai.com>. Retired standalone subdomains are no longer served; use
+the unified-site paths above.
 
 ## Develop
 
@@ -41,8 +41,7 @@ apps/web/src/docs/index.ts   catalog
 apps/web/src/DocsDialog.tsx  reader
 ```
 
-The legacy documentation address at <https://wiki.0xnullai.com> permanently redirects to the
-documentation module on the unified site.
+The retired documentation subdomain is no longer served. Open documentation from the unified site.
 
 ## Deploy
 
