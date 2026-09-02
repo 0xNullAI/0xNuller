@@ -8,7 +8,6 @@ with a verified email. Web and Android use a short-lived admission ticket from A
 lobby, and direct-message Worker entry points verify again.
 
 - Unified site: <https://0xnullai.com/chat>
-- Legacy address (redirects to the unified site): <https://chat.0xnullai.com>
 
 ## Features
 
@@ -71,9 +70,9 @@ are minted by the account service and verified by Chat.
 
 ## Deploy
 
-Chat uses `RoomDO`, `LobbyDO`, and the shared `dg-chat-media` R2 bucket. The legacy domain only keeps
-a permanent redirect to the unified site. See the [deployment guide](../../docs/deploy.md) for
-order, shared storage, and secret requirements.
+Chat uses `RoomDO`, `LobbyDO`, and the shared `dg-chat-media` R2 bucket. The standalone legacy domain
+is retired. See the [deployment guide](../../docs/deploy.md) for order, shared storage, and secret
+requirements.
 
 ## License
 

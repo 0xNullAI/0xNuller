@@ -17,8 +17,7 @@ SPA 中按路由加载，共用侧边栏、账户、设备横栏、设置、主�
 | `/market`     | 场景与波形社区 |
 | `/playground` | 游戏互动       |
 
-主站为 <https://0xnullai.com>。`agent.`、`voice.`、`chat.`、`market.` 与 `wiki.` 历史子域只保留
-到对应主站模块的永久跳转。
+主站为 <https://0xnullai.com>。历史独立子域已下线，模块统一通过上表中的主站路径访问。
 
 ## 本地开发
 
@@ -42,7 +41,7 @@ apps/web/src/DocsDialog.tsx  阅读界面
 ```
 
 新增或修改页面时，同时更新 `index.ts` 的目录信息，并运行 Web 测试与 production build。
-历史文档地址 <https://wiki.0xnullai.com> 永久跳转到主站文档模块。
+历史文档子域已下线，文档统一从主站内打开。
 
 ## 结构
 

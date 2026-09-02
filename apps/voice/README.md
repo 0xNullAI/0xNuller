@@ -5,7 +5,6 @@
 实时语音 AI 模块。模型负责语音对话和工具请求，设备命令由本地安全与权限层执行。
 
 - 统一主站：<https://0xnullai.com/voice>
-- 历史独立版：<https://voice.0xnullai.com>
 
 ## Provider
 
@@ -81,8 +80,8 @@ Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、�
 
 ## 部署
 
-新主站的 `0xnullai-voice` 接管 `/api/realtime`；旧子域只保留到统一 Voice 模块的永久跳转。
-完整步骤见 [部署文档](../../docs/deploy.md)。
+主站的 `0xnullai-voice` 接管 `/api/realtime`；历史独立子域已下线。完整步骤见
+[部署文档](../../docs/deploy.md)。
 
 ## 协议
 

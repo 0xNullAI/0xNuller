@@ -5,7 +5,6 @@
 Realtime voice AI with locally enforced device permissions and safety policy.
 
 - Unified site: <https://0xnullai.com/voice>
-- Legacy standalone site: <https://voice.0xnullai.com>
 
 ## Providers
 
@@ -61,8 +60,8 @@ end-to-end browser and Android checks with a real provider, including a tool cal
 
 ## Deploy
 
-The current Worker owns the unified site's `/api/realtime` route. The legacy subdomain only keeps a
-permanent redirect to Voice on the unified site. See the [deployment guide](../../docs/deploy.md).
+The current Worker owns the unified site's `/api/realtime` route. The standalone legacy subdomain is
+retired. See the [deployment guide](../../docs/deploy.md).
 
 ## License
 
