@@ -60,6 +60,9 @@ const LEGACY = [
 ] as const;
 
 const DEFAULT_SELECTED = 'gentle';
+// Mirrors Market's transport ceiling. Content sync accepts up to 512 KiB per
+// entity, so a 100,000-character prompt remains below the worst-case UTF-8 cap.
+const MAX_MARKET_SCENE_PROMPT_LENGTH = 100_000;
 const listeners = new Set<(lib: SceneLibrary) => void>();
 let syncPromise: Promise<void> | null = null;
 let synced = false;
@@ -282,7 +285,7 @@ export function withImportedMarketScene(current: SceneLibrary, item: unknown): S
   const rawPrompt = item.content.prompt;
   if (typeof rawPrompt !== 'string') return current;
   const prompt = rawPrompt.trim();
-  if (!prompt || prompt.length > 12_000) return current;
+  if (!prompt || prompt.length > MAX_MARKET_SCENE_PROMPT_LENGTH) return current;
 
   const id = `market-${rawId}`;
   const existing = current.scenes.some((scene) => scene.id === id);

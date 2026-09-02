@@ -1,4 +1,5 @@
 import {
+  annotateScenarioContent,
   ItemPatchSchema,
   BatchUploadSchema,
   ModerationPatchSchema,
@@ -100,7 +101,13 @@ export default {
             ? modalityParam
             : undefined;
         const q = url.searchParams.get('q')?.trim() || undefined;
-        const sort = url.searchParams.get('sort') === 'popular' ? 'popular' : 'new';
+        const requestedSort = url.searchParams.get('sort');
+        const sort =
+          requestedSort === 'hot' || requestedSort === 'views' || requestedSort === 'downloads'
+            ? requestedSort
+            : requestedSort === 'popular'
+              ? 'downloads'
+              : 'new';
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
         const items = await listItems(env.DB, { type, modality, q, sort, limit, offset });
@@ -219,7 +226,8 @@ async function toInsert(
     author: payload.author,
     icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
     tags: payload.tags,
-    content: payload.content,
+    content:
+      payload.type === 'scenario' ? annotateScenarioContent(payload.content) : payload.content,
     ipHash,
     createdAt,
   };

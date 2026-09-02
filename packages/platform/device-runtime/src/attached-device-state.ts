@@ -72,36 +72,18 @@ export function holdsAnyDevice(device: AttachedDeviceState): boolean {
   );
 }
 
-function labelCoyotes(coyotes: readonly CoyoteSummary[]): Map<string, string> {
-  const named = coyotes.map((coyote) => ({ id: coyote.id, name: coyote.name || '郊狼' }));
-  const counts = new Map<string, number>();
-  for (const coyote of named) counts.set(coyote.name, (counts.get(coyote.name) ?? 0) + 1);
-
-  const seen = new Map<string, number>();
-  const labels = new Map<string, string>();
-  for (const coyote of named) {
-    if ((counts.get(coyote.name) ?? 0) < 2) {
-      labels.set(coyote.id, coyote.name);
-      continue;
-    }
-    const occurrence = (seen.get(coyote.name) ?? 0) + 1;
-    seen.set(coyote.name, occurrence);
-    labels.set(coyote.id, `${coyote.name} #${occurrence}`);
-  }
-  return labels;
-}
-
 /** Convert attached-device state into the shell safety bus's display snapshots. */
 export function attachedDeviceSummaries(device: AttachedDeviceState): DeviceSummary[] {
   const summaries: DeviceSummary[] = [];
   const connectedCoyotes = device.coyotes.filter((coyote) => coyote.connected);
-  const labels = labelCoyotes(connectedCoyotes);
 
   for (const coyote of connectedCoyotes) {
     summaries.push({
       id: coyote.id,
       kind: 'coyote',
-      name: labels.get(coyote.id) ?? coyote.name ?? '郊狼',
+      // DeviceBar adds one stable ordinal for multiple devices of the same kind.
+      // Keep the source name raw here so duplicate names do not become “#1 1”.
+      name: coyote.name || '郊狼',
       connected: true,
       ...(typeof coyote.battery === 'number' ? { battery: coyote.battery } : {}),
       active: isCoyoteOutputActive(coyote),

@@ -177,6 +177,8 @@ expectNames(
     'idx_items_ip',
     'idx_items_visible_new',
     'idx_items_visible_popular',
+    'idx_items_visible_views',
+    'idx_items_visible_hot',
     'idx_items_edit_key_scheme',
   ],
   'market indexes',
@@ -199,6 +201,25 @@ assert(
   ).includes('idx_items_visible_popular'),
   'market: popular browse does not use idx_items_visible_popular',
 );
+assert(
+  plan(
+    market.db,
+    'SELECT * FROM items WHERE hidden = 0 ORDER BY views DESC, created_at DESC LIMIT ? OFFSET ?',
+    30,
+    0,
+  ).includes('idx_items_visible_views'),
+  'market: views browse does not use idx_items_visible_views',
+);
+assert(
+  plan(
+    market.db,
+    `SELECT * FROM items WHERE hidden = 0
+      ORDER BY (views + downloads * 4) DESC, created_at DESC LIMIT ? OFFSET ?`,
+    30,
+    0,
+  ).includes('idx_items_visible_hot'),
+  'market: hot browse does not use idx_items_visible_hot',
+);
 const snapshot = new DatabaseSync(':memory:');
 const marketSnapshotSql = readFileSync(join(root, 'apps/market/schema.sql'), 'utf8');
 snapshot.exec(marketSnapshotSql);
@@ -219,7 +240,7 @@ assert(
 
 // Actual production path (2026-08-09 inventory): raw schema, 44 rows, edit_key_hash
 // already present, and no d1_migrations table. Recreate it; bootstrap only the ledger;
-// then apply 0002-0003 and prove rows plus schema are preserved.
+// then apply every later migration and prove rows plus schema are preserved.
 const marketUpgrade = new DatabaseSync(':memory:');
 marketUpgrade.exec(readFileSync(join(root, 'apps/market/migrations/0000_init.sql'), 'utf8'));
 marketUpgrade.exec(
@@ -242,9 +263,12 @@ marketUpgrade.exec(
 marketUpgrade.exec(
   readFileSync(join(root, 'apps/market/migrations/0003_separate_security_domains.sql'), 'utf8'),
 );
+marketUpgrade.exec(
+  readFileSync(join(root, 'apps/market/migrations/0004_engagement_sort_indexes.sql'), 'utf8'),
+);
 assert(
   JSON.stringify(names(marketUpgrade, 'index')) === JSON.stringify(names(market.db, 'index')),
-  'market: raw-ledger bootstrap plus 0002-0003 differs from fresh migration path',
+  'market: raw-ledger bootstrap plus 0002-current differs from fresh migration path',
 );
 assert(
   marketUpgrade.prepare("SELECT COUNT(*) AS n FROM items WHERE id LIKE 'raw-%'").get().n === 44,
@@ -274,7 +298,7 @@ console.log(
     authMigrations: auth.files,
     marketMigrations: market.files,
     authUpgrade: '0001-0003 -> current',
-    marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-0003',
+    marketUpgrade: 'raw 44 rows + ledger bootstrap -> 0002-current',
   }),
 );
 

@@ -1,8 +1,30 @@
 import { describe, expect, it, vi } from 'vitest';
 import worker, { recordVerifiedClaims, requireMarketAdmin } from './index';
 import { hashSourceIp } from './security';
+import { listItems } from './db';
 
 describe('Market account ownership', () => {
+  it('maps every public engagement sort to a concrete server-side order', async () => {
+    const statements: string[] = [];
+    const db = {
+      prepare: (sql: string) => {
+        statements.push(sql);
+        return {
+          bind: () => ({ all: async () => ({ results: [] }) }),
+        };
+      },
+    } as unknown as D1Database;
+
+    for (const sort of ['new', 'hot', 'views', 'downloads'] as const) {
+      await listItems(db, { sort, limit: 10, offset: 0 });
+    }
+
+    expect(statements[0]).toContain('ORDER BY created_at DESC');
+    expect(statements[1]).toContain('ORDER BY (views + downloads * 4) DESC, created_at DESC');
+    expect(statements[2]).toContain('ORDER BY views DESC, created_at DESC');
+    expect(statements[3]).toContain('ORDER BY downloads DESC, created_at DESC');
+  });
+
   it('hashes a source without retaining the address', async () => {
     const ip = await hashSourceIp('203.0.113.7', 'ip-pepper');
     expect(ip).toHaveLength(32);

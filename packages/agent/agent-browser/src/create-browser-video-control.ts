@@ -454,7 +454,10 @@ export class BrowserVideoControlService {
     const coyotes = [...this.coyoteTargetsBySource.values()].map(cloneCoyoteTarget);
     this.snapshot = {
       ...this.snapshot,
-      coyote: coyotes[0]?.state ?? { ...fallbackState },
+      // The aggregate fallback is the exact Coyote most recently selected by
+      // AI execution. Keep the legacy single-state projection aligned with it;
+      // the full `coyotes` collection still exposes every physical target.
+      coyote: fallbackState.connected ? { ...fallbackState } : (coyotes[0]?.state ?? fallbackState),
       coyotes,
     };
   }

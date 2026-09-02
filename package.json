@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.3.3",
+  "version": "6.3.4",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
@@ -100,7 +100,7 @@
     "sharp@0.33.5": true,
     "protobufjs@7.6.5": true,
     "@google/genai@1.52.0": true,
-    "github:0xNullAI/tauri-plugin-blec-multi#f493c3d7443663a0d867e8d52eea9c80697f0c24": true,
+    "github:0xNullAI/tauri-plugin-blec-multi#27c6e80ec1991799baf61729e0dfe07b4152de31": true,
     "@stoprocent/noble@2.7.1": true,
     "@stoprocent/bluetooth-hci-socket@2.3.0": true,
     "usb@2.18.0": true,

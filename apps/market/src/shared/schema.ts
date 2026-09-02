@@ -18,9 +18,35 @@ export const WaveformContentSchema = z.object({
   pulse: z.string().max(20000).optional(),
 });
 
+/**
+ * Prompts up to the former limit remain ordinary scenes. Larger prompts are
+ * accepted for world books and other complex setups, but are explicitly
+ * annotated so clients can communicate the extra context cost before import.
+ */
+export const STANDARD_SCENARIO_PROMPT_LENGTH = 12_000;
+export const MAX_SCENARIO_PROMPT_LENGTH = 100_000;
+export const EXTRA_LARGE_SCENARIO_SCALE = 'extra-large' as const;
+
 export const ScenarioContentSchema = z.object({
-  prompt: z.string().min(1).max(12000),
+  prompt: z.string().min(1).max(MAX_SCENARIO_PROMPT_LENGTH),
+  scale: z.literal(EXTRA_LARGE_SCENARIO_SCALE).optional(),
 });
+
+export function annotateScenarioContent(content: { prompt: string }): {
+  prompt: string;
+  scale?: typeof EXTRA_LARGE_SCENARIO_SCALE;
+} {
+  return content.prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH
+    ? { prompt: content.prompt, scale: EXTRA_LARGE_SCENARIO_SCALE }
+    : { prompt: content.prompt };
+}
+
+export function isExtraLargeScenario(content: { prompt: string; scale?: string }): boolean {
+  return (
+    content.scale === EXTRA_LARGE_SCENARIO_SCALE ||
+    content.prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH
+  );
+}
 
 // Multiplayer scene: setting + a set of roles + gameplay metadata (player count, how AI
 // participates).

@@ -102,6 +102,7 @@ export async function register(input: {
   password: string;
   displayName?: string;
   email: string;
+  referralCode?: string;
 }): Promise<AuthUser> {
   const r = await call<{ user: AuthUser; token: string }>('/api/auth/register', {
     method: 'POST',
@@ -112,6 +113,18 @@ export async function register(input: {
   const user = { ...r.user, avatarUrl: profile?.avatarUrl ?? null };
   publishAuthUser(user);
   return user;
+}
+
+export interface ReferralSummary {
+  code: string;
+  balanceCents: number;
+  rewardCents: number;
+  rewardedCount: number;
+  pendingCount: number;
+}
+
+export async function getReferralSummary(): Promise<ReferralSummary> {
+  return call<ReferralSummary>('/api/auth/referral');
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {

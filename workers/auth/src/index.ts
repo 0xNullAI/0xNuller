@@ -94,6 +94,8 @@ const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
 const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
+const REFERRAL_REWARD_CENTS = 500;
+const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -377,6 +379,37 @@ function escapeHtml(value: string): string {
         '"': '&quot;',
         "'": '&#39;',
       })[char]!,
+  );
+}
+
+function newReferralCode(): string {
+  return crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase();
+}
+
+async function referralCodeForUser(env: Env, userId: string): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = await env.DB.prepare('SELECT code FROM referral_codes WHERE user_id = ?')
+      .bind(userId)
+      .first<{ code: string }>();
+    if (existing) return existing.code;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO referral_codes (user_id, code, created_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO NOTHING`,
+      )
+        .bind(userId, newReferralCode(), Date.now())
+        .run();
+    } catch {
+      // A random code collision is extraordinarily unlikely, but retrying here also
+      // heals accounts created by the old Worker during the migration/deploy window.
+    }
+  }
+  return (
+    (
+      await env.DB.prepare('SELECT code FROM referral_codes WHERE user_id = ?')
+        .bind(userId)
+        .first<{ code: string }>()
+    )?.code ?? null
   );
 }
 
@@ -701,6 +734,21 @@ export default {
         if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
           return err('请输入有效邮箱', 400, cors);
         }
+        const referralCode =
+          typeof body.referralCode === 'string' ? body.referralCode.trim().toUpperCase() : '';
+        if (referralCode && !REFERRAL_CODE.test(referralCode)) {
+          return err('邀请链接无效', 400, cors);
+        }
+        const inviter = referralCode
+          ? await env.DB.prepare(
+              `SELECT u.id FROM referral_codes r
+               JOIN users u ON u.id = r.user_id
+               WHERE r.code = ? AND u.email_verified_at IS NOT NULL AND u.banned_at IS NULL`,
+            )
+              .bind(referralCode)
+              .first<{ id: string }>()
+          : null;
+        if (referralCode && !inviter) return err('邀请链接无效或邀请人尚未完成验证', 400, cors);
 
         const username = (body.username as string).toLowerCase();
         const exists = await env.DB.prepare('SELECT 1 FROM users WHERE username = ?')
@@ -713,12 +761,13 @@ export default {
         if (emailExists) return err('邮箱已被注册', 409, cors);
 
         const id = crypto.randomUUID();
+        const now = Date.now();
         try {
-          await env.DB.prepare(
-            `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-          )
-            .bind(
+          const statements = [
+            env.DB.prepare(
+              `INSERT INTO users (id, username, display_name, password_hash, email, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            ).bind(
               id,
               username,
               typeof body.displayName === 'string' && body.displayName.trim()
@@ -726,9 +775,22 @@ export default {
                 : (body.username as string),
               await hashPassword(body.password as string),
               email,
-              Date.now(),
-            )
-            .run();
+              now,
+            ),
+            env.DB.prepare(
+              'INSERT INTO referral_codes (user_id, code, created_at) VALUES (?, ?, ?)',
+            ).bind(id, newReferralCode(), now),
+          ];
+          if (inviter) {
+            statements.push(
+              env.DB.prepare(
+                `INSERT INTO referrals
+                 (invitee_user_id, inviter_user_id, code, status, reward_cents, created_at)
+                 VALUES (?, ?, ?, 'pending', ?, ?)`,
+              ).bind(id, inviter.id, referralCode, REFERRAL_REWARD_CENTS, now),
+            );
+          }
+          await env.DB.batch(statements);
         } catch (cause) {
           const conflict = registrationConflict(cause);
           if (conflict === 'username') return err('用户名已被占用', 409, cors);
@@ -820,8 +882,55 @@ export default {
             now,
             tokenHash,
           ),
+          env.DB.prepare(
+            `INSERT INTO credit_ledger
+             (user_id, amount_cents, kind, reference_id, created_at)
+             SELECT inviter_user_id, reward_cents, 'referral_reward', invitee_user_id, ?
+             FROM referrals
+             WHERE invitee_user_id = ? AND status = 'pending'
+             ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
+          ).bind(now, action.user_id),
+          env.DB.prepare(
+            `UPDATE referrals SET status = 'rewarded', qualified_at = ?
+             WHERE invitee_user_id = ? AND status = 'pending'`,
+          ).bind(now, action.user_id),
         ]);
         return json({ ok: true }, 200, cors);
+      }
+
+      // ── Referrals and campaign credit ──
+      if (path === '/api/auth/referral' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('完成邮箱验证后即可邀请好友', 403, cors);
+        const [code, balance, counts] = await Promise.all([
+          referralCodeForUser(env, user.id),
+          env.DB.prepare(
+            'SELECT COALESCE(SUM(amount_cents), 0) AS cents FROM credit_ledger WHERE user_id = ?',
+          )
+            .bind(user.id)
+            .first<{ cents: number }>(),
+          env.DB.prepare(
+            `SELECT
+               COALESCE(SUM(CASE WHEN status = 'rewarded' THEN 1 ELSE 0 END), 0) AS rewarded,
+               COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending
+             FROM referrals WHERE inviter_user_id = ?`,
+          )
+            .bind(user.id)
+            .first<{ rewarded: number; pending: number }>(),
+        ]);
+        if (!code) return err('邀请功能暂不可用', 503, cors);
+        return json(
+          {
+            code,
+            balanceCents: balance?.cents ?? 0,
+            rewardCents: REFERRAL_REWARD_CENTS,
+            rewardedCount: counts?.rewarded ?? 0,
+            pendingCount: counts?.pending ?? 0,
+          },
+          200,
+          cors,
+        );
       }
 
       if (path === '/api/auth/password/forgot' && request.method === 'POST') {

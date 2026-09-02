@@ -335,7 +335,7 @@ export function Shell() {
                 <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
               </div>
 
-              <DeviceBar activeSessionId={activeId} />
+              <DeviceBar activeSessionId={activeId} showConnect={activeId !== 'control'} />
             </div>
 
             <div id="shl-content">

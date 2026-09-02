@@ -102,9 +102,35 @@ export function SettingsPanel({
         // default --bg and a darker block shows through in the dark theme.
         style={{ '--settings-surface': 'var(--bg-elevated)' } as CSSProperties}
       >
-        {/* Narrow screens: the tabs run horizontally along the top. A vertical nav
-            column eats half the width on a phone. */}
-        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--surface-border)] p-2 sm:w-[180px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
+        {/* On phones a single section picker replaces seven competing top-level
+            buttons. The current page stays visible without asking people to
+            understand the entire settings taxonomy before changing one thing. */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] p-2 sm:hidden">
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">设置页面</span>
+            <select
+              value={resolvedTab}
+              onChange={(event) => setTab(event.target.value)}
+              className="min-h-11 w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-3 text-sm font-medium text-[var(--text)]"
+            >
+              {navigationTabs.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭设置"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <nav className="hidden shrink-0 gap-1 border-r border-[var(--surface-border)] p-2 sm:flex sm:w-[180px] sm:flex-col">
           <h2 className="hidden px-2 pb-2 pt-1 text-sm font-semibold sm:block">设置</h2>
           {navigationTabs.map((t) => (
             <button
@@ -127,7 +153,7 @@ export function SettingsPanel({
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center justify-end p-2">
+          <div className="hidden shrink-0 items-center justify-end p-2 sm:flex">
             <button
               type="button"
               onClick={onClose}

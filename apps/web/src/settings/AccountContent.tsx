@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { UserRound } from 'lucide-react';
+import { Check, Copy, Gift, UserRound } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
   avatarSrc,
   deleteAccount,
+  getReferralSummary,
   login,
   logout,
   me,
@@ -15,26 +16,34 @@ import {
   resetPassword,
   requestProfileView,
   type AuthUser,
+  type ReferralSummary,
 } from '@0xnullai/auth';
 
 function Agreement() {
   return (
-    <div className="mt-3 max-h-[220px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3 text-xs leading-relaxed text-[var(--text-soft)]">
-      <p className="font-semibold text-[var(--text)]">使用须知</p>
-      {SAFETY_NOTICE_SECTIONS.map((section) => (
-        <div key={section.title} className="mt-3">
-          <p className="font-medium text-[var(--text)]">{section.title}</p>
-          <ul className="mt-1 space-y-1">
-            {section.items.map((item) => (
-              <li key={item} className="flex gap-1.5">
-                <span aria-hidden>·</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
+    <details className="group mt-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs leading-relaxed text-[var(--text-soft)]">
+      <summary className="cursor-pointer list-none px-3 py-2.5 font-medium text-[var(--text)] marker:hidden">
+        使用须知
+        <span className="ml-2 font-normal text-[var(--text-faint)] group-open:hidden">
+          点击展开
+        </span>
+      </summary>
+      <div className="max-h-[220px] overflow-y-auto border-t border-[var(--surface-border)] px-3 pb-3">
+        {SAFETY_NOTICE_SECTIONS.map((section) => (
+          <div key={section.title} className="mt-3">
+            <p className="font-medium text-[var(--text)]">{section.title}</p>
+            <ul className="mt-1 space-y-1">
+              {section.items.map((item) => (
+                <li key={item} className="flex gap-1.5">
+                  <span aria-hidden>·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -48,13 +57,18 @@ export function AccountContent({
   onDone: () => void;
 }) {
   const initialResetToken = new URLSearchParams(window.location.search).get('reset') ?? '';
+  const initialReferralCode = new URLSearchParams(window.location.search).get('invite') ?? '';
   const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>(
-    initialResetToken ? 'reset' : 'login',
+    initialResetToken ? 'reset' : initialReferralCode ? 'register' : 'login',
   );
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
+  const [referralCode, setReferralCode] = useState(initialReferralCode.toUpperCase());
+  const [referral, setReferral] = useState<ReferralSummary | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [inviteExpanded, setInviteExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,6 +87,15 @@ export function AccountContent({
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '验证失败'));
   }, [onUser]);
 
+  useEffect(() => {
+    if (!user?.emailVerified) return;
+    void getReferralSummary()
+      .then(setReferral)
+      .catch(() => setReferral(null));
+  }, [user?.emailVerified]);
+
+  const visibleReferral = user?.emailVerified ? referral : null;
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -80,8 +103,18 @@ export function AccountContent({
       const next =
         mode === 'login'
           ? await login(username.trim(), password)
-          : await register({ username: username.trim(), email: email.trim(), password });
+          : await register({
+              username: username.trim(),
+              email: email.trim(),
+              password,
+              referralCode: referralCode.trim() || undefined,
+            });
       onUser(next);
+      if (mode === 'register' && referralCode) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('invite');
+        window.history.replaceState(null, '', url);
+      }
       onDone();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '操作失败');
@@ -144,6 +177,75 @@ export function AccountContent({
 
         {notice && <p className="mt-3 text-xs text-[var(--success)]">{notice}</p>}
         {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
+
+        <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-[var(--accent-soft)] p-2 text-[var(--accent)]">
+              <Gift className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">邀请好友，获得 $5 Credit</div>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--text-soft)]">
+                好友通过你的链接注册并完成邮箱验证后，活动 Credit 自动到账；后续活动可使用。
+              </p>
+              {visibleReferral ? (
+                <>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold tabular-nums">
+                      ${(visibleReferral.balanceCents / 100).toFixed(2)} Credit
+                    </span>
+                    <Button variant="secondary" onClick={() => setInviteExpanded((open) => !open)}>
+                      {inviteExpanded ? '收起' : '邀请好友'}
+                    </Button>
+                  </div>
+                  {inviteExpanded ? (
+                    <>
+                      <div className="mt-3 flex min-w-0 gap-2">
+                        <Input
+                          readOnly
+                          aria-label="邀请链接"
+                          value={`${window.location.origin}/settings?invite=${visibleReferral.code}`}
+                          className="min-w-0 flex-1 text-xs"
+                        />
+                        <Button
+                          variant="secondary"
+                          aria-label="复制邀请链接"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                `${window.location.origin}/settings?invite=${visibleReferral.code}`,
+                              );
+                              setCopied(true);
+                              window.setTimeout(() => setCopied(false), 1600);
+                            } catch {
+                              setError('复制失败，请手动选择邀请链接');
+                            }
+                          }}
+                        >
+                          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                        <ReferralMetric
+                          label="已奖励"
+                          value={String(visibleReferral.rewardedCount)}
+                        />
+                        <ReferralMetric
+                          label="待验证"
+                          value={String(visibleReferral.pendingCount)}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-2 text-xs text-[var(--text-faint)]">
+                  {user.emailVerified ? '正在获取邀请链接…' : '完成邮箱验证后即可生成邀请链接。'}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         <button
           type="button"
@@ -253,6 +355,20 @@ export function AccountContent({
             />
           </label>
         )}
+        {registerMode && referralCode ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-[var(--text-soft)]">邀请码</span>
+            <Input
+              value={referralCode}
+              onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+              autoComplete="off"
+              maxLength={32}
+            />
+            <span className="text-[11px] text-[var(--text-faint)]">
+              完成邮箱验证后，邀请人将获得 $5 活动 Credit。
+            </span>
+          </label>
+        ) : null}
       </div>
 
       {registerMode && (
@@ -317,6 +433,15 @@ export function AccountContent({
           忘记密码
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function ReferralMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[var(--radius-xs)] bg-[var(--surface)] px-2 py-2">
+      <div className="truncate text-sm font-semibold tabular-nums">{value}</div>
+      <div className="mt-0.5 truncate text-[10px] text-[var(--text-faint)]">{label}</div>
     </div>
   );
 }

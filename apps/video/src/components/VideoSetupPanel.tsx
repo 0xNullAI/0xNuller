@@ -43,12 +43,17 @@ export interface VideoSetupPanelActions {
 interface VideoSetupPanelProps {
   view: VideoSetupPanelViewModel;
   actions: VideoSetupPanelActions;
+  showDeviceConnectActions?: boolean;
 }
 
 const selectClassName =
   'rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2';
 
-export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
+export function VideoSetupPanel({
+  view,
+  actions,
+  showDeviceConnectActions = true,
+}: VideoSetupPanelProps) {
   return (
     <section
       aria-labelledby="video-setup-title"
@@ -59,7 +64,6 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
           <h1 id="video-setup-title" className="font-semibold">
             Video 设置
           </h1>
-          <p className="mt-1 text-xs text-[var(--text-faint)]">确认后直接显示处理画面</p>
         </div>
         <button
           type="button"
@@ -110,13 +114,13 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {view.showCoyoteConnect && (
+        {showDeviceConnectActions && view.showCoyoteConnect && (
           <Button size="sm" variant="secondary" onClick={() => actions.connect('coyote')}>
             <Link aria-hidden="true" className="h-3.5 w-3.5" />
             {view.coyoteConnectLabel}
           </Button>
         )}
-        {view.showOpossumConnect && (
+        {showDeviceConnectActions && view.showOpossumConnect && (
           <Button size="sm" variant="secondary" onClick={() => actions.connect('opossum')}>
             <Link aria-hidden="true" className="h-3.5 w-3.5" /> 连接负鼠
           </Button>
@@ -126,63 +130,64 @@ export function VideoSetupPanel({ view, actions }: VideoSetupPanelProps) {
             <Link aria-hidden="true" className="h-3.5 w-3.5" /> 查找通用设备
           </Button>
         )}
-        <span className="text-xs text-[var(--text-faint)]">固定 16:9 · 自动处理</span>
       </div>
 
       <OutputCapabilityList targets={view.targets} />
-      <p className="text-xs text-[var(--text-faint)]">
-        AI 每次操作会从本次授权快照中明确选择一个目标与通道；安全上限沿用设备与安全设置。
-      </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-          时长
-          <select
-            value={view.durationMinutes}
-            onChange={(event) => actions.setDurationMinutes(Number(event.target.value))}
-            className={selectClassName}
-          >
-            {[1, 5, 10, 15].map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} 分钟
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-          观察间隔
-          <select
-            value={view.cadenceSeconds}
-            onChange={(event) => actions.setCadenceSeconds(Number(event.target.value))}
-            className={selectClassName}
-          >
-            {[5, 10, 15, 30].map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds} 秒
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <details className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)]">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text-soft)]">
+          高级选项
+        </summary>
+        <div className="grid gap-3 border-t border-[var(--surface-border)] p-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+            时长
+            <select
+              value={view.durationMinutes}
+              onChange={(event) => actions.setDurationMinutes(Number(event.target.value))}
+              className={selectClassName}
+            >
+              {[1, 5, 10, 15].map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} 分钟
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs text-[var(--text-soft)]">
+            观察间隔
+            <select
+              value={view.cadenceSeconds}
+              onChange={(event) => actions.setCadenceSeconds(Number(event.target.value))}
+              className={selectClassName}
+            >
+              {[5, 10, 15, 30].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds} 秒
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-      <div className="flex flex-wrap gap-4 text-xs text-[var(--text-soft)]">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={view.allowEnhanced}
-            onChange={(event) => actions.setAllowEnhanced(event.target.checked)}
-          />
-          允许增强
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={view.allowBurst}
-            onChange={(event) => actions.setAllowBurst(event.target.checked)}
-          />
-          允许脉冲
-        </label>
-      </div>
+        <div className="flex flex-wrap gap-4 px-3 pb-3 text-xs text-[var(--text-soft)]">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={view.allowEnhanced}
+              onChange={(event) => actions.setAllowEnhanced(event.target.checked)}
+            />
+            允许增强
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={view.allowBurst}
+              onChange={(event) => actions.setAllowBurst(event.target.checked)}
+            />
+            允许脉冲
+          </label>
+        </div>
+      </details>
 
       {!view.visionEnabled && (
         <button

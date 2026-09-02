@@ -1,5 +1,11 @@
 import type { JSX } from 'react';
-import type { MarketItem, WaveformContent, MultiSceneContent } from '../../shared/schema';
+import {
+  isExtraLargeScenario,
+  type MarketItem,
+  type WaveformContent,
+  type MultiSceneContent,
+  type ScenarioContent,
+} from '../../shared/schema';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -18,6 +24,9 @@ export function ItemCard({ item, onOpen }: Props): JSX.Element {
         </span>
         <span className="card-name">{item.name}</span>
         {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
+        {item.type === 'scenario' && isExtraLargeScenario(item.content as ScenarioContent) && (
+          <span className="scale-badge">超大场景</span>
+        )}
         {item.type === 'waveform' && (
           <span className="agent-badge">
             {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}

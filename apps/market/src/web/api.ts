@@ -40,7 +40,7 @@ export interface ListQuery {
   type?: ItemType;
   modality?: 'electrostimulation' | 'vibration';
   q?: string;
-  sort?: 'new' | 'popular';
+  sort?: 'new' | 'hot' | 'views' | 'downloads';
   limit?: number;
   offset?: number;
 }

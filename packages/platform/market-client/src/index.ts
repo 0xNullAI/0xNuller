@@ -29,6 +29,8 @@ export interface MarketWaveformContent {
 
 export interface MarketScenarioContent {
   prompt: string;
+  /** Market annotation for prompts above the ordinary 12,000-character tier. */
+  scale?: 'extra-large';
 }
 
 /** Multi-player scene: worldview + roles + gameplay metadata. */

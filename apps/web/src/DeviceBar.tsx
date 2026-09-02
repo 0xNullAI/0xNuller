@@ -156,7 +156,13 @@ function DeviceChip({
   );
 }
 
-export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string | null }) {
+export function DeviceBar({
+  activeSessionId = null,
+  showConnect = true,
+}: {
+  activeSessionId?: string | null;
+  showConnect?: boolean;
+}) {
   const groups = useConnectedDevices();
   const [stopping, setStopping] = useState(false);
   const [connectState, setConnectState] = useState<{
@@ -173,7 +179,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
   const connecting = connectState.sessionId === activeSessionId && connectState.connecting;
   const connectError = connectState.sessionId === activeSessionId ? connectState.error : null;
 
-  if (groups.length === 0 && !canConnect) return null;
+  if (groups.length === 0 && (!canConnect || !showConnect)) return null;
 
   const rows = groups.flatMap((group) => group.devices.map((device) => ({ group, device })));
   const total = rows.length;
@@ -282,7 +288,7 @@ export function DeviceBar({ activeSessionId = null }: { activeSessionId?: string
         </span>
       )}
 
-      {canConnect && (
+      {canConnect && showConnect && (
         <button
           type="button"
           disabled={connecting}
