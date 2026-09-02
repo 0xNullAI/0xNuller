@@ -659,11 +659,11 @@ describe('OpossumVibrateAdapter connection lifecycle', () => {
     expect(adapter.getState().connected).toBe(false);
   });
 
-  it('best-effort defaults battery to 0 when the battery service is unavailable', async () => {
+  it('preserves an unavailable battery reading instead of displaying a false 0%', async () => {
     const adapter = new OpossumVibrateAdapter();
     await connectAdapter(adapter, { batteryUnavailable: true });
 
-    expect(adapter.getState().battery).toBe(0);
+    expect(adapter.getState().battery).toBeUndefined();
     expect(adapter.getState().connected).toBe(true);
   });
 

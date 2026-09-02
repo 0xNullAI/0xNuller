@@ -2963,7 +2963,7 @@ checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "nuller-app"
-version = "6.3.3"
+version = "6.3.4"
 dependencies = [
  "btleplug",
  "buttplug_client",
@@ -4930,7 +4930,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-blec"
 version = "0.12.1"
-source = "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git?rev=4db7f46#4db7f4647da556f33d302016fcb40f264aaf6248"
+source = "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git?rev=27c6e80#27c6e80ec1991799baf61729e0dfe07b4152de31"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

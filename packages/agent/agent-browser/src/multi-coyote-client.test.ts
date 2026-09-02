@@ -111,6 +111,28 @@ describe('MultiCoyoteDeviceClient', () => {
     expect(() => aggregate.selectDeviceById('missing')).toThrow('目标郊狼未连接');
   });
 
+  it('follows an exact AI target in the human-facing device projection', async () => {
+    const children: FakeChildClient[] = [];
+    const aggregate = new MultiCoyoteDeviceClient(() => {
+      const child = new FakeChildClient();
+      children.push(child);
+      return child;
+    });
+    await aggregate.connectDevice(device('coyote-a', '47L121-A'), server);
+    await aggregate.connectDevice(device('coyote-b', '47L121-B'), server);
+    const [firstTarget, secondTarget] = aggregate.getConnectedCoyotes().map(({ id }) => id);
+    const states: DeviceState[] = [];
+    aggregate.onStateChanged((state) => states.push(state));
+
+    expect(aggregate.deviceId).toBe(firstTarget);
+    await aggregate.executeDeviceById(secondTarget!, { type: 'stop' });
+
+    expect(aggregate.deviceId).toBe(secondTarget);
+    expect(states.at(-1)?.deviceName).toBe('47L121-B');
+    expect(children[0]!.execute).not.toHaveBeenCalled();
+    expect(children[1]!.execute).toHaveBeenCalledOnce();
+  });
+
   it('keeps legacy commands on the primary host and emergency-stops every host', async () => {
     const children: FakeChildClient[] = [];
     const aggregate = new MultiCoyoteDeviceClient(() => {

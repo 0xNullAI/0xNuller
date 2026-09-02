@@ -8,6 +8,7 @@ import type {
   WaveformContent,
   MultiSceneContent,
 } from '../../shared/schema';
+import { isExtraLargeScenario } from '../../shared/schema';
 import { deleteItem, fetchItemAccess, updateItem, markDownloaded } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
@@ -173,6 +174,9 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
               : '单人场景'}{' '}
           · {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
           {view.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
+          {view.type === 'scenario' && isExtraLargeScenario(item.content as ScenarioContent) && (
+            <span className="scale-badge">超大场景</span>
+          )}
           {view.type === 'waveform' && (
             <span className="agent-badge">
               {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}

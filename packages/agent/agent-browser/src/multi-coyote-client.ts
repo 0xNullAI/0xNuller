@@ -153,7 +153,17 @@ export class MultiCoyoteDeviceClient implements DeviceClient {
     command: DeviceCommand,
   ): Promise<DeviceCommandResult | null> {
     const slot = this.connectedSlots().find((candidate) => candidate.id === deviceId);
-    return slot ? slot.client.execute(command) : null;
+    if (!slot) return null;
+
+    // Exact-target model calls bypass the legacy selected-device surface. Keep the
+    // human-facing projection on the target the AI is operating so its live strength,
+    // battery and waveform state do not stay visually pinned to another connected host.
+    // This changes presentation only: execution still uses the exact slot resolved above.
+    if (this.selectedSlotId !== slot.id) {
+      this.selectedSlotId = slot.id;
+      this.emit();
+    }
+    return slot.client.execute(command);
   }
 
   async emergencyStop(): Promise<void> {

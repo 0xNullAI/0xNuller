@@ -1,4 +1,5 @@
 import {
+  annotateScenarioContent,
   ItemPatchSchema,
   BatchUploadSchema,
   ModerationPatchSchema,
@@ -219,7 +220,8 @@ async function toInsert(
     author: payload.author,
     icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
     tags: payload.tags,
-    content: payload.content,
+    content:
+      payload.type === 'scenario' ? annotateScenarioContent(payload.content) : payload.content,
     ipHash,
     createdAt,
   };

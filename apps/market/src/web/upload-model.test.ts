@@ -7,6 +7,12 @@ import {
   parseWaveInput,
   type ManualUploadFields,
 } from './upload-model';
+import {
+  EXTRA_LARGE_SCENARIO_SCALE,
+  MAX_SCENARIO_PROMPT_LENGTH,
+  ScenarioContentSchema,
+  STANDARD_SCENARIO_PROMPT_LENGTH,
+} from '../shared/schema';
 
 const pulse = 'Dungeonlab+pulse:测试波形=0,0,0,1,1/20-0,40-0';
 
@@ -64,6 +70,23 @@ describe('upload model', () => {
       tags: ['DG Agent', '温柔', 'DG', 'Agent', '温柔'],
       content: { prompt: '场景设定' },
     });
+  });
+
+  it('accepts and annotates an extra-large scenario while keeping a hard safety ceiling', () => {
+    const prompt = '界'.repeat(STANDARD_SCENARIO_PROMPT_LENGTH + 1);
+    const payload = buildManualUploadPayload(manualFields({ type: 'scenario', prompt }));
+
+    expect(payload).toMatchObject({
+      type: 'scenario',
+      content: { prompt, scale: EXTRA_LARGE_SCENARIO_SCALE },
+    });
+    expect(
+      ScenarioContentSchema.safeParse({ prompt: '界'.repeat(MAX_SCENARIO_PROMPT_LENGTH) }).success,
+    ).toBe(true);
+    expect(
+      ScenarioContentSchema.safeParse({ prompt: '界'.repeat(MAX_SCENARIO_PROMPT_LENGTH + 1) })
+        .success,
+    ).toBe(false);
   });
 
   it('normalizes multiplayer roles and prevents an inverted player range', () => {

@@ -139,7 +139,7 @@ export interface SensorGattConnection {
   notifyChar: BluetoothRemoteGATTCharacteristicLike;
   deviceName: string;
   address: string;
-  battery: number;
+  battery?: number;
 }
 
 /**
@@ -166,7 +166,7 @@ export async function connectSensorGatt(
 
   await performV3FamilyConnectHandshake(context.server, writeChar);
 
-  let battery = 0;
+  let battery: number | undefined;
   try {
     const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
     const batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
@@ -175,7 +175,7 @@ export async function connectSensorGatt(
   } catch {
     // Best-effort — some firmware/pairing states expose the service but
     // reject the read; a failure here shouldn't fail the whole connection.
-    // `battery` already defaults to 0 above.
+    // Keep it unavailable rather than displaying a false 0% charge.
   }
 
   return {

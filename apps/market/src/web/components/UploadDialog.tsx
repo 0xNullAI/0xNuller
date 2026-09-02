@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { useRef, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
 import type { BatchUploadPayload, ItemType } from '../../shared/schema';
+import { MAX_SCENARIO_PROMPT_LENGTH, STANDARD_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
 import { parsePulseText } from '../../shared/pulse';
 import { batchUploadItems, uploadItem } from '../api';
 import {
@@ -267,7 +268,10 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
         {manual && (
           <>
             {type === 'scenario' && (
-              <p className="upload-note">单人场景会自动标记，供 Agent 导入。</p>
+              <p className="upload-note">
+                单人场景会自动标记，供 Agent 导入；超过{' '}
+                {STANDARD_SCENARIO_PROMPT_LENGTH.toLocaleString()} 字会额外标注为「超大场景」。
+              </p>
             )}
             <label className="field">
               <span>名称 *</span>
@@ -343,16 +347,26 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                 )}
               </>
             ) : type === 'scenario' ? (
-              <label className="field">
-                <span>场景提示词 *</span>
-                <textarea
-                  rows={8}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  maxLength={12000}
-                  placeholder="粘贴你的自定义场景设定…"
-                />
-              </label>
+              <>
+                <label className="field">
+                  <span>
+                    场景提示词 * · {prompt.length.toLocaleString()} /{' '}
+                    {MAX_SCENARIO_PROMPT_LENGTH.toLocaleString()}
+                  </span>
+                  <textarea
+                    rows={8}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    maxLength={MAX_SCENARIO_PROMPT_LENGTH}
+                    placeholder="粘贴你的自定义场景设定…"
+                  />
+                </label>
+                {prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH && (
+                  <p className="upload-note extra-large-note">
+                    超大场景 · 导入后会占用更多模型上下文，请选用支持长上下文的模型。
+                  </p>
+                )}
+              </>
             ) : (
               <>
                 <label className="field">

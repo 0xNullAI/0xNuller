@@ -54,6 +54,10 @@ describe('unified output targets', () => {
       { id: 'embedded/generic-a/motor-a', kind: 'embedded', modality: 'vibration' },
       { id: 'embedded/generic-a/motor-b', kind: 'embedded', modality: 'vibration' },
     ]);
+    expect(targets.slice(0, 2).map(({ label }) => label)).toEqual([
+      '郊狼 · Same name #1',
+      '郊狼 · Same name #2',
+    ]);
   });
 
   it('keeps the selected identity and falls back to the first live target after disconnect', () => {

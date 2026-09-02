@@ -71,15 +71,27 @@ export function createUnifiedOutputTargets(
   dgLabTargets: readonly DgLabOutputCandidate[],
   embeddedSnapshot: DeviceSnapshot | null,
 ): UnifiedOutputTarget[] {
-  const targets: UnifiedOutputTarget[] = dgLabTargets.map((target) => ({
-    id: unifiedOutputIdentity(target.kind, target.targetId),
-    kind: target.kind,
-    targetId: target.targetId,
-    label: `${target.kind === 'coyote' ? '郊狼' : '负鼠'} · ${target.name}`,
-    modality: target.kind === 'coyote' ? 'electrostimulation' : 'vibration',
-    battery: target.battery ?? null,
-    active: target.active ?? false,
-  }));
+  const labelTotals = new Map<string, number>();
+  for (const target of dgLabTargets) {
+    const key = `${target.kind}:${target.name}`;
+    labelTotals.set(key, (labelTotals.get(key) ?? 0) + 1);
+  }
+  const labelSeen = new Map<string, number>();
+  const targets: UnifiedOutputTarget[] = dgLabTargets.map((target) => {
+    const key = `${target.kind}:${target.name}`;
+    const occurrence = (labelSeen.get(key) ?? 0) + 1;
+    labelSeen.set(key, occurrence);
+    const ordinal = (labelTotals.get(key) ?? 0) > 1 ? ` #${occurrence}` : '';
+    return {
+      id: unifiedOutputIdentity(target.kind, target.targetId),
+      kind: target.kind,
+      targetId: target.targetId,
+      label: `${target.kind === 'coyote' ? '郊狼' : '负鼠'} · ${target.name}${ordinal}`,
+      modality: target.kind === 'coyote' ? 'electrostimulation' : 'vibration',
+      battery: target.battery ?? null,
+      active: target.active ?? false,
+    };
+  });
 
   for (const device of embeddedSnapshot?.devices ?? []) {
     const battery = device.capabilities.find((feature) => feature.kind === 'battery');

@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { parsePulseText } from '../shared/pulse';
-import type { ItemType, UploadPayload } from '../shared/schema';
+import { annotateScenarioContent, type ItemType, type UploadPayload } from '../shared/schema';
 
 export type Frame = [number, number];
 export type WaveformModality = 'electrostimulation' | 'vibration';
@@ -264,7 +264,7 @@ export function buildManualUploadPayload(fields: ManualUploadFields): UploadPayl
       ...common,
       icon: fields.icon.trim() || undefined,
       tags: scenarioTags,
-      content: { prompt: fields.prompt.trim() },
+      content: annotateScenarioContent({ prompt: fields.prompt.trim() }),
     };
   }
   if (!fields.setting.trim()) throw new Error('请填写世界观');
