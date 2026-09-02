@@ -1,8 +1,3 @@
-interface Env {
-  MIGRATION: Fetcher;
-}
-
-const MIGRATION_PATH = '/.well-known/0xnullai-browser-migration-v1';
 const TARGETS: Record<string, string> = {
   'agent.0xnullai.com': '/agent',
   'chat.0xnullai.com': '/chat',
@@ -51,12 +46,11 @@ function retired(request: Request): Response {
 }
 
 export default {
-  fetch(request: Request, env: Env): Response | Promise<Response> {
+  fetch(request: Request): Response {
     const url = new URL(request.url);
     const targetPath = TARGETS[url.hostname];
     if (!targetPath) return new Response('Not found', { status: 404 });
-    if (url.pathname === MIGRATION_PATH) return env.MIGRATION.fetch(request);
     if (isNavigation(request)) return redirectToMain(url, targetPath);
     return retired(request);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler;

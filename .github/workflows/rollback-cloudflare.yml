@@ -7,7 +7,7 @@ on:
         description: Service to roll back independently
         required: true
         type: choice
-        options: [chat, auth, llm-proxy, market, voice, browser-migration, legacy-compat, web]
+        options: [chat, auth, llm-proxy, market, voice, legacy-compat, web]
       version_id:
         description: Known-good Worker version ID (from deployments list)
         required: true
@@ -43,7 +43,6 @@ jobs:
             llm-proxy) config=workers/llm-proxy/wrangler.toml ;;
             market) config=apps/market/wrangler.jsonc ;;
             voice) config=apps/voice/wrangler.jsonc ;;
-            browser-migration) config=workers/browser-migration/wrangler.jsonc ;;
             legacy-compat) config=workers/legacy-compat/wrangler.jsonc ;;
             web) config=apps/web/wrangler.jsonc ;;
             *) echo "Unsupported service: $SERVICE" >&2; exit 1 ;;

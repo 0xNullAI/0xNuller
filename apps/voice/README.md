@@ -81,7 +81,7 @@ Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、�
 
 ## 部署
 
-新主站的 `0xnullai-voice` 只接管 `/api/realtime`；历史 `dg-voice` 与旧子域继续运行。
+新主站的 `0xnullai-voice` 接管 `/api/realtime`；旧子域只保留到统一 Voice 模块的永久跳转。
 完整步骤见 [部署文档](../../docs/deploy.md)。
 
 ## 协议

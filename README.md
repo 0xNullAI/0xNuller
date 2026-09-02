@@ -86,7 +86,7 @@ npm run format
 仓库分层、代码归属和测试规范见 [`AGENTS.md`](./AGENTS.md)、
 [`docs/architecture.md`](./docs/architecture.md) 与 [`docs/testing.md`](./docs/testing.md)。
 
-兼容发布只替换 `0xnullai.com` 主站；旧子域继续运行历史版本。DG-Kit 与 DG-MCP 已迁入本仓库，
+当前产品统一运行在 `0xnullai.com`；旧子域只保留到对应模块的永久跳转。DG-Kit 与 DG-MCP 已迁入本仓库，
 并分别通过 [`@dg-kit/*`](https://www.npmjs.com/package/@dg-kit/core) 与
 [`dg-mcp`](https://www.npmjs.com/package/dg-mcp) 在 npm 发布。
 

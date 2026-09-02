@@ -34,8 +34,6 @@ interface Props {
   onConnect: () => unknown | Promise<unknown>;
   onAdjust: (targetId: string, channel: 'A' | 'B', delta: number) => void;
   onTogglePlay: (targetId: string, channel: 'A' | 'B') => void;
-  onStop: (targetId: string) => void;
-  onDisconnect: (targetId: string) => void;
 }
 
 const RING =
@@ -56,8 +54,6 @@ export function OutputDeviceSection({
   onConnect,
   onAdjust,
   onTogglePlay,
-  onStop,
-  onDisconnect,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollFrame = useRef<number | null>(null);
@@ -207,24 +203,18 @@ export function OutputDeviceSection({
                       {target.kind === 'coyote' ? (
                         <CoyoteControl
                           coyote={target.coyote}
-                          displayName={target.label}
-                          multi={false}
-                          selected={active}
-                          onSelect={onSelect}
                           queueLengthA={panel.queueA.length}
                           queueLengthB={panel.queueB.length}
                           firingA={active && panel.firingA}
                           firingB={active && panel.firingB}
-                          onAdjustStrength={(deviceId, channel, delta) => {
+                          onAdjustStrength={(channel, delta) => {
                             onSelect(target.id);
                             onAdjust(target.id, channel, delta);
                           }}
-                          onTogglePlay={(deviceId, channel) => {
+                          onTogglePlay={(channel) => {
                             onSelect(target.id);
                             onTogglePlay(target.id, channel);
                           }}
-                          onStopDevice={() => onStop(target.id)}
-                          onDisconnect={() => onDisconnect(target.id)}
                         />
                       ) : (
                         <OpossumChannels

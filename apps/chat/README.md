@@ -72,8 +72,8 @@ Chat 负责，不要把它们并入本地 Agent 会话运行时。
 
 ## 部署
 
-Chat 使用 `RoomDO`、`LobbyDO` 和共享的 `dg-chat-media` R2。旧域仍用于跳转和浏览器数据迁移，
-不得随新 Worker 一起删除。部署顺序、共享存储和密钥要求见 [部署文档](../../docs/deploy.md)。
+Chat 使用 `RoomDO`、`LobbyDO` 和共享的 `dg-chat-media` R2。旧域只保留到统一主站的永久跳转；
+部署顺序、共享存储和密钥要求见 [部署文档](../../docs/deploy.md)。
 
 ## 协议
 
