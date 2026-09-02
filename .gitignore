@@ -3,6 +3,9 @@ dist
 coverage
 *.tsbuildinfo
 
+# macOS Finder metadata
+.DS_Store
+
 # 工具缓存
 .claude/settings.local.json
 .claude/projects/
