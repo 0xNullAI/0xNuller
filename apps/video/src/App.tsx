@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CirclePause, CirclePlay, ShieldAlert } from 'lucide-react';
-import { Button, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
+import { Button, useInShell, useOpenShellSettings, useSafetySession } from '@0xnullai/ui';
 import {
   isVideoLlmConfigured,
   loadVideoLlmConfig,
@@ -144,6 +144,7 @@ function useStopWhenModuleHidden(stop: () => void) {
 }
 
 export function App() {
+  const inShell = useInShell();
   const [config, setConfig] = useState(loadVideoLlmConfig);
   const [safety, setSafety] = useState(toVideoSafety);
   const [sceneLibrary, updateSceneLibrary] = useScenes();
@@ -682,6 +683,7 @@ export function App() {
           </div>
         ) : (
           <VideoSetupPanel
+            showDeviceConnectActions={!inShell}
             view={{
               scenes: sceneOptions,
               selectedSceneId,

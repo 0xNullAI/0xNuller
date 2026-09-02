@@ -14,7 +14,7 @@
  * This script only does a static check; it is no substitute for probing the real
  * deployment.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'target', 'build']);
@@ -23,7 +23,9 @@ function findConfigs(dir, out = []) {
   for (const name of readdirSync(dir)) {
     if (SKIP.has(name)) continue;
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) findConfigs(path, out);
+    // Generated Android trees contain absolute library symlinks whose targets may
+    // disappear after a clean. Route discovery never needs to follow symlinks.
+    if (lstatSync(path).isDirectory()) findConfigs(path, out);
     else if (/^wrangler\.(jsonc?|toml)$/.test(name)) out.push(path);
   }
   return out;

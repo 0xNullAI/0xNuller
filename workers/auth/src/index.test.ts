@@ -271,6 +271,91 @@ describe('邮箱验证与密码找回', () => {
   });
 });
 
+describe('邀请注册与活动 Credit', () => {
+  async function confirmLatestVerification(): Promise<string> {
+    const text = String((sentEmails.at(-1) as { text: string }).text);
+    const token = new URL(text.match(/https:\/\/\S+/)![0]).searchParams.get('verify')!;
+    const response = await post('/api/auth/email/verification/confirm', { token });
+    expect(response.status).toBe(200);
+    return token;
+  }
+
+  it('只在被邀请人完成邮箱验证后幂等发放 500 美分', async () => {
+    const inviter = await registerUser();
+    await confirmLatestVerification();
+
+    const summaryResponse = await worker.fetch(
+      req('/api/auth/referral', { token: inviter.body.token }),
+      env,
+    );
+    expect(summaryResponse.status).toBe(200);
+    const initial = (await summaryResponse.json()) as {
+      code: string;
+      balanceCents: number;
+      rewardCents: number;
+    };
+    expect(initial).toMatchObject({ balanceCents: 0, rewardCents: 500 });
+
+    const invitee = await registerUser({
+      username: 'bob',
+      email: 'bob@example.com',
+      referralCode: initial.code.toLowerCase(),
+    });
+    expect(invitee.res.status).toBe(201);
+    expect(
+      await prepared(
+        'SELECT 1 FROM credit_ledger WHERE user_id = ?',
+        inviter.body.user!.id,
+      ).first(),
+    ).toBeNull();
+
+    const verificationToken = await confirmLatestVerification();
+    const after = await worker.fetch(req('/api/auth/referral', { token: inviter.body.token }), env);
+    expect(await after.json()).toMatchObject({
+      balanceCents: 500,
+      rewardedCount: 1,
+      pendingCount: 0,
+    });
+
+    expect(
+      (await post('/api/auth/email/verification/confirm', { token: verificationToken })).status,
+    ).toBe(400);
+    const ledger = await prepared(
+      'SELECT COUNT(*) AS n, SUM(amount_cents) AS cents FROM credit_ledger WHERE user_id = ?',
+      inviter.body.user!.id,
+    ).first<{ n: number; cents: number }>();
+    expect(ledger).toEqual({ n: 1, cents: 500 });
+  });
+
+  it('未验证账户不能分享，且拒绝不存在的邀请码', async () => {
+    const inviter = await registerUser();
+    expect(
+      (await worker.fetch(req('/api/auth/referral', { token: inviter.body.token }), env)).status,
+    ).toBe(403);
+    const invalid = await registerUser({
+      username: 'bob',
+      email: 'bob@example.com',
+      referralCode: 'NOTREAL99',
+    });
+    expect(invalid.res.status).toBe(400);
+  });
+
+  it('为迁移与部署窗口中缺少邀请码的旧注册自动补写', async () => {
+    const inviter = await registerUser();
+    await confirmLatestVerification();
+    await prepared('DELETE FROM referral_codes WHERE user_id = ?', inviter.body.user!.id).run();
+
+    const response = await worker.fetch(
+      req('/api/auth/referral', { token: inviter.body.token }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()) as { code: string }).toMatchObject({
+      code: expect.stringMatching(/^[A-Z0-9]{12}$/),
+    });
+  });
+});
+
 describe('账户 AI 体验额度', () => {
   it('要求登录，并按账户原子扣减每日文字额度', async () => {
     expect(

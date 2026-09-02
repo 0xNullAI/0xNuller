@@ -1,13 +1,5 @@
 import { useRef, useState } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  BatteryMedium,
-  Bluetooth,
-  Pause,
-  Play,
-  ShieldCheck,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, BatteryMedium, Bluetooth, Pause, Play } from 'lucide-react';
 import type { CoyoteSummary, OpossumSummary } from '@0xnullai/device-runtime';
 import { OutputTargetPicker, RepeatButton } from '@0xnullai/ui';
 import { CoyoteControl, WaveformPanel, type WaveformPanelProps } from './CoyoteControl';
@@ -120,7 +112,7 @@ export function OutputDeviceSection({
 
   return (
     <section className="mx-auto w-full max-w-[680px]">
-      <div className="mb-2 flex items-center justify-between">
+      <div className={`mb-2 items-center justify-between ${targets.length ? 'flex' : 'hidden'}`}>
         <div>
           <h2 className="text-xs font-medium tracking-wide text-[var(--text-faint)]">主机</h2>
           {targets.length > 1 && (
@@ -389,15 +381,11 @@ function DisconnectedOutputState({
       >
         连接郊狼或负鼠
       </h3>
-      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--text-soft)]">
-        连接后，这里会显示设备名称、双通道强度和波形控制。也可以使用页面顶部的「连接设备」。
-      </p>
       <button
         type="button"
         onClick={onConnect}
         disabled={connecting}
-        aria-describedby="disconnected-output-safety"
-        className="mt-5 inline-flex min-h-11 min-w-32 touch-manipulation items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-wait disabled:opacity-60"
+        className="mt-4 inline-flex min-h-11 min-w-32 touch-manipulation items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-wait disabled:opacity-60"
       >
         {connecting ? '连接中…' : '连接设备'}
       </button>
@@ -406,13 +394,6 @@ function DisconnectedOutputState({
           {error}
         </p>
       )}
-      <p
-        id="disconnected-output-safety"
-        className="mx-auto mt-5 flex max-w-md items-start justify-center gap-2 border-t border-[var(--surface-border)] pt-4 text-left text-xs leading-5 text-[var(--text-faint)]"
-      >
-        <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden />
-        连接不会自动产生输出；强度与波形需在设备就绪后由你主动设置，并始终受安全上限保护。
-      </p>
     </article>
   );
 }

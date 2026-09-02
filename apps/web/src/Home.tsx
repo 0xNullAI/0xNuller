@@ -83,10 +83,6 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                 : '一次连接，所有模块共用设备、安全设置和波形库。'}
             </p>
           </div>
-          <p className="shl-home-summary" aria-label="可用模块数量">
-            <strong>{MODULES.length}</strong>
-            <span>个模块</span>
-          </p>
         </header>
 
         <nav className="shl-home-nav" aria-label="功能模块">
@@ -101,7 +97,7 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                 <p>{group.description}</p>
               </div>
               <ul className="shl-home-grid">
-                {group.modules.map((id, index) => {
+                {group.modules.map((id) => {
                   const module = MODULES.find((candidate) => candidate.id === id);
                   if (!module) return null;
                   return (
@@ -111,15 +107,9 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                         onClick={() => onOpen(module.id)}
                         className="shl-home-card"
                       >
-                        <span className="shl-home-card-index" aria-hidden>
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
                         <span className="shl-home-card-copy">
                           <span className="shl-home-card-title">{module.label}</span>
                           <span className="shl-home-card-blurb">{module.blurb}</span>
-                        </span>
-                        <span className="shl-home-card-arrow" aria-hidden>
-                          ↗
                         </span>
                       </button>
                     </li>

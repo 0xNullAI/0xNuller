@@ -74,6 +74,14 @@ vi.mock('@0xnullai/auth', () => ({
     if (authState.user) authState.user = { ...authState.user, emailVerified: true };
   },
   dmConversations: () => Promise.resolve(null),
+  getReferralSummary: () =>
+    Promise.resolve({
+      code: 'TESTINVITE01',
+      balanceCents: 0,
+      rewardCents: 500,
+      rewardedCount: 0,
+      pendingCount: 0,
+    }),
   me: () => Promise.resolve(authState.user),
   logout: () => Promise.resolve(),
   // The shell subscribes to profile requests on mount. Nothing here asks for a
