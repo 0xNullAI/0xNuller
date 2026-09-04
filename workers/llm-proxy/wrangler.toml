@@ -27,7 +27,7 @@ PROXY_MODEL = "openrouter/free"
 # src/guard.js are opt-in so that a half-finished rollout cannot take the free
 # provider offline. Requests with no Origin (the Android WebView, any
 # non-browser client) are always allowed through this particular check.
-ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost"
+ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost"
 
 # Global per-IP rate limit. Without this binding the worker falls back to a
 # per-isolate in-memory counter, which is barely a limit at all: Cloudflare runs

@@ -21,6 +21,7 @@ export type ShellSettingsTab =
 
 interface ShellChrome {
   inShell: boolean;
+  active: boolean;
   /** Whether the unified shell currently has an authenticated account. */
   signedIn: boolean;
   /**
@@ -35,6 +36,7 @@ interface ShellChrome {
 
 const ShellChromeContext = createContext<ShellChrome>({
   inShell: false,
+  active: true,
   signedIn: false,
   openSettings: () => undefined,
 });
@@ -43,8 +45,10 @@ export function ShellChromeProvider({
   children,
   openSettings,
   signedIn,
+  active = true,
 }: {
   children: ReactNode;
+  active?: boolean;
   openSettings: (tab?: ShellSettingsTab) => void;
   signedIn: boolean;
 }) {
@@ -53,7 +57,7 @@ export function ShellChromeProvider({
   // introduces a "did openSettings change" dependency where a mistake
   // means a button that does nothing.
   return (
-    <ShellChromeContext.Provider value={{ inShell: true, signedIn, openSettings }}>
+    <ShellChromeContext.Provider value={{ inShell: true, signedIn, openSettings, active }}>
       {children}
     </ShellChromeContext.Provider>
   );
@@ -71,4 +75,9 @@ export function useShellSignedIn(): boolean {
 /** Open the shell settings panel. A no-op outside the shell — the module's own panel still works there. */
 export function useOpenShellSettings(): (tab?: ShellSettingsTab) => void {
   return useContext(ShellChromeContext).openSettings;
+}
+
+/** Visibility is not device authorization; execution still checks the lease. */
+export function useModuleActive(): boolean {
+  return useContext(ShellChromeContext).active;
 }

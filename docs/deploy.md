@@ -52,7 +52,7 @@ npm run check:routes
 5. Voice（启用体验服务时）
 6. Web
 
-`main` 的 CI 成功后会自动触发 `.github/workflows/deploy-cloudflare.yml`。工作流固定检出 CI
+`main` 的 CI 成功后会自动触发 `.github/workflows/product-release.yml`。工作流固定检出 CI
 验证过的 SHA，不会重新解析一个已经向前移动的分支。各 API Worker 有独立部署版本与路由；Web
 始终最后发布，因此任一后端失败都不会把尚未验证的静态外壳推到生产。
 

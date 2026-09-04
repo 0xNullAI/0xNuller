@@ -30,7 +30,7 @@ const androidCssCompatibility: Plugin = {
   },
 };
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), androidCssCompatibility],
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
@@ -59,11 +59,10 @@ export default defineConfig({
     host: '0.0.0.0',
   },
   build: {
-    // minSdk 26 includes Android 8-era WebViews. Keeping the bundle at the
-    // first broadly usable dynamic-import generation prevents newer syntax
-    // from failing before React can dismiss the static splash screen.
-    target: 'chrome64',
+    // Android OS support is separate from the updatable WebView runtime.
+    // Tailwind 4 requires a modern engine; older WebViews receive an upgrade screen.
+    target: ['chrome111', 'safari16.4'],
     sourcemap: true,
-    outDir: 'dist',
+    outDir: mode === 'desktop' ? 'dist-desktop' : 'dist',
   },
-});
+}));

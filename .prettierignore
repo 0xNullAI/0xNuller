@@ -3,3 +3,5 @@ node_modules
 .npm-cache
 package-lock.json
 aliyun-fc/package-lock.json
+
+dist-desktop

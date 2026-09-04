@@ -1,3 +1,4 @@
+import { readPreference, writePreference } from '@0xnullai/settings';
 import {
   loadDeviceSafetySections,
   saveDeviceSafetySections,
@@ -116,7 +117,7 @@ export function loadSettings(): VoiceSettings {
   });
 
   try {
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const raw = readPreference(SETTINGS_STORAGE_KEY);
     if (!raw) return withShared(defaults);
     const parsed = settingsSchema.partial().safeParse(JSON.parse(raw));
     if (!parsed.success) return withShared(defaults);
@@ -138,5 +139,5 @@ export function saveSettings(settings: VoiceSettings): void {
   // take the shared value — when the two disagree the source of truth wins,
   // not whoever wrote last.
   saveDeviceSafetySections(settings);
-  window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  writePreference(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }

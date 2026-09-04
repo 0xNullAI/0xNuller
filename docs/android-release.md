@@ -32,7 +32,7 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v6.3.6`，Release 标题和 APK 都显示 `0xNuller 6.3.6`。GitHub 自动生成的
+当前版本使用 tag `v6.3.7`，Release 标题和 APK 都显示 `0xNuller 6.3.7`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
@@ -76,8 +76,8 @@ npm run verify:android:apk -- "$APK"
 ```json
 {
   "package": "ai.nullai.dgagent",
-  "versionName": "6.3.6",
-  "versionCode": 6003006,
+  "versionName": "6.3.7",
+  "versionCode": 6003007,
   "label": "0xNuller",
   "sourceCommit": "<当前 Git HEAD>"
 }
@@ -93,8 +93,8 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-gh release create "v6.3.6" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.3.6" --notes-file docs/releases/6.3.6.md "$APK"
+gh release create "v6.3.7" --repo 0xNullAI/0xNuller \
+  --title "0xNuller 6.3.7" --notes-file docs/releases/6.3.7.md "$APK"
 ```
 
 ## 发布之后

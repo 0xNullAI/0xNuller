@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Cpu,
+  AudioWaveform,
+  Database,
+  Bug,
   Info,
   LayoutTemplate,
   SlidersHorizontal,
@@ -39,6 +42,12 @@ import { AboutTab } from './AboutTab';
  * appended as a second group.
  */
 
+const DEFERRED_TABS = [
+  { id: 'agent-waveforms', label: '波形', icon: AudioWaveform, order: 30 },
+  { id: 'agent-data', label: '数据', icon: Database, order: 60 },
+  { id: 'agent-diagnostics', label: '诊断', icon: Bug, order: 70 },
+];
+
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 5 },
@@ -54,12 +63,14 @@ export function SettingsPanel({
   user,
   onUser,
   onClose,
+  onLoadAgent,
 }: {
   /** Which page to land on when opened. AI entry points may target one module subsection. */
   initialTab?: ShellSettingsTab;
   user: AuthUser | null;
   onUser: (user: AuthUser | null) => void;
   onClose: () => void;
+  onLoadAgent?: () => void;
 }) {
   const initialAiSection: AiSettingsSection =
     initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : 'agent';
@@ -76,15 +87,20 @@ export function SettingsPanel({
       icon: item.icon,
       order: item.order,
     })),
+    ...DEFERRED_TABS.filter((item) => !moduleClaims.some((claim) => claim.id === item.id)),
     ...moduleClaims,
   ].sort((left, right) => left.order - right.order);
   const builtinTab = builtinTabs.find((t) => t.id === tab);
-  const activeModuleClaim = moduleClaims.find((c) => c.id === tab);
+  const activeModuleClaim = navigationTabs.find((c) => c.id === tab);
   // A module can unmount while its page is open — fall back rather than
   // leaving the content area blank with a nav item selected.
   const resolvedTab = builtinTab || activeModuleClaim ? tab : 'appearance';
   const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (tab.startsWith('agent-') || tab === 'safety') onLoadAgent?.();
+  }, [tab, onLoadAgent]);
 
   useEffect(() => {
     activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -174,15 +190,18 @@ export function SettingsPanel({
             ) : Active ? (
               <Active />
             ) : null}
-            {/* Every module page keeps a mounted slot, not just the active one:
-                the slot is the portal target, and a module that renders its
-                section before you open its page needs somewhere to land. Only
-                the active one is visible. */}
-            {moduleClaims.map((claim) => (
-              <div key={claim.id} hidden={resolvedTab !== claim.id}>
-                <ModuleSettingsSlot id={claim.id} />
-              </div>
-            ))}
+            {/* Only the selected module page gets a portal target and mounts its content. */}
+            {resolvedTab.startsWith('agent-') &&
+              !moduleClaims.some((claim) => claim.id === resolvedTab) && (
+                <p role="status">正在加载设置内容…</p>
+              )}
+            {moduleClaims
+              .filter((claim) => claim.id === resolvedTab)
+              .map((claim) => (
+                <div key={claim.id} hidden={resolvedTab !== claim.id}>
+                  <ModuleSettingsSlot id={claim.id} />
+                </div>
+              ))}
           </div>
         </div>
       </div>

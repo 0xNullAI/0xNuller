@@ -1,13 +1,13 @@
 # 0xNuller 发布体系
 
-仓库有三条独立版本线、四类交付物。所有生产发布都只从通过对应 CI 的 `main` commit
+仓库有三条独立版本线、多类交付物。所有生产发布都只从通过对应 CI 的 `main` commit
 执行；`dev` 只用于开发、集成、版本准备和测试。
 
-| 发布线   | 交付物              | 版本来源                   | 发布位置                    |
-| -------- | ------------------- | -------------------------- | --------------------------- |
-| 0xNuller | Web + Android APK   | 根 `package.json`          | Cloudflare + GitHub Release |
-| DG-Kit   | 7 个 `@dg-kit/*` 包 | Kit 固定 Changesets 版本组 | npm                         |
-| DG-MCP   | `dg-mcp`            | `apps/mcp/package.json`    | npm                         |
+| 发布线   | 交付物                                      | 版本来源                   | 发布位置                    |
+| -------- | ------------------------------------------- | -------------------------- | --------------------------- |
+| 0xNuller | Web + Android APK + Windows EXE + macOS DMG | 根 `package.json`          | Cloudflare + GitHub Release |
+| DG-Kit   | 7 个 `@dg-kit/*` 包                         | Kit 固定 Changesets 版本组 | npm                         |
+| DG-MCP   | `dg-mcp`                                    | `apps/mcp/package.json`    | npm                         |
 
 DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只展示 0xNuller 产品。
 
@@ -20,7 +20,7 @@ DG-Kit 和 DG-MCP 不创建 GitHub tag 或 Release。GitHub Releases 页面只�
 
 ## 0xNuller 产品发布
 
-Web 和 Android 是同一个产品版本，必须来自同一个 `main` commit：
+Web、Android、Windows 和 macOS 是同一个产品版本，必须来自同一个 `main` commit：
 
 ```text
 根 package:             6.3.0
@@ -35,11 +35,11 @@ Release 标题:           0xNuller 6.3.0
 `Release · 0xNuller` 在统一 `CI` 对同一 main SHA 成功后运行：
 
 1. 检查 `vX.Y.Z` 尚未发布。
-2. 构建 Web 和签名 Android APK。
+2. 构建 Web 和签名 Android APK；取得同一 SHA 的统一 CI 生成的 Windows/macOS 安装器。
 3. 验证 APK 包名、版本、签名、ABI、权限和源码 SHA。
 4. 部署产品 Workers 与 Web。
 5. 用 `/version.json` 核对线上产品版本和源码 SHA。
-6. 创建唯一 GitHub Release，附件只放版本化 APK；源码归档由 GitHub 自动提供。
+6. 创建唯一 GitHub Release，附件包含版本化 APK、Windows x64 EXE 和 macOS arm64 DMG；源码归档由 GitHub 自动提供。
 
 产品版本未变化时工作流正常跳过，不能覆盖已有 APK 或 Release。
 

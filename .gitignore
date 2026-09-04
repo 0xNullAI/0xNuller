@@ -40,3 +40,6 @@ gen
 
 # 构建产物截图等
 /*.png
+
+# Native desktop frontend and installer output
+android/app/dist-desktop/

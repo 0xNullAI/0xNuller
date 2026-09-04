@@ -1,6 +1,6 @@
 name: Release · 0xNuller
 
-# Web and Android are one product release. Both are built from the exact verified
+# Web and native installers are one product release, built from the exact verified
 # main commit and share the root product version. npm packages are not handled here.
 
 on:
@@ -113,6 +113,28 @@ jobs:
           install -m 0644 "$apk" "$artifact"
           echo "path=$artifact" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve exact successful CI artifacts
+        if: steps.version.outputs.publish == 'true'
+        id: desktop-ci
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&status=success" --jq '.workflow_runs[0].id')
+          test -n "$run_id" && test "$run_id" != null
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.version.outputs.publish == 'true'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.desktop-ci.outputs.run_id }}
+          pattern: 0xnuller-*-${{ steps.source.outputs.sha }}
+          path: desktop-installers
+          merge-multiple: true
+      - name: Collect desktop installers
+        if: steps.version.outputs.publish == 'true'
+        run: node scripts/collect-desktop-installers.mjs desktop-installers release-desktop
+
       - name: Reconfirm current main source
         if: steps.version.outputs.publish == 'true'
         env:
@@ -155,7 +177,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.apk.outputs.path }}" \
+          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.apk.outputs.path }}" release-desktop/* \
             --target "${{ steps.source.outputs.sha }}" \
             --title "0xNuller ${{ steps.version.outputs.version }}" \
             --notes-file "docs/releases/${{ steps.version.outputs.version }}.md" \
@@ -169,6 +191,8 @@ jobs:
             echo ''
             echo '- Web: https://0xnullai.com'
             echo '- Android: `0xnuller-v${{ steps.version.outputs.version }}.apk`'
+            echo '- Windows: `0xnuller-v${{ steps.version.outputs.version }}-windows-x64.exe`'
+            echo '- macOS: `0xnuller-v${{ steps.version.outputs.version }}-macos-arm64.dmg`'
             echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
             echo '- Source: `${{ steps.source.outputs.sha }}`'
           } >> "$GITHUB_STEP_SUMMARY"

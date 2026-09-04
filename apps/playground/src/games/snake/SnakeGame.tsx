@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import { useModuleActive } from '@0xnullai/ui';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import { BOARD, useSnake, type SnakeEvent } from './use-snake';
 import { useGameDevice } from '../../use-game-device';
@@ -21,10 +22,24 @@ export default function SnakeGame() {
     [pulse],
   );
 
-  const { state, start, turn } = useSnake({ onEvent });
+  const active = useModuleActive();
+  const { state, start, turn } = useSnake({ onEvent, active });
 
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (
+        e.defaultPrevented ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        target?.closest('input,textarea,select,[contenteditable], [role=dialog]') ||
+        [...document.querySelectorAll('[role=dialog],#shl-drawer')].some(
+          (el) => el.getClientRects().length > 0,
+        )
+      )
+        return;
       const map: Record<string, Parameters<typeof turn>[0]> = {
         ArrowUp: 'up',
         ArrowDown: 'down',
@@ -42,7 +57,7 @@ export default function SnakeGame() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [turn]);
+  }, [turn, active]);
 
   const headKey = `${state.snake[0]?.x},${state.snake[0]?.y}`;
   const bodyKeys = new Set(state.snake.slice(1).map((p) => `${p.x},${p.y}`));

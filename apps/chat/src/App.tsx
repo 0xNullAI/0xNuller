@@ -1,3 +1,4 @@
+import { readPreference, writePreference } from '@0xnullai/settings';
 import { useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
 import {
   hasDeviceLease,
@@ -86,7 +87,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // The nickname comes from the unified account; when signed out it falls back to the
   // locally saved name, then to anonymous. A flaky account service must not lock
   // people out of a room, so there is always a usable value here.
-  const [displayName, setDisplayName] = useState(() => localStorage.getItem('dg-chat-name') ?? '');
+  const [displayName, setDisplayName] = useState(() => readPreference('dg-chat-name') ?? '');
   const [createRoomOpen, setCreateRoomOpen] = useState(
     () => new URL(window.location.href).searchParams.get('create') === '1',
   );
@@ -141,7 +142,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     openShellSettings('account');
     return false;
   }, [openShellSettings, signedIn]);
-  const [allowAi, setAllowAi] = useState(() => localStorage.getItem('dg-chat-allow-ai') === '1');
+  const [allowAi, setAllowAi] = useState(() => readPreference('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
   // longer has a toggle of its own.
 
@@ -377,7 +378,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   }, []);
 
   useEffect(() => {
-    if (displayName) localStorage.setItem('dg-chat-name', displayName);
+    if (displayName) writePreference('dg-chat-name', displayName);
   }, [displayName]);
 
   // usePeerRoom returns a fresh aggregate object whenever room state changes, while these
@@ -738,7 +739,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   // Persist the "allow AI control" toggle.
   useEffect(() => {
-    localStorage.setItem('dg-chat-allow-ai', allowAi ? '1' : '0');
+    writePreference('dg-chat-allow-ai', allowAi ? '1' : '0');
   }, [allowAi]);
 
   // The room agent's brain (only actually runs in the host's browser; triggered by @-ing it).

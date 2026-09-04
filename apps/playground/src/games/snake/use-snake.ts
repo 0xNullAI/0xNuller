@@ -12,7 +12,7 @@ export const BOARD = 17;
 
 export type Point = { x: number; y: number };
 export type Direction = 'up' | 'down' | 'left' | 'right';
-export type SnakeStatus = 'idle' | 'running' | 'over';
+export type SnakeStatus = 'idle' | 'running' | 'paused' | 'over';
 
 /** Things the host may want to react to — a device pulse, a sound, a score. */
 export type SnakeEvent = { type: 'ate'; length: number } | { type: 'over'; score: number };
@@ -109,12 +109,19 @@ export function advance(
 export interface UseSnakeOptions {
   /** Milliseconds per tick. */
   speedMs?: number;
+  active?: boolean;
   onEvent?: (event: SnakeEvent) => void;
   random?: () => number;
 }
 
-export function useSnake({ speedMs = 140, onEvent, random = Math.random }: UseSnakeOptions = {}) {
+export function useSnake({
+  speedMs = 140,
+  onEvent,
+  random = Math.random,
+  active = true,
+}: UseSnakeOptions = {}) {
   const [state, setState] = useState<SnakeState>(() => initialState(random));
+  if (!active && state.status === 'running') setState({ ...state, status: 'paused' });
   // Direction changes land between ticks; queueing them stops a fast
   // double-tap from reversing the snake into itself within one tick.
   const queued = useRef<Direction[]>([]);
@@ -125,7 +132,10 @@ export function useSnake({ speedMs = 140, onEvent, random = Math.random }: UseSn
 
   const start = useCallback(() => {
     queued.current = [];
-    setState({ ...initialState(random), status: 'running' });
+    setState((previous) => ({
+      ...(previous.status === 'paused' ? previous : initialState(random)),
+      status: 'running',
+    }));
   }, [random]);
 
   const turn = useCallback(
@@ -147,7 +157,7 @@ export function useSnake({ speedMs = 140, onEvent, random = Math.random }: UseSn
   );
 
   useEffect(() => {
-    if (state.status !== 'running') return;
+    if (!active || state.status !== 'running') return;
     const timer = window.setInterval(() => {
       setState((prev) => {
         let direction = prev.direction;
@@ -164,7 +174,7 @@ export function useSnake({ speedMs = 140, onEvent, random = Math.random }: UseSn
       });
     }, speedMs);
     return () => window.clearInterval(timer);
-  }, [state.status, speedMs, random]);
+  }, [state.status, speedMs, random, active]);
 
   return { state, start, turn };
 }

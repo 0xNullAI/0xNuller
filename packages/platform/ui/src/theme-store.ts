@@ -1,3 +1,4 @@
+import { subscribeMediaQuery } from './media-query';
 import { useEffect, useSyncExternalStore } from 'react';
 import { applyTheme, getEffectiveTheme } from './theme';
 import type { EffectiveTheme, ThemeMode } from './theme';
@@ -143,10 +144,10 @@ function subscribeAll(onChange: () => void): () => void {
     if (loadThemeMode() === 'auto') applyTheme('auto');
     onChange();
   };
-  media.addEventListener('change', onMedia);
+  const stopMedia = subscribeMediaQuery(media, onMedia);
   return () => {
     stopStore();
-    media.removeEventListener('change', onMedia);
+    stopMedia();
   };
 }
 

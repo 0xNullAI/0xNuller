@@ -36,6 +36,7 @@ export * from './z-layers';
 // Types only. Theme DOM writes stay inside theme-store.
 export type { ThemeMode, EffectiveTheme } from './theme';
 export * from './theme-store';
+export * from './media-query';
 export * from './use-safety-session';
 export * from './shell-context';
 export * from './shell-nav';

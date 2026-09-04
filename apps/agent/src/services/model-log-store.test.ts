@@ -29,3 +29,21 @@ describe('model log image redaction', () => {
     expect(serialized).toContain('[REDACTED_IMAGE]');
   });
 });
+
+it('bounds retained history and truncates oversized diagnostic payloads', () => {
+  let turns: ReturnType<typeof appendModelLogEvent> = [];
+  for (let iteration = 0; iteration < 150; iteration++) {
+    turns = appendModelLogEvent(turns, {
+      type: 'llm-turn-start',
+      sessionId: 'bounded',
+      iteration,
+      instructions: 'x'.repeat(100_000),
+      messages: [],
+      toolNames: [],
+    });
+  }
+  expect(turns.length).toBeLessThanOrEqual(100);
+  expect(JSON.stringify(turns).length).toBeLessThan(260_000);
+  expect(turns.at(-1)?.iteration).toBe(149);
+  expect(turns.at(-1)?.request?.rawRequest).toBe('[TRUNCATED]');
+});

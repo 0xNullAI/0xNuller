@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>NSBluetoothAlwaysUsageDescription</key><string>连接和控制您选择的蓝牙设备。</string>
+<key>NSBluetoothPeripheralUsageDescription</key><string>连接和控制您选择的蓝牙设备。</string>
+<key>NSCameraUsageDescription</key><string>仅在您开启 Video 时使用摄像头。</string>
+<key>NSMicrophoneUsageDescription</key><string>仅在您开始语音通话时使用麦克风。</string>
+</dict></plist>

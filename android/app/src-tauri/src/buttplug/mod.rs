@@ -96,6 +96,7 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
         .manage(state)
         .manage(coordinator)
         .invoke_handler(tauri::generate_handler![
+            crate::desktop_lifecycle::desktop_finish_exit,
             experimental_buttplug_initialize,
             experimental_buttplug_start_scan,
             experimental_buttplug_stop_scan,
@@ -883,7 +884,6 @@ async fn fail_session(state: &GateState, session_id: &str, reason: &str) {
     mark_terminal(state, session_id, reason, true);
 }
 
-#[cfg(target_os = "android")]
 fn request_lifecycle_stop(state: GateState, coordinator: ScanCoordinator) {
     tauri::async_runtime::spawn(async move {
         if coordinator
@@ -1308,4 +1308,16 @@ mod tests {
             "stale_safety"
         );
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) async fn stop_for_exit(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    run_global_stop(&app.state::<GateState>()).await.map_err(|error| error.message)?;
+    Ok(())
+}
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn pause_desktop(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    request_lifecycle_stop(app.state::<GateState>().inner().clone(), app.state::<ScanCoordinator>().inner().clone());
 }
