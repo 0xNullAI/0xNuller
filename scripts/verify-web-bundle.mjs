@@ -42,6 +42,10 @@ function assertOutsideStaticClosure(startKey, forbiddenSource, description) {
 }
 
 const entry = findRecord((record) => record.isEntry === true, 'the browser entry');
+const bootstrap = findRecord(
+  (record) => record.src === 'src/bootstrap.tsx',
+  'the mandatory application bootstrap',
+);
 const agent = findRecord((record) => record.src === 'src/modules/agent.tsx', 'the Agent route');
 const piRuntime = findRecord(
   (record) => record.src?.includes('packages/agent/providers-pi-http/src/index.ts'),
@@ -56,6 +60,10 @@ const buttplugWasm = findRecord(
   'the Buttplug WASM payload',
 );
 
+if (bootstrap) {
+  assertOutsideStaticClosure(bootstrap[0], 'providers-pi-http/src/index.ts', 'pi-ai runtime');
+  assertOutsideStaticClosure(bootstrap[0], 'buttplug_wasm-', 'Buttplug WASM');
+}
 if (entry) {
   assertOutsideStaticClosure(entry[0], 'providers-pi-http/src/index.ts', 'pi-ai runtime');
   assertOutsideStaticClosure(entry[0], 'buttplug_wasm-', 'Buttplug WASM');
@@ -91,6 +99,30 @@ function assetMetric(match) {
   if (!match) return 'missing';
   const source = readFileSync(path.join(webDist, match[1].file));
   return `${(source.byteLength / 1000).toFixed(2)} kB / ${(gzipSync(source).byteLength / 1000).toFixed(2)} kB gzip`;
+}
+
+if (entry && bootstrap) {
+  const initial = new Set([...staticClosure(entry[0]), ...staticClosure(bootstrap[0])]);
+  let raw = 0;
+  let gzip = 0;
+  for (const key of initial) {
+    const bytes = readFileSync(path.join(webDist, manifest[key].file));
+    raw += bytes.length;
+    gzip += gzipSync(bytes).length;
+  }
+  console.log(
+    `  initial JS (including mandatory bootstrap): ${initial.size} files, ${raw} bytes / ${gzip} bytes gzip`,
+  );
+  if (gzip > 300_000) fail(`initial JS exceeds the 300 kB gzip budget (${gzip} bytes)`);
+  for (const source of [
+    'src/DocsDialog.tsx',
+    'src/settings/SettingsPanel.tsx',
+    'src/profile/ProfileDialog.tsx',
+    'src/ContactsDialog.tsx',
+  ]) {
+    const dialog = findRecord((record) => record.src === source, source);
+    if (dialog && initial.has(dialog[0])) fail(`${source} is eagerly loaded`);
+  }
 }
 
 if (!process.exitCode) {

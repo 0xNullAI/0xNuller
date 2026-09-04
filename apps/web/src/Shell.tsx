@@ -1,7 +1,10 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { PersistenceNotice } from './PersistenceNotice';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { LogIn, Menu } from 'lucide-react';
 import {
   useTheme,
+  subscribeMediaQuery,
+  stopAllDevices,
   ShellChromeProvider,
   type ShellSettingsTab,
   ModuleActionsProvider,
@@ -25,11 +28,19 @@ import { MODULES, moduleIdFromPath } from './routes';
 import { Home } from './Home';
 import { Sidebar } from './Sidebar';
 import { DeviceBar } from './DeviceBar';
-import { ContactsDialog } from './ContactsDialog';
-import { ProfileDialog } from './profile/ProfileDialog';
-import { SettingsPanel } from './settings/SettingsPanel';
+const ContactsDialog = lazy(() =>
+  import('./ContactsDialog').then((module) => ({ default: module.ContactsDialog })),
+);
+const ProfileDialog = lazy(() =>
+  import('./profile/ProfileDialog').then((module) => ({ default: module.ProfileDialog })),
+);
+const SettingsPanel = lazy(() =>
+  import('./settings/SettingsPanel').then((module) => ({ default: module.SettingsPanel })),
+);
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
-import { DocsDialog } from './DocsDialog';
+const DocsDialog = lazy(() =>
+  import('./DocsDialog').then((module) => ({ default: module.DocsDialog })),
+);
 import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
@@ -118,8 +129,7 @@ function useIsNarrow(): boolean {
   useEffect(() => {
     const mq = window.matchMedia(NARROW_QUERY);
     const on = () => setNarrow(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    return subscribeMediaQuery(mq, on);
   }, []);
 
   return narrow;
@@ -224,6 +234,21 @@ export function Shell() {
     }, 0);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setDrawerOpen(false);
+      if (event.key === 'Tab') {
+        const controls = [
+          ...(drawerRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ??
+            []),
+        ].filter((el) => el.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
     };
     document.addEventListener('keydown', closeOnEscape);
     return () => {
@@ -237,18 +262,10 @@ export function Shell() {
   // configuring the AI), it opens **this** panel instead of the module standing up
   // one of its own. What a module gets is the position of the entry point, not a
   // second settings UI.
-  const openSettings = useCallback(
-    (tab: ShellSettingsTab = 'appearance') => {
-      // Waveforms, sensor automation and conversation data are owned by Agent's
-      // storage/runtime, but the settings panel is global. Mount Agent invisibly
-      // before opening settings so these shared pages do not appear and disappear
-      // depending on which module happened to be visited first.
-      ensureModuleOpened('agent');
-      setDrawerOpen(false);
-      setSettingsTab(tab);
-    },
-    [ensureModuleOpened],
-  );
+  const openSettings = useCallback((tab: ShellSettingsTab = 'appearance') => {
+    setDrawerOpen(false);
+    setSettingsTab(tab);
+  }, []);
 
   const go = useCallback(
     (moduleId: string | null) => {
@@ -304,6 +321,7 @@ export function Shell() {
 
           <main
             id="shl-slot"
+            inert={narrow && drawerOpen}
             aria-label={MODULES.find((module) => module.id === activeId)?.label ?? '首页'}
           >
             {/* Wide screens stack module actions above device state. Narrow screens use
@@ -338,6 +356,7 @@ export function Shell() {
               <DeviceBar activeSessionId={activeId} showConnect={activeId !== 'control'} />
             </div>
 
+            <PersistenceNotice />
             <div id="shl-content">
               {activeId === null ? <Home onOpen={go} /> : null}
               {opened.map((id) => {
@@ -384,44 +403,75 @@ export function Shell() {
                 ref={drawerRef}
                 id="shl-drawer"
                 aria-label="主导航"
-                className={`shl-drawer fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}
+                className={`shl-drawer flex flex-col fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}
               >
-                {sidebar}
+                <div className="min-h-0 flex-1">{sidebar}</div>
+                <button
+                  type="button"
+                  onClick={() => void stopAllDevices()}
+                  className="m-2 min-h-11 rounded-[var(--radius-ctl)] bg-[var(--danger-button)] px-3 text-white"
+                >
+                  紧急停止全部设备
+                </button>
               </aside>
             </>
           )}
 
           <OverlayProvider container={overlayRoot}>
-            {/* Signed-in only, and gated on `user` here as well as in the menu:
+            <ModuleErrorBoundary moduleId="settings" label="窗口">
+              <Suspense
+                fallback={
+                  <div
+                    role="status"
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--overlay-scrim)]"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsTab(null);
+                        setDocsOpen(false);
+                        setContactsOpen(false);
+                        setProfileUsername(null);
+                      }}
+                    >
+                      正在加载… 点击取消
+                    </button>
+                  </div>
+                }
+              >
+                {/* Signed-in only, and gated on `user` here as well as in the menu:
               signing out while the dialog is open has to close it rather than
               leave a surface up with nothing left to show. */}
-            {contactsOpen && user && (
-              <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
-            )}
-            {settingsTab && (
-              <SettingsPanel
-                initialTab={settingsTab}
-                user={user}
-                onUser={setUser}
-                onClose={() => setSettingsTab(null)}
-              />
-            )}
-            {docsOpen && (
-              <DocsDialog
-                onClose={() => {
-                  setDocsOpen(false);
-                  if (pathname === '/wiki') navigate('/');
-                }}
-              />
-            )}
-            {/* Public profiles remain readable while signed out. */}
-            {profileUsername && (
-              <ProfileDialog
-                username={profileUsername}
-                viewer={user}
-                onClose={() => setProfileUsername(null)}
-              />
-            )}
+                {contactsOpen && user && (
+                  <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
+                )}
+                {settingsTab && (
+                  <SettingsPanel
+                    initialTab={settingsTab}
+                    onLoadAgent={() => ensureModuleOpened('agent')}
+                    user={user}
+                    onUser={setUser}
+                    onClose={() => setSettingsTab(null)}
+                  />
+                )}
+                {docsOpen && (
+                  <DocsDialog
+                    onClose={() => {
+                      setDocsOpen(false);
+                      if (pathname === '/wiki') navigate('/');
+                    }}
+                  />
+                )}
+                {/* Public profiles remain readable while signed out. */}
+                {profileUsername && (
+                  <ProfileDialog
+                    username={profileUsername}
+                    viewer={user}
+                    onClose={() => setProfileUsername(null)}
+                  />
+                )}
+              </Suspense>
+            </ModuleErrorBoundary>
           </OverlayProvider>
 
           {/* Outside the overlay provider on purpose. The overlay container is
@@ -496,7 +546,7 @@ function ModuleSlot({
 }) {
   const layer = useModuleOverlayLayer(overlayRoot, mod.id, active);
   return (
-    <ShellChromeProvider openSettings={openSettings} signedIn={signedIn}>
+    <ShellChromeProvider openSettings={openSettings} signedIn={signedIn} active={active}>
       <ModuleActionsProvider container={actionsContainer}>
         <OverlayProvider container={layer}>
           <div

@@ -69,3 +69,11 @@ SDK 分支。
 ## 协议
 
 [MIT](../../LICENSE)
+
+## 性能与模块生命周期
+
+功能模块保留会话状态，同时通过 `useModuleActive` 暂停隐藏页面的键盘和游戏计时器。
+设备执行仍独立校验 lease。全局设置、文档、联系人和资料弹窗按需加载；只有进入
+波形/数据/诊断/设备安全页才挂载 Agent 设置 owner，通用设置不初始化 Agent。
+`verify-web-bundle.mjs` 将入口和必需 bootstrap 的静态依赖一起计入 300 kB gzip 预算。
+兼容性与原生系统要求见 [桌面说明](../../docs/desktop.md)。

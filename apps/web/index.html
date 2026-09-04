@@ -11,6 +11,23 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var supported =
+          window.CSS &&
+          CSS.supports('color', 'oklch(50% 0.1 180)') &&
+          CSS.supports('height', '100dvh') &&
+          typeof Object.hasOwn === 'function' &&
+          typeof Array.prototype.at === 'function';
+        if (!supported) {
+          var splash = document.getElementById('nx-splash');
+          if (splash) splash.remove();
+          document.getElementById('root').innerHTML =
+            '<main style="font:16px/1.6 system-ui;padding:32px;max-width:640px;margin:auto"><h1>请更新浏览器或系统 WebView</h1><p>0xNuller 需要 Chrome / Edge / Android System WebView 111+、Safari 16.4+ 或 Firefox 128+。请更新后重新打开应用。</p><p>Android 系统版本与 WebView 版本不同；可在应用商店更新 Android System WebView。macOS 请更新至 13.3 或更高版本。</p></main>';
+          window.__NULLER_UNSUPPORTED__ = true;
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

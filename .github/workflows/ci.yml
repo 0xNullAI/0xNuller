@@ -12,6 +12,8 @@ concurrency:
 
 jobs:
   checks:
+    outputs:
+      product: ${{ steps.changes.outputs.product }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -96,3 +98,46 @@ jobs:
       - name: Test DG-MCP
         if: github.event_name != 'pull_request' && steps.changes.outputs.mcp == 'true'
         run: npm run test:mcp:prepared
+
+  desktop:
+    needs: checks
+    if: needs.checks.outputs.product == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: universal-apple-darwin
+            bundles: dmg
+            artifact: macos-universal
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install macOS universal targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - run: npm run build:kit
+      - run: npm run typecheck -w @0xnullai/android
+      - run: npm run build -w @0xnullai/android
+      - run: cargo test --locked --manifest-path android/app/src-tauri/Cargo.toml
+      - name: Build desktop installer
+        run: npm run desktop:build -w @0xnullai/android -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 0xnuller-${{ matrix.artifact }}-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            android/app/src-tauri/target/**/bundle/dmg/*.dmg
+            android/app/src-tauri/target/**/bundle/nsis/*.exe

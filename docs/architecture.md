@@ -19,7 +19,7 @@ apps/web                           android/app
                  Web Bluetooth 或 Tauri BLE 传输
 ```
 
-`apps/web` 与 `android/app` 是组合外壳。功能 app 负责界面特有交互，需要跨界面保持一致的
+`apps/web` 与 `android/app` 是组合外壳；后者同时装配 Android、Windows 和 macOS 原生版本。功能 app 负责界面特有交互，需要跨界面保持一致的
 行为必须进入共享包。
 
 ## 分层职责

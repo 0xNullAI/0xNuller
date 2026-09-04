@@ -110,6 +110,9 @@ export function ModelLogsTab({
           label="记录模型日志"
         />
 
+        <p className="text-xs text-[var(--text-soft)]">
+          最多保留 100 条日志，大请求会截断；记录会批量保存到本机。
+        </p>
         {turns.length === 0 && (
           <div className="settings-log-empty">{enabled ? '暂无记录' : '未开启'}</div>
         )}

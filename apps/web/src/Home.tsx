@@ -66,10 +66,10 @@ export function Home({ onOpen }: { onOpen: (id: string) => void }) {
                 <h1 className="shl-home-title" style={{ fontFamily: 'var(--font-display)' }}>
                   {returning ? (
                     <>
-                      <span className="text-[var(--accent-strong)]">欢迎</span>回来
+                      <span className="text-[var(--accent-text)]">欢迎</span>回来
                     </>
                   ) : (
-                    <span className="text-[var(--accent-strong)]">0xNuller</span>
+                    <span className="text-[var(--accent-text)]">0xNuller</span>
                   )}
                 </h1>
               </div>

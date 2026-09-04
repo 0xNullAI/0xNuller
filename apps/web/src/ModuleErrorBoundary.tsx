@@ -24,6 +24,7 @@ interface Props {
 
 interface State {
   error: Error | null;
+  stopStatus: 'pending' | 'confirmed' | 'failed';
 }
 
 /** Vite/Chromium messages emitted when a tab still references a replaced hash chunk. */
@@ -34,10 +35,16 @@ export function isStaleModuleLoadError(error: Error): boolean {
 }
 
 export class ModuleErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, stopStatus: 'pending' };
+
+  private stopAttempt = 0;
+
+  componentWillUnmount(): void {
+    this.stopAttempt++;
+  }
 
   static getDerivedStateFromError(error: Error): State {
-    return { error };
+    return { error, stopStatus: 'pending' };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -45,7 +52,12 @@ export class ModuleErrorBoundary extends Component<Props, State> {
     // button has already gone down with it.
     // A failure here must not let the boundary itself throw — that would escalate the
     // crash into an unmount of the whole tree, exactly what this is here to prevent.
-    void stopAllDevices();
+    const attempt = ++this.stopAttempt;
+    const update = (stopped: boolean) => {
+      if (attempt === this.stopAttempt)
+        this.setState({ stopStatus: stopped ? 'confirmed' : 'failed' });
+    };
+    void stopAllDevices().then(update, () => update(false));
     console.error(`[shell] 模块 ${this.props.moduleId} 渲染失败`, error, info.componentStack);
   }
 
@@ -62,19 +74,42 @@ export class ModuleErrorBoundary extends Component<Props, State> {
         <div>
           <h2 className="text-lg font-semibold">{this.props.label} 加载失败</h2>
           <p className="mt-2 max-w-md text-sm text-[var(--text-soft)]">
-            {staleModule
-              ? '应用已更新，当前页面仍引用旧模块。重新加载后会使用最新版本。'
-              : '模块发生错误，设备已停止，其他模块不受影响'}
+            {this.state.stopStatus === 'pending'
+              ? '已请求停止，正在确认…'
+              : this.state.stopStatus === 'confirmed'
+                ? '模块发生错误，设备已确认停止'
+                : '未确认设备停止，请使用紧急停止或手动关闭设备'}
           </p>
+          {staleModule && (
+            <p className="mt-2 text-sm text-[var(--text-soft)]">
+              应用已更新，当前页面仍引用旧模块。确认停止后可重新加载。
+            </p>
+          )}
         </div>
         <pre className="max-w-full overflow-x-auto rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-left text-xs text-[var(--text-faint)]">
           {error.message}
         </pre>
         <button
           type="button"
+          disabled={staleModule && this.state.stopStatus === 'pending'}
           onClick={() => {
-            if (staleModule) window.location.reload();
-            else this.setState({ error: null });
+            if (staleModule) {
+              const attempt = ++this.stopAttempt;
+              this.setState({ stopStatus: 'pending' });
+              void stopAllDevices().then(
+                (stopped) => {
+                  if (attempt !== this.stopAttempt) return;
+                  this.setState({ stopStatus: stopped ? 'confirmed' : 'failed' });
+                  if (stopped) window.location.reload();
+                },
+                () => {
+                  if (attempt === this.stopAttempt) this.setState({ stopStatus: 'failed' });
+                },
+              );
+            } else {
+              this.stopAttempt++;
+              this.setState({ error: null, stopStatus: 'pending' });
+            }
           }}
           className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--button-text)]"
         >

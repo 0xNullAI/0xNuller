@@ -60,7 +60,7 @@ export function clearStopFailure(): void {
  * Use this everywhere instead of `stopAllSafetySessions` directly, so no
  * call site can silently drop the outcome again.
  */
-export async function stopAllDevices(): Promise<void> {
+export async function stopAllDevices(): Promise<boolean> {
   // Snapshot labels first: after a successful stop a module may drop its
   // session, and then a failed id would have nothing to resolve against.
   const labelById = new Map<string, string>();
@@ -70,9 +70,11 @@ export async function stopAllDevices(): Promise<void> {
   try {
     const result = await stopAllSafetySessions();
     publish(result.failed.map((f) => labelById.get(f.id) ?? f.id));
+    return result.failed.length === 0;
   } catch {
     // It is written not to reject. If it ever does, the honest reading is
     // "nothing is confirmed stopped", not "everything is fine".
     publish([...new Set(labelById.values())]);
+    return false;
   }
 }

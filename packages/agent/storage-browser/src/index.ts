@@ -3,3 +3,4 @@ export * from './browser-settings-defaults.js';
 export * from './browser-settings-store.js';
 export * from './browser-session-store.js';
 export * from './browser-session-trace-store.js';
+export * from './browser-diagnostic-store.js';

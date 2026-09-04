@@ -32,7 +32,7 @@
   "triggers": { "crons": ["17 4 * * *"] },
 
   "vars": {
-    "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
+    "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost",
   },
 
   // 向 Chat 同步账户侧的私聊状态变化。

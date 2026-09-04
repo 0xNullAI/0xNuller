@@ -8,7 +8,7 @@ import { emitVersionJson, resolveBuildId } from '../../scripts/vite-version.ts';
 import productPackage from '../../package.json' with { type: 'json' };
 
 /**
- * The unified shell. The four modules' source trees still live under
+ * The unified shell. The seven modules' source trees still live under
  * apps/<module>/src; this config mounts them by route.
  *
  * A module's **build-time contract** has to move along with it: Agent's update
@@ -90,6 +90,11 @@ export default defineConfig({
     tailwindcss(),
     emitVersionJson(buildId, productPackage.version),
   ],
-  build: { outDir: 'dist', emptyOutDir: true, target: 'esnext', manifest: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    target: ['chrome111', 'safari16.4', 'firefox128'],
+    manifest: true,
+  },
   server: { port: 5170, proxy },
 });

@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/android",
-  "version": "6.3.6",
+  "version": "6.3.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "android:dev": "tauri android dev",
-    "android:build": "tauri android build"
+    "android:build": "tauri android build",
+    "build:desktop": "vite build --mode desktop",
+    "dev:desktop": "vite --mode desktop",
+    "desktop:build": "tauri build --config src-tauri/tauri.desktop.conf.json",
+    "desktop:dev": "tauri dev --config src-tauri/tauri.desktop.conf.json",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@0xnullai/device-runtime": "0.1.0",
@@ -25,7 +30,8 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "@dg-kit/safety": "1.16.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

@@ -116,7 +116,7 @@
   }
 
   .docs-body a {
-    color: var(--accent-strong);
+    color: var(--accent-text);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
@@ -234,7 +234,7 @@
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
     background: var(--accent-soft);
-    color: var(--accent-strong);
+    color: var(--accent-text);
     box-shadow: 0 0 24px var(--accent-soft);
   }
 
@@ -318,7 +318,7 @@
   }
 
   .shl-home-card-title {
-    color: var(--accent-strong);
+    color: var(--accent-text);
     font-size: 0.95rem;
     font-weight: 650;
   }

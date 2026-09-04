@@ -195,7 +195,7 @@ describe('外壳与设备控制权', () => {
     expect(menuItems.at(-1)).toBe(download);
   });
 
-  it('从任意模块打开设置都会注册共享波形页', async () => {
+  it('设置导航稳定，只有进入波形页才挂载 Agent', async () => {
     window.history.pushState(null, '', '/control');
     await act(async () => {
       render(<Shell />);
@@ -205,7 +205,10 @@ describe('外壳与设备控制权', () => {
     fireEvent.click(screen.getByRole('button', { name: '未登录' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '软件设置' }));
 
-    expect(await screen.findByRole('button', { name: '波形' })).toBeTruthy();
+    const waveforms = await screen.findByRole('button', { name: '波形' });
+    expect(screen.queryByText('Agent 模块')).toBeNull();
+    fireEvent.click(waveforms);
+    expect(await screen.findByText('波形内容')).toBeTruthy();
     expect(screen.getByText('Control 模块')).toBeTruthy();
   });
 

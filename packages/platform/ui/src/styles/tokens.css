@@ -25,6 +25,7 @@
   --accent: #58c8f2;
   --accent-soft: rgba(88, 200, 242, 0.1);
   --accent-strong: #3ab5e6;
+  --accent-text: #087a9f;
   --accent-hover: rgba(88, 200, 242, 0.16);
   --highlight: #3ab5e6;
   /* A readable red, not a tint. This was #f0a2b2, a pale pink: white text on
@@ -169,6 +170,7 @@
 }
 
 :root[data-theme='dark'] {
+  --accent-text: var(--accent);
   --bg: #080808;
   --bg-elevated: #141414;
   --bg-strong: #141414;

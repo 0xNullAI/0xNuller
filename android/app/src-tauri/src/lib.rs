@@ -6,6 +6,7 @@ mod buttplug;
 #[cfg(target_os = "android")]
 mod buttplug_android;
 mod scan_coordinator;
+mod desktop_lifecycle;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,6 +33,8 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
     .run(|app, event| {
+      #[cfg(any(target_os = "macos", target_os = "windows"))]
+      desktop_lifecycle::handle_event(app, &event);
       // Emit an `app://paused` event to the webview on exit so the JS
       // lifecycle-safety wrapper can fire emergencyStop. Android's native
       // onPause is not a stable Tauri 2.10 RunEvent variant; backgrounding

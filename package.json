@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.3.6",
+  "version": "6.3.7",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
@@ -65,7 +65,9 @@
     "check:structure": "node scripts/check-architecture.mjs && node scripts/check-test-discovery.mjs",
     "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
     "verify:data": "node scripts/verify-data-platform.mjs",
-    "account:role": "node scripts/set-account-role.mjs"
+    "account:role": "node scripts/set-account-role.mjs",
+    "desktop:build": "npm run build:kit && npm run desktop:build -w @0xnullai/android --",
+    "desktop:dev": "npm run build:kit && npm run desktop:dev -w @0xnullai/android --"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

@@ -11,6 +11,7 @@
 | 部署           | [deploy.md](deploy.md)                         | Worker、D1/R2/DO、回滚和生产前检查   |
 | Product 发布   | [platform-release.md](platform-release.md)     | `dev -> main`、版本与 Release        |
 | Android 发布   | [android-release.md](android-release.md)       | APK、签名和产物验证                  |
+| 桌面版本       | [desktop.md](desktop.md)                       | Windows/macOS 构建、蓝牙、权限及验收 |
 | Agent 架构     | [agent-architecture.md](agent-architecture.md) | Runtime、Provider、工具和浏览器组合  |
 
 用户操作放在产品内置帮助和对应 app README；版本说明位于 `docs/releases/`。迁移、运维和发布

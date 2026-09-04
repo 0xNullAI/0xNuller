@@ -1,6 +1,6 @@
 # @0xnullai/android
 
-The Android app. **One APK containing all seven modules** — Control, Agent,
+The shared native host. Android produces **one APK containing all seven modules** — Control, Agent,
 Voice, Video, Chat, Playground, Market — not one APK per module.
 
 ## Why this exists
@@ -10,7 +10,7 @@ Android WebView does not implement Web Bluetooth. So the unified shell
 [`@mnlphlp/plugin-blec`](https://github.com/MnlPhlp/tauri-plugin-blec) (BLE
 through Android's native APIs).
 
-`src/main.tsx` mounts the same `Shell` component the web build mounts, and
+`src/bootstrap.tsx` mounts the same `Shell` component the web build mounts, and
 supplies the native pieces through `NativeBridgeProvider` from
 `@0xnullai/native`. The shell and every module are shared source, not a
 port — `src/styles.css` even `@import`s the shell's own stylesheet, so the
@@ -45,7 +45,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v6.3.6`, `0xNuller 6.3.6`, `6.3.6`, and `6003006`.
+code all advance together: `v6.3.7`, `0xNuller 6.3.7`, `6.3.7`, and `6003007`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed APK and Latest badge.
 
@@ -135,7 +135,7 @@ npm run android:build -- --apk
 ## Architecture
 
 ```
-Shell (@0xnullai/web) + six modules, reused via vite alias
+Shell (@0xnullai/web) + seven modules, reused via vite alias
   ↓
 NativeBridgeProvider (@0xnullai/native) — the one injection point
   ↓ three seams, each kept in its original shape:
@@ -215,3 +215,14 @@ requests native global stop in `onPause` and `onDestroy`, before WebView timer s
 shared shell safety controller independently stops on lease handoff and browser/Tauri lifecycle
 signals. No physical-device or Android lifecycle validation has been performed. See
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+## Windows and macOS
+
+The same native host also builds independent Windows x64 and macOS universal applications.
+Use `npm run desktop:dev` or `npm run desktop:build -- --bundles app` from the repository root.
+The desktop overlay is `src-tauri/tauri.desktop.conf.json`; Android identity/configuration remains
+unchanged. Desktop identity is `ai.nullai.desktop`. See [desktop.md](../../docs/desktop.md).
+
+Android 8+ remains the OS minimum, but the installed Android System WebView must be version 111+.
+Older engines show an upgrade message before the application bootstrap is loaded. Removing CSS
+cascade layers is not a promise that Tailwind 4 supports the original Android 8 WebView.
