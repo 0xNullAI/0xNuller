@@ -115,6 +115,10 @@ export const ItemPatchSchema = z
     author: z.string().trim().max(30).optional(),
     icon: z.string().trim().max(8).optional(),
     tags: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
+    // Scene owners may update the actual script as well as its display metadata. The
+    // Worker checks this value against the stored item type before writing it, so a
+    // caller cannot turn a solo scene into a multiplayer scene (or edit waveforms here).
+    content: z.union([ScenarioContentSchema, MultiSceneContentSchema]).optional(),
   })
   .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
 export type ItemPatch = z.infer<typeof ItemPatchSchema>;

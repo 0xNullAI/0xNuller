@@ -3,6 +3,8 @@
   "ignoreIssues": {
     // Public compatibility alias: existing DG-MCP consumers still import the old name.
     "packages/kit/protocol/src/constants.ts": ["duplicates"],
+    // Standalone launch-film asset loaded directly by promo/launch-film/index.html.
+    "promo/launch-film/player.js": ["files"],
   },
   "workspaces": {
     "android/app": {

@@ -31,7 +31,7 @@ Worker 使用独立的 `MARKET_IP_PEPPER` 进行上传限流；不要把它写�
 
 - `GET /api/items` — 浏览和搜索
 - `POST /api/items`、`/api/items/batch` — 登录后上传
-- `PATCH /api/items/:id` — 所有者或管理员修改元数据
+- `PATCH /api/items/:id` — 所有者或管理员修改元数据；场景条目也可修改完整剧本内容
 - `DELETE /api/items/:id` — 所有者或管理员删除
 - `GET /api/items/admin` — 管理员查看内容
 - `PATCH /api/items/:id/moderation` — 管理员隐藏或恢复内容

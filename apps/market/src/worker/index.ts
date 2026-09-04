@@ -2,7 +2,9 @@ import {
   annotateScenarioContent,
   ItemPatchSchema,
   BatchUploadSchema,
+  MultiSceneContentSchema,
   ModerationPatchSchema,
+  ScenarioContentSchema,
   UploadSchema,
 } from '../shared/schema';
 import type { ItemPatchRow, InsertItem } from './db';
@@ -359,10 +361,11 @@ export async function requireMarketAdmin(
   if (access !== 'admin') throw new MarketRequestError('需要管理员权限', 403);
 }
 
-// Change metadata: empty string / empty array -> null (clears the field).
+// Change metadata or scene content: empty string / empty array -> null (clears metadata).
 // Authentication is account ownership; account administrators can moderate old items.
 async function handleEditPatch(request: Request, env: Env, id: string): Promise<Response> {
-  if (!(await getItem(env.DB, id))) return err('未找到该条目', 404);
+  const item = await getItem(env.DB, id);
+  if (!item) return err('未找到该条目', 404);
   const access = await marketAccess(request, env, id);
   if (access === 'unauthorized') return err('未登录', 401);
   if (access !== 'owner' && access !== 'admin') return err('无权限', 403);
@@ -386,6 +389,19 @@ async function handleEditPatch(request: Request, env: Env, id: string): Promise<
   if (p.author !== undefined) row.author = p.author || null;
   if (p.icon !== undefined) row.icon = p.icon || null;
   if (p.tags !== undefined) row.tags = p.tags.length ? p.tags.join(',') : null;
+  if (p.content !== undefined) {
+    if (item.type === 'scenario') {
+      const content = ScenarioContentSchema.safeParse(p.content);
+      if (!content.success) return err('剧本内容与条目类型不匹配', 400);
+      row.content = JSON.stringify(annotateScenarioContent(content.data));
+    } else if (item.type === 'multi-scene') {
+      const content = MultiSceneContentSchema.safeParse(p.content);
+      if (!content.success) return err('剧本内容与条目类型不匹配', 400);
+      row.content = JSON.stringify(content.data);
+    } else {
+      return err('波形内容暂不支持在这里修改', 400);
+    }
+  }
 
   const ok = await updateItemMeta(env.DB, id, row);
   if (!ok) return err('未找到该条目', 404);
