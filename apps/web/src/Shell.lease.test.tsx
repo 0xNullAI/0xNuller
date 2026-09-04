@@ -204,6 +204,10 @@ describe('外壳与设备控制权', () => {
     expect(screen.queryByRole('button', { name: '波形' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '未登录' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '软件设置' }));
+    // Wait for the actual lazy import, not Testing Library's one-second polling budget.
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
 
     const waveforms = await screen.findByRole('button', { name: '波形' });
     expect(screen.queryByText('Agent 模块')).toBeNull();
