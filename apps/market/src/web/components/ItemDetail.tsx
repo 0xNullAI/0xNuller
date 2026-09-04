@@ -9,6 +9,7 @@ import type {
   MultiSceneContent,
 } from '../../shared/schema';
 import { isExtraLargeScenario } from '../../shared/schema';
+import { MAX_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
 import { deleteItem, fetchItemAccess, updateItem, markDownloaded } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
@@ -17,6 +18,12 @@ interface Props {
   onClose: () => void;
   onUpdated?: (item: MarketItem) => void;
   onDeleted?: (id: string) => void;
+}
+
+interface EditableRole {
+  name: string;
+  description: string;
+  aiPlayable: boolean;
 }
 
 function download(filename: string, text: string): void {
@@ -42,6 +49,23 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
   const [eDesc, setEDesc] = useState(item.description ?? '');
   const [eIcon, setEIcon] = useState(item.icon ?? '');
   const [eTags, setETags] = useState(item.tags.join(', '));
+  const [ePrompt, setEPrompt] = useState(
+    item.type === 'scenario' ? (item.content as ScenarioContent).prompt : '',
+  );
+  const initialMulti = item.type === 'multi-scene' ? (item.content as MultiSceneContent) : null;
+  const [eSetting, setESetting] = useState(initialMulti?.setting ?? '');
+  const [ePlayerMin, setEPlayerMin] = useState(String(initialMulti?.playerCount?.min ?? 2));
+  const [ePlayerMax, setEPlayerMax] = useState(String(initialMulti?.playerCount?.max ?? 4));
+  const [eAiMode, setEAiMode] = useState<NonNullable<MultiSceneContent['aiMode']>>(
+    initialMulti?.aiMode ?? 'none',
+  );
+  const [eRoles, setERoles] = useState<EditableRole[]>(
+    initialMulti?.roles.map((role) => ({
+      name: role.name,
+      description: role.description ?? '',
+      aiPlayable: role.aiPlayable ?? false,
+    })) ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [editErr, setEditErr] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -64,12 +88,12 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
       ? {
           name: view.name,
           description: view.description,
-          frames: (item.content as WaveformContent).frames,
-          modality: (item.content as WaveformContent).modality ?? 'electrostimulation',
+          frames: (view.content as WaveformContent).frames,
+          modality: (view.content as WaveformContent).modality ?? 'electrostimulation',
         }
       : view.type === 'multi-scene'
-        ? { name: view.name, icon: view.icon, ...(item.content as MultiSceneContent) }
-        : { name: view.name, icon: view.icon, prompt: (item.content as ScenarioContent).prompt },
+        ? { name: view.name, icon: view.icon, ...(view.content as MultiSceneContent) }
+        : { name: view.name, icon: view.icon, prompt: (view.content as ScenarioContent).prompt },
     null,
     2,
   );
@@ -93,6 +117,21 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     setEDesc(view.description ?? '');
     setEIcon(view.icon ?? '');
     setETags(view.tags.join(', '));
+    if (view.type === 'scenario') setEPrompt((view.content as ScenarioContent).prompt);
+    if (view.type === 'multi-scene') {
+      const content = view.content as MultiSceneContent;
+      setESetting(content.setting);
+      setEPlayerMin(String(content.playerCount?.min ?? 2));
+      setEPlayerMax(String(content.playerCount?.max ?? 4));
+      setEAiMode(content.aiMode ?? 'none');
+      setERoles(
+        content.roles.map((role) => ({
+          name: role.name,
+          description: role.description ?? '',
+          aiPlayable: role.aiPlayable ?? false,
+        })),
+      );
+    }
     setEditErr('');
     setEditing(true);
   };
@@ -106,11 +145,39 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
       .map((t) => t.trim())
       .filter(Boolean)
       .slice(0, 20);
+    let content: ItemPatch['content'];
+    if (view.type === 'scenario') {
+      if (!ePrompt.trim()) return setEditErr('剧本内容不能为空');
+      content = { prompt: ePrompt };
+    } else if (view.type === 'multi-scene') {
+      if (!eSetting.trim()) return setEditErr('世界观 / 背景不能为空');
+      const min = Number(ePlayerMin);
+      const max = Number(ePlayerMax);
+      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 50 || min > max) {
+        return setEditErr('推荐人数需为 1–50，且最少人数不能超过最多人数');
+      }
+      const roles = eRoles
+        .map((role) => ({
+          name: role.name.trim(),
+          ...(role.description.trim() ? { description: role.description.trim() } : {}),
+          ...(role.aiPlayable ? { aiPlayable: true } : {}),
+        }))
+        .filter((role) => role.name);
+      if (roles.length === 0) return setEditErr('至少需要一个角色');
+      content = {
+        setting: eSetting.trim(),
+        playerCount: { min, max },
+        aiMode: eAiMode,
+        roles,
+      };
+    }
+
     const patch: ItemPatch = {
       name: eName.trim(),
       author: eAuthor.trim(),
       description: eDesc.trim(),
       tags,
+      ...(content ? { content } : {}),
       ...(hasIcon ? { icon: eIcon.trim() } : {}),
     };
 
@@ -124,6 +191,7 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
         description: patch.description || undefined,
         icon: hasIcon ? eIcon.trim() || undefined : view.icon,
         tags,
+        content: content ?? view.content,
       };
       setView(updated);
       onUpdated?.(updated);
@@ -149,7 +217,10 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     }
   };
 
-  const pulse = view.type === 'waveform' ? (item.content as WaveformContent).pulse : undefined;
+  const updateRole = (index: number, patch: Partial<EditableRole>) =>
+    setERoles((roles) => roles.map((role, i) => (i === index ? { ...role, ...patch } : role)));
+
+  const pulse = view.type === 'waveform' ? (view.content as WaveformContent).pulse : undefined;
 
   return (
     <Overlay onDismiss={onClose} className="mkt-scope">
@@ -174,12 +245,12 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
               : '单人场景'}{' '}
           · {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
           {view.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
-          {view.type === 'scenario' && isExtraLargeScenario(item.content as ScenarioContent) && (
+          {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent) && (
             <span className="scale-badge">超大场景</span>
           )}
           {view.type === 'waveform' && (
             <span className="agent-badge">
-              {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
+              {(view.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
             </span>
           )}
         </p>
@@ -188,11 +259,130 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
 
         {editing && (
           <div className="admin-edit">
-            <p className="admin-edit-title">✏️ 编辑（仅元数据）</p>
+            <p className="admin-edit-title">✏️ 编辑内容</p>
             <label className="field">
               <span>名称 *</span>
               <input value={eName} onChange={(e) => setEName(e.target.value)} maxLength={60} />
             </label>
+            {view.type === 'scenario' && (
+              <label className="field">
+                <span>
+                  剧本内容 * · {ePrompt.length.toLocaleString()} /{' '}
+                  {MAX_SCENARIO_PROMPT_LENGTH.toLocaleString()}
+                </span>
+                <textarea
+                  rows={12}
+                  value={ePrompt}
+                  onChange={(e) => setEPrompt(e.target.value)}
+                  maxLength={MAX_SCENARIO_PROMPT_LENGTH}
+                />
+              </label>
+            )}
+            {view.type === 'multi-scene' && (
+              <>
+                <label className="field">
+                  <span>世界观 / 背景 *</span>
+                  <textarea
+                    rows={7}
+                    value={eSetting}
+                    onChange={(e) => setESetting(e.target.value)}
+                    maxLength={8000}
+                  />
+                </label>
+                <div className="row">
+                  <label className="field">
+                    <span>推荐人数（最少）</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={ePlayerMin}
+                      onChange={(e) => setEPlayerMin(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>推荐人数（最多）</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={ePlayerMax}
+                      onChange={(e) => setEPlayerMax(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>AI 参与</span>
+                    <select
+                      value={eAiMode}
+                      onChange={(e) =>
+                        setEAiMode(e.target.value as NonNullable<MultiSceneContent['aiMode']>)
+                      }
+                    >
+                      <option value="none">纯人（无 AI）</option>
+                      <option value="solo">单个 AI</option>
+                      <option value="multi">多个 AI</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="field">
+                  <span>角色 * — 每人扮演一个</span>
+                  <div className="role-list">
+                    {eRoles.map((role, index) => (
+                      <div key={index} className="role-item">
+                        <div className="role-row">
+                          <input
+                            className="role-name"
+                            value={role.name}
+                            onChange={(e) => updateRole(index, { name: e.target.value })}
+                            maxLength={40}
+                            placeholder={`角色 ${index + 1}`}
+                          />
+                          <input
+                            className="role-desc"
+                            value={role.description}
+                            onChange={(e) => updateRole(index, { description: e.target.value })}
+                            maxLength={2000}
+                            placeholder="角色描述 / AI 人设"
+                          />
+                          <label className="role-ai">
+                            <input
+                              type="checkbox"
+                              checked={role.aiPlayable}
+                              onChange={(e) => updateRole(index, { aiPlayable: e.target.checked })}
+                            />
+                            AI
+                          </label>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label={`删除角色 ${index + 1}`}
+                            onClick={() =>
+                              setERoles((roles) => roles.filter((_, i) => i !== index))
+                            }
+                            disabled={eRoles.length <= 1}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn add-role"
+                    onClick={() =>
+                      setERoles((roles) => [
+                        ...roles,
+                        { name: '', description: '', aiPlayable: false },
+                      ])
+                    }
+                    disabled={eRoles.length >= 12}
+                  >
+                    + 加角色
+                  </button>
+                </div>
+              </>
+            )}
             <div className="row">
               <label className="field">
                 <span>昵称</span>
@@ -239,10 +429,10 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
         )}
 
         {view.type === 'waveform' ? (
-          <WaveformPreview frames={(item.content as WaveformContent).frames} height={96} />
+          <WaveformPreview frames={(view.content as WaveformContent).frames} height={96} />
         ) : view.type === 'multi-scene' ? (
           (() => {
-            const c = item.content as MultiSceneContent;
+            const c = view.content as MultiSceneContent;
             const aiLabel =
               c.aiMode === 'solo' ? '单个 AI' : c.aiMode === 'multi' ? '多个 AI' : '纯人';
             return (
@@ -271,7 +461,7 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
             );
           })()
         ) : (
-          <pre className="prompt-box">{(item.content as ScenarioContent).prompt}</pre>
+          <pre className="prompt-box">{(view.content as ScenarioContent).prompt}</pre>
         )}
 
         <div className="modal-actions">

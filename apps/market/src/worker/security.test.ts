@@ -69,6 +69,92 @@ describe('Market account ownership', () => {
     await expect(requireMarketAdmin(request, withAccess('admin'))).resolves.toBeUndefined();
   });
 
+  it('lets an owner update the scene script but rejects another account', async () => {
+    const row = {
+      id: 'scene-1',
+      type: 'scenario',
+      name: '旧剧本',
+      description: null,
+      author: 'alice',
+      icon: '🎭',
+      tags: null,
+      content: '{"prompt":"旧内容"}',
+      downloads: 0,
+      views: 0,
+      hidden: 0,
+      created_at: 1,
+    };
+    const updates: Array<{ sql: string; values: unknown[] }> = [];
+    const db = {
+      prepare: vi.fn((sql: string) => ({
+        bind: vi.fn((...values: unknown[]) => ({
+          first: vi.fn(async () => row),
+          run: vi.fn(async () => {
+            updates.push({ sql, values });
+            return { meta: { changes: 1 } };
+          }),
+        })),
+      })),
+    };
+    const patch = new Request('https://market.test/api/items/scene-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer alice' },
+      body: JSON.stringify({ name: '新剧本', content: { prompt: '新内容' } }),
+    });
+
+    const ownerResponse = await worker.fetch(patch, {
+      DB: db,
+      AUTH: { marketItemAccess: async () => 'owner' as const },
+    } as never);
+
+    expect(ownerResponse.status).toBe(200);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.sql).toContain('name = ?');
+    expect(updates[0]!.sql).toContain('content = ?');
+    expect(updates[0]!.values).toEqual(['新剧本', '{"prompt":"新内容"}', 'scene-1']);
+
+    const otherResponse = await worker.fetch(
+      new Request('https://market.test/api/items/scene-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bob' },
+        body: JSON.stringify({ content: { prompt: '越权内容' } }),
+      }),
+      {
+        DB: db,
+        AUTH: { marketItemAccess: async () => 'user' as const },
+      } as never,
+    );
+    expect(otherResponse.status).toBe(403);
+    expect(updates).toHaveLength(1);
+  });
+
+  it('lets an owner delete a scene but rejects another account', async () => {
+    const deletes: string[] = [];
+    const db = {
+      prepare: vi.fn((_sql: string) => ({
+        bind: vi.fn((id: string) => ({
+          run: vi.fn(async () => {
+            deletes.push(id);
+            return { meta: { changes: 1 } };
+          }),
+        })),
+      })),
+    };
+    const remove = (access: 'owner' | 'user') =>
+      worker.fetch(
+        new Request('https://market.test/api/items/scene-1', {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer session' },
+        }),
+        { DB: db, AUTH: { marketItemAccess: async () => access } } as never,
+      );
+
+    expect((await remove('user')).status).toBe(403);
+    expect(deletes).toEqual([]);
+    expect((await remove('owner')).status).toBe(200);
+    expect(deletes).toEqual(['scene-1']);
+  });
+
   it('serves the moderation queue and visibility action through account roles', async () => {
     const row = {
       id: 'item-1',

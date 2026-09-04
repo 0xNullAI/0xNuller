@@ -214,6 +214,7 @@ export interface ItemPatchRow {
   author?: string | null;
   icon?: string | null;
   tags?: string | null;
+  content?: string;
 }
 
 export async function updateItemMeta(
@@ -221,7 +222,7 @@ export async function updateItemMeta(
   id: string,
   patch: ItemPatchRow,
 ): Promise<boolean> {
-  const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags'];
+  const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags', 'content'];
   const sets: string[] = [];
   const binds: unknown[] = [];
   for (const col of cols) {

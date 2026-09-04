@@ -32,7 +32,12 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { ...accountHeaders(), ...init?.headers },
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) throw new Error((data.error as string) || `请求失败 (${res.status})`);
+  if (!res.ok) {
+    // Keep protocol details in the network layer. People who cannot manage an item only
+    // need the actionable result; exposing a raw 403 in the interface adds no value.
+    if (res.status === 403) throw new Error('无权限');
+    throw new Error((data.error as string) || `请求失败 (${res.status})`);
+  }
   return data as T;
 }
 
