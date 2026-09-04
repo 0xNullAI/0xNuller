@@ -10,67 +10,376 @@
   <body>
     <main id="deck" class="deck" aria-label="0xNuller 交互式产品演示">
       <section class="slide intro active" data-slide="intro" aria-label="隆重介绍">
-        <div class="intro-copy"><small>隆重介绍</small><h1>0xNuller</h1><div class="intro-line" aria-hidden="true"></div><p>你的 AI 生活，下一站。</p></div>
+        <div class="intro-copy">
+          <small>隆重介绍</small>
+          <h1>0xNuller</h1>
+          <div class="intro-line" aria-hidden="true"></div>
+          <p>你的 AI 生活，下一站。</p>
+        </div>
       </section>
 
       <section class="slide product" data-slide="product" aria-label="统一的 0xNuller">
-        <div class="statement"><small>0xNuller</small><h2>一个入口。<br />不同体验。</h2></div>
+        <div class="statement">
+          <small>0xNuller</small>
+          <h2>一个入口。<br />不同体验。</h2>
+        </div>
         <div class="shell shell-float">
-          <aside class="sidebar"><div class="switcher"><b>Control</b><span>⌄</span></div><div class="side-section"><small>输出设备</small><span class="side-row selected">郊狼</span><span class="side-row">负鼠</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
+          <aside class="sidebar">
+            <div class="switcher"><b>Control</b><span>⌄</span></div>
+            <div class="side-section">
+              <small>输出设备</small><span class="side-row selected">郊狼</span
+              ><span class="side-row">负鼠</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
           <div class="workspace">
-            <div class="devicebar"><button class="stop">■ 全部归零</button><span class="device-chip active"><i></i><b>郊狼</b><em>A18</em><em>B0</em><small>输出中</small><span>82%</span></span><span class="device-chip"><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span></div>
-            <div class="control-view"><header><div><h3>郊狼</h3><p>A/B 通道与波形</p></div><span class="status success">已连接 · 82%</span></header><div class="channel-grid"><article><small>A 通道</small><strong>18</strong><span>/ 30</span><div class="strength"><i style="width:60%"></i></div><footer><button>−</button><b>舒缓</b><button>＋</button></footer></article><article><small>B 通道</small><strong>0</strong><span>/ 30</span><div class="strength"><i style="width:0%"></i></div><footer><button>−</button><b>未播放</b><button>＋</button></footer></article></div></div>
+            <div class="devicebar">
+              <button class="stop">■ 全部归零</button
+              ><span class="device-chip active"
+                ><i></i><b>郊狼</b><em>A18</em><em>B0</em><small>输出中</small
+                ><span>82%</span></span
+              ><span class="device-chip"
+                ><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span
+              >
+            </div>
+            <div class="control-view">
+              <header>
+                <div>
+                  <h3>郊狼</h3>
+                  <p>A/B 通道与波形</p>
+                </div>
+                <span class="status success">已连接 · 82%</span>
+              </header>
+              <div class="channel-grid">
+                <article>
+                  <small>A 通道</small><strong>18</strong><span>/ 30</span>
+                  <div class="strength"><i style="width: 60%"></i></div>
+                  <footer><button>−</button><b>舒缓</b><button>＋</button></footer>
+                </article>
+                <article>
+                  <small>B 通道</small><strong>0</strong><span>/ 30</span>
+                  <div class="strength"><i style="width: 0%"></i></div>
+                  <footer><button>−</button><b>未播放</b><button>＋</button></footer>
+                </article>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section class="slide module-slide light" data-slide="agent" aria-label="Agent">
         <div class="shell">
-          <aside class="sidebar"><div class="switcher"><b>Agent</b><span>⌄</span></div><button class="new-row">＋ 新对话</button><div class="side-section"><small>今天</small><span class="side-row selected">更柔和的震动</span><span class="side-row">周末场景</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
-          <div class="workspace"><div class="devicebar"><button class="stop">■ 全部归零</button><span class="device-chip"><i></i><b>郊狼</b><em>A0</em><em>B0</em><small>待机</small><span>82%</span></span><span class="device-chip target"><i></i><b>负鼠</b><em>A32</em><em>B0</em><small>输出中</small><span>64%</span></span><span class="device-chip sensor"><i></i><b>爪印</b><em>压力 41%</em><small>已连接</small><span>91%</span></span></div><div class="agent-view"><div class="conversation"><div class="bubble user">让负鼠 A 通道使用更柔和的震动。</div><div class="trace"><i>✓</i><div><b>已选择目标：负鼠</b><small>A 通道 · 强度上限 40</small></div></div><div class="bubble assistant">已将负鼠 A 通道调整为柔和模式，当前强度 32。</div></div><div class="agent-input"><span>继续输入…</span><button>↑</button></div></div></div>
+          <aside class="sidebar">
+            <div class="switcher"><b>Agent</b><span>⌄</span></div>
+            <button class="new-row">＋ 新对话</button>
+            <div class="side-section">
+              <small>今天</small><span class="side-row selected">更柔和的震动</span
+              ><span class="side-row">周末场景</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace">
+            <div class="devicebar">
+              <button class="stop">■ 全部归零</button
+              ><span class="device-chip"
+                ><i></i><b>郊狼</b><em>A0</em><em>B0</em><small>待机</small><span>82%</span></span
+              ><span class="device-chip target"
+                ><i></i><b>负鼠</b><em>A32</em><em>B0</em><small>输出中</small
+                ><span>64%</span></span
+              ><span class="device-chip sensor"
+                ><i></i><b>爪印</b><em>压力 41%</em><small>已连接</small><span>91%</span></span
+              >
+            </div>
+            <div class="agent-view">
+              <div class="conversation">
+                <div class="bubble user">让负鼠 A 通道使用更柔和的震动。</div>
+                <div class="trace">
+                  <i>✓</i>
+                  <div><b>已选择目标：负鼠</b><small>A 通道 · 强度上限 40</small></div>
+                </div>
+                <div class="bubble assistant">已将负鼠 A 通道调整为柔和模式，当前强度 32。</div>
+              </div>
+              <div class="agent-input"><span>继续输入…</span><button>↑</button></div>
+            </div>
+          </div>
         </div>
-        <div class="caption"><small>AGENT</small><h2>说出想法。<br />交给 AI。</h2><p>理解 · 选择 · 执行</p></div>
+        <div class="caption">
+          <small>AGENT</small>
+          <h2>说出想法。<br />交给 AI。</h2>
+          <p>理解 · 选择 · 执行</p>
+        </div>
       </section>
 
       <section class="slide module-slide light" data-slide="voice" aria-label="Voice">
         <div class="shell">
-          <aside class="sidebar"><div class="switcher"><b>Voice</b><span>⌄</span></div><div class="side-section"><small>实时语音</small><span class="side-row selected">当前通话</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
-          <div class="workspace"><div class="devicebar"><button class="stop">■ 全部归零</button><span class="device-chip target"><i></i><b>负鼠</b><em>A32</em><em>B0</em><small>输出中</small><span>64%</span></span></div><div class="voice-view"><div class="voice-card"><div class="voice-radio"><span>◉</span><i></i><i></i></div><h3>通话中</h3><small>GLM Realtime · 00:24 · AI 正在说话</small><div class="transcript"><p><span>你：</span>我想要一个更轻松的节奏。</p><p><span>AI：</span>好。我们从舒缓模式开始。</p></div><div class="call-actions"><button class="secondary">◇ 设备归零</button><button class="danger">⌕ 结束通话</button></div></div></div></div>
+          <aside class="sidebar">
+            <div class="switcher"><b>Voice</b><span>⌄</span></div>
+            <div class="side-section">
+              <small>实时语音</small><span class="side-row selected">当前通话</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace">
+            <div class="devicebar">
+              <button class="stop">■ 全部归零</button
+              ><span class="device-chip target"
+                ><i></i><b>负鼠</b><em>A32</em><em>B0</em><small>输出中</small
+                ><span>64%</span></span
+              >
+            </div>
+            <div class="voice-view">
+              <div class="voice-card">
+                <div class="voice-radio"><span>◉</span><i></i><i></i></div>
+                <h3>通话中</h3>
+                <small>GLM Realtime · 00:24 · AI 正在说话</small>
+                <div class="transcript">
+                  <p><span>你：</span>我想要一个更轻松的节奏。</p>
+                  <p><span>AI：</span>好。我们从舒缓模式开始。</p>
+                </div>
+                <div class="call-actions">
+                  <button class="secondary">◇ 设备归零</button
+                  ><button class="danger">⌕ 结束通话</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="caption"><small>VOICE</small><h2>自然对话。<br />即时响应。</h2></div>
+        <div class="caption">
+          <small>VOICE</small>
+          <h2>自然对话。<br />即时响应。</h2>
+        </div>
       </section>
 
       <section class="slide module-slide light" data-slide="video" aria-label="Video">
         <div class="shell">
-          <aside class="sidebar"><div class="switcher"><b>Video</b><span>⌄</span></div><div class="side-section"><small>视觉闭环</small><span class="side-row selected">周末疗愈</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
-          <div class="workspace"><div class="devicebar"><button class="stop">■ 全部归零</button><span class="device-chip target"><i></i><b>郊狼</b><em>A16</em><em>B0</em><small>输出中</small><span>82%</span></span></div><div class="video-view"><div class="camera-workbench"><div class="camera-top"><div><b>Video</b><small>固定 16:9 · 处理后画面</small></div><button>▣ 结束</button></div><div class="video-placeholder"><img src="./assets/video-jirai-adult.png" alt="成年地雷系男性在床上保持鸭子坐姿" /><div class="video-detection"><i></i><span><b>人物已识别</b><small>鸭子坐 · 姿势稳定</small></span></div><span>1920×1080 · 实时</span></div></div><aside class="observations"><header><b>实时观察</b><span class="status success">运行中</span></header><article><small>步骤 12</small><p>人物保持鸭子坐姿，身体轻微向前移动。</p></article><article class="current"><small>AI 调整</small><p>郊狼 A 通道 · 18 → 16</p><span>已执行</span></article><footer>下一次观察 · 4 秒</footer></aside></div></div>
+          <aside class="sidebar">
+            <div class="switcher"><b>Video</b><span>⌄</span></div>
+            <div class="side-section">
+              <small>视觉闭环</small><span class="side-row selected">周末疗愈</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace">
+            <div class="devicebar">
+              <button class="stop">■ 全部归零</button
+              ><span class="device-chip target"
+                ><i></i><b>郊狼</b><em>A16</em><em>B0</em><small>输出中</small
+                ><span>82%</span></span
+              >
+            </div>
+            <div class="video-view">
+              <div class="camera-workbench">
+                <div class="camera-top">
+                  <div><b>Video</b><small>固定 16:9 · 处理后画面</small></div>
+                  <button>▣ 结束</button>
+                </div>
+                <div class="video-placeholder">
+                  <img
+                    src="./assets/video-jirai-adult.png"
+                    alt="成年地雷系男性在床上保持鸭子坐姿"
+                  />
+                  <div class="video-detection">
+                    <i></i><span><b>人物已识别</b><small>鸭子坐 · 姿势稳定</small></span>
+                  </div>
+                  <span>1920×1080 · 实时</span>
+                </div>
+              </div>
+              <aside class="observations">
+                <header><b>实时观察</b><span class="status success">运行中</span></header>
+                <article>
+                  <small>步骤 12</small>
+                  <p>人物保持鸭子坐姿，身体轻微向前移动。</p>
+                </article>
+                <article class="current">
+                  <small>AI 调整</small>
+                  <p>郊狼 A 通道 · 18 → 16</p>
+                  <span>已执行</span>
+                </article>
+                <footer>下一次观察 · 4 秒</footer>
+              </aside>
+            </div>
+          </div>
         </div>
-        <div class="caption"><small>VIDEO</small><h2>看见变化。<br />实时响应。</h2></div>
+        <div class="caption">
+          <small>VIDEO</small>
+          <h2>看见变化。<br />实时响应。</h2>
+        </div>
       </section>
 
       <section class="slide module-slide light" data-slide="chat" aria-label="Chat">
         <div class="shell">
-          <aside class="sidebar"><div class="switcher"><b>Chat</b><span>⌄</span></div><div class="side-section"><small>私聊</small><span class="side-row">Mori</span></div><div class="side-section"><small>房间</small><span class="side-row selected">Friday Night</span><span class="side-row">Studio</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
-          <div class="workspace chat-workspace"><div class="devicebar"><button class="stop idle">■ 全部归零</button><span class="device-chip"><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span></div><div class="room-head"><div><b>Friday Night</b><span>4 人在线</span></div><button>退出</button></div><div class="chat-columns"><div class="room-chat"><div class="messages"><p><i>R</i><span><small>River</small>大家都到了吗？</span></p><p class="self"><span>到了。</span></p><p><i>M</i><span><small>Mori</small>场景已经准备好了。</span></p><p><i>L</i><span><small>Lin</small>开始吧。</span></p></div><div class="composer"><button>＋</button><span>发送消息…</span><button>↑</button></div></div><div class="room-control"><header><b>共同控制</b><span>已授权</span></header><div class="member-control"><div><i>K</i><b>Kai</b><small>负鼠 · 已连接</small></div><span>A 32</span><span>B 0</span></div><div class="member-control"><div><i>R</i><b>River</b><small>郊狼 · 已连接</small></div><span>A 18</span><span>B 0</span></div><div class="shared-scene"><small>当前场景</small><b>周末疗愈</b><span>由 River 发起</span></div></div></div></div>
+          <aside class="sidebar">
+            <div class="switcher"><b>Chat</b><span>⌄</span></div>
+            <div class="side-section"><small>私聊</small><span class="side-row">Mori</span></div>
+            <div class="side-section">
+              <small>房间</small><span class="side-row selected">Friday Night</span
+              ><span class="side-row">Studio</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace chat-workspace">
+            <div class="devicebar">
+              <button class="stop idle">■ 全部归零</button
+              ><span class="device-chip"
+                ><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span
+              >
+            </div>
+            <div class="room-head">
+              <div><b>Friday Night</b><span>4 人在线</span></div>
+              <button>退出</button>
+            </div>
+            <div class="chat-columns">
+              <div class="room-chat">
+                <div class="messages">
+                  <p>
+                    <i>R</i><span><small>River</small>大家都到了吗？</span>
+                  </p>
+                  <p class="self"><span>到了。</span></p>
+                  <p>
+                    <i>M</i><span><small>Mori</small>场景已经准备好了。</span>
+                  </p>
+                  <p>
+                    <i>L</i><span><small>Lin</small>开始吧。</span>
+                  </p>
+                </div>
+                <div class="composer">
+                  <button>＋</button><span>发送消息…</span><button>↑</button>
+                </div>
+              </div>
+              <div class="room-control">
+                <header><b>共同控制</b><span>已授权</span></header>
+                <div class="member-control">
+                  <div><i>K</i><b>Kai</b><small>负鼠 · 已连接</small></div>
+                  <span>A 32</span><span>B 0</span>
+                </div>
+                <div class="member-control">
+                  <div><i>R</i><b>River</b><small>郊狼 · 已连接</small></div>
+                  <span>A 18</span><span>B 0</span>
+                </div>
+                <div class="shared-scene">
+                  <small>当前场景</small><b>周末疗愈</b><span>由 River 发起</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="caption"><small>CHAT</small><h2>多人对话？<br />没问题。</h2><p>房间 · 私聊 · 语音 · 图片 · 共同互动</p></div>
+        <div class="caption">
+          <small>CHAT</small>
+          <h2>多人对话？<br />没问题。</h2>
+          <p>房间 · 私聊 · 语音 · 图片 · 共同互动</p>
+        </div>
       </section>
 
       <section class="slide module-slide light" data-slide="market" aria-label="Market">
         <div class="shell">
-          <aside class="sidebar"><div class="switcher"><b>Market</b><span>⌄</span></div><div class="side-section"><small>内容</small><span class="side-row selected">场景</span><span class="side-row">波形</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside>
-          <div class="workspace"><div class="market-view"><div class="market-filters"><div class="seg"><b>场景</b><span>波形</span></div><div class="seg sub"><b>单人</b><span>多人</span></div><div class="search">搜索名称 / 简介 / 标签</div><div class="sort">热度⌄</div></div><div class="real-market-grid"><article class="real-card selected-card"><header><span>🌃</span><b>霓虹雨夜</b><em>DG Agent</em></header><p>雨落在玻璃上。城市安静地向后退去。</p><footer><span>@0xNull</span><span>👁 824 · ＋ 219</span></footer><div><small>沉浸剧情</small><small>城市</small><small>双人</small></div></article><article class="real-card"><header><span>🌿</span><b>周末疗愈</b><em>DG Agent</em></header><p>午后的光穿过窗帘。让节奏慢下来。</p><footer><span>@Mori</span><span>👁 672 · ＋ 188</span></footer><div><small>舒缓</small><small>单人</small><small>语音</small></div></article><article class="real-card"><header><span>◉</span><b>深海信号</b><em class="scale">超大场景</em></header><p>在寂静深处，一个信号正在回应。</p><footer><span>@River</span><span>👁 541 · ＋ 142</span></footer><div><small>探索</small><small>悬疑</small></div></article><article class="real-card"><header><span>✦</span><b>星际舰桥</b><em>👥 2-4 人</em></header><p>共享同一片星图，也共享下一次选择。</p><footer><span>@Lin</span><span>👁 488 · ＋ 126</span></footer><div><small>多人</small><small>角色扮演</small></div></article></div><div class="market-detail"><button class="close">×</button><small>场景</small><h3>霓虹雨夜</h3><p>沉浸剧情 · 城市 · 双人</p><div class="detail-copy">雨滴沿着玻璃缓慢滑落。冷色城市与室内暖光交错，适合两人共同进入一段安静的城市故事。</div><button class="add">＋ 添加到场景库</button></div></div></div>
+          <aside class="sidebar">
+            <div class="switcher"><b>Market</b><span>⌄</span></div>
+            <div class="side-section">
+              <small>内容</small><span class="side-row selected">场景</span
+              ><span class="side-row">波形</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace">
+            <div class="market-view">
+              <div class="market-filters">
+                <div class="seg"><b>场景</b><span>波形</span></div>
+                <div class="seg sub"><b>单人</b><span>多人</span></div>
+                <div class="search">搜索名称 / 简介 / 标签</div>
+                <div class="sort">热度⌄</div>
+              </div>
+              <div class="real-market-grid">
+                <article class="real-card selected-card">
+                  <header><span>🌃</span><b>霓虹雨夜</b><em>DG Agent</em></header>
+                  <p>雨落在玻璃上。城市安静地向后退去。</p>
+                  <footer><span>@0xNull</span><span>👁 824 · ＋ 219</span></footer>
+                  <div><small>沉浸剧情</small><small>城市</small><small>双人</small></div>
+                </article>
+                <article class="real-card">
+                  <header><span>🌿</span><b>周末疗愈</b><em>DG Agent</em></header>
+                  <p>午后的光穿过窗帘。让节奏慢下来。</p>
+                  <footer><span>@Mori</span><span>👁 672 · ＋ 188</span></footer>
+                  <div><small>舒缓</small><small>单人</small><small>语音</small></div>
+                </article>
+                <article class="real-card">
+                  <header><span>◉</span><b>深海信号</b><em class="scale">超大场景</em></header>
+                  <p>在寂静深处，一个信号正在回应。</p>
+                  <footer><span>@River</span><span>👁 541 · ＋ 142</span></footer>
+                  <div><small>探索</small><small>悬疑</small></div>
+                </article>
+                <article class="real-card">
+                  <header><span>✦</span><b>星际舰桥</b><em>👥 2-4 人</em></header>
+                  <p>共享同一片星图，也共享下一次选择。</p>
+                  <footer><span>@Lin</span><span>👁 488 · ＋ 126</span></footer>
+                  <div><small>多人</small><small>角色扮演</small></div>
+                </article>
+              </div>
+              <div class="market-detail">
+                <button class="close">×</button><small>场景</small>
+                <h3>霓虹雨夜</h3>
+                <p>沉浸剧情 · 城市 · 双人</p>
+                <div class="detail-copy">
+                  雨滴沿着玻璃缓慢滑落。冷色城市与室内暖光交错，适合两人共同进入一段安静的城市故事。
+                </div>
+                <button class="add">＋ 添加到场景库</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="caption"><small>MARKET</small><h2>选择。添加。<br />立即开始。</h2></div>
+        <div class="caption">
+          <small>MARKET</small>
+          <h2>选择。添加。<br />立即开始。</h2>
+        </div>
       </section>
 
       <section class="slide unified" data-slide="unified" aria-label="统一体验">
-        <div class="unified-word"><small>一个入口</small><h2>连接你的<br />AI 生活</h2><p>Agent · Voice · Video · Chat · Market</p></div>
-        <div class="shell unified-shell"><aside class="sidebar"><div class="switcher"><b>0xNuller</b><span>⌄</span></div><div class="side-section"><small>最近</small><span class="side-row selected">继续上次体验</span><span class="side-row">Friday Night</span></div><div class="side-account"><i>0x</i><span>0xNull</span></div></aside><div class="workspace"><div class="devicebar"><button class="stop idle">■ 全部归零</button><span class="device-chip"><i></i><b>郊狼</b><em>A0</em><em>B0</em><small>待机</small><span>82%</span></span><span class="device-chip"><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span></div><div class="home-view"><h3>0xNuller</h3><p>七个模块，共用同一个账户、设备和状态。</p><div class="module-list"><span><b>Control</b><small>直接控制自己的设备</small></span><span><b>Chat</b><small>多人房间远程控制</small></span><span><b>Agent</b><small>对话控制设备</small></span><span><b>Voice</b><small>实时语音通话</small></span><span><b>Video</b><small>摄像头视觉闭环场景</small></span><span><b>Market</b><small>波形与场景社区</small></span></div></div></div></div>
+        <div class="unified-word">
+          <small>一个入口</small>
+          <h2>连接你的<br />AI 生活</h2>
+          <p>Agent · Voice · Video · Chat · Market</p>
+        </div>
+        <div class="shell unified-shell">
+          <aside class="sidebar">
+            <div class="switcher"><b>0xNuller</b><span>⌄</span></div>
+            <div class="side-section">
+              <small>最近</small><span class="side-row selected">继续上次体验</span
+              ><span class="side-row">Friday Night</span>
+            </div>
+            <div class="side-account"><i>0x</i><span>0xNull</span></div>
+          </aside>
+          <div class="workspace">
+            <div class="devicebar">
+              <button class="stop idle">■ 全部归零</button
+              ><span class="device-chip"
+                ><i></i><b>郊狼</b><em>A0</em><em>B0</em><small>待机</small><span>82%</span></span
+              ><span class="device-chip"
+                ><i></i><b>负鼠</b><em>A0</em><em>B0</em><small>待机</small><span>64%</span></span
+              >
+            </div>
+            <div class="home-view">
+              <h3>0xNuller</h3>
+              <p>七个模块，共用同一个账户、设备和状态。</p>
+              <div class="module-list">
+                <span><b>Control</b><small>直接控制自己的设备</small></span
+                ><span><b>Chat</b><small>多人房间远程控制</small></span
+                ><span><b>Agent</b><small>对话控制设备</small></span
+                ><span><b>Voice</b><small>实时语音通话</small></span
+                ><span><b>Video</b><small>摄像头视觉闭环场景</small></span
+                ><span><b>Market</b><small>波形与场景社区</small></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="slide release" data-slide="release" aria-label="正式发布">
-        <div class="release-copy"><div class="release-logo"><h1>0xNuller</h1></div><h2>0xNuller 现已发布</h2><small>SEP 2026</small><p><b>Windows · macOS · Android</b><span>iPhone 与 iPad 可通过 Web 使用</span></p><a href="https://0xnullai.com">0xnullai.com</a></div>
+        <div class="release-copy">
+          <div class="release-logo"><h1>0xNuller</h1></div>
+          <h2>0xNuller 现已发布</h2>
+          <small>SEP 2026</small>
+          <p><b>Windows · macOS · Android</b><span>iPhone 与 iPad 可通过 Web 使用</span></p>
+          <a href="https://0xnullai.com">0xnullai.com</a>
+        </div>
       </section>
 
       <button id="previous" class="nav previous" type="button" aria-label="上一页">←</button>
