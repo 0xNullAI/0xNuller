@@ -39,7 +39,7 @@ Release 标题:           0xNuller 6.3.0
 3. 验证 APK 包名、版本、签名、ABI、权限和源码 SHA。
 4. 部署产品 Workers 与 Web。
 5. 用 `/version.json` 核对线上产品版本和源码 SHA。
-6. 创建唯一 GitHub Release，附件包含版本化 APK、Windows x64 EXE 和 macOS universal DMG；源码归档由 GitHub 自动提供。
+6. 创建唯一 GitHub Release，附件包含版本化 APK、Windows x64 EXE 和 macOS arm64 DMG；源码归档由 GitHub 自动提供。
 
 产品版本未变化时工作流正常跳过，不能覆盖已有 APK 或 Release。
 

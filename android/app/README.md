@@ -218,7 +218,7 @@ signals. No physical-device or Android lifecycle validation has been performed. 
 
 ## Windows and macOS
 
-The same native host also builds independent Windows x64 and macOS universal applications.
+The same native host also builds independent Windows x64 and macOS arm64 applications.
 Use `npm run desktop:dev` or `npm run desktop:build -- --bundles app` from the repository root.
 The desktop overlay is `src-tauri/tauri.desktop.conf.json`; Android identity/configuration remains
 unchanged. Desktop identity is `ai.nullai.desktop`. See [desktop.md](../../docs/desktop.md).

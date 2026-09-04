@@ -192,7 +192,7 @@ jobs:
             echo '- Web: https://0xnullai.com'
             echo '- Android: `0xnuller-v${{ steps.version.outputs.version }}.apk`'
             echo '- Windows: `0xnuller-v${{ steps.version.outputs.version }}-windows-x64.exe`'
-            echo '- macOS: `0xnuller-v${{ steps.version.outputs.version }}-macos-universal.dmg`'
+            echo '- macOS: `0xnuller-v${{ steps.version.outputs.version }}-macos-arm64.dmg`'
             echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
             echo '- Source: `${{ steps.source.outputs.sha }}`'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -107,9 +107,9 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            target: universal-apple-darwin
+            target: aarch64-apple-darwin
             bundles: dmg
-            artifact: macos-universal
+            artifact: macos-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis
@@ -123,9 +123,9 @@ jobs:
           node-version: '22.19.0'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install macOS universal targets
+      - name: Install macOS arm64 targets
         if: runner.os == 'macOS'
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        run: rustup target add aarch64-apple-darwin
       - run: npm install --global npm@11.6.2
       - run: npm ci
       - run: npm run build:kit

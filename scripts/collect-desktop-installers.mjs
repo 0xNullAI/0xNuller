@@ -17,7 +17,7 @@ function files(directory) {
 const all = files(source);
 mkdirSync(destination, { recursive: true });
 for (const [suffix, platform] of [
-  ['.dmg', 'macos-universal'],
+  ['.dmg', 'macos-arm64'],
   ['.exe', 'windows-x64'],
 ]) {
   const matches = all.filter((file) => file.endsWith(suffix));

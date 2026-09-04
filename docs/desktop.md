@@ -1,6 +1,6 @@
 # Windows / macOS 独立版本
 
-Windows x64 安装器与 macOS universal（Apple Silicon + Intel）安装包共用 `android/app`
+Windows x64 安装器与 macOS arm64（Apple Silicon）安装包共用 `android/app`
 中的 Tauri 原生宿主和七个模块。目录保留原名是为了保持 Android 构建、签名和升级身份稳定；
 不复制 shell、设备协议或权限规则。桌面配置覆盖层为 `tauri.desktop.conf.json`，独立标识为
 `ai.nullai.desktop`；Android 仍为 `ai.nullai.dgagent`。
@@ -10,7 +10,7 @@ Windows x64 安装器与 macOS universal（Apple Silicon + Intel）安装包共�
 | 平台    | 要求                                                   | 蓝牙实现                                            |
 | ------- | ------------------------------------------------------ | --------------------------------------------------- |
 | Windows | Windows 10/11 x64、WebView2 111+、可用 BLE 适配器/驱动 | btleplug → WinRT                                    |
-| macOS   | macOS 13.3+；Apple Silicon 或 Intel                    | btleplug → CoreBluetooth                            |
+| macOS   | macOS 13.3+；Apple Silicon                             | btleplug → CoreBluetooth                            |
 | Android | Android 8+，Android System WebView 111+                | 现有 Tauri Android BLE/JNI                          |
 | Web     | Chrome/Edge 111+、Safari 16.4+、Firefox 128+           | 有 Web Bluetooth 的环境可直接连接；否则使用原生版本 |
 
@@ -29,9 +29,9 @@ npm run desktop:dev
 # 在 macOS 上构建本机架构 .app
 npm run desktop:build -- --bundles app
 
-# 在 macOS 上构建 Intel + Apple Silicon 通用 DMG
-rustup target add aarch64-apple-darwin x86_64-apple-darwin
-npm run desktop:build -- --target universal-apple-darwin --bundles dmg
+# 在 macOS 上构建 Apple Silicon DMG
+rustup target add aarch64-apple-darwin
+npm run desktop:build -- --target aarch64-apple-darwin --bundles dmg
 
 # 在 Windows 上构建 x64 安装器
 npm run desktop:build -- --target x86_64-pc-windows-msvc --bundles nsis
@@ -42,12 +42,12 @@ npm run desktop:build -- --target x86_64-pc-windows-msvc --bundles nsis
 Windows NSIS 安装时检查/安装 WebView2。桌面版本继承产品版本，不拥有独立版本号。
 
 统一 `.github/workflows/ci.yml` 在 product 变更时使用 Windows/macOS runner 构建、运行 Rust
-测试并上传安装器。macOS 产物是 universal，Windows 为 x64。PR/dev 仅产生候选制品，不发布。
+测试并上传安装器。macOS 产物是 arm64，Windows 为 x64。PR/dev 仅产生候选制品，不发布。
 `Release · 0xNuller` 只取同一成功 CI、同一 main SHA 的两个安装器，在部署前验证文件齐备，
 然后附到产品 Release：
 
 - `0xnuller-vX.Y.Z-windows-x64.exe`
-- `0xnuller-vX.Y.Z-macos-universal.dmg`
+- `0xnuller-vX.Y.Z-macos-arm64.dmg`
 
 当前构建未配置 Windows Authenticode 或 Apple Developer ID/公证凭据；产物不能宣称为已签名、
 已公证的公共发行版。正式对外分发前应配置相应平台签名，并在目标系统检查安装体验。
