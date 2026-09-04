@@ -23,7 +23,7 @@ runs:
         }
         passed=false
         for attempt in $(seq 1 40); do
-          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "pending"')
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "pending"')
           if [ "$conclusion" = success ]; then
             passed=true
             break
