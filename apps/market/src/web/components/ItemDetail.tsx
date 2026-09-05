@@ -1,3 +1,4 @@
+import { scriptLengthError } from '../script-length';
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
@@ -38,6 +39,7 @@ function download(filename: string, text: string): void {
 
 export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
   // Snapshot of the metadata currently on screen.
   const [view, setView] = useState<MarketItem>(item);
   const [access, setAccess] = useState({ canEdit: false, canDelete: false });
@@ -99,10 +101,16 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
   );
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(exportJson);
-    setCopied(true);
-    void markDownloaded(item.id);
-    window.setTimeout(() => setCopied(false), 1500);
+    setCopyError('');
+    setCopied(false);
+    try {
+      await navigator.clipboard.writeText(exportJson);
+      setCopied(true);
+      void markDownloaded(item.id);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopyError('复制失败，请重试或下载 .json 文件获取完整内容。');
+    }
   };
 
   const handleDownload = () => {
@@ -139,6 +147,13 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
   const saveEdit = async () => {
     setEditErr('');
     if (!eName.trim()) return setEditErr('名称不能为空');
+    const lengthError = scriptLengthError({
+      type: view.type,
+      prompt: ePrompt,
+      setting: eSetting,
+      roles: eRoles,
+    });
+    if (lengthError) return setEditErr(lengthError);
 
     const tags = eTags
       .split(/[,，\s]+/)
@@ -270,12 +285,7 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
                   剧本内容 * · {ePrompt.length.toLocaleString()} /{' '}
                   {MAX_SCENARIO_PROMPT_LENGTH.toLocaleString()}
                 </span>
-                <textarea
-                  rows={12}
-                  value={ePrompt}
-                  onChange={(e) => setEPrompt(e.target.value)}
-                  maxLength={MAX_SCENARIO_PROMPT_LENGTH}
-                />
+                <textarea rows={12} value={ePrompt} onChange={(e) => setEPrompt(e.target.value)} />
               </label>
             )}
             {view.type === 'multi-scene' && (
@@ -286,7 +296,6 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
                     rows={7}
                     value={eSetting}
                     onChange={(e) => setESetting(e.target.value)}
-                    maxLength={8000}
                   />
                 </label>
                 <div className="row">
@@ -341,7 +350,6 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
                             className="role-desc"
                             value={role.description}
                             onChange={(e) => updateRole(index, { description: e.target.value })}
-                            maxLength={2000}
                             placeholder="角色描述 / AI 人设"
                           />
                           <label className="role-ai">
@@ -464,6 +472,11 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
           <pre className="prompt-box">{(view.content as ScenarioContent).prompt}</pre>
         )}
 
+        {copyError && (
+          <p role="alert" className="error">
+            {copyError}
+          </p>
+        )}
         <div className="modal-actions">
           <button className="btn primary" onClick={handleCopy}>
             {copied ? '已复制 ✓' : '复制 JSON'}

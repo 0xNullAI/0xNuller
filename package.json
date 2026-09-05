@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.3.7",
+  "version": "6.3.8",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",

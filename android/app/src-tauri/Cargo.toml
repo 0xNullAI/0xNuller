@@ -1,6 +1,6 @@
 [package]
 name = "nuller-app"
-version = "6.3.7"
+version = "6.3.8"
 description = "0xNuller unified Android shell"
 authors = ["0xNullAI"]
 license = "MIT"

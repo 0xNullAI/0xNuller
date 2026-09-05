@@ -1,3 +1,4 @@
+import { scriptLengthError } from './script-length';
 import { strFromU8, unzipSync } from 'fflate';
 import { parsePulseText } from '../shared/pulse';
 import { annotateScenarioContent, type ItemType, type UploadPayload } from '../shared/schema';
@@ -236,6 +237,8 @@ export async function parseUploadFile(
 }
 
 export function buildManualUploadPayload(fields: ManualUploadFields): UploadPayload {
+  const lengthError = scriptLengthError(fields);
+  if (lengthError) throw new Error(lengthError);
   const tags = fields.tagsText
     .split(/[,，\s]+/)
     .map((tag) => tag.trim())
@@ -264,7 +267,7 @@ export function buildManualUploadPayload(fields: ManualUploadFields): UploadPayl
       ...common,
       icon: fields.icon.trim() || undefined,
       tags: scenarioTags,
-      content: annotateScenarioContent({ prompt: fields.prompt.trim() }),
+      content: annotateScenarioContent({ prompt: fields.prompt }),
     };
   }
   if (!fields.setting.trim()) throw new Error('请填写世界观');
