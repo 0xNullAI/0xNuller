@@ -20,6 +20,7 @@ pub async fn desktop_finish_exit(app: AppHandle) -> Result<(), String> {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn handle_event(app: &AppHandle, event: &RunEvent) {
     match event {
         RunEvent::WindowEvent { event: WindowEvent::CloseRequested { api, .. }, .. } if !EXIT_CONFIRMED.load(Ordering::Acquire) => {

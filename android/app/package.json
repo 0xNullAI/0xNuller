@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/android",
-  "version": "6.3.7",
+  "version": "6.3.8",
   "private": true,
   "type": "module",
   "scripts": {

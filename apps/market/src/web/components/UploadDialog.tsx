@@ -357,7 +357,6 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                     rows={8}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    maxLength={MAX_SCENARIO_PROMPT_LENGTH}
                     placeholder="粘贴你的自定义场景设定…"
                   />
                 </label>
@@ -375,7 +374,6 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                     rows={5}
                     value={setting}
                     onChange={(e) => setSetting(e.target.value)}
-                    maxLength={8000}
                     placeholder="描述这个多人场景的世界观、氛围、规则…"
                   />
                 </label>
@@ -427,7 +425,6 @@ export function UploadDialog({ onClose, onUploaded, onChanged }: Props): JSX.Ele
                             className="role-desc"
                             value={r.description}
                             onChange={(e) => updateRole(i, { description: e.target.value })}
-                            maxLength={2000}
                             placeholder={
                               r.aiPlayable
                                 ? '角色描述 / AI 人设（性格、口吻、动机…）'

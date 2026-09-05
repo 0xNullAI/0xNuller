@@ -45,7 +45,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v6.3.7`, `0xNuller 6.3.7`, `6.3.7`, and `6003007`.
+code all advance together: `v6.3.8`, `0xNuller 6.3.8`, `6.3.8`, and `6003008`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed APK and Latest badge.
 

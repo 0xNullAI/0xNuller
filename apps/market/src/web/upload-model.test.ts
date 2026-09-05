@@ -68,7 +68,7 @@ describe('upload model', () => {
       type: 'scenario',
       name: '测试',
       tags: ['DG Agent', '温柔', 'DG', 'Agent', '温柔'],
-      content: { prompt: '场景设定' },
+      content: { prompt: '  场景设定  ' },
     });
   });
 
@@ -147,4 +147,35 @@ describe('upload model', () => {
   ])('preserves manual validation errors', (fields, message) => {
     expect(() => buildManualUploadPayload(fields)).toThrow(message);
   });
+});
+
+it('rejects oversized pasted scripts without truncating the draft', () => {
+  const fields = manualFields({
+    type: 'scenario',
+    prompt: '界'.repeat(MAX_SCENARIO_PROMPT_LENGTH) + '末尾不可丢失',
+  });
+  expect(() => buildManualUploadPayload(fields)).toThrow('内容已完整保留');
+  expect(fields.prompt.endsWith('末尾不可丢失')).toBe(true);
+});
+
+it('keeps a maximum-length script identical through file and manual upload', async () => {
+  const prompt = ' \n' + '界'.repeat(MAX_SCENARIO_PROMPT_LENGTH - 5) + '尾\n ';
+  const fields = manualFields({ type: 'scenario', prompt });
+  const manual = buildManualUploadPayload(fields);
+  const file = { name: 'script.json', text: async () => JSON.stringify(manual) } as File;
+  expect(await parseUploadFile(file, 'electrostimulation')).toEqual([manual]);
+  expect(manual.content).toMatchObject({ prompt });
+  expect(ScenarioContentSchema.safeParse(manual.content).success).toBe(true);
+});
+
+it('rejects oversized multiplayer setting and role descriptions without slicing them', () => {
+  const roles = [{ name: '角色', description: '界'.repeat(2001), aiPlayable: false }];
+  expect(() =>
+    buildManualUploadPayload(manualFields({ type: 'multi-scene', setting: '世界', roles })),
+  ).toThrow('角色 1 描述');
+  expect(() =>
+    buildManualUploadPayload(
+      manualFields({ type: 'multi-scene', setting: '界'.repeat(8001), roles }),
+    ),
+  ).toThrow('世界观 / 背景');
 });
