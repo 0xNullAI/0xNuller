@@ -258,7 +258,8 @@ export function App() {
         getTargets: () => [],
         hasLease: () => hasDeviceLease('video'),
         invoke: async (action, masterGrant) => {
-          const remaining = Math.max(1_000, masterGrant.expiresAt - Date.now());
+          const remaining = masterGrant.expiresAt - Date.now();
+          if (remaining <= 0) throw new Error('Video 控制授权已过期');
           if (action.target.kind === 'embedded') {
             const currentGenericService = genericServiceSlot.get();
             if (!currentGenericService) throw new Error('通用设备运行时不可用');
@@ -370,9 +371,15 @@ export function App() {
 
   useEffect(() => {
     if (cameraState !== 'on') return;
-    const timer = window.setTimeout(() => void session.captureNow(), 120);
-    return () => window.clearTimeout(timer);
-  }, [cameraState, session]);
+    if (visual.status === 'running') return;
+    const capture = () => void session.captureNow();
+    const first = window.setTimeout(capture, 120);
+    const interval = window.setInterval(capture, 1_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(interval);
+    };
+  }, [cameraState, session, visual.status]);
 
   const emergencyStop = useCallback(async () => {
     startOperationRef.current += 1;
@@ -562,6 +569,44 @@ export function App() {
     }
   }
 
+  async function resumeExperience(previousGrant: VideoAiRoutingGrantSnapshot) {
+    const operation = ++startOperationRef.current;
+    const now = Date.now();
+    const remaining = previousGrant.expiresAt - now;
+    if (remaining < 1_000) {
+      setLocalError('授权已失效，请重新开启');
+      setRoutingGrant(null);
+      return;
+    }
+    try {
+      setLocalError(null);
+      await grantDeviceLease('video');
+      if (operation !== startOperationRef.current) return;
+      const liveIds = new Set(allowedTargets.map(({ id }) => id));
+      if (previousGrant.targets.some(({ id }) => !liveIds.has(id))) {
+        throw new Error('授权设备身份已变化，请重新开启');
+      }
+      const authorized = await aiRouter.authorize({
+        targets: previousGrant.targets,
+        allowEnhanced: previousGrant.allowEnhanced,
+        allowBurst: previousGrant.allowBurst,
+        durationMs: remaining,
+        cadenceMs: previousGrant.cadenceMs,
+        captureIntervalMs: previousGrant.captureIntervalMs,
+      });
+      if (operation !== startOperationRef.current) {
+        await compensateCancelledStart();
+        return;
+      }
+      setRoutingGrant(authorized);
+      await startSession(authorized, Date.now(), operation);
+    } catch (error) {
+      if (operation === startOperationRef.current) {
+        setLocalError(error instanceof Error ? error.message : '无法继续视觉控制');
+      }
+    }
+  }
+
   async function beginExperience() {
     if (!visionEnabled) {
       setLocalError('请先完成视觉模型设置');
@@ -656,12 +701,7 @@ export function App() {
                     <CirclePause className="h-4 w-4" /> 暂停
                   </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      void startSession(activeGrant, Date.now(), startOperationRef.current)
-                    }
-                  >
+                  <Button size="sm" onClick={() => void resumeExperience(activeGrant)}>
                     <CirclePlay className="h-4 w-4" /> 继续
                   </Button>
                 ))}

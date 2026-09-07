@@ -163,6 +163,16 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [firingB, setFiringB] = useState(false);
 
   const peerRoom = usePeerRoom(displayName);
+  const activeRoomRef = useRef<{ roomId: string | null; mediaToken: string | null }>({
+    roomId: null,
+    mediaToken: null,
+  });
+  useEffect(() => {
+    activeRoomRef.current = {
+      roomId: peerRoom.roomId,
+      mediaToken: peerRoom.mediaUploadToken,
+    };
+  }, [peerRoom.mediaUploadToken, peerRoom.roomId]);
 
   // A room link joins directly; otherwise the account room list remains visible without
   // silently entering a special global room.
@@ -594,13 +604,13 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     ) => {
       const room = roomId;
       const mediaToken = mediaUploadToken;
-      if (!room || !mediaToken) return;
-      try {
-        const media = await uploadMedia(room, mediaToken, blob, kind, meta);
-        sendMessage('', media);
-      } catch (err) {
-        console.error('[Chat] media upload failed', err);
+      if (!room || !mediaToken) throw new Error('房间尚未连接，无法上传媒体');
+      const media = await uploadMedia(room, mediaToken, blob, kind, meta);
+      const current = activeRoomRef.current;
+      if (current.roomId !== room || current.mediaToken !== mediaToken) {
+        throw new Error('上传期间房间已切换，请重新发送');
       }
+      if (!sendMessage('', media)) throw new Error('房间连接已断开，请重新发送');
     },
     [roomId, mediaUploadToken, sendMessage],
   );

@@ -12,6 +12,7 @@
 | `/ws/*`、`/api/lobby/*`、`/api/upload/*`、`/api/media/*` | Chat           |
 | `/api/items*`                                            | Market         |
 | `/api/realtime`                                          | Voice 体验服务 |
+| `llm.0xnullai.com/*`                                     | LLM Proxy      |
 
 Cloudflare 会优先匹配更具体的路径。提交前运行 `npm run check:routes`，确认没有路由重叠。
 
@@ -73,9 +74,9 @@ wrangler versions deploy <version-id>@100% \
   --config <wrangler-config> --yes
 ```
 
-Web 是纯静态 Workers Assets。它的 `workers.dev` 预览地址不会继承主域上的 API 路由，
-因此只用于静态界面检查。登录、Chat、Market 和 Voice 的完整预发布测试应使用带 API
-代理的本地集成环境，或配置了同一套路由的专用预发布域。
+所有生产 Worker 都关闭 `workers.dev` 和 Preview URL。登录、Chat、Market、Voice 与 LLM
+Proxy 的预发布测试使用本地集成环境，或使用不绑定生产密钥、数据库、Durable Object 和 R2 的
+专用 staging Worker；不得为了临时验证重新开放生产旁路。
 
 ## 数据迁移
 

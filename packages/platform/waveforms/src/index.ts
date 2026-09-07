@@ -54,6 +54,10 @@ const MIGRATED_KEY = 'migrated-from-per-module';
 let store: UseStore | undefined;
 let syncPromise: Promise<void> | null = null;
 let synced = false;
+let syncGeneration = 0;
+let localRevision = 0;
+let preferenceRevision = 0;
+const waveformRevisions = new Map<string, number>();
 function db(): UseStore {
   if (!store) store = createStore(DB_NAME, STORE_NAME);
   return store;
@@ -166,17 +170,20 @@ export async function listCustomWaveforms(): Promise<SharedWaveform[]> {
 export function syncWaveforms(): Promise<void> {
   if (synced) return Promise.resolve();
   if (syncPromise) return syncPromise;
+  const generation = syncGeneration;
+  const startingRevision = localRevision;
   syncPromise = (async () => {
     await migrateOnce();
-    const local = coerceList(await get(CUSTOM_KEY, db()));
     const [remote, preferences] = await Promise.all([
       pullContent('waveform'),
       pullContentPreferences('waveform'),
     ]);
-    if (!remote) return;
+    if (!remote || generation !== syncGeneration) return;
     synced = true;
+    const local = coerceList(await get(CUSTOM_KEY, db()));
     const byId = new Map(local.map((w) => [w.id, w]));
     for (const item of remote) {
+      if ((waveformRevisions.get(item.id) ?? 0) > startingRevision) continue;
       if (item.deleted) byId.delete(item.id);
       else {
         const parsed = waveformSchema.safeParse({
@@ -188,8 +195,9 @@ export function syncWaveforms(): Promise<void> {
       }
     }
     const merged = [...byId.values()];
+    if (generation !== syncGeneration) return;
     await set(CUSTOM_KEY, merged, db());
-    if (preferences) {
+    if (preferences && preferenceRevision <= startingRevision) {
       const localHidden = await listHiddenBuiltinsWithoutSync();
       await set(HIDDEN_KEY, [...new Set([...localHidden, ...preferences.hiddenBuiltinIds])], db());
     }
@@ -212,12 +220,14 @@ export function syncWaveforms(): Promise<void> {
     notify();
   })().finally(() => {
     syncPromise = null;
+    if (generation !== syncGeneration) void syncWaveforms();
   });
   return syncPromise;
 }
 
 if (typeof window !== 'undefined')
   window.addEventListener('0xnullai:auth-changed', () => {
+    syncGeneration += 1;
     synced = false;
     void syncWaveforms();
   });
@@ -225,7 +235,9 @@ if (typeof window !== 'undefined')
 /** Add or replace one. Newest first, matching what Agent's library did. */
 export async function saveCustomWaveform(waveform: SharedWaveform): Promise<void> {
   const parsed = waveformSchema.parse(waveform) as SharedWaveform;
-  const current = await listCustomWaveforms();
+  await migrateOnce();
+  const current = coerceList(await get(CUSTOM_KEY, db()));
+  waveformRevisions.set(parsed.id, ++localRevision);
   await set(CUSTOM_KEY, [parsed, ...current.filter((w) => w.id !== parsed.id)], db());
   notify();
   void pushContent([
@@ -243,7 +255,9 @@ export async function saveCustomWaveform(waveform: SharedWaveform): Promise<void
 }
 
 export async function removeCustomWaveform(id: string): Promise<void> {
-  const current = await listCustomWaveforms();
+  await migrateOnce();
+  const current = coerceList(await get(CUSTOM_KEY, db()));
+  waveformRevisions.set(id, ++localRevision);
   await set(
     CUSTOM_KEY,
     current.filter((w) => w.id !== id),
@@ -266,7 +280,9 @@ async function listHiddenBuiltinsWithoutSync(): Promise<string[]> {
 }
 
 export async function setBuiltinHidden(id: string, hidden: boolean): Promise<void> {
-  const current = await listHiddenBuiltins();
+  await migrateOnce();
+  const current = await listHiddenBuiltinsWithoutSync();
+  preferenceRevision = ++localRevision;
   const next = hidden ? [...new Set([...current, id])] : current.filter((x) => x !== id);
   await set(HIDDEN_KEY, next, db());
   notify();
@@ -276,5 +292,11 @@ export async function setBuiltinHidden(id: string, hidden: boolean): Promise<voi
 /** Test seam: forget everything, including the migration marker. */
 export async function __resetWaveformLibrary(): Promise<void> {
   await Promise.all([del(CUSTOM_KEY, db()), del(HIDDEN_KEY, db()), del(MIGRATED_KEY, db())]);
+  syncPromise = null;
+  synced = false;
+  syncGeneration = 0;
+  localRevision = 0;
+  preferenceRevision = 0;
+  waveformRevisions.clear();
   notify();
 }

@@ -88,12 +88,12 @@ function verifyProductMetadata() {
     }
   }
 
-  const kitVersionWorkflow = readFileSync('.github/workflows/kit-version.yml', 'utf8');
-  const kitReleaseWorkflow = readFileSync('.github/workflows/kit-release.yml', 'utf8');
-  const mcpReleaseWorkflow = readFileSync('.github/workflows/mcp-release.yml', 'utf8');
+  const npmVersionWorkflow = readFileSync('.github/workflows/npm-version.yml', 'utf8');
+  const npmReleaseWorkflow = readFileSync('.github/workflows/npm-release.yml', 'utf8');
   const ciWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8');
   const changesetConfig = json('.changeset/config.json');
   const productReleaseWorkflow = readFileSync('.github/workflows/product-release.yml', 'utf8');
+  const rollbackWorkflow = readFileSync('.github/workflows/rollback-cloudflare.yml', 'utf8');
   const updateChecker = readFileSync('android/app/src/services/update-checker.ts', 'utf8');
   if (!productReleaseWorkflow.includes('tag="v$version"')) {
     fail('product release must create the unified source/product tag v<version>');
@@ -111,7 +111,7 @@ function verifyProductMetadata() {
     'GIT_COMMITTER_NAME: 0xNull',
     'GIT_COMMITTER_EMAIL: 271426072+0xNullAI@users.noreply.github.com',
   ]) {
-    if (!kitVersionWorkflow.includes(required)) {
+    if (!npmVersionWorkflow.includes(required)) {
       fail(`npm version preparation does not enforce commit identity: missing ${required}`);
     }
   }
@@ -125,41 +125,32 @@ function verifyProductMetadata() {
     fail('npm version preparation must sync package-lock.json after Changesets');
   }
   if (
-    !kitVersionWorkflow.includes('workflow_dispatch:') ||
-    !/push:\s*\n\s+branches: \[dev\]/.test(kitVersionWorkflow) ||
-    !kitVersionWorkflow.includes("paths: ['.changeset/**']") ||
-    kitVersionWorkflow.includes('publish:') ||
-    kitVersionWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
+    !npmVersionWorkflow.includes('workflow_dispatch:') ||
+    !/push:\s*\n\s+branches: \[dev\]/.test(npmVersionWorkflow) ||
+    !npmVersionWorkflow.includes("paths: ['.changeset/**']") ||
+    npmVersionWorkflow.includes('publish:') ||
+    npmVersionWorkflow.match(/uses: changesets\/action@v1/g)?.length !== 1
   ) {
     fail('Kit Version must prepare versions on dev without publishing');
   }
   if (
-    !kitReleaseWorkflow.includes('workflow_dispatch:') ||
-    !kitReleaseWorkflow.includes('workflows: [CI]') ||
-    !/branches: \[main\]/.test(kitReleaseWorkflow) ||
-    !kitReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
-    !kitReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
-    !kitReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
-    !kitReleaseWorkflow.includes('name: Reconfirm current main source') ||
-    !kitReleaseWorkflow.includes('npm publish --workspace "$name"') ||
-    kitReleaseWorkflow.includes('changesets/action') ||
-    kitReleaseWorkflow.includes('gh release create')
+    !npmReleaseWorkflow.includes('workflow_dispatch:') ||
+    !npmReleaseWorkflow.includes('workflows: [CI]') ||
+    !/branches: \[main\]/.test(npmReleaseWorkflow) ||
+    !npmReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
+    !npmReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
+    !npmReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
+    !npmReleaseWorkflow.includes('name: Reconfirm current main source') ||
+    !npmReleaseWorkflow.includes('npm publish --workspace "$name"') ||
+    npmReleaseWorkflow.includes('changesets/action') ||
+    npmReleaseWorkflow.includes('gh release create')
   ) {
     fail('DG-Kit must publish changed npm packages only from verified main');
   }
   if (
-    !mcpReleaseWorkflow.includes('workflow_dispatch:') ||
-    !mcpReleaseWorkflow.includes('workflows: [CI]') ||
-    !/branches: \[main\]/.test(mcpReleaseWorkflow) ||
-    !mcpReleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'") ||
-    !mcpReleaseWorkflow.includes('npm run verify:changesets:consumed') ||
-    !mcpReleaseWorkflow.includes('uses: ./.github/actions/require-main-source') ||
-    !mcpReleaseWorkflow.includes("name.startsWith('@dg-kit/')") ||
-    !mcpReleaseWorkflow.includes('npm view "$name@$version" version') ||
-    !mcpReleaseWorkflow.includes('name: Reconfirm current main source') ||
-    !mcpReleaseWorkflow.includes('npm publish --workspace dg-mcp') ||
-    mcpReleaseWorkflow.includes('changesets/action') ||
-    mcpReleaseWorkflow.includes('gh release create')
+    !npmReleaseWorkflow.includes("name.startsWith('@dg-kit/')") ||
+    !npmReleaseWorkflow.includes('npm view "$name@$version" version') ||
+    !npmReleaseWorkflow.includes('npm publish --workspace dg-mcp')
   ) {
     fail('DG-MCP must publish its changed npm version only from verified main');
   }
@@ -175,6 +166,22 @@ function verifyProductMetadata() {
   }
   if (!productReleaseWorkflow.includes("steps.version.outputs.publish == 'true'")) {
     fail('Product Release must skip versions that already have a signed release');
+  }
+  const releaseWorkflowSource = [productReleaseWorkflow, npmReleaseWorkflow, rollbackWorkflow].join(
+    '\n',
+  );
+  for (const legacyCredential of [
+    'secrets.NPM_TOKEN',
+    'secrets.CLOUDFLARE_API_TOKEN',
+    'vars.CLOUDFLARE_ACCOUNT_ID',
+    'secrets.ANDROID_KEYSTORE_BASE64',
+    'secrets.DG_AGENT_ALIAS',
+    'secrets.DG_AGENT_STORE_PASS',
+    'secrets.DG_AGENT_KEY_PASS',
+  ]) {
+    if (releaseWorkflowSource.includes(legacyCredential)) {
+      fail(`release workflows must not use legacy credential name ${legacyCredential}`);
+    }
   }
   for (const required of [
     '--title "0xNuller ${{ steps.version.outputs.version }}"',
@@ -197,9 +204,9 @@ function verifyProductMetadata() {
   if (
     !ciWorkflow.startsWith('name: CI') ||
     !ciWorkflow.includes('node scripts/detect-domain-changes.mjs "$domain"') ||
-    !ciWorkflow.includes('npm run test:product:prepared') ||
-    !ciWorkflow.includes('npm run test:kit:prepared') ||
-    !ciWorkflow.includes('npm run test:mcp:prepared')
+    !ciWorkflow.includes('npm run test:affected') ||
+    !ciWorkflow.includes('npm run test:full') ||
+    !ciWorkflow.includes('name: desktop-gate')
   ) {
     fail('Unified CI must detect and verify Product, DG-Kit, and DG-MCP changes');
   }

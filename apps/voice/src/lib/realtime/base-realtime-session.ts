@@ -179,6 +179,9 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         ws.onclose = (event) => {
           this.connected = false;
           this.onClosed();
+          this.mic.stop();
+          this.playback.close();
+          if (this.ws === ws) this.ws = null;
           this.options.events.onClose?.(event.reason || '连接已关闭');
           if (!this.connected) fail(new Error(event.reason || '连接已关闭'));
         };

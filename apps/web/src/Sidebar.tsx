@@ -26,9 +26,9 @@ import {
   type DmConversation,
 } from '@0xnullai/auth';
 import { MODULES } from './routes';
-import { ANDROID_DOWNLOAD_URL } from './product';
+import { CLIENT_DOWNLOAD_URL } from './product';
 
-export { ANDROID_DOWNLOAD_URL } from './product';
+export { CLIENT_DOWNLOAD_URL } from './product';
 
 /**
  * The sidebar. It is the only vertical bar in the app, with the content area to
@@ -199,8 +199,8 @@ function AccountButton({
     {
       key: 'download',
       icon: <Download className="h-4 w-4" />,
-      label: '下载 Android 版',
-      href: ANDROID_DOWNLOAD_URL,
+      label: '下载客户端',
+      href: CLIENT_DOWNLOAD_URL,
     },
   ];
 

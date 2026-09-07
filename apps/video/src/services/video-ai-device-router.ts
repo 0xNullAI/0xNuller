@@ -49,6 +49,7 @@ export class VideoAiDeviceRouter {
   private grant: VideoAiRoutingGrantSnapshot | null = null;
   private generation = 0;
   private activeInference: AbortController | null = null;
+  private stopInFlight: Promise<void> | null = null;
   private readonly ceilings = new Map<string, number>();
   private activeRoute: { target: VideoAiAllowedTarget; channel: 'A' | 'B' } | null = null;
   private readonly now: () => number;
@@ -72,6 +73,7 @@ export class VideoAiDeviceRouter {
 
   async authorize(input: VideoAiRoutingGrantInput): Promise<VideoAiRoutingGrantSnapshot> {
     if (input.targets.length === 0) throw new Error('Video 至少需要一个已连接输出能力');
+    if (this.stopInFlight) await this.stopInFlight;
     if (this.grant && !this.grant.revoked) await this.stop();
     const issuedAt = this.now();
     this.invalidate();
@@ -145,6 +147,7 @@ export class VideoAiDeviceRouter {
       if (controller.signal.aborted || generation !== this.generation) {
         throw new DOMException('Video observation aborted', 'AbortError');
       }
+      await this.assertGrantCurrent(grant, generation);
       for (const call of result.toolCalls ?? []) {
         if (call.name !== 'video_device_control') continue;
         await this.execute(call, grant, generation);
@@ -160,7 +163,17 @@ export class VideoAiDeviceRouter {
     if (this.grant) this.grant.revoked = true;
     this.invalidate();
     this.activeRoute = null;
-    await this.options.stopAll();
+    if (!this.stopInFlight) {
+      const stopping = this.options.stopAll();
+      this.stopInFlight = stopping;
+      try {
+        await stopping;
+      } finally {
+        if (this.stopInFlight === stopping) this.stopInFlight = null;
+      }
+      return;
+    }
+    await this.stopInFlight;
   }
 
   async emergencyStop(): Promise<void> {
@@ -172,10 +185,10 @@ export class VideoAiDeviceRouter {
     grant: VideoAiRoutingGrantSnapshot,
     generation: number,
   ): Promise<void> {
-    if (generation !== this.generation || !this.options.hasLease())
-      throw new Error('Video 工作已失效');
+    await this.assertGrantCurrent(grant, generation);
     const args = parseAction(call, grant);
     await this.assertAllowlistStillLive(grant);
+    await this.assertGrantCurrent(grant, generation);
     if (
       args.action !== 'stop' &&
       this.activeRoute &&
@@ -183,7 +196,7 @@ export class VideoAiDeviceRouter {
     ) {
       const previousRoute = this.activeRoute;
       try {
-        await this.options.invoke(
+        const stopResult = await this.options.invoke(
           {
             id: `${call.id}-switch-stop`,
             target: previousRoute.target,
@@ -194,6 +207,7 @@ export class VideoAiDeviceRouter {
           },
           grant,
         );
+        assertAcceptedExecutionResult(stopResult);
       } catch (error) {
         grant.revoked = true;
         this.invalidate();
@@ -201,6 +215,7 @@ export class VideoAiDeviceRouter {
         throw error;
       }
       this.activeRoute = null;
+      await this.assertGrantCurrent(grant, generation);
     }
     const cap = args.channel === 'A' ? args.target.capA : args.target.capB;
     if (args.value > cap) throw new Error('模型请求超过授权上限');
@@ -218,7 +233,10 @@ export class VideoAiDeviceRouter {
     ) {
       throw new Error('Video 未授权停止后增强');
     }
-    await this.options.invoke(args, grant);
+    await this.assertGrantCurrent(grant, generation);
+    const result = await this.options.invoke(args, grant);
+    assertAcceptedExecutionResult(result);
+    await this.assertGrantCurrent(grant, generation);
     if (args.action === 'stop') {
       if (
         this.activeRoute?.target.id === args.target.id &&
@@ -245,6 +263,22 @@ export class VideoAiDeviceRouter {
     }
   }
 
+  private async assertGrantCurrent(
+    grant: VideoAiRoutingGrantSnapshot,
+    generation: number,
+  ): Promise<void> {
+    if (
+      grant !== this.grant ||
+      grant.revoked ||
+      generation !== this.generation ||
+      !this.options.hasLease() ||
+      this.now() >= grant.expiresAt
+    ) {
+      if (grant === this.grant && !grant.revoked) await this.stop();
+      throw new Error('Video 控制授权不存在、已过期或工作已失效');
+    }
+  }
+
   private snapshot(): VideoAiRoutingGrantSnapshot {
     return { ...this.grant!, targets: this.grant!.targets.map((target) => ({ ...target })) };
   }
@@ -253,6 +287,21 @@ export class VideoAiDeviceRouter {
     this.generation += 1;
     this.activeInference?.abort();
     this.activeInference = null;
+  }
+}
+
+function assertAcceptedExecutionResult(result: unknown): void {
+  if (typeof result !== 'string') return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result);
+  } catch {
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object') return;
+  const value = parsed as { error?: unknown; _meta?: { kind?: unknown } };
+  if (typeof value.error === 'string' || value._meta?.kind === 'tool-denied') {
+    throw new Error(typeof value.error === 'string' ? value.error : '设备拒绝了 Video 动作');
   }
 }
 

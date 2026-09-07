@@ -238,7 +238,7 @@ export function usePeerRoom(displayName: string) {
   }, []);
 
   const send = useCallback((payload: object) => {
-    transportRef.current?.send(payload);
+    return transportRef.current?.send(payload) ?? false;
   }, []);
 
   /** Close the connection and drop everything that belonged to that group. */
@@ -568,21 +568,7 @@ export function usePeerRoom(displayName: string) {
 
       const localMedia: ChatMedia | undefined = media ? buildMedia(room, media) : undefined;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id,
-          fromSelf: true,
-          senderId: selfId,
-          senderName: name,
-          text,
-          timestamp: now,
-          media: localMedia,
-          mentions,
-        },
-      ]);
-
-      send({
+      const accepted = send({
         t: 'chat',
         id,
         n: name,
@@ -601,6 +587,22 @@ export function usePeerRoom(displayName: string) {
           : undefined,
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
+      if (!accepted) return false;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id,
+          fromSelf: true,
+          senderId: selfId,
+          senderName: name,
+          text,
+          timestamp: now,
+          media: localMedia,
+          mentions,
+        },
+      ]);
+      return true;
     },
     [send],
   );

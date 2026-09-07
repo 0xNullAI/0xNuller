@@ -1,9 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "0xnullai-auth",
+  // 钉住账号，避免同一登录下多账号时部署到错误账号。
+  "account_id": "9c36f42d1cb5ba53e644de21a014d028",
   "main": "src/index.ts",
   // 账户与个人数据 API。
   "routes": [{ "pattern": "0xnullai.com/api/auth/*", "zone_name": "0xnullai.com" }],
+  // 显式固定生产入口策略，避免 Wrangler 默认值或 Dashboard 漂移重新开放旁路。
+  "workers_dev": false,
+  "preview_urls": false,
 
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],

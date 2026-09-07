@@ -30,7 +30,7 @@ export interface RoomConnectOptions {
 }
 
 export interface RoomTransport {
-  send: (payload: object) => void;
+  send: (payload: object) => boolean;
   close: () => void;
 }
 
@@ -127,8 +127,14 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
   return {
     send(payload: object) {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
+        try {
+          ws.send(JSON.stringify(payload));
+          return true;
+        } catch {
+          return false;
+        }
       }
+      return false;
     },
     close() {
       closed = true;

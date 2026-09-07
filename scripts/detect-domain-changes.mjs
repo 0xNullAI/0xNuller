@@ -3,7 +3,9 @@ import { domainChanged } from './lib/domain-changes.mjs';
 
 const [domain, base, head = 'HEAD'] = process.argv.slice(2);
 if (!domain || !base) {
-  console.error('Usage: node scripts/detect-domain-changes.mjs <product|kit|mcp> <base> [head]');
+  console.error(
+    'Usage: node scripts/detect-domain-changes.mjs <product|desktop|kit|mcp> <base> [head]',
+  );
   process.exit(2);
 }
 const files = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', base, head], {

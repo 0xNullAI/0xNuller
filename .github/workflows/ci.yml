@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   pull_request:
@@ -14,7 +17,9 @@ jobs:
   checks:
     outputs:
       product: ${{ steps.changes.outputs.product }}
+      desktop: ${{ steps.changes.outputs.desktop }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -23,6 +28,7 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
+      - run: npm install --global npm@11.6.2
       - run: npm ci
 
       - name: Detect affected release domains
@@ -30,7 +36,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
         run: |
-          for domain in product kit mcp; do
+          for domain in product desktop kit mcp; do
             changed=$(node scripts/detect-domain-changes.mjs "$domain" "$BASE_SHA" | sed -n 's/^changed=//p')
             echo "$domain=$changed" >> "$GITHUB_OUTPUT"
           done
@@ -42,17 +48,7 @@ jobs:
         run: npm run format:check:changed -- --base="$BASE_SHA"
       - run: npm run lint
       - run: npm run check:dead-code
-      - name: Test affected repository tooling
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: npm run test:affected -- --base="$BASE_SHA" --domain=repository --prepared
-      - name: Test repository tooling
-        if: github.event_name != 'pull_request'
-        run: npm run test:repository
-
-      - name: Prepare Product dependencies
-        if: steps.changes.outputs.product == 'true'
+      - name: Build shared Kit once
         run: npm run build:kit
       - name: Verify Product metadata
         if: steps.changes.outputs.product == 'true'
@@ -60,48 +56,31 @@ jobs:
       - name: Typecheck Product
         if: steps.changes.outputs.product == 'true'
         run: node scripts/run-workspace-domain.mjs typecheck product
-      - name: Test affected Product projects
-        if: github.event_name == 'pull_request' && steps.changes.outputs.product == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: npm run test:affected -- --base="$BASE_SHA" --domain=product --prepared
-      - name: Test Product
-        if: github.event_name != 'pull_request' && steps.changes.outputs.product == 'true'
-        run: npm run test:product:prepared
       - name: Build Web
         if: steps.changes.outputs.product == 'true'
         run: npm run build -w @0xnullai/web
 
       - name: Verify DG-Kit
         if: steps.changes.outputs.kit == 'true'
-        run: npm run verify:kit && npm run typecheck:kit
-      - name: Test affected DG-Kit projects
-        if: github.event_name == 'pull_request' && steps.changes.outputs.kit == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: npm run test:affected -- --base="$BASE_SHA" --domain=kit --prepared
-      - name: Test DG-Kit
-        if: github.event_name != 'pull_request' && steps.changes.outputs.kit == 'true'
-        run: npm run test:kit:prepared
-
+        run: node scripts/verify-publish-packages.mjs --scope=kit && npm run typecheck:kit
       - name: Verify DG-MCP
         if: steps.changes.outputs.mcp == 'true'
-        run: npm run verify:mcp
+        run: npm run build -w dg-mcp && node scripts/verify-publish-packages.mjs --scope=mcp
       - name: Typecheck DG-MCP
         if: steps.changes.outputs.mcp == 'true'
         run: node scripts/run-workspace-domain.mjs typecheck mcp
-      - name: Test affected DG-MCP projects
-        if: github.event_name == 'pull_request' && steps.changes.outputs.mcp == 'true'
+      - name: Test affected projects
+        if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: npm run test:affected -- --base="$BASE_SHA" --domain=mcp --prepared
-      - name: Test DG-MCP
-        if: github.event_name != 'pull_request' && steps.changes.outputs.mcp == 'true'
-        run: npm run test:mcp:prepared
+        run: npm run test:affected -- --base="$BASE_SHA" --prepared
+      - name: Test repository
+        if: github.event_name != 'pull_request'
+        run: npm run test:full:prepared
 
   desktop:
     needs: checks
-    if: needs.checks.outputs.product == 'true'
+    if: needs.checks.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -138,6 +117,26 @@ jobs:
         with:
           name: 0xnuller-${{ matrix.artifact }}-${{ github.sha }}
           if-no-files-found: error
+          retention-days: 14
           path: |
             android/app/src-tauri/target/**/bundle/dmg/*.dmg
             android/app/src-tauri/target/**/bundle/nsis/*.exe
+
+  desktop-gate:
+    name: desktop-gate
+    if: always()
+    needs: [checks, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require requested desktop builds
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          DESKTOP_REQUIRED: ${{ needs.checks.outputs.desktop }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          if [ "$DESKTOP_REQUIRED" = true ]; then
+            test "$DESKTOP_RESULT" = success
+          else
+            test "$DESKTOP_RESULT" = skipped
+          fi

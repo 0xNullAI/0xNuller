@@ -46,14 +46,14 @@ Release 标题:           0xNuller 6.3.0
 ## DG-Kit npm 发布
 
 七个 `@dg-kit/*` 包是固定版本组。任一公开 Kit 包需要发布时，Changesets 同步更新全组版本。
-版本准备 PR 可以在 `dev` 生成，但 `Publish · DG-Kit` 只在版本化代码进入 `main`、对应 CI
-通过后发布。工作流逐包查询 npm，已存在的版本跳过，缺失的版本发布，因此部分失败可安全重试。
+版本准备 PR 可以在 `dev` 生成，但统一的 `Publish · npm packages` 只在版本化代码进入 `main`、
+对应 CI 通过后发布。工作流逐包查询 npm，已存在的版本跳过，缺失的版本发布，因此部分失败可安全重试。
 
 ## DG-MCP npm 发布
 
-`dg-mcp` 使用独立版本。`Publish · DG-MCP` 只在 `apps/mcp/package.json` 的版本尚未存在于
-npm 时发布。发布前工作流会等待当前源码中的 MCP Kit 依赖版本全部可从 npm 获取，避免同一
-`main` SHA 的 Kit 与 MCP 并行发布产生不可安装窗口。MCP 发布不改变产品或 Kit 版本。
+`dg-mcp` 使用独立版本。同一个 npm 工作流先发布 Kit，再等待当前源码中的 MCP Kit 依赖版本
+全部可从 npm 获取；仅当 `apps/mcp/package.json` 的版本尚未存在时发布 MCP。MCP 发布不改变
+产品或 Kit 版本。
 
 Kit 与 MCP 的源码和 npm 发布权都在本仓；旧仓只保留归档。发布后可用以下命令确认 npm 状态：
 
@@ -69,14 +69,30 @@ Kit 与 MCP 同时升级时，先确保 Kit 已可安装，再重试 MCP；不�
 
 ## 可选择的发布入口
 
-GitHub Actions 保留三个独立入口：
+GitHub Actions 保留两个独立入口：
 
 - `Release · 0xNuller`
-- `Publish · DG-Kit`
-- `Publish · DG-MCP`
+- `Publish · npm packages`
 
 它们可由 main 的统一 CI 自动触发，也可手动重试；手动执行仍要求所选 SHA 是当前 `main` tip，
 并要求统一 CI 对同一 SHA 成功，不放宽版本不可变等门禁。
+
+## 生产凭据命名
+
+生产环境只使用有用途和环境前缀的名称，避免把测试 Token 误用于发布：
+
+| 类型                          | 名称                             |
+| ----------------------------- | -------------------------------- |
+| npm 发布 Secret               | `NPM_PROD_PUBLISH_TOKEN`         |
+| Cloudflare 发布 Secret        | `CLOUDFLARE_PROD_DEPLOY_TOKEN`   |
+| Cloudflare 账户 Variable      | `CLOUDFLARE_PROD_ACCOUNT_ID`     |
+| Android keystore Secret       | `ANDROID_RELEASE_KEYSTORE_B64`   |
+| Android alias Secret          | `ANDROID_RELEASE_KEY_ALIAS`      |
+| Android store password Secret | `ANDROID_RELEASE_STORE_PASSWORD` |
+| Android key password Secret   | `ANDROID_RELEASE_KEY_PASSWORD`   |
+
+工作流不再读取旧名称。测试和预览凭据应使用 `*_TEST_*` 或 `*_PREVIEW_*` 前缀，并且
+不能存放在 `production` / `npm-production` 环境中。
 
 ## 发布准备顺序
 
@@ -86,5 +102,5 @@ GitHub Actions 保留三个独立入口：
 4. 创建 `dev → main` PR；Release Guard 验证产品元数据并禁止版本倒退，维护性提交可保持版本不变。
 5. merge commit 合入 `main`。
 6. main 的统一 CI 根据改动运行相应责任域，对应发布线只发布自身版本发生变化的交付物。
-7. 同批包含 Kit 与 MCP 时，Kit 先在 npm 可用；MCP 工作流自动等待后再发布。Product 从同一
+7. 同批包含 Kit 与 MCP 时，统一 npm 工作流先发布 Kit，确认可用后再发布 MCP。Product 从同一
    monorepo SHA 构建，不等待 npm 包发布。

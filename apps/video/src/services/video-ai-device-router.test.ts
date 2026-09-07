@@ -38,6 +38,14 @@ const embedded: VideoAiAllowedTarget = {
   capB: 0.3,
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function call(id: string, targetId: string, action = 'start', value = 5): ToolCall {
   return {
     id,
@@ -50,6 +58,7 @@ function harness(
   turns: ToolCall[][],
   targets: VideoAiAllowedTarget[] = [coyote('a'), coyote('b'), embedded],
   rejectAction?: (action: VideoAiDeviceAction) => boolean,
+  resultForAction?: (action: VideoAiDeviceAction) => unknown,
 ) {
   let live = [...targets];
   let lease = true;
@@ -67,6 +76,7 @@ function harness(
     invoke: async (action) => {
       if (rejectAction?.(action)) throw new Error('stop failed');
       invoked.push(action);
+      return resultForAction?.(action);
     },
     stopAll,
     now: () => now,
@@ -183,5 +193,49 @@ describe('VideoAiDeviceRouter', () => {
     expired.setNow(2_001);
     await expect(expired.router.observe(FRAME)).rejects.toThrow('授权不存在或已过期');
     expect(expired.stopAll).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks the absolute grant deadline after model inference and before execution', async () => {
+    const turn = deferred<{ assistantMessage: string; toolCalls: ToolCall[] }>();
+    const h = harness([]);
+    vi.mocked(h.llm.runTurn).mockImplementationOnce(() => turn.promise);
+    await authorize(h, 1_000);
+
+    const observing = h.router.observe(FRAME);
+    h.setNow(2_001);
+    turn.resolve({ assistantMessage: 'started', toolCalls: [call('late', 'coyote/a')] });
+
+    await expect(observing).rejects.toThrow('已过期');
+    expect(h.invoked).toHaveLength(0);
+    expect(h.stopAll).toHaveBeenCalledOnce();
+  });
+
+  it('treats a structured tool denial as a failed observation', async () => {
+    const h = harness([[call('denied', 'coyote/a')]], undefined, undefined, () =>
+      JSON.stringify({ error: 'permission denied', _meta: { kind: 'tool-denied' } }),
+    );
+    await authorize(h);
+
+    await expect(h.router.observe(FRAME)).rejects.toThrow('permission denied');
+  });
+
+  it('waits for a pending stop before issuing a replacement authorization', async () => {
+    const stopping = deferred<undefined>();
+    const h = harness([]);
+    h.stopAll.mockImplementationOnce(() => stopping.promise);
+    await authorize(h);
+
+    const stop = h.router.stop();
+    let authorized = false;
+    const next = authorize(h).then(() => {
+      authorized = true;
+    });
+    await Promise.resolve();
+    expect(authorized).toBe(false);
+
+    stopping.resolve(undefined);
+    await stop;
+    await next;
+    expect(authorized).toBe(true);
   });
 });

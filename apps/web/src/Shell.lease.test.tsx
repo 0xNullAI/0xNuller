@@ -8,7 +8,7 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
-import { ANDROID_DOWNLOAD_URL } from './Sidebar';
+import { CLIENT_DOWNLOAD_URL } from './Sidebar';
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -187,8 +187,8 @@ describe('外壳与设备控制权', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '未登录' }));
-    const download = screen.getByRole('menuitem', { name: '下载 Android 版' });
-    expect(download.getAttribute('href')).toBe(ANDROID_DOWNLOAD_URL);
+    const download = screen.getByRole('menuitem', { name: '下载客户端' });
+    expect(download.getAttribute('href')).toBe(CLIENT_DOWNLOAD_URL);
     expect(download.getAttribute('target')).toBe('_blank');
     const menuItems = screen.getAllByRole('menuitem');
     expect(menuItems.at(-2)?.textContent).toContain('说明');

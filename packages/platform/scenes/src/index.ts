@@ -66,6 +66,10 @@ const MAX_MARKET_SCENE_PROMPT_LENGTH = 100_000;
 const listeners = new Set<(lib: SceneLibrary) => void>();
 let syncPromise: Promise<void> | null = null;
 let synced = false;
+let syncGeneration = 0;
+let localRevision = 0;
+let preferenceRevision = 0;
+const sceneRevisions = new Map<string, number>();
 
 function emptyLibrary(): SceneLibrary {
   return { scenes: [], selectedId: DEFAULT_SELECTED, hiddenBuiltinIds: [] };
@@ -160,6 +164,21 @@ export function loadScenes(): SceneLibrary {
 }
 
 export function saveScenes(lib: SceneLibrary): void {
+  const previous = loadScenesWithoutSync();
+  const revision = ++localRevision;
+  const previousById = new Map(previous.scenes.map((scene) => [scene.id, scene]));
+  const nextById = new Map(lib.scenes.map((scene) => [scene.id, scene]));
+  for (const id of new Set([...previousById.keys(), ...nextById.keys()])) {
+    if (JSON.stringify(previousById.get(id)) !== JSON.stringify(nextById.get(id))) {
+      sceneRevisions.set(id, revision);
+    }
+  }
+  if (
+    previous.selectedId !== lib.selectedId ||
+    JSON.stringify(previous.hiddenBuiltinIds) !== JSON.stringify(lib.hiddenBuiltinIds)
+  ) {
+    preferenceRevision = revision;
+  }
   try {
     localStorage.setItem(KEY, JSON.stringify(lib));
   } catch {
@@ -185,16 +204,19 @@ export function saveScenes(lib: SceneLibrary): void {
 export function syncScenes(): Promise<void> {
   if (synced) return Promise.resolve();
   if (syncPromise) return syncPromise;
+  const generation = syncGeneration;
+  const startingRevision = localRevision;
   syncPromise = (async () => {
     const [remote, preferences] = await Promise.all([
       pullContent('scene'),
       pullContentPreferences('scene'),
     ]);
-    if (!remote) return;
+    if (!remote || generation !== syncGeneration) return;
     synced = true;
     const local = loadScenesWithoutSync();
     const byId = new Map(local.scenes.map((scene) => [scene.id, scene]));
     for (const item of remote) {
+      if ((sceneRevisions.get(item.id) ?? 0) > startingRevision) continue;
       if (item.deleted) byId.delete(item.id);
       else if (item.payload && typeof item.payload === 'object') {
         const payload = item.payload as Record<string, unknown>;
@@ -210,11 +232,18 @@ export function syncScenes(): Promise<void> {
     const merged = {
       ...local,
       scenes: [...byId.values()],
-      selectedId: preferences?.selectedId ?? local.selectedId,
+      selectedId:
+        preferenceRevision > startingRevision
+          ? local.selectedId
+          : (preferences?.selectedId ?? local.selectedId),
       hiddenBuiltinIds: [
-        ...new Set([...local.hiddenBuiltinIds, ...(preferences?.hiddenBuiltinIds ?? [])]),
+        ...new Set([
+          ...local.hiddenBuiltinIds,
+          ...(preferenceRevision > startingRevision ? [] : (preferences?.hiddenBuiltinIds ?? [])),
+        ]),
       ],
     };
+    if (generation !== syncGeneration) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(merged));
     } catch {
@@ -235,12 +264,14 @@ export function syncScenes(): Promise<void> {
     for (const l of listeners) l(merged);
   })().finally(() => {
     syncPromise = null;
+    if (generation !== syncGeneration) void syncScenes();
   });
   return syncPromise;
 }
 
 if (typeof window !== 'undefined')
   window.addEventListener('0xnullai:auth-changed', () => {
+    syncGeneration += 1;
     synced = false;
     void syncScenes();
   });
@@ -343,4 +374,14 @@ export function subscribeScenes(listener: (lib: SceneLibrary) => void): () => vo
  */
 export function newSceneId(): string {
   return crypto.randomUUID();
+}
+
+/** Test seam for module-level reconciliation state. */
+export function __resetSceneSyncForTests(): void {
+  syncPromise = null;
+  synced = false;
+  syncGeneration = 0;
+  localRevision = 0;
+  preferenceRevision = 0;
+  sceneRevisions.clear();
 }

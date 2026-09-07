@@ -15,9 +15,7 @@
  *   wrangler secret put PROXY_API_KEY       # upstream gateway key
  *   wrangler secret put FREE_PROXY_SECRET   # optional; must equal the client's
  *                                           # VITE_DG_PROXY_SECRET
- *   # PROXY_MODEL and ALLOWED_ORIGINS are [vars] in wrangler.toml
- *   # Bind the custom domain llm.0xnullai.com in the dashboard
- *     (Workers > 0xnullai-llm-proxy > Settings > Domains & Routes).
+ *   # PROXY_MODEL, ALLOWED_ORIGINS and the custom domain are in wrangler.toml.
  */
 
 import { checkSignature, corsHeaders, createMemoryLimiter, originAllowed } from './guard.js';
