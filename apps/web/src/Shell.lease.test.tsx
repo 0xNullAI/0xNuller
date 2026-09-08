@@ -121,6 +121,14 @@ afterEach(async () => {
 });
 
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
+const OPOSSUM: DeviceSummary = {
+  id: 'o',
+  kind: 'opossum',
+  name: 'Opossum',
+  connected: true,
+  active: true,
+  battery: 82,
+};
 
 describe('外壳与设备控制权', () => {
   it('把设备状态和模块操作归入同一个顶部栏', async () => {
@@ -167,6 +175,7 @@ describe('外壳与设备控制权', () => {
       fireEvent.click(trigger);
 
       expect(screen.getByRole('complementary', { name: '主导航' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '紧急停止全部设备' })).toBeNull();
       expect(trigger.getAttribute('aria-expanded')).toBe('true');
       fireEvent.keyDown(document, { key: 'Escape' });
 
@@ -181,7 +190,7 @@ describe('外壳与设备控制权', () => {
     }
   });
 
-  it('在说明下面提供始终指向最新版 APK 的 Android 下载入口', async () => {
+  it('在说明下面提供始终指向最新版发布页的客户端下载入口', async () => {
     await act(async () => {
       render(<Shell />);
     });
@@ -346,5 +355,19 @@ describe('外壳与设备控制权', () => {
     // Handing over control is not the same as disconnecting the device. As long as the
     // device is still on someone's body, the zero-output action has to still be there.
     expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
+  });
+
+  it('多个模块连接多台设备时合并展示且只有一个全局停止入口', async () => {
+    fakeModule('agent', [COYOTE]);
+    fakeModule('chat', [OPOSSUM]);
+
+    await act(async () => {
+      render(<Shell />);
+    });
+
+    expect(screen.getByText('郊狼')).toBeTruthy();
+    expect(screen.getByText('负鼠')).toBeTruthy();
+    expect(document.getElementById('shl-device-bar')?.textContent).toContain('82%');
+    expect(screen.getAllByTitle('立刻停止全部输出（2 台设备）')).toHaveLength(1);
   });
 });
