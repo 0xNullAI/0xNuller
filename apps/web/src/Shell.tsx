@@ -4,7 +4,6 @@ import { LogIn, Menu } from 'lucide-react';
 import {
   useTheme,
   subscribeMediaQuery,
-  stopAllDevices,
   ShellChromeProvider,
   type ShellSettingsTab,
   ModuleActionsProvider,
@@ -405,14 +404,7 @@ export function Shell() {
                 aria-label="主导航"
                 className={`shl-drawer flex flex-col fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}
               >
-                <div className="min-h-0 flex-1">{sidebar}</div>
-                <button
-                  type="button"
-                  onClick={() => void stopAllDevices()}
-                  className="m-2 min-h-11 rounded-[var(--radius-ctl)] bg-[var(--danger-button)] px-3 text-white"
-                >
-                  紧急停止全部设备
-                </button>
+                {sidebar}
               </aside>
             </>
           )}
