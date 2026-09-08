@@ -315,6 +315,7 @@ describe('邀请注册与活动 Credit', () => {
       balanceCents: 500,
       rewardedCount: 1,
       pendingCount: 0,
+      activity: [expect.objectContaining({ status: 'rewarded', rewardCents: 500 })],
     });
 
     expect(
@@ -353,6 +354,42 @@ describe('邀请注册与活动 Credit', () => {
     expect((await response.json()) as { code: string }).toMatchObject({
       code: expect.stringMatching(/^[A-Z0-9]{12}$/),
     });
+  });
+});
+
+describe('登录设备管理', () => {
+  it('列出当前设备并可退出其他会话', async () => {
+    const first = await registerUser();
+    const secondResponse = await worker.fetch(
+      req('/api/auth/login', {
+        method: 'POST',
+        headers: { 'User-Agent': '0xNuller Windows' },
+        body: JSON.stringify({ username: GOOD.username, password: GOOD.password }),
+      }),
+      env,
+    );
+    const second = (await secondResponse.json()) as { token: string };
+    const list = await worker.fetch(req('/api/auth/sessions', { token: second.token }), env);
+    const sessions = (await list.json()) as {
+      sessions: { current: boolean; userAgent: string | null }[];
+    };
+    expect(sessions.sessions).toHaveLength(2);
+    expect(sessions.sessions.filter((session) => session.current)).toHaveLength(1);
+    expect(sessions.sessions.some((session) => session.userAgent === '0xNuller Windows')).toBe(
+      true,
+    );
+
+    expect((await del('/api/auth/sessions/others', second.token)).status).toBe(200);
+    expect((await worker.fetch(req('/api/auth/me', { token: first.body.token }), env)).status).toBe(
+      200,
+    );
+    const oldMe = (await (
+      await worker.fetch(req('/api/auth/me', { token: first.body.token }), env)
+    ).json()) as { user: unknown };
+    expect(oldMe.user).toBeNull();
+    expect((await prepared('SELECT COUNT(*) AS n FROM sessions').first<{ n: number }>())?.n).toBe(
+      1,
+    );
   });
 });
 
@@ -887,6 +924,18 @@ describe('关注', () => {
 
     const back = await follow(bob.token, alice.id);
     expect(((await back.json()) as { mutual: boolean }).mutual).toBe(true);
+    expect(await listOf('/api/auth/contacts', alice.token)).toEqual(['bob']);
+    expect(await listOf('/api/auth/contacts', bob.token)).toEqual(['alice']);
+  });
+
+  it('可以移除粉丝而不取消自己的关注', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await follow(alice.token, bob.id);
+    await follow(bob.token, alice.id);
+    expect((await del(`/api/auth/follower/${bob.id}`, alice.token)).status).toBe(200);
+    expect(await listOf('/api/auth/followers', alice.token)).toEqual([]);
+    expect(await listOf('/api/auth/following', alice.token)).toEqual(['bob']);
   });
 
   it('重复关注不会产生第二行', async () => {
@@ -1021,6 +1070,53 @@ describe('拉黑', () => {
     expect(await listOf('/api/auth/blocks', alice.token)).toEqual(['bob']);
     // Not the other way round: Bob is not told he is on a list.
     expect(await listOf('/api/auth/blocks', bob.token)).toEqual([]);
+  });
+});
+
+describe('用户举报', () => {
+  it('保存结构化举报并合并重复待处理记录', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    const first = await post(
+      '/api/auth/report',
+      {
+        userId: bob.id,
+        reason: 'harassment',
+        details: '持续发送骚扰信息',
+      },
+      { token: alice.token },
+    );
+    expect(first.status).toBe(201);
+    const duplicate = await post(
+      '/api/auth/report',
+      {
+        userId: bob.id,
+        reason: 'spam',
+      },
+      { token: alice.token },
+    );
+    expect(duplicate.status).toBe(200);
+    expect((await duplicate.json()) as { duplicate: boolean }).toMatchObject({ duplicate: true });
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM user_reports').first<{ n: number }>())?.n,
+    ).toBe(1);
+  });
+
+  it('拒绝举报自己与无效原因', async () => {
+    const alice = await seedUser('alice');
+    expect(
+      (await post('/api/auth/report', { userId: alice.id, reason: 'spam' }, { token: alice.token }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await post(
+          '/api/auth/report',
+          { userId: 'nobody', reason: 'invented' },
+          { token: alice.token },
+        )
+      ).status,
+    ).toBe(400);
   });
 });
 

@@ -10,7 +10,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { registrationConflict, validateCredentials } from './account-validation';
 import { decodeContentCursor, encodeContentCursor } from './content-cursor';
 import { corsHeaders, err, json, readBodyBounded } from './http';
-import { sessionCookie } from './session-credentials';
+import { readToken, sessionCookie } from './session-credentials';
 import {
   cleanupPendingPhoto,
   finalizeAccountDeletion,
@@ -96,6 +96,8 @@ const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 const REFERRAL_REWARD_CENTS = 500;
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
+const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
+const MAX_REPORT_DETAILS = 500;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -682,7 +684,7 @@ async function rememberDmThread(env: Env, a: string, b: string, now: number): Pr
  * The interpolated names are column identifiers chosen here from a closed set,
  * never request input.
  */
-function contactListSql(direction: 'following' | 'followers'): string {
+function contactListSql(direction: 'following' | 'followers', mutualOnly = false): string {
   // "Following" filters on my end being the follower and shows the followee;
   // "followers" is the mirror image.
   const mine = direction === 'following' ? 'follower_id' : 'followee_id';
@@ -696,6 +698,7 @@ function contactListSql(direction: 'following' | 'followers'): string {
    AND NOT EXISTS (SELECT 1 FROM user_blocks x
                     WHERE (x.blocker_id = f.follower_id AND x.blocked_id = f.followee_id)
                        OR (x.blocker_id = f.followee_id AND x.blocked_id = f.follower_id))
+ ${mutualOnly ? 'AND EXISTS (SELECT 1 FROM user_follows z WHERE z.follower_id = f.followee_id AND z.followee_id = f.follower_id)' : ''}
  ORDER BY f.created_at DESC
  LIMIT ? OFFSET ?`;
 }
@@ -903,7 +906,7 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         if (!user.email_verified_at) return err('完成邮箱验证后即可邀请好友', 403, cors);
-        const [code, balance, counts] = await Promise.all([
+        const [code, balance, counts, activity] = await Promise.all([
           referralCodeForUser(env, user.id),
           env.DB.prepare(
             'SELECT COALESCE(SUM(amount_cents), 0) AS cents FROM credit_ledger WHERE user_id = ?',
@@ -918,6 +921,15 @@ export default {
           )
             .bind(user.id)
             .first<{ rewarded: number; pending: number }>(),
+          env.DB.prepare(
+            `SELECT status, reward_cents, created_at, qualified_at
+               FROM referrals
+              WHERE inviter_user_id = ?
+              ORDER BY created_at DESC
+              LIMIT 20`,
+          )
+            .bind(user.id)
+            .all(),
         ]);
         if (!code) return err('邀请功能暂不可用', 503, cors);
         return json(
@@ -927,6 +939,15 @@ export default {
             rewardCents: REFERRAL_REWARD_CENTS,
             rewardedCount: counts?.rewarded ?? 0,
             pendingCount: counts?.pending ?? 0,
+            activity: (activity.results ?? []).map((raw) => {
+              const row = raw as Record<string, unknown>;
+              return {
+                status: row.status,
+                rewardCents: Number(row.reward_cents),
+                createdAt: Number(row.created_at),
+                qualifiedAt: row.qualified_at == null ? null : Number(row.qualified_at),
+              };
+            }),
           },
           200,
           cors,
@@ -1061,7 +1082,7 @@ export default {
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
         const now = Date.now();
         const day = new Date(now).toISOString().slice(0, 10);
-        const [users, verified, sessions, registrations, usage] = await Promise.all([
+        const [users, verified, sessions, registrations, usage, reports] = await Promise.all([
           env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
           env.DB.prepare(
             'SELECT COUNT(*) AS n FROM users WHERE email_verified_at IS NOT NULL',
@@ -1077,6 +1098,9 @@ export default {
           )
             .bind(day)
             .all<{ kind: 'text' | 'voice'; units: number }>(),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM user_reports WHERE status = 'open'").first<{
+            n: number;
+          }>(),
         ]);
         const used = Object.fromEntries(usage.results.map((row) => [row.kind, row.units]));
         return json(
@@ -1088,13 +1112,95 @@ export default {
             registrationAttempts24h: registrations?.n ?? 0,
             textUnitsToday: used.text ?? 0,
             voiceUnitsToday: used.voice ?? 0,
+            openReports: reports?.n ?? 0,
           },
           200,
           cors,
         );
       }
 
+      if (path === '/api/auth/admin/reports' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const rows = await env.DB.prepare(
+          `SELECT r.id, r.reason, r.details, r.status, r.created_at,
+                  reporter.username AS reporter_username,
+                  reported.username AS reported_username
+             FROM user_reports r
+             JOIN users reporter ON reporter.id = r.reporter_user_id
+             JOIN users reported ON reported.id = r.reported_user_id
+            ORDER BY CASE r.status WHEN 'open' THEN 0 ELSE 1 END, r.created_at DESC
+            LIMIT 100`,
+        ).all();
+        return json({ reports: rows.results ?? [] }, 200, cors);
+      }
+
+      if (path.startsWith('/api/auth/admin/reports/') && request.method === 'PATCH') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const id = decodeURIComponent(path.slice('/api/auth/admin/reports/'.length));
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const status = body.status;
+        if (status !== 'reviewed' && status !== 'dismissed') return err('处理状态无效', 400, cors);
+        await env.DB.prepare('UPDATE user_reports SET status = ?, reviewed_at = ? WHERE id = ?')
+          .bind(status, Date.now(), id)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
       // ── Logout ──
+      if (path === '/api/auth/sessions' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const token = readToken(request);
+        const currentHash = token ? await sha256Hex(token) : '';
+        const rows = await env.DB.prepare(
+          `SELECT token_hash, created_at, expires_at, user_agent
+             FROM sessions WHERE user_id = ? AND expires_at > ?
+             ORDER BY created_at DESC`,
+        )
+          .bind(user.id, Date.now())
+          .all();
+        return json(
+          {
+            sessions: (rows.results ?? []).map((raw) => {
+              const row = raw as Record<string, unknown>;
+              return {
+                id: String(row.token_hash),
+                createdAt: Number(row.created_at),
+                expiresAt: Number(row.expires_at),
+                userAgent: row.user_agent == null ? null : String(row.user_agent),
+                current: row.token_hash === currentHash,
+              };
+            }),
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/sessions/others' && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const token = readToken(request);
+        if (!token) return err('未登录', 401, cors);
+        await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?')
+          .bind(user.id, await sha256Hex(token))
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      if (path.startsWith('/api/auth/sessions/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const sessionId = decodeURIComponent(path.slice('/api/auth/sessions/'.length));
+        if (!/^[a-f0-9]{64}$/.test(sessionId)) return err('会话不存在', 404, cors);
+        await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash = ?')
+          .bind(user.id, sessionId)
+          .run();
+        return json({ ok: true }, 200, cors);
+      }
+
       if (path === '/api/auth/logout' && request.method === 'POST') {
         return logout(request, env, cors);
       }
@@ -1880,15 +1986,34 @@ export default {
         return json({ ok: true }, 200, cors);
       }
 
+      // Remove somebody from my followers without blocking them. This deletes
+      // their direction only; my own follow remains, so the action does exactly
+      // what its label says and does not silently change a second preference.
+      if (path.startsWith('/api/auth/follower/') && request.method === 'DELETE') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const targetId = decodeURIComponent(path.slice('/api/auth/follower/'.length));
+        await env.DB.prepare('DELETE FROM user_follows WHERE follower_id = ? AND followee_id = ?')
+          .bind(targetId, user.id)
+          .run();
+        await severDm(env, user.id, targetId);
+        return json({ ok: true }, 200, cors);
+      }
+
       if (
-        (path === '/api/auth/following' || path === '/api/auth/followers') &&
+        (path === '/api/auth/following' ||
+          path === '/api/auth/followers' ||
+          path === '/api/auth/contacts') &&
         request.method === 'GET'
       ) {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const { limit, offset } = pageParams(url);
         const rows = await env.DB.prepare(
-          contactListSql(path === '/api/auth/following' ? 'following' : 'followers'),
+          contactListSql(
+            path === '/api/auth/followers' ? 'followers' : 'following',
+            path === '/api/auth/contacts',
+          ),
         )
           .bind(user.id, limit, offset)
           .all();
@@ -1946,6 +2071,39 @@ export default {
           .run();
 
         return json({ ok: true }, 200, cors);
+      }
+
+      if (path === '/api/auth/report' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const targetId = typeof body.userId === 'string' ? body.userId : '';
+        const reason = typeof body.reason === 'string' ? body.reason : '';
+        const details = typeof body.details === 'string' ? body.details.trim() : '';
+        if (!targetId || !REPORT_REASONS.has(reason)) return err('举报信息不完整', 400, cors);
+        if (targetId === user.id) return err('不能举报自己', 400, cors);
+        if (details.length > MAX_REPORT_DETAILS) return err('补充说明不能超过 500 字', 400, cors);
+        const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
+          .bind(targetId)
+          .first();
+        if (!target) return err('用户不存在', 404, cors);
+        const existing = await env.DB.prepare(
+          `SELECT 1 FROM user_reports
+            WHERE reporter_user_id = ? AND reported_user_id = ? AND status = 'open'`,
+        )
+          .bind(user.id, targetId)
+          .first();
+        if (existing) {
+          return json({ ok: true, duplicate: true }, 200, cors);
+        }
+        await env.DB.prepare(
+          `INSERT INTO user_reports
+           (id, reporter_user_id, reported_user_id, reason, details, status, created_at)
+           VALUES (?, ?, ?, ?, ?, 'open', ?)`,
+        )
+          .bind(crypto.randomUUID(), user.id, targetId, reason, details || null, Date.now())
+          .run();
+        return json({ ok: true, duplicate: false }, 201, cors);
       }
 
       // ── Direct messages ──

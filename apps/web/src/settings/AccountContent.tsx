@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Gift, UserRound } from 'lucide-react';
+import { Check, Copy, Gift, Laptop, Share2, UserRound } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
   avatarSrc,
   deleteAccount,
   getReferralSummary,
+  listAccountSessions,
   login,
   logout,
   me,
@@ -15,6 +16,9 @@ import {
   requestPasswordReset,
   resetPassword,
   requestProfileView,
+  revokeAccountSession,
+  revokeOtherAccountSessions,
+  type AccountSession,
   type AuthUser,
   type ReferralSummary,
 } from '@0xnullai/auth';
@@ -69,6 +73,8 @@ export function AccountContent({
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const [inviteExpanded, setInviteExpanded] = useState(false);
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [sessions, setSessions] = useState<AccountSession[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -95,6 +101,13 @@ export function AccountContent({
   }, [user?.emailVerified]);
 
   const visibleReferral = user?.emailVerified ? referral : null;
+
+  useEffect(() => {
+    if (!user || !sessionsExpanded) return;
+    void listAccountSessions()
+      .then(setSessions)
+      .catch(() => setSessions([]));
+  }, [user, sessionsExpanded]);
 
   async function submit() {
     setBusy(true);
@@ -142,7 +155,14 @@ export function AccountContent({
                 </span>
               ) : null}
             </div>
-            <div className="truncate text-sm text-[var(--text-faint)]">@{user.username}</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm text-[var(--text-faint)]">@{user.username}</span>
+              {visibleReferral ? (
+                <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--accent)]">
+                  {visibleReferral.balanceCents} Credit
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -179,72 +199,107 @@ export function AccountContent({
         {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
 
         <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
-          <div className="flex items-start gap-3">
-            <div className="rounded-full bg-[var(--accent-soft)] p-2 text-[var(--accent)]">
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-[var(--accent-soft)] p-1.5 text-[var(--accent)]">
               <Gift className="h-4 w-4" />
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold">邀请好友，获得 $5 Credit</div>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--text-soft)]">
-                好友通过你的链接注册并完成邮箱验证后，活动 Credit 自动到账；后续活动可使用。
-              </p>
-              {visibleReferral ? (
-                <>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold tabular-nums">
-                      ${(visibleReferral.balanceCents / 100).toFixed(2)} Credit
-                    </span>
-                    <Button variant="secondary" onClick={() => setInviteExpanded((open) => !open)}>
-                      {inviteExpanded ? '收起' : '邀请好友'}
-                    </Button>
-                  </div>
-                  {inviteExpanded ? (
-                    <>
-                      <div className="mt-3 flex min-w-0 gap-2">
-                        <Input
-                          readOnly
-                          aria-label="邀请链接"
-                          value={`${window.location.origin}/settings?invite=${visibleReferral.code}`}
-                          className="min-w-0 flex-1 text-xs"
-                        />
-                        <Button
-                          variant="secondary"
-                          aria-label="复制邀请链接"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(
-                                `${window.location.origin}/settings?invite=${visibleReferral.code}`,
-                              );
-                              setCopied(true);
-                              window.setTimeout(() => setCopied(false), 1600);
-                            } catch {
-                              setError('复制失败，请手动选择邀请链接');
-                            }
-                          }}
-                        >
-                          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-center">
-                        <ReferralMetric
-                          label="已奖励"
-                          value={String(visibleReferral.rewardedCount)}
-                        />
-                        <ReferralMetric
-                          label="待验证"
-                          value={String(visibleReferral.pendingCount)}
-                        />
-                      </div>
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                <p className="mt-2 text-xs text-[var(--text-faint)]">
-                  {user.emailVerified ? '正在获取邀请链接…' : '完成邮箱验证后即可生成邀请链接。'}
-                </p>
-              )}
-            </div>
+            <div className="min-w-0 flex-1 text-sm font-semibold">邀请好友，获得 500 Credit</div>
+            {visibleReferral ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setInviteExpanded((open) => !open)}
+              >
+                {inviteExpanded ? '收起' : '邀请'}
+              </Button>
+            ) : null}
           </div>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--text-soft)]">
+            好友通过你的链接注册并完成邮箱验证后，500 Credit 自动到账。
+          </p>
+          {visibleReferral ? (
+            <>
+              {inviteExpanded ? (
+                <>
+                  <div className="mt-3 flex min-w-0 gap-2">
+                    <div
+                      aria-label="邀请码"
+                      className="min-w-0 flex-1 truncate rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2 font-mono text-xs"
+                    >
+                      {visibleReferral.code}
+                    </div>
+                    <Button
+                      variant="secondary"
+                      aria-label="复制邀请链接"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            `${window.location.origin}/settings?invite=${visibleReferral.code}`,
+                          );
+                          setCopied(true);
+                          window.setTimeout(() => setCopied(false), 1600);
+                        } catch {
+                          setError('复制失败，请手动选择邀请链接');
+                        }
+                      }}
+                    >
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                    {typeof navigator.share === 'function' ? (
+                      <Button
+                        variant="secondary"
+                        aria-label="分享邀请链接"
+                        onClick={() =>
+                          void navigator.share({
+                            title: '加入 0xNullAI',
+                            text: '使用我的邀请链接注册 0xNullAI',
+                            url: `${window.location.origin}/settings?invite=${visibleReferral.code}`,
+                          })
+                        }
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  {visibleReferral.activity.length > 0 ? (
+                    <div className="mt-3 space-y-1 border-t border-[var(--surface-border)] pt-2">
+                      {visibleReferral.activity.slice(0, 5).map((item, index) => (
+                        <div
+                          key={`${item.createdAt}-${index}`}
+                          className="flex items-center justify-between gap-3 text-xs"
+                        >
+                          <span className="text-[var(--text-soft)]">
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </span>
+                          <span
+                            className={
+                              item.status === 'rewarded'
+                                ? 'text-[var(--success)]'
+                                : 'text-[var(--text-faint)]'
+                            }
+                          >
+                            {item.status === 'rewarded'
+                              ? `+${item.rewardCents} Credit`
+                              : item.status === 'pending'
+                                ? '等待邮箱验证'
+                                : '未通过'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                    <ReferralMetric label="已奖励" value={String(visibleReferral.rewardedCount)} />
+                    <ReferralMetric label="待验证" value={String(visibleReferral.pendingCount)} />
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--text-faint)]">
+              {user.emailVerified ? '正在获取邀请链接…' : '完成邮箱验证后即可生成邀请链接。'}
+            </p>
+          )}
         </div>
 
         <button
@@ -258,6 +313,60 @@ export function AccountContent({
           <UserRound className="h-4 w-4 text-[var(--text-soft)]" />
           <span className="text-sm font-medium">我的主页</span>
         </button>
+
+        <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)]">
+          <button
+            type="button"
+            onClick={() => setSessionsExpanded((open) => !open)}
+            className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[var(--bg-soft)]"
+          >
+            <Laptop className="h-4 w-4 text-[var(--text-soft)]" />
+            <span className="flex-1 text-sm font-medium">登录设备</span>
+            <span className="text-xs text-[var(--text-faint)]">
+              {sessionsExpanded ? '收起' : '管理'}
+            </span>
+          </button>
+          {sessionsExpanded ? (
+            <div className="border-t border-[var(--surface-border)] p-2">
+              {sessions === null ? (
+                <p className="px-2 py-3 text-xs text-[var(--text-faint)]">加载中…</p>
+              ) : sessions.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-[var(--text-faint)]">暂时无法获取登录设备</p>
+              ) : (
+                <>
+                  {sessions.map((session) => (
+                    <SessionRow
+                      key={session.id}
+                      session={session}
+                      onRevoke={async () => {
+                        await revokeAccountSession(session.id);
+                        setSessions(
+                          (current) => current?.filter((item) => item.id !== session.id) ?? [],
+                        );
+                        if (session.current) {
+                          onUser(null);
+                          onDone();
+                        }
+                      }}
+                    />
+                  ))}
+                  {sessions.some((session) => !session.current) ? (
+                    <button
+                      type="button"
+                      className="mt-2 px-2 text-xs text-[var(--danger)] underline underline-offset-2"
+                      onClick={async () => {
+                        await revokeOtherAccountSessions();
+                        setSessions((current) => current?.filter((item) => item.current) ?? []);
+                      }}
+                    >
+                      退出其他所有设备
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
 
         <div className="mt-5 flex items-center justify-between gap-3">
           <button
@@ -365,7 +474,7 @@ export function AccountContent({
               maxLength={32}
             />
             <span className="text-[11px] text-[var(--text-faint)]">
-              完成邮箱验证后，邀请人将获得 $5 活动 Credit。
+              完成邮箱验证后，邀请人将获得 500 Credit。
             </span>
           </label>
         ) : null}
@@ -442,6 +551,42 @@ function ReferralMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-[var(--radius-xs)] bg-[var(--surface)] px-2 py-2">
       <div className="truncate text-sm font-semibold tabular-nums">{value}</div>
       <div className="mt-0.5 truncate text-[10px] text-[var(--text-faint)]">{label}</div>
+    </div>
+  );
+}
+
+function SessionRow({
+  session,
+  onRevoke,
+}: {
+  session: AccountSession;
+  onRevoke: () => Promise<void>;
+}) {
+  const device = session.userAgent?.includes('Android')
+    ? 'Android'
+    : session.userAgent?.includes('Windows')
+      ? 'Windows'
+      : session.userAgent?.includes('Macintosh')
+        ? 'macOS'
+        : '浏览器或客户端';
+  return (
+    <div className="flex items-center gap-2 rounded-[var(--radius-xs)] px-2 py-2 hover:bg-[var(--bg-soft)]">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium">
+          {device}
+          {session.current ? ' · 当前设备' : ''}
+        </div>
+        <div className="truncate text-[10px] text-[var(--text-faint)]">
+          {new Date(session.createdAt).toLocaleDateString()} 登录
+        </div>
+      </div>
+      <button
+        type="button"
+        className="text-xs text-[var(--danger)]"
+        onClick={() => void onRevoke()}
+      >
+        退出
+      </button>
     </div>
   );
 }

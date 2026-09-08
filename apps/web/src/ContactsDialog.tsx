@@ -4,9 +4,11 @@ import { Avatar, Button, Input, Overlay } from '@0xnullai/ui';
 import {
   followUser,
   getUser,
+  listContacts,
   listFollowers,
   listFollowing,
   openDirectMessage,
+  removeFollower,
   requestProfileView,
   unfollowUser,
   type AuthUser,
@@ -34,9 +36,10 @@ import {
  * this only shows what came back.
  */
 
-type Tab = 'following' | 'followers';
+type Tab = 'contacts' | 'following' | 'followers';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'contacts', label: '好友' },
   { id: 'following', label: '关注' },
   { id: 'followers', label: '粉丝' },
 ];
@@ -49,6 +52,7 @@ function Row({
   busy,
   onToggle,
   onMessage,
+  onRemove,
 }: {
   username: string;
   displayName: string;
@@ -58,49 +62,65 @@ function Row({
   onToggle: () => void;
   /** Only supplied for a mutual row — a one-way follow cannot start a conversation. */
   onMessage?: () => void;
+  onRemove?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2 hover:bg-[var(--bg-soft)]">
-      <Avatar name={displayName} username={username} size={34} onOpenProfile={requestProfileView} />
-      <button
-        type="button"
-        onClick={() => requestProfileView(username)}
-        className="min-w-0 flex-1 text-left"
-      >
-        <div className="truncate text-sm font-medium">{displayName}</div>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-xs text-[var(--text-faint)]">@{username}</span>
-          {mutual && <span className="shrink-0 text-[10px] text-[var(--accent)]">互相关注</span>}
-        </div>
-      </button>
+    <div className="rounded-[var(--radius-sm)] px-2 py-2 hover:bg-[var(--bg-soft)]">
+      <div className="flex items-center gap-3">
+        <Avatar
+          name={displayName}
+          username={username}
+          size={34}
+          onOpenProfile={requestProfileView}
+        />
+        <button
+          type="button"
+          onClick={() => requestProfileView(username)}
+          className="min-w-0 flex-1 text-left"
+        >
+          <div className="truncate text-sm font-medium">{displayName}</div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-xs text-[var(--text-faint)]">@{username}</span>
+            {mutual && <span className="shrink-0 text-[10px] text-[var(--accent)]">互相关注</span>}
+          </div>
+        </button>
+      </div>
       {/* Shown on mutual rows only, and not because the server would trust the absence of a
           button — it refuses to admit anyone else regardless. It is shown here because a
           button that always answers 「需要互相关注」 teaches nothing about what the rule is.
           A sibling of the row rather than inside it: the row itself is now a button that
           opens the profile, and a button inside a button is invalid markup that browsers
           resolve by dropping one of them. */}
-      {onMessage && (
-        <Button size="sm" variant="secondary" aria-label="私聊" onClick={onMessage}>
-          <MessageSquare className="h-4 w-4" />
+      <div className="mt-2 flex items-center justify-end gap-2 pl-[46px]">
+        {onMessage && (
+          <Button size="sm" variant="secondary" onClick={onMessage}>
+            <MessageSquare className="h-4 w-4" /> 私聊
+          </Button>
+        )}
+        {onRemove && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={onRemove}>
+            移除
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant={following ? 'secondary' : 'default'}
+          disabled={busy}
+          onClick={onToggle}
+        >
+          {following ? '取消关注' : '关注'}
         </Button>
-      )}
-      <Button
-        size="sm"
-        variant={following ? 'secondary' : 'default'}
-        disabled={busy}
-        onClick={onToggle}
-      >
-        {following ? '取消关注' : '关注'}
-      </Button>
+      </div>
     </div>
   );
 }
 
 export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('following');
+  const [tab, setTab] = useState<Tab>('contacts');
   // null means "not loaded yet", which is a different state from an empty list —
   // showing 「还没有关注任何人」 while the request is still out is wrong.
   const [lists, setLists] = useState<Record<Tab, Contact[] | null>>({
+    contacts: null,
     following: null,
     followers: null,
   });
@@ -119,7 +139,9 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
     let alive = true;
     // The client never throws: signed out and an unreachable service both arrive
     // as an empty page rather than as an exception inside the shell.
-    void (tab === 'following' ? listFollowing() : listFollowers()).then((page) => {
+    const request =
+      tab === 'contacts' ? listContacts() : tab === 'following' ? listFollowing() : listFollowers();
+    void request.then((page) => {
       if (alive) setLists((prev) => ({ ...prev, [tab]: page.users }));
     });
     return () => {
@@ -136,7 +158,7 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
     // Both lists move together: 关注 gains or loses a row, and the rows in 粉丝
     // change whether they are mutual. Dropping both back to unloaded and
     // refetching the visible one keeps the two from disagreeing.
-    setLists({ following: null, followers: null });
+    setLists({ contacts: null, following: null, followers: null });
     setReloadKey((k) => k + 1);
     if (found) setFound(await getUser(found.user.username));
     setBusyId(null);
@@ -274,7 +296,11 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
             </p>
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
-              {tab === 'following' ? '暂无关注，搜索用户名即可添加' : '暂无粉丝'}
+              {tab === 'contacts'
+                ? '暂无好友，互相关注后会显示在这里'
+                : tab === 'following'
+                  ? '暂无关注，搜索用户名即可添加'
+                  : '暂无粉丝'}
             </p>
           ) : filteredRows?.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-faint)]">
@@ -289,10 +315,15 @@ export function ContactsDialog({ user, onClose }: { user: AuthUser; onClose: () 
                 mutual={row.mutual}
                 // In 关注 you follow every row by definition; in 粉丝 only the
                 // mutual ones, and the rest get a 关注 button to follow back.
-                following={tab === 'following' || row.mutual}
+                following={tab !== 'followers' || row.mutual}
                 busy={busyId === row.id}
-                onToggle={() => void toggle(row.id, tab === 'following' || row.mutual)}
+                onToggle={() => void toggle(row.id, tab !== 'followers' || row.mutual)}
                 onMessage={row.mutual ? () => startDm(row) : undefined}
+                onRemove={
+                  tab === 'followers'
+                    ? () => void act(row.id, () => removeFollower(row.id))
+                    : undefined
+                }
               />
             ))
           )}

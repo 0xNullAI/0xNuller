@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, Link2, Lock, MapPin, MessageSquare, Pencil } from 'lucide-react';
+import {
+  CalendarDays,
+  Flag,
+  Link2,
+  Lock,
+  MapPin,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  ShieldOff,
+} from 'lucide-react';
 import { Badge, Button, Overlay } from '@0xnullai/ui';
 import {
   beginFollowToggle,
+  blockUser,
   canDirectMessage,
   followStateFrom,
   followUser,
   getUser,
   photoSrc,
   resolveProfileView,
+  reportUser,
   saveProfile,
   uploadPhoto,
   settleFollowToggle,
@@ -366,6 +378,15 @@ function ProfileActions({
   onToggleFollow: () => void;
   onClose: () => void;
 }) {
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState<
+    'spam' | 'harassment' | 'impersonation' | 'unsafe' | 'other'
+  >('spam');
+  const [reportDetails, setReportDetails] = useState('');
+  const [safetyBusy, setSafetyBusy] = useState(false);
+  const [safetyNotice, setSafetyNotice] = useState<string | null>(null);
   const { relationship } = resolved;
 
   if (relationship === 'self') {
@@ -408,6 +429,7 @@ function ProfileActions({
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
       {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+      {safetyNotice && <p className="text-xs text-[var(--success)]">{safetyNotice}</p>}
       <div className="flex items-center gap-2">
         {/* The button says what your side of the relationship is, never
             「互相关注」 — that is the badge's job up by the name, and saying it
@@ -433,8 +455,96 @@ function ProfileActions({
           <MessageSquare className="h-4 w-4" />
           私聊
         </Button>
+        <Button
+          variant="ghost"
+          aria-label="更多用户操作"
+          onClick={() => {
+            setSafetyOpen((open) => !open);
+            setConfirmBlock(false);
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
       </div>
       {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注后可私聊</p>}
+      {safetyOpen ? (
+        <div className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-2">
+          {reportOpen ? (
+            <div className="space-y-2 p-1">
+              <label className="block text-xs font-medium">举报原因</label>
+              <select
+                value={reportReason}
+                onChange={(event) => setReportReason(event.target.value as typeof reportReason)}
+                className="h-9 w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--surface)] px-2 text-sm"
+              >
+                <option value="spam">垃圾或骚扰信息</option>
+                <option value="harassment">骚扰或威胁</option>
+                <option value="impersonation">冒充他人</option>
+                <option value="unsafe">不安全行为</option>
+                <option value="other">其他</option>
+              </select>
+              <textarea
+                value={reportDetails}
+                maxLength={500}
+                rows={3}
+                placeholder="可选：补充具体情况"
+                onChange={(event) => setReportDetails(event.target.value)}
+                className="w-full resize-none rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--surface)] p-2 text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setReportOpen(false)}>
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={safetyBusy}
+                  onClick={async () => {
+                    setSafetyBusy(true);
+                    const result = await reportUser(resolved.user.id, reportReason, reportDetails);
+                    setSafetyBusy(false);
+                    if (result.ok) {
+                      setReportOpen(false);
+                      setSafetyOpen(false);
+                      setSafetyNotice('举报已提交');
+                    }
+                  }}
+                >
+                  提交举报
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setReportOpen(true)}>
+                <Flag className="h-4 w-4" /> 举报
+              </Button>
+              {confirmBlock ? (
+                <>
+                  <span className="flex-1 text-xs text-[var(--text-soft)]">
+                    屏蔽会解除双方关注并结束私聊。
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={safetyBusy}
+                    onClick={async () => {
+                      setSafetyBusy(true);
+                      const result = await blockUser(resolved.user.id);
+                      setSafetyBusy(false);
+                      if (result.ok) onClose();
+                    }}
+                  >
+                    确认屏蔽
+                  </Button>
+                </>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={() => setConfirmBlock(true)}>
+                  <ShieldOff className="h-4 w-4" /> 屏蔽
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
