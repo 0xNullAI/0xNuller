@@ -87,16 +87,21 @@ function pickAudioMime(): string {
 /** Start recording; the returned Recorder.stop() finishes it and yields the blob + duration. */
 export async function startRecording(): Promise<Recorder> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const mime = pickAudioMime();
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  const chunks: Blob[] = [];
-  rec.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  const startedAt = Date.now();
-  rec.start();
-
   const cleanup = () => stream.getTracks().forEach((t) => t.stop());
+  let rec: MediaRecorder;
+  const chunks: Blob[] = [];
+  const startedAt = Date.now();
+  try {
+    const mime = pickAudioMime();
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    rec.start();
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 
   return {
     stop() {

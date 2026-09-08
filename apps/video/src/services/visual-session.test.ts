@@ -80,6 +80,30 @@ describe('VisualSession latest-frame loop', () => {
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
+  it('starts a current-generation capture after pause and resume during an old capture', async () => {
+    const oldCapture = deferred<LlmImageInput | undefined>();
+    const capture = vi
+      .fn()
+      .mockImplementationOnce(() => oldCapture.promise)
+      .mockResolvedValue(frame('resumed'));
+    const session = new VisualSession({
+      capture,
+      interpret: vi.fn().mockResolvedValue('ok'),
+      onChange: vi.fn(),
+    });
+
+    session.start(10_000);
+    session.pause();
+    session.start(10_000);
+    oldCapture.resolve(frame('stale'));
+    await oldCapture.promise;
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+
+    expect(capture).toHaveBeenCalledTimes(2);
+    expect(session.getSnapshot().latestFrame).not.toBeNull();
+    expect(session.getSnapshot().status).toBe('running');
+  });
+
   it('refreshes the latest frame faster than the model cadence without overlapping inference', async () => {
     vi.useFakeTimers();
     const capture = vi.fn().mockResolvedValue(frame('latest'));

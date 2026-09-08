@@ -241,7 +241,12 @@ export function ChatPanel({
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (
+      e.key === 'Enter' &&
+      !e.shiftKey &&
+      !e.nativeEvent.isComposing &&
+      e.nativeEvent.keyCode !== 229
+    ) {
       e.preventDefault();
       if (!busy && hasText) triggerSend();
     }

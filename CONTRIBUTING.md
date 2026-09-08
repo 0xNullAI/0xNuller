@@ -195,13 +195,13 @@ Product、DG-Kit、DG-MCP 可以同批进入 `main`，但版本号保持独立�
 
 ### 5. 自动交付顺序
 
-同一个已验证的 `main` SHA 会启动三条独立流程，它们不是全局串行：
+同一个已验证的 `main` SHA 会启动两条发布流程：
 
-- **DG-Kit** 查询 npm，逐个发布尚不存在的固定组版本；
-- **DG-MCP** 可以并行启动，但会等待当前源码声明的 Kit 版本全部可从 npm 获取，再发布尚不存在的 `dg-mcp` 版本；
+- **npm packages** 先发布尚不存在的 DG-Kit 固定组版本，等待 registry 可见后，再发布尚不存在的 `dg-mcp` 版本；
 - **0xNuller Product** 独立构建并部署 Web/Workers、构建和验证签名 APK，最后创建 `vX.Y.Z` GitHub Release。
 
-唯一强制的跨流程顺序是 DG-Kit → DG-MCP。三条工作流都应验证当前 SHA 仍是 `main` tip、Repository CI 和自身责任域 CI 已通过。Product 不等待 npm Kit，因为它从同一 monorepo SHA 构建。
+npm 工作流内部强制 DG-Kit → DG-MCP。两条工作流都验证当前 SHA 仍是 `main` tip 且统一 CI
+已通过。Product 不等待 npm Kit，因为它从同一 monorepo SHA 构建。
 
 DG-Kit 和 DG-MCP 不创建 Git tag 或 GitHub Release。只有 Product 创建 `vX.Y.Z` 和版本化 APK。
 

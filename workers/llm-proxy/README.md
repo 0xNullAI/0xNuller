@@ -11,7 +11,8 @@
 
 生产脚本沿用 `dg-llm-proxy`，公开入口为 `https://llm.0xnullai.com`。这是为了保留 Cloudflare
 中已有的上游 secret；仓库和自动发布都以本目录为唯一维护来源。允许来源同时包含主站、`www`
-和 Android WebView 的 `http://tauri.localhost`。
+和 Android WebView 的 `http://tauri.localhost`。自定义域、日志和公网入口策略全部由
+`wrangler.toml` 管理；生产 `workers.dev` 与 Preview URL 保持关闭。
 
 ## 本地验证
 

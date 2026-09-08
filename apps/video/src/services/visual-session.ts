@@ -207,11 +207,11 @@ export class VisualSession {
       return null;
     } finally {
       this.captureInFlight = false;
-      if (generation === this.generation && this.snapshot.status === 'running') {
+      if (this.snapshot.status === 'running') {
         if (this.captureRequested) {
           this.captureRequested = false;
           void this.captureNow();
-        } else {
+        } else if (generation === this.generation) {
           this.scheduleAutoCapture();
         }
       }

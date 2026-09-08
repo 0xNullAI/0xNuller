@@ -18,6 +18,43 @@ afterEach(() => {
   realtimeMocks.createSession.mockReset();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function minimalDeviceSession(emergencyStop = vi.fn(async () => undefined)): DeviceSession {
+  const state: DeviceSessionState = {
+    coyotes: [],
+    coyote: createEmptyDeviceState(),
+    opossum: createEmptyOpossumState(),
+  };
+  return {
+    coyote: {},
+    opossum: {},
+    getState: vi.fn(async () => state),
+    listCoyoteTargets: vi.fn(async () => []),
+    onChanged: vi.fn(() => vi.fn()),
+    emergencyStop,
+  } as unknown as DeviceSession;
+}
+
+function realtimeSession(connect: () => Promise<void>): RealtimeSession {
+  return {
+    connect: vi.fn(connect),
+    disconnect: vi.fn(),
+    updateConfiguration: vi.fn(),
+    updateInstructions: vi.fn(),
+    isConnected: () => true,
+    sendFunctionCallOutput: vi.fn(),
+    requestResponse: vi.fn(),
+    whenAudioDrained: vi.fn(async () => undefined),
+  };
+}
+
 describe('useRealtimeCall 正常结束', () => {
   it('模块切换的内部原因不会显示成红色服务错误', async () => {
     const emergencyStop = vi.fn(async () => undefined);
@@ -136,4 +173,44 @@ describe('useRealtimeCall 正常结束', () => {
     expect(realtimeMocks.createSession).toHaveBeenCalledTimes(1);
     expect(realtimeSession.disconnect).not.toHaveBeenCalled();
   }, 10_000);
+
+  it('performs the complete hangup path when the remote session closes', async () => {
+    const emergencyStop = vi.fn(async () => undefined);
+    const deviceSession = minimalDeviceSession(emergencyStop);
+    const session = realtimeSession(async () => undefined);
+    realtimeMocks.createSession.mockResolvedValue(session);
+    const settings = createDefaultSettings();
+    settings.providers.xai.apiKey = 'test-key';
+    const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
+
+    await act(async () => result.current.startCall());
+    const options = realtimeMocks.createSession.mock.calls[0]?.[0] as RealtimeSessionOptions;
+    act(() => options.events.onClose?.('remote closed'));
+
+    await waitFor(() => expect(emergencyStop).toHaveBeenCalledOnce());
+    expect(session.disconnect).toHaveBeenCalledOnce();
+    expect(result.current.state).toMatchObject({ status: 'ended', error: 'remote closed' });
+  });
+
+  it('disconnects a session whose connection completes after the user cancelled', async () => {
+    const connecting = deferred<undefined>();
+    const deviceSession = minimalDeviceSession();
+    const session = realtimeSession(() => connecting.promise);
+    realtimeMocks.createSession.mockResolvedValue(session);
+    const settings = createDefaultSettings();
+    settings.providers.xai.apiKey = 'test-key';
+    const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
+
+    let start!: Promise<void>;
+    act(() => {
+      start = result.current.startCall();
+    });
+    await waitFor(() => expect(session.connect).toHaveBeenCalledOnce());
+    await act(async () => result.current.hangUp());
+    connecting.resolve(undefined);
+    await act(async () => start);
+
+    expect(session.disconnect).toHaveBeenCalled();
+    expect(result.current.state.status).toBe('ended');
+  });
 });

@@ -8,7 +8,7 @@ import { ProfileAvatar } from './ProfileAvatar';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  onSend: (text: string, mentions?: ChatMention[]) => void;
+  onSend: (text: string, mentions?: ChatMention[]) => boolean | void;
   /** Upload and send media (image/voice). The caller should ignore this while the room is not ready. */
   onSendMedia: (
     blob: Blob,
@@ -74,6 +74,8 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recStartRef = useRef(0);
+  const recorderRef = useRef<Recorder | null>(null);
+  const recordingGenerationRef = useRef(0);
 
   const mentionCandidates =
     mentionQuery !== null
@@ -107,12 +109,25 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
     return () => clearInterval(t);
   }, [recorder]);
 
+  useEffect(
+    () => () => {
+      recordingGenerationRef.current += 1;
+      recorderRef.current?.cancel();
+      recorderRef.current = null;
+    },
+    [],
+  );
+
   function handleSend() {
     const text = draft.trim();
     if (!text) return;
     // Keep only the @ mentions that still appear in the text.
     const mentions = pendingMentionsRef.current.filter((m) => text.includes(`@${m.displayName}`));
-    onSend(text, mentions.length ? mentions : undefined);
+    const accepted = onSend(text, mentions.length ? mentions : undefined);
+    if (accepted === false) {
+      setMediaError('消息尚未发送，连接恢复后请重试');
+      return;
+    }
     setDraft('');
     pendingMentionsRef.current = [];
     setMentionQuery(null);
@@ -136,21 +151,33 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   }
 
   async function startRec() {
+    if (busy || recorderRef.current) return;
+    const generation = ++recordingGenerationRef.current;
+    setBusy(true);
     setMediaError(null);
     try {
       const rec = await startRecording();
+      if (generation !== recordingGenerationRef.current) {
+        rec.cancel();
+        return;
+      }
       recStartRef.current = Date.now();
       setRecElapsed(0);
+      recorderRef.current = rec;
       setRecorder(rec);
     } catch (err) {
       console.error('[Chat] mic access failed', err);
       setMediaError('无法访问麦克风，请检查权限设置');
+    } finally {
+      if (generation === recordingGenerationRef.current) setBusy(false);
     }
   }
 
   async function stopRecAndSend() {
     if (!recorder) return;
     const rec = recorder;
+    recordingGenerationRef.current += 1;
+    recorderRef.current = null;
     setRecorder(null);
     setBusy(true);
     try {
@@ -165,7 +192,9 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
   }
 
   function cancelRec() {
-    recorder?.cancel();
+    recordingGenerationRef.current += 1;
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
     setRecorder(null);
   }
 
@@ -381,7 +410,12 @@ export function ChatPanel({ messages, onSend, onSendMedia, members = [], selfId 
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setMentionQuery(null);
-                else if (e.key === 'Enter') handleSend();
+                else if (
+                  e.key === 'Enter' &&
+                  !e.nativeEvent.isComposing &&
+                  e.nativeEvent.keyCode !== 229
+                )
+                  handleSend();
               }}
               placeholder={busy ? '发送中…' : '输入消息…'}
               disabled={busy}

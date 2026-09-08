@@ -52,6 +52,7 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
+      - run: npm install --global npm@11.6.2
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -86,9 +87,9 @@ jobs:
       - name: Restore Android signing keystore
         if: steps.version.outputs.publish == 'true'
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
         run: |
-          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing ANDROID_KEYSTORE_BASE64' >&2; exit 1; }
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing ANDROID_RELEASE_KEYSTORE_B64' >&2; exit 1; }
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dg-agent-release.jks"
 
@@ -96,9 +97,9 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         env:
           DG_AGENT_KEYSTORE: ${{ runner.temp }}/dg-agent-release.jks
-          DG_AGENT_ALIAS: ${{ secrets.DG_AGENT_ALIAS }}
-          DG_AGENT_STORE_PASS: ${{ secrets.DG_AGENT_STORE_PASS }}
-          DG_AGENT_KEY_PASS: ${{ secrets.DG_AGENT_KEY_PASS }}
+          DG_AGENT_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          DG_AGENT_STORE_PASS: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          DG_AGENT_KEY_PASS: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: |
           npm run android:init
           npm run android:build -- --apk --target aarch64
@@ -146,17 +147,17 @@ jobs:
       - name: Require Cloudflare credentials
         if: steps.version.outputs.publish == 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PROD_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_PROD_ACCOUNT_ID }}
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN' >&2; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_PROD_DEPLOY_TOKEN' >&2; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_PROD_ACCOUNT_ID' >&2; exit 1; }
 
       - name: Deploy product services and Web
         if: steps.version.outputs.publish == 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PROD_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_PROD_ACCOUNT_ID }}
         run: |
           npx wrangler deploy --config workers/auth/wrangler.jsonc
           npx wrangler deploy --config apps/chat/wrangler.jsonc
@@ -196,7 +197,3 @@ jobs:
             echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
             echo '- Source: `${{ steps.source.outputs.sha }}`'
           } >> "$GITHUB_STEP_SUMMARY"
-
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

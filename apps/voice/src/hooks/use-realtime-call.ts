@@ -81,6 +81,8 @@ export function useRealtimeCall(
   const [pendingPermission, setPendingPermission] = useState<PendingPermissionRequest | null>(null);
   const pendingPermissionRef = useRef<PendingPermissionRequest | null>(null);
   const sessionRef = useRef<RealtimeSession | null>(null);
+  const pendingSessionRef = useRef<RealtimeSession | null>(null);
+  const callGenerationRef = useRef(0);
   const guardStopRef = useRef<(() => void) | null>(null);
   const deviceWatchStopRef = useRef<(() => void) | null>(null);
   const coyoteQueueStopRef = useRef<(() => Promise<void>) | null>(null);
@@ -99,7 +101,8 @@ export function useRealtimeCall(
   }, []);
 
   const hangUp = useCallback(
-    async (_reason?: string) => {
+    async (reason?: string, reportReason = false) => {
+      callGenerationRef.current += 1;
       // A dialog still on screen when the call ends must not leave its promise
       // dangling — the tool executor would await it forever.
       const stranded = pendingPermissionRef.current;
@@ -111,8 +114,12 @@ export function useRealtimeCall(
       guardStopRef.current = null;
       deviceWatchStopRef.current?.();
       deviceWatchStopRef.current = null;
-      sessionRef.current?.disconnect();
+      const sessions = new Set(
+        [sessionRef.current, pendingSessionRef.current].filter(Boolean) as RealtimeSession[],
+      );
       sessionRef.current = null;
+      pendingSessionRef.current = null;
+      for (const session of sessions) session.disconnect();
       const genericRuntime = deviceRuntimeProvider?.current();
       const stops: Promise<unknown>[] = [
         Promise.resolve().then(async () => {
@@ -147,7 +154,11 @@ export function useRealtimeCall(
       setState((prev) => ({
         ...prev,
         status: 'ended',
-        error: stopFailed ? '无法确认设备已停止，请立即断开设备或取下设备' : null,
+        error: stopFailed
+          ? '无法确认设备已停止，请立即断开设备或取下设备'
+          : reportReason
+            ? (reason ?? '连接已关闭')
+            : null,
         speaking: false,
       }));
     },
@@ -155,6 +166,7 @@ export function useRealtimeCall(
   );
 
   const startCall = useCallback(async () => {
+    const generation = ++callGenerationRef.current;
     setState({
       status: 'connecting',
       error: null,
@@ -226,11 +238,14 @@ export function useRealtimeCall(
     coyoteQueueStopRef.current = () => legacyExecutor.emergencyStopCoyoteTargetQueues();
 
     const events: RealtimeSessionEvents = {
-      onOpen: () => setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() })),
-      onClose: (reason) =>
-        setState((prev) =>
-          prev.status === 'ended' ? prev : { ...prev, status: 'ended', error: reason },
-        ),
+      onOpen: () => {
+        if (generation !== callGenerationRef.current) return;
+        setState((prev) => ({ ...prev, status: 'active', startedAt: Date.now() }));
+      },
+      onClose: (reason) => {
+        if (generation !== callGenerationRef.current) return;
+        void hangUp(reason, true);
+      },
       onError: (error) =>
         setState((prev) => ({ ...prev, error: `服务端返回错误：${error.message}` })),
       onSpeakingChange: (speaking) => setState((prev) => ({ ...prev, speaking })),
@@ -297,6 +312,7 @@ export function useRealtimeCall(
 
     try {
       const initialConfiguration = await buildConfiguration();
+      if (generation !== callGenerationRef.current) return;
       const session = await createRealtimeSession({
         settings: providerSettings,
         tools: initialConfiguration.tools,
@@ -307,8 +323,15 @@ export function useRealtimeCall(
       const bridge = new VoiceToolBridge(session, executor);
       Object.assign(events, bridge.attach(events));
 
+      pendingSessionRef.current = session;
       await session.connect();
+      if (generation !== callGenerationRef.current) {
+        session.disconnect();
+        if (pendingSessionRef.current === session) pendingSessionRef.current = null;
+        return;
+      }
       sessionRef.current = session;
+      pendingSessionRef.current = null;
       guardStopRef.current = new DeviceLifecycleGuard({
         onStop: () => hangUp('页面已离开或切至后台，通话已自动挂断'),
       }).start();
@@ -359,6 +382,9 @@ export function useRealtimeCall(
         runtimeSnapshotStop?.();
       };
     } catch (error) {
+      pendingSessionRef.current?.disconnect();
+      pendingSessionRef.current = null;
+      if (generation !== callGenerationRef.current) return;
       setState((prev) => ({
         ...prev,
         status: 'idle',
