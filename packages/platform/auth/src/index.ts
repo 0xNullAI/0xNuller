@@ -121,6 +121,32 @@ export interface ReferralSummary {
   rewardCents: number;
   rewardedCount: number;
   pendingCount: number;
+  activity: Array<{
+    status: 'pending' | 'rewarded' | 'rejected';
+    rewardCents: number;
+    createdAt: number;
+    qualifiedAt: number | null;
+  }>;
+}
+
+export interface AccountSession {
+  id: string;
+  createdAt: number;
+  expiresAt: number;
+  userAgent: string | null;
+  current: boolean;
+}
+
+export async function listAccountSessions(): Promise<AccountSession[]> {
+  return (await call<{ sessions: AccountSession[] }>('/api/auth/sessions')).sessions ?? [];
+}
+
+export function revokeAccountSession(id: string): Promise<{ ok: true }> {
+  return call(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function revokeOtherAccountSessions(): Promise<{ ok: true }> {
+  return call('/api/auth/sessions/others', { method: 'DELETE' });
 }
 
 export async function getReferralSummary(): Promise<ReferralSummary> {
@@ -210,10 +236,35 @@ export interface AdminStats {
   registrationAttempts24h: number;
   textUnitsToday: number;
   voiceUnitsToday: number;
+  openReports: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
   return call<AdminStats>('/api/auth/admin/stats');
+}
+
+export interface UserReport {
+  id: string;
+  reason: 'spam' | 'harassment' | 'impersonation' | 'unsafe' | 'other';
+  details: string | null;
+  status: 'open' | 'reviewed' | 'dismissed';
+  created_at: number;
+  reporter_username: string;
+  reported_username: string;
+}
+
+export async function getAdminReports(): Promise<UserReport[]> {
+  return (await call<{ reports: UserReport[] }>('/api/auth/admin/reports')).reports ?? [];
+}
+
+export function resolveAdminReport(
+  id: string,
+  status: 'reviewed' | 'dismissed',
+): Promise<{ ok: true }> {
+  return call(`/api/auth/admin/reports/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 }
 
 /** Hard-delete the account. Users of this product category care intensely about whether deletion is real — so it is a real delete, not a flag. */
@@ -442,12 +493,33 @@ export function listFollowers(options?: { limit?: number; offset?: number }): Pr
   return contactPage(`/api/auth/followers${pageQuery(options)}`);
 }
 
+export function listContacts(options?: { limit?: number; offset?: number }): Promise<ContactPage> {
+  return contactPage(`/api/auth/contacts${pageQuery(options)}`);
+}
+
 export function followUser(userId: string): Promise<ContactActionResult> {
   return contactAction('/api/auth/follow', { method: 'POST', body: JSON.stringify({ userId }) });
 }
 
 export function unfollowUser(userId: string): Promise<ContactActionResult> {
   return contactAction(`/api/auth/follow/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+export function removeFollower(userId: string): Promise<ContactActionResult> {
+  return contactAction(`/api/auth/follower/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+export type UserReportReason = 'spam' | 'harassment' | 'impersonation' | 'unsafe' | 'other';
+
+export function reportUser(
+  userId: string,
+  reason: UserReportReason,
+  details?: string,
+): Promise<ContactActionResult> {
+  return contactAction('/api/auth/report', {
+    method: 'POST',
+    body: JSON.stringify({ userId, reason, details }),
+  });
 }
 
 /**

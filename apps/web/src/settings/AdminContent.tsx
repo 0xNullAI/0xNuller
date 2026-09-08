@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
 import { Button, Input } from '@0xnullai/ui';
-import { getAdminStats, type AdminStats } from '@0xnullai/auth';
+import {
+  getAdminReports,
+  getAdminStats,
+  resolveAdminReport,
+  type AdminStats,
+  type UserReport,
+} from '@0xnullai/auth';
 import type { MarketAdminItem } from '../../../market/src/shared/schema';
 import {
   deleteItem,
@@ -33,6 +39,7 @@ export function AdminContent() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [reports, setReports] = useState<UserReport[]>([]);
 
   const requestPage = useCallback(
     (offset = 0) => fetchAdminItems({ type, status, q: query || undefined, offset, limit: 20 }),
@@ -83,6 +90,12 @@ export function AdminContent() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    void getAdminReports()
+      .then(setReports)
+      .catch(() => undefined);
+  }, []);
+
   async function updateVisibility(item: MarketAdminItem) {
     setBusyId(item.id);
     setError(null);
@@ -121,6 +134,7 @@ export function AdminContent() {
             ['24h 注册尝试', stats.registrationAttempts24h],
             ['今日文本体验', stats.textUnitsToday],
             ['今日语音体验', stats.voiceUnitsToday],
+            ['待处理举报', stats.openReports],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -130,6 +144,61 @@ export function AdminContent() {
               <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
             </div>
           ))}
+        </div>
+      ) : null}
+      {reports.some((report) => report.status === 'open') ? (
+        <div className="mb-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+          <h2 className="text-sm font-semibold">用户举报</h2>
+          <div className="mt-2 space-y-2">
+            {reports
+              .filter((report) => report.status === 'open')
+              .map((report) => (
+                <div
+                  key={report.id}
+                  className="rounded-[var(--radius-xs)] bg-[var(--bg-soft)] p-2 text-xs"
+                >
+                  <div className="font-medium">
+                    @{report.reported_username} · {report.reason}
+                  </div>
+                  <div className="mt-0.5 text-[var(--text-faint)]">
+                    举报人 @{report.reporter_username}
+                  </div>
+                  {report.details ? (
+                    <p className="mt-1 text-[var(--text-soft)]">{report.details}</p>
+                  ) : null}
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        await resolveAdminReport(report.id, 'dismissed');
+                        setReports((current) =>
+                          current.map((item) =>
+                            item.id === report.id ? { ...item, status: 'dismissed' } : item,
+                          ),
+                        );
+                      }}
+                    >
+                      忽略
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        await resolveAdminReport(report.id, 'reviewed');
+                        setReports((current) =>
+                          current.map((item) =>
+                            item.id === report.id ? { ...item, status: 'reviewed' } : item,
+                          ),
+                        );
+                      }}
+                    >
+                      标记已处理
+                    </Button>
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
