@@ -1,160 +1,304 @@
-/**
- * 0xnullai-llm-proxy — Cloudflare Worker
- *
- * The free provider's LLM relay. The upstream key is injected server-side
- * (PROXY_API_KEY) and never reaches the browser.
- *
- * Who is allowed to spend that key is decided in `guard.js`; read the comment
- * at the top of that file before changing anything here. The short version:
- * every check is opt-in by configuration, so an unconfigured deployment
- * behaves exactly as this worker always has, and the free provider cannot be
- * taken down by a half-finished rollout.
- *
- * Deploy:
- *   wrangler deploy
- *   wrangler secret put PROXY_API_KEY       # upstream gateway key
- *   wrangler secret put FREE_PROXY_SECRET   # optional; must equal the client's
- *                                           # VITE_DG_PROXY_SECRET
- *   # PROXY_MODEL, ALLOWED_ORIGINS and the custom domain are in wrangler.toml.
- */
+/** Managed 0xNullAI model service. Every successful request consumes Credit. */
 
-import { checkSignature, corsHeaders, createMemoryLimiter, originAllowed } from './guard.js';
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_OUTPUT_TOKENS = 4096;
+const PRICE_VERSION = 'credits-2026-09';
 
-const UPSTREAM = 'https://aihub.071129.xyz/v1/chat/completions';
-const MAX_REQUESTS_PER_MINUTE = 10;
-const MAX_TOKENS = 2048;
+function allowedOrigins(env) {
+  return new Set(
+    String(env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
+}
 
-const allowFromMemory = createMemoryLimiter(MAX_REQUESTS_PER_MINUTE);
+function corsHeaders(origin, env) {
+  const selected = origin && allowedOrigins(env).has(origin) ? origin : null;
+  return {
+    ...(selected ? { 'Access-Control-Allow-Origin': selected } : {}),
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, Idempotency-Key, X-0xNullAI-Usage-Kind',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    Vary: 'Origin',
+  };
+}
 
-function json(status, data, cors) {
+function json(status, data, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...cors, 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json; charset=utf-8' },
   });
 }
 
-/**
- * Cloudflare's Rate Limiting binding when it is bound, the per-isolate counter
- * when it is not. The fallback is deliberately still here: a missing binding
- * should weaken the limit, not remove it.
- */
-async function withinRateLimit(env, ip, nowMin) {
-  if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === 'function') {
-    try {
-      const { success } = await env.RATE_LIMITER.limit({ key: ip });
-      return success;
-    } catch {
-      // Fall through — a limiter that is erroring must not become an outage.
+async function readJsonBounded(request) {
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return {};
+  const chunks = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
     }
+    chunks.push(value);
   }
-  return allowFromMemory(ip, nowMin);
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function credentials(request) {
+  return {
+    authorization: request.headers.get('Authorization'),
+    cookie: request.headers.get('Cookie'),
+  };
+}
+
+function model(env) {
+  return {
+    id: 'balanced',
+    object: 'model',
+    name: '均衡',
+    upstreamId: env.UPSTREAM_MODEL,
+    inputCreditsPerMillion: Number(env.INPUT_CREDITS_PER_MILLION),
+    cachedInputCreditsPerMillion: Number(env.CACHED_INPUT_CREDITS_PER_MILLION),
+    outputCreditsPerMillion: Number(env.OUTPUT_CREDITS_PER_MILLION),
+    imageInput: true,
+    priceVersion: PRICE_VERSION,
+  };
+}
+
+function validModelConfig(item) {
+  return (
+    typeof item.upstreamId === 'string' &&
+    item.upstreamId.length > 0 &&
+    Number.isFinite(item.inputCreditsPerMillion) &&
+    item.inputCreditsPerMillion > 0 &&
+    Number.isFinite(item.outputCreditsPerMillion) &&
+    item.outputCreditsPerMillion > 0
+  );
+}
+
+function estimateInputTokens(body) {
+  // UTF-8 bytes are a deliberately conservative tokenizer-independent upper
+  // bound for supported text. Reservations are temporary; settlement uses the
+  // upstream's actual token counts.
+  return Math.max(1, new TextEncoder().encode(JSON.stringify(body.messages ?? [])).byteLength);
+}
+
+function estimateReservation(body, item) {
+  const maxOutput = Math.min(
+    Math.max(Math.trunc(Number(body.max_tokens) || 1024), 1),
+    MAX_OUTPUT_TOKENS,
+  );
+  const input = estimateInputTokens(body);
+  return Math.max(
+    1,
+    Math.ceil(
+      (input * item.inputCreditsPerMillion + maxOutput * item.outputCreditsPerMillion) / 1_000_000,
+    ),
+  );
+}
+
+function chargedCredits(usage, item) {
+  const prompt = Math.max(0, Math.trunc(Number(usage?.prompt_tokens) || 0));
+  const cached = Math.min(
+    prompt,
+    Math.max(0, Math.trunc(Number(usage?.prompt_tokens_details?.cached_tokens) || 0)),
+  );
+  const completion = Math.max(0, Math.trunc(Number(usage?.completion_tokens) || 0));
+  const raw =
+    (prompt - cached) * item.inputCreditsPerMillion +
+    cached * (item.cachedInputCreditsPerMillion || item.inputCreditsPerMillion) +
+    completion * item.outputCreditsPerMillion;
+  return Math.max(1, Math.ceil(raw / 1_000_000));
+}
+
+async function withinRateLimit(env, request) {
+  if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== 'function') return false;
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    return (await env.RATE_LIMITER.limit({ key: ip })).success;
+  } catch {
+    return false;
+  }
+}
+
+async function relayAndSettle(upstream, auth, key, item, env) {
+  const reader = upstream.body.getReader();
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let usage = null;
+  const completion = (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writer.write(value);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const event = JSON.parse(payload);
+            if (event.usage) usage = event.usage;
+          } catch {
+            // Ignore upstream SSE comments and optional non-JSON events.
+          }
+        }
+      }
+      if (!usage) throw new Error('upstream stream did not report usage');
+      await env.AUTH.settleCredits(auth, key, chargedCredits(usage, item), {
+        model: item.id,
+        upstreamModel: item.upstreamId,
+        usage,
+        priceVersion: PRICE_VERSION,
+      });
+      await writer.close();
+    } catch (error) {
+      await env.AUTH.releaseCredits(auth, key);
+      await writer.abort(error);
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+  return { readable: stream.readable, completion };
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin');
-    const cors = corsHeaders(origin, env.ALLOWED_ORIGINS);
+    const cors = corsHeaders(origin, env);
+    if (origin && !allowedOrigins(env).has(origin)) return json(403, { error: '来源不被允许' });
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
-    if (!originAllowed(origin, env.ALLOWED_ORIGINS)) {
-      // No CORS headers on this one: the browser must not be able to read the
-      // body, and there is nothing here for a disallowed origin to read.
-      return new Response(JSON.stringify({ error: '来源不被允许' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const url = new URL(request.url);
+    const item = model(env);
+    if (!validModelConfig(item)) return json(503, { error: '平台模型尚未配置' }, cors);
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: cors });
-    }
-    if (request.method !== 'POST') {
-      return json(405, { error: '仅支持 POST 请求' }, cors);
+    if (url.pathname === '/v1/models' && request.method === 'GET') {
+      const balance = await env.AUTH.creditBalance(credentials(request));
+      if (balance === 'unauthorized') return json(401, { error: '请先登录' }, cors);
+      const publicModel = { ...item };
+      delete publicModel.upstreamId;
+      return json(200, { object: 'list', data: [publicModel], credit: balance }, cors);
     }
 
-    const now = Date.now();
-    const authorization = request.headers.get('Authorization');
-    const quota = await env.AUTH.consumeAiQuota(
-      {
-        authorization: authorization === 'Bearer free' ? null : authorization,
-        cookie: request.headers.get('Cookie'),
-      },
-      'text',
-      1,
-    );
-    if (quota === 'unauthorized') {
-      return json(401, { error: '请先登录后使用体验模型' }, cors);
+    if (url.pathname !== '/v1/chat/completions' || request.method !== 'POST') {
+      return json(404, { error: '接口不存在' }, cors);
     }
-    if (!quota.allowed) {
-      return json(429, { error: '今日体验额度已用完，请明天再试或配置自己的模型服务' }, cors);
-    }
-
-    const verdict = await checkSignature(request.headers, env.FREE_PROXY_SECRET, now);
-    if (verdict === 'stale') {
-      return json(403, { error: '请求已过期，请检查设备时间后重试' }, cors);
-    }
-    if (verdict !== 'ok') {
-      return json(403, { error: '签名校验失败' }, cors);
-    }
-
-    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-    if (!(await withinRateLimit(env, ip, Math.floor(now / 60000)))) {
-      return json(
-        429,
-        { error: `请求过于频繁，每分钟最多 ${MAX_REQUESTS_PER_MINUTE} 条，请稍后再试。` },
-        cors,
-      );
-    }
+    if (!(await withinRateLimit(env, request))) return json(429, { error: '请求过于频繁' }, cors);
 
     let body;
     try {
-      body = await request.json();
+      body = await readJsonBounded(request);
     } catch {
       return json(400, { error: '请求体格式错误' }, cors);
     }
+    if (!body) return json(413, { error: '请求体过大' }, cors);
+    if (!Array.isArray(body.messages)) return json(400, { error: 'messages 格式错误' }, cors);
 
-    // Force the upstream model server-side so the frontend stays agnostic, and
-    // cap the spend per request. Any caller-supplied key is dropped rather than
-    // forwarded.
-    body.model = env.PROXY_MODEL || 'openrouter/free';
-    body.max_tokens = Math.min(body.max_tokens || MAX_TOKENS, MAX_TOKENS);
-    delete body.max_output_tokens;
-    delete body.api_key;
-    delete body.apiKey;
-
-    if (!env.PROXY_API_KEY) {
-      return json(500, { error: '服务端未配置 PROXY_API_KEY' }, cors);
-    }
-
-    let upstream;
-    try {
-      upstream = await fetch(UPSTREAM, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${env.PROXY_API_KEY}`,
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (e) {
+    const key = request.headers.get('Idempotency-Key');
+    if (!key) return json(400, { error: '缺少 Idempotency-Key' }, cors);
+    const auth = credentials(request);
+    const reservation = await env.AUTH.reserveCredits(auth, {
+      idempotencyKey: key,
+      usageKind: request.headers.get('X-0xNullAI-Usage-Kind') === 'video' ? 'video' : 'agent',
+      modelId: item.id,
+      credits: estimateReservation(body, item),
+    });
+    if (reservation === 'unauthorized') return json(401, { error: '请先登录' }, cors);
+    if (!reservation.allowed) {
+      const status = reservation.status === 'insufficient' ? 402 : 409;
       return json(
-        502,
-        { error: '代理请求失败: ' + (e && e.message ? e.message : String(e)) },
+        status,
+        {
+          error: status === 402 ? 'Credit 不足' : '该请求已经提交，请勿重复发送',
+          credit: reservation,
+        },
         cors,
       );
     }
 
+    const upstreamBody = {
+      ...body,
+      model: item.upstreamId,
+      max_tokens: Math.min(
+        Math.max(Math.trunc(Number(body.max_tokens) || 1024), 1),
+        MAX_OUTPUT_TOKENS,
+      ),
+      ...(body.stream ? { stream_options: { include_usage: true } } : {}),
+    };
+    delete upstreamBody.api_key;
+    delete upstreamBody.apiKey;
+
+    let upstream;
+    try {
+      upstream = await fetch(
+        `${String(env.UPSTREAM_BASE_URL).replace(/\/+$/, '')}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${env.PROXY_API_KEY}`,
+          },
+          body: JSON.stringify(upstreamBody),
+        },
+      );
+    } catch {
+      await env.AUTH.releaseCredits(auth, key);
+      return json(502, { error: '模型服务暂时不可用' }, cors);
+    }
+    if (!upstream.ok) {
+      await env.AUTH.releaseCredits(auth, key);
+      return json(upstream.status >= 500 ? 502 : upstream.status, { error: '模型请求失败' }, cors);
+    }
+
     if (body.stream) {
-      // Pass the SSE stream straight through.
-      return new Response(upstream.body, {
-        status: upstream.status,
-        headers: { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+      if (!upstream.body) {
+        await env.AUTH.releaseCredits(auth, key);
+        return json(502, { error: '模型流不可用' }, cors);
+      }
+      const relay = await relayAndSettle(upstream, auth, key, item, env);
+      ctx.waitUntil(relay.completion);
+      return new Response(relay.readable, {
+        status: 200,
+        headers: { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' },
       });
     }
 
-    const text = await upstream.text();
-    return new Response(text, {
-      status: upstream.status,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+    try {
+      const payload = await upstream.json();
+      if (!payload?.usage) throw new Error('missing usage');
+      const charged = chargedCredits(payload.usage, item);
+      await env.AUTH.settleCredits(auth, key, charged, {
+        model: item.id,
+        upstreamModel: item.upstreamId,
+        usage: payload.usage,
+        priceVersion: PRICE_VERSION,
+      });
+      return json(200, { ...payload, model: item.id, credit_charged: charged }, cors);
+    } catch {
+      await env.AUTH.releaseCredits(auth, key);
+      return json(502, { error: '模型响应缺少可结算用量' }, cors);
+    }
   },
 };
+
+export { chargedCredits, estimateReservation };

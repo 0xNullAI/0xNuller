@@ -4,6 +4,7 @@ import { Button, Input } from '@0xnullai/ui';
 import {
   getAdminReports,
   getAdminStats,
+  grantCreditPackage,
   resolveAdminReport,
   type AdminStats,
   type UserReport,
@@ -40,6 +41,10 @@ export function AdminContent() {
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [reports, setReports] = useState<UserReport[]>([]);
+  const [creditUsername, setCreditUsername] = useState('');
+  const [creditAmount, setCreditAmount] = useState<7 | 35 | 70 | 140>(7);
+  const [creditReference, setCreditReference] = useState('');
+  const [creditNotice, setCreditNotice] = useState<string | null>(null);
 
   const requestPage = useCallback(
     (offset = 0) => fetchAdminItems({ type, status, q: query || undefined, offset, limit: 20 }),
@@ -125,6 +130,59 @@ export function AdminContent() {
 
   return (
     <section aria-labelledby="admin-content-title">
+      <form
+        className="mb-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          setCreditNotice(null);
+          try {
+            const result = await grantCreditPackage({
+              username: creditUsername.trim(),
+              amountCny: creditAmount,
+              externalReference: creditReference.trim(),
+            });
+            setCreditNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
+            setCreditReference('');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : '充值入账失败');
+          }
+        }}
+      >
+        <h2 className="text-sm font-semibold">人工充值入账</h2>
+        <p className="mt-1 text-xs text-[var(--text-faint)]">
+          确认实际到账后再提交，流水号只能使用一次。
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto]">
+          <Input
+            value={creditUsername}
+            onChange={(event) => setCreditUsername(event.target.value)}
+            placeholder="用户名"
+            aria-label="充值用户名"
+          />
+          <select
+            value={creditAmount}
+            onChange={(event) => setCreditAmount(Number(event.target.value) as typeof creditAmount)}
+            aria-label="充值档位"
+            className="h-10 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--surface)] px-3 text-sm"
+          >
+            <option value={7}>¥7 · 1,000</option>
+            <option value={35}>¥35 · 5,000</option>
+            <option value={70}>¥70 · 10,000</option>
+            <option value={140}>¥140 · 20,000</option>
+          </select>
+          <Input
+            value={creditReference}
+            onChange={(event) => setCreditReference(event.target.value)}
+            placeholder="支付宝流水号"
+            aria-label="外部流水号"
+          />
+          <Button type="submit" disabled={!creditUsername.trim() || !creditReference.trim()}>
+            确认入账
+          </Button>
+        </div>
+        {creditNotice ? <p className="mt-2 text-xs text-[var(--success)]">{creditNotice}</p> : null}
+      </form>
       {stats ? (
         <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
@@ -132,8 +190,8 @@ export function AdminContent() {
             ['已验证', stats.verifiedUsers],
             ['活跃会话', stats.activeSessions],
             ['24h 注册尝试', stats.registrationAttempts24h],
-            ['今日文本体验', stats.textUnitsToday],
-            ['今日语音体验', stats.voiceUnitsToday],
+            ['今日消费 Credit', stats.creditUsedToday],
+            ['今日充值 Credit', stats.creditPurchasedToday],
             ['待处理举报', stats.openReports],
           ].map(([label, value]) => (
             <div

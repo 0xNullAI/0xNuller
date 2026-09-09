@@ -12,9 +12,9 @@
 - OpenAI Realtime 与兼容服务
 - Azure OpenAI Realtime
 - 智谱 GLM Realtime
-- 由 `0xnullai-voice` Worker 计量的体验模式
+- 由 `0xnullai-voice` Worker 按 Credit 计量的 0xNullAI Voice
 
-自带密钥模式直接连接所选服务；体验模式通过主站 `/api/realtime` 建立短期会话。文本模型
+自带密钥模式直接连接所选服务；0xNullAI Voice 通过主站 `/api/realtime` 建立按 Credit 结算的会话。文本模型
 和语音模型在统一设置中独立管理。
 
 ## 功能
@@ -27,7 +27,7 @@
 
 ## 使用
 
-1. 在「软件设置 → AI → 语音模型」配置 provider，或选择体验模式。
+1. 在「软件设置 → AI → 语音模型」配置 provider，或选择 0xNullAI Voice。
 2. 从顶部设备横栏连接设备。
 3. 选择场景并开始通话。
 4. 挂断、切换模块或使用顶部停止操作结束输出。
@@ -40,7 +40,7 @@ npm run dev -w 0xnullai-voice
 npm run test -w 0xnullai-voice
 npm run typecheck -w 0xnullai-voice
 npm run build -w 0xnullai-voice
-npm run cf:dev -w 0xnullai-voice   # 体验模式 Worker
+npm run cf:dev -w 0xnullai-voice   # 托管 Voice Worker
 ```
 
 统一外壳开发使用 `npm run dev -w @0xnullai/web`。
@@ -52,10 +52,10 @@ src/lib/realtime/       Realtime provider 适配
 src/lib/                音频、设备与工具桥
 src/hooks/              React 状态绑定
 src/components/         通话与设置 UI；共享设备面板来自 @0xnullai/ui
-worker/                 体验模式入口与 TrialSession DO
+worker/                 托管入口与 ManagedVoiceSession DO
 ```
 
-体验 Worker 的账户票据、额度和部署配置见 [worker/README.md](worker/README.md)。正式发布前仍需
+托管 Worker 的账户票据、Credit 和部署配置见 [worker/README.md](worker/README.md)。正式发布前仍需
 用真实 provider 完成浏览器与安卓端到端通话、工具调用和挂断停止验收。
 
 Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、换票/Azure/Zhipu 鉴权和音色

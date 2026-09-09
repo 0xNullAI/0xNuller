@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Gift, Laptop, Share2, UserRound } from 'lucide-react';
+import { Check, Coins, Copy, Gift, Laptop, Share2, UserRound } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
   avatarSrc,
   deleteAccount,
+  getCreditBalance,
+  getCreditLedger,
   getReferralSummary,
   listAccountSessions,
   login,
@@ -20,8 +22,23 @@ import {
   revokeOtherAccountSessions,
   type AccountSession,
   type AuthUser,
+  type CreditBalance,
+  type CreditLedgerEntry,
   type ReferralSummary,
 } from '@0xnullai/auth';
+
+function creditEntryLabel(kind: CreditLedgerEntry['kind']): string {
+  return (
+    {
+      referral_reward: '邀请奖励',
+      manual_purchase: '人工充值',
+      usage: '模型使用',
+      refund: '退款',
+      support_adjustment: '客服调整',
+      billing_correction: '账务冲正',
+    } as const
+  )[kind];
+}
 
 function Agreement() {
   return (
@@ -71,6 +88,9 @@ export function AccountContent({
   const [agreed, setAgreed] = useState(false);
   const [referralCode, setReferralCode] = useState(initialReferralCode.toUpperCase());
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
+  const [credit, setCredit] = useState<CreditBalance | null>(null);
+  const [creditEntries, setCreditEntries] = useState<CreditLedgerEntry[]>([]);
+  const [creditExpanded, setCreditExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inviteExpanded, setInviteExpanded] = useState(false);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
@@ -99,6 +119,19 @@ export function AccountContent({
       .then(setReferral)
       .catch(() => setReferral(null));
   }, [user?.emailVerified]);
+
+  useEffect(() => {
+    if (!user) return;
+    void Promise.all([getCreditBalance(), getCreditLedger({ limit: 10 })])
+      .then(([balance, ledger]) => {
+        setCredit(balance);
+        setCreditEntries(ledger.entries);
+      })
+      .catch(() => {
+        setCredit(null);
+        setCreditEntries([]);
+      });
+  }, [user]);
 
   const visibleReferral = user?.emailVerified ? referral : null;
 
@@ -157,9 +190,9 @@ export function AccountContent({
             </div>
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm text-[var(--text-faint)]">@{user.username}</span>
-              {visibleReferral ? (
+              {credit ? (
                 <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--accent)]">
-                  {visibleReferral.balanceCents} Credit
+                  {credit.available} Credit
                 </span>
               ) : null}
             </div>
@@ -197,6 +230,60 @@ export function AccountContent({
 
         {notice && <p className="mt-3 text-xs text-[var(--success)]">{notice}</p>}
         {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
+
+        <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 text-left"
+            onClick={() => setCreditExpanded((open) => !open)}
+          >
+            <Coins className="h-4 w-4 text-[var(--accent)]" />
+            <span className="min-w-0 flex-1 text-sm font-semibold">Credit</span>
+            <span className="text-sm font-semibold tabular-nums">
+              {credit ? credit.available : '—'}
+            </span>
+          </button>
+          {creditExpanded ? (
+            <div className="mt-3 border-t border-[var(--surface-border)] pt-3">
+              <p className="text-xs leading-relaxed text-[var(--text-soft)]">
+                当前为人工确认充值。可选 7 元 / 1,000、35 元 / 5,000、70 元 / 10,000、140 元 /
+                20,000 Credit。联系管理员并提供到账流水，确认后会显示在这里。
+              </p>
+              {credit?.reserved ? (
+                <p className="mt-2 text-xs text-[var(--text-faint)]">
+                  正在使用：{credit.reserved} Credit
+                </p>
+              ) : null}
+              <div className="mt-3 space-y-1.5">
+                {creditEntries.length ? (
+                  creditEntries.map((entry) => (
+                    <div
+                      key={`${entry.kind}:${entry.referenceId}`}
+                      className="flex items-center justify-between gap-3 text-xs"
+                    >
+                      <span className="min-w-0 truncate text-[var(--text-soft)]">
+                        {creditEntryLabel(entry.kind)} ·{' '}
+                        {new Date(entry.createdAt).toLocaleDateString()}
+                      </span>
+                      <span
+                        className={
+                          entry.amountCredits >= 0
+                            ? 'shrink-0 tabular-nums text-[var(--success)]'
+                            : 'shrink-0 tabular-nums text-[var(--text)]'
+                        }
+                      >
+                        {entry.amountCredits > 0 ? '+' : ''}
+                        {entry.amountCredits}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-[var(--text-faint)]">暂无 Credit 记录</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
           <div className="flex items-center gap-2">
@@ -279,7 +366,7 @@ export function AccountContent({
                             }
                           >
                             {item.status === 'rewarded'
-                              ? `+${item.rewardCents} Credit`
+                              ? `+${item.rewardCredits} Credit`
                               : item.status === 'pending'
                                 ? '等待邮箱验证'
                                 : '未通过'}

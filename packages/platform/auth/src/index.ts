@@ -117,13 +117,13 @@ export async function register(input: {
 
 export interface ReferralSummary {
   code: string;
-  balanceCents: number;
-  rewardCents: number;
+  balanceCredits: number;
+  rewardCredits: number;
   rewardedCount: number;
   pendingCount: number;
   activity: Array<{
     status: 'pending' | 'rewarded' | 'rejected';
-    rewardCents: number;
+    rewardCredits: number;
     createdAt: number;
     qualifiedAt: number | null;
   }>;
@@ -151,6 +151,58 @@ export function revokeOtherAccountSessions(): Promise<{ ok: true }> {
 
 export async function getReferralSummary(): Promise<ReferralSummary> {
   return call<ReferralSummary>('/api/auth/referral');
+}
+
+export interface CreditBalance {
+  total: number;
+  reserved: number;
+  available: number;
+}
+
+export interface CreditLedgerEntry {
+  amountCredits: number;
+  kind:
+    | 'referral_reward'
+    | 'manual_purchase'
+    | 'usage'
+    | 'refund'
+    | 'support_adjustment'
+    | 'billing_correction';
+  referenceId: string;
+  priceVersion: string | null;
+  createdAt: number;
+}
+
+export async function getCreditBalance(): Promise<CreditBalance> {
+  return call<CreditBalance>('/api/auth/credits/balance');
+}
+
+export async function getCreditLedger(options: { limit?: number; offset?: number } = {}): Promise<{
+  entries: CreditLedgerEntry[];
+  nextOffset: number | null;
+}> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset) params.set('offset', String(options.offset));
+  const query = params.toString();
+  return call(`/api/auth/credits/ledger${query ? `?${query}` : ''}`);
+}
+
+export function grantCreditPackage(input: {
+  username: string;
+  amountCny: 7 | 35 | 70 | 140;
+  externalReference: string;
+}): Promise<{
+  ok: true;
+  username: string;
+  amountCny: number;
+  amountCredits: number;
+  createdAt: number;
+}> {
+  return call('/api/auth/admin/credits/grant', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {
@@ -210,16 +262,6 @@ export async function resetPassword(token: string, password: string): Promise<vo
   publishAuthUser(null);
 }
 
-export interface AiUsageSummary {
-  day: string;
-  text: { used: number; limit: number };
-  voice: { used: number; limit: number };
-}
-
-export async function getAiUsage(): Promise<AiUsageSummary> {
-  return call<AiUsageSummary>('/api/auth/ai-usage');
-}
-
 export async function getVoiceTicket(): Promise<{ ticket: string; expiresAt: number }> {
   return call('/api/auth/voice/ticket', { method: 'POST' });
 }
@@ -234,8 +276,8 @@ export interface AdminStats {
   verifiedUsers: number;
   activeSessions: number;
   registrationAttempts24h: number;
-  textUnitsToday: number;
-  voiceUnitsToday: number;
+  creditUsedToday: number;
+  creditPurchasedToday: number;
   openReports: number;
 }
 
@@ -299,13 +341,15 @@ export interface UserProfile {
   /** City or region. Not a street address — see above. */
   location: string | null;
   links: string[];
-  visibility: 'private' | 'public';
+  interests: string[];
+  discoverable: boolean;
+  visibility: 'private' | 'friends' | 'public';
 }
 
 export interface UserPhoto {
   id: string;
   caption: string | null;
-  visibility: 'private' | 'public';
+  visibility: 'private' | 'friends' | 'public';
   createdAt: number;
   url: string;
 }
@@ -329,7 +373,7 @@ export async function uploadPhoto(
   bytes: Blob,
   options: {
     caption?: string;
-    visibility?: 'private' | 'public';
+    visibility?: 'private' | 'friends' | 'public';
     purpose?: 'album' | 'avatar';
   } = {},
 ): Promise<UserPhoto> {
@@ -351,7 +395,10 @@ export async function deletePhoto(id: string): Promise<void> {
   await call(`/api/auth/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export async function updatePhoto(id: string, visibility: 'private' | 'public'): Promise<void> {
+export async function updatePhoto(
+  id: string,
+  visibility: 'private' | 'friends' | 'public',
+): Promise<void> {
   await call(`/api/auth/photos/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify({ visibility }),
@@ -398,6 +445,12 @@ export interface Contact {
   followedAt: number;
   /** Both directions of the follow exist — the two of you are contacts. */
   mutual: boolean;
+  /** Present on discovery rows where one-way state is not implied by the list. */
+  following?: boolean;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  interests?: string[];
 }
 
 export interface ContactPage {
@@ -413,11 +466,33 @@ export interface BlockedUser {
   blockedAt: number;
 }
 
+export interface DiscoverableUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  location: string | null;
+  interests: string[];
+  following: boolean;
+  followedBy: boolean;
+}
+
+export async function listDiscoverableUsers(
+  options: { limit?: number; offset?: number } = {},
+): Promise<{ users: DiscoverableUser[]; nextOffset: number | null }> {
+  try {
+    return await call(`/api/auth/discover${pageQuery(options)}`);
+  } catch {
+    return { users: [], nextOffset: null };
+  }
+}
+
 /** One album entry as somebody else may see it. `url` is served by the account service. */
 export interface PublicPhoto {
   id: string;
   caption: string | null;
-  visibility: 'private' | 'public';
+  visibility: 'private' | 'friends' | 'public';
   createdAt: number;
   /** Path on the account service; combine with `photoSrc` before putting it in an <img>. */
   url: string;

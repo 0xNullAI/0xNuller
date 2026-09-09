@@ -42,7 +42,7 @@ function defaultProviders(): Record<RealtimeProviderId, RealtimeProviderSettings
 
 export function createDefaultSettings(): VoiceSettings {
   return {
-    activeProviderId: 'xai',
+    activeProviderId: 'managed',
     providers: defaultProviders(),
     // "本地最严格" — mirrors DG-Agent's default. Call start explicitly
     // upgrades to a 'timed' one-time authorization; settings can also
@@ -67,7 +67,7 @@ export function createDefaultSettings(): VoiceSettings {
 }
 
 const providerSettingsSchema = z.object({
-  providerId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
+  providerId: z.enum(['managed', 'xai', 'openai', 'azure', 'zhipu']),
   apiKey: z.string(),
   model: z.string(),
   baseUrl: z.string(),
@@ -77,7 +77,7 @@ const providerSettingsSchema = z.object({
 });
 
 const settingsSchema = z.object({
-  activeProviderId: z.enum(['trial', 'xai', 'openai', 'azure', 'zhipu']),
+  activeProviderId: z.enum(['managed', 'xai', 'openai', 'azure', 'zhipu']),
   providers: z.record(z.string(), providerSettingsSchema),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']),
   coyoteSafety: z.object({
@@ -119,7 +119,16 @@ export function loadSettings(): VoiceSettings {
   try {
     const raw = readPreference(SETTINGS_STORAGE_KEY);
     if (!raw) return withShared(defaults);
-    const parsed = settingsSchema.partial().safeParse(JSON.parse(raw));
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    if (stored.activeProviderId === 'trial') stored.activeProviderId = 'managed';
+    if (stored.providers && typeof stored.providers === 'object') {
+      const providers = stored.providers as Record<string, unknown>;
+      if (providers.trial && !providers.managed) providers.managed = providers.trial;
+      delete providers.trial;
+      const managed = providers.managed as Record<string, unknown> | undefined;
+      if (managed) managed.providerId = 'managed';
+    }
+    const parsed = settingsSchema.partial().safeParse(stored);
     if (!parsed.success) return withShared(defaults);
 
     return withShared({

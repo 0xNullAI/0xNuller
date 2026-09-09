@@ -51,6 +51,8 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
     behaviorStore.loadModelBehavior(),
   );
   const [providerQuery, setProviderQuery] = useState('');
+  const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
+  const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
 
   useEffect(() => subscribeLlmConfig(setConfig), []);
   useEffect(() => behaviorStore.subscribeModelBehavior(setBehavior), [behaviorStore]);
@@ -74,11 +76,12 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   }
 
   const def = getProviderDefinition(config.providerId as ProviderId);
-  const isFree = config.providerId === 'free';
+  const isManaged = config.providerId === 'managed';
   const providerOptions = getBrowserProviderDefinitions()
     .filter(
       (provider) =>
         provider.browserSupported &&
+        provider.id !== 'managed' &&
         (!providerQuery.trim() ||
           provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
           provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
@@ -126,46 +129,96 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
         hidden={section !== 'agent'}
         className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
       >
-        <h3 className="text-sm font-semibold">文本模型</h3>
-        <div className="mt-3 grid gap-2">
-          <Input
-            value={providerQuery}
-            onChange={(event) => setProviderQuery(event.target.value)}
-            placeholder="搜索服务商"
-            aria-label="搜索服务商"
-          />
-          <SettingSelect
-            value={config.providerId}
-            onValueChange={(value) => {
-              const next = createProviderSettings(value as ProviderId);
-              // Don't keep the previous provider's key and baseUrl when switching — they are
-              // meaningless on the new service, and keeping them only makes "why is auth
-              // failing" hard to track down.
-              update({ ...next, rememberApiKey: config.rememberApiKey });
+        <h3 className="text-sm font-semibold">Agent 模型</h3>
+        {isManaged ? (
+          <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3">
+            <div className="text-sm font-semibold">0xNullAI 模型 · 均衡</div>
+            <p className="mt-1 text-xs text-[var(--text-soft)]">
+              登录后使用 Credit，按实际用量结算。
+            </p>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mt-3 text-xs text-[var(--accent)] hover:underline"
+            onClick={() => {
+              update({
+                ...createProviderSettings('managed'),
+                rememberApiKey: config.rememberApiKey,
+              });
+              setOwnApiOpen(false);
             }}
-            // free is already in PROVIDER_DEFINITIONS; do not add a second entry by hand —
-            // when the same value appears twice, Radix renders both labels into the trigger,
-            // showing 「免费体验免费体验」.
-            options={
-              providerOptions.length
-                ? providerOptions
-                : [{ value: config.providerId, label: def?.name ?? config.providerId }]
-            }
-          />
-        </div>
+          >
+            切换回 0xNullAI 模型
+          </button>
+        )}
 
-        {def?.hint && (
+        {!ownApiOpen ? (
+          <button
+            type="button"
+            className="mt-3 w-fit text-xs text-[var(--text-soft)] hover:text-[var(--text)] hover:underline"
+            onClick={() => setOwnApiOpen(true)}
+          >
+            使用自己的 API
+          </button>
+        ) : (
+          <div className="mt-3 grid gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold">自己的 API</span>
+              {isManaged ? (
+                <button
+                  type="button"
+                  className="text-xs text-[var(--text-faint)]"
+                  onClick={() => setOwnApiOpen(false)}
+                >
+                  收起
+                </button>
+              ) : null}
+            </div>
+            <Input
+              value={providerQuery}
+              onChange={(event) => setProviderQuery(event.target.value)}
+              placeholder="搜索服务商"
+              aria-label="搜索服务商"
+            />
+            <SettingSelect
+              value={config.providerId}
+              onValueChange={(value) => {
+                const next = createProviderSettings(value as ProviderId);
+                // Don't keep the previous provider's key and baseUrl when switching — they are
+                // meaningless on the new service, and keeping them only makes "why is auth
+                // failing" hard to track down.
+                update({ ...next, rememberApiKey: config.rememberApiKey });
+                if (value === 'custom') setAdvancedOpen(true);
+              }}
+              // The managed service is already in PROVIDER_DEFINITIONS; do not add a second entry —
+              // when the same value appears twice, Radix renders both labels into the trigger,
+              // duplicating the provider name in the field label.
+              options={
+                providerOptions.length
+                  ? [
+                      ...(isManaged ? [{ value: 'managed', label: '选择服务商' }] : []),
+                      ...providerOptions,
+                    ]
+                  : [{ value: config.providerId, label: def?.name ?? config.providerId }]
+              }
+            />
+          </div>
+        )}
+
+        {def?.hint && !isManaged && (
           <p className="mt-2 rounded-[var(--radius-xs)] bg-[var(--accent-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--text-soft)]">
             {def.hint}
           </p>
         )}
 
-        {!isFree && (
+        {!isManaged && (
           <div className="mt-3 flex flex-col gap-3">
             <ProviderCredentialFields
               config={{ ...config, providerId: config.providerId as ProviderId }}
               definition={def}
               update={update}
+              showAdvanced={advancedOpen}
             />
             <label className="flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">模型</span>
@@ -181,6 +234,18 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
               label="在当前设备记住 API 密钥"
               update={update}
             />
+            {def?.fields.some(
+              (field) =>
+                field.key === 'baseUrl' || field.key === 'endpoint' || field.key === 'useStrict',
+            ) ? (
+              <button
+                type="button"
+                className="w-fit text-xs text-[var(--text-faint)] hover:text-[var(--text)]"
+                onClick={() => setAdvancedOpen((open) => !open)}
+              >
+                {advancedOpen ? '收起高级设置' : '高级设置'}
+              </button>
+            ) : null}
           </div>
         )}
 

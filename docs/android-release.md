@@ -32,7 +32,7 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v6.4.2`，Release 标题和 APK 都显示 `0xNuller 6.4.2`。GitHub 自动生成的
+当前版本使用 tag `v6.5.0`，Release 标题和 APK 都显示 `0xNuller 6.5.0`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
@@ -76,8 +76,8 @@ npm run verify:android:apk -- "$APK"
 ```json
 {
   "package": "ai.nullai.dgagent",
-  "versionName": "6.4.2",
-  "versionCode": 6004002,
+  "versionName": "6.5.0",
+  "versionCode": 6005000,
   "label": "0xNuller",
   "sourceCommit": "<当前 Git HEAD>"
 }
@@ -93,8 +93,8 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-gh release create "v6.4.2" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.4.2" --notes-file docs/releases/6.4.2.md "$APK"
+gh release create "v6.5.0" --repo 0xNullAI/0xNuller \
+  --title "0xNuller 6.5.0" --notes-file docs/releases/6.5.0.md "$APK"
 ```
 
 ## 发布之后
@@ -104,7 +104,7 @@ APK 装到真机上，确认这几件——它们都只有真设备能验：
 - **蓝牙**：连上郊狼，四种设备都试一遍（郊狼 / 负鼠 / 爪印 / 灵猫）
 - **锁屏**：正在输出时锁屏，设备必须停下。WebView 被挂起后定时器全停，而郊狼是
   状态保持的——漏了这个，设备会一直输出到用户回到应用或者蓝牙自己掉线
-- **登录**与**体验版语音**：两者的 origin 白名单都要含 `http://tauri.localhost`，
+- **登录**与**托管语音**：两者的 origin 白名单都要含 `http://tauri.localhost`，
   漏了的话界面只显示「连接失败」
 - **更新提示**：把 `tauri.conf.json` 的版本临时调低重新装一个，看提示是否出现且
   指向正确的 release 页

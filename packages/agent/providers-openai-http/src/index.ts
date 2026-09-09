@@ -79,8 +79,8 @@ export interface OpenAiHttpLlmClientConfig {
   useStrict?: boolean;
   /**
    * Per-request headers merged on top of Content-Type / Authorization.
-   * Called once per outbound request. Used by the free-proxy provider to
-   * attach an HMAC signature; ordinary providers leave this unset.
+   * Called once per outbound request. The managed service uses it to attach
+   * the current account session; user-configured providers leave it unset.
    */
   extraHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
   /** Must be resolved from an explicit provider+model capability allowlist. */
@@ -110,6 +110,22 @@ export class OpenAiHttpLlmClient implements LlmClient {
     if (!this.config.extraHeaders) return base;
     const extra = await this.config.extraHeaders();
     return { ...base, ...extra };
+  }
+
+  private async requestHeaders(
+    baseUrl: string,
+    usageKind: 'agent' | 'video' = 'agent',
+  ): Promise<Record<string, string>> {
+    const headers = await this.buildHeaders();
+    try {
+      if (new URL(baseUrl).hostname === 'llm.0xnullai.com') {
+        headers['Idempotency-Key'] = crypto.randomUUID();
+        headers['X-0xNullAI-Usage-Kind'] = usageKind;
+      }
+    } catch {
+      // URL validation reports the configuration error before this request path.
+    }
+    return headers;
   }
 
   async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
@@ -148,7 +164,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
       method: 'POST',
       credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
-      headers: await this.buildHeaders(),
+      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
       body: JSON.stringify(requestBody),
     });
 
@@ -211,7 +227,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
       method: 'POST',
       credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
-      headers: await this.buildHeaders(),
+      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
       body: JSON.stringify(requestBody),
     });
 

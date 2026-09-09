@@ -51,13 +51,6 @@ export interface CreateBrowserAgentClientOptions {
   deviceExecutionGate?: DeviceExecutionGate;
   /** Optional adapter over the shell-owned shared generic device runtime. */
   deviceRuntimeTools?: AiDeviceToolAdapter;
-  /**
-   * Shared secret used to sign requests to the free-tier proxy. Only the
-   * Tauri Android shell supplies this (via a build-time env var); web
-   * builds rely on the proxy's Origin whitelist instead. Ignored unless
-   * the active provider is `free`.
-   */
-  freeProxySecret?: string;
 }
 
 export function createBrowserAgentClient(options: CreateBrowserAgentClientOptions): AgentClient {
@@ -65,7 +58,6 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
   const llm = createBrowserLlmClient({
     provider: settings.provider,
     temperature: settings.temperature,
-    freeProxySecret: options.freeProxySecret,
   });
   const legacyToolRegistry = createDefaultToolRegistryWithDeps({
     waveformLibrary: options.waveformLibrary,

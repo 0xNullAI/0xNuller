@@ -19,6 +19,7 @@ import {
   reservePhotoSlot,
   runAuthMaintenance,
 } from './photo-lifecycle';
+import { sanitizePhoto } from './photo-sanitizer';
 import {
   currentUser,
   login,
@@ -94,7 +95,8 @@ const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
 const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
-const REFERRAL_REWARD_CENTS = 500;
+const REFERRAL_REWARD_CREDITS = 500;
+const CREDIT_PRICE_VERSION = 'credits-2026-09';
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
 const MAX_REPORT_DETAILS = 500;
@@ -116,7 +118,7 @@ const MAX_BLOCKS = 200;
 const MAX_ALBUM_PHOTOS = 60;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const MAX_PHOTO_CAPTION = 200;
-const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const CONTENT_PAGE_SIZE = 500;
 const CONTENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const SYNC_NAMESPACES = new Set(['llm', 'device-safety', 'proxy', 'ui']);
@@ -136,14 +138,198 @@ export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
-export interface AiQuotaResult {
-  allowed: boolean;
-  remaining: number;
-  limit: number;
+export interface VoiceTicketQuotaResult extends CreditBalance {
+  subject: string;
 }
 
-export interface VoiceTicketQuotaResult extends AiQuotaResult {
-  subject: string;
+export interface CreditBalance {
+  total: number;
+  reserved: number;
+  available: number;
+}
+
+export interface CreditReservationResult extends CreditBalance {
+  allowed: boolean;
+  status: 'pending' | 'settled' | 'released' | 'insufficient';
+  charged: number | null;
+}
+
+const CREDIT_RESERVATION_TTL_MS = 2 * 60 * 60 * 1000;
+
+export async function creditBalance(
+  env: Env,
+  userId: string,
+  now = Date.now(),
+): Promise<CreditBalance> {
+  const [ledger, reservations] = await Promise.all([
+    env.DB.prepare(
+      'SELECT COALESCE(SUM(amount_credits), 0) AS total FROM credit_ledger WHERE user_id = ?',
+    )
+      .bind(userId)
+      .first<{ total: number }>(),
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(reserved_credits), 0) AS reserved
+         FROM credit_reservations
+        WHERE user_id = ? AND status = 'pending' AND updated_at > ?`,
+    )
+      .bind(userId, now - CREDIT_RESERVATION_TTL_MS)
+      .first<{ reserved: number }>(),
+  ]);
+  const total = Number(ledger?.total ?? 0);
+  const reserved = Number(reservations?.reserved ?? 0);
+  return { total, reserved, available: Math.max(0, total - reserved) };
+}
+
+export async function reserveCredits(
+  env: Env,
+  userId: string,
+  input: {
+    idempotencyKey: string;
+    usageKind: 'agent' | 'video' | 'voice';
+    modelId: string;
+    credits: number;
+  },
+): Promise<CreditReservationResult> {
+  const credits = Math.trunc(input.credits);
+  if (
+    !/^[A-Za-z0-9._:-]{8,128}$/.test(input.idempotencyKey) ||
+    credits < 1 ||
+    credits > 1_000_000
+  ) {
+    const balance = await creditBalance(env, userId);
+    return { ...balance, allowed: false, status: 'insufficient', charged: null };
+  }
+  const now = Date.now();
+  const created = await env.DB.prepare(
+    `INSERT INTO credit_reservations
+       (idempotency_key, user_id, usage_kind, model_id, reserved_credits, status, created_at, updated_at)
+     SELECT ?, ?, ?, ?, ?, 'pending', ?, ?
+      WHERE ? <= (
+        SELECT COALESCE((SELECT SUM(amount_credits) FROM credit_ledger WHERE user_id = ?), 0)
+             - COALESCE((SELECT SUM(reserved_credits) FROM credit_reservations
+                          WHERE user_id = ? AND status = 'pending' AND updated_at > ?), 0)
+      )
+     ON CONFLICT (idempotency_key) DO NOTHING
+     RETURNING idempotency_key`,
+  )
+    .bind(
+      input.idempotencyKey,
+      userId,
+      input.usageKind,
+      input.modelId.slice(0, 160),
+      credits,
+      now,
+      now,
+      credits,
+      userId,
+      userId,
+      now - CREDIT_RESERVATION_TTL_MS,
+    )
+    .first<{ idempotency_key: string }>();
+  const row = await env.DB.prepare(
+    `SELECT user_id, usage_kind, model_id, reserved_credits, charged_credits, status
+       FROM credit_reservations WHERE idempotency_key = ?`,
+  )
+    .bind(input.idempotencyKey)
+    .first<Record<string, unknown>>();
+  const balance = await creditBalance(env, userId, now);
+  if (
+    !row ||
+    row.user_id !== userId ||
+    row.usage_kind !== input.usageKind ||
+    row.model_id !== input.modelId.slice(0, 160) ||
+    Number(row.reserved_credits) !== credits
+  ) {
+    return { ...balance, allowed: false, status: 'insufficient', charged: null };
+  }
+  const status = row.status as 'pending' | 'settled' | 'released';
+  return {
+    ...balance,
+    allowed: status === 'pending' && created != null,
+    status,
+    charged: row.charged_credits == null ? null : Number(row.charged_credits),
+  };
+}
+
+export async function settleCredits(
+  env: Env,
+  userId: string,
+  idempotencyKey: string,
+  chargedCredits: number,
+  metadata: Record<string, unknown>,
+): Promise<CreditReservationResult> {
+  const reservation = await env.DB.prepare(
+    `SELECT reserved_credits, charged_credits, status FROM credit_reservations
+      WHERE idempotency_key = ? AND user_id = ?`,
+  )
+    .bind(idempotencyKey, userId)
+    .first<{
+      reserved_credits: number;
+      charged_credits: number | null;
+      status: 'pending' | 'settled' | 'released';
+    }>();
+  const charge = Math.max(1, Math.trunc(chargedCredits));
+  if (reservation?.status === 'pending' && charge > reservation.reserved_credits) {
+    return releaseCredits(env, userId, idempotencyKey);
+  }
+  if (!reservation || reservation.status === 'released') {
+    const balance = await creditBalance(env, userId);
+    return { ...balance, allowed: false, status: 'released', charged: null };
+  }
+  if (reservation.status === 'pending') {
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO credit_ledger
+          (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+         VALUES (?, ?, 'usage', ?, ?, ?, ?)
+         ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
+      ).bind(
+        userId,
+        -charge,
+        idempotencyKey,
+        CREDIT_PRICE_VERSION,
+        JSON.stringify(metadata).slice(0, 4000),
+        now,
+      ),
+      env.DB.prepare(
+        `UPDATE credit_reservations SET charged_credits = ?, status = 'settled', updated_at = ?
+          WHERE idempotency_key = ? AND user_id = ? AND status = 'pending'`,
+      ).bind(charge, now, idempotencyKey, userId),
+    ]);
+  }
+  const balance = await creditBalance(env, userId);
+  return {
+    ...balance,
+    allowed: false,
+    status: 'settled',
+    charged: reservation.charged_credits ?? charge,
+  };
+}
+
+export async function releaseCredits(
+  env: Env,
+  userId: string,
+  idempotencyKey: string,
+): Promise<CreditReservationResult> {
+  await env.DB.prepare(
+    `UPDATE credit_reservations SET status = 'released', updated_at = ?
+      WHERE idempotency_key = ? AND user_id = ? AND status = 'pending'`,
+  )
+    .bind(Date.now(), idempotencyKey, userId)
+    .run();
+  const row = await env.DB.prepare(
+    'SELECT status, charged_credits FROM credit_reservations WHERE idempotency_key = ? AND user_id = ?',
+  )
+    .bind(idempotencyKey, userId)
+    .first<{ status: 'pending' | 'settled' | 'released'; charged_credits: number | null }>();
+  const balance = await creditBalance(env, userId);
+  return {
+    ...balance,
+    allowed: false,
+    status: row?.status ?? 'released',
+    charged: row?.charged_credits ?? null,
+  };
 }
 
 function requestFromClaimCredentials(credentials: MarketClaimCredentials): Request {
@@ -161,23 +347,90 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
-  async consumeAiQuota(
+  async creditBalance(
     credentials: MarketClaimCredentials,
-    kind: 'text' | 'voice',
-    units = 1,
-  ): Promise<AiQuotaResult | 'unauthorized'> {
-    return consumeAiQuotaForCredentials(this.env, credentials, kind, units);
+  ): Promise<CreditBalance | 'unauthorized'> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    return user ? creditBalance(this.env, user.id) : 'unauthorized';
+  }
+
+  async reserveCredits(
+    credentials: MarketClaimCredentials,
+    input: {
+      idempotencyKey: string;
+      usageKind: 'agent' | 'video' | 'voice';
+      modelId: string;
+      credits: number;
+    },
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    return user ? reserveCredits(this.env, user.id, input) : 'unauthorized';
+  }
+
+  async settleCredits(
+    credentials: MarketClaimCredentials,
+    idempotencyKey: string,
+    chargedCredits: number,
+    metadata: Record<string, unknown>,
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    return user
+      ? settleCredits(this.env, user.id, idempotencyKey, chargedCredits, metadata)
+      : 'unauthorized';
+  }
+
+  async releaseCredits(
+    credentials: MarketClaimCredentials,
+    idempotencyKey: string,
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    return user ? releaseCredits(this.env, user.id, idempotencyKey) : 'unauthorized';
   }
 
   async authorizeVoiceTicket(ticket: string): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
-    return voiceTicketQuota(this.env, ticket, 0);
+    const userId = await voiceTicketUser(this.env, ticket);
+    if (!userId) return 'unauthorized';
+    return { subject: userId, ...(await creditBalance(this.env, userId)) };
   }
 
-  async consumeVoiceTicket(
+  async reserveVoiceCredits(
     ticket: string,
-    minutes: number,
-  ): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
-    return voiceTicketQuota(this.env, ticket, minutes);
+    idempotencyKey: string,
+    credits: number,
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const userId = await voiceTicketUser(this.env, ticket);
+    return userId
+      ? reserveCredits(this.env, userId, {
+          idempotencyKey,
+          usageKind: 'voice',
+          modelId: 'voice',
+          credits,
+        })
+      : 'unauthorized';
+  }
+
+  async settleVoiceCredits(
+    ticket: string,
+    idempotencyKey: string,
+    credits: number,
+    durationMs: number,
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const userId = await voiceTicketUser(this.env, ticket);
+    return userId
+      ? settleCredits(this.env, userId, idempotencyKey, credits, {
+          model: 'voice',
+          durationMs,
+          priceVersion: CREDIT_PRICE_VERSION,
+        })
+      : 'unauthorized';
+  }
+
+  async releaseVoiceCredits(
+    ticket: string,
+    idempotencyKey: string,
+  ): Promise<CreditReservationResult | 'unauthorized'> {
+    const userId = await voiceTicketUser(this.env, ticket);
+    return userId ? releaseCredits(this.env, userId, idempotencyKey) : 'unauthorized';
   }
 
   async claimMarketItems(
@@ -204,13 +457,9 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
   }
 }
 
-export async function voiceTicketQuota(
-  env: Env,
-  ticket: string,
-  minutes: number,
-): Promise<VoiceTicketQuotaResult | 'unauthorized'> {
+async function voiceTicketUser(env: Env, ticket: string): Promise<string | null> {
   const claims = await verifyDmTicket(env.DM_TICKET_SECRET, ticket, Date.now());
-  if (!claims || claims.aud !== 'voice') return 'unauthorized';
+  if (!claims || claims.aud !== 'voice') return null;
   const user = await env.DB.prepare(
     `SELECT id FROM users
       WHERE id = ? AND banned_at IS NULL
@@ -218,62 +467,7 @@ export async function voiceTicketQuota(
   )
     .bind(claims.sub)
     .first<{ id: string }>();
-  if (!user) return 'unauthorized';
-
-  const day = new Date().toISOString().slice(0, 10);
-  const existing = await env.DB.prepare(
-    `SELECT units FROM ai_usage_daily
-      WHERE user_id = ? AND usage_day = ? AND kind = 'voice'`,
-  )
-    .bind(user.id, day)
-    .first<{ units: number }>();
-  if (minutes <= 0) {
-    const used = existing?.units ?? 0;
-    return { subject: user.id, allowed: used < 60, remaining: Math.max(0, 60 - used), limit: 60 };
-  }
-
-  const safeMinutes = Math.max(1, Math.min(Math.trunc(minutes), 60));
-  const result = await consumeAiQuotaForUserId(env, user.id, 'voice', safeMinutes);
-  return { subject: user.id, ...result };
-}
-
-export async function consumeAiQuotaForCredentials(
-  env: Env,
-  credentials: MarketClaimCredentials,
-  kind: 'text' | 'voice',
-  units = 1,
-): Promise<AiQuotaResult | 'unauthorized'> {
-  const user = await currentUser(requestFromClaimCredentials(credentials), env);
-  if (!user) return 'unauthorized';
-  return consumeAiQuotaForUserId(env, user.id, kind, units);
-}
-
-async function consumeAiQuotaForUserId(
-  env: Env,
-  userId: string,
-  kind: 'text' | 'voice',
-  units: number,
-): Promise<AiQuotaResult> {
-  const safeUnits = Math.max(1, Math.min(Math.trunc(units), kind === 'voice' ? 60 : 10));
-  const limit = kind === 'voice' ? 60 : 100;
-  const day = new Date().toISOString().slice(0, 10);
-  const now = Date.now();
-  const updated = await env.DB.prepare(
-    `INSERT INTO ai_usage_daily (user_id, usage_day, kind, units, updated_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, usage_day, kind) DO UPDATE SET
-         units = units + excluded.units, updated_at = excluded.updated_at
-       WHERE units + excluded.units <= ?
-       RETURNING units`,
-  )
-    .bind(userId, day, kind, safeUnits, now, limit)
-    .first<{ units: number }>();
-  const used = updated?.units ?? limit;
-  return {
-    allowed: Boolean(updated),
-    remaining: Math.max(0, limit - used),
-    limit,
-  };
+  return user?.id ?? null;
 }
 
 /** Resolve Market permissions without exposing account roles on a public endpoint. */
@@ -360,13 +554,17 @@ function ageFrom(birthDate: string): number {
 }
 
 function publicProfile(row: Record<string, unknown>) {
+  const visibility =
+    row.visibility === 'public' || row.visibility === 'friends' ? row.visibility : 'private';
   return {
     avatarUrl: row.avatar_url ?? null,
     bio: row.bio ?? null,
     birthDate: row.birth_date ?? null,
     location: row.location ?? null,
     links: row.links ? (JSON.parse(String(row.links)) as string[]) : [],
-    visibility: row.visibility === 'public' ? 'public' : 'private',
+    interests: row.interests ? (JSON.parse(String(row.interests)) as string[]) : [],
+    discoverable: Number(row.discoverable) === 1,
+    visibility,
   };
 }
 
@@ -562,10 +760,20 @@ async function countFollows(
  * the part that fails silently later, when uploads land and nobody re-derives
  * who was supposed to see what.
  */
-async function visiblePhotos(env: Env, userId: string, isSelf: boolean): Promise<unknown[]> {
+async function visiblePhotos(
+  env: Env,
+  userId: string,
+  isSelf: boolean,
+  isFriend: boolean,
+): Promise<unknown[]> {
+  const visibilityFilter = isSelf
+    ? ''
+    : isFriend
+      ? " AND visibility IN ('public', 'friends')"
+      : " AND visibility = 'public'";
   const rows = await env.DB.prepare(
     `SELECT id, caption, visibility, created_at FROM user_photos
-      WHERE user_id = ? AND status = 'ready' AND purpose = 'album'${isSelf ? '' : " AND visibility = 'public'"}
+      WHERE user_id = ? AND status = 'ready' AND purpose = 'album'${visibilityFilter}
       ORDER BY created_at DESC LIMIT ?`,
   )
     .bind(userId, MAX_ALBUM_PHOTOS)
@@ -575,7 +783,8 @@ async function visiblePhotos(env: Env, userId: string, isSelf: boolean): Promise
     return {
       id: String(row.id),
       caption: (row.caption as string | null) ?? null,
-      visibility: row.visibility === 'public' ? 'public' : 'private',
+      visibility:
+        row.visibility === 'public' || row.visibility === 'friends' ? row.visibility : 'private',
       createdAt: Number(row.created_at),
       // The object key never leaves the server. It is an R2 path, and handing
       // it out would let anyone who learns the bucket's layout guess at
@@ -788,9 +997,9 @@ export default {
             statements.push(
               env.DB.prepare(
                 `INSERT INTO referrals
-                 (invitee_user_id, inviter_user_id, code, status, reward_cents, created_at)
+                 (invitee_user_id, inviter_user_id, code, status, reward_credits, created_at)
                  VALUES (?, ?, ?, 'pending', ?, ?)`,
-              ).bind(id, inviter.id, referralCode, REFERRAL_REWARD_CENTS, now),
+              ).bind(id, inviter.id, referralCode, REFERRAL_REWARD_CREDITS, now),
             );
           }
           await env.DB.batch(statements);
@@ -887,12 +1096,12 @@ export default {
           ),
           env.DB.prepare(
             `INSERT INTO credit_ledger
-             (user_id, amount_cents, kind, reference_id, created_at)
-             SELECT inviter_user_id, reward_cents, 'referral_reward', invitee_user_id, ?
+             (user_id, amount_credits, kind, reference_id, price_version, created_at)
+             SELECT inviter_user_id, reward_credits, 'referral_reward', invitee_user_id, ?, ?
              FROM referrals
              WHERE invitee_user_id = ? AND status = 'pending'
              ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
-          ).bind(now, action.user_id),
+          ).bind(CREDIT_PRICE_VERSION, now, action.user_id),
           env.DB.prepare(
             `UPDATE referrals SET status = 'rewarded', qualified_at = ?
              WHERE invitee_user_id = ? AND status = 'pending'`,
@@ -909,10 +1118,10 @@ export default {
         const [code, balance, counts, activity] = await Promise.all([
           referralCodeForUser(env, user.id),
           env.DB.prepare(
-            'SELECT COALESCE(SUM(amount_cents), 0) AS cents FROM credit_ledger WHERE user_id = ?',
+            'SELECT COALESCE(SUM(amount_credits), 0) AS credits FROM credit_ledger WHERE user_id = ?',
           )
             .bind(user.id)
-            .first<{ cents: number }>(),
+            .first<{ credits: number }>(),
           env.DB.prepare(
             `SELECT
                COALESCE(SUM(CASE WHEN status = 'rewarded' THEN 1 ELSE 0 END), 0) AS rewarded,
@@ -922,7 +1131,7 @@ export default {
             .bind(user.id)
             .first<{ rewarded: number; pending: number }>(),
           env.DB.prepare(
-            `SELECT status, reward_cents, created_at, qualified_at
+            `SELECT status, reward_credits, created_at, qualified_at
                FROM referrals
               WHERE inviter_user_id = ?
               ORDER BY created_at DESC
@@ -935,15 +1144,15 @@ export default {
         return json(
           {
             code,
-            balanceCents: balance?.cents ?? 0,
-            rewardCents: REFERRAL_REWARD_CENTS,
+            balanceCredits: balance?.credits ?? 0,
+            rewardCredits: REFERRAL_REWARD_CREDITS,
             rewardedCount: counts?.rewarded ?? 0,
             pendingCount: counts?.pending ?? 0,
             activity: (activity.results ?? []).map((raw) => {
               const row = raw as Record<string, unknown>;
               return {
                 status: row.status,
-                rewardCents: Number(row.reward_cents),
+                rewardCredits: Number(row.reward_credits),
                 createdAt: Number(row.created_at),
                 qualifiedAt: row.qualified_at == null ? null : Number(row.qualified_at),
               };
@@ -1027,23 +1236,106 @@ export default {
         return json({ user: user ? sessionUser(user, Boolean(env.EMAIL)) : null }, 200, cors);
       }
 
-      if (path === '/api/auth/ai-usage' && request.method === 'GET') {
+      if (path === '/api/auth/credits/balance' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const day = new Date().toISOString().slice(0, 10);
+        return json(await creditBalance(env, user.id), 200, cors);
+      }
+
+      if (path === '/api/auth/credits/ledger' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const { limit, offset } = pageParams(url);
         const rows = await env.DB.prepare(
-          'SELECT kind, units FROM ai_usage_daily WHERE user_id = ? AND usage_day = ?',
+          `SELECT amount_credits, kind, reference_id, price_version, created_at
+             FROM credit_ledger WHERE user_id = ?
+            ORDER BY id DESC LIMIT ? OFFSET ?`,
         )
-          .bind(user.id, day)
-          .all<{ kind: 'text' | 'voice'; units: number }>();
-        const used = Object.fromEntries(rows.results.map((row) => [row.kind, row.units]));
+          .bind(user.id, limit + 1, offset)
+          .all<Record<string, unknown>>();
+        const entries = rows.results.slice(0, limit).map((row) => ({
+          amountCredits: Number(row.amount_credits),
+          kind: String(row.kind),
+          referenceId: String(row.reference_id),
+          priceVersion: row.price_version == null ? null : String(row.price_version),
+          createdAt: Number(row.created_at),
+        }));
         return json(
-          {
-            day,
-            text: { used: used.text ?? 0, limit: 100 },
-            voice: { used: used.voice ?? 0, limit: 60 },
-          },
+          { entries, nextOffset: rows.results.length > limit ? offset + limit : null },
           200,
+          cors,
+        );
+      }
+
+      if (path === '/api/auth/admin/credits/grant' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const username =
+          typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+        const amountCny = Math.trunc(Number(body.amountCny));
+        const externalReference =
+          typeof body.externalReference === 'string' ? body.externalReference.trim() : '';
+        const packages = new Map([
+          [7, 1_000],
+          [35, 5_000],
+          [70, 10_000],
+          [140, 20_000],
+        ]);
+        const amountCredits = packages.get(amountCny);
+        if (!username || !amountCredits || !/^[A-Za-z0-9._:-]{4,128}$/.test(externalReference)) {
+          return err('充值用户、固定档位或外部流水号无效', 400, cors);
+        }
+        const target = await env.DB.prepare(
+          'SELECT id, username FROM users WHERE username = ? AND banned_at IS NULL',
+        )
+          .bind(username)
+          .first<{ id: string; username: string }>();
+        if (!target) return err('用户不存在', 404, cors);
+        const now = Date.now();
+        const daily = await env.DB.prepare(
+          `SELECT COALESCE(SUM(amount_credits), 0) AS credits
+             FROM admin_credit_audit WHERE operator_user_id = ? AND created_at >= ?`,
+        )
+          .bind(user.id, now - 24 * 60 * 60 * 1000)
+          .first<{ credits: number }>();
+        if (Number(daily?.credits ?? 0) + amountCredits > 200_000) {
+          return err('该管理员 24 小时人工入账已达上限', 429, cors);
+        }
+        const duplicate = await env.DB.prepare(
+          "SELECT 1 FROM credit_ledger WHERE kind = 'manual_purchase' AND reference_id = ?",
+        )
+          .bind(externalReference)
+          .first();
+        if (duplicate) return err('该外部流水已经入账', 409, cors);
+        try {
+          await env.DB.batch([
+            env.DB.prepare(
+              `INSERT INTO credit_ledger
+                (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+               VALUES (?, ?, 'manual_purchase', ?, ?, ?, ?)`,
+            ).bind(
+              target.id,
+              amountCredits,
+              externalReference,
+              CREDIT_PRICE_VERSION,
+              JSON.stringify({ amountCny, operatorUserId: user.id }),
+              now,
+            ),
+            env.DB.prepare(
+              `INSERT INTO admin_credit_audit
+                (operator_user_id, target_user_id, action, amount_cny, amount_credits,
+                 external_reference, created_at)
+               VALUES (?, ?, 'manual_purchase', ?, ?, ?, ?)`,
+            ).bind(user.id, target.id, amountCny, amountCredits, externalReference, now),
+          ]);
+        } catch (cause) {
+          if (String(cause).includes('UNIQUE')) return err('该外部流水已经入账', 409, cors);
+          throw cause;
+        }
+        return json(
+          { ok: true, username: target.username, amountCny, amountCredits, createdAt: now },
+          201,
           cors,
         );
       }
@@ -1051,7 +1343,7 @@ export default {
       if (path === '/api/auth/voice/ticket' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        if (!env.DM_TICKET_SECRET) return err('语音体验尚未启用', 503, cors);
+        if (!env.DM_TICKET_SECRET) return err('语音服务尚未启用', 503, cors);
         const now = Date.now();
         const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
           aud: 'voice',
@@ -1081,7 +1373,7 @@ export default {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
         const now = Date.now();
-        const day = new Date(now).toISOString().slice(0, 10);
+        const startOfDay = new Date(new Date(now).toISOString().slice(0, 10)).getTime();
         const [users, verified, sessions, registrations, usage, reports] = await Promise.all([
           env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
           env.DB.prepare(
@@ -1094,15 +1386,17 @@ export default {
             .bind(now - 24 * 60 * 60 * 1000)
             .first<{ n: number }>(),
           env.DB.prepare(
-            'SELECT kind, COALESCE(SUM(units), 0) AS units FROM ai_usage_daily WHERE usage_day = ? GROUP BY kind',
+            `SELECT
+               COALESCE(SUM(CASE WHEN kind = 'usage' THEN -amount_credits ELSE 0 END), 0) AS used,
+               COALESCE(SUM(CASE WHEN kind = 'manual_purchase' THEN amount_credits ELSE 0 END), 0) AS purchased
+             FROM credit_ledger WHERE created_at >= ?`,
           )
-            .bind(day)
-            .all<{ kind: 'text' | 'voice'; units: number }>(),
+            .bind(startOfDay)
+            .first<{ used: number; purchased: number }>(),
           env.DB.prepare("SELECT COUNT(*) AS n FROM user_reports WHERE status = 'open'").first<{
             n: number;
           }>(),
         ]);
-        const used = Object.fromEntries(usage.results.map((row) => [row.kind, row.units]));
         return json(
           {
             generatedAt: now,
@@ -1110,8 +1404,8 @@ export default {
             verifiedUsers: verified?.n ?? 0,
             activeSessions: sessions?.n ?? 0,
             registrationAttempts24h: registrations?.n ?? 0,
-            textUnitsToday: used.text ?? 0,
-            voiceUnitsToday: used.voice ?? 0,
+            creditUsedToday: usage?.used ?? 0,
+            creditPurchasedToday: usage?.purchased ?? 0,
             openReports: reports?.n ?? 0,
           },
           200,
@@ -1238,6 +1532,18 @@ export default {
           return err('本产品仅面向成年人', 400, cors);
         }
 
+        const interests = Array.isArray(body.interests)
+          ? body.interests
+              .filter((value): value is string => typeof value === 'string')
+              .map((value) => value.trim().slice(0, 24))
+              .filter(Boolean)
+              .slice(0, 8)
+          : [];
+        const visibility =
+          body.visibility === 'public' || body.visibility === 'friends'
+            ? body.visibility
+            : 'private';
+
         let avatarUrl: string | null = null;
         if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
           const match = body.avatarUrl.trim().match(/^\/api\/auth\/photos\/([^/]+)\/content$/);
@@ -1254,12 +1560,14 @@ export default {
 
         const now = Date.now();
         await env.DB.prepare(
-          `INSERT INTO user_profiles (user_id, avatar_url, bio, birth_date, location, links, visibility, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO user_profiles
+            (user_id, avatar_url, bio, birth_date, location, links, interests, discoverable, visibility, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (user_id) DO UPDATE SET
              avatar_url = excluded.avatar_url, bio = excluded.bio,
              birth_date = excluded.birth_date, location = excluded.location,
-             links = excluded.links, visibility = excluded.visibility,
+             links = excluded.links, interests = excluded.interests,
+             discoverable = excluded.discoverable, visibility = excluded.visibility,
              updated_at = excluded.updated_at`,
         )
           .bind(
@@ -1270,7 +1578,9 @@ export default {
             // Region-level. The cap is the point, not a guess at a sane length.
             typeof body.location === 'string' ? body.location.slice(0, 60) : null,
             Array.isArray(body.links) ? JSON.stringify(body.links.slice(0, 5)) : null,
-            body.visibility === 'public' ? 'public' : 'private',
+            JSON.stringify(interests),
+            visibility === 'public' && body.discoverable === true ? 1 : 0,
+            visibility,
             now,
           )
           .run();
@@ -1288,9 +1598,15 @@ export default {
 
         const mime = (request.headers.get('content-type') ?? '').split(';', 1)[0]!.trim();
         if (!ALLOWED_PHOTO_TYPES.has(mime)) return err('不支持的图片格式', 415, cors);
-        const bytes = await readBodyBounded(request, MAX_PHOTO_BYTES);
-        if (bytes == null) return err('图片过大', 413, cors);
-        if (bytes.byteLength === 0) return err('图片为空', 400, cors);
+        const uploaded = await readBodyBounded(request, MAX_PHOTO_BYTES);
+        if (uploaded == null) return err('图片过大', 413, cors);
+        if (uploaded.byteLength === 0) return err('图片为空', 400, cors);
+        let bytes: Uint8Array;
+        try {
+          bytes = sanitizePhoto(uploaded, mime);
+        } catch {
+          return err('图片损坏或尺寸超过 4096 像素', 400, cors);
+        }
 
         const id = crypto.randomUUID();
         const objectKey = `users/${user.id}/photos/${id}`;
@@ -1302,8 +1618,11 @@ export default {
         } catch {
           return err('照片说明编码无效', 400, cors);
         }
+        const requestedVisibility = request.headers.get('x-photo-visibility');
         const visibility =
-          request.headers.get('x-photo-visibility') === 'public' ? 'public' : 'private';
+          requestedVisibility === 'public' || requestedVisibility === 'friends'
+            ? requestedVisibility
+            : 'private';
         const purpose = request.headers.get('x-photo-purpose') === 'avatar' ? 'avatar' : 'album';
         const createdAt = Date.now();
 
@@ -1357,7 +1676,7 @@ export default {
       if (path === '/api/auth/photos' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        return json({ photos: await visiblePhotos(env, user.id, true) }, 200, cors);
+        return json({ photos: await visiblePhotos(env, user.id, true, false) }, 200, cors);
       }
 
       /**
@@ -1389,8 +1708,11 @@ export default {
         const viewer = await currentUser(request, env);
         const isOwner = viewer?.id === photo.user_id;
         if (!isOwner) {
-          if (photo.visibility !== 'public') return err('不存在', 404, cors);
           if (viewer && (await blockedBetween(env, viewer.id, photo.user_id))) {
+            return err('不存在', 404, cors);
+          }
+          const isFriend = viewer ? await mutualFollow(env, viewer.id, photo.user_id) : false;
+          if (photo.visibility !== 'public' && !(photo.visibility === 'friends' && isFriend)) {
             return err('不存在', 404, cors);
           }
           // The owning profile has to be public too. A public photo inside a
@@ -1400,7 +1722,9 @@ export default {
           )
             .bind(photo.user_id)
             .first<{ visibility: string }>();
-          if (owner?.visibility !== 'public') return err('不存在', 404, cors);
+          if (owner?.visibility !== 'public' && !(owner?.visibility === 'friends' && isFriend)) {
+            return err('不存在', 404, cors);
+          }
         }
 
         const object = await env.PHOTOS.get(photo.object_key);
@@ -1423,7 +1747,11 @@ export default {
         if (!user) return err('未登录', 401, cors);
         const id = decodeURIComponent(path.slice('/api/auth/photos/'.length));
         const body = (await request.json()) as Record<string, unknown>;
-        if (body.visibility !== 'public' && body.visibility !== 'private') {
+        if (
+          body.visibility !== 'public' &&
+          body.visibility !== 'friends' &&
+          body.visibility !== 'private'
+        ) {
           return err('可见范围无效', 400, cors);
         }
         const owned = await env.DB.prepare(
@@ -2027,6 +2355,46 @@ export default {
         );
       }
 
+      if (path === '/api/auth/discover' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const { limit, offset } = pageParams(url);
+        const rows = await env.DB.prepare(
+          `SELECT u.id, u.username, u.display_name, p.avatar_url, p.bio, p.location,
+                  p.interests, p.updated_at,
+                  EXISTS (SELECT 1 FROM user_follows f
+                           WHERE f.follower_id = ? AND f.followee_id = u.id) AS following,
+                  EXISTS (SELECT 1 FROM user_follows f
+                           WHERE f.follower_id = u.id AND f.followee_id = ?) AS followed_by
+             FROM user_profiles p JOIN users u ON u.id = p.user_id
+            WHERE p.discoverable = 1 AND p.visibility = 'public' AND u.id <> ?
+              AND u.banned_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM user_blocks b
+                    WHERE (b.blocker_id = ? AND b.blocked_id = u.id)
+                       OR (b.blocker_id = u.id AND b.blocked_id = ?))
+            ORDER BY p.updated_at DESC, u.id
+            LIMIT ? OFFSET ?`,
+        )
+          .bind(user.id, user.id, user.id, user.id, user.id, limit + 1, offset)
+          .all<Record<string, unknown>>();
+        const users = rows.results.slice(0, limit).map((row) => ({
+          id: String(row.id),
+          username: String(row.username),
+          displayName: String(row.display_name),
+          avatarUrl: row.avatar_url == null ? null : String(row.avatar_url),
+          bio: row.bio == null ? null : String(row.bio),
+          location: row.location == null ? null : String(row.location),
+          interests: row.interests ? (JSON.parse(String(row.interests)) as string[]) : [],
+          following: Number(row.following) === 1,
+          followedBy: Number(row.followed_by) === 1,
+        }));
+        return json(
+          { users, nextOffset: rows.results.length > limit ? offset + limit : null },
+          200,
+          cors,
+        );
+      }
+
       if (path === '/api/auth/block' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
@@ -2289,7 +2657,18 @@ export default {
           .bind(target.id)
           .first<Record<string, unknown>>();
         const profile = row ? publicProfile(row) : null;
-        const visible = isSelf || profile?.visibility === 'public';
+        const [following, followedBy] =
+          viewer && !isSelf
+            ? await Promise.all([
+                follows(env, viewer.id, target.id),
+                follows(env, target.id, viewer.id),
+              ])
+            : [false, false];
+        const isFriend = following && followedBy;
+        const visible =
+          isSelf ||
+          profile?.visibility === 'public' ||
+          (profile?.visibility === 'friends' && isFriend);
 
         // The birth date never leaves its owner's own view. The profile editor
         // tells users in so many words that it is collected to confirm they are
@@ -2298,14 +2677,6 @@ export default {
         // made in the UI has to be kept by the endpoint, or it is not a promise.
         const shown =
           !visible || !profile ? null : isSelf ? profile : { ...profile, birthDate: null };
-
-        const [following, followedBy] =
-          viewer && !isSelf
-            ? await Promise.all([
-                follows(env, viewer.id, target.id),
-                follows(env, target.id, viewer.id),
-              ])
-            : [false, false];
 
         // Everything below is gated on the same `visible` flag as the profile
         // body. Follower counts and a join date are not identity — they are
@@ -2324,7 +2695,7 @@ export default {
         // Only the owner's public photos, and only on a visible profile — a
         // per-photo visibility of 'public' inside a private profile is still
         // inside a private profile.
-        const photos = visible ? await visiblePhotos(env, target.id, isSelf) : [];
+        const photos = visible ? await visiblePhotos(env, target.id, isSelf, isFriend) : [];
 
         return json(
           {

@@ -1,6 +1,5 @@
 import { authRequestHeaders } from '@0xnullai/auth';
 import {
-  createFreeProxyHmacHeaders,
   resolveProviderRequestUrl,
   resolveProviderRuntimeSettings,
   type ProviderDialect,
@@ -110,7 +109,6 @@ export function formatProviderConfigError(
 export interface CreateBrowserLlmClientOptions {
   provider: ProviderSettings;
   temperature?: number;
-  freeProxySecret?: string;
 }
 
 /** Browser-only provider composition shared by Agent and read-only visual modules. */
@@ -177,14 +175,8 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
   }
 
   try {
-    const signHeaders =
-      provider.providerId === 'free' && options.freeProxySecret
-        ? createFreeProxyHmacHeaders(options.freeProxySecret)
-        : null;
     const extraHeaders =
-      provider.providerId === 'free'
-        ? async () => ({ ...(signHeaders ? await signHeaders() : {}), ...authRequestHeaders() })
-        : undefined;
+      provider.providerId === 'managed' ? async () => authRequestHeaders() : undefined;
     return new OpenAiHttpLlmClient({
       apiKey: provider.apiKey,
       baseUrl: provider.baseUrl,

@@ -39,7 +39,7 @@ export async function reservePhotoSlot(
     userId: string;
     objectKey: string;
     caption: string | null;
-    visibility: 'public' | 'private';
+    visibility: 'public' | 'friends' | 'private';
     purpose: 'album' | 'avatar';
     createdAt: number;
   },

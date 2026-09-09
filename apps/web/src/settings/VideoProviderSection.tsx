@@ -91,7 +91,9 @@ export function VideoProviderSection() {
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <h3 className="text-sm font-semibold">Video 视觉模型</h3>
       <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-        仅保存在当前设备，与 Agent 和 Voice 的服务商、凭据及模型完全独立，不随账户同步。
+        {config.providerId === 'managed'
+          ? '登录后使用 Credit；只有提交给模型的画面才计费。'
+          : '仅保存在当前设备，与 Agent 和 Voice 的服务商、凭据及模型完全独立，不随账户同步。'}
       </p>
 
       <div className="mt-3 flex flex-col gap-3">

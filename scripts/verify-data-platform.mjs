@@ -68,7 +68,9 @@ expectNames(
     'user_blocks',
     'dm_threads',
     'account_deletions',
-    'ai_usage_daily',
+    'credit_ledger',
+    'credit_reservations',
+    'admin_credit_audit',
   ],
   'auth tables',
 );
@@ -85,7 +87,10 @@ expectNames(
     'idx_account_deletions_requested',
     'idx_content_refs_sync',
     'idx_content_entities_owner_kind',
-    'idx_ai_usage_day',
+    'idx_credit_ledger_user_created',
+    'idx_credit_ledger_manual_reference',
+    'idx_credit_reservations_user_status',
+    'idx_admin_credit_audit_operator_created',
   ],
   'auth indexes',
 );

@@ -47,7 +47,7 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
   const toolCallConfig = createDefaultToolCallConfig();
   const provider = normalizeProviderSettings({
     ...createDefaultProviderSettings(),
-    providerId: (env.VITE_PROVIDER_ID ?? 'free') as ProviderId,
+    providerId: (env.VITE_PROVIDER_ID ?? 'managed') as ProviderId,
     apiKey: env.VITE_OPENAI_API_KEY ?? '',
     baseUrl: env.VITE_OPENAI_BASE_URL ?? '',
     model: env.VITE_OPENAI_MODEL ?? '',

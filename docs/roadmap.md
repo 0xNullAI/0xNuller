@@ -1,25 +1,7 @@
 # Product roadmap
 
-These items are recorded for later design and are not part of the 6.4.2 release.
-
-## Credit-backed LLM usage
-
-Replace the temporary free-trial quota with a metered LLM service backed by Cloudflare. Referrals
-grant Credit to the inviter; authenticated LLM calls consume Credit; users can pay to continue when
-their balance is insufficient.
-
-Before launch, define the Credit-to-usage rate and expiry policy, then implement an append-only
-ledger for grants, purchases, reservations, consumption and refunds. Each LLM request needs an
-idempotency key so retries cannot charge twice, and failed or cancelled upstream requests must
-release reserved Credit. The account UI must show the current balance and usage history before any
-purchase flow is enabled. Add per-account and per-source abuse controls before removing the current
-trial quota.
+Credit 模型服务已纳入 6.5.0；最终设计和计费规则见 [6.5 Credit 模型服务](llm-credit-plan.md)。
 
 ## Phone verification
 
-Add optional phone verification as a second trust and recovery signal alongside email. Store phone
-numbers in normalized encrypted form, keep a separate keyed lookup hash for uniqueness, and never
-publish the number on profiles. Verification codes need short expiry, attempt limits, resend
-cooldowns and provider-independent delivery state. Define which actions require a verified phone
-only after measuring referral and account abuse; ordinary anonymous and local device use should
-remain available without it.
+后续可增加可选手机验证，作为邮箱之外的第二恢复和风控信号。手机号应规范化后加密保存，并用独立 keyed hash 做唯一性查询；验证码需要短期过期、尝试限制和重发冷却。是否对邀请或高风险操作要求手机验证，应在观察 6.5.0 的滥用情况后决定。普通匿名、本地设备和 BYOK 使用不要求手机号。

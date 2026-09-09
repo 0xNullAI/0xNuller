@@ -54,6 +54,11 @@ export function VoiceProviderSection() {
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
       <h3 className="text-sm font-semibold">语音模型</h3>
+      {settings.activeProviderId === 'managed' ? (
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
+          登录后使用 Credit，约 120 Credit / 分钟，按每 10 秒结算。
+        </p>
+      ) : null}
 
       <div className="mt-3 flex flex-col gap-3">
         <SettingSelect

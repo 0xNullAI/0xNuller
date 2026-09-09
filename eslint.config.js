@@ -87,7 +87,7 @@ export default tseslint.config(
     },
   },
 
-  // Cloudflare Worker 侧源码（Chat 的 RoomDO/LobbyDO、Voice 的 TrialSession、Market 的 API）
+  // Cloudflare Worker 侧源码（Chat 的 RoomDO/LobbyDO、Voice 的 ManagedVoiceSession、Market 的 API）
   {
     files: ['apps/*/worker/**/*.ts', 'apps/*/src/worker/**/*.ts'],
     languageOptions: {
@@ -112,7 +112,7 @@ export default tseslint.config(
     rules: { 'no-unused-vars': unusedVarsJs },
   },
 
-  // Node 侧脚本（如 apps/voice/scripts/gen-trial-key.mjs）
+  // Node 侧脚本（如 apps/voice/scripts/managed-voice tooling）
   {
     files: ['apps/*/scripts/**/*.{ts,js,mjs}', 'scripts/**/*.{ts,js,mjs}'],
     languageOptions: {

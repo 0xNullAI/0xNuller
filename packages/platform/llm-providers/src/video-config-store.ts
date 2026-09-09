@@ -26,7 +26,7 @@ const SESSION_KEY = '0xnullai.video-llm-api-key.v1';
 export function defaultVideoLlmConfig(): VideoLlmConfig {
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
-    ...createProviderSettings('openai'),
+    ...createProviderSettings('managed'),
     rememberApiKey: false,
   };
 }

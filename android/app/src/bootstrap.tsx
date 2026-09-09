@@ -66,10 +66,6 @@ const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
   attachNativeLifecycle: attachAndroidDeviceRuntimeLifecycle,
 });
 
-// Inlined by Vite at build time. Android requests carry no browser Origin, so
-// the free proxy relies on this signature to tell "our client" from "anyone".
-const freeProxySecret = import.meta.env.VITE_DG_PROXY_SECRET;
-
 /**
  * Wrap `connect()` with the permission help in place, returning the same instance.
  *
@@ -86,7 +82,6 @@ const bridge = {
       disableSpeech: true,
       disableBridge: true,
       disableUpdateChecker: true,
-      freeProxySecret,
       createDeviceClient: (
         protocol: ConstructorParameters<typeof TauriBlecDeviceClient>[0]['protocol'],
       ) => {

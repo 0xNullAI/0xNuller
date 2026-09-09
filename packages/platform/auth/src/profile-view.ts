@@ -67,6 +67,8 @@ export function emptyProfile(): UserProfile {
     birthDate: null,
     location: null,
     links: [],
+    interests: [],
+    discoverable: false,
     visibility: 'private',
   };
 }
@@ -118,7 +120,11 @@ export function resolveProfileView(
   // as "hidden" would show the owner the stranger's view of themselves with no
   // way to start filling it in.
   const profile = self ? (view.profile ?? emptyProfile()) : view.profile;
-  const open = profile != null && (self || profile.visibility === 'public');
+  const open =
+    profile != null &&
+    (self ||
+      profile.visibility === 'public' ||
+      (profile.visibility === 'friends' && relationship === 'mutual'));
   if (!open || !profile) return { state: 'hidden', user: view.user, relationship };
 
   return {

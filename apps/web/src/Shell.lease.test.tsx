@@ -77,11 +77,13 @@ vi.mock('@0xnullai/auth', () => ({
   getReferralSummary: () =>
     Promise.resolve({
       code: 'TESTINVITE01',
-      balanceCents: 0,
-      rewardCents: 500,
+      balanceCredits: 0,
+      rewardCredits: 500,
       rewardedCount: 0,
       pendingCount: 0,
     }),
+  getCreditBalance: () => Promise.resolve({ total: 0, reserved: 0, available: 0 }),
+  getCreditLedger: () => Promise.resolve({ entries: [], nextOffset: null }),
   me: () => Promise.resolve(authState.user),
   logout: () => Promise.resolve(),
   // The shell subscribes to profile requests on mount. Nothing here asks for a

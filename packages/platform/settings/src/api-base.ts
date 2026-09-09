@@ -13,7 +13,7 @@
  * like `tauri://localhost`), so same-origin relative paths hit the
  * WebView's own asset server. Android therefore needs absolute URLs.
  *
- * This difference bit for real in trial voice: `buildWsUrl` composed a
+ * This difference bit for real in managed voice: `buildWsUrl` composed a
  * same-origin wss from `location.host` — fine on the web, but on a phone it
  * dialed `wss://tauri.localhost/api/realtime`. And Android has no hot
  * update, so the broken build would have lived on users' phones for a long

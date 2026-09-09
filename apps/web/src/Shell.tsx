@@ -19,6 +19,7 @@ import {
 } from '@0xnullai/ui';
 import {
   me,
+  getCreditBalance,
   subscribeProfileChanges,
   subscribeProfileRequests,
   type AuthUser,
@@ -137,6 +138,11 @@ function useIsNarrow(): boolean {
 export function Shell() {
   const [{ pathname, opened }, navigate, ensureModuleOpened] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
+  const profileRoute = pathname.startsWith('/u/')
+    ? decodeURIComponent(pathname.slice('/u/'.length)).trim()
+    : null;
+  const peopleRoute = pathname === '/people';
+  const pageLabel = peopleRoute ? '交友' : profileRoute ? '个人主页' : null;
   const overlayRoot = useOverlayRoot();
   const narrow = useIsNarrow();
   // The theme is held solely by the shared store in @0xnullai/ui — the shell and the
@@ -144,8 +150,8 @@ export function Shell() {
   useTheme();
 
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [contactsOpen, setContactsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return pathname === '/settings' || params.has('verify') || params.has('reset')
@@ -153,10 +159,6 @@ export function Shell() {
       : null;
   });
   const [docsOpen, setDocsOpen] = useState(() => pathname === '/wiki');
-  // Whose profile is open, by username. The shell owns this surface because it
-  // is reachable from Chat's member list, from contacts and from the account
-  // dialog, and there must be exactly one of it.
-  const [profileUsername, setProfileUsername] = useState<string | null>(null);
   // On narrow screens the sidebar defaults to collapsed (drawer closed); on wide
   // screens it defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -197,6 +199,13 @@ export function Shell() {
     [],
   );
 
+  useEffect(() => {
+    if (!user) return;
+    void getCreditBalance()
+      .then((balance) => setCreditBalance(balance.available))
+      .catch(() => setCreditBalance(null));
+  }, [user]);
+
   // Modules ask for a profile rather than rendering one; see profile-requests
   // in @0xnullai/auth. Subscribing here rather than inside a module is what
   // keeps a lazily-mounted module from needing a provider threaded into it.
@@ -204,9 +213,9 @@ export function Shell() {
     () =>
       subscribeProfileRequests((username) => {
         setDrawerOpen(false);
-        setProfileUsername(username);
+        navigate(`/u/${encodeURIComponent(username)}`);
       }),
-    [],
+    [navigate],
   );
 
   // Close the drawer as soon as the route or the breakpoint changes, otherwise it
@@ -279,6 +288,7 @@ export function Shell() {
       activeId={activeId}
       onNavigate={go}
       user={user}
+      creditBalance={user ? creditBalance : null}
       // Close the drawer whenever a dialog opens. The drawer is the navigation
       // surface, and opening a dialog means navigation is over; leaving it up would
       // cover the dialog (the drawer sits at --z-shell, dialogs at
@@ -287,8 +297,8 @@ export function Shell() {
         openSettings('account');
       }}
       onOpenContacts={() => {
+        navigate('/people');
         setDrawerOpen(false);
-        setContactsOpen(true);
       }}
       onOpenSettings={() => {
         openSettings('appearance');
@@ -321,7 +331,9 @@ export function Shell() {
           <main
             id="shl-slot"
             inert={narrow && drawerOpen}
-            aria-label={MODULES.find((module) => module.id === activeId)?.label ?? '首页'}
+            aria-label={
+              MODULES.find((module) => module.id === activeId)?.label ?? pageLabel ?? '首页'
+            }
           >
             {/* Wide screens stack module actions above device state. Narrow screens use
               the same wrapper as one compact toolbar, while the device section keeps
@@ -344,7 +356,7 @@ export function Shell() {
                   >
                     <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
                     <span className="truncate">
-                      {MODULES.find((m) => m.id === activeId)?.label ?? '0xNuller'}
+                      {MODULES.find((m) => m.id === activeId)?.label ?? pageLabel ?? '0xNuller'}
                     </span>
                   </button>
                 )}
@@ -357,7 +369,34 @@ export function Shell() {
 
             <PersistenceNotice />
             <div id="shl-content">
-              {activeId === null ? <Home onOpen={go} /> : null}
+              {activeId === null && !peopleRoute && !profileRoute ? <Home onOpen={go} /> : null}
+              {peopleRoute ? (
+                user ? (
+                  <Suspense fallback={<PageLoading label="交友" />}>
+                    <ContactsDialog user={user} presentation="page" onClose={() => navigate('/')} />
+                  </Suspense>
+                ) : (
+                  <ChatAccountGate
+                    loading={!authChecked}
+                    emailVerificationRequired={false}
+                    onLogin={() => openSettings('account')}
+                  />
+                )
+              ) : null}
+              {profileRoute ? (
+                <Suspense fallback={<PageLoading label="个人主页" />}>
+                  <ProfileDialog
+                    username={profileRoute}
+                    viewer={user}
+                    presentation="page"
+                    onClose={() => {
+                      if (window.location.pathname.startsWith('/u/')) {
+                        navigate(user ? '/people' : '/');
+                      }
+                    }}
+                  />
+                </Suspense>
+              ) : null}
               {opened.map((id) => {
                 const mod = MODULES.find((m) => m.id === id);
                 if (!mod) return null;
@@ -422,8 +461,6 @@ export function Shell() {
                       onClick={() => {
                         setSettingsTab(null);
                         setDocsOpen(false);
-                        setContactsOpen(false);
-                        setProfileUsername(null);
                       }}
                     >
                       正在加载… 点击取消
@@ -431,12 +468,6 @@ export function Shell() {
                   </div>
                 }
               >
-                {/* Signed-in only, and gated on `user` here as well as in the menu:
-              signing out while the dialog is open has to close it rather than
-              leave a surface up with nothing left to show. */}
-                {contactsOpen && user && (
-                  <ContactsDialog user={user} onClose={() => setContactsOpen(false)} />
-                )}
                 {settingsTab && (
                   <SettingsPanel
                     initialTab={settingsTab}
@@ -454,14 +485,6 @@ export function Shell() {
                     }}
                   />
                 )}
-                {/* Public profiles remain readable while signed out. */}
-                {profileUsername && (
-                  <ProfileDialog
-                    username={profileUsername}
-                    viewer={user}
-                    onClose={() => setProfileUsername(null)}
-                  />
-                )}
               </Suspense>
             </ModuleErrorBoundary>
           </OverlayProvider>
@@ -475,6 +498,14 @@ export function Shell() {
         </div>
       </SidebarSectionsProvider>
     </ModuleSettingsProvider>
+  );
+}
+
+function PageLoading({ label }: { label: string }) {
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-[var(--text-faint)]">
+      正在加载{label}…
+    </div>
   );
 }
 

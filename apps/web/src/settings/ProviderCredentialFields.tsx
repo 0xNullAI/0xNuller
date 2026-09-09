@@ -12,30 +12,34 @@ export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
   config,
   definition,
   update,
+  showAdvanced = false,
 }: {
   config: T;
   definition: ProviderDefinition | undefined;
   update: (patch: Partial<T>) => void;
+  showAdvanced?: boolean;
 }) {
   const hasApiKey = definition?.fields.some((field) => field.key === 'apiKey') ?? false;
   return (
     <>
-      <ProviderFieldControls
-        fields={
-          definition?.fields.filter((field) => field.key !== 'model' && field.key !== 'apiKey') ??
-          []
-        }
-        getValue={(key) => String(config[key as 'baseUrl' | 'endpoint' | 'useStrict'] ?? '')}
-        onValueChange={(key, value) =>
-          update(
-            (key === 'useStrict'
-              ? { useStrict: value === 'true' }
-              : key === 'endpoint'
-                ? { endpoint: value as ProviderEndpoint }
-                : { [key]: value }) as Partial<T>,
-          )
-        }
-      />
+      {showAdvanced ? (
+        <ProviderFieldControls
+          fields={
+            definition?.fields.filter((field) => field.key !== 'model' && field.key !== 'apiKey') ??
+            []
+          }
+          getValue={(key) => String(config[key as 'baseUrl' | 'endpoint' | 'useStrict'] ?? '')}
+          onValueChange={(key, value) =>
+            update(
+              (key === 'useStrict'
+                ? { useStrict: value === 'true' }
+                : key === 'endpoint'
+                  ? { endpoint: value as ProviderEndpoint }
+                  : { [key]: value }) as Partial<T>,
+            )
+          }
+        />
+      ) : null}
 
       {hasApiKey && (
         <label className="flex flex-col gap-1.5">

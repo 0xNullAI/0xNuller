@@ -148,9 +148,9 @@ export default {
 
     // Internal: the account service tells a conversation that it has been severed.
     //
-    // Reachable from the internet (the zone route is a prefix match and workers.dev is on), so
-    // it carries its own signed token rather than trusting the caller's identity — a service
-    // binding authenticates the hop, not the request, and this endpoint has to be safe either way.
+    // Reachable from the internet through the zone prefix route, so it carries its own signed
+    // token rather than trusting the caller's identity — a service binding authenticates the hop,
+    // not the request, and this endpoint has to be safe either way.
     if (pathname === '/api/dm/revoke' && request.method === 'POST') {
       const body = (await request.json().catch(() => ({}))) as { token?: string };
       const auth = await authorizeDmToken({

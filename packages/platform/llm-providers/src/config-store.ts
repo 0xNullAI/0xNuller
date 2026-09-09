@@ -1,5 +1,5 @@
 import type { ProviderId } from './index';
-import { FREE_TRIAL_MODEL, FREE_TRIAL_PROXY_URL, getProviderDefinition } from './index';
+import { MANAGED_DEFAULT_MODEL, MANAGED_SERVICE_URL, getProviderDefinition } from './index';
 import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
 /**
@@ -17,7 +17,7 @@ import { createScopedProviderConfigStore } from './scoped-provider-config-store'
  * API keys live in localStorage, same as each module did pre-merge. This
  * is not encrypted storage — same-origin scripts can read it and so can
  * browser extensions. Deployments that truly need secrecy should run their
- * own proxy so the key only exists server-side (the free provider works
+ * own proxy so the key only exists server-side (the managed provider works
  * that way).
  */
 
@@ -38,10 +38,10 @@ const LEGACY_KEYS = ['dg-chat-ai-config', 'dg-agent.provider-settings'];
 
 export function defaultLlmConfig(): LlmConfig {
   return {
-    providerId: 'free',
+    providerId: 'managed',
     apiKey: '',
-    model: FREE_TRIAL_MODEL,
-    baseUrl: FREE_TRIAL_PROXY_URL,
+    model: MANAGED_DEFAULT_MODEL,
+    baseUrl: MANAGED_SERVICE_URL,
     endpoint: 'chat/completions',
     useStrict: false,
     rememberApiKey: false,
@@ -52,8 +52,9 @@ function coerce(raw: unknown): LlmConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.providerId !== 'string') return null;
+  const providerId = o.providerId === 'free' ? 'managed' : o.providerId;
   return {
-    providerId: o.providerId,
+    providerId,
     apiKey: typeof o.apiKey === 'string' ? o.apiKey : '',
     model: typeof o.model === 'string' ? o.model : '',
     baseUrl: typeof o.baseUrl === 'string' ? o.baseUrl : '',
@@ -105,7 +106,7 @@ export function loadLlmConfig(): LlmConfig {
  * Callers that merge this config over their own need the difference:
  * `loadLlmConfig()` always returns something, so an untouched store would
  * otherwise silently overwrite a module's own persisted provider with
- * `free`.
+ * `managed`.
  */
 export function hasLlmConfig(): boolean {
   if (typeof localStorage === 'undefined') return false;
@@ -134,9 +135,9 @@ export function subscribeLlmConfig(listener: (c: LlmConfig) => void): () => void
   return store.subscribe(listener);
 }
 
-/** Whether the config is usable. The free provider needs no key; the rest do. */
+/** Whether the config is usable. The managed provider needs no user key; the rest do. */
 export function isLlmConfigured(c: LlmConfig): boolean {
-  if (c.providerId === 'free') return true;
+  if (c.providerId === 'managed') return true;
   const def = getProviderDefinition(c.providerId as ProviderId);
   const needsKey = def ? def.fields.some((f) => f.key === 'apiKey') : true;
   return needsKey ? c.apiKey.trim().length > 0 : true;
