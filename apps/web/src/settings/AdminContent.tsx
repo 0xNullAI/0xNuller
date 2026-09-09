@@ -130,82 +130,32 @@ export function AdminContent() {
 
   return (
     <section aria-labelledby="admin-content-title">
-      <form
-        className="mb-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setError(null);
-          setCreditNotice(null);
-          try {
-            const result = await grantCreditPackage({
-              username: creditUsername.trim(),
-              amountCny: creditAmount,
-              externalReference: creditReference.trim(),
-            });
-            setCreditNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
-            setCreditReference('');
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : '充值入账失败');
-          }
-        }}
-      >
-        <h2 className="text-sm font-semibold">人工充值入账</h2>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">
-          确认实际到账后再提交，流水号只能使用一次。
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto]">
-          <Input
-            value={creditUsername}
-            onChange={(event) => setCreditUsername(event.target.value)}
-            placeholder="用户名"
-            aria-label="充值用户名"
-          />
-          <SettingSelect
-            value={String(creditAmount)}
-            onValueChange={(value) => setCreditAmount(Number(value) as typeof creditAmount)}
-            aria-label="充值档位"
-            options={[
-              { value: '7', label: '¥7 · 1,000 Credit' },
-              { value: '35', label: '¥35 · 5,000 Credit' },
-              { value: '70', label: '¥70 · 10,000 Credit' },
-              { value: '140', label: '¥140 · 20,000 Credit' },
-            ]}
-          />
-          <Input
-            value={creditReference}
-            onChange={(event) => setCreditReference(event.target.value)}
-            placeholder="支付宝流水号"
-            aria-label="外部流水号"
-          />
-          <Button type="submit" disabled={!creditUsername.trim() || !creditReference.trim()}>
-            确认入账
-          </Button>
-        </div>
-        {creditNotice ? <p className="mt-2 text-xs text-[var(--success)]">{creditNotice}</p> : null}
-      </form>
       {stats ? (
-        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {[
-            ['账户', stats.users],
-            ['已验证', stats.verifiedUsers],
-            ['活跃会话', stats.activeSessions],
-            ['24h 注册尝试', stats.registrationAttempts24h],
-            ['今日消费 Credit', stats.creditUsedToday],
-            ['今日充值 Credit', stats.creditPurchasedToday],
-            ['待处理举报', stats.openReports],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
-            >
-              <div className="text-xs text-[var(--text-faint)]">{label}</div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
-            </div>
-          ))}
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold">管理概览</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {[
+              ['账户', stats.users],
+              ['已验证', stats.verifiedUsers],
+              ['活跃会话', stats.activeSessions],
+              ['24h 注册尝试', stats.registrationAttempts24h],
+              ['今日消费 Credit', stats.creditUsedToday],
+              ['今日充值 Credit', stats.creditPurchasedToday],
+              ['待处理举报', stats.openReports],
+            ].map(([label, value]) => (
+              <div
+                key={String(label)}
+                className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-3"
+              >
+                <div className="text-xs text-[var(--text-faint)]">{label}</div>
+                <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
       {reports.some((report) => report.status === 'open') ? (
-        <div className="mb-5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+        <div className="mb-6 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
           <h2 className="text-sm font-semibold">用户举报</h2>
           <div className="mt-2 space-y-2">
             {reports
@@ -421,6 +371,60 @@ export function AdminContent() {
           加载更多
         </Button>
       ) : null}
+
+      <form
+        className="mt-8 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          setCreditNotice(null);
+          try {
+            const result = await grantCreditPackage({
+              username: creditUsername.trim(),
+              amountCny: creditAmount,
+              externalReference: creditReference.trim(),
+            });
+            setCreditNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
+            setCreditReference('');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : '充值入账失败');
+          }
+        }}
+      >
+        <h2 className="text-sm font-semibold">人工充值</h2>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
+          收到款项并核对流水后再入账。档位由系统换算，同一流水号只能使用一次。
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <Input
+            value={creditUsername}
+            onChange={(event) => setCreditUsername(event.target.value)}
+            placeholder="用户名"
+            aria-label="充值用户名"
+          />
+          <SettingSelect
+            value={String(creditAmount)}
+            onValueChange={(value) => setCreditAmount(Number(value) as typeof creditAmount)}
+            aria-label="充值档位"
+            options={[
+              { value: '7', label: '¥7 · 1,000 Credit' },
+              { value: '35', label: '¥35 · 5,000 Credit' },
+              { value: '70', label: '¥70 · 10,000 Credit' },
+              { value: '140', label: '¥140 · 20,000 Credit' },
+            ]}
+          />
+          <Input
+            value={creditReference}
+            onChange={(event) => setCreditReference(event.target.value)}
+            placeholder="支付宝流水号"
+            aria-label="外部流水号"
+          />
+          <Button type="submit" disabled={!creditUsername.trim() || !creditReference.trim()}>
+            确认入账
+          </Button>
+        </div>
+        {creditNotice ? <p className="mt-2 text-xs text-[var(--success)]">{creditNotice}</p> : null}
+      </form>
     </section>
   );
 }
