@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
-import { Button, Input } from '@0xnullai/ui';
+import { Button, Input, SettingSelect } from '@0xnullai/ui';
 import {
   getAdminReports,
   getAdminStats,
@@ -160,17 +160,17 @@ export function AdminContent() {
             placeholder="用户名"
             aria-label="充值用户名"
           />
-          <select
-            value={creditAmount}
-            onChange={(event) => setCreditAmount(Number(event.target.value) as typeof creditAmount)}
+          <SettingSelect
+            value={String(creditAmount)}
+            onValueChange={(value) => setCreditAmount(Number(value) as typeof creditAmount)}
             aria-label="充值档位"
-            className="h-10 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--surface)] px-3 text-sm"
-          >
-            <option value={7}>¥7 · 1,000</option>
-            <option value={35}>¥35 · 5,000</option>
-            <option value={70}>¥70 · 10,000</option>
-            <option value={140}>¥140 · 20,000</option>
-          </select>
+            options={[
+              { value: '7', label: '¥7 · 1,000 Credit' },
+              { value: '35', label: '¥35 · 5,000 Credit' },
+              { value: '70', label: '¥70 · 10,000 Credit' },
+              { value: '140', label: '¥140 · 20,000 Credit' },
+            ]}
+          />
           <Input
             value={creditReference}
             onChange={(event) => setCreditReference(event.target.value)}
