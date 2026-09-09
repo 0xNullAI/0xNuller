@@ -13,6 +13,7 @@
 | Android 发布   | [android-release.md](android-release.md)       | APK、签名和产物验证                  |
 | 桌面版本       | [desktop.md](desktop.md)                       | Windows/macOS 构建、蓝牙、权限及验收 |
 | Agent 架构     | [agent-architecture.md](agent-architecture.md) | Runtime、Provider、工具和浏览器组合  |
+| LLM 与 Credit  | [llm-credit-plan.md](llm-credit-plan.md)       | 官方模型、BYOK、计费与破坏性升级     |
 
 用户操作放在产品内置帮助和对应 app README；版本说明位于 `docs/releases/`。迁移、运维和发布
 约束直接维护在对应的现行文档中，不再另建过程记录。

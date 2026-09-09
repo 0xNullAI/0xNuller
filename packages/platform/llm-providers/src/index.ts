@@ -2,7 +2,7 @@ import { applyHttpProxy } from '@0xnullai/settings';
 import { z } from 'zod';
 
 export type ProviderId =
-  | 'free'
+  | 'managed'
   | 'qwen'
   | 'deepseek'
   | 'doubao'
@@ -30,7 +30,7 @@ export type ProviderEndpoint = 'responses' | 'chat/completions';
 /**
  * Which transport a provider goes through:
  * - `openai-compat`: the original hand-rolled OpenAI Chat-Completions /
- *   Responses HTTP client in `providers-openai-http` (`free`/`qwen`/
+ *   Responses HTTP client in `providers-openai-http` (`managed`/`qwen`/
  *   `deepseek`/`doubao`/`openai`/`custom` — unchanged by this field's
  *   introduction, still routed exactly as before).
  * - `pi-ai`: `providers-pi-http`'s `PiAiLlmClient`, wrapping
@@ -86,7 +86,7 @@ export interface ProviderRuntimeSettings extends ProviderSettings {
 }
 
 const PROVIDER_IDS = [
-  'free',
+  'managed',
   'qwen',
   'deepseek',
   'doubao',
@@ -131,14 +131,14 @@ const providerSettingsSchema = z.object({
   useStrict: z.boolean(),
 });
 
-export const FREE_TRIAL_PROXY_URL = 'https://llm.0xnullai.com';
+export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
 
 /**
- * Display model for the free tier. The Cloudflare Worker proxy forces the real
+ * Public model id for the managed service. The Cloudflare Worker forces the real
  * upstream model server-side (via the PROXY_MODEL env var), so this value is only
  * used for the UI label and the request body the proxy then overrides.
  */
-export const FREE_TRIAL_MODEL = 'openrouter/free';
+export const MANAGED_DEFAULT_MODEL = 'balanced';
 
 /** apiKey + model only — no baseUrl/endpoint/useStrict fields, shared by every `dialect: 'pi-ai'` entry below. */
 function piAiFields(
@@ -153,9 +153,9 @@ function piAiFields(
 
 const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> = [
   {
-    id: 'free',
-    name: '免费体验',
-    hint: '无需配置 API-Key，当前由 MapLeaf API 提供支持。',
+    id: 'managed',
+    name: '0xNullAI 模型',
+    hint: '登录后使用 Credit，费用按实际模型用量结算。',
     browserSupported: true,
     fields: [],
     dialect: 'openai-compat',
@@ -400,10 +400,11 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
 /**
  * Explicit vision allowlist. An absent provider or an unrecognized model id
  * is not assumed to support images, even when its API dialect could serialize
- * them. The free proxy stays disabled because its upstream model is selected
- * server-side and cannot be verified by this client.
+ * them. The managed service exposes the stable `balanced` product model while the
+ * Worker owns and validates the actual vision-capable upstream model.
  */
 const IMAGE_MODELS: Partial<Record<ProviderId, readonly string[]>> = {
+  managed: [MANAGED_DEFAULT_MODEL],
   qwen: ['qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen3-vl-plus', 'qwen3.5-plus'],
   doubao: ['doubao-seed-2-0-mini-250415'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
@@ -464,7 +465,7 @@ export function createProviderSettings(providerId: ProviderId): ProviderSettings
 }
 
 export function createDefaultProviderSettings(): ProviderSettings {
-  return createProviderSettings('free');
+  return createProviderSettings('managed');
 }
 
 /** `providerId -> default model id`, applied by `normalizeProviderSettings` below for every built-in provider (skips `custom`, which stays fully user-editable). */
@@ -492,7 +493,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
   xiaomi: 'mimo-v2.5-pro',
 };
 
-/** `providerId -> default baseUrl`, applied only for `dialect: 'openai-compat'` providers with a fixed host (qwen/deepseek/doubao/openai — `free` and `custom` are handled separately above/below). */
+/** `providerId -> default baseUrl`, applied only for `dialect: 'openai-compat'` providers with a fixed host (qwen/deepseek/doubao/openai — `managed` and `custom` are handled separately above/below). */
 const DEFAULT_BASE_URL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   deepseek: 'https://api.deepseek.com',
@@ -515,9 +516,9 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
   // one normalization every other reader can then rely on.
   normalized.model = normalized.model.trim();
 
-  if (normalized.providerId === 'free') {
-    normalized.baseUrl = FREE_TRIAL_PROXY_URL + '/v1';
-    normalized.model = FREE_TRIAL_MODEL;
+  if (normalized.providerId === 'managed') {
+    normalized.baseUrl = MANAGED_SERVICE_URL + '/v1';
+    normalized.model = MANAGED_DEFAULT_MODEL;
     normalized.endpoint = 'chat/completions';
     normalized.useStrict = false;
   } else if (normalized.providerId === 'custom') {
@@ -563,17 +564,17 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
   const definition = getProviderDefinition(normalized.providerId);
   const dialect: ProviderDialect = definition?.dialect ?? 'openai-compat';
 
-  if (normalized.providerId === 'free') {
+  if (normalized.providerId === 'managed') {
     return {
       ...normalized,
-      apiKey: 'free',
-      model: FREE_TRIAL_MODEL,
-      baseUrl: FREE_TRIAL_PROXY_URL + '/v1',
+      apiKey: 'managed',
+      model: MANAGED_DEFAULT_MODEL,
+      baseUrl: MANAGED_SERVICE_URL + '/v1',
       endpoint: 'chat/completions',
       useStrict: false,
       browserSupported: true,
       dialect,
-      imageInput: false,
+      imageInput: true,
     };
   }
 
@@ -590,52 +591,6 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
 export function isProviderUsableInBrowser(settings: ProviderSettings): boolean {
   const definition = getProviderDefinition(settings.providerId);
   return Boolean(definition?.browserSupported);
-}
-
-/**
- * Per-request HMAC headers for the free-proxy. The signed payload is just
- * the current timestamp — that's enough for the proxy to verify the caller
- * holds the shared secret (and reject replays via the ±5 minute window)
- * without us having to canonicalize the request body.
- *
- * The secret is shipped in the Tauri Android build (via Vite env), so this
- * is deliberately a low bar: anyone who decompiles the APK can recover the
- * secret. Rotating the secret server-side invalidates the leaked one. The
- * web build doesn't ship the secret and is whitelisted by Origin instead.
- */
-export function createFreeProxyHmacHeaders(secret: string): () => Promise<Record<string, string>> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error('HMAC headers require WebCrypto subtle; not available in this runtime');
-  }
-  const encoder = new TextEncoder();
-  // Import the key once and cache the import; signing is the only hot path.
-  const keyPromise = subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-
-  return async () => {
-    const timestamp = Date.now().toString();
-    const key = await keyPromise;
-    const sigBytes = await subtle.sign('HMAC', key, encoder.encode(timestamp));
-    return {
-      'X-DG-Timestamp': timestamp,
-      'X-DG-Signature': bufferToHex(sigBytes),
-    };
-  };
-}
-
-function bufferToHex(buf: ArrayBuffer): string {
-  const view = new Uint8Array(buf);
-  let out = '';
-  for (let i = 0; i < view.length; i += 1) {
-    out += (view[i] ?? 0).toString(16).padStart(2, '0');
-  }
-  return out;
 }
 
 export * from './config-store';

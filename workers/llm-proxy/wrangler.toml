@@ -1,6 +1,4 @@
-# Keep the production script name while the public compatibility hostname is
-# still llm.0xnullai.com. Renaming the script would drop its existing secret and
-# make the account-bound trial fail until an operator copied credentials.
+# Keep the production script name so its secret and custom domain remain attached.
 name = "dg-llm-proxy"
 # 钉住账号，避免同一登录下多账号时部署到错误账号。
 account_id = "9c36f42d1cb5ba53e644de21a014d028"
@@ -10,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 preview_urls = false
 
-# 免费模型的稳定入口由源码管理，部署可从仓库完整重建。
+# 平台模型的稳定入口由源码管理，部署可从仓库完整重建。
 [[routes]]
 pattern = "llm.0xnullai.com"
 custom_domain = true
@@ -30,40 +28,20 @@ enabled = true
 head_sampling_rate = 1
 
 [vars]
-# Display/default upstream model. The worker forces this server-side; override
-# here without rebuilding the web app. Mirrors the old FC PROXY_MODEL env var.
-PROXY_MODEL = "openrouter/free"
+UPSTREAM_BASE_URL = "https://aihub.071129.xyz/v1"
+UPSTREAM_MODEL = "openai/gpt-4.1-mini"
+INPUT_CREDITS_PER_MILLION = 600
+CACHED_INPUT_CREDITS_PER_MILLION = 150
+OUTPUT_CREDITS_PER_MILLION = 2400
 
-# Comma-separated origins allowed to call this worker from a browser. Leave it
-# unset and the worker answers `*`, exactly as it always has — the checks in
-# src/guard.js are opt-in so that a half-finished rollout cannot take the free
-# provider offline. Requests with no Origin (the Android WebView, any
-# non-browser client) are always allowed through this particular check.
+# Browser origins. Native shells use Bearer sessions and do not send Origin.
 ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost"
 
-# Global per-IP rate limit. Without this binding the worker falls back to a
-# per-isolate in-memory counter, which is barely a limit at all: Cloudflare runs
-# many isolates and each keeps its own map, so the real ceiling is the number
-# below times however many isolates happen to be warm. This worker spends a paid
-# upstream key, so that gap is a money problem, not a tidiness one.
-#
-# `wrangler deploy --dry-run` first — this binding is still behind `unsafe` and
-# its schema has moved before.
+# Paid upstream traffic fails closed when the global limiter is unavailable.
 [[unsafe.bindings]]
 name = "RATE_LIMITER"
 type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 20, period = 60 }
 
-# Secrets (do NOT put in this file) — set once after first deploy, and note that
-# secrets do not survive a script rename:
-#   wrangler secret put PROXY_API_KEY      # upstream gateway key
-#   wrangler secret put FREE_PROXY_SECRET  # optional; must equal the client's
-#                                          # VITE_DG_PROXY_SECRET. Only the
-#                                          # Android build is given one, so a
-#                                          # request without a signature is
-#                                          # still accepted — a *wrong* one is
-#                                          # not. This is a speed bump against
-#                                          # someone pointing a script at the
-#                                          # subdomain, not authentication: the
-#                                          # secret ships inside an APK.
+# Secret: wrangler secret put PROXY_API_KEY

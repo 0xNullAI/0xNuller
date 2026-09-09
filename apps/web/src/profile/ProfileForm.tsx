@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Globe, ImagePlus, Link2, Lock, Plus, Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, Globe, ImagePlus, Link2, Lock, Plus, Trash2, Users, X } from 'lucide-react';
 import { Input, Textarea } from '@0xnullai/ui';
 import {
   deletePhoto,
@@ -109,9 +109,14 @@ function AlbumEditor({
               <div className="flex items-center justify-between gap-1 p-1">
                 <button
                   type="button"
-                  aria-label={photo.visibility === 'public' ? '设为私密' : '设为公开'}
+                  aria-label="切换照片可见范围"
                   onClick={async () => {
-                    const visibility = photo.visibility === 'public' ? 'private' : 'public';
+                    const visibility =
+                      photo.visibility === 'private'
+                        ? 'friends'
+                        : photo.visibility === 'friends'
+                          ? 'public'
+                          : 'private';
                     await updatePhoto(photo.id, visibility);
                     setPhotos((current) =>
                       current.map((item) =>
@@ -123,10 +128,16 @@ function AlbumEditor({
                 >
                   {photo.visibility === 'public' ? (
                     <Eye className="h-3.5 w-3.5" />
+                  ) : photo.visibility === 'friends' ? (
+                    <Users className="h-3.5 w-3.5" />
                   ) : (
                     <EyeOff className="h-3.5 w-3.5" />
                   )}
-                  {photo.visibility === 'public' ? '公开' : '私密'}
+                  {photo.visibility === 'public'
+                    ? '公开'
+                    : photo.visibility === 'friends'
+                      ? '好友'
+                      : '私密'}
                 </button>
                 <button
                   type="button"
@@ -157,6 +168,10 @@ export function cleanProfile(draft: UserProfile): UserProfile {
     bio: draft.bio?.trim() || null,
     location: draft.location?.trim() || null,
     links: draft.links.map((l) => l.trim()).filter(Boolean),
+    interests: [...new Set(draft.interests.map((value) => value.trim()).filter(Boolean))].slice(
+      0,
+      8,
+    ),
   };
 }
 
@@ -196,6 +211,22 @@ export function ProfileForm({
         <p className="text-[10px] leading-relaxed text-[var(--text-faint)]">
           只填到城市就够了。不要填详细住址——这类信息一旦泄露，风险不是被打扰而是人身安全。
         </p>
+      </ProfileSection>
+
+      <ProfileSection title="兴趣" hint="最多 8 个，用逗号分隔">
+        <Input
+          value={draft.interests.join('，')}
+          onChange={(event) =>
+            patch({
+              interests: event.target.value
+                .split(/[,，]/)
+                .map((value) => value.trim().slice(0, 24))
+                .slice(0, 8),
+            })
+          }
+          placeholder="音乐，游戏，旅行"
+          aria-label="兴趣"
+        />
       </ProfileSection>
 
       <ProfileSection title="生日">
@@ -260,6 +291,12 @@ export function ProfileForm({
                 blurb: '别人打开你的主页只会看到用户名。',
               },
               {
+                value: 'friends',
+                icon: <Users className="h-4 w-4" />,
+                title: '仅好友',
+                blurb: '只有互相关注的好友可以看到主页内容。',
+              },
+              {
                 value: 'public',
                 icon: <Globe className="h-4 w-4" />,
                 title: '公开',
@@ -273,7 +310,12 @@ export function ProfileForm({
                 key={option.value}
                 type="button"
                 aria-pressed={active}
-                onClick={() => patch({ visibility: option.value })}
+                onClick={() =>
+                  patch({
+                    visibility: option.value,
+                    discoverable: option.value === 'public' ? draft.discoverable : false,
+                  })
+                }
                 className={
                   'flex flex-col gap-1 rounded-[var(--radius-sm)] border px-3 py-2.5 text-left transition-colors duration-[var(--dur)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
                   (active
@@ -294,6 +336,24 @@ export function ProfileForm({
             );
           })}
         </div>
+      </ProfileSection>
+
+      <ProfileSection title="允许被发现">
+        <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={draft.discoverable}
+            disabled={draft.visibility !== 'public'}
+            onChange={(event) => patch({ discoverable: event.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+          />
+          <span>
+            <span className="block text-sm font-medium">出现在交友发现中</span>
+            <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--text-faint)]">
+              仅公开主页可以开启。关闭后仍可通过准确用户名找到你。
+            </span>
+          </span>
+        </label>
       </ProfileSection>
     </div>
   );

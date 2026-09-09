@@ -53,6 +53,7 @@ interface SidebarProps {
   activeId: string | null;
   onNavigate: (moduleId: string | null) => void;
   user: AuthUser | null;
+  creditBalance: number | null;
   onOpenAccount: () => void;
   onOpenContacts: () => void;
   onOpenSettings: () => void;
@@ -141,12 +142,14 @@ function AppSwitcherButton({
 
 function AccountButton({
   user,
+  creditBalance,
   onOpenAccount,
   onOpenContacts,
   onOpenSettings,
   onOpenDocs,
 }: {
   user: AuthUser | null;
+  creditBalance: number | null;
   onOpenAccount: () => void;
   onOpenContacts: () => void;
   onOpenSettings: () => void;
@@ -220,6 +223,11 @@ function AccountButton({
           size={26}
         />
         <span className="min-w-0 flex-1 truncate text-sm">{user?.displayName ?? '未登录'}</span>
+        {user && creditBalance !== null ? (
+          <span className="shrink-0 text-[10px] font-semibold tabular-nums text-[var(--accent)]">
+            {creditBalance} Credit
+          </span>
+        ) : null}
       </button>
 
       {open && (
@@ -392,6 +400,7 @@ export function Sidebar({
   activeId,
   onNavigate,
   user,
+  creditBalance,
   onOpenAccount,
   onOpenContacts,
   onOpenSettings,
@@ -464,6 +473,7 @@ export function Sidebar({
       <div className="shrink-0 border-t border-[var(--surface-border)] p-2">
         <AccountButton
           user={user}
+          creditBalance={creditBalance}
           onOpenAccount={onOpenAccount}
           onOpenContacts={onOpenContacts}
           onOpenSettings={onOpenSettings}

@@ -29,7 +29,8 @@ export function corsHeaders(request: Request, allowedOrigins: string): Record<st
     // Authorization must be on the allowlist: leave it out and the browser blocks
     // the request outright at the preflight stage, which shows up as "the request
     // never even went out" rather than a catchable 401.
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility',
+    'Access-Control-Allow-Headers':
+      'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility,X-Photo-Purpose',
     Vary: 'Origin',
   };
 }

@@ -21,22 +21,22 @@ export function parseVoiceTicket(header: string | null): string | null {
 
 export function isAllowedOrigin(origin: string | null, env: Env): boolean {
   // An unset allow-list used to mean "allow everyone". It is ordinary config,
-  // not a secret, so a deploy that loses it silently opened the trial quota —
+  // not a secret, so a deploy that loses it silently opens a paid endpoint —
   // which spends real money — to any origin. Unset now falls through to the
   // localhost checks below, so `wrangler dev` still works and nothing else does.
-  const allow = env.TRIAL_ALLOWED_ORIGINS?.trim() ?? '';
+  const allow = env.ALLOWED_ORIGINS?.trim() ?? '';
   if (!origin) return false;
   try {
     const host = new URL(origin).hostname;
     // localhost: lets `wrangler dev` work without editing the production allow-list.
     if (host === 'localhost' || host === '127.0.0.1') return true;
     // tauri.localhost: the Android shell's WebView origin. Without allowing it,
-    // trial voice 403s on phones every single time and the UI only shows
+    // managed voice 403s on phones every single time and the UI only shows
     // 「连接失败」.
     //
     // This doesn't weaken the protection: the Origin header only binds
     // browsers, and a native program can forge it whenever it likes. The real
-    // gate is the signed account ticket plus TrialSession's usage caps; the allow-list
+    // gate is the signed account ticket plus the Credit reservation; the allow-list
     // only blocks the one case of another web page embedding a WebSocket
     // directly and riding on the quota.
     if (host === 'tauri.localhost') return true;

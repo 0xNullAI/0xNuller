@@ -102,6 +102,7 @@ describe('useRealtimeCall 正常结束', () => {
     } satisfies RealtimeSession;
     realtimeMocks.createSession.mockResolvedValue(realtimeSession);
     const settings = createDefaultSettings();
+    settings.activeProviderId = 'xai';
     settings.providers.xai.apiKey = 'test-key';
 
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
@@ -180,6 +181,7 @@ describe('useRealtimeCall 正常结束', () => {
     const session = realtimeSession(async () => undefined);
     realtimeMocks.createSession.mockResolvedValue(session);
     const settings = createDefaultSettings();
+    settings.activeProviderId = 'xai';
     settings.providers.xai.apiKey = 'test-key';
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
 
@@ -198,6 +200,7 @@ describe('useRealtimeCall 正常结束', () => {
     const session = realtimeSession(() => connecting.promise);
     realtimeMocks.createSession.mockResolvedValue(session);
     const settings = createDefaultSettings();
+    settings.activeProviderId = 'xai';
     settings.providers.xai.apiKey = 'test-key';
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
 

@@ -33,7 +33,7 @@ export interface PendingPermissionRequest {
  */
 export type ServicesOverrides = Pick<
   BrowserServicesOptions,
-  'createDeviceClient' | 'disableSpeech' | 'disableBridge' | 'freeProxySecret'
+  'createDeviceClient' | 'disableSpeech' | 'disableBridge'
 > & {
   /** Skip the update-checker poll loop (no version.json on non-web shells). */
   disableUpdateChecker?: boolean;

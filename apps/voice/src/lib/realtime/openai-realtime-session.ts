@@ -44,8 +44,8 @@ const TURN_DETECTION = {
 
 function buildWsUrl(providerId: RealtimeProviderId, settings: RealtimeProviderSettings): string {
   switch (providerId) {
-    case 'trial': {
-      // Worker route under the unified domain (`/api/realtime`); the Worker
+    case 'managed': {
+      // Managed Worker route under the unified domain (`/api/realtime`); the Worker
       // pins the model and swaps the short-lived account ticket for the real xAI key on
       // the upstream leg.
       //
@@ -79,7 +79,7 @@ async function resolveCredential(
   providerId: RealtimeProviderId,
   settings: RealtimeProviderSettings,
 ): Promise<string> {
-  if (providerId === 'trial') {
+  if (providerId === 'managed') {
     return (await getVoiceTicket()).ticket;
   }
   try {
@@ -123,8 +123,8 @@ export class OpenAiRealtimeSession extends BaseRealtimeSession {
   }
 
   protected buildSessionUpdate(): Record<string, unknown> {
-    if (this.providerId === 'xai' || this.providerId === 'trial') {
-      // Classic/flat shape — confirmed working against xAI. Trial is xAI
+    if (this.providerId === 'xai' || this.providerId === 'managed') {
+      // Classic/flat shape — confirmed working against xAI. The managed service is xAI
       // behind the Worker, so it takes the identical payload.
       return {
         type: 'session.update',

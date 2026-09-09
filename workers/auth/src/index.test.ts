@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worker, {
   claimMarketItemsForCredentials,
-  consumeAiQuotaForCredentials,
+  creditBalance,
   marketItemAccessForCredentials,
   registrationConflict,
+  releaseCredits,
+  reserveCredits,
   runAuthMaintenance,
-  voiceTicketQuota,
+  settleCredits,
   type Env,
 } from './index';
 import { createTestDb } from './test-helpers';
@@ -14,6 +16,10 @@ const ORIGIN = 'https://0xnullai.com';
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
 let photos: FakePhotos;
+const VALID_PNG = new Uint8Array([
+  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 73, 69, 78, 68, 0, 0, 0, 0,
+]);
 let sentEmails: unknown[];
 
 class FakePhotos {
@@ -280,7 +286,7 @@ describe('邀请注册与活动 Credit', () => {
     return token;
   }
 
-  it('只在被邀请人完成邮箱验证后幂等发放 500 美分', async () => {
+  it('只在被邀请人完成邮箱验证后幂等发放 500 Credit', async () => {
     const inviter = await registerUser();
     await confirmLatestVerification();
 
@@ -291,10 +297,10 @@ describe('邀请注册与活动 Credit', () => {
     expect(summaryResponse.status).toBe(200);
     const initial = (await summaryResponse.json()) as {
       code: string;
-      balanceCents: number;
-      rewardCents: number;
+      balanceCredits: number;
+      rewardCredits: number;
     };
-    expect(initial).toMatchObject({ balanceCents: 0, rewardCents: 500 });
+    expect(initial).toMatchObject({ balanceCredits: 0, rewardCredits: 500 });
 
     const invitee = await registerUser({
       username: 'bob',
@@ -312,17 +318,17 @@ describe('邀请注册与活动 Credit', () => {
     const verificationToken = await confirmLatestVerification();
     const after = await worker.fetch(req('/api/auth/referral', { token: inviter.body.token }), env);
     expect(await after.json()).toMatchObject({
-      balanceCents: 500,
+      balanceCredits: 500,
       rewardedCount: 1,
       pendingCount: 0,
-      activity: [expect.objectContaining({ status: 'rewarded', rewardCents: 500 })],
+      activity: [expect.objectContaining({ status: 'rewarded', rewardCredits: 500 })],
     });
 
     expect(
       (await post('/api/auth/email/verification/confirm', { token: verificationToken })).status,
     ).toBe(400);
     const ledger = await prepared(
-      'SELECT COUNT(*) AS n, SUM(amount_cents) AS cents FROM credit_ledger WHERE user_id = ?',
+      'SELECT COUNT(*) AS n, SUM(amount_credits) AS cents FROM credit_ledger WHERE user_id = ?',
       inviter.body.user!.id,
     ).first<{ n: number; cents: number }>();
     expect(ledger).toEqual({ n: 1, cents: 500 });
@@ -353,6 +359,118 @@ describe('邀请注册与活动 Credit', () => {
     expect(response.status).toBe(200);
     expect((await response.json()) as { code: string }).toMatchObject({
       code: expect.stringMatching(/^[A-Z0-9]{12}$/),
+    });
+  });
+});
+
+describe('Credit 账本与人工充值', () => {
+  it('冻结并按实际费用结算，同一幂等键只扣一次', async () => {
+    const { body } = await registerUser();
+    await prepared(
+      `INSERT INTO credit_ledger
+       (user_id, amount_credits, kind, reference_id, price_version, created_at)
+       VALUES (?, 1000, 'support_adjustment', 'test-seed', 'test', ?)`,
+      body.user!.id,
+      Date.now(),
+    ).run();
+
+    const input = {
+      idempotencyKey: 'request:credit:one',
+      usageKind: 'agent' as const,
+      modelId: 'test/model',
+      credits: 100,
+    };
+    expect(await reserveCredits(env, body.user!.id, input)).toMatchObject({
+      allowed: true,
+      available: 900,
+      reserved: 100,
+    });
+    expect(await reserveCredits(env, body.user!.id, input)).toMatchObject({
+      allowed: false,
+      available: 900,
+      reserved: 100,
+    });
+
+    expect(
+      await settleCredits(env, body.user!.id, input.idempotencyKey, 30, {
+        model: input.modelId,
+      }),
+    ).toMatchObject({ status: 'settled', charged: 30, total: 970, reserved: 0 });
+    expect(
+      await settleCredits(env, body.user!.id, input.idempotencyKey, 30, {
+        model: input.modelId,
+      }),
+    ).toMatchObject({ status: 'settled', charged: 30, total: 970 });
+    expect(
+      await prepared(
+        "SELECT COUNT(*) AS n FROM credit_ledger WHERE kind = 'usage' AND reference_id = ?",
+        input.idempotencyKey,
+      ).first<{ n: number }>(),
+    ).toEqual({ n: 1 });
+  });
+
+  it('释放失败请求的冻结额度，并拒绝余额不足的请求', async () => {
+    const { body } = await registerUser();
+    await prepared(
+      `INSERT INTO credit_ledger
+       (user_id, amount_credits, kind, reference_id, price_version, created_at)
+       VALUES (?, 50, 'support_adjustment', 'test-seed', 'test', ?)`,
+      body.user!.id,
+      Date.now(),
+    ).run();
+    const base = {
+      usageKind: 'video' as const,
+      modelId: 'test/vision',
+      credits: 40,
+    };
+    expect(
+      await reserveCredits(env, body.user!.id, {
+        ...base,
+        idempotencyKey: 'request:video:one',
+      }),
+    ).toMatchObject({ allowed: true, available: 10 });
+    expect(
+      await reserveCredits(env, body.user!.id, {
+        ...base,
+        idempotencyKey: 'request:video:two',
+      }),
+    ).toMatchObject({ allowed: false, available: 10 });
+    expect(await releaseCredits(env, body.user!.id, 'request:video:one')).toMatchObject({
+      status: 'released',
+      available: 50,
+    });
+
+    const oversized = await reserveCredits(env, body.user!.id, {
+      ...base,
+      idempotencyKey: 'request:video:oversized-settlement',
+    });
+    expect(oversized).toMatchObject({ allowed: true, available: 10, reserved: 40 });
+    expect(
+      await settleCredits(env, body.user!.id, 'request:video:oversized-settlement', 41, {}),
+    ).toMatchObject({ status: 'released', available: 50, reserved: 0, charged: null });
+  });
+
+  it('只允许管理员按固定人民币档位幂等入账', async () => {
+    const admin = await registerUser();
+    const buyer = await registerUser({ username: 'buyer', email: 'buyer@example.com' });
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", admin.body.user!.id).run();
+    const input = { username: 'buyer', amountCny: 7, externalReference: 'alipay:test:001' };
+
+    const granted = await post('/api/auth/admin/credits/grant', input, {
+      token: admin.body.token,
+    });
+    expect(granted.status).toBe(201);
+    expect(await granted.json()).toMatchObject({ amountCny: 7, amountCredits: 1000 });
+    expect(
+      (await post('/api/auth/admin/credits/grant', input, { token: admin.body.token })).status,
+    ).toBe(409);
+    expect(
+      (await post('/api/auth/admin/credits/grant', input, { token: buyer.body.token })).status,
+    ).toBe(403);
+    expect(await creditBalance(env, buyer.body.user!.id)).toEqual({
+      total: 1000,
+      reserved: 0,
+      available: 1000,
     });
   });
 });
@@ -393,31 +511,9 @@ describe('登录设备管理', () => {
   });
 });
 
-describe('账户 AI 体验额度', () => {
-  it('要求登录，并按账户原子扣减每日文字额度', async () => {
-    expect(
-      await consumeAiQuotaForCredentials(env, { authorization: null, cookie: null }, 'text'),
-    ).toBe('unauthorized');
-    const { body } = await registerUser();
-    const credentials = { authorization: `Bearer ${body.token}`, cookie: null };
-    for (let index = 0; index < 100; index += 1) {
-      const result = await consumeAiQuotaForCredentials(env, credentials, 'text');
-      expect(result).toMatchObject({ allowed: true, remaining: 99 - index, limit: 100 });
-    }
-    expect(await consumeAiQuotaForCredentials(env, credentials, 'text')).toEqual({
-      allowed: false,
-      remaining: 0,
-      limit: 100,
-    });
-
-    const usage = await worker.fetch(req('/api/auth/ai-usage', { token: body.token }), env);
-    expect(await usage.json()).toMatchObject({
-      text: { used: 100, limit: 100 },
-      voice: { used: 0, limit: 60 },
-    });
-  });
-
-  it('签发短期语音票据，并按账户分钟额度扣减', async () => {
+describe('平台语音票据', () => {
+  it('只向登录账户签发短期语音票据', async () => {
+    expect((await post('/api/auth/voice/ticket', {})).status).toBe(401);
     const { body } = await registerUser();
     const response = await worker.fetch(
       req('/api/auth/voice/ticket', { method: 'POST', token: body.token }),
@@ -427,18 +523,6 @@ describe('账户 AI 体验额度', () => {
     const issued = (await response.json()) as { ticket: string; expiresAt: number };
     expect(issued.ticket).toContain('.');
     expect(issued.expiresAt).toBeGreaterThan(Date.now());
-
-    expect(await voiceTicketQuota(env, issued.ticket, 0)).toMatchObject({
-      subject: body.user!.id,
-      allowed: true,
-      remaining: 60,
-    });
-    expect(await voiceTicketQuota(env, issued.ticket, 2)).toMatchObject({
-      subject: body.user!.id,
-      allowed: true,
-      remaining: 58,
-    });
-    expect(await voiceTicketQuota(env, 'forged.ticket', 1)).toBe('unauthorized');
   });
 });
 
@@ -456,8 +540,8 @@ describe('运营统计', () => {
       verifiedUsers: 0,
       activeSessions: 1,
       registrationAttempts24h: 1,
-      textUnitsToday: 0,
-      voiceUnitsToday: 0,
+      creditUsedToday: 0,
+      creditPurchasedToday: 0,
     });
   });
 });
@@ -1121,7 +1205,7 @@ describe('用户举报', () => {
 });
 
 describe('他人主页的可见性', () => {
-  const setVisibility = (token: string, visibility: 'public' | 'private') =>
+  const setVisibility = (token: string, visibility: 'public' | 'friends' | 'private') =>
     worker.fetch(
       req('/api/auth/profile', {
         method: 'PUT',
@@ -1162,6 +1246,63 @@ describe('他人主页的可见性', () => {
     expect(body.profile?.bio).toBe('一句话');
   });
 
+  it('仅好友资料要求双方互相关注', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'friends');
+    await follow(alice.token, bob.id);
+    expect(
+      ((await (await get('/api/auth/users/bob', alice.token)).json()) as { profile: unknown })
+        .profile,
+    ).toBeNull();
+    await follow(bob.token, alice.id);
+    expect(
+      (
+        (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+          profile: { bio: string } | null;
+        }
+      ).profile?.bio,
+    ).toBe('一句话');
+  });
+
+  it('发现只返回主动开启的公开资料，并排除拉黑关系', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    const carol = await seedUser('carol');
+    await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({
+          bio: '可发现',
+          visibility: 'public',
+          discoverable: true,
+          interests: ['音乐', '游戏'],
+        }),
+      }),
+      env,
+    );
+    await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: carol.token,
+        body: JSON.stringify({ bio: '未开启发现', visibility: 'public' }),
+      }),
+      env,
+    );
+    const before = (await (await get('/api/auth/discover', alice.token)).json()) as {
+      users: Array<{ username: string; interests: string[] }>;
+    };
+    expect(before.users).toEqual([
+      expect.objectContaining({ username: 'bob', interests: ['音乐', '游戏'] }),
+    ]);
+    await block(alice.token, bob.id);
+    const after = (await (await get('/api/auth/discover', alice.token)).json()) as {
+      users: unknown[];
+    };
+    expect(after.users).toEqual([]);
+  });
+
   it('头像只能选择自己已经上传的账户图片', async () => {
     const bob = await seedUser('bob');
     const external = await worker.fetch(
@@ -1179,7 +1320,7 @@ describe('他人主页的可见性', () => {
         method: 'POST',
         token: bob.token,
         headers: { 'content-type': 'image/png', 'x-photo-visibility': 'public' },
-        body: new Uint8Array([137, 80, 78, 71]),
+        body: VALID_PNG,
       }),
       env,
     );
@@ -1349,7 +1490,7 @@ describe('他人主页的可见性', () => {
           'x-photo-caption': encodeURIComponent('一张测试图'),
           'x-photo-visibility': 'public',
         },
-        body: new Uint8Array([137, 80, 78, 71]),
+        body: VALID_PNG,
       }),
       env,
     );
@@ -1370,7 +1511,7 @@ describe('他人主页的可见性', () => {
     expect(content.status).toBe(200);
     expect(content.headers.get('content-type')).toBe('image/png');
     expect(content.headers.get('cache-control')).toBe('private, no-store');
-    expect([...new Uint8Array(await content.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+    expect([...new Uint8Array(await content.arrayBuffer())]).toEqual([...VALID_PNG]);
 
     const madePrivate = await worker.fetch(
       req(`/api/auth/photos/${photo.photo.id}`, {
@@ -1400,7 +1541,7 @@ describe('他人主页的可见性', () => {
           'x-photo-visibility': 'public',
           'x-photo-purpose': 'avatar',
         },
-        body: new Uint8Array([137, 80, 78, 71]),
+        body: VALID_PNG,
       }),
       env,
     );
@@ -1420,7 +1561,7 @@ describe('他人主页的可见性', () => {
             method: 'POST',
             token: bob.token,
             headers: { 'content-type': 'image/png' },
-            body: new Uint8Array([1]),
+            body: VALID_PNG,
           }),
           env,
         ),
@@ -1444,7 +1585,7 @@ describe('他人主页的可见性', () => {
         method: 'POST',
         token: bob.token,
         headers: { 'content-type': 'image/png' },
-        body: new Uint8Array([1]),
+        body: VALID_PNG,
       }),
       env,
     );

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ArrowLeft,
   CalendarDays,
   Flag,
   Link2,
@@ -56,10 +57,12 @@ export function ProfileDialog({
   username,
   viewer,
   onClose,
+  presentation = 'dialog',
 }: {
   username: string;
   viewer: AuthUser | null;
   onClose: () => void;
+  presentation?: 'dialog' | 'page';
 }) {
   const [resolved, setResolved] = useState<ResolvedProfile | null>(null);
   const [follow, setFollow] = useState<FollowState | null>(null);
@@ -160,81 +163,91 @@ export function ProfileDialog({
     }
   }, []);
 
-  return (
-    <Overlay onDismiss={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="用户主页"
-        className="flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]"
-      >
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
-          {resolved === null ? (
-            <p
-              role="status"
-              aria-live="polite"
-              className="py-10 text-center text-sm text-[var(--text-faint)]"
-            >
-              加载中…
-            </p>
-          ) : resolved.state === 'unavailable' ? (
-            // One wording for "no such account", "one of you blocked the
-            // other" and "the service is unreachable". The server answers all
-            // three identically so a block cannot be found by probing, and
-            // saying more here would undo that.
-            <p className="py-10 text-center text-sm text-[var(--text-faint)]">未找到用户</p>
-          ) : mode === 'edit' && draft ? (
-            <div className="flex flex-col gap-6">
-              <ProfileIdentity
-                displayName={resolved.user.displayName}
-                username={resolved.user.username}
-                avatarUrl={draft.avatarUrl}
-                onAvatarChange={(file) => void changeAvatar(file)}
-                avatarBusy={uploadingAvatar}
-              />
-              <ProfileForm draft={draft} onChange={setDraft} />
-            </div>
-          ) : (
-            <ProfileBody resolved={resolved} follow={follow} />
-          )}
+  const content = (
+    <div
+      role={presentation === 'dialog' ? 'dialog' : 'region'}
+      aria-modal={presentation === 'dialog' || undefined}
+      aria-label="用户主页"
+      className={
+        presentation === 'dialog'
+          ? 'flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]'
+          : 'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)]'
+      }
+    >
+      {presentation === 'page' ? (
+        <div className="shrink-0 border-b border-[var(--surface-border)] px-3 py-2 sm:px-5">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <ArrowLeft className="h-4 w-4" /> 返回
+          </Button>
         </div>
-
-        {mode === 'edit' && draft ? (
-          <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-            {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] text-[var(--text-faint)]">
-                {draft.visibility === 'public' ? '所有人可见' : '仅自己可见'}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
-                  取消
-                </Button>
-                <Button disabled={saving} onClick={() => void save()}>
-                  {saving ? '保存中…' : '保存'}
-                </Button>
-              </div>
-            </div>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+        {resolved === null ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="py-10 text-center text-sm text-[var(--text-faint)]"
+          >
+            加载中…
+          </p>
+        ) : resolved.state === 'unavailable' ? (
+          // One wording for "no such account", "one of you blocked the
+          // other" and "the service is unreachable". The server answers all
+          // three identically so a block cannot be found by probing, and
+          // saying more here would undo that.
+          <p className="py-10 text-center text-sm text-[var(--text-faint)]">未找到用户</p>
+        ) : mode === 'edit' && draft ? (
+          <div className="flex flex-col gap-6">
+            <ProfileIdentity
+              displayName={resolved.user.displayName}
+              username={resolved.user.username}
+              avatarUrl={draft.avatarUrl}
+              onAvatarChange={(file) => void changeAvatar(file)}
+              avatarBusy={uploadingAvatar}
+            />
+            <ProfileForm draft={draft} onChange={setDraft} />
           </div>
-        ) : resolved && resolved.state !== 'unavailable' ? (
-          <ProfileActions
-            resolved={resolved}
-            follow={follow}
-            error={error}
-            onEdit={startEditing}
-            onToggleFollow={() => void toggleFollow()}
-            onClose={onClose}
-          />
         ) : (
-          <div className="flex justify-end border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-            <Button variant="secondary" onClick={onClose}>
-              关闭
-            </Button>
-          </div>
+          <ProfileBody resolved={resolved} follow={follow} />
         )}
       </div>
-    </Overlay>
+
+      {mode === 'edit' && draft ? (
+        <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
+          {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] text-[var(--text-faint)]">
+              {draft.visibility === 'public' ? '所有人可见' : '仅自己可见'}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
+                取消
+              </Button>
+              <Button disabled={saving} onClick={() => void save()}>
+                {saving ? '保存中…' : '保存'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : resolved && resolved.state !== 'unavailable' ? (
+        <ProfileActions
+          resolved={resolved}
+          follow={follow}
+          error={error}
+          onEdit={startEditing}
+          onToggleFollow={() => void toggleFollow()}
+          onClose={onClose}
+        />
+      ) : (
+        <div className="flex justify-end border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
+          <Button variant="secondary" onClick={onClose}>
+            关闭
+          </Button>
+        </div>
+      )}
+    </div>
   );
+  return presentation === 'page' ? content : <Overlay onDismiss={onClose}>{content}</Overlay>;
 }
 
 /** Everything above the action bar, in both the visible and the hidden case. */
@@ -265,7 +278,7 @@ function ProfileBody({
             active and how popular it is, which is what private was for. */}
         <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3">
           <Lock className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
-          <p className="text-sm text-[var(--text-soft)]">主页仅自己可见</p>
+          <p className="text-sm text-[var(--text-soft)]">主页内容不可见</p>
         </div>
       </div>
     );
@@ -300,6 +313,19 @@ function ProfileBody({
         <p className="text-sm leading-relaxed text-[var(--text-faint)]">
           暂无资料，所有内容均为选填
         </p>
+      ) : null}
+
+      {resolved.profile.interests.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {resolved.profile.interests.map((interest) => (
+            <span
+              key={interest}
+              className="rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-xs text-[var(--accent)]"
+            >
+              {interest}
+            </span>
+          ))}
+        </div>
       ) : null}
 
       {(resolved.profile.location || joined) && (
@@ -394,8 +420,12 @@ function ProfileActions({
       <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
         <span className="text-xs text-[var(--text-faint)]">
           {resolved.state === 'visible' && resolved.profile.visibility === 'public'
-            ? '公开主页预览'
-            : '仅自己可见'}
+            ? resolved.profile.discoverable
+              ? '公开 · 可在交友中发现'
+              : '公开主页'
+            : resolved.state === 'visible' && resolved.profile.visibility === 'friends'
+              ? '仅好友可见'
+              : '仅自己可见'}
         </span>
         <Button onClick={onEdit}>
           <Pencil className="h-4 w-4" />

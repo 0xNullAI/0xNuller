@@ -1,32 +1,42 @@
 export interface Env {
-  /** Per-activation-key metering Durable Object (`TrialSession`). */
-  TRIAL_SESSION: DurableObjectNamespace;
+  VOICE_SESSION: DurableObjectNamespace;
   AUTH: {
-    authorizeVoiceTicket(ticket: string): Promise<VoiceTicketQuotaResult | 'unauthorized'>;
-    consumeVoiceTicket(
+    authorizeVoiceTicket(ticket: string): Promise<VoiceTicketCreditResult | 'unauthorized'>;
+    reserveVoiceCredits(
       ticket: string,
-      minutes: number,
-    ): Promise<VoiceTicketQuotaResult | 'unauthorized'>;
+      idempotencyKey: string,
+      credits: number,
+    ): Promise<CreditReservationResult | 'unauthorized'>;
+    settleVoiceCredits(
+      ticket: string,
+      idempotencyKey: string,
+      credits: number,
+      durationMs: number,
+    ): Promise<CreditReservationResult | 'unauthorized'>;
+    releaseVoiceCredits(
+      ticket: string,
+      idempotencyKey: string,
+    ): Promise<CreditReservationResult | 'unauthorized'>;
   };
-
-  // ---- secrets (set with `wrangler secret put`, never committed) ----
-  /** The real xAI API key. Only ever used on the Worker→xAI upstream leg. */
   XAI_API_KEY?: string;
-
-  // ---- vars (plain config in wrangler.jsonc; strings) ----
-  /** Grok model pinned for every trial session. */
-  TRIAL_MODEL?: string;
-  /** Hard per-session length cap (minutes). Default 20. */
-  TRIAL_MAX_SESSION_MINUTES?: string;
-  /** Global kill switch — `"1"` rejects all trial connections. */
-  TRIAL_DISABLED?: string;
-  /** Comma-separated allow-list of browser Origins. Unset only allows local development. */
-  TRIAL_ALLOWED_ORIGINS?: string;
+  MANAGED_MODEL?: string;
+  MAX_SESSION_MINUTES?: string;
+  MANAGED_DISABLED?: string;
+  ALLOWED_ORIGINS?: string;
 }
 
-export interface VoiceTicketQuotaResult {
+export interface VoiceTicketCreditResult {
   subject: string;
+  total: number;
+  reserved: number;
+  available: number;
+}
+
+export interface CreditReservationResult {
   allowed: boolean;
-  remaining: number;
-  limit: number;
+  status: 'pending' | 'settled' | 'released' | 'insufficient';
+  charged: number | null;
+  total: number;
+  reserved: number;
+  available: number;
 }

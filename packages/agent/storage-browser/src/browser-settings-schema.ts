@@ -6,7 +6,7 @@ import { z } from 'zod';
 // old persisted configs for the original six providers keep parsing
 // unmodified. Keep in sync when providers-catalog adds/removes an id.
 const providerIds = [
-  'free',
+  'managed',
   'qwen',
   'deepseek',
   'doubao',

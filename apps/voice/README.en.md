@@ -12,9 +12,9 @@ Realtime voice AI with locally enforced device permissions and safety policy.
 - OpenAI Realtime and compatible services
 - Azure OpenAI Realtime
 - Zhipu GLM Realtime
-- Metered trial sessions through the `0xnullai-voice` Worker
+- Credit-metered managed sessions through the `0xnullai-voice` Worker
 
-Bring-your-own-key sessions connect to the selected provider. Trial mode creates a short-lived
+Bring-your-own-key sessions connect to the selected provider. 0xNullAI Voice creates a short-lived
 session through `/api/realtime`. Text and voice models are configured independently.
 
 ## Features
@@ -35,7 +35,7 @@ npm run build -w 0xnullai-voice
 npm run cf:dev -w 0xnullai-voice
 ```
 
-Trial Worker configuration is covered by [worker/README.md](worker/README.md). Before release, run
+Managed Worker configuration is covered by [worker/README.md](worker/README.md). Before release, run
 end-to-end browser and Android checks with a real provider, including a tool call and hang-up stop.
 
 ## AI device target boundaries

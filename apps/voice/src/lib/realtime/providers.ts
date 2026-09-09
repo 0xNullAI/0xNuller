@@ -15,7 +15,7 @@
  */
 
 /**
- * `trial` (体验版) is xAI Grok reached through DG-Voice's own Cloudflare
+ * `managed` is 0xNullAI Voice reached through its Cloudflare Worker
  * Worker (`/api/realtime`) instead of `api.x.ai` directly: the real xAI key
  * lives only as a Worker secret. A logged-in account receives a short-lived
  * ticket that the Worker validates + meters before opening
@@ -23,7 +23,7 @@
  * is plain `openai-realtime` (xAI flat shape), so the frontend adapter is a
  * two-line branch — see `openai-realtime-session.ts`.
  */
-export type RealtimeProviderId = 'trial' | 'xai' | 'openai' | 'azure' | 'zhipu';
+export type RealtimeProviderId = 'managed' | 'xai' | 'openai' | 'azure' | 'zhipu';
 
 /**
  * Which wire dialect a provider's realtime WebSocket speaks:
@@ -73,9 +73,9 @@ export interface RealtimeProviderSettings {
 }
 
 const XAI_STATIC_VOICES = ['ara', 'eve', 'leo', 'rex', 'sal'];
-// Trial can't hit `GET /v1/tts/voices` from the browser (no real key there),
+// Managed can't hit `GET /v1/tts/voices` from the browser (no real key there),
 // so it ships a fixed subset of xAI's legacy voices; `eve` is xAI's default.
-const TRIAL_STATIC_VOICES = ['eve', 'ara', 'leo', 'rex', 'sal'];
+const MANAGED_STATIC_VOICES = ['eve', 'ara', 'leo', 'rex', 'sal'];
 const OPENAI_STATIC_VOICES = [
   'alloy',
   'ash',
@@ -105,14 +105,14 @@ const ZHIPU_STATIC_VOICES = [
 
 export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
   {
-    id: 'trial',
-    name: '体验版（免自带 Key）',
-    hint: '登录账户后即可使用，每日 60 分钟。',
+    id: 'managed',
+    name: '0xNullAI Voice',
+    hint: '登录后使用 Credit，约 120 Credit/分钟',
     dialect: 'openai-realtime',
-    // Pinned by the Worker upstream; the trial user can't change it.
-    defaultModel: 'grok-voice-think-fast-1.0',
+    // Pinned by the Worker upstream; the managed-service user can't change it.
+    defaultModel: 'grok-voice-think-fast-2.0',
     voiceSource: 'static',
-    staticVoices: TRIAL_STATIC_VOICES,
+    staticVoices: MANAGED_STATIC_VOICES,
     fields: [],
   },
   {
