@@ -58,6 +58,17 @@ export function DevicePicker({ open, devices, scanning, onSelect, onCancel }: Pr
             ))
           )}
         </ul>
+        <details className="dgaa-picker-help">
+          <summary>连接帮助</summary>
+          <div>
+            <p>只连接一台：找到对应设备后点一次“连接”。</p>
+            <p>连接两台郊狼：先连接第一台，再次打开连接窗口连接第二台；请勿同时快速点两个按钮。</p>
+            <p>
+              出现多个同名设备时，可通过地址末尾和 RSSI
+              强弱辨认。看不到设备时，请确认它未连接其他手机或电脑。
+            </p>
+          </div>
+        </details>
         <footer className="dgaa-picker-footer">
           <span className="dgaa-picker-hint">仅显示 0xNuller 支持的设备</span>
           <button className="dgaa-picker-cancel" type="button" onClick={onCancel}>

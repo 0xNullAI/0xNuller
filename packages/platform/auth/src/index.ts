@@ -115,6 +115,13 @@ export async function register(input: {
   return user;
 }
 
+export async function submitFeedback(input: { message: string; contact?: string }): Promise<void> {
+  await call('/api/auth/feedback', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export interface ReferralSummary {
   code: string;
   balanceCredits: number;

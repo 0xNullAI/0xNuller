@@ -151,6 +151,26 @@
   font-size: 14px;
 }
 
+.dgaa-picker-help {
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  padding: 9px 11px;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dgaa-picker-help summary {
+  min-height: 28px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dgaa-picker-help p {
+  margin: 5px 0 0;
+}
+
 .dgaa-picker-footer {
   display: flex;
   align-items: center;

@@ -100,6 +100,11 @@ const CREDIT_PRICE_VERSION = 'credits-2026-09';
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
 const MAX_REPORT_DETAILS = 500;
+const MAX_FEEDBACK_MESSAGE = 4000;
+const MAX_FEEDBACK_CONTACT = 254;
+const FEEDBACK_RECIPIENT = 'leonardoshen@icloud.com';
+const FEEDBACK_WINDOW_MS = 60 * 60 * 1000;
+const MAX_FEEDBACK_PER_WINDOW = 5;
 
 /**
  * Contact list paging. The cap is the point: without it a single request can
@@ -2540,6 +2545,46 @@ export default {
           .bind(crypto.randomUUID(), user.id, targetId, reason, details || null, Date.now())
           .run();
         return json({ ok: true, duplicate: false }, 201, cors);
+      }
+
+      if (path === '/api/auth/feedback' && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const message = typeof body.message === 'string' ? body.message.trim() : '';
+        const contact = typeof body.contact === 'string' ? body.contact.trim() : '';
+        if (!message) return err('反馈内容不能为空', 400, cors);
+        if (message.length > MAX_FEEDBACK_MESSAGE)
+          return err('反馈内容不能超过 4000 字', 400, cors);
+        if (contact.length > MAX_FEEDBACK_CONTACT) return err('联系方式过长', 400, cors);
+        const recent = await env.DB.prepare(
+          'SELECT COUNT(*) AS n FROM feedback WHERE ip_hash = ? AND created_at >= ?',
+        )
+          .bind(ipHash, Date.now() - FEEDBACK_WINDOW_MS)
+          .first<{ n: number }>();
+        if ((recent?.n ?? 0) >= MAX_FEEDBACK_PER_WINDOW) {
+          return err('反馈提交过于频繁，请稍后再试', 429, cors);
+        }
+        const user = await currentUser(request, env);
+        const id = crypto.randomUUID();
+        const createdAt = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO feedback (id, user_id, contact, message, ip_hash, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(id, user?.id ?? null, contact || null, message, ipHash, createdAt)
+          .run();
+        if (env.EMAIL) {
+          try {
+            await env.EMAIL.send({
+              to: FEEDBACK_RECIPIENT,
+              from: { email: 'no-reply@0xnullai.com', name: '0xNuller Feedback' },
+              subject: '收到新的 0xNuller 反馈',
+              text: `反馈编号：${id}\n用户：${user?.username ?? '未登录'}\n联系方式：${contact || '未提供'}\n\n${message}`,
+            });
+          } catch (error) {
+            console.error('feedback_email_failed', error);
+          }
+        }
+        return json({ ok: true, id }, 201, cors);
       }
 
       // ── Direct messages ──

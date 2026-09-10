@@ -41,6 +41,7 @@ export type ProviderEndpoint = 'responses' | 'chat/completions';
  *   catalog never needs to know or care which one a given provider uses.
  */
 export type ProviderDialect = 'openai-compat' | 'pi-ai';
+export type ProviderRegion = 'mainland' | 'international' | 'custom';
 
 export interface ProviderFieldDefinition {
   key: 'apiKey' | 'model' | 'baseUrl' | 'endpoint' | 'useStrict';
@@ -75,6 +76,22 @@ export interface ProviderSettings {
   baseUrl: string;
   endpoint: ProviderEndpoint;
   useStrict: boolean;
+}
+
+const MAINLAND_PROVIDER_IDS = new Set<ProviderId>([
+  'qwen',
+  'deepseek',
+  'doubao',
+  'moonshotai-cn',
+  'zai-coding-cn',
+  'minimax-cn',
+  'xiaomi',
+]);
+
+/** Display grouping for user-owned API endpoints. */
+export function getProviderRegion(id: ProviderId): ProviderRegion {
+  if (id === 'custom') return 'custom';
+  return MAINLAND_PROVIDER_IDS.has(id) ? 'mainland' : 'international';
 }
 
 export interface ProviderRuntimeSettings extends ProviderSettings {

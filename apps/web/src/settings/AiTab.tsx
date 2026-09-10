@@ -4,6 +4,7 @@ import {
   createProviderSettings,
   getBrowserProviderDefinitions,
   getProviderDefinition,
+  getProviderRegion,
   isLlmConfigured,
   loadLlmConfig,
   saveLlmConfig,
@@ -37,6 +38,12 @@ import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCred
  */
 export type AiSettingsSection = 'agent' | 'voice' | 'video';
 
+const PROVIDER_REGION_LABEL = {
+  mainland: '中国大陆',
+  international: '国际',
+  custom: '自定义',
+} as const;
+
 const AI_SECTIONS: ReadonlyArray<readonly [AiSettingsSection, string]> = [
   ['agent', 'Agent'],
   ['voice', 'Voice'],
@@ -50,7 +57,9 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
     behaviorStore.loadModelBehavior(),
   );
-  const [providerQuery, setProviderQuery] = useState('');
+  const [providerQuery, setProviderQuery] = useState(
+    () => getProviderDefinition(config.providerId as ProviderId)?.name ?? '',
+  );
   const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
   const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
 
@@ -77,16 +86,29 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
 
   const def = getProviderDefinition(config.providerId as ProviderId);
   const isManaged = config.providerId === 'managed';
+  const normalizedProviderQuery = providerQuery
+    .replace(/^(中国大陆|国际|自定义)\s*[·:]\s*/, '')
+    .trim()
+    .toLowerCase();
   const providerOptions = getBrowserProviderDefinitions()
     .filter(
       (provider) =>
         provider.browserSupported &&
         provider.id !== 'managed' &&
-        (!providerQuery.trim() ||
-          provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
-          provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
+        (!normalizedProviderQuery ||
+          provider.name.toLowerCase().includes(normalizedProviderQuery) ||
+          provider.id.toLowerCase().includes(normalizedProviderQuery)),
     )
-    .map((provider) => ({ value: provider.id, label: provider.name }));
+    .map((provider) => ({
+      value: provider.id,
+      label: provider.name,
+      category: PROVIDER_REGION_LABEL[getProviderRegion(provider.id)],
+    }))
+    .sort((a, b) => {
+      const rank = (category: string) =>
+        category === '中国大陆' ? 0 : category === '国际' ? 1 : 2;
+      return rank(a.category) - rank(b.category) || a.label.localeCompare(b.label, 'zh-CN');
+    });
 
   return (
     <div className="flex flex-col gap-5">
@@ -146,6 +168,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 ...createProviderSettings('managed'),
                 rememberApiKey: config.rememberApiKey,
               });
+              setProviderQuery('国际 · 0xNullAI 模型');
               setOwnApiOpen(false);
             }}
           >
@@ -179,14 +202,10 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
               <span className="text-xs text-[var(--text-soft)]">搜索并选择服务商</span>
               <Input
                 list="llm-provider-options"
-                value={
-                  providerOptions.find((option) => option.value === config.providerId)?.label ??
-                  providerQuery
-                }
+                value={providerQuery}
                 onChange={(event) => {
-                  const value = providerOptions.find(
-                    (option) => option.label === event.target.value,
-                  )?.value;
+                  const selected = event.target.value.replace(/^(中国大陆|国际|自定义) · /, '');
+                  const value = providerOptions.find((option) => option.label === selected)?.value;
                   setProviderQuery(event.target.value);
                   if (!value) return;
                   const next = createProviderSettings(value as ProviderId);
@@ -201,7 +220,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
               />
               <datalist id="llm-provider-options">
                 {providerOptions.map((option) => (
-                  <option key={option.value} value={option.label} />
+                  <option key={option.value} value={`${option.category} · ${option.label}`} />
                 ))}
               </datalist>
             </label>
