@@ -175,34 +175,36 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 </button>
               ) : null}
             </div>
-            <Input
-              value={providerQuery}
-              onChange={(event) => setProviderQuery(event.target.value)}
-              placeholder="搜索服务商"
-              aria-label="搜索服务商"
-            />
-            <SettingSelect
-              value={config.providerId}
-              onValueChange={(value) => {
-                const next = createProviderSettings(value as ProviderId);
-                // Don't keep the previous provider's key and baseUrl when switching — they are
-                // meaningless on the new service, and keeping them only makes "why is auth
-                // failing" hard to track down.
-                update({ ...next, rememberApiKey: config.rememberApiKey });
-                if (value === 'custom') setAdvancedOpen(true);
-              }}
-              // The managed service is already in PROVIDER_DEFINITIONS; do not add a second entry —
-              // when the same value appears twice, Radix renders both labels into the trigger,
-              // duplicating the provider name in the field label.
-              options={
-                providerOptions.length
-                  ? [
-                      ...(isManaged ? [{ value: 'managed', label: '选择服务商' }] : []),
-                      ...providerOptions,
-                    ]
-                  : [{ value: config.providerId, label: def?.name ?? config.providerId }]
-              }
-            />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">搜索并选择服务商</span>
+              <Input
+                list="llm-provider-options"
+                value={
+                  providerOptions.find((option) => option.value === config.providerId)?.label ??
+                  providerQuery
+                }
+                onChange={(event) => {
+                  const value = providerOptions.find(
+                    (option) => option.label === event.target.value,
+                  )?.value;
+                  setProviderQuery(event.target.value);
+                  if (!value) return;
+                  const next = createProviderSettings(value as ProviderId);
+                  // Don't keep the previous provider's key and baseUrl when switching — they are
+                  // meaningless on the new service, and keeping them only makes "why is auth
+                  // failing" hard to track down.
+                  update({ ...next, rememberApiKey: config.rememberApiKey });
+                  if (value === 'custom') setAdvancedOpen(true);
+                }}
+                placeholder="搜索服务商"
+                aria-label="搜索并选择服务商"
+              />
+              <datalist id="llm-provider-options">
+                {providerOptions.map((option) => (
+                  <option key={option.value} value={option.label} />
+                ))}
+              </datalist>
+            </label>
           </div>
         )}
 

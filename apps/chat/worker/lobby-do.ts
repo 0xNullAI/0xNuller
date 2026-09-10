@@ -1,11 +1,9 @@
 // LobbyDO: a singleton (idFromName("v1")). Public group registry + live push.
 // RoomDO reports in with POST /update when members join/leave or on keepalive; the lobby page subscribes live over /ws/lobby and pulls a snapshot from /api/lobby/rooms.
 //
-// A row means "this group is public", not "somebody is in it". Groups are permanent, so an
-// empty public group stays listed exactly the way the reserved room always has — a row only
-// leaves when its owner turns the group private (listed=false).
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
+import { ROOM_IDLE_MS } from './wire';
 
 /** A group with no keepalive for longer than this is treated as having nobody online (a fallback; normally RoomDO reports count=0 as it empties). */
 const LOBBY_STALE_MS = 45 * 1000;
@@ -47,6 +45,9 @@ export class LobbyDO extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (this.count() > 0 && (await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now() + LOBBY_STALE_MS);
+    }
 
     if (url.pathname === '/ws/lobby') {
       if (request.headers.get('Upgrade') !== 'websocket') {
@@ -68,7 +69,7 @@ export class LobbyDO extends DurableObject<Env> {
       // Every report carries `listed` today, but treating an absent one as true keeps the
       // older shape meaning what it used to: "this group is public, here is its count".
       if (listed === false) {
-        // The owner made the group private. This is the only thing that unlists a group.
+        // The owner made the group private, closed it, or its idle lifetime expired.
         this.sql.exec('DELETE FROM rooms WHERE code = ?', code);
       } else {
         // count=0 is a normal steady state now: an empty public group is still a group.
@@ -81,9 +82,11 @@ export class LobbyDO extends DurableObject<Env> {
         );
       }
       this.broadcast();
-      // The sweep only exists to correct a count nobody is refreshing, so it is only worth
-      // scheduling while some group claims to have members.
-      if (this.count(true) > 0) await this.ctx.storage.setAlarm(Date.now() + LOBBY_STALE_MS);
+      // Keep both presence correction and idle reclamation scheduled.
+      const alarm = await this.ctx.storage.getAlarm();
+      if (this.count() > 0 && (alarm === null || alarm > Date.now() + LOBBY_STALE_MS)) {
+        await this.ctx.storage.setAlarm(Date.now() + LOBBY_STALE_MS);
+      }
       return new Response('ok');
     }
 
@@ -95,18 +98,28 @@ export class LobbyDO extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    // Fallback for a group whose DO stopped reporting while it still claimed members (a crash,
-    // a lost report). It zeroes the count instead of dropping the row: with permanent groups a
-    // stale row means "nobody is online right now", never "this group is gone", and deleting it
-    // would make an idle public group vanish from the lobby ten minutes after its last message.
+    // Ask the authoritative room before removing legacy idle rows: a stale count alone
+    // is not proof that nobody is connected. Bound each sweep's RPC fan-out.
+    const expired = this.sql
+      .exec('SELECT code, ts FROM rooms WHERE ts <= ? LIMIT 100', Date.now() - ROOM_IDLE_MS)
+      .toArray();
+    if (this.count() > 0) await this.ctx.storage.setAlarm(Date.now() + LOBBY_STALE_MS);
+    for (const row of expired) {
+      await this.env.ROOM.get(this.env.ROOM.idFromName(String(row.code))).recycleIdleRoom(
+        Number(row.ts),
+      );
+    }
     const cutoff = Date.now() - LOBBY_STALE_MS;
     const stale = this.count(true, cutoff);
     if (stale > 0) {
       this.sql.exec('UPDATE rooms SET count = 0 WHERE ts < ? AND count > 0', cutoff);
       this.broadcast();
     }
-    // Keep rescheduling only while some group still claims members, so idle rows don't spin the alarm forever.
-    if (this.count(true) > 0) await this.ctx.storage.setAlarm(Date.now() + LOBBY_STALE_MS);
+    if (this.count() > 0) {
+      await this.ctx.storage.setAlarm(
+        Date.now() + (this.count(true) > 0 ? LOBBY_STALE_MS : 60 * 60 * 1000),
+      );
+    }
   }
 
   // -- Internals --

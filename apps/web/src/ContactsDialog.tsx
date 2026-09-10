@@ -190,21 +190,23 @@ export function ContactsDialog({
             nextOffset: null,
           }))
         : tab === 'discover'
-          ? listDiscoverableUsers().then((page) => ({
-              users: page.users.map((item) => ({
-                id: item.id,
-                username: item.username,
-                displayName: item.displayName,
-                followedAt: 0,
-                mutual: item.following && item.followedBy,
-                following: item.following,
-                avatarUrl: item.avatarUrl,
-                bio: item.bio,
-                location: item.location,
-                interests: item.interests,
-              })),
-              nextOffset: page.nextOffset,
-            }))
+          ? listDiscoverableUsers({ limit: 20, offset: Math.floor(Math.random() * 5) * 20 }).then(
+              (page) => ({
+                users: page.users.map((item) => ({
+                  id: item.id,
+                  username: item.username,
+                  displayName: item.displayName,
+                  followedAt: 0,
+                  mutual: item.following && item.followedBy,
+                  following: item.following,
+                  avatarUrl: item.avatarUrl,
+                  bio: item.bio,
+                  location: item.location,
+                  interests: item.interests,
+                })),
+                nextOffset: page.nextOffset,
+              }),
+            )
           : tab === 'contacts'
             ? listContacts()
             : tab === 'following'
@@ -285,6 +287,13 @@ export function ContactsDialog({
         ) : null}
         <h2 className="text-xl font-semibold">交友</h2>
       </div>
+      {tab === 'discover' ? (
+        <div className="mt-2 flex justify-end">
+          <Button variant="ghost" size="sm" onClick={() => setReloadKey((key) => key + 1)}>
+            换一批推荐
+          </Button>
+        </div>
+      ) : null}
       <p className="mt-1 text-sm text-[var(--text-soft)]">互相关注后成为联系人并可私聊</p>
 
       <div className="mt-4 flex gap-2">

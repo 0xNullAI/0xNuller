@@ -157,12 +157,10 @@ export function ShellRoomList({
                   <RefreshCw className="h-3 w-3 animate-spin" /> 进入中
                 </span>
               )}
-              {room.count > 0 && (
-                <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
-                  <Users className="h-3 w-3" />
-                  {room.count}
-                </span>
-              )}
+              <span className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-[var(--text-faint)]">
+                <Users className="h-3 w-3" />
+                {room.count} 人在线
+              </span>
             </button>
             {knownCodes.has(room.code) || room.code === currentRoom ? (
               <button

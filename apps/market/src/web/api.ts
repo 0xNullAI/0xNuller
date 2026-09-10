@@ -85,7 +85,18 @@ export async function batchUploadItems(items: BatchUploadPayload): Promise<{ ins
 }
 
 export async function markDownloaded(id: string): Promise<void> {
-  await fetch(`${apiBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${apiBaseUrl()}/api/items/${id}/download`, {
+    method: 'POST',
+    headers: accountHeaders(),
+  }).catch(() => {});
+}
+
+export async function tipItem(id: string, amount: number): Promise<void> {
+  await req(`/api/items/${id}/tip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  });
 }
 
 export async function markViewed(id: string): Promise<void> {

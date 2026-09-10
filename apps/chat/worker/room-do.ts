@@ -4,10 +4,7 @@
 //                   + durable ownership (an owner key hash, not a peerId) + owner-controlled lobby visibility
 //                   + bounded retention (oldest messages and their R2 media dropped together) + idle media reconciliation.
 //
-// A room used to delete itself ten minutes after the last member left. It does not any more:
-// a room is a group, it persists and so does its history. What replaced the self-destruct is
-// a cap (see GROUP_MESSAGE_LIMIT) plus the sweep in alarm(), because "permanent" without a
-// bound is just an unbounded Durable Object and an R2 prefix nothing ever cleans.
+// Groups expire after seven consecutive days without connections; DMs retain history.
 //
 // A conversation is the same object with the group's *administration* removed: no ownership,
 // no host and therefore no room agent, no lobby row. Everything else is identical on purpose —
@@ -29,7 +26,8 @@ import {
 import { dmAllowsFrame, dmTicketRevoked, isDmRoomCode, type DmSummary } from './dm';
 import {
   LOBBY_NAME,
-  MAX_GROUP_NAME,
+  validGroupName,
+  ROOM_IDLE_MS,
   ROOM_GRACE_MS,
   ROOM_AGENT_SENDER,
   type WireChat,
@@ -73,6 +71,9 @@ export class RoomDO extends DurableObject<Env> {
     if (!isDmRoomCode(code) && (await this.ctx.storage.get<boolean>('closed')) === true) {
       return new Response('room closed', { status: 410 });
     }
+    if (!isDmRoomCode(code) && (await this.recycleIdleRoom(Date.now()))) {
+      return new Response('room expired', { status: 410 });
+    }
     // Second half of a DM's admission check. The Worker verified the ticket's signature and
     // that the account service issued it; only this object knows whether the conversation has
     // since been severed, because the mark lives in its storage. A ticket minted before the
@@ -87,6 +88,8 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.put('code', code);
     this.codeCache = code;
 
+    await this.ctx.storage.delete('idleSince');
+    await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
@@ -134,7 +137,13 @@ export class RoomDO extends DurableObject<Env> {
           return;
         }
 
-        await this.seedSettings(msg);
+        if (!(await this.seedSettings(msg))) {
+          ws.send(
+            JSON.stringify({ t: 'sys', kind: 'closed', message: '房间名必须为 4–40 个字符' }),
+          );
+          ws.close(1008, '房间名必须为 4–40 个字符');
+          return;
+        }
         const ownerKey = await this.claimIfRequested(code, msg);
         const owned = (await this.ctx.storage.get<string>('ownerKeyHash')) != null;
         const isOwner = ownerKey != null || (await this.provesOwnership(code, msg.ownerKey));
@@ -204,6 +213,7 @@ export class RoomDO extends DurableObject<Env> {
           return;
         }
 
+        if (msg.roomName !== undefined && !validGroupName(msg.roomName)) return;
         const wasPublic = (await this.ctx.storage.get<boolean>('public')) === true;
         let changed = false;
         if (typeof msg.public === 'boolean') {
@@ -211,7 +221,7 @@ export class RoomDO extends DurableObject<Env> {
           changed = true;
         }
         if (typeof msg.roomName === 'string') {
-          await this.ctx.storage.put('roomName', msg.roomName.slice(0, MAX_GROUP_NAME));
+          await this.ctx.storage.put('roomName', msg.roomName.trim());
           changed = true;
         }
         if (!changed) return;
@@ -295,11 +305,8 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    // Nothing is deleted here any more — a group and its history are permanent. What is left
-    // is the housekeeping that used to be a side effect of the group dying: report the group
-    // as empty, and reconcile R2 against the retained messages so an attachment whose message
-    // never arrived does not sit in the bucket forever with nothing pointing at it.
     const code = await this.code();
+    if (await this.recycleIdleRoom(Date.now())) return;
     if (code) await this.sweepOrphanMedia(code);
     if (this.ctx.getWebSockets().length > 0) {
       // Active rooms can still abandon uploads. Sweep first, then keep a bounded recurring
@@ -308,6 +315,11 @@ export class RoomDO extends DurableObject<Env> {
       return;
     }
     await this.reportLobby(0);
+    if (code && !isDmRoomCode(code)) {
+      const idleSince = (await this.ctx.storage.get<number>('idleSince')) ?? Date.now();
+      await this.ctx.storage.put('idleSince', idleSince);
+      await this.ctx.storage.setAlarm(idleSince + ROOM_IDLE_MS);
+    }
   }
 
   // -- Direct messages (RPC, called by the Worker) --
@@ -397,11 +409,14 @@ export class RoomDO extends DurableObject<Env> {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
       await this.handoverHost(att.peerId, remaining, ws);
     }
-    await this.reportLobby(remaining.length);
     if (remaining.length === 0) {
-      // Empty group: schedule the idle housekeeping. It no longer wipes anything.
+      // Keep the first empty instant stable across duplicate close/error callbacks.
+      if ((await this.ctx.storage.get<number>('idleSince')) === undefined) {
+        await this.ctx.storage.put('idleSince', Date.now());
+      }
       await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
     }
+    await this.reportLobby(remaining.length);
   }
 
   /**
@@ -412,18 +427,42 @@ export class RoomDO extends DurableObject<Env> {
    * `group` frame with the owner key. The first hello still seeds it because that is the
    * only signal a client too old to know about ownership can send when it creates a group.
    */
-  private async seedSettings(msg: Record<string, unknown>): Promise<void> {
-    if ((await this.ctx.storage.get<boolean>('public')) !== undefined) return;
-    const isPublic = msg.public === true;
-    // A public group needs a label in the lobby, so fall back to the creator's nickname the
-    // way the old hello did. A private one is only ever seen by members who reach it by code,
-    // and showing them somebody's nickname as the group's name would be worse than no name.
-    const fallback = isPublic ? (msg.name as string) : '';
-    await this.ctx.storage.put('public', isPublic);
-    await this.ctx.storage.put(
-      'roomName',
-      String((msg.roomName as string) || fallback || '').slice(0, MAX_GROUP_NAME),
-    );
+  private async seedSettings(msg: Record<string, unknown>): Promise<boolean> {
+    if ((await this.ctx.storage.get<boolean>('public')) !== undefined) return true;
+    if (!validGroupName(msg.roomName)) return false;
+    await this.ctx.storage.put({ public: msg.public === true, roomName: msg.roomName.trim() });
+    return true;
+  }
+
+  /** Internal RPC: legacy lobby rows supply the last report until an idle timestamp exists. */
+  async recycleIdleRoom(lastReport: number): Promise<boolean> {
+    const code = await this.code();
+    if (!code || isDmRoomCode(code)) return false;
+    const count = this.ctx.getWebSockets().length;
+    if (count > 0) {
+      // Correct stale legacy lobby reports so occupied rows cannot starve later sweep batches.
+      await this.reportLobby(count);
+      return false;
+    }
+    const idleSince = (await this.ctx.storage.get<number>('idleSince')) ?? lastReport;
+    if (Date.now() - idleSince < ROOM_IDLE_MS) return false;
+    // Close admission before external I/O; retries continue cleanup without reopening the code.
+    await this.ctx.storage.put({ closed: true, idleSince });
+    await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
+    await this.pushLobby(0, false);
+    const objects = await listRoomMedia(this.env, code);
+    for (let i = 0; i < objects.length; i += 1000) {
+      await deleteRoomMedia(
+        this.env,
+        code,
+        objects.slice(i, i + 1000).map((object) => object.id),
+      );
+    }
+    this.sql.exec('DELETE FROM messages');
+    await this.ctx.storage.delete(['ownerKeyHash', 'agent', 'hostPeerId', 'roomName', 'public']);
+    this.agentCache = null;
+    await this.ctx.storage.deleteAlarm();
+    return true;
   }
 
   /**
@@ -637,7 +676,7 @@ export class RoomDO extends DurableObject<Env> {
   /** Only public groups touch the lobby, so a private group stays entirely invisible to it. */
   private async reportLobby(count: number): Promise<void> {
     const isPublic = await this.ctx.storage.get<boolean>('public');
-    if (!isPublic) return;
+    if (!isPublic || (await this.ctx.storage.get<boolean>('closed'))) return;
     await this.pushLobby(count, true);
   }
 

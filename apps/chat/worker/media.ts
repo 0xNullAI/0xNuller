@@ -84,8 +84,7 @@ export async function handleMediaRead(env: Env, code: string, id: string): Promi
 /**
  * Delete specific media objects of a group (called by RoomDO when their message rows go).
  *
- * There is no longer a "delete everything for this room" call: a group is permanent, so
- * media only ever leaves one message at a time, together with the row that referenced it.
+ * Used by message retention, orphan sweeps and expired-room cleanup.
  */
 export async function deleteRoomMedia(env: Env, code: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;

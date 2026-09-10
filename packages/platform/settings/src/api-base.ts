@@ -55,3 +55,17 @@ export function apiWsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}${path}`;
 }
+
+/** Shareable website links must never point at a native WebView's asset origin. */
+export function publicPageUrl(path: string, params: Record<string, string>): string {
+  const origin =
+    typeof location !== 'undefined' &&
+    ['https:', 'http:'].includes(location.protocol) &&
+    !['tauri.localhost', 'localhost', '127.0.0.1'].includes(location.hostname) &&
+    !isTauri()
+      ? location.origin
+      : PRODUCTION_ORIGIN;
+  const url = new URL(path, origin);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.href;
+}

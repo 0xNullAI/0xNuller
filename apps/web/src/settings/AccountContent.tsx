@@ -1,5 +1,6 @@
+import { publicPageUrl } from '@0xnullai/settings';
 import { useEffect, useState } from 'react';
-import { Check, Coins, Copy, Gift, Laptop, Share2, UserRound } from 'lucide-react';
+import { Check, Coins, Copy, Gift, Laptop, Share2 } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
@@ -179,7 +180,7 @@ export function AccountContent({
             src={avatarSrc(user.avatarUrl)}
             size={44}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <div className="truncate text-base font-semibold">{user.displayName}</div>
               {user.role === 'admin' ? (
@@ -192,6 +193,23 @@ export function AccountContent({
               <span className="truncate text-sm text-[var(--text-faint)]">@{user.username}</span>
               {credit ? (
                 <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--accent)]">
+                  {credit.available} Credit
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-[var(--accent)] hover:underline"
+                onClick={() => {
+                  onDone();
+                  requestProfileView(user.username);
+                }}
+              >
+                我的主页
+              </button>
+              {credit ? (
+                <span className="text-xs tabular-nums text-[var(--accent)]">
                   {credit.available} Credit
                 </span>
               ) : null}
@@ -321,7 +339,7 @@ export function AccountContent({
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
-                            `${window.location.origin}/settings?invite=${visibleReferral.code}`,
+                            publicPageUrl('/settings', { invite: visibleReferral.code }),
                           );
                           setCopied(true);
                           window.setTimeout(() => setCopied(false), 1600);
@@ -340,7 +358,7 @@ export function AccountContent({
                           void navigator.share({
                             title: '加入 0xNullAI',
                             text: '使用我的邀请链接注册 0xNullAI',
-                            url: `${window.location.origin}/settings?invite=${visibleReferral.code}`,
+                            url: publicPageUrl('/settings', { invite: visibleReferral.code }),
                           })
                         }
                       >
@@ -388,18 +406,6 @@ export function AccountContent({
             </p>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            onDone();
-            requestProfileView(user.username);
-          }}
-          className="mt-5 flex w-full items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2.5 text-left hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <UserRound className="h-4 w-4 text-[var(--text-soft)]" />
-          <span className="text-sm font-medium">我的主页</span>
-        </button>
 
         <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)]">
           <button

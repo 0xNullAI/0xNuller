@@ -17,3 +17,5 @@ import {
 
 普通偏好通过 `readPreference` / `writePreference` 处理存储拒绝和配额不足；失败时保留本次
 运行的内存值并发布可见警告。设备安全记录继续使用独立的保守失败路径，不使用此内存回退。
+
+`publicPageUrl` 生成网页分享链接，原生 WebView 和本地开发地址使用主站域名，Web 保留当前站点域名。

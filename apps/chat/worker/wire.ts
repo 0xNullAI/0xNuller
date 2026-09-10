@@ -115,7 +115,17 @@ export interface WireGroup {
 }
 
 /** Longest group name the DO will store. */
-export const MAX_GROUP_NAME = 60;
+export const MIN_GROUP_NAME = 4;
+export const MAX_GROUP_NAME = 40;
+export const ROOM_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function validGroupName(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length >= MIN_GROUP_NAME &&
+    value.trim().length <= MAX_GROUP_NAME
+  );
+}
 
 /** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */
 export interface WireInbound {
@@ -145,7 +155,7 @@ export const LOBBY_NAME = 'v1';
 /**
  * How long after the last member leaves the group runs its idle housekeeping (milliseconds).
  *
- * This used to be the countdown to the group deleting itself. Groups are permanent now, so
+ * This interval schedules media housekeeping; ROOM_IDLE_MS controls room expiration, so
  * nothing is deleted when it fires; it is the quiet moment in which the media sweep runs,
  * and it doubles as the age below which an unreferenced R2 object is assumed to be an
  * upload whose chat message has not landed yet rather than an orphan.
