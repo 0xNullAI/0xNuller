@@ -528,6 +528,69 @@ describe('Credit 账本与人工充值', () => {
       available: 1000,
     });
   });
+
+  it('允许管理员无交易流水赠送 Credit，并生成独立审计编号', async () => {
+    const admin = await registerUser();
+    const recipient = await registerUser({ username: 'gifted', email: 'gifted@example.com' });
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", admin.body.user!.id).run();
+
+    const response = await post(
+      '/api/auth/admin/credits/gift',
+      { username: 'gifted', amountCredits: 888, reason: '社区活动奖励' },
+      { token: admin.body.token },
+    );
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as { referenceId: string };
+    expect(result.referenceId).toMatch(/^gift:/);
+    expect(await creditBalance(env, recipient.body.user!.id)).toEqual({
+      total: 888,
+      reserved: 0,
+      available: 888,
+    });
+    expect(
+      await prepared(
+        'SELECT action, amount_cny, amount_credits, reason FROM admin_credit_audit WHERE target_user_id = ?',
+        recipient.body.user!.id,
+      ).first(),
+    ).toMatchObject({
+      action: 'admin_gift',
+      amount_cny: null,
+      amount_credits: 888,
+      reason: '社区活动奖励',
+    });
+  });
+
+  it('拒绝非管理员赠送以及超出单笔上限的赠送', async () => {
+    const user = await registerUser();
+    expect(
+      (
+        await post(
+          '/api/auth/admin/credits/gift',
+          { username: 'alice', amountCredits: 100, reason: '测试' },
+          { token: user.body.token },
+        )
+      ).status,
+    ).toBe(403);
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", user.body.user!.id).run();
+    expect(
+      (
+        await post(
+          '/api/auth/admin/credits/gift',
+          { username: 'alice', amountCredits: 20_001, reason: '测试' },
+          { token: user.body.token },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await post(
+          '/api/auth/admin/credits/gift',
+          { username: 'alice', amountCredits: 1.5, reason: '测试' },
+          { token: user.body.token },
+        )
+      ).status,
+    ).toBe(400);
+  });
 });
 
 describe('登录设备管理', () => {

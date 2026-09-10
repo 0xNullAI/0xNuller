@@ -50,12 +50,12 @@ const DEFERRED_TABS = [
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
-  { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 5 },
   { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: GeneralTab, order: 10 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
   { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
+  { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
 ] as const;
 
 export function SettingsPanel({

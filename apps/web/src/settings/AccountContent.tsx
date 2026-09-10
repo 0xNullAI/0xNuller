@@ -33,6 +33,7 @@ function creditEntryLabel(kind: CreditLedgerEntry['kind']): string {
     {
       referral_reward: '邀请奖励',
       manual_purchase: '人工充值',
+      admin_gift: '管理员赠送',
       usage: '模型使用',
       refund: '退款',
       support_adjustment: '客服调整',
