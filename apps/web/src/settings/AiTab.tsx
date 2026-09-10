@@ -37,6 +37,17 @@ import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCred
  */
 export type AiSettingsSection = 'agent' | 'voice' | 'video';
 
+const MAINLAND_PROVIDERS = new Set([
+  'qwen',
+  'deepseek',
+  'doubao',
+  'moonshotai-cn',
+  'zai-coding-cn',
+  'minimax-cn',
+  'xiaomi',
+]);
+const CUSTOM_PROVIDER = 'custom';
+
 const AI_SECTIONS: ReadonlyArray<readonly [AiSettingsSection, string]> = [
   ['agent', 'Agent'],
   ['voice', 'Voice'],
@@ -86,7 +97,20 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
           provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
           provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
     )
-    .map((provider) => ({ value: provider.id, label: provider.name }));
+    .map((provider) => ({
+      value: provider.id,
+      label: provider.name,
+      category:
+        provider.id === CUSTOM_PROVIDER
+          ? '自定义'
+          : MAINLAND_PROVIDERS.has(provider.id)
+            ? '中国大陆'
+            : '国际',
+    }))
+    .sort((a, b) => {
+      const rank = (category: string) => (category === '中国大陆' ? 0 : category === '国际' ? 1 : 2);
+      return rank(a.category) - rank(b.category) || a.label.localeCompare(b.label, 'zh-CN');
+    });
 
   return (
     <div className="flex flex-col gap-5">
@@ -180,13 +204,14 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
               <Input
                 list="llm-provider-options"
                 value={
-                  providerOptions.find((option) => option.value === config.providerId)?.label ??
-                  providerQuery
+                  (() => {
+                    const option = providerOptions.find((item) => item.value === config.providerId);
+                    return option ? `${option.category} · ${option.label}` : providerQuery;
+                  })()
                 }
                 onChange={(event) => {
-                  const value = providerOptions.find(
-                    (option) => option.label === event.target.value,
-                  )?.value;
+                  const selected = event.target.value.replace(/^(中国大陆|国际|自定义) · /, '');
+                  const value = providerOptions.find((option) => option.label === selected)?.value;
                   setProviderQuery(event.target.value);
                   if (!value) return;
                   const next = createProviderSettings(value as ProviderId);
@@ -199,9 +224,12 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 placeholder="搜索服务商"
                 aria-label="搜索并选择服务商"
               />
+              <span className="text-[11px] leading-relaxed text-[var(--text-faint)]">
+                点输入框右侧箭头可展开列表；直接输入可筛选。两个齿轮分别控制服务商和模型，点齿轮会展开对应设置。
+              </span>
               <datalist id="llm-provider-options">
                 {providerOptions.map((option) => (
-                  <option key={option.value} value={option.label} />
+                  <option key={option.value} value={`${option.category} · ${option.label}`} />
                 ))}
               </datalist>
             </label>
