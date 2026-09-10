@@ -120,6 +120,61 @@ function prepared(sql: string, ...args: unknown[]) {
   return args.length ? stmt.bind(...args) : stmt;
 }
 
+describe('feedback', () => {
+  it('stores anonymous feedback and forwards it by email', async () => {
+    const res = await worker.fetch(
+      req('/api/auth/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ message: '安卓连接窗口需要帮助', contact: 'tester@example.com' }),
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+    const row = await prepared(
+      'SELECT user_id, contact, message, ip_hash FROM feedback LIMIT 1',
+    ).first<Record<string, unknown>>();
+    expect(row).toMatchObject({
+      user_id: null,
+      contact: 'tester@example.com',
+      message: '安卓连接窗口需要帮助',
+    });
+    expect(String(row?.ip_hash)).not.toContain('1.2.3.4');
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0]).toMatchObject({ to: 'leonardoshen@icloud.com' });
+  });
+
+  it('rejects empty feedback', async () => {
+    const res = await worker.fetch(
+      req('/api/auth/feedback', { method: 'POST', body: JSON.stringify({ message: '   ' }) }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it('limits one address to five submissions per hour', async () => {
+    for (let index = 0; index < 5; index += 1) {
+      const res = await worker.fetch(
+        req('/api/auth/feedback', {
+          method: 'POST',
+          body: JSON.stringify({ message: `反馈 ${index}` }),
+        }),
+        env,
+      );
+      expect(res.status).toBe(201);
+    }
+    const limited = await worker.fetch(
+      req('/api/auth/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ message: '第六条' }),
+      }),
+      env,
+    );
+    expect(limited.status).toBe(429);
+  });
+});
+
 const post = (path: string, body: unknown, extra = {}) =>
   worker.fetch(req(path, { method: 'POST', body: JSON.stringify(body), ...extra }), env);
 

@@ -4,6 +4,7 @@ import {
   createProviderSettings,
   getBrowserProviderDefinitions,
   getProviderDefinition,
+  getProviderRegion,
   isLlmConfigured,
   loadLlmConfig,
   saveLlmConfig,
@@ -37,16 +38,11 @@ import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCred
  */
 export type AiSettingsSection = 'agent' | 'voice' | 'video';
 
-const MAINLAND_PROVIDERS = new Set([
-  'qwen',
-  'deepseek',
-  'doubao',
-  'moonshotai-cn',
-  'zai-coding-cn',
-  'minimax-cn',
-  'xiaomi',
-]);
-const CUSTOM_PROVIDER = 'custom';
+const PROVIDER_REGION_LABEL = {
+  mainland: '中国大陆',
+  international: '国际',
+  custom: '自定义',
+} as const;
 
 const AI_SECTIONS: ReadonlyArray<readonly [AiSettingsSection, string]> = [
   ['agent', 'Agent'],
@@ -61,7 +57,9 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
     behaviorStore.loadModelBehavior(),
   );
-  const [providerQuery, setProviderQuery] = useState('');
+  const [providerQuery, setProviderQuery] = useState(
+    () => getProviderDefinition(config.providerId as ProviderId)?.name ?? '',
+  );
   const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
   const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
 
@@ -88,27 +86,27 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
 
   const def = getProviderDefinition(config.providerId as ProviderId);
   const isManaged = config.providerId === 'managed';
+  const normalizedProviderQuery = providerQuery
+    .replace(/^(中国大陆|国际|自定义)\s*[·:]\s*/, '')
+    .trim()
+    .toLowerCase();
   const providerOptions = getBrowserProviderDefinitions()
     .filter(
       (provider) =>
         provider.browserSupported &&
         provider.id !== 'managed' &&
-        (!providerQuery.trim() ||
-          provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase()) ||
-          provider.id.toLowerCase().includes(providerQuery.trim().toLowerCase())),
+        (!normalizedProviderQuery ||
+          provider.name.toLowerCase().includes(normalizedProviderQuery) ||
+          provider.id.toLowerCase().includes(normalizedProviderQuery)),
     )
     .map((provider) => ({
       value: provider.id,
       label: provider.name,
-      category:
-        provider.id === CUSTOM_PROVIDER
-          ? '自定义'
-          : MAINLAND_PROVIDERS.has(provider.id)
-            ? '中国大陆'
-            : '国际',
+      category: PROVIDER_REGION_LABEL[getProviderRegion(provider.id)],
     }))
     .sort((a, b) => {
-      const rank = (category: string) => (category === '中国大陆' ? 0 : category === '国际' ? 1 : 2);
+      const rank = (category: string) =>
+        category === '中国大陆' ? 0 : category === '国际' ? 1 : 2;
       return rank(a.category) - rank(b.category) || a.label.localeCompare(b.label, 'zh-CN');
     });
 
@@ -170,6 +168,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 ...createProviderSettings('managed'),
                 rememberApiKey: config.rememberApiKey,
               });
+              setProviderQuery('国际 · 0xNullAI 模型');
               setOwnApiOpen(false);
             }}
           >
@@ -203,12 +202,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
               <span className="text-xs text-[var(--text-soft)]">搜索并选择服务商</span>
               <Input
                 list="llm-provider-options"
-                value={
-                  (() => {
-                    const option = providerOptions.find((item) => item.value === config.providerId);
-                    return option ? `${option.category} · ${option.label}` : providerQuery;
-                  })()
-                }
+                value={providerQuery}
                 onChange={(event) => {
                   const selected = event.target.value.replace(/^(中国大陆|国际|自定义) · /, '');
                   const value = providerOptions.find((option) => option.label === selected)?.value;
@@ -224,9 +218,6 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 placeholder="搜索服务商"
                 aria-label="搜索并选择服务商"
               />
-              <span className="text-[11px] leading-relaxed text-[var(--text-faint)]">
-                点输入框右侧箭头可展开列表；直接输入可筛选。两个齿轮分别控制服务商和模型，点齿轮会展开对应设置。
-              </span>
               <datalist id="llm-provider-options">
                 {providerOptions.map((option) => (
                   <option key={option.value} value={`${option.category} · ${option.label}`} />

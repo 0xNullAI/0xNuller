@@ -1,6 +1,6 @@
 {
   "name": "@0xnullai/android",
-  "version": "6.5.1",
+  "version": "6.5.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "dev:desktop": "vite --mode desktop",
     "desktop:build": "tauri build --config src-tauri/tauri.desktop.conf.json",
     "desktop:dev": "tauri dev --config src-tauri/tauri.desktop.conf.json",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
