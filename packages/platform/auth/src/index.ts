@@ -171,6 +171,7 @@ export interface CreditLedgerEntry {
   kind:
     | 'referral_reward'
     | 'manual_purchase'
+    | 'admin_gift'
     | 'usage'
     | 'refund'
     | 'support_adjustment'
@@ -207,6 +208,23 @@ export function grantCreditPackage(input: {
   createdAt: number;
 }> {
   return call('/api/auth/admin/credits/grant', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function grantCreditGift(input: {
+  username: string;
+  amountCredits: number;
+  reason: string;
+}): Promise<{
+  ok: true;
+  username: string;
+  amountCredits: number;
+  referenceId: string;
+  createdAt: number;
+}> {
+  return call('/api/auth/admin/credits/gift', {
     method: 'POST',
     body: JSON.stringify(input),
   });

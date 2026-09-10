@@ -1414,6 +1414,68 @@ export default {
         );
       }
 
+      if (path === '/api/auth/admin/credits/gift' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const username =
+          typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+        const amountCredits = Number(body.amountCredits);
+        const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+        if (
+          !username ||
+          !Number.isSafeInteger(amountCredits) ||
+          amountCredits < 1 ||
+          amountCredits > 20_000 ||
+          reason.length < 2 ||
+          reason.length > 200
+        ) {
+          return err('赠送用户、Credit 数量或原因无效', 400, cors);
+        }
+        const target = await env.DB.prepare(
+          'SELECT id, username FROM users WHERE username = ? AND banned_at IS NULL',
+        )
+          .bind(username)
+          .first<{ id: string; username: string }>();
+        if (!target) return err('用户不存在', 404, cors);
+        const now = Date.now();
+        const daily = await env.DB.prepare(
+          `SELECT COALESCE(SUM(amount_credits), 0) AS credits
+             FROM admin_credit_audit WHERE operator_user_id = ? AND created_at >= ?`,
+        )
+          .bind(user.id, now - 24 * 60 * 60 * 1000)
+          .first<{ credits: number }>();
+        if (Number(daily?.credits ?? 0) + amountCredits > 200_000) {
+          return err('该管理员 24 小时人工入账已达上限', 429, cors);
+        }
+        const referenceId = `gift:${crypto.randomUUID()}`;
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO credit_ledger
+              (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+             VALUES (?, ?, 'admin_gift', ?, ?, ?, ?)`,
+          ).bind(
+            target.id,
+            amountCredits,
+            referenceId,
+            null,
+            JSON.stringify({ reason, operatorUserId: user.id }),
+            now,
+          ),
+          env.DB.prepare(
+            `INSERT INTO admin_credit_audit
+              (operator_user_id, target_user_id, action, amount_cny, amount_credits,
+               external_reference, reason, created_at)
+             VALUES (?, ?, 'admin_gift', NULL, ?, ?, ?, ?)`,
+          ).bind(user.id, target.id, amountCredits, referenceId, reason, now),
+        ]);
+        return json(
+          { ok: true, username: target.username, amountCredits, referenceId, createdAt: now },
+          201,
+          cors,
+        );
+      }
+
       if (path === '/api/auth/voice/ticket' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
