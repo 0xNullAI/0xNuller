@@ -1,3 +1,5 @@
+import { publicPageUrl } from '@0xnullai/settings';
+import { MAX_GROUP_NAME, validGroupName } from '../../worker/wire';
 import { useState } from 'react';
 import { Copy, Check, ChevronRight, Globe, Lock, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -107,7 +109,7 @@ export function ControlPanel({
 
   function copyRoomId() {
     if (!roomId) return;
-    navigator.clipboard.writeText(roomId).then(() => {
+    navigator.clipboard.writeText(publicPageUrl('/chat', { room: roomId })).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -157,9 +159,7 @@ export function ControlPanel({
   }
 
   // Member list view
-  const joinUrl = roomId
-    ? `${window.location.origin}${window.location.pathname}?room=${roomId}`
-    : '';
+  const joinUrl = roomId ? publicPageUrl('/chat', { room: roomId }) : '';
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -180,7 +180,7 @@ export function ControlPanel({
               ) : (
                 <>
                   <Copy size={14} />
-                  <span>复制</span>
+                  <span>复制邀请链接</span>
                 </>
               )}
             </button>
@@ -193,11 +193,12 @@ export function ControlPanel({
               <span className="text-xs text-[var(--text-soft)]">房间名</span>
               <Input
                 value={nameDraft}
-                maxLength={60}
+                maxLength={MAX_GROUP_NAME}
+                placeholder="4–40 个字符"
                 onChange={(event) => setNameDraft(event.target.value)}
-                onBlur={() => nameDraft.trim() && onRename(nameDraft)}
+                onBlur={() => validGroupName(nameDraft) && onRename(nameDraft.trim())}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && nameDraft.trim()) onRename(nameDraft);
+                  if (event.key === 'Enter' && validGroupName(nameDraft)) onRename(nameDraft);
                 }}
               />
             </label>
@@ -208,7 +209,7 @@ export function ControlPanel({
             </div>
           )}
 
-          {/* Lobby visibility. A room is permanent now, so this is a setting rather than
+          {/* Lobby visibility is an owner-controlled setting rather than
               something decided once at creation — and only the room's owner may change it. */}
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-xs text-[var(--text-soft)]">

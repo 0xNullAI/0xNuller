@@ -1,3 +1,4 @@
+import { MAX_GROUP_NAME, validGroupName } from '../../worker/wire';
 import { useEffect, useState } from 'react';
 import { Button, Input, Overlay } from '@0xnullai/ui';
 import { fetchLobbyRooms, type LobbyRoom } from '../lib/lobby-client';
@@ -26,12 +27,10 @@ function newRoomCode(): string {
 }
 
 export function CreateRoomDialog({
-  defaultName,
   onCreate,
   onJoin,
   onClose,
 }: {
-  defaultName: string;
   onCreate: (code: string, options: { public: boolean; roomName?: string }) => void;
   onJoin: (code: string) => void;
   onClose: () => void;
@@ -96,15 +95,20 @@ export function CreateRoomDialog({
             </label>
 
             {/* Asked for whether or not the room is public: a room persists now and shows up in
-            your own sidebar forever, and a list of ten-character codes is unreadable. */}
+            your own sidebar, and a list of ten-character codes is unreadable. */}
             <label className="mt-3 flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">房间名</span>
               <Input
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                placeholder={defaultName || '未命名房间'}
+                placeholder="请输入 4–40 个字符的房间名"
+                maxLength={MAX_GROUP_NAME}
+                required
               />
             </label>
+            <p className="mt-2 text-xs text-[var(--text-faint)]">
+              连续 7 天无人在线，房间及聊天记录将自动回收。
+            </p>
           </>
         ) : mode === 'join' ? (
           <label className="mt-5 flex flex-col gap-1.5">
@@ -152,7 +156,7 @@ export function CreateRoomDialog({
                   >
                     <span className="truncate text-sm">{room.name || room.code}</span>
                     <span className="shrink-0 text-xs text-[var(--text-faint)]">
-                      {room.count} 人
+                      {room.count} 人在线
                     </span>
                   </button>
                 ))}
@@ -166,12 +170,13 @@ export function CreateRoomDialog({
           </Button>
           {mode !== 'public' && (
             <Button
-              disabled={mode === 'join' && !joinCode.trim()}
+              disabled={mode === 'join' ? !joinCode.trim() : !validGroupName(roomName)}
               onClick={() => {
                 if (mode === 'create') {
+                  if (!validGroupName(roomName)) return;
                   onCreate(newRoomCode(), {
                     public: isPublic,
-                    roomName: roomName.trim() || defaultName,
+                    roomName: roomName.trim(),
                   });
                 } else {
                   onJoin(joinCode.trim());

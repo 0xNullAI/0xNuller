@@ -11,7 +11,7 @@ import type {
 } from '../../shared/schema';
 import { isExtraLargeScenario } from '../../shared/schema';
 import { MAX_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
-import { deleteItem, fetchItemAccess, updateItem, markDownloaded } from '../api';
+import { deleteItem, fetchItemAccess, updateItem, markDownloaded, tipItem } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -117,6 +117,19 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     const safe = view.name.replace(/[^\w一-龥-]+/g, '_');
     download(`${safe}.json`, exportJson);
     void markDownloaded(item.id);
+  };
+
+  const handleTip = async () => {
+    const value = window.prompt('输入打赏 Credit 数量（1–10000）');
+    if (!value) return;
+    const amount = Number(value);
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10000) return;
+    try {
+      await tipItem(view.id, amount);
+      window.alert('打赏成功');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '打赏失败');
+    }
   };
 
   const startEdit = () => {
@@ -271,6 +284,12 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
         </p>
 
         {view.description && <p className="modal-desc">{view.description}</p>}
+        <div className="mt-3 flex gap-2">
+          <button type="button" className="btn" onClick={() => void handleTip()}>
+            给作者打赏
+          </button>
+          <span className="text-xs text-[var(--text-faint)]">场景首次下载会给作者 +5 Credit</span>
+        </div>
 
         {editing && (
           <div className="admin-edit">

@@ -57,8 +57,8 @@ export type ResolvedProfile =
     };
 
 /**
- * An untouched profile. Private, because that is the default the whole product
- * is built around — a profile that has never been edited must not be public.
+ * An untouched profile. New profiles start public so the homepage works without
+ * an extra setup step; users can switch to friends-only or private before saving.
  */
 export function emptyProfile(): UserProfile {
   return {
@@ -68,8 +68,8 @@ export function emptyProfile(): UserProfile {
     location: null,
     links: [],
     interests: [],
-    discoverable: false,
-    visibility: 'private',
+    discoverable: true,
+    visibility: 'public',
   };
 }
 

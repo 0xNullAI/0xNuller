@@ -25,7 +25,7 @@ interface DmPeer {
 }
 
 export function roomPresenceLabel(isDm: boolean, peerCount: number): string {
-  if (peerCount === 0) return isDm ? '对方不在线' : '等待成员';
+  if (peerCount === 0) return isDm ? '对方不在线' : '1 人在线 · 等待成员';
   return isDm ? '对方在线' : `${peerCount + 1} 人在线`;
 }
 
@@ -179,7 +179,6 @@ export function ChatAppView({
 
       {createRoomOpen && (
         <CreateRoomDialog
-          defaultName={displayName}
           onCreate={(code, options) => peerRoom.join(code, { ...options, claim: true })}
           onJoin={(code) => peerRoom.join(code)}
           onClose={() => setCreateRoomOpen(false)}

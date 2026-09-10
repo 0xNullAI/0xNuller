@@ -39,6 +39,8 @@ describe('侧栏公开房间目录', () => {
     expect(directory?.className).toContain('max-h-64');
     expect(directory?.className).toContain('overflow-y-auto');
 
+    expect(screen.getByText('0 人在线')).toBeTruthy();
+    expect(screen.getByText('2 人在线')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /公开房间 A/ }));
     await waitFor(() => expect(onJoin).toHaveBeenCalledWith('room-a'));
   });

@@ -138,6 +138,7 @@ export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
+export type MarketRewardResult = 'ok' | 'unauthorized' | 'not_found' | 'duplicate' | 'invalid';
 export interface VoiceTicketQuotaResult extends CreditBalance {
   subject: string;
 }
@@ -454,6 +455,74 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
     if (!user) return 'unauthorized';
     return user.role === 'admin' ? 'admin' : 'user';
+  }
+
+  async rewardMarketDownload(
+    credentials: MarketClaimCredentials,
+    itemId: string,
+  ): Promise<MarketRewardResult> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    if (!user) return 'unauthorized';
+    const claim = await this.env.DB.prepare(
+      `SELECT user_id AS author_id FROM market_claims WHERE item_id = ? AND verified_at IS NOT NULL LIMIT 1`,
+    )
+      .bind(itemId)
+      .first<{ author_id: string }>();
+    if (!claim || claim.author_id === user.id) return claim ? 'invalid' : 'not_found';
+    const inserted = await this.env.DB.prepare(
+      `INSERT OR IGNORE INTO market_download_rewards (item_id, downloader_user_id, author_user_id, created_at) VALUES (?, ?, ?, ?) RETURNING item_id`,
+    )
+      .bind(itemId, user.id, claim.author_id, Date.now())
+      .first();
+    if (!inserted) return 'duplicate';
+    await this.env.DB.prepare(
+      `INSERT INTO credit_ledger (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at) VALUES (?, 5, 'market_download_reward', ?, ?, ?, ?)`,
+    )
+      .bind(
+        claim.author_id,
+        `${itemId}:${user.id}`,
+        CREDIT_PRICE_VERSION,
+        JSON.stringify({ itemId }),
+        Date.now(),
+      )
+      .run();
+    return 'ok';
+  }
+
+  async tipMarketItem(
+    credentials: MarketClaimCredentials,
+    itemId: string,
+    amount: number,
+  ): Promise<MarketRewardResult> {
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    if (!user) return 'unauthorized';
+    const credits = Math.trunc(amount);
+    if (credits < 1 || credits > 10000) return 'invalid';
+    const claim = await this.env.DB.prepare(
+      `SELECT user_id AS author_id FROM market_claims WHERE item_id = ? AND verified_at IS NOT NULL LIMIT 1`,
+    )
+      .bind(itemId)
+      .first<{ author_id: string }>();
+    if (!claim || claim.author_id === user.id) return 'invalid';
+    const balance = await creditBalance(this.env, user.id);
+    if (balance.available < credits) return 'invalid';
+    const ref = `${itemId}:${user.id}:${crypto.randomUUID()}`;
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        `INSERT INTO credit_ledger (user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES (?, ?, 'market_tip', ?, ?, ?, ?)`,
+      ).bind(user.id, -credits, ref, CREDIT_PRICE_VERSION, JSON.stringify({ itemId }), Date.now()),
+      this.env.DB.prepare(
+        `INSERT INTO credit_ledger (user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES (?, ?, 'market_tip', ?, ?, ?, ?)`,
+      ).bind(
+        claim.author_id,
+        credits,
+        ref,
+        CREDIT_PRICE_VERSION,
+        JSON.stringify({ itemId }),
+        Date.now(),
+      ),
+    ]);
+    return 'ok';
   }
 }
 
@@ -1505,9 +1574,8 @@ export default {
       // exactly as well. Two deliberate limits, for this product's users
       // rather than out of caution: `location` is region-level and capped
       // short, because a street address in a leaked database is a physical
-      // risk here and no feature needs one; and visibility defaults to
-      // private, because information like this cannot be un-seen once it has
-      // been shown.
+      // risk here and no feature needs one. New profile drafts default to
+      // public in the client; existing stored profiles keep their choice.
       if (path === '/api/auth/profile' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);

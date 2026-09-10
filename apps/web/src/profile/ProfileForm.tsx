@@ -39,10 +39,8 @@ import { ProfileSection } from './frame';
  * a database that later leaks is a physical-safety problem, not a spam
  * problem, and nothing in the product needs that precision.
  *
- * `visibility` is private by default and the two options say plainly what each
- * one means. Information like this cannot be un-seen once somebody has seen
- * it, so being visible has to be a decision that was made rather than one that
- * was inherited.
+ * New profiles default to public; the two options still make the visibility
+ * decision explicit and users can switch to private at any time.
  *
  */
 

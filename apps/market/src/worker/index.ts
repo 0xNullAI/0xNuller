@@ -37,6 +37,15 @@ interface MarketAuthService extends Fetcher {
     authorization: string | null;
     cookie: string | null;
   }): Promise<'admin' | 'user' | 'unauthorized'>;
+  rewardMarketDownload(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemId: string,
+  ): Promise<string>;
+  tipMarketItem(
+    credentials: { authorization: string | null; cookie: string | null },
+    itemId: string,
+    amount: number,
+  ): Promise<string>;
 }
 
 type Env = Omit<Cloudflare.Env, 'AUTH'> & {
@@ -185,6 +194,23 @@ export default {
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
         await incrementDownloads(env.DB, dlMatch[1]!);
+        await env.AUTH.rewardMarketDownload(credentialsFrom(request), dlMatch[1]!);
+        return json({ ok: true });
+      }
+
+      const tipMatch = pathname.match(/^\/api\/items\/([\w-]+)\/tip$/);
+      if (tipMatch && request.method === 'POST') {
+        const body = (await request.json().catch(() => ({}))) as { amount?: number };
+        const result = await env.AUTH.tipMarketItem(
+          credentialsFrom(request),
+          tipMatch[1]!,
+          Number(body.amount),
+        );
+        if (result !== 'ok')
+          return err(
+            result === 'unauthorized' ? '请先登录' : '打赏失败',
+            result === 'unauthorized' ? 401 : 400,
+          );
         return json({ ok: true });
       }
 

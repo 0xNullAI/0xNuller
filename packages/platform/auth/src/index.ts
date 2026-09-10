@@ -329,9 +329,8 @@ export async function deleteAccount(): Promise<void> {
  * product, a home address sitting in a database is a physical-safety risk if
  * it ever leaks, and nothing in the product needs that precision.
  *
- * `visibility` defaults to private. Defaulting to public would publish
- * details before someone has decided to, and this is information that cannot
- * be un-seen once it has been shown.
+ * New profile drafts default to public; users can explicitly switch to
+ * friends-only or private before saving.
  */
 export interface UserProfile {
   avatarUrl: string | null;
