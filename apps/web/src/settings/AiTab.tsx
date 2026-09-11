@@ -7,6 +7,7 @@ import {
   getProviderRegion,
   isLlmConfigured,
   loadLlmConfig,
+  MANAGED_MODEL_OPTIONS,
   saveLlmConfig,
   subscribeLlmConfig,
   type LlmConfig,
@@ -60,6 +61,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   const [providerQuery, setProviderQuery] = useState(
     () => getProviderDefinition(config.providerId as ProviderId)?.name ?? '',
   );
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
   const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
 
@@ -153,10 +155,28 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
       >
         <h3 className="text-sm font-semibold">Agent 模型</h3>
         {isManaged ? (
-          <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3">
-            <div className="text-sm font-semibold">0xNullAI 模型 · 均衡</div>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">
-              登录后使用 Credit，按实际用量结算。
+          <div className="mt-3 grid gap-3 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3">
+            <div>
+              <div className="text-sm font-semibold">0xNullAI Credit 模型</div>
+              <p className="mt-1 text-xs text-[var(--text-soft)]">
+                由 Cloudflare Workers AI 提供，登录后按实际用量结算。
+              </p>
+            </div>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-[var(--text-soft)]">模型档位</span>
+              <SettingSelect
+                value={config.model}
+                onValueChange={(model) => update({ model })}
+                options={MANAGED_MODEL_OPTIONS.map((option) => ({
+                  value: option.id,
+                  label: `${option.name} · ${option.estimatedCost}`,
+                }))}
+              />
+            </label>
+            <p className="text-xs text-[var(--text-faint)]">
+              {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.description}
+              {' · '}
+              {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.price}
             </p>
           </div>
         ) : (
@@ -198,15 +218,15 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 </button>
               ) : null}
             </div>
-            <label className="flex flex-col gap-1.5">
+            <label className="relative flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">搜索并选择服务商</span>
               <Input
-                list="llm-provider-options"
                 value={providerQuery}
                 onChange={(event) => {
                   const selected = event.target.value.replace(/^(中国大陆|国际|自定义) · /, '');
                   const value = providerOptions.find((option) => option.label === selected)?.value;
                   setProviderQuery(event.target.value);
+                  setProviderMenuOpen(true);
                   if (!value) return;
                   const next = createProviderSettings(value as ProviderId);
                   // Don't keep the previous provider's key and baseUrl when switching — they are
@@ -215,14 +235,53 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                   update({ ...next, rememberApiKey: config.rememberApiKey });
                   if (value === 'custom') setAdvancedOpen(true);
                 }}
+                onFocus={() => setProviderMenuOpen(true)}
+                onBlur={() => window.setTimeout(() => setProviderMenuOpen(false), 120)}
                 placeholder="搜索服务商"
                 aria-label="搜索并选择服务商"
+                role="combobox"
+                aria-expanded={providerMenuOpen}
+                aria-controls="llm-provider-options"
               />
-              <datalist id="llm-provider-options">
-                {providerOptions.map((option) => (
-                  <option key={option.value} value={`${option.category} · ${option.label}`} />
-                ))}
-              </datalist>
+              {providerMenuOpen && providerOptions.length > 0 ? (
+                <div
+                  id="llm-provider-options"
+                  role="listbox"
+                  className="absolute inset-x-0 top-[4.25rem] z-20 max-h-72 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface)] p-1 shadow-lg"
+                >
+                  {providerOptions.map((option, index) => {
+                    const previous = providerOptions[index - 1];
+                    const showCategory = !previous || previous.category !== option.category;
+                    return (
+                      <div key={option.value}>
+                        {showCategory ? (
+                          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-[var(--text-faint)]">
+                            {option.category}
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={config.providerId === option.value}
+                          className="flex w-full items-center rounded-[var(--radius-xs)] px-3 py-2 text-left text-sm text-[var(--text)] hover:bg-[var(--accent-soft)] aria-selected:bg-[var(--accent-soft)]"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setProviderQuery(`${option.category} · ${option.label}`);
+                            update({
+                              ...createProviderSettings(option.value as ProviderId),
+                              rememberApiKey: config.rememberApiKey,
+                            });
+                            if (option.value === 'custom') setAdvancedOpen(true);
+                            setProviderMenuOpen(false);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
             </label>
           </div>
         )}

@@ -2,7 +2,41 @@
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 4096;
-const PRICE_VERSION = 'credits-2026-09';
+const PRICE_VERSION = 'workers-ai-credits-2026-09';
+
+// Public ids stay stable even when Cloudflare replaces a hosted model. Credit
+// prices are the current Workers AI token prices multiplied by the product's
+// established 1.5x conversion (USD per million tokens × 1500 Credit).
+const MODELS = [
+  {
+    id: 'basic',
+    name: '基础',
+    description: '轻量实用，适合日常聊天和简单操作',
+    upstreamId: '@cf/google/gemma-4-26b-a4b-it',
+    inputCreditsPerMillion: 150,
+    cachedInputCreditsPerMillion: 150,
+    outputCreditsPerMillion: 450,
+  },
+  {
+    id: 'balanced',
+    name: '均衡',
+    description: '质量与价格平衡，适合多数 Agent 任务',
+    upstreamId: '@cf/zai-org/glm-4.7-flash',
+    inputCreditsPerMillion: 90.75,
+    cachedInputCreditsPerMillion: 90.75,
+    outputCreditsPerMillion: 600,
+  },
+  {
+    id: 'powerful',
+    name: '强力',
+    description: '适合复杂推理、长任务和多步工具调用',
+    upstreamId: '@cf/zai-org/glm-5.3-flash',
+    inputCreditsPerMillion: 225,
+    cachedInputCreditsPerMillion: 45,
+    outputCreditsPerMillion: 750,
+  },
+];
+const DEFAULT_MODEL_ID = 'balanced';
 
 function allowedOrigins(env) {
   return new Set(
@@ -65,29 +99,22 @@ function credentials(request) {
   };
 }
 
-function model(env) {
+function publicModel(item) {
   return {
-    id: 'balanced',
+    id: item.id,
     object: 'model',
-    name: '均衡',
-    upstreamId: env.UPSTREAM_MODEL,
-    inputCreditsPerMillion: Number(env.INPUT_CREDITS_PER_MILLION),
-    cachedInputCreditsPerMillion: Number(env.CACHED_INPUT_CREDITS_PER_MILLION),
-    outputCreditsPerMillion: Number(env.OUTPUT_CREDITS_PER_MILLION),
-    imageInput: true,
+    name: item.name,
+    description: item.description,
+    inputCreditsPerMillion: item.inputCreditsPerMillion,
+    cachedInputCreditsPerMillion: item.cachedInputCreditsPerMillion,
+    outputCreditsPerMillion: item.outputCreditsPerMillion,
+    imageInput: false,
     priceVersion: PRICE_VERSION,
   };
 }
 
-function validModelConfig(item) {
-  return (
-    typeof item.upstreamId === 'string' &&
-    item.upstreamId.length > 0 &&
-    Number.isFinite(item.inputCreditsPerMillion) &&
-    item.inputCreditsPerMillion > 0 &&
-    Number.isFinite(item.outputCreditsPerMillion) &&
-    item.outputCreditsPerMillion > 0
-  );
+function selectedModel(id) {
+  return MODELS.find((item) => item.id === id) ?? null;
 }
 
 function estimateInputTokens(body) {
@@ -135,8 +162,8 @@ async function withinRateLimit(env, request) {
   }
 }
 
-async function relayAndSettle(upstream, auth, key, item, env) {
-  const reader = upstream.body.getReader();
+async function relayAndSettle(upstreamBody, auth, key, item, env) {
+  const reader = upstreamBody.getReader();
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const decoder = new TextDecoder();
@@ -189,15 +216,10 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-    const item = model(env);
-    if (!validModelConfig(item)) return json(503, { error: '平台模型尚未配置' }, cors);
-
     if (url.pathname === '/v1/models' && request.method === 'GET') {
       const balance = await env.AUTH.creditBalance(credentials(request));
       if (balance === 'unauthorized') return json(401, { error: '请先登录' }, cors);
-      const publicModel = { ...item };
-      delete publicModel.upstreamId;
-      return json(200, { object: 'list', data: [publicModel], credit: balance }, cors);
+      return json(200, { object: 'list', data: MODELS.map(publicModel), credit: balance }, cors);
     }
 
     if (url.pathname !== '/v1/chat/completions' || request.method !== 'POST') {
@@ -213,6 +235,13 @@ export default {
     }
     if (!body) return json(413, { error: '请求体过大' }, cors);
     if (!Array.isArray(body.messages)) return json(400, { error: 'messages 格式错误' }, cors);
+    if (body.messages.some((message) => Array.isArray(message?.content))) {
+      return json(400, { error: '平台文字模型不支持图片输入' }, cors);
+    }
+
+    const requestedModel = typeof body.model === 'string' ? body.model : DEFAULT_MODEL_ID;
+    const item = selectedModel(requestedModel);
+    if (!item) return json(400, { error: '不支持该平台模型' }, cors);
 
     const key = request.headers.get('Idempotency-Key');
     if (!key) return json(400, { error: '缺少 Idempotency-Key' }, cors);
@@ -236,46 +265,38 @@ export default {
       );
     }
 
-    const upstreamBody = {
+    const workersAiInput = {
       ...body,
-      model: item.upstreamId,
       max_tokens: Math.min(
         Math.max(Math.trunc(Number(body.max_tokens) || 1024), 1),
         MAX_OUTPUT_TOKENS,
       ),
       ...(body.stream ? { stream_options: { include_usage: true } } : {}),
     };
-    delete upstreamBody.api_key;
-    delete upstreamBody.apiKey;
+    delete workersAiInput.model;
+    delete workersAiInput.api_key;
+    delete workersAiInput.apiKey;
 
-    let upstream;
+    let result;
     try {
-      upstream = await fetch(
-        `${String(env.UPSTREAM_BASE_URL).replace(/\/+$/, '')}/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${env.PROXY_API_KEY}`,
-          },
-          body: JSON.stringify(upstreamBody),
-        },
-      );
-    } catch {
+      result = await env.AI.run(item.upstreamId, workersAiInput);
+    } catch (error) {
+      console.error('Workers AI request failed', {
+        model: item.id,
+        upstreamModel: item.upstreamId,
+        message: error instanceof Error ? error.message : String(error),
+      });
       await env.AUTH.releaseCredits(auth, key);
-      return json(502, { error: '模型服务暂时不可用' }, cors);
-    }
-    if (!upstream.ok) {
-      await env.AUTH.releaseCredits(auth, key);
-      return json(upstream.status >= 500 ? 502 : upstream.status, { error: '模型请求失败' }, cors);
+      return json(503, { error: '平台模型暂时不可用，请稍后重试' }, cors);
     }
 
     if (body.stream) {
-      if (!upstream.body) {
+      const stream = result instanceof Response ? result.body : result;
+      if (!stream || typeof stream.getReader !== 'function') {
         await env.AUTH.releaseCredits(auth, key);
         return json(502, { error: '模型流不可用' }, cors);
       }
-      const relay = await relayAndSettle(upstream, auth, key, item, env);
+      const relay = await relayAndSettle(stream, auth, key, item, env);
       ctx.waitUntil(relay.completion);
       return new Response(relay.readable, {
         status: 200,
@@ -284,7 +305,7 @@ export default {
     }
 
     try {
-      const payload = await upstream.json();
+      const payload = result instanceof Response ? await result.json() : result;
       if (!payload?.usage) throw new Error('missing usage');
       const charged = chargedCredits(payload.usage, item);
       await env.AUTH.settleCredits(auth, key, charged, {
@@ -301,4 +322,4 @@ export default {
   },
 };
 
-export { chargedCredits, estimateReservation };
+export { MODELS, chargedCredits, estimateReservation, selectedModel };
