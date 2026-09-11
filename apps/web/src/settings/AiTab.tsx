@@ -7,6 +7,7 @@ import {
   getProviderRegion,
   isLlmConfigured,
   loadLlmConfig,
+  MANAGED_MODEL_OPTIONS,
   saveLlmConfig,
   subscribeLlmConfig,
   type LlmConfig,
@@ -154,10 +155,28 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
       >
         <h3 className="text-sm font-semibold">Agent 模型</h3>
         {isManaged ? (
-          <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3">
-            <div className="text-sm font-semibold">0xNullAI 模型 · 均衡</div>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">
-              登录后使用 Credit，按实际用量结算。
+          <div className="mt-3 grid gap-3 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3">
+            <div>
+              <div className="text-sm font-semibold">0xNullAI Credit 模型</div>
+              <p className="mt-1 text-xs text-[var(--text-soft)]">
+                由 Cloudflare Workers AI 提供，登录后按实际用量结算。
+              </p>
+            </div>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-[var(--text-soft)]">模型档位</span>
+              <SettingSelect
+                value={config.model}
+                onValueChange={(model) => update({ model })}
+                options={MANAGED_MODEL_OPTIONS.map((option) => ({
+                  value: option.id,
+                  label: `${option.name} · ${option.estimatedCost}`,
+                }))}
+              />
+            </label>
+            <p className="text-xs text-[var(--text-faint)]">
+              {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.description}
+              {' · '}
+              {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.price}
             </p>
           </div>
         ) : (

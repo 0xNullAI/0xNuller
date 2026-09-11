@@ -16,9 +16,8 @@ import { createScopedProviderConfigStore } from './scoped-provider-config-store'
  *
  * API keys live in localStorage, same as each module did pre-merge. This
  * is not encrypted storage — same-origin scripts can read it and so can
- * browser extensions. Deployments that truly need secrecy should run their
- * own proxy so the key only exists server-side (the managed provider works
- * that way).
+ * browser extensions. The managed provider does not use a user API key; it
+ * runs through the account's Cloudflare Workers AI binding.
  */
 
 export interface LlmConfig {

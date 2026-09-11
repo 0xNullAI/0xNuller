@@ -18,21 +18,16 @@ binding = "AUTH"
 service = "0xnullai-auth"
 entrypoint = "AuthOwnershipService"
 
-[secrets]
-required = ["PROXY_API_KEY"]
-
 # `llm.0xnullai.com` is the stable public endpoint used by Web and Android.
 
 [observability]
 enabled = true
 head_sampling_rate = 1
 
+[ai]
+binding = "AI"
+
 [vars]
-UPSTREAM_BASE_URL = "https://aihub.071129.xyz/v1"
-UPSTREAM_MODEL = "openai/gpt-4.1-mini"
-INPUT_CREDITS_PER_MILLION = 600
-CACHED_INPUT_CREDITS_PER_MILLION = 150
-OUTPUT_CREDITS_PER_MILLION = 2400
 
 # Browser origins. Native shells use Bearer sessions and do not send Origin.
 ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost"
@@ -43,5 +38,3 @@ name = "RATE_LIMITER"
 type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 20, period = 60 }
-
-# Secret: wrangler secret put PROXY_API_KEY

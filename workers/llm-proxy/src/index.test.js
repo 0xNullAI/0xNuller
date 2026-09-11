@@ -1,21 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { chargedCredits, estimateReservation } from './index.js';
+import worker, { MODELS, chargedCredits, estimateReservation } from './index.js';
 
-const model = {
-  inputCreditsPerMillion: 600,
-  cachedInputCreditsPerMillion: 150,
-  outputCreditsPerMillion: 2400,
-};
+const model = MODELS.find((item) => item.id === 'balanced');
+const powerfulModel = MODELS.find((item) => item.id === 'powerful');
 
 function environment(overrides = {}) {
   return {
     ALLOWED_ORIGINS: 'https://0xnullai.com',
-    UPSTREAM_BASE_URL: 'https://upstream.example/v1',
-    UPSTREAM_MODEL: 'vendor/model',
-    INPUT_CREDITS_PER_MILLION: '600',
-    CACHED_INPUT_CREDITS_PER_MILLION: '150',
-    OUTPUT_CREDITS_PER_MILLION: '2400',
-    PROXY_API_KEY: 'secret',
+    AI: { run: vi.fn() },
     RATE_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
     AUTH: {
       creditBalance: vi.fn().mockResolvedValue({ total: 1000, reserved: 0, available: 1000 }),
@@ -49,6 +41,12 @@ function request(body, key = 'request:test:001') {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Credit 价格', () => {
+  it('提供三个 Cloudflare 托管档位', () => {
+    expect(MODELS.map((item) => item.id)).toEqual(['basic', 'balanced', 'powerful']);
+    expect(MODELS.every((item) => item.upstreamId.startsWith('@cf/'))).toBe(true);
+    expect(MODELS.every((item) => item.inputCreditsPerMillion > 0)).toBe(true);
+  });
+
   it('分别计算缓存输入和输出并向上取整', () => {
     expect(
       chargedCredits(
@@ -60,35 +58,33 @@ describe('Credit 价格', () => {
         model,
       ),
     ).toBe(1);
-    expect(chargedCredits({ prompt_tokens: 10_000, completion_tokens: 2_000 }, model)).toBe(11);
+    expect(chargedCredits({ prompt_tokens: 10_000, completion_tokens: 2_000 }, model)).toBe(3);
   });
 
   it('按最大输出而不是平均回复冻结额度', () => {
     expect(
       estimateReservation(
-        { messages: [{ role: 'user', content: 'hello' }], max_tokens: 1000 },
-        model,
+        { messages: [{ role: 'user', content: 'hello' }], max_tokens: 4096 },
+        powerfulModel,
       ),
-    ).toBeGreaterThanOrEqual(3);
+    ).toBeGreaterThanOrEqual(4);
   });
 });
 
 describe('平台模型请求', () => {
   it('先冻结、按真实用量结算并隐藏上游模型名', async () => {
-    const env = environment();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json({
+    const env = environment({
+      AI: {
+        run: vi.fn().mockResolvedValue({
           id: 'answer',
-          model: 'vendor/model',
+          model: '@cf/zai-org/glm-4.7-flash',
           choices: [{ message: { content: 'ok' } }],
           usage: { prompt_tokens: 1000, completion_tokens: 100 },
         }),
-      ),
-    );
+      },
+    });
     const response = await worker.fetch(
-      request({ model: 'forged', messages: [{ role: 'user', content: 'hello' }] }),
+      request({ model: 'balanced', messages: [{ role: 'user', content: 'hello' }] }),
       env,
       { waitUntil: vi.fn() },
     );
@@ -96,8 +92,36 @@ describe('平台模型请求', () => {
     expect(await response.json()).toMatchObject({ model: 'balanced', credit_charged: 1 });
     expect(env.AUTH.reserveCredits).toHaveBeenCalledOnce();
     expect(env.AUTH.settleCredits).toHaveBeenCalledOnce();
-    const upstreamBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body);
-    expect(upstreamBody.model).toBe('vendor/model');
+    expect(env.AI.run).toHaveBeenCalledWith(
+      '@cf/zai-org/glm-4.7-flash',
+      expect.not.objectContaining({ model: expect.anything() }),
+    );
+  });
+
+  it('拒绝客户端伪造的模型 id', async () => {
+    const env = environment();
+    const response = await worker.fetch(
+      request({ model: '@cf/private/model', messages: [{ role: 'user', content: 'hello' }] }),
+      env,
+      { waitUntil: vi.fn() },
+    );
+    expect(response.status).toBe(400);
+    expect(env.AUTH.reserveCredits).not.toHaveBeenCalled();
+    expect(env.AI.run).not.toHaveBeenCalled();
+  });
+
+  it('平台文字模型拒绝图片输入', async () => {
+    const env = environment();
+    const response = await worker.fetch(
+      request({
+        model: 'basic',
+        messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'x' } }] }],
+      }),
+      env,
+      { waitUntil: vi.fn() },
+    );
+    expect(response.status).toBe(400);
+    expect(env.AI.run).not.toHaveBeenCalled();
   });
 
   it('余额不足时不调用上游', async () => {
@@ -113,26 +137,25 @@ describe('平台模型请求', () => {
         }),
       },
     });
-    const upstream = vi.fn();
-    vi.stubGlobal('fetch', upstream);
     const response = await worker.fetch(
       request({ messages: [{ role: 'user', content: 'hello' }] }),
       env,
       { waitUntil: vi.fn() },
     );
     expect(response.status).toBe(402);
-    expect(upstream).not.toHaveBeenCalled();
+    expect(env.AI.run).not.toHaveBeenCalled();
   });
 
   it('上游失败时释放全部冻结额度', async () => {
-    const env = environment();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({}, { status: 503 })));
+    const env = environment({
+      AI: { run: vi.fn().mockRejectedValue(new Error('model unavailable')) },
+    });
     const response = await worker.fetch(
       request({ messages: [{ role: 'user', content: 'hello' }] }),
       env,
       { waitUntil: vi.fn() },
     );
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(503);
     expect(env.AUTH.releaseCredits).toHaveBeenCalledWith(expect.anything(), 'request:test:001');
   });
 });

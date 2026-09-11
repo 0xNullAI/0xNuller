@@ -105,8 +105,13 @@ export class OpenAiHttpLlmClient implements LlmClient {
   private async buildHeaders(): Promise<Record<string, string>> {
     const base: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.config.apiKey}`,
     };
+    // `managed` is a local sentinel, not a credential. The browser authenticates
+    // with its session cookie; Android supplies its real Bearer token through
+    // extraHeaders. Sending `Bearer managed` would override a valid cookie at Auth.
+    if (this.config.apiKey !== 'managed') {
+      base.Authorization = `Bearer ${this.config.apiKey}`;
+    }
     if (!this.config.extraHeaders) return base;
     const extra = await this.config.extraHeaders();
     return { ...base, ...extra };

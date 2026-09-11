@@ -312,6 +312,21 @@ describe('OpenAiHttpLlmClient', () => {
       expect(called).toBe(true);
       expect(captured.headers?.['X-DG-Signature']).toBe('abc');
     });
+
+    it('does not send the managed sentinel as an Authorization credential', async () => {
+      const captured = captureRequestInit();
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'managed',
+        baseUrl: 'https://llm.0xnullai.com/v1',
+        model: 'balanced',
+        extraHeaders: () => ({}),
+      });
+
+      await client.runTurn(makeTurnInput());
+
+      expect(captured.headers?.['Authorization']).toBeUndefined();
+      expect(captured.headers?.['Idempotency-Key']).toBeTruthy();
+    });
   });
 
   // Mirrors packages/providers-pi-http/src/index.test.ts's contract suite —

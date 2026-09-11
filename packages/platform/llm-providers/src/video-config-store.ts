@@ -26,7 +26,7 @@ const SESSION_KEY = '0xnullai.video-llm-api-key.v1';
 export function defaultVideoLlmConfig(): VideoLlmConfig {
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
-    ...createProviderSettings('managed'),
+    ...createProviderSettings('qwen'),
     rememberApiKey: false,
   };
 }
@@ -37,12 +37,16 @@ function coerceVideoLlmConfig(raw: unknown): VideoLlmConfig | null {
   if (value.version !== VIDEO_LLM_CONFIG_VERSION || typeof value.providerId !== 'string') {
     return null;
   }
+  // Managed Credit tiers are text-only. Move the old managed Video default to
+  // a visible vision-capable provider so the settings page can guide the user
+  // to enter their own key instead of retaining an unusable hidden selection.
+  const migratedManaged = value.providerId === 'managed' ? createProviderSettings('qwen') : null;
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
-    providerId: value.providerId,
-    apiKey: typeof value.apiKey === 'string' ? value.apiKey : '',
-    model: typeof value.model === 'string' ? value.model : '',
-    baseUrl: typeof value.baseUrl === 'string' ? value.baseUrl : '',
+    providerId: migratedManaged?.providerId ?? value.providerId,
+    apiKey: migratedManaged?.apiKey ?? (typeof value.apiKey === 'string' ? value.apiKey : ''),
+    model: migratedManaged?.model ?? (typeof value.model === 'string' ? value.model : ''),
+    baseUrl: migratedManaged?.baseUrl ?? (typeof value.baseUrl === 'string' ? value.baseUrl : ''),
     endpoint: value.endpoint === 'responses' ? 'responses' : 'chat/completions',
     useStrict: value.useStrict === true,
     rememberApiKey: value.rememberApiKey === true,

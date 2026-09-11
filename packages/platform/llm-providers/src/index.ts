@@ -150,12 +150,35 @@ const providerSettingsSchema = z.object({
 
 export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
 
-/**
- * Public model id for the managed service. The Cloudflare Worker forces the real
- * upstream model server-side (via the PROXY_MODEL env var), so this value is only
- * used for the UI label and the request body the proxy then overrides.
- */
+/** Stable public model ids; the Worker maps them to Cloudflare-hosted models. */
 export const MANAGED_DEFAULT_MODEL = 'balanced';
+export const MANAGED_MODEL_OPTIONS = [
+  {
+    id: 'basic',
+    name: '基础',
+    description: '轻量实用，适合日常聊天和简单操作',
+    estimatedCost: '常规约 1–3 Credit/次',
+    price: '输入 150 / 输出 450 Credit（每百万 Token）',
+  },
+  {
+    id: 'balanced',
+    name: '均衡',
+    description: '质量与价格平衡，适合多数 Agent 任务',
+    estimatedCost: '常规约 1–3 Credit/次',
+    price: '输入约 91 / 输出 600 Credit（每百万 Token）',
+  },
+  {
+    id: 'powerful',
+    name: '强力',
+    description: '适合复杂推理、长任务和多步工具调用',
+    estimatedCost: '常规约 1–4 Credit/次',
+    price: '输入 225 / 输出 750 Credit（每百万 Token）',
+  },
+] as const;
+
+export function isManagedModelId(model: string): boolean {
+  return MANAGED_MODEL_OPTIONS.some((option) => option.id === model);
+}
 
 /** apiKey + model only — no baseUrl/endpoint/useStrict fields, shared by every `dialect: 'pi-ai'` entry below. */
 function piAiFields(
@@ -417,11 +440,10 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
 /**
  * Explicit vision allowlist. An absent provider or an unrecognized model id
  * is not assumed to support images, even when its API dialect could serialize
- * them. The managed service exposes the stable `balanced` product model while the
- * Worker owns and validates the actual vision-capable upstream model.
+ * them. Managed Credit models are text-only; Video keeps its own explicitly
+ * vision-capable provider selection.
  */
 const IMAGE_MODELS: Partial<Record<ProviderId, readonly string[]>> = {
-  managed: [MANAGED_DEFAULT_MODEL],
   qwen: ['qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen3-vl-plus', 'qwen3.5-plus'],
   doubao: ['doubao-seed-2-0-mini-250415'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
@@ -535,7 +557,9 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
 
   if (normalized.providerId === 'managed') {
     normalized.baseUrl = MANAGED_SERVICE_URL + '/v1';
-    normalized.model = MANAGED_DEFAULT_MODEL;
+    normalized.model = isManagedModelId(normalized.model)
+      ? normalized.model
+      : MANAGED_DEFAULT_MODEL;
     normalized.endpoint = 'chat/completions';
     normalized.useStrict = false;
   } else if (normalized.providerId === 'custom') {
@@ -585,13 +609,13 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
     return {
       ...normalized,
       apiKey: 'managed',
-      model: MANAGED_DEFAULT_MODEL,
+      model: normalized.model,
       baseUrl: MANAGED_SERVICE_URL + '/v1',
       endpoint: 'chat/completions',
       useStrict: false,
       browserSupported: true,
       dialect,
-      imageInput: true,
+      imageInput: false,
     };
   }
 
