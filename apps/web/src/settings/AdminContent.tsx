@@ -305,73 +305,6 @@ export function AdminContent() {
         </Button>
       </form>
 
-      <form
-        className="mt-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setError(null);
-          setCreditNotice(null);
-          try {
-            const result = await grantCreditGift({
-              username: giftUsername.trim(),
-              amountCredits: Number(giftAmount),
-              reason: giftReason.trim(),
-            });
-            setCreditNotice(`已赠送 @${result.username} ${result.amountCredits} Credit`);
-            setGiftReason('');
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : '赠送入账失败');
-          }
-        }}
-      >
-        <h2 className="text-sm font-semibold">赠送 Credit</h2>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-          用于活动赠送或直接赠与。系统自动生成唯一编号，不计入充值收入。
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Input
-            value={giftUsername}
-            onChange={(event) => setGiftUsername(event.target.value)}
-            placeholder="用户名"
-            aria-label="赠送用户名"
-            required
-          />
-          <Input
-            value={giftAmount}
-            onChange={(event) => setGiftAmount(event.target.value)}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={20_000}
-            step={1}
-            placeholder="Credit 数量（1–20,000）"
-            aria-label="赠送 Credit 数量"
-            required
-          />
-          <Input
-            value={giftReason}
-            onChange={(event) => setGiftReason(event.target.value)}
-            maxLength={200}
-            minLength={2}
-            placeholder="赠送原因（必填）"
-            aria-label="赠送原因"
-            required
-          />
-          <Button
-            type="submit"
-            disabled={
-              !giftUsername.trim() ||
-              giftReason.trim().length < 2 ||
-              !Number.isSafeInteger(Number(giftAmount)) ||
-              Number(giftAmount) < 1 ||
-              Number(giftAmount) > 20_000
-            }
-          >
-            确认赠送
-          </Button>
-        </div>
-      </form>
-
       {error ? (
         <p role="alert" className="mt-4 text-sm text-[var(--danger)]">
           {error}
@@ -495,6 +428,73 @@ export function AdminContent() {
           </Button>
         </div>
         {creditNotice ? <p className="mt-2 text-xs text-[var(--success)]">{creditNotice}</p> : null}
+      </form>
+
+      <form
+        className="mt-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          setCreditNotice(null);
+          try {
+            const result = await grantCreditGift({
+              username: giftUsername.trim(),
+              amountCredits: Number(giftAmount),
+              reason: giftReason.trim(),
+            });
+            setCreditNotice(`已赠送 @${result.username} ${result.amountCredits} Credit`);
+            setGiftReason('');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : '赠送入账失败');
+          }
+        }}
+      >
+        <h2 className="text-sm font-semibold">赠送 Credit</h2>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
+          用于活动赠送或直接赠与。系统自动生成唯一编号，不计入充值收入。
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <Input
+            value={giftUsername}
+            onChange={(event) => setGiftUsername(event.target.value)}
+            placeholder="用户名"
+            aria-label="赠送用户名"
+            required
+          />
+          <Input
+            value={giftAmount}
+            onChange={(event) => setGiftAmount(event.target.value)}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={20_000}
+            step={1}
+            placeholder="Credit 数量（1–20,000）"
+            aria-label="赠送 Credit 数量"
+            required
+          />
+          <Input
+            value={giftReason}
+            onChange={(event) => setGiftReason(event.target.value)}
+            maxLength={200}
+            minLength={2}
+            placeholder="赠送原因（必填）"
+            aria-label="赠送原因"
+            required
+          />
+          <Button
+            type="submit"
+            disabled={
+              !giftUsername.trim() ||
+              giftReason.trim().length < 2 ||
+              !Number.isSafeInteger(Number(giftAmount)) ||
+              Number(giftAmount) < 1 ||
+              Number(giftAmount) > 20_000
+            }
+          >
+            确认赠送
+          </Button>
+        </div>
       </form>
     </section>
   );
