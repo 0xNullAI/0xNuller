@@ -169,14 +169,12 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 onValueChange={(model) => update({ model })}
                 options={MANAGED_MODEL_OPTIONS.map((option) => ({
                   value: option.id,
-                  label: `${option.name} · ${option.estimatedCost}`,
+                  label: option.name,
                 }))}
               />
             </label>
             <p className="text-xs text-[var(--text-faint)]">
               {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.description}
-              {' · '}
-              {MANAGED_MODEL_OPTIONS.find((option) => option.id === config.model)?.price}
             </p>
           </div>
         ) : (
