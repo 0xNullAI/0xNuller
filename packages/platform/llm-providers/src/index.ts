@@ -157,22 +157,16 @@ export const MANAGED_MODEL_OPTIONS = [
     id: 'basic',
     name: '基础',
     description: '轻量实用，适合日常聊天和简单操作',
-    estimatedCost: '常规约 1–3 Credit/次',
-    price: '输入 150 / 输出 450 Credit（每百万 Token）',
   },
   {
     id: 'balanced',
     name: '均衡',
     description: '质量与价格平衡，适合多数 Agent 任务',
-    estimatedCost: '常规约 1–3 Credit/次',
-    price: '输入约 91 / 输出 600 Credit（每百万 Token）',
   },
   {
     id: 'powerful',
     name: '强力',
     description: '适合复杂推理、长任务和多步工具调用',
-    estimatedCost: '常规约 1–4 Credit/次',
-    price: '输入 225 / 输出 750 Credit（每百万 Token）',
   },
 ] as const;
 
