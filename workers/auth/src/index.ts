@@ -1414,6 +1414,38 @@ export default {
         );
       }
 
+      const adminCreditUser = path.match(/^\/api\/auth\/admin\/credits\/users\/([^/]+)$/);
+      if (adminCreditUser && request.method === 'GET') {
+        const admin = await currentUser(request, env);
+        if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
+        const username = decodeURIComponent(adminCreditUser[1] ?? '')
+          .trim()
+          .toLowerCase();
+        if (!username) return err('用户不存在', 404, cors);
+        const target = await env.DB.prepare(
+          'SELECT id, username, display_name, email, email_verified, created_at FROM users WHERE username = ? AND banned_at IS NULL',
+        )
+          .bind(username)
+          .first<Record<string, unknown>>();
+        if (!target) return err('用户不存在', 404, cors);
+        const balance = await creditBalance(env, String(target.id));
+        return json(
+          {
+            user: {
+              id: String(target.id),
+              username: String(target.username),
+              displayName: String(target.display_name ?? ''),
+              email: target.email == null ? null : String(target.email),
+              emailVerified: Boolean(target.email_verified),
+            },
+            credit: balance,
+            createdAt: Number(target.created_at),
+          },
+          200,
+          cors,
+        );
+      }
+
       if (path === '/api/auth/admin/credits/gift' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
@@ -2607,6 +2639,117 @@ export default {
           .bind(crypto.randomUUID(), user.id, targetId, reason, details || null, Date.now())
           .run();
         return json({ ok: true, duplicate: false }, 201, cors);
+      }
+
+      if (path === '/api/auth/credit-red-packets' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        return err('充值内测中，请联系管理员 QQ 询问', 503, cors);
+      }
+
+      if (path === '/api/auth/credit-red-packets' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        const rows = await env.DB.prepare(
+          `SELECT id, code, note, status, reject_reason, created_at, processed_at
+             FROM credit_red_packet_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+        )
+          .bind(user.id)
+          .all<Record<string, unknown>>();
+        return json(
+          {
+            items: rows.results.map((row) => ({
+              id: String(row.id),
+              code: String(row.code),
+              note: row.note == null ? null : String(row.note),
+              status: String(row.status),
+              rejectReason: row.reject_reason == null ? null : String(row.reject_reason),
+              createdAt: Number(row.created_at),
+              processedAt: row.processed_at == null ? null : Number(row.processed_at),
+            })),
+          },
+          200,
+          cors,
+        );
+      }
+
+      const redPacketApprove = path.match(
+        /^\/api\/auth\/admin\/credit-red-packets\/([^/]+)\/approve$/,
+      );
+      const redPacketReject = path.match(
+        /^\/api\/auth\/admin\/credit-red-packets\/([^/]+)\/reject$/,
+      );
+      if (path === '/api/auth/admin/credit-red-packets' && request.method === 'GET') {
+        const user = await currentUser(request, env);
+        if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
+        const rows = await env.DB.prepare(
+          `SELECT r.id, r.code, r.note, r.status, r.reject_reason, r.created_at, r.processed_at, u.username
+             FROM credit_red_packet_requests r JOIN users u ON u.id = r.user_id
+            ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC LIMIT 100`,
+        ).all<Record<string, unknown>>();
+        return json(
+          {
+            items: rows.results.map((row) => ({
+              id: String(row.id),
+              username: String(row.username),
+              code: String(row.code),
+              note: row.note == null ? null : String(row.note),
+              status: String(row.status),
+              rejectReason: row.reject_reason == null ? null : String(row.reject_reason),
+              createdAt: Number(row.created_at),
+              processedAt: row.processed_at == null ? null : Number(row.processed_at),
+            })),
+          },
+          200,
+          cors,
+        );
+      }
+      if (redPacketApprove && request.method === 'POST') {
+        const admin = await currentUser(request, env);
+        if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const amountCredits = Number(body.amountCredits);
+        if (!Number.isSafeInteger(amountCredits) || amountCredits < 1 || amountCredits > 20_000)
+          return err('Credit 数量无效', 400, cors);
+        const row = await env.DB.prepare(
+          `SELECT id, user_id, status FROM credit_red_packet_requests WHERE id = ?`,
+        )
+          .bind(redPacketApprove[1])
+          .first<{ id: string; user_id: string; status: string }>();
+        if (!row) return err('申请不存在', 404, cors);
+        if (row.status !== 'pending') return err('该申请已处理', 409, cors);
+        const now = Date.now();
+        const referenceId = `red-packet:${row.id}`;
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO credit_ledger (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at) VALUES (?, ?, 'red_packet', ?, ?, ?, ?)`,
+          ).bind(
+            row.user_id,
+            amountCredits,
+            referenceId,
+            CREDIT_PRICE_VERSION,
+            JSON.stringify({ operatorUserId: admin.id, requestId: row.id }),
+            now,
+          ),
+          env.DB.prepare(
+            `UPDATE credit_red_packet_requests SET status = 'approved', processed_by = ?, processed_at = ? WHERE id = ? AND status = 'pending'`,
+          ).bind(admin.id, now, row.id),
+        ]);
+        return json({ ok: true, amountCredits }, 200, cors);
+      }
+      if (redPacketReject && request.method === 'POST') {
+        const admin = await currentUser(request, env);
+        if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+        if (reason.length < 2 || reason.length > 200) return err('拒绝原因无效', 400, cors);
+        const result = await env.DB.prepare(
+          `UPDATE credit_red_packet_requests SET status = 'rejected', reject_reason = ?, processed_by = ?, processed_at = ? WHERE id = ? AND status = 'pending'`,
+        )
+          .bind(reason, admin.id, Date.now(), redPacketReject[1])
+          .run();
+        if (!result.meta.changes) return err('申请不存在或已处理', 409, cors);
+        return json({ ok: true }, 200, cors);
       }
 
       if (path === '/api/auth/feedback' && request.method === 'POST') {

@@ -201,9 +201,19 @@ export function Shell() {
 
   useEffect(() => {
     if (!user) return;
-    void getCreditBalance()
-      .then((balance) => setCreditBalance(balance.available))
-      .catch(() => setCreditBalance(null));
+    const refresh = () =>
+      void getCreditBalance()
+        .then((balance) => setCreditBalance(balance.available))
+        .catch(() => setCreditBalance(null));
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [user]);
 
   // Modules ask for a profile rather than rendering one; see profile-requests

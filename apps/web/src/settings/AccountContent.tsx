@@ -30,16 +30,20 @@ import {
 
 function creditEntryLabel(kind: CreditLedgerEntry['kind']): string {
   return (
-    {
-      referral_reward: '邀请奖励',
-      manual_purchase: '人工充值',
-      admin_gift: '管理员赠送',
-      usage: '模型使用',
-      refund: '退款',
-      support_adjustment: '客服调整',
-      billing_correction: '账务冲正',
-    } as const
-  )[kind];
+    (
+      {
+        referral_reward: '邀请奖励',
+        market_download_reward: '场景下载赠送',
+        red_packet: '口令红包',
+        manual_purchase: '人工充值',
+        admin_gift: '管理员赠送',
+        usage: '模型使用',
+        refund: '退款',
+        support_adjustment: '客服调整',
+        billing_correction: '账务冲正',
+      } as const
+    )[kind] ?? '其他调整'
+  );
 }
 
 function Agreement() {
@@ -124,15 +128,25 @@ export function AccountContent({
 
   useEffect(() => {
     if (!user) return;
-    void Promise.all([getCreditBalance(), getCreditLedger({ limit: 10 })])
-      .then(([balance, ledger]) => {
-        setCredit(balance);
-        setCreditEntries(ledger.entries);
-      })
-      .catch(() => {
-        setCredit(null);
-        setCreditEntries([]);
-      });
+    const refresh = () =>
+      void Promise.all([getCreditBalance(), getCreditLedger({ limit: 10 })])
+        .then(([balance, ledger]) => {
+          setCredit(balance);
+          setCreditEntries(ledger.entries);
+        })
+        .catch(() => {
+          setCredit(null);
+          setCreditEntries([]);
+        });
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [user]);
 
   const visibleReferral = user?.emailVerified ? referral : null;
@@ -265,8 +279,7 @@ export function AccountContent({
           {creditExpanded ? (
             <div className="mt-3 border-t border-[var(--surface-border)] pt-3">
               <p className="text-xs leading-relaxed text-[var(--text-soft)]">
-                当前为人工确认充值。可选 7 元 / 1,000、35 元 / 5,000、70 元 / 10,000、140 元 /
-                20,000 Credit。联系管理员并提供到账流水，确认后会显示在这里。
+                充值内测中，可以联系管理员 QQ 询问。
               </p>
               {credit?.reserved ? (
                 <p className="mt-2 text-xs text-[var(--text-faint)]">

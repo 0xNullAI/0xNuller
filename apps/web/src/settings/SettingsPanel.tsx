@@ -3,7 +3,6 @@ import {
   Cpu,
   AudioWaveform,
   Database,
-  Bug,
   Info,
   LayoutTemplate,
   SlidersHorizontal,
@@ -15,6 +14,7 @@ import {
 import {
   ModuleSettingsSlot,
   Overlay,
+  SettingSelect,
   useModuleSettingsClaims,
   type ShellSettingsTab,
 } from '@0xnullai/ui';
@@ -45,7 +45,6 @@ import { AboutTab } from './AboutTab';
 const DEFERRED_TABS = [
   { id: 'agent-waveforms', label: '波形', icon: AudioWaveform, order: 30 },
   { id: 'agent-data', label: '数据', icon: Database, order: 60 },
-  { id: 'agent-diagnostics', label: '诊断', icon: Bug, order: 70 },
 ];
 
 const TABS = [
@@ -122,20 +121,14 @@ export function SettingsPanel({
             buttons. The current page stays visible without asking people to
             understand the entire settings taxonomy before changing one thing. */}
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] p-2 sm:hidden">
-          <label className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1">
             <span className="sr-only">设置页面</span>
-            <select
+            <SettingSelect
               value={resolvedTab}
-              onChange={(event) => setTab(event.target.value)}
-              className="min-h-11 w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-3 text-sm font-medium text-[var(--text)]"
-            >
-              {navigationTabs.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              onValueChange={setTab}
+              options={navigationTabs.map((item) => ({ value: item.id, label: item.label }))}
+            />
+          </div>
           <button
             type="button"
             onClick={onClose}

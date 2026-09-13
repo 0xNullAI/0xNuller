@@ -32,10 +32,6 @@ export function ProxySection() {
         />
       </label>
 
-      <p className="mt-1 text-xs leading-5 text-[var(--text-soft)]">
-        Agent、Voice 和 Video 共用此代理，无需分别设置。
-      </p>
-
       <label className="mt-3 flex flex-col gap-1.5">
         <span className="text-xs text-[var(--text-soft)]">反向代理地址</span>
         <Input

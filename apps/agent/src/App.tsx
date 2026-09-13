@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  type BridgeLogEntry,
-  type BridgeManagerStatus,
-  type MessageOrigin,
-} from '@dg-agent/bridge';
+import { type MessageOrigin } from '@dg-agent/bridge';
 import {
   createEmptyDeviceState,
   createEmptySensorState,
@@ -115,8 +111,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   } = useSettingsManager();
 
   const [pendingPermission, setPendingPermission] = useState<PendingPermissionRequest | null>(null);
-  const [bridgeLogs, setBridgeLogs] = useState<BridgeLogEntry[]>([]);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeManagerStatus | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -421,13 +415,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     if (!safetyNoticeAccepted || !settings.bridge.enabled) return;
 
     let cancelled = false;
-    const unsubscribeLogs = bridgeManager.subscribeLogs((entry) => {
-      setBridgeLogs((current) => [entry, ...current].slice(0, 30));
-    });
-    const unsubscribeStatus = bridgeManager.subscribeStatus((status) => {
-      setBridgeStatus(status);
-    });
-
     void (async () => {
       try {
         await bridgeManager.start();
@@ -447,8 +434,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
     return () => {
       cancelled = true;
-      unsubscribeLogs();
-      unsubscribeStatus();
       void bridgeManager.stop();
     };
   }, [bridgeManager, safetyNoticeAccepted, settings.bridge.enabled]);
@@ -876,16 +861,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         />
 
         <AgentModuleProjections
-          debug={{
-            bridge: { settingsDraft, setSettingsDraft },
-            bridgeLogs: { bridgeLogs, bridgeStatus, settings },
-            modelLogs: {
-              settingsDraft,
-              setSettingsDraft,
-              turns: modelLog.turns,
-              onClear: modelLog.clear,
-            },
-          }}
           sensors={{
             settingsDraft,
             setSettingsDraft,

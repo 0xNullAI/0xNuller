@@ -198,6 +198,8 @@ export function SafetyTab() {
         </label>
       </section>
 
+      <ModuleSettingsSlot id="agent-sensors" />
+
       <button
         type="button"
         onClick={() => {
@@ -208,8 +210,6 @@ export function SafetyTab() {
       >
         恢复默认值
       </button>
-
-      <ModuleSettingsSlot id="agent-sensors" />
     </div>
   );
 }
