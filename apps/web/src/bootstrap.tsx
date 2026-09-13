@@ -6,6 +6,9 @@ import { NativeBridgeProvider } from '@0xnullai/native';
 import './shell.css';
 import { Shell } from './Shell';
 import { createUnifiedShellEmbeddedDeviceRuntime } from './embedded-device-runtime';
+import { loadLocale } from '@0xnullai/settings';
+
+document.documentElement.lang = loadLocale();
 
 // One shell-lifetime provider/controller pair. The backend factory remains untouched while the
 // local experimental setting is off, so this does not load Buttplug WASM or initialize Bluetooth.

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
 import { Button, Input, SettingSelect } from '@0xnullai/ui';
 import {
   getAdminReports,
   getAdminStats,
   grantCreditGift,
+  lookupAdminCreditTarget,
   grantCreditPackage,
+  listAdminCreditRedPackets,
+  approveAdminCreditRedPacket,
+  rejectAdminCreditRedPacket,
   resolveAdminReport,
   type AdminStats,
   type UserReport,
@@ -45,10 +49,47 @@ export function AdminContent() {
   const [creditUsername, setCreditUsername] = useState('');
   const [creditAmount, setCreditAmount] = useState<7 | 35 | 70 | 140>(7);
   const [creditReference, setCreditReference] = useState('');
-  const [creditNotice, setCreditNotice] = useState<string | null>(null);
+  const [rechargeNotice, setRechargeNotice] = useState<string | null>(null);
+  const [giftNotice, setGiftNotice] = useState<string | null>(null);
   const [giftUsername, setGiftUsername] = useState('');
   const [giftAmount, setGiftAmount] = useState('1000');
   const [giftReason, setGiftReason] = useState('');
+  const [creditTarget, setCreditTarget] = useState<Awaited<
+    ReturnType<typeof lookupAdminCreditTarget>
+  > | null>(null);
+  const [giftTarget, setGiftTarget] = useState<Awaited<
+    ReturnType<typeof lookupAdminCreditTarget>
+  > | null>(null);
+  const [creditCandidate, setCreditCandidate] = useState<Awaited<
+    ReturnType<typeof lookupAdminCreditTarget>
+  > | null>(null);
+  const [giftCandidate, setGiftCandidate] = useState<Awaited<
+    ReturnType<typeof lookupAdminCreditTarget>
+  > | null>(null);
+  const [creditSubmitting, setCreditSubmitting] = useState(false);
+  const [giftSubmitting, setGiftSubmitting] = useState(false);
+  const lookupSequence = useRef({ recharge: 0, gift: 0 });
+
+  async function lookupTarget(kind: 'recharge' | 'gift') {
+    const username = kind === 'recharge' ? creditUsername : giftUsername;
+    if (!username.trim()) return;
+    const sequence = ++lookupSequence.current[kind];
+    setError(null);
+    try {
+      const result = await lookupAdminCreditTarget(username);
+      if (sequence !== lookupSequence.current[kind]) return;
+      if (kind === 'recharge') setCreditCandidate(result);
+      else setGiftCandidate(result);
+    } catch (cause) {
+      if (sequence !== lookupSequence.current[kind]) return;
+      if (kind === 'recharge') setCreditCandidate(null);
+      else setGiftCandidate(null);
+      setError(cause instanceof Error ? cause.message : '找不到用户');
+    }
+  }
+  const [redPackets, setRedPackets] = useState<
+    Awaited<ReturnType<typeof listAdminCreditRedPackets>>['items']
+  >([]);
 
   const requestPage = useCallback(
     (offset = 0) => fetchAdminItems({ type, status, q: query || undefined, offset, limit: 20 }),
@@ -92,6 +133,12 @@ export function AdminContent() {
       active = false;
     };
   }, [requestPage]);
+
+  useEffect(() => {
+    void listAdminCreditRedPackets()
+      .then((result) => setRedPackets(result.items))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void getAdminStats()
@@ -381,17 +428,21 @@ export function AdminContent() {
         onSubmit={async (event) => {
           event.preventDefault();
           setError(null);
-          setCreditNotice(null);
+          setRechargeNotice(null);
+          setGiftNotice(null);
+          setCreditSubmitting(true);
           try {
             const result = await grantCreditPackage({
               username: creditUsername.trim(),
               amountCny: creditAmount,
               externalReference: creditReference.trim(),
             });
-            setCreditNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
+            setRechargeNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
             setCreditReference('');
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : '充值入账失败');
+          } finally {
+            setCreditSubmitting(false);
           }
         }}
       >
@@ -402,7 +453,13 @@ export function AdminContent() {
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <Input
             value={creditUsername}
-            onChange={(event) => setCreditUsername(event.target.value)}
+            onChange={(event) => {
+              setCreditUsername(event.target.value);
+              setCreditTarget(null);
+              setCreditCandidate(null);
+              lookupSequence.current.recharge += 1;
+            }}
+            onBlur={() => void lookupTarget('recharge')}
             placeholder="用户名"
             aria-label="充值用户名"
           />
@@ -423,11 +480,32 @@ export function AdminContent() {
             placeholder="支付宝流水号"
             aria-label="外部流水号"
           />
-          <Button type="submit" disabled={!creditUsername.trim() || !creditReference.trim()}>
-            确认入账
+          <Button
+            type="submit"
+            disabled={!creditTarget || !creditReference.trim() || creditSubmitting}
+          >
+            {creditSubmitting ? '入账中…' : '确认入账'}
           </Button>
         </div>
-        {creditNotice ? <p className="mt-2 text-xs text-[var(--success)]">{creditNotice}</p> : null}
+        {creditCandidate && !creditTarget ? (
+          <TargetConfirmation
+            target={creditCandidate}
+            actionLabel="选择此账号"
+            onConfirm={() => setCreditTarget(creditCandidate)}
+          />
+        ) : null}
+        {creditTarget ? (
+          <TargetConfirmation
+            target={creditTarget}
+            amount={`${creditAmount} 元 / ${creditTarget.credit.available} → 入账后 ${creditTarget.credit.available + { 7: 1000, 35: 5000, 70: 10000, 140: 20000 }[creditAmount]} Credit`}
+            selected
+          />
+        ) : null}
+        {rechargeNotice ? (
+          <p role="status" className="mt-2 text-xs text-[var(--success)]">
+            {rechargeNotice}
+          </p>
+        ) : null}
       </form>
 
       <form
@@ -435,17 +513,21 @@ export function AdminContent() {
         onSubmit={async (event) => {
           event.preventDefault();
           setError(null);
-          setCreditNotice(null);
+          setGiftNotice(null);
+          setRechargeNotice(null);
+          setGiftSubmitting(true);
           try {
             const result = await grantCreditGift({
               username: giftUsername.trim(),
               amountCredits: Number(giftAmount),
               reason: giftReason.trim(),
             });
-            setCreditNotice(`已赠送 @${result.username} ${result.amountCredits} Credit`);
+            setGiftNotice(`已赠送 @${result.username} ${result.amountCredits} Credit`);
             setGiftReason('');
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : '赠送入账失败');
+          } finally {
+            setGiftSubmitting(false);
           }
         }}
       >
@@ -456,7 +538,13 @@ export function AdminContent() {
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <Input
             value={giftUsername}
-            onChange={(event) => setGiftUsername(event.target.value)}
+            onChange={(event) => {
+              setGiftUsername(event.target.value);
+              setGiftTarget(null);
+              setGiftCandidate(null);
+              lookupSequence.current.gift += 1;
+            }}
+            onBlur={() => void lookupTarget('gift')}
             placeholder="用户名"
             aria-label="赠送用户名"
             required
@@ -485,17 +573,133 @@ export function AdminContent() {
           <Button
             type="submit"
             disabled={
-              !giftUsername.trim() ||
+              !giftTarget ||
+              giftSubmitting ||
               giftReason.trim().length < 2 ||
               !Number.isSafeInteger(Number(giftAmount)) ||
               Number(giftAmount) < 1 ||
               Number(giftAmount) > 20_000
             }
           >
-            确认赠送
+            {giftSubmitting ? '赠送中…' : '确认赠送'}
           </Button>
         </div>
+        {giftCandidate && !giftTarget ? (
+          <TargetConfirmation
+            target={giftCandidate}
+            actionLabel="选择此账号"
+            onConfirm={() => setGiftTarget(giftCandidate)}
+          />
+        ) : null}
+        {giftTarget ? (
+          <TargetConfirmation target={giftTarget} amount={`${giftAmount} Credit`} selected />
+        ) : null}
+        {giftNotice ? (
+          <p role="status" className="mt-2 text-xs text-[var(--success)]">
+            {giftNotice}
+          </p>
+        ) : null}
       </form>
+
+      <section className="mt-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4">
+        <h2 className="text-sm font-semibold">口令红包申请</h2>
+        <div className="mt-3 space-y-2">
+          {redPackets
+            .filter((item) => item.status === 'pending')
+            .map((item) => (
+              <div
+                key={item.id}
+                className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3 text-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    @{item.username} · {item.code}
+                  </span>
+                  <span className="text-xs text-[var(--text-faint)]">
+                    {new Date(item.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                {item.note ? (
+                  <p className="mt-1 text-xs text-[var(--text-soft)]">{item.note}</p>
+                ) : null}
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    id={`red-packet-amount-${item.id}`}
+                    type="number"
+                    min={1}
+                    max={20000}
+                    defaultValue={1000}
+                    aria-label="红包 Credit 数量"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      const input = document.getElementById(
+                        `red-packet-amount-${item.id}`,
+                      ) as HTMLInputElement;
+                      await approveAdminCreditRedPacket(item.id, Number(input.value));
+                      setRedPackets((await listAdminCreditRedPackets()).items);
+                    }}
+                  >
+                    确认发送
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      const reason = window.prompt('请输入拒绝原因')?.trim();
+                      if (!reason) return;
+                      await rejectAdminCreditRedPacket(item.id, reason);
+                      setRedPackets((await listAdminCreditRedPackets()).items);
+                    }}
+                  >
+                    拒绝
+                  </Button>
+                </div>
+              </div>
+            ))}
+          {!redPackets.some((item) => item.status === 'pending') ? (
+            <p className="text-xs text-[var(--text-faint)]">暂无待处理申请</p>
+          ) : null}
+        </div>
+      </section>
     </section>
+  );
+}
+
+function TargetConfirmation({
+  target,
+  amount,
+  actionLabel,
+  onConfirm,
+  selected = false,
+}: {
+  target: Awaited<ReturnType<typeof lookupAdminCreditTarget>>;
+  amount?: string;
+  actionLabel?: string;
+  onConfirm?: () => void;
+  selected?: boolean;
+}) {
+  return (
+    <div className="mt-3 rounded-[var(--radius-xs)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-xs">
+      <div className="font-semibold">{selected ? '已选择目标账号' : '已找到，请确认账号'}</div>
+      <div className="mt-1 grid gap-1 text-[var(--text-soft)] sm:grid-cols-2">
+        <span>用户名：@{target.user.username}</span>
+        <span>显示名：{target.user.displayName || '未设置'}</span>
+        <span className="break-all">账号 ID：{target.user.id}</span>
+        <span>邮箱：{target.user.email || '未设置'}</span>
+        <span>邮箱状态：{target.user.emailVerified ? '已验证' : '未验证'}</span>
+        <span>注册时间：{new Date(target.createdAt).toLocaleString()}</span>
+        <span>总余额：{target.credit.total} Credit</span>
+        <span>占用余额：{target.credit.reserved} Credit</span>
+        <span>当前余额：{target.credit.available} Credit</span>
+        {amount ? <span>本次：{amount}</span> : null}
+      </div>
+      {onConfirm && actionLabel ? (
+        <Button type="button" size="sm" className="mt-3" onClick={onConfirm}>
+          {actionLabel}
+        </Button>
+      ) : null}
+    </div>
   );
 }

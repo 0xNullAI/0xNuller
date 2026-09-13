@@ -115,8 +115,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   } = useSettingsManager();
 
   const [pendingPermission, setPendingPermission] = useState<PendingPermissionRequest | null>(null);
-  const [bridgeLogs, setBridgeLogs] = useState<BridgeLogEntry[]>([]);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeManagerStatus | null>(null);
+  const [, setBridgeLogs] = useState<BridgeLogEntry[]>([]);
+  const [, setBridgeStatus] = useState<BridgeManagerStatus | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -876,16 +876,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         />
 
         <AgentModuleProjections
-          debug={{
-            bridge: { settingsDraft, setSettingsDraft },
-            bridgeLogs: { bridgeLogs, bridgeStatus, settings },
-            modelLogs: {
-              settingsDraft,
-              setSettingsDraft,
-              turns: modelLog.turns,
-              onClear: modelLog.clear,
-            },
-          }}
           sensors={{
             settingsDraft,
             setSettingsDraft,

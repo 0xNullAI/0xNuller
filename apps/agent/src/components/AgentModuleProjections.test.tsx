@@ -25,16 +25,6 @@ vi.mock('@0xnullai/ui', () => ({
   ),
 }));
 
-vi.mock('./DebugPanel.js', () => ({
-  DebugPanel: ({ onClose }: { onClose: () => void }) => (
-    <div role="dialog" aria-label="调试面板">
-      <button type="button" onClick={onClose}>
-        关闭调试面板
-      </button>
-    </div>
-  ),
-}));
-
 vi.mock('./settings/SensorsTab.js', () => ({
   SensorsTab: ({
     onToggleSensorTriggers,
@@ -71,16 +61,6 @@ function makeProps({
   const settings = defaultBrowserAppSettings();
   const setSettings = vi.fn();
   return {
-    debug: {
-      bridge: { settingsDraft: settings, setSettingsDraft: setSettings },
-      bridgeLogs: { bridgeLogs: [], bridgeStatus: null, settings },
-      modelLogs: {
-        settingsDraft: settings,
-        setSettingsDraft: setSettings,
-        turns: [],
-        onClear: vi.fn(),
-      },
-    },
     sensors: {
       settingsDraft: settings,
       setSettingsDraft: setSettings,
@@ -111,7 +91,6 @@ describe('AgentModuleProjections', () => {
     expect(screen.getByTestId('agent-sensors').getAttribute('aria-label')).toBe('传感器');
     expect(screen.getByTestId('agent-waveforms').getAttribute('aria-label')).toBe('波形');
     expect(screen.getByTestId('agent-data').getAttribute('aria-label')).toBe('数据');
-    expect(screen.getByTestId('agent-diagnostics').getAttribute('aria-label')).toBe('诊断');
 
     fireEvent.click(screen.getByText('启用传感器'));
     fireEvent.click(screen.getByText('导出会话'));
@@ -119,13 +98,4 @@ describe('AgentModuleProjections', () => {
     expect(onExport).toHaveBeenCalledWith(['session-1']);
   });
 
-  it('owns only the debug panel open and close interaction', () => {
-    render(<AgentModuleProjections {...makeProps()} />);
-
-    expect(screen.queryByRole('dialog')).toBeNull();
-    fireEvent.click(screen.getByLabelText('打开调试面板'));
-    expect(screen.getByRole('dialog', { name: '调试面板' })).not.toBeNull();
-    fireEvent.click(screen.getByText('关闭调试面板'));
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
 });

@@ -122,6 +122,50 @@ export async function submitFeedback(input: { message: string; contact?: string 
   });
 }
 
+export type CreditRedPacketStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+export interface CreditRedPacketRequest {
+  id: string;
+  username?: string;
+  code: string;
+  note: string | null;
+  status: CreditRedPacketStatus;
+  rejectReason: string | null;
+  createdAt: number;
+  processedAt: number | null;
+}
+
+export async function submitCreditRedPacket(input: { code: string; note?: string }) {
+  return call<{ request: CreditRedPacketRequest }>('/api/auth/credit-red-packets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listCreditRedPackets() {
+  return call<{ items: CreditRedPacketRequest[] }>('/api/auth/credit-red-packets');
+}
+
+export async function listAdminCreditRedPackets() {
+  return call<{ items: CreditRedPacketRequest[] }>('/api/auth/admin/credit-red-packets');
+}
+
+export async function approveAdminCreditRedPacket(id: string, amountCredits: number) {
+  return call<{ ok: true; amountCredits: number }>(
+    `/api/auth/admin/credit-red-packets/${encodeURIComponent(id)}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ amountCredits }),
+    },
+  );
+}
+
+export async function rejectAdminCreditRedPacket(id: string, reason: string) {
+  return call<{ ok: true }>(`/api/auth/admin/credit-red-packets/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export interface ReferralSummary {
   code: string;
   balanceCredits: number;
@@ -170,6 +214,8 @@ export interface CreditLedgerEntry {
   amountCredits: number;
   kind:
     | 'referral_reward'
+    | 'market_download_reward'
+    | 'red_packet'
     | 'manual_purchase'
     | 'admin_gift'
     | 'usage'
@@ -228,6 +274,16 @@ export function grantCreditGift(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export interface AdminCreditTarget {
+  user: AuthUser;
+  credit: CreditBalance;
+  createdAt: number;
+}
+
+export function lookupAdminCreditTarget(username: string): Promise<AdminCreditTarget> {
+  return call(`/api/auth/admin/credits/users/${encodeURIComponent(username.trim())}`);
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {

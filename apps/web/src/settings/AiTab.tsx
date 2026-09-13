@@ -58,9 +58,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
     behaviorStore.loadModelBehavior(),
   );
-  const [providerQuery, setProviderQuery] = useState(
-    () => getProviderDefinition(config.providerId as ProviderId)?.name ?? '',
-  );
+  const [providerQuery, setProviderQuery] = useState('');
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
   const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
@@ -186,7 +184,9 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 ...createProviderSettings('managed'),
                 rememberApiKey: config.rememberApiKey,
               });
-              setProviderQuery('国际 · 0xNullAI 模型');
+              // Keep the provider search as a real user-entered search field. Do not
+              // repopulate it with the managed provider when switching back.
+              setProviderQuery('');
               setOwnApiOpen(false);
             }}
           >
@@ -235,7 +235,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 }}
                 onFocus={() => setProviderMenuOpen(true)}
                 onBlur={() => window.setTimeout(() => setProviderMenuOpen(false), 120)}
-                placeholder="搜索服务商"
+                placeholder="搜索"
                 aria-label="搜索并选择服务商"
                 role="combobox"
                 aria-expanded={providerMenuOpen}
@@ -245,7 +245,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 <div
                   id="llm-provider-options"
                   role="listbox"
-                  className="absolute inset-x-0 top-[4.25rem] z-20 max-h-72 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface)] p-1 shadow-lg"
+                  className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 isolate overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg"
                 >
                   {providerOptions.map((option, index) => {
                     const previous = providerOptions[index - 1];

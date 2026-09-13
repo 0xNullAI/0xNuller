@@ -6,6 +6,7 @@
 }
 
 :root {
+  color-scheme: light;
   --bg: #ffffff;
   --bg-elevated: #ffffff;
   --bg-strong: #f8fafb;
@@ -170,6 +171,7 @@
 }
 
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --accent-text: var(--accent);
   --bg: #080808;
   --bg-elevated: #141414;

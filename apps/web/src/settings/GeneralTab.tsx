@@ -1,4 +1,6 @@
 import { useTheme } from '@0xnullai/ui';
+import { loadLocale, updateLocale, type AppLocale } from '@0xnullai/settings';
+import { useEffect, useState } from 'react';
 import { ProxySection } from './ProxySection';
 
 const THEMES = [
@@ -9,6 +11,11 @@ const THEMES = [
 
 export function GeneralTab() {
   const { mode, setMode } = useTheme();
+  const [locale, setLocale] = useState<AppLocale>(loadLocale);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -40,6 +47,18 @@ export function GeneralTab() {
       </section>
 
       <ProxySection />
+
+      <section>
+        <h3 className="text-sm font-semibold">语言</h3>
+        <select
+          value={locale}
+          onChange={(event) => setLocale(updateLocale(event.target.value as AppLocale))}
+          className="mt-3 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
+        >
+          <option value="zh-CN">中文</option>
+          <option value="ja-JP">日本語</option>
+        </select>
+      </section>
     </div>
   );
 }
