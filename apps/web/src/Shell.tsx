@@ -201,9 +201,10 @@ export function Shell() {
 
   useEffect(() => {
     if (!user) return;
-    const refresh = () => void getCreditBalance()
-      .then((balance) => setCreditBalance(balance.available))
-      .catch(() => setCreditBalance(null));
+    const refresh = () =>
+      void getCreditBalance()
+        .then((balance) => setCreditBalance(balance.available))
+        .catch(() => setCreditBalance(null));
     refresh();
     const timer = window.setInterval(refresh, 15_000);
     window.addEventListener('focus', refresh);

@@ -97,5 +97,4 @@ describe('AgentModuleProjections', () => {
     expect(onToggleSensorTriggers).toHaveBeenCalledWith(true);
     expect(onExport).toHaveBeenCalledWith(['session-1']);
   });
-
 });

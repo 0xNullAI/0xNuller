@@ -18,11 +18,7 @@ export interface AgentModuleProjectionsProps {
  * registers those projections;
  * it does not coordinate sessions, devices, permissions, or persistence.
  */
-export function AgentModuleProjections({
-  sensors,
-  waveforms,
-  data,
-}: AgentModuleProjectionsProps) {
+export function AgentModuleProjections({ sensors, waveforms, data }: AgentModuleProjectionsProps) {
   return (
     <>
       <ModuleSettingsSection id="agent-sensors" label="传感器" navigation={false}>
