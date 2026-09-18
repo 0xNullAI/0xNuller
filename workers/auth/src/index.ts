@@ -1346,7 +1346,9 @@ export default {
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const username =
-          typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+          typeof body.username === 'string'
+            ? body.username.trim().replace(/^@+/, '').toLowerCase()
+            : '';
         const amountCny = Math.trunc(Number(body.amountCny));
         const externalReference =
           typeof body.externalReference === 'string' ? body.externalReference.trim() : '';
@@ -1420,6 +1422,7 @@ export default {
         if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
         const username = decodeURIComponent(adminCreditUser[1] ?? '')
           .trim()
+          .replace(/^@+/, '')
           .toLowerCase();
         if (!username) return err('用户不存在', 404, cors);
         const target = await env.DB.prepare(
@@ -1451,7 +1454,9 @@ export default {
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const username =
-          typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+          typeof body.username === 'string'
+            ? body.username.trim().replace(/^@+/, '').toLowerCase()
+            : '';
         const amountCredits = Number(body.amountCredits);
         const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
         if (

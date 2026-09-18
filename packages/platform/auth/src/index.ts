@@ -283,7 +283,8 @@ export interface AdminCreditTarget {
 }
 
 export function lookupAdminCreditTarget(username: string): Promise<AdminCreditTarget> {
-  return call(`/api/auth/admin/credits/users/${encodeURIComponent(username.trim())}`);
+  const normalized = username.trim().replace(/^@+/, '');
+  return call(`/api/auth/admin/credits/users/${encodeURIComponent(normalized)}`);
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {
