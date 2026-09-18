@@ -573,7 +573,6 @@ export function AdminContent() {
           <Button
             type="submit"
             disabled={
-              !giftTarget ||
               giftSubmitting ||
               giftReason.trim().length < 2 ||
               !Number.isSafeInteger(Number(giftAmount)) ||
@@ -584,6 +583,9 @@ export function AdminContent() {
             {giftSubmitting ? '赠送中…' : '确认赠送'}
           </Button>
         </div>
+        <p className="mt-2 text-xs text-[var(--text-faint)]">
+          查询用于确认账号，不是赠送前置条件；无法查询时仍会由服务端按用户名校验。
+        </p>
         {giftCandidate && !giftTarget ? (
           <TargetConfirmation
             target={giftCandidate}
