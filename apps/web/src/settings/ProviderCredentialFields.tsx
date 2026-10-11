@@ -1,3 +1,4 @@
+import { SecretHint } from './SecretHint';
 import { Input } from '@0xnullai/ui';
 import type {
   ProviderDefinition,
@@ -50,6 +51,7 @@ export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
             value={config.apiKey}
             onChange={(event) => update({ apiKey: event.target.value } as Partial<T>)}
           />
+          <SecretHint value={config.apiKey} />
         </label>
       )}
     </>

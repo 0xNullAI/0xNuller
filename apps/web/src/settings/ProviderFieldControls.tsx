@@ -1,4 +1,5 @@
 import { Input, SettingSelect } from '@0xnullai/ui';
+import { SecretHint } from './SecretHint';
 
 export interface ProviderSettingField {
   key: string;
@@ -28,12 +29,15 @@ export function ProviderFieldControls({
           options={field.options ?? []}
         />
       ) : (
-        <Input
-          type={field.type}
-          value={getValue(field.key)}
-          placeholder={field.placeholder}
-          onChange={(event) => onValueChange(field.key, event.target.value)}
-        />
+        <>
+          <Input
+            type={field.type}
+            value={getValue(field.key)}
+            placeholder={field.placeholder}
+            onChange={(event) => onValueChange(field.key, event.target.value)}
+          />
+          {field.type === 'password' && <SecretHint value={getValue(field.key)} />}
+        </>
       )}
     </label>
   ));
