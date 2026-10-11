@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import type * as AuthModule from '@0xnullai/auth';
 import type { AuthUser } from '@0xnullai/auth';
 import { AccountContent } from './AccountContent';
 
@@ -9,7 +10,7 @@ const auth = vi.hoisted(() => ({
 }));
 
 vi.mock('@0xnullai/auth', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@0xnullai/auth')>()),
+  ...(await importOriginal<typeof AuthModule>()),
   ...auth,
 }));
 
