@@ -67,6 +67,13 @@ node scripts/chat-backup.mjs capture-scheduled https://0xnullai.com https://0xnu
 `captured-unverified` 并以非零状态退出，供后续核对；不能把这个批次称为已验收的生产备份。
 三个捕获仍不是同一事务恢复点，批次入口不会消除该限制。
 
+房间消息导出包含 `sender_account`（发送账户）；`from_id` 只是单次连接的临时 ID，恢复后不能用它识别发送者。
+群成员、群主、群名与 `persistentHistory` 等 RoomDO 设置**不在**导出范围内，恢复群聊时须另行重建。
+
+本地联调（`docs/testing.md`）中两个备份令牌须至少 32 字符。`capture-d1 --local` 只读 Wrangler
+默认状态目录；使用 `--persist-to` 的本地库，可对库副本删去 `_cf_` 内部表后 `sqlite3 .dump`，
+再去掉 `PRAGMA writable_schema` 与 `CREATE TABLE IF NOT EXISTS sqlite_sequence` 两行，用 `pack` 封装后演练。
+
 `capture-d1` 也接受 `--local` 用于本地测试。`pack <source-dir> <backup-dir>` 可将**已经导出的**
 DO 快照和 R2 对象连同 D1 SQL 封装；输入目录只允许普通文件，不允许符号链接。每个对象使用
 AES-256-GCM 独立随机 nonce，加密清单记录相对路径、大小和 SHA-256；密钥通过随机 salt 和

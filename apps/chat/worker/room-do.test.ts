@@ -117,7 +117,7 @@ it('exports persisted raw rows only for the exact room code with a descending cu
   r.sql.exec.mockImplementation((query: string) => ({
     one: () => ({ n: 101 }),
     toArray: () =>
-      query.includes('SELECT id,from_id,name,body,ts')
+      query.includes('SELECT m.id,m.from_id,m.name,m.body,m.ts,s.sender_account')
         ? Array.from({ length: 101 }, (_, index) => ({
             id: `m${101 - index}`,
             ts: 101 - index,
@@ -138,7 +138,7 @@ it('exports persisted raw rows only for the exact room code with a descending cu
   expect(page.totalMessages).toBe(101);
   expect(page.before).toEqual({ ts: 2, id: 'm2' });
   expect(r.sql.exec).toHaveBeenCalledWith(
-    expect.stringContaining('WHERE ts < ? OR (ts = ? AND id < ?)'),
+    expect.stringContaining('WHERE m.ts < ? OR (m.ts = ? AND m.id < ?)'),
     200,
     200,
     'z',

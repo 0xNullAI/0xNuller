@@ -79,11 +79,11 @@ npx wrangler d1 migrations apply dg-market --local -c apps/market/wrangler.jsonc
 # 各开一个终端
 npx wrangler dev -c workers/auth/wrangler.jsonc --local --persist-to $S/wstate --port 8787 \
   --var IP_PEPPER:local-test-pepper --var DM_TICKET_SECRET:local-test-dm-secret \
-  --var ALLOWED_ORIGINS:http://localhost:5173
+  --var ALLOWED_ORIGINS:http://localhost:5173 --var AUTH_BACKUP_TOKEN:local-auth-backup-token-0123456789
 npx wrangler dev -c apps/market/wrangler.jsonc --local --persist-to $S/wstate --port 8788 \
   --inspector-port 9230 --var MARKET_IP_PEPPER:local-market-pepper
 npx wrangler dev -c apps/chat/wrangler.jsonc --local --persist-to $S/wstate --port 8789 \
-  --inspector-port 9231 --var DM_TICKET_SECRET:local-test-dm-secret --var CHAT_BACKUP_TOKEN:local-backup-token
+  --inspector-port 9231 --var DM_TICKET_SECRET:local-test-dm-secret --var CHAT_BACKUP_TOKEN:local-chat-backup-token-0123456789
 DEV_API_PROXY=http://127.0.0.1:8787 npm run dev -w @0xnullai/web -- --port 5173 --strictPort
 node scripts/dev/local-router.mjs
 ```

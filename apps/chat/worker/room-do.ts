@@ -156,7 +156,8 @@ export class RoomDO extends DurableObject<Env> {
     const totalMessages = Number(this.sql.exec('SELECT COUNT(*) AS n FROM messages').one().n);
     const rows = this.sql
       .exec(
-        `SELECT id,from_id,name,body,ts FROM messages ${before ? 'WHERE ts < ? OR (ts = ? AND id < ?)' : ''} ORDER BY ts DESC,id DESC LIMIT 101`,
+        // The sender account is what identifies a sender across restores; peer ids are per page load.
+        `SELECT m.id,m.from_id,m.name,m.body,m.ts,s.sender_account FROM messages m LEFT JOIN message_sequences s ON s.message_id=m.id ${before ? 'WHERE m.ts < ? OR (m.ts = ? AND m.id < ?)' : ''} ORDER BY m.ts DESC,m.id DESC LIMIT 101`,
         ...(before ? [before.ts, before.ts, before.id] : []),
       )
       .toArray();
