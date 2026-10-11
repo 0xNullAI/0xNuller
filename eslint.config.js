@@ -50,6 +50,8 @@ export default tseslint.config(
       '**/src-tauri/gen/**',
       '**/.astro/**',
       '**/.wrangler/**',
+      // Agent worktrees are separate checkouts, not this tree's source.
+      '.claude/**',
     ],
   },
   js.configs.recommended,
