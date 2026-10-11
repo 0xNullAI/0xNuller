@@ -76,6 +76,10 @@ interface ChatPanelProps {
   onDiscardMessage?: (id: string) => void;
   /** Withdraw one of this account's confirmed messages within RECALL_WINDOW_MS. */
   onRecallMessage?: (id: string) => void;
+  /** Scroll to this message, reading older pages until it is loaded. */
+  jumpToMessageId?: string | null;
+  /** The jump finished: `found` is false when history ran out first. */
+  onJumpSettled?: (found: boolean) => void;
 }
 
 function mediaSource(url: string, privateMediaToken?: string | null): string | null {
@@ -138,6 +142,8 @@ export function ChatPanel({
   hasOlderHistory,
   historyLoading,
   onLoadOlderHistory,
+  jumpToMessageId,
+  onJumpSettled,
 }: ChatPanelProps) {
   // Re-evaluated every 15 s so the 撤回 button disappears once the window closes.
   const [now, setNow] = useState(() => Date.now());
@@ -225,6 +231,28 @@ export function ChatPanel({
     }
     setMentionQuery(null);
   }
+
+  useEffect(() => {
+    if (!jumpToMessageId) return;
+    const element = messageElements.current.get(jumpToMessageId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.focus({ preventScroll: true });
+      element.animate?.(
+        [{ backgroundColor: 'var(--accent-soft)' }, { backgroundColor: 'transparent' }],
+        { duration: 1600 },
+      );
+      onJumpSettled?.(true);
+    } else if (!hasOlderHistory || !onLoadOlderHistory) onJumpSettled?.(false);
+    else if (!historyLoading) onLoadOlderHistory();
+  }, [
+    jumpToMessageId,
+    messages,
+    hasOlderHistory,
+    historyLoading,
+    onLoadOlderHistory,
+    onJumpSettled,
+  ]);
 
   const latestMessageId = timeline.at(-1)?.itemId;
   useEffect(() => {

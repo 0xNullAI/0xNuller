@@ -73,6 +73,17 @@ function isOwnMessage(frame: Record<string, unknown>): boolean {
     : frame._from === selfId;
 }
 
+/** One match from the server-side history search, newest first. */
+export interface ChatSearchHit {
+  id: string;
+  senderName: string;
+  fromSelf: boolean;
+  text: string;
+  timestamp: number;
+}
+
+const SEARCH_TIMEOUT_MS = 8000;
+
 /** Without the server echo by then, a sent message is shown as failed with a retry. */
 const SEND_CONFIRM_TIMEOUT_MS = 15_000;
 
@@ -306,6 +317,11 @@ export function usePeerRoom(displayName: string) {
     return transportRef.current?.send(payload) ?? false;
   }, []);
 
+  /** Search requests awaiting their `search-result` frame. */
+  const searchesRef = useRef(
+    new Map<string, { resolve: (hits: ChatSearchHit[]) => void; timer: number }>(),
+  );
+
   /** Outgoing chat frames awaiting the server echo, kept so a retry resends the same id. */
   const pendingSendsRef = useRef(new Map<string, { payload: object; timer: number }>());
 
@@ -429,6 +445,26 @@ export function usePeerRoom(displayName: string) {
 
       function handleMessage(data: Record<string, unknown>) {
         const t = data.t as string;
+
+        if (t === 'search-result') {
+          const search = searchesRef.current.get(String(data.requestId));
+          if (!search) return;
+          searchesRef.current.delete(String(data.requestId));
+          clearTimeout(search.timer);
+          const list = Array.isArray(data.messages)
+            ? (data.messages as Array<Record<string, unknown>>)
+            : [];
+          search.resolve(
+            list.map((m) => ({
+              id: String(m.id),
+              senderName: typeof m.n === 'string' ? m.n : '',
+              fromSelf: isOwnMessage(m),
+              text: typeof m.x === 'string' ? m.x : '',
+              timestamp: typeof m.ts === 'number' ? m.ts : 0,
+            })),
+          );
+          return;
+        }
 
         if (t === 'agent-claim-result') {
           const claim = agentClaimsRef.current.get(String(data.requestId));
@@ -1159,6 +1195,20 @@ export function usePeerRoom(displayName: string) {
       setHistoryLoading(true);
       send({ t: 'history-before', before: historyBefore });
     },
+    /** Text search over this conversation's retained server history. */
+    searchMessages: (query: string) =>
+      new Promise<ChatSearchHit[]>((resolve, reject) => {
+        const requestId = crypto.randomUUID();
+        if (!send({ t: 'search', q: query, requestId })) {
+          reject(new Error('未连接'));
+          return;
+        }
+        const timer = window.setTimeout(() => {
+          searchesRef.current.delete(requestId);
+          reject(new Error('搜索超时'));
+        }, SEARCH_TIMEOUT_MS);
+        searchesRef.current.set(requestId, { resolve, timer });
+      }),
     keepGroupHistory: () => {
       const code = roomIdRef.current;
       if (code)

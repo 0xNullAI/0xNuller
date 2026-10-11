@@ -1,7 +1,7 @@
 import { GroupMembershipDialog } from './GroupMembershipDialog';
 import type { ChatReplyContext } from '../lib/protocol';
 import { ConversationHeader, ConversationTitle, useShellNav } from '@0xnullai/ui';
-import { ArrowLeft, Bot, ChevronRight, LogOut, Settings2, Users } from 'lucide-react';
+import { ArrowLeft, Bot, ChevronRight, LogOut, Search, Settings2, Users } from 'lucide-react';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DmRequest } from '@0xnullai/auth';
 import type { useDevice } from '@0xnullai/device-runtime';
@@ -9,6 +9,7 @@ import type { useWaveforms } from '@0xnullai/waveforms';
 import type { usePeerRoom } from '../hooks/use-peer-room';
 import type { CmdAction, DeviceCommand, MemberState, PlayMode } from '../lib/protocol';
 import { ChatPanel } from './ChatPanel';
+import { ChatSearchDialog } from './ChatSearchDialog';
 import { ControlPanel } from './ControlPanel';
 import { CreateRoomDialog } from './CreateRoomDialog';
 import { DeviceSafetyButton } from './DeviceSafetyButton';
@@ -144,6 +145,8 @@ export function ChatAppView({
 }: ChatAppViewProps) {
   const shellNav = useShellNav();
   const [membersOpen, setMembersOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
   const [conversationListOpen, setConversationListOpen] = useState(false);
   const roomTitle = peerRoom.isDm ? (dmPeer?.name ?? '私聊') : peerRoom.groupName || '群聊';
   const leaveRoom = () => {
@@ -327,6 +330,17 @@ export function ChatAppView({
             </button>
           )}
         </ConversationHeader>
+        {searchOpen && peerRoom.roomId && (
+          <ChatSearchDialog
+            onSearch={peerRoom.searchMessages}
+            onPick={(id) => {
+              setSearchOpen(false);
+              setActiveTab('chat');
+              setJumpToMessageId(id);
+            }}
+            onClose={() => setSearchOpen(false)}
+          />
+        )}
         {membersOpen && !peerRoom.isDm && peerRoom.isOwner && (
           <GroupMembershipDialog
             key={peerRoom.roomId}
@@ -423,6 +437,8 @@ export function ChatAppView({
                   onRetryMessage={peerRoom.retryMessage}
                   onDiscardMessage={peerRoom.discardMessage}
                   onRecallMessage={peerRoom.recallMessage}
+                  jumpToMessageId={jumpToMessageId}
+                  onJumpSettled={() => setJumpToMessageId(null)}
                   onSendMedia={sendMedia}
                   members={[
                     { peerId: peerRoom.selfId, name: displayName, username },
@@ -445,6 +461,15 @@ export function ChatAppView({
                   {roomPresenceLabel(peerRoom.isDm, peerRoom.peers.length)}
                 </p>
                 <div className="flex flex-col py-1">
+                  <button
+                    type="button"
+                    className={SETTINGS_ROW}
+                    onClick={() => setSearchOpen(true)}
+                  >
+                    <Search className="h-5 w-5 shrink-0 text-[var(--text-soft)]" />
+                    <span className="flex-1">搜索聊天记录</span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+                  </button>
                   {inShell && !peerRoom.isDm && peerRoom.canManageGroup && (
                     <button
                       type="button"

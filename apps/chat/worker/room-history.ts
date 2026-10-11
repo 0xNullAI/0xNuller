@@ -72,3 +72,42 @@ export function readHistoryPage(
     before: rows.length > pageSize && oldest ? { ts: oldest.ts, id: oldest.id } : null,
   };
 }
+
+export const SEARCH_RESULT_LIMIT = 50;
+export const SEARCH_QUERY_MAX = 64;
+
+/** Normalised query, or null when it should not reach SQLite. */
+export function parseSearchQuery(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const query = value.trim();
+  return query && query.length <= SEARCH_QUERY_MAX ? query : null;
+}
+
+/**
+ * Newest-first text matches in this room's retained history. Recalled messages are
+ * excluded because their body no longer holds text; lower() folds ASCII case only,
+ * which is all Chinese text needs.
+ */
+export function searchHistory(sql: SqlStorage, query: string, limit = SEARCH_RESULT_LIMIT) {
+  const rows = sql
+    .exec(
+      `SELECT m.id,m.from_id,m.name,m.ts,s.sender_account,json_extract(m.body,'$.x') AS x
+       FROM messages m LEFT JOIN message_sequences s ON s.message_id=m.id
+       WHERE json_extract(m.body,'$.recalled') IS NULL
+         AND instr(lower(json_extract(m.body,'$.x')), lower(?)) > 0
+       ORDER BY m.ts DESC,m.id DESC LIMIT ?`,
+      query,
+      limit,
+    )
+    .toArray();
+  return rows.map((row) => ({
+    id: row.id as string,
+    _from: row.from_id as string,
+    ...(typeof row.sender_account === 'string' && !row.sender_account.startsWith('agent:')
+      ? { _account: row.sender_account }
+      : {}),
+    n: row.name as string,
+    ts: row.ts as number,
+    x: row.x as string,
+  }));
+}

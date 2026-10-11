@@ -26,6 +26,8 @@ export type WireType =
   | 'scene' // legacy roleplay, dropped by the DO
   | 'role' // legacy roleplay, dropped by the DO
   | 'history-before' // client→DO: request an older bounded page
+  | 'search' // client→DO: text search over retained history
+  | 'search-result' // DO→client: newest-first matches for one search request
   | 'recall' // client→DO: withdraw one's own message; DO→client: { id } was recalled
   | 'history' // DO→client: replay for a newly joined peer
   | 'sys'; // DO→client: connection-level presence (joined/left)

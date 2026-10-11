@@ -478,3 +478,57 @@ it('offers 撤回 only on a fresh confirmed own message and shows a recalled one
   expect(screen.getByText('小波 撤回了一条消息')).toBeTruthy();
   expect(screen.queryByText('刚发的')).toBeNull();
 });
+
+describe('搜索结果定位', () => {
+  const message = (id: string, timestamp: number) => ({
+    id,
+    fromSelf: false,
+    senderId: 'peer',
+    senderName: 'Bob',
+    text: `消息 ${id}`,
+    timestamp,
+    serverConfirmed: true,
+  });
+
+  it('目标未加载时读取更早消息，加载后定位', () => {
+    const loadOlder = vi.fn();
+    const settled = vi.fn();
+    const props = {
+      conversationId: 'room',
+      onSend: vi.fn(),
+      onSendMedia: vi.fn(async () => undefined),
+      onLoadOlderHistory: loadOlder,
+      onJumpSettled: settled,
+      jumpToMessageId: 'old',
+    };
+    const { rerender } = render(
+      <ChatPanel {...props} messages={[message('new', 2)]} hasOlderHistory />,
+    );
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    expect(settled).not.toHaveBeenCalled();
+    rerender(
+      <ChatPanel
+        {...props}
+        messages={[message('old', 1), message('new', 2)]}
+        hasOlderHistory={false}
+      />,
+    );
+    expect(settled).toHaveBeenCalledWith(true);
+    expect(document.activeElement?.getAttribute('data-message-id')).toBe('old');
+  });
+
+  it('历史读完仍未找到时结束定位', () => {
+    const settled = vi.fn();
+    render(
+      <ChatPanel
+        conversationId="room"
+        messages={[message('new', 2)]}
+        onSend={vi.fn()}
+        onSendMedia={vi.fn(async () => undefined)}
+        jumpToMessageId="gone"
+        onJumpSettled={settled}
+      />,
+    );
+    expect(settled).toHaveBeenCalledWith(false);
+  });
+});

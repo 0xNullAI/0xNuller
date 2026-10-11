@@ -10,7 +10,12 @@ import { initializeDmReadState, dmReadState, advanceDmRead } from './dm-read-sta
 import type { DmInboxSummary } from './wire';
 import { resolveMessageReply } from './message-reply';
 import { isRecalledBody, recallMessage } from './message-recall';
-import { parseHistoryCursor, readHistoryPage } from './room-history';
+import {
+  parseHistoryCursor,
+  parseSearchQuery,
+  readHistoryPage,
+  searchHistory,
+} from './room-history';
 import {
   canCompleteRoomAgentTurn,
   claimRoomAgentTurn,
@@ -320,6 +325,7 @@ export class RoomDO extends DurableObject<Env> {
       case 'agent-error':
       case 'agent-claim-result':
       case 'agent-run-status':
+      case 'search-result':
         // Server-only envelopes must never be relayed from another participant.
         return;
       case 'renew': {
@@ -440,6 +446,24 @@ export class RoomDO extends DurableObject<Env> {
       case 'history-before': {
         const before = parseHistoryCursor(msg.before);
         if (before) this.sendAuthorized(ws, JSON.stringify(readHistoryPage(this.sql, before)));
+        return;
+      }
+      case 'search': {
+        const query = parseSearchQuery(msg.q);
+        if (
+          !query ||
+          typeof msg.requestId !== 'string' ||
+          !/^[A-Za-z0-9._:-]{1,128}$/.test(msg.requestId)
+        )
+          return;
+        this.sendAuthorized(
+          ws,
+          JSON.stringify({
+            t: 'search-result',
+            requestId: msg.requestId,
+            messages: searchHistory(this.sql, query),
+          }),
+        );
         return;
       }
       case 'agent-claim': {
