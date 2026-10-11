@@ -16,9 +16,10 @@
  * This wrapper hooks the DeviceClient with browser + Tauri lifecycle
  * signals and fires `emergencyStop()` on every transition that takes the
  * app off-screen. It is a belt-and-braces: the JS side covers
- * `visibilitychange` / `pagehide` / `freeze`, and the Tauri Rust side
- * (lib.rs) emits a window event on Android's onPause for the cases where
- * the webview is suspended before JS gets a chance.
+ * `visibilitychange` / `pagehide` / `freeze`; MainActivity.onPause also
+ * dispatches `0xnullai:native-pause` before the WebView is paused, so the stop
+ * is issued even when the page events arrive late; and lib.rs emits
+ * `app://paused` when the app exits.
  */
 
 import type { DeviceClient } from '@dg-agent/core';
@@ -55,6 +56,9 @@ function hasConnectDevice(value: unknown): value is ConnectDeviceCapable {
 
 type Stopper = () => Promise<void>;
 
+/** Dispatched by MainActivity.onPause before the WebView is paused. */
+export const NATIVE_PAUSE_EVENT = '0xnullai:native-pause';
+
 function attachWebListeners(stop: Stopper): LifecycleListener {
   const onHidden = () => {
     if (document.visibilityState === 'hidden') {
@@ -73,12 +77,14 @@ function attachWebListeners(stop: Stopper): LifecycleListener {
   document.addEventListener('visibilitychange', onHidden);
   window.addEventListener('pagehide', onPageHide);
   document.addEventListener('freeze', onFreeze);
+  window.addEventListener(NATIVE_PAUSE_EVENT, onPageHide);
 
   return {
     detach() {
       document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('freeze', onFreeze);
+      window.removeEventListener(NATIVE_PAUSE_EVENT, onPageHide);
     },
   };
 }

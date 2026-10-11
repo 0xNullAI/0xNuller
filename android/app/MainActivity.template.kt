@@ -22,6 +22,7 @@ import org.json.JSONObject
 import androidx.activity.enableEdgeToEdge
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
@@ -39,6 +40,8 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    // The app opens dark; the page updates this through setSystemBarTheme.
+    applySystemBarTheme(dark = true)
     getSharedPreferences("android_push", Context.MODE_PRIVATE)
       .registerOnSharedPreferenceChangeListener(pushRegistrationListener)
     pendingPushIntent = intent?.takeIf { PushSupport.routeFromIntent(this, it) != null }
@@ -51,10 +54,25 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  /** Edge-to-edge shows the window background behind the system bars. */
+  private fun applySystemBarTheme(dark: Boolean) {
+    window.decorView.setBackgroundColor(if (dark) DARK_SYSTEM_BAR else LIGHT_SYSTEM_BAR)
+    WindowCompat.getInsetsController(window, window.decorView).apply {
+      isAppearanceLightStatusBars = !dark
+      isAppearanceLightNavigationBars = !dark
+    }
+  }
+
   private external fun initializeButtplugGate0(): Boolean
   private external fun requestNativeLifecycleSafety(): Boolean
 
   override fun onPause() {
+    // Ask the page to stop DG-Lab output now, before the WebView is paused: the
+    // stop it issues is carried out natively even after the page stops running.
+    pushWebView?.evaluateJavascript(
+      "window.dispatchEvent(new Event('0xnullai:native-pause'))",
+      null,
+    )
     // Native output and active scanning must stop before Android suspends the
     // WebView. Scanner ownership is released only after native cleanup.
     if (!requestNativeLifecycleSafety()) {
@@ -255,6 +273,11 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun setSystemBarTheme(dark: Boolean) {
+      runOnUiThread { applySystemBarTheme(dark) }
+    }
+
+    @JavascriptInterface
     fun openAppSettings() = launchSettings(
       Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
     )
@@ -272,6 +295,8 @@ class MainActivity : TauriActivity() {
 
   private companion object {
     const val TAG = "0xNuller"
+    const val DARK_SYSTEM_BAR = 0xFF080808.toInt()
+    const val LIGHT_SYSTEM_BAR = 0xFFFFFFFF.toInt()
     const val BLE_PERMISSION_REQUEST_CODE = 4101
     const val CAMERA_PERMISSION_REQUEST_CODE = 4102
     const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4103

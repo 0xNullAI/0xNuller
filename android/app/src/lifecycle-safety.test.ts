@@ -86,6 +86,10 @@ describe('安卓生命周期安全网', () => {
       () => window.dispatchEvent(new Event('pagehide')),
     ],
     ['freeze: Chromium 的 bfcache 驱逐走这个', () => document.dispatchEvent(new Event('freeze'))],
+    [
+      'native-pause: 原生 onPause 在 WebView 暂停前通知',
+      () => window.dispatchEvent(new Event('0xnullai:native-pause')),
+    ],
   ])('%s 时停止输出', async (_reason, fire) => {
     fire();
     await tick();

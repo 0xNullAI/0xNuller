@@ -11,13 +11,14 @@ import { getAdapterState, type AdapterState } from '@mnlphlp/plugin-blec';
 import { installBackButton } from './android-back-button';
 import { installNativeDownloads } from './android-download';
 
-const DARK_BG = '#0b1020';
+const DARK_BG = '#080808';
 const LIGHT_BG = '#ffffff';
 
 /**
- * Keep `<meta name="theme-color">` in sync with `<html data-theme="...">`.
- * Status-bar tint on Android Tauri reads from theme-color; without this
- * the status bar stays dark even after the user switches to light mode.
+ * Keep the system bars in step with `<html data-theme="...">`. Edge-to-edge
+ * draws the window background behind the status and navigation bars, which
+ * `theme-color` does not reach, so the native bridge sets that colour and the
+ * icon contrast; the meta tag still serves other WebViews.
  */
 function syncStatusBarColor(): void {
   const apply = () => {
@@ -30,6 +31,7 @@ function syncStatusBarColor(): void {
       document.head.appendChild(meta);
     }
     meta.content = colour;
+    window.AndroidSystem?.setSystemBarTheme?.(theme !== 'light');
   };
   apply();
   const observer = new MutationObserver(apply);
@@ -143,6 +145,7 @@ interface AndroidSystemBridge {
   consumePushRoute(): string;
   consumePushTarget?(): string;
   saveDownload?(fileName: string, mimeType: string, base64: string): boolean;
+  setSystemBarTheme?(dark: boolean): void;
 }
 
 declare global {
