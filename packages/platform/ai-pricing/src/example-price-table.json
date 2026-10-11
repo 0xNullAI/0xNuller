@@ -1,0 +1,32 @@
+{
+  "version": "example-1",
+  "chat": {
+    "model": "example-chat-model",
+    "fallbackModel": "example-fallback-model",
+    "inputPerMillion": 100,
+    "cachedInputPerMillion": 10,
+    "outputPerMillion": 400
+  },
+  "vision": {
+    "model": "example-vision-model",
+    "inputPerMillion": 100,
+    "cachedInputPerMillion": 10,
+    "outputPerMillion": 400
+  },
+  "background": {
+    "model": "example-background-model",
+    "inputPerMillion": 50,
+    "cachedInputPerMillion": 5,
+    "outputPerMillion": 200
+  },
+  "image": { "model": "example-image-model", "perImage": 20 },
+  "tts": { "resourceId": "example-tts", "perTenThousandChars": 50 },
+  "asr": { "resourceId": "example-asr", "perHour": 100 },
+  "realtime": {
+    "model": "example-realtime-model",
+    "inputAudioPerMillion": 1000,
+    "inputTextPerMillion": 100,
+    "outputAudioPerMillion": 4000,
+    "outputTextPerMillion": 400
+  }
+}

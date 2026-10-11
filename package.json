@@ -70,7 +70,8 @@
     "check:structure": "node scripts/check-architecture.mjs && node scripts/check-test-discovery.mjs",
     "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
     "verify:data": "node scripts/verify-data-platform.mjs",
-    "account:role": "node scripts/set-account-role.mjs"
+    "account:role": "node scripts/set-account-role.mjs",
+    "build:ai-price-table": "node scripts/build-ai-price-table.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
