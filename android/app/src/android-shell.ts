@@ -9,6 +9,7 @@
 
 import { getAdapterState, type AdapterState } from '@mnlphlp/plugin-blec';
 import { installBackButton } from './android-back-button';
+import { installNativeDownloads } from './android-download';
 
 const DARK_BG = '#0b1020';
 const LIGHT_BG = '#ffffff';
@@ -141,6 +142,7 @@ interface AndroidSystemBridge {
   getPreviousPushRegistrationId?(): string;
   consumePushRoute(): string;
   consumePushTarget?(): string;
+  saveDownload?(fileName: string, mimeType: string, base64: string): boolean;
 }
 
 declare global {
@@ -373,4 +375,5 @@ export function installAndroidShellBehaviours(): void {
   autoScrollFocusedInput();
   syncVisualViewport();
   void installBackButton({ notify: showBackToast });
+  installNativeDownloads({ bridge: () => window.AndroidSystem, notify: showBackToast });
 }

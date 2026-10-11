@@ -1,6 +1,7 @@
 package ai.nullai.dgagent
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -9,6 +10,9 @@ import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import android.provider.Settings
 import android.util.Log
 import android.view.ViewGroup
@@ -214,6 +218,42 @@ class MainActivity : TauriActivity() {
       runOnUiThread { requestPermissions(permissions, BLE_PERMISSION_REQUEST_CODE) }
     }
 
+    /**
+     * WebView ignores `<a download>`, so page exports (memories, chats, cards)
+     * are handed over as base64 and written to the system Downloads folder
+     * (MediaStore on Android 10+, which needs no storage permission; the app's
+     * own Downloads folder before that).
+     */
+    @JavascriptInterface
+    fun saveDownload(fileName: String, mimeType: String, base64: String): Boolean {
+      if (base64.length > MAX_DOWNLOAD_BASE64) return false
+      val name = fileName.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").take(120).ifBlank { "download" }
+      val type = mimeType.ifBlank { "application/octet-stream" }
+      return try {
+        val bytes = Base64.decode(base64, Base64.DEFAULT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.MIME_TYPE, type)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+          }
+          val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: return false
+          contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+          values.clear()
+          values.put(MediaStore.Downloads.IS_PENDING, 0)
+          contentResolver.update(uri, values, null, null)
+        } else {
+          val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
+          java.io.File(dir, name).writeBytes(bytes)
+        }
+        true
+      } catch (error: Exception) {
+        Log.w(TAG, "Saving a download failed", error)
+        false
+      }
+    }
+
     @JavascriptInterface
     fun openAppSettings() = launchSettings(
       Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
@@ -235,5 +275,7 @@ class MainActivity : TauriActivity() {
     const val BLE_PERMISSION_REQUEST_CODE = 4101
     const val CAMERA_PERMISSION_REQUEST_CODE = 4102
     const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4103
+    /** About 24 MB of file data; larger exports would stall the JS bridge. */
+    const val MAX_DOWNLOAD_BASE64 = 32 * 1024 * 1024
   }
 }
