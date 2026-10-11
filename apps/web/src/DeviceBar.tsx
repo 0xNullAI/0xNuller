@@ -234,8 +234,8 @@ export function DeviceBar({
             className={`ui-press sticky left-0 z-[1] flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
               hasActiveOutput
                 ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
-                : // Still the stop control when idle: red so it reads as always available.
-                  'border-[var(--danger)] bg-[var(--bg-elevated)] text-[var(--danger)] hover:bg-[var(--danger-soft)] focus-visible:ring-[var(--danger)]'
+                : // Idle: a plain button with a red stop square, clearly clickable but quiet.
+                  'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text)] hover:border-[var(--danger)] hover:bg-[var(--danger-soft)] focus-visible:ring-[var(--danger)]'
             }`}
             title={
               hasActiveOutput
@@ -243,7 +243,9 @@ export function DeviceBar({
                 : `将全部已连接设备归零（${total} 台设备）`
             }
           >
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <Square
+              className={`h-3.5 w-3.5 fill-current ${hasActiveOutput ? '' : 'text-[var(--danger)]'}`}
+            />
             {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
           </button>
         )}
