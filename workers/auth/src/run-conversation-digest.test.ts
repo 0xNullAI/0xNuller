@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { readConversationDigest } from './conversation-digest';
 import { runConversationDigest } from './run-conversation-digest';
-import { createTestDb } from './test-helpers';
+import { createTestDb, TEST_PRICE_TABLE } from './test-helpers';
 import type { AutoMemoryEnv } from './auto-memory';
 
 const model = vi.hoisted(() => ({ generate: vi.fn() }));
-vi.mock('./minimax-conversation-digest', () => ({ generateConversationDigest: model.generate }));
+vi.mock('./conversation-digest-generation', () => ({ generateConversationDigest: model.generate }));
 
 let testDb: ReturnType<typeof createTestDb>;
 let env: AutoMemoryEnv;
 beforeEach(async () => {
   testDb = createTestDb();
-  env = { DB: testDb.DB, MINIMAX_MEDIA_API_KEY: 'test-key' } as AutoMemoryEnv;
+  env = {
+    DB: testDb.DB,
+    VOLC_ARK_API_KEY: 'test-key',
+    AI_PRICE_TABLE: TEST_PRICE_TABLE,
+  } as AutoMemoryEnv;
   model.generate.mockReset();
   model.generate.mockResolvedValue('讨论了读书计划。');
   await env.DB.prepare(
@@ -87,14 +91,28 @@ it('generates bounded older segments after opt-in and keeps the latest 20 messag
   expect(model.generate).not.toHaveBeenCalled();
   await optIn();
   expect(await runConversationDigest(env, 1000)).toBe(1);
-  expect(model.generate.mock.calls[0]?.[2]).toHaveLength(16);
-  expect(model.generate.mock.calls[0]?.[2][0].id).toBe('m0');
+  expect(model.generate.mock.calls[0]?.[3]).toHaveLength(16);
+  expect(model.generate.mock.calls[0]?.[3][0].id).toBe('m0');
   expect((await readConversationDigest(env, 'alice', 'c', 'r'))?.throughMessageId).toBe('m15');
   expect(await runConversationDigest(env, 1060)).toBe(1);
-  expect(model.generate.mock.calls[1]?.[1]).toBe('讨论了读书计划。');
-  expect(model.generate.mock.calls[1]?.[2]).toHaveLength(9);
+  expect(model.generate.mock.calls[1]?.[2]).toBe('讨论了读书计划。');
+  expect(model.generate.mock.calls[1]?.[3]).toHaveLength(9);
   expect((await readConversationDigest(env, 'alice', 'c', 'r'))?.throughMessageId).toBe('m24');
   expect(await runConversationDigest(env, 1120)).toBe(0);
+  // Digests are free: no Credit hold or ledger entry for any account.
+  expect(
+    await env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM credit_reservations)+(SELECT COUNT(*) FROM credit_ledger) AS n',
+    ).first(),
+  ).toEqual({ n: 0 });
+  expect(model.generate.mock.calls[0]?.[1]).toEqual(JSON.parse(TEST_PRICE_TABLE).background);
+});
+
+it('does nothing without a valid price table', async () => {
+  await optIn();
+  env.AI_PRICE_TABLE = '{}';
+  expect(await runConversationDigest(env, 1000)).toBe(0);
+  expect(model.generate).not.toHaveBeenCalled();
 });
 
 it('rotates the bounded cron slot between eligible private conversations', async () => {
@@ -134,7 +152,7 @@ it('advances an empty digest without injecting it or charging for the same segme
     summary: '',
   });
   expect(await runConversationDigest(env, 1060)).toBe(1);
-  expect(model.generate.mock.calls[1]?.[1]).toBe('');
+  expect(model.generate.mock.calls[1]?.[2]).toBe('');
   expect(await runConversationDigest(env, 1120)).toBe(0);
   expect(model.generate).toHaveBeenCalledTimes(2);
 });
@@ -264,7 +282,7 @@ it('rebuilds without the source messages of a deleted memory', async () => {
     "UPDATE personal_memories SET title='',content='',deleted_at=500,updated_at=500,version=version+1 WHERE id='f1'",
   ).run();
   expect(await runConversationDigest(env, 1000)).toBe(1);
-  const sent = (model.generate.mock.calls[0]![2] as { id: string }[]).map((source) => source.id);
+  const sent = (model.generate.mock.calls[0]![3] as { id: string }[]).map((source) => source.id);
   expect(sent).not.toContain('m2');
   expect(sent).not.toContain('m3');
   expect(sent).toContain('m4');

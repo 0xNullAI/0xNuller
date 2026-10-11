@@ -1,6 +1,7 @@
 import { err, json, readBodyBounded } from './http';
 import { currentUser } from './session-domain';
 import type { AutoMemoryEnv } from './auto-memory';
+import { arkConfig } from './ark-client';
 
 const PATH = '/api/auth/conversation-digest-preferences/';
 const ID = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -31,7 +32,7 @@ export async function handleConversationDigestPreference(
     .bind(user.id, relationshipId)
     .first();
   if (!relationship) return err('关系不存在或已删除', 404, headers);
-  const available = Boolean(env.MINIMAX_MEDIA_API_KEY?.trim());
+  const available = Boolean(arkConfig(env));
   if (request.method === 'GET') {
     const row = await env.DB.prepare(
       'SELECT enabled,version,updated_at FROM conversation_digest_preferences WHERE user_id=? AND relationship_id=?',

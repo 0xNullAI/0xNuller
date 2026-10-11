@@ -1,6 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parsePriceTable } from '@0xnullai/ai-pricing';
+import examplePriceTable from '@0xnullai/ai-pricing/example-price-table.json';
+
+/** The repository's fictional price table, as the AI_PRICE_TABLE secret string. */
+export const TEST_PRICE_TABLE = JSON.stringify(examplePriceTable);
+export const testPriceTable = parsePriceTable(examplePriceTable)!;
 
 /**
  * A subset of the D1 interface implemented on Node 26's built-in `node:sqlite`, for

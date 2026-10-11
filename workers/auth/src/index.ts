@@ -128,10 +128,10 @@ export { runPendingAccountDeletions } from './photo-lifecycle';
 export interface Env extends Cloudflare.Env {
   EMAIL: SendEmail;
   MARKET: Fetcher;
-  MINIMAX_MEDIA_API_KEY?: string;
-  MEDIA_IMAGE_CREDITS?: string;
-  MEDIA_VIDEO_CREDITS?: string;
-  PROACTIVE_MESSAGE_CREDITS?: string;
+  /** Volcengine Ark key for background text and image generation. */
+  VOLC_ARK_API_KEY?: string;
+  /** Managed AI model ids and Credit prices; see @0xnullai/ai-pricing. */
+  AI_PRICE_TABLE?: string;
   DASHSCOPE_ASR_API_KEY?: string;
   ASR_CREDITS_PER_SECOND?: string;
   DASHSCOPE_TTS_API_KEY?: string;

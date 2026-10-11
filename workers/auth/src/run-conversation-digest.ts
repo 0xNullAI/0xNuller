@@ -1,8 +1,9 @@
 import { saveConversationDigest } from './conversation-digest';
+import { arkConfig } from './ark-client';
 import {
   generateConversationDigest,
   type DigestSourceMessage,
-} from './minimax-conversation-digest';
+} from './conversation-digest-generation';
 import type { AutoMemoryEnv } from './auto-memory';
 
 interface Candidate {
@@ -57,8 +58,8 @@ async function suppressedSourceMessageIds(
 
 /** One bounded, opt-in private conversation segment per minute. */
 export async function runConversationDigest(env: AutoMemoryEnv, now = Date.now()): Promise<number> {
-  const key = env.MINIMAX_MEDIA_API_KEY?.trim();
-  if (!key) return 0;
+  const ark = arkConfig(env);
+  if (!ark) return 0;
   const candidate = await env.DB.prepare(
     `SELECT c.user_id,c.id AS conversation_id,r.id AS relationship_id,p.version AS consent_version,c.revision,
       COALESCE(d.version,0) AS digest_version,
@@ -181,7 +182,12 @@ export async function runConversationDigest(env: AutoMemoryEnv, now = Date.now()
     const suppressed = await suppressedSourceMessageIds(env, candidate);
     const modelSources = sources.filter((source) => !suppressed.has(source.id));
     const summary = modelSources.length
-      ? await generateConversationDigest(key, candidate.previous_summary, modelSources)
+      ? await generateConversationDigest(
+          ark.key,
+          ark.table.background,
+          candidate.previous_summary,
+          modelSources,
+        )
       : candidate.previous_summary;
     const last = sources.at(-1)!;
     if (

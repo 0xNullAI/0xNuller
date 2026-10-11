@@ -1,4 +1,4 @@
-import { boundedResponse } from './minimax-media';
+import { boundedResponse } from './bounded-response';
 
 /** Provider-only adapter. Callers must first obtain explicit user consent and a Credit hold. */
 export const ASR_MAX_AUDIO_BYTES = 6_000_000;

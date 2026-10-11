@@ -1,14 +1,14 @@
 import { err, json, readBodyBounded } from './http';
-import { generateMemoryCandidates, type MemorySource } from './minimax-memory';
+import { arkConfig, type ArkEnv } from './ark-client';
+import { generateMemoryCandidates, type MemorySource } from './memory-candidates';
 import { currentUser, sha256Hex, type SessionEnv } from './session-domain';
 
 const PATH = '/api/auth/auto-memory/';
 const ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const MAX_ATTEMPTS = 5;
 
-export interface AutoMemoryEnv extends SessionEnv {
-  MINIMAX_MEDIA_API_KEY?: string;
-}
+/** Memory extraction and digests are free for every account; usage is only logged. */
+export interface AutoMemoryEnv extends SessionEnv, ArkEnv {}
 
 interface PreferenceRow {
   enabled: number;
@@ -71,7 +71,7 @@ export async function handleAutoMemory(
     .bind(user.id, relationshipId)
     .first();
   if (!relationship) return err('关系不存在或已删除', 404, headers);
-  const available = Boolean(env.MINIMAX_MEDIA_API_KEY?.trim());
+  const available = Boolean(arkConfig(env));
   if (request.method === 'GET') {
     const row = await env.DB.prepare(
       'SELECT enabled,version,updated_at FROM relationship_memory_preferences WHERE user_id=? AND relationship_id=?',
@@ -201,8 +201,8 @@ interface PositionedMemorySource extends MemorySource {
 
 /** Minute cron. Every insertion rechecks opt-in, source text, ownership and the job lease. */
 export async function runAutoMemory(env: AutoMemoryEnv, now = Date.now()): Promise<number> {
-  const key = env.MINIMAX_MEDIA_API_KEY?.trim();
-  if (!key) return 0;
+  const ark = arkConfig(env);
+  if (!ark) return 0;
   const due = await env.DB.prepare(
     `SELECT user_id,conversation_id,generation,lease_until,attempts FROM memory_extraction_jobs
      WHERE due_at<=? AND (lease_until IS NULL OR lease_until<=?) AND attempts<?
@@ -291,7 +291,8 @@ export async function runAutoMemory(env: AutoMemoryEnv, now = Date.now()): Promi
         if (mayExtract && sources.length) {
           attempted = { relationshipId: relation.id, last: sources.at(-1)! };
           const candidates = await generateMemoryCandidates(
-            key,
+            ark.key,
+            ark.table.background,
             sources.map(({ id, content }) => ({ id, content })),
           );
           for (const candidate of candidates) {

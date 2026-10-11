@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleAutoMemory, runAutoMemory, type AutoMemoryEnv } from './auto-memory';
-import { parseModelMemories } from './minimax-memory';
+import { parseModelMemories } from './memory-candidates';
 import { sha256Hex } from './session-domain';
-import { createTestDb } from './test-helpers';
+import { createTestDb, TEST_PRICE_TABLE } from './test-helpers';
 
 let db: ReturnType<typeof createTestDb>;
 let env: AutoMemoryEnv;
@@ -33,7 +33,11 @@ async function queueCount() {
 
 beforeEach(async () => {
   db = createTestDb();
-  env = { DB: db.DB, MINIMAX_MEDIA_API_KEY: 'test-key' } as AutoMemoryEnv;
+  env = {
+    DB: db.DB,
+    VOLC_ARK_API_KEY: 'test-key',
+    AI_PRICE_TABLE: TEST_PRICE_TABLE,
+  } as AutoMemoryEnv;
   for (const id of ['alice', 'bob']) {
     await env.DB.prepare(
       'INSERT INTO users(id,username,display_name,password_hash,created_at) VALUES(?,?,?,?,?)',
@@ -106,7 +110,11 @@ describe('opt-in private auto memory', () => {
     });
     expect(await queueCount()).toBe(0);
     expect((await call('PUT', { enabled: true, version: 0 }, 'bob', 'alice')).status).toBe(403);
-    env.MINIMAX_MEDIA_API_KEY = undefined;
+    env.VOLC_ARK_API_KEY = undefined;
+    expect((await call('PUT', { enabled: true, version: 0 })).status).toBe(503);
+    env.VOLC_ARK_API_KEY = 'test-key';
+    env.AI_PRICE_TABLE = undefined;
+    expect(await (await call()).json()).toMatchObject({ available: false });
     expect((await call('PUT', { enabled: true, version: 0 })).status).toBe(503);
     expect(await queueCount()).toBe(0);
   });
@@ -162,6 +170,15 @@ describe('opt-in private auto memory', () => {
       tier: 'long',
       content: '我喜欢喝乌龙茶',
       source_message_ids: '["user-message"]',
+    });
+    // Free for every account, including one with no Credit balance at all.
+    expect(
+      await env.DB.prepare(
+        'SELECT (SELECT COUNT(*) FROM credit_reservations)+(SELECT COUNT(*) FROM credit_ledger) AS n',
+      ).first(),
+    ).toEqual({ n: 0 });
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toMatchObject({
+      thinking: { type: 'disabled' },
     });
     expect(await queueCount()).toBe(0);
     expect((await call('PUT', { enabled: false, version: 1 })).status).toBe(200);

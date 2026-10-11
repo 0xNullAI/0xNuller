@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { handleConversationDigestPreference } from './conversation-digest-preference';
 import { sha256Hex } from './session-domain';
-import { createTestDb } from './test-helpers';
+import { createTestDb, TEST_PRICE_TABLE } from './test-helpers';
 import type { AutoMemoryEnv } from './auto-memory';
 
 let testDb: ReturnType<typeof createTestDb>;
 let env: AutoMemoryEnv;
 beforeEach(async () => {
   testDb = createTestDb();
-  env = { DB: testDb.DB, MINIMAX_MEDIA_API_KEY: 'test-key' } as AutoMemoryEnv;
+  env = {
+    DB: testDb.DB,
+    VOLC_ARK_API_KEY: 'test-key',
+    AI_PRICE_TABLE: TEST_PRICE_TABLE,
+  } as AutoMemoryEnv;
   for (const id of ['alice', 'bob']) {
     await env.DB.prepare(
       'INSERT INTO users(id,username,display_name,password_hash,created_at) VALUES(?,?,?,?,1)',
@@ -66,4 +70,13 @@ it('deletes existing summaries when separate consent is disabled', async () => {
   ).run();
   expect((await call('alice', 'PUT', { enabled: false, version: 1 })).status).toBe(200);
   expect(await env.DB.prepare('SELECT 1 FROM conversation_digests').first()).toBeNull();
+});
+
+it('is unavailable and cannot be enabled without the Ark key or price table', async () => {
+  env.AI_PRICE_TABLE = undefined;
+  expect(await (await call('alice')).json()).toMatchObject({ available: false });
+  expect((await call('alice', 'PUT', { enabled: true, version: 0 })).status).toBe(503);
+  env.AI_PRICE_TABLE = TEST_PRICE_TABLE;
+  env.VOLC_ARK_API_KEY = undefined;
+  expect((await call('alice', 'PUT', { enabled: true, version: 0 })).status).toBe(503);
 });

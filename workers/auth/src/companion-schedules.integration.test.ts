@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
-import { createTestDb } from './test-helpers';
+import { createTestDb, testPriceTable } from './test-helpers';
 import { sha256Hex } from './session-domain';
-import type { GenerativeScheduleEnv } from './companion-generations';
+import { proactiveCapability, type GenerativeScheduleEnv } from './companion-generations';
 import { handleCompanionSchedules, runCompanionSchedules } from './companion-schedules';
 let db: ReturnType<typeof createTestDb>;
 let env: GenerativeScheduleEnv;
@@ -272,16 +272,31 @@ describe('private server companion schedules', () => {
   });
 });
 
-const modelDraft = {
-  ...draft,
-  mode: 'model',
-  acceptedCredits: 5,
-  generationPriceVersion: 'proactive-M2.7-v1:5',
-  contextConsent: true,
+// Fictional per-token prices, steep enough that a short reply costs less than the quoted bound.
+const priceTable = {
+  ...testPriceTable,
+  background: {
+    ...testPriceTable.background,
+    fallbackModel: 'example-background-fallback',
+    inputPerMillion: 1000,
+    outputPerMillion: 4000,
+  },
 };
+const usage = { prompt_tokens: 1000, completion_tokens: 100 };
+/** 1000 input and 100 output tokens at the fictional prices above, rounded up. */
+const usedCredits = 2;
+let modelDraft: Record<string, unknown> & { acceptedCredits: number };
 async function enableModel() {
-  env.MINIMAX_MEDIA_API_KEY = 'test-only';
-  env.PROACTIVE_MESSAGE_CREDITS = '5';
+  env.VOLC_ARK_API_KEY = 'test-only';
+  env.AI_PRICE_TABLE = JSON.stringify(priceTable);
+  const offer = proactiveCapability(env);
+  modelDraft = {
+    ...draft,
+    mode: 'model',
+    acceptedCredits: offer.credits!,
+    generationPriceVersion: offer.priceVersion,
+    contextConsent: true,
+  };
   await env.DB.prepare(
     "INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES ('alice',100,'manual_purchase','test-topup','v1','{}',1)",
   ).run();
@@ -290,6 +305,7 @@ async function enableModel() {
     vi.fn(async () =>
       Response.json({
         choices: [{ finish_reason: 'stop', message: { content: '今天过得怎么样？' } }],
+        usage,
       }),
     ),
   );
@@ -304,7 +320,20 @@ describe('real proactive model schedule', () => {
     expect(await count('companion_deliveries')).toBe(1);
     expect(
       await env.DB.prepare('SELECT status,charged_credits FROM credit_reservations').first(),
-    ).toEqual({ status: 'settled', charged_credits: 5 });
+    ).toEqual({ status: 'settled', charged_credits: usedCredits });
+    expect(modelDraft.acceptedCredits).toBeGreaterThan(usedCredits);
+    expect(
+      await env.DB.prepare(
+        "SELECT amount_credits,price_version,metadata_json FROM credit_ledger WHERE kind='usage'",
+      ).first(),
+    ).toEqual({
+      amount_credits: -usedCredits,
+      price_version: modelDraft.generationPriceVersion,
+      metadata_json: JSON.stringify({
+        kind: 'proactive',
+        model: `ark:proactive:${priceTable.background.model}`,
+      }),
+    });
     const context = await env.DB.prepare(
       'SELECT user_id,conversation_id,run_id,relationship_id FROM reservation_context',
     ).first<{
@@ -332,10 +361,11 @@ describe('real proactive model schedule', () => {
       await env.DB.prepare('SELECT content FROM server_conversation_messages').first(),
     ).toEqual({ content: 'AI主动消息\n今天过得怎么样？' });
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('https://api.minimax.io/v1/chat/completions');
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/chat/completions');
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      model: 'MiniMax-M2.7',
-      max_completion_tokens: 1024,
+      model: priceTable.background.model,
+      max_tokens: 1024,
+      thinking: { type: 'disabled' },
     });
     expect(JSON.parse(String(init?.body))).not.toHaveProperty('tools');
   });
@@ -346,17 +376,18 @@ describe('real proactive model schedule', () => {
     const paused = async () =>
       (await env.DB.prepare('SELECT paused FROM companion_schedules').first<{ paused: number }>())
         ?.paused;
+    // Each attempt tries the primary model, then the fallback model once.
     await runCompanionSchedules(env, due);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(await paused()).toBe(0);
     await runCompanionSchedules(env, due + 60_000);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    await runCompanionSchedules(env, due + 5 * 60_000);
     expect(fetch).toHaveBeenCalledTimes(2);
+    await runCompanionSchedules(env, due + 5 * 60_000);
+    expect(fetch).toHaveBeenCalledTimes(4);
     await runCompanionSchedules(env, due + 15 * 60_000);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(6);
     await runCompanionSchedules(env, due + 35 * 60_000);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(6);
     expect(await paused()).toBe(1);
     expect(await count('companion_deliveries')).toBe(0);
     expect(
@@ -480,12 +511,12 @@ describe('real proactive model schedule', () => {
     await enableModel();
     await call('/s', 'PUT', modelDraft);
     await env.DB.prepare(
-      "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) VALUES ('proactive:test','alice','agent','minimax:proactive-M2.7',5,'pending',?,?)",
+      "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) VALUES ('proactive:test','alice','agent','ark:proactive:example',5,'pending',?,?)",
     )
       .bind(due, due)
       .run();
     await env.DB.prepare(
-      "INSERT INTO companion_generations(user_id,schedule_id,occurrence_key,schedule_version,reservation_key,state,credits,price_version,created_at,updated_at) SELECT user_id,id,occurrence_key,version,'proactive:test','submitted',5,'proactive-M2.7-v1:5',?,? FROM companion_schedules",
+      "INSERT INTO companion_generations(user_id,schedule_id,occurrence_key,schedule_version,reservation_key,state,credits,price_version,created_at,updated_at) SELECT user_id,id,occurrence_key,version,'proactive:test','submitted',5,'ark-proactive:example',?,? FROM companion_schedules",
     )
       .bind(due, due)
       .run();
@@ -549,5 +580,40 @@ describe('cron fairness', () => {
       .bind(due + 86_400_000)
       .all<{ next_run_at: number }>();
     expect(waiting.results).toEqual([{ next_run_at: due + 60_000 }]);
+  });
+});
+
+describe('proactive capability from the price table', () => {
+  it('is disabled with the not-configured reason when the key or table is missing', async () => {
+    env.AI_PRICE_TABLE = JSON.stringify(priceTable);
+    expect(proactiveCapability(env)).toMatchObject({
+      enabled: false,
+      credits: null,
+      reason: '管理员尚未配置主动AI服务',
+    });
+    env.VOLC_ARK_API_KEY = 'test-only';
+    env.AI_PRICE_TABLE = '{"version":"broken"}';
+    expect(proactiveCapability(env)).toMatchObject({
+      enabled: false,
+      credits: null,
+      reason: '管理员尚未配置主动AI价格',
+    });
+    env.AI_PRICE_TABLE = JSON.stringify(priceTable);
+    expect(proactiveCapability(env)).toMatchObject({
+      enabled: true,
+      model: priceTable.background.model,
+      reason: null,
+    });
+  });
+  it('asks for a new confirmation when the table version changes', async () => {
+    await enableModel();
+    expect((await call('/s', 'PUT', modelDraft)).status).toBe(201);
+    env.AI_PRICE_TABLE = JSON.stringify({ ...priceTable, version: 'example-2' });
+    await runCompanionSchedules(env, due);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      await env.DB.prepare('SELECT paused,last_error FROM companion_schedules').first(),
+    ).toEqual({ paused: 1, last_error: '主动AI能力或价格已变化，请重新确认' });
+    expect(await count('credit_reservations')).toBe(0);
   });
 });

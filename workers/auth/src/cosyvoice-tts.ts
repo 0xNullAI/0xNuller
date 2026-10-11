@@ -1,4 +1,4 @@
-import { boundedResponse } from './minimax-media';
+import { boundedResponse } from './bounded-response';
 
 /** Non-streaming CosyVoice response contract: https://help.aliyun.com/en/model-studio/cosyvoice-tts-http-api */
 export class TtsProviderError extends Error {

@@ -2,18 +2,15 @@ import { currentUser, sha256Hex, type SessionEnv } from './session-domain';
 import { json, err, readBodyBounded } from './http';
 import { reservePhotoSlot } from './photo-lifecycle';
 import { sanitizePhoto } from '@0xnullai/auth/photo-sanitizer';
-import {
-  MediaProviderError,
-  submitMedia,
-  queryMedia,
-  downloadVideo,
-  type MediaKind,
-} from './minimax-media';
-export interface MediaEnv extends SessionEnv {
+import { imageCredits } from '@0xnullai/ai-pricing';
+import { ArkError, arkConfig, arkImage, type ArkEnv } from './ark-client';
+import { boundedResponse } from './bounded-response';
+/** `selfie` and `video` exist only in stored history; new jobs are always `image`. */
+type MediaKind = 'image' | 'selfie' | 'video';
+export interface MediaEnv extends SessionEnv, ArkEnv {
   PHOTOS: R2Bucket;
-  MINIMAX_MEDIA_API_KEY?: string;
-  MEDIA_IMAGE_CREDITS?: string;
-  MEDIA_VIDEO_CREDITS?: string;
+  /** Public Market portraits, used as the reference image when no private portrait is set. */
+  MARKET?: Fetcher;
 }
 interface Row {
   user_id: string;
@@ -59,6 +56,13 @@ function parseCard(raw: OwnedCard | null, kind: 'character' | 'scene') {
     return {
       name: raw.name.slice(0, 80),
       prompt: typeof card.prompt === 'string' ? card.prompt.slice(0, 900) : '',
+      portraitId:
+        typeof card.marketPortraitId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          card.marketPortraitId,
+        )
+          ? card.marketPortraitId.toLowerCase()
+          : null,
     };
   } catch {
     return null;
@@ -72,12 +76,12 @@ async function ownedCard(env: MediaEnv, userId: string, id: string): Promise<Own
     .bind(userId, id, userId)
     .first<OwnedCard>();
 }
-async function characterSceneContext(
+async function boundCharacter(
   env: MediaEnv,
   userId: string,
   relationshipId: string,
   conversationId: string,
-): Promise<string | null> {
+) {
   const bound = await env.DB.prepare(
     `SELECT r.character_id AS character_id,json_extract(c.metadata,'$.promptPresetId') AS character_binding,
        json_extract(c.metadata,'$.sceneId') AS scene_id
@@ -89,7 +93,17 @@ async function characterSceneContext(
     .first<{ character_id: string; character_binding: string | null; scene_id: string | null }>();
   if (!bound || bound.character_id !== bound.character_binding) return null;
   const character = parseCard(await ownedCard(env, userId, bound.character_id), 'character');
-  if (!character) return null;
+  return character ? { bound, character } : null;
+}
+async function characterSceneContext(
+  env: MediaEnv,
+  userId: string,
+  relationshipId: string,
+  conversationId: string,
+): Promise<string | null> {
+  const found = await boundCharacter(env, userId, relationshipId, conversationId);
+  if (!found) return null;
+  const { bound, character } = found;
   const lines = [`角色：${character.name}`, `角色设定参考：${character.prompt}`];
   if (bound.scene_id) {
     const scene = parseCard(await ownedCard(env, userId, bound.scene_id), 'scene');
@@ -98,25 +112,79 @@ async function characterSceneContext(
   }
   return lines.join('\n');
 }
-function catalog(env: MediaEnv) {
-  return (['image', 'selfie', 'video'] as const).map((kind) => {
-    const credits = Number(kind === 'video' ? env.MEDIA_VIDEO_CREDITS : env.MEDIA_IMAGE_CREDITS);
-    const priced = Number.isSafeInteger(credits) && credits > 0 && credits <= 1_000_000;
-    return {
-      kind,
-      model: kind === 'video' ? 'MiniMax-H3' : 'image-01',
-      credits: priced ? credits : null,
-      priceVersion: `minimax-media-v1:${kind}:${credits}`,
-      enabled: Boolean(env.MINIMAX_MEDIA_API_KEY && env.PHOTOS && priced),
-      reason: !env.MINIMAX_MEDIA_API_KEY
-        ? '管理员尚未配置媒体服务'
-        : !priced
-          ? '管理员尚未配置媒体价格'
-          : !env.PHOTOS
-            ? '媒体存储未配置'
-            : null,
-    };
-  });
+const PORTRAIT_LIMIT = 8_000_000;
+function imageMime(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
+  if (new TextDecoder().decode(bytes.slice(8, 12)) === 'WEBP') return 'image/webp';
+  return null;
+}
+function dataUrl(bytes: Uint8Array): string | null {
+  const mime = imageMime(bytes);
+  if (!mime) return null;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+/**
+ * The character's look for 「让角色出镜」: the private portrait chosen for this relationship, else
+ * the published Market portrait of its card. Null means the prompt's text description alone.
+ */
+async function characterReference(env: MediaEnv, row: Row): Promise<string | null> {
+  const photo = await env.DB.prepare(
+    `SELECT p.object_key FROM character_appearances a JOIN user_photos p ON p.id=a.photo_id AND p.user_id=a.user_id AND p.status='ready'
+     WHERE a.user_id=? AND a.relationship_id=?`,
+  )
+    .bind(row.user_id, row.relationship_id)
+    .first<{ object_key: string }>();
+  if (photo) {
+    const object = await env.PHOTOS.get(photo.object_key);
+    if (object && object.size <= PORTRAIT_LIMIT) {
+      const url = dataUrl(new Uint8Array(await object.arrayBuffer()));
+      if (url) return url;
+    }
+  }
+  const found = await boundCharacter(env, row.user_id, row.relationship_id, row.conversation_id);
+  if (!found?.character.portraitId || !env.MARKET) return null;
+  try {
+    const response = await env.MARKET.fetch(
+      `https://market.internal/api/items/character-portraits/${found.character.portraitId}/content`,
+      { redirect: 'error', signal: AbortSignal.timeout(15_000) },
+    );
+    return response.ok ? dataUrl(await boundedResponse(response, PORTRAIT_LIMIT)) : null;
+  } catch {
+    return null;
+  }
+}
+/** One image offer priced from the AI_PRICE_TABLE secret; missing key or table disables it. */
+function imageOffer(env: MediaEnv) {
+  const ark = arkConfig(env);
+  const credits = ark ? imageCredits(ark.table.image, 1) : null;
+  const priced = credits !== null && Number.isSafeInteger(credits) && credits > 0;
+  return {
+    kind: 'image' as const,
+    model: ark?.table.image.model ?? null,
+    credits: priced ? credits : null,
+    priceVersion: ark ? `ark-image:${ark.table.version}:${credits}` : 'unavailable',
+    enabled: Boolean(ark && env.PHOTOS && priced),
+    reason: !env.VOLC_ARK_API_KEY?.trim()
+      ? '管理员尚未配置媒体服务'
+      : !priced
+        ? '管理员尚未配置媒体价格'
+        : !env.PHOTOS
+          ? '媒体存储未配置'
+          : null,
+  };
+}
+function featuresCharacter(row: Row): boolean {
+  try {
+    return (
+      (JSON.parse(row.request_json) as { featureCharacter?: unknown }).featureCharacter === true
+    );
+  } catch {
+    return false;
+  }
 }
 const view = (r: Row) => ({
   id: r.id,
@@ -157,7 +225,7 @@ export async function handleMediaJobs(
     return err('账号已切换，请重新打开媒体', 409, headers);
   if (url.pathname === '/api/auth/media-capabilities')
     return request.method === 'GET'
-      ? json({ items: catalog(env) }, 200, headers)
+      ? json({ items: [imageOffer(env)] }, 200, headers)
       : err('不支持的方法', 405, headers);
   const suffix = url.pathname.slice(PATH.length);
   const match = /^\/([A-Za-z0-9_-]{8,80})(\/content)?$/.exec(suffix);
@@ -247,24 +315,34 @@ export async function handleMediaJobs(
   } catch {
     return err('请求无效', 400, headers);
   }
+  if (body.kind === 'video') return err('角色视频已下线', 400, headers);
+  if (body.kind === 'selfie')
+    return err('情境自拍已并入生成图片，请开启「让角色出镜」', 400, headers);
   if (
-    !['image', 'selfie', 'video'].includes(String(body.kind)) ||
+    body.kind !== 'image' ||
     typeof body.prompt !== 'string' ||
     !body.prompt.trim() ||
     body.prompt.length > 1000 ||
     typeof body.relationshipId !== 'string' ||
     typeof body.conversationId !== 'string' ||
-    typeof body.useConversationContext !== 'boolean' ||
-    (body.useCharacterContext !== undefined && typeof body.useCharacterContext !== 'boolean')
+    (body.useConversationContext !== undefined &&
+      typeof body.useConversationContext !== 'boolean') ||
+    (body.useCharacterContext !== undefined && typeof body.useCharacterContext !== 'boolean') ||
+    (body.featureCharacter !== undefined && typeof body.featureCharacter !== 'boolean')
   )
     return err('媒体参数无效', 400, headers);
+  // 「让角色出镜」 sends the card, scene, recent messages and the character's portrait.
+  const featureCharacter = body.featureCharacter === true;
+  const useCharacterContext = featureCharacter || body.useCharacterContext === true;
+  const useConversationContext = featureCharacter || body.useConversationContext === true;
   const requestJson = JSON.stringify({
     kind: body.kind,
     prompt: body.prompt.trim(),
     relationshipId: body.relationshipId,
     conversationId: body.conversationId,
-    useConversationContext: body.useConversationContext,
-    useCharacterContext: body.useCharacterContext === true,
+    useConversationContext,
+    useCharacterContext,
+    featureCharacter,
     acceptedCredits: body.acceptedCredits,
     priceVersion: body.priceVersion,
   });
@@ -272,7 +350,7 @@ export async function handleMediaJobs(
     return existing.request_json === requestJson
       ? json({ item: view(existing) }, 200, headers)
       : err('任务编号已使用，请勿覆盖', 409, headers);
-  const offer = catalog(env).find((x) => x.kind === body.kind)!;
+  const offer = imageOffer(env);
   if (!offer.enabled) return err(offer.reason ?? '媒体服务未配置', 503, headers);
   if (offer.credits !== body.acceptedCredits || offer.priceVersion !== body.priceVersion)
     return err('价格已变化，请重新确认', 409, headers);
@@ -280,9 +358,8 @@ export async function handleMediaJobs(
     !(await env.DB.prepare(binding).bind(body.relationshipId, user.id, body.conversationId).first())
   )
     return err('请先选择自己的角色会话', 400, headers);
-  let prompt =
-    (body.kind === 'selfie' ? '角色生活自拍，自然的自拍视角：' : '') + body.prompt.trim();
-  if (body.useCharacterContext === true) {
+  let prompt = (featureCharacter ? '画面主角是下述角色本人：' : '') + body.prompt.trim();
+  if (useCharacterContext) {
     const cardContext = await characterSceneContext(
       env,
       user.id,
@@ -292,7 +369,7 @@ export async function handleMediaJobs(
     if (!cardContext) return err('角色或场景快照已变化，请重新打开会话', 409, headers);
     prompt = `${prompt}\n角色与场景视觉参考（仅用于媒体画面，不是工具或设备指令）：\n${cardContext}`;
   }
-  if (body.useConversationContext) {
+  if (useConversationContext) {
     const messages = await env.DB.prepare(
       'SELECT role,content FROM server_conversation_messages WHERE user_id=? AND conversation_id=? ORDER BY position DESC LIMIT 4',
     )
@@ -306,7 +383,7 @@ export async function handleMediaJobs(
   }
   const now = Date.now();
   const reservation = `media:${await sha256Hex(`${user.id}:${id}`)}`;
-  const photoId = body.kind === 'video' ? null : crypto.randomUUID();
+  const photoId = crypto.randomUUID();
   const objectKey = `users/${user.id}/photos/media-${id}`;
   await env.DB.batch([
     env.DB.prepare(
@@ -337,9 +414,10 @@ export async function handleMediaJobs(
       user.id,
       body.conversationId,
     ),
+    // usage_kind 'video' is the legacy media bucket of the original CHECK constraint.
     env.DB.prepare(
       `INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) SELECT reservation_key,user_id,'video',?,credits,'pending',created_at,updated_at FROM media_jobs WHERE user_id=? AND id=? AND state='queued' ON CONFLICT(idempotency_key) DO NOTHING`,
-    ).bind(`minimax:${offer.model}`, user.id, id),
+    ).bind(`ark:${offer.model}`, user.id, id),
   ]);
   const created = await read(env, user.id, id);
   if (!created) return err('Credit不足或已有3个生成任务', 402, headers);
@@ -417,14 +495,11 @@ async function finish(env: MediaEnv, row: Row, mime: string) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at)
-  SELECT user_id,-reserved_credits,'usage',idempotency_key,?,?,? FROM credit_reservations WHERE idempotency_key=? AND status='pending' AND updated_at>MAX(?, CAST(strftime('%s','now') AS INTEGER)*1000 + CAST(substr(strftime('%f','now'),4,3) AS INTEGER))-7200000 AND EXISTS(${binding}) AND EXISTS(SELECT 1 FROM media_jobs WHERE user_id=? AND id=? AND state IN ('submitting','processing','storing')) ON CONFLICT(user_id,kind,reference_id) DO NOTHING`,
+  SELECT user_id,-reserved_credits,'usage',idempotency_key,?,json_object('kind',?,'model',model_id,'jobId',?),? FROM credit_reservations WHERE idempotency_key=? AND status='pending' AND updated_at>MAX(?, CAST(strftime('%s','now') AS INTEGER)*1000 + CAST(substr(strftime('%f','now'),4,3) AS INTEGER))-7200000 AND EXISTS(${binding}) AND EXISTS(SELECT 1 FROM media_jobs WHERE user_id=? AND id=? AND state IN ('submitting','processing','storing')) ON CONFLICT(user_id,kind,reference_id) DO NOTHING`,
     ).bind(
       row.price_version,
-      JSON.stringify({
-        kind: row.kind,
-        model: row.kind === 'video' ? 'MiniMax-H3' : 'image-01',
-        jobId: row.id,
-      }),
+      row.kind,
+      row.id,
       now,
       row.reservation_key,
       now,
@@ -511,6 +586,11 @@ export async function runMediaJobs(env: MediaEnv, now = Date.now()): Promise<voi
         );
         continue;
       }
+      if (row.kind === 'video') {
+        // Video generation was retired; an unfinished job can no longer be completed.
+        await fail(env, row, '角色视频已下线，已释放Credit');
+        continue;
+      }
       if (now - row.created_at > 3_600_000) {
         await fail(env, row, '生成超时，已释放Credit');
         continue;
@@ -519,7 +599,8 @@ export async function runMediaJobs(env: MediaEnv, now = Date.now()): Promise<voi
         await fail(env, row, '提交结果不明，已释放Credit；不会自动重复生成', true);
         continue;
       }
-      if (!env.MINIMAX_MEDIA_API_KEY) throw new Error('媒体服务未配置');
+      const ark = arkConfig(env);
+      if (!ark) throw new Error('媒体服务未配置');
       if (row.state === 'queued') {
         if (row.photo_id) {
           const slot = await env.DB.prepare('SELECT 1 FROM user_photos WHERE id=? AND user_id=?')
@@ -549,35 +630,19 @@ export async function runMediaJobs(env: MediaEnv, now = Date.now()): Promise<voi
           .bind(now, row.user_id, row.id, lease)
           .first();
         if (!submitting) continue;
-        const output = await submitMedia(env.MINIMAX_MEDIA_API_KEY, row.kind, row.prompt);
-        if ('taskId' in output) {
-          await env.DB.prepare(
-            "UPDATE media_jobs SET state='processing',upstream_id=?,lease_until=0,next_run_at=?,updated_at=? WHERE user_id=? AND id=? AND state='submitting' AND lease_until=?",
-          )
-            .bind(output.taskId, now + 30_000, now, row.user_id, row.id, lease)
-            .run();
-          continue;
-        }
+        const reference = featuresCharacter(row) ? await characterReference(env, row) : null;
+        const output = await arkImage(
+          ark.key,
+          ark.table.image,
+          reference ? `参考图是该角色的形象，保持其外貌一致。\n${row.prompt}` : row.prompt,
+          reference,
+        );
         const bytes = sanitizePhoto(output.bytes.slice().buffer as ArrayBuffer, output.mime);
         await env.PHOTOS.put(row.object_key, bytes, { httpMetadata: { contentType: output.mime } });
         await finish(env, row, output.mime);
-      } else if (row.state === 'processing' && row.upstream_id) {
-        const result = await queryMedia(env.MINIMAX_MEDIA_API_KEY, row.upstream_id);
-        if (result.status === 'failed') {
-          await fail(env, row, '媒体生成失败，已释放Credit');
-          continue;
-        }
-        if (result.status === 'pending') {
-          await env.DB.prepare(
-            "UPDATE media_jobs SET lease_until=0,next_run_at=?,updated_at=? WHERE user_id=? AND id=? AND state='processing' AND lease_until=?",
-          )
-            .bind(now + 30_000, now, row.user_id, row.id, lease)
-            .run();
-          continue;
-        }
-        const bytes = await downloadVideo(result.status === 'succeeded' ? result.url : '');
-        await env.PHOTOS.put(row.object_key, bytes, { httpMetadata: { contentType: 'video/mp4' } });
-        await finish(env, row, 'video/mp4');
+      } else {
+        // Only retired video jobs ever reached `processing`; they are failed above.
+        await fail(env, row, '任务状态无效，已释放Credit');
       }
     } catch (error) {
       const latest = await read(env, row.user_id, row.id);
@@ -603,7 +668,7 @@ export async function runMediaJobs(env: MediaEnv, now = Date.now()): Promise<voi
             env,
             latest,
             '提交失败或结果不明，已释放Credit；不会自动重试',
-            !(error instanceof MediaProviderError) || error.uncertain,
+            !(error instanceof ArkError) || error.uncertain,
           );
         } else {
           await env.DB.prepare(

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
-import { createTestDb } from './test-helpers';
+import { createTestDb, TEST_PRICE_TABLE, testPriceTable } from './test-helpers';
 import { sha256Hex } from './session-domain';
 import { handleMediaJobs, runMediaJobs, type MediaEnv } from './media-jobs';
 import { handleCreditActivity } from './credit-activity';
@@ -15,22 +15,55 @@ const draft = {
   conversationId: 'c',
   useConversationContext: false,
   acceptedCredits: 20,
-  priceVersion: 'minimax-media-v1:image:20',
+  priceVersion: 'ark-image:example-1:20',
 };
+const generated = () =>
+  Response.json({
+    data: [{ b64_json: btoa(String.fromCharCode(...png)) }],
+    usage: { generated_images: 1 },
+  });
+/** Seeds the bound character card (optionally with a Market portrait) and a recent message. */
+async function seedCharacter(portraitId?: string) {
+  await env.DB.prepare(
+    `INSERT INTO content_entities(id,owner_id,kind,name,payload,created_at,updated_at) VALUES ('alice:friend','alice','scene','阿澄',?,1,1)`,
+  )
+    .bind(
+      JSON.stringify({
+        kind: 'character',
+        prompt: '银发，蓝色外套',
+        ...(portraitId ? { marketPortraitId: portraitId } : {}),
+      }),
+    )
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO user_content_refs(user_id,content_id,client_id,created_at,updated_at) VALUES ('alice','alice:friend','friend',1,1)`,
+  ).run();
+  await env.DB.prepare(
+    `INSERT INTO server_conversation_messages(user_id,conversation_id,id,role,content,created_at,position) VALUES ('alice','c','m1','user','我们去海边吧',1,0)`,
+  ).run();
+}
+const sentBody = (index = 0) =>
+  JSON.parse(String(vi.mocked(fetch).mock.calls[index]?.[1]?.body)) as Record<string, unknown>;
 beforeEach(async () => {
   vi.spyOn(Date, 'now').mockReturnValue(now);
   db = createTestDb();
   objects = new Map();
   env = {
     DB: db.DB,
-    MINIMAX_MEDIA_API_KEY: 'test-only',
-    MEDIA_IMAGE_CREDITS: '20',
-    MEDIA_VIDEO_CREDITS: '100',
+    VOLC_ARK_API_KEY: 'test-only',
+    AI_PRICE_TABLE: TEST_PRICE_TABLE,
     PHOTOS: {
       head: vi.fn(async (k: string) => objects.get(k) ?? null),
       get: vi.fn(async (k: string) => {
         const o = objects.get(k);
-        return o ? { ...o, body: o.bytes } : null;
+        return o
+          ? {
+              ...o,
+              body: o.bytes,
+              size: o.bytes.length,
+              arrayBuffer: async () => o.bytes.slice().buffer,
+            }
+          : null;
       }),
       put: vi.fn(async (k: string, b: Uint8Array, m: { httpMetadata: { contentType: string } }) => {
         objects.set(k, { bytes: b, ...m });
@@ -65,12 +98,7 @@ beforeEach(async () => {
   ).run();
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
-      Response.json({
-        data: { image_base64: [btoa(String.fromCharCode(...png))] },
-        base_resp: { status_code: 0 },
-      }),
-    ),
+    vi.fn(async () => generated()),
   );
 });
 afterEach(() => {
@@ -144,9 +172,40 @@ describe('private media jobs and unified credit ledger', () => {
   it('requires enabled capability and owned conversation; accepts only current quoted prices', async () => {
     expect((await call('job_00001', 'PUT', draft, 'bob')).status).toBe(400);
     expect((await call('job_00001', 'PUT', { ...draft, acceptedCredits: 1 })).status).toBe(409);
-    delete env.MINIMAX_MEDIA_API_KEY;
+    delete env.VOLC_ARK_API_KEY;
     expect((await call()).status).toBe(503);
+    env.VOLC_ARK_API_KEY = 'test-only';
+    delete env.AI_PRICE_TABLE;
+    const response = await call();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: '管理员尚未配置媒体价格' });
     expect(await row()).toBeNull();
+  });
+  it('offers one image capability priced from the table', async () => {
+    const list = async () =>
+      (await handleMediaJobs(
+        new Request('https://test/api/auth/media-capabilities', {
+          headers: { Authorization: 'Bearer alice', 'X-Account-Id': 'alice' },
+        }),
+        env,
+        {},
+      ))!.json();
+    expect(await list()).toEqual({
+      items: [
+        {
+          kind: 'image',
+          model: testPriceTable.image.model,
+          credits: 20,
+          priceVersion: 'ark-image:example-1:20',
+          enabled: true,
+          reason: null,
+        },
+      ],
+    });
+    delete env.AI_PRICE_TABLE;
+    expect(await list()).toMatchObject({
+      items: [{ kind: 'image', enabled: false, credits: null, reason: '管理员尚未配置媒体价格' }],
+    });
   });
   it('atomically reserves and replays identical jobs without second reservation or changed content', async () => {
     expect((await call()).status).toBe(201);
@@ -164,14 +223,26 @@ describe('private media jobs and unified credit ledger', () => {
     await runMediaJobs(env, now + 300000);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(await charged()).toEqual({ n: 1 });
-    const [, options] = vi.mocked(fetch).mock.calls[0]!;
-    expect(JSON.parse(String(options?.body))).toMatchObject({
-      model: 'image-01',
-      n: 1,
-      response_format: 'base64',
+    const [url] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/images/generations');
+    expect(sentBody()).toMatchObject({
+      model: testPriceTable.image.model,
+      prompt: draft.prompt,
+      response_format: 'b64_json',
+      watermark: false,
+    });
+    expect(sentBody()).not.toHaveProperty('image');
+    expect(
+      await env.DB.prepare("SELECT metadata_json FROM credit_ledger WHERE kind='usage'").first(),
+    ).toEqual({
+      metadata_json: JSON.stringify({
+        kind: 'image',
+        model: `ark:${testPriceTable.image.model}`,
+        jobId: 'job_00001',
+      }),
     });
   });
-  it('uses only explicitly selected owned character and scene snapshots for image and video', async () => {
+  it('uses only explicitly selected owned character and scene snapshots', async () => {
     await env.DB.prepare(
       "UPDATE character_relationships SET notes='只属于私人的记忆' WHERE user_id='alice' AND id='r'",
     ).run();
@@ -200,18 +271,6 @@ describe('private media jobs and unified credit ledger', () => {
     expect(String((await row())?.prompt)).not.toContain('只属于私人的记忆');
     expect((await call('job_00001', 'PUT', selected)).status).toBe(200);
     expect((await call('job_00001', 'PUT', draft)).status).toBe(409);
-    const video = {
-      ...selected,
-      kind: 'video',
-      acceptedCredits: 100,
-      priceVersion: 'minimax-media-v1:video:100',
-    };
-    expect((await call('job_00002', 'PUT', video)).status).toBe(201);
-    const rows = await env.DB.prepare('SELECT prompt FROM media_jobs WHERE id=?')
-      .bind('job_00002')
-      .first<{ prompt: string }>();
-    expect(rows?.prompt).toContain('银发，蓝色外套');
-    expect(rows?.prompt).toContain('秋天的树下');
   });
   it('fails closed when an opted-in card is missing, belongs to another account, or binds a different character', async () => {
     await env.DB.prepare(
@@ -431,32 +490,104 @@ describe('private media jobs and unified credit ledger', () => {
     expect(objects.has(String(job.object_key))).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('polls actual video REST contract and saves before charging', async () => {
-    await call('job_00001', 'PUT', {
-      ...draft,
-      kind: 'video',
-      acceptedCredits: 100,
-      priceVersion: 'minimax-media-v1:video:100',
-    });
-    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ task_id: 'task_1' }));
-    await runMediaJobs(env, now);
-    expect((await row())?.state).toBe('processing');
-    expect(await charged()).toEqual({ n: 0 });
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        Response.json({
-          task: { status: 'succeeded', content: { url: 'https://cdn.hailuoai.com/asset.mp4' } },
-        }),
+  it('rejects new video and selfie requests but keeps old video jobs readable', async () => {
+    const video = await call('job_00001', 'PUT', { ...draft, kind: 'video' });
+    expect(video.status).toBe(400);
+    expect(await video.json()).toEqual({ error: '角色视频已下线' });
+    expect((await call('job_00001', 'PUT', { ...draft, kind: 'selfie' })).status).toBe(400);
+    expect(await row()).toBeNull();
+    for (const [id, state] of [
+      ['old_video_done', 'succeeded'],
+      ['old_video_wait', 'processing'],
+    ]) {
+      await env.DB.prepare(
+        `INSERT INTO media_jobs(user_id,id,relationship_id,conversation_id,kind,prompt,request_json,credits,price_version,reservation_key,state,upstream_id,object_key,mime,next_run_at,created_at,updated_at)
+         VALUES ('alice',?,'r','c','video','旧视频','{}',100,'legacy',?,?,'task',?,'video/mp4',0,?,?)`,
       )
-      .mockResolvedValueOnce(
-        new Response(new Uint8Array([0, 0, 0, 16, 102, 116, 121, 112, 0, 0, 0, 0])),
-      );
-    await runMediaJobs(env, now + 60000);
-    expect((await row())?.state).toBe('succeeded');
-    expect(await reservation()).toEqual({ status: 'settled', charged_credits: 100 });
-    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe(
-      'https://api.minimax.io/v2/query/video_generation/task_1',
+        .bind(id, `media:${id}`, state, `users/alice/photos/media-${id}`, now, now)
+        .run();
+      await env.DB.prepare(
+        "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) VALUES (?,'alice','video','legacy',100,?,?,?)",
+      )
+        .bind(`media:${id}`, state === 'succeeded' ? 'settled' : 'pending', now, now)
+        .run();
+    }
+    objects.set('users/alice/photos/media-old_video_done', {
+      bytes: new Uint8Array([0, 0, 0, 16, 102, 116, 121, 112]),
+      httpMetadata: { contentType: 'video/mp4' },
+    });
+    const done = await call('old_video_done', 'GET');
+    expect(await done.json()).toMatchObject({ item: { kind: 'video', state: 'succeeded' } });
+    const content = await handleMediaJobs(
+      new Request('https://test/api/auth/media-jobs/old_video_done/content', {
+        headers: { Authorization: 'Bearer alice', 'X-Account-Id': 'alice' },
+      }),
+      env,
+      {},
     );
+    expect(content?.headers.get('Content-Type')).toBe('video/mp4');
+    // An unfinished video can no longer complete: its hold is released, nothing is charged.
+    await runMediaJobs(env, now);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      await env.DB.prepare(
+        "SELECT state,last_error FROM media_jobs WHERE id='old_video_wait'",
+      ).first(),
+    ).toEqual({ state: 'failed', last_error: '角色视频已下线，已释放Credit' });
+    expect(
+      await env.DB.prepare(
+        "SELECT status FROM credit_reservations WHERE idempotency_key='media:old_video_wait'",
+      ).first(),
+    ).toEqual({ status: 'released' });
+    expect(await charged()).toEqual({ n: 0 });
+  });
+  it('「让角色出镜」 sends the private portrait, card, scene and recent messages', async () => {
+    await seedCharacter('00000000-0000-4000-8000-000000000001');
+    await env.DB.prepare(
+      "INSERT INTO user_photos(id,user_id,object_key,visibility,created_at,slot,status) VALUES ('portrait','alice','users/alice/photos/portrait','private',1,0,'ready')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO character_appearances(user_id,relationship_id,photo_id,scale,position,version) VALUES ('alice','r','portrait',35,'right',1)",
+    ).run();
+    objects.set('users/alice/photos/portrait', {
+      bytes: png,
+      httpMetadata: { contentType: 'image/png' },
+    });
+    const market = vi.fn();
+    env.MARKET = { fetch: market } as unknown as Fetcher;
+    expect((await call('job_00001', 'PUT', { ...draft, featureCharacter: true })).status).toBe(201);
+    const prompt = String((await row())?.prompt);
+    expect(prompt).toContain('银发，蓝色外套');
+    expect(prompt).toContain('我们去海边吧');
+    await runMediaJobs(env, now);
+    expect((await row())?.state).toBe('succeeded');
+    expect(sentBody().image).toBe(`data:image/png;base64,${btoa(String.fromCharCode(...png))}`);
+    expect(String(sentBody().prompt)).toContain('参考图是该角色的形象');
+    expect(market).not.toHaveBeenCalled();
+  });
+  it('「让角色出镜」 falls back to the Market portrait, then to the text description', async () => {
+    await seedCharacter('00000000-0000-4000-8000-000000000001');
+    const market = vi.fn<(url: string) => Promise<Response>>(
+      async () => new Response(png, { headers: { 'Content-Type': 'image/png' } }),
+    );
+    env.MARKET = { fetch: market } as unknown as Fetcher;
+    expect((await call('job_00001', 'PUT', { ...draft, featureCharacter: true })).status).toBe(201);
+    await runMediaJobs(env, now);
+    expect(String(market.mock.calls[0]?.[0])).toBe(
+      'https://market.internal/api/items/character-portraits/00000000-0000-4000-8000-000000000001/content',
+    );
+    expect(String(sentBody(0).image)).toMatch(/^data:image\/png;base64,/);
+    market.mockResolvedValue(new Response(null, { status: 404 }));
+    expect((await call('job_00002', 'PUT', { ...draft, featureCharacter: true })).status).toBe(201);
+    await runMediaJobs(env, now + 1);
+    expect(sentBody(1)).not.toHaveProperty('image');
+    expect(String(sentBody(1).prompt)).toContain('银发，蓝色外套');
+    expect(String(sentBody(1).prompt)).not.toContain('参考图');
+    expect(await charged()).toEqual({ n: 2 });
+  });
+  it('「让角色出镜」 still requires the bound character card', async () => {
+    expect((await call('job_00001', 'PUT', { ...draft, featureCharacter: true })).status).toBe(409);
+    expect(await row()).toBeNull();
   });
   it('never submits a job that changed after the cron snapshot was read', async () => {
     await call();
