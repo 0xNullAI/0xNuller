@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
-  AudioWaveform,
   Database,
   Info,
   LayoutTemplate,
@@ -41,10 +40,7 @@ const PersonalMemoryContent = lazy(() =>
  * keeps its own /settings/<id> route, so deep links and browser history still work.
  */
 
-const DEFERRED_TABS = [
-  { id: 'agent-waveforms', label: '波形', icon: AudioWaveform, order: 30 },
-  { id: 'agent-data', label: '数据', icon: Database, order: 60 },
-];
+const DEFERRED_TABS = [{ id: 'agent-data', label: '数据', icon: Database, order: 60 }];
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
@@ -52,7 +48,7 @@ const TABS = [
   { id: 'memory', label: '个人记忆', icon: Database, Component: null, order: 15 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '角色与场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
-  { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
+  { id: 'safety', label: '设备', icon: ShieldAlert, Component: null, order: 50 },
   { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
   { id: 'advanced', label: '高级设置', icon: Settings2, Component: null, order: 200 },
@@ -61,7 +57,9 @@ const TABS = [
 /** Pages listed on the 高级设置 page instead of the overview. */
 /** Settings of the open conversation: reached from its header only, never listed under 我的. */
 const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
-const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms', 'agent-data', 'admin']);
+const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-data', 'admin']);
+/** Module pages shown inside a built-in page instead of as their own entry. */
+const EMBEDDED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms']);
 
 export function SettingsPanel({
   initialTab = 'overview',
@@ -88,7 +86,10 @@ export function SettingsPanel({
     ? 'ai'
     : initialTab === 'notifications'
       ? 'appearance'
-      : initialTab;
+      : // 波形 lives inside 设备 now.
+        initialTab === 'agent-waveforms'
+        ? 'safety'
+        : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
@@ -103,7 +104,7 @@ export function SettingsPanel({
       order: item.order,
     })),
     ...DEFERRED_TABS.filter((item) => !moduleClaims.some((claim) => claim.id === item.id)),
-    ...moduleClaims,
+    ...moduleClaims.filter((claim) => !EMBEDDED_PAGE_IDS.has(claim.id)),
   ].sort((left, right) => left.order - right.order);
   const activeEntry = navigationTabs.find((item) => item.id === tab);
   const resolvedTab = tab === 'overview' || activeEntry ? tab : 'overview';
@@ -224,6 +225,15 @@ export function SettingsPanel({
                 <Suspense fallback={<p role="status">正在读取个人记忆…</p>}>
                   <PersonalMemoryContent key={user.id} initialChat={initialMemoryChat} />
                 </Suspense>
+              ) : resolvedTab === 'safety' ? (
+                <div className="flex flex-col gap-8">
+                  <SafetyTab />
+                  {moduleClaims.some((claim) => claim.id === 'agent-waveforms') ? (
+                    <ModuleSettingsSlot id="agent-waveforms" />
+                  ) : (
+                    <p role="status">正在加载波形…</p>
+                  )}
+                </div>
               ) : resolvedTab === 'appearance' ? (
                 <GeneralTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
               ) : resolvedTab === 'advanced' ? (

@@ -51,8 +51,6 @@ Video 应用只保留视觉帧调度、一次性授权、观察节奏、失效�
 `@0xnullai/scenes`，输出身份来自 `@0xnullai/device-runtime`，模型调用与设备安全执行复用
 `packages/agent`。不要在应用中复制 provider、设备身份、权限或安全上限逻辑。
 
-统一 Web 中的用户操作说明见 [`apps/web/src/docs/video.md`](../web/src/docs/video.md)。
-
 ## 与私人对话衔接
 
 文字对话中的「摄像头观察」入口沿用当前会话、公开角色卡和私人关系。启动 AI 观察前读取

@@ -256,7 +256,9 @@ describe('外壳与设备控制权', () => {
       expect(await screen.findByRole('region', { name: '设置' }, { timeout: 5_000 })).toBeTruthy();
       expect(window.location.pathname).toBe('/settings/overview');
       expect(screen.queryByRole('dialog', { name: '设置' })).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: '设备安全' }));
+      fireEvent.click(
+        within(screen.getByRole('region', { name: '设置' })).getByRole('button', { name: '设备' }),
+      );
       expect(window.location.pathname).toBe('/settings/safety');
       expect(screen.getByRole('button', { name: '返回设置列表' })).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
@@ -279,14 +281,11 @@ describe('外壳与设备控制权', () => {
       render(<Shell />);
     });
     fireEvent.click(screen.getByRole('button', { name: '打开我的设置' }));
-    fireEvent.click(await screen.findByRole('button', { name: '高级设置' }));
-    expect(window.location.pathname).toBe('/settings/advanced');
     fireEvent.click(await screen.findByRole('button', { name: '个人记忆' }));
     expect(window.location.pathname).toBe('/settings/memory');
     expect(await screen.findByText('个人记忆内容')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
-    expect(window.location.pathname).toBe('/settings/advanced');
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
+    expect(window.location.pathname).toBe('/settings/overview');
     fireEvent.click(screen.getByRole('button', { name: /Alice/ }));
     expect(window.location.pathname).toBe('/settings/account');
     expect(screen.queryByRole('button', { name: '个人记忆' })).toBeNull();
@@ -322,7 +321,7 @@ describe('外壳与设备控制权', () => {
     expect(screen.getByRole('region', { name: '所有聊天' })).toBeTruthy();
   });
 
-  it('设置导航稳定，只有进入波形页才挂载 Agent', async () => {
+  it('设置导航稳定，只有进入设备页才挂载 Agent，波形在设备页内', async () => {
     window.history.pushState(null, '', '/control');
     await act(async () => {
       render(<Shell />);
@@ -335,17 +334,21 @@ describe('外壳与设备控制权', () => {
       await vi.dynamicImportSettled();
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: '高级设置' }));
-    const waveforms = await screen.findByRole('button', { name: '波形' });
-    expect(screen.getByRole('region', { name: '设置' })).toBeTruthy();
+    const devices = await within(await screen.findByRole('region', { name: '设置' })).findByRole(
+      'button',
+      { name: '设备' },
+    );
+    expect(screen.queryByRole('button', { name: '波形' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: '设置' })).toBeNull();
     expect(screen.queryByText('Agent 模块')).toBeNull();
-    fireEvent.click(waveforms);
+    fireEvent.click(devices);
+    expect(window.location.pathname).toBe('/settings/safety');
     expect(await screen.findByText('波形内容')).toBeTruthy();
     expect(screen.getByText('Control 模块')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
-    expect(screen.getByRole('button', { name: '设备安全' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: '设置' })).getByRole('button', { name: '设备' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));
     expect(screen.queryByRole('region', { name: '设置' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '打开我的设置' }));
@@ -466,7 +469,9 @@ describe('外壳与设备控制权', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(window.location.pathname).toBe('/settings/overview');
-    expect(screen.getByRole('button', { name: '设备安全' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: '设置' })).getByRole('button', { name: '设备' }),
+    ).toBeTruthy();
 
     await act(async () => {
       window.history.replaceState(null, '', '/settings/about');

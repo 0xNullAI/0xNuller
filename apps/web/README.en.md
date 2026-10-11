@@ -31,18 +31,6 @@ npm run typecheck -w @0xnullai/web
 npm run build -w @0xnullai/web
 ```
 
-## Built-in documentation
-
-DG-Wiki user documentation now lives in the unified app:
-
-```text
-apps/web/src/docs/*.md       content
-apps/web/src/docs/index.ts   catalog
-apps/web/src/DocsDialog.tsx  reader
-```
-
-The retired documentation subdomain is no longer served. Open documentation from the unified site.
-
 ## Deploy
 
 Production assets are hosted with Cloudflare Workers Static Assets. More specific Worker routes

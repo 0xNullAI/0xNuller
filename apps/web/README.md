@@ -36,19 +36,6 @@ npm run typecheck -w @0xnullai/web
 npm run build -w @0xnullai/web
 ```
 
-## 内置文档
-
-旧 DG-Wiki 的用户文档已经并入主站：
-
-```text
-apps/web/src/docs/*.md       文档正文
-apps/web/src/docs/index.ts   文档目录
-apps/web/src/DocsDialog.tsx  阅读界面
-```
-
-新增或修改页面时，同时更新 `index.ts` 的目录信息，并运行 Web 测试与 production build。
-历史文档子域已下线，文档统一从主站内打开。
-
 ## 结构
 
 ```text
@@ -58,7 +45,6 @@ src/UnifiedInbox.tsx AI、真人私聊、群聊的账号绑定摘要列表
 src/DeviceBar.tsx    全局设备状态与停止操作
 src/settings/        统一设置
 src/modules/         各模块的懒加载入口
-src/docs/            用户文档
 ```
 
 设计令牌和通用组件位于 `packages/platform/ui`。模块不应重复实现外壳已经提供的设备连接、

@@ -46,9 +46,6 @@ const AccountContent = lazy(() =>
   import('./settings/AccountContent').then((module) => ({ default: module.AccountContent })),
 );
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
-const DocsDialog = lazy(() =>
-  import('./DocsDialog').then((module) => ({ default: module.DocsDialog })),
-);
 import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
@@ -227,7 +224,6 @@ export function Shell() {
   const authenticated = authChecked && user !== null;
   const visibleModuleId = !authenticated || mobileInbox || settingsTab ? null : activeId;
   const leaseModuleId = visibleModuleId;
-  const [docsOpen, setDocsOpen] = useState(() => pathname === '/wiki');
   const showDesktopInbox =
     authenticated && !narrow && !settingsTab && (activeId === 'agent' || activeId === 'chat');
 
@@ -438,9 +434,6 @@ export function Shell() {
       onOpenContacts={() => {
         navigateFromShell('/people');
       }}
-      onOpenDocs={() => {
-        setDocsOpen(true);
-      }}
     />
   );
 
@@ -633,38 +626,6 @@ export function Shell() {
                 }}
               />
             )}
-
-            <OverlayProvider container={overlayRoot}>
-              <ModuleErrorBoundary moduleId="settings" label="窗口">
-                <Suspense
-                  fallback={
-                    <div
-                      role="status"
-                      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--overlay-scrim)]"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (settingsTab) closeSettings();
-                          setDocsOpen(false);
-                        }}
-                      >
-                        正在加载… 点击取消
-                      </button>
-                    </div>
-                  }
-                >
-                  {docsOpen && (
-                    <DocsDialog
-                      onClose={() => {
-                        setDocsOpen(false);
-                        if (pathname === '/wiki') navigate('/');
-                      }}
-                    />
-                  )}
-                </Suspense>
-              </ModuleErrorBoundary>
-            </OverlayProvider>
 
             {/* Outside the overlay provider on purpose. The overlay container is
             per-module and gets hidden when you switch modules, but "a device

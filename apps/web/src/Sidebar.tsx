@@ -1,4 +1,4 @@
-import { BookOpen, Compass, Cpu, MessageCircle, UserRound, Users } from 'lucide-react';
+import { Compass, Cpu, MessageCircle, UserRound, Users } from 'lucide-react';
 import {
   Avatar,
   useClaimedSidebarSections,
@@ -19,7 +19,6 @@ interface NavRailProps {
   unreadMessages: number;
   onOpenAccount: () => void;
   onOpenContacts: () => void;
-  onOpenDocs: () => void;
 }
 
 /**
@@ -37,7 +36,6 @@ export function NavRail({
   unreadMessages,
   onOpenAccount,
   onOpenContacts,
-  onOpenDocs,
 }: NavRailProps) {
   const navigation = [
     {
@@ -91,10 +89,6 @@ export function NavRail({
         ))}
       </nav>
       <div className="min-h-0 flex-1" />
-      <button type="button" onClick={onOpenDocs} aria-label="帮助与文档" className={item(false)}>
-        <BookOpen className="h-5 w-5 shrink-0" />
-        帮助
-      </button>
       <button
         type="button"
         onClick={onOpenAccount}

@@ -140,7 +140,7 @@ export function SafetyTab() {
 
   if (advanced)
     return (
-      <AdvancedSubpage title="设备安全 · 高级" onBack={closeAdvanced}>
+      <AdvancedSubpage title="设备 · 高级" onBack={closeAdvanced}>
         <Group title="郊狼" fields={COYOTE_ADVANCED_FIELDS} settings={settings} onChange={patch} />
         <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch}>
           <label className="flex items-center justify-between gap-4 py-2">

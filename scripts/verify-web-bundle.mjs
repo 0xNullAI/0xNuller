@@ -60,7 +60,6 @@ if (entry && bootstrap) {
   );
   if (gzip > 300_000) fail(`initial JS exceeds the 300 kB gzip budget (${gzip} bytes)`);
   for (const source of [
-    'src/DocsDialog.tsx',
     'src/settings/SettingsPanel.tsx',
     'src/profile/ProfileDialog.tsx',
     'src/ContactsDialog.tsx',
