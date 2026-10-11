@@ -16,26 +16,22 @@ afterEach(() => {
 });
 
 describe('Android notification preference', () => {
-  it('keeps push unavailable in the ordinary web build', () => {
+  it('offers no system push on the web, only unread counts and browser notifications', () => {
     render(<NotificationsTab accountId="alice" />);
-    expect((screen.getByRole('checkbox', { name: '消息通知' }) as HTMLInputElement).disabled).toBe(
-      true,
-    );
-    expect(screen.getByText('网页端可查看新消息；系统推送请在 Android 应用中设置。')).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: '消息通知' })).toBeNull();
+    expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: '浏览器通知' })).toBeTruthy();
   });
 
-  it('distinguishes an Android package without push from a disabled backend', () => {
+  it('shows only unread counts in an Android package or service without push', () => {
     const native = window as Window & { AndroidSystem?: typeof bridge };
     native.AndroidSystem = { ...bridge, isPushConfigured: () => false };
     const view = render(<NotificationsTab accountId="alice" />);
-    expect(
-      screen.getByText('当前 Android 安装包未配置消息推送，应用内消息仍可查看。'),
-    ).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
     native.AndroidSystem = bridge;
     view.rerender(<NotificationsTab key="configured" accountId="alice" />);
-    expect(
-      screen.getByText('当前服务尚未启用 Android 消息推送，应用内消息仍可查看。'),
-    ).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: '消息通知' })).toBeNull();
   });
 
   it('opts in per account and can opt out without affecting another account', () => {

@@ -25,13 +25,15 @@ export function NotificationsTab({ accountId }: { accountId: string | null }) {
     bridge?.isPushConfigured() &&
     import.meta.env.VITE_ANDROID_PUSH_BACKEND_ENABLED === 'true',
   );
-  const unavailableMessage = !accountId
-    ? '登录后可设置 Android 消息通知。'
-    : !bridge
-      ? '网页端可查看新消息；系统推送请在 Android 应用中设置。'
-      : !bridge.isPushConfigured()
-        ? '当前 Android 安装包未配置消息推送，应用内消息仍可查看。'
-        : '当前服务尚未启用 Android 消息推送，应用内消息仍可查看。';
+  // System push is not offered unless a build and the server both enable it (domestic
+  // Android phones mostly lack the Google services FCM needs); unread counts always show.
+  if (!available)
+    return (
+      <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
+        <p className="text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
+        {!bridge && accountId ? <BrowserNotifications accountId={accountId} /> : null}
+      </section>
+    );
   return (
     <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
       <label className="flex min-h-12 items-center justify-between gap-4 text-sm">
@@ -39,8 +41,7 @@ export function NotificationsTab({ accountId }: { accountId: string | null }) {
         <input
           aria-label="消息通知"
           type="checkbox"
-          checked={available && enabled}
-          disabled={!available}
+          checked={enabled}
           onChange={(event) => {
             if (!accountId) return;
             const next = event.target.checked;
@@ -63,9 +64,7 @@ export function NotificationsTab({ accountId }: { accountId: string | null }) {
           }}
         />
       </label>
-      {!available ? (
-        <p className="mt-2 text-xs text-[var(--text-soft)]">{unavailableMessage}</p>
-      ) : enabled && !bridge?.hasNotificationPermission() ? (
+      {enabled && !bridge?.hasNotificationPermission() ? (
         <p className="mt-2 text-xs text-[var(--text-soft)]">
           如未弹出系统授权，请在 Android 应用设置中允许通知。{' '}
           <button
