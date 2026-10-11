@@ -69,7 +69,7 @@ Video 应用只保留视觉帧调度、一次性授权、观察节奏、失效�
 一次观察开始后，模型提示固定为该服务器对话准备的角色或场景卡及私人上下文；其他页面的 Market
 选择变化不会把观察切换到另一张卡，暂停恢复仍沿用本次提示。新的观察才读取新的选择。
 
-Video 工作台负责摄像头观察与设备互动。角色视频生成在同一私人聊天的「聊天设置 → 生成图片与视频」中提交异步任务，生成状态与结果回到聊天时间线；两者不是实时视频通话。托管 `vision` 每次观察先最多预留 59 Credit，最终按上游真实 Token 用量扣费；页面先从托管模型服务读取报价，报价不可用时不启动托管观察。自带密钥时仍由服务商计费，不经过平台 Credit。托管模型只发送压缩后不超过 250 KiB 的单张 JPEG，最短观察间隔 5 秒、单请求不重叠；原始画面不留存。价格和失败待核对规则见 [托管模型服务](../../workers/llm-proxy/README.md#摄像头视觉-credit)。
+Video 工作台负责摄像头观察与设备互动。角色视频生成在同一私人聊天的「聊天设置 → 生成图片与视频」中提交异步任务，生成状态与结果回到聊天时间线；两者不是实时视频通话。托管 `vision` 每次观察先最多预留 59 Credit，最终按上游真实 Token 用量扣费；页面先从托管模型服务读取报价，报价不可用时不启动托管观察。自带密钥时使用“自定义” OpenAI 兼容接口，须由用户打开「支持图片输入」，由服务商计费，不经过平台 Credit。托管模型只发送压缩后不超过 250 KiB 的单张 JPEG，最短观察间隔 5 秒、单请求不重叠；原始画面不留存。价格和失败待核对规则见 [托管模型服务](../../workers/llm-proxy/README.md#摄像头视觉-credit)。
 
 The camera workbench includes an explicit opt-in 2D character portrait overlay. It uses the private
 relationship's server-saved appearance; the overlay is DOM-only and never enters captured frames,

@@ -1,52 +1,35 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import { SettingSelect } from '@0xnullai/ui';
 import {
+  MANAGED_VISION_MODEL,
+  PROVIDER_DEFINITIONS,
   VIDEO_LLM_CONFIG_VERSION,
   createProviderSettings,
-  filterVideoModelIds,
-  getBrowserProviderDefinitions,
   getProviderDefinition,
-  getModelCatalogVersion,
-  getProviderImageModels,
   isVideoLlmConfigured,
   loadVideoLlmConfig,
   saveVideoLlmConfig,
-  subscribeModelCatalog,
   subscribeVideoLlmConfig,
-  supportsProviderModelImageInput,
   type ProviderId,
   type VideoLlmConfig,
 } from '@0xnullai/llm-providers';
 import { discoverBrowserProviderModels } from '@dg-agent/agent-browser/llm';
-import { ProviderCredentialFields, ProviderRememberApiKey } from './ProviderCredentialFields';
-
-const VIDEO_PROVIDERS = getBrowserProviderDefinitions({ requireImageInput: true });
+import {
+  ProviderCredentialFields,
+  ProviderImageInputToggle,
+  ProviderRememberApiKey,
+} from './ProviderCredentialFields';
+import { ModelCombobox } from './ModelCombobox';
 
 export function VideoProviderSection() {
   const [config, setConfig] = useState<VideoLlmConfig>(loadVideoLlmConfig);
-  const [discoveredModels, setDiscoveredModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<string[] | null>(null);
   const [status, setStatus] = useState('');
 
   useEffect(() => subscribeVideoLlmConfig(setConfig), []);
 
-  // Vision-capable models come from the models.dev catalog, which may arrive after mount.
-  const catalogVersion = useSyncExternalStore(subscribeModelCatalog, getModelCatalogVersion);
-  const definition = getProviderDefinition(config.providerId as ProviderId);
-  const knownModels = useMemo(
-    () =>
-      definition ? filterVideoModelIds(definition.id, getProviderImageModels(definition.id)) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute when the catalog arrives
-    [definition, catalogVersion],
-  );
-  const models = discoveredModels
-    ? [...new Set([...knownModels, ...discoveredModels])]
-    : knownModels;
-  const validProvider = Boolean(
-    definition?.browserSupported && definition.imageInput === 'known-models',
-  );
-  const validModel = Boolean(
-    definition && supportsProviderModelImageInput(definition.id, config.model),
-  );
+  const definition = getProviderDefinition(config.providerId);
+  const isManaged = config.providerId === 'managed';
 
   function update(patch: Partial<VideoLlmConfig>) {
     const next = { ...config, ...patch, version: VIDEO_LLM_CONFIG_VERSION };
@@ -55,39 +38,26 @@ export function VideoProviderSection() {
   }
 
   function selectProvider(providerId: ProviderId) {
-    const settings = createProviderSettings(providerId);
-    setDiscoveredModels(null);
+    setModels(null);
     setStatus('');
     update({
-      ...settings,
+      ...createProviderSettings(providerId),
+      // Managed Video always uses its declared vision model. A custom endpoint starts
+      // empty and text-only: never carry credentials over or assume image support.
+      ...(providerId === 'managed' ? { model: MANAGED_VISION_MODEL } : { model: '' }),
       version: VIDEO_LLM_CONFIG_VERSION,
-      // Provider switches require an explicit vision-model choice. Never carry over
-      // credentials or silently substitute a model from the previous provider.
-      apiKey: '',
-      model: '',
       rememberApiKey: config.rememberApiKey,
     });
   }
 
   async function refreshModels() {
-    if (!definition) return;
     setStatus('正在加载模型…');
     try {
-      const found = (
-        await discoverBrowserProviderModels({
-          ...config,
-          providerId: definition.id,
-        })
-      ).ids;
-      const filtered = filterVideoModelIds(definition.id, found);
-      setDiscoveredModels(filtered);
-      setStatus(
-        filtered.length
-          ? `已加载 ${filtered.length} 个明确支持图片输入的模型`
-          : '返回结果中没有明确支持图片输入的模型',
-      );
+      const found = await discoverBrowserProviderModels(config);
+      setModels(found);
+      setStatus(found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入');
     } catch (error) {
-      setDiscoveredModels(null);
+      setModels(null);
       setStatus(`加载失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
@@ -95,9 +65,7 @@ export function VideoProviderSection() {
   return (
     <div>
       <p className="text-xs text-[var(--text-faint)]">
-        {config.providerId === 'managed'
-          ? '只有提交给模型的画面才消耗 Credit。'
-          : '与 Agent 设置独立，仅本设备。'}
+        {isManaged ? '只有提交给模型的画面才消耗 Credit。' : '与 Agent 设置独立，仅本设备。'}
       </p>
 
       <div className="mt-3 flex flex-col gap-3">
@@ -106,72 +74,45 @@ export function VideoProviderSection() {
           <SettingSelect
             value={config.providerId}
             onValueChange={(value) => selectProvider(value as ProviderId)}
-            options={VIDEO_PROVIDERS.map((provider) => ({
-              value: provider.id,
-              label: provider.name,
-            }))}
+            options={PROVIDER_DEFINITIONS.filter((provider) => provider.browserSupported).map(
+              (provider) => ({ value: provider.id, label: provider.name }),
+            )}
           />
         </label>
 
-        <ProviderCredentialFields
-          config={{ ...config, providerId: config.providerId as ProviderId }}
-          definition={definition}
-          update={update}
-        />
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--text-soft)]">视觉模型</span>
-          <select
-            aria-label="Video 视觉模型"
-            value={validModel && models.includes(config.model) ? config.model : '__invalid__'}
-            onChange={(event) => {
-              if (event.target.value !== '__invalid__') update({ model: event.target.value });
-            }}
-            className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm"
-          >
-            <option value="__invalid__" disabled>
-              请选择明确支持图片输入的模型
-            </option>
-            {models.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {!validProvider ? (
-          <p role="alert" className="text-xs text-[var(--danger)]">
-            已保存的服务商“{config.providerId}”不支持浏览器图片输入，Video 已停用。请重新选择。
-          </p>
-        ) : (
-          !validModel &&
-          config.model.trim() && (
-            <p role="alert" className="text-xs text-[var(--danger)]">
-              已保存的模型“{config.model}”未被明确标记为支持图片输入，Video 已停用。请重新选择。
-            </p>
-          )
+        {!isManaged && (
+          <>
+            <ProviderCredentialFields config={config} definition={definition} update={update} />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-[var(--text-soft)]">视觉模型</span>
+              <ModelCombobox
+                value={config.model}
+                onChange={(model) => update({ model })}
+                ariaLabel="Video 视觉模型"
+                options={(models ?? []).map((model) => ({ id: model, label: model }))}
+              />
+            </label>
+            <button
+              type="button"
+              className="w-fit rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
+              onClick={() => void refreshModels()}
+            >
+              刷新模型列表
+            </button>
+            {status && (
+              <span role="status" className="text-xs text-[var(--text-faint)]">
+                {status}
+              </span>
+            )}
+            <ProviderImageInputToggle config={config} update={update} />
+            <ProviderRememberApiKey
+              config={config}
+              definition={definition}
+              label="仅在当前设备记住 API 密钥"
+              update={update}
+            />
+          </>
         )}
-
-        <button
-          type="button"
-          className="w-fit rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
-          onClick={() => void refreshModels()}
-        >
-          刷新视觉模型列表
-        </button>
-        {status && (
-          <span role="status" className="text-xs text-[var(--text-faint)]">
-            {status}
-          </span>
-        )}
-
-        <ProviderRememberApiKey
-          config={{ ...config, providerId: config.providerId as ProviderId }}
-          definition={definition}
-          label="仅在当前设备记住 API 密钥"
-          update={update}
-        />
       </div>
 
       {!isVideoLlmConfigured(config) && (

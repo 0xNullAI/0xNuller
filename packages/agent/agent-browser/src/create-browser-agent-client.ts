@@ -10,7 +10,7 @@ import type {
 import { getWebBluetoothAvailability } from '@dg-kit/transport-webbluetooth';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { createBrowserLlmClient } from './create-browser-llm-client.js';
-export { formatProviderConfigError, isPiAiProviderKey } from './create-browser-llm-client.js';
+export { formatProviderConfigError } from './create-browser-llm-client.js';
 import {
   OpossumPolicyEngine,
   PolicyEngine,

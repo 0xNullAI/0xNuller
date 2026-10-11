@@ -2,7 +2,7 @@ const REDACTED_IMAGE = '[REDACTED_IMAGE]';
 
 /**
  * Recursively clones model diagnostics while removing base64/data-URL image
- * payloads. This is intentionally shape-based so it covers pi-ai, OpenAI
+ * payloads. This is intentionally shape-based so it covers OpenAI
  * Chat Completions and Responses payloads without logging a new dialect by
  * accident.
  */

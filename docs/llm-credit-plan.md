@@ -9,8 +9,10 @@ provider 存在，也不做长期双轨。用户登录后使用 Credit；余额�
 基础兑换比例先定为 **1 美元 = 1000 Credit**。人民币人工充值采用固定产品价
 **7 元 = 1000 Credit**，不跟随每日汇率浮动；成功邀请奖励 **500 Credit**。
 
-自己的 API 继续保留现有官方、第三方和自定义兼容能力，不消耗 Credit。旧 BYOK 配置继续可用，
-避免升级后要求用户重新填写 Key。BYOK 只覆盖文字与视觉；实时语音只通过平台的猫愿语音提供。
+平台托管模型提供全部 AI 能力。自己的 API（BYOK）只保留一个“自定义” OpenAI 兼容接口，默认只发文字，
+不消耗 Credit。旧版保存的预置服务商（Qwen、DeepSeek、OpenAI 等）读取时转为“自定义”，保留 Key 和
+模型并填入该服务的 OpenAI 兼容地址；无法确定兼容地址的（Anthropic、MiniMax）回到托管模型。
+实时语音只通过平台的猫愿语音提供。
 
 ## 简化后的 UI
 
@@ -23,14 +25,13 @@ Agent 默认只显示一个模型选择器：
 - 未登录时把发送按钮替换为明确的“登录后使用”。
 
 模型选择器底部保留一个低强调入口 **“使用自己的 API”**，不再用两张大卡片让用户先选择模式。
-进入后默认只显示服务商、API Key 和模型。
+进入后是“自定义”接口：Base URL、接口协议、Strict Schema、API Key、模型和连接测试。代理字段只说明
+“启用后，模型请求将通过该地址发送”，不增加额外模式或确认弹窗。
 
-Base URL、接口协议、Strict Schema、网络代理和连接测试收进同一个“高级设置”。普通预置服务商使用
-默认值；选择“自定义”时才自动展开必要字段。代理字段只说明“启用后，模型请求将通过该地址发送”，
-不增加额外模式或确认弹窗。
+“支持图片输入”是自定义接口上的用户开关，默认关闭；关闭时 Video 与图片附件都不向该接口发送图片。
+托管侧只有声明的 `vision` 模型接受图片。
 
-设置页提供“切换回 0xNullAI 模型”。Agent、Chat 和 Video 共享模型来源；Video 只展示明确支持视觉
-输入的模型。Voice 保持独立模型设置和通话页面，但在 6.5.0 一并接入同一个 Credit 余额。
+设置页提供“切换回猫愿模型”。Agent 与 Chat 共享模型来源；Video 使用独立配置。Voice 保持独立模型设置和通话页面，但在 6.5.0 一并接入同一个 Credit 余额。
 
 账户页保留余额、充值、用量记录和邀请记录。小屏中 Credit 只出现在用户名旁，邀请卡片只显示
 “邀请好友，获得 500 Credit”、链接和分享按钮，详细记录进入二级页面。
@@ -155,13 +156,12 @@ Agent Core 继续只依赖 `LlmClient.runTurn()`，不感知 Cloudflare、Credit
 Agent Runtime
   -> LlmClient.runTurn()
      -> OpenAiHttpLlmClient     -> llm.0xnullai.com/v1/chat/completions（平台托管）
-     -> OpenAiHttpLlmClient     -> 用户选择的 OpenAI 兼容 API
-     -> PiAiLlmClient           -> Anthropic、Google 及现有第三方 API
+     -> OpenAiHttpLlmClient     -> 用户填写的自定义 OpenAI 兼容 API
   -> LlmTurnResult
   -> 工具权限与设备安全执行
 ```
 
-组合层只根据当前来源创建对应客户端。三类客户端把流式文本、推理内容和工具调用转换为同一个
+组合层只根据当前来源创建客户端。两种来源都把流式文本、推理内容和工具调用转换为同一个
 `LlmTurnResult`，因此 Agent 的会话、工具、权限、多设备路由和紧急停止逻辑不需要分叉。
 
 ## Credit 与数据
@@ -180,16 +180,15 @@ Credit 使用追加式账本，记录购买、邀请奖励、预留、消费、�
 
 保留：
 
-- OpenAI、Anthropic、Google、Qwen、DeepSeek、豆包和目前可用的第三方 provider。
 - 自定义 Base URL、Responses/Chat Completions、Strict Schema、代理和模型发现。
-- 现有 OpenAI 兼容与 pi-ai 协议客户端。
-- 能验证成功的旧 BYOK 数据和设置。
+- OpenAI 兼容协议客户端。
+- 旧 BYOK 数据：可确定兼容地址的转为“自定义”。
 
 清理：
 
 - `free` provider、`openrouter/free` 展示模型和每日体验额度。
 - 免费代理专用 HMAC、cookie 分支、APK 内共享 secret 和相关环境变量。
-- 失效或没有真实调用路径的 provider 定义。
+- 预置第三方 provider、pi-ai 协议客户端和 models.dev 模型目录（Auth `/api/auth/model-catalog`）。
 - 重复的 provider 判断、连接测试、设置状态和兼容测试夹具。
 
 ## 实施顺序

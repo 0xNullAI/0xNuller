@@ -30,9 +30,9 @@ beforeEach(() => {
 });
 
 it('withholds ordinary chat vision from text-only and managed observation providers', () => {
-  expect(canUsePrivateImageInput(false, 'openai')).toBe(false);
+  expect(canUsePrivateImageInput(false, 'custom')).toBe(false);
   expect(canUsePrivateImageInput(true, 'managed')).toBe(false);
-  expect(canUsePrivateImageInput(true, 'openai')).toBe(true);
+  expect(canUsePrivateImageInput(true, 'custom')).toBe(true);
 });
 afterEach(() => {
   vi.restoreAllMocks();

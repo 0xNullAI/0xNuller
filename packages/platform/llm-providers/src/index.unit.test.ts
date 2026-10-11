@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   MANAGED_MODEL_OPTIONS,
+  PROVIDER_DEFINITIONS,
   createProviderSettings,
   normalizeProviderSettings,
   resolveProviderRuntimeSettings,
-  supportsProviderModelImageInput,
+  supportsProviderImageInput,
 } from './index';
 import { defaultVideoLlmConfig, isVideoLlmConfigured } from './video-config-store';
+
+describe('provider catalog', () => {
+  it('offers only the managed plan and one custom OpenAI-compatible endpoint', () => {
+    expect(PROVIDER_DEFINITIONS.map((provider) => provider.id)).toEqual(['managed', 'custom']);
+  });
+});
 
 describe('managed Workers AI models', () => {
   it('keeps a supported tier and rejects unknown ids', () => {
@@ -17,42 +24,60 @@ describe('managed Workers AI models', () => {
     );
   });
 
-  it('exposes three text-only tiers to the client and offers the managed image model only to Video, while preserving BYOK image providers', () => {
+  it('exposes three text-only tiers to the client and offers the managed image model only to Video', () => {
     expect(MANAGED_MODEL_OPTIONS.map((option) => option.id)).toEqual([
       'basic',
       'balanced',
       'powerful',
     ]);
-    expect(MANAGED_MODEL_OPTIONS.some((model) => model.id === 'vision')).toBe(false);
     expect(
       resolveProviderRuntimeSettings({
         ...createProviderSettings('managed'),
         model: 'basic',
+        // A stored toggle never turns a text tier into a vision model.
+        imageInput: true,
       }),
     ).toMatchObject({ model: 'basic', imageInput: false });
-    expect(resolveProviderRuntimeSettings(createProviderSettings('managed'))).toMatchObject({
-      imageInput: false,
-    });
-    expect(supportsProviderModelImageInput('managed', 'balanced')).toBe(false);
+    expect(
+      supportsProviderImageInput({ providerId: 'managed', model: 'balanced', imageInput: true }),
+    ).toBe(false);
 
     const video = defaultVideoLlmConfig();
     expect(video).toMatchObject({ providerId: 'managed', model: 'vision' });
     expect(isVideoLlmConfigured(video)).toBe(true);
     expect(
       resolveProviderRuntimeSettings({ ...createProviderSettings('managed'), model: 'vision' }),
-    ).toMatchObject({
-      imageInput: true,
-    });
+    ).toMatchObject({ imageInput: true });
   });
 });
 
-it('uses the Responses API for OpenAI and Chat Completions for compatible services', () => {
-  const settings = (providerId: 'openai' | 'deepseek') =>
+describe('custom image input', () => {
+  const custom = () =>
     normalizeProviderSettings({
-      ...createProviderSettings(providerId),
+      ...createProviderSettings('custom'),
       apiKey: 'sk-test',
-      model: 'model',
+      baseUrl: 'https://api.example.org/v1/',
+      model: ' vl-model ',
     });
-  expect(settings('openai').endpoint).toBe('responses');
-  expect(settings('deepseek').endpoint).toBe('chat/completions');
+
+  it('is off by default and only on after the user switches it on', () => {
+    expect(custom()).toMatchObject({ imageInput: false, model: 'vl-model' });
+    expect(resolveProviderRuntimeSettings(custom()).imageInput).toBe(false);
+    expect(resolveProviderRuntimeSettings({ ...custom(), imageInput: true }).imageInput).toBe(true);
+  });
+
+  it('treats a missing toggle from an older caller as off', () => {
+    const { imageInput: _omitted, ...withoutToggle } = custom();
+    expect(
+      normalizeProviderSettings(withoutToggle as Parameters<typeof normalizeProviderSettings>[0])
+        .imageInput,
+    ).toBe(false);
+  });
+
+  it('keeps Video disabled until the custom model is marked as image-capable', () => {
+    const video = { ...defaultVideoLlmConfig(), ...custom() };
+    expect(isVideoLlmConfigured(video)).toBe(false);
+    expect(isVideoLlmConfigured({ ...video, imageInput: true })).toBe(true);
+    expect(isVideoLlmConfigured({ ...video, imageInput: true, apiKey: ' ' })).toBe(false);
+  });
 });

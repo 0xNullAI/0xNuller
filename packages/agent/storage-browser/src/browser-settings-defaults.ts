@@ -1,9 +1,5 @@
 import { DEFAULT_BRIDGE_SETTINGS } from '@dg-agent/bridge';
-import {
-  createDefaultProviderSettings,
-  normalizeProviderSettings,
-  type ProviderId,
-} from '@0xnullai/llm-providers';
+import { createDefaultProviderSettings, normalizeProviderSettings } from '@0xnullai/llm-providers';
 import {
   createDefaultToolCallConfig,
   DEFAULT_CIVET_PRESSURE_DELTA_KPA,
@@ -47,7 +43,7 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
   const toolCallConfig = createDefaultToolCallConfig();
   const provider = normalizeProviderSettings({
     ...createDefaultProviderSettings(),
-    providerId: (env.VITE_PROVIDER_ID ?? 'managed') as ProviderId,
+    providerId: env.VITE_PROVIDER_ID ?? 'managed',
     apiKey: env.VITE_OPENAI_API_KEY ?? '',
     baseUrl: env.VITE_OPENAI_BASE_URL ?? '',
     model: env.VITE_OPENAI_MODEL ?? '',

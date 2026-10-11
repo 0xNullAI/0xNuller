@@ -8,7 +8,7 @@ const MODES = {
   llmMode: 'provider-http' as const,
   bluetoothAvailability: { supported: true },
   permissionMode: 'confirm' as const,
-  providerId: 'anthropic' as const,
+  providerId: 'custom' as const,
 };
 
 const SPEECH = {
@@ -25,28 +25,17 @@ const SPEECH = {
 const BASE_URL_WARNING = '当前模型接口地址无效，请在设置里检查接口地址';
 
 describe('buildWarnings', () => {
-  // Regression: normalizeProviderSettings always clears baseUrl to '' for
-  // dialect: 'pi-ai' providers (no baseUrl concept for native/pi-ai-routed
-  // providers) — buildWarnings must not run the OpenAI-compat "is this a
-  // valid URL" check against that intentionally-empty value, or every one
-  // of the 17 pi-ai-dialect providers shows a permanent false-positive
-  // warning as soon as an API key is entered.
-  it('does not warn about an invalid baseUrl for pi-ai-dialect providers', () => {
+  it('does not warn about the managed service address', () => {
     const settings = {
       ...defaultBrowserAppSettings(),
       llmMode: 'provider-http' as const,
-      provider: normalizeProviderSettings({
-        ...createProviderSettings('anthropic'),
-        apiKey: 'sk-ant-test',
-      }),
+      provider: createProviderSettings('managed'),
     };
 
-    const warnings = buildWarnings(settings, MODES, SPEECH);
-
-    expect(warnings).not.toContain(BASE_URL_WARNING);
+    expect(buildWarnings(settings, MODES, SPEECH)).not.toContain(BASE_URL_WARNING);
   });
 
-  it('still warns about an invalid baseUrl for openai-compat providers', () => {
+  it('warns about an invalid custom endpoint address', () => {
     const settings = {
       ...defaultBrowserAppSettings(),
       llmMode: 'provider-http' as const,

@@ -1,35 +1,18 @@
 import { z } from 'zod';
 
-// Mirrors @0xnullai/llm-providers's ProviderId. Duplicated here (rather
-// than imported) because this schema only needs the string literals for
-// persisted-settings validation — widening this list is purely additive, so
-// old persisted configs for the original six providers keep parsing
-// unmodified. Keep in sync when providers-catalog adds/removes an id.
-const providerIds = [
-  'managed',
-  'qwen',
-  'deepseek',
-  'doubao',
-  'openai',
-  'custom',
-  'anthropic',
-  'google',
-  'openrouter',
-  'groq',
-  'moonshotai',
-  'moonshotai-cn',
-  'zai',
-  'zai-coding-cn',
-  'minimax',
-  'minimax-cn',
-  'xai',
-  'cerebras',
-  'together',
-  'huggingface',
-  'mistral',
-  'fireworks',
-  'xiaomi',
-] as const;
+// Stored provider ids are migrated on read (see browser-settings-provider-migration.ts), so
+// any string parses here: an enum would discard the whole settings blob of someone whose
+// saved provider has since been removed.
+const persistedProviderSchema = z.object({
+  providerId: z.string(),
+  baseUrl: z.string(),
+  model: z.string(),
+  endpoint: z.enum(['responses', 'chat/completions']),
+  useStrict: z.boolean(),
+  imageInput: z.boolean().optional(),
+});
+
+export type PersistedProviderSettings = z.infer<typeof persistedProviderSchema>;
 
 export const settingsSchema = z.object({
   version: z.literal(1),
@@ -102,27 +85,8 @@ export const settingsSchema = z.object({
       }),
     })
     .optional(),
-  provider: z
-    .object({
-      providerId: z.enum(providerIds),
-      baseUrl: z.string(),
-      model: z.string(),
-      endpoint: z.enum(['responses', 'chat/completions']),
-      useStrict: z.boolean(),
-    })
-    .optional(),
-  providerConfigs: z
-    .record(
-      z.string(),
-      z.object({
-        providerId: z.enum(providerIds),
-        baseUrl: z.string(),
-        model: z.string(),
-        endpoint: z.enum(['responses', 'chat/completions']),
-        useStrict: z.boolean(),
-      }),
-    )
-    .optional(),
+  provider: persistedProviderSchema.optional(),
+  providerConfigs: z.record(z.string(), persistedProviderSchema).optional(),
 });
 
 export type PersistedBrowserAppSettings = z.infer<typeof settingsSchema>;

@@ -1,17 +1,11 @@
 import { authRequestHeaders } from '@0xnullai/auth';
 import {
-  getCatalogModel,
   resolveProviderRequestUrl,
   resolveProviderRuntimeSettings,
-  type ProviderDialect,
   type ProviderSettings,
 } from '@0xnullai/llm-providers';
 import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import { OpenAiHttpLlmClient } from '@dg-agent/providers-openai-http';
-import {
-  PI_AI_PROVIDER_KEYS,
-  type PiAiProviderKey,
-} from '@dg-agent/providers-pi-http/provider-keys';
 
 class UnavailableLlmClient implements LlmClient {
   readonly capabilities = { imageInput: false };
@@ -26,55 +20,6 @@ class UnavailableLlmClient implements LlmClient {
   }
 }
 
-/**
- * Keeps pi-ai and every provider factory outside the normal Agent route. The
- * selected runtime is fetched only when a pi-ai-backed provider starts a turn;
- * OpenAI-compatible providers never download it.
- */
-class LazyPiAiLlmClient implements LlmClient {
-  readonly capabilities;
-  private clientPromise?: Promise<LlmClient>;
-  private readonly config: {
-    apiKey: string;
-    model: string;
-    providerKey: PiAiProviderKey;
-    temperature: number;
-    supportsImageInput: boolean;
-    modelHints?: { image?: boolean; temperature?: boolean };
-    transformUrl: (url: string) => string;
-  };
-
-  constructor(config: {
-    apiKey: string;
-    model: string;
-    providerKey: PiAiProviderKey;
-    temperature: number;
-    supportsImageInput: boolean;
-    modelHints?: { image?: boolean; temperature?: boolean };
-    transformUrl: (url: string) => string;
-  }) {
-    this.config = config;
-    this.capabilities = { imageInput: config.supportsImageInput };
-  }
-
-  async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
-    const client = await this.loadClient();
-    return client.runTurn(input);
-  }
-
-  private loadClient(): Promise<LlmClient> {
-    if (!this.clientPromise) {
-      this.clientPromise = import('@dg-agent/providers-pi-http')
-        .then(({ PiAiLlmClient }) => new PiAiLlmClient(this.config))
-        .catch((error: unknown) => {
-          this.clientPromise = undefined;
-          throw error;
-        });
-    }
-    return this.clientPromise;
-  }
-}
-
 function isValidHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
@@ -84,26 +29,11 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
-/** Close the provider catalog's loose string type against pi-ai's actual registry. */
-export function isPiAiProviderKey(value: string): value is PiAiProviderKey {
-  return (PI_AI_PROVIDER_KEYS as readonly string[]).includes(value);
-}
-
-export function formatProviderConfigError(
-  error: unknown,
-  providerId: string,
-  dialect: ProviderDialect,
-): string {
+export function formatProviderConfigError(error: unknown, providerId: string): string {
   const providerLabel = `当前服务提供方“${providerId}”`;
 
-  if (dialect === 'openai-compat' && error instanceof Error && /baseUrl/i.test(error.message)) {
+  if (error instanceof Error && /baseUrl/i.test(error.message)) {
     return `${providerLabel}配置无效：接口地址不是有效的 URL`;
-  }
-  if (dialect === 'pi-ai' && error instanceof Error && /providerKey/i.test(error.message)) {
-    return `${providerLabel}配置无效：内部提供方标识不受支持，请重新选择服务提供方或联系开发者`;
-  }
-  if (dialect === 'pi-ai' && error instanceof Error) {
-    return `${providerLabel}配置无效：请检查 API 密钥与模型名称是否填写正确`;
   }
   if (error instanceof Error) return `${providerLabel}配置无效：${error.message}`;
   return `${providerLabel}配置无效，请在设置里检查模型参数`;
@@ -121,9 +51,7 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
   try {
     provider = resolveProviderRuntimeSettings(options.provider);
   } catch (error) {
-    return new UnavailableLlmClient(
-      formatProviderConfigError(error, options.provider.providerId, 'openai-compat'),
-    );
+    return new UnavailableLlmClient(formatProviderConfigError(error, options.provider.providerId));
   }
   const temperature = options.temperature ?? 0.3;
 
@@ -136,42 +64,6 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
     return new UnavailableLlmClient(
       '当前模型服务还没有配置完成，请先在设置里选择服务提供方并补全凭证',
     );
-  }
-  if (provider.dialect === 'pi-ai') {
-    if (!provider.piProviderKey || !isPiAiProviderKey(provider.piProviderKey)) {
-      return new UnavailableLlmClient(
-        `当前服务提供方“${provider.providerId}”配置无效：内部提供方标识不受支持，请重新选择服务提供方或联系开发者`,
-      );
-    }
-    if (
-      !provider.model.trim() ||
-      !Number.isFinite(temperature) ||
-      temperature < 0 ||
-      temperature > 2
-    ) {
-      return new UnavailableLlmClient(
-        formatProviderConfigError(
-          new Error('invalid pi-ai settings'),
-          provider.providerId,
-          provider.dialect,
-        ),
-      );
-    }
-    try {
-      return new LazyPiAiLlmClient({
-        apiKey: provider.apiKey,
-        model: provider.model,
-        providerKey: provider.piProviderKey,
-        temperature,
-        supportsImageInput: provider.imageInput,
-        modelHints: catalogHints(provider.providerId, provider.model),
-        transformUrl: resolveProviderRequestUrl,
-      });
-    } catch (error) {
-      return new UnavailableLlmClient(
-        formatProviderConfigError(error, provider.providerId, provider.dialect),
-      );
-    }
   }
   if (!isValidHttpUrl(provider.baseUrl)) {
     return new UnavailableLlmClient(
@@ -195,16 +87,6 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
       transformUrl: resolveProviderRequestUrl,
     });
   } catch (error) {
-    return new UnavailableLlmClient(
-      formatProviderConfigError(error, provider.providerId, provider.dialect),
-    );
+    return new UnavailableLlmClient(formatProviderConfigError(error, provider.providerId));
   }
-}
-
-function catalogHints(
-  providerId: Parameters<typeof getCatalogModel>[0],
-  model: string,
-): { image?: boolean; temperature?: boolean } | undefined {
-  const entry = getCatalogModel(providerId, model);
-  return entry ? { image: entry.image, temperature: entry.temperature } : undefined;
 }

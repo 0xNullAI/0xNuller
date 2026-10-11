@@ -33,7 +33,6 @@ import {
   normalizeProviderSettings,
   subscribeVideoLlmConfig,
   type VideoLlmConfig,
-  type ProviderId,
 } from '@0xnullai/llm-providers';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useDgLabRegistry } from '@0xnullai/native';
@@ -141,12 +140,13 @@ class CompanionObserverSlot {
 
 function llmForConfig(config: VideoLlmConfig): LlmClient {
   const provider = normalizeProviderSettings({
-    providerId: config.providerId as ProviderId,
+    providerId: config.providerId,
     apiKey: config.apiKey,
     model: config.model,
     baseUrl: config.baseUrl,
     endpoint: config.endpoint,
     useStrict: config.useStrict,
+    imageInput: config.imageInput,
   });
   return createBrowserLlmClient({
     provider,

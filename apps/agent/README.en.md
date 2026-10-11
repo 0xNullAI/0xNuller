@@ -10,7 +10,7 @@ standalone build.
 
 ## Features
 
-- OpenAI, Anthropic, and OpenAI-compatible model services.
+- The managed 猫愿 models by default; bring-your-own-key through one OpenAI-compatible endpoint (text only unless image input is switched on).
 - Strength, waveform, timer, waveform-design, and stop tools.
 - Shared scenes with Voice and shared device/safety state with the other modules.
 - Browser storage for conversations, scenes, and waveforms, with supported account sync.

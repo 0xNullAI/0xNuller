@@ -384,11 +384,8 @@ describe('OpenAiHttpLlmClient', () => {
     });
   });
 
-  // Mirrors packages/providers-pi-http/src/index.test.ts's contract suite —
-  // same four cases (successful text reply, tool-call round-trip, aborted
-  // request, error response) exercised against the pi-ai-backed client, so
-  // both LlmClient implementations are held to the same observable
-  // behavior even though their wire formats differ.
+  // The LlmClient contract every provider client must meet: successful text
+  // reply, tool-call round-trip, aborted request and error response.
   describe('contract: successful text reply / tool-call / abort / error', () => {
     it('resolves a successful text reply', async () => {
       vi.stubGlobal(
@@ -529,9 +526,7 @@ describe('OpenAiHttpLlmClient', () => {
       });
 
       // Already matches normalizeAssistantErrorMessage's
-      // `模型服务 HTTP 错误 (\d{3})` pattern directly — this is the reference
-      // shape providers-pi-http's classifyPiAiError reshapes pi-ai's own error
-      // strings into (`Provider HTTP error NNN: ...`).
+      // `模型服务 HTTP 错误 (\d{3})` pattern directly.
       await expect(client.runTurn(makeTurnInput())).rejects.toThrow(/模型服务 HTTP 错误 401/);
     });
   });

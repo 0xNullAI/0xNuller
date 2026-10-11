@@ -26,7 +26,6 @@ import {
   subscribeProfileRequests,
   type AuthUser,
 } from '@0xnullai/auth';
-import { loadModelCatalog } from '@0xnullai/llm-providers';
 import { MODULES, moduleIdFromPath } from './routes';
 import { pageAliasFromPath } from './page-aliases';
 import { useUnreadMessages } from './unread-messages';
@@ -269,10 +268,6 @@ export function Shell() {
     window.dispatchEvent(new PopStateEvent('popstate'));
   }, [authenticated, pathname]);
   const unreadMessages = useUnreadMessages(authChecked ? user : null);
-  // Model ids, vision support and limits come from models.dev; load them once per page.
-  useEffect(() => {
-    void loadModelCatalog();
-  }, []);
 
   const retryAuth = () => {
     setAuthUnavailable(false);
