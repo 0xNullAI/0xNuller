@@ -564,52 +564,29 @@ describe('OpossumVibrateAdapter incoming notifications', () => {
     expect(seen).toContain(15);
   });
 
-  it('parses a 0xD0 button bitmap into the correct pressed set (SEL_1 + B)', async () => {
-    const adapter = new OpossumVibrateAdapter();
-    const { notifyChar } = await connectAdapter(adapter);
-
-    const events: Array<{ sequence: number; pressed: Set<string> }> = [];
-    adapter.subscribeButtons((event) => events.push(event));
-
+  it.each<[string, number, number, number, string[]]>([
     // bit0 (SEL_1) set in low byte, bit12 (B) set in high byte (bit 4 of byte).
-    const low = 0b00000001;
-    const high = 0b00010000;
-    notifyChar.emitNotification([0xd0, 7, low, high, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-
-    expect(events).toHaveLength(1);
-    expect(events[0]?.sequence).toBe(7);
-    expect(events[0]?.pressed).toEqual(new Set(['SEL_1', 'B']));
-  });
-
-  it('parses a 0xD0 button bitmap into the correct pressed set (Up + D)', async () => {
-    const adapter = new OpossumVibrateAdapter();
-    const { notifyChar } = await connectAdapter(adapter);
-
-    const events: Array<{ sequence: number; pressed: Set<string> }> = [];
-    adapter.subscribeButtons((event) => events.push(event));
-
+    ['SEL_1 + B', 7, 0b00000001, 0b00010000, ['SEL_1', 'B']],
     // bit8 (Up) is bit0 of the high byte, bit15 (D) is bit7 of the high byte.
-    const low = 0b00000000;
-    const high = 0b10000001;
-    notifyChar.emitNotification([0xd0, 3, low, high, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    ['Up + D', 3, 0b00000000, 0b10000001, ['Up', 'D']],
+    // An all-zero bitmap reports no pressed buttons.
+    ['none', 1, 0, 0, []],
+  ])(
+    'parses a 0xD0 button bitmap into the correct pressed set (%s)',
+    async (_label, seq, low, high, expected) => {
+      const adapter = new OpossumVibrateAdapter();
+      const { notifyChar } = await connectAdapter(adapter);
 
-    expect(events).toHaveLength(1);
-    expect(events[0]?.sequence).toBe(3);
-    expect(events[0]?.pressed).toEqual(new Set(['Up', 'D']));
-  });
+      const events: Array<{ sequence: number; pressed: Set<string> }> = [];
+      adapter.subscribeButtons((event) => events.push(event));
 
-  it('reports no pressed buttons when the bitmap is all zero', async () => {
-    const adapter = new OpossumVibrateAdapter();
-    const { notifyChar } = await connectAdapter(adapter);
+      notifyChar.emitNotification([0xd0, seq, low, high, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    const events: Array<{ sequence: number; pressed: Set<string> }> = [];
-    adapter.subscribeButtons((event) => events.push(event));
-
-    notifyChar.emitNotification([0xd0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-
-    expect(events).toHaveLength(1);
-    expect(events[0]?.pressed.size).toBe(0);
-  });
+      expect(events).toHaveLength(1);
+      expect(events[0]?.sequence).toBe(seq);
+      expect(events[0]?.pressed).toEqual(new Set(expected));
+    },
+  );
 
   it('unsubscribing a button listener stops further delivery', async () => {
     const adapter = new OpossumVibrateAdapter();

@@ -59,21 +59,21 @@ it('keeps execution rights in this window and drops them after an account round-
   expect(fetchMock).toHaveBeenCalledTimes(count);
 });
 
-it('rejects a response after the account changes during the request', async () => {
-  fetchMock.mockImplementationOnce(async () => {
-    auth.account = 'bob';
-    return Response.json({ item: { id: 'run-1' } });
-  });
-  await expect(getAgentRun('one', 'run-1')).rejects.toThrow('账号已切换');
-});
-
-it('rejects a slow response even when the account switches away and back', async () => {
-  fetchMock.mockImplementationOnce(async () => {
-    auth.account = 'bob';
-    for (const listener of auth.listeners) listener();
-    auth.account = 'alice';
-    for (const listener of auth.listeners) listener();
-    return Response.json({ item: { id: 'run-1' } });
-  });
-  await expect(getAgentRun('one', 'run-1')).rejects.toThrow('账号已切换');
-});
+// A→B: the account changes silently mid-request. A→B→A: a slow response
+// must not be accepted just because the account switched away and back.
+it.each([
+  { path: 'A→B', switches: ['bob'], notify: false },
+  { path: 'A→B→A', switches: ['bob', 'alice'], notify: true },
+])(
+  'rejects a response after the account changes during the request ($path)',
+  async ({ switches, notify }) => {
+    fetchMock.mockImplementationOnce(async () => {
+      for (const account of switches) {
+        auth.account = account;
+        if (notify) for (const listener of auth.listeners) listener();
+      }
+      return Response.json({ item: { id: 'run-1' } });
+    });
+    await expect(getAgentRun('one', 'run-1')).rejects.toThrow('账号已切换');
+  },
+);

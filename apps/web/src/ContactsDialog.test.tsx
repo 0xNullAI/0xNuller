@@ -54,28 +54,24 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-it('opens the friends list first and keeps mutual direct-message navigation', async () => {
-  const onClose = vi.fn();
-  render(<ContactsDialog user={user} presentation="page" onClose={onClose} />);
-  expect(screen.getByRole('tab', { name: '好友' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.click(await screen.findByRole('button', { name: '私聊' }));
-  expect(state.dm).toHaveBeenCalledWith('friend', {
-    username: 'friend',
-    displayName: '好友',
-  });
-  expect(onClose).not.toHaveBeenCalled();
-});
-
-it('closes a modal after requesting a direct message', async () => {
-  const onClose = vi.fn();
-  render(<ContactsDialog user={user} presentation="dialog" onClose={onClose} />);
-  fireEvent.click(await screen.findByRole('button', { name: '私聊' }));
-  expect(state.dm).toHaveBeenCalledWith('friend', {
-    username: 'friend',
-    displayName: '好友',
-  });
-  expect(onClose).toHaveBeenCalledOnce();
-});
+it.each([
+  { presentation: 'page', closes: false },
+  { presentation: 'dialog', closes: true },
+] as const)(
+  'opens the friends list first and requests a mutual direct message from a $presentation (closes: $closes)',
+  async ({ presentation, closes }) => {
+    const onClose = vi.fn();
+    render(<ContactsDialog user={user} presentation={presentation} onClose={onClose} />);
+    expect(screen.getByRole('tab', { name: '好友' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(await screen.findByRole('button', { name: '私聊' }));
+    expect(state.dm).toHaveBeenCalledWith('friend', {
+      username: 'friend',
+      displayName: '好友',
+    });
+    if (closes) expect(onClose).toHaveBeenCalledOnce();
+    else expect(onClose).not.toHaveBeenCalled();
+  },
+);
 
 it('switches discovery without showing a stale username lookup after editing the query', async () => {
   render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);

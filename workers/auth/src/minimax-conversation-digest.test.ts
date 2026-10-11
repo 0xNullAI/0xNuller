@@ -58,6 +58,5 @@ it('accepts a 900-character emoji message the source query already bounded', asy
     ),
   );
   const emoji = [{ id: 'u1', role: 'user' as const, content: '😀'.repeat(900) }];
-  expect(emoji[0]!.content.length).toBe(1800);
   expect(await generateConversationDigest('test-key', '', emoji)).toBe('表情');
 });

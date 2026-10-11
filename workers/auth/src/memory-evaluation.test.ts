@@ -439,6 +439,7 @@ it('reports separate same-name, negation and explicit-correction examples', asyn
     outcomes.push({ ...item, returned, pass });
     expect(returned, item.query).not.toContain('other-secret');
     expect(returned, item.query).not.toContain('bob-secret');
+    expect(pass, `${item.query} -> ${JSON.stringify(returned)}`).toBe(true);
   }
   expect(
     (

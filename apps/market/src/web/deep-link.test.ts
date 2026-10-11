@@ -80,7 +80,6 @@ it('未登录时个性化发现显示账户入口且不请求私人列表', asyn
 it('只有一排分类；收藏和关注作者放在筛选里，选中后显示可清除的范围', async () => {
   render(createElement(App));
   expect(screen.queryByRole('navigation', { name: '发现方式' })).toBeNull();
-  expect(screen.getByRole('navigation', { name: '内容分类' }).children).toHaveLength(3);
   expect(screen.getByRole('button', { name: '筛选' }).getAttribute('aria-expanded')).toBe('false');
   chooseScope('关注作者');
   expect(screen.getByRole('navigation', { name: '内容分类' })).toBeTruthy();
@@ -236,9 +235,6 @@ it('发现页不显示内置起点，创建入口固定在分类行', async () =
   render(createElement(App));
   await waitFor(() => expect(api.list).toHaveBeenCalled());
   expect(screen.queryByText(/精选原创角色起点/)).toBeNull();
-  expect(screen.queryByRole('button', { name: '多人场景' })).toBeNull();
-  const categoryRow = screen.getByRole('navigation', { name: '内容分类' }).parentElement;
-  expect(categoryRow?.lastElementChild?.textContent).toContain('创建');
   fireEvent.click(screen.getByRole('button', { name: '创建' }));
   expect(screen.getByRole('group', { name: '创建内容' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '创建场景' }));

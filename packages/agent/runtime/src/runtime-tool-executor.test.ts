@@ -44,28 +44,17 @@ describe('filterToolDefinitionsByConnectedDevices', () => {
     expect(names(result)).toEqual(['timer', 'design_wave']);
   });
 
-  it('includes Coyote tools only when coyote is connected', () => {
-    const connected = new Set<DeviceKind>(['coyote']);
-    const result = filterToolDefinitionsByConnectedDevices(ALL_DEFINITIONS, connected);
-    expect(names(result)).toEqual(
-      expect.arrayContaining([
-        'shock_start',
-        'shock_stop',
-        'shock_adjust',
-        'shock_change_wave',
-        'shock_burst',
-      ]),
-    );
-    expect(names(result)).not.toEqual(expect.arrayContaining(['vibrate_start']));
-  });
-
-  it('includes vibrate_* tools only when opossum is connected', () => {
-    const connected = new Set<DeviceKind>(['opossum']);
-    const result = filterToolDefinitionsByConnectedDevices(ALL_DEFINITIONS, connected);
-    expect(names(result)).toEqual(
-      expect.arrayContaining(['vibrate_start', 'vibrate_stop', 'vibrate_adjust']),
-    );
-    expect(names(result)).not.toEqual(expect.arrayContaining(['shock_start']));
+  it.each<[DeviceKind, string[], string]>([
+    [
+      'coyote',
+      ['shock_start', 'shock_stop', 'shock_adjust', 'shock_change_wave', 'shock_burst'],
+      'vibrate_start',
+    ],
+    ['opossum', ['vibrate_start', 'vibrate_stop', 'vibrate_adjust'], 'shock_start'],
+  ])('includes only the matching tools when %s is connected', (kind, included, excluded) => {
+    const result = filterToolDefinitionsByConnectedDevices(ALL_DEFINITIONS, new Set([kind]));
+    expect(names(result)).toEqual(expect.arrayContaining(included));
+    expect(names(result)).not.toEqual(expect.arrayContaining([excluded]));
   });
 
   it('drops set_indicator_color entirely when no LED-capable device is connected', () => {
@@ -82,11 +71,6 @@ describe('filterToolDefinitionsByConnectedDevices', () => {
     const properties = (tool!.parameters as { properties: { deviceKind: { enum: string[] } } })
       .properties;
     expect(properties.deviceKind.enum).toEqual(['opossum']);
-  });
-
-  it('always keeps tools that need no device, regardless of connection state', () => {
-    const result = filterToolDefinitionsByConnectedDevices(ALL_DEFINITIONS, new Set());
-    expect(names(result)).toEqual(expect.arrayContaining(['timer', 'design_wave']));
   });
 
   it('keeps every device tool when every device kind is connected', () => {

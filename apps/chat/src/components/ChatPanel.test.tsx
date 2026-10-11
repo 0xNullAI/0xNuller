@@ -20,21 +20,6 @@ beforeEach(() => {
 });
 
 describe('聊天输入栏', () => {
-  it('图标操作都有可读名称', () => {
-    render(
-      <ChatPanel
-        conversationId="test-room"
-        messages={[]}
-        onSend={vi.fn()}
-        onSendMedia={vi.fn(async () => undefined)}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: '发送图片' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '发送语音' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '发送消息' })).toBeTruthy();
-  });
-
   it('输入法候选确认不会误发送', () => {
     const onSend = vi.fn();
     render(

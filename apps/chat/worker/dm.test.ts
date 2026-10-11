@@ -198,21 +198,16 @@ describe('私聊的 DO 不能从房间路径进', () => {
 });
 
 describe('拉黑要掐断已经在跑的会话', () => {
-  it('拉黑之前签发的票据全部作废', () => {
-    const revokedAt = NOW;
-    // Deleting the follows only stops the *next* mint; this is the one already in a
-    // client's hand, which would otherwise keep working for the rest of its minute.
-    expect(dmTicketRevoked(NOW - 1, revokedAt)).toBe(true);
-    expect(dmTicketRevoked(NOW, revokedAt)).toBe(true);
-  });
-
-  it('解除拉黑后新签发的票据可以用，不需要第二条通知', () => {
-    // The mark is an instant rather than a flag, so unblocking needs nothing to undo it.
-    expect(dmTicketRevoked(NOW + 1, NOW)).toBe(false);
-  });
-
-  it('从来没被拉黑过的会话不受影响', () => {
-    expect(dmTicketRevoked(NOW, undefined)).toBe(false);
+  // Deleting the follows only stops the *next* mint; a ticket already in a client's hand
+  // would otherwise keep working for the rest of its minute. The mark is an instant rather
+  // than a flag, so unblocking needs nothing to undo it.
+  it.each([
+    ['拉黑前一刻签发的票据作废', NOW - 1, NOW, true],
+    ['拉黑同一刻签发的票据作废', NOW, NOW, true],
+    ['解除拉黑后新签发的票据可以用，不需要第二条通知', NOW + 1, NOW, false],
+    ['从来没被拉黑过的会话不受影响', NOW, undefined, false],
+  ] as const)('%s', (_name, issuedAt, revokedAt, revoked) => {
+    expect(dmTicketRevoked(issuedAt, revokedAt)).toBe(revoked);
   });
 });
 

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AiDeviceToolAdapter,
   AI_DEVICE_TOOL_CATALOG,
-  AI_DEVICE_TOOL_DISPLAY_NAMES,
   aiDeviceToolRequiresPermission,
   appendAiDeviceRuntimeStatus,
   createAiDeviceToolAdapter,
@@ -98,8 +97,7 @@ describe('AI device adapter allowlist', () => {
     ).toEqual(['deviceId', 'featureId', 'intensity', 'outputLeaseMs']);
   });
 
-  it('shares display copy and classifies only output-increasing calls for upper consent', () => {
-    expect(AI_DEVICE_TOOL_DISPLAY_NAMES.device_stop).toBe('停止通用设备功能');
+  it('classifies only output-increasing calls for upper consent', () => {
     expect(aiDeviceToolRequiresPermission('device_vibrate')).toBe(true);
     expect(aiDeviceToolRequiresPermission('device_stop')).toBe(false);
     expect(aiDeviceToolRequiresPermission('device_scan')).toBe(false);

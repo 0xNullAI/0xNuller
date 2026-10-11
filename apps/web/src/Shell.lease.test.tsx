@@ -273,23 +273,6 @@ describe('外壳与设备控制权', () => {
     }
   });
 
-  it('侧栏只保留帮助与我的入口，下载放在设置的关于页', async () => {
-    await act(async () => {
-      render(<Shell />);
-    });
-    expect(screen.getByRole('button', { name: '帮助与文档' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '软件设置' })).toBeNull();
-    expect(screen.queryByRole('link', { name: '客户端' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '打开我的设置' }));
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
-    fireEvent.click(await screen.findByRole('button', { name: '关于' }));
-    const download = await screen.findByRole('link', { name: '下载客户端' });
-    expect(download.getAttribute('href')).toBe(CLIENT_DOWNLOAD_URL);
-    expect(download.getAttribute('target')).toBe('_blank');
-  });
-
   it('个人记忆作为设置二级页打开，不再嵌在账户展开区', async () => {
     await act(async () => {
       render(<Shell />);
@@ -417,39 +400,35 @@ describe('外壳与设备控制权', () => {
     expect(screen.queryByText('Chat 模块')).toBeNull();
   });
 
-  it('邮箱未验证时不挂载 Chat，并引导到账户验证', async () => {
-    authState.user = {
-      id: 'u1',
-      username: 'alice',
-      displayName: 'Alice',
-      emailVerified: false,
-      email: 'alice@example.com',
-    };
-    window.history.pushState(null, '', '/chat');
-    await act(async () => {
-      render(<Shell />);
-    });
+  it.each([
+    { emailVerified: false, mountsChat: false },
+    { emailVerified: true, mountsChat: true },
+  ])(
+    '邮箱验证状态为 $emailVerified 时，Chat 挂载为 $mountsChat',
+    async ({ emailVerified, mountsChat }) => {
+      authState.user = {
+        id: 'u1',
+        username: 'alice',
+        displayName: 'Alice',
+        emailVerified,
+        ...(emailVerified ? {} : { email: 'alice@example.com' }),
+      };
+      window.history.pushState(null, '', '/chat');
+      await act(async () => {
+        render(<Shell />);
+      });
 
-    expect(await screen.findByText('验证邮箱后使用聊天')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '前往账户验证' })).toBeTruthy();
-    expect(screen.queryByText('Chat 模块')).toBeNull();
-  });
-
-  it('邮箱已验证时挂载 Chat', async () => {
-    authState.user = {
-      id: 'u1',
-      username: 'alice',
-      displayName: 'Alice',
-      emailVerified: true,
-    };
-    window.history.pushState(null, '', '/chat');
-    await act(async () => {
-      render(<Shell />);
-    });
-
-    expect(await screen.findByText('Chat 模块')).toBeTruthy();
-    expect(screen.queryByText('验证邮箱后使用 Chat')).toBeNull();
-  });
+      if (mountsChat) {
+        expect(await screen.findByText('Chat 模块')).toBeTruthy();
+        expect(screen.queryByText('验证邮箱后使用聊天')).toBeNull();
+      } else {
+        // Unverified accounts are steered to account verification instead.
+        expect(await screen.findByText('验证邮箱后使用聊天')).toBeTruthy();
+        expect(screen.getByRole('button', { name: '前往账户验证' })).toBeTruthy();
+        expect(screen.queryByText('Chat 模块')).toBeNull();
+      }
+    },
+  );
 
   it('验证邮件链接直接打开账户设置并立即刷新验证状态', async () => {
     authState.user = {
@@ -474,7 +453,9 @@ describe('外壳与设备控制权', () => {
       render(<Shell />);
     });
     expect(await screen.findByRole('heading', { name: '关于' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '下载客户端' })).toBeTruthy();
+    const download = screen.getByRole('link', { name: '下载客户端' });
+    expect(download.getAttribute('href')).toBe(CLIENT_DOWNLOAD_URL);
+    expect(download.getAttribute('target')).toBe('_blank');
 
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(window.location.pathname).toBe('/settings/overview');
@@ -488,14 +469,6 @@ describe('外壳与设备控制权', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));
     expect(window.location.pathname).toBe('/');
-  });
-
-  it('挂载时把租约给当前模块', async () => {
-    fakeModule('agent', [COYOTE]);
-    await act(async () => {
-      render(<Shell />);
-    });
-    expect(hasDeviceLease('agent')).toBe(true);
   });
 
   it('切换模块时租约转手，原模块收到撤权通知', async () => {

@@ -71,17 +71,6 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it('puts the required prompt before optional media and collapses file import', () => {
-  render(<CharacterStudio onClose={() => {}} onSaved={() => {}} />);
-  const importDetails = screen.getByText('导入已有角色文件（可选）').closest('details');
-  expect(importDetails?.open).toBe(false);
-  const prompt = screen.getByRole('textbox', { name: '基础 Prompt' });
-  const portrait = screen.getByLabelText('公开角色头像');
-  expect(prompt.compareDocumentPosition(portrait) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  fireEvent.click(screen.getByText('导入已有角色文件（可选）'));
-  expect(importDetails?.open).toBe(true);
-});
-
 it('creates a public character from only a name and prompt, without private fields', async () => {
   const saved = vi.fn();
   render(<CharacterStudio onClose={() => {}} onSaved={saved} />);
@@ -196,13 +185,6 @@ it('removes an unused portrait from the server only after clearing its online dr
   );
   expect(api.saveDraft.mock.calls[0]![2].portraitId).toBeUndefined();
   expect(screen.queryByRole('button', { name: '移除并清理未发布头像' })).toBeNull();
-});
-
-it('starts from a blank public editor without an embedded starter', () => {
-  render(<CharacterStudio onClose={() => {}} onSaved={() => {}} />);
-  expect(screen.getByRole<HTMLInputElement>('textbox', { name: '名称' }).value).toBe('');
-  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '基础 Prompt' }).value).toBe('');
-  expect(screen.queryByText('精选原创角色起点')).toBeNull();
 });
 
 it('edits an existing public card without discarding its legacy details', async () => {

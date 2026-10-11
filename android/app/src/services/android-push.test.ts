@@ -290,47 +290,43 @@ describe('AndroidPushCoordinator', () => {
   });
 });
 
-it('sends FID registration using the agreed account API shape', async () => {
-  const fetch = vi.fn(async () => ({ ok: true, status: 200 }));
-  vi.stubGlobal('fetch', fetch);
-  try {
-    await accountPushApi.register('fid-1234567890123456');
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/auth/push/registrations'),
-      expect.objectContaining({
-        method: 'PUT',
-        body: JSON.stringify({
-          provider: 'fcm-fid',
-          platform: 'android',
-          installationId: 'fid-1234567890123456',
-        }),
-      }),
-    );
-  } finally {
-    vi.unstubAllGlobals();
-  }
-});
-
-it('includes a stable installation key and previous FID when the native shell exposes them', async () => {
-  const fetch = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200 }));
-  vi.stubGlobal('fetch', fetch);
-  try {
-    await accountPushApi.register(
-      'fid-2234567890123456',
-      'stable-installation-key-001',
-      'fid-1234567890123456',
-    );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+it.each([
+  {
+    label: 'a bare FID',
+    args: ['fid-1234567890123456'] as [string, string?, string?],
+    body: { provider: 'fcm-fid', platform: 'android', installationId: 'fid-1234567890123456' },
+  },
+  {
+    label: 'a stable installation key and previous FID from the native shell',
+    args: ['fid-2234567890123456', 'stable-installation-key-001', 'fid-1234567890123456'] as [
+      string,
+      string?,
+      string?,
+    ],
+    body: {
       provider: 'fcm-fid',
       platform: 'android',
       installationId: 'fid-2234567890123456',
       installationKey: 'stable-installation-key-001',
       previousInstallationId: 'fid-1234567890123456',
-    });
-  } finally {
-    vi.unstubAllGlobals();
-  }
-});
+    },
+  },
+])(
+  'sends FID registration using the agreed account API shape with $label',
+  async ({ args, body }) => {
+    const fetch = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      await accountPushApi.register(...args);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/auth/push/registrations'),
+        expect.objectContaining({ method: 'PUT', body: JSON.stringify(body) }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
 
 it('sends account-scoped rotated destination cleanup on DELETE', async () => {
   const fetch = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200 }));

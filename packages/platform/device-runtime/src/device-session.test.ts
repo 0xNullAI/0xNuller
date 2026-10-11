@@ -494,21 +494,17 @@ describe('DeviceSession — 多台郊狼', () => {
 
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  it('两台可以同时连上，各自有自己的 id', async () => {
-    const { session } = await connectTwoCoyotes();
+  it('两台可以同时连上，各自有自己的 id，连第二台不会顶掉第一台', async () => {
+    const { session, first } = await connectTwoCoyotes();
 
     const summaries = session.getCoyoteSummaries();
     expect(summaries).toHaveLength(2);
     expect(summaries.map((c) => c.id).sort()).toEqual(['coyote-1', 'coyote-2']);
     expect(summaries.every((c) => c.connected)).toBe(true);
-  });
 
-  it('连第二台不会顶掉第一台', async () => {
     // The web transport used to disconnect the previously-held device on a
     // second connect. On a V3 (state-retentive across BLE drops) that left
     // device #1 running at its last commanded strength, unreachable.
-    const { session, first } = await connectTwoCoyotes();
-
     expect(first.gatt.disconnect).not.toHaveBeenCalled();
     expect(session.coyoteById('coyote-1')?.getState().connected).toBe(true);
   });

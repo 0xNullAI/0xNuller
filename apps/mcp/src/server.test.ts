@@ -259,23 +259,14 @@ describe('opossum tool dispatch (plan.type === "opossum")', () => {
     }
   });
 
-  it('returns a clear Chinese error when no opossum device is connected', async () => {
-    const { client } = await createHarness();
-
-    const result = await client.callTool({
-      name: 'vibrate_start',
-      arguments: { channel: 'A', intensity: 10 },
-    });
-
-    expect(result.isError).toBe(true);
-    const payload = parseToolResult(result);
-    expect(payload.reason).toContain('没有已连接的负鼠设备');
-  });
-
-  it('returns a clear error when more than one opossum device is connected', async () => {
+  it.each([
+    ['no opossum device is connected', 0, '没有已连接的负鼠设备'],
+    ['more than one opossum device is connected', 2, '台已连接的负鼠设备'],
+  ])('returns a clear Chinese error when %s', async (_label, count, reason) => {
     const { client, deviceManager } = await createHarness();
-    await injectConnectedDevice(deviceManager, 'opossum', 'F2:F2:F2:F2:F2:01');
-    await injectConnectedDevice(deviceManager, 'opossum', 'F2:F2:F2:F2:F2:02');
+    for (let i = 1; i <= count; i++) {
+      await injectConnectedDevice(deviceManager, 'opossum', `F2:F2:F2:F2:F2:0${i}`);
+    }
 
     const result = await client.callTool({
       name: 'vibrate_start',
@@ -284,7 +275,7 @@ describe('opossum tool dispatch (plan.type === "opossum")', () => {
 
     expect(result.isError).toBe(true);
     const payload = parseToolResult(result);
-    expect(payload.reason).toContain('台已连接的负鼠设备');
+    expect(payload.reason).toContain(reason);
   });
 });
 
@@ -337,69 +328,29 @@ describe('rate-limit caps track post-1.9.0 tool names', () => {
 });
 
 describe('set_indicator_color tool dispatch (plan.type === "setIndicatorColor")', () => {
-  it('sends the LED-solid command to a paw-prints device', async () => {
+  // paw-prints: CMD_LED_CONTROL (0x70) + color.
+  // opossum: 0x50 LED color + button-reporting toggle, defaulting to enabled.
+  // civet-edging: color rides the 0x50 pressure-reporting packet, preserving
+  // streaming state, so the command is the last write rather than the first.
+  it.each([
+    { kind: 'paw-prints', color: 3, write: 'first', bytes: [0x70, 3] },
+    { kind: 'opossum', color: 5, write: 'first', bytes: [0x50, 5, 0x01] },
+    { kind: 'civet-edging', color: 2, write: 'last', bytes: [0x50, 2] },
+  ] as const)('sends the LED command to a $kind device', async ({ kind, color, write, bytes }) => {
     const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(
-      deviceManager,
-      'paw-prints',
-      'F4:F4:F4:F4:F4:01',
-    );
+    const { charsByUuid } = await injectConnectedDevice(deviceManager, kind, 'F4:F4:F4:F4:F4:01');
 
     const result = await client.callTool({
       name: 'set_indicator_color',
-      arguments: { deviceKind: 'paw-prints', color: 3 },
+      arguments: { deviceKind: kind, color },
     });
 
     expect(result.isError).toBeFalsy();
-    const payload = parseToolResult(result);
-    expect(payload.ok).toBe(true);
+    expect(parseToolResult(result).ok).toBe(true);
 
     const writeChar = [...charsByUuid.values()].find((c) => c.writes.length > 0);
-    expect(writeChar?.writes[0]?.[0]).toBe(0x70); // CMD_LED_CONTROL
-    expect(writeChar?.writes[0]?.[1]).toBe(3);
-  });
-
-  it('sends the LED command to an opossum device, defaulting button-reporting to enabled', async () => {
-    const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(
-      deviceManager,
-      'opossum',
-      'F4:F4:F4:F4:F4:02',
-    );
-
-    const result = await client.callTool({
-      name: 'set_indicator_color',
-      arguments: { deviceKind: 'opossum', color: 5 },
-    });
-
-    expect(result.isError).toBeFalsy();
-    const writeChar = [...charsByUuid.values()].find((c) => c.writes.length > 0);
-    expect(writeChar?.writes[0]?.[0]).toBe(0x50); // LED color + button-reporting toggle
-    expect(writeChar?.writes[0]?.[1]).toBe(5);
-    expect(writeChar?.writes[0]?.[2]).toBe(0x01);
-  });
-
-  it('sends the LED color via the 0x50 pressure-reporting packet for civet-edging, preserving streaming state', async () => {
-    const { client, deviceManager } = await createHarness();
-    const { charsByUuid } = await injectConnectedDevice(
-      deviceManager,
-      'civet-edging',
-      'F4:F4:F4:F4:F4:03',
-    );
-
-    const result = await client.callTool({
-      name: 'set_indicator_color',
-      arguments: { deviceKind: 'civet-edging', color: 2 },
-    });
-
-    expect(result.isError).toBeFalsy();
-    const payload = parseToolResult(result);
-    expect(payload.ok).toBe(true);
-
-    const writeChar = [...charsByUuid.values()].find((c) => c.writes.length > 0);
-    const lastWrite = writeChar?.writes.at(-1);
-    expect(lastWrite?.[0]).toBe(0x50);
-    expect(lastWrite?.[1]).toBe(2);
+    const packet = write === 'first' ? writeChar?.writes[0] : writeChar?.writes.at(-1);
+    expect([...(packet ?? []).subarray(0, bytes.length)]).toEqual(bytes);
   });
 });
 

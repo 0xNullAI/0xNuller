@@ -67,18 +67,7 @@ describe('BrowserPermissionService', () => {
   });
 
   describe('confirm mode — per-tool grant cache', () => {
-    it('caches approve-scoped indefinitely when no expiresAt', async () => {
-      const requestFn = vi.fn().mockResolvedValue({ type: 'approve-scoped' });
-      const svc = new BrowserPermissionService({ mode: 'confirm', requestFn });
-
-      await svc.request(makeRequest('adjust_strength'));
-      expect(requestFn).toHaveBeenCalledTimes(1);
-
-      await svc.request(makeRequest('adjust_strength'));
-      expect(requestFn).toHaveBeenCalledTimes(1); // cached
-    });
-
-    it('different tools each get their own cache entry', async () => {
+    it('caches approve-scoped without expiresAt, one cache entry per tool', async () => {
       const requestFn = vi.fn().mockResolvedValue({ type: 'approve-scoped' });
       const svc = new BrowserPermissionService({ mode: 'confirm', requestFn });
 

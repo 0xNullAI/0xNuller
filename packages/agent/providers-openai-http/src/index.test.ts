@@ -112,56 +112,20 @@ describe('OpenAiHttpLlmClient', () => {
   });
 
   describe('DeepSeek V4 thinking 禁用', () => {
-    it('deepseek-v4-flash 请求体包含 thinking: disabled', async () => {
+    it.each([
+      ['deepseek-v4-flash', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+      ['deepseek-v4-pro', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+      // 非 DeepSeek 模型请求体不含 thinking 字段
+      ['gpt-4o-mini', 'https://api.openai.com/v1', undefined],
+      // baseUrl 含 deepseek 时也注入 thinking: disabled
+      ['custom-model', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+    ])('%s @ %s 请求体 thinking 为 %o', async (model, baseUrl, expected) => {
       const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-v4-flash',
-      });
+      const client = new OpenAiHttpLlmClient({ apiKey: 'sk-test', baseUrl, model });
 
       await client.runTurn(makeTurnInput());
 
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
-    });
-
-    it('deepseek-v4-pro 请求体包含 thinking: disabled', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-v4-pro',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
-    });
-
-    it('非 DeepSeek 模型请求体不含 thinking 字段', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o-mini',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toBeUndefined();
-    });
-
-    it('baseUrl 含 deepseek 时也注入 thinking: disabled', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'custom-model',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
+      expect(captured.body?.thinking).toEqual(expected);
     });
   });
 

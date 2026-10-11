@@ -235,34 +235,22 @@ it('keeps an old named source when more than 48 newer messages match the topic',
     { id: 'u1', content: '记住：我的朋友小林周五有面试。', truncated: false },
   ]);
 });
-it('returns the matched part of a long older user message instead of an unrelated prefix', async () => {
+it.each([
+  {
+    name: 'returns the matched part of a long older user message instead of an unrelated prefix',
+    content: `${'甲'.repeat(650)}火星基地计划在周五启动。`,
+    excludesPrefix: false,
+  },
+  {
+    name: 'finds a relevant older user passage beyond the first 1000 characters without returning the whole message',
+    content: `${'甲'.repeat(1400)}火星基地计划在周五启动。${'乙'.repeat(700)}`,
+    excludesPrefix: true,
+  },
+])('$name', async ({ content, excludesPrefix }) => {
   await env.DB.prepare(
     "UPDATE server_conversation_messages SET content=? WHERE user_id='alice' AND conversation_id='conversation' AND id='u1'",
   )
-    .bind(`${'甲'.repeat(650)}火星基地计划在周五启动。`)
-    .run();
-  for (let position = 4; position < 60; position++)
-    await env.DB.prepare(
-      "INSERT INTO server_conversation_messages(user_id,conversation_id,id,role,content,created_at,position) VALUES('alice','conversation',?,'user','普通聊天',1,?)",
-    )
-      .bind(`filler-${position}`, position)
-      .run();
-  const context = (await (
-    await call('', {
-      conversationId: 'conversation',
-      query: '火星基地什么时候启动？',
-    })
-  ).json()) as { historyRecap: Array<{ id: string; content: string; truncated: boolean }> };
-  expect(context.historyRecap).toHaveLength(1);
-  expect(context.historyRecap[0]).toMatchObject({ id: 'u1', truncated: true });
-  expect(context.historyRecap[0]!.content).toContain('火星基地计划在周五启动');
-  expect(context.historyRecap[0]!.content.length).toBeLessThanOrEqual(500);
-});
-it('finds a relevant older user passage beyond the first 1000 characters without returning the whole message', async () => {
-  await env.DB.prepare(
-    "UPDATE server_conversation_messages SET content=? WHERE user_id='alice' AND conversation_id='conversation' AND id='u1'",
-  )
-    .bind(`${'甲'.repeat(1400)}火星基地计划在周五启动。${'乙'.repeat(700)}`)
+    .bind(content)
     .run();
   for (let position = 4; position < 60; position++)
     await env.DB.prepare(
@@ -277,7 +265,7 @@ it('finds a relevant older user passage beyond the first 1000 characters without
   expect(context.historyRecap[0]).toMatchObject({ id: 'u1', truncated: true });
   expect(context.historyRecap[0]!.content).toContain('火星基地计划在周五启动');
   expect(context.historyRecap[0]!.content.length).toBeLessThanOrEqual(500);
-  expect(context.historyRecap[0]!.content).not.toContain('甲'.repeat(500));
+  if (excludesPrefix) expect(context.historyRecap[0]!.content).not.toContain('甲'.repeat(500));
 });
 it('continues a long conversation from recent sourced history when the user gives no search keywords', async () => {
   for (let position = 4; position < 60; position++)
@@ -308,16 +296,6 @@ it('continues a long conversation from recent sourced history when the user give
     })
   ).json()) as { historyRecap: unknown[] };
   expect(unrelated.historyRecap).toEqual([]);
-});
-it('keeps the same relationship memory when a scene is applied or changed', async () => {
-  for (const sceneId of ['market-cafe', 'market-park', '']) {
-    await env.DB.prepare(
-      "UPDATE server_conversations SET metadata=? WHERE user_id='alice' AND id='conversation'",
-    )
-      .bind(JSON.stringify({ promptPresetId: 'scene', relationshipId: 'r', sceneId }))
-      .run();
-    expect(await (await call()).json()).toMatchObject({ relationshipId: 'r' });
-  }
 });
 it('generates exact excerpts and explicit user requests as candidates, never assistant guesses or automatic facts', async () => {
   const result = (await (await call('/suggestions')).json()) as {

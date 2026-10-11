@@ -160,35 +160,29 @@ beforeEach(() => {
 });
 
 describe('DeviceManager.scan()', () => {
-  it('classifies every known 47L12x-family prefix via detectDeviceKind, not the old v2/v3-only bucket', async () => {
+  it('classifies every known 47L12x-family prefix and the legacy V2 prefix via detectDeviceKind, not the old v2/v3-only bucket', async () => {
     const manager = new DeviceManager();
+    const { services } = createV3FamilyServices();
     fakeNoble.peripheralsToDiscover = [
       makeCoyoteV3Peripheral('AA:AA:AA:AA:AA:01'),
       makePawPrintsPeripheral('AA:AA:AA:AA:AA:02'),
       makeCivetPeripheral('AA:AA:AA:AA:AA:03'),
       makeOpossumPeripheral('AA:AA:AA:AA:AA:04'),
+      new FakePeripheral('BB:BB:BB:BB:BB:01', `${V2_DEVICE_NAME_PREFIX}`, services),
     ];
 
     const results = await manager.scan(5);
     const byAddress = new Map(results.map((r) => [r.address, r.deviceKind]));
 
-    expect(byAddress.get('AA:AA:AA:AA:AA:01')).toBe('coyote');
-    // Regression test for the classifyName bug: a paw-prints-prefixed name
-    // must resolve to 'paw-prints', not be folded into the coyote/v3 bucket.
-    expect(byAddress.get('AA:AA:AA:AA:AA:02')).toBe('paw-prints');
-    expect(byAddress.get('AA:AA:AA:AA:AA:03')).toBe('civet-edging');
-    expect(byAddress.get('AA:AA:AA:AA:AA:04')).toBe('opossum');
-  });
-
-  it('classifies the legacy V2 name prefix as coyote', async () => {
-    const manager = new DeviceManager();
-    const { services } = createV3FamilyServices();
-    fakeNoble.peripheralsToDiscover = [
-      new FakePeripheral('BB:BB:BB:BB:BB:01', `${V2_DEVICE_NAME_PREFIX}`, services),
-    ];
-
-    const results = await manager.scan(5);
-    expect(results[0]?.deviceKind).toBe('coyote');
+    expect(Object.fromEntries(byAddress)).toEqual({
+      'AA:AA:AA:AA:AA:01': 'coyote',
+      // Regression test for the classifyName bug: a paw-prints-prefixed name
+      // must resolve to 'paw-prints', not be folded into the coyote/v3 bucket.
+      'AA:AA:AA:AA:AA:02': 'paw-prints',
+      'AA:AA:AA:AA:AA:03': 'civet-edging',
+      'AA:AA:AA:AA:AA:04': 'opossum',
+      'BB:BB:BB:BB:BB:01': 'coyote',
+    });
   });
 
   it('omits devices whose advertised name matches no known DG-Lab prefix', async () => {
@@ -201,53 +195,26 @@ describe('DeviceManager.scan()', () => {
 });
 
 describe('DeviceManager.connect()', () => {
-  it('connects a coyote-prefixed device with a CoyoteProtocolAdapter', async () => {
-    const manager = new DeviceManager();
-    const peripheral = makeCoyoteV3Peripheral('11:11:11:11:11:11');
-    fakeNoble.peripheralsToDiscover = [peripheral];
+  // A paw-prints-prefixed name must get the sensor adapter, not the Coyote one.
+  it.each([
+    ['coyote', makeCoyoteV3Peripheral, CoyoteProtocolAdapter],
+    ['paw-prints', makePawPrintsPeripheral, PawPrintsSensorAdapter],
+    ['civet-edging', makeCivetPeripheral, CivetPressureSensorAdapter],
+    ['opossum', makeOpossumPeripheral, OpossumVibrateAdapter],
+  ] as const)(
+    'connects a %s-prefixed device with its own adapter',
+    async (kind, makePeripheral, Adapter) => {
+      const manager = new DeviceManager();
+      fakeNoble.peripheralsToDiscover = [makePeripheral('11:11:11:11:11:11')];
 
-    const result = await manager.connect('11:11:11:11:11:11');
-    expect(result.deviceKind).toBe('coyote');
+      const result = await manager.connect('11:11:11:11:11:11');
+      expect(result.deviceKind).toBe(kind);
 
-    const entry = manager.findSingleByKind('coyote');
-    expect(entry.adapter).toBeInstanceOf(CoyoteProtocolAdapter);
-    expect(entry.adapter.getState().connected).toBe(true);
-  });
-
-  it('connects a paw-prints-prefixed device with a PawPrintsSensorAdapter (not the Coyote adapter)', async () => {
-    const manager = new DeviceManager();
-    const peripheral = makePawPrintsPeripheral('22:22:22:22:22:22');
-    fakeNoble.peripheralsToDiscover = [peripheral];
-
-    const result = await manager.connect('22:22:22:22:22:22');
-    expect(result.deviceKind).toBe('paw-prints');
-
-    const entry = manager.findSingleByKind('paw-prints');
-    expect(entry.adapter).toBeInstanceOf(PawPrintsSensorAdapter);
-    expect(entry.adapter.getState().connected).toBe(true);
-  });
-
-  it('connects a civet-edging-prefixed device with a CivetPressureSensorAdapter', async () => {
-    const manager = new DeviceManager();
-    fakeNoble.peripheralsToDiscover = [makeCivetPeripheral('33:33:33:33:33:33')];
-
-    const result = await manager.connect('33:33:33:33:33:33');
-    expect(result.deviceKind).toBe('civet-edging');
-
-    const entry = manager.findSingleByKind('civet-edging');
-    expect(entry.adapter).toBeInstanceOf(CivetPressureSensorAdapter);
-  });
-
-  it('connects an opossum-prefixed device with an OpossumVibrateAdapter', async () => {
-    const manager = new DeviceManager();
-    fakeNoble.peripheralsToDiscover = [makeOpossumPeripheral('44:44:44:44:44:44')];
-
-    const result = await manager.connect('44:44:44:44:44:44');
-    expect(result.deviceKind).toBe('opossum');
-
-    const entry = manager.findSingleByKind('opossum');
-    expect(entry.adapter).toBeInstanceOf(OpossumVibrateAdapter);
-  });
+      const entry = manager.findSingleByKind(kind);
+      expect(entry.adapter).toBeInstanceOf(Adapter);
+      expect(entry.adapter.getState().connected).toBe(true);
+    },
+  );
 
   it('supports connecting multiple different devices concurrently', async () => {
     const manager = new DeviceManager();

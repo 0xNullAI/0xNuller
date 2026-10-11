@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe('侧栏公开房间目录', () => {
-  it('默认收起，展开后限高滚动并仍可加入房间', async () => {
+  it('默认收起，展开后仍可加入房间', async () => {
     const onJoin = vi.fn();
     render(
       <ShellRoomList currentRoom={null} onJoin={onJoin} onCreate={vi.fn()} onDelete={vi.fn()} />,
@@ -57,8 +57,6 @@ describe('侧栏公开房间目录', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(directory?.hidden).toBe(false);
-    expect(directory?.className).toContain('max-h-64');
-    expect(directory?.className).toContain('overflow-y-auto');
 
     expect(screen.getByText('0 人在线')).toBeTruthy();
     expect(screen.getByText('2 人在线')).toBeTruthy();

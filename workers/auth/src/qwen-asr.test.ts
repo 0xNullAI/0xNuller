@@ -11,10 +11,7 @@ const result = () =>
 
 describe('Qwen recorded ASR adapter', () => {
   it('sends private audio inline to a fixed endpoint, never as a public URL', async () => {
-    const fetcher = vi.fn(async (...args: Parameters<typeof fetch>) => {
-      expect(args[0]).toBeDefined();
-      return result();
-    });
+    const fetcher = vi.fn<typeof fetch>(async () => result());
     const value = await transcribeQwenAudio(
       'server-secret',
       new Uint8Array([1, 2, 3]),

@@ -158,6 +158,23 @@ it('cursor browsing rechecks hidden state and refuses mismatched filters or malf
   expect((await worker.fetch(new Request(next), env)).status).toBe(400);
 });
 
+it.each([
+  ['new', ['scene', 'legacy-scene', 'legacy-character', 'character']],
+  // Downloads weigh four times a view; equal scores fall back to the stable id tie-breaker.
+  ['hot', ['legacy-character', 'legacy-scene', 'scene', 'character']],
+  ['views', ['legacy-scene', 'scene', 'character', 'legacy-character']],
+  ['downloads', ['legacy-character', 'character', 'scene', 'legacy-scene']],
+] as const)('orders public browse by %s engagement on the server', async (sort, expected) => {
+  const { sql, db } = setup();
+  const engage = sql.prepare('UPDATE items SET views = ?, downloads = ? WHERE id = ?');
+  engage.run(10, 0, 'legacy-scene');
+  engage.run(0, 3, 'legacy-character');
+  engage.run(5, 1, 'scene');
+  engage.run(1, 2, 'character');
+  const items = await listItems(db, { sort, limit: 50, offset: 0 });
+  expect(items.map((item) => item.id)).toEqual(expected);
+});
+
 it('live engagement cursors identify mutable ordering while legacy offset stays supported', async () => {
   const { db } = setup();
   const env = {

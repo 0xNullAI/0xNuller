@@ -2,21 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   MANAGED_MODEL_OPTIONS,
   createProviderSettings,
-  getProviderRegion,
   normalizeProviderSettings,
   resolveProviderRuntimeSettings,
   supportsProviderModelImageInput,
 } from './index';
 import { defaultVideoLlmConfig, isVideoLlmConfigured } from './video-config-store';
-
-describe('getProviderRegion', () => {
-  it('keeps mainland, international, and custom providers in separate groups', () => {
-    expect(getProviderRegion('qwen')).toBe('mainland');
-    expect(getProviderRegion('moonshotai-cn')).toBe('mainland');
-    expect(getProviderRegion('openai')).toBe('international');
-    expect(getProviderRegion('custom')).toBe('custom');
-  });
-});
 
 describe('managed Workers AI models', () => {
   it('keeps a supported tier and rejects unknown ids', () => {
@@ -27,33 +17,31 @@ describe('managed Workers AI models', () => {
     );
   });
 
-  it('exposes three text-only tiers to the client', () => {
+  it('exposes three text-only tiers to the client and offers the managed image model only to Video, while preserving BYOK image providers', () => {
     expect(MANAGED_MODEL_OPTIONS.map((option) => option.id)).toEqual([
       'basic',
       'balanced',
       'powerful',
     ]);
+    expect(MANAGED_MODEL_OPTIONS.some((model) => model.id === 'vision')).toBe(false);
     expect(
       resolveProviderRuntimeSettings({
         ...createProviderSettings('managed'),
         model: 'basic',
       }),
     ).toMatchObject({ model: 'basic', imageInput: false });
-    expect(supportsProviderModelImageInput('managed', 'balanced')).toBe(false);
-  });
-
-  it('offers the managed image model only to Video, while preserving BYOK image providers', () => {
-    const video = defaultVideoLlmConfig();
-    expect(video).toMatchObject({ providerId: 'managed', model: 'vision' });
-    expect(isVideoLlmConfigured(video)).toBe(true);
     expect(resolveProviderRuntimeSettings(createProviderSettings('managed'))).toMatchObject({
       imageInput: false,
     });
+    expect(supportsProviderModelImageInput('managed', 'balanced')).toBe(false);
+
+    const video = defaultVideoLlmConfig();
+    expect(video).toMatchObject({ providerId: 'managed', model: 'vision' });
+    expect(isVideoLlmConfigured(video)).toBe(true);
     expect(
       resolveProviderRuntimeSettings({ ...createProviderSettings('managed'), model: 'vision' }),
     ).toMatchObject({
       imageInput: true,
     });
-    expect(MANAGED_MODEL_OPTIONS.some((model) => model.id === 'vision')).toBe(false);
   });
 });

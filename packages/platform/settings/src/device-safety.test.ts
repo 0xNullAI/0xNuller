@@ -17,30 +17,28 @@ describe('共享设备安全设置', () => {
     expect(loadDeviceSafety()).toEqual(DEFAULT_DEVICE_SAFETY);
   });
 
-  it('存储被污染时回落默认值而不是抛出', () => {
-    localStorage.setItem('0xnullai.device-safety', '{不是 JSON');
-    // Defaults are the most conservative set; failing this way is safe.
+  // Defaults are the most conservative set, so falling back to them is safe.
+  it.each([
+    {
+      label: '存储被污染时回落默认值而不是抛出',
+      raw: '{不是 JSON',
+      expected: { maxStrengthA: 50 },
+    },
+    {
+      // Only the broken field falls back; the user-tuned value survives.
+      label: '单个字段坏掉只回落那一个，不影响其余',
+      raw: JSON.stringify({ ...DEFAULT_DEVICE_SAFETY, maxStrengthA: '不是数字', maxStrengthB: 40 }),
+      expected: { maxStrengthA: 50, maxStrengthB: 40 },
+    },
+    {
+      label: '负数被拒绝',
+      raw: JSON.stringify({ ...DEFAULT_DEVICE_SAFETY, maxStrengthA: -10 }),
+      expected: { maxStrengthA: 50 },
+    },
+  ])('$label', ({ raw, expected }) => {
+    localStorage.setItem('0xnullai.device-safety', raw);
     expect(() => loadDeviceSafety()).not.toThrow();
-    expect(loadDeviceSafety().maxStrengthA).toBe(50);
-  });
-
-  it('单个字段坏掉只回落那一个，不影响其余', () => {
-    saveDeviceSafety({ ...DEFAULT_DEVICE_SAFETY, maxStrengthA: 30, maxStrengthB: 40 });
-    const raw = JSON.parse(localStorage.getItem('0xnullai.device-safety')!);
-    raw.maxStrengthA = '不是数字';
-    localStorage.setItem('0xnullai.device-safety', JSON.stringify(raw));
-
-    const s = loadDeviceSafety();
-    expect(s.maxStrengthA).toBe(50); // fell back to default
-    expect(s.maxStrengthB).toBe(40); // user-tuned value survived
-  });
-
-  it('负数被拒绝', () => {
-    localStorage.setItem(
-      '0xnullai.device-safety',
-      JSON.stringify({ ...DEFAULT_DEVICE_SAFETY, maxStrengthA: -10 }),
-    );
-    expect(loadDeviceSafety().maxStrengthA).toBe(50);
+    expect(loadDeviceSafety()).toMatchObject(expected);
   });
 
   describe('从三处存量迁移', () => {
@@ -117,29 +115,19 @@ describe('共享设备安全设置', () => {
       expect(saved.permissionModeExpiresAt).toBe(Date.now() + 5 * 60 * 1000);
     });
 
-    it('未到期时仍是 timed', () => {
+    // The check must happen on *read*, not only on write — the user may keep
+    // the page open past the five minutes. A missing stamp counts as expired.
+    it.each([
+      { label: '未到期时仍是 timed', expiresIn: 60_000, expected: 'timed' },
+      { label: '到期后回落 confirm', expiresIn: -1, expected: 'confirm' },
+      { label: '没有到期戳时按已过期处理', expiresIn: null, expected: 'confirm' },
+    ])('$label', ({ expiresIn, expected }) => {
       const s = {
         ...DEFAULT_DEVICE_SAFETY,
         permissionMode: 'timed' as const,
-        permissionModeExpiresAt: Date.now() + 60_000,
+        ...(expiresIn === null ? {} : { permissionModeExpiresAt: Date.now() + expiresIn }),
       };
-      expect(effectivePermissionMode(s)).toBe('timed');
-    });
-
-    it('到期后回落 confirm', () => {
-      const s = {
-        ...DEFAULT_DEVICE_SAFETY,
-        permissionMode: 'timed' as const,
-        permissionModeExpiresAt: Date.now() - 1,
-      };
-      // The check must happen on *read*, not only on write — the user may
-      // keep the page open past the five minutes.
-      expect(effectivePermissionMode(s)).toBe('confirm');
-    });
-
-    it('没有到期戳时按已过期处理', () => {
-      const s = { ...DEFAULT_DEVICE_SAFETY, permissionMode: 'timed' as const };
-      expect(effectivePermissionMode(s)).toBe('confirm');
+      expect(effectivePermissionMode(s)).toBe(expected);
     });
   });
 

@@ -27,16 +27,13 @@ const workspaces = [
 ];
 
 describe('affected test planning', () => {
-  it('maps a file to its nearest workspace', () => {
-    expect(workspaceForFile('packages/kit/core/src/index.ts', workspaces)?.name).toBe(
-      '@dg-kit/core',
-    );
-  });
-
-  it('still maps a deleted source path through its surviving workspace manifest', () => {
-    expect(workspaceForFile('apps/chat/src/removed-feature.ts', workspaces)?.name).toBe(
-      '0xnullai-chat',
-    );
+  it.each([
+    // An existing file maps to its nearest workspace.
+    ['packages/kit/core/src/index.ts', '@dg-kit/core'],
+    // A deleted source path still maps through its surviving workspace manifest.
+    ['apps/chat/src/removed-feature.ts', '0xnullai-chat'],
+  ])('maps %s to workspace %s', (file, name) => {
+    expect(workspaceForFile(file, workspaces)?.name).toBe(name);
   });
 
   it('computes transitive reverse dependencies across workspace layers', () => {

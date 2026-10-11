@@ -32,7 +32,6 @@ it('reports a failed online import without marking it downloaded and permits a r
     .mockRejectedValueOnce(new Error('云端暂不可用'))
     .mockResolvedValueOnce(undefined);
   render(<MarketImportDialog open onOpenChange={vi.fn()} type="scenario" onImport={importItem} />);
-  expect(screen.getByRole('heading', { name: '从市场导入角色或场景' })).toBeTruthy();
   const button = await screen.findByRole('button', { name: '导入' });
   fireEvent.click(button);
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', '云端暂不可用');

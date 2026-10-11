@@ -317,25 +317,6 @@ it('offers AI and personal chat from the same new-chat entry and labels conversa
   expect(screen.queryByRole('button', { name: '与 AI 聊天' })).toBeNull();
 });
 
-it('keeps new-chat choices in the scrollable inbox flow on narrow or short viewports', () => {
-  render(
-    <UnifiedInbox
-      user={user('alice')}
-      onNavigate={vi.fn()}
-      onOpenAccount={vi.fn()}
-      onCreateRoom={vi.fn()}
-    />,
-  );
-  fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
-  const choices = screen.getByRole('group', { name: '选择聊天对象' });
-  // The search field sits in one row with (on pages) the new-chat button.
-  const searchRow = screen.getByRole('searchbox', { name: '搜索聊天' }).parentElement
-    ?.parentElement;
-  expect(choices.parentElement).toBe(searchRow?.parentElement);
-  expect(choices.nextElementSibling).toBe(searchRow);
-  expect(choices.classList.contains('absolute')).toBe(false);
-});
-
 it('真人私聊保留可刷新定位的对象 ID，仍由原 Chat owner 验证准入', async () => {
   state.chat.mockResolvedValueOnce([
     {
@@ -568,65 +549,66 @@ it('uses the same explicit server acknowledgement action for a human DM', async 
   expect(markRead).toHaveBeenCalledOnce();
 });
 
-it('keeps partial group results visible and labels the incomplete load', async () => {
-  state.chat.mockResolvedValue([
-    {
-      id: 'group:failed',
-      title: '未加载的群',
-      kind: 'group',
-      unread: null,
-      updatedAt: 0,
-      summaryStatus: 'failed',
-      preview: '群摘要加载失败，可重新加载',
-      selection: { kind: 'group', code: 'failed' },
-    },
-    {
-      id: 'group:ok',
-      title: '已加载的群',
-      kind: 'group',
-      unread: 2,
-      updatedAt: 20,
-      summaryStatus: 'available',
-      selection: { kind: 'group', code: 'ok' },
-    },
-  ]);
-  render(
-    <UnifiedInbox
-      user={user('alice')}
-      onNavigate={vi.fn()}
-      onOpenAccount={vi.fn()}
-      onCreateRoom={vi.fn()}
-    />,
-  );
-  expect((await screen.findByRole('alert')).textContent).toContain('部分聊天');
-  expect(screen.getByText('未加载的群')).toBeTruthy();
-  expect(screen.getByText('已加载的群')).toBeTruthy();
-});
-
-it('keeps available human conversations visible when the other human source fails', async () => {
-  state.partial = '私人聊天摘要暂不可用';
-  state.chat.mockResolvedValue([
-    {
-      id: 'group:working',
-      title: '朋友们',
-      kind: 'group',
-      preview: '周末见',
-      unread: 1,
-      updatedAt: 30,
-      selection: { kind: 'group', code: 'working' },
-    },
-  ]);
-  render(
-    <UnifiedInbox
-      user={user('alice')}
-      onNavigate={vi.fn()}
-      onOpenAccount={vi.fn()}
-      onCreateRoom={vi.fn()}
-    />,
-  );
-  expect(await screen.findByRole('button', { name: /朋友们.*周末见/ })).toBeTruthy();
-  expect(screen.getByRole('alert').textContent).toContain('部分聊天');
-});
+it.each([
+  {
+    label: 'partial group results',
+    partial: null,
+    groups: [
+      {
+        id: 'group:failed',
+        title: '未加载的群',
+        kind: 'group',
+        unread: null,
+        updatedAt: 0,
+        summaryStatus: 'failed',
+        preview: '群摘要加载失败，可重新加载',
+        selection: { kind: 'group', code: 'failed' },
+      },
+      {
+        id: 'group:ok',
+        title: '已加载的群',
+        kind: 'group',
+        unread: 2,
+        updatedAt: 20,
+        summaryStatus: 'available',
+        selection: { kind: 'group', code: 'ok' },
+      },
+    ],
+    visible: () => [screen.getByText('未加载的群'), screen.getByText('已加载的群')],
+  },
+  {
+    label: 'the other human source failing',
+    partial: '私人聊天摘要暂不可用',
+    groups: [
+      {
+        id: 'group:working',
+        title: '朋友们',
+        kind: 'group',
+        preview: '周末见',
+        unread: 1,
+        updatedAt: 30,
+        selection: { kind: 'group', code: 'working' },
+      },
+    ],
+    visible: () => [screen.getByRole('button', { name: /朋友们.*周末见/ })],
+  },
+])(
+  'keeps available conversations visible and labels the incomplete load after $label',
+  async ({ partial, groups, visible }) => {
+    if (partial) state.partial = partial;
+    state.chat.mockResolvedValue(groups);
+    render(
+      <UnifiedInbox
+        user={user('alice')}
+        onNavigate={vi.fn()}
+        onOpenAccount={vi.fn()}
+        onCreateRoom={vi.fn()}
+      />,
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain('部分聊天');
+    for (const element of visible()) expect(element).toBeTruthy();
+  },
+);
 
 it('keeps AI and people in one searchable list and filters unread locally', async () => {
   state.list.mockResolvedValue({

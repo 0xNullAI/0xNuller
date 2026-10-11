@@ -73,18 +73,26 @@ it('removes built-in scenes and local creation while preserving editable legacy 
   expect(loadScenes().hiddenBuiltinIds).toEqual(['dominant']);
 });
 
-it('keeps a legacy prompt card a scene when it is edited', () => {
-  saveScenes({
-    scenes: [{ id: 'market-old', name: '旧场景', prompt: '原文' }],
+it.each([
+  {
+    name: 'a legacy prompt card stays a scene when edited',
+    scene: { id: 'market-old', name: '旧场景', prompt: '原文' },
     selectedId: '',
-    hiddenBuiltinIds: [],
-  });
+  },
+  {
+    name: 'a public scene shows as environment rules',
+    scene: { id: 'market-valley', name: '山谷', prompt: '环境规则', kind: 'scene' as const },
+    selectedId: 'market-valley',
+  },
+])('$name, without character-card editing', ({ scene, selectedId }) => {
+  saveScenes({ scenes: [scene], selectedId, hiddenBuiltinIds: [] });
   render(<SceneLibrary />);
-  fireEvent.click(screen.getByRole('button', { name: '编辑 旧场景' }));
+  expect(screen.getByText('场景')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: `编辑 ${scene.name}` }));
   // A scene has no character card to add; adding one would give it character memory.
   expect(screen.queryByText('结构化角色卡')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '保存' }));
-  expect(loadScenes().scenes[0]).toMatchObject({ id: 'market-old', kind: 'scene' });
+  expect(loadScenes().scenes[0]).toMatchObject({ id: scene.id, kind: 'scene' });
 });
 
 it('shows a Market import entry and an honest empty state for a new account', () => {
@@ -146,18 +154,6 @@ it('hides the outgoing account’s card and open editor immediately on account c
   expect(screen.queryByText('Alice 私卡')).toBeNull();
   expect(screen.queryByDisplayValue('私有设定')).toBeNull();
   expect(loadScenes().scenes).toEqual([]);
-});
-
-it('shows a public scene as environment rules without character-card editing', () => {
-  saveScenes({
-    scenes: [{ id: 'market-valley', name: '山谷', prompt: '环境规则', kind: 'scene' }],
-    selectedId: 'market-valley',
-    hiddenBuiltinIds: [],
-  });
-  render(<SceneLibrary />);
-  expect(screen.getByText('场景')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '编辑 山谷' }));
-  expect(screen.queryByText('结构化角色卡')).toBeNull();
 });
 
 it('imports the latest visible scene snapshot without selecting it as the chat character', async () => {

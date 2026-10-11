@@ -12,27 +12,27 @@ const vision = {
   bodyHash: 'a'.repeat(64),
 };
 
-it('requires server-priced vision hold, camera usage, conversation and exact request hash', () => {
+const chat = { ...vision, modelId: 'chat-vision', usageKind: 'agent' as const };
+
+it('accepts only server-priced, same-kind, bound and hashed vision reservations and listed text tiers', () => {
   expect(MANAGED_VISION_RESERVATION_CREDITS).toBe(59);
-  expect(validManagedTextReservation(vision)).toBe(true);
-  expect(validManagedTextReservation({ ...vision, credits: 1 })).toBe(false);
-  expect(validManagedTextReservation({ ...vision, usageKind: 'agent' })).toBe(false);
-  expect(validManagedTextReservation({ ...vision, context: undefined })).toBe(false);
-  expect(validManagedTextReservation({ ...vision, bodyHash: 'not-a-sha256' })).toBe(false);
-});
-
-it('keeps existing text tiers and rejects unlisted models', () => {
-  expect(validManagedTextReservation({ ...vision, modelId: 'balanced', bodyHash: undefined })).toBe(
-    true,
-  );
-  expect(validManagedTextReservation({ ...vision, modelId: '@cf/private/model' })).toBe(false);
-});
-
-it('quotes private chat vision independently from Video and rejects cross-kind reservations', () => {
-  const chat = { ...vision, modelId: 'chat-vision', usageKind: 'agent' as const };
-  expect(validManagedTextReservation(chat)).toBe(true);
-  expect(validManagedTextReservation({ ...chat, usageKind: 'video' })).toBe(false);
-  expect(validManagedTextReservation({ ...chat, credits: 1 })).toBe(false);
-  expect(validManagedTextReservation({ ...chat, context: undefined })).toBe(false);
-  expect(validManagedTextReservation({ ...chat, bodyHash: undefined })).toBe(false);
+  const cases: Array<[string, Parameters<typeof validManagedTextReservation>[0], boolean]> = [
+    // Video vision needs the server-priced hold, camera usage, conversation and exact request hash.
+    ['video vision', vision, true],
+    ['video vision with a client price', { ...vision, credits: 1 }, false],
+    ['video vision as agent usage', { ...vision, usageKind: 'agent' as const }, false],
+    ['video vision without a conversation', { ...vision, context: undefined }, false],
+    ['video vision with a bad request hash', { ...vision, bodyHash: 'not-a-sha256' }, false],
+    // Existing text tiers stay valid; unlisted models are rejected.
+    ['balanced text tier', { ...vision, modelId: 'balanced', bodyHash: undefined }, true],
+    ['unlisted model', { ...vision, modelId: '@cf/private/model' }, false],
+    // Private chat vision is quoted independently from Video; cross-kind reservations fail.
+    ['private chat vision', chat, true],
+    ['private chat vision as video usage', { ...chat, usageKind: 'video' as const }, false],
+    ['private chat vision with a client price', { ...chat, credits: 1 }, false],
+    ['private chat vision without a conversation', { ...chat, context: undefined }, false],
+    ['private chat vision without a request hash', { ...chat, bodyHash: undefined }, false],
+  ];
+  for (const [name, reservation, valid] of cases)
+    expect(validManagedTextReservation(reservation), name).toBe(valid);
 });
