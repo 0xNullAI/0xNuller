@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBasicWaveformLibrary } from '@dg-agent/waveforms';
-import type { SessionSnapshot, SessionStore } from '@dg-agent/core';
+import type { RuntimeEvent, SessionSnapshot, SessionStore } from '@dg-agent/core';
+import { InMemorySessionStore } from './in-memory-session-store.js';
 import { AgentRuntime } from './agent-runtime.js';
 import { TestDevice, TestLlm, TestPermission } from './runtime.test-support.js';
 import { TestPawPrintsClient } from './runtime-multi-device.test-support.js';
@@ -43,6 +44,35 @@ describe('server history outages do not block stopping devices', () => {
     const stop = vi.spyOn(device, 'emergencyStop');
     await runtime.emergencyStop('s');
     expect(stop).toHaveBeenCalled();
+    runtime.dispose();
+  });
+});
+
+describe('failed replies stay out of the conversation record', () => {
+  it('keeps the user message, emits a page-only failure and saves no error text', async () => {
+    const sessions = new InMemorySessionStore();
+    const runtime = new AgentRuntime({
+      device: new TestDevice({ connected: false }),
+      llm: {
+        runTurn: async () => {
+          throw new Error('Provider HTTP error 401: invalid key');
+        },
+      },
+      permission: new TestPermission(),
+      waveformLibrary: createBasicWaveformLibrary(),
+      sessionStore: sessions,
+    });
+    const events: RuntimeEvent[] = [];
+    runtime.subscribe((event) => events.push(event));
+    await runtime.sendUserMessage({
+      sessionId: 's',
+      text: '你好',
+      context: { sessionId: 's', sourceType: 'web', traceId: 't' },
+    });
+    expect((await sessions.get('s'))?.messages.map((message) => message.content)).toEqual(['你好']);
+    const failed = events.find((event) => event.type === 'assistant-message-failed');
+    expect(failed).toMatchObject({ sessionId: 's', message: { role: 'assistant' } });
+    expect(events.some((event) => event.type === 'assistant-message-completed')).toBe(false);
     runtime.dispose();
   });
 });

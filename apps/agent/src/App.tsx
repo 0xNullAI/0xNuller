@@ -271,6 +271,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     liveDeviceState,
     replyBusy,
     streamingAssistantText,
+    failedReplyText,
     clearStreamingAssistantText,
     liveTraceItems,
     refreshCurrentSession,
@@ -1398,6 +1399,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onTranscriptTailVisibilityChange={onTranscriptTailVisibilityChange}
               traceFeed={traceFeed}
               streamingAssistantText={streamingAssistantText}
+              failedReplyText={failedReplyText}
               deviceState={deviceState}
               maxStrengthA={settings.maxStrengthA}
               maxStrengthB={settings.maxStrengthB}

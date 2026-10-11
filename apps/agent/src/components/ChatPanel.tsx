@@ -82,6 +82,8 @@ interface ChatPanelProps {
   onTranscriptTailVisibilityChange: (id: string, sequence: number, visible: boolean) => void;
   traceFeed: TraceFeedItem[];
   streamingAssistantText: string;
+  /** Last failed reply for this conversation; shown here only, never saved. */
+  failedReplyText?: string;
   deviceState: DeviceState;
   maxStrengthA: number;
   maxStrengthB: number;
@@ -152,6 +154,7 @@ export function ChatPanel({
   onTranscriptTailVisibilityChange,
   traceFeed,
   streamingAssistantText,
+  failedReplyText = '',
   deviceState,
   maxStrengthA,
   maxStrengthB,
@@ -484,7 +487,7 @@ export function ChatPanel({
     if (!stickToBottomRef.current) return;
 
     scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }, [messages, mediaJobs, streamingAssistantText, busy, statusMessage]);
+  }, [messages, mediaJobs, streamingAssistantText, failedReplyText, busy, statusMessage]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -910,6 +913,20 @@ export function ChatPanel({
                 <div className={BUBBLE_ASSISTANT}>
                   <MarkdownText content={streamingAssistantText} />
                 </div>
+              </div>
+            )}
+
+            {failedReplyText && !busy && (
+              <div className="flex justify-start">
+                <p
+                  role="alert"
+                  className="max-w-full rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
+                >
+                  {failedReplyText}
+                  <span className="mt-1 block text-xs text-[var(--text-faint)]">
+                    这条提示不会保存到聊天记录。
+                  </span>
+                </p>
               </div>
             )}
 

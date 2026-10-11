@@ -183,7 +183,11 @@ export class BridgeManager {
   }
 
   private async handleClientEvent(event: RuntimeEvent): Promise<void> {
-    if (event.type !== 'assistant-message-completed' && event.type !== 'assistant-message-aborted')
+    if (
+      event.type !== 'assistant-message-completed' &&
+      event.type !== 'assistant-message-aborted' &&
+      event.type !== 'assistant-message-failed'
+    )
       return;
     if (event.sourceType !== 'qq' && event.sourceType !== 'telegram') return;
 

@@ -785,24 +785,13 @@ export class AgentRuntime {
         throw new Error(REPLY_ABORTED_ERROR_MESSAGE, { cause: error });
       }
 
-      const assistantErrorMessage = appendAssistantMessage(
-        session,
-        { content: normalizeAssistantErrorMessage(error) },
-        turnStartIndex,
-      );
-      session.updatedAt = Date.now();
-      session.deviceState = await this.options.device.getState();
-      await this.saveSessionIfAvailable(session);
-
+      // Product rule: provider failures are page-only notices. The accepted user message
+      // stays in the record so the user can resend; the error text is never persisted.
+      const failedMessage = createMessage('assistant', normalizeAssistantErrorMessage(error));
       this.events.emit({
-        type: 'runtime-warning',
+        type: 'assistant-message-failed',
         sessionId: session.id,
-        message: assistantErrorMessage.content,
-      });
-      this.events.emit({
-        type: 'assistant-message-completed',
-        sessionId: session.id,
-        message: assistantErrorMessage,
+        message: failedMessage,
         sourceType: input.context.sourceType,
       });
     } finally {

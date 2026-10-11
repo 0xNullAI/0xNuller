@@ -38,20 +38,23 @@ export function isActiveRuntimeSessionEvent(event: RuntimeEvent, sessionId: stri
   return !('sessionId' in event) || event.sessionId === sessionId;
 }
 
-export function shouldClearStreamingForEvent(event: RuntimeEvent): boolean {
+function isTurnEndEvent(event: RuntimeEvent): boolean {
   return (
-    event.type === 'session-updated' ||
     event.type === 'assistant-message-completed' ||
-    event.type === 'assistant-message-aborted'
+    event.type === 'assistant-message-aborted' ||
+    event.type === 'assistant-message-failed'
   );
+}
+
+export function shouldClearStreamingForEvent(event: RuntimeEvent): boolean {
+  return event.type === 'session-updated' || isTurnEndEvent(event);
 }
 
 export function shouldRefreshSessionForEvent(event: RuntimeEvent): boolean {
   return (
     event.type === 'user-message-accepted' ||
     event.type === 'session-updated' ||
-    event.type === 'assistant-message-completed' ||
-    event.type === 'assistant-message-aborted'
+    isTurnEndEvent(event)
   );
 }
 
@@ -120,6 +123,8 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
   const [liveDeviceState, setLiveDeviceState] = useState<DeviceState>(createEmptyDeviceState());
   const [replyBusy, setReplyBusy] = useState(false);
   const [streamingAssistantText, setStreamingAssistantText] = useState('');
+  // Page-only notice for the last failed reply; it is never part of the session record.
+  const [failedReply, setFailedReply] = useState<{ sessionId: string; text: string } | null>(null);
   const [liveTraceItems, setLiveTraceItems] = useState<TraceFeedItem[]>([]);
   const onRuntimeEventRef = useRef(onRuntimeEvent);
   const syncRequestIdRef = useRef(0);
@@ -355,6 +360,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
       const isActiveSessionEvent = isActiveRuntimeSessionEvent(event, sessionId);
 
       if (isActiveSessionEvent && event.type === 'user-message-accepted') {
+        setFailedReply(null);
         setReplyBusy(true);
         setLiveTraceItems([]);
         // The runtime has already persisted this exact message before emitting.
@@ -387,21 +393,19 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
         setLiveDeviceState(event.result.state);
       }
 
-      if (
-        isActiveSessionEvent &&
-        (event.type === 'assistant-message-completed' || event.type === 'assistant-message-aborted')
-      ) {
+      if (isActiveSessionEvent && isTurnEndEvent(event)) {
         setReplyBusy(false);
+      }
+
+      if (isActiveSessionEvent && event.type === 'assistant-message-failed') {
+        setFailedReply({ sessionId, text: event.message.content });
       }
 
       if (isActiveSessionEvent && shouldClearStreamingForEvent(event)) {
         setStreamingAssistantText('');
       }
 
-      if (
-        event.type === 'assistant-message-completed' ||
-        event.type === 'assistant-message-aborted'
-      ) {
+      if (isTurnEndEvent(event)) {
         setStreamingAssistantText('');
       }
 
@@ -411,9 +415,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
 
       if (shouldRefreshSessionForEvent(event)) {
         if (isActiveSessionEvent) {
-          const isTurnEnd =
-            event.type === 'assistant-message-completed' ||
-            event.type === 'assistant-message-aborted';
+          const isTurnEnd = isTurnEndEvent(event);
           void syncCurrentSession()
             .then(() => {
               if (isTurnEnd) setLiveTraceItems([]);
@@ -446,6 +448,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     liveDeviceState,
     replyBusy,
     streamingAssistantText,
+    failedReplyText: failedReply?.sessionId === activeSessionId ? failedReply.text : '',
     clearStreamingAssistantText,
     setStreamingAssistantText,
     liveTraceItems,

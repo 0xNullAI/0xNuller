@@ -250,6 +250,13 @@ export type RuntimeEvent =
       message: ConversationMessage;
       sourceType: SourceType;
     }
+  | {
+      // A failed reply is shown to the user but never written to the conversation record.
+      type: 'assistant-message-failed';
+      sessionId: string;
+      message: ConversationMessage;
+      sourceType: SourceType;
+    }
   | { type: 'tool-call-proposed'; sessionId: string; toolCall: ToolCall }
   | {
       type: 'tool-call-executing';

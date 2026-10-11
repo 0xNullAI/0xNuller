@@ -419,3 +419,12 @@ it('keeps a recording local until the user confirms its text and sends it', asyn
     else Reflect.deleteProperty(navigator, 'mediaDevices');
   }
 });
+
+it('shows a failed reply as a page notice outside the saved messages', () => {
+  const props = makeProps();
+  const { rerender } = render(<ChatPanel {...props} failedReplyText="模型服务暂时不可用" />);
+  expect(screen.getByRole('alert').textContent).toContain('模型服务暂时不可用');
+  // A new reply in progress replaces the notice with the typing indicator.
+  rerender(<ChatPanel {...props} busy failedReplyText="模型服务暂时不可用" />);
+  expect(screen.queryByText('模型服务暂时不可用')).toBeNull();
+});
