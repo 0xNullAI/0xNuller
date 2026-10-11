@@ -130,13 +130,10 @@ export interface Env extends Cloudflare.Env {
   MARKET: Fetcher;
   /** Volcengine Ark key for background text and image generation. */
   VOLC_ARK_API_KEY?: string;
+  /** Doubao speech (TTS, recorded-clip ASR); one key sent as `X-Api-Key`. */
+  VOLC_SPEECH_API_KEY?: string;
   /** Managed AI model ids and Credit prices; see @0xnullai/ai-pricing. */
   AI_PRICE_TABLE?: string;
-  DASHSCOPE_ASR_API_KEY?: string;
-  ASR_CREDITS_PER_SECOND?: string;
-  DASHSCOPE_TTS_API_KEY?: string;
-  DASHSCOPE_WORKSPACE_ID?: string;
-  TTS_CREDITS_PER_CHARACTER?: string;
   AUTH_BACKUP_TOKEN?: string;
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
@@ -387,7 +384,10 @@ export async function settleCredits(
   // Recorded ASR uses the legacy agent wallet enum, but must not inherit the
   // generic text path's ability to settle an expired, reusable hold.
   if (
-    ['qwen3-asr-flash', 'cosyvoice-v3-flash'].includes(reservation?.model_id ?? '') &&
+    // Older ids stay listed for holds created before the speech provider changed.
+    ['voice-asr', 'managed-tts', 'qwen3-asr-flash', 'cosyvoice-v3-flash'].includes(
+      reservation?.model_id ?? '',
+    ) &&
     reservation?.status === 'pending' &&
     reservation.created_at <= Date.now() - CREDIT_RESERVATION_TTL_MS
   )
@@ -1420,7 +1420,7 @@ export default {
           reserveCredits(env, userId, {
             idempotencyKey: key,
             usageKind: 'agent',
-            modelId: 'qwen3-asr-flash',
+            modelId: 'voice-asr',
             credits,
           }),
         settle: (userId, key, charge, metadata) =>
@@ -1433,7 +1433,7 @@ export default {
           reserveCredits(env, userId, {
             idempotencyKey: key,
             usageKind: 'agent',
-            modelId: 'cosyvoice-v3-flash',
+            modelId: 'managed-tts',
             credits,
           }),
         settle: (userId, key, charge, metadata) =>
@@ -3589,7 +3589,7 @@ export default {
                 reserveCredits(env, userId, {
                   idempotencyKey: key,
                   usageKind: 'agent',
-                  modelId: 'qwen3-asr-flash',
+                  modelId: 'voice-asr',
                   credits,
                 }),
               settle: (userId, key, charge, metadata) =>
@@ -3605,7 +3605,7 @@ export default {
                 reserveCredits(env, userId, {
                   idempotencyKey: key,
                   usageKind: 'agent',
-                  modelId: 'cosyvoice-v3-flash',
+                  modelId: 'managed-tts',
                   credits,
                 }),
               settle: (userId, key, charge, metadata) =>

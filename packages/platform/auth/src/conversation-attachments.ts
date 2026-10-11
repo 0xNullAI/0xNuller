@@ -15,7 +15,8 @@ export interface PrivateConversationAttachment {
 
 export interface VoiceTranscription {
   enabled: boolean;
-  offer: { rate: number; maxCredits: number; priceVersion: string } | null;
+  /** Billed by recognised audio duration, at most `maxSeconds` per clip. */
+  offer: { perHour: number; maxSeconds: number; maxCredits: number; priceVersion: string } | null;
   job: {
     state: 'running' | 'settlement_pending' | 'succeeded' | 'failed' | 'needs_review';
     credits: number | null;

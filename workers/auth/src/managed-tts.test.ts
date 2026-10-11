@@ -3,32 +3,40 @@ import { createTestDb } from './test-helpers';
 import { sha256Hex } from './session-domain';
 import { reserveCredits, releaseCredits, settleCredits, type Env } from './index';
 import { handleManagedTts, recoverManagedTts } from './managed-tts';
+import example from '@0xnullai/ai-pricing/example-price-table.json';
 
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
 let billing: Parameters<typeof handleManagedTts>[3];
 let objects: Map<string, Uint8Array>;
-const providerUrl =
-  'http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/a/clip.mp3?signature=test';
 const path = 'https://test/api/auth/managed-tts';
+const MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 0xff, 0xfb, 0x90, 0x64]);
+// Two Credits per character keeps the arithmetic readable; real prices live in a secret.
+const PRICE_TABLE = JSON.stringify({
+  ...example,
+  tts: { ...example.tts, perTenThousandChars: 20_000 },
+});
 
-function provider(characters = 4) {
-  return Response.json({
-    output: {
-      finish_reason: 'stop',
-      audio: { url: providerUrl, expires_at: Math.floor(Date.now() / 1000) + 3600 },
-    },
-    usage: { characters },
-  });
+const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+/** Chunked TTS body: audio objects, a sentence object, then the final usage object. */
+function chunked(objects: unknown[]) {
+  return new Response(objects.map((object) => JSON.stringify(object)).join('\n'));
 }
-function fetcher(characters = 4) {
-  return vi.fn(async (url: string) =>
-    url.includes('SpeechSynthesizer')
-      ? provider(characters)
-      : new Response(
-          new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 0xff, 0xfb, 0x90, 0x64]),
-        ),
-  );
+function provider(characters: number | null = 4) {
+  return chunked([
+    { code: 0, message: '', data: b64(MP3.subarray(0, 8)) },
+    { code: 0, message: '', data: b64(MP3.subarray(8)) },
+    { code: 0, message: '', data: null, sentence: { text: '你好', words: [] } },
+    {
+      code: 20000000,
+      message: 'OK',
+      data: null,
+      ...(characters === null ? {} : { usage: { text_words: characters } }),
+    },
+  ]);
+}
+function fetcher(characters: number | null = 4) {
+  return vi.fn(async (_url: string, _init?: RequestInit) => provider(characters));
 }
 async function call(method = 'GET', body?: unknown, account = 'alice', suffix = '') {
   return handleManagedTts(
@@ -48,9 +56,8 @@ beforeEach(async () => {
   objects = new Map();
   env = {
     DB: db.DB,
-    DASHSCOPE_TTS_API_KEY: 'server-only',
-    DASHSCOPE_WORKSPACE_ID: 'workspace123',
-    TTS_CREDITS_PER_CHARACTER: '2',
+    VOLC_SPEECH_API_KEY: 'server-only',
+    AI_PRICE_TABLE: PRICE_TABLE,
     PHOTOS: {
       put: async (key: string, bytes: Uint8Array) => {
         objects.set(key, bytes);
@@ -81,7 +88,7 @@ beforeEach(async () => {
       reserveCredits(env, user, {
         idempotencyKey: key,
         usageKind: 'agent',
-        modelId: 'cosyvoice-v3-flash',
+        modelId: 'managed-tts',
         credits,
       }),
     settle: (user, key, charge, metadata) => settleCredits(env, user, key, charge, metadata),
@@ -114,8 +121,9 @@ describe('managed Video read-aloud wallet', () => {
     vi.stubGlobal('fetch', mocked);
     const quote = await call();
     expect(
-      ((await quote!.json()) as { offer: { rate: number; priceVersion: string } }).offer.rate,
-    ).toBe(2);
+      ((await quote!.json()) as { offer: { perTenThousandChars: number } }).offer
+        .perTenThousandChars,
+    ).toBe(20_000);
     const priceVersion = ((await (await call())!.json()) as { offer: { priceVersion: string } })
       .offer.priceVersion;
     const input = {
@@ -141,9 +149,19 @@ describe('managed Video read-aloud wallet', () => {
     ).toBe(14);
     expect((await call('GET', undefined, 'bob', '/speech001/audio'))?.status).toBe(404);
     expect((await call('POST', input))?.status).toBe(200);
-    expect(mocked).toHaveBeenCalledTimes(2); // one synthesis, one private audio fetch
+    expect(mocked).toHaveBeenCalledOnce(); // the audio arrives in the synthesis response
+    const [url, init] = mocked.mock.calls[0]!;
+    expect(url).toBe('https://openspeech.bytedance.com/api/v3/tts/unidirectional');
+    const sent = new Headers(init!.headers);
+    expect(sent.get('X-Api-Key')).toBe('server-only');
+    expect(sent.get('X-Api-Resource-Id')).toBe('example-tts');
+    expect(sent.get('X-Control-Require-Usage-Tokens-Return')).toBe('*');
+    expect(JSON.parse(String(init!.body)).req_params).toMatchObject({
+      text: '你好',
+      speaker: 'zh_female_vv_uranus_bigtts',
+    });
     const row = await env.DB.prepare(
-      "SELECT status,charged_credits FROM credit_reservations WHERE model_id='cosyvoice-v3-flash'",
+      "SELECT status,charged_credits FROM credit_reservations WHERE model_id='managed-tts'",
     ).first();
     expect(row).toEqual({ status: 'settled', charged_credits: 8 });
     expect((await call('POST', { ...input, text: '再见' }))?.status).toBe(409);
@@ -261,7 +279,7 @@ describe('managed Video read-aloud wallet', () => {
         }
       ).job.state,
     ).toBe('succeeded');
-    expect(mocked).toHaveBeenCalledTimes(2);
+    expect(mocked).toHaveBeenCalledOnce();
   });
 
   it('does not debit when recovery finds no saved audio', async () => {
@@ -446,12 +464,9 @@ describe('managed Video read-aloud wallet', () => {
   it('does not write R2 audio if account deletion removes the task during provider synthesis', async () => {
     const priceVersion = ((await (await call())!.json()) as { offer: { priceVersion: string } })
       .offer.priceVersion;
-    const mocked = vi.fn(async (url: string) => {
-      if (url.includes('SpeechSynthesizer')) {
-        await env.DB.prepare("DELETE FROM users WHERE id='alice'").run();
-        return provider();
-      }
-      return new Response(new Uint8Array([0xff, 0xfb, 0x90, 0x64]));
+    const mocked = vi.fn(async () => {
+      await env.DB.prepare("DELETE FROM users WHERE id='alice'").run();
+      return provider();
     });
     vi.stubGlobal('fetch', mocked);
     expect(
@@ -465,7 +480,7 @@ describe('managed Video read-aloud wallet', () => {
         })
       )?.status,
     ).toBe(503);
-    expect(mocked).toHaveBeenCalledTimes(2);
+    expect(mocked).toHaveBeenCalledOnce();
     expect(objects.size).toBe(0);
   });
 
@@ -540,5 +555,94 @@ describe('managed Video read-aloud wallet', () => {
       "SELECT COUNT(*) AS count FROM credit_ledger WHERE reference_id=(SELECT reservation_key FROM managed_tts_jobs WHERE id='speech008')",
     ).first<{ count: number }>();
     expect(ledger?.count).toBe(1);
+  });
+
+  it('stays disabled without the speech key or a valid price table, never using a default price', async () => {
+    const mocked = fetcher();
+    vi.stubGlobal('fetch', mocked);
+    for (const patch of [
+      { VOLC_SPEECH_API_KEY: undefined },
+      { AI_PRICE_TABLE: undefined },
+      { AI_PRICE_TABLE: '{}' },
+    ]) {
+      const configured = env;
+      env = { ...configured, ...patch } as Env;
+      expect(await (await call())!.json()).toEqual({ enabled: false, offer: null });
+      expect(
+        (
+          await call('POST', {
+            id: 'speech020',
+            text: '你好',
+            consent: true,
+            acceptedMaxCredits: 8,
+            priceVersion: 'tts:example-1',
+          })
+        )?.status,
+      ).toBe(503);
+      env = configured;
+    }
+    expect(mocked).not.toHaveBeenCalled();
+  });
+
+  it('sends a chosen catalog voice and rejects an unknown one before reserving', async () => {
+    const mocked = fetcher();
+    vi.stubGlobal('fetch', mocked);
+    const input = {
+      id: 'speech021',
+      text: '你好',
+      consent: true,
+      acceptedMaxCredits: 8,
+      priceVersion: 'tts:example-1',
+    };
+    expect((await call('POST', { ...input, voice: 'alloy' }))?.status).toBe(400);
+    expect(mocked).not.toHaveBeenCalled();
+    // A voice saved for the previous provider is mapped, not rejected.
+    expect((await call('POST', { ...input, voice: 'ara' }))?.status).toBe(200);
+    expect(JSON.parse(String(mocked.mock.calls[0]![1]!.body)).req_params.speaker).toBe(
+      'zh_female_xiaohe_uranus_bigtts',
+    );
+  });
+
+  it('keeps the hold for review when the provider omits billed characters', async () => {
+    vi.stubGlobal('fetch', fetcher(null));
+    expect(
+      (
+        await call('POST', {
+          id: 'speech022',
+          text: '你好',
+          consent: true,
+          acceptedMaxCredits: 8,
+          priceVersion: 'tts:example-1',
+        })
+      )?.status,
+    ).toBe(503);
+    const job = await env.DB.prepare(
+      "SELECT j.state,r.status FROM managed_tts_jobs j JOIN credit_reservations r ON r.idempotency_key=j.reservation_key WHERE j.id='speech022'",
+    ).first();
+    expect(job).toEqual({ state: 'needs_review', status: 'pending' });
+    expect(objects.size).toBe(0);
+  });
+
+  it('releases a stream that is rejected before any audio', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => chunked([{ code: 45000000, message: 'speaker permission denied' }])),
+    );
+    expect(
+      (
+        await call('POST', {
+          id: 'speech023',
+          text: '你好',
+          consent: true,
+          acceptedMaxCredits: 8,
+          priceVersion: 'tts:example-1',
+        })
+      )?.status,
+    ).toBe(503);
+    expect(
+      await env.DB.prepare(
+        "SELECT j.state,r.status FROM managed_tts_jobs j JOIN credit_reservations r ON r.idempotency_key=j.reservation_key WHERE j.id='speech023'",
+      ).first(),
+    ).toEqual({ state: 'failed', status: 'released' });
   });
 });

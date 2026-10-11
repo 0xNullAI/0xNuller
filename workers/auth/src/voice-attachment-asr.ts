@@ -1,6 +1,12 @@
+import {
+  parsePriceTable,
+  recognitionCredits,
+  type SpeechRecognitionRoute,
+} from '@0xnullai/ai-pricing';
 import { currentUser, sha256Hex, type SessionEnv } from './session-domain';
 import { err, json, readBodyBounded } from './http';
-import { AsrProviderError, ASR_MAX_AUDIO_BYTES, transcribeQwenAudio } from './qwen-asr';
+import { AsrProviderError, recognizeDoubaoClip } from './doubao-asr';
+import { oggOpusClip, OpusContainerError, type OggOpusClip } from './opus-container';
 
 type CreditResult = { allowed: boolean; created?: boolean; status: string; charged: number | null };
 type Billing = {
@@ -15,8 +21,8 @@ type Billing = {
 };
 type Env = SessionEnv & {
   PHOTOS: R2Bucket;
-  DASHSCOPE_ASR_API_KEY?: string;
-  ASR_CREDITS_PER_SECOND?: string;
+  VOLC_SPEECH_API_KEY?: string;
+  AI_PRICE_TABLE?: string;
 };
 type Job = {
   state: 'running' | 'settlement_pending' | 'succeeded' | 'failed' | 'needs_review';
@@ -30,14 +36,25 @@ type Job = {
 };
 const PATH = /^\/api\/auth\/conversations\/([^/]+)\/attachments\/([^/]+)\/transcription$/;
 const ID = /^[A-Za-z0-9._:-]{1,128}$/;
-const HOLD_SECONDS = 300;
+const ASR_MAX_AUDIO_BYTES = 6_000_000;
+/** Longest clip offered for recognition; the hold covers exactly this much audio. */
+const MAX_CLIP_SECONDS = 300;
 const HOLD_TTL_MS = 2 * 60 * 60 * 1000;
 
+/** Disabled (null) until both the speech key and a valid `AI_PRICE_TABLE` are configured. */
 function pricing(env: Env) {
-  const rate = Number(env.ASR_CREDITS_PER_SECOND);
-  return env.DASHSCOPE_ASR_API_KEY && Number.isSafeInteger(rate) && rate >= 1 && rate <= 1000
-    ? { rate, maxCredits: rate * HOLD_SECONDS, priceVersion: `qwen3-asr-flash-v1:${rate}` }
-    : null;
+  const table = parsePriceTable(env.AI_PRICE_TABLE);
+  if (!env.VOLC_SPEECH_API_KEY || !table) return null;
+  const route: SpeechRecognitionRoute = table.asr;
+  return {
+    route,
+    offer: {
+      perHour: route.perHour,
+      maxSeconds: MAX_CLIP_SECONDS,
+      maxCredits: recognitionCredits(route, MAX_CLIP_SECONDS * 1000),
+      priceVersion: `asr:${table.version}`,
+    },
+  };
 }
 
 const readJob = (env: Env, userId: string, conversationId: string, attachmentId: string) =>
@@ -92,7 +109,8 @@ export async function handleVoiceAttachmentAsr(
   if (!attachment) return err('语音附件不存在', 404, headers);
   if (attachment.mime !== 'audio/webm' && attachment.mime !== 'audio/ogg')
     return err('此录音格式暂不支持自动识别', 415, headers);
-  const offer = pricing(env);
+  const priced = pricing(env);
+  const offer = priced?.offer ?? null;
   if (request.method === 'GET')
     return json(
       {
@@ -104,7 +122,7 @@ export async function handleVoiceAttachmentAsr(
       headers,
     );
   if (request.method !== 'POST') return err('不支持此操作', 405, headers);
-  if (!offer) return err('语音识别或价格尚未配置', 503, headers);
+  if (!priced || !offer) return err('语音识别或价格尚未配置', 503, headers);
   if (attachment.size > ASR_MAX_AUDIO_BYTES) return err('录音过大，无法识别', 413, headers);
   const raw = await readBodyBounded(request, 1000);
   if (!raw) return err('请求过大', 413, headers);
@@ -122,6 +140,21 @@ export async function handleVoiceAttachmentAsr(
     return err('请重新确认语音识别价格', 409, headers);
   const previous = await readJob(env, user.id, conversationId, attachmentId);
   if (previous) return json({ job: publicJob(previous) }, 200, headers);
+  // Measure (and, for WebM, rewrap) the clip before holding Credit, so an over-long or
+  // unreadable recording is refused without a reservation or a provider call.
+  let clip: OggOpusClip;
+  try {
+    const object = await env.PHOTOS.get(attachment.object_key);
+    if (!object || object.size !== attachment.size) return err('语音附件不可用', 404, headers);
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    if (bytes.length !== attachment.size) return err('语音附件不可用', 404, headers);
+    clip = oggOpusClip(bytes, attachment.mime);
+  } catch (error) {
+    if (error instanceof OpusContainerError) return err(error.message, 415, headers);
+    throw error;
+  }
+  if (clip.durationMs > MAX_CLIP_SECONDS * 1000)
+    return err(`录音超过 ${MAX_CLIP_SECONDS / 60} 分钟，无法识别`, 413, headers);
 
   const key = `asr:${await sha256Hex(`${user.id}\0${conversationId}\0${attachmentId}`)}`;
   const reserved = await billing.reserve(user.id, key, offer.maxCredits);
@@ -168,40 +201,30 @@ export async function handleVoiceAttachmentAsr(
     return err('会话或附件已变更，请重试', 409, headers);
   }
   try {
-    const object = await env.PHOTOS.get(attachment.object_key);
-    if (!object || object.size !== attachment.size) throw new AsrProviderError(false);
-    const bytes = new Uint8Array(await object.arrayBuffer());
-    if (bytes.length !== attachment.size || bytes.length > ASR_MAX_AUDIO_BYTES)
-      throw new AsrProviderError(false);
-    const recognition = await transcribeQwenAudio(
-      env.DASHSCOPE_ASR_API_KEY!,
-      bytes,
-      attachment.mime,
+    const recognition = await recognizeDoubaoClip({
+      key: env.VOLC_SPEECH_API_KEY!,
+      resourceId: priced.route.resourceId,
+      ogg: clip.ogg,
+    });
+    const seconds = Math.ceil(recognition.durationMs / 1000);
+    const charge = Math.min(
+      offer.maxCredits,
+      recognitionCredits(priced.route, recognition.durationMs),
     );
-    const charge = Math.min(offer.maxCredits, recognition.seconds * offer.rate);
     await env.DB.prepare(
       `UPDATE voice_attachment_asr_jobs SET state='settlement_pending',transcript=?,seconds=?,charged_credits=?,updated_at=?
        WHERE user_id=? AND conversation_id=? AND attachment_id=? AND state='running'`,
     )
-      .bind(
-        recognition.text,
-        recognition.seconds,
-        charge,
-        Date.now(),
-        user.id,
-        conversationId,
-        attachmentId,
-      )
+      .bind(recognition.text, seconds, charge, Date.now(), user.id, conversationId, attachmentId)
       .run();
     if ((await readJob(env, user.id, conversationId, attachmentId))?.state !== 'settlement_pending')
       throw new Error('语音附件已失效');
     if (Date.now() - now >= HOLD_TTL_MS) throw new Error('语音冻结已过期');
     const final = await billing.settle(user.id, key, charge, {
-      model: 'qwen3-asr-flash',
+      model: priced.route.resourceId,
       kind: 'asr',
-      seconds: recognition.seconds,
-      inputTokens: recognition.inputTokens,
-      outputTokens: recognition.outputTokens,
+      seconds,
+      durationMs: recognition.durationMs,
       priceVersion: offer.priceVersion,
       conversationId,
       attachmentId,
@@ -284,9 +307,8 @@ export async function recoverVoiceAttachmentAsr(
     }
     try {
       const charge = row.charged_credits;
-      if (!charge || !row.seconds || !row.transcript) continue;
+      if (!charge || !row.seconds || row.transcript === null) continue;
       const final = await billing.settle(row.user_id, row.reservation_key, charge, {
-        model: 'qwen3-asr-flash',
         kind: 'asr',
         seconds: row.seconds,
         priceVersion: row.price_version,

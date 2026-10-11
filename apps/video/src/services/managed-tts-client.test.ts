@@ -26,7 +26,7 @@ it('uses the same code-point upper bound as the server and sends consent only af
         })
       : Response.json({
           enabled: true,
-          offer: { rate: 2, maxTextCharacters: 500, priceVersion: 'v1' },
+          offer: { perTenThousandChars: 20_000, maxTextCharacters: 500, priceVersion: 'v1' },
         }),
   );
   vi.stubGlobal('fetch', fetcher);
@@ -49,7 +49,7 @@ it('rejects account changes, non-audio responses and oversized files', async () 
     auth.account = 'bob';
     return Response.json({
       enabled: true,
-      offer: { rate: 2, maxTextCharacters: 500, priceVersion: 'v1' },
+      offer: { perTenThousandChars: 20_000, maxTextCharacters: 500, priceVersion: 'v1' },
     });
   });
   vi.stubGlobal('fetch', fetcher);

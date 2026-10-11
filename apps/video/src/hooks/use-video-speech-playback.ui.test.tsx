@@ -26,8 +26,8 @@ vi.mock('@0xnullai/auth', () => ({
 }));
 vi.mock('../services/managed-tts-client.js', () => ({
   managedTtsOffer: speech.offer,
-  managedTtsMaxCredits: (text: string, offer: { rate: number }) =>
-    Array.from(text).length * 2 * offer.rate,
+  managedTtsMaxCredits: (text: string, offer: { perTenThousandChars: number }) =>
+    (Array.from(text).length * 2 * offer.perTenThousandChars) / 10_000,
   createManagedTts: speech.create,
   loadManagedTtsJob: speech.load,
   loadManagedTtsAudio: speech.audio,
@@ -67,7 +67,11 @@ beforeEach(() => {
 
 it('requires an explicit Credit confirmation and never auto-plays generated managed audio', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-  speech.offer.mockResolvedValue({ rate: 2, priceVersion: 'v1', maxTextCharacters: 500 });
+  speech.offer.mockResolvedValue({
+    perTenThousandChars: 20_000,
+    priceVersion: 'v1',
+    maxTextCharacters: 500,
+  });
   speech.create.mockResolvedValue({
     id: 'test-id',
     state: 'succeeded',
@@ -99,7 +103,11 @@ it('coalesces simultaneous managed clicks while a paid request is pending', asyn
     credits: number;
     audioAvailable: boolean;
   }) => void;
-  speech.offer.mockResolvedValue({ rate: 2, priceVersion: 'v1', maxTextCharacters: 500 });
+  speech.offer.mockResolvedValue({
+    perTenThousandChars: 20_000,
+    priceVersion: 'v1',
+    maxTextCharacters: 500,
+  });
   speech.create.mockImplementationOnce(
     () =>
       new Promise((done) => {
@@ -125,7 +133,11 @@ it('coalesces simultaneous managed clicks while a paid request is pending', asyn
 
 it('does not reuse paid audio when an observation id is recycled with different text', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-  speech.offer.mockResolvedValue({ rate: 2, priceVersion: 'v1', maxTextCharacters: 500 });
+  speech.offer.mockResolvedValue({
+    perTenThousandChars: 20_000,
+    priceVersion: 'v1',
+    maxTextCharacters: 500,
+  });
   speech.create.mockImplementation(async (_account: string, id: string) => ({
     id,
     state: 'succeeded',
@@ -146,7 +158,11 @@ it('does not reuse paid audio when an observation id is recycled with different 
 
 it('does not contact the provider when managed Credit consent is declined', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  speech.offer.mockResolvedValue({ rate: 2, priceVersion: 'v1', maxTextCharacters: 500 });
+  speech.offer.mockResolvedValue({
+    perTenThousandChars: 20_000,
+    priceVersion: 'v1',
+    maxTextCharacters: 500,
+  });
   const { result } = renderHook(() => useVideoSpeechPlayback(true, true));
   await act(async () => {
     await result.current.toggle('reply-1', '你好');

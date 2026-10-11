@@ -77,8 +77,8 @@ export function VoiceTranscriptionControl({
       {details && !details.job && details.offer && (
         <div className="space-y-1">
           <p>
-            语音识别：最高 {details.offer.maxCredits} Credit；按识别出的实际秒数，每秒{' '}
-            {details.offer.rate} Credit 结算。录音会发送给语音服务商。
+            语音识别：最高 {details.offer.maxCredits} Credit；按识别出的实际时长结算，每小时{' '}
+            {details.offer.perHour} Credit，不足 1 Credit 按 1 Credit 计。录音会发送给语音服务商。
           </p>
           <button
             type="button"
@@ -91,6 +91,9 @@ export function VoiceTranscriptionControl({
         </div>
       )}
       {details && !details.enabled && !details.job && <p>语音识别尚未启用。</p>}
+      {details?.job?.state === 'succeeded' && !details.job.transcript && (
+        <p>未识别到语音内容 · 已扣 {details.job.credits} Credit。</p>
+      )}
       {details?.job?.state === 'succeeded' && details.job.transcript && (
         <div className="space-y-1">
           <p>机器转写草稿 · 已扣 {details.job.credits} Credit。请核对录音内容。</p>

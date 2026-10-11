@@ -1,17 +1,18 @@
+import {
+  DEFAULT_MANAGED_VOICE,
+  managedVoiceFor,
+  parsePriceTable,
+  synthesisCredits,
+  type SpeechSynthesisRoute,
+} from '@0xnullai/ai-pricing';
 import { currentUser, sha256Hex, type SessionEnv } from './session-domain';
 import { err, json, readBodyBounded } from './http';
-import {
-  fetchTrustedAudio,
-  isMp3Audio,
-  synthesizeCosyvoice,
-  TtsProviderError,
-} from './cosyvoice-tts';
+import { isMp3Audio, synthesizeDoubaoSpeech, TtsProviderError } from './doubao-tts';
 
 type Env = SessionEnv & {
   PHOTOS: R2Bucket;
-  DASHSCOPE_TTS_API_KEY?: string;
-  DASHSCOPE_WORKSPACE_ID?: string;
-  TTS_CREDITS_PER_CHARACTER?: string;
+  VOLC_SPEECH_API_KEY?: string;
+  AI_PRICE_TABLE?: string;
 };
 type CreditResult = { allowed: boolean; created?: boolean; status: string; charged: number | null };
 type Billing = {
@@ -45,25 +46,17 @@ const MAX_TEXT_CHARACTERS = 500;
 const HOLD_TTL_MS = 2 * 60 * 60 * 1000;
 const AUDIO_TTL_MS = 24 * 60 * 60 * 1000;
 
-function price(env: Env) {
-  const rate = Number(env.TTS_CREDITS_PER_CHARACTER);
-  return env.DASHSCOPE_TTS_API_KEY &&
-    /^[A-Za-z0-9-]{4,80}$/.test(env.DASHSCOPE_WORKSPACE_ID ?? '') &&
-    env.PHOTOS &&
-    Number.isSafeInteger(rate) &&
-    rate > 0 &&
-    rate <= 1000
-    ? {
-        rate,
-        maxTextCharacters: MAX_TEXT_CHARACTERS,
-        priceVersion: `cosyvoice-v3-flash-v1:${rate}`,
-      }
+/** Disabled (null) until both the speech key and a valid `AI_PRICE_TABLE` are configured. */
+function pricing(env: Env): { route: SpeechSynthesisRoute; priceVersion: string } | null {
+  const table = parsePriceTable(env.AI_PRICE_TABLE);
+  return env.VOLC_SPEECH_API_KEY && table && env.PHOTOS
+    ? { route: table.tts, priceVersion: `tts:${table.version}` }
     : null;
 }
 
 function offerForText(
   text: string,
-  rate: number,
+  route: SpeechSynthesisRoute,
 ): { length: number; maxCharacters: number; maxCredits: number } | null {
   const length = Array.from(text).length;
   if (
@@ -73,9 +66,9 @@ function offerForText(
     Array.from(text).some((character) => character.codePointAt(0)! < 32)
   )
     return null;
-  // The provider may count a Han ideograph as two billable characters.
+  // Hold for twice the visible length: the provider's own count is what settles the job.
   const maxCharacters = length * 2;
-  return { length, maxCharacters, maxCredits: maxCharacters * rate };
+  return { length, maxCharacters, maxCredits: synthesisCredits(route, maxCharacters) };
 }
 
 const readJob = (env: Env, userId: string, id: string) =>
@@ -111,7 +104,12 @@ export async function handleManagedTts(
   if (!user) return err('请先登录', 401, headers);
   if (user.banned_at != null || request.headers.get('X-Account-Id') !== user.id)
     return err('账号不可用或已切换', 403, headers);
-  const offer = price(env);
+  const priced = pricing(env);
+  const offer = priced && {
+    perTenThousandChars: priced.route.perTenThousandChars,
+    maxTextCharacters: MAX_TEXT_CHARACTERS,
+    priceVersion: priced.priceVersion,
+  };
   if (path === ROOT && request.method === 'GET')
     return json({ enabled: Boolean(offer), offer }, 200, headers);
 
@@ -139,7 +137,7 @@ export async function handleManagedTts(
     });
   }
   if (path !== ROOT || request.method !== 'POST') return err('不支持此操作', 405, headers);
-  if (!offer) return err('托管朗读或价格尚未配置', 503, headers);
+  if (!priced || !offer) return err('托管朗读或价格尚未配置', 503, headers);
   const raw = await readBodyBounded(request, 4_000);
   if (!raw) return err('请求过大', 413, headers);
   let input: {
@@ -148,6 +146,7 @@ export async function handleManagedTts(
     consent?: unknown;
     acceptedMaxCredits?: unknown;
     priceVersion?: unknown;
+    voice?: unknown;
   };
   try {
     input = JSON.parse(new TextDecoder().decode(raw));
@@ -161,7 +160,9 @@ export async function handleManagedTts(
     typeof input.text !== 'string'
   )
     return err('朗读内容无效', 400, headers);
-  const amount = offerForText(input.text, offer.rate);
+  const amount = offerForText(input.text, priced.route);
+  const voice = input.voice === undefined ? DEFAULT_MANAGED_VOICE : managedVoiceFor(input.voice);
+  if (!voice) return err('朗读音色无效', 400, headers);
   if (!amount) return err('朗读内容无效或过长', 400, headers);
   if (
     input.consent !== true ||
@@ -209,14 +210,13 @@ export async function handleManagedTts(
 
   let objectKey: string | null = null;
   try {
-    const result = await synthesizeCosyvoice(
-      env.DASHSCOPE_TTS_API_KEY!,
-      env.DASHSCOPE_WORKSPACE_ID!,
-      input.text,
-      amount.maxCharacters,
-    );
-    // Never settle for a URL alone: first prove that the paid audio is retrievable and bounded.
-    const audio = await fetchTrustedAudio(result.url);
+    const result = await synthesizeDoubaoSpeech({
+      key: env.VOLC_SPEECH_API_KEY!,
+      resourceId: priced.route.resourceId,
+      voice,
+      text: input.text,
+      maxCharacters: amount.maxCharacters,
+    });
     objectKey = `users/${user.id}/tts/${input.id}.mp3`;
     const claimed = await env.DB.prepare(
       "UPDATE managed_tts_jobs SET object_key=?,audio_expires_at=?,updated_at=? WHERE user_id=? AND id=? AND state='running' RETURNING id",
@@ -224,9 +224,11 @@ export async function handleManagedTts(
       .bind(objectKey, Date.now() + AUDIO_TTL_MS, Date.now(), user.id, input.id)
       .first<{ id: string }>();
     if (!claimed) throw new Error('朗读任务已失效');
-    await env.PHOTOS.put(objectKey, audio, { httpMetadata: { contentType: 'audio/mpeg' } });
-    const expiresAt = Math.min(result.expiresAt, Date.now() + AUDIO_TTL_MS);
-    const charge = result.characters * offer.rate;
+    await env.PHOTOS.put(objectKey, result.audio, {
+      httpMetadata: { contentType: 'audio/mpeg' },
+    });
+    const expiresAt = Date.now() + AUDIO_TTL_MS;
+    const charge = synthesisCredits(priced.route, result.characters);
     await env.DB.prepare(
       `UPDATE managed_tts_jobs SET state='settlement_pending',charged_credits=?,characters=?,object_key=?,audio_expires_at=?,updated_at=?
        WHERE user_id=? AND id=? AND state='running'`,
@@ -240,7 +242,8 @@ export async function handleManagedTts(
       throw new Error('朗读任务状态无法确认');
     const final = await billing.settle(user.id, key, charge, {
       kind: 'tts',
-      model: 'cosyvoice-v3-flash',
+      model: priced.route.resourceId,
+      voice,
       characters: result.characters,
       priceVersion: offer.priceVersion,
       taskId: input.id,
@@ -368,7 +371,6 @@ export async function recoverManagedTts(
           job.charged_credits,
           {
             kind: 'tts',
-            model: 'cosyvoice-v3-flash',
             characters: job.characters,
             priceVersion: job.price_version,
             taskId: job.id,

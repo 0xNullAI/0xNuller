@@ -1,8 +1,10 @@
+import { synthesisCredits } from '@0xnullai/ai-pricing';
 import { authRequestHeaders, currentAuthUserId } from '@0xnullai/auth';
 import { apiBaseUrl } from '@0xnullai/settings';
 
+/** The server's quote; Credits per 10,000 billed characters, from its price table. */
 export interface ManagedTtsOffer {
-  rate: number;
+  perTenThousandChars: number;
   maxTextCharacters: number;
   priceVersion: string;
 }
@@ -36,8 +38,9 @@ export async function managedTtsOffer(
   if (
     value.enabled !== true ||
     !offer ||
-    !Number.isSafeInteger(offer.rate) ||
-    Number(offer.rate) <= 0 ||
+    typeof offer.perTenThousandChars !== 'number' ||
+    !Number.isFinite(offer.perTenThousandChars) ||
+    offer.perTenThousandChars < 0 ||
     !Number.isSafeInteger(offer.maxTextCharacters) ||
     Number(offer.maxTextCharacters) <= 0 ||
     typeof offer.priceVersion !== 'string' ||
@@ -51,7 +54,8 @@ export function managedTtsMaxCredits(text: string, offer: ManagedTtsOffer): numb
   const length = Array.from(text).length;
   if (!text.trim() || !length || length > offer.maxTextCharacters)
     throw new Error('朗读内容为空或过长');
-  return length * 2 * offer.rate;
+  // Same bound as the server: twice the code points, priced with the shared arithmetic.
+  return synthesisCredits(offer, length * 2);
 }
 
 export async function createManagedTts(
