@@ -76,3 +76,30 @@ it('applies account and time filters to every page and drops obsolete list resul
   await waitFor(() => expect(api.listVoiceBillingReviews).toHaveBeenLastCalledWith(filter, 10));
   expect(screen.queryByText(`记录核对备注：${item.id}`)).toBeNull();
 });
+it('lists calls with unreported round usage as read-only evidence', async () => {
+  api.listVoiceBillingReviews.mockResolvedValue({
+    items: [],
+    usageItems: [
+      {
+        id: 'voice:usage:001',
+        accountId: 'bob',
+        reason: 'usage_missing',
+        rounds: 1,
+        missingRounds: 2,
+        durationMs: 30000,
+        computedCredits: 20,
+        chargedCredits: 20,
+        reserved: 80,
+        priceVersion: 'realtime:v1',
+        createdAt: 300,
+        status: 'settled',
+        charged: 20,
+      },
+    ],
+    nextCursor: null,
+  });
+  render(<VoiceReconciliationPanel />);
+  await screen.findByText(/2 轮未上报用量（已上报 1 轮）/);
+  expect(screen.getByText(/实扣 20/)).toBeTruthy();
+  expect(screen.queryByText('记录核对备注：voice:usage:001')).toBeNull();
+});

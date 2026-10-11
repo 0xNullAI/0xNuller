@@ -4,6 +4,7 @@ import {
   recordVoiceBillingReview,
   type VoiceBillingReview,
   type VoiceReviewFilter,
+  type VoiceUsageReview,
 } from '@0xnullai/auth';
 import { Button } from '@0xnullai/ui';
 
@@ -72,6 +73,7 @@ export function VoiceReconciliationPanel() {
 }
 function VoiceReviewList({ filter }: { filter: VoiceReviewFilter }) {
   const [items, setItems] = useState<VoiceBillingReview[]>([]);
+  const [usageItems, setUsageItems] = useState<VoiceUsageReview[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [selected, setSelected] = useState<VoiceBillingReview | null>(null);
   const [note, setNote] = useState('');
@@ -94,6 +96,7 @@ function VoiceReviewList({ filter }: { filter: VoiceReviewFilter }) {
       .then((result) => {
         if (active) {
           setItems(result.items);
+          setUsageItems(result.usageItems ?? []);
           setCursor(result.nextCursor);
         }
       })
@@ -155,7 +158,7 @@ function VoiceReviewList({ filter }: { filter: VoiceReviewFilter }) {
     >
       <h2 className="text-sm font-semibold">语音 Credit 待核对任务</h2>
       <p>
-        只读展示冻结过期的语音证据。请求报价不是实际扣款；备注不可修改，不会扣费、改账或标记完成。请勿填写聊天正文或凭据。
+        只读展示冻结过期与用量缺失的语音证据。请求报价不是实际扣款；备注不可修改，不会扣费、改账或标记完成。请勿填写聊天正文或凭据。
       </p>
       <Button
         size="sm"
@@ -226,6 +229,33 @@ function VoiceReviewList({ filter }: { filter: VoiceReviewFilter }) {
         <Button size="sm" disabled={busy} onClick={() => void more()}>
           更早语音记录
         </Button>
+      )}
+      {usageItems.length > 0 && (
+        <div aria-label="语音用量待核对" className="space-y-2">
+          <h3 className="font-semibold">用量待核对（只按已上报用量扣费）</h3>
+          {usageItems.map((item) => (
+            <article key={item.id} className="border-b pb-2">
+              <p className="break-all">
+                {item.id} · 账户 {item.accountId}
+              </p>
+              <p>
+                原因：
+                {item.reason === 'usage_missing'
+                  ? `${item.missingRounds} 轮未上报用量（已上报 ${item.rounds} 轮）`
+                  : item.reason === 'over_reservation'
+                    ? `用量 ${item.computedCredits} Credit 超出预留`
+                    : item.reason}
+              </p>
+              <p>
+                预留状态 {item.status} · 原预留 {item.reserved} Credit · 实扣{' '}
+                {item.charged ?? '未扣费'} · 通话 {item.durationMs} ms
+              </p>
+              <p>
+                价格版本 {item.priceVersion} · 记录 {new Date(item.createdAt).toLocaleString()}
+              </p>
+            </article>
+          ))}
+        </div>
       )}
       {selected && (
         <form

@@ -1019,6 +1019,7 @@ export {
   recordVoiceBillingReview,
   type VoiceBillingReview,
   type VoiceReviewFilter,
+  type VoiceUsageReview,
   listMediaBillingReviews,
   recordMediaBillingReview,
   type MediaBillingReview,

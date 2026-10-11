@@ -114,3 +114,26 @@ it('paginates identical timestamps without duplication and retains the account f
   expect(new Set([...first.items, ...second.items].map((x) => x.id)).size).toBe(32);
   expect([...first.items, ...second.items].every((x) => x.accountId === 'alice')).toBe(true);
 });
+it('lists usage-billed calls whose rounds lacked usage alongside the expiry reviews', async () => {
+  await env.DB.prepare(
+    "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,charged_credits,created_at,updated_at) VALUES('voice:usage:001','bob','voice','voice',80,'settled',20,1,300)",
+  ).run();
+  await env.DB.prepare(
+    "INSERT INTO voice_usage_reviews VALUES('voice:usage:001','bob','usage_missing',1,2,30000,'{}',20,20,80,'realtime:v1',300)",
+  ).run();
+  const all = (await (await call()).json()) as { usageItems: Array<Record<string, unknown>> };
+  expect(all.usageItems).toEqual([
+    expect.objectContaining({
+      id: 'voice:usage:001',
+      accountId: 'bob',
+      reason: 'usage_missing',
+      missingRounds: 2,
+      chargedCredits: 20,
+      status: 'settled',
+    }),
+  ]);
+  const filtered = (await (await call(undefined, '?accountId=alice')).json()) as {
+    usageItems: unknown[];
+  };
+  expect(filtered.usageItems).toEqual([]);
+});

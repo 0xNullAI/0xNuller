@@ -147,6 +147,22 @@ export interface VoiceBillingReview {
   createdAt: number;
   notes: TextBillingReview['notes'];
 }
+/** A usage-billed call charged only reported usage: a round lacked usage, or usage exceeded the hold. */
+export interface VoiceUsageReview {
+  id: string;
+  accountId: string;
+  reason: 'usage_missing' | 'over_reservation' | string;
+  rounds: number;
+  missingRounds: number;
+  durationMs: number;
+  computedCredits: number;
+  chargedCredits: number;
+  reserved: number;
+  priceVersion: string;
+  createdAt: number;
+  status: string;
+  charged: number | null;
+}
 export interface VoiceReviewFilter {
   accountId?: string;
   from?: number;
@@ -158,9 +174,12 @@ export const listVoiceBillingReviews = (filter: VoiceReviewFilter = {}, before?:
   if (filter.accountId) query.set('accountId', filter.accountId);
   if (filter.from !== undefined) query.set('from', String(filter.from));
   if (filter.to !== undefined) query.set('to', String(filter.to));
-  return request<{ items: VoiceBillingReview[]; nextCursor: number | null }>(
-    `admin/billing/voice-reconciliation?${query}`,
-  );
+  return request<{
+    items: VoiceBillingReview[];
+    /** First page only; older Workers omit it. */
+    usageItems?: VoiceUsageReview[];
+    nextCursor: number | null;
+  }>(`admin/billing/voice-reconciliation?${query}`);
 };
 export const recordVoiceBillingReview = (item: VoiceBillingReview, eventId: string, note: string) =>
   request<{ recorded: true }>('admin/billing/voice-reconciliation/notes', {

@@ -3,6 +3,7 @@ import { createTestDb } from './test-helpers';
 import type { SessionEnv } from './session-domain';
 import { finalizeVoiceReservation } from './voice-credit-domain';
 import { creditBalance, reserveCredits, settleCredits, type Env } from './index';
+import example from '@0xnullai/ai-pricing/example-price-table.json';
 let db: ReturnType<typeof createTestDb>;
 let env: SessionEnv;
 const key = 'voice:reservation:1';
@@ -197,5 +198,102 @@ describe('legacy settleVoiceCredits shared settlement boundary', () => {
     }
     expect((await ledger()).results).toEqual([]);
     expect(await finish('settle', 40_000)).toEqual({ status: 'needs_review', charged: null });
+  });
+});
+
+describe('usage-billed Voice calls', () => {
+  // Reserved 100; example realtime prices: input text 100, output audio 4000 per million.
+  const usage = (overrides: Partial<Record<string, number>> = {}) => ({
+    inputAudioTokens: 0,
+    inputTextTokens: 0,
+    cachedAudioTokens: 0,
+    cachedTextTokens: 0,
+    outputAudioTokens: 0,
+    outputTextTokens: 0,
+    ...overrides,
+  });
+  const settle = (input: Record<string, unknown>) =>
+    finalizeVoiceReservation(
+      env,
+      'alice',
+      key,
+      { action: 'settle', durationMs: 30_000, ...input } as never,
+      'credits-2026-09',
+    );
+  beforeEach(() => {
+    env = { ...env, AI_PRICE_TABLE: JSON.stringify(example) } as SessionEnv;
+  });
+  const reviews = () => env.DB.prepare('SELECT * FROM voice_usage_reviews').all();
+
+  it('charges the price-table cost of reported usage, with the table version and usage in the receipt', async () => {
+    expect(
+      await settle({
+        usage: usage({ outputAudioTokens: 5_000, inputTextTokens: 10_000 }),
+        rounds: 2,
+        missingRounds: 0,
+      }),
+    ).toEqual({ status: 'settled', charged: Math.ceil((5_000 * 4000 + 10_000 * 100) / 1e6) });
+    const entry = await env.DB.prepare(
+      'SELECT price_version,metadata_json FROM credit_ledger WHERE reference_id=?',
+    )
+      .bind(key)
+      .first<{ price_version: string; metadata_json: string }>();
+    expect(entry?.price_version).toBe('realtime:example-1');
+    expect(JSON.parse(entry!.metadata_json)).toMatchObject({
+      model: 'example-realtime-model',
+      rounds: 2,
+      missingRounds: 0,
+      usage: { outputAudioTokens: 5_000 },
+    });
+    expect((await reviews()).results).toEqual([]);
+  });
+
+  it('charges only reported usage and queues the call for review when a round has none', async () => {
+    expect(
+      await settle({ usage: usage({ outputAudioTokens: 5_000 }), rounds: 1, missingRounds: 2 }),
+    ).toEqual({ status: 'settled', charged: 20 });
+    expect((await reviews()).results).toMatchObject([
+      {
+        reason: 'usage_missing',
+        rounds: 1,
+        missing_rounds: 2,
+        charged_credits: 20,
+        computed_credits: 20,
+      },
+    ]);
+  });
+
+  it('releases a call with no billable usage, still reviewing unreported rounds', async () => {
+    expect(await settle({ usage: usage(), rounds: 0, missingRounds: 1 })).toEqual({
+      status: 'released',
+      charged: null,
+    });
+    expect((await ledger()).results).toEqual([]);
+    expect((await reviews()).results).toMatchObject([
+      { reason: 'usage_missing', charged_credits: 0 },
+    ]);
+  });
+
+  it('caps at the hold and reviews usage beyond it', async () => {
+    expect(
+      await settle({ usage: usage({ outputAudioTokens: 1_000_000 }), rounds: 9, missingRounds: 0 }),
+    ).toEqual({ status: 'settled', charged: 100 });
+    expect((await reviews()).results).toMatchObject([
+      { reason: 'over_reservation', computed_credits: 4000, charged_credits: 100 },
+    ]);
+  });
+
+  it('refuses malformed usage and never prices without a table', async () => {
+    const rejected = { status: 'rejected', charged: null };
+    expect(
+      await settle({ usage: usage({ inputTextTokens: -1 }), rounds: 1, missingRounds: 0 }),
+    ).toEqual(rejected);
+    expect(await settle({ usage: usage(), rounds: 1 })).toEqual(rejected);
+    expect(await settle({ rounds: 1, missingRounds: 0 })).toEqual(rejected);
+    env = { ...env, AI_PRICE_TABLE: undefined } as SessionEnv;
+    expect(
+      await settle({ usage: usage({ outputAudioTokens: 5_000 }), rounds: 1, missingRounds: 0 }),
+    ).toEqual(rejected);
+    expect((await ledger()).results).toEqual([]);
   });
 });

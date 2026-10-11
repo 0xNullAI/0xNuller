@@ -68,8 +68,30 @@ export async function handleVoiceBillingReview(
     const items = rows.results
       .slice(0, 30)
       .map(({ notesJson, ...row }) => ({ ...row, notes: JSON.parse(notesJson) }));
+    // Usage-billed calls whose rounds lacked a usage report (or exceeded the hold). They
+    // were charged only reported usage; the first page lists the latest for the filter.
+    const usageItems = before
+      ? []
+      : (
+          await env.DB.prepare(
+            `SELECT u.reservation_key AS id,u.user_id AS accountId,u.reason,u.rounds,
+            u.missing_rounds AS missingRounds,u.observed_duration_ms AS durationMs,
+            u.computed_credits AS computedCredits,u.charged_credits AS chargedCredits,
+            u.reserved_credits AS reserved,u.price_version AS priceVersion,u.created_at AS createdAt,
+            r.status,r.charged_credits AS charged
+            FROM voice_usage_reviews u JOIN credit_reservations r ON r.idempotency_key=u.reservation_key AND r.user_id=u.user_id
+            ${conditions.length ? 'WHERE ' + conditions.map((c) => c.replace('v.', 'u.')).join(' AND ') : ''}
+            ORDER BY u.created_at DESC LIMIT 30`,
+          )
+            .bind(...values)
+            .all()
+        ).results;
     return json(
-      { items, nextCursor: rows.results.length > 30 ? items.at(-1)!.sequence : null },
+      {
+        items,
+        usageItems,
+        nextCursor: rows.results.length > 30 ? items.at(-1)!.sequence : null,
+      },
       200,
       headers,
     );
