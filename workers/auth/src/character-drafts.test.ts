@@ -161,3 +161,11 @@ it('fails closed when a container owner cannot be verified', async () => {
   expect(await (await call('new', 'GET', 'alice')).json()).toMatchObject({ draft: null });
   expect((await call('new', 'PUT', 'alice', { expectedRevision: 0, draft })).status).toBe(200);
 });
+
+it('keeps a new scene draft separate from a new character draft without an ownership claim', async () => {
+  expect((await call('new-scene', 'PUT', 'alice', { expectedRevision: 0, draft })).status).toBe(
+    200,
+  );
+  expect(await (await call('new-scene', 'GET')).json()).toMatchObject({ revision: 1, draft });
+  expect(await (await call('new', 'GET')).json()).toMatchObject({ draft: null });
+});

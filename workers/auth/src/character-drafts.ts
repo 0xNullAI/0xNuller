@@ -3,6 +3,8 @@ import { err, json, readBodyBounded } from './http';
 import { currentUser, type SessionEnv } from './session-domain';
 
 const PATH = /^\/api\/auth\/character-drafts\/(new|[\w-]{1,128})$/;
+/** Unpublished drafts: one new character and one new scene per account (item ids are UUIDs). */
+const NEW_DRAFT_KEYS = new Set(['new', 'new-scene']);
 const MAX_BODY_BYTES = 520_000;
 
 export async function handleCharacterDrafts(
@@ -27,6 +29,7 @@ export async function handleCharacterDrafts(
     return err('账户已变化，请刷新后重试', 409, headers);
   if (request.method !== 'GET' && claimedAccount !== user.id)
     return err('账户已变化，请刷新后重试', 409, headers);
+  const isNew = NEW_DRAFT_KEYS.has(match[1]!);
   const key = match[1] === 'new' ? '' : match[1]!;
 
   if (request.method === 'GET') {
@@ -62,7 +65,7 @@ export async function handleCharacterDrafts(
       : err('草稿已在其他设备更新，请刷新', 409, headers);
   }
 
-  if (key && user.role !== 'admin') {
+  if (!isNew && user.role !== 'admin') {
     const claim = await env.DB.prepare(
       'SELECT 1 FROM market_claims WHERE item_id=? AND user_id=? AND verified_at IS NOT NULL',
     )
