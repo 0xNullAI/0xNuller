@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Input, SettingSelect } from '@0xnullai/ui';
+import { Button, Input, SettingSelect } from '@0xnullai/ui';
 import {
   createProviderSettings,
   getBrowserProviderDefinitions,
@@ -166,6 +166,27 @@ function OwnApiSection({
 
   return (
     <AdvancedSection title="使用自己的 API">
+      {import.meta.env.DEV && (
+        // Local development only (stripped from builds): scripts/dev/test-model-proxy.mjs
+        // holds the real key server-side, so nothing secret is typed into the page.
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() =>
+            update({
+              ...createProviderSettings('custom'),
+              apiKey: 'local-test',
+              baseUrl: `${window.location.origin}/dev-llm/v1`,
+              model: 'claude-sonnet-5-5',
+              endpoint: 'chat/completions',
+              useStrict: false,
+              rememberApiKey: true,
+            })
+          }
+        >
+          使用本地测试模型
+        </Button>
+      )}
       <label className="relative flex flex-col gap-1.5">
         <span className="text-xs text-[var(--text-soft)]">服务商</span>
         <Input

@@ -1,8 +1,10 @@
 // Local-only path router: one origin for the shell and every Worker, like production.
 import http from 'node:http';
 import net from 'node:net';
-const targets = { auth: 8787, market: 8788, chat: 8789, web: 5173 };
+const targets = { auth: 8787, market: 8788, chat: 8789, web: 5173, testModel: 8791 };
 const pick = (url) => {
+  // scripts/dev/test-model-proxy.mjs, when running.
+  if (url.startsWith('/dev-llm/')) return targets.testModel;
   if (url.startsWith('/api/items')) return targets.market;
   if (/^\/(ws\/|api\/(lobby|upload|media|groups|dm)\/)/.test(url)) return targets.chat;
   if (url.startsWith('/api/')) return targets.auth;
