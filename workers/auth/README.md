@@ -118,35 +118,35 @@ PUT/DELETE 要求 `expectedRevision`，创建为 0。设备状态、权限、工
 `0064_voice_attachment_asr.sql` 为已提交的私人语音附件增加按需转写任务。用户先通过
 `GET /api/auth/conversations/:id/attachments/:attachmentId/transcription` 看到报价，再明确同意
 最高 Credit 与价格版本，才可 `POST`。服务端重新校验账号、会话与私有 R2 对象，仅支持
-Qwen3-ASR-Flash 官方离线规格中的 WebM/Ogg；现有可回放的 MP4 录音不进入自动识别。
-录音以 base64 通过 Auth 直接发给服务商，R2 对象不设公开 URL；服务端持有
-`DASHSCOPE_ASR_API_KEY`，`ASR_CREDITS_PER_SECOND` 决定每秒 1–1000 Credit 的平台价格，
-最多预留 300 秒，按服务商 `usage.seconds` 结算。缺任一配置时入口显示未启用，不调用模型。
+Opus 编码的 WebM/Ogg；现有可回放的 MP4 录音不进入自动识别。WebM 录音逐包改封装为
+Ogg Opus（不解码、不重编码），同时按 Opus 包头计算时长；超过 5 分钟或无法解析的录音在
+冻结 Credit 之前就被拒绝。录音经 WebSocket 发给豆包流式语音识别 2.0（输入流式模式
+`bigmodel_nostream`），R2 对象不设公开 URL。服务端持有 `VOLC_SPEECH_API_KEY`，资源 ID 与
+每小时 Credit 单价来自 `AI_PRICE_TABLE` 的 `asr` 路由；缺任一配置时入口显示未启用，不调用模型。
+冻结按 5 分钟音频计，结算按服务商最终结果中的 `audio_info.duration`。
 服务商结果仅作为私有待核对草稿，用户将其填入普通输入框并自行发送后，才成为聊天消息及
-Memory 可读原文。超时、5xx 和不可判定结果保留冻结与 `needs_review`，不自动重试或伪造文字；
-明确拒绝的请求释放冻结。已持久化结果若结算失败由分钟任务重试，冻结过期后不迟扣。
-管理员的只读 `/api/auth/admin/billing/asr-reconciliation` 和设置页队列显示异常账务，
-不展示录音或转写正文，也不提供猜测性补扣。正式启用前仍须用真实服务商、D1、R2 和浏览器
-完成价格、时长、断线与恢复验收。
+Memory 可读原文。连接中断、5xx 和缺少时长的结果保留冻结与 `needs_review`，不自动重试或
+伪造文字；连接未建立或服务商明确拒绝（4xxxxxxx）时释放冻结。已持久化结果若结算失败由分钟
+任务重试，冻结过期后不迟扣。管理员的只读 `/api/auth/admin/billing/asr-reconciliation` 和
+设置页队列显示异常账务，不展示录音或转写正文，也不提供猜测性补扣。
 
 当前钱包表旧 `usage_kind` CHECK 没有 ASR 枚举，转写预留暂以 `agent` 枚举承载，
-`model_id=qwen3-asr-flash`、独立任务表与账本 metadata 标明 ASR；这只是兼容桥接，
-后续扩展钱包枚举时须迁移所有引用该表的外键，不能直接重建既有账本。
+`model_id=voice-asr`（更早的任务为 `qwen3-asr-flash`）、独立任务表与账本 metadata 标明 ASR；
+这只是兼容桥接，后续扩展钱包枚举时须迁移所有引用该表的外键，不能直接重建既有账本。
 
 `0065_managed_tts.sql` 为 Video 按需朗读增加平台 Credit 任务。`GET /api/auth/managed-tts`
-返回托管价格；每条 `POST` 必须携带本次文本、唯一任务 ID、确认的最高费用与价格版本。
-服务端限制 500 个 Unicode 码点，最多按每码点 2 个计费字符预留，再向官方 CosyVoice v3 Flash
-非流式接口发纯文本。`DASHSCOPE_TTS_API_KEY`、`DASHSCOPE_WORKSPACE_ID` 和整数
-`TTS_CREDITS_PER_CHARACTER`（1–1000）必须全部配置，否则报价停用。
-音频来源 URL 被固定为服务商的北京 OSS 音频域名，服务器只取有界 MP3 并放进私有 R2；浏览器仅从
-登录账户的 `GET /api/auth/managed-tts/:id/audio` 取音频，服务商签名 URL 和原文均不写入 D1。
-结算只用服务商 `usage.characters`，成功任务的音频最多存 24 小时，账号删除与定期任务清理。
-明确被服务商拒绝时释放预留；超时、结果格式错误、音频无法安全取回或账务未确认时保留待核对状态，
-不自动重新生成，不伪造字符数或追扣。持久的已确认字符用量由分钟任务补结算。
-旧钱包 CHECK 暂以 `usage_kind=agent` 承载，`model_id=cosyvoice-v3-flash`、任务表和账本
-`kind=tts` 区分朗读；这不把自带代理的使用记作平台 Credit。
-部署前需要迁移 0065，并以真实服务商、D1/R2 和浏览器验证北京域名、音频格式、报价与恢复路径。
-接口依据：[CosyVoice 官方 HTTP API](https://help.aliyun.com/en/model-studio/cosyvoice-tts-http-api)。
+返回托管报价（每万字符 Credit 与价格版本）；每条 `POST` 必须携带本次文本、唯一任务 ID、
+确认的最高费用与价格版本，可选共享音色目录中的 `voice`。服务端限制 500 个 Unicode 码点，
+最多按每码点 2 个计费字符预留，再以 HTTP Chunked 调用豆包语音合成 2.0
+（`/api/v3/tts/unidirectional`，`X-Control-Require-Usage-Tokens-Return: *`）。`VOLC_SPEECH_API_KEY`
+与有效的 `AI_PRICE_TABLE`（`tts` 路由）缺一则报价停用。分块返回的 MP3 直接校验后放进私有 R2；
+浏览器仅从登录账户的 `GET /api/auth/managed-tts/:id/audio` 取音频，原文不写入 D1。
+结算只用服务商最终对象中的 `usage.text_words`，成功任务的音频最多存 24 小时，账号删除与定期
+任务清理。音频开始前被明确拒绝时释放预留；超时、流中断、缺少字符数或账务未确认时保留待核对
+状态，不自动重新生成，不伪造字符数或追扣。持久的已确认字符用量由分钟任务补结算。
+旧钱包 CHECK 暂以 `usage_kind=agent` 承载，`model_id=managed-tts`（更早的任务为
+`cosyvoice-v3-flash`）、任务表和账本 `kind=tts` 区分朗读；这不把自带代理的使用记作平台 Credit。
+
 `0056_conversation_digests.sql` 为私人角色会话增加独立的长对话概述、重试状态和单独默认关闭的
 关系授权。用户在记忆设置中开启后，分钟任务才把该关系中较早的双方文字消息分批发送给火山方舟（见下文
 「托管后台 AI」）；
@@ -568,7 +568,17 @@ History 的 callId 一致。此关联方便账务归集，不把客户端 TaskRu
 
 兼容旧 `settleVoiceCredits` 和通用 `settleCredits` 的 Voice 预留也委派同一终结域；
 旧返回契约把 needs_review 映射为 released/charged:null，完整原因仍保留审计和流水。
-Voice 价格由确认时长计算，不接受旧调用者任意提供的扣费数字。
+不接受调用者任意提供的扣费数字。
+
+## Voice 按用量结算（0070）
+
+新版 Voice Worker 在 `finalizeVoiceReservation` 中提交逐轮累计的服务商用量（输入/缓存/输出的
+文本与音频 token）、已上报轮数与缺失轮数。Auth 以 `AI_PRICE_TABLE` 的 `realtime` 路由计价并封顶于
+冻结额度，价格版本记为 `realtime:<表版本>`，账本 metadata 保存模型、用量与轮数；没有可计费用量时
+释放冻结。缺价格表时返回 `rejected`，由 Worker 稍后重试，不按默认价扣费。存在未上报用量的轮次、
+或用量超出冻结时，只扣已上报部分（封顶），并在同一事务写入 `voice_usage_reviews`；
+`GET /api/auth/admin/billing/voice-reconciliation` 的首页同时返回 `usageItems` 供运营只读核对。
+不带用量的旧版本任务仍按原确认时长规则完成。0070 只新增表，旧代码不读写它。
 
 ## Voice 审核备注（0045，未部署）
 

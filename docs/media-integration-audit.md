@@ -8,13 +8,13 @@
 | 能力                 | 客户端与服务端所有者                                                                                                                        | 账户及费用                                                                      | 历史与人设                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | 文字 Agent / 房间 AI | `packages/agent/agent-browser/src/create-browser-llm-client.ts` → `packages/agent/providers-openai-http` → `workers/llm-proxy/src/index.js` | managed 使用 Cookie / Bearer、幂等键、Auth 预留及 Token 结算；BYOK 使用自有服务 | 各自运行时；尚无贯穿文字、Voice、Video 的个人关系上下文                     |
-| 实时 Voice           | `apps/voice/src/hooks/use-realtime-call.ts` → `ManagedVoiceSession` → `apps/voice/worker/index.ts` → `managed-session.ts` → xAI             | Auth 短期票据、每账户一个 DO；每 10 秒 20 Credit；不提供自带密钥语音            | 共享 scenes；字幕仅在 React state，每次通话清空；没有服务器个人聊天历史写入 |
+| 实时 Voice           | `apps/voice/src/hooks/use-realtime-call.ts` → `ManagedVoiceSession` → `apps/voice/worker/index.ts` → `managed-session.ts` → 豆包 Seeduplex  | Auth 短期票据、每账户一个 DO；按服务商逐轮用量与价格表结算；不提供自带密钥语音  | 共享 scenes；字幕仅在 React state，每次通话清空；没有服务器个人聊天历史写入 |
 | 当前 Video           | `apps/video/src/App.tsx` → `VisualSession` → 共享 Agent 浏览器视觉 client                                                                   | 单独视觉 profile，BYOK；现有 managed 模型全部为文字，Worker 明确拒绝图片        | 共享 scenes；最新帧短暂驻留内存，图片明确不进入历史、日志、账户同步         |
 
 **余额账本已统一，产品入口、费用语义与会话身份尚未统一。** `workers/auth/src/index.ts` 的
 `reserveVoiceCredits` / `settleVoiceCredits` / `releaseVoiceCredits` 最终调用同一套
 `reserveCredits` / `settleCredits` / `releaseCredits` 与 `credit_ledger`、`credit_reservations`。
-无需新增一套音视频钱包。文字使用 Token，Voice 使用连接时长，两种计量可以保留，但应由统一的
+无需新增一套音视频钱包。文字与 Voice 都按服务商上报的 Token 用量计量，但应由统一的
 价格目录、预留/实扣/退还展示及用量关联管理。
 
 当前 Video 是摄像头观察和受权设备控制，**不是**角色视频生成或人与 AI 视频通话。
