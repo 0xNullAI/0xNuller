@@ -40,7 +40,9 @@ const thirdPartyNoticePath = join(root, 'android/app/THIRD_PARTY_NOTICES.md');
 const btleplugLicensePath = join(root, 'android/app/licenses/btleplug-0.12.0-LICENSE.md');
 const cargoManifestPath = join(root, 'android/app/src-tauri/Cargo.toml');
 const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
-const iconPath = join(root, 'android/app/src-tauri/icons/icon.png');
+// Tauri icon manifest: separate adaptive foreground, background color and
+// Android 13 monochrome layer, so launchers mask the cat instead of a tile.
+const iconPath = join(root, 'brand/icon/manifest.json');
 const tauriCliPath = join(
   root,
   'node_modules/.bin',
@@ -205,6 +207,12 @@ try {
     stdio: 'pipe',
   });
   cpSync(join(generatedIcons, 'android'), resourcesPath, { recursive: true, force: true });
+  // Tauri only emits an adaptive `ic_launcher`; without the same XML for the
+  // round icon, round-icon launchers fall back to the flat legacy bitmap.
+  cpSync(
+    join(resourcesPath, 'mipmap-anydpi-v26/ic_launcher.xml'),
+    join(resourcesPath, 'mipmap-anydpi-v26/ic_launcher_round.xml'),
+  );
 } finally {
   rmSync(generatedIcons, { recursive: true, force: true });
 }
@@ -301,8 +309,10 @@ if (
 }
 for (const required of [
   'mipmap-anydpi-v26/ic_launcher.xml',
+  'mipmap-anydpi-v26/ic_launcher_round.xml',
   'mipmap-mdpi/ic_launcher.png',
   'mipmap-xxxhdpi/ic_launcher_foreground.png',
+  'mipmap-xxxhdpi/ic_launcher_monochrome.png',
 ]) {
   if (!existsSync(join(resourcesPath, required))) {
     throw new Error(`Android project is missing generated 0xNuller launcher icon: ${required}`);

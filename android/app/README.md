@@ -103,7 +103,9 @@ seconds, versus a two-minute Gradle run that reports the wrong cause.
 re-applies the 0xNuller launcher icons, release signing, and native compatibility settings. It
 fails a release Gradle task when any signing variable is absent; an unsigned APK can no longer
 look like a successful release build. Do not edit generated `mipmap-*` resources directly: the
-canonical launcher source is `src-tauri/icons/icon.png` and preparation regenerates all densities.
+canonical launcher source is `brand/icon/manifest.json` (adaptive foreground `fg.png`, background
+`#080808`, Android 13 themed-icon `mono.png`), and preparation regenerates all densities plus the
+adaptive round icon. Each PNG there is rendered from the SVG beside it.
 
 To produce an installable release APK, load these environment variables before building
 (keystore path + passwords are kept outside the repo, mode 600, and never committed):
