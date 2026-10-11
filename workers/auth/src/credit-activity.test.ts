@@ -166,7 +166,7 @@ it('uses owner-scoped media provenance and omits raw errors, prompts and capabil
 
 it('labels managed TTS separately from Agent and exposes review state without audio keys', async () => {
   await env.DB.prepare(
-    "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) VALUES('tts:task','alice','agent','cosyvoice-v3-flash',20,'pending',1,1)",
+    "INSERT INTO credit_reservations(idempotency_key,user_id,usage_kind,model_id,reserved_credits,status,created_at,updated_at) VALUES('tts:task','alice','agent','managed-tts',20,'pending',1,1)",
   ).run();
   await env.DB.prepare(
     "INSERT INTO managed_tts_jobs(user_id,id,text_hash,reservation_key,state,max_credits,object_key,price_version,created_at,updated_at) VALUES('alice','speech001','hash','tts:task','needs_review',20,'PRIVATE_AUDIO_KEY','tts-v1',1,1)",

@@ -83,7 +83,7 @@ it('sends voice text only in the account-bound commit request', async () => {
 });
 
 it('quotes saved voice transcription before explicit price acceptance', async () => {
-  const offer = { rate: 2, maxCredits: 600, priceVersion: 'qwen3-asr-flash-v1:2' };
+  const offer = { perHour: 7200, maxSeconds: 300, maxCredits: 600, priceVersion: 'asr:example-1' };
   const fetcher = vi.fn<typeof fetch>(async (_url, init) =>
     Response.json(
       init?.method === 'POST'

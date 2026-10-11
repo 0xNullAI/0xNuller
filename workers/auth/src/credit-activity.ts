@@ -1,6 +1,8 @@
 import { err, json } from './http';
 import { currentUser, type SessionEnv } from './session-domain';
 const TYPES = new Set(['agent', 'voice', 'video', 'image', 'selfie', 'proactive', 'tts']);
+// Read-aloud holds: the stable id, and the id used before the speech provider changed.
+const TTS_MODEL_IDS = new Set(['managed-tts', 'cosyvoice-v3-flash']);
 function project(row: Record<string, unknown>) {
   let metadata: Record<string, unknown> = {};
   try {
@@ -89,7 +91,7 @@ export async function handleCreditActivity(
             ? row.media_kind
             : String(row.model_id).includes('proactive')
               ? 'proactive'
-              : row.model_id === 'cosyvoice-v3-flash'
+              : TTS_MODEL_IDS.has(String(row.model_id))
                 ? 'tts'
                 : String(row.usage_kind),
         model: String(row.model_id).slice(0, 200),
@@ -165,7 +167,7 @@ async function timeline(env: SessionEnv, user: string, url: URL, headers: Record
           ? row.media_kind
           : row.schedule_id
             ? 'proactive'
-            : row.model_id === 'cosyvoice-v3-flash'
+            : TTS_MODEL_IDS.has(String(row.model_id))
               ? 'tts'
               : base.usageType;
     const anomaly =
