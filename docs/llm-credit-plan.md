@@ -107,14 +107,14 @@ Agent 默认只显示一个模型选择器：
 独立的账本类型。没有管理员确认实际到账时不得增加 Credit。
 
 生成请求通过登录 Cookie 或 Bearer 会话鉴权，并携带 `Idempotency-Key`。Worker 验证模型白名单，
-预留额度，通过同账号的 Cloudflare Workers AI binding 调用模型，再按实际用量结算，不需要第三方
+预留额度，通过火山引擎方舟调用模型，再按实际用量结算，用户不需要自己的
 模型 API Key。失败、取消或模型不可用时释放预留。
 
 ## Agent、Video 与 Voice 计价
 
 所有平台模型在调用前预留 Credit，成功后结算，失败或取消释放预留；使用自己的 API 时三者都不扣
 Credit。客户端显示预计消耗，价格和最终用量只能由服务端决定。首发统一使用
-`ceil(上游实际成本（美元） × 1500)`，单次成功调用最低 1 Credit；价格版本保存在每笔账单中。
+Worker 密钥 `AI_PRICE_TABLE` 中的 Credit 单价（仓库不保存价格），单次成功调用最低 1 Credit；价格版本保存在每笔账单中。
 
 ### Agent
 

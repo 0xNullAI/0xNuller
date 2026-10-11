@@ -74,7 +74,7 @@ const providerSettingsSchema = z.object({
 
 export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
 
-/** Stable public model ids; the Worker maps them to Cloudflare-hosted models. */
+/** Stable public model ids; the Worker maps every text id to one Ark model. */
 export const MANAGED_DEFAULT_MODEL = 'balanced';
 /** The only managed model that accepts a transient Video camera frame. */
 export const MANAGED_VISION_MODEL = 'vision';

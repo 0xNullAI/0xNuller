@@ -49,7 +49,7 @@ npm run check:routes
 
 1. Auth（先提供向后兼容的票据/API）
 2. Chat
-3. LLM Proxy（依赖 Auth 的账户额度）
+3. LLM Proxy（依赖 Auth 的账户额度；需要 Secret `AI_PRICE_TABLE` 与 `VOLC_ARK_API_KEY`，缺少时托管模型返回 503）
 4. Market
 5. Voice（启用体验服务时）
 6. Web
