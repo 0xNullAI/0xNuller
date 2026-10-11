@@ -3,10 +3,13 @@ import { deviceConversationAccess } from '@0xnullai/settings';
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   createBrowserServices,
+  createRegistryAgentDevices,
   MultiCoyoteDeviceClient,
   type BrowserServices,
   type BrowserServicesOptions,
+  type DgLabModuleHandle,
   type PermissionRequestInput,
+  type RegistryAgentDevices,
 } from '@dg-agent/agent-browser';
 import type { MessageOrigin } from '@dg-agent/bridge';
 import type { DeviceClient, PermissionDecision } from '@dg-agent/core';
@@ -66,6 +69,14 @@ export interface UseBrowserAppServicesOptions {
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
   deviceRuntimeProvider?: NativeBridge['deviceRuntime'];
+  /**
+   * Agent's handle on the shell's one DG-Lab registry. When present, every device client comes
+   * from it and the legacy `create*Client` overrides are ignored; they remain only for a mount
+   * without a registry.
+   */
+  dglab?: DgLabModuleHandle | null;
+  /** The registry's transport is native BLE, so the Web Bluetooth probe does not apply. */
+  nativeBluetooth?: boolean;
 }
 
 export interface UseBrowserAppServicesResult extends BrowserServices {
@@ -83,6 +94,8 @@ export function useBrowserAppServices(
     setPendingPermission,
     servicesOverrides,
     deviceRuntimeProvider,
+    dglab = null,
+    nativeBluetooth = false,
     inShell = false,
   } = options;
 
@@ -107,14 +120,24 @@ export function useBrowserAppServices(
   // reconnects via the cached BluetoothDevice rather than forcing the user
   // back to the chooser. The Tauri shell brings its own factory and decides
   // for itself.
+  // Registry mode: the clients own no BLE link, so building them once is only about keeping
+  // runtime listeners stable. The registry handle is shell-lifetime.
+  const registryDevicesRef = useRef<RegistryAgentDevices | null>(null);
+  if (dglab && registryDevicesRef.current === null) {
+    registryDevicesRef.current = createRegistryAgentDevices(dglab);
+  }
+  const registryDevices = dglab ? registryDevicesRef.current : null;
+
   const createDeviceClient = servicesOverrides?.createDeviceClient;
   const deviceRef = useRef<DeviceClient | null>(null);
   if (deviceRef.current === null) {
-    deviceRef.current = new MultiCoyoteDeviceClient((protocol) =>
-      createDeviceClient
-        ? createDeviceClient(protocol)
-        : new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
-    );
+    deviceRef.current =
+      registryDevices?.device ??
+      new MultiCoyoteDeviceClient((protocol) =>
+        createDeviceClient
+          ? createDeviceClient(protocol)
+          : new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
+      );
   }
   const device = deviceRef.current;
   const taskRunReporter = useMemo(() => createAgentTaskRunReporter(), []);
@@ -127,27 +150,27 @@ export function useBrowserAppServices(
   const createOpossumClient = servicesOverrides?.createOpossumClient;
   const opossumRef = useRef<OpossumClient | null>(null);
   if (opossumRef.current === null) {
-    opossumRef.current = createOpossumClient
-      ? createOpossumClient()
-      : new WebBluetoothOpossumClient();
+    opossumRef.current =
+      registryDevices?.opossum ??
+      (createOpossumClient ? createOpossumClient() : new WebBluetoothOpossumClient());
   }
   const opossum = opossumRef.current;
 
   const createPawPrintsClient = servicesOverrides?.createPawPrintsClient;
   const pawPrintsRef = useRef<PawPrintsClient | null>(null);
   if (pawPrintsRef.current === null) {
-    pawPrintsRef.current = createPawPrintsClient
-      ? createPawPrintsClient()
-      : new WebBluetoothPawPrintsClient();
+    pawPrintsRef.current =
+      registryDevices?.pawPrints ??
+      (createPawPrintsClient ? createPawPrintsClient() : new WebBluetoothPawPrintsClient());
   }
   const pawPrints = pawPrintsRef.current;
 
   const createCivetEdgingClient = servicesOverrides?.createCivetEdgingClient;
   const civetEdgingRef = useRef<CivetEdgingClient | null>(null);
   if (civetEdgingRef.current === null) {
-    civetEdgingRef.current = createCivetEdgingClient
-      ? createCivetEdgingClient()
-      : new WebBluetoothCivetEdgingClient();
+    civetEdgingRef.current =
+      registryDevices?.civetEdging ??
+      (createCivetEdgingClient ? createCivetEdgingClient() : new WebBluetoothCivetEdgingClient());
   }
   const civetEdging = civetEdgingRef.current;
 
@@ -155,8 +178,21 @@ export function useBrowserAppServices(
     createOpossumClient: _createOpossumClient,
     createPawPrintsClient: _createPawPrintsClient,
     createCivetEdgingClient: _createCivetEdgingClient,
+    createDeviceClient: legacyCreateDeviceClient,
     ...browserServicesOverrides
   } = servicesOverrides ?? {};
+  // With a registry the legacy factory is not consulted at all; it used to double as the
+  // "native BLE is available" signal, which `nativeBluetooth` now carries.
+  const deviceOverrides: Pick<
+    BrowserServicesOptions,
+    'createDeviceClient' | 'bluetoothAvailabilityOverride'
+  > = dglab
+    ? nativeBluetooth
+      ? { bluetoothAvailabilityOverride: { supported: true } }
+      : {}
+    : legacyCreateDeviceClient
+      ? { createDeviceClient: legacyCreateDeviceClient }
+      : {};
 
   const [accountId, setAccountId] = useState(currentAuthUserId);
   useEffect(() => subscribeAuthChanges(() => setAccountId(currentAuthUserId())), []);
@@ -186,6 +222,7 @@ export function useBrowserAppServices(
             setPendingPermission({ input, resolve });
           }),
         ...browserServicesOverrides,
+        ...deviceOverrides,
       }),
     [
       settings,
@@ -200,6 +237,8 @@ export function useBrowserAppServices(
       resolveBridgeSessionId,
       setPendingPermission,
       servicesOverrides,
+      dglab,
+      nativeBluetooth,
       deviceRuntimeProvider,
       taskRunReporter,
     ],

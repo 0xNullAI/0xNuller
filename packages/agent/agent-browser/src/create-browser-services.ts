@@ -21,7 +21,11 @@ import type {
   RuntimeTraceEntry,
   SessionSnapshot,
 } from '@dg-agent/core';
-import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
+import {
+  CoyoteProtocolAdapter,
+  type CivetPressureReading,
+  type PawPrintsReading,
+} from '@dg-kit/protocol';
 import {
   WebBluetoothCivetEdgingClient,
   WebBluetoothDeviceClient,
@@ -44,7 +48,43 @@ import {
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
-import { createAiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import {
+  createAiDeviceToolAdapter,
+  RegistryCoyoteClient,
+  RegistryOpossumClient,
+  RegistrySensorClient,
+  type DeviceRuntimeProvider,
+  type DgLabModuleHandle,
+} from '@0xnullai/device-runtime';
+
+export type { DgLabModuleHandle } from '@0xnullai/device-runtime';
+
+/** The module id the shell grants the device lease to while Agent is visible. */
+export const AGENT_DEVICE_MODULE_ID = 'agent';
+
+export interface RegistryAgentDevices {
+  device: DeviceClient;
+  opossum: OpossumClient;
+  pawPrints: PawPrintsClient;
+  civetEdging: CivetEdgingClient;
+}
+
+/**
+ * Agent's device clients over the shell's one DG-Lab registry.
+ *
+ * They own no BLE link: a Coyote connected on 设备 is the same physical device the AI chat sees,
+ * and every output write is lease-fenced and re-clamped by the registry. The Coyote client keeps
+ * the exact-target surface (`getConnectedCoyotes`, `executeDeviceById`, …) that
+ * `createCoyoteTargetRouter` needs, so each tool call still names one opaque target id.
+ */
+export function createRegistryAgentDevices(handle: DgLabModuleHandle): RegistryAgentDevices {
+  return {
+    device: new RegistryCoyoteClient(handle),
+    opossum: new RegistryOpossumClient(handle),
+    pawPrints: new RegistrySensorClient<PawPrintsReading>(handle, 'paw-prints'),
+    civetEdging: new RegistrySensorClient<CivetPressureReading>(handle, 'civet-edging'),
+  };
+}
 
 export interface PermissionRequestInput {
   toolName: string;
@@ -111,6 +151,11 @@ export interface BrowserServicesOptions {
    * ship without bridge integrations.
    */
   disableBridge?: boolean;
+  /**
+   * Replaces the Web Bluetooth probe. A shell whose registry brings a native BLE transport sets
+   * it, so the UI does not warn that this WebView lacks Web Bluetooth.
+   */
+  bluetoothAvailabilityOverride?: ReturnType<typeof describeBrowserModes>['bluetoothAvailability'];
 }
 
 export interface BrowserServices {
@@ -366,7 +411,9 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     speechSynthesizer,
     speechCapabilities,
     modes: describeBrowserModes(settings, {
-      bluetoothAvailabilityOverride: options.createDeviceClient ? { supported: true } : undefined,
+      bluetoothAvailabilityOverride:
+        options.bluetoothAvailabilityOverride ??
+        (options.createDeviceClient ? { supported: true } : undefined),
     }),
     resetPermissionGrants: () => bridgePermissionService.clearGrants(),
     warnings,
