@@ -222,18 +222,46 @@ try {
 let gradle = readFileSync(gradlePath, 'utf8');
 if (!/\bminSdk\s*=\s*\d+/.test(gradle)) throw new Error('generated Gradle file has no minSdk');
 gradle = gradle.replace(/\bminSdk\s*=\s*\d+/, 'minSdk = 26');
-// targetSdk changes runtime permission, background and edge-to-edge behaviour.
-// It comes from Tauri's template; pin it so a toolchain bump is a reviewed change.
-const ANDROID_TARGET_SDK = 36;
+// targetSdk changes runtime permission, background and edge-to-edge behaviour, so it is
+// set here rather than taken from whatever Tauri's template ships; a bump is a reviewed change.
+const ANDROID_TARGET_SDK = 37;
+const ANDROID_BUILD_TOOLS = '37.0.0';
 for (const key of ['compileSdk', 'targetSdk']) {
-  const match = gradle.match(new RegExp(`\\b${key}\\s*=\\s*(\\d+)`));
-  if (!match) throw new Error(`generated Gradle file has no ${key}`);
-  if (Number(match[1]) !== ANDROID_TARGET_SDK) {
-    throw new Error(
-      `generated ${key} is ${match[1]}, expected ${ANDROID_TARGET_SDK}; review Android behaviour changes before updating it`,
-    );
-  }
+  const pattern = new RegExp(`\\b${key}\\s*=\\s*\\d+`);
+  if (!pattern.test(gradle)) throw new Error(`generated Gradle file has no ${key}`);
+  gradle = gradle.replace(pattern, `${key} = ${ANDROID_TARGET_SDK}`);
 }
+// Tauri's and the plugins' library modules pin their own (older) compileSdk and default
+// build-tools; compile every Android module against the same SDK so one installed platform
+// and build-tools suffice. A higher compileSdk does not change any module's runtime behaviour.
+const rootGradlePath = join(generated, '..', 'build.gradle.kts');
+const sdkOverrideMarker = '// 0XNULLER_SDK_OVERRIDE';
+const rootGradle = readFileSync(rootGradlePath, 'utf8');
+if (!rootGradle.includes(sdkOverrideMarker))
+  writeFileSync(
+    rootGradlePath,
+    `${rootGradle}
+${sdkOverrideMarker}
+subprojects {
+    afterEvaluate {
+        extensions.findByType(com.android.build.gradle.LibraryExtension::class.java)?.apply {
+            compileSdk = ${ANDROID_TARGET_SDK}
+            buildToolsVersion = "${ANDROID_BUILD_TOOLS}"
+        }
+    }
+}
+`,
+  );
+// Matching build-tools, so the Android Gradle plugin does not fall back to its own default.
+gradle = /\bbuildToolsVersion\s*=/.test(gradle)
+  ? gradle.replace(
+      /\bbuildToolsVersion\s*=\s*"[^"]*"/,
+      `buildToolsVersion = "${ANDROID_BUILD_TOOLS}"`,
+    )
+  : gradle.replace(
+      /(\bcompileSdk\s*=\s*\d+)/,
+      `$1\n    buildToolsVersion = "${ANDROID_BUILD_TOOLS}"`,
+    );
 const pushGradleMarker = '// 0XNULLER_FCM_FID';
 const pushGradleBlock = `${pushGradleMarker}\ndependencies {\n    implementation("com.google.firebase:firebase-messaging:25.1.3")\n    implementation("com.google.android.gms:play-services-base:18.11.0")\n}`;
 gradle = gradle.includes(pushGradleMarker)
