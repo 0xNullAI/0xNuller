@@ -8,6 +8,7 @@
  */
 
 import { getAdapterState, type AdapterState } from '@mnlphlp/plugin-blec';
+import { installBackButton } from './android-back-button';
 
 const DARK_BG = '#0b1020';
 const LIGHT_BG = '#ffffff';
@@ -84,39 +85,6 @@ export function syncVisualViewport(viewport = window.visualViewport): () => void
     viewport.removeEventListener('resize', apply);
     viewport.removeEventListener('scroll', apply);
   };
-}
-
-/**
- * Intercept Android's hardware/gesture back button so it doesn't exit
- * the app on the first press. Tauri Android maps the back button to
- * the WebView's history-back; we push a synthetic state on every app
- * load so the first back press pops that state instead of leaving.
- *
- * Apps that want to react to back press should listen for
- * `window.addEventListener('app:back', ...)`. The default handler shows
- * a "再按一次退出" toast — second press within 2s actually exits.
- */
-function interceptBackButton(): void {
-  history.pushState({ dgaa: 'guard' }, '');
-  let lastBackPress = 0;
-  window.addEventListener('popstate', () => {
-    const detail = new CustomEvent('app:back', { cancelable: true });
-    const accepted = window.dispatchEvent(detail);
-    if (accepted === false) {
-      // A listener consumed it (e.g. closed a modal). Re-push the guard.
-      history.pushState({ dgaa: 'guard' }, '');
-      return;
-    }
-    const now = Date.now();
-    if (now - lastBackPress < 2000) {
-      // User pressed back twice quickly → really exit. Pop the guard so
-      // the next popstate actually closes the activity.
-      return;
-    }
-    lastBackPress = now;
-    showBackToast('再按一次退出');
-    history.pushState({ dgaa: 'guard' }, '');
-  });
 }
 
 function showBackToast(text: string): void {
@@ -404,5 +372,5 @@ export function installAndroidShellBehaviours(): void {
   syncStatusBarColor();
   autoScrollFocusedInput();
   syncVisualViewport();
-  interceptBackButton();
+  void installBackButton({ notify: showBackToast });
 }
