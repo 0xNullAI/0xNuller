@@ -5,6 +5,9 @@
     "packages/kit/protocol/src/constants.ts": ["duplicates"],
     // Standalone launch-film asset loaded directly by promo/launch-film/index.html.
     "promo/launch-film/player.js": ["files"],
+    // Local dev tools run by hand (docs/testing.md 本地联调), not imported by any workspace.
+    "scripts/dev/local-router.mjs": ["files"],
+    "scripts/dev/fake-coyote.js": ["files"],
   },
   "workspaces": {
     "android/app": {
