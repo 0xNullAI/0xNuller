@@ -100,6 +100,8 @@ OpenAI 兼容请求转发到 Anthropic，统一入口以 `/dev-llm/v1` 提供。
 会出现“使用本地测试模型”，一键填入不含真实 Key 的配置；正式构建中没有这个按钮。真实 Key 不写进仓库、
 页面或命令行。
 
+本地服务运行时，`npm run e2e:local` 用系统 Chromium（`/usr/bin/chromium`，可用 `CHROMIUM` 覆盖）无头检查登录页、深色默认和页面报错；设置 `E2E_USER`/`E2E_PASS`（本地测试账号）后还会登录检查收件箱、新聊天菜单与设置列表。
+
 ## 交付门禁
 
 ```bash
