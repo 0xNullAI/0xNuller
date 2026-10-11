@@ -108,6 +108,8 @@ export class DoubaoRealtimeBridge {
   private readonly open: string[] = [];
   private currentQuestion: string | null = null;
   private anonymousRounds = 0;
+  /** Response currently streaming to the browser; cleared when its audio ends. */
+  private activeResponse: string | null = null;
   rounds = 0;
   missingRounds = 0;
   readonly usage: RoundUsage = emptyUsage();
@@ -267,18 +269,26 @@ export class DoubaoRealtimeBridge {
       }
       case 'response.output_audio.started':
         this.openRound(event.question_id);
-        return { client: send({ type: 'response.created', response_id: responseId }) };
+        return {
+          client: [
+            ...this.beginResponse(responseId),
+            ...send({ type: 'response.created', response_id: responseId }),
+          ],
+        };
       case 'response.output_text.delta':
         this.openRound(event.question_id);
-        return typeof event.delta === 'string'
-          ? {
-              client: send({
-                type: 'response.output_audio_transcript.delta',
-                item_id: responseId,
-                delta: event.delta,
-              }),
-            }
-          : { client: [] };
+        return {
+          client: [
+            ...this.beginResponse(responseId),
+            ...(typeof event.delta === 'string'
+              ? send({
+                  type: 'response.output_audio_transcript.delta',
+                  item_id: responseId,
+                  delta: event.delta,
+                })
+              : []),
+          ],
+        };
       case 'response.output_text.done':
         return {
           client: send({
@@ -294,6 +304,10 @@ export class DoubaoRealtimeBridge {
       case 'response.output_audio.done':
         // The browser's per-response gate (device-capable audio, tool sequencing) closes
         // when the spoken answer ends; the provider's usage report can come much later.
+        // A late end for a reply already closed at barge-in must not end the current one.
+        if (responseId && this.activeResponse && responseId !== this.activeResponse)
+          return { client: [] };
+        this.activeResponse = null;
         return { client: send({ type: 'response.done' }) };
       case 'response.function_call_arguments.done': {
         const calls = (Array.isArray(event.items) ? event.items : [])
@@ -351,6 +365,17 @@ export class DoubaoRealtimeBridge {
       default:
         return { client: [] };
     }
+  }
+
+  /**
+   * A reply cut off by barge-in may never send its audio end. Close it for the browser before
+   * the next reply starts, or the browser would keep discarding the new reply's audio.
+   */
+  private beginResponse(responseId: string | undefined): string[] {
+    if (!responseId || responseId === this.activeResponse) return [];
+    const previous = this.activeResponse;
+    this.activeResponse = responseId;
+    return previous ? [JSON.stringify({ type: 'response.done' })] : [];
   }
 
   /** Rounds that ended without usage: the ones still open when the call is torn down. */

@@ -256,6 +256,29 @@ describe('browser ↔ Seeduplex translation', () => {
     expect(bridge.rounds).toBe(1);
   });
 
+  it('closes a reply cut off by barge-in before the next one, ignoring its late end', () => {
+    const bridge = started();
+    const types = (event: Record<string, unknown>) =>
+      parse(up(bridge, event).client).map((message) => message.type);
+    expect(types({ type: 'response.output_text.delta', response_id: 'r1', delta: '我' })).toEqual([
+      'response.output_audio_transcript.delta',
+    ]);
+    expect(types({ type: 'response.output_audio.started', response_id: 'r1' })).toEqual([
+      'response.created',
+    ]);
+    expect(
+      types({ type: 'conversation.item.input_audio_transcription.started', item_id: 'q2' }),
+    ).toContain('input_audio_buffer.speech_started');
+    expect(types({ type: 'response.output_audio.started', response_id: 'r2' })).toEqual([
+      'response.done',
+      'response.created',
+    ]);
+    expect(types({ type: 'response.output_audio.done', response_id: 'r1' })).toEqual([]);
+    expect(types({ type: 'response.output_audio.done', response_id: 'r2' })).toEqual([
+      'response.done',
+    ]);
+  });
+
   it('counts rounds that never report usage as missing at teardown', () => {
     const bridge = started();
     up(bridge, { type: 'response.output_audio.started', question_id: 'q1', response_id: 'r1' });
