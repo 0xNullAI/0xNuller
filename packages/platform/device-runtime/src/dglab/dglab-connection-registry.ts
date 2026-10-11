@@ -13,7 +13,7 @@ import {
   type DeviceLeaseSnapshot,
   type DeviceSummary,
 } from '@dg-kit/safety';
-import type { DeviceOwnLimits } from '@0xnullai/settings';
+import { DEVICE_LIMIT_MAX, type DeviceOwnLimits } from '@0xnullai/settings';
 import {
   deriveDgLabStableKey,
   settingsDeviceLimitStore,
@@ -556,7 +556,8 @@ function isCoyoteStop(command: DeviceCommand): boolean {
   return command.type === 'stop' || command.type === 'emergencyStop';
 }
 
-const DEFAULT_OWN_LIMIT = 200;
+// A remembered device with no explicit cap adds no restriction beyond the global one.
+const DEFAULT_OWN_LIMIT = DEVICE_LIMIT_MAX;
 const MAC_ADDRESS = /([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i;
 
 function isOutputKind(kind: DeviceKind): kind is DgLabOutputKind {

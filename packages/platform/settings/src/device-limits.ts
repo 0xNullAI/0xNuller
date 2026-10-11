@@ -26,7 +26,7 @@ export type DeviceOwnLimitsMap = Readonly<Record<string, DeviceOwnLimits>>;
 export const DEVICE_LIMIT_MAX = 200;
 
 /** A remembered device with no explicit cap: adds no restriction beyond the global one. */
-export const DEFAULT_DEVICE_OWN_LIMIT = DEVICE_LIMIT_MAX;
+const DEFAULT_DEVICE_OWN_LIMIT = DEVICE_LIMIT_MAX;
 
 const KEY = '0xnullai.device-limits';
 const MAX_NAME_LENGTH = 64;
