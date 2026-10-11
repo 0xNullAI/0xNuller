@@ -40,6 +40,7 @@ export * from './media-query';
 export * from './use-safety-session';
 export * from './shell-context';
 export * from './shell-nav';
+export * from './settings-subpage';
 export * from './module-actions';
 export * from './sidebar-sections';
 export * from './settings-sections';

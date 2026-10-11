@@ -33,6 +33,7 @@ import {
   DialogTitle,
   ModuleSettingsSection,
   useInShell,
+  useSettingsSubpage,
   useOpenShellSettings,
 } from '@0xnullai/ui';
 import { RelationshipPanel } from './RelationshipPanel';
@@ -409,31 +410,37 @@ function RelationshipSettingsPages({
   const [selectedId, setSelectedId] = useState<string | null>(initialPage);
   const focusHeading = useCallback((node: HTMLHeadingElement | null) => node?.focus(), []);
   const selected = pages.find((page) => page.id === selectedId && !page.unavailable);
+  const closeSelected = useCallback(() => setSelectedId(null), []);
+  const sharedHeader = useSettingsSubpage(
+    selected ? { title: selected.title, onBack: closeSelected } : null,
+  );
   if (selected)
     return (
       <section
         className="mx-auto w-full min-w-0 max-w-2xl space-y-5 text-sm"
         aria-label={selected.title}
       >
-        <div className="flex min-w-0 items-center gap-3 border-b border-[var(--surface-border)] pb-3">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setSelectedId(null)}
-            aria-label="返回聊天设置"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            返回
-          </Button>
-          <h2
-            key={selected.id}
-            tabIndex={-1}
-            ref={focusHeading}
-            className="min-w-0 flex-1 text-base font-semibold outline-none"
-          >
+        {sharedHeader ? (
+          // The settings panel header already shows this title and its back arrow.
+          <h2 key={selected.id} tabIndex={-1} ref={focusHeading} className="sr-only">
             {selected.title}
           </h2>
-        </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-3 border-b border-[var(--surface-border)] pb-3">
+            <Button size="sm" variant="ghost" onClick={closeSelected} aria-label="返回聊天设置">
+              <ArrowLeft className="h-4 w-4" />
+              返回
+            </Button>
+            <h2
+              key={selected.id}
+              tabIndex={-1}
+              ref={focusHeading}
+              className="min-w-0 flex-1 text-base font-semibold outline-none"
+            >
+              {selected.title}
+            </h2>
+          </div>
+        )}
         <p className="text-xs text-[var(--text-faint)]">
           {title} · {selected.detail}
         </p>
