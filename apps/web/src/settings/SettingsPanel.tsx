@@ -62,6 +62,8 @@ const TABS = [
 ] as const;
 
 /** Pages listed on the 高级设置 page instead of the overview. */
+/** Settings of the open conversation: reached from its header only, never listed under 我的. */
+const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
 const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
   'memory',
   'scenes',
@@ -111,7 +113,11 @@ export function SettingsPanel({
   const resolvedTab = tab === 'overview' || activeEntry ? tab : 'overview';
   const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
   const overviewItems = navigationTabs.filter(
-    (item) => item.id !== 'account' && item.id !== 'advanced' && !ADVANCED_PAGE_IDS.has(item.id),
+    (item) =>
+      item.id !== 'account' &&
+      item.id !== 'advanced' &&
+      !ADVANCED_PAGE_IDS.has(item.id) &&
+      !CONVERSATION_PAGE_IDS.has(item.id),
   );
   const advancedItems = navigationTabs.filter((item) => ADVANCED_PAGE_IDS.has(item.id));
   const advancedEntry = navigationTabs.find((item) => item.id === 'advanced');
@@ -131,7 +137,7 @@ export function SettingsPanel({
           onClick={() =>
             subpage
               ? subpage.onBack()
-              : resolvedTab === 'overview'
+              : resolvedTab === 'overview' || CONVERSATION_PAGE_IDS.has(resolvedTab)
                 ? onClose()
                 : onNavigateTab(parentTab)
           }
@@ -140,9 +146,11 @@ export function SettingsPanel({
               ? '返回上一页'
               : resolvedTab === 'overview'
                 ? '关闭设置'
-                : parentTab === 'advanced'
-                  ? '返回高级设置'
-                  : '返回设置列表'
+                : CONVERSATION_PAGE_IDS.has(resolvedTab)
+                  ? '返回聊天'
+                  : parentTab === 'advanced'
+                    ? '返回高级设置'
+                    : '返回设置列表'
           }
           // On a phone 我的 is a top-level tab, so its list page has nothing to close.
           className={`ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] ${resolvedTab === 'overview' && !subpage ? 'max-md:hidden' : ''}`}

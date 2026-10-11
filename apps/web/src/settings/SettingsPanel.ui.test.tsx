@@ -72,3 +72,27 @@ it('keeps rarely used pages behind 高级设置 and opens a page 高级 under th
   expect(screen.getByRole('heading', { level: 2, name: '设备安全' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '高级' })).toBeTruthy();
 });
+
+it('keeps the open chat’s settings out of 我的 and returns to the chat from them', async () => {
+  const { ModuleSettingsProvider, ModuleSettingsSection } = await import('@0xnullai/ui');
+  const onClose = vi.fn();
+  const view = (initialTab: string) => (
+    <ModuleSettingsProvider>
+      <ModuleSettingsSection id="agent-companion" label="聊天设置">
+        <p>本聊天内容</p>
+      </ModuleSettingsSection>
+      <SettingsPanel
+        initialTab={initialTab}
+        onNavigateTab={() => undefined}
+        user={null}
+        onUser={() => undefined}
+        onClose={onClose}
+      />
+    </ModuleSettingsProvider>
+  );
+  const { rerender } = render(view('overview'));
+  expect(screen.queryByRole('button', { name: '聊天设置' })).toBeNull();
+  rerender(view('agent-companion'));
+  fireEvent.click(await screen.findByRole('button', { name: '返回聊天' }));
+  expect(onClose).toHaveBeenCalledOnce();
+});

@@ -408,15 +408,15 @@ export function RelationshipAccess({
           }}
         />
       )}
-      <ModuleSettingsSection id="agent-companion" label="聊天与角色" icon={Heart} order={25}>
+      <ModuleSettingsSection id="agent-companion" label="聊天设置" icon={Heart} order={25}>
         {settingsBody}
       </ModuleSettingsSection>
       {!inShell && (
         <Dialog open={standaloneOpen} onOpenChange={setStandaloneOpen}>
           <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>聊天与角色</DialogTitle>
-              <DialogDescription>管理这段私人聊天的设置。</DialogDescription>
+              <DialogTitle>聊天设置</DialogTitle>
+              <DialogDescription className="sr-only">这段私人聊天的设置</DialogDescription>
             </DialogHeader>
             {settingsBody}
           </DialogContent>
