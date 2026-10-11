@@ -9,6 +9,8 @@ export * from './components/permission-modal';
 export * from './components/safety-notice';
 export * from './components/market-import-dialog';
 export * from './components/setting-toggle';
+export * from './components/segmented-control';
+export * from './components/switch';
 export * from './components/setting-label';
 export * from './components/setting-select';
 export * from './components/help-tip';
