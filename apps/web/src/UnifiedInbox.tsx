@@ -226,7 +226,7 @@ export function UnifiedInbox({
                 ...row,
                 updatedAt: 0,
                 unread: null,
-                preview: `${row.kind === 'ai' ? 'AI 聊天' : row.kind === 'dm' ? '私聊' : '群聊'}暂未重新验证，请重试`,
+                preview: `${row.kind === 'group' ? '群聊' : '聊天'}暂未重新验证，请重试`,
                 markRead: undefined,
               });
             }
@@ -513,9 +513,10 @@ export function UnifiedInbox({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{row.title}</span>
                 <span className="block truncate text-xs text-[var(--text-faint)]">
-                  <span className="mr-1 font-medium text-[var(--text-soft)]">
-                    {row.kind === 'ai' ? 'AI' : row.kind === 'dm' ? '私聊' : '群聊'}
-                  </span>
+                  {/* Character chats read like any contact; only groups carry a tag. */}
+                  {row.kind === 'group' && (
+                    <span className="mr-1 font-medium text-[var(--text-soft)]">群聊</span>
+                  )}
                   {row.preview}
                 </span>
               </span>

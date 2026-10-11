@@ -182,8 +182,8 @@ it('keeps private and AI conversations available after transient source failures
   act(() => {
     window.dispatchEvent(new Event('0xnullai:conversation-updated'));
   });
-  expect(await screen.findByText('AI 聊天暂未重新验证，请重试')).toBeTruthy();
-  expect(screen.getByText('私聊暂未重新验证，请重试')).toBeTruthy();
+  // Both the AI chat and the personal chat stay listed with a retry hint.
+  expect(await screen.findAllByText('聊天暂未重新验证，请重试')).toHaveLength(2);
   expect(screen.queryByRole('button', { name: '小星标为已读' })).toBeNull();
   expect(screen.queryByRole('button', { name: '好友标为已读' })).toBeNull();
   expect(markRead).not.toHaveBeenCalled();
@@ -307,8 +307,10 @@ it('offers AI and personal chat from the same new-chat entry and labels conversa
       onCreateRoom={vi.fn()}
     />,
   );
-  expect(await screen.findByRole('button', { name: /小星.*AI.*晚安/ })).toBeTruthy();
-  expect(screen.getByRole('button', { name: /好友.*私聊.*你好/ })).toBeTruthy();
+  // Character and personal chats read like contacts; only groups carry a kind tag.
+  expect(await screen.findByRole('button', { name: /小星.*晚安/ })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /小星.*AI.*晚安/ })).toBeNull();
+  expect(screen.getByRole('button', { name: /好友.*你好/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: /朋友们.*群聊.*周末见/ })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
   fireEvent.click(screen.getByRole('button', { name: '找联系人聊天' }));
