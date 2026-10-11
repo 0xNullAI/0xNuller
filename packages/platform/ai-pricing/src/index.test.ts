@@ -4,6 +4,7 @@ import {
   imageCredits,
   parsePriceTable,
   realtimeCredits,
+  realtimeReservation,
   recognitionCredits,
   synthesisCredits,
   tokenCredits,
@@ -68,5 +69,31 @@ describe('托管 AI 价格表', () => {
     expect(
       realtimeCredits(table.realtime, { inputAudioTokens: 1_000_000, outputAudioTokens: 500_000 }),
     ).toBe(1_000 + 2_000);
+  });
+
+  it('实时语音缓存命中单独上报：未配置缓存价时按输入价计，配置后按缓存价计', () => {
+    const table = parsePriceTable(example)!;
+    const usage = { inputTextTokens: 1_000_000, cachedTextTokens: 1_000_000 };
+    expect(realtimeCredits(table.realtime, usage)).toBe(100 + 100);
+    const cached = parsePriceTable({
+      ...example,
+      realtime: { ...example.realtime, cachedInputTextPerMillion: 10 },
+    })!;
+    expect(realtimeCredits(cached.realtime, usage)).toBe(100 + 10);
+    expect(
+      parsePriceTable({
+        ...example,
+        realtime: { ...example.realtime, cachedInputAudioPerMillion: -1 },
+      }),
+    ).toBeNull();
+    expect(realtimeCredits(table.realtime, {})).toBe(0);
+  });
+
+  it('实时语音预留随时长增长且至少 1', () => {
+    const table = parsePriceTable(example)!;
+    expect(realtimeReservation(table.realtime, 0)).toBe(1);
+    expect(realtimeReservation(table.realtime, 2)).toBeGreaterThan(
+      realtimeReservation(table.realtime, 1),
+    );
   });
 });

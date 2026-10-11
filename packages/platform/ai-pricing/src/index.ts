@@ -7,6 +7,15 @@
  * A missing or malformed table disables the capability instead of charging a default price.
  */
 
+export {
+  DEFAULT_MANAGED_VOICE,
+  MANAGED_VOICES,
+  managedVoiceFor,
+  managedVoiceLabel,
+  normalizeManagedVoice,
+  type ManagedVoice,
+} from './voices';
+
 /** Credits per million tokens for one text or vision route. */
 export interface TokenRoute {
   /** Upstream model id (Volcengine Ark). */
@@ -40,6 +49,9 @@ export interface RealtimeRoute {
   inputTextPerMillion: number;
   outputAudioPerMillion: number;
   outputTextPerMillion: number;
+  /** Cache hits are reported on top of the uncached input; without a rate they bill as input. */
+  cachedInputAudioPerMillion?: number;
+  cachedInputTextPerMillion?: number;
 }
 
 export interface PriceTable {
@@ -135,7 +147,10 @@ export function parsePriceTable(raw: unknown): PriceTable | null {
     !price(realtime.inputAudioPerMillion) ||
     !price(realtime.inputTextPerMillion) ||
     !price(realtime.outputAudioPerMillion) ||
-    !price(realtime.outputTextPerMillion)
+    !price(realtime.outputTextPerMillion) ||
+    (realtime.cachedInputAudioPerMillion !== undefined &&
+      !price(realtime.cachedInputAudioPerMillion)) ||
+    (realtime.cachedInputTextPerMillion !== undefined && !price(realtime.cachedInputTextPerMillion))
   )
     return null;
   return {
@@ -152,6 +167,12 @@ export function parsePriceTable(raw: unknown): PriceTable | null {
       inputTextPerMillion: realtime.inputTextPerMillion,
       outputAudioPerMillion: realtime.outputAudioPerMillion,
       outputTextPerMillion: realtime.outputTextPerMillion,
+      ...(realtime.cachedInputAudioPerMillion !== undefined
+        ? { cachedInputAudioPerMillion: realtime.cachedInputAudioPerMillion as number }
+        : {}),
+      ...(realtime.cachedInputTextPerMillion !== undefined
+        ? { cachedInputTextPerMillion: realtime.cachedInputTextPerMillion as number }
+        : {}),
     },
   };
 }
@@ -193,7 +214,10 @@ export function imageCredits(route: ImageRoute, images: number): number {
 }
 
 /** Synthesis is billed per character the provider reports. */
-export function synthesisCredits(route: SpeechSynthesisRoute, characters: number): number {
+export function synthesisCredits(
+  route: Pick<SpeechSynthesisRoute, 'perTenThousandChars'>,
+  characters: number,
+): number {
   return Math.max(1, Math.ceil((count(characters) * route.perTenThousandChars) / 10_000));
 }
 
@@ -204,6 +228,9 @@ export function recognitionCredits(route: SpeechRecognitionRoute, durationMs: nu
 export interface RealtimeUsage {
   inputAudioTokens?: number;
   inputTextTokens?: number;
+  /** Reported in addition to the uncached input tokens above, not as a subset of them. */
+  cachedAudioTokens?: number;
+  cachedTextTokens?: number;
   outputAudioTokens?: number;
   outputTextTokens?: number;
 }
@@ -212,7 +239,33 @@ export function realtimeCredits(route: RealtimeRoute, usage: RealtimeUsage): num
   const raw =
     count(usage.inputAudioTokens) * route.inputAudioPerMillion +
     count(usage.inputTextTokens) * route.inputTextPerMillion +
+    count(usage.cachedAudioTokens) *
+      (route.cachedInputAudioPerMillion ?? route.inputAudioPerMillion) +
+    count(usage.cachedTextTokens) * (route.cachedInputTextPerMillion ?? route.inputTextPerMillion) +
     count(usage.outputAudioTokens) * route.outputAudioPerMillion +
     count(usage.outputTextTokens) * route.outputTextPerMillion;
   return Math.ceil(raw / 1_000_000);
+}
+
+/**
+ * Generous usage bound for one minute of a continuous call, used only to size a Credit hold
+ * and the call's hard deadline. It is a token estimate, not a price: the prompt is processed
+ * again on every spoken round, so text input dominates.
+ */
+const REALTIME_MINUTE_BOUND: Required<RealtimeUsage> = {
+  inputAudioTokens: 600,
+  inputTextTokens: 60_000,
+  cachedAudioTokens: 0,
+  cachedTextTokens: 0,
+  outputAudioTokens: 2_400,
+  outputTextTokens: 1_200,
+};
+
+/** Credits held for up to `minutes` of a realtime call; at least 1. */
+export function realtimeReservation(route: RealtimeRoute, minutes: number): number {
+  const scale = Math.max(0, Number(minutes) || 0);
+  const bound = Object.fromEntries(
+    Object.entries(REALTIME_MINUTE_BOUND).map(([key, value]) => [key, value * scale]),
+  ) as RealtimeUsage;
+  return Math.max(1, realtimeCredits(route, bound));
 }
