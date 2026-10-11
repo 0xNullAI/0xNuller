@@ -21,6 +21,7 @@ Cloudflare 会优先匹配更具体的路径。提交前运行 `npm run check:ro
 - Node.js 22.19 或更高版本
 - Wrangler 已登录目标 Cloudflare 账户
 - 已创建配置中声明的 D1、R2 和 Durable Object 资源
+- Market 公开角色头像使用独立 R2 bucket `dg-market-character-portraits`；配置 `PORTRAITS` 绑定前先创建资源并验证权限
 - Worker 密钥保存在仓库外，并限制文件权限
 
 配置只声明密钥名称，不保存密钥值。当前 Worker 使用的变量可从各自的

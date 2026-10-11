@@ -40,6 +40,11 @@ Latest；Android 更新检查器按 `v` 前缀过滤，并确认 Release 内确�
 
 对应实现与测试在 `android/app/src/services/update-checker.ts`。
 
+推送发布开关独立于 APK 签名：只有 Auth/Chat 服务端注册和发送链路已验证时，Android 构建才设置
+`VITE_ANDROID_PUSH_BACKEND_ENABLED=true`，并在构建环境提供四项 Firebase Android 公有应用
+配置（见 [`android/app/README.md`](../android/app/README.md)）。缺少配置的构建保留消息收件箱，
+但不注册 FCM，也不能宣称有系统推送。FCM 服务账号凭据仅配置在服务端部署环境，不能进入 APK。
+
 ## 顺序
 
 **从 `main` 的实际 tip 构建，在版本号提交合并之后。**
