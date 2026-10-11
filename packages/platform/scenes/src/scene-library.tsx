@@ -248,13 +248,7 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
   );
   return (
     <div className="settings-panel-tab-content">
-      <section className="settings-row-card">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="settings-card-legend">我的角色与场景</h3>
-          <Button variant="ghost" size="sm" onClick={() => setMarketOpen(true)}>
-            <Store className="h-4 w-4" />从 Market 导入
-          </Button>
-        </div>
+      <div className="flex flex-col gap-3">
         {legacyCount > 0 && (
           <Button variant="ghost" size="sm" onClick={() => void importFromOldBrowserLibrary()}>
             导入这台设备上的旧卡（{legacyCount}）
@@ -270,47 +264,61 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
             {marketUpdateNotice}
           </p>
         )}
-        {scenes.scenes.length === 0 ? (
+        <div className="flex items-center gap-2">
+          {scenes.scenes.length > 0 && (
+            <>
+              <div
+                role="group"
+                aria-label="类型"
+                className="inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs"
+              >
+                {(
+                  [
+                    ['all', '全部'],
+                    ['character', '角色'],
+                    ['scene', '场景'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={kindFilter === value}
+                    onClick={() => setKindFilter(value)}
+                    className={
+                      'rounded-[var(--radius-xs)] px-3 py-1.5 ' +
+                      (kindFilter === value
+                        ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
+                        : 'text-[var(--text-soft)] hover:text-[var(--text)]')
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索名称"
+                aria-label="搜索角色与场景"
+                className="h-9 min-w-0 flex-1 text-sm"
+              />
+            </>
+          )}
+          {scenes.scenes.length === 0 && <div className="flex-1" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="从 Market 导入"
+            className="shrink-0"
+            onClick={() => setMarketOpen(true)}
+          >
+            <Store className="h-4 w-4" />
+            导入
+          </Button>
+        </div>
+        {scenes.scenes.length === 0 && (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">
             还没有角色或场景。可从 Market 浏览并导入公开卡。
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="类型"
-              className="inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs"
-            >
-              {(
-                [
-                  ['all', '全部'],
-                  ['character', '角色'],
-                  ['scene', '场景'],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={kindFilter === value}
-                  onClick={() => setKindFilter(value)}
-                  className={
-                    'rounded-[var(--radius-xs)] px-3 py-1.5 ' +
-                    (kindFilter === value
-                      ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                      : 'text-[var(--text-soft)] hover:text-[var(--text)]')
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索名称"
-              aria-label="搜索角色与场景"
-              className="min-w-0 flex-1 text-sm"
-            />
           </div>
         )}
         {scenes.scenes.length > 0 && visibleScenes.length === 0 && (
@@ -464,7 +472,7 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
             );
           })}
         </div>
-      </section>
+      </div>
 
       <MarketImportDialog
         open={marketOpen}

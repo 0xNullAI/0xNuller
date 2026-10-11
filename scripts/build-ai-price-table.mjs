@@ -14,7 +14,8 @@ const [file] = process.argv.slice(2);
 if (!file) throw new Error('Usage: build-ai-price-table.mjs <private-cost-file>');
 const costs = JSON.parse(readFileSync(file, 'utf8'));
 const factor = Number(costs.multiplier) * Number(costs.creditsPerYuan);
-if (!Number.isFinite(factor) || factor <= 0) throw new Error('multiplier and creditsPerYuan required');
+if (!Number.isFinite(factor) || factor <= 0)
+  throw new Error('multiplier and creditsPerYuan required');
 
 // Round up so a price can never fall below cost × multiplier.
 const scale = (yuan) => Math.ceil(Number(yuan) * factor * 10_000) / 10_000;

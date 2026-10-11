@@ -47,8 +47,8 @@ export function WaveformsPanel({
 
   return (
     <div className="settings-panel-tab-content">
-      <section className="settings-row-card">
-        <h3 className="settings-card-legend">波形库</h3>
+      <section aria-label="波形库" className="flex flex-col">
+        <h3 className="mb-3 text-sm font-semibold">波形库</h3>
 
         <div className="mb-3 flex rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-0.5">
           {(

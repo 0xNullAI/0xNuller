@@ -138,9 +138,7 @@ it('分组入口保留所有功能，只挂载当前二级页并可返回', asyn
   expect(screen.queryByText('形象编辑内容')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '返回聊天设置' }));
   expect(screen.queryByText('记忆编辑内容')).toBeNull();
-  await act(async () =>
-    fireEvent.click(screen.getByRole('button', { name: /^头像与形象/ })),
-  );
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: /^头像与形象/ })));
   expect(screen.getByText('形象编辑内容')).toBeTruthy();
 });
 
@@ -166,9 +164,9 @@ it('generation request opens the media detail directly and settings returns to o
 it('设备权限在二级页仍绑定当前账户和会话，缺少关系的入口保留条件提示', () => {
   render(<RelationshipAccess characterId="gentle" characterName="小岚" conversationId="session" />);
   fireEvent.click(screen.getByRole('button', { name: /聊天设置/ }));
-  expect(
-    (screen.getByRole('button', { name: /^头像与形象/ }) as HTMLButtonElement).disabled,
-  ).toBe(true);
+  expect((screen.getByRole('button', { name: /^头像与形象/ }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
   fireEvent.click(screen.getByRole('button', { name: /^设备权限/ }));
   fireEvent.click(screen.getByRole('checkbox', { name: '允许这段聊天控制设备' }));
   expect(auth.permission).toHaveBeenCalledWith('alice', 'ai', 'session', true);
