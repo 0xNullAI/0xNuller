@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#080808" />
     <title>0xNuller</title>
+    <meta name="theme-color" content="#080808" />
+    <script>
+      // First paint matches the theme store: a saved choice wins, otherwise dark.
+      (function () {
+        var dark = true;
+        try {
+          var mode = localStorage.getItem('0xnullai.theme');
+          if (mode === 'light') dark = false;
+          if (mode === 'auto') dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (e) {
+          /* keep dark */
+        }
+        var root = document.documentElement;
+        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#080808' : '#ffffff';
+      })();
+    </script>
   </head>
   <body>
     <style>

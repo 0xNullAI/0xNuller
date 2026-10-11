@@ -64,8 +64,11 @@ function readLegacy(): ThemeMode | null {
   return null;
 }
 
+/** Without a saved choice the product opens dark, matching the brand and the splash. */
+export const DEFAULT_THEME_MODE: ThemeMode = 'dark';
+
 export function loadThemeMode(): ThemeMode {
-  if (typeof localStorage === 'undefined') return 'auto';
+  if (typeof localStorage === 'undefined') return DEFAULT_THEME_MODE;
   try {
     const own = localStorage.getItem(KEY);
     if (isMode(own)) return own;
@@ -75,10 +78,10 @@ export function loadThemeMode(): ThemeMode {
       return legacy;
     }
   } catch {
-    // Private browsing: fall back to follow-system instead of crashing the
+    // Private browsing: fall back to the default instead of crashing the
     // app at startup.
   }
-  return 'auto';
+  return DEFAULT_THEME_MODE;
 }
 
 /** The only entry point that mutates `data-theme`. */
