@@ -51,7 +51,7 @@ the workflow attaches the signed APK and Latest badge.
 
 ## Prerequisites
 
-- Node.js 22.19+
+- Node.js 26+
 - Rust 1.88+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - Android SDK with platform 34/35/36 + build-tools 34/35
 - Android NDK 26.x (set `NDK_HOME` or `ANDROID_NDK_HOME`)

@@ -19,7 +19,7 @@ Windows x64 安装器与 macOS arm64（Apple Silicon）安装包共用 `android/
 
 ## 构建
 
-安装 Node 22.19+、npm 11.6.2 和 Rust 1.88+。Windows 需要 MSVC C++ Build Tools，macOS
+安装 Node 26+、npm 11.6.2 和 Rust 1.88+。Windows 需要 MSVC C++ Build Tools，macOS
 需要 Xcode Command Line Tools。应用不在开发启动时自动扫描桌面蓝牙。
 
 ```bash

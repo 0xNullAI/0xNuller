@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22.19.0'
+          node-version: '26.11.1'
           cache: npm
       - run: npm install --global npm@11.6.2
       - uses: actions/setup-java@v5
