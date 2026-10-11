@@ -60,7 +60,7 @@ tauri-plugin-opener = "2"
 # the JS bindings now pass an `address` parameter the upstream 0.4 Rust
 # plugin doesn't understand). Interim measure until the fork is published to
 # crates.io or upstreamed.
-tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "27c6e80" }
+tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "6b6044d" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 btleplug = { version = "=0.12.0", optional = true }

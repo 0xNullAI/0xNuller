@@ -4930,7 +4930,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-blec"
 version = "0.12.1"
-source = "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git?rev=27c6e80#27c6e80ec1991799baf61729e0dfe07b4152de31"
+source = "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git?rev=6b6044d#6b6044d617ecfbdfac8f5b11a9335eb52db37839"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
