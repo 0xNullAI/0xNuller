@@ -7,13 +7,17 @@ import {
   ConversationComposer,
   ConversationEmpty,
   ConversationMessageRow,
+  ConversationTimeSeparator,
   RecordedVoicePreview,
   conversationBubbleClass,
+  conversationComposerButtonClass,
+  conversationSequence,
+  useConversationArrivals,
 } from '@0xnullai/ui';
 import { requestProfileView } from '@0xnullai/auth';
 import { adaptHumanChatTimeline } from '@0xnullai/conversation';
-import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Image as ImageIcon, Mic, X, AtSign, UserRound, Reply } from 'lucide-react';
+import { Fragment, useState, useRef, useEffect } from 'react';
+import { ArrowUp, Image as ImageIcon, Mic, Plus, X, AtSign, UserRound, Reply } from 'lucide-react';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
 import { PublicCharacterShareDialog } from './PublicCharacterShareDialog';
@@ -126,7 +130,7 @@ export function ChatPanel({
   const usernameByPeer = new Map(members.map((m) => [m.peerId, m.username ?? null]));
   const [sharingCharacter, setSharingCharacter] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage['replyTo']>();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [recorder, setRecorder] = useState<Recorder | null>(null);
@@ -150,6 +154,30 @@ export function ChatPanel({
     mediaAccess: privateMediaToken === undefined ? 'room_authorized_url' : 'socket_capability',
     mediaConnected: privateMediaToken !== null,
   });
+  const sequence = conversationSequence(
+    messages.map((msg) => ({
+      sender: msg.senderId === 'system' ? null : msg.senderId,
+      at: msg.timestamp,
+    })),
+  );
+  const arrivals = useConversationArrivals(messages.map((msg) => msg.id));
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [moreOpen]);
   const latestConfirmed = [...timeline].reverse().find((item) => item.status === 'saved')?.itemId;
   const readError = useVisibleMessageRead(latestConfirmed, messageElements, onMessageVisible);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -339,7 +367,7 @@ export function ChatPanel({
             type="button"
             disabled={historyLoading}
             onClick={onLoadOlderHistory}
-            className="mb-3 w-full rounded border border-[var(--surface-border)] p-2 text-sm"
+            className="ui-press mx-auto rounded-full px-4 py-1.5 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] disabled:opacity-60"
           >
             {historyLoading ? '读取中…' : '加载更早的消息'}
           </button>
@@ -354,193 +382,188 @@ export function ChatPanel({
         {messages.map((msg, idx) => {
           const item = timeline[idx]!;
           const isSelf = msg.fromSelf;
-          const prevMsg = idx > 0 ? messages[idx - 1] : null;
-          const sameSender = prevMsg?.senderId === msg.senderId;
-          const closeInTime = prevMsg && msg.timestamp - prevMsg.timestamp < 60000;
-          const grouped = sameSender && closeInTime;
+          const position = sequence[idx]!;
+          const grouped = position.continued;
           const hasMedia = !!msg.media;
 
           return (
-            <ConversationMessageRow
-              key={msg.id}
-              data-message-id={msg.id}
-              tabIndex={-1}
-              own={isSelf}
-              grouped={!!grouped}
-              avatar={
-                <ProfileAvatar
-                  name={msg.senderName || msg.senderId.slice(0, 6)}
-                  username={usernameByPeer.get(msg.senderId)}
-                  size={28}
-                />
-              }
-              ref={(element) => {
-                if (element) messageElements.current.set(msg.id, element);
-                else messageElements.current.delete(msg.id);
-              }}
-            >
-              {msg.replyTo && (
-                <blockquote className="mb-1 rounded border-l-2 border-[var(--accent)] bg-[var(--bg-soft)] px-2 py-1 text-xs text-[var(--text-soft)]">
-                  {msg.replyTo.unavailable ? (
-                    '原消息已不可用'
-                  ) : (
-                    <>
+            <Fragment key={msg.id}>
+              {position.showTime && <ConversationTimeSeparator at={msg.timestamp} />}
+              <ConversationMessageRow
+                data-message-id={msg.id}
+                tabIndex={-1}
+                own={isSelf}
+                continued={grouped}
+                groupEnd={position.groupEnd}
+                arrived={arrivals.has(msg.id)}
+                avatar={
+                  isSelf ? undefined : (
+                    <ProfileAvatar
+                      name={msg.senderName || msg.senderId.slice(0, 6)}
+                      username={usernameByPeer.get(msg.senderId)}
+                      size={28}
+                    />
+                  )
+                }
+                ref={(element) => {
+                  if (element) messageElements.current.set(msg.id, element);
+                  else messageElements.current.delete(msg.id);
+                }}
+              >
+                {msg.replyTo && (
+                  <blockquote className="mb-1 rounded border-l-2 border-[var(--accent)] bg-[var(--bg-soft)] px-2 py-1 text-xs text-[var(--text-soft)]">
+                    {msg.replyTo.unavailable ? (
+                      '原消息已不可用'
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="block w-full text-left"
+                          disabled={!messages.some((source) => source.id === msg.replyTo?.id)}
+                          title={
+                            messages.some((source) => source.id === msg.replyTo?.id)
+                              ? '定位原消息'
+                              : '加载更早消息后可定位'
+                          }
+                          aria-label={`定位 ${msg.replyTo.senderName} 的原消息`}
+                          onClick={() => {
+                            const source = messageElements.current.get(msg.replyTo!.id);
+                            source?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            source?.focus({ preventScroll: true });
+                          }}
+                        >
+                          <strong>{msg.replyTo.senderName}</strong>
+                          <span className="block line-clamp-3 whitespace-pre-wrap">
+                            {msg.replyTo.text}
+                          </span>
+                        </button>
+                      </>
+                    )}
+                  </blockquote>
+                )}
+                {!isSelf && !grouped && (
+                  <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
+                    {usernameByPeer.get(msg.senderId) ? (
                       <button
                         type="button"
-                        className="block w-full text-left"
-                        disabled={!messages.some((source) => source.id === msg.replyTo?.id)}
-                        title={
-                          messages.some((source) => source.id === msg.replyTo?.id)
-                            ? '定位原消息'
-                            : '加载更早消息后可定位'
-                        }
-                        aria-label={`定位 ${msg.replyTo.senderName} 的原消息`}
-                        onClick={() => {
-                          const source = messageElements.current.get(msg.replyTo!.id);
-                          source?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          source?.focus({ preventScroll: true });
-                        }}
+                        className="truncate hover:text-[var(--accent)] hover:underline"
+                        onClick={() => requestProfileView(usernameByPeer.get(msg.senderId)!)}
                       >
-                        <strong>{msg.replyTo.senderName}</strong>
-                        <span className="block line-clamp-3 whitespace-pre-wrap">
-                          {msg.replyTo.text}
-                        </span>
+                        {msg.senderName || msg.senderId.slice(0, 6)}
                       </button>
-                    </>
-                  )}
-                </blockquote>
-              )}
-              {!isSelf && !grouped && (
-                <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
-                  {usernameByPeer.get(msg.senderId) ? (
-                    <button
-                      type="button"
-                      className="truncate hover:text-[var(--accent)] hover:underline"
-                      onClick={() => requestProfileView(usernameByPeer.get(msg.senderId)!)}
-                    >
-                      {msg.senderName || msg.senderId.slice(0, 6)}
-                    </button>
-                  ) : (
-                    <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
-                  )}
-                </div>
-              )}
+                    ) : (
+                      <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
+                    )}
+                  </div>
+                )}
 
-              {msg.media?.kind === 'image' && mediaSource(msg.media.url, privateMediaToken) ? (
-                <button
-                  onClick={() => setLightbox(mediaSource(msg.media!.url, privateMediaToken))}
-                  className="block overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)]"
-                >
-                  <img
-                    src={mediaSource(msg.media.url, privateMediaToken)!}
-                    alt="图片"
-                    loading="lazy"
-                    className="max-h-60 max-w-full object-cover"
-                  />
-                </button>
-              ) : msg.media?.kind === 'audio' && mediaSource(msg.media.url, privateMediaToken) ? (
                 <div
-                  className={
-                    isSelf
-                      ? 'rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] px-3 py-2'
-                      : 'rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2'
-                  }
+                  className={`flex min-w-0 max-w-full items-end gap-1 ${isSelf ? 'flex-row-reverse' : ''}`}
                 >
-                  <audio
-                    controls
-                    src={mediaSource(msg.media.url, privateMediaToken)!}
-                    className="max-w-[220px]"
-                  />
-                  {msg.media.durationMs != null && (
-                    <p
-                      className={`mt-0.5 text-[10px] ${isSelf ? 'text-[var(--button-text)]' : 'text-[var(--text-faint)]'}`}
-                    >
-                      语音 {formatDuration(msg.media.durationMs)}
-                    </p>
-                  )}
-                </div>
-              ) : msg.media && privateMediaToken === null ? (
-                <span className="text-xs text-[var(--text-faint)]">连接后加载媒体</span>
-              ) : null}
+                  <div className={`flex min-w-0 flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
+                    {msg.media?.kind === 'image' &&
+                    mediaSource(msg.media.url, privateMediaToken) ? (
+                      <button
+                        onClick={() => setLightbox(mediaSource(msg.media!.url, privateMediaToken))}
+                        className="block overflow-hidden rounded-[18px] border border-[var(--surface-border)]"
+                      >
+                        <img
+                          src={mediaSource(msg.media.url, privateMediaToken)!}
+                          alt="图片"
+                          loading="lazy"
+                          className="max-h-60 max-w-full object-cover"
+                        />
+                      </button>
+                    ) : msg.media?.kind === 'audio' &&
+                      mediaSource(msg.media.url, privateMediaToken) ? (
+                      <div className={conversationBubbleClass(isSelf, false, grouped)}>
+                        <audio
+                          controls
+                          src={mediaSource(msg.media.url, privateMediaToken)!}
+                          className="max-w-[220px]"
+                        />
+                        {msg.media.durationMs != null && (
+                          <p
+                            className={`mt-0.5 text-[10px] ${isSelf ? 'text-[var(--button-text)]' : 'text-[var(--text-faint)]'}`}
+                          >
+                            语音 {formatDuration(msg.media.durationMs)}
+                          </p>
+                        )}
+                      </div>
+                    ) : msg.media && privateMediaToken === null ? (
+                      <span className="text-xs text-[var(--text-faint)]">连接后加载媒体</span>
+                    ) : null}
 
-              {msg.senderId !== 'system' && (
-                <button
-                  type="button"
-                  aria-label={`回复 ${msg.senderName || '消息'}`}
-                  title="回复此消息"
-                  disabled={busy || !!recorder || !!pendingMedia}
-                  className="float-right ml-1 flex h-7 w-7 items-center justify-center rounded text-[var(--text-faint)] hover:bg-[var(--bg-soft)]"
-                  onClick={() => {
-                    setReplyTo({
-                      id: msg.id,
-                      senderId: msg.senderId,
-                      senderName: msg.senderName,
-                      text:
-                        msg.text.slice(0, 500) ||
-                        (msg.media?.kind === 'image' ? '[图片]' : '[语音]'),
-                    });
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <Reply size={14} />
-                </button>
-              )}
-              {(!hasMedia || msg.text) && (
-                <div
-                  className={
-                    `${hasMedia ? 'mt-1 ' : ''}` +
-                    conversationBubbleClass(
-                      isSelf,
-                      Boolean(selfId && msg.mentions?.some((m) => m.peerId === selfId)),
-                    ) +
-                    ' whitespace-pre-wrap'
-                  }
-                >
-                  {renderMessageText(msg.text, msg.mentions, isSelf)}
-                </div>
-              )}
-
-              {!grouped && (
-                <p
-                  className={`mt-0.5 px-1 text-[10px] text-[var(--text-faint)] ${
-                    isSelf ? 'text-right' : 'text-left'
-                  }`}
-                >
-                  {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                    hour12: false,
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                  {item.status === 'pending' && msg.fromSelf && ' · 发送中…'}
-                </p>
-              )}
-              {item.status === 'failed' && msg.fromSelf && (
-                <p
-                  role="alert"
-                  className="mt-0.5 px-1 text-right text-[10px] text-[var(--danger,#dc2626)]"
-                >
-                  发送失败
-                  {onRetryMessage && (
+                    {(!hasMedia || msg.text) && (
+                      <div
+                        className={
+                          `${hasMedia ? 'mt-1 ' : ''}` +
+                          conversationBubbleClass(
+                            isSelf,
+                            Boolean(selfId && msg.mentions?.some((m) => m.peerId === selfId)),
+                            grouped,
+                          ) +
+                          ' whitespace-pre-wrap'
+                        }
+                      >
+                        {renderMessageText(msg.text, msg.mentions, isSelf)}
+                      </div>
+                    )}
+                  </div>
+                  {msg.senderId !== 'system' && (
                     <button
                       type="button"
-                      className="ml-2 underline"
-                      onClick={() => onRetryMessage(msg.id)}
+                      aria-label={`回复 ${msg.senderName || '消息'}`}
+                      title="回复此消息"
+                      disabled={busy || !!recorder || !!pendingMedia}
+                      className="ui-press flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-faint)] opacity-60 hover:bg-[var(--bg-soft)] hover:opacity-100 disabled:opacity-30"
+                      onClick={() => {
+                        setReplyTo({
+                          id: msg.id,
+                          senderId: msg.senderId,
+                          senderName: msg.senderName,
+                          text:
+                            msg.text.slice(0, 500) ||
+                            (msg.media?.kind === 'image' ? '[图片]' : '[语音]'),
+                        });
+                        inputRef.current?.focus();
+                      }}
                     >
-                      重试
+                      <Reply size={14} />
                     </button>
                   )}
-                  {onDiscardMessage && (
-                    <button
-                      type="button"
-                      className="ml-2 underline"
-                      onClick={() => onDiscardMessage(msg.id)}
-                    >
-                      放弃
-                    </button>
-                  )}
-                </p>
-              )}
-            </ConversationMessageRow>
+                </div>
+                {item.status === 'pending' && msg.fromSelf && (
+                  <p className="mt-0.5 px-1 text-[11px] text-[var(--text-faint)]">发送中…</p>
+                )}
+                {item.status === 'failed' && msg.fromSelf && (
+                  <p
+                    role="alert"
+                    className="mt-0.5 px-1 text-right text-[11px] text-[var(--danger)]"
+                  >
+                    发送失败
+                    {onRetryMessage && (
+                      <button
+                        type="button"
+                        className="ml-2 underline"
+                        onClick={() => onRetryMessage(msg.id)}
+                      >
+                        重试
+                      </button>
+                    )}
+                    {onDiscardMessage && (
+                      <button
+                        type="button"
+                        className="ml-2 underline"
+                        onClick={() => onDiscardMessage(msg.id)}
+                      >
+                        放弃
+                      </button>
+                    )}
+                  </p>
+                )}
+              </ConversationMessageRow>
+            </Fragment>
           );
         })}
         <div ref={bottomRef} />
@@ -635,85 +658,117 @@ export function ChatPanel({
               type="button"
               onClick={cancelRec}
               aria-label="取消录音"
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--danger)] transition-colors"
+              className={conversationComposerButtonClass()}
               title="取消录音"
             >
               <X size={20} />
             </button>
             <div className="flex flex-1 items-center gap-2 text-sm text-[var(--danger)]">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--danger)]" />
+              <span className="h-2 w-2 rounded-full bg-[var(--danger)] motion-safe:animate-pulse" />
               录音中 {formatDuration(recElapsed)}
             </div>
             <button
               type="button"
               onClick={stopRecAndPreview}
               aria-label="结束录音"
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90"
+              className={conversationComposerButtonClass(true)}
               title="结束录音"
             >
               <ArrowUp size={20} />
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="order-3 flex w-full items-center gap-1 sm:order-none sm:w-auto">
+          <div className="flex items-end gap-1.5">
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={handlePickImage} />
+            <div className="relative shrink-0" ref={moreRef}>
               <button
                 type="button"
-                onClick={() => setSharingCharacter(true)}
-                aria-label="分享公开角色"
-                disabled={!!replyTo}
-                className="flex min-h-[44px] min-w-[36px] items-center justify-center text-[var(--text-soft)]"
-              >
-                <UserRound size={20} />
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" hidden onChange={handlePickImage} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                aria-label="发送图片"
+                onClick={() => setMoreOpen((open) => !open)}
+                aria-label="更多"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
                 disabled={busy || !!pendingMedia}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
-                title="发送图片"
+                className={conversationComposerButtonClass()}
               >
-                <ImageIcon size={20} />
+                <Plus size={24} />
               </button>
-              <button
-                type="button"
-                onClick={startRec}
-                aria-label="发送语音"
-                disabled={busy || !!pendingMedia}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-soft)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
-                title="发送语音"
-              >
-                <Mic size={20} />
-              </button>
+              {moreOpen && (
+                <div
+                  role="menu"
+                  aria-label="发送内容"
+                  className="ui-menu-in absolute bottom-full left-0 z-[var(--z-local-popover)] mb-2 w-44 rounded-xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg"
+                  style={{ transformOrigin: 'bottom left' }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy || !!pendingMedia}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      fileRef.current?.click();
+                    }}
+                    className="ui-press-row flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)] disabled:opacity-50"
+                  >
+                    <ImageIcon size={16} />
+                    发送图片
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!!replyTo}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setSharingCharacter(true);
+                    }}
+                    className="ui-press-row flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)] disabled:opacity-50"
+                  >
+                    <UserRound size={16} />
+                    分享公开角色
+                  </button>
+                </div>
+              )}
             </div>
             <ConversationInput
               ref={inputRef}
-              type="text"
               value={draft}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setMentionQuery(null);
                 else if (
                   e.key === 'Enter' &&
+                  !e.shiftKey &&
                   !e.nativeEvent.isComposing &&
                   e.nativeEvent.keyCode !== 229
-                )
+                ) {
+                  e.preventDefault();
                   handleSend();
+                }
               }}
               placeholder={busy ? '发送中…' : '输入消息…'}
               disabled={busy}
             />
-            <button
-              type="button"
-              onClick={handleSend}
-              aria-label="发送消息"
-              disabled={!draft.trim() || busy || !!pendingMedia}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--button-text)] transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              <ArrowUp size={20} />
-            </button>
+            {draft.trim() ? (
+              <button
+                type="button"
+                onClick={handleSend}
+                aria-label="发送消息"
+                disabled={busy || !!pendingMedia}
+                className={conversationComposerButtonClass(true)}
+              >
+                <ArrowUp size={20} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={startRec}
+                aria-label="发送语音"
+                disabled={busy || !!pendingMedia}
+                className={conversationComposerButtonClass()}
+                title="发送语音"
+              >
+                <Mic size={22} />
+              </button>
+            )}
           </div>
         )}
       </ConversationComposer>

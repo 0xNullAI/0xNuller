@@ -4,7 +4,6 @@ import {
   setDeviceConversationAccess,
   subscribeDeviceConversationAccess,
 } from '@0xnullai/settings';
-import { Button } from '@0xnullai/ui';
 
 /**
  * Inline shortcut for the per-chat device consent. It writes the same record as the
@@ -30,9 +29,9 @@ export function DeviceConsentBar({
     <div
       role="region"
       aria-label="本聊天的设备权限"
-      className="flex min-w-0 items-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-3 py-1.5 text-xs"
+      className="flex min-w-0 items-center gap-2 px-2 text-xs"
     >
-      <span className="min-w-0 flex-1 text-[var(--text-soft)]">
+      <span className="min-w-0 flex-1 truncate text-[var(--text-faint)]">
         {error ? (
           <span role="alert" className="text-[var(--danger)]">
             {error}
@@ -41,16 +40,16 @@ export function DeviceConsentBar({
           '允许本聊天控制设备？'
         )}
       </span>
-      <Button
-        size="sm"
-        variant="secondary"
+      <button
+        type="button"
+        className="ui-press shrink-0 rounded-full px-2 py-1 font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
         onClick={() => {
           const saved = setDeviceConversationAccess(accountId, 'ai', conversationId, true);
           setError(saved ? '' : '无法保存授权，请检查浏览器存储');
         }}
       >
         允许
-      </Button>
+      </button>
     </div>
   );
 }

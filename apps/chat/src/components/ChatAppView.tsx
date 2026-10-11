@@ -1,7 +1,7 @@
 import { GroupMembershipDialog } from './GroupMembershipDialog';
 import type { ChatReplyContext } from '../lib/protocol';
-import { ConversationHeader, useShellNav } from '@0xnullai/ui';
-import { ArrowLeft, Bot, LogOut, Settings2 } from 'lucide-react';
+import { ConversationHeader, ConversationTitle, useShellNav } from '@0xnullai/ui';
+import { ArrowLeft, Bot, ChevronRight, LogOut, Settings2, Users } from 'lucide-react';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DmRequest } from '@0xnullai/auth';
 import type { useDevice } from '@0xnullai/device-runtime';
@@ -30,6 +30,9 @@ export function roomPresenceLabel(isDm: boolean, peerCount: number): string {
   if (peerCount === 0) return isDm ? '对方不在线' : '1 人在线 · 等待成员';
   return isDm ? '对方在线' : `${peerCount + 1} 人在线`;
 }
+
+const SETTINGS_ROW =
+  'ui-press-row flex min-h-12 w-full items-center gap-3 px-4 text-left text-[15px] text-[var(--text)] hover:bg-[var(--bg-soft)]';
 
 export function leaveChatRoom(
   releaseDevice: () => void,
@@ -222,7 +225,7 @@ export function ChatAppView({
           {shellNav?.conversationBack ? (
             <button
               type="button"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+              className="ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
               onClick={shellNav.conversationBack}
               aria-label="返回消息"
               title="返回消息"
@@ -242,28 +245,17 @@ export function ChatAppView({
           )}
           <div
             aria-hidden
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-lg"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-base"
           >
             {roomTitle.slice(0, 1)}
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate text-sm font-semibold text-[var(--text)]">
-              {roomTitle}
-            </span>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ConversationTitle>{roomTitle}</ConversationTitle>
             {dmError && (
-              <span className="shrink-0 rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-xs text-[var(--danger)]">
+              <span className="min-w-0 shrink truncate rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-xs text-[var(--danger)]">
                 {dmError}
               </span>
             )}
-            <span
-              className={
-                peerRoom.peers.length > 0
-                  ? 'rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]'
-                  : 'rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-faint)]'
-              }
-            >
-              {roomPresenceLabel(peerRoom.isDm, peerRoom.peers.length)}
-            </span>
           </div>
           {!inShell && (
             <div className="flex shrink-0 items-center gap-1">
@@ -320,50 +312,18 @@ export function ChatAppView({
               </button>
             </div>
           )}
-          {inShell && peerRoom.roomId && !peerRoom.isDm && peerRoom.canManageGroup && (
-            <button
-              onClick={() => setAgentOpen(true)}
-              className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-              title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
-            >
-              <Bot className="h-4 w-4" />
-              <span>群 AI</span>
-            </button>
-          )}
-          {peerRoom.roomId && !peerRoom.isDm && peerRoom.isOwner && (
-            <button
-              type="button"
-              className="px-2 text-xs"
-              onClick={() => {
-                peerRoom.manageGroupMembership('list');
-                setMembersOpen(true);
-              }}
-            >
-              群成员
-            </button>
-          )}
           {inShell && peerRoom.roomId && (
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'chat' ? 'control' : 'chat')}
-              className="flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
+              className="ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
               aria-label={activeTab === 'chat' ? '聊天设置' : '返回聊天'}
             >
               {activeTab === 'chat' ? (
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-5 w-5" />
               ) : (
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className="h-5 w-5" />
               )}
-            </button>
-          )}
-          {inShell && peerRoom.roomId && (
-            <button
-              onClick={leaveRoom}
-              className="flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-              title={peerRoom.isDm ? '关闭私聊' : '退出群聊'}
-            >
-              <LogOut className="h-4 w-4" />
-              <span>{peerRoom.isDm ? '关闭' : '退出'}</span>
             </button>
           )}
         </ConversationHeader>
@@ -480,6 +440,52 @@ export function ChatAppView({
               <div
                 className={`${activeTab !== 'control' ? 'hidden' : 'flex'} min-h-0 flex-col border-l border-[var(--surface-border)]`}
               >
+                <p className="px-4 pt-3 text-[13px] font-medium text-[var(--text-faint)]">
+                  {roomPresenceLabel(peerRoom.isDm, peerRoom.peers.length)}
+                </p>
+                <div className="flex flex-col py-1">
+                  {inShell && !peerRoom.isDm && peerRoom.canManageGroup && (
+                    <button
+                      type="button"
+                      onClick={() => setAgentOpen(true)}
+                      className={SETTINGS_ROW}
+                      title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
+                    >
+                      <Bot className="h-5 w-5 shrink-0 text-[var(--text-soft)]" />
+                      <span className="flex-1">群 AI</span>
+                      {peerRoom.agent && (
+                        <span className="truncate text-sm text-[var(--text-faint)]">
+                          {peerRoom.agent.name}
+                        </span>
+                      )}
+                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+                    </button>
+                  )}
+                  {!peerRoom.isDm && peerRoom.isOwner && (
+                    <button
+                      type="button"
+                      className={SETTINGS_ROW}
+                      onClick={() => {
+                        peerRoom.manageGroupMembership('list');
+                        setMembersOpen(true);
+                      }}
+                    >
+                      <Users className="h-5 w-5 shrink-0 text-[var(--text-soft)]" />
+                      <span className="flex-1">群成员</span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+                    </button>
+                  )}
+                  {inShell && (
+                    <button
+                      type="button"
+                      onClick={leaveRoom}
+                      className={`${SETTINGS_ROW} text-[var(--danger)]`}
+                    >
+                      <LogOut className="h-5 w-5 shrink-0" />
+                      <span className="flex-1">{peerRoom.isDm ? '关闭私聊' : '退出群聊'}</span>
+                    </button>
+                  )}
+                </div>
                 {inShell &&
                   signedIn &&
                   openMemorySettings &&

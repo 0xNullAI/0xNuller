@@ -207,7 +207,8 @@ it('sends a compressed image with the selected quote and clears the quote only a
     />,
   );
   fireEvent.click(screen.getByRole('button', { name: '回复 伙伴' }));
-  expect((screen.getByRole('button', { name: '发送图片' }) as HTMLButtonElement).disabled).toBe(
+  fireEvent.click(screen.getByRole('button', { name: '更多' }));
+  expect((screen.getByRole('menuitem', { name: '发送图片' }) as HTMLButtonElement).disabled).toBe(
     false,
   );
   fireEvent.change(view.container.querySelector('input[type=file]')!, {

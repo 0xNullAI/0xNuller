@@ -49,6 +49,7 @@ export * from './stop-all';
 export { StopFailureBanner } from './components/stop-failure-banner';
 
 export * from './components/conversation-layout';
+export * from './components/conversation-sequence';
 export * from './components/recorded-voice-preview';
 
 export * from './navigation-guard';
