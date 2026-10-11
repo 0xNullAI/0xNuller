@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const generated = join(root, 'android/app/src-tauri/gen/android/app');
