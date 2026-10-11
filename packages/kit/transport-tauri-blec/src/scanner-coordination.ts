@@ -35,7 +35,7 @@ function resolveScannerCoordination(): ScannerCoordinationApi {
         const response = await invoke<ScannerClaimResponse>('dg_blec_claim_scanner');
         return response.leaseId;
       } catch (cause) {
-        const error = new Error('蓝牙扫描器正由其他设备后端使用');
+        const error = new Error('蓝牙正在扫描，请稍后再试');
         (error as Error & { cause?: unknown }).cause = cause;
         throw error;
       }

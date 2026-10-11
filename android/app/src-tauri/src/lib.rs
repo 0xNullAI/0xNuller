@@ -1,10 +1,7 @@
 use tauri::{Emitter, RunEvent};
 
-#[cfg(feature = "experimental-buttplug-gate0")]
-mod buttplug;
-
 #[cfg(target_os = "android")]
-mod buttplug_android;
+mod android_lifecycle;
 mod scan_coordinator;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,9 +10,6 @@ pub fn run() {
     .plugin(tauri_plugin_blec::init())
     .plugin(tauri_plugin_opener::init());
 
-  #[cfg(feature = "experimental-buttplug-gate0")]
-  let builder = buttplug::register(builder);
-  #[cfg(not(feature = "experimental-buttplug-gate0"))]
   let builder = scan_coordinator::register(builder);
 
   builder

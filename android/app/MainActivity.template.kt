@@ -31,13 +31,6 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     // The app opens dark; the page updates this through setSystemBarTheme.
     applySystemBarTheme(dark = true)
-
-    // btleplug 0.12 registers its JNI callbacks and captures Android's global
-    // BLE adapter here. The Rust entry point is a no-op unless Gate 0 was
-    // compiled in, so normal builds keep the experiment unreachable.
-    if (!initializeButtplugGate0()) {
-      Log.d(TAG, "Buttplug Gate 0 is disabled or native initialization failed")
-    }
   }
 
   /** Edge-to-edge shows the window background behind the system bars. */
@@ -49,7 +42,6 @@ class MainActivity : TauriActivity() {
     }
   }
 
-  private external fun initializeButtplugGate0(): Boolean
   private external fun requestNativeLifecycleSafety(): Boolean
 
   override fun onPause() {
@@ -59,8 +51,8 @@ class MainActivity : TauriActivity() {
       "window.dispatchEvent(new Event('0xnullai:native-pause'))",
       null,
     )
-    // Native output and active scanning must stop before Android suspends the
-    // WebView. Scanner ownership is released only after native cleanup.
+    // Active scanning must stop before Android suspends the WebView. Scanner
+    // ownership is released only after native cleanup.
     if (!requestNativeLifecycleSafety()) {
       Log.d(TAG, "Native lifecycle safety is unavailable")
     }
