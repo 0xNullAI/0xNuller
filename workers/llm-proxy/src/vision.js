@@ -1,33 +1,6 @@
-// Cloudflare's Llama 4 Scout catalog (2026-09) lists a 131k context and
-// $0.27/$0.85 per million input/output tokens. The product converts USD to
-// Credit at 1,500 Credit per USD. The full context plus the 4,096 output cap
-// costs at most 59 Credit per camera observation. Auth independently enforces
-// this exact hold so a client cannot lower it.
-export const VISION_MODEL = Object.freeze({
-  id: 'vision',
-  name: '视觉',
-  description: '摄像头画面理解与设备互动',
-  upstreamId: '@cf/meta/llama-4-scout-17b-16e-instruct',
-  inputCreditsPerMillion: 405,
-  cachedInputCreditsPerMillion: 405,
-  outputCreditsPerMillion: 1275,
-  imageInput: true,
-});
-/** Private character chat uses the same priced model, but a different request contract. */
-export const CHAT_VISION_MODEL = Object.freeze({
-  ...VISION_MODEL,
-  id: 'chat-vision',
-  name: '看图聊天',
-  description: '角色聊天中的单张图片理解',
-});
-export const VISION_CONTEXT_TOKENS = 131_000;
-export const VISION_MAX_OUTPUT_TOKENS = 4_096;
-export const VISION_MAX_FRAME_BYTES = 250 * 1024;
-export const VISION_MAX_RESERVATION_CREDITS = Math.ceil(
-  (VISION_CONTEXT_TOKENS * VISION_MODEL.inputCreditsPerMillion +
-    VISION_MAX_OUTPUT_TOKENS * VISION_MODEL.outputCreditsPerMillion) /
-    1_000_000,
-);
+import { outputCap, sha256Hex } from './ark.js';
+
+const VISION_MAX_FRAME_BYTES = 250 * 1024;
 
 /** Reject remote images, extra frames, and unbounded payloads before any hold. */
 export function prepareVisionRequest(body, usageKind, conversationId, runId) {
@@ -142,10 +115,7 @@ export function prepareVisionRequest(body, usageKind, conversationId, runId) {
   });
   if (!chat && !imageBytes) throw new Error('vision_frame_required');
   if (chat && messages.at(-1)?.role === 'system') throw new Error('vision_messages_invalid');
-  const maxTokens = Math.min(
-    Math.max(Math.trunc(Number(body.max_tokens) || 1024), 1),
-    VISION_MAX_OUTPUT_TOKENS,
-  );
+  const maxTokens = outputCap(body);
   return {
     imageBytes,
     modelInput: {
@@ -160,66 +130,28 @@ export function prepareVisionRequest(body, usageKind, conversationId, runId) {
   };
 }
 
-export async function requestHash(modelInput) {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(JSON.stringify(modelInput)),
-  );
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+export function requestHash(modelInput) {
+  return sha256Hex(JSON.stringify(modelInput));
 }
 
-/** The binding can return its native response/tool_calls form instead of choices. */
+/** Only a structured reply or valid structured tool calls is a usable observation. */
 export function normalizeVisionResult(payload) {
-  if (Array.isArray(payload?.choices) && payload.choices.length > 0) {
-    const message = payload.choices[0]?.message;
-    if (!message || (typeof message.content !== 'string' && !Array.isArray(message.tool_calls)))
-      throw new Error('vision_result_invalid');
-    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    for (const call of calls) {
-      if (
-        !call ||
-        call.type !== 'function' ||
-        typeof call.function?.name !== 'string' ||
-        !call.function.name.trim() ||
-        typeof call.function.arguments !== 'string'
-      )
-        throw new Error('vision_tool_call_invalid');
-      JSON.parse(call.function.arguments);
-    }
-    if ((typeof message.content !== 'string' || !message.content.trim()) && calls.length === 0)
-      throw new Error('vision_result_empty');
-    return payload;
-  }
-  if (!payload || (typeof payload.response !== 'string' && !Array.isArray(payload.tool_calls)))
+  const message = Array.isArray(payload?.choices) ? payload.choices[0]?.message : undefined;
+  if (!message || (typeof message.content !== 'string' && !Array.isArray(message.tool_calls)))
     throw new Error('vision_result_invalid');
-  const toolCalls = Array.isArray(payload.tool_calls)
-    ? payload.tool_calls.map((call) => {
-        if (!call || typeof call.name !== 'string' || !call.name.trim())
-          throw new Error('vision_tool_call_invalid');
-        const args =
-          typeof call.arguments === 'string'
-            ? call.arguments
-            : JSON.stringify(call.arguments ?? {});
-        JSON.parse(args);
-        return {
-          id: crypto.randomUUID(),
-          type: 'function',
-          function: { name: call.name, arguments: args },
-        };
-      })
-    : [];
-  if ((typeof payload.response !== 'string' || !payload.response.trim()) && toolCalls.length === 0)
+  const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  for (const call of calls) {
+    if (
+      !call ||
+      call.type !== 'function' ||
+      typeof call.function?.name !== 'string' ||
+      !call.function.name.trim() ||
+      typeof call.function.arguments !== 'string'
+    )
+      throw new Error('vision_tool_call_invalid');
+    JSON.parse(call.function.arguments);
+  }
+  if ((typeof message.content !== 'string' || !message.content.trim()) && calls.length === 0)
     throw new Error('vision_result_empty');
-  return {
-    choices: [
-      {
-        message: {
-          role: 'assistant',
-          content: typeof payload.response === 'string' ? payload.response : '',
-          tool_calls: toolCalls,
-        },
-      },
-    ],
-    usage: payload.usage,
-  };
+  return payload;
 }

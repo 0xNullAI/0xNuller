@@ -1,13 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
-import {
-  CHAT_VISION_MODEL,
-  VISION_MAX_RESERVATION_CREDITS,
-  VISION_MODEL,
-  normalizeVisionResult,
-  prepareVisionRequest,
-  requestHash,
-} from './vision.js';
+import { MAX_OUTPUT_TOKENS } from './ark.js';
+import { normalizeVisionResult, prepareVisionRequest, requestHash } from './vision.js';
 
 const jpeg =
   'data:image/jpeg;base64,' +
@@ -28,11 +22,6 @@ const frame = (url = jpeg) => ({
 describe('private managed visual chat request', () => {
   const chat = (messages, extra = {}) => ({ model: 'chat-vision', messages, ...extra });
   const prepareChat = (body) => prepareVisionRequest(body, 'agent', 'private-chat', 'run:chat:001');
-
-  it('shares the priced upstream while retaining a distinct public model id', () => {
-    expect(CHAT_VISION_MODEL.id).toBe('chat-vision');
-    expect(CHAT_VISION_MODEL.upstreamId).toBe(VISION_MODEL.upstreamId);
-  });
 
   it('keeps role, Memory instructions, tool history and one transient image in the forwarded hash', async () => {
     const messages = [
@@ -91,11 +80,11 @@ const prepare = (body = frame()) =>
   prepareVisionRequest(body, 'video', 'private-chat', 'run:vision:001');
 
 describe('managed visual request', () => {
-  it('quotes the full model context and output cap on the server', () => {
-    expect(VISION_MODEL.inputCreditsPerMillion).toBe(405);
-    expect(VISION_MODEL.outputCreditsPerMillion).toBe(1275);
-    expect(VISION_MAX_RESERVATION_CREDITS).toBe(59);
-    expect(prepare({ ...frame(), max_tokens: 99999 }).modelInput.max_tokens).toBe(4096);
+  it('caps the forwarded output at the shared managed limit', () => {
+    expect(prepare({ ...frame(), max_tokens: 99999 }).modelInput.max_tokens).toBe(
+      MAX_OUTPUT_TOKENS,
+    );
+    expect(prepare({ ...frame(), max_tokens: 64 }).modelInput.max_tokens).toBe(64);
   });
 
   it('keeps one bounded transient data frame and hashes the forwarded body', async () => {
@@ -131,27 +120,36 @@ describe('managed visual request', () => {
     );
   });
 
-  it('normalizes only structured native tool calls, never prose claiming an action', () => {
-    const content = normalizeVisionResult({ response: 'I used a tool.', usage: {} });
-    expect(content.choices[0].message.tool_calls).toEqual([]);
-    const actual = normalizeVisionResult({
-      response: '',
-      tool_calls: [{ name: 'video_device_control', arguments: { action: 'stop' } }],
-      usage: {},
-    });
-    expect(actual.choices[0].message.tool_calls[0]).toMatchObject({
-      type: 'function',
-      function: { name: 'video_device_control', arguments: '{"action":"stop"}' },
-    });
+  it('accepts only a structured reply or valid structured tool calls', () => {
+    const reply = (message) => ({ choices: [{ message }], usage: {} });
+    expect(normalizeVisionResult(reply({ role: 'assistant', content: 'A lamp.' }))).toBeTruthy();
     expect(
-      normalizeVisionResult({
-        tool_calls: [{ name: 'video_device_control', arguments: { action: 'stop' } }],
-        usage: {},
-      }).choices[0].message.content,
-    ).toBe('');
-    expect(() => normalizeVisionResult({ response: '', tool_calls: [{ name: '' }] })).toThrow();
+      normalizeVisionResult(
+        reply({
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'c1',
+              type: 'function',
+              function: { name: 'video_device_control', arguments: '{"action":"stop"}' },
+            },
+          ],
+        }),
+      ).choices[0].message.tool_calls,
+    ).toHaveLength(1);
+    expect(() => normalizeVisionResult(reply({ role: 'assistant', content: ' ' }))).toThrow(
+      'empty',
+    );
     expect(() =>
-      normalizeVisionResult({ choices: [{ message: { role: 'assistant' } }] }),
+      normalizeVisionResult(
+        reply({
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ type: 'function', function: { name: 'x', arguments: 'not json' } }],
+        }),
+      ),
     ).toThrow();
+    expect(() => normalizeVisionResult({ response: 'native form' })).toThrow('invalid');
   });
 });

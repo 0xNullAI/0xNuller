@@ -8,6 +8,9 @@
     "deploy:dry": "wrangler deploy --dry-run",
     "test": "node ../../scripts/run-vitest.mjs run --root ../.. --config vitest.config.ts --project worker-proxies"
   },
+  "dependencies": {
+    "@0xnullai/ai-pricing": "0.1.0"
+  },
   "devDependencies": {
     "vitest": "^4.1.10",
     "wrangler": "^4.130.0"
