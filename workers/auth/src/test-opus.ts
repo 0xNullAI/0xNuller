@@ -96,7 +96,7 @@ export type AsrScript =
 /** A `fetch` that upgrades to a fake recogniser socket and answers after the last packet. */
 export function fakeAsrFetch(script: AsrScript) {
   const sent: Uint8Array[] = [];
-  const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => {
+  const fetcher = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => {
     const listeners = new Map<string, Listener[]>();
     const emit = (type: string, event: { data?: unknown } = {}) =>
       queueMicrotask(() => listeners.get(type)?.forEach((listener) => listener(event)));

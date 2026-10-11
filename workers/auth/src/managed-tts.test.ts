@@ -36,7 +36,9 @@ function provider(characters: number | null = 4) {
   ]);
 }
 function fetcher(characters: number | null = 4) {
-  return vi.fn(async (_url: string, _init?: RequestInit) => provider(characters));
+  return vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () =>
+    provider(characters),
+  );
 }
 async function call(method = 'GET', body?: unknown, account = 'alice', suffix = '') {
   return handleManagedTts(
