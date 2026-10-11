@@ -4,8 +4,9 @@ import { currentUser, type SessionEnv } from './session-domain';
 const PATH = '/api/auth/character-relationships';
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 const MAX_ITEMS = 200;
+const VOICE = /^[A-Za-z0-9_.:-]{0,64}$/;
 const COLUMNS =
-  'id, character_id, ai_nickname, user_preferred_name, relationship_type, notes, version, created_at, updated_at';
+  'id, character_id, ai_nickname, user_preferred_name, relationship_type, notes, voice, version, created_at, updated_at';
 interface RelationshipRow {
   id: string;
   character_id: string;
@@ -13,6 +14,7 @@ interface RelationshipRow {
   user_preferred_name: string;
   relationship_type: string;
   notes: string;
+  voice: string;
   version: number;
   created_at: number;
   updated_at: number;
@@ -25,6 +27,7 @@ function view(row: RelationshipRow) {
     userPreferredName: row.user_preferred_name,
     relationshipType: row.relationship_type,
     notes: row.notes,
+    voice: row.voice,
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -167,6 +170,7 @@ export async function handleCharacterRelationships(
           'userPreferredName',
           'relationshipType',
           'notes',
+          'voice',
         ]);
   if (Object.keys(body).some((key) => !allowed.has(key)))
     return err('包含不支持的字段', 400, headers);
@@ -178,7 +182,7 @@ export async function handleCharacterRelationships(
   if (request.method === 'DELETE') {
     const deleted = await env.DB.prepare(
       `UPDATE character_relationships SET ai_nickname = '', user_preferred_name = '',
-       relationship_type = '', notes = '', deleted_at = ?, updated_at = ?, version = version + 1
+       relationship_type = '', notes = '', voice = '', deleted_at = ?, updated_at = ?, version = version + 1
        WHERE user_id = ? AND id = ? AND version = ? AND deleted_at IS NULL RETURNING id`,
     )
       .bind(now, now, user.id, id, version)
@@ -201,12 +205,16 @@ export async function handleCharacterRelationships(
   ) {
     return err('请填写有效角色编号、称呼/关系（最多 80 字）和备注（最多 4000 字）', 400, headers);
   }
+  // Optional so clients that predate the field keep the saved voice.
+  const voice = body.voice;
+  if (voice !== undefined && (typeof voice !== 'string' || !VOICE.test(voice)))
+    return err('音色无效', 400, headers);
   const row =
     version === 0
       ? await env.DB.prepare(
           `INSERT INTO character_relationships
-       (user_id, id, character_id, ai_nickname, user_preferred_name, relationship_type, notes, version, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, 1, ?, ? WHERE
+       (user_id, id, character_id, ai_nickname, user_preferred_name, relationship_type, notes, voice, version, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ? WHERE
        (SELECT COUNT(*) FROM character_relationships WHERE user_id = ? AND deleted_at IS NULL) < ?
        ON CONFLICT DO NOTHING RETURNING ${COLUMNS}`,
         )
@@ -218,6 +226,7 @@ export async function handleCharacterRelationships(
             userPreferredName.trim(),
             relationshipType.trim(),
             notes.trim(),
+            voice ?? '',
             now,
             now,
             user.id,
@@ -226,7 +235,7 @@ export async function handleCharacterRelationships(
           .first<RelationshipRow>()
       : await env.DB.prepare(
           `UPDATE character_relationships SET ai_nickname = ?, user_preferred_name = ?, relationship_type = ?,
-       notes = ?, version = version + 1, updated_at = ?
+       notes = ?, voice = COALESCE(?, voice), version = version + 1, updated_at = ?
        WHERE user_id = ? AND id = ? AND character_id = ? AND version = ? AND deleted_at IS NULL RETURNING ${COLUMNS}`,
         )
           .bind(
@@ -234,6 +243,7 @@ export async function handleCharacterRelationships(
             userPreferredName.trim(),
             relationshipType.trim(),
             notes.trim(),
+            voice ?? null,
             now,
             user.id,
             id,

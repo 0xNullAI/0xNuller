@@ -8,11 +8,17 @@ export interface CharacterRelationship {
   userPreferredName: string;
   relationshipType: string;
   notes: string;
+  /** Realtime voice for this AI; empty uses the account default. */
+  voice: string;
   version: number;
   createdAt: number;
   updatedAt: number;
 }
-export type CharacterRelationshipInput = Omit<CharacterRelationship, 'createdAt' | 'updatedAt'>;
+export type CharacterRelationshipInput = Omit<
+  CharacterRelationship,
+  'createdAt' | 'updatedAt' | 'voice'
+> &
+  Partial<Pick<CharacterRelationship, 'voice'>>;
 
 async function request<T>(path = '', init: RequestInit = {}): Promise<T> {
   const accountId = currentAuthUserId();

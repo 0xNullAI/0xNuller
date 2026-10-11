@@ -4,10 +4,11 @@ import {
 } from '@0xnullai/auth';
 import { useScenes, usePublicMarketPortrait } from '@0xnullai/scenes/react';
 import { SelectedCharacterPortrait } from '@0xnullai/auth/appearance-react';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
+import { CharacterVoiceField } from './CharacterVoiceField';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
 import {
   getRealtimeProviderDefinition,
@@ -17,6 +18,8 @@ import {
 interface CallPanelProps {
   call: RealtimeCallState;
   providerId: RealtimeProviderId;
+  /** Active provider key, for providers whose voice list is fetched (xAI). */
+  apiKey?: string;
   onStart: () => void;
   onHangUp: () => void;
   onEmergencyStop: () => void;
@@ -26,6 +29,7 @@ interface CallPanelProps {
 export function CallPanel({
   call,
   providerId,
+  apiKey = '',
   onStart,
   onHangUp,
   onEmergencyStop,
@@ -70,7 +74,20 @@ export function CallPanel({
           onEmergencyStop={onEmergencyStop}
         />
       ) : (
-        <IdleCallView call={call} providerId={providerId} onStart={onStart} />
+        <IdleCallView
+          call={call}
+          providerId={providerId}
+          voiceField={
+            characterId ? (
+              <CharacterVoiceField
+                characterId={characterId}
+                providerId={providerId}
+                apiKey={apiKey}
+              />
+            ) : null
+          }
+          onStart={onStart}
+        />
       )}
     </div>
   );
@@ -79,10 +96,12 @@ export function CallPanel({
 function IdleCallView({
   call,
   providerId,
+  voiceField,
   onStart,
 }: {
   call: RealtimeCallState;
   providerId: RealtimeProviderId;
+  voiceField: ReactNode;
   onStart: () => void;
 }) {
   const provider = getRealtimeProviderDefinition(providerId);
@@ -107,6 +126,8 @@ function IdleCallView({
         语音服务：{provider?.name ?? providerId}
         {provider?.pricePerMinuteUsd ? ` · 约 $${provider.pricePerMinuteUsd}/分钟` : ''}
       </p>
+
+      {voiceField}
 
       <Button className="w-full" onClick={onStart}>
         <Phone className="h-4 w-4" />

@@ -203,6 +203,7 @@ export function App() {
           call={call.state}
           onRetryHistory={() => void call.retryHistory()}
           providerId={settings.activeProviderId}
+          apiKey={settings.providers[settings.activeProviderId]?.apiKey ?? ''}
           onStart={() => void call.startCall()}
           onHangUp={() => void call.hangUp()}
           onEmergencyStop={() => void emergencyStop()}

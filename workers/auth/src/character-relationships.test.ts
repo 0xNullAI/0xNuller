@@ -165,3 +165,29 @@ describe('private character relationships', () => {
     );
   });
 });
+
+describe('per-relationship voice', () => {
+  it('keeps the chosen voice across saves that omit it and clears it on delete', async () => {
+    expect((await call('/r1', 'PUT', { ...draft, voice: 'ara' })).status).toBe(201);
+    const updated = (await (
+      await call('/r1', 'PUT', { ...draft, notes: '改了备注', version: 1 })
+    ).json()) as { item: { voice: string; version: number } };
+    expect(updated.item).toMatchObject({ voice: 'ara', version: 2 });
+    const cleared = (await (
+      await call('/r1', 'PUT', { ...draft, voice: '', version: 2 })
+    ).json()) as {
+      item: { voice: string };
+    };
+    expect(cleared.item.voice).toBe('');
+    expect((await call('/r1', 'PUT', { ...draft, voice: 'bad voice!', version: 3 })).status).toBe(
+      400,
+    );
+    expect((await call('/r1', 'DELETE', { version: 3 })).status).toBe(200);
+    const row = await env.DB.prepare(
+      "SELECT voice FROM character_relationships WHERE id='r1'",
+    ).first<{
+      voice: string;
+    }>();
+    expect(row?.voice).toBe('');
+  });
+});

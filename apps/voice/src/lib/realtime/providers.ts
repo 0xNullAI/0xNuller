@@ -219,3 +219,18 @@ export function normalizeRealtimeProviderSettings(
     : 1;
   return normalized;
 }
+
+/**
+ * The voice a character's relationship asks for, if the active provider can
+ * speak it. Voice IDs are provider-specific: a static catalog must contain it;
+ * xAI's list is fetched at runtime, so any saved ID is passed through.
+ * Empty or unknown falls back to the account default (null).
+ */
+export function relationshipVoiceFor(providerId: RealtimeProviderId, voice: string): string | null {
+  const chosen = voice.trim();
+  if (!chosen) return null;
+  const definition = getRealtimeProviderDefinition(providerId);
+  if (!definition) return null;
+  if (definition.voiceSource === 'api') return chosen;
+  return definition.staticVoices?.includes(chosen) ? chosen : null;
+}
