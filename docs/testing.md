@@ -67,6 +67,33 @@ npm run test:kit
 npm run test:mcp
 ```
 
+## 本地联调
+
+全部服务只监听 `127.0.0.1`，数据放在临时目录，不连生产；`--var` 都是本地测试值。
+
+```bash
+S=~/dg-local; mkdir -p $S
+# 首次建库
+npx wrangler d1 migrations apply 0xnullai-auth --local -c workers/auth/wrangler.jsonc --persist-to $S/wstate
+npx wrangler d1 migrations apply dg-market --local -c apps/market/wrangler.jsonc --persist-to $S/wstate
+# 各开一个终端
+npx wrangler dev -c workers/auth/wrangler.jsonc --local --persist-to $S/wstate --port 8787 \
+  --var IP_PEPPER:local-test-pepper --var DM_TICKET_SECRET:local-test-dm-secret \
+  --var ALLOWED_ORIGINS:http://localhost:5173
+npx wrangler dev -c apps/market/wrangler.jsonc --local --persist-to $S/wstate --port 8788 \
+  --inspector-port 9230 --var MARKET_IP_PEPPER:local-market-pepper
+npx wrangler dev -c apps/chat/wrangler.jsonc --local --persist-to $S/wstate --port 8789 \
+  --inspector-port 9231 --var DM_TICKET_SECRET:local-test-dm-secret --var CHAT_BACKUP_TOKEN:local-backup-token
+DEV_API_PROXY=http://127.0.0.1:8787 npm run dev -w @0xnullai/web -- --port 5173 --strictPort
+node scripts/dev/local-router.mjs
+```
+
+打开 `http://localhost:8790`。`scripts/dev/local-router.mjs` 像生产一样把同一来源按路径分到
+Auth、Market、Chat 和 Web。两个测试账号用两个来源登录：`http://localhost:8790` 与
+`http://127.0.0.1:8790`。没有实体郊狼时，在页面控制台粘贴运行 `scripts/dev/fake-coyote.js`
+（模拟 V3 协议，`window.__fakeCoyote` 记录写入），再点「连接设备」。模拟设备只用于界面与链路
+检查，不能代替真机停止验收。真实模型 Key 只在页面里作为自带 Key 输入，不写进仓库或命令行。
+
 ## 交付门禁
 
 ```bash

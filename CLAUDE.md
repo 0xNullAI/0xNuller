@@ -4,14 +4,15 @@
 
 ## 产品与结构
 
-0xNuller 6.0.0 是一个统一 Web 与 Android 应用，包含六个模块：
+0xNuller 是一个统一 Web、Android 与桌面应用，包含七个模块（版本以根 `package.json` 为准）：
 
 1. Control
 2. Agent
 3. Voice
-4. Chat
-5. Playground
-6. Market
+4. Video
+5. Chat
+6. Playground
+7. Market
 
 主要目录：
 
@@ -20,10 +21,11 @@ apps/web              统一 Web 外壳
 apps/control          直接设备控制
 apps/agent            文字 Agent
 apps/voice            实时语音
+apps/video            摄像头理解与视频
 apps/chat             房间、私聊与媒体
 apps/playground       游戏
 apps/market           场景与波形社区
-android/app           单一 Tauri Android 外壳
+android/app           单一 Tauri Android / 桌面外壳
 packages/kit/*        可发布的 @dg-kit 共享层
 packages/platform/*   应用内部共享层
 packages/agent/*      Agent 运行时与浏览器实现
@@ -99,5 +101,6 @@ npm run verify:release
 - 日常开发在 `dev`，发布通过 PR 进入 `main`；
 - Conventional Commits；
 - 作者与提交者必须是 `0xNull <271426072+0xNullAI@users.noreply.github.com>`；
-- 不在仓库设置 `git user.*`；
+- 每个克隆只在仓库本地 `.git/config` 设置上述 `user.name`/`user.email`，不改全局配置；推送使用
+  `0xNullAI` 的 GitHub 登录；
 - 不向旧仓库推送代码；归档与下线是两个独立动作。
