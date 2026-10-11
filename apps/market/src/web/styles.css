@@ -267,12 +267,6 @@
     height: 100%;
     object-fit: cover;
   }
-  .market-detail-portrait {
-    width: 56px;
-    height: 56px;
-    flex: none;
-    border-radius: 16px;
-  }
   .character-studio-prompt-preview {
     padding: 14px;
     border-radius: var(--radius-ctl);
@@ -400,6 +394,10 @@
   }
   .market-search {
     position: relative;
+    /* Own stacking context: the icon's z-index stays inside the field. Without it the icon
+       sits above the shell overlay root (a fixed layer with z-index auto) and shows
+       through the item detail screen. */
+    isolation: isolate;
     flex: 1;
     min-width: 0;
   }
@@ -1123,6 +1121,8 @@
 
   /* Item detail: a dialog on wide screens, a full pushed screen on a phone. */
   .market-detail-bar {
+    position: relative;
+    z-index: 2;
     gap: 4px;
     justify-content: flex-start;
   }
@@ -1133,54 +1133,174 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Wide screens: title, ⋯, then close at the far right. */
   .market-detail-back {
-    order: 2;
+    order: 3;
     margin-right: -10px;
     color: var(--text-soft);
   }
   .market-detail-back-icon {
     display: none;
   }
+  .market-detail-more {
+    position: relative;
+    order: 2;
+    flex: none;
+  }
+  .market-detail-more > .icon-btn {
+    color: var(--text-soft);
+  }
+  .market-detail-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    display: grid;
+    min-width: 168px;
+    padding: 6px;
+    border: 1px solid var(--surface-border);
+    border-radius: 16px;
+    background: var(--bg-elevated);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  }
+  .market-detail-menu button {
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+    text-align: left;
+    transition: background-color var(--dur) ease;
+  }
+  .market-detail-menu button:hover,
+  .market-detail-menu button:active {
+    background: var(--bg-soft);
+  }
+  .market-detail-menu button:disabled {
+    opacity: 0.45;
+  }
+  .market-detail-menu .market-detail-menu-danger {
+    color: var(--danger);
+  }
   .market-detail-identity {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+    padding: 8px 0 4px;
   }
   .market-detail-art {
     display: grid;
     flex: none;
     place-items: center;
-    width: 56px;
-    height: 56px;
+    width: 72px;
+    height: 72px;
     overflow: hidden;
     border-radius: 16px;
     background: var(--accent-soft);
-    font-size: 28px;
+    font-size: 34px;
   }
-  .market-detail-identity .modal-meta {
+  .market-detail-heading {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .market-detail-name {
+    margin: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .market-detail-heading .modal-meta {
     font-size: 13px;
-    line-height: 1.6;
   }
-  .market-detail-tip {
+  .market-detail-author {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+  }
+  .market-detail-actions {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: 8px;
+    min-width: 0;
+  }
+  /* FavoriteAction renders a text toggle; here it becomes a heart icon toggle. The text
+     stays in the DOM as the accessible name. */
+  .market-detail-fav {
+    flex: none;
+  }
+  .market-detail-fav .btn {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 999px;
+    color: transparent;
+    font-size: 0;
+    transition: transform var(--dur) var(--ease-exit);
+  }
+  .market-detail-fav .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .market-detail-fav .btn::before {
+    position: absolute;
+    inset: 10px;
+    background: var(--text-soft);
+    content: '';
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  .market-detail-fav .btn[aria-pressed='true'] {
+    border-color: var(--accent-soft);
+    background: var(--accent-soft);
+  }
+  .market-detail-fav .btn[aria-pressed='true']::before {
+    background: var(--accent);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z'/%3E%3C/svg%3E");
+  }
+  .market-detail-fav [role='status'] {
+    color: var(--text-faint);
+  }
+  .market-detail-tip {
+    flex: none;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 14px;
+  }
+  .market-detail-tip-hint {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-faint);
     font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .market-detail-primary {
     display: flex;
   }
   @media (max-width: 767px) {
-    .market-detail-overlay {
+    /* The overlay element itself carries .mkt-scope, so it needs the compound selector. */
+    &.market-detail-overlay {
       align-items: stretch;
+      justify-content: stretch;
       padding: 0;
     }
     .market-detail {
+      position: fixed;
+      inset: 0;
       max-width: none;
       max-height: none;
-      height: 100%;
+      height: auto;
       padding: 0 16px;
       border: 0;
       border-radius: 0;
@@ -1189,11 +1309,11 @@
     }
     .market-detail-bar {
       position: sticky;
-      z-index: 2;
       top: 0;
+      flex: none;
       min-height: 52px;
       margin: 0 -16px;
-      padding: 0 16px 0 6px;
+      padding: 0 6px;
       background: var(--bg-elevated);
     }
     .market-detail-bar h2 {
@@ -1242,9 +1362,13 @@
       font-weight: 600;
     }
   }
-  @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
-    .market-detail {
+  @media (prefers-reduced-motion: reduce) {
+    .market-detail,
+    .market-detail-menu {
       animation: none;
+    }
+    .market-detail-fav .btn:active:not(:disabled) {
+      transform: none;
     }
   }
 

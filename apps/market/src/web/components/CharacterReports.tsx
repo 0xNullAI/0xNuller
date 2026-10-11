@@ -17,20 +17,44 @@ const reasons: Record<CharacterReportReason, string> = {
   spam: '垃圾信息或诈骗',
 };
 const subscribe = (notify: () => void) => subscribeAuthChanges(() => notify());
-export function CharacterReportAction({ itemId }: { itemId: string }) {
+export function CharacterReportAction({
+  itemId,
+  defaultOpen = false,
+}: {
+  itemId: string;
+  /** Opened from a menu item that already said 举报: show the form at once. */
+  defaultOpen?: boolean;
+}) {
   const account = useSyncExternalStore(subscribe, currentAuthUserId, () => null);
-  return <ReportForm key={`${account}:${itemId}`} account={account} itemId={itemId} />;
+  return (
+    <ReportForm
+      key={`${account}:${itemId}`}
+      account={account}
+      itemId={itemId}
+      defaultOpen={defaultOpen}
+    />
+  );
 }
-function ReportForm({ account, itemId }: { account: string | null; itemId: string }) {
-  const [open, setOpen] = useState(false);
+function ReportForm({
+  account,
+  itemId,
+  defaultOpen,
+}: {
+  account: string | null;
+  itemId: string;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [reason, setReason] = useState<CharacterReportReason>('unsafe');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   return (
     <div className="space-y-2 text-sm">
-      <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>
-        举报角色
-      </Button>
+      {!defaultOpen && (
+        <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>
+          举报角色
+        </Button>
+      )}
       {open && (
         <div className="space-y-2 rounded-xl border border-[var(--surface-border)] p-3">
           <p className="text-xs">

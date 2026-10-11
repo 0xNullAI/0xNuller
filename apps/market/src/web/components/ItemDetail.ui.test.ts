@@ -1,4 +1,3 @@
-vi.mock('./CreatorFollowAction', () => ({ CreatorFollowAction: () => null }));
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -6,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ItemDetail } from './ItemDetail';
 import type { MarketItem } from '../../shared/schema';
 vi.mock('./FavoriteAction', () => ({ FavoriteAction: () => null }));
+vi.mock('./CharacterReports', () => ({ CharacterReportAction: () => 'report-form' }));
 const api = vi.hoisted(() => ({ update: vi.fn(), copy: vi.fn() }));
 vi.mock('@0xnullai/ui', () => ({
   Button: 'button',
@@ -13,6 +13,8 @@ vi.mock('@0xnullai/ui', () => ({
 }));
 vi.mock('../api', () => ({
   fetchItemAccess: async () => ({ canEdit: true, canDelete: false }),
+  fetchCreatorFollow: async () => ({ creator: null, followed: false, accountId: 'user' }),
+  saveCreatorFollow: vi.fn(),
   updateItem: api.update,
   markDownloaded: async () => {},
   deleteItem: vi.fn(),
@@ -38,6 +40,11 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+// Secondary actions live in the ⋯ menu.
+async function openMenuItem(name: string): Promise<HTMLElement> {
+  fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+  return screen.findByRole('menuitem', { name });
+}
 it('copies the entire long script, including escapes and its final characters', async () => {
   render(createElement(ItemDetail, { item, onClose: () => {} }));
   await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
@@ -46,7 +53,7 @@ it('copies the entire long script, including escapes and its final characters', 
 });
 it('retains oversized editor text, rejects saving, and saves all text after correction', async () => {
   render(createElement(ItemDetail, { item, onClose: () => {} }));
-  fireEvent.click(await screen.findByRole('button', { name: '✏️ 编辑' }));
+  fireEvent.click(await openMenuItem('编辑'));
   const input = screen.getByRole('textbox', { name: /剧本内容/ }) as HTMLTextAreaElement;
   expect(input.hasAttribute('maxlength')).toBe(false);
   const oversized = '界'.repeat(100000) + '末尾';
@@ -90,7 +97,7 @@ it('保留角色卡导出，并允许所有者修改结构化人物设定', asyn
   );
   await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
   expect(JSON.parse(api.copy.mock.calls[0]![0]).characterCard).toEqual(characterCard);
-  fireEvent.click(await screen.findByRole('button', { name: '✏️ 编辑' }));
+  fireEvent.click(await openMenuItem('编辑'));
   fireEvent.change(screen.getByRole('textbox', { name: /性格与表达方式/ }), {
     target: { value: '幽默而细心' },
   });
@@ -157,4 +164,17 @@ it('updates the visible export when the full detail arrives after a list card', 
   view.rerender(createElement(ItemDetail, { item: full, onClose: () => {} }));
   await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
   expect(JSON.parse(api.copy.mock.calls[0]![0]).sourceArchive).toEqual(full.content.sourceArchive);
+});
+
+it('keeps secondary actions in the ⋯ menu and closes it on Escape without closing the screen', async () => {
+  const onClose = vi.fn();
+  render(createElement(ItemDetail, { item, onClose }));
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(await openMenuItem('举报'));
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.getByText('report-form')).toBeTruthy();
+  const download = await openMenuItem('下载 .json');
+  fireEvent.keyDown(download, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(onClose).not.toHaveBeenCalled();
 });

@@ -1,23 +1,26 @@
+import { requestProfileView, subscribeAuthChanges } from '@0xnullai/auth';
 import { CharacterReportAction } from './CharacterReports';
-import { CreatorFollowAction } from './CreatorFollowAction';
 import { FavoriteAction } from './FavoriteAction';
 import { parseCharacterCard, type CharacterCard } from '@0xnullai/scenes/character-card';
 import { CharacterCardFields } from '@0xnullai/scenes/character-editor';
 import { scriptLengthError } from '../script-length';
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
-import { ChevronLeft, X } from 'lucide-react';
+import { ChevronLeft, MoreHorizontal, X } from 'lucide-react';
 import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent } from '../../shared/schema';
 import { isExtraLargeScenario, promptKind } from '../../shared/schema';
 import { MAX_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
 import {
   characterPortraitUrl,
   deleteItem,
+  fetchCreatorFollow,
   fetchItemAccess,
+  saveCreatorFollow,
   updateItem,
   markDownloaded,
   tipItem,
+  type CreatorFollowState,
 } from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
@@ -82,6 +85,12 @@ export function ItemDetail({
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState('');
   const [importedScene, setImportedScene] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [follow, setFollow] = useState<CreatorFollowState | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +101,33 @@ export function ItemDetail({
       active = false;
     };
   }, [item.id]);
+
+  // Follow state is read here: the hero already shows @author, so only the
+  // follow toggle remains, in the ⋯ menu.
+  useEffect(() => {
+    let live = true;
+    fetchCreatorFollow(item.id)
+      .then((next) => live && setFollow(next))
+      .catch(() => live && setFollow(null));
+    const stop = subscribeAuthChanges(() => {
+      live = false;
+      setFollow(null);
+    });
+    return () => {
+      live = false;
+      stop();
+    };
+  }, [item.id]);
+
+  // Close the ⋯ menu on a press outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   const hasIcon = view.type !== 'waveform';
 
@@ -242,15 +278,35 @@ export function ItemDetail({
   const handleDelete = async () => {
     if (!window.confirm('确定删除这条内容吗？')) return;
     setDeleting(true);
-    setEditErr('');
+    setActionError('');
     try {
       await deleteItem(item.id);
       onDeleted?.(item.id);
       onClose();
     } catch (error) {
-      setEditErr(error instanceof Error ? error.message : '删除失败');
+      setActionError(error instanceof Error ? error.message : '删除失败');
       setDeleting(false);
     }
+  };
+
+  const handleFollow = async () => {
+    if (!follow?.creator || followBusy) return;
+    setFollowBusy(true);
+    setActionError('');
+    try {
+      await saveCreatorFollow(item.id, follow.creator.id, !follow.followed, follow.accountId);
+      setFollow({ ...follow, followed: !follow.followed });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '关注失败');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  // Every ⋯ item closes the menu first, then acts.
+  const fromMenu = (action: () => void) => () => {
+    setMenuOpen(false);
+    action();
   };
 
   const pulse = view.type === 'waveform' ? (view.content as WaveformContent).pulse : undefined;
@@ -272,6 +328,20 @@ export function ItemDetail({
         {starting ? '正在导入…' : importedScene ? '已导入场景' : '导入场景'}
       </button>
     ) : null;
+  const canFollow = Boolean(follow?.creator && follow.creator.id !== follow.accountId);
+  const editLabel =
+    view.type === 'scenario' && onEditCharacter ? `编辑${isCharacter ? '角色' : '场景'}` : '编辑';
+  const author = view.verifiedCreator ? (
+    <button
+      type="button"
+      className="market-detail-author"
+      onClick={() => requestProfileView(view.verifiedCreator!.username)}
+    >
+      @{view.verifiedCreator.username}
+    </button>
+  ) : (
+    view.author || '未认证作者'
+  );
 
   return (
     <Overlay onDismiss={onClose} className="mkt-scope market-detail-overlay">
@@ -281,7 +351,8 @@ export function ItemDetail({
         aria-labelledby="market-item-title"
         className="modal market-detail"
       >
-        {/* One bar: back (a phone pushes this screen) or close (a dialog on wide screens). */}
+        {/* One bar: back (a phone pushes this screen) or close (a dialog on wide screens),
+            the title, and one ⋯ menu that holds every secondary action. */}
         <header className="modal-head market-detail-bar">
           <button
             type="button"
@@ -293,6 +364,92 @@ export function ItemDetail({
             <X className="market-detail-close-icon h-5 w-5" aria-hidden="true" />
           </button>
           <h2 id="market-item-title">{view.name}</h2>
+          <div
+            ref={moreRef}
+            className="market-detail-more"
+            onKeyDown={(event) => {
+              // Escape closes only the menu; the Overlay would otherwise close the screen.
+              if (event.key === 'Escape' && menuOpen) {
+                event.stopPropagation();
+                setMenuOpen(false);
+              }
+            }}
+          >
+            <button
+              type="button"
+              className="icon-btn ui-press"
+              aria-label="更多操作"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+            </button>
+            {menuOpen && (
+              <div role="menu" aria-label="更多操作" className="market-detail-menu ui-menu-in">
+                {primaryAction && (
+                  <button type="button" role="menuitem" onClick={fromMenu(() => void handleCopy())}>
+                    复制 JSON
+                  </button>
+                )}
+                <button type="button" role="menuitem" onClick={fromMenu(handleDownload)}>
+                  下载 .json
+                </button>
+                {pulse && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() => download(`${view.name}.pulse`, pulse))}
+                  >
+                    下载 .pulse
+                  </button>
+                )}
+                {canFollow && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={followBusy}
+                    onClick={fromMenu(() => void handleFollow())}
+                  >
+                    {follow?.followed ? '取消关注作者' : '关注作者'}
+                  </button>
+                )}
+                {view.type === 'scenario' && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() => setReporting(true))}
+                  >
+                    举报
+                  </button>
+                )}
+                {!editing && access.canEdit && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() =>
+                      view.type === 'scenario' && onEditCharacter
+                        ? onEditCharacter(view)
+                        : startEdit(),
+                    )}
+                  >
+                    {editLabel}
+                  </button>
+                )}
+                {!editing && access.canDelete && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="market-detail-menu-danger"
+                    disabled={deleting}
+                    onClick={fromMenu(() => void handleDelete())}
+                  >
+                    {deleting ? '删除中…' : '删除'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="market-detail-identity">
@@ -309,39 +466,53 @@ export function ItemDetail({
               view.icon || '🎭'
             )}
           </span>
-          <p className="modal-meta">
-            {view.type === 'waveform'
-              ? (view.content as WaveformContent).modality === 'vibration'
-                ? '震动波形'
-                : '电击波形'
-              : isCharacter
-                ? '角色'
-                : '场景'}
-            {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent)
-              ? ' · 超大场景'
-              : ''}
-            {' · '}
-            {view.verifiedCreator
-              ? `@${view.verifiedCreator.username}`
-              : view.author || '未认证作者'}
-            <br />
-            <span className="tabular-nums">
+          <div className="market-detail-heading">
+            <p className="market-detail-name">{view.name}</p>
+            <p className="modal-meta">
+              {view.type === 'waveform'
+                ? (view.content as WaveformContent).modality === 'vibration'
+                  ? '震动波形'
+                  : '电击波形'
+                : isCharacter
+                  ? '角色'
+                  : '场景'}
+              {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent)
+                ? ' · 超大场景'
+                : ''}
+              {' · '}
+              {author}
+            </p>
+            <p className="modal-meta tabular-nums">
               {view.views} 次浏览 · {view.downloads} 次下载
-            </span>
-          </p>
+            </p>
+          </div>
+        </div>
+
+        <div className="market-detail-actions">
+          <div className="market-detail-fav">
+            <FavoriteAction key={view.id} itemId={view.id} />
+          </div>
+          <button
+            type="button"
+            className="btn market-detail-tip ui-press"
+            onClick={() => void handleTip()}
+          >
+            打赏
+          </button>
+          <span className="market-detail-tip-hint">每位用户首次下载，作者获得 5 Credit</span>
         </div>
 
         {view.description?.trim() && <p className="modal-desc">{view.description}</p>}
-        <div className="market-detail-tip">
-          <button type="button" className="btn ui-press" onClick={() => void handleTip()}>
-            给作者打赏
-          </button>
-          <span>每位用户首次下载，作者获得 5 Credit</span>
-        </div>
+
+        {reporting && view.type === 'scenario' && (
+          <div className="market-detail-report">
+            <CharacterReportAction itemId={view.id} defaultOpen />
+          </div>
+        )}
 
         {editing && (
           <div className="admin-edit">
-            <p className="admin-edit-title">✏️ 编辑内容</p>
+            <p className="admin-edit-title">编辑内容</p>
             <label className="field">
               <span>名称 *</span>
               <input value={eName} onChange={(e) => setEName(e.target.value)} maxLength={60} />
@@ -432,51 +603,15 @@ export function ItemDetail({
           </div>
         )}
 
-        {copyError && (
-          <p role="alert" className="error">
-            {copyError}
+        {[copyError, actionError, startError].filter(Boolean).map((message) => (
+          <p key={message} role="alert" className="error">
+            {message}
           </p>
-        )}
-        <CreatorFollowAction key={`creator:${view.id}`} itemId={view.id} />
-        <FavoriteAction key={view.id} itemId={view.id} />
-        {view.type === 'scenario' && <CharacterReportAction itemId={view.id} />}
-        <div className="modal-actions">
-          {primaryAction && (
-            <button className="btn" onClick={handleCopy}>
-              {copied ? '已复制 ✓' : '复制 JSON'}
-            </button>
-          )}
-          <button className="btn" onClick={handleDownload}>
-            下载 .json
-          </button>
-          {pulse && (
-            <button className="btn" onClick={() => download(`${view.name}.pulse`, pulse)}>
-              下载 .pulse
-            </button>
-          )}
-          {!editing && access.canEdit && (
-            <button
-              className="btn ghost"
-              onClick={() =>
-                view.type === 'scenario' && onEditCharacter ? onEditCharacter(view) : startEdit()
-              }
-              title="编辑自己的内容"
-            >
-              {view.type === 'scenario' && onEditCharacter
-                ? `✏️ 编辑${isCharacter ? '角色' : '场景'}`
-                : '✏️ 编辑'}
-            </button>
-          )}
-          {!editing && access.canDelete && (
-            <button className="btn ghost" onClick={() => void handleDelete()} disabled={deleting}>
-              {deleting ? '删除中…' : '删除'}
-            </button>
-          )}
-        </div>
-
-        {startError && (
-          <p role="alert" className="error">
-            {startError}
+        ))}
+        {/* The menu closes on copy, so its success needs its own line. */}
+        {copied && primaryAction && (
+          <p role="status" className="modal-hint">
+            已复制 JSON
           </p>
         )}
 
