@@ -159,9 +159,11 @@ function DeviceChip({
 export function DeviceBar({
   activeSessionId = null,
   showConnect = true,
+  elementId = 'shl-device-bar',
 }: {
   activeSessionId?: string | null;
   showConnect?: boolean;
+  elementId?: string;
 }) {
   const groups = useConnectedDevices();
   const [stopping, setStopping] = useState(false);
@@ -192,7 +194,7 @@ export function DeviceBar({
 
   return (
     <div
-      id="shl-device-bar"
+      id={elementId}
       className="flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2.5 py-1"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">

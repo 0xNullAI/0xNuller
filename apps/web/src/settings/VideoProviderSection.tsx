@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { SettingSelect } from '@0xnullai/ui';
 import {
   VIDEO_LLM_CONFIG_VERSION,
@@ -6,10 +6,12 @@ import {
   filterVideoModelIds,
   getBrowserProviderDefinitions,
   getProviderDefinition,
+  getModelCatalogVersion,
   getProviderImageModels,
   isVideoLlmConfigured,
   loadVideoLlmConfig,
   saveVideoLlmConfig,
+  subscribeModelCatalog,
   subscribeVideoLlmConfig,
   supportsProviderModelImageInput,
   type ProviderId,
@@ -27,11 +29,14 @@ export function VideoProviderSection() {
 
   useEffect(() => subscribeVideoLlmConfig(setConfig), []);
 
+  // Vision-capable models come from the models.dev catalog, which may arrive after mount.
+  const catalogVersion = useSyncExternalStore(subscribeModelCatalog, getModelCatalogVersion);
   const definition = getProviderDefinition(config.providerId as ProviderId);
   const knownModels = useMemo(
     () =>
       definition ? filterVideoModelIds(definition.id, getProviderImageModels(definition.id)) : [],
-    [definition],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute when the catalog arrives
+    [definition, catalogVersion],
   );
   const models = discoveredModels
     ? [...new Set([...knownModels, ...discoveredModels])]

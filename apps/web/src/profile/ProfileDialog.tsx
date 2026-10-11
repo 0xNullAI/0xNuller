@@ -4,7 +4,6 @@ import {
   CalendarDays,
   Flag,
   Link2,
-  Lock,
   MapPin,
   MessageSquare,
   MoreHorizontal,
@@ -12,6 +11,7 @@ import {
   ShieldOff,
 } from 'lucide-react';
 import { Badge, Button, Overlay } from '@0xnullai/ui';
+import { safeProfileLinks } from '@0xnullai/auth/profile-links';
 import {
   beginFollowToggle,
   blockUser,
@@ -34,21 +34,14 @@ import {
 import { openDirectMessage } from '../dm-entry';
 import { cleanProfile, ProfileForm } from './ProfileForm';
 import { formatJoined, ProfileIdentity, ProfileMeta, ProfileSection, ProfileStats } from './frame';
+import { ProfileWorks } from './ProfileWorks';
 
 /**
  * Somebody's profile — including your own, which is the same surface in edit
  * mode rather than a separate form somewhere else.
  *
- * **The UI never decides who may see what.** The account service returns
- * exactly what the viewer is entitled to: a private profile arrives with no
- * body, no counts and no join date, and a block arrives as "no such user".
- * Everything here is derived from that answer by `resolveProfileView`, so
- * there is no branch that could render a value the server withheld — the
- * hidden case simply has no fields on it.
- *
- * Signed out is a first-class state, not a degraded one. Anonymous use is a
- * hard product constraint: a public profile is readable with no account, and
- * the actions that do need one say so instead of failing.
+ * The account service requires login, hides blocked users and filters private
+ * album photos. The UI displays only the returned profile projection.
  */
 
 type Mode = 'view' | 'edit';
@@ -58,11 +51,13 @@ export function ProfileDialog({
   viewer,
   onClose,
   presentation = 'dialog',
+  onOpenMarketItem,
 }: {
   username: string;
   viewer: AuthUser | null;
   onClose: () => void;
   presentation?: 'dialog' | 'page';
+  onOpenMarketItem?: (id: string) => void;
 }) {
   const [resolved, setResolved] = useState<ResolvedProfile | null>(null);
   const [follow, setFollow] = useState<FollowState | null>(null);
@@ -208,7 +203,12 @@ export function ProfileDialog({
             <ProfileForm draft={draft} onChange={setDraft} />
           </div>
         ) : (
-          <ProfileBody resolved={resolved} follow={follow} />
+          <ProfileBody
+            resolved={resolved}
+            follow={follow}
+            viewerId={viewerId}
+            onOpenMarketItem={onOpenMarketItem}
+          />
         )}
       </div>
 
@@ -217,7 +217,7 @@ export function ProfileDialog({
           {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] text-[var(--text-faint)]">
-              {draft.visibility === 'public' ? '所有人可见' : '仅自己可见'}
+              登录用户可见 · 相册照片可单独设置范围
             </span>
             <div className="flex items-center gap-2">
               <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
@@ -250,13 +250,17 @@ export function ProfileDialog({
   return presentation === 'page' ? content : <Overlay onDismiss={onClose}>{content}</Overlay>;
 }
 
-/** Everything above the action bar, in both the visible and the hidden case. */
+/** Everything above the action bar. */
 function ProfileBody({
   resolved,
   follow,
+  viewerId,
+  onOpenMarketItem,
 }: {
   resolved: Exclude<ResolvedProfile, { state: 'unavailable' }>;
   follow: FollowState | null;
+  viewerId: string | null;
+  onOpenMarketItem?: (id: string) => void;
 }) {
   const mutual = follow?.following === true && follow.followedBy === true;
   const badge = mutual ? (
@@ -265,27 +269,8 @@ function ProfileBody({
     <Badge>关注了你</Badge>
   ) : null;
 
-  if (resolved.state === 'hidden') {
-    return (
-      <div className="flex flex-col gap-6">
-        <ProfileIdentity
-          displayName={resolved.user.displayName}
-          username={resolved.user.username}
-          badge={badge}
-        />
-        {/* No counts, no join date, no placeholder rows. A greyed-out skeleton
-            of what is being withheld still tells the viewer this account is
-            active and how popular it is, which is what private was for. */}
-        <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3">
-          <Lock className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
-          <p className="text-sm text-[var(--text-soft)]">主页内容不可见</p>
-        </div>
-      </div>
-    );
-  }
-
   const joined = formatJoined(resolved.createdAt);
-  const links = resolved.profile.links.filter((l) => l.trim());
+  const links = safeProfileLinks(resolved.profile.links);
 
   return (
     <div className="flex flex-col gap-6">
@@ -377,6 +362,10 @@ function ProfileBody({
           </div>
         </ProfileSection>
       )}
+
+      {viewerId && (
+        <ProfileWorks creatorId={resolved.user.id} viewerId={viewerId} onOpen={onOpenMarketItem} />
+      )}
     </div>
   );
 }
@@ -418,32 +407,10 @@ function ProfileActions({
   if (relationship === 'self') {
     return (
       <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-        <span className="text-xs text-[var(--text-faint)]">
-          {resolved.state === 'visible' && resolved.profile.visibility === 'public'
-            ? resolved.profile.discoverable
-              ? '公开 · 可在交友中发现'
-              : '公开主页'
-            : resolved.state === 'visible' && resolved.profile.visibility === 'friends'
-              ? '仅好友可见'
-              : '仅自己可见'}
-        </span>
+        <span className="text-xs text-[var(--text-faint)]">公开主页</span>
         <Button onClick={onEdit}>
           <Pencil className="h-4 w-4" />
           编辑资料
-        </Button>
-      </div>
-    );
-  }
-
-  if (relationship === 'anonymous') {
-    return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-        {/* Signed out is not broken. The profile above is fully readable; only
-            the actions that need an identity are unavailable, and they say so
-            rather than being offered and then failing. */}
-        <span className="text-xs text-[var(--text-faint)]">登录后可关注和私聊</span>
-        <Button variant="secondary" onClick={onClose}>
-          关闭
         </Button>
       </div>
     );

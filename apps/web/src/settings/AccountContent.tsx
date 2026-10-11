@@ -1,4 +1,6 @@
+import { BillingOrdersPanel } from './BillingOrdersPanel';
 import { publicPageUrl } from '@0xnullai/settings';
+import { CreditActivityPanel } from './CreditActivityPanel';
 import { useEffect, useState } from 'react';
 import { Check, Coins, Copy, Gift, Laptop, Share2 } from 'lucide-react';
 import { Avatar, Button, Input } from '@0xnullai/ui';
@@ -7,7 +9,6 @@ import {
   avatarSrc,
   deleteAccount,
   getCreditBalance,
-  getCreditLedger,
   getReferralSummary,
   listAccountSessions,
   login,
@@ -24,27 +25,8 @@ import {
   type AccountSession,
   type AuthUser,
   type CreditBalance,
-  type CreditLedgerEntry,
   type ReferralSummary,
 } from '@0xnullai/auth';
-
-function creditEntryLabel(kind: CreditLedgerEntry['kind']): string {
-  return (
-    (
-      {
-        referral_reward: '邀请奖励',
-        market_download_reward: '场景下载赠送',
-        red_packet: '口令红包',
-        manual_purchase: '人工充值',
-        admin_gift: '管理员赠送',
-        usage: '模型使用',
-        refund: '退款',
-        support_adjustment: '客服调整',
-        billing_correction: '账务冲正',
-      } as const
-    )[kind] ?? '其他调整'
-  );
-}
 
 function Agreement() {
   return (
@@ -94,8 +76,10 @@ export function AccountContent({
   const [agreed, setAgreed] = useState(false);
   const [referralCode, setReferralCode] = useState(initialReferralCode.toUpperCase());
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
-  const [credit, setCredit] = useState<CreditBalance | null>(null);
-  const [creditEntries, setCreditEntries] = useState<CreditLedgerEntry[]>([]);
+  const [creditState, setCreditState] = useState<{
+    accountId: string;
+    balance: CreditBalance;
+  } | null>(null);
   const [creditExpanded, setCreditExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inviteExpanded, setInviteExpanded] = useState(false);
@@ -128,26 +112,27 @@ export function AccountContent({
 
   useEffect(() => {
     if (!user) return;
+    let active = true;
     const refresh = () =>
-      void Promise.all([getCreditBalance(), getCreditLedger({ limit: 10 })])
-        .then(([balance, ledger]) => {
-          setCredit(balance);
-          setCreditEntries(ledger.entries);
+      void getCreditBalance()
+        .then((balance) => {
+          if (active) setCreditState({ accountId: user.id, balance });
         })
         .catch(() => {
-          setCredit(null);
-          setCreditEntries([]);
+          if (active) setCreditState(null);
         });
     refresh();
     const timer = window.setInterval(refresh, 15_000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
+      active = false;
       window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [user]);
+  const credit = creditState && creditState.accountId === user?.id ? creditState.balance : null;
 
   const visibleReferral = user?.emailVerified ? referral : null;
 
@@ -286,32 +271,9 @@ export function AccountContent({
                   正在使用：{credit.reserved} Credit
                 </p>
               ) : null}
-              <div className="mt-3 space-y-1.5">
-                {creditEntries.length ? (
-                  creditEntries.map((entry) => (
-                    <div
-                      key={`${entry.kind}:${entry.referenceId}`}
-                      className="flex items-center justify-between gap-3 text-xs"
-                    >
-                      <span className="min-w-0 truncate text-[var(--text-soft)]">
-                        {creditEntryLabel(entry.kind)} ·{' '}
-                        {new Date(entry.createdAt).toLocaleDateString()}
-                      </span>
-                      <span
-                        className={
-                          entry.amountCredits >= 0
-                            ? 'shrink-0 tabular-nums text-[var(--success)]'
-                            : 'shrink-0 tabular-nums text-[var(--text)]'
-                        }
-                      >
-                        {entry.amountCredits > 0 ? '+' : ''}
-                        {entry.amountCredits}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-[var(--text-faint)]">暂无 Credit 记录</p>
-                )}
+              <div className="mt-3">
+                <BillingOrdersPanel accountId={user.id} />
+                <CreditActivityPanel accountId={user.id} />
               </div>
             </div>
           ) : null}

@@ -161,6 +161,18 @@ interface AndroidSystemBridge {
   openAppSettings(): void;
   openBluetoothSettings(): void;
   openLocationSettings(): void;
+  isPushConfigured(): boolean;
+  hasNotificationPermission(): boolean;
+  requestNotificationPermission(): void;
+  ensurePushChannels(): void;
+  setPushAccountId(accountId: string): void;
+  registerPush(): void;
+  unregisterPush(): void;
+  getPushRegistrationId(): string;
+  getPushInstallationKey?(): string;
+  getPreviousPushRegistrationId?(): string;
+  consumePushRoute(): string;
+  consumePushTarget?(): string;
 }
 
 declare global {

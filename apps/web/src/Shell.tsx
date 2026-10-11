@@ -1,11 +1,13 @@
+import { allowGuardedNavigation, installHistoryNavigationGuard } from '@0xnullai/ui';
 import { PersistenceNotice } from './PersistenceNotice';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { LogIn, Menu } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Compass, Cpu, MessageCircle, UserRound, Users } from 'lucide-react';
 import {
   useTheme,
   subscribeMediaQuery,
   ShellChromeProvider,
   type ShellSettingsTab,
+  type ShellSettingsContext,
   ModuleActionsProvider,
   useModuleActionsContainer,
   SidebarSectionsProvider,
@@ -14,19 +16,24 @@ import {
   StopFailureBanner,
   useOverlayRoot,
   useModuleOverlayLayer,
-  Z_SHELL,
-  Z_SHELL_PANEL,
+  Avatar,
+  ShellNavProvider,
 } from '@0xnullai/ui';
 import {
   me,
   getCreditBalance,
+  avatarSrc,
+  subscribeAuthChanges,
   subscribeProfileChanges,
   subscribeProfileRequests,
   type AuthUser,
 } from '@0xnullai/auth';
+import { loadModelCatalog } from '@0xnullai/llm-providers';
 import { MODULES, moduleIdFromPath } from './routes';
-import { Home } from './Home';
-import { Sidebar } from './Sidebar';
+import { useUnreadMessages } from './unread-messages';
+import { UnreadBadge } from './UnreadBadge';
+import { InboxColumn, NavRail } from './Sidebar';
+import { UnifiedInbox } from './UnifiedInbox';
 import { DeviceBar } from './DeviceBar';
 const ContactsDialog = lazy(() =>
   import('./ContactsDialog').then((module) => ({ default: module.ContactsDialog })),
@@ -37,6 +44,9 @@ const ProfileDialog = lazy(() =>
 const SettingsPanel = lazy(() =>
   import('./settings/SettingsPanel').then((module) => ({ default: module.SettingsPanel })),
 );
+const AccountContent = lazy(() =>
+  import('./settings/AccountContent').then((module) => ({ default: module.AccountContent })),
+);
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 const DocsDialog = lazy(() =>
   import('./DocsDialog').then((module) => ({ default: module.DocsDialog })),
@@ -44,15 +54,8 @@ const DocsDialog = lazy(() =>
 import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
- * The unified shell. **Two columns**: sidebar on the left, content area on the
- * right, no top bar.
- *
- * Dropping the top bar was not only about saving one strip: every module already
- * has a header of its own, so two of them ended up stacked, and the module name
- * duplicated the item highlighted in the shell navigation. App switching now
- * lives at the top of the sidebar (click the name to open it), the module's own
- * buttons are projected into the top of the content area, and all the screen
- * height goes back to the content.
+ * Desktop uses one navigation column, with the conversation list below the
+ * primary destinations while chatting. Mobile keeps its message-first tabs.
  *
  * The previous shell failed in three places, all of them now solved at the
  * contract level:
@@ -75,7 +78,14 @@ interface RouteState {
 }
 
 function nextState(prev: RouteState, pathname: string): RouteState {
-  const id = moduleIdFromPath(pathname);
+  // The narrow root is the inbox, so do not boot the Agent runtime until an AI
+  // conversation is actually opened. Desktop root still opens the chat pane.
+  const mobileInbox =
+    pathname === '/' &&
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 767px)').matches;
+  const id = mobileInbox ? null : moduleIdFromPath(pathname);
   const opened = id && !prev.opened.includes(id) ? [...prev.opened, id] : prev.opened;
   return { pathname, opened };
 }
@@ -84,7 +94,7 @@ function nextState(prev: RouteState, pathname: string): RouteState {
  *  updated in the same transition — a ref would mean writing a ref during render
  *  (unsafe under concurrent rendering), and keeping it in separate state written
  *  back from an effect would cost an extra cascading render. */
-function useHistoryRoute(): [RouteState, (path: string) => void, (moduleId: string) => void] {
+function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: string) => void] {
   const [state, setState] = useState<RouteState>(() =>
     nextState(
       { pathname: '/', opened: [] },
@@ -93,9 +103,13 @@ function useHistoryRoute(): [RouteState, (path: string) => void, (moduleId: stri
   );
 
   useEffect(() => {
+    const uninstallGuard = installHistoryNavigationGuard();
     const sync = () => setState((prev) => nextState(prev, window.location.pathname));
     window.addEventListener('popstate', sync);
-    return () => window.removeEventListener('popstate', sync);
+    return () => {
+      window.removeEventListener('popstate', sync);
+      uninstallGuard();
+    };
   }, []);
 
   const navigate = useCallback((path: string) => {
@@ -104,9 +118,11 @@ function useHistoryRoute(): [RouteState, (path: string) => void, (moduleId: stri
       `${window.location.pathname}${window.location.search}` ===
       `${target.pathname}${target.search}`
     )
-      return;
+      return true;
+    if (!allowGuardedNavigation(target)) return false;
     window.history.pushState(null, '', path);
     setState((prev) => nextState(prev, target.pathname));
+    return true;
   }, []);
 
   const ensureModuleOpened = useCallback((moduleId: string) => {
@@ -118,9 +134,39 @@ function useHistoryRoute(): [RouteState, (path: string) => void, (moduleId: stri
   return [state, navigate, ensureModuleOpened];
 }
 
-/** The narrow-screen test. Below this width the sidebar becomes a drawer instead
- *  of being squeezed into a sliver. */
+/** Below this width the sidebar gives way to the mobile chat layout. */
 const NARROW_QUERY = '(max-width: 767px)';
+
+function settingsPageFromRoute(pathname: string, search: string): string | null {
+  if (pathname === '/settings') return 'account'; // Existing verification and referral links.
+  if (pathname.startsWith('/settings/')) {
+    const page = pathname.slice('/settings/'.length);
+    return /^[a-z][a-z0-9-]*$/.test(page) ? page : 'overview';
+  }
+  const params = new URLSearchParams(search);
+  return params.has('verify') || params.has('reset') ? 'account' : null;
+}
+
+function memoryChatFromSearch(search: string): { kind: 'dm' | 'group'; id: string } | undefined {
+  const params = new URLSearchParams(search);
+  const kind = params.get('kind');
+  const id = params.get('id');
+  if ((kind !== 'dm' && kind !== 'group') || !id || !/^[A-Za-z0-9._:-]{1,128}$/.test(id))
+    return undefined;
+  return { kind, id };
+}
+
+function profileUsernameFromPath(pathname: string): string | null {
+  if (!pathname.startsWith('/u/')) return null;
+  try {
+    const username = decodeURIComponent(pathname.slice('/u/'.length)).trim();
+    // A malformed shared link must not crash the entire signed-in shell or
+    // turn an encoded separator into another route.
+    return username && !username.includes('/') && !username.includes('\\') ? username : null;
+  } catch {
+    return null;
+  }
+}
 
 function useIsNarrow(): boolean {
   const [narrow, setNarrow] = useState(
@@ -138,13 +184,25 @@ function useIsNarrow(): boolean {
 export function Shell() {
   const [{ pathname, opened }, navigate, ensureModuleOpened] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
-  const profileRoute = pathname.startsWith('/u/')
-    ? decodeURIComponent(pathname.slice('/u/'.length)).trim()
-    : null;
+  const profileRoute = profileUsernameFromPath(pathname);
   const peopleRoute = pathname === '/people';
-  const pageLabel = peopleRoute ? '交友' : profileRoute ? '个人主页' : null;
+  const pageLabel = peopleRoute ? '联系人' : profileRoute ? '个人主页' : null;
+  const activeLabel =
+    activeId === 'control'
+      ? '设备'
+      : activeId === 'market'
+        ? '发现'
+        : MODULES.find((m) => m.id === activeId)?.label;
   const overlayRoot = useOverlayRoot();
   const narrow = useIsNarrow();
+  const mobileInbox = narrow && pathname === '/';
+  useEffect(() => {
+    // The root route starts as an inbox on a phone. If the viewport widens while
+    // it is open, mount the desktop conversation instead of leaving an empty pane.
+    if (!narrow && pathname === '/') ensureModuleOpened('agent');
+  }, [ensureModuleOpened, narrow, pathname]);
+  const conversationDetail =
+    narrow && (activeId === 'agent' || activeId === 'chat') && !mobileInbox;
   // The theme is held solely by the shared store in @0xnullai/ui — the shell and the
   // modules see the same value.
   useTheme();
@@ -152,19 +210,17 @@ export function Shell() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<ShellSettingsTab | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return pathname === '/settings' || params.has('verify') || params.has('reset')
-      ? 'account'
-      : null;
-  });
+  const [authUnavailable, setAuthUnavailable] = useState(false);
+  const settingsTab = settingsPageFromRoute(pathname, window.location.search);
+  const initialMemoryChat =
+    settingsTab === 'memory' ? memoryChatFromSearch(window.location.search) : undefined;
+  const [settingsReturnPath, setSettingsReturnPath] = useState<string | null>(null);
+  const authenticated = authChecked && user !== null;
+  const visibleModuleId = !authenticated || mobileInbox || settingsTab ? null : activeId;
+  const leaseModuleId = visibleModuleId;
   const [docsOpen, setDocsOpen] = useState(() => pathname === '/wiki');
-  // On narrow screens the sidebar defaults to collapsed (drawer closed); on wide
-  // screens it defaults to expanded.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
-  const drawerRef = useRef<HTMLElement>(null);
+  const showDesktopInbox =
+    authenticated && !narrow && !settingsTab && (activeId === 'agent' || activeId === 'chat');
 
   const [actionsRef, actionsContainer] = useModuleActionsContainer();
 
@@ -177,24 +233,49 @@ export function Shell() {
   // bar and the stop button are displayed as usual, there is just no module allowed
   // to issue commands.
   useEffect(() => {
-    void grantDeviceLease(activeId);
-  }, [activeId]);
+    void grantDeviceLease(leaseModuleId);
+  }, [leaseModuleId]);
 
-  useEffect(() => {
-    // Treat an unavailable account service as signed out. Chat is account-only,
-    // while the other modules remain available.
-    me()
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setAuthChecked(true));
+  const loadAuth = useCallback(() => {
+    // Every product route now shares one entry gate. Keep the original URL so
+    // sign-in returns the user to the page they opened. Only a definite "no session"
+    // answer shows sign-in; a network or service error is not a sign-out.
+    void me()
+      .then((current) => {
+        setUser(current);
+        setAuthChecked(true);
+      })
+      .catch(() => setAuthUnavailable(true));
   }, []);
+
+  useEffect(loadAuth, [loadAuth]);
+  const unreadMessages = useUnreadMessages(authChecked ? user : null);
+  // Model ids, vision support and limits come from models.dev; load them once per page.
+  useEffect(() => {
+    void loadModelCatalog();
+  }, []);
+
+  const retryAuth = () => {
+    setAuthUnavailable(false);
+    loadAuth();
+  };
 
   useEffect(
     () =>
       subscribeProfileChanges(() => {
+        // Keep the signed-in shell (and every mounted module) on a transient failure.
         void me()
           .then(setUser)
           .catch(() => undefined);
+      }),
+    [],
+  );
+
+  // An expired or revoked session (a 401 on any account request) signs this tab out.
+  useEffect(
+    () =>
+      subscribeAuthChanges((current) => {
+        if (!current) setUser(null);
       }),
     [],
   );
@@ -222,291 +303,389 @@ export function Shell() {
   useEffect(
     () =>
       subscribeProfileRequests((username) => {
-        setDrawerOpen(false);
         navigate(`/u/${encodeURIComponent(username)}`);
       }),
     [navigate],
   );
 
-  // Close the drawer as soon as the route or the breakpoint changes, otherwise it
-  // stays covering the content after the switch.
-  //
-  // This adjusts state during render rather than in an effect: a synchronous setState
-  // inside an effect costs an extra render + commit, and the user sees the drawer
-  // flash before it closes. Written this way React re-renders in place before the
-  // commit, so there is no intermediate frame.
-  const [lastRoute, setLastRoute] = useState<{ id: string | null; narrow: boolean }>({
-    id: activeId,
-    narrow,
-  });
-  if (lastRoute.id !== activeId || lastRoute.narrow !== narrow) {
-    setLastRoute({ id: activeId, narrow });
-    if (drawerOpen) setDrawerOpen(false);
-  }
-
-  useEffect(() => {
-    if (!narrow || !drawerOpen) return;
-    const drawerTrigger = drawerTriggerRef.current;
-    const focusTimer = window.setTimeout(() => {
-      drawerRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus();
-    }, 0);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDrawerOpen(false);
-      if (event.key === 'Tab') {
-        const controls = [
-          ...(drawerRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ??
-            []),
-        ].filter((el) => el.getClientRects().length > 0);
-        const first = controls[0];
-        const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener('keydown', closeOnEscape);
-      drawerTrigger?.focus();
-    };
-  }, [drawerOpen, narrow]);
-
   // Where a module's UI needs a settings entry point (the Chat host's button for
   // configuring the AI), it opens **this** panel instead of the module standing up
   // one of its own. What a module gets is the position of the entry point, not a
   // second settings UI.
-  const openSettings = useCallback((tab: ShellSettingsTab = 'appearance') => {
-    setDrawerOpen(false);
-    setSettingsTab(tab);
-  }, []);
-
-  const go = useCallback(
-    (moduleId: string | null) => {
-      navigate(moduleId ? `/${moduleId}` : '/');
-      setDrawerOpen(false);
+  const openSettings = useCallback(
+    (tab: ShellSettingsTab = 'appearance', context?: ShellSettingsContext) => {
+      const origin = `${window.location.pathname}${window.location.search}`;
+      const conversation = tab === 'memory' ? context?.conversation : undefined;
+      const query = conversation
+        ? `?kind=${encodeURIComponent(conversation.kind)}&id=${encodeURIComponent(conversation.id)}`
+        : '';
+      if (navigate(`/settings/${tab}${query}`) && !origin.startsWith('/settings')) {
+        setSettingsReturnPath(origin);
+      }
     },
     [navigate],
   );
 
-  const sidebar = (
-    <Sidebar
+  const closeSettings = useCallback(() => {
+    const destination = settingsReturnPath ?? '/';
+    if (navigate(destination)) setSettingsReturnPath(null);
+  }, [navigate, settingsReturnPath]);
+
+  const navigateFromShell = useCallback(
+    (path: string) => {
+      navigate(path);
+    },
+    [navigate],
+  );
+
+  const go = useCallback(
+    (moduleId: string | null) => {
+      navigateFromShell(moduleId ? `/${moduleId}` : '/');
+    },
+    [navigateFromShell],
+  );
+
+  // Modules read this to offer cross-module actions (start a chat from Market, voice or
+  // camera from a conversation, back to text from Voice/Video). Without it every such
+  // entry stays hidden inside the shell.
+  const shellNav = useMemo(
+    () => ({
+      activeId,
+      modules: MODULES.map(({ id, label, blurb }) => ({ id, label, blurb })),
+      navigate: go,
+      ...(conversationDetail ? { conversationBack: () => navigate('/') } : {}),
+    }),
+    [activeId, conversationDetail, go, navigate],
+  );
+
+  if (!authenticated) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--text)]">
+        <DeviceBar activeSessionId={null} showConnect={false} />
+        <main aria-label="账户登录" className="flex flex-1 items-center justify-center px-4 py-10">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]">
+            <div className="mb-6 text-lg font-semibold">0xNuller</div>
+            {authChecked ? (
+              <Suspense fallback={<PageLoading label="账户" />}>
+                <AccountContent user={null} onUser={setUser} onDone={() => undefined} />
+              </Suspense>
+            ) : authUnavailable ? (
+              <div role="alert" className="space-y-3 text-sm text-[var(--text-soft)]">
+                <p>账户服务暂时无法连接。</p>
+                <button
+                  type="button"
+                  className="rounded-lg border border-[var(--surface-border)] px-3 py-1.5 text-[var(--text)]"
+                  onClick={retryAuth}
+                >
+                  重试
+                </button>
+              </div>
+            ) : (
+              <p role="status" className="text-sm text-[var(--text-soft)]">
+                正在检查账户…
+              </p>
+            )}
+          </div>
+        </main>
+        <StopFailureBanner />
+      </div>
+    );
+  }
+
+  const rail = (
+    <NavRail
       activeId={activeId}
+      peopleActive={peopleRoute}
+      settingsActive={settingsTab !== null}
       onNavigate={go}
       user={user}
       creditBalance={user ? creditBalance : null}
-      // Close the drawer whenever a dialog opens. The drawer is the navigation
-      // surface, and opening a dialog means navigation is over; leaving it up would
-      // cover the dialog (the drawer sits at --z-shell, dialogs at
-      // --z-module-overlay, so the drawer is higher).
+      unreadMessages={unreadMessages}
       onOpenAccount={() => {
-        openSettings('account');
+        openSettings('overview');
       }}
       onOpenContacts={() => {
-        navigate('/people');
-        setDrawerOpen(false);
-      }}
-      onOpenSettings={() => {
-        openSettings('appearance');
+        navigateFromShell('/people');
       }}
       onOpenDocs={() => {
-        setDrawerOpen(false);
         setDocsOpen(true);
       }}
-      onCreateRoom={() => {
-        navigate('/chat?create=1');
-        setDrawerOpen(false);
-      }}
-      collapsed={!narrow && sidebarCollapsed}
-      onToggleCollapsed={() => (narrow ? setDrawerOpen(false) : setSidebarCollapsed((v) => !v))}
     />
   );
 
   return (
     <ModuleSettingsProvider>
-      <SidebarSectionsProvider>
-        <div
-          id="shl-root"
-          data-narrow={narrow || undefined}
-          data-collapsed={(!narrow && sidebarCollapsed) || undefined}
-        >
-          {/* Wide screens: the sidebar is one of the layout columns. Narrow screens: it
-            is a drawer over the content and takes up no layout width. */}
-          {!narrow && <div id="shl-side">{sidebar}</div>}
-
-          <main
-            id="shl-slot"
-            inert={narrow && drawerOpen}
-            aria-label={
-              MODULES.find((module) => module.id === activeId)?.label ?? pageLabel ?? '首页'
-            }
+      <ShellNavProvider value={shellNav}>
+        <SidebarSectionsProvider>
+          <div
+            id="shl-root"
+            data-narrow={narrow || undefined}
+            data-inbox={showDesktopInbox || undefined}
+            data-settings-open={settingsTab !== null || undefined}
           >
-            {/* Wide screens stack module actions above device state. Narrow screens use
+            {/* Wide screens: a navigation rail, plus the conversation list only while a
+            conversation is open. Narrow screens use the bottom tab bar instead. */}
+            {!narrow && <div id="shl-rail">{rail}</div>}
+            {showDesktopInbox && (
+              <div id="shl-side">
+                <InboxColumn
+                  user={user}
+                  onNavigate={go}
+                  onOpenAccount={() => openSettings('overview')}
+                  onCreateRoom={() => navigateFromShell('/chat?create=1')}
+                />
+              </div>
+            )}
+
+            <main
+              id="shl-slot"
+              aria-label={mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '首页')}
+            >
+              {/* Wide screens stack module actions above device state. Narrow screens use
               the same wrapper as one compact toolbar, while the device section keeps
               its own horizontal overflow for multiple connected devices. */}
-            <div id="shl-topbar">
-              <div id="shl-actions">
-                {narrow && (
-                  <button
-                    ref={drawerTriggerRef}
-                    type="button"
-                    onClick={() => setDrawerOpen(true)}
-                    aria-label="打开侧边栏"
-                    aria-controls="shl-drawer"
-                    aria-expanded={drawerOpen}
-                    // With only the module name, the top of a narrow screen is a couple of
-                    // lone words and nobody can tell they are tappable.
-                    // The touch target also has to be big enough: 44px is the lower bound
-                    // both iOS and Android recommend.
-                    className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                  >
-                    <Menu className="h-[18px] w-[18px] shrink-0 text-[var(--text-soft)]" />
-                    <span className="truncate">
-                      {MODULES.find((m) => m.id === activeId)?.label ?? pageLabel ?? '0xNuller'}
-                    </span>
-                  </button>
-                )}
-                <div className="min-w-0 flex-1" />
-                <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+              <div id="shl-topbar">
+                <div id="shl-actions">
+                  {/* In a conversation the module header carries the back arrow (see
+                    ShellNav.conversationBack), so this row only remains for device state. */}
+                  {narrow && !conversationDetail && (
+                    <button
+                      type="button"
+                      onClick={() => openSettings('overview')}
+                      aria-label="我的账户"
+                      className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    >
+                      <Avatar
+                        name={user?.displayName ?? null}
+                        username={user?.username}
+                        src={avatarSrc(user?.avatarUrl)}
+                        size={28}
+                      />
+                      <span className="truncate">
+                        {mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '0xNuller')}
+                      </span>
+                    </button>
+                  )}
+                  <div className="min-w-0 flex-1" />
+                  <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
+                </div>
+
+                {/* Connected devices (and their stop control) always show. The bare
+                "connect" shortcut only shows on phones: on wide screens the 设备 entry
+                is one click away and an otherwise empty row would cost every page. */}
+                <DeviceBar
+                  activeSessionId={leaseModuleId}
+                  showConnect={
+                    narrow &&
+                    !conversationDetail &&
+                    leaseModuleId !== null &&
+                    leaseModuleId !== 'control'
+                  }
+                />
               </div>
 
-              <DeviceBar activeSessionId={activeId} showConnect={activeId !== 'control'} />
-            </div>
-
-            <PersistenceNotice />
-            <div id="shl-content">
-              {activeId === null && !peopleRoute && !profileRoute ? <Home onOpen={go} /> : null}
-              {peopleRoute ? (
-                user ? (
+              <PersistenceNotice />
+              <div id="shl-content">
+                {mobileInbox && (
+                  <UnifiedInbox
+                    presentation="page"
+                    user={user}
+                    onNavigate={go}
+                    onOpenAccount={() => openSettings('account')}
+                    onCreateRoom={() => navigate('/chat?create=1')}
+                  />
+                )}
+                {activeId === null && !peopleRoute && !profileRoute && !settingsTab ? (
+                  <UnifiedInbox
+                    presentation="page"
+                    user={user}
+                    onNavigate={go}
+                    onOpenAccount={() => openSettings('account')}
+                    onCreateRoom={() => navigate('/chat?create=1')}
+                  />
+                ) : null}
+                {peopleRoute ? (
                   <Suspense fallback={<PageLoading label="交友" />}>
                     <ContactsDialog user={user} presentation="page" onClose={() => navigate('/')} />
                   </Suspense>
-                ) : (
-                  <ChatAccountGate
-                    loading={!authChecked}
-                    emailVerificationRequired={false}
-                    onLogin={() => openSettings('account')}
-                  />
-                )
-              ) : null}
-              {profileRoute ? (
-                <Suspense fallback={<PageLoading label="个人主页" />}>
-                  <ProfileDialog
-                    username={profileRoute}
-                    viewer={user}
-                    presentation="page"
-                    onClose={() => {
-                      if (window.location.pathname.startsWith('/u/')) {
-                        navigate(user ? '/people' : '/');
-                      }
-                    }}
-                  />
-                </Suspense>
-              ) : null}
-              {opened.map((id) => {
-                const mod = MODULES.find((m) => m.id === id);
-                if (!mod) return null;
-                if (mod.id === 'chat' && (!authChecked || !user || !user.emailVerified)) {
-                  return (
-                    <div
-                      key={id}
-                      hidden={id !== activeId}
-                      className={id === activeId ? 'h-full min-h-0' : 'hidden'}
-                    >
-                      <ChatAccountGate
-                        loading={!authChecked}
-                        emailVerificationRequired={Boolean(user && !user.emailVerified)}
-                        onLogin={() => openSettings('account')}
-                      />
-                    </div>
-                  );
-                }
-                return (
-                  <ModuleSlot
-                    key={id}
-                    mod={mod}
-                    active={id === activeId}
-                    overlayRoot={overlayRoot}
-                    actionsContainer={id === activeId ? actionsContainer : null}
-                    openSettings={openSettings}
-                    signedIn={!!user}
-                  />
-                );
-              })}
-            </div>
-          </main>
-
-          {narrow && drawerOpen && (
-            <>
-              <div
-                className={`fixed inset-0 ${Z_SHELL} bg-[var(--overlay-scrim)]`}
-                onClick={() => setDrawerOpen(false)}
-                aria-hidden
-              />
-              <aside
-                ref={drawerRef}
-                id="shl-drawer"
-                aria-label="主导航"
-                className={`shl-drawer flex flex-col fixed inset-y-0 left-0 ${Z_SHELL_PANEL} w-[min(280px,80vw)]`}
-              >
-                {sidebar}
-              </aside>
-            </>
-          )}
-
-          <OverlayProvider container={overlayRoot}>
-            <ModuleErrorBoundary moduleId="settings" label="窗口">
-              <Suspense
-                fallback={
-                  <div
-                    role="status"
-                    className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--overlay-scrim)]"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettingsTab(null);
-                        setDocsOpen(false);
+                ) : null}
+                {profileRoute ? (
+                  <Suspense fallback={<PageLoading label="个人主页" />}>
+                    <ProfileDialog
+                      username={profileRoute}
+                      viewer={user}
+                      presentation="page"
+                      onOpenMarketItem={(id) => {
+                        if (navigate(`/market?item=${encodeURIComponent(id)}`))
+                          window.dispatchEvent(new PopStateEvent('popstate'));
                       }}
-                    >
-                      正在加载… 点击取消
-                    </button>
-                  </div>
-                }
-              >
-                {settingsTab && (
-                  <SettingsPanel
-                    initialTab={settingsTab}
-                    onLoadAgent={() => ensureModuleOpened('agent')}
-                    user={user}
-                    onUser={setUser}
-                    onClose={() => setSettingsTab(null)}
-                  />
-                )}
-                {docsOpen && (
-                  <DocsDialog
-                    onClose={() => {
-                      setDocsOpen(false);
-                      if (pathname === '/wiki') navigate('/');
-                    }}
-                  />
-                )}
-              </Suspense>
-            </ModuleErrorBoundary>
-          </OverlayProvider>
+                      onClose={() => {
+                        if (window.location.pathname.startsWith('/u/')) {
+                          navigate(user ? '/people' : '/');
+                        }
+                      }}
+                    />
+                  </Suspense>
+                ) : null}
+                {opened.map((id) => {
+                  const mod = MODULES.find((m) => m.id === id);
+                  if (!mod) return null;
+                  if (mod.id === 'chat' && !user.emailVerified) {
+                    return (
+                      <div
+                        key={id}
+                        hidden={id !== activeId}
+                        className={id === activeId ? 'h-full min-h-0' : 'hidden'}
+                      >
+                        <EmailVerificationGate onOpenAccount={() => openSettings('account')} />
+                      </div>
+                    );
+                  }
+                  return (
+                    <ModuleSlot
+                      key={id}
+                      mod={mod}
+                      active={id === visibleModuleId}
+                      overlayRoot={overlayRoot}
+                      actionsContainer={id === activeId ? actionsContainer : null}
+                      openSettings={openSettings}
+                      signedIn={!!user}
+                    />
+                  );
+                })}
+              </div>
+            </main>
 
-          {/* Outside the overlay provider on purpose. The overlay container is
+            {settingsTab && (
+              <aside id="shl-settings" aria-label="我的设置">
+                <DeviceBar
+                  activeSessionId={null}
+                  showConnect={false}
+                  elementId="shl-settings-device-bar"
+                />
+                <OverlayProvider container={overlayRoot}>
+                  <ModuleErrorBoundary moduleId="settings" label="设置">
+                    <Suspense
+                      fallback={
+                        <div role="status" className="p-5">
+                          正在加载设置…
+                        </div>
+                      }
+                    >
+                      <SettingsPanel
+                        initialTab={settingsTab}
+                        initialMemoryChat={initialMemoryChat}
+                        onNavigateTab={(tab) => navigate(`/settings/${encodeURIComponent(tab)}`)}
+                        onLoadAgent={() => ensureModuleOpened('agent')}
+                        user={user}
+                        onUser={setUser}
+                        onClose={closeSettings}
+                      />
+                    </Suspense>
+                  </ModuleErrorBoundary>
+                </OverlayProvider>
+              </aside>
+            )}
+
+            {/* Outside the content column so the tabs stay on every top-level page,
+            including 我的 (settings), which replaces the content column. */}
+            {narrow && !conversationDetail && (
+              <nav
+                aria-label="手机主导航"
+                className="flex shrink-0 border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] pb-[env(safe-area-inset-bottom)]"
+              >
+                {[
+                  {
+                    label: '消息',
+                    icon: MessageCircle,
+                    current: mobileInbox,
+                    run: () => navigate('/'),
+                    badge: unreadMessages,
+                  },
+                  {
+                    label: '联系人',
+                    icon: Users,
+                    current: peopleRoute,
+                    run: () => navigate('/people'),
+                  },
+                  {
+                    label: '发现',
+                    icon: Compass,
+                    current: activeId === 'market',
+                    run: () => navigate('/market'),
+                  },
+                  {
+                    label: '设备',
+                    icon: Cpu,
+                    current: activeId === 'control',
+                    run: () => navigate('/control'),
+                  },
+                  {
+                    label: '我的',
+                    icon: UserRound,
+                    current: settingsTab !== null,
+                    run: () => openSettings('overview'),
+                  },
+                ].map(({ label, icon: Icon, current, run, badge }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={run}
+                    aria-current={current ? 'page' : undefined}
+                    aria-label={badge ? `${label}，${badge} 条未读` : undefined}
+                    className={`flex min-h-[56px] min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] ${current ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
+                  >
+                    <span className="relative">
+                      <Icon className="h-5 w-5" />
+                      {badge ? <UnreadBadge count={badge} /> : null}
+                    </span>
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            <OverlayProvider container={overlayRoot}>
+              <ModuleErrorBoundary moduleId="settings" label="窗口">
+                <Suspense
+                  fallback={
+                    <div
+                      role="status"
+                      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--overlay-scrim)]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (settingsTab) closeSettings();
+                          setDocsOpen(false);
+                        }}
+                      >
+                        正在加载… 点击取消
+                      </button>
+                    </div>
+                  }
+                >
+                  {docsOpen && (
+                    <DocsDialog
+                      onClose={() => {
+                        setDocsOpen(false);
+                        if (pathname === '/wiki') navigate('/');
+                      }}
+                    />
+                  )}
+                </Suspense>
+              </ModuleErrorBoundary>
+            </OverlayProvider>
+
+            {/* Outside the overlay provider on purpose. The overlay container is
             per-module and gets hidden when you switch modules, but "a device
             did not stop" outlives whichever module was showing — and it has
             to stay reachable while a dialog is open, which is why it sits at
             the top of the z scale rather than in the overlay layer. */}
-          <StopFailureBanner />
-        </div>
-      </SidebarSectionsProvider>
+            <StopFailureBanner />
+          </div>
+        </SidebarSectionsProvider>
+      </ShellNavProvider>
     </ModuleSettingsProvider>
   );
 }
@@ -519,35 +698,18 @@ function PageLoading({ label }: { label: string }) {
   );
 }
 
-function ChatAccountGate({
-  loading,
-  emailVerificationRequired,
-  onLogin,
-}: {
-  loading: boolean;
-  emailVerificationRequired: boolean;
-  onLogin: () => void;
-}) {
+function EmailVerificationGate({ onOpenAccount }: { onOpenAccount: () => void }) {
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="flex flex-col items-center gap-4 text-center">
-        <h1 className="text-xl font-semibold">
-          {loading
-            ? '正在检查账户…'
-            : emailVerificationRequired
-              ? '验证邮箱后使用 Chat'
-              : '登录后使用 Chat'}
-        </h1>
-        {!loading && (
-          <button
-            type="button"
-            onClick={onLogin}
-            className="flex items-center gap-2 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--button-text)]"
-          >
-            <LogIn className="h-4 w-4" />
-            {emailVerificationRequired ? '前往账户验证' : '登录 / 注册'}
-          </button>
-        )}
+        <h1 className="text-xl font-semibold">验证邮箱后使用聊天</h1>
+        <button
+          type="button"
+          onClick={onOpenAccount}
+          className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--button-text)]"
+        >
+          前往账户验证
+        </button>
       </div>
     </div>
   );

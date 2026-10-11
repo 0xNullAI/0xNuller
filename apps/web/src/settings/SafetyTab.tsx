@@ -78,6 +78,8 @@ const TURN_FIELDS: NumberFieldSpec[] = [
   { key: 'maxToolCallsPerTurn', label: '单回合工具调用总数', min: 1, max: 64 },
   { key: 'maxAdjustStrengthCallsPerTurn', label: '单回合调节次数', min: 1, max: 32 },
   { key: 'maxBurstCallsPerTurn', label: '单回合脉冲次数', min: 0, max: 32 },
+  { key: 'maxVibrateAdjustCallsPerTurn', label: '单回合振动调节次数', min: 1, max: 32 },
+  { key: 'maxVibrateBurstCallsPerTurn', label: '单回合振动脉冲次数', min: 0, max: 32 },
 ];
 
 function NumberField({

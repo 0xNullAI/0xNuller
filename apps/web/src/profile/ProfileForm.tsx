@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Globe, ImagePlus, Link2, Lock, Plus, Trash2, Users, X } from 'lucide-react';
+import { Eye, EyeOff, ImagePlus, Link2, Plus, Trash2, Users, X } from 'lucide-react';
 import { Input, Textarea } from '@0xnullai/ui';
 import {
   deletePhoto,
@@ -39,8 +39,8 @@ import { ProfileSection } from './frame';
  * a database that later leaks is a physical-safety problem, not a spam
  * problem, and nothing in the product needs that precision.
  *
- * New profiles default to public; the two options still make the visibility
- * decision explicit and users can switch to private at any time.
+ * Profiles are readable by signed-in users. Individual album photos retain
+ * their own visibility; existing private photos remain private.
  *
  */
 
@@ -163,6 +163,7 @@ function AlbumEditor({
 export function cleanProfile(draft: UserProfile): UserProfile {
   return {
     ...draft,
+    visibility: 'public',
     bio: draft.bio?.trim() || null,
     location: draft.location?.trim() || null,
     links: draft.links.map((l) => l.trim()).filter(Boolean),
@@ -278,77 +279,18 @@ export function ProfileForm({
         </p>
       </ProfileSection>
 
-      <ProfileSection title="谁能看到">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(
-            [
-              {
-                value: 'private',
-                icon: <Lock className="h-4 w-4" />,
-                title: '仅自己可见',
-                blurb: '别人打开你的主页只会看到用户名。',
-              },
-              {
-                value: 'friends',
-                icon: <Users className="h-4 w-4" />,
-                title: '仅好友',
-                blurb: '只有互相关注的好友可以看到主页内容。',
-              },
-              {
-                value: 'public',
-                icon: <Globe className="h-4 w-4" />,
-                title: '公开',
-                blurb: '任何人都能看到以上内容，包括没有登录的人。',
-              },
-            ] as const
-          ).map((option) => {
-            const active = draft.visibility === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                onClick={() =>
-                  patch({
-                    visibility: option.value,
-                    discoverable: option.value === 'public' ? draft.discoverable : false,
-                  })
-                }
-                className={
-                  'flex flex-col gap-1 rounded-[var(--radius-sm)] border px-3 py-2.5 text-left transition-colors duration-[var(--dur)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
-                  (active
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                    : 'border-[var(--surface-border)] hover:border-[var(--surface-border-strong)]')
-                }
-              >
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  <span className={active ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}>
-                    {option.icon}
-                  </span>
-                  {option.title}
-                </span>
-                <span className="text-[10px] leading-relaxed text-[var(--text-faint)]">
-                  {option.blurb}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </ProfileSection>
-
       <ProfileSection title="允许被发现">
         <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2.5">
           <input
             type="checkbox"
             checked={draft.discoverable}
-            disabled={draft.visibility !== 'public'}
             onChange={(event) => patch({ discoverable: event.target.checked })}
             className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
           />
           <span>
             <span className="block text-sm font-medium">出现在交友发现中</span>
             <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--text-faint)]">
-              仅公开主页可以开启。关闭后仍可通过准确用户名找到你。
+              关闭后不出现在发现列表；登录用户仍可通过准确用户名打开你的主页。
             </span>
           </span>
         </label>

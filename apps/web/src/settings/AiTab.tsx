@@ -58,7 +58,13 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
   const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
     behaviorStore.loadModelBehavior(),
   );
-  const [providerQuery, setProviderQuery] = useState('');
+  // Show the saved provider in the picker after a reload instead of an empty search box.
+  const [providerQuery, setProviderQuery] = useState(() => {
+    const saved = getProviderDefinition(config.providerId as ProviderId);
+    return saved && saved.id !== 'managed'
+      ? `${PROVIDER_REGION_LABEL[getProviderRegion(saved.id)]} · ${saved.name}`
+      : '';
+  });
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [ownApiOpen, setOwnApiOpen] = useState(() => config.providerId !== 'managed');
   const [advancedOpen, setAdvancedOpen] = useState(() => config.providerId === 'custom');
@@ -348,7 +354,7 @@ export function AiTab({ initialSection = 'agent' }: { initialSection?: AiSetting
                 options={[
                   { value: 'last-user-turn', label: '基础（最近 1 轮）' },
                   { value: 'last-five-user-turns', label: '中等（最近 5 轮）' },
-                  { value: 'full-history', label: '完整对话' },
+                  { value: 'full-history', label: '更多历史（自动限制上下文）' },
                 ]}
               />
             </label>
@@ -478,6 +484,10 @@ function OpenAiModelField({
   );
 }
 
+/**
+ * Searchable model picker backed by the models.dev catalog (pi-ai's bundled table only
+ * when the catalog is unavailable). Any id can still be typed for models not listed yet.
+ */
 function PiModelField({
   config,
   update,
@@ -487,8 +497,20 @@ function PiModelField({
 }) {
   const [models, setModels] = useState<PiAiModelInfo[] | null>(null);
   const [error, setError] = useState('');
-  const active = models?.find((model) => model.id === config.model.trim());
-  async function inspect() {
+  const [open, setOpen] = useState(false);
+  const typed = config.model.trim().toLowerCase();
+  const active = models?.find((model) => model.id.toLowerCase() === typed);
+  // An exact id needs no suggestions; otherwise filter by id or display name.
+  const matches = active
+    ? []
+    : (models ?? []).filter(
+        (model) =>
+          !typed ||
+          model.id.toLowerCase().includes(typed) ||
+          model.name.toLowerCase().includes(typed),
+      );
+  async function load() {
+    if (models) return;
     setError('');
     try {
       const catalog = await discoverBrowserProviderModels({
@@ -501,30 +523,67 @@ function PiModelField({
     }
   }
   return (
-    <div className="grid gap-2">
+    <div className="relative grid gap-1.5">
       <Input
         value={config.model}
-        onChange={(event) => update({ model: event.target.value })}
-        placeholder="输入模型 ID"
+        onChange={(event) => {
+          update({ model: event.target.value });
+          setOpen(true);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          void load();
+        }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        placeholder="搜索或输入模型 ID"
+        aria-label="模型"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls="llm-model-options"
       />
-      <button
-        type="button"
-        className="w-fit rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
-        onClick={() => void inspect()}
-      >
-        查看模型信息
-      </button>
-      {error && <span className="text-xs text-[var(--danger)]">目录读取失败：{error}</span>}
-      {models && (
+      {open && matches.length > 0 ? (
+        <div
+          id="llm-model-options"
+          role="listbox"
+          className="absolute inset-x-0 top-11 z-30 max-h-72 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg"
+        >
+          {matches.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              role="option"
+              aria-selected={model.id === active?.id}
+              className="flex w-full min-w-0 items-center justify-between gap-3 rounded-[var(--radius-xs)] px-3 py-2 text-left text-sm hover:bg-[var(--accent-soft)] aria-selected:bg-[var(--accent-soft)]"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                update({ model: model.id });
+                setOpen(false);
+              }}
+            >
+              <span className="min-w-0 truncate">{model.name}</span>
+              <span className="shrink-0 text-xs text-[var(--text-faint)]">
+                {model.contextWindow ? formatTokens(model.contextWindow) : model.id}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {error && <span className="text-xs text-[var(--danger)]">模型目录读取失败：{error}</span>}
+      {active ? (
         <span className="text-xs text-[var(--text-faint)]">
-          {active
-            ? `上下文 ${formatTokens(active.contextWindow)} · 最大输出 ${formatTokens(active.maxTokens)}${active.reasoning ? ' · 支持推理' : ''}`
-            : `目录中暂无该模型；已知：${models
-                .slice(0, 5)
-                .map((model) => model.id)
-                .join('、')}`}
+          {[
+            active.contextWindow ? `上下文 ${formatTokens(active.contextWindow)}` : null,
+            active.maxTokens ? `最大输出 ${formatTokens(active.maxTokens)}` : null,
+            active.reasoning ? '支持推理' : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
-      )}
+      ) : models && typed ? (
+        <span className="text-xs text-[var(--text-faint)]">
+          目录中没有这个模型 ID，请确认拼写。
+        </span>
+      ) : null}
     </div>
   );
 }

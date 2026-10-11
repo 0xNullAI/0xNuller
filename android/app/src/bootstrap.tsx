@@ -26,6 +26,7 @@ import { createTauriTransport } from './tauri-transport';
 import { attachAndroidDeviceRuntimeLifecycle, wrapWithLifecycleSafety } from './lifecycle-safety';
 import { ButtplugDeviceBackend } from './buttplug-device-backend';
 import { SplashDismiss } from './SplashDismiss';
+import { installAndroidPush } from './services/android-push';
 import {
   installAndroidShellBehaviours,
   withBlePermissionHelp,
@@ -53,6 +54,7 @@ const desktop = import.meta.env.MODE === 'desktop';
 const connectHelp = desktop ? withDesktopConnectHelp : withConnectPermissionHelp;
 const permissionHelp = desktop ? withDesktopBleHelp : withBlePermissionHelp;
 if (!desktop) installAndroidShellBehaviours();
+if (!desktop) installAndroidPush(window.AndroidSystem);
 // If Bluetooth permission was granted on an earlier run, begin collecting
 // named DG-Lab advertisements behind the splash screen. Missing permission is
 // deliberately not requested here; the user's first connect action owns that
