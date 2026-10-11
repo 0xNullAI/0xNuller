@@ -148,7 +148,8 @@ Memory 可读原文。超时、5xx 和不可判定结果保留冻结与 `needs_r
 部署前需要迁移 0065，并以真实服务商、D1/R2 和浏览器验证北京域名、音频格式、报价与恢复路径。
 接口依据：[CosyVoice 官方 HTTP API](https://help.aliyun.com/en/model-studio/cosyvoice-tts-http-api)。
 `0056_conversation_digests.sql` 为私人角色会话增加独立的长对话概述、重试状态和单独默认关闭的
-关系授权。用户在记忆设置中开启后，分钟任务才把该关系中较早的双方文字消息分批发送给 MiniMax；
+关系授权。用户在记忆设置中开启后，分钟任务才把该关系中较早的双方文字消息分批发送给火山方舟（见下文
+「托管后台 AI」）；
 最近 20 条保留原文。概述只用于同一会话的连续性，不变成已确认记忆或工具执行凭证。关闭授权
 删除既有概述；来源改动、删除或角色身份变化使旧概述失效。此迁移尚需在部署前按数据迁移流程执行。
 可选 `sceneId` 与角色的 `promptPresetId`、私人 `relationshipId` 分开保存在已有 metadata JSON 中；
@@ -245,7 +246,7 @@ owner、关系、角色卡绑定、消息角色和完整原文逐条复核。任
 /api/auth/auto-memory/:relationshipId` 要求当前账号拥有该关系，PUT 使用版本 CAS；开启会将
 该关系所有含用户消息的已有会话排队，随后新增用户消息经触发器排队；分钟 cron 每轮处理一段有界消息，关闭立即清除待处理任务与处理进度。
 GET/PUT 响应还返回当前关系的待处理、重试和连续失败暂停的会话数量，不返回消息内容或其他关系的任务。
-`0055_memory_extraction_progress.sql` 记录各会话的处理游标；分钟任务仅在 MiniMax 密钥配置后
+`0055_memory_extraction_progress.sql` 记录各会话的处理游标；分钟任务仅在方舟密钥与价格表都配置后
 按原始顺序每次最多分析 16 条、每条最多 1000 字的用户消息，仍有内容时逐分钟续跑，
 避免长聊天或两次定时任务间的消息突发被跳过。更正旧消息会回退游标重新核对，
 更换关系则重置进度；不读取 AI 回复、群聊、工具或设备数据。
@@ -315,33 +316,31 @@ require an active owned relationship; PUT `{photoId,scale:15..70,position,versio
 only accepts ready owned photos. Deleted source images resolve to null. No model/device permission
 is granted by selecting an image. Apply the migration through the normal release process.
 
-`0033_media_jobs.sql` 新增私人图片/情境自拍/视频后台任务。`GET /api/auth/media-capabilities`
-返回当前可用能力和报价；`GET /api/auth/media-jobs?conversationId=...`、`GET /:id` 读取任务，
+`0033_media_jobs.sql` 新增私人媒体后台任务；现在只提供图片，旧的情境自拍与视频任务仅保留为
+历史记录。`GET /api/auth/media-capabilities` 返回唯一的 `image` 能力和报价；`GET /api/auth/media-jobs?conversationId=...`、`GET /:id` 读取任务，
 列表按创建时间降序、同毫秒按 ID 升序返回最多 100 条，并以 `nextBefore` 提供下一页位置；
 继续传 `before=<nextBefore>` 可读取长会话中更早的媒体任务，不遗漏同毫秒记录。
-`PUT /:id` 以客户端稳定 ID 创建，正文为 `kind,prompt,relationshipId,conversationId,
-useConversationContext,acceptedCredits,priceVersion`。同 ID 仅允许完全相同请求重放，不能覆盖。
+`PUT /:id` 以客户端稳定 ID 创建，正文为 `kind:'image',prompt,relationshipId,conversationId,
+featureCharacter,acceptedCredits,priceVersion`（旧客户端的 `useConversationContext`、
+`useCharacterContext` 仍可选）。同 ID 仅允许完全相同请求重放，不能覆盖。`kind:'video'` 返回
+400「角色视频已下线」，`kind:'selfie'` 提示改用「让角色出镜」。
 `DELETE /:id` 取消排队任务或删除终态资产；执行中需等待结果。全部接口要求当前账户
 `X-Account-Id`，不缓存；`GET /:id/content` 也走认证。图片返回 `photoId`，沿用既有私有照片
-及角色头像选择，最多60个照片槽。视频只从本人任务读取。对象均放在账户照片前缀，已有账户
+及角色头像选择，最多60个照片槽。旧视频结果仍只从本人任务读取。对象均放在账户照片前缀，已有账户
 删除流程会清理整个前缀。删除重试保留任务墓碑；已删除照片不会被任务内容接口重新展示。
 
-可选环境配置 `MINIMAX_MEDIA_API_KEY`、正整数 `MEDIA_IMAGE_CREDITS`、`MEDIA_VIDEO_CREDITS`；
-缺配置时 UI 明确禁用，不会使用用户 BYOK。模型固定为 `image-01` 单张1024方图和 `MiniMax-H3`
-5秒768P视频，无任意模型/地址代理。沿用 `credit_reservations` 的既有 `video` 类别，
-`model_id` 和账本 metadata.kind 明确区分 image/selfie/video，未重建余额表或改现有价格。
-创建和预留原子，私有资产保存后结算，失败释放；每账户最多3个进行中任务。一分钟cron调用
-`runMediaJobs`，每批3个、独占租约、失败退避最多5分钟，一小时过期释放，不在重试期间重复POST。
+图片由火山方舟 Seedream 生成（见下文「托管后台 AI」），模型与单张报价来自价格表的 `image`
+路由，报价版本为 `ark-image:<表版本>:<Credit>`；缺密钥或价格表时 UI 明确禁用，不会使用用户
+BYOK。请求固定单张、`b64_json` 返回、关闭水印，不依赖 24 小时过期的结果 URL。沿用
+`credit_reservations` 的既有 `video` 类别（旧 CHECK 约束），`model_id` 为 `ark:<模型>`，账本
+metadata 记录 kind、model 与 jobId，未重建余额表。创建和预留原子，私有资产保存后结算，失败
+释放；每账户最多3个进行中任务。一分钟cron调用 `runMediaJobs`，每批3个、独占租约、失败退避
+最多5分钟，一小时过期释放，不在重试期间重复POST。未完成的旧视频任务会被标为失败并释放冻结；
+已保存的旧视频仍可查看。
 
-适配官方 [图片接口](https://platform.minimax.io/docs/api-reference/image-generation-t2i)、
-[H3创建](https://platform.minimax.io/docs/api-reference/video-generation-v2-create)及
-[查询接口](https://platform.minimax.io/docs/api-reference/video-generation-v2-query)。base64返回字段
-参照 [MiniMax官方示例](https://github.com/MiniMax-AI/skills/blob/main/skills/frontend-dev/scripts/minimax_image.py)。
-图片base64直接清理元数据后保存；视频只下载固定HTTPS CDN白名单，不跟随重定向。
-上游POST未提供幂等能力：提交超时/进程中断且无持久化结果时标记 `submission_unknown` 并释放
-用户Credit，不自动重发（平台可能仍承担上游成本）。已持久化R2结果可恢复结算；视频拿到task_id后
-可后台查询恢复。生产启用前仍需用测试凭据验收实际provider响应/CDN、报价与资源容量；本地测试
-只验证官方HTTP契约、SQLite原子行为、失败恢复及UI，未使用生产key或实际调用付费生成。
+图片base64直接清理元数据后保存。上游POST未提供幂等能力：提交超时/进程中断且无持久化结果时
+标记 `submission_unknown` 并释放用户Credit，不自动重发（平台可能仍承担上游成本）。已持久化R2
+结果可恢复结算。
 
 附加 migration `0060_media_billing_reviews.sql` 为已落盘但账务不能安全终结的媒体留下账户隔离的审计记录。
 R2 写入后若 D1 结算暂不可用，图片任务进入 `storing` 重试原预留的结算，不重新提交非幂等的
@@ -362,21 +361,22 @@ provider POST；已有结果先于一小时任务超时判断。若原冻结已�
 或管理员备注就使资源可见。账务冲突、账号/关系已删除或证据不足时保持冻结并升级人工处理。
 部署前先应用 0060、0061，再升级 Auth；未迁移的 Worker 请求会失败关闭。
 
-情境自拍、图片和短视频共用用户画面描述；可分别主动勾选当前账号已导入的角色卡/场景快照，
-以及最近4条对话（最多450字符）。角色卡引用前复核关系角色 ID、会话角色 ID、当前场景 ID
-和账号归属；找不到或类型不符即拒绝，不回退到公开 Market 最新版，也不改变已接受报价及幂等键。
-卡片文字作为媒体视觉参考，不授予设备或工具权限；私人 Memory、关系备注和朋友圈不自动发送。
-文字提示仍不保证角色外观一致，也不调用设备。与可复用外观参考图一致性、动态模型生成
-主动消息是后续独立能力，不能将模板或此文字自拍描述为已完成关系智能。
+「让角色出镜」（`featureCharacter:true`）取代了单独的情境自拍：同时发送当前账号已导入的
+角色卡/场景快照、最近4条对话（最多450字符）和角色形象参考图。参考图优先使用本关系在
+`character_appearances` 中选择的私人形象照片，其次是角色卡记录的已发布 Market 头像（经
+`MARKET` Service Binding 匿名读取）；两者都没有时只用文字描述。角色卡引用前复核关系角色 ID、
+会话角色 ID、当前场景 ID 和账号归属；找不到或类型不符即拒绝，不回退到公开 Market 最新版，
+也不改变已接受报价及幂等键。参考图在执行时读取，不写入任务记录。卡片与图片只作为媒体视觉
+参考，不授予设备或工具权限；私人 Memory、关系备注和朋友圈不自动发送。
 
 `0035_companion_generations.sql` 增加真正的主动AI生成。原定时接口额外接受
 `mode:'model',acceptedCredits,generationPriceVersion,contextConsent:true`，列表响应附带
-`capability`（默认老请求仍为免费模板）。管理员配置 `PROACTIVE_MESSAGE_CREDITS` 单次固定报价，
-复用服务端 `MINIMAX_MEDIA_API_KEY`，缺配置禁用；价格变化自动暂停等待重新确认。用户在同一
-定时面板勾选AI模式并明确授权上下文与自动扣费，停止/暂停优先于发送，仍无任何设备工具。
+`capability`（默认老请求仍为免费模板）。报价是价格表 `background` 路由下单条消息的上限
+（最大输入与 1024 输出 token），版本为 `ark-proactive:<表版本>:<Credit>`；缺方舟密钥或价格表时
+禁用，价格表版本变化自动暂停等待重新确认。成功后按实际 token 用量结算，不超过用户确认的上限。
+用户在同一定时面板勾选AI模式并明确授权上下文与自动扣费，停止/暂停优先于发送，仍无任何设备工具。
 
-采用官方 [OpenAI兼容接口](https://platform.minimax.io/docs/api-reference/text-openai-api)
-`MiniMax-M2.7`、1024 completion token上限，不传tools。仅发送本角色关系资料、最近6条会话及
+经火山方舟（见下文「托管后台 AI」）生成，1024 输出 token 上限，不传tools。仅发送本角色关系资料、最近6条会话及
 最多4条有效且已确认的关系记忆，整体参考资料最多8000字符；候选记忆、其他账户与其他关系
 不会参与。只接收完整纯文本回答，剔除think块，不保存或展示推理字段，消息标明“AI主动消息”。
 每个occurrence/version持久化生成结果，独占请求、每账户最多1个生成中，成功后与消息、通知和
@@ -424,8 +424,24 @@ arrays. Deleted rows return empty metadata/preview for cross-device Inbox remova
 
 计费一致性补强：通用文字/视觉结算现在以事务中的pending状态作为写账条件，并返回实际最终
 状态，避免release先完成后仍扣费。Market打赏也在同一事务校验扣除预留后的余额，只有真实
-扣款成功才增加作者Credit，两个并发请求不能透支。统一账本区分主动AI、情境自拍及退款扣回，
+扣款成功才增加作者Credit，两个并发请求不能透支。统一账本区分主动AI、生成图片（含旧情境自拍）及退款扣回，
 保留原语音、文字与生成媒体的同余额计费。BYOK费用不属于站内账本。
+
+## 托管后台 AI
+
+记忆候选提取、长对话概述、AI 主动消息和生成图片统一使用火山引擎方舟（`ark-client.ts`），
+不再使用 MiniMax。需要两个 Worker 密钥：`VOLC_ARK_API_KEY` 与 `AI_PRICE_TABLE`（结构见
+[`@0xnullai/ai-pricing`](../../packages/platform/ai-pricing/README.md)）。任一缺失或价格表无效时，
+上述功能都按“未配置”关闭；仓库中不保存任何模型价格。
+
+- 文字走方舟 OpenAI 兼容 `POST /api/v3/chat/completions`，模型取价格表 `background.model`，
+  只在主模型失败后尝试 `background.fallbackModel`。请求总是带 `thinking:{type:'disabled'}`，
+  不传工具，只接受 `finish_reason=stop` 的非空正文。
+- 图片走 `POST /api/v3/images/generations`（Seedream），模型取 `image.model`。
+- 每次调用把 feature、模型、token 数和按价格表折算的 Credit 记入 Worker 日志（`ark_usage`），
+  不记录正文，便于核对成本。
+- 记忆提取和长对话概述对所有账号免费（包括自带密钥用户），不预留也不写 Credit 账本；主动消息
+  与生成图片沿用预留 → 执行 → 结算/释放账本。
 
 ## 账号删除与 Chat 撤销
 

@@ -922,7 +922,7 @@ export function App() {
           <span className="text-sm">视频陪伴与设备互动</span>
           <span className="text-xs text-[var(--text-faint)]">
             {config.providerId === 'managed' ? '平台 Credit' : '自带密钥（BYOK）· 服务商计费'} ·
-            原始画面不保存，文字观察进入同一私人对话。角色视频生成在聊天设置中，结果显示在聊天记录里。
+            原始画面不保存，文字观察进入同一私人对话。
           </span>
           {shellNav && (
             <Button
