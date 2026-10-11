@@ -301,7 +301,8 @@ it('starts the managed service without an API key, using the account voice', asy
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
   const options = realtimeMocks.createSession.mock.calls[0]![0] as RealtimeSessionOptions;
-  expect(options.voice).toBe('rex');
+  // A voice saved for the previous provider maps to its catalog counterpart.
+  expect(options.voice).toBe('zh_male_taocheng_uranus_bigtts');
   expect(result.current.state).toMatchObject({ status: 'connecting', error: null });
 });
 

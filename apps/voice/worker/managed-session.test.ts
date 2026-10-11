@@ -1,6 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ManagedVoiceSession } from './managed-session.js';
+import example from '@0xnullai/ai-pricing/example-price-table.json';
+import { parsePriceTable } from '@0xnullai/ai-pricing';
+import {
+  CLOSE_ACK_MS,
+  holdMinutes,
+  ManagedVoiceSession,
+  USAGE_GRACE_MS,
+} from './managed-session.js';
 import type { Env } from './env.js';
+
+const route = parsePriceTable(example)!.realtime;
+/** The hold of 100 Credits covers this much call time at the usage bound. */
+const HOLD_MS = Math.floor(holdMinutes(route, 100) * 60_000);
+const NO_USAGE = {
+  usage: {
+    inputAudioTokens: 0,
+    inputTextTokens: 0,
+    cachedAudioTokens: 0,
+    cachedTextTokens: 0,
+    outputAudioTokens: 0,
+    outputTextTokens: 0,
+  },
+  rounds: 0,
+  missingRounds: 0,
+};
 
 function setup() {
   const records = new Map<string, unknown>();
@@ -38,7 +61,8 @@ function setup() {
     waitUntil: (task: Promise<unknown>) => pending.push(task),
   } as unknown as DurableObjectState;
   const env = {
-    XAI_API_KEY: 'test-key',
+    VOLC_SPEECH_API_KEY: 'test-key',
+    AI_PRICE_TABLE: JSON.stringify(example),
     AUTH: {
       reserveVoiceCredits: vi.fn().mockResolvedValue({ allowed: true, status: 'pending' }),
       finalizeVoiceReservation: vi
@@ -46,10 +70,7 @@ function setup() {
         .mockImplementation(
           async (_s: string, _k: string, input: { action: string; durationMs: number }) => ({
             status: input.action === 'release' ? 'released' : 'settled',
-            charged:
-              input.action === 'release'
-                ? null
-                : Math.max(20, Math.ceil(input.durationMs / 10_000) * 20),
+            charged: input.action === 'release' ? null : 20,
           }),
         ),
     },
@@ -65,15 +86,21 @@ function setup() {
     });
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   const socket = () => {
-    const handlers = new Map<string, (() => void)[]>();
+    const handlers = new Map<string, ((event: { data?: unknown }) => void)[]>();
+    const sent: string[] = [];
     return {
+      sent,
       accept: vi.fn(),
-      send: vi.fn(),
+      send: vi.fn((data: string) => sent.push(data)),
       close: vi.fn(),
-      addEventListener: vi.fn((type: string, callback: () => void) =>
+      addEventListener: vi.fn((type: string, callback: (event: { data?: unknown }) => void) =>
         handlers.set(type, [...(handlers.get(type) ?? []), callback]),
       ),
-      emit: (type: string) => handlers.get(type)?.forEach((fn) => fn()),
+      emit: (type: string, data?: unknown) => handlers.get(type)?.forEach((fn) => fn({ data })),
+      /** Delivers one JSON event as a text frame. */
+      message: (event: Record<string, unknown>) =>
+        handlers.get('message')?.forEach((fn) => fn({ data: JSON.stringify(event) })),
+      events: () => sent.map((data) => JSON.parse(data) as Record<string, unknown>),
     };
   };
   const upstream = socket();
@@ -176,6 +203,7 @@ describe('durable Voice billing lifecycle', () => {
     expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith('alice', expect.any(String), {
       action: 'settle',
       durationMs: 10_000,
+      ...NO_USAGE,
     });
     expect(f.records.size).toBe(0);
   });
@@ -188,7 +216,7 @@ describe('durable Voice billing lifecycle', () => {
       status: 'rejected',
       charged: null,
     });
-    vi.setSystemTime(100_000);
+    vi.setSystemTime(1_000 + HOLD_MS + 5_000);
     await f.session.alarm();
     await f.drain();
     expect(f.server.close).toHaveBeenCalled();
@@ -196,13 +224,14 @@ describe('durable Voice billing lifecycle', () => {
     expect(f.records.size).toBe(1);
     expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith('alice', expect.any(String), {
       action: 'settle',
-      durationMs: 50_000,
+      durationMs: HOLD_MS,
+      ...NO_USAGE,
     });
     vi.mocked(f.env.AUTH.finalizeVoiceReservation).mockResolvedValue({
       status: 'settled',
       charged: 100,
     });
-    vi.setSystemTime(160_001);
+    vi.setSystemTime(1_000 + HOLD_MS + 70_000);
     await new ManagedVoiceSession(f.state, f.env).alarm();
     expect(f.records.size).toBe(0);
   });
@@ -219,6 +248,7 @@ describe('durable Voice billing lifecycle', () => {
     expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith('alice', expect.any(String), {
       action: 'settle',
       durationMs: 11_000,
+      ...NO_USAGE,
     });
   });
 
@@ -408,4 +438,240 @@ it('keeps old durable settlement records recoverable without an accepted quote',
   });
   await f.session.alarm();
   expect(f.records.size).toBe(0);
+});
+
+/** The usage shape a live Seeduplex `response.done` carried. */
+const roundUsage = (outputAudioTokens = 204) => ({
+  type: 'response.done',
+  response: {
+    usage: {
+      input_token_details: {
+        text_tokens: 2736,
+        audio_tokens: 122,
+        cached_tokens_details: { text_tokens: 2560, audio_tokens: 0 },
+      },
+      output_token_details: { text_tokens: 89, audio_tokens: outputAudioTokens },
+    },
+  },
+});
+
+describe('Doubao realtime call through the Worker', () => {
+  async function connected() {
+    const f = setup();
+    expect((await f.session.fetch(f.request())).status).toBe(101);
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('https://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue');
+    expect(new Headers(init!.headers).get('X-Api-Key')).toBe('test-key');
+    f.server.message({
+      type: 'session.update',
+      session: {
+        instructions: '角色设定',
+        voice: 'ara',
+        tools: [
+          {
+            type: 'function',
+            name: 'stop_all',
+            description: '停止',
+            parameters: { type: 'object' },
+          },
+        ],
+      },
+    });
+    f.upstream.message({ type: 'session.created', session: { id: 'dialog-1' } });
+    return f;
+  }
+
+  it('relays a tool round trip and bills the round from reported usage', async () => {
+    const f = await connected();
+    expect(f.upstream.events()[0]).toMatchObject({
+      type: 'session.create',
+      session: {
+        model: 'example-realtime-model',
+        instructions: '角色设定',
+        audio: { output: { voice: 'zh_female_xiaohe_uranus_bigtts' } },
+        tools: [{ name: 'stop_all' }],
+      },
+    });
+    f.server.message({ type: 'input_audio_buffer.append', audio: 'AAAA' });
+    expect(f.upstream.events().at(-1)).toEqual({
+      type: 'input_audio_buffer.append',
+      audio: 'AAAA',
+    });
+
+    f.upstream.message({
+      type: 'conversation.item.input_audio_transcription.started',
+      item_id: 'q1',
+    });
+    f.upstream.message({
+      type: 'response.function_call_arguments.done',
+      items: [{ call_id: 'c1', name: 'stop_all', arguments: '{}' }],
+    });
+    expect(f.server.events()).toContainEqual({
+      type: 'response.function_call_arguments.done',
+      call_id: 'c1',
+      name: 'stop_all',
+      arguments: '{}',
+    });
+    f.server.message({
+      type: 'conversation.item.create',
+      item: { type: 'function_call_output', call_id: 'c1', output: '{"stopped":true}' },
+    });
+    f.server.message({ type: 'response.create' });
+    expect(f.upstream.events().slice(-1)).toEqual([
+      {
+        type: 'conversation.item.create',
+        items: [
+          {
+            call_id: 'c1',
+            role: 'tool',
+            content: [{ type: 'input_text', text: '{"stopped":true}' }],
+          },
+        ],
+      },
+    ]);
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.upstream.message({
+      type: 'response.output_audio.done',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    expect(f.server.events().at(-1)).toEqual({ type: 'response.done' });
+    f.upstream.message(roundUsage());
+    await vi.waitFor(() =>
+      expect(
+        f.records.get(`billing:${vi.mocked(f.env.AUTH.reserveVoiceCredits).mock.calls[0]![1]}`),
+      ).toMatchObject({
+        phase: 'active',
+        rounds: 1,
+        usage: { outputAudioTokens: 204, cachedTextTokens: 2560 },
+      }),
+    );
+
+    // Hang-up: nothing pending, so the provider session is closed right away.
+    f.server.emit('close');
+    await vi.waitFor(() =>
+      expect(f.upstream.events().map((event) => event.type)).toContain('session.close'),
+    );
+    f.upstream.message({ type: 'session.closed' });
+    await f.drain();
+    expect(f.upstream.close).toHaveBeenCalled();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({
+        action: 'settle',
+        rounds: 1,
+        missingRounds: 0,
+        usage: expect.objectContaining({ outputAudioTokens: 204, inputTextTokens: 2736 }),
+      }),
+    );
+  });
+
+  it('after hang-up waits for late usage, forwards nothing more, then reviews rounds that never report', async () => {
+    vi.useFakeTimers();
+    const f = await connected();
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.upstream.message({
+      type: 'response.output_audio.done',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    const delivered = f.server.sent.length;
+    f.server.emit('close');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.server.close).toHaveBeenCalled();
+    expect(f.upstream.events().at(-1)).toEqual({ type: 'input_audio_mute.commit' });
+    // A device tool call racing the hang-up never reaches the (closed) browser.
+    f.upstream.message({
+      type: 'response.function_call_arguments.done',
+      items: [{ call_id: 'late', name: 'stop_all', arguments: '{}' }],
+    });
+    expect(f.server.sent.length).toBe(delivered);
+    await vi.advanceTimersByTimeAsync(USAGE_GRACE_MS + CLOSE_ACK_MS + 10);
+    await f.drain();
+    expect(f.upstream.events().map((event) => event.type)).toContain('session.close');
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({ action: 'settle', rounds: 0, missingRounds: 2 }),
+    );
+  });
+
+  it('keeps usage that arrives during the grace period', async () => {
+    vi.useFakeTimers();
+    const f = await connected();
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.server.emit('close');
+    await vi.advanceTimersByTimeAsync(1_000);
+    f.upstream.message(roundUsage());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.upstream.events().map((event) => event.type)).toContain('session.close');
+    f.upstream.message({ type: 'session.closed' });
+    await vi.advanceTimersByTimeAsync(0);
+    await f.drain();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({ rounds: 1, missingRounds: 0 }),
+    );
+  });
+
+  it('ends the call before reported usage outgrows the hold', async () => {
+    const f = await connected();
+    // 30k output audio tokens at the example rate cost more than 90% of the 100 Credit hold.
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.upstream.message(roundUsage(30_000));
+    expect(f.server.close).toHaveBeenCalled();
+    f.upstream.message({ type: 'session.closed' });
+    await f.drain();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({ action: 'settle', rounds: 1 }),
+    );
+  });
+
+  it('settles at once when the provider drops the connection', async () => {
+    const f = await connected();
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.upstream.emit('close');
+    await f.drain();
+    expect(f.server.close).toHaveBeenCalled();
+    expect(f.upstream.events().map((event) => event.type)).not.toContain('session.close');
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({ missingRounds: 1 }),
+    );
+  });
+
+  it('refuses to open a call without the speech key or a valid price table', async () => {
+    for (const patch of [{ VOLC_SPEECH_API_KEY: undefined }, { AI_PRICE_TABLE: '{}' }]) {
+      const f = setup();
+      Object.assign(f.env, patch);
+      expect((await f.session.fetch(f.request())).status).toBe(503);
+      expect(f.env.AUTH.reserveVoiceCredits).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  });
 });

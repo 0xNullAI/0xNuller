@@ -1,9 +1,11 @@
-import type { Env } from './env.js';
+import type { Env, RealtimeUsageTotals } from './env.js';
 
 const PREFIX = 'billing:';
 export const CHECKPOINT_MS = 10_000;
-export const VOICE_CREDITS_PER_SEGMENT = 20;
-export const VOICE_SEGMENT_MS = 10_000;
+// Duration tariff of records written before calls billed by provider usage. Kept only so
+// those durable records can still be acknowledged; new calls never use it.
+const LEGACY_CREDITS_PER_SEGMENT = 20;
+const LEGACY_SEGMENT_MS = 10_000;
 
 /** A late RPC can still commit; the reservation key makes the next retry safe. */
 export async function withBillingTimeout<T>(request: Promise<T>): Promise<T> {
@@ -26,6 +28,13 @@ export interface VoiceBillingRecord {
   durationMs: number;
   /** Quote accepted when this hold was created. Older durable records omit it. */
   reservedCredits?: number;
+  /** Provider usage summed over reported rounds. Absent on duration-billed records. */
+  usage?: RealtimeUsageTotals;
+  rounds?: number;
+  /** Rounds known to have ended without a usage report. */
+  missingRounds?: number;
+  /** Rounds still awaiting usage at this checkpoint; missing if the call never resumes. */
+  openRounds?: number;
   attempts?: number;
   nextAttemptAt?: number;
 }
@@ -36,20 +45,32 @@ function acknowledged(
 ) {
   if (result.status === 'needs_review') return result.charged === null;
   if (record.phase === 'release') return result.status === 'released' && result.charged === null;
+  if (record.usage) {
+    // Auth prices usage with its own copy of the table; accept any charge within the hold,
+    // or a release when nothing billable was reported.
+    if (result.status === 'released') return result.charged === null;
+    return (
+      result.status === 'settled' &&
+      Number.isSafeInteger(result.charged) &&
+      result.charged! > 0 &&
+      Number.isSafeInteger(record.reservedCredits) &&
+      result.charged! <= record.reservedCredits!
+    );
+  }
   if (result.status !== 'settled' || !Number.isSafeInteger(result.charged)) return false;
   const charge = result.charged!;
   const quoted = Math.max(
-    VOICE_CREDITS_PER_SEGMENT,
-    Math.ceil(record.durationMs / VOICE_SEGMENT_MS) * VOICE_CREDITS_PER_SEGMENT,
+    LEGACY_CREDITS_PER_SEGMENT,
+    Math.ceil(record.durationMs / LEGACY_SEGMENT_MS) * LEGACY_CREDITS_PER_SEGMENT,
   );
   if (record.reservedCredits === undefined) {
     // Before this field existed, do not strand valid persisted tasks. Still
     // reject zero, fractional or over-tariff receipts rather than losing them.
-    return charge > 0 && charge % VOICE_CREDITS_PER_SEGMENT === 0 && charge <= quoted;
+    return charge > 0 && charge % LEGACY_CREDITS_PER_SEGMENT === 0 && charge <= quoted;
   }
   return (
     Number.isSafeInteger(record.reservedCredits) &&
-    record.reservedCredits >= VOICE_CREDITS_PER_SEGMENT &&
+    record.reservedCredits >= LEGACY_CREDITS_PER_SEGMENT &&
     charge === Math.min(record.reservedCredits, quoted)
   );
 }
@@ -94,10 +115,22 @@ export class VoiceBillingOutbox {
         if (liveKey() !== null || processed >= 4) break;
         if ((record.nextAttemptAt ?? 0) > Date.now()) continue;
         processed++;
-        // No matching live socket after restart: charge only durably observed
-        // connected time, never the downtime between checkpoint and recovery.
-        const pending =
-          record.phase === 'active' ? { ...record, phase: 'settle' as const } : record;
+        // No matching live socket after restart: charge only durably observed usage
+        // (or, for old records, connected time), never the downtime since the checkpoint.
+        // Rounds still open at the checkpoint will never report usage now.
+        const pending: VoiceBillingRecord =
+          record.phase === 'active'
+            ? {
+                ...record,
+                phase: 'settle',
+                ...(record.usage
+                  ? {
+                      missingRounds: (record.missingRounds ?? 0) + (record.openRounds ?? 0),
+                      openRounds: 0,
+                    }
+                  : {}),
+              }
+            : record;
         if (record.phase === 'active') await this.write(pending);
         let unexpectedStatus = false;
         try {
@@ -105,6 +138,13 @@ export class VoiceBillingOutbox {
             this.auth.finalizeVoiceReservation(record.subject, record.reservationKey, {
               action: pending.phase === 'release' ? 'release' : 'settle',
               durationMs: record.durationMs,
+              ...(pending.usage && pending.phase !== 'release'
+                ? {
+                    usage: pending.usage,
+                    rounds: pending.rounds ?? 0,
+                    missingRounds: pending.missingRounds ?? 0,
+                  }
+                : {}),
             }),
           );
           if (!acknowledged(pending, result)) {

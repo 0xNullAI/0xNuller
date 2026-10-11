@@ -21,7 +21,7 @@ export function VoiceTimbreField() {
           setSettings(next);
           saveSettings(next);
         }}
-        options={MANAGED_VOICES.map((voice) => ({ value: voice, label: voice }))}
+        options={MANAGED_VOICES.map((voice) => ({ value: voice.id, label: voice.label }))}
       />
     </label>
   );

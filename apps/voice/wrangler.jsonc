@@ -5,7 +5,9 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-09",
   "compatibility_flags": ["nodejs_compat"],
-  "secrets": { "required": ["XAI_API_KEY"] },
+  // Doubao speech key (X-Api-Key) and the managed AI price table; without either the
+  // Worker refuses calls instead of charging a default price.
+  "secrets": { "required": ["VOLC_SPEECH_API_KEY", "AI_PRICE_TABLE"] },
   "services": [
     { "binding": "AUTH", "service": "0xnullai-auth", "entrypoint": "AuthOwnershipService" },
   ],
@@ -23,7 +25,6 @@
     },
   ],
   "vars": {
-    "MANAGED_MODEL": "grok-voice-think-fast-2.0",
     "MAX_SESSION_MINUTES": "20",
     "MANAGED_DISABLED": "0",
     "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",

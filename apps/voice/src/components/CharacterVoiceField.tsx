@@ -11,8 +11,9 @@ const DEFAULT = '__default__';
 
 /**
  * The voice this AI speaks with, saved on the account's private relationship.
- * "跟随默认" uses the voice chosen under 我的 → AI. A saved voice the service
- * cannot speak is shown as the default, since the call will use it.
+ * "跟随默认" uses the voice chosen under 我的 → AI. A voice saved for the previous
+ * provider shows as the catalog voice it maps to; one the service cannot speak shows
+ * as the default, since the call will use it. Nothing is rewritten until the user picks.
  */
 export function CharacterVoiceField({ characterId }: { characterId: string }) {
   // Keyed by character so switching chats never shows the previous AI's voice.
@@ -45,7 +46,7 @@ export function CharacterVoiceField({ characterId }: { characterId: string }) {
   const current = managedVoiceFor(relationship.voice ?? '') ?? DEFAULT;
   const options = [
     { value: DEFAULT, label: '跟随默认' },
-    ...MANAGED_VOICES.map((voice) => ({ value: voice, label: voice })),
+    ...MANAGED_VOICES.map((voice) => ({ value: voice.id, label: voice.label })),
   ];
 
   async function choose(value: string) {

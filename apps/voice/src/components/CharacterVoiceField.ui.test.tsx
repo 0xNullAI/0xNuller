@@ -49,13 +49,14 @@ afterEach(() => {
 it('saves a voice on the relationship without touching its other fields', async () => {
   auth.listCharacterRelationships.mockResolvedValue({ items: [relationship], limit: 200 });
   auth.saveCharacterRelationship.mockResolvedValue({
-    item: { ...relationship, voice: 'ara', version: 4 },
+    item: { ...relationship, voice: 'zh_male_m191_uranus_bigtts', version: 4 },
   });
   render(<CharacterVoiceField characterId="card" />);
   const select = (await screen.findByRole('combobox', { name: '音色' })) as HTMLSelectElement;
   expect(select.value).toBe('__default__');
-  fireEvent.change(select, { target: { value: 'ara' } });
-  await waitFor(() => expect(select.value).toBe('ara'));
+  expect(screen.getByRole('option', { name: '云舟' })).toBeTruthy();
+  fireEvent.change(select, { target: { value: 'zh_male_m191_uranus_bigtts' } });
+  await waitFor(() => expect(select.value).toBe('zh_male_m191_uranus_bigtts'));
   expect(auth.saveCharacterRelationship).toHaveBeenCalledWith({
     id: 'r1',
     characterId: 'card',
@@ -64,8 +65,19 @@ it('saves a voice on the relationship without touching its other fields', async 
     relationshipType: '',
     notes: '',
     version: 3,
-    voice: 'ara',
+    voice: 'zh_male_m191_uranus_bigtts',
   });
+});
+
+it('shows a voice saved for the previous provider as its catalog mapping without rewriting it', async () => {
+  auth.listCharacterRelationships.mockResolvedValue({
+    items: [{ ...relationship, voice: 'ara' }],
+    limit: 200,
+  });
+  render(<CharacterVoiceField characterId="card" />);
+  const select = (await screen.findByRole('combobox', { name: '音色' })) as HTMLSelectElement;
+  expect(select.value).toBe('zh_female_xiaohe_uranus_bigtts');
+  expect(auth.saveCharacterRelationship).not.toHaveBeenCalled();
 });
 
 it('shows nothing until the account has a relationship with this AI', async () => {

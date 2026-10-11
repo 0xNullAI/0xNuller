@@ -1,10 +1,26 @@
+/** Provider-reported token usage summed over a call's rounds (see `@0xnullai/ai-pricing`). */
+export interface RealtimeUsageTotals {
+  inputAudioTokens: number;
+  inputTextTokens: number;
+  cachedAudioTokens: number;
+  cachedTextTokens: number;
+  outputAudioTokens: number;
+  outputTextTokens: number;
+}
+
 export interface Env {
   VOICE_SESSION: DurableObjectNamespace;
   AUTH: {
     finalizeVoiceReservation(
       subject: string,
       reservationKey: string,
-      input: { action: 'settle' | 'release'; durationMs: number },
+      input: {
+        action: 'settle' | 'release';
+        durationMs: number;
+        usage?: RealtimeUsageTotals;
+        rounds?: number;
+        missingRounds?: number;
+      },
     ): Promise<{
       status: 'settled' | 'released' | 'missing' | 'rejected' | 'needs_review';
       charged: number | null;
@@ -27,8 +43,10 @@ export interface Env {
       idempotencyKey: string,
     ): Promise<CreditReservationResult | 'unauthorized'>;
   };
-  XAI_API_KEY?: string;
-  MANAGED_MODEL?: string;
+  /** Doubao speech key, sent upstream as `X-Api-Key`; never reaches the browser. */
+  VOLC_SPEECH_API_KEY?: string;
+  /** Managed AI routes and Credit prices (JSON); the realtime route names the model. */
+  AI_PRICE_TABLE?: string;
   MAX_SESSION_MINUTES?: string;
   MANAGED_DISABLED?: string;
   ALLOWED_ORIGINS?: string;

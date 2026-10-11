@@ -1,14 +1,33 @@
+import {
+  parsePriceTable,
+  realtimeCredits,
+  realtimeReservation,
+  type RealtimeRoute,
+} from '@0xnullai/ai-pricing';
 import type { Env } from './env.js';
+import { DoubaoRealtimeBridge } from './doubao-realtime.js';
 import {
   VoiceBillingOutbox,
   CHECKPOINT_MS,
-  VOICE_CREDITS_PER_SEGMENT,
-  VOICE_SEGMENT_MS,
   withBillingTimeout,
+  type VoiceBillingRecord,
 } from './voice-billing-outbox.js';
 
-const UPSTREAM = 'https://api.x.ai/v1/realtime';
-const DEFAULT_MODEL = 'grok-voice-think-fast-2.0';
+// Workers open outbound WebSockets with fetch + Upgrade on the https:// URL.
+const UPSTREAM = 'https://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue';
+/** After hang-up, how long rounds that already spoke may take to report usage. */
+export const USAGE_GRACE_MS = 20_000;
+/** After `session.close`, how long to wait for the provider's acknowledgement. */
+export const CLOSE_ACK_MS = 3_000;
+/** End the call before reported usage can outgrow the hold. */
+const CREDIT_CLOSE_RATIO = 0.9;
+
+type ShutdownReason = 'hangup' | 'upstream' | 'deadline' | 'credit' | 'provider';
+
+/** Longest call the hold can cover at the generous per-minute usage bound. */
+export function holdMinutes(route: RealtimeRoute, reservedCredits: number): number {
+  return reservedCredits / realtimeReservation(route, 1);
+}
 
 /** One live connection per account; durable finalization outbox survives restarts. */
 export class ManagedVoiceSession {
@@ -20,6 +39,7 @@ export class ManagedVoiceSession {
     startedAt: number;
     deadline: number;
     reservedCredits: number;
+    bridge: DoubaoRealtimeBridge;
   } | null = null;
   private closeActive: (() => Promise<void>) | null = null;
   private readonly billing: VoiceBillingOutbox;
@@ -34,16 +54,16 @@ export class ManagedVoiceSession {
     const ticket = request.headers.get('x-voice-ticket');
     const subject = request.headers.get('x-voice-subject');
     const reservationKey = request.headers.get('x-voice-reservation');
-    const reservedCredits =
-      Math.floor(
-        positiveNumber(request.headers.get('x-voice-max-credits'), VOICE_CREDITS_PER_SEGMENT) /
-          VOICE_CREDITS_PER_SEGMENT,
-      ) * VOICE_CREDITS_PER_SEGMENT;
-    if (!this.env.XAI_API_KEY) return new Response('upstream key not configured', { status: 503 });
+    const reservedCredits = Math.floor(
+      positiveNumber(request.headers.get('x-voice-max-credits'), 0),
+    );
+    const table = parsePriceTable(this.env.AI_PRICE_TABLE);
+    const key = this.env.VOLC_SPEECH_API_KEY;
+    if (!key || !table) return new Response('语音服务或价格尚未配置', { status: 503 });
+    const route = table.realtime;
     if (!ticket || !subject || !reservationKey)
       return new Response('missing account ticket', { status: 401 });
-    if (reservedCredits < VOICE_CREDITS_PER_SEGMENT)
-      return new Response('Credit 不足', { status: 402 });
+    if (reservedCredits < 1) return new Response('Credit 不足', { status: 402 });
     if (this.active) return new Response('该账户已有一个通话在进行中', { status: 409 });
     this.active = true;
     this.ownedKey = reservationKey;
@@ -54,16 +74,21 @@ export class ManagedVoiceSession {
       this.live = null;
       this.closeActive = null;
     };
+    const intent = (
+      phase: VoiceBillingRecord['phase'],
+      extra: Partial<VoiceBillingRecord> = {},
+    ): VoiceBillingRecord => ({
+      subject,
+      reservationKey,
+      phase,
+      durationMs: 0,
+      reservedCredits,
+      ...extra,
+    });
     try {
       // Write recovery intent BEFORE the reservation RPC. A crash after the RPC
       // succeeds but before its response still leaves a durable release job.
-      await this.billing.save({
-        subject,
-        reservationKey,
-        phase: 'release',
-        durationMs: 0,
-        reservedCredits,
-      });
+      await this.billing.save(intent('release'));
     } catch {
       clearCurrent();
       return new Response('无法建立可恢复的语音会话', { status: 503 });
@@ -71,13 +96,7 @@ export class ManagedVoiceSession {
     const release = async () => {
       clearCurrent();
       try {
-        await this.billing.save({
-          subject,
-          reservationKey,
-          phase: 'release',
-          durationMs: 0,
-          reservedCredits,
-        });
+        await this.billing.save(intent('release'));
         await this.billing.flush(() => this.ownedKey);
       } catch (error) {
         logFailure(error);
@@ -129,16 +148,10 @@ export class ManagedVoiceSession {
     let server: WebSocket | null = null;
     let client: WebSocket;
     try {
-      const response = await fetch(
-        `${UPSTREAM}?model=${encodeURIComponent(this.env.MANAGED_MODEL || DEFAULT_MODEL)}`,
-        {
-          headers: {
-            Upgrade: 'websocket',
-            'Sec-WebSocket-Protocol': `realtime, openai-insecure-api-key.${this.env.XAI_API_KEY}`,
-          },
-          signal: AbortSignal.timeout(30_000),
-        },
-      );
+      const response = await fetch(UPSTREAM, {
+        headers: { Upgrade: 'websocket', 'X-Api-Key': key, 'X-Api-Connect-Id': reservationKey },
+        signal: AbortSignal.timeout(30_000),
+      });
       upstream = response.webSocket;
       if (!upstream) throw new Error('upstream did not upgrade');
       upstream.accept();
@@ -156,52 +169,101 @@ export class ManagedVoiceSession {
       Math.floor(
         Math.min(
           positiveNumber(this.env.MAX_SESSION_MINUTES, 20) * 60_000,
-          (reservedCredits / VOICE_CREDITS_PER_SEGMENT) * VOICE_SEGMENT_MS,
+          holdMinutes(route, reservedCredits) * 60_000,
           24 * 60 * 60 * 1000,
         ),
       ),
     );
+    const bridge = new DoubaoRealtimeBridge(route.model);
     const live = {
       subject,
       reservationKey,
       startedAt,
       deadline: startedAt + maxMs,
       reservedCredits,
+      bridge,
     };
+    const usageFacts = (): Partial<VoiceBillingRecord> => ({
+      usage: { ...bridge.usage },
+      rounds: bridge.rounds,
+      missingRounds: bridge.missingRounds,
+      openRounds: bridge.pendingRounds,
+    });
     let finished = false;
     let established = false;
+    let upstreamClosed = false;
+    let sessionClosed = false;
+    // Set once the final intent is queued; later usage must not reopen the record.
+    let finalQueued = false;
     let finishTask: Promise<void> | null = null;
-    const finish = () => {
+    // Wakes waiters on every upstream event; shutdown waits on conditions, not fixed sleeps.
+    let wake: () => void = () => undefined;
+    const waitFor = (ready: () => boolean, timeoutMs: number) =>
+      new Promise<void>((resolve) => {
+        if (ready()) return resolve();
+        const timer = setTimeout(done, timeoutMs);
+        const previous = wake;
+        function done() {
+          clearTimeout(timer);
+          wake = previous;
+          resolve();
+        }
+        wake = () => {
+          previous();
+          if (ready()) done();
+        };
+      });
+    const shutdown = (reason: ShutdownReason) => {
       if (finished) return finishTask ?? Promise.resolve();
       finished = true;
       clearCurrent();
+      // The browser is gone or must go now; it gets nothing more from this call.
       safeClose(server);
-      safeClose(upstream);
-      const durationMs = Math.max(1, Math.min(Date.now(), live.deadline) - startedAt);
-      finishTask = this.billing
-        .save({
-          subject,
-          reservationKey,
-          phase: established ? 'settle' : 'release',
-          durationMs: established ? durationMs : 0,
-          reservedCredits,
-        })
-        .then(() => this.billing.flush(() => this.ownedKey));
+      const endedAt = Math.min(Date.now(), live.deadline);
+      const durationMs = Math.max(1, endedAt - startedAt);
+      finishTask = (async () => {
+        if (established) {
+          // Durable first: if the object dies while draining, recovery bills reported
+          // usage and treats the still-open rounds as missing.
+          await this.billing.save(intent('active', { durationMs, ...usageFacts() }));
+          if (!upstreamClosed && reason !== 'upstream' && bridge.ready) {
+            // Rounds that already spoke report usage seconds later; muting keeps the
+            // provider from timing out on missing audio while we wait for them.
+            safeSend(upstream!, JSON.stringify({ type: 'input_audio_mute.commit' }));
+            await waitFor(() => upstreamClosed || bridge.pendingRounds === 0, USAGE_GRACE_MS);
+            if (!upstreamClosed) {
+              safeSend(upstream!, JSON.stringify({ type: 'session.close' }));
+              await waitFor(() => upstreamClosed || sessionClosed, CLOSE_ACK_MS);
+            }
+          }
+        }
+        safeClose(upstream);
+        bridge.closeRounds();
+        finalQueued = true;
+        await this.billing.save(
+          established
+            ? intent('settle', { durationMs, ...usageFacts(), openRounds: 0 })
+            : intent('release'),
+        );
+        await this.billing.flush(() => this.ownedKey);
+      })();
       this.state.waitUntil(finishTask.catch(logFailure));
       return finishTask;
     };
-    for (const socket of [server, upstream]) {
-      socket.addEventListener('close', finish);
-      socket.addEventListener('error', finish);
-    }
+    server.addEventListener('close', () => void shutdown('hangup'));
+    server.addEventListener('error', () => void shutdown('hangup'));
+    upstream.addEventListener('close', () => {
+      upstreamClosed = true;
+      wake();
+      void shutdown('upstream');
+    });
+    upstream.addEventListener('error', () => {
+      upstreamClosed = true;
+      wake();
+      void shutdown('upstream');
+    });
     try {
-      await this.billing.save({
-        subject,
-        reservationKey,
-        phase: 'active',
-        durationMs: 0,
-        reservedCredits,
-      });
+      await this.billing.save(intent('active', usageFacts()));
       await this.state.storage.setAlarm(Math.min(live.deadline, Date.now() + CHECKPOINT_MS));
     } catch {
       finished = true;
@@ -216,9 +278,32 @@ export class ManagedVoiceSession {
     }
     established = true;
     this.live = live;
-    this.closeActive = finish;
-    server.addEventListener('message', (event) => safeSend(upstream!, event.data));
-    upstream.addEventListener('message', (event) => safeSend(server!, event.data));
+    this.closeActive = () => shutdown('deadline');
+    server.addEventListener('message', (event) => {
+      if (finished || typeof event.data !== 'string' || event.data.length > 256_000) return;
+      for (const message of bridge.fromClient(event.data)) safeSend(upstream!, message);
+    });
+    upstream.addEventListener('message', (event) => {
+      if (typeof event.data !== 'string') return;
+      const result = bridge.fromUpstream(event.data);
+      if (!finished) for (const message of result.client) safeSend(server!, message);
+      if (result.closed) sessionClosed = true;
+      wake();
+      if (result.usage && !finalQueued) {
+        // Keep reported usage durable as it arrives; a restart bills what was reported.
+        this.billing
+          .save(
+            intent('active', { durationMs: Math.max(0, Date.now() - startedAt), ...usageFacts() }),
+          )
+          .catch(logFailure);
+        if (
+          !finished &&
+          realtimeCredits(route, bridge.usage) >= reservedCredits * CREDIT_CLOSE_RATIO
+        )
+          void shutdown('credit');
+      }
+      if (result.closed) void shutdown('provider');
+    });
     return new Response(null, {
       status: 101,
       webSocket: client!,
@@ -240,6 +325,10 @@ export class ManagedVoiceSession {
           phase: 'active',
           durationMs: Math.max(0, Date.now() - live.startedAt),
           reservedCredits: live.reservedCredits,
+          usage: { ...live.bridge.usage },
+          rounds: live.bridge.rounds,
+          missingRounds: live.bridge.missingRounds,
+          openRounds: live.bridge.pendingRounds,
         });
       } catch (error) {
         await this.closeActive?.();

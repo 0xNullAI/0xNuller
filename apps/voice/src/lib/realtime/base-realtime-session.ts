@@ -15,10 +15,6 @@ import { isDeviceToolName } from '@dg-agent/core';
 
 export type { RealtimeSessionOptions } from './realtime-session.js';
 
-export const VAD_THRESHOLD = 0.85;
-export const VAD_PREFIX_PADDING_MS = 333;
-export const VAD_SILENCE_DURATION_MS = 500;
-
 /**
  * How long to wait for the WebSocket handshake before giving up. Without this a
  * hung connection (no open/error/close ever fires — common when a flaky network
@@ -36,11 +32,9 @@ const userTranscriptId = (itemId: string | undefined, turn: number): string =>
 const assistantTranscriptId = (key: string): string => `assistant:${key}`;
 
 /**
- * The Realtime API exists in the wild under two event-name families — the
- * classic/beta `response.audio.*` and the newer GA `response.output_audio.*`.
- * Which one a provider emits is NOT predictable from which `session.update`
- * shape it accepts (xAI takes the flat shape but its event names vary), so we
- * normalise both to one canonical set and branch on that.
+ * Realtime event names exist under two families — the classic `response.audio.*` and the
+ * newer `response.output_audio.*`. The Worker translates the provider's events into this
+ * protocol and uses the newer names; both are normalised to one canonical set here.
  */
 const EVENT_ALIASES: Record<string, string> = {
   'response.output_audio.delta': 'response.audio.delta',
@@ -101,9 +95,9 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
 
   async connect(): Promise<void> {
     // Mic + playback both prepared inside the "开始通话" click's user-activation
-    // window: the mic buffers frames until `onFrame` attaches below (xAI's
-    // guidance not to wait on the socket), and the output AudioContext must be
-    // resumed here or Chrome's autoplay policy leaves it silently suspended.
+    // window: getUserMedia needs it, and the output AudioContext must be resumed
+    // here or Chrome's autoplay policy leaves it silently suspended. Mic frames
+    // flow only once `onFrame` attaches after the socket opens.
     await this.mic.start();
     await this.playback.prepare();
 
@@ -169,8 +163,8 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
       });
     } catch (error) {
       // A failed handshake must not leave the mic hot / the output context open —
-      // both were started before the socket (xAI's "don't wait on the socket"
-      // guidance), so tear them down here instead of leaking them.
+      // both were started before the socket, so tear them down here instead of
+      // leaking them.
       this.mic.stop();
       this.playback.close();
       throw error;

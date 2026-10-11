@@ -53,7 +53,8 @@ describe('voice settings from versions with bring-your-own-key providers', () =>
 
       const settings = loadSettings();
 
-      expect(settings.voice).toBe('rex');
+      // The previous provider's voice id maps to its catalog counterpart.
+      expect(settings.voice).toBe('zh_male_taocheng_uranus_bigtts');
       expect(settings).not.toHaveProperty('activeProviderId');
       expect(settings).not.toHaveProperty('providers');
       expect(JSON.stringify(settings)).not.toContain('secret');
@@ -79,7 +80,7 @@ describe('voice settings from versions with bring-your-own-key providers', () =>
       JSON.stringify({ activeProviderId: 'trial', providers: { trial: { voice: 'leo' } } }),
     );
 
-    expect(loadSettings().voice).toBe('leo');
+    expect(loadSettings().voice).toBe('zh_male_m191_uranus_bigtts');
   });
 
   it('drops legacy provider keys from storage on the next save', () => {
@@ -92,14 +93,14 @@ describe('voice settings from versions with bring-your-own-key providers', () =>
       }),
     );
 
-    saveSettings({ ...loadSettings(), voice: 'sal' });
+    saveSettings({ ...loadSettings(), voice: 'zh_male_shenyeboke_uranus_bigtts' });
 
     const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY)!) as Record<
       string,
       unknown
     >;
-    expect(stored.voice).toBe('sal');
+    expect(stored.voice).toBe('zh_male_shenyeboke_uranus_bigtts');
     expect(stored).not.toHaveProperty('providers');
-    expect(loadSettings().voice).toBe('sal');
+    expect(loadSettings().voice).toBe('zh_male_shenyeboke_uranus_bigtts');
   });
 });

@@ -17,6 +17,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@0xnullai/ai-pricing": "0.1.0",
     "@0xnullai/auth": "0.1.0",
     "@0xnullai/device-runtime": "0.1.0",
     "@0xnullai/native": "0.1.0",

@@ -7,8 +7,8 @@
  * several tools in parallel, and `response.create` must not be sent until
  * *every* one of them has both executed AND had its `function_call_output`
  * sent, AND any audio from the calling response has finished playing —
- * sending it early causes two responses' audio to overlap (the thing xAI's
- * own docs call out as the most common integration mistake).
+ * sending it early causes two responses' audio to overlap. With a provider that
+ * continues by itself after tool results, `requestResponse()` is a no-op upstream.
  */
 import type { ToolCall } from '@dg-kit/core';
 import { createToolExecutionReceipt, type ToolExecutionReceipt } from '@dg-agent/runtime';
