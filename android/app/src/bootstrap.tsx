@@ -6,6 +6,7 @@ import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
 import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
 import { createUnifiedShellEmbeddedDeviceRuntime } from '@0xnullai/web/embedded-device-runtime';
+import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
 import {
   createBrowserVideoControl,
   type BrowserVideoControlOptions,
@@ -23,7 +24,12 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';
 import { requestDeviceTauri } from './request-device-tauri';
 import { createTauriTransport } from './tauri-transport';
-import { attachAndroidDeviceRuntimeLifecycle, wrapWithLifecycleSafety } from './lifecycle-safety';
+import {
+  attachAndroidDeviceRuntimeLifecycle,
+  attachAndroidDgLabLifecycle,
+  wrapWithLifecycleSafety,
+} from './lifecycle-safety';
+import { createTauriDgLabTransport } from './tauri-dglab-transport';
 import { ButtplugDeviceBackend } from './buttplug-device-backend';
 import { SplashDismiss } from './SplashDismiss';
 import { installAndroidPush } from './services/android-push';
@@ -68,6 +74,13 @@ const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
   attachNativeLifecycle: attachAndroidDeviceRuntimeLifecycle,
 });
 
+// The one DG-Lab connection owner for the whole APK. Every off-screen signal stops all of its
+// Coyote and Opossum output, on top of the per-client lifecycle wrapper each Coyote keeps.
+const dglab = createUnifiedShellDgLabRegistry({
+  transport: createTauriDgLabTransport({ connectHelp, permissionHelp }),
+  attachNativeLifecycle: attachAndroidDgLabLifecycle,
+});
+
 /**
  * Wrap `connect()` with the permission help in place, returning the same instance.
  *
@@ -79,6 +92,7 @@ const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
  */
 const bridge = {
   deviceRuntime: embeddedDevices.deviceRuntime,
+  dglab,
   agent: {
     servicesOverrides: {
       disableSpeech: true,

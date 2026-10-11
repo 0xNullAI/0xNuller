@@ -114,6 +114,23 @@ export async function attachAndroidDeviceRuntimeLifecycle(stop: () => void): Pro
 }
 
 /**
+ * Attach every off-screen signal (web visibility/pagehide/freeze plus Tauri `app://paused`) to the
+ * shared DG-Lab registry's stop.
+ *
+ * Unlike the embedded runtime, the registry has no web listeners of its own, and it also owns
+ * Opossum links that `wrapWithLifecycleSafety` never covered.
+ */
+export async function attachAndroidDgLabLifecycle(stop: () => void): Promise<() => void> {
+  const stopper: Stopper = async () => stop();
+  const web = attachWebListeners(stopper);
+  const tauri = await attachTauriListener(stopper);
+  return () => {
+    web.detach();
+    tauri.detach();
+  };
+}
+
+/**
  * Wrap a `DeviceClient` so any lifecycle transition that suspends the
  * webview triggers an emergencyStop before suspension takes effect.
  * The returned object is a transparent proxy: every other method is

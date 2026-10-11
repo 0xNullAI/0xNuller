@@ -36,6 +36,7 @@
   "exports": {
     "./Shell": "./src/Shell.tsx",
     "./embedded-device-runtime": "./src/embedded-device-runtime.ts",
+    "./dglab-device-registry": "./src/dglab-device-registry.ts",
     "./shell.css": "./src/shell.css"
   },
   "devDependencies": {

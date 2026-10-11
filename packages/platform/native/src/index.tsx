@@ -1,6 +1,11 @@
 import { createContext, useContext, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
-import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import {
+  createWebBluetoothDgLabTransport,
+  DgLabConnectionRegistry,
+  type EmbeddedDeviceRuntimeProvider,
+} from '@0xnullai/device-runtime';
+import { loadDeviceSafety } from '@0xnullai/settings';
 
 /**
  * The single entry point where the native (Tauri) shell injects Bluetooth
@@ -29,6 +34,12 @@ import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
 export interface NativeBridge {
   /** Shell-owned optional embedded runtime shared by every product surface. */
   deviceRuntime?: EmbeddedDeviceRuntimeProvider;
+  /**
+   * The one DG-Lab connection owner for the whole app instance, built by the shell before render.
+   * Modules read it through `useDgLabRegistry()`. The per-module seams below stay until each
+   * consumer migrates onto it.
+   */
+  dglab?: DgLabConnectionRegistry;
   /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
   agent?: {
     servicesOverrides?: unknown;
@@ -88,6 +99,26 @@ export function useEmbeddedDeviceRuntimeEnabled(): boolean {
     () => provider?.isEnabled() ?? false,
     () => false,
   );
+}
+
+/**
+ * The shell's DG-Lab registry, or a lazily built Web Bluetooth one in a standalone module build.
+ *
+ * The fallback is a module-level singleton, so a standalone build still has exactly one owner per
+ * physical device however many components call this hook.
+ */
+export function useDgLabRegistry(): DgLabConnectionRegistry {
+  return useNativeBridge().dglab ?? standaloneDgLabRegistry();
+}
+
+let standaloneRegistry: DgLabConnectionRegistry | null = null;
+
+function standaloneDgLabRegistry(): DgLabConnectionRegistry {
+  standaloneRegistry ??= new DgLabConnectionRegistry({
+    transport: createWebBluetoothDgLabTransport(),
+    limits: loadDeviceSafety,
+  });
+  return standaloneRegistry;
 }
 
 const EMPTY: NativeBridge = {};
