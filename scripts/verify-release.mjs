@@ -101,8 +101,15 @@ function verifyProductMetadata() {
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
     fail('Android updater must only consume unified v<version> releases');
   }
-  if (!updateChecker.includes("APK_ASSET_PREFIX = '0xnuller-v'")) {
-    fail('Android updater must require the versioned 0xnuller APK asset');
+  if (!updateChecker.includes("APK_ASSET_PREFIX = 'maoyuan-v'")) {
+    fail('Android updater must require the versioned maoyuan APK asset');
+  }
+  if (
+    !productReleaseWorkflow.includes(
+      'artifact="$RUNNER_TEMP/maoyuan-v${{ steps.version.outputs.version }}.apk"',
+    )
+  ) {
+    fail('Product Release must attach the APK under the name the Android updater requires');
   }
   for (const required of [
     'setupGitUser: false',
@@ -184,7 +191,7 @@ function verifyProductMetadata() {
     }
   }
   for (const required of [
-    '--title "0xNuller ${{ steps.version.outputs.version }}"',
+    '--title "猫愿 ${{ steps.version.outputs.version }}"',
     '--notes-file "docs/releases/${{ steps.version.outputs.version }}.md"',
     '--target "${{ steps.source.outputs.sha }}"',
     '--latest',

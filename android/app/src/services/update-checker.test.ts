@@ -22,7 +22,7 @@ interface FakeRelease {
   assets?: { name: string }[];
 }
 
-const apkAsset = (version: string) => ({ name: `0xnuller-v${version}.apk` });
+const apkAsset = (version: string) => ({ name: `maoyuan-v${version}.apk` });
 
 /** A single APK release, nothing else in the repo — the simplest case. */
 function fetchReturning(tagName: string | undefined, htmlUrl = 'https://example.com/release') {

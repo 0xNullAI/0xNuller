@@ -29,8 +29,8 @@ Web version.json:       6.3.0 + main commit SHA
 Android versionName:    6.3.0
 Android versionCode:    6003000
 Git tag:                v6.3.0
-APK:                    0xnuller-v6.3.0.apk
-Release 标题:           0xNuller 6.3.0
+APK:                    maoyuan-v6.3.0.apk
+Release 标题:           猫愿 6.3.0
 ```
 
 `Release · 0xNuller` 在统一 `CI` 对同一 main SHA 成功后运行：

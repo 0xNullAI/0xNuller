@@ -33,7 +33,8 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v6.5.7`，Release 标题和 APK 都显示 `0xNuller 6.5.7`。GitHub 自动生成的
+当前版本使用 tag `v6.5.7`，Release 标题和 APK 都显示 `猫愿 6.5.7`，APK 附件名为
+`maoyuan-v6.5.7.apk`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
@@ -83,13 +84,13 @@ npm run verify:android:apk -- "$APK"
   "package": "ai.nullai.dgagent",
   "versionName": "6.5.7",
   "versionCode": 6005007,
-  "label": "0xNuller",
+  "label": "猫愿",
   "sourceCommit": "<当前 Git HEAD>"
 }
 ```
 
 `package` 决定能不能覆盖安装到老用户手机上；`label` 是桌面上显示的名字（已经是
-0xNuller）；证书 SHA-256 必须匹配旧 DG-Agent；`sourceCommit` 证明 APK 确实来自准备发布的
+猫愿）；证书 SHA-256 必须匹配旧 DG-Agent；`sourceCommit` 证明 APK 确实来自准备发布的
 提交，而不是同版本号的旧候选。APK 约 15MB。
 
 签名配置是 fail-closed：release 任务缺任一 `DG_AGENT_*` 变量都会直接失败，不能产出
@@ -98,8 +99,9 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
+cp "$APK" maoyuan-v6.5.7.apk
 gh release create "v6.5.7" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.5.7" --notes-file docs/releases/6.5.7.md "$APK"
+  --title "猫愿 6.5.7" --notes-file docs/releases/6.5.7.md maoyuan-v6.5.7.apk
 ```
 
 ## 发布之后
