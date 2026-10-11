@@ -58,7 +58,7 @@ const HISTORY_LIMIT = 20;
  */
 function buildSystemPrompt(agent: RoomAgent, members: Map<string, MemberState>): string {
   const lines: string[] = [];
-  lines.push(`【你的身份】你是「${agent.name || 'AI'}」，这个聊天房间里的一位participant。`);
+  lines.push(`【你的身份】你是「${agent.name || 'AI'}」，这个群聊里的一位成员。`);
   if (agent.persona.trim()) {
     lines.push('');
     lines.push('【人设】');

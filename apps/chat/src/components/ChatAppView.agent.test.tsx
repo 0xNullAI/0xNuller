@@ -49,12 +49,12 @@ function ShellRoom({ canManage = true, isDm = false, save = vi.fn() }) {
 it('lets a room owner add a named AI from the unified website header', () => {
   const save = vi.fn();
   render(<ShellRoom save={save} />);
-  fireEvent.click(screen.getByRole('button', { name: '房间 AI' }));
+  fireEvent.click(screen.getByRole('button', { name: '群 AI' }));
   fireEvent.change(screen.getByLabelText('名字'), { target: { value: '小雨' } });
   fireEvent.change(screen.getByLabelText('人设（可留空）'), {
     target: { value: '温和的读书伙伴' },
   });
-  fireEvent.click(screen.getByRole('button', { name: '加入房间' }));
+  fireEvent.click(screen.getByRole('button', { name: '加入群聊' }));
   expect(save).toHaveBeenCalledWith({ name: '小雨', persona: '温和的读书伙伴' });
   expect(screen.queryByRole('dialog')).toBeNull();
 });
@@ -63,7 +63,7 @@ it.each([{ canManage: false }, { isDm: true }])(
   'keeps the agent action out of non-owner and private conversations: %j',
   (props) => {
     render(<ShellRoom {...props} />);
-    expect(screen.queryByRole('button', { name: '房间 AI' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '群 AI' })).toBeNull();
   },
 );
 

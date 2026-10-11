@@ -142,7 +142,7 @@ export function SensorsTab({
           </label>
         </div>
         <p className="settings-help-text">
-          联动默认关闭；启用后仅在当前 Agent 进程内执行，不经过 AI 或房间转发。
+          联动默认关闭；启用后仅在当前 Agent 进程内执行，不经过 AI 或群聊转发。
         </p>
       </section>
     </div>

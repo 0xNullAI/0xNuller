@@ -32,11 +32,11 @@ it('does not upload stale room work or publish an upload after room/capability c
       undefined,
       reply,
     ),
-  ).rejects.toThrow('房间已切换');
+  ).rejects.toThrow('会话已切换');
   expect(send).not.toHaveBeenCalled();
   await expect(
     sendRoomMedia({ room, active: () => current, upload, send }, new Blob(['x']), 'image'),
-  ).rejects.toThrow('房间已切换');
+  ).rejects.toThrow('会话已切换');
   expect(upload).toHaveBeenCalledOnce();
 });
 it('reports transport rejection instead of clearing the reply as if it was delivered', async () => {

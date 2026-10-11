@@ -508,7 +508,7 @@ export function usePeerRoom(displayName: string) {
 
         if (t === 'sys') {
           if (data.kind === 'closed') {
-            setError('房间已关闭');
+            setError('群聊已解散');
             const code = roomIdRef.current;
             if (code) void closeOwnedGroup(code).finally(() => forgetGroup(code));
             return;

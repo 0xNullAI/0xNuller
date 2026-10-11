@@ -28,15 +28,15 @@ export async function sendRoomMedia(
   meta?: { durationMs?: number; w?: number; h?: number },
   reply?: ChatReplyContext,
 ): Promise<void> {
-  if (!room.roomId || !room.mediaToken) throw new Error('房间尚未连接，无法上传媒体');
+  if (!room.roomId || !room.mediaToken) throw new Error('会话尚未连接，无法上传媒体');
   const check = () => {
     const current = active();
     if (current.roomId !== room.roomId || current.mediaToken !== room.mediaToken)
-      throw new Error('上传期间房间已切换，请重新发送');
+      throw new Error('上传期间会话已切换，请重新发送');
   };
   check();
   const media = await upload(room.roomId, room.mediaToken, blob, kind, meta);
   check();
   if (!send('', media, reply?.mentions, reply?.replyTo))
-    throw new Error('房间连接已断开，请重新发送');
+    throw new Error('会话连接已断开，请重新发送');
 }

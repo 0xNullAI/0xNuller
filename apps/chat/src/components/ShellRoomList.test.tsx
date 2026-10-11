@@ -47,7 +47,7 @@ describe('侧栏公开房间目录', () => {
       <ShellRoomList currentRoom={null} onJoin={onJoin} onCreate={vi.fn()} onDelete={vi.fn()} />,
     );
 
-    const toggle = await screen.findByRole('button', { name: '显示公开房间（2）' });
+    const toggle = await screen.findByRole('button', { name: '显示公开群（2）' });
     const directory = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
 
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -77,7 +77,7 @@ describe('侧栏公开房间目录', () => {
       />,
     );
 
-    const toggle = await screen.findByRole('button', { name: '隐藏公开房间（2）' });
+    const toggle = await screen.findByRole('button', { name: '隐藏公开群（2）' });
     const directory = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
     expect(directory?.hidden).toBe(false);
 

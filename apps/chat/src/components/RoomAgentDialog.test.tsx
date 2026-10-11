@@ -20,7 +20,7 @@ it('preserves an oversized imported scene and requires editing before saving the
   fireEvent.click(screen.getByRole('button', { name: scene.name }));
   const name = screen.getByLabelText('名字') as HTMLInputElement;
   const persona = screen.getByLabelText('人设（可留空）') as HTMLTextAreaElement;
-  const save = screen.getByRole('button', { name: '加入房间' }) as HTMLButtonElement;
+  const save = screen.getByRole('button', { name: '加入群聊' }) as HTMLButtonElement;
   expect(name.value).toBe(scene.name);
   expect(persona.value).toBe(scene.prompt);
   expect(screen.getByRole('alert').textContent).toContain('完整内容已保留');

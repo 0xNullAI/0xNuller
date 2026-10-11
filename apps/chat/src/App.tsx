@@ -331,6 +331,23 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // openDirectMessage in @0xnullai/auth. Subscribing also picks up a request made before this
   // module finished loading, which is the normal case: the first press of 私聊 is what causes
   // Chat to be mounted at all.
+  // The address names the open conversation, so a reload returns to it and the link can
+  // be shared. A DM link names only the peer account, never a ticket.
+  useEffect(() => {
+    if (window.location.pathname !== '/chat') return;
+    const params = new URLSearchParams(window.location.search);
+    const wanted =
+      peerRoom.isDm && dmPeer?.id
+        ? { key: 'dm', value: dmPeer.id }
+        : !peerRoom.isDm && peerRoom.roomId
+          ? { key: 'room', value: peerRoom.roomId }
+          : null;
+    if (!wanted || params.get(wanted.key) === wanted.value) return;
+    const next = new URLSearchParams();
+    next.set(wanted.key, wanted.value);
+    window.history.replaceState(window.history.state, '', `/chat?${next.toString()}`);
+  }, [dmPeer?.id, peerRoom.isDm, peerRoom.roomId]);
+
   useEffect(() => subscribeDmRequest((request) => void openDm(request)), [openDm]);
   useEffect(
     () =>

@@ -205,13 +205,13 @@ export function ShellRoomList({
         className="flex min-h-11 touch-manipulation items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] active:bg-[var(--accent-soft)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
-        新建 / 加入房间
+        新建 / 加入群聊
       </button>
 
       {showingDirectory && rooms.length > 0 ? (
         <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2">
           <p className="min-w-0 text-[11px] text-[var(--text-faint)]">
-            {knownGroups.length === 0 && mode === 'memberships' ? '尚未加入房间' : '公开房间'}
+            {knownGroups.length === 0 && mode === 'memberships' ? '尚未加入群聊' : '公开群'}
           </p>
           <button
             type="button"
@@ -220,7 +220,7 @@ export function ShellRoomList({
             onClick={() => setDirectoryOpen((open) => !open)}
             className="flex shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-1.5 py-1 text-[11px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
           >
-            {directoryOpen ? '隐藏' : '显示'}公开房间（{rooms.length}）
+            {directoryOpen ? '隐藏' : '显示'}公开群（{rooms.length}）
             <ChevronDown
               className={`h-3 w-3 transition-transform ${directoryOpen ? 'rotate-180' : ''}`}
             />
@@ -273,8 +273,8 @@ export function ShellRoomList({
             {knownCodes.has(room.code) || room.code === currentRoom ? (
               <button
                 type="button"
-                aria-label={`${room.code === currentRoom ? '退出' : '删除'}房间 ${room.name || room.code}`}
-                title={room.code === currentRoom ? '退出房间' : '从列表删除'}
+                aria-label={`${room.code === currentRoom ? '退出' : '删除'}群聊 ${room.name || room.code}`}
+                title={room.code === currentRoom ? '退出群聊' : '从列表删除'}
                 onClick={() => {
                   forgetGroup(room.code);
                   setKnownPage((groups) => groups.filter((group) => group.code !== room.code));
@@ -322,7 +322,7 @@ export function ShellRoomList({
       {status === 'connecting' && rooms.length === 0 && (
         <p className="flex items-center gap-1.5 px-2 py-2 text-xs text-[var(--text-faint)]">
           <RefreshCw className="h-3 w-3 animate-spin" />
-          正在获取房间
+          正在获取群聊
         </p>
       )}
     </div>

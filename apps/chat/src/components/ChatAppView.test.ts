@@ -24,7 +24,7 @@ describe('Chat room/lobby shell composition', () => {
 
   it('keeps explicit shell leave and active-room sidebar actions in the extracted view', () => {
     expect(viewSource).toContain('{inShell && peerRoom.roomId && (');
-    expect(viewSource).toContain("title={peerRoom.isDm ? '关闭私聊' : '离开房间'}");
+    expect(viewSource).toContain("title={peerRoom.isDm ? '关闭私聊' : '退出群聊'}");
     expect(viewSource).toContain("<span>{peerRoom.isDm ? '关闭' : '退出'}</span>");
     expect(viewSource).toContain('if (peerRoom.roomId === code) peerRoom.leave();');
   });

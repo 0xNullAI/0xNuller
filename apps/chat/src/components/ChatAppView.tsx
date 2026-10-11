@@ -141,7 +141,7 @@ export function ChatAppView({
   const shellNav = useShellNav();
   const [membersOpen, setMembersOpen] = useState(false);
   const [conversationListOpen, setConversationListOpen] = useState(false);
-  const roomTitle = peerRoom.isDm ? (dmPeer?.name ?? '私聊') : peerRoom.groupName || '房间';
+  const roomTitle = peerRoom.isDm ? (dmPeer?.name ?? '私聊') : peerRoom.groupName || '群聊';
   const leaveRoom = () => {
     leaveChatRoom(device.disconnect, peerRoom.leave, () => setDmPeer(null));
   };
@@ -204,7 +204,7 @@ export function ChatAppView({
             role="alert"
             className="mx-3 mb-2 rounded-[var(--radius-sm)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-soft)]"
           >
-            登录后才能创建、加入房间或发起私聊；公开房间仍可浏览。
+            登录后才能创建、加入群聊或发起私聊；公开群仍可浏览。
           </div>
         ) : null}
 
@@ -271,7 +271,7 @@ export function ChatAppView({
                     <button
                       onClick={() => setAgentOpen(true)}
                       className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
-                      title={peerRoom.agent ? `房间 AI：${peerRoom.agent.name}` : '给房间加个 AI'}
+                      title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
                     >
                       <Bot className="h-4 w-4" />
                     </button>
@@ -287,7 +287,7 @@ export function ChatAppView({
                     <button
                       onClick={() => setAllowAi((value) => !value)}
                       className={`flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
-                      title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许房间内 AI 控制你的设备'}
+                      title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许群内 AI 控制你的设备'}
                     >
                       <Bot className="h-3.5 w-3.5" />
                       {allowAi ? '允许AI' : '禁AI'}
@@ -327,7 +327,7 @@ export function ChatAppView({
               <button
                 onClick={leaveRoom}
                 className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-                title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
+                title={peerRoom.isDm ? '关闭私聊' : '退出群聊'}
               >
                 <LogOut className="h-4 w-4" />
               </button>
@@ -337,10 +337,10 @@ export function ChatAppView({
             <button
               onClick={() => setAgentOpen(true)}
               className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-              title={peerRoom.agent ? `房间 AI：${peerRoom.agent.name}` : '给房间加个 AI'}
+              title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
             >
               <Bot className="h-4 w-4" />
-              <span>房间 AI</span>
+              <span>群 AI</span>
             </button>
           )}
           {peerRoom.roomId && !peerRoom.isDm && peerRoom.isOwner && (
@@ -373,7 +373,7 @@ export function ChatAppView({
             <button
               onClick={leaveRoom}
               className="flex h-9 shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-              title={peerRoom.isDm ? '关闭私聊' : '离开房间'}
+              title={peerRoom.isDm ? '关闭私聊' : '退出群聊'}
             >
               <LogOut className="h-4 w-4" />
               <span>{peerRoom.isDm ? '关闭' : '退出'}</span>
@@ -407,7 +407,7 @@ export function ChatAppView({
         {!peerRoom.roomId ? (
           <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="mx-auto w-full max-w-2xl rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 sm:p-6">
-              <h2 className="text-lg font-semibold">公开房间</h2>
+              <h2 className="text-lg font-semibold">公开群</h2>
               <div className="mt-3">
                 <ShellRoomList
                   mode="directory"

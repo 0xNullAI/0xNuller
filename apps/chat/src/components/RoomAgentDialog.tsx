@@ -80,7 +80,7 @@ export function RoomAgentDialog({
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-[var(--accent)]" />
           <h2 id="room-agent-title" className="text-base font-semibold">
-            房间 AI
+            群 AI
           </h2>
         </div>
 
@@ -150,7 +150,7 @@ export function RoomAgentDialog({
 
         {(nameTooLong || personaTooLong) && (
           <p role="alert" className="text-sm text-[var(--danger)]">
-            当前房间 AI 名字最多 {MAX_ROOM_AGENT_NAME} 个字符，人设最多 {MAX_ROOM_AGENT_PERSONA}
+            当前群 AI 名字最多 {MAX_ROOM_AGENT_NAME} 个字符，人设最多 {MAX_ROOM_AGENT_PERSONA}
             个字符。导入的完整内容已保留，请编辑缩短后保存；原场景不会更改。
           </p>
         )}
@@ -166,7 +166,7 @@ export function RoomAgentDialog({
               className="flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-3 py-2 text-sm text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
             >
               <Trash2 className="h-4 w-4" />
-              移出房间
+              移出群聊
             </button>
           ) : (
             <span />
@@ -190,7 +190,7 @@ export function RoomAgentDialog({
               }}
               className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--button-text)] transition-opacity disabled:opacity-40"
             >
-              {selected ? '保存' : '加入房间'}
+              {selected ? '保存' : '加入群聊'}
             </button>
           </div>
         </div>

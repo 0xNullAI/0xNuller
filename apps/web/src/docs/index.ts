@@ -36,7 +36,7 @@ export interface Doc {
 export const DOCS: Doc[] = [
   { id: 'intro', label: '介绍', blurb: '安全与开始使用', markdown: intro },
   { id: 'control', label: 'Control', blurb: '自己控制自己的设备', markdown: control },
-  { id: 'chat', label: 'Chat', blurb: '房间与私聊', markdown: chat },
+  { id: 'chat', label: 'Chat', blurb: '群聊与私聊', markdown: chat },
   { id: 'agent', label: 'Agent', blurb: '打字，AI 帮你操作', markdown: agent },
   { id: 'voice', label: 'Voice', blurb: '说话代替打字', markdown: voice },
   { id: 'video', label: 'Video', blurb: '摄像头视觉闭环场景', markdown: video },
