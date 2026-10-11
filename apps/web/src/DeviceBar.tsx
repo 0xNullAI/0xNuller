@@ -234,7 +234,8 @@ export function DeviceBar({
             className={`ui-press sticky left-0 z-[1] flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
               hasActiveOutput
                 ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
-                : 'border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
+                : // Still the stop control when idle: red so it reads as always available.
+                  'border-[var(--danger)] bg-[var(--bg-elevated)] text-[var(--danger)] hover:bg-[var(--danger-soft)] focus-visible:ring-[var(--danger)]'
             }`}
             title={
               hasActiveOutput
