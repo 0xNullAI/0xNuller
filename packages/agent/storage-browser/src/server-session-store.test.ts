@@ -84,6 +84,28 @@ function harness() {
       rows.set(conversationId, next);
       return Response.json({ revision: next.revision, metadata, updatedAt: next.updatedAt });
     }
+    if (init?.method === 'PUT' && String(url).endsWith('/relationship')) {
+      const conversationId = String(url).split('/').at(-2)!;
+      const current = rows.get(conversationId);
+      if (!current?.session) return Response.json({}, { status: 404 });
+      const body = JSON.parse(String(init.body)) as {
+        expectedRevision: number;
+        relationshipId: string;
+      };
+      const bound = current.session.metadata?.relationshipId;
+      if (body.expectedRevision !== current.revision || (bound && bound !== body.relationshipId))
+        return Response.json({}, { status: 409 });
+      const next = {
+        ...current,
+        revision: current.revision + 1,
+        session: {
+          ...current.session,
+          metadata: { ...current.session.metadata, relationshipId: body.relationshipId },
+        },
+      };
+      rows.set(conversationId, next);
+      return Response.json(next);
+    }
     if (init?.method === 'POST' && String(url).endsWith('/messages')) {
       const conversationId = String(url).split('/').at(-2)!;
       const current = rows.get(conversationId);
@@ -316,6 +338,26 @@ describe('server-only session storage', () => {
     await expect(h.store.save(runtime)).rejects.toMatchObject({ status: 400 });
     expect((await h.store.get('s'))?.messages[25]?.content).toBe('text 25');
   });
+  it('binds a relationship that arrived after the first message, then keeps appending', async () => {
+    const h = harness();
+    const session = snapshot();
+    session.metadata = { promptPresetId: 'character' };
+    session.messages = [{ id: 'm0', role: 'user', content: '你好', createdAt: 1 }];
+    await h.store.save(session);
+    const runtime = (await h.store.getRuntimeWindow('s'))!;
+    runtime.metadata = { ...runtime.metadata, relationshipId: 'rel-1' };
+    runtime.messages.push({ id: 'm1', role: 'user', content: '还记得我吗', createdAt: 2 });
+    h.request.mockClear();
+    await h.store.save(runtime);
+    const calls = h.request.mock.calls.map(
+      ([url, init]) => `${init?.method} ${String(url).split('/').at(-1)}`,
+    );
+    expect(calls).toEqual(['PUT relationship', 'POST messages']);
+    const saved = await h.store.get('s');
+    expect(saved?.metadata.relationshipId).toBe('rel-1');
+    expect(saved?.messages.map((message) => message.id)).toEqual(['m0', 'm1']);
+  });
+
   it('commits a scene change and new message from a bounded runtime window without replacing history', async () => {
     const h = harness();
     const session = snapshot();

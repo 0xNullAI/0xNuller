@@ -510,6 +510,44 @@ export class ServerSessionStore implements SessionStore {
         this.rememberOperational(session);
         return;
       }
+      // A chat can start before its private relationship exists (opened from
+      // Market, or the relationship lookup was still pending). Binding it later
+      // is a one-time server operation; the append and metadata paths never
+      // change relationshipId, so without this the conversation could not save
+      // another message.
+      const relationshipId = body.metadata?.relationshipId;
+      if (
+        identity.revision > 0 &&
+        identity.persisted &&
+        typeof relationshipId === 'string' &&
+        identity.persisted.metadata?.relationshipId === undefined &&
+        identity.persisted.metadata?.promptPresetId === body.metadata?.promptPresetId
+      ) {
+        const bound = (await this.call(
+          identity,
+          `/${encodeURIComponent(session.id)}/relationship`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ expectedRevision: identity.revision, relationshipId }),
+          },
+        )) as { revision: number } | null;
+        if (!bound) throw new ConversationStoreError('会话已删除，请创建新会话。', 410);
+        identity.revision = bound.revision;
+        // Same key order as toServerSession: the append paths compare metadata as JSON.
+        identity.persisted = {
+          ...identity.persisted,
+          metadata: toServerSession({
+            ...session,
+            messages: [],
+            metadata: { ...identity.persisted.metadata, relationshipId },
+          }).metadata,
+        };
+        session[version] = identity;
+        if (samePublicContent(identity.persisted, body)) {
+          this.rememberOperational(session);
+          return;
+        }
+      }
       const baseline = identity.persisted;
       const combinedAdditions =
         baseline && incrementalMessages(baseline, { ...body, metadata: baseline.metadata });
