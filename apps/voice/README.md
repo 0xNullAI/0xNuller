@@ -56,13 +56,12 @@ worker/                 托管入口与 ManagedVoiceSession DO
 
 Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、票据鉴权和音色均属实时协议。
 `ManagedVoiceSession` 定义浏览器与 Worker 之间的协议；更换上游时由 Worker 适配，或只改该类的连接、
-`session.update` 与音频编码三个钩子，并同步 `managed-voices.ts` 的音色列表。通用设备则复用
-`@0xnullai/device-runtime` 的 AI schema、调用适配器和输出权限分类，Voice 保留自己的通话权限与
+`session.update` 与音频编码三个钩子，并同步 `managed-voices.ts` 的音色列表。Voice 保留自己的通话权限与
 结束停止生命周期。
 
 ## AI 设备目标边界
 
-- Realtime 会话只向模型声明当前已连接且可用的设备。连接、断开或通用设备拓扑变化时，Voice 会
+- Realtime 会话只向模型声明当前已连接且可用的设备。连接或断开设备时，Voice 会
   在原会话中一起更新说明和工具列表；断开、故障或仅保存过设置的设备不会留在 AI 上下文中。
 - 郊狼使用与 Agent 相同的共享 DG-Lab registry 客户端和 exact-target router，可同时连接多台同类型
   甚至同名设备。每个连接实例拥有独立的 opaque `targetId`、协议 client、命令队列与停止路径；
@@ -70,8 +69,6 @@ Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、�
   组合方式。
 - Voice 只驱动共享 registry 中第一台已连接的负鼠；该负鼠换成其他硬件或重连时会生成新的本地
   opaque 身份，旧身份不能迁移到新硬件。
-- 通用设备运行时支持多个设备和多个振动功能。模型看到的是每个实例独立的 opaque `deviceId` 与
-  `featureId`，每次工具调用必须精确指定一对 ID；名称不进入模型状态，命令不会广播或 fan-out。
 - 输出命令在进入对应目标的独立队列前会重新检查连接身份、权限结果和当前模块租约。身份或租约在
   确认期间发生变化时，本次增加输出会失败关闭；停止与全局紧急停止不受普通输出权限或租约阻断。
 

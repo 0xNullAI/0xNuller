@@ -114,18 +114,12 @@ async function attachTauriListener(stop: Stopper): Promise<LifecycleListener> {
   }
 }
 
-/** Attach the native pause signal to the shell-owned embedded DeviceRuntime controller. */
-export async function attachAndroidDeviceRuntimeLifecycle(stop: () => void): Promise<() => void> {
-  const listener = await attachTauriListener(async () => stop());
-  return () => listener.detach();
-}
-
 /**
  * Attach every off-screen signal (web visibility/pagehide/freeze plus Tauri `app://paused`) to the
  * shared DG-Lab registry's stop.
  *
- * Unlike the embedded runtime, the registry has no web listeners of its own, and it also owns
- * Opossum links that `wrapWithLifecycleSafety` never covered.
+ * The registry has no web listeners of its own, and it also owns Opossum links that
+ * `wrapWithLifecycleSafety` never covered.
  */
 export async function attachAndroidDgLabLifecycle(stop: () => void): Promise<() => void> {
   const stopper: Stopper = async () => stop();

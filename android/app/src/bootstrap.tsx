@@ -3,16 +3,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
 import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
-import { createUnifiedShellEmbeddedDeviceRuntime } from '@0xnullai/web/embedded-device-runtime';
 import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
 import { prewarmDgLabDeviceScan } from '@dg-kit/transport-tauri-blec';
 import { UpdateBanner } from './components/UpdateBanner';
-import {
-  attachAndroidDeviceRuntimeLifecycle,
-  attachAndroidDgLabLifecycle,
-} from './lifecycle-safety';
+import { attachAndroidDgLabLifecycle } from './lifecycle-safety';
 import { createTauriDgLabTransport } from './tauri-dglab-transport';
-import { ButtplugDeviceBackend } from './buttplug-device-backend';
 import { SplashDismiss } from './SplashDismiss';
 import {
   installAndroidShellBehaviours,
@@ -43,13 +38,6 @@ installAndroidShellBehaviours();
 // system prompt and its explanatory UI.
 void prewarmDgLabDeviceScan().catch(() => undefined);
 
-// One provider/controller pair for the whole APK. Constructing it does not invoke the native
-// backend; the local default-off setting and a later human scan action gate initialization.
-const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
-  backendFactory: () => new ButtplugDeviceBackend(),
-  attachNativeLifecycle: attachAndroidDeviceRuntimeLifecycle,
-});
-
 // The one DG-Lab connection owner for the whole APK. Every off-screen signal stops all of its
 // Coyote and Opossum output, on top of the per-client lifecycle wrapper each Coyote keeps
 // (`wrapWithLifecycleSafety` inside the transport).
@@ -62,7 +50,6 @@ const dglab = createUnifiedShellDgLabRegistry({
 });
 
 const bridge = {
-  deviceRuntime: embeddedDevices.deviceRuntime,
   dglab,
   // Non-device Agent flags only: no speech, bridge or version.json on the native shell.
   agent: {

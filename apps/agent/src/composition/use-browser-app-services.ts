@@ -14,7 +14,6 @@ import type { PermissionDecision } from '@dg-agent/core';
 import { currentDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { SavedScene } from '@0xnullai/scenes';
-import type { NativeBridge } from '@0xnullai/native';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
 import { createAgentTaskRunReporter } from '../services/agent-task-run-reporter.js';
 
@@ -40,7 +39,6 @@ export interface UseBrowserAppServicesOptions {
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
-  deviceRuntimeProvider?: NativeBridge['deviceRuntime'];
   /** Agent's handle on the app's one DG-Lab registry. Every device client comes from it. */
   dglab: DgLabModuleHandle;
   /** The registry's transport is native BLE, so the Web Bluetooth probe does not apply. */
@@ -61,7 +59,6 @@ export function useBrowserAppServices(
     scenes,
     setPendingPermission,
     servicesOverrides,
-    deviceRuntimeProvider,
     dglab,
     nativeBluetooth = false,
     inShell = false,
@@ -112,7 +109,6 @@ export function useBrowserAppServices(
             : currentDeviceLease() === null || hasDeviceLease('agent')) &&
           (context.sourceType === 'sensor' ||
             deviceConversationAccess(currentAuthUserId(), 'ai', sessionId)),
-        deviceRuntimeProvider,
         taskRunReporter,
         resolveBridgeSessionId,
         onPermissionRequest: (input) =>
@@ -136,7 +132,6 @@ export function useBrowserAppServices(
       setPendingPermission,
       servicesOverrides,
       nativeBluetooth,
-      deviceRuntimeProvider,
       taskRunReporter,
     ],
   );

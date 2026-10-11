@@ -39,11 +39,9 @@ import {
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
 import {
-  createAiDeviceToolAdapter,
   RegistryCoyoteClient,
   RegistryOpossumClient,
   RegistrySensorClient,
-  type DeviceRuntimeProvider,
   type DgLabModuleHandle,
 } from '@0xnullai/device-runtime';
 
@@ -108,8 +106,6 @@ export interface BrowserServicesOptions {
   deviceExecutionGate?: DeviceExecutionGate;
   /** Server TaskRun reporter; non-stop tools fail closed without a server run ID. */
   taskRunReporter?: RuntimeTaskRunReporter;
-  /** Shell-owned generic runtime; binding is lazy and uses the Agent module id. */
-  deviceRuntimeProvider?: DeviceRuntimeProvider;
   /**
    * If true, speech recognition / synthesis are stubbed with no-op controllers
    * and capabilities report nothing supported. Used by shells (Android WebView)
@@ -302,11 +298,6 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     registry: bridgeRegistry,
   });
 
-  const deviceRuntimeProvider = options.deviceRuntimeProvider;
-  const deviceRuntimeTools = deviceRuntimeProvider
-    ? createAiDeviceToolAdapter(deviceRuntimeProvider, 'agent')
-    : undefined;
-
   let client: AgentClient;
   try {
     client = createBrowserAgentClient({
@@ -323,7 +314,6 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       permissionService: bridgePermissionService,
       deviceExecutionGate: options.deviceExecutionGate,
       taskRunReporter: options.taskRunReporter,
-      deviceRuntimeTools,
     });
   } catch (error) {
     const message = formatInitError('模型服务初始化失败', error);

@@ -8,7 +8,6 @@ export interface VideoSetupPanelViewModel {
   scenes: readonly { id: string; name: string; icon?: string }[];
   selectedSceneId: string;
   facingMode: CameraFacingMode;
-  embeddedAvailable: boolean;
   showCoyoteConnect: boolean;
   coyoteConnectLabel: string;
   showOpossumConnect: boolean;
@@ -35,7 +34,6 @@ export interface VideoSetupPanelActions {
   selectScene: (id: string) => void;
   setFacingMode: (value: CameraFacingMode) => void;
   connect: (kind: VideoOutputKind) => void;
-  discoverEmbeddedDevices: () => void;
   setDurationMinutes: (value: number) => void;
   setCadenceSeconds: (value: number) => void;
   setAllowEnhanced: (value: boolean) => void;
@@ -127,11 +125,6 @@ export function VideoSetupPanel({
         {showDeviceConnectActions && view.showOpossumConnect && (
           <Button size="sm" variant="secondary" onClick={() => actions.connect('opossum')}>
             <Link aria-hidden="true" className="h-3.5 w-3.5" /> 连接负鼠
-          </Button>
-        )}
-        {view.embeddedAvailable && (
-          <Button size="sm" variant="secondary" onClick={actions.discoverEmbeddedDevices}>
-            <Link aria-hidden="true" className="h-3.5 w-3.5" /> 查找通用设备
           </Button>
         )}
       </div>

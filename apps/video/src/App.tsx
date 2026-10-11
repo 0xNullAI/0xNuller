@@ -36,19 +36,12 @@ import {
   type ProviderId,
 } from '@0xnullai/llm-providers';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import {
-  useDgLabRegistry,
-  useEmbeddedDeviceRuntimeEnabled,
-  useNativeBridge,
-} from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { useScenes, usePublicMarketPortrait } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import {
   createUnifiedOutputTargets,
-  genericDeviceIntensityCap,
-  genericDeviceSafetyPolicy,
   outputTargetSafetyControl,
-  type DeviceSnapshot,
   type UnifiedOutputTarget,
 } from '@0xnullai/device-runtime';
 import {
@@ -66,7 +59,6 @@ import { useVideoDictation } from './hooks/use-video-dictation.js';
 import { useVideoSpeechPlayback } from './hooks/use-video-speech-playback.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
 import { VisualSession, type VisualSessionSnapshot } from './services/visual-session.js';
-import { DeviceRuntimeVideoControlService } from './services/device-runtime-video-control.js';
 import { prepareVideoConversation } from './services/prepare-video-conversation.js';
 import {
   bindRegistryVideoControl,
@@ -144,22 +136,6 @@ class CompanionObserverSlot {
   set(value: typeof this.value) {
     this.value = value;
     this.recent = [];
-  }
-}
-
-class GenericVideoServiceSlot {
-  private value: DeviceRuntimeVideoControlService | null = null;
-
-  get(): DeviceRuntimeVideoControlService | null {
-    return this.value;
-  }
-
-  set(service: DeviceRuntimeVideoControlService | null): void {
-    this.value = service;
-  }
-
-  clear(service: DeviceRuntimeVideoControlService): void {
-    if (this.value === service) this.value = null;
   }
 }
 
@@ -255,10 +231,6 @@ export function App() {
   const [managedReadAloud, setManagedReadAloud] = useState(false);
   const [routingGrant, setRoutingGrant] = useState<VideoAiRoutingGrantSnapshot | null>(null);
   const [devices, setDevices] = useState(EMPTY_DEVICE_SNAPSHOT);
-  const [embeddedDeviceState, setEmbeddedDeviceState] = useState<{
-    service: DeviceRuntimeVideoControlService;
-    snapshot: DeviceSnapshot;
-  } | null>(null);
   const [visual, setVisual] = useState(INITIAL_VISUAL_STATE);
   const [observations, setObservations] = useState<Array<{ step: number; text: string }>>([]);
   const [videoQuestion, setVideoQuestion] = useState('');
@@ -276,8 +248,6 @@ export function App() {
     autoStartRef.current = null;
   }, []);
   const openSettings = useOpenShellSettings();
-  const native = useNativeBridge();
-  const genericDevicesEnabled = useEmbeddedDeviceRuntimeEnabled();
   // The app's one DG-Lab registry owns every Coyote/Opossum link; a standalone build gets a
   // lazy Web Bluetooth registry from the same hook.
   const dglab = useDgLabRegistry();
@@ -330,46 +300,11 @@ export function App() {
   }, [requestedCardId, sceneLibrary]);
   // Market selection is shared. A running observation keeps the card and
   // private context that were prepared for its server conversation.
-  const embeddedScene = activeScene ?? selectedScene;
+  const routerScene = activeScene ?? selectedScene;
   const sceneOptions = sceneLibrary.scenes.filter((card) => savedPromptKind(card) === 'character');
   const selectedSceneId = sceneOptions.some((scene) => scene.id === requestedCardId)
     ? requestedCardId
     : '';
-  const genericService = useMemo(
-    () =>
-      native.deviceRuntime && genericDevicesEnabled
-        ? new DeviceRuntimeVideoControlService({
-            provider: native.deviceRuntime,
-            llm: null,
-            scene: null,
-            hasLease: () => hasDeviceLease('video'),
-            getSafetyIntensityCap: () => genericDeviceIntensityCap(loadDeviceSafety()),
-            getMaxOutputLeaseMs: () =>
-              genericDeviceSafetyPolicy(loadDeviceSafety()).maxOutputLeaseMs,
-          })
-        : null,
-    [genericDevicesEnabled, native.deviceRuntime],
-  );
-  const [genericServiceSlot] = useState(() => new GenericVideoServiceSlot());
-  const embeddedDevices =
-    genericService && embeddedDeviceState?.service === genericService
-      ? embeddedDeviceState.snapshot
-      : null;
-  useEffect(() => {
-    genericService?.updateInputs({ llm, scene: embeddedScene });
-  }, [embeddedScene, genericService, llm]);
-  useEffect(() => {
-    genericServiceSlot.set(genericService);
-    if (!genericService) return;
-    const unsubscribe = genericService.subscribe((snapshot) =>
-      setEmbeddedDeviceState({ service: genericService, snapshot }),
-    );
-    return () => {
-      genericServiceSlot.clear(genericService);
-      unsubscribe();
-      void genericService.dispose();
-    };
-  }, [genericService, genericServiceSlot]);
   const [aiRouter] = useState(
     () =>
       new VideoAiDeviceRouter({
@@ -379,27 +314,6 @@ export function App() {
         invoke: async (action, masterGrant) => {
           const remaining = masterGrant.expiresAt - Date.now();
           if (remaining <= 0) throw new Error('Video 控制授权已过期');
-          if (action.target.kind === 'embedded') {
-            const currentGenericService = genericServiceSlot.get();
-            if (!currentGenericService) throw new Error('通用设备运行时不可用');
-            return currentGenericService.executeAiAction(
-              {
-                deviceId: action.target.deviceId,
-                featureId: action.target.featureId,
-                intensityCap: Math.min(action.target.capA, action.target.capB),
-                allowEnhanced: masterGrant.allowEnhanced,
-                durationMs: remaining,
-                cadenceMs: masterGrant.cadenceMs,
-                captureIntervalMs: masterGrant.captureIntervalMs,
-              },
-              {
-                id: action.id,
-                action: action.action === 'stop' ? 'stop' : 'start',
-                intensity: action.value,
-                outputLeaseMs: Math.min(loadDeviceSafety().maxBurstDurationMs, 5_000),
-              },
-            );
-          }
           const target = service
             .getTargets()
             .find(
@@ -427,17 +341,7 @@ export function App() {
             },
           );
         },
-        stopAll: async () => {
-          const currentGenericService = genericServiceSlot.get();
-          const results = await Promise.allSettled([
-            service.emergencyStop(),
-            ...(currentGenericService ? [currentGenericService.emergencyStop()] : []),
-          ]);
-          const failure = results.find(
-            (result): result is PromiseRejectedResult => result.status === 'rejected',
-          );
-          if (failure) throw failure.reason;
-        },
+        stopAll: () => service.emergencyStop(),
       }),
   );
   const visionEnabled = Boolean(
@@ -597,7 +501,7 @@ export function App() {
     stopCamera,
   ]);
 
-  // Lease loss. The registry (and the generic runtime) already stopped every output on the
+  // Lease loss. The registry already stopped every output on the
   // switch, so this only revokes Video's grants and drops its pending work. A device stop here
   // would bypass the lease fence and zero output the new holder starts right after the switch.
   const haltForLeaseLoss = () => {
@@ -615,8 +519,8 @@ export function App() {
   useSafetySession({
     id: 'video',
     label: 'Video',
-    // Registry DG-Lab devices are listed by the registry's own session and generic devices by
-    // the shell-owned runtime safety session, so Video lists none itself.
+    // Registry DG-Lab devices are listed by the registry's own session, so Video lists none
+    // itself.
     isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
     connect: () => service.connect().then(() => undefined),
@@ -658,7 +562,7 @@ export function App() {
       session.failSafeStop('device-loss');
       setRoutingGrant(null);
     }
-  }, [devices, embeddedDevices, routingGrant, session]);
+  }, [devices, routingGrant, session]);
 
   useEffect(() => {
     if (
@@ -723,7 +627,6 @@ export function App() {
           ? target.state.strengthA > 0 || target.state.strengthB > 0
           : target.state.intensityA > 0 || target.state.intensityB > 0,
     })),
-    genericService ? embeddedDevices : null,
   );
   const allowedTargets: VideoAiAllowedTarget[] = outputTargets.map((target) => ({
     ...target,
@@ -734,8 +637,8 @@ export function App() {
   const activeGrant = routingGrant;
   useEffect(() => {
     outputTargetsRef.current = outputTargets;
-    aiRouter.updateInputs(llm, outputTargets, embeddedScene);
-  }, [aiRouter, embeddedScene, llm, outputTargets]);
+    aiRouter.updateInputs(llm, outputTargets, routerScene);
+  }, [aiRouter, routerScene, llm, outputTargets]);
 
   async function compensateCancelledStart() {
     try {
@@ -996,18 +899,6 @@ export function App() {
     }
   }
 
-  async function discoverEmbeddedDevices() {
-    if (!genericDevicesEnabled || !genericService) return;
-    try {
-      setLocalError(null);
-      await grantDeviceLease('video');
-      const snapshot = await genericService.discoverDevices();
-      setEmbeddedDeviceState({ service: genericService, snapshot });
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : '无法查找通用嵌入设备');
-    }
-  }
-
   const error = localError ?? cameraError ?? visual.error;
   const frame = visual.latestFrame;
   const activateSetup = () => {
@@ -1247,7 +1138,6 @@ export function App() {
               scenes: sceneOptions,
               selectedSceneId,
               facingMode,
-              embeddedAvailable: genericDevicesEnabled && genericService !== null,
               showCoyoteConnect: service.supportsMultipleCoyotes() || devices.coyotes.length === 0,
               coyoteConnectLabel: devices.coyotes.length > 0 ? '添加郊狼' : '连接郊狼',
               showOpossumConnect: devices.opossumTarget === null,
@@ -1277,7 +1167,6 @@ export function App() {
               },
               setFacingMode,
               connect: (kind) => void connect(kind),
-              discoverEmbeddedDevices: () => void discoverEmbeddedDevices(),
               setDurationMinutes,
               setCadenceSeconds,
               setAllowEnhanced,

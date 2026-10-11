@@ -64,8 +64,8 @@ function kindLabel(device: DeviceSummary): string {
  *
  * `owner` is the session that reports it. The shared DG-Lab registry session
  * gets no tag: its devices belong to the app, not to a module. Other sessions
- * (for example the generic embedded runtime) keep theirs when several sessions
- * are represented or when a background module owns the only attached device.
+ * keep theirs when several sessions are represented or when a background
+ * module owns the only attached device.
  *
  * An outputting device is marked in words as well as by the dot. The dot alone
  * carries the single most important piece of state on this bar — whether

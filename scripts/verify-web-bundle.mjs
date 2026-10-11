@@ -55,18 +55,12 @@ const mistralRuntime = findRecord(
   (record) => record.src?.endsWith('/pi-ai/dist/api/mistral-conversations.js'),
   'the Mistral runtime',
 );
-const buttplugWasm = findRecord(
-  (record) => record.src?.includes('buttplug-wasm-blob/dist/buttplug_wasm-'),
-  'the Buttplug WASM payload',
-);
 
 if (bootstrap) {
   assertOutsideStaticClosure(bootstrap[0], 'providers-pi-http/src/index.ts', 'pi-ai runtime');
-  assertOutsideStaticClosure(bootstrap[0], 'buttplug_wasm-', 'Buttplug WASM');
 }
 if (entry) {
   assertOutsideStaticClosure(entry[0], 'providers-pi-http/src/index.ts', 'pi-ai runtime');
-  assertOutsideStaticClosure(entry[0], 'buttplug_wasm-', 'Buttplug WASM');
 }
 if (agent) {
   assertOutsideStaticClosure(agent[0], 'providers-pi-http/src/index.ts', 'pi-ai runtime');
@@ -84,12 +78,13 @@ if (piRuntime) {
 for (const [match, description] of [
   [piRuntime, 'pi-ai runtime'],
   [mistralRuntime, 'Mistral runtime'],
-  [buttplugWasm, 'Buttplug WASM'],
 ]) {
   if (match && match[1].isDynamicEntry !== true) fail(`${description} is not a dynamic entry`);
 }
 
 for (const file of readdirSync(path.join(webDist, 'assets'))) {
+  // The generic-device backend was removed; its WASM payload must not return.
+  if (file.includes('buttplug')) fail(`${file} is a removed Buttplug asset`);
   if (!file.endsWith('.js')) continue;
   const source = readFileSync(path.join(webDist, 'assets', file));
   if (source.includes(Buffer.from('node:fs'))) fail(`${file} still contains a node:fs import`);
@@ -129,5 +124,4 @@ if (!process.exitCode) {
   console.log('web bundle verification passed');
   console.log(`  pi-ai runtime: ${assetMetric(piRuntime)} (on first pi-ai turn/model inspection)`);
   console.log(`  Mistral runtime: ${assetMetric(mistralRuntime)} (on first Mistral request)`);
-  console.log(`  Buttplug WASM: ${assetMetric(buttplugWasm)} (on embedded-device connection)`);
 }

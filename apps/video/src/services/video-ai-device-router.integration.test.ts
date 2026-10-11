@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LlmClient, LlmImageInput, ToolCall } from '@dg-agent/core';
-import type { DeviceId, FeatureId } from '@0xnullai/device-runtime';
 import {
   VideoAiDeviceRouter,
   type VideoAiAllowedTarget,
@@ -25,17 +24,16 @@ const coyote = (id: string, capA = 30): VideoAiAllowedTarget => ({
   capA,
   capB: 40,
 });
-const embedded: VideoAiAllowedTarget = {
-  id: 'embedded/device/motor',
-  kind: 'embedded',
-  deviceId: 'device' as DeviceId,
-  featureId: 'motor' as FeatureId,
+const opossum: VideoAiAllowedTarget = {
+  id: 'opossum/motor',
+  kind: 'opossum',
+  targetId: 'motor',
   label: 'motor',
   modality: 'vibration',
   battery: null,
   active: false,
-  capA: 0.3,
-  capB: 0.3,
+  capA: 30,
+  capB: 30,
 };
 
 function deferred<T>() {
@@ -56,7 +54,7 @@ function call(id: string, targetId: string, action = 'start', value = 5): ToolCa
 
 function harness(
   turns: ToolCall[][],
-  targets: VideoAiAllowedTarget[] = [coyote('a'), coyote('b'), embedded],
+  targets: VideoAiAllowedTarget[] = [coyote('a'), coyote('b'), opossum],
   rejectAction?: (action: VideoAiDeviceAction) => boolean,
   resultForAction?: (action: VideoAiDeviceAction) => unknown,
 ) {
@@ -78,20 +76,18 @@ function harness(
       invoked.push(action);
       return (
         resultForAction?.(action) ??
-        (action.target.kind === 'embedded'
-          ? { status: action.action === 'stop' ? 'stopped' : 'applied' }
-          : JSON.stringify({
-              ok: true,
-              ...(action.target.kind === 'coyote' ? { targetId: action.target.targetId } : {}),
-              command: {
-                type: {
-                  start: action.target.kind === 'coyote' ? 'start' : 'vibrateStart',
-                  adjust: action.target.kind === 'coyote' ? 'adjustStrength' : 'vibrateAdjust',
-                  stop: action.target.kind === 'coyote' ? 'stop' : 'vibrateStop',
-                  burst: action.target.kind === 'coyote' ? 'burst' : 'vibrateBurst',
-                }[action.action],
-              },
-            }))
+        JSON.stringify({
+          ok: true,
+          ...(action.target.kind === 'coyote' ? { targetId: action.target.targetId } : {}),
+          command: {
+            type: {
+              start: action.target.kind === 'coyote' ? 'start' : 'vibrateStart',
+              adjust: action.target.kind === 'coyote' ? 'adjustStrength' : 'vibrateAdjust',
+              stop: action.target.kind === 'coyote' ? 'stop' : 'vibrateStop',
+              burst: action.target.kind === 'coyote' ? 'burst' : 'vibrateBurst',
+            }[action.action],
+          },
+        })
       );
     },
     stopAll,
@@ -204,7 +200,7 @@ describe('VideoAiDeviceRouter', () => {
   it('rejects targets outside the authorization snapshot and enforces modality caps', async () => {
     const h = harness([
       [call('bad-id', 'coyote/not-allowed')],
-      [call('too-strong', embedded.id, 'start', 0.31)],
+      [call('too-strong', opossum.id, 'start', 31)],
     ]);
     await authorize(h);
     await expect(h.router.observe(FRAME)).rejects.toThrow('未授权 targetId');

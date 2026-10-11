@@ -9,7 +9,7 @@ import {
 import { VoiceConversationHistory } from '@voice/lib/voice-history';
 import { VOICE_MEMORY_SEARCH, withVoiceMemorySearch } from '@voice/lib/voice-memory-tool';
 import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
@@ -30,16 +30,9 @@ import { VoiceToolBridge } from '@voice/lib/realtime/voice-tool-bridge';
 import type { VoiceSettings } from '@voice/lib/settings';
 import type { ActionContext, PermissionDecision, PermissionRequest } from '@dg-kit/safety';
 import {
-  appendAiDeviceRuntimeStatus,
-  createAiDeviceToolAdapter,
-  createDeviceInteractionId,
-  type EmbeddedDeviceRuntimeProvider,
-} from '@0xnullai/device-runtime';
-import {
   listVoiceToolDefinitions,
   voiceToolAvailability,
-  VoiceCompositeToolExecutor,
-} from '@voice/lib/device-runtime-tools';
+} from '@voice/lib/voice-tool-availability';
 import { CoyoteTargetToolRegistry } from '@dg-agent/agent-browser';
 import { guardUnverifiedActionClaim, type ToolExecutionReceipt } from '@dg-agent/runtime';
 
@@ -76,11 +69,7 @@ function createSessionId(): string {
  * A fresh `ToolExecutor`/permission grant per call means switching devices
  * or re-authorizing between calls can't leak stale timed grants forward.
  */
-export function useRealtimeCall(
-  deviceSession: DeviceSession,
-  settings: VoiceSettings,
-  deviceRuntimeProvider?: EmbeddedDeviceRuntimeProvider,
-) {
+export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSettings) {
   const [state, setState] = useState<RealtimeCallState>({
     status: 'idle',
     error: null,
@@ -99,11 +88,6 @@ export function useRealtimeCall(
   const deviceWatchStopRef = useRef<(() => void) | null>(null);
   const coyoteQueueStopRef = useRef<(() => Promise<void>) | null>(null);
   const [waveformLibrary] = useState(() => new BrowserWaveformLibrary());
-  const runtimeTools = useMemo(
-    () =>
-      deviceRuntimeProvider ? createAiDeviceToolAdapter(deviceRuntimeProvider, 'voice') : undefined,
-    [deviceRuntimeProvider],
-  );
 
   const resolvePermission = useCallback((decision: PermissionDecision) => {
     const pending = pendingPermissionRef.current;
@@ -114,8 +98,7 @@ export function useRealtimeCall(
 
   /**
    * End the call. By default this also stops every Voice output. Lease loss passes
-   * `stopOutput: false`: the registry and the generic runtime already stopped their outputs on
-   * the switch, and a stop issued from here would bypass the lease fence and zero what the new
+   * `stopOutput: false`: the registry already stopped its outputs on the switch, and a stop issued from here would bypass the lease fence and zero what the new
    * holder starts in the meantime.
    */
   const hangUp = useCallback(
@@ -148,37 +131,12 @@ export function useRealtimeCall(
         }));
         return;
       }
-      const genericRuntime = deviceRuntimeProvider?.current();
-      const stops: Promise<unknown>[] = [
-        Promise.resolve().then(async () => {
-          const results = await Promise.allSettled([
-            coyoteQueueStopRef.current?.() ?? Promise.resolve(),
-            deviceSession.emergencyStop(),
-          ]);
-          const failure = results.find(
-            (result): result is PromiseRejectedResult => result.status === 'rejected',
-          );
-          if (failure) throw failure.reason;
-        }),
-      ];
-      if (genericRuntime) {
-        stops.push(
-          Promise.resolve().then(() =>
-            genericRuntime.forModule('voice').actions.emergencyStop({
-              interactionId: createDeviceInteractionId('voice', 'hangup'),
-            }),
-          ),
-        );
-      }
-      const stopResults = await Promise.allSettled(stops);
-      const stopFailed = stopResults.some(
-        (result) =>
-          result.status === 'rejected' ||
-          (result.value !== null &&
-            typeof result.value === 'object' &&
-            'status' in result.value &&
-            result.value.status === 'faulted'),
-      );
+      // Settle both stops even when one throws, so a queue failure never skips the device stop.
+      const stopResults = await Promise.allSettled([
+        Promise.resolve().then(() => coyoteQueueStopRef.current?.()),
+        Promise.resolve().then(() => deviceSession.emergencyStop()),
+      ]);
+      const stopFailed = stopResults.some((result) => result.status === 'rejected');
       if (hangupGeneration !== callGenerationRef.current) return;
       setState((prev) => ({
         ...prev,
@@ -191,7 +149,7 @@ export function useRealtimeCall(
         speaking: false,
       }));
     },
-    [deviceRuntimeProvider, deviceSession],
+    [deviceSession],
   );
 
   useEffect(() => {
@@ -362,7 +320,7 @@ export function useRealtimeCall(
     const registry = new CoyoteTargetToolRegistry(createVoiceToolRegistry({ waveformLibrary }), {
       listTargets: () => deviceSession.listCoyoteTargets(),
     });
-    const legacyExecutor = new ToolExecutor({
+    const toolExecutor = new ToolExecutor({
       session: deviceSession,
       registry,
       policyEngine: new PolicyEngine(createDefaultPolicyRules(settings.coyoteSafety)),
@@ -373,7 +331,7 @@ export function useRealtimeCall(
       opossumQueue: new OpossumCommandQueue(deviceSession.opossum),
       context,
     });
-    coyoteQueueStopRef.current = () => legacyExecutor.emergencyStopCoyoteTargetQueues();
+    coyoteQueueStopRef.current = () => toolExecutor.emergencyStopCoyoteTargetQueues();
 
     const toolReceipts: ToolExecutionReceipt[] = [];
     let rejectedAssistantTranscript = false;
@@ -438,61 +396,35 @@ export function useRealtimeCall(
 
     const buildConfiguration = async () => {
       const deviceState = await deviceSession.getState();
-      const availability = voiceToolAvailability(
+      const availability = voiceToolAvailability(deviceState);
+      const instructions = buildVoiceInstructions(
+        [
+          savedPreset.prompt,
+          characterCardContext(savedPreset.characterCard),
+          sceneContext,
+          personalContext,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
         deviceState,
-        runtimeTools,
-        deviceRuntimeProvider?.isEnabled() ?? false,
-      );
-      const runtimeSnapshot = availability.generic ? (runtimeTools?.snapshot() ?? null) : null;
-      const instructions = appendAiDeviceRuntimeStatus(
-        buildVoiceInstructions(
-          [
-            savedPreset.prompt,
-            characterCardContext(savedPreset.characterCard),
-            sceneContext,
-            personalContext,
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-          deviceState,
-          {
-            coyoteSafety: settings.coyoteSafety,
-            opossumSafety: settings.opossumSafety,
-          },
-        ),
-        runtimeSnapshot,
+        {
+          coyoteSafety: settings.coyoteSafety,
+          opossumSafety: settings.opossumSafety,
+        },
       );
       return {
         instructions,
         tools: [
-          ...(await listVoiceToolDefinitions(registry, availability, runtimeTools)),
+          ...(await listVoiceToolDefinitions(registry, availability)),
           ...(history.channel.selection.relationshipId ? [VOICE_MEMORY_SEARCH] : []),
         ],
         topologyKey: JSON.stringify({
           coyote: availability.coyote,
           coyoteTargets: deviceState.coyotes.map(({ targetId }) => targetId),
           opossum: availability.opossum,
-          genericSessionId: runtimeSnapshot?.sessionId ?? null,
-          genericTopologyGeneration: runtimeSnapshot?.topologyGeneration ?? null,
-          genericTargets:
-            runtimeSnapshot?.devices.flatMap((device) =>
-              device.capabilities
-                .filter((capability) => capability.kind === 'vibrate' && !capability.faulted)
-                .map((capability) => [device.deviceId, capability.featureId]),
-            ) ?? [],
         }),
       };
     };
-    const executor = new VoiceCompositeToolExecutor({
-      legacy: legacyExecutor,
-      runtime: runtimeTools,
-      permission,
-      context,
-      onRuntimeToolComplete: async () => {
-        const current = sessionRef.current;
-        if (current) current.updateConfiguration(await buildConfiguration());
-      },
-    });
 
     try {
       const initialConfiguration = await buildConfiguration();
@@ -507,7 +439,7 @@ export function useRealtimeCall(
 
       const bridge = new VoiceToolBridge(
         session,
-        withVoiceMemorySearch(executor, history.channel),
+        withVoiceMemorySearch(toolExecutor, history.channel),
         (receipt) => toolReceipts.push(receipt),
       );
       Object.assign(events, bridge.attach(events));
@@ -532,8 +464,6 @@ export function useRealtimeCall(
       let refreshTimer: ReturnType<typeof setTimeout> | null = null;
       let refreshRevision = 0;
       let currentTopologyKey = initialConfiguration.topologyKey;
-      let runtimeSnapshotStop: (() => void) | null = null;
-      let watchedRuntime = deviceRuntimeProvider?.current() ?? null;
       const refresh = () => {
         if (refreshTimer) clearTimeout(refreshTimer);
         const revision = ++refreshRevision;
@@ -550,25 +480,10 @@ export function useRealtimeCall(
           );
         });
       };
-      const bindRuntimeSnapshot = () => {
-        const current = deviceRuntimeProvider?.current() ?? null;
-        if (current === watchedRuntime && runtimeSnapshotStop) return;
-        runtimeSnapshotStop?.();
-        runtimeSnapshotStop = null;
-        watchedRuntime = current;
-        if (current) runtimeSnapshotStop = current.manager.subscribe(refresh);
-      };
-      bindRuntimeSnapshot();
-      const stopLegacyWatch = deviceSession.onChanged(refresh);
-      const stopEnabledWatch = deviceRuntimeProvider?.subscribeEnabled(() => {
-        bindRuntimeSnapshot();
-        refresh();
-      });
+      const stopDeviceWatch = deviceSession.onChanged(refresh);
       deviceWatchStopRef.current = () => {
         if (refreshTimer) clearTimeout(refreshTimer);
-        stopLegacyWatch();
-        stopEnabledWatch?.();
-        runtimeSnapshotStop?.();
+        stopDeviceWatch();
       };
     } catch (error) {
       pendingSessionRef.current?.disconnect();
@@ -580,7 +495,7 @@ export function useRealtimeCall(
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [deviceSession, hangUp, runtimeTools, settings, waveformLibrary]);
+  }, [deviceSession, hangUp, settings, waveformLibrary]);
 
   return { state, startCall, hangUp, retryHistory, pendingPermission, resolvePermission };
 }

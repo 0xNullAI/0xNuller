@@ -352,10 +352,6 @@ function assertAcceptedExecutionResult(result: unknown, action: VideoAiDeviceAct
     (value._meta as Record<string, unknown>).kind === 'tool-denied'
   )
     throw new Error('设备拒绝了 Video 动作');
-  if (action.target.kind === 'embedded') {
-    if (value.status === (action.action === 'stop' ? 'stopped' : 'applied')) return;
-    throw new Error('设备动作结果未确认');
-  }
   const command = value.command;
   const types: Record<VideoAiDeviceAction['action'], readonly string[]> = {
     start: ['start', 'vibrateStart'],
@@ -410,9 +406,6 @@ function parseAction(call: ToolCall, grant: VideoAiRoutingGrantSnapshot): VideoA
   if (!Number.isFinite(value) || !Number.isSafeInteger(durationMs)) throw new Error('无效设备参数');
   if ((action === 'start' || action === 'burst') && Number(value) < 0) {
     throw new Error('启动或脉冲强度不能为负数');
-  }
-  if (target.kind === 'embedded' && action !== 'start' && action !== 'stop') {
-    throw new Error('通用设备不支持该 Video 动作');
   }
   return {
     id: call.id,

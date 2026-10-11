@@ -28,11 +28,6 @@ import { createBuildBrowserInstructions } from './build-browser-instructions.js'
 import { createPrivateAgentTools } from './private-agent-tools.js';
 import { loadPrivateConversationContext } from './private-context.js';
 import { supportsCharacterMemory } from './character-memory-eligibility.js';
-import { appendAiDeviceRuntimeStatus, type AiDeviceToolAdapter } from '@0xnullai/device-runtime';
-import {
-  AGENT_RUNTIME_PERMISSION_TOOL_NAMES,
-  DeviceRuntimeToolRegistry,
-} from './device-runtime-tool-registry.js';
 import { CoyoteTargetToolRegistry, createCoyoteTargetRouter } from './coyote-target-routing.js';
 
 export interface CreateBrowserAgentClientOptions {
@@ -57,8 +52,6 @@ export interface CreateBrowserAgentClientOptions {
   permissionService?: PermissionService;
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
-  /** Optional adapter over the shell-owned shared generic device runtime. */
-  deviceRuntimeTools?: AiDeviceToolAdapter;
 }
 
 export function createBrowserAgentClient(options: CreateBrowserAgentClientOptions): AgentClient {
@@ -85,10 +78,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     },
   });
   const coyoteTargetRouter = createCoyoteTargetRouter(options.device);
-  const targetedToolRegistry = new CoyoteTargetToolRegistry(legacyToolRegistry, coyoteTargetRouter);
-  const toolRegistry = options.deviceRuntimeTools
-    ? new DeviceRuntimeToolRegistry(targetedToolRegistry, options.deviceRuntimeTools)
-    : targetedToolRegistry;
+  const toolRegistry = new CoyoteTargetToolRegistry(legacyToolRegistry, coyoteTargetRouter);
   const buildBaseInstructions = createBuildBrowserInstructions({
     promptPresetId: scenes.selectedId,
     savedPromptPresets: scenes.saved,
@@ -117,9 +107,6 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         })
       : undefined,
     deviceExecutionGate: options.deviceExecutionGate,
-    permissionRequiredToolNames: options.deviceRuntimeTools
-      ? AGENT_RUNTIME_PERMISSION_TOOL_NAMES
-      : undefined,
     permission:
       options.permissionService ??
       new BrowserPermissionService({
@@ -156,10 +143,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         context: input.context,
         session: input.session,
       });
-      return appendAiDeviceRuntimeStatus(
-        [buildBaseInstructions(input), privateContext].filter(Boolean).join('\n\n'),
-        options.deviceRuntimeTools?.snapshot() ?? null,
-      );
+      return [buildBaseInstructions(input), privateContext].filter(Boolean).join('\n\n');
     },
     toolCallConfig: {
       maxToolIterations: settings.maxToolIterations,

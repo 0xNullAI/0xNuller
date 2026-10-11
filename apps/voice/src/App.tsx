@@ -10,7 +10,7 @@ import {
   useSafetySession,
 } from '@0xnullai/ui';
 import { useEffect, useState } from 'react';
-import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -26,7 +26,6 @@ const VOICE_MODULE_ID = 'voice';
 export function App() {
   const inShell = useInShell();
   const shellNav = useShellNav();
-  const native = useNativeBridge();
   // The app's one DG-Lab registry (a lazy Web Bluetooth one in a standalone build). Read once:
   // the session is built once and keeps its transport for its lifetime.
   const registry = useDgLabRegistry();
@@ -54,7 +53,7 @@ export function App() {
       await call.hangUp('切换到其他模块', false, { stopOutput: false }).catch(() => undefined);
     },
   });
-  const call = useRealtimeCall(session, settings, native.deviceRuntime);
+  const call = useRealtimeCall(session, settings);
   const { hangUp } = call;
   // The registry tells Voice directly as well; same state-only hang-up as the bus revoke above.
   useEffect(

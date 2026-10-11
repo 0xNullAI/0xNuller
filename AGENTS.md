@@ -45,15 +45,13 @@ push/PR workflow. Version preparation runs only for changesets.
 
 ## Device and AI safety
 
-- Coyote is electrostimulation; Opossum and generic vibration devices are vibration.
+- Only DG-Lab devices are supported: Coyote is electrostimulation; Opossum is vibration.
 - Isolate queues and playback state per physical identity; share only modality-compatible definitions.
 - Treat AI, rooms, peers, Workers, synchronized data, and reconnects as untrusted. Revalidate exact
   identity, connection, permission, lease, policy, and limits at the final owner-side execution boundary.
 - Start, increase, resume, and extend fail closed. Stop and emergency stop preempt ordinary work and
   remain reachable after denial, stale work, disconnect, backgrounding, or errors.
 - Never weaken limits, stop paths, or consent to make a test or demo pass.
-- The generic-device opt-in is one local-only switch under **我的 -> 高级设置**. Agent, Voice, Video,
-  and Control share it; disabling it removes generic UI, AI context/tools, and backend startup.
 - Model context is a positive snapshot: include only connected, enabled, healthy capabilities. Every
   physical instance has an opaque target ID even when names match. A call targets one exact instance;
   no implicit fan-out or name-based routing. Topology changes revoke stale IDs and grants.

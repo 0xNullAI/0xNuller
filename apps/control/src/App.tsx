@@ -16,7 +16,6 @@ import {
   type OutputPanelState,
   type OutputTarget,
 } from '@control/components/OutputDeviceSection';
-import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
@@ -467,7 +466,6 @@ export default function App() {
             if (target?.kind === 'opossum') return device.disconnectOpossum();
           }}
         />
-        <EmbeddedDevicePanel />
       </div>
 
       <MarketImportDialog

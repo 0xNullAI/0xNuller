@@ -1,9 +1,8 @@
-import { createContext, useContext, useSyncExternalStore } from 'react';
+import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import {
   createWebBluetoothDgLabTransport,
   DgLabConnectionRegistry,
-  type EmbeddedDeviceRuntimeProvider,
 } from '@0xnullai/device-runtime';
 import { loadDeviceSafety } from '@0xnullai/settings';
 
@@ -24,8 +23,6 @@ import { loadDeviceSafety } from '@0xnullai/settings';
  */
 
 export interface NativeBridge {
-  /** Shell-owned optional embedded runtime shared by every product surface. */
-  deviceRuntime?: EmbeddedDeviceRuntimeProvider;
   /**
    * The one DG-Lab connection owner for the whole app instance, built by the shell before render.
    * Modules read it through `useDgLabRegistry()`.
@@ -54,7 +51,7 @@ export function NativeBridgeProvider({
 }: {
   bridge: NativeBridge;
   children: ReactNode;
-  /** Web also supplies the shared runtime through this seam without pretending to be Tauri. */
+  /** Web also supplies the shared registry through this seam without pretending to be Tauri. */
   native?: boolean;
 }) {
   return <Ctx.Provider value={{ bridge, native }}>{children}</Ctx.Provider>;
@@ -63,22 +60,6 @@ export function NativeBridgeProvider({
 /** Get shell capabilities. Standalone module builds return an empty object. */
 export function useNativeBridge(): NativeBridge {
   return useContext(Ctx)?.bridge ?? EMPTY;
-}
-
-/**
- * Canonical reactive view of the shell-owned generic-device opt-in.
- *
- * Surfaces must use this instead of treating an injected runtime as an enabled
- * feature. The provider publishes `false` only after its stop barrier succeeds,
- * so consumers keep their UI and bindings alive when disable fails.
- */
-export function useEmbeddedDeviceRuntimeEnabled(): boolean {
-  const provider = useNativeBridge().deviceRuntime;
-  return useSyncExternalStore(
-    (listener) => provider?.subscribeEnabled(listener) ?? NOOP_UNSUBSCRIBE,
-    () => provider?.isEnabled() ?? false,
-    () => false,
-  );
 }
 
 /**
@@ -102,7 +83,6 @@ function standaloneDgLabRegistry(): DgLabConnectionRegistry {
 }
 
 const EMPTY: NativeBridge = {};
-const NOOP_UNSUBSCRIBE = () => undefined;
 
 /** Whether the active shell is native rather than Web. */
 export function useIsNative(): boolean {

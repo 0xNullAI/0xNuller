@@ -1,5 +1,4 @@
 import type { ComponentType } from 'react';
-import { ExperimentalDeviceSection } from './ExperimentalDeviceSection';
 import { ProxySection } from './ProxySection';
 import { SettingsGroup, SettingsRow } from './settings-list';
 
@@ -35,7 +34,6 @@ export function AdvancedSettingsPage({
         </SettingsGroup>
       ) : null}
       <ProxySection />
-      <ExperimentalDeviceSection />
     </div>
   );
 }

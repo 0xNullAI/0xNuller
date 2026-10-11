@@ -11,7 +11,6 @@ const baseView: VideoSetupPanelViewModel = {
   scenes: [{ id: 'market-character', name: '温柔陪伴', icon: '🌙' }],
   selectedSceneId: 'market-character',
   facingMode: 'environment',
-  embeddedAvailable: true,
   showCoyoteConnect: true,
   coyoteConnectLabel: '添加郊狼',
   showOpossumConnect: true,
@@ -51,7 +50,6 @@ function createActions(): VideoSetupPanelActions {
     selectScene: vi.fn(),
     setFacingMode: vi.fn(),
     connect: vi.fn(),
-    discoverEmbeddedDevices: vi.fn(),
     setDurationMinutes: vi.fn(),
     setCadenceSeconds: vi.fn(),
     setAllowEnhanced: vi.fn(),
@@ -130,51 +128,17 @@ describe('VideoSetupPanel', () => {
     expect(actions.activate).not.toHaveBeenCalled();
   });
 
-  it('lists embedded capability read-only without requiring a human target selection', () => {
+  it('lists connected outputs read-only and offers only DG-Lab connect actions', () => {
     const actions = createActions();
-    render(
-      <VideoSetupPanel
-        view={{
-          ...baseView,
-          targets: [
-            ...baseView.targets,
-            {
-              id: 'embedded/device/vibrate-1',
-              kind: 'embedded',
-              label: '通用设备 · Demo · 振动 1',
-              battery: null,
-              active: false,
-              modality: 'vibration',
-            },
-          ],
-        }}
-        actions={actions}
-      />,
-    );
+    render(<VideoSetupPanel view={baseView} actions={actions} />);
 
-    expect(screen.getByText('通用设备 · Demo · 振动 1')).toBeTruthy();
-    expect(screen.getByRole('checkbox', { name: '允许脉冲' })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: '查找通用设备' }));
-    fireEvent.click(screen.getByRole('button', { name: '开启' }));
-    expect(actions.discoverEmbeddedDevices).toHaveBeenCalledOnce();
-    expect(actions.activate).toHaveBeenCalledOnce();
-  });
-
-  it('hides only the generic-device entry when the shared experiment is disabled', () => {
-    const actions = createActions();
-    render(
-      <VideoSetupPanel
-        view={{
-          ...baseView,
-          embeddedAvailable: false,
-        }}
-        actions={actions}
-      />,
-    );
-
+    expect(screen.getByText('郊狼 · Alpha')).toBeTruthy();
+    expect(screen.getByText('负鼠 · Beta')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '查找通用设备' })).toBeNull();
     expect(screen.getByRole('button', { name: '添加郊狼' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '连接负鼠' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '开启' }));
+    expect(actions.activate).toHaveBeenCalledOnce();
   });
 });

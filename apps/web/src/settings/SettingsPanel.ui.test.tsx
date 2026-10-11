@@ -13,9 +13,6 @@ vi.mock('./AiTab', () => ({ AiTab: () => <div>AI 内容</div> }));
 vi.mock('./GeneralTab', () => ({ GeneralTab: () => <div>通用内容</div> }));
 vi.mock('./AboutTab', () => ({ AboutTab: () => <div>关于内容</div> }));
 vi.mock('./ScenesTab', () => ({ ScenesTab: () => <div>场景内容</div> }));
-vi.mock('./ExperimentalDeviceSection', () => ({
-  ExperimentalDeviceSection: () => <section aria-label="通用设备（实验性）" />,
-}));
 
 afterEach(cleanup);
 
@@ -51,7 +48,8 @@ it('keeps rarely used pages behind 高级设置 and opens a page 高级 under th
   for (const name of ['个人记忆', '角色与场景', '波形', '数据'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
   expect(screen.getByRole('region', { name: 'AI 网络代理' })).toBeTruthy();
-  expect(screen.getByRole('region', { name: '通用设备（实验性）' })).toBeTruthy();
+  // The experimental generic-device switch was removed; only DG-Lab devices remain.
+  expect(screen.queryByRole('region', { name: '通用设备（实验性）' })).toBeNull();
 
   // An advanced page keeps its own route and returns to 高级设置.
   fireEvent.click(screen.getByRole('button', { name: '角色与场景' }));

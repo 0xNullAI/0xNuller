@@ -199,7 +199,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
     servicesOverrides: nativeOverrides,
-    deviceRuntimeProvider: native.deviceRuntime,
     dglab,
     nativeBluetooth: nativeShell,
   });
