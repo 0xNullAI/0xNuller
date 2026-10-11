@@ -8,7 +8,6 @@ import {
   LayoutTemplate,
   SlidersHorizontal,
   ShieldAlert,
-  Settings2,
   ShieldCheck,
   UserRound,
   X,
@@ -27,7 +26,6 @@ import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
 import { AdminContent } from './AdminContent';
 import { AboutTab } from './AboutTab';
-import { AdvancedSettingsPage } from './AdvancedSettingsPage';
 import { SettingsGroup, SettingsRow } from './settings-list';
 
 const PersonalMemoryContent = lazy(() =>
@@ -40,8 +38,6 @@ const PersonalMemoryContent = lazy(() =>
  * keeps its own /settings/<id> route, so deep links and browser history still work.
  */
 
-const DEFERRED_TABS = [{ id: 'agent-data', label: '数据', icon: Database, order: 60 }];
-
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
   { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: null, order: 10 },
@@ -49,17 +45,15 @@ const TABS = [
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '角色与场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备', icon: ShieldAlert, Component: null, order: 50 },
-  { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
+  { id: 'about', label: '关于', icon: Info, Component: null, order: 90 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
-  { id: 'advanced', label: '高级设置', icon: Settings2, Component: null, order: 200 },
 ] as const;
 
 /** Pages listed on the 高级设置 page instead of the overview. */
 /** Settings of the open conversation: reached from its header only, never listed under 我的. */
 const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
-const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-data', 'admin']);
 /** Module pages shown inside a built-in page instead of as their own entry. */
-const EMBEDDED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms']);
+const EMBEDDED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms', 'agent-data']);
 
 export function SettingsPanel({
   initialTab = 'overview',
@@ -86,10 +80,14 @@ export function SettingsPanel({
     ? 'ai'
     : initialTab === 'notifications'
       ? 'appearance'
-      : // 波形 lives inside 设备 now.
+      : // 波形 lives inside 设备, 数据 inside 关于, and 高级设置 is gone.
         initialTab === 'agent-waveforms'
         ? 'safety'
-        : initialTab;
+        : initialTab === 'agent-data'
+          ? 'about'
+          : initialTab === 'advanced'
+            ? 'overview'
+            : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
@@ -103,24 +101,17 @@ export function SettingsPanel({
       icon: item.icon,
       order: item.order,
     })),
-    ...DEFERRED_TABS.filter((item) => !moduleClaims.some((claim) => claim.id === item.id)),
     ...moduleClaims.filter((claim) => !EMBEDDED_PAGE_IDS.has(claim.id)),
   ].sort((left, right) => left.order - right.order);
   const activeEntry = navigationTabs.find((item) => item.id === tab);
   const resolvedTab = tab === 'overview' || activeEntry ? tab : 'overview';
   const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
   const overviewItems = navigationTabs.filter(
-    (item) =>
-      item.id !== 'account' &&
-      item.id !== 'advanced' &&
-      !ADVANCED_PAGE_IDS.has(item.id) &&
-      !CONVERSATION_PAGE_IDS.has(item.id),
+    (item) => item.id !== 'account' && !CONVERSATION_PAGE_IDS.has(item.id),
   );
-  const advancedItems = navigationTabs.filter((item) => ADVANCED_PAGE_IDS.has(item.id));
-  const advancedEntry = navigationTabs.find((item) => item.id === 'advanced');
-  const parentTab = ADVANCED_PAGE_IDS.has(resolvedTab) ? 'advanced' : 'overview';
   useEffect(() => {
-    if (tab.startsWith('agent-') || tab === 'safety') onLoadAgent?.();
+    // 设备 embeds the waveform library and 关于 the data page; both come from Agent.
+    if (tab.startsWith('agent-') || tab === 'safety' || tab === 'about') onLoadAgent?.();
   }, [tab, onLoadAgent]);
 
   return (
@@ -136,7 +127,7 @@ export function SettingsPanel({
               ? subpage.onBack()
               : resolvedTab === 'overview' || CONVERSATION_PAGE_IDS.has(resolvedTab)
                 ? onClose()
-                : onNavigateTab(parentTab)
+                : onNavigateTab('overview')
           }
           aria-label={
             subpage
@@ -145,9 +136,7 @@ export function SettingsPanel({
                 ? '关闭设置'
                 : CONVERSATION_PAGE_IDS.has(resolvedTab)
                   ? '返回聊天'
-                  : parentTab === 'advanced'
-                    ? '返回高级设置'
-                    : '返回设置列表'
+                  : '返回设置列表'
           }
           // On a phone 我的 is a top-level tab, so its list page has nothing to close.
           className={`ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] ${resolvedTab === 'overview' && !subpage ? 'max-md:hidden' : ''}`}
@@ -193,7 +182,7 @@ export function SettingsPanel({
               </button>
               <SettingsGroup>
                 {overviewItems
-                  .filter((item) => item.id !== 'about')
+                  .filter((item) => item.id !== 'about' && item.id !== 'admin')
                   .map((item) => (
                     <SettingsRow
                       key={item.id}
@@ -206,7 +195,7 @@ export function SettingsPanel({
               <SettingsGroup>
                 {[
                   ...overviewItems.filter((item) => item.id === 'about'),
-                  ...(advancedEntry ? [advancedEntry] : []),
+                  ...overviewItems.filter((item) => item.id === 'admin'),
                 ].map((item) => (
                   <SettingsRow
                     key={item.id}
@@ -226,18 +215,27 @@ export function SettingsPanel({
                   <PersonalMemoryContent key={user.id} initialChat={initialMemoryChat} />
                 </Suspense>
               ) : resolvedTab === 'safety' ? (
-                <div className="flex flex-col gap-8">
-                  <SafetyTab />
-                  {moduleClaims.some((claim) => claim.id === 'agent-waveforms') ? (
-                    <ModuleSettingsSlot id="agent-waveforms" />
-                  ) : (
-                    <p role="status">正在加载波形…</p>
-                  )}
-                </div>
+                <SafetyTab
+                  waveforms={
+                    moduleClaims.some((claim) => claim.id === 'agent-waveforms') ? (
+                      <ModuleSettingsSlot id="agent-waveforms" />
+                    ) : (
+                      <p role="status">正在加载波形…</p>
+                    )
+                  }
+                />
               ) : resolvedTab === 'appearance' ? (
                 <GeneralTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
-              ) : resolvedTab === 'advanced' ? (
-                <AdvancedSettingsPage entries={advancedItems} onNavigate={onNavigateTab} />
+              ) : resolvedTab === 'about' ? (
+                <AboutTab
+                  data={
+                    moduleClaims.some((claim) => claim.id === 'agent-data') ? (
+                      <ModuleSettingsSlot id="agent-data" />
+                    ) : (
+                      <p role="status">正在加载数据…</p>
+                    )
+                  }
+                />
               ) : resolvedTab === 'ai' ? (
                 <AiTab key={initialAiSection ?? 'main'} initialSection={initialAiSection} />
               ) : Active ? (

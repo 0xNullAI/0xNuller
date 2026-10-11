@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Switch } from '@0xnullai/ui';
 import { setWebNotificationsEnabled, webNotificationsEnabled } from '@0xnullai/settings';
 
 /**
@@ -8,13 +9,9 @@ import { setWebNotificationsEnabled, webNotificationsEnabled } from '@0xnullai/s
  */
 export function NotificationSettings({ accountId }: { accountId: string | null }) {
   const androidShell = Boolean((window as Window & { AndroidSystem?: unknown }).AndroidSystem);
-  return (
-    <section aria-label="通知">
-      <h3 className="text-sm font-semibold">通知</h3>
-      <p className="mt-3 text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
-      {!androidShell && accountId ? <BrowserNotifications accountId={accountId} /> : null}
-    </section>
-  );
+  // Unread counts always show in 消息; only the web page can add background notifications.
+  if (androidShell || !accountId) return null;
+  return <BrowserNotifications accountId={accountId} />;
 }
 
 /**
@@ -28,47 +25,46 @@ function BrowserNotifications({ accountId }: { accountId: string }) {
   );
   const [note, setNote] = useState(() =>
     supported && Notification.permission === 'denied'
-      ? '浏览器已阻止本站通知，请在浏览器的网站设置中允许后再开启。'
+      ? '浏览器未允许通知，请在网站设置中允许后再开启。'
       : '',
   );
+  async function toggle(next: boolean) {
+    if (!next) {
+      setWebNotificationsEnabled(accountId, false);
+      setEnabled(false);
+      setNote('');
+      return;
+    }
+    const permission =
+      Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission().catch(() => 'denied' as const);
+    if (permission !== 'granted') {
+      setNote('浏览器未允许通知，请在网站设置中允许后再开启。');
+      return;
+    }
+    setWebNotificationsEnabled(accountId, true);
+    setEnabled(true);
+    setNote('');
+  }
   return (
-    <div className="mt-4 border-t border-[var(--surface-border)] pt-4">
-      <label className="flex min-h-12 items-center justify-between gap-4 text-sm">
-        <strong className="font-medium">浏览器通知</strong>
-        <input
-          aria-label="浏览器通知"
-          type="checkbox"
+    <section aria-label="通知">
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-sm font-semibold">通知</h3>
+        <Switch
+          label="通知"
           checked={enabled}
           disabled={!supported}
-          onChange={async (event) => {
-            const next = event.target.checked;
-            if (!next) {
-              setWebNotificationsEnabled(accountId, false);
-              setEnabled(false);
-              setNote('已关闭浏览器通知。');
-              return;
-            }
-            const permission =
-              Notification.permission === 'granted'
-                ? 'granted'
-                : await Notification.requestPermission().catch(() => 'denied' as const);
-            if (permission !== 'granted') {
-              setNote('没有获得通知权限。请在浏览器的网站设置中允许通知后再开启。');
-              return;
-            }
-            setWebNotificationsEnabled(accountId, true);
-            setEnabled(true);
-            setNote('已开启。页面在后台时会提醒新消息。');
-          }}
+          onCheckedChange={(next) => void toggle(next)}
         />
-      </label>
+      </div>
       {!supported ? (
-        <p className="mt-2 text-xs text-[var(--text-soft)]">当前浏览器不支持系统通知。</p>
+        <p className="mt-2 text-xs text-[var(--text-faint)]">当前浏览器不支持通知。</p>
       ) : note ? (
-        <p role="status" className="mt-2 text-xs text-[var(--text-soft)]">
+        <p role="status" className="mt-2 text-xs text-[var(--text-faint)]">
           {note}
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }

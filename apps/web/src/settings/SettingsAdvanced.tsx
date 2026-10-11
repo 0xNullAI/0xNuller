@@ -8,14 +8,20 @@ import { useSettingsSubpage } from '@0xnullai/ui';
  * settings panel header, so the screen never stacks a second back row or collapsible
  * layers on top of the page.
  */
-export function AdvancedEntryRow({ onOpen }: { onOpen: () => void }) {
+export function AdvancedEntryRow({
+  onOpen,
+  label = '高级',
+}: {
+  onOpen: () => void;
+  label?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onOpen}
       className="flex min-h-12 w-full items-center gap-3 rounded-2xl bg-[var(--bg-elevated)] px-4 text-left text-sm hover:bg-[var(--bg-soft)]"
     >
-      <span className="min-w-0 flex-1">高级</span>
+      <span className="min-w-0 flex-1">{label}</span>
       <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
     </button>
   );

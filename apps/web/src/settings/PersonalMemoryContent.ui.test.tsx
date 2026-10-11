@@ -67,11 +67,14 @@ it('shares only the chosen memory in the chosen human chat and can revoke it', a
     .mockResolvedValueOnce({ share: { memoryId: 'm1', enabled: true, version: 1, updatedAt: 2 } })
     .mockResolvedValueOnce({ share: { memoryId: 'm1', enabled: false, version: 2, updatedAt: 3 } });
   render(<PersonalMemoryContent />);
-  fireEvent.click(await screen.findByRole('button', { name: '共享 小林' }));
-  await screen.findByRole('button', { name: '撤销共享 小林' });
+  const share = () => screen.getByRole('switch', { name: '共享 小林' });
+  await screen.findByRole('switch', { name: '共享 小林' });
+  expect(share().getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(share());
+  await waitFor(() => expect(share().getAttribute('aria-checked')).toBe('true'));
   expect(setHumanMemoryShare).toHaveBeenCalledWith(chat, memory, { enabled: true, version: 0 });
-  fireEvent.click(screen.getByRole('button', { name: '撤销共享 小林' }));
-  await screen.findByRole('button', { name: '共享 小林' });
+  fireEvent.click(share());
+  await waitFor(() => expect(share().getAttribute('aria-checked')).toBe('false'));
   expect(setHumanMemoryShare).toHaveBeenLastCalledWith(chat, memory, {
     enabled: false,
     version: 1,
@@ -149,7 +152,7 @@ it('ignores a late save after A→B→A and unlocks the new account editor', asy
     authAccount = 'alice';
     for (const listener of authListeners) listener({ id: 'alice' } as never);
   });
-  await screen.findByRole('button', { name: '添加记忆' });
+  fireEvent.click(await screen.findByRole('button', { name: '添加' }));
   await act(async () => {
     finishOldSave({ item: { ...memory, title: '旧账号写回' } });
   });
@@ -226,6 +229,9 @@ it('edits and deletes server memories using their current version', async () => 
     expect.objectContaining({ id: 'm1', version: 1, content: '改到周六' }),
   );
   fireEvent.click(screen.getByRole('button', { name: '删除 小林' }));
+  // Deleting asks once more before the memory is gone.
+  expect(deletePersonalMemory).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认删除 小林' }));
   await screen.findByText('还没有个人记忆。');
   expect(deletePersonalMemory).toHaveBeenCalledWith('m1', 2);
 });
@@ -279,7 +285,7 @@ it('reuses the creation id when retrying a failed save', async () => {
   vi.mocked(listPersonalMemories).mockResolvedValue({ items: [], limit: 200 });
   vi.mocked(savePersonalMemory).mockRejectedValue(new Error('连接中断'));
   render(<PersonalMemoryContent />);
-  await screen.findByText('还没有个人记忆。');
+  fireEvent.click(await screen.findByRole('button', { name: '添加第一条' }));
   fireEvent.change(screen.getByLabelText('记忆标题'), { target: { value: '称呼' } });
   fireEvent.change(screen.getByLabelText('记忆内容'), { target: { value: '阿辰' } });
   fireEvent.click(screen.getByRole('button', { name: '添加记忆' }));
@@ -308,4 +314,25 @@ it('downloads the server export of every memory', async () => {
   const blob = (createObjectURL.mock.calls[0] as unknown as [Blob])[0];
   expect(JSON.parse(await blob.text())).toEqual({ format: '0xnuller-memories', memories: [] });
   click.mockRestore();
+});
+
+it('filters memories by type and text', async () => {
+  vi.mocked(listPersonalMemories).mockResolvedValue({
+    items: [
+      memory,
+      { ...memory, id: 'm2', kind: 'preference', title: '称呼', content: '叫我阿城' },
+    ],
+    limit: 200,
+  });
+  render(<PersonalMemoryContent />);
+  await screen.findByText('称呼');
+  fireEvent.click(screen.getByRole('button', { name: '偏好' }));
+  expect(screen.queryByText('小林')).toBeNull();
+  expect(screen.getByText('称呼')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '全部' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索记忆' }), {
+    target: { value: '面试' },
+  });
+  expect(screen.getByText('小林')).toBeTruthy();
+  expect(screen.queryByText('称呼')).toBeNull();
 });

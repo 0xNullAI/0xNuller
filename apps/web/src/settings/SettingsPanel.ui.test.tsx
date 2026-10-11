@@ -31,41 +31,25 @@ function Harness() {
   );
 }
 
-it('keeps rarely used pages behind 高级设置 and opens a page 高级 under the panel header', () => {
+it('lists every page on one overview and folds rare pages into their owners', () => {
   render(<Harness />);
   const route = () => screen.getByRole('status', { name: '路由' }).textContent;
 
-  for (const name of ['AI', '设备', '个人记忆', '角色与场景', '通用', '关于', '高级设置'])
+  for (const name of ['通用', '个人记忆', 'AI', '角色与场景', '设备', '关于'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
-  for (const name of ['通知', '波形', '数据'])
+  // 通知 is inside 通用, 波形 inside 设备, 数据 inside 关于; 高级设置 is gone; 管理 is admin-only.
+  for (const name of ['通知', '波形', '数据', '高级设置', '管理'])
     expect(screen.queryByRole('button', { name })).toBeNull();
-  expect(screen.queryByRole('region', { name: 'AI 网络代理' })).toBeNull();
 
-  fireEvent.click(screen.getByRole('button', { name: '高级设置' }));
-  expect(route()).toBe('advanced');
-  expect(screen.getByRole('heading', { name: '高级设置' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '数据' })).toBeTruthy();
-  for (const name of ['个人记忆', '角色与场景', '波形'])
-    expect(screen.queryByRole('button', { name })).toBeNull();
-  expect(screen.getByRole('region', { name: 'AI 网络代理' })).toBeTruthy();
-  // The experimental generic-device switch was removed; only DG-Lab devices remain.
-  expect(screen.queryByRole('region', { name: '通用设备（实验性）' })).toBeNull();
-
-  // An advanced page keeps its own route and returns to 高级设置.
-  fireEvent.click(screen.getByRole('button', { name: '数据' }));
-  expect(route()).toBe('agent-data');
-  fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
-  expect(route()).toBe('advanced');
-  fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
-  expect(route()).toBe('overview');
-  // 角色与场景 is a first-level page now and returns straight to the list.
   fireEvent.click(screen.getByRole('button', { name: '角色与场景' }));
   expect(route()).toBe('scenes');
   fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
   expect(route()).toBe('overview');
 
-  // A page's 高级 row opens one flat sub-page; the panel header owns its title and back.
+  // 设备: the waveform library and 高级 are entries at the bottom; 高级 opens one flat sub-page
+  // whose title and back arrow live in the panel header.
   fireEvent.click(screen.getByRole('button', { name: '设备' }));
+  expect(screen.getByRole('button', { name: '波形库' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '高级' }));
   expect(screen.getByRole('heading', { level: 2, name: '设备 · 高级' })).toBeTruthy();
   expect(screen.getAllByRole('button', { name: '返回上一页' })).toHaveLength(1);
@@ -73,7 +57,27 @@ it('keeps rarely used pages behind 高级设置 and opens a page 高级 under th
   fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
   expect(route()).toBe('safety');
   expect(screen.getByRole('heading', { level: 2, name: '设备' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '高级' })).toBeTruthy();
+});
+
+it('sends retired page links to the page that now holds them', () => {
+  for (const [initialTab, heading] of [
+    ['advanced', '我的'],
+    ['agent-data', '关于'],
+    ['agent-waveforms', '设备'],
+    ['notifications', '通用'],
+  ] as const) {
+    render(
+      <SettingsPanel
+        initialTab={initialTab}
+        onNavigateTab={() => undefined}
+        user={null}
+        onUser={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 2, name: heading })).toBeTruthy();
+    cleanup();
+  }
 });
 
 it('keeps the open chat’s settings out of 我的 and returns to the chat from them', async () => {

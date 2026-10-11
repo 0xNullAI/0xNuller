@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { WaveformDefinition } from '@dg-agent/core';
 import { Pencil, Store, Trash2, Upload } from 'lucide-react';
-import { Button, MarketImportDialog } from '@0xnullai/ui';
+import { Button, MarketImportDialog, SegmentedControl } from '@0xnullai/ui';
 import type { MarketItem, MarketWaveformContent } from '@0xnullai/market-client';
 import { getWaveformModality } from '@dg-kit/core';
 
@@ -48,30 +48,17 @@ export function WaveformsPanel({
   return (
     <div className="settings-panel-tab-content">
       <section aria-label="波形库" className="flex flex-col">
-        <h3 className="mb-3 text-sm font-semibold">波形库</h3>
-
-        <div className="mb-3 flex rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-0.5">
-          {(
-            [
-              ['all', '全部'],
-              ['electrostimulation', '电击'],
-              ['vibration', '震动'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setModalityFilter(value)}
-              className={`flex-1 rounded-[var(--radius-sm)] px-2 py-1.5 text-xs transition-colors ${
-                modalityFilter === value
-                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent)]'
-                  : 'text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text-soft)]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="波形类型"
+          className="mb-3 w-fit"
+          value={modalityFilter}
+          onChange={setModalityFilter}
+          options={[
+            ['all', '全部'],
+            ['electrostimulation', '电击'],
+            ['vibration', '震动'],
+          ]}
+        />
 
         {visibleWaveforms.length === 0 && (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">

@@ -1,4 +1,4 @@
-import { useTheme } from '@0xnullai/ui';
+import { SegmentedControl, SettingSelect, useTheme } from '@0xnullai/ui';
 import { loadLocale, updateLocale, type AppLocale } from '@0xnullai/settings';
 import { useEffect, useState } from 'react';
 import { NotificationSettings } from './NotificationSettings';
@@ -18,44 +18,30 @@ export function GeneralTab({ accountId }: { accountId: string | null }) {
   }, [locale]);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <section>
         <h3 className="text-sm font-semibold">主题</h3>
-        {/* Sized to its labels, not to the panel. `flex-1` inside a full-width
-            row stretched three options across ~700px, which reads as three
-            large buttons rather than one control with three states — and it
-            was the last place still using the round-pill + solid-accent
-            treatment that the other segmented controls moved off. */}
-        <div className="mt-3 inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs">
-          {THEMES.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => setMode(t.value)}
-              aria-pressed={mode === t.value}
-              className={
-                'rounded-[var(--radius-xs)] px-3.5 py-1.5 transition-colors duration-[var(--dur)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
-                (mode === t.value
-                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                  : 'text-[var(--text-soft)] hover:text-[var(--text)]')
-              }
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="主题"
+          className="mt-3"
+          value={mode}
+          onChange={setMode}
+          options={THEMES.map((theme) => [theme.value, theme.label] as const)}
+        />
       </section>
 
       <section>
         <h3 className="text-sm font-semibold">语言</h3>
-        <select
-          value={locale}
-          onChange={(event) => setLocale(updateLocale(event.target.value as AppLocale))}
-          className="mt-3 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
-        >
-          <option value="zh-CN">中文</option>
-          <option value="ja-JP">日本語</option>
-        </select>
+        <div className="mt-3">
+          <SettingSelect
+            value={locale}
+            onValueChange={(value) => setLocale(updateLocale(value as AppLocale))}
+            options={[
+              { value: 'zh-CN', label: '中文' },
+              { value: 'ja-JP', label: '日本語' },
+            ]}
+          />
+        </div>
       </section>
 
       <NotificationSettings accountId={accountId} />

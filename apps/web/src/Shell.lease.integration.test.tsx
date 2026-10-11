@@ -8,7 +8,6 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
-import { CLIENT_DOWNLOAD_URL } from './product';
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -343,8 +342,10 @@ describe('外壳与设备控制权', () => {
     expect(screen.queryByText('Agent 模块')).toBeNull();
     fireEvent.click(devices);
     expect(window.location.pathname).toBe('/settings/safety');
+    fireEvent.click(await screen.findByRole('button', { name: '波形库' }));
     expect(await screen.findByText('波形内容')).toBeTruthy();
     expect(screen.getByText('Control 模块')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(
       within(screen.getByRole('region', { name: '设置' })).getByRole('button', { name: '设备' }),
@@ -463,9 +464,7 @@ describe('外壳与设备控制权', () => {
       render(<Shell />);
     });
     expect(await screen.findByRole('heading', { name: '关于' })).toBeTruthy();
-    const download = screen.getByRole('link', { name: '下载客户端' });
-    expect(download.getAttribute('href')).toBe(CLIENT_DOWNLOAD_URL);
-    expect(download.getAttribute('target')).toBe('_blank');
+    expect(screen.queryByRole('link', { name: '下载客户端' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(window.location.pathname).toBe('/settings/overview');

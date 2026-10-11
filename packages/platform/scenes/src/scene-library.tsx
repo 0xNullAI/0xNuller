@@ -16,7 +16,15 @@ import {
 import type { CharacterCard } from './character-card.js';
 import { useScenes } from './use-scenes.js';
 import { Check, Pencil, RotateCcw, Store, Trash2 } from 'lucide-react';
-import { Button, Input, Textarea, MarketImportDialog, Z_LOCAL_POPOVER, cn } from '@0xnullai/ui';
+import {
+  Button,
+  Input,
+  Textarea,
+  MarketImportDialog,
+  Z_LOCAL_POPOVER,
+  cn,
+  SegmentedControl,
+} from '@0xnullai/ui';
 import { fetchMarketItem, type MarketItem } from '@0xnullai/market-client';
 import { currentAuthUserId } from '@0xnullai/auth';
 
@@ -267,34 +275,16 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
         <div className="flex items-center gap-2">
           {scenes.scenes.length > 0 && (
             <>
-              <div
-                role="group"
-                aria-label="类型"
-                className="inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs"
-              >
-                {(
-                  [
-                    ['all', '全部'],
-                    ['character', '角色'],
-                    ['scene', '场景'],
-                  ] as const
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={kindFilter === value}
-                    onClick={() => setKindFilter(value)}
-                    className={
-                      'rounded-[var(--radius-xs)] px-3 py-1.5 ' +
-                      (kindFilter === value
-                        ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                        : 'text-[var(--text-soft)] hover:text-[var(--text)]')
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                label="类型"
+                value={kindFilter}
+                onChange={setKindFilter}
+                options={[
+                  ['all', '全部'],
+                  ['character', '角色'],
+                  ['scene', '场景'],
+                ]}
+              />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

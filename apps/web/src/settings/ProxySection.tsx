@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Input } from '@0xnullai/ui';
+import { Input, Switch } from '@0xnullai/ui';
 import {
   isValidHttpProxyBaseUrl,
   loadProxy,
@@ -21,16 +21,15 @@ export function ProxySection() {
 
   return (
     <section aria-label="AI 网络代理">
-      <label className="flex items-center justify-between gap-4">
-        <span className="text-sm font-semibold">AI 网络代理</span>
-        <input
-          type="checkbox"
+      <div className="flex items-center justify-between gap-4">
+        <h4 className="text-sm font-semibold">AI 网络代理</h4>
+        <Switch
+          label="AI 网络代理"
           checked={proxy.enabled}
           disabled={!proxy.enabled && !validUrl}
-          onChange={(e) => patch({ enabled: e.target.checked })}
-          className="accent-[var(--accent)]"
+          onCheckedChange={(enabled) => patch({ enabled })}
         />
-      </label>
+      </div>
 
       <label className="mt-3 flex flex-col gap-1.5">
         <span className="text-xs text-[var(--text-soft)]">反向代理地址</span>

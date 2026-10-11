@@ -11,6 +11,7 @@ import {
 } from '@0xnullai/llm-providers';
 import { VoiceTimbreField } from './VoiceTimbreField';
 import { VideoProviderSection } from './VideoProviderSection';
+import { ProxySection } from './ProxySection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
   discoverBrowserProviderModels,
@@ -27,8 +28,8 @@ import { ModelCombobox } from './ModelCombobox';
 /**
  * AI configuration. Agent, Voice and Video are configured here but keep separate stores.
  *
- * The page shows only the model tier and the voice. Everything else (own API, context,
- * Video) sits on one flat 高级 sub-page. Agent and Chat share the text config; Video
+ * The page shows the model, the voice and context/reply behaviour. Only bring-your-own-API
+ * configuration (text and Video) sits on the 高级 sub-page. Agent and Chat share the text config; Video
  * (managed vision or a custom endpoint marked as image-capable, never copies Agent
  * credentials) stays a separate section so their required fields do not mix. Realtime voice is managed-only: its one setting
  * is the voice on the main page.
@@ -59,7 +60,7 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
     return (
       <AdvancedSubpage title="AI · 高级" onBack={closeAdvanced}>
         <OwnApiSection config={config} update={update} onUseManaged={switchToManaged} />
-        <BehaviorSection />
+        <ProxySection />
         <AdvancedSection id="ai-video" title="Video 视觉模型">
           <VideoProviderSection />
         </AdvancedSection>
@@ -90,6 +91,7 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
         <h3 className="text-sm font-semibold">语音</h3>
         <VoiceTimbreField />
       </section>
+      <BehaviorSection />
       <AdvancedEntryRow onOpen={() => setAdvanced(true)} />
     </div>
   );
@@ -115,6 +117,7 @@ function OwnApiSection({
         <Button
           variant="secondary"
           size="sm"
+          className="w-fit"
           onClick={() =>
             update({
               ...createProviderSettings('custom'),

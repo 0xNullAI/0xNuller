@@ -128,19 +128,27 @@ function Group({
   );
 }
 
-export function SafetyTab() {
+/** 设备: limits and confirmation on the page; the waveform library and 高级 are entries below. */
+export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
   const [settings, setSettings] = useState<DeviceSafetySettings>(loadDeviceSafety);
-  const [advanced, setAdvanced] = useState(false);
-  const closeAdvanced = useCallback(() => setAdvanced(false), []);
+  const [page, setPage] = useState<'main' | 'advanced' | 'waveforms'>('main');
+  const closeSubpage = useCallback(() => setPage('main'), []);
   useEffect(() => subscribeDeviceSafety(setSettings), []);
 
   function patch(p: Partial<DeviceSafetySettings>) {
     setSettings(updateDeviceSafety((prev) => ({ ...prev, ...p })));
   }
 
-  if (advanced)
+  if (page === 'waveforms')
     return (
-      <AdvancedSubpage title="设备 · 高级" onBack={closeAdvanced}>
+      <AdvancedSubpage title="波形库" onBack={closeSubpage}>
+        {waveforms}
+      </AdvancedSubpage>
+    );
+
+  if (page === 'advanced')
+    return (
+      <AdvancedSubpage title="设备 · 高级" onBack={closeSubpage}>
         <Group title="郊狼" fields={COYOTE_ADVANCED_FIELDS} settings={settings} onChange={patch} />
         <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch}>
           <label className="flex items-center justify-between gap-4 py-2">
@@ -186,7 +194,10 @@ export function SafetyTab() {
           <option value="allow-all">完全放行（不推荐）</option>
         </select>
       </label>
-      <AdvancedEntryRow onOpen={() => setAdvanced(true)} />
+      <div className="flex flex-col gap-2">
+        {waveforms ? <AdvancedEntryRow label="波形库" onOpen={() => setPage('waveforms')} /> : null}
+        <AdvancedEntryRow onOpen={() => setPage('advanced')} />
+      </div>
     </div>
   );
 }

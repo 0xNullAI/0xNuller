@@ -1,31 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NotificationSettings } from './NotificationSettings';
 
 afterEach(() => {
   cleanup();
   delete (window as Window & { AndroidSystem?: unknown }).AndroidSystem;
   window.localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
-describe('unread-only notifications', () => {
-  it('offers no system push on the web, only unread counts and browser notifications', () => {
-    render(<NotificationSettings accountId="alice" />);
-    expect(screen.queryByRole('checkbox', { name: '消息通知' })).toBeNull();
-    expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
-    expect(screen.getByRole('checkbox', { name: '浏览器通知' })).toBeTruthy();
-  });
+const toggle = () => screen.getByRole('switch', { name: '通知' });
 
-  it('shows only unread counts inside the Android app', () => {
+describe('通知 switch', () => {
+  it('is a single switch on the web and absent inside the Android app or signed out', () => {
+    vi.stubGlobal('Notification', Object.assign(vi.fn(), { permission: 'default' }));
+    const view = render(<NotificationSettings accountId="alice" />);
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
+    view.unmount();
+    render(<NotificationSettings accountId={null} />);
+    expect(screen.queryByRole('switch')).toBeNull();
+    cleanup();
     (window as Window & { AndroidSystem?: unknown }).AndroidSystem = {};
     render(<NotificationSettings accountId="alice" />);
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
   });
-});
-
-describe('browser notification preference', () => {
-  afterEach(() => vi.unstubAllGlobals());
 
   it('asks the browser for permission and stays off when it is refused', async () => {
     const requestPermission = vi.fn(async () => 'denied' as NotificationPermission);
@@ -34,16 +32,13 @@ describe('browser notification preference', () => {
       Object.assign(vi.fn(), { permission: 'default', requestPermission }),
     );
     render(<NotificationSettings accountId="alice" />);
-    const toggle = screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement;
-    fireEvent.click(toggle);
-    expect(
-      await screen.findByText('没有获得通知权限。请在浏览器的网站设置中允许通知后再开启。'),
-    ).toBeTruthy();
-    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle());
+    expect(await screen.findByText('浏览器未允许通知，请在网站设置中允许后再开启。')).toBeTruthy();
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
     expect(requestPermission).toHaveBeenCalledOnce();
   });
 
-  it('turns on after permission is granted and remembers it per account', async () => {
+  it('turns on after permission is granted, remembers it per account and turns off', async () => {
     const api = Object.assign(vi.fn(), {
       permission: 'default' as NotificationPermission,
       requestPermission: vi.fn(async () => {
@@ -53,17 +48,15 @@ describe('browser notification preference', () => {
     });
     vi.stubGlobal('Notification', api);
     const view = render(<NotificationSettings accountId="alice" />);
-    fireEvent.click(screen.getByRole('checkbox', { name: '浏览器通知' }));
-    expect(await screen.findByText('已开启。页面在后台时会提醒新消息。')).toBeTruthy();
+    fireEvent.click(toggle());
+    await waitFor(() => expect(toggle().getAttribute('aria-checked')).toBe('true'));
     view.unmount();
-    render(<NotificationSettings accountId="alice" />);
-    expect((screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement).checked).toBe(
-      true,
-    );
-    cleanup();
+    const again = render(<NotificationSettings accountId="alice" />);
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle());
+    await waitFor(() => expect(toggle().getAttribute('aria-checked')).toBe('false'));
+    again.unmount();
     render(<NotificationSettings accountId="bob" />);
-    expect((screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement).checked).toBe(
-      false,
-    );
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
   });
 });
