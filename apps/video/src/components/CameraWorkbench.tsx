@@ -1,3 +1,4 @@
+import { CharacterCameraOverlay } from '@0xnullai/auth/appearance-react';
 import type { RefObject } from 'react';
 import { CameraOff } from 'lucide-react';
 import { Button } from '@0xnullai/ui';
@@ -9,6 +10,7 @@ interface CameraWorkbenchProps {
   cameraState: CameraPreviewState;
   latestFrame: FrameMetadata | null;
   onStopCamera(): void;
+  fallbackSource?: string | null;
 }
 
 /**
@@ -20,6 +22,7 @@ export function CameraWorkbench({
   cameraState,
   latestFrame,
   onStopCamera,
+  fallbackSource,
 }: CameraWorkbenchProps) {
   return (
     <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-black">
@@ -39,6 +42,7 @@ export function CameraWorkbench({
             <CameraOff className="h-4 w-4" /> 结束
           </Button>
         </div>
+        <CharacterCameraOverlay fallbackSource={fallbackSource} />
         {latestFrame && (
           <span className="absolute bottom-3 right-3 rounded bg-black/60 px-2 py-1 text-[11px] text-white/70">
             {latestFrame.width}×{latestFrame.height} · {Math.ceil(latestFrame.byteLength / 1024)}KB

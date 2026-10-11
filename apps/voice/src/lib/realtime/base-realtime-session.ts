@@ -21,6 +21,7 @@ import { AudioPlayback, MicCapture, SAMPLE_RATE, base64ToInt16, float32ToInt16 }
 import { applyWebSocketProxy } from '@0xnullai/settings';
 import type { RealtimeSession, RealtimeSessionOptions } from './realtime-session.js';
 import type { ToolDefinition } from '@dg-kit/core';
+import { isDeviceToolName } from '@dg-agent/core';
 
 export type { RealtimeSessionOptions } from './realtime-session.js';
 
@@ -55,7 +56,8 @@ const CLIENT_VAD_HANGOVER_MS = 800;
 // keying the UI purely by item_id let the reply overwrite the user's line.
 // Prefixing by role keeps them distinct on every dialect (OpenAI/xAI already
 // use separate item ids, so this is a no-op there).
-const userTranscriptId = (itemId: string | undefined): string => `user:${itemId ?? 'pending'}`;
+const userTranscriptId = (itemId: string | undefined, turn: number): string =>
+  `user:${itemId ?? `pending-${turn}`}`;
 const assistantTranscriptId = (key: string): string => `assistant:${key}`;
 
 /**
@@ -78,6 +80,7 @@ function canonicalEventType(type: unknown): string {
 /** Canonical event types the switch below handles — anything else logs its full payload (temporary, until a live call is confirmed). */
 const KNOWN_EVENT_TYPES = new Set([
   'input_audio_buffer.speech_started',
+  'response.created',
   'response.audio.delta',
   'response.audio.done',
   'response.audio_transcript.delta',
@@ -102,8 +105,15 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
   protected readonly playback = new AudioPlayback();
   private readonly assistantTranscripts = new Map<string, string>();
   private userTranscript = '';
+  private userTranscriptTurn = 0;
+  private assistantResponseTurn = 0;
   private speaking = false;
   private connected = false;
+  private responseAudio: Int16Array[] = [];
+  private responseAudioBytes = 0;
+  private responseText: string[] = [];
+  private responseAudioDiscarded = false;
+  private responseInProgress = false;
 
   // Client-VAD state (only used when usesClientTurnDetection() is true).
   private vadSpeaking = false;
@@ -201,6 +211,7 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     this.onClosed();
     this.mic.stop();
     this.playback.close();
+    this.resetResponseAudio();
     if (this.ws) {
       this.ws.onopen = null;
       this.ws.onmessage = null;
@@ -277,6 +288,7 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     const frameMs = (frame.length / SAMPLE_RATE) * 1000;
 
     if (rms >= CLIENT_VAD_ENTER_RMS) {
+      if (!this.vadSpeaking) this.options.events.onUserTurnStarted?.();
       this.vadSpeaking = true;
       this.vadHadSpeech = true;
       this.vadSilenceMs = 0;
@@ -328,9 +340,19 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
 
     switch (type) {
       case 'input_audio_buffer.speech_started':
+        this.options.events.onUserTurnStarted?.();
         // Barge-in: the user started talking over the assistant — cut audio now.
         this.playback.clear();
+        if (this.responseInProgress) {
+          this.responseAudioDiscarded = true;
+          this.responseAudio = [];
+          this.responseAudioBytes = 0;
+        }
         this.setSpeaking(false);
+        break;
+
+      case 'response.created':
+        this.responseInProgress = true;
         break;
 
       case 'response.audio.delta': {
@@ -339,17 +361,33 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         // playback.
         const delta = message.delta ?? message.audio;
         if (typeof delta === 'string') {
-          this.playback.enqueuePcm16(base64ToInt16(delta));
-          this.setSpeaking(true);
+          this.responseInProgress = true;
+          const pcm = base64ToInt16(delta);
+          if (this.options.tools.some((tool) => isDeviceToolName(tool.name))) {
+            // 3 MiB bounds a long or malformed provider response. Never play
+            // a partial buffered response after exceeding the limit.
+            if (!this.responseAudioDiscarded) {
+              this.responseAudioBytes += pcm.byteLength;
+              if (this.responseAudioBytes > 3 * 1024 * 1024) {
+                this.responseAudioDiscarded = true;
+                this.responseAudio = [];
+              } else this.responseAudio.push(pcm);
+            }
+          } else if (!this.responseAudioDiscarded) {
+            this.playback.enqueuePcm16(pcm);
+            this.setSpeaking(true);
+          }
         }
         break;
       }
 
       case 'response.audio_transcript.delta': {
+        this.responseInProgress = true;
         if (typeof message.delta === 'string') this.emitAssistantDelta(itemId, message.delta);
         break;
       }
       case 'response.audio_transcript.done': {
+        this.responseInProgress = true;
         this.emitAssistantDone(
           itemId,
           typeof message.transcript === 'string' ? message.transcript : undefined,
@@ -366,7 +404,7 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         const item = message.item as { id?: unknown; role?: unknown } | undefined;
         if (item && item.role === 'user' && typeof item.id === 'string') {
           this.options.events.onTranscript?.({
-            id: userTranscriptId(item.id),
+            id: userTranscriptId(item.id, this.userTranscriptTurn),
             role: 'user',
             text: '',
             done: false,
@@ -379,7 +417,7 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         if (typeof message.delta === 'string') {
           this.userTranscript += message.delta;
           this.options.events.onTranscript?.({
-            id: userTranscriptId(itemId),
+            id: userTranscriptId(itemId, this.userTranscriptTurn),
             role: 'user',
             text: this.userTranscript,
             done: false,
@@ -391,12 +429,13 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
         const transcript =
           typeof message.transcript === 'string' ? message.transcript : this.userTranscript;
         this.options.events.onTranscript?.({
-          id: userTranscriptId(itemId),
+          id: userTranscriptId(itemId, this.userTranscriptTurn),
           role: 'user',
           text: transcript,
           done: true,
         });
         this.userTranscript = '';
+        this.userTranscriptTurn++;
         break;
       }
 
@@ -418,6 +457,16 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
 
       case 'response.done':
         this.flushAssistantTranscripts();
+        if (
+          this.responseAudio.length &&
+          !this.responseAudioDiscarded &&
+          this.options.events.onAuthorizeAudio?.(this.responseText.join('\n')) === true
+        ) {
+          for (const pcm of this.responseAudio) this.playback.enqueuePcm16(pcm);
+          this.setSpeaking(true);
+        }
+        this.resetResponseAudio();
+        this.assistantResponseTurn++;
         // Audio may still be draining — flip "speaking" off only once it is.
         void this.playback.whenDrained().then(() => this.setSpeaking(false));
         this.options.events.onResponseDone?.();
@@ -439,7 +488,7 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
   }
 
   private emitAssistantDelta(itemId: string | undefined, delta: string): void {
-    const key = itemId ?? 'assistant-pending';
+    const key = itemId ?? `assistant-pending-${this.assistantResponseTurn}`;
     const text = (this.assistantTranscripts.get(key) ?? '') + delta;
     this.assistantTranscripts.set(key, text);
     this.options.events.onTranscript?.({
@@ -451,29 +500,33 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
   }
 
   private emitAssistantDone(itemId: string | undefined, finalText?: string): void {
-    const key = itemId ?? 'assistant-pending';
+    const key = itemId ?? `assistant-pending-${this.assistantResponseTurn}`;
     const text = finalText ?? this.assistantTranscripts.get(key) ?? '';
     this.assistantTranscripts.delete(key);
-    if (text)
+    if (text) {
+      this.responseText.push(text);
       this.options.events.onTranscript?.({
         id: assistantTranscriptId(key),
         role: 'assistant',
         text,
         done: true,
       });
+    }
   }
 
   /** A response can end without a per-item `.done` — mark any still-streaming assistant lines complete. */
   private flushAssistantTranscripts(): void {
     for (const [key, text] of [...this.assistantTranscripts]) {
       this.assistantTranscripts.delete(key);
-      if (text)
+      if (text) {
+        this.responseText.push(text);
         this.options.events.onTranscript?.({
           id: assistantTranscriptId(key),
           role: 'assistant',
           text,
           done: true,
         });
+      }
     }
   }
 
@@ -481,6 +534,14 @@ export abstract class BaseRealtimeSession implements RealtimeSession {
     if (this.speaking === speaking) return;
     this.speaking = speaking;
     this.options.events.onSpeakingChange?.(speaking);
+  }
+
+  private resetResponseAudio(): void {
+    this.responseAudio = [];
+    this.responseAudioBytes = 0;
+    this.responseText = [];
+    this.responseAudioDiscarded = false;
+    this.responseInProgress = false;
   }
 
   // ---- dialect hooks ----

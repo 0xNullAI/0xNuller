@@ -17,6 +17,7 @@ interface SessionPanelProps {
   savedSessions: SessionSnapshot[];
   activeSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onSearchSessions: (query: string) => Promise<string[]>;
   onRenameSession: (sessionId: string, title: string | null) => void;
   onDeleteSession: (sessionId: string) => void;
   onCreateSession?: () => void;
@@ -36,6 +37,7 @@ export function SessionPanel({
   savedSessions,
   activeSessionId,
   onSelectSession,
+  onSearchSessions,
   onRenameSession,
   onDeleteSession,
   onCreateSession,
@@ -122,6 +124,7 @@ export function SessionPanel({
           open={searchOpen}
           onOpenChange={setSearchOpen}
           sessions={visibleSessions}
+          onSearch={onSearchSessions}
           onSelectSession={(id) => {
             setSearchOpen(false);
             onSelectSession(id);
@@ -284,6 +287,7 @@ export function SessionPanel({
         open={searchOpen}
         onOpenChange={setSearchOpen}
         sessions={visibleSessions}
+        onSearch={onSearchSessions}
         onSelectSession={(id) => {
           setSearchOpen(false);
           onSelectSession(id);

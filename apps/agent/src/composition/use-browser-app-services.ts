@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
+import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
+import { deviceConversationAccess } from '@0xnullai/settings';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   createBrowserServices,
   MultiCoyoteDeviceClient,
@@ -20,6 +22,7 @@ import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { SavedScene } from '@0xnullai/scenes';
 import type { NativeBridge } from '@0xnullai/native';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
+import { createAgentTaskRunReporter } from '../services/agent-task-run-reporter.js';
 
 export interface PendingPermissionRequest {
   input: PermissionRequestInput;
@@ -56,6 +59,7 @@ export type ServicesOverrides = Pick<
 
 export interface UseBrowserAppServicesOptions {
   settings: BrowserAppSettings;
+  inShell?: boolean;
   /** The current scene (persona). Comes from the shared scene library. */
   scenes: { selectedId: string; saved: SavedScene[] };
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
@@ -79,6 +83,7 @@ export function useBrowserAppServices(
     setPendingPermission,
     servicesOverrides,
     deviceRuntimeProvider,
+    inShell = false,
   } = options;
 
   const disableUpdateChecker = servicesOverrides?.disableUpdateChecker ?? false;
@@ -112,6 +117,7 @@ export function useBrowserAppServices(
     );
   }
   const device = deviceRef.current;
+  const taskRunReporter = useMemo(() => createAgentTaskRunReporter(), []);
 
   // Same "build once, hold stable" pattern as `device` above — each of these
   // three auxiliary devices is independently connectable/disconnectable from
@@ -152,6 +158,9 @@ export function useBrowserAppServices(
     ...browserServicesOverrides
   } = servicesOverrides ?? {};
 
+  const [accountId, setAccountId] = useState(currentAuthUserId);
+  useEffect(() => subscribeAuthChanges(() => setAccountId(currentAuthUserId())), []);
+  // Rebuild only the runtime on identity changes; shell-owned physical clients remain stable.
   const services = useMemo(
     () =>
       createBrowserServices({
@@ -163,8 +172,14 @@ export function useBrowserAppServices(
         civetEdging,
         // A standalone build has no shell lease holder; inside the shell a
         // different holder must block every non-stop command at the boundary.
-        deviceExecutionGate: () => currentDeviceLease() === null || hasDeviceLease('agent'),
+        deviceExecutionGate: ({ sessionId, context }) =>
+          (inShell
+            ? hasDeviceLease('agent')
+            : currentDeviceLease() === null || hasDeviceLease('agent')) &&
+          (context.sourceType === 'sensor' ||
+            deviceConversationAccess(currentAuthUserId(), 'ai', sessionId)),
         deviceRuntimeProvider,
+        taskRunReporter,
         resolveBridgeSessionId,
         onPermissionRequest: (input) =>
           new Promise<PermissionDecision>((resolve) => {
@@ -174,6 +189,8 @@ export function useBrowserAppServices(
       }),
     [
       settings,
+      accountId,
+      inShell,
       scenes.selectedId,
       scenes.saved,
       device,
@@ -184,6 +201,7 @@ export function useBrowserAppServices(
       setPendingPermission,
       servicesOverrides,
       deviceRuntimeProvider,
+      taskRunReporter,
     ],
   );
 

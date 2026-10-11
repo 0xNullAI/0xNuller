@@ -327,16 +327,51 @@ export class VideoControlRuntime {
       traceId: `video-direct-${generation}-${this.now()}`,
     };
     this.effectGenerations.set(context.traceId, generation);
+    const target = this.grant?.getSnapshot();
     try {
-      return await this.toolExecutor.execute({
+      const output = await this.toolExecutor.execute({
         session: this.session,
         toolCall,
         context,
         turnState: createTurnState(),
       });
+      return this.withExecutedTarget(output, target);
     } finally {
       this.effectGenerations.delete(context.traceId);
     }
+  }
+
+  /**
+   * The targeted device client routes every command to the granted physical target, but
+   * the shared executor reports `targetId` only when it routes by target itself. Name the
+   * target here, and only when the same unrevoked grant was in force before and after the
+   * command; otherwise callers must treat the outcome as unconfirmed.
+   */
+  private withExecutedTarget(
+    output: string,
+    before: VideoControlGrantSnapshot | undefined,
+  ): string {
+    const after = this.grant?.getSnapshot();
+    if (
+      !before ||
+      !after ||
+      after.revoked ||
+      after.targetKind !== before.targetKind ||
+      after.targetId !== before.targetId ||
+      after.id !== before.id
+    )
+      return output;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      return output;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return output;
+    const value = parsed as Record<string, unknown>;
+    if ((value.ok !== true && value.ok !== 'clamped') || value.targetId !== undefined)
+      return output;
+    return JSON.stringify({ ...value, targetId: before.targetId });
   }
 
   abortInference(): void {

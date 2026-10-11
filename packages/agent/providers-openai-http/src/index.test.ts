@@ -202,6 +202,37 @@ describe('OpenAiHttpLlmClient', () => {
   });
 
   describe('vision serialization and capability gate', () => {
+    it('keeps managed private chat vision non-streaming and billed as agent', async () => {
+      let init: RequestInit | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async (_url: string, request: RequestInit) => {
+          init = request;
+          return { ok: true, json: async () => MOCK_CHAT_RESPONSE, body: null };
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'managed',
+        baseUrl: 'https://llm.0xnullai.com/v1',
+        model: 'chat-vision',
+        supportsImageInput: true,
+        attachPrivateConversation: true,
+      });
+      await client.runTurn({
+        ...makeTurnInput(),
+        image: TEST_IMAGE,
+        onTextDelta: vi.fn(),
+        runId: 'run:chat:001',
+      });
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      expect(body.stream).toBeUndefined();
+      expect(init?.headers).toMatchObject({
+        'X-0xNullAI-Usage-Kind': 'agent',
+        'X-0xNullAI-Conversation-Id': 'test',
+        'X-0xNullAI-Run-Id': 'run:chat:001',
+      });
+    });
+
     it('serializes one image on the latest user message for Chat Completions', async () => {
       const captured = captureRequestBody();
       const client = new OpenAiHttpLlmClient({
@@ -401,6 +432,37 @@ describe('OpenAiHttpLlmClient', () => {
       ]);
     });
 
+    it('assigns an ID to a tool call that the server returned without one', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    { id: '', type: 'function', function: { name: 'shock_stop', arguments: '{}' } },
+                  ],
+                },
+              },
+            ],
+          }),
+          body: null,
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'gpt-4o-mini',
+      });
+      const result = await client.runTurn(makeTurnInput());
+      expect(result.toolCalls?.[0]).toMatchObject({ name: 'shock_stop', args: {} });
+      expect(result.toolCalls?.[0]?.id).toMatch(/^call_[0-9a-f]{32}$/);
+    });
+
     it('rejects when the request is aborted', async () => {
       vi.stubGlobal(
         'fetch',
@@ -527,4 +589,54 @@ describe('testConnection', () => {
       testConnection({ baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'ark-test' }),
     ).rejects.toBeInstanceOf(ListModelsError);
   });
+});
+
+it('attaches the actual private turn session and request run only when explicitly enabled', async () => {
+  const captured = captureRequestInit();
+  const client = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    extraHeaders: () => ({}),
+    attachPrivateConversation: true,
+  });
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-parent-task' });
+  expect(captured.headers?.['X-0xNullAI-Conversation-Id']).toBe(EMPTY_SESSION.id);
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe('run-parent-task');
+  const firstKey = captured.headers?.['Idempotency-Key'];
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-parent-task' });
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe('run-parent-task');
+  expect(captured.headers?.['Idempotency-Key']).not.toBe(firstKey);
+  await client.runTurn(makeTurnInput());
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe(captured.headers?.['Idempotency-Key']);
+  const publicClient = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    extraHeaders: () => ({}),
+  });
+  await publicClient.runTurn(makeTurnInput());
+  expect(captured.headers?.['X-0xNullAI-Conversation-Id']).toBeUndefined();
+});
+
+it('keeps the parent TaskRun on the managed Responses path as well', async () => {
+  let headers: Record<string, string> | undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      headers = init.headers as Record<string, string>;
+      return { ok: true, json: async () => ({ output: [], output_text: 'ok' }), body: null };
+    }),
+  );
+  const client = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    endpoint: 'responses',
+    extraHeaders: () => ({}),
+    attachPrivateConversation: true,
+  });
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-responses-task' });
+  expect(headers?.['X-0xNullAI-Run-Id']).toBe('run-responses-task');
+  expect(headers?.['Idempotency-Key']).not.toBe('run-responses-task');
 });

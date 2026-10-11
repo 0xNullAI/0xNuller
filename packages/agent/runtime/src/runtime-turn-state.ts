@@ -18,6 +18,10 @@ export interface TurnToolCallSummary {
   argsJson: string;
 }
 
+// Session history remains complete in the server store. Only the model input is
+// bounded; retained history is selected at user-turn boundaries.
+const MAX_MODEL_CONTEXT_CHARS = 32_000;
+
 export function createTurnState(): TurnState {
   return {
     workingItems: [],
@@ -35,11 +39,20 @@ export function buildConversationItems(
   turnState: TurnState,
   currentInput?: LlmConversationItem | null,
   modelContextStrategy: ModelContextStrategy = 'last-user-turn',
+  instructionChars = 0,
 ): LlmConversationItem[] {
-  const persistedMessages = selectModelContextMessages(
-    session.messages,
-    modelContextStrategy,
-  ).filter((message) => shouldIncludePersistedMessage(message, turnState));
+  const transientChars = [
+    ...turnState.workingItems,
+    ...(currentInput ? [currentInput] : []),
+  ].reduce((total, item) => total + JSON.stringify(item).length, 0);
+  const historyBudget = Math.max(0, MAX_MODEL_CONTEXT_CHARS - instructionChars - transientChars);
+  const persistedMessages = boundModelHistory(
+    selectModelContextMessages(session.messages, modelContextStrategy).filter(
+      (message) =>
+        message.kind !== 'camera_observation' && shouldIncludePersistedMessage(message, turnState),
+    ),
+    historyBudget,
+  );
 
   return [
     ...persistedMessages.map<LlmConversationItem>((message) => ({
@@ -54,6 +67,32 @@ export function buildConversationItems(
     ...(currentInput ? [currentInput] : []),
     ...turnState.workingItems,
   ];
+}
+
+function boundModelHistory(
+  messages: SessionSnapshot['messages'],
+  budget: number,
+): SessionSnapshot['messages'] {
+  const size = (message: SessionSnapshot['messages'][number]) =>
+    message.content.length + (message.reasoningContent?.length ?? 0);
+  if (messages.reduce((total, message) => total + size(message), 0) <= budget) return messages;
+  const userStarts = messages.flatMap((message, index) => (message.role === 'user' ? [index] : []));
+  if (!userStarts.length) return [];
+  let start = userStarts.at(-1)!;
+  let retained = messages.slice(start).reduce((total, message) => total + size(message), 0);
+  // A single oversized latest user message is left intact; silently truncating
+  // the user's current request could invert a device or safety instruction.
+  if (retained > budget) return [messages[start]!];
+  for (let index = userStarts.length - 2; index >= 0; index--) {
+    const previousStart = userStarts[index]!;
+    const previousTurnSize = messages
+      .slice(previousStart, start)
+      .reduce((total, message) => total + size(message), 0);
+    if (retained + previousTurnSize > budget) break;
+    retained += previousTurnSize;
+    start = previousStart;
+  }
+  return messages.slice(start);
 }
 
 export function safeStringify(value: Record<string, unknown>): string {
@@ -97,7 +136,7 @@ function isShockBurstTool(toolName: string): boolean {
   return toolName === 'shock_burst' || toolName === 'burst';
 }
 
-function isStopTool(toolName: string): boolean {
+export function isStopTool(toolName: string): boolean {
   return (
     toolName === 'shock_stop' ||
     toolName === 'stop' ||
@@ -232,12 +271,13 @@ function shouldSkipModelContextMessage(message: SessionSnapshot['messages'][numb
     '网络连接失败，请检查网络、代理或服务状态后重试',
     '还没有配置 API Key，请先在设置里填写',
     'API Key 无效或已过期，请检查设置',
-    '当前接口访问被拒绝，请检查账户权限、地区限制或代理',
+    '当前接口访问被拒绝，请检查账号权限、地区限制或代理',
     '请求过于频繁，已被限流，请稍后再试',
     '请求被服务端拒绝，请检查模型、参数或接口兼容性',
     'AI 服务暂时不可用，请稍后重试',
     '当前模型服务还没有配置完成，请先在设置里选择服务提供方并补全凭证',
-  ].includes(content);
+    // Error replies may carry a provider explanation after the fixed text.
+  ].some((errorText) => content.startsWith(errorText));
 }
 
 function shouldIncludePersistedMessage(

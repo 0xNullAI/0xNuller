@@ -6,6 +6,7 @@ export function getSessionTitle(session: SessionSnapshot): string {
   if (typeof customTitle === 'string' && customTitle.trim()) {
     return customTitle.trim().slice(0, 60);
   }
+  if (session.listSummary) return session.listSummary.preview.trim().slice(0, 36) || '新对话';
   const firstUserMessage = session.messages
     .find((message) => message.role === 'user')
     ?.content?.trim();
@@ -17,12 +18,14 @@ export function getSessionTitle(session: SessionSnapshot): string {
 export function isSessionListEntry(session: SessionSnapshot): boolean {
   const customTitle = session.metadata?.[SESSION_TITLE_METADATA_KEY];
   return (
+    Boolean(session.listSummary?.hasUserMessage) ||
     session.messages.some((message) => message.role === 'user') ||
     (typeof customTitle === 'string' && customTitle.trim().length > 0)
   );
 }
 
 export function getSessionPreview(session: SessionSnapshot): string {
+  if (session.listSummary) return session.listSummary.preview || '还没有消息';
   const lastMessage = session.messages.at(-1)?.content?.trim();
   if (!lastMessage) return '还没有消息';
   return lastMessage.slice(0, 60);

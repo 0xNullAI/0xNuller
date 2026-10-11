@@ -17,7 +17,6 @@ import {
 } from '@dg-kit/transport-webbluetooth';
 import {
   VideoControlRuntime,
-  getAnyPromptPresetById,
   type VideoControlGrantInput,
   type VideoControlGrantSnapshot,
   type VideoControlRuntimeOptions,
@@ -136,7 +135,7 @@ export class BrowserVideoControlService {
       getScene: () => {
         const library = this.sceneLibrary;
         if (!library) return null;
-        const selected = getAnyPromptPresetById(library.selectedId, library.scenes);
+        const selected = library.scenes.find((scene) => scene.id === library.selectedId);
         return selected ? { name: selected.name, prompt: selected.prompt } : null;
       },
       hasLease: options.hasLease ?? (() => hasDeviceLease('video')),

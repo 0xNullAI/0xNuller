@@ -25,6 +25,8 @@ export interface RealtimeSessionEvents {
   onError?(error: Error): void;
   onFunctionCall?(call: RealtimeFunctionCall): void;
   onTranscript?(entry: RealtimeTranscriptEntry): void;
+  /** Fail-closed playback gate for a completed device-capable audio response. */
+  onAuthorizeAudio?(transcript: string): boolean;
   /** Assistant audio started/stopped playing — drives the call UI's "speaking" indicator. */
   onSpeakingChange?(speaking: boolean): void;
   /**
@@ -34,6 +36,11 @@ export interface RealtimeSessionEvents {
    * it mid-cycle would race with a response that's still being generated.
    */
   onResponseDone?(): void;
+  /**
+   * The user started a new spoken turn (server or client voice activity). Evidence from
+   * tool calls belongs to one user turn; transcription events arrive too late to mark it.
+   */
+  onUserTurnStarted?(): void;
 }
 
 /**
@@ -70,6 +77,7 @@ export interface RealtimeSession {
 }
 
 export interface RealtimeSessionOptions {
+  billingContext?: { conversationId: string; runId: string };
   settings: RealtimeProviderSettings;
   tools: ToolDefinition[];
   instructions: string;

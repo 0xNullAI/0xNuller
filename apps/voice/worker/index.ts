@@ -44,7 +44,15 @@ async function handleManagedRealtime(request: Request, env: Env): Promise<Respon
   const maxCredits = Math.min(authorization.available, Math.ceil(maxMinutes * 6) * 20);
   const stub = env.VOICE_SESSION.get(env.VOICE_SESSION.idFromName(authorization.subject));
   const forwarded = new Request(request);
+  forwarded.headers.delete('x-voice-conversation');
+  forwarded.headers.delete('x-voice-run');
+  const requestedContext = new URL(request.url).searchParams;
+  if (requestedContext.has('conversationId')) {
+    forwarded.headers.set('x-voice-conversation', requestedContext.get('conversationId') ?? '');
+    forwarded.headers.set('x-voice-run', requestedContext.get('runId') ?? '');
+  }
   forwarded.headers.set('x-voice-ticket', ticket);
+  forwarded.headers.set('x-voice-subject', authorization.subject);
   forwarded.headers.set('x-voice-reservation', crypto.randomUUID());
   forwarded.headers.set('x-voice-max-credits', String(maxCredits));
   return stub.fetch(forwarded);

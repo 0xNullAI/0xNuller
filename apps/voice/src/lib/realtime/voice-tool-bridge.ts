@@ -11,6 +11,7 @@
  * own docs call out as the most common integration mistake).
  */
 import type { ToolCall } from '@dg-kit/core';
+import { createToolExecutionReceipt, type ToolExecutionReceipt } from '@dg-agent/runtime';
 import type { RealtimeFunctionCall, RealtimeSession } from './realtime-session.js';
 
 export interface ToolExecutorLike {
@@ -25,6 +26,7 @@ export class VoiceToolBridge {
   constructor(
     private readonly session: RealtimeSession,
     private readonly executor: ToolExecutorLike,
+    private readonly onReceipt?: (receipt: ToolExecutionReceipt) => void,
   ) {}
 
   /**
@@ -65,13 +67,31 @@ export class VoiceToolBridge {
     const task = this.executor
       .execute(toolCall)
       .then((result) => {
+        this.onReceipt?.(
+          createToolExecutionReceipt({
+            runId: 'voice-call',
+            callId: call.callId,
+            name: call.name,
+            args: toolCall.args,
+            output: result.output,
+          }),
+        );
         this.session.sendFunctionCallOutput(call.callId, result.output);
       })
       .catch((error: unknown) => {
-        this.session.sendFunctionCallOutput(
-          call.callId,
-          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+        const output = JSON.stringify({
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.onReceipt?.(
+          createToolExecutionReceipt({
+            runId: 'voice-call',
+            callId: call.callId,
+            name: call.name,
+            args: toolCall.args,
+            output,
+          }),
         );
+        this.session.sendFunctionCallOutput(call.callId, output);
       })
       .finally(() => {
         this.pending.delete(call.callId);

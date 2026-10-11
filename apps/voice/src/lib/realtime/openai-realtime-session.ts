@@ -112,8 +112,13 @@ export class OpenAiRealtimeSession extends BaseRealtimeSession {
 
   protected async buildConnection(): Promise<RealtimeConnection> {
     const credential = await resolveCredential(this.providerId, this.options.settings);
+    const url = new URL(buildWsUrl(this.providerId, this.options.settings));
+    if (this.providerId === 'managed' && this.options.billingContext) {
+      url.searchParams.set('conversationId', this.options.billingContext.conversationId);
+      url.searchParams.set('runId', this.options.billingContext.runId);
+    }
     return {
-      url: buildWsUrl(this.providerId, this.options.settings),
+      url: url.toString(),
       protocols: ['realtime', `openai-insecure-api-key.${credential}`],
     };
   }

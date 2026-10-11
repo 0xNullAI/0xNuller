@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@0xnullai/auth": "0.1.0",
+    "@0xnullai/conversation": "0.1.0",
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
     "@0xnullai/native": "0.1.0",

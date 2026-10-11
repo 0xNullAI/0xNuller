@@ -1,4 +1,6 @@
 import {
+  Button,
+  useShellNav,
   Alert,
   AlertDescription,
   DeviceSafetyButton,
@@ -29,6 +31,7 @@ interface AppProps {
 
 export function App({ transport }: AppProps = {}) {
   const inShell = useInShell();
+  const shellNav = useShellNav();
   // Same as Chat: props win, otherwise take it from the NativeBridge.
   const native = useNativeBridge();
   const {
@@ -214,8 +217,33 @@ export function App({ transport }: AppProps = {}) {
           }
         />
 
+        {shellNav && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void call.hangUp().then(async () => {
+                  if (await call.retryHistory()) shellNav.navigate('agent');
+                })
+              }
+            >
+              继续文字对话
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void call.hangUp().then(async () => {
+                  if (await call.retryHistory()) shellNav.navigate('video');
+                })
+              }
+            >
+              摄像头观察
+            </Button>
+          </div>
+        )}
         <CallPanel
           call={call.state}
+          onRetryHistory={() => void call.retryHistory()}
           providerId={settings.activeProviderId}
           onStart={() => void call.startCall()}
           onHangUp={() => void call.hangUp()}

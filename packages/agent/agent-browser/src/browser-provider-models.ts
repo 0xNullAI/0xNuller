@@ -1,5 +1,7 @@
 import {
+  getCatalogModels,
   getProviderDefinition,
+  loadModelCatalog,
   resolveProviderRequestUrl,
   type ProviderSettings,
 } from '@0xnullai/llm-providers';
@@ -27,6 +29,24 @@ export async function discoverBrowserProviderModels(
   if (definition.dialect === 'pi-ai') {
     if (!definition.piProviderKey || !isPiAiProviderKey(definition.piProviderKey)) {
       throw new Error('当前服务提供方的内部标识不受支持');
+    }
+    // models.dev is current; pi-ai's bundled table lags new releases and is only the
+    // fallback while the catalog is unavailable.
+    await loadModelCatalog();
+    const catalog = getCatalogModels(settings.providerId);
+    if (catalog?.length) {
+      const details = catalog
+        .filter((model) => model.toolCall)
+        // Newest first, so current models are at the top of the picker.
+        .sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+        .map((model) => ({
+          id: model.id,
+          name: model.name,
+          contextWindow: model.context ?? 0,
+          maxTokens: model.output ?? 0,
+          reasoning: model.reasoning,
+        }));
+      return { ids: details.map((model) => model.id), details };
     }
     const { listModelsForProvider } = await import('@dg-agent/providers-pi-http');
     const details = await listModelsForProvider(definition.piProviderKey);

@@ -77,12 +77,28 @@ describe('AgentRuntime Coyote safety policy and burst execution', () => {
 
     await runtime.sendUserMessage({
       sessionId: 'exact-target',
+      runId: 'exact-target-run',
       text: '停止第二台',
       context: { sessionId: 'exact-target', sourceType: 'web', traceId: 'exact-target' },
     });
 
     expect(firstExecute).not.toHaveBeenCalled();
     expect(secondExecute).toHaveBeenCalledTimes(1);
+    expect(runtime.getTaskRun('exact-target-run')?.receipts).toEqual([
+      expect.objectContaining({
+        callId: 'exact-adjust',
+        status: 'succeeded',
+      }),
+    ]);
+    expect(await runtime.getSessionTrace('exact-target')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'tool-result',
+          toolCallId: 'exact-adjust',
+          output: expect.stringContaining('"targetId":"opaque/second"'),
+        }),
+      ]),
+    );
     expect(gate).toHaveBeenCalledWith(
       expect.objectContaining({ deviceKind: 'coyote', targetId: 'opaque/second' }),
     );

@@ -1,4 +1,4 @@
-import type { SavedPromptPreset } from '@dg-agent/runtime';
+import type { SavedScene } from '@0xnullai/scenes';
 import { createEmbeddedAgentClient, type AgentClient } from '@dg-agent/client';
 import type {
   DeviceClient,
@@ -21,9 +21,13 @@ import {
   type OpossumClient,
   type PawPrintsClient,
   type DeviceExecutionGate,
+  type RuntimeTaskRunReporter,
 } from '@dg-agent/runtime';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import { createBuildBrowserInstructions } from './build-browser-instructions.js';
+import { createPrivateAgentTools } from './private-agent-tools.js';
+import { loadPrivateConversationContext } from './private-context.js';
+import { supportsCharacterMemory } from './character-memory-eligibility.js';
 import { appendAiDeviceRuntimeStatus, type AiDeviceToolAdapter } from '@0xnullai/device-runtime';
 import {
   AGENT_RUNTIME_PERMISSION_TOOL_NAMES,
@@ -33,11 +37,13 @@ import { CoyoteTargetToolRegistry, createCoyoteTargetRouter } from './coyote-tar
 
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
+  /** Explicitly enable account-private relationship/memory only in the owner's personal Agent UI. */
+  allowPersonalContext?: boolean;
   /**
    * Current scene (persona). Comes from the shared scene library, no longer
    * from the settings blob.
    */
-  scenes: { selectedId: string; saved: SavedPromptPreset[] };
+  scenes: { selectedId: string; saved: SavedScene[] };
   device: DeviceClient;
   /** At most one connected auxiliary device of each kind, alongside Coyote. */
   opossum?: OpossumClient;
@@ -45,6 +51,8 @@ export interface CreateBrowserAgentClientOptions {
   civetEdging?: CivetEdgingClient;
   sessionStore?: SessionStore;
   sessionTraceStore?: SessionTraceStore;
+  /** Optional server TaskRun reporter for explicit, server-owned conversations. */
+  taskRunReporter?: RuntimeTaskRunReporter;
   waveformLibrary: WaveformLibrary;
   permissionService?: PermissionService;
   /** Optional final boundary check, typically backed by the shell's module lease. */
@@ -55,9 +63,12 @@ export interface CreateBrowserAgentClientOptions {
 
 export function createBrowserAgentClient(options: CreateBrowserAgentClientOptions): AgentClient {
   const { settings, scenes } = options;
+  const characterForPrivateMemory = (presetId: string): boolean =>
+    supportsCharacterMemory(presetId, scenes.saved);
   const llm = createBrowserLlmClient({
     provider: settings.provider,
     temperature: settings.temperature,
+    attachPrivateConversation: options.allowPersonalContext === true,
   });
   const legacyToolRegistry = createDefaultToolRegistryWithDeps({
     waveformLibrary: options.waveformLibrary,
@@ -95,6 +106,16 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     civetEdging: options.civetEdging,
     llm,
     toolRegistry,
+    contextualTools: options.allowPersonalContext
+      ? createPrivateAgentTools({
+          allowCharacterMemory: (session) =>
+            characterForPrivateMemory(
+              typeof session.metadata?.promptPresetId === 'string'
+                ? session.metadata.promptPresetId
+                : scenes.selectedId,
+            ),
+        })
+      : undefined,
     deviceExecutionGate: options.deviceExecutionGate,
     permissionRequiredToolNames: options.deviceRuntimeTools
       ? AGENT_RUNTIME_PERMISSION_TOOL_NAMES
@@ -123,11 +144,23 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         maxAdjustStep: settings.maxOpossumAdjustStep,
       }),
     ),
-    buildInstructions: (input) =>
-      appendAiDeviceRuntimeStatus(
-        buildBaseInstructions(input),
+    buildInstructions: async (input) => {
+      const characterId =
+        typeof input.session.metadata?.promptPresetId === 'string' &&
+        input.session.metadata.promptPresetId
+          ? input.session.metadata.promptPresetId
+          : scenes.selectedId;
+      const privateContext = await loadPrivateConversationContext({
+        enabled: options.allowPersonalContext === true && characterForPrivateMemory(characterId),
+        characterId,
+        context: input.context,
+        session: input.session,
+      });
+      return appendAiDeviceRuntimeStatus(
+        [buildBaseInstructions(input), privateContext].filter(Boolean).join('\n\n'),
         options.deviceRuntimeTools?.snapshot() ?? null,
-      ),
+      );
+    },
     toolCallConfig: {
       maxToolIterations: settings.maxToolIterations,
       maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
@@ -144,6 +177,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
     modelContextStrategy: settings.modelContextStrategy,
     sessionStore: options.sessionStore,
     sessionTraceStore: options.sessionTraceStore,
+    taskRunReporter: options.taskRunReporter,
     waveformLibrary: options.waveformLibrary,
   });
 }

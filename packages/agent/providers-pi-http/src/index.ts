@@ -6,11 +6,13 @@ import {
   listPiAiModels,
   loadPiAiProvider,
   resolvePiAiModel,
+  type PiAiModelHints,
 } from './registry.js';
 import { buildContext, extractReasoning, extractText, extractToolCalls } from './serialization.js';
 import type { PiAiModelInfo, PiAiProviderKey } from './types.js';
 
 export type { PiAiModelInfo, PiAiProviderKey } from './types.js';
+export type { PiAiModelHints } from './registry.js';
 export { PI_AI_PROVIDER_KEYS } from './provider-keys.js';
 
 // `providerKey` is validated against registry.ts's actual known loader keys
@@ -23,6 +25,9 @@ const configSchema = z.object({
   providerKey: z.enum(PI_AI_PROVIDER_KEYS),
   temperature: z.number().min(0).max(2).default(0.3),
   supportsImageInput: z.boolean().default(false),
+  modelHints: z
+    .object({ image: z.boolean().optional(), temperature: z.boolean().optional() })
+    .optional(),
   transformUrl: z
     .custom<(url: string) => string>((value) => typeof value === 'function')
     .optional(),
@@ -35,6 +40,8 @@ export interface PiAiLlmClientConfig {
   temperature?: number;
   /** Must be resolved from an explicit provider+model capability allowlist. */
   supportsImageInput?: boolean;
+  /** models.dev capabilities, used when pi-ai's bundled table does not know the model. */
+  modelHints?: PiAiModelHints;
   /** Browser composition may route every provider URL through one global reverse proxy. */
   transformUrl?: (url: string) => string;
 }
@@ -88,7 +95,7 @@ export class PiAiLlmClient implements LlmClient {
     }
 
     const provider = await loadPiAiProvider(this.config.providerKey);
-    const resolvedModel = resolvePiAiModel(provider, this.config.model);
+    const resolvedModel = resolvePiAiModel(provider, this.config.model, this.config.modelHints);
     const model = this.config.transformUrl
       ? { ...resolvedModel, baseUrl: this.config.transformUrl(resolvedModel.baseUrl) }
       : resolvedModel;

@@ -29,6 +29,7 @@ function environment(authorize: Env['AUTH']['authorizeVoiceTicket']) {
     ALLOWED_ORIGINS: 'https://0xnullai.com',
     VOICE_SESSION: namespace,
     AUTH: {
+      finalizeVoiceReservation: vi.fn(),
       authorizeVoiceTicket: authorize,
       reserveVoiceCredits: vi.fn(),
       settleVoiceCredits: vi.fn(),
@@ -48,10 +49,13 @@ describe('账户语音 Credit 入口', () => {
 
   it('按账户路由 Durable Object，并转发票据和 Credit 上限', async () => {
     const { env, forwarded } = environment(vi.fn(async () => balance));
-    const response = await worker.fetch(request('account-ticket'), env);
+    const forged = request('account-ticket');
+    forged.headers.set('x-voice-subject', 'another-account');
+    const response = await worker.fetch(forged, env);
     expect(response.status).toBe(200);
     expect(env.VOICE_SESSION.idFromName).toHaveBeenCalledWith('user-1');
     expect(forwarded[0]?.headers.get('x-voice-ticket')).toBe('account-ticket');
+    expect(forwarded[0]?.headers.get('x-voice-subject')).toBe('user-1');
     expect(forwarded[0]?.headers.get('x-voice-max-credits')).toBe('500');
     expect(forwarded[0]?.headers.get('x-voice-reservation')).toBeTruthy();
   });
@@ -61,4 +65,19 @@ describe('账户语音 Credit 入口', () => {
     expect((await worker.fetch(request(), env)).status).toBe(402);
     expect(env.VOICE_SESSION.get).not.toHaveBeenCalled();
   });
+});
+
+it('forwards explicit call context but discards forged internal headers', async () => {
+  const { env, forwarded } = environment(vi.fn(async () => balance));
+  const source = request();
+  source.headers.set('x-voice-conversation', 'forged');
+  source.headers.set('x-voice-run', 'forged');
+  await worker.fetch(source, env);
+  expect(forwarded[0]?.headers.get('x-voice-conversation')).toBeNull();
+  await worker.fetch(
+    new Request(source.url + '?conversationId=private-chat&runId=call:actual:001', source),
+    env,
+  );
+  expect(forwarded[1]?.headers.get('x-voice-conversation')).toBe('private-chat');
+  expect(forwarded[1]?.headers.get('x-voice-run')).toBe('call:actual:001');
 });

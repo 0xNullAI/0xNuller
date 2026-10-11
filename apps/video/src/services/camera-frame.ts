@@ -5,7 +5,7 @@ export const CAMERA_FRAME_MAX_BYTES = 250 * 1024;
 
 const SCALES = [1, 0.85, 0.7, 0.55] as const;
 const QUALITIES = [0.82, 0.68, 0.54, 0.4] as const;
-const MEDIA_TYPES: LlmImageMediaType[] = ['image/webp', 'image/jpeg'];
+const MEDIA_TYPES: LlmImageMediaType[] = ['image/jpeg'];
 
 export type CameraCropPreset = 'original' | '16:9' | '4:3' | '1:1';
 export type CameraRotation = -90 | 0 | 90;

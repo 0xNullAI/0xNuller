@@ -1,5 +1,6 @@
 import { authRequestHeaders } from '@0xnullai/auth';
 import {
+  getCatalogModel,
   resolveProviderRequestUrl,
   resolveProviderRuntimeSettings,
   type ProviderDialect,
@@ -39,6 +40,7 @@ class LazyPiAiLlmClient implements LlmClient {
     providerKey: PiAiProviderKey;
     temperature: number;
     supportsImageInput: boolean;
+    modelHints?: { image?: boolean; temperature?: boolean };
     transformUrl: (url: string) => string;
   };
 
@@ -48,6 +50,7 @@ class LazyPiAiLlmClient implements LlmClient {
     providerKey: PiAiProviderKey;
     temperature: number;
     supportsImageInput: boolean;
+    modelHints?: { image?: boolean; temperature?: boolean };
     transformUrl: (url: string) => string;
   }) {
     this.config = config;
@@ -109,6 +112,7 @@ export function formatProviderConfigError(
 export interface CreateBrowserLlmClientOptions {
   provider: ProviderSettings;
   temperature?: number;
+  attachPrivateConversation?: boolean;
 }
 
 /** Browser-only provider composition shared by Agent and read-only visual modules. */
@@ -160,6 +164,7 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
         providerKey: provider.piProviderKey,
         temperature,
         supportsImageInput: provider.imageInput,
+        modelHints: catalogHints(provider.providerId, provider.model),
         transformUrl: resolveProviderRequestUrl,
       });
     } catch (error) {
@@ -185,6 +190,7 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
       useStrict: provider.useStrict,
       temperature,
       extraHeaders,
+      attachPrivateConversation: options.attachPrivateConversation === true,
       supportsImageInput: provider.imageInput,
       transformUrl: resolveProviderRequestUrl,
     });
@@ -193,4 +199,12 @@ export function createBrowserLlmClient(options: CreateBrowserLlmClientOptions): 
       formatProviderConfigError(error, provider.providerId, provider.dialect),
     );
   }
+}
+
+function catalogHints(
+  providerId: Parameters<typeof getCatalogModel>[0],
+  model: string,
+): { image?: boolean; temperature?: boolean } | undefined {
+  const entry = getCatalogModel(providerId, model);
+  return entry ? { image: entry.image, temperature: entry.temperature } : undefined;
 }

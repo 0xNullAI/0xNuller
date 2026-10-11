@@ -35,10 +35,11 @@ import type {
   PawPrintsClient,
   SavedPromptPreset,
   DeviceExecutionGate,
+  RuntimeTaskRunReporter,
 } from '@dg-agent/runtime';
 import {
-  BrowserSessionStore,
-  BrowserSessionTraceStore,
+  ServerSessionStore,
+  TransientSessionTraceStore,
   type BrowserAppSettings,
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
@@ -94,6 +95,8 @@ export interface BrowserServicesOptions {
   civetEdging?: CivetEdgingClient;
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
+  /** Server TaskRun reporter; non-stop tools fail closed without a server run ID. */
+  taskRunReporter?: RuntimeTaskRunReporter;
   /** Shell-owned generic runtime; binding is lazy and uses the Agent module id. */
   deviceRuntimeProvider?: DeviceRuntimeProvider;
   /**
@@ -137,7 +140,23 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.resolve([]);
   }
 
+  searchSessions(_query: string): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+
+  getSessionMessagesPage(_sessionId: string, _before?: number) {
+    return Promise.resolve({ items: [], nextBefore: null });
+  }
+
   getSessionSnapshot(_sessionId: string): Promise<SessionSnapshot> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  getSessionDisplaySnapshot(_sessionId: string): Promise<SessionSnapshot> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  getSessionExportSnapshot(_sessionId: string): Promise<SessionSnapshot> {
     return Promise.reject(new Error(this.message));
   }
 
@@ -150,6 +169,10 @@ class UnavailableAgentClient implements AgentClient {
   }
 
   renameSession(_sessionId: string, _title: string | null): Promise<void> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  setSessionScene(_sessionId: string, _sceneId: string | null): Promise<void> {
     return Promise.reject(new Error(this.message));
   }
 
@@ -210,8 +233,8 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
 
   const warnings: string[] = [];
 
-  const sessionStore = new BrowserSessionStore();
-  const sessionTraceStore = new BrowserSessionTraceStore();
+  const sessionStore = new ServerSessionStore();
+  const sessionTraceStore = new TransientSessionTraceStore();
   const waveformLibrary = new BrowserWaveformLibrary();
   const bridgeRegistry = new BridgeAdapterRegistry();
   const device =
@@ -278,6 +301,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
   try {
     client = createBrowserAgentClient({
       settings,
+      allowPersonalContext: true,
       scenes,
       device,
       opossum,
@@ -288,6 +312,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       waveformLibrary,
       permissionService: bridgePermissionService,
       deviceExecutionGate: options.deviceExecutionGate,
+      taskRunReporter: options.taskRunReporter,
       deviceRuntimeTools,
     });
   } catch (error) {
@@ -322,6 +347,12 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       });
     }
   }
+
+  const disposeClient = client.dispose?.bind(client);
+  client.dispose = () => {
+    sessionStore.dispose();
+    disposeClient?.();
+  };
 
   return {
     client,

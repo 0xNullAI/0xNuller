@@ -107,7 +107,18 @@ const FALLBACK_CONTEXT_WINDOW = 32000;
  * `fireworks`/`xai` only ever has one `api` value anyway, so this is exact
  * for all but those two mixed-dialect providers.
  */
-export function resolvePiAiModel(provider: Provider<Api>, modelId: string): Model<Api> {
+/** Capabilities from the models.dev catalog for a model the bundled table may not know. */
+export interface PiAiModelHints {
+  image?: boolean;
+  /** False when the model rejects sampling parameters. */
+  temperature?: boolean;
+}
+
+export function resolvePiAiModel(
+  provider: Provider<Api>,
+  modelId: string,
+  hints: PiAiModelHints = {},
+): Model<Api> {
   // providers-catalog's normalizeProviderSettings already trims
   // ProviderSettings.model, so PiAiLlmClient's config.model arrives trimmed
   // in the real app; trimming again here is a cheap, harmless guard for any
@@ -119,18 +130,61 @@ export function resolvePiAiModel(provider: Provider<Api>, modelId: string): Mode
   const known = models.find((model) => model.id === trimmedModelId);
   if (known) return known;
 
+  const claude = currentClaudeModel(provider, models, trimmedModelId);
+  if (claude) return withHints(claude, hints);
+
+  return withHints(
+    {
+      id: trimmedModelId,
+      name: trimmedModelId,
+      api: mostCommonApi(models),
+      provider: provider.id,
+      baseUrl: provider.baseUrl ?? '',
+      reasoning: false,
+      input: ['text'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: FALLBACK_CONTEXT_WINDOW,
+      maxTokens: FALLBACK_MAX_TOKENS,
+    },
+    hints,
+  );
+}
+
+/** Applies catalog capabilities to a model the bundled table does not describe. */
+function withHints(model: Model<Api>, hints: PiAiModelHints): Model<Api> {
+  const input: Model<Api>['input'] =
+    hints.image && !model.input.includes('image') ? [...model.input, 'image'] : model.input;
+  const compat =
+    hints.temperature === false
+      ? { ...(model.compat as object | undefined), supportsTemperature: false }
+      : model.compat;
+  return { ...model, input, ...(compat ? { compat } : {}) } as Model<Api>;
+}
+
+/**
+ * Claude models newer than the installed pi-ai catalog (for example `claude-opus-5-5`).
+ * The generic fallback would send `temperature` and could send `thinking: disabled`; both
+ * return a 400 on current Claude models, which always think adaptively and take no
+ * sampling parameters. Reuse the catalog's newest adaptive-thinking Claude entry instead.
+ */
+function currentClaudeModel(
+  provider: Provider<Api>,
+  models: readonly Model<Api>[],
+  modelId: string,
+): Model<Api> | null {
+  const match = /^claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-\d+)?$/.exec(modelId);
+  if (provider.id !== 'anthropic' || !match || Number(match[1]) < 5) return null;
+  const template = [...models]
+    .reverse()
+    .find((model) => model.compat && 'forceAdaptiveThinking' in model.compat);
+  if (!template) return null;
   return {
-    id: trimmedModelId,
-    name: trimmedModelId,
-    api: mostCommonApi(models),
-    provider: provider.id,
-    baseUrl: provider.baseUrl ?? '',
-    reasoning: false,
-    input: ['text'],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: FALLBACK_CONTEXT_WINDOW,
-    maxTokens: FALLBACK_MAX_TOKENS,
-  };
+    ...template,
+    id: modelId,
+    name: modelId,
+    compat: { ...template.compat, forceAdaptiveThinking: true, supportsTemperature: false },
+    thinkingLevelMap: { ...template.thinkingLevelMap, off: null },
+  } as Model<Api>;
 }
 
 function mostCommonApi(models: readonly Model<Api>[]): Api {

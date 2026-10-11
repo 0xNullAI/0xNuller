@@ -76,7 +76,23 @@ function harness(
     invoke: async (action) => {
       if (rejectAction?.(action)) throw new Error('stop failed');
       invoked.push(action);
-      return resultForAction?.(action);
+      return (
+        resultForAction?.(action) ??
+        (action.target.kind === 'embedded'
+          ? { status: action.action === 'stop' ? 'stopped' : 'applied' }
+          : JSON.stringify({
+              ok: true,
+              ...(action.target.kind === 'coyote' ? { targetId: action.target.targetId } : {}),
+              command: {
+                type: {
+                  start: action.target.kind === 'coyote' ? 'start' : 'vibrateStart',
+                  adjust: action.target.kind === 'coyote' ? 'adjustStrength' : 'vibrateAdjust',
+                  stop: action.target.kind === 'coyote' ? 'stop' : 'vibrateStop',
+                  burst: action.target.kind === 'coyote' ? 'burst' : 'vibrateBurst',
+                }[action.action],
+              },
+            }))
+      );
     },
     stopAll,
     now: () => now,
@@ -105,6 +121,29 @@ async function authorize(h: ReturnType<typeof harness>, durationMs = 60_000) {
 }
 
 describe('VideoAiDeviceRouter', () => {
+  it('binds an observation to the authorized server conversation and provider instance', async () => {
+    const h = harness([[]]);
+    h.router.updateInputs(h.llm, h.targets);
+    await h.router.authorize({
+      conversationId: 'server-conversation',
+      targets: h.targets,
+      allowEnhanced: false,
+      allowBurst: false,
+      durationMs: 60_000,
+      cadenceMs: 5_000,
+      captureIntervalMs: 1_000,
+    });
+    const replacement = { ...h.llm, runTurn: vi.fn() } as LlmClient;
+    h.router.updateInputs(replacement, h.targets);
+    await h.router.observe(FRAME);
+    expect(vi.mocked(h.llm.runTurn)).toHaveBeenCalledOnce();
+    expect(replacement.runTurn).not.toHaveBeenCalled();
+    expect(vi.mocked(h.llm.runTurn).mock.calls[0]?.[0]).toMatchObject({
+      session: { id: 'server-conversation' },
+      context: { sessionId: 'server-conversation' },
+    });
+  });
+
   it('includes the selected scene and built-in continuous-observation contract', async () => {
     const h = harness([[]]);
     h.router.updateInputs(h.llm, h.targets, {
@@ -119,6 +158,35 @@ describe('VideoAiDeviceRouter', () => {
     expect(input?.instructions).toContain('根据最新画面推进原创幻想场景');
     expect(input?.instructions).toContain('不等待用户逐轮下令');
     expect(input?.instructions).toContain('工具请求不代表成功');
+  });
+
+  it('keeps the authorized card prompt while shared Market selection changes', async () => {
+    const h = harness([[], [], []]);
+    h.router.updateInputs(h.llm, h.targets, {
+      name: '朋友',
+      prompt: '朋友的人设与本次私人记忆',
+    });
+    await authorize(h);
+
+    h.router.updateInputs(h.llm, h.targets, {
+      name: '雨夜',
+      prompt: '另一张公开场景卡',
+    });
+    await h.router.observe(FRAME);
+    await h.router.observe(FRAME);
+    const activeInstructions = vi
+      .mocked(h.llm.runTurn)
+      .mock.calls.map(([input]) => input.instructions);
+    expect(activeInstructions).toHaveLength(2);
+    for (const instructions of activeInstructions) {
+      expect(instructions).toContain('朋友的人设与本次私人记忆');
+      expect(instructions).not.toContain('另一张公开场景卡');
+    }
+
+    await h.router.stop();
+    await authorize(h);
+    await h.router.observe(FRAME);
+    expect(vi.mocked(h.llm.runTurn).mock.calls[2]?.[0].instructions).toContain('另一张公开场景卡');
   });
 
   it('lets the model choose an exact target on every call and stops the old route before switching', async () => {
@@ -140,8 +208,21 @@ describe('VideoAiDeviceRouter', () => {
     ]);
     await authorize(h);
     await expect(h.router.observe(FRAME)).rejects.toThrow('未授权 targetId');
+    expect(h.router.getGrant()?.revoked).toBe(true);
+    await authorize(h);
     await expect(h.router.observe(FRAME)).rejects.toThrow('超过授权上限');
+    expect(h.router.getGrant()?.revoked).toBe(true);
     expect(h.invoked).toHaveLength(0);
+    expect(h.stopAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops an earlier successful output when a later call in the same frame is invalid', async () => {
+    const h = harness([[call('first', 'coyote/a'), call('invalid', 'coyote/not-allowed')]]);
+    await authorize(h);
+    await expect(h.router.observe(FRAME)).rejects.toThrow('未授权 targetId');
+    expect(h.invoked.map(({ id }) => id)).toEqual(['first']);
+    expect(h.router.getGrant()?.revoked).toBe(true);
+    expect(h.stopAll).toHaveBeenCalledOnce();
   });
 
   it('revokes and globally stops when a target identity disappears', async () => {
@@ -217,6 +298,72 @@ describe('VideoAiDeviceRouter', () => {
     await authorize(h);
 
     await expect(h.router.observe(FRAME)).rejects.toThrow('permission denied');
+  });
+
+  it('never presents a model claim as device execution without a tool call', async () => {
+    const h = harness([[]]);
+    vi.mocked(h.llm.runTurn).mockResolvedValueOnce({
+      assistantMessage: '已经启动设备。',
+      toolCalls: [],
+    });
+    await authorize(h);
+    const text = await h.router.observe(FRAME);
+    expect(text).toContain('没有可核实的工具执行结果');
+    expect(h.invoked).toHaveLength(0);
+  });
+
+  it('uses a deterministic caption after verified execution instead of provider prose', async () => {
+    const h = harness([[call('a', 'coyote/a')]]);
+    vi.mocked(h.llm.runTurn).mockResolvedValueOnce({
+      assistantMessage: '我已把设备调到最高强度。',
+      toolCalls: [call('a', 'coyote/a')],
+    });
+    await authorize(h);
+    const text = await h.router.observe(FRAME);
+    expect(text).toContain('已执行 1 项授权设备动作');
+    expect(text).not.toContain('最高强度');
+  });
+
+  it('rejects unknown tool names before executing any device call', async () => {
+    const h = harness([]);
+    vi.mocked(h.llm.runTurn).mockResolvedValueOnce({
+      assistantMessage: 'ok',
+      toolCalls: [call('a', 'coyote/a'), { id: 'bad', name: 'file_read', args: {} }],
+    });
+    await authorize(h);
+    await expect(h.router.observe(FRAME)).rejects.toThrow('未授权的工具');
+    expect(h.invoked).toHaveLength(0);
+  });
+
+  it('does not count an unconfirmed device result as successful', async () => {
+    const h = harness([[call('a', 'coyote/a')]], undefined, undefined, () => '{}');
+    await authorize(h);
+    await expect(h.router.observe(FRAME)).rejects.toThrow('结果未确认');
+    expect(h.invoked).toHaveLength(1);
+    expect(h.router.getGrant()?.revoked).toBe(true);
+    expect(h.stopAll).toHaveBeenCalledOnce();
+  });
+
+  it('accepts an Opossum receipt without a Coyote target ID', async () => {
+    const opossum = {
+      ...coyote('ignored'),
+      id: 'opossum/one',
+      kind: 'opossum' as const,
+      targetId: 'one',
+      modality: 'vibration' as const,
+    };
+    const h = harness([[call('a', opossum.id)]], [opossum]);
+    await authorize(h);
+    await expect(h.router.observe(FRAME)).resolves.toContain('已执行 1 项');
+  });
+
+  it('rejects a receipt from a different Coyote target', async () => {
+    const h = harness([[call('a', 'coyote/a')]], undefined, undefined, () =>
+      JSON.stringify({ ok: true, targetId: 'other', command: { type: 'start' } }),
+    );
+    await authorize(h);
+    await expect(h.router.observe(FRAME)).rejects.toThrow('结果未确认');
+    expect(h.stopAll).toHaveBeenCalledOnce();
   });
 
   it('waits for a pending stop before issuing a replacement authorization', async () => {

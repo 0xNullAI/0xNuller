@@ -1,4 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  currentAuthUserId,
+  consumeAgentInboxSelection,
+  subscribeAuthChanges,
+  subscribeAgentInboxSelection,
+  readPrivateConversationSelection,
+  selectPrivateConversation,
+  startAgentRun,
+  listAgentRuns,
+  getAgentRun,
+  finishAgentRun,
+  type AgentRunCall,
+  type AgentRunStatus,
+} from '@0xnullai/auth';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { type MessageOrigin } from '@dg-agent/bridge';
 import {
   createEmptyDeviceState,
@@ -6,21 +20,38 @@ import {
   type DeviceClient,
   type DeviceKind,
   type DeviceState,
+  type LlmImageInput,
   type PermissionDecision,
   type DeviceLinkRule,
   DEFAULT_DEVICE_LINK_RULE,
 } from '@dg-agent/core';
 import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
+import { getObservedConversationSequence } from '@dg-agent/storage-browser';
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { useInShell, useOpenShellSettings, useSafetySession, useTheme } from '@0xnullai/ui';
+import {
+  useShellNav,
+  useInShell,
+  useOpenShellSettings,
+  useSafetySession,
+  useTheme,
+} from '@0xnullai/ui';
 import { useNativeBridge } from '@0xnullai/native';
 import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
+import {
+  RelationshipAccess,
+  type RelationshipAccessHandle,
+} from './components/RelationshipAccess.js';
 import { ChatPanel } from './components/ChatPanel.js';
+import {
+  canUsePrivateImageInput,
+  readPrivateImageForModel,
+} from './services/private-image-input.js';
+import type { PrivateConversationAttachment } from '@0xnullai/auth';
 import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNotice } from '@0xnullai/ui';
 import { SessionNavigation } from './components/SessionNavigation.js';
@@ -36,6 +67,7 @@ import {
 import { useAuxDeviceState } from './hooks/use-aux-device-state.js';
 import { useModelLog } from './hooks/use-model-log.js';
 import { useRuntimeSessionState } from './hooks/use-runtime-session-state.js';
+import { useVisibleConversationRead } from './hooks/use-visible-conversation-read.js';
 import { useSettingsManager } from './hooks/use-settings-manager.js';
 import { useToastManager } from './hooks/use-toast-manager.js';
 import { useVoiceController } from './hooks/use-voice-controller.js';
@@ -49,6 +81,12 @@ import {
   isBluetoothChooserCancelledError,
 } from './utils/ui-formatters.js';
 import { buildTraceFeed } from './utils/trace-feed.js';
+import {
+  clearAgentConversationLink,
+  linkedAgentConversationId,
+  replaceAgentConversationLink,
+} from './utils/conversation-link.js';
+import { resolveConversationCards, sceneNeedsCharacter } from './utils/conversation-cards.js';
 import {
   parseSessionsFromJson,
   serializeSessionFile,
@@ -92,6 +130,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const nativeConnect = (native.agent?.connectDevice ??
     connectDeviceTauri) as typeof connectDeviceTauri;
   const activeSessionIdRef = useRef<string | null>(null);
+  const imageConversationEpochRef = useRef(0);
   const bridgeSessionResolverRef = useRef<
     (origin: MessageOrigin) => Promise<string | null> | string | null
   >(() => activeSessionIdRef.current);
@@ -114,24 +153,41 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [runReview, setRunReview] = useState<{
+    id: string;
+    conversationId: string;
+    accountId: string;
+    status: AgentRunStatus;
+    calls: AgentRunCall[];
+  } | null>(null);
+  const [dismissedRunReviewId, setDismissedRunReviewId] = useState<string | null>(null);
   const inShell = useInShell();
+  const shellNav = useShellNav();
   const openShellSettings = useOpenShellSettings();
   // The scene library moved out of the settings blob into cross-module shared storage —
   // Voice sees the same set, and one broken scene no longer drags the whole settings
   // object back to its defaults (that blob also holds the strength caps).
   const [sceneLib, updateSceneLib] = useScenes();
-  useEffect(() => {
-    const selectedExists =
-      BUILTIN_PROMPT_PRESETS.some((preset) => preset.id === sceneLib.selectedId) ||
-      sceneLib.scenes.some((scene) => scene.id === sceneLib.selectedId);
-    if (!selectedExists) {
-      updateSceneLib((current) => ({ ...current, selectedId: 'gentle' }));
-    }
-  }, [sceneLib.scenes, sceneLib.selectedId, updateSceneLib]);
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
     () => inShell || !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
+  const [transcriptTail, setTranscriptTail] = useState<{
+    id: string;
+    sequence: number;
+    visible: boolean;
+  } | null>(null);
+  const onTranscriptTailVisibilityChange = useCallback(
+    (id: string, sequence: number, visible: boolean) => {
+      setTranscriptTail((current) =>
+        current?.id === id && current.sequence === sequence && current.visible === visible
+          ? current
+          : { id, sequence, visible },
+      );
+    },
+    [],
+  );
   const [text, setText] = useState('');
+  const relationshipAccessRef = useRef<RelationshipAccessHandle>(null);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -152,6 +208,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     pawPrints,
     civetEdging,
   } = useBrowserAppServices({
+    inShell,
     resolveBridgeSessionId,
     settings,
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
@@ -177,6 +234,14 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const runtimeSession = useRuntimeSessionState({
     client,
     enabled: safetyNoticeAccepted,
+    onError: setErrorMessage,
+    onAccountChange: () => {
+      resetPermissionGrants();
+      setPendingPermission((pending) => {
+        pending?.resolve({ type: 'deny', reason: '账户已切换，请重新授权' });
+        return null;
+      });
+    },
     onRuntimeEvent: useCallback(
       (event) => {
         voice.handleRuntimeEvent(event);
@@ -209,7 +274,68 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     clearStreamingAssistantText,
     liveTraceItems,
     refreshCurrentSession,
+    loadOlderSessionMessages,
   } = runtimeSession;
+
+  const agentRouteActive = !shellNav || shellNav.activeId === 'agent';
+  useEffect(() => {
+    if (!agentRouteActive) return;
+    let active = true;
+    let request = 0;
+    let account = currentAuthUserId();
+    const openLink = () => {
+      const currentRequest = ++request;
+      const linkedId = linkedAgentConversationId(window.location.pathname, window.location.search);
+      if (!new URLSearchParams(window.location.search).has('conversation')) {
+        const selection = readPrivateConversationSelection();
+        if (selection)
+          queueMicrotask(() => {
+            if (active && request === currentRequest) setActiveSessionId(selection.conversationId);
+          });
+        return;
+      }
+      if (!linkedId) {
+        queueMicrotask(() => {
+          if (active && request === currentRequest)
+            setErrorMessage('聊天链接无效，请从消息列表重新打开。');
+        });
+        return;
+      }
+      const requestedAccount = currentAuthUserId();
+      void client
+        .listSessions()
+        .then((sessions) => {
+          if (
+            !active ||
+            request !== currentRequest ||
+            requestedAccount !== currentAuthUserId() ||
+            linkedAgentConversationId(window.location.pathname, window.location.search) !== linkedId
+          )
+            return;
+          if (sessions.some((item) => item.id === linkedId)) setActiveSessionId(linkedId);
+          else setErrorMessage('找不到这段聊天，或当前账户无权查看。');
+        })
+        .catch((error) => {
+          if (active && request === currentRequest) setErrorMessage(formatUiErrorMessage(error));
+        });
+    };
+    const onAuthChange = () => {
+      const nextAccount = currentAuthUserId();
+      if (account === nextAccount) return;
+      account = nextAccount;
+      request++;
+      clearAgentConversationLink();
+    };
+    window.addEventListener('popstate', openLink);
+    const unsubscribe = subscribeAuthChanges(onAuthChange);
+    openLink();
+    return () => {
+      active = false;
+      request++;
+      window.removeEventListener('popstate', openLink);
+      unsubscribe();
+    };
+  }, [agentRouteActive, client, setActiveSessionId, setErrorMessage]);
 
   const busy = pendingSend || replyBusy;
   const deviceState = liveDeviceState ?? createEmptyDeviceState();
@@ -357,6 +483,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
+    imageConversationEpochRef.current += 1;
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -558,29 +685,146 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     }
   }, [civetEdging]);
 
-  const sendTextMessage = useCallback(
-    async (message: string): Promise<'sent' | 'aborted' | 'failed'> => {
-      if (!message.trim() || !activeSessionId) return 'failed';
+  const {
+    characterId: conversationCharacterId,
+    sceneId: conversationSceneId,
+    boundPresetId,
+  } = resolveConversationCards(session, activeSessionId, sceneLib);
+  const hasExplicitConversationScene =
+    session?.id === activeSessionId && typeof session.metadata?.sceneId === 'string';
 
+  const refreshRunReview = useCallback(async (conversationId: string) => {
+    const accountId = currentAuthUserId();
+    if (!accountId) {
+      setRunReview(null);
+      return;
+    }
+    try {
+      const { items } = await listAgentRuns(conversationId);
+      const unresolved = items.find(
+        (item) => item.status === 'active' || item.status === 'needs_review',
+      );
+      if (!unresolved) {
+        if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+          setRunReview(null);
+        return;
+      }
+      const { item, calls } = await getAgentRun(conversationId, unresolved.id);
+      if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+        setRunReview(
+          item.status === 'active' || item.status === 'needs_review'
+            ? { id: item.id, conversationId, accountId, status: item.status, calls }
+            : null,
+        );
+    } catch {
+      // Chat remains usable; a failed recovery read must not invent a verified outcome.
+      if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+        setRunReview(null);
+    }
+  }, []);
+  useEffect(() => {
+    if (!activeSessionId) {
+      queueMicrotask(() => setRunReview(null));
+      return;
+    }
+    const sessionId = activeSessionId;
+    queueMicrotask(() => void refreshRunReview(sessionId));
+  }, [activeSessionId, client, refreshRunReview]);
+
+  async function changeConversationScene(id: string | null): Promise<void> {
+    if (!activeSessionId) return;
+    if (id && sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, id)) {
+      setErrorMessage('场景只提供环境，请先选择角色，再为角色聊天添加场景。');
+      return;
+    }
+    try {
+      setErrorMessage(null);
+      await client.setSessionScene(activeSessionId, id);
+      await refreshCurrentSession(activeSessionId);
+      setStatusMessage(id ? '已切换场景' : '已移除场景');
+    } catch (error) {
+      setErrorMessage(formatUiErrorMessage(error));
+    }
+  }
+
+  async function switchConversationMode(mode: 'voice' | 'video') {
+    const accountId = currentAuthUserId();
+    if (!accountId || !activeSessionId) {
+      setErrorMessage('请先登录并打开私人对话。');
+      return;
+    }
+    if (!conversationCharacterId) {
+      setErrorMessage('这段聊天没有角色身份。请先打开角色聊天，再进入语音或摄像头观察。');
+      return;
+    }
+    try {
+      await refreshCurrentSession(activeSessionId);
+      selectPrivateConversation({
+        accountId,
+        conversationId: activeSessionId,
+        characterId: conversationCharacterId,
+        ...(typeof session?.metadata?.relationshipId === 'string'
+          ? { relationshipId: session.metadata.relationshipId }
+          : {}),
+      });
+      if (conversationCharacterId)
+        updateSceneLib((current) => ({ ...current, selectedId: conversationCharacterId }));
+      shellNav?.navigate(mode);
+    } catch (error) {
+      setErrorMessage(formatUiErrorMessage(error));
+    }
+  }
+
+  const sendTextMessage = useCallback(
+    async (message: string, image?: LlmImageInput): Promise<'sent' | 'aborted' | 'failed'> => {
+      if (!message.trim() || !activeSessionId) return 'failed';
+      if (
+        sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, conversationSceneId)
+      ) {
+        setErrorMessage('场景只提供环境，请先选择角色，再开始聊天。');
+        return 'failed';
+      }
+
+      let allocatedRunId: string | null = null;
       setPendingSend(true);
       try {
         setErrorMessage(null);
         stopSpeechPlayback();
 
+        if (conversationSceneId && !hasExplicitConversationScene) {
+          await client.setSessionScene(activeSessionId, conversationSceneId);
+        }
+
+        // Persist the empty server conversation before allocating the authoritative run.
+        await client.getSessionDisplaySnapshot(activeSessionId);
+        const requestId = `web-${crypto.randomUUID()}`;
+        const { item: run, claimed } = await startAgentRun(activeSessionId, requestId);
+        if (!claimed || run.status !== 'active') throw new Error('服务器任务已存在，请刷新后重试');
+        allocatedRunId = run.id;
+
         await client.sendUserMessage({
           sessionId: activeSessionId,
+          runId: run.id,
           text: message,
+          image,
+          characterId: conversationCharacterId,
           context: {
             sessionId: activeSessionId,
             sourceType: 'web',
-            traceId: `web-${Date.now()}`,
+            traceId: requestId,
           },
         });
+        allocatedRunId = null;
 
         setStatusMessage('消息已发送');
         await refreshCurrentSession(activeSessionId);
+        void refreshRunReview(activeSessionId);
         return 'sent';
       } catch (error) {
+        if (allocatedRunId)
+          void finishAgentRun(activeSessionId, allocatedRunId, 'needs_review')
+            .catch(() => undefined)
+            .finally(() => void refreshRunReview(activeSessionId));
         if (isReplyAbortError(error)) {
           setStatusMessage('已停止当前回复');
           return 'aborted';
@@ -591,7 +835,17 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         setPendingSend(false);
       }
     },
-    [activeSessionId, client, refreshCurrentSession, stopSpeechPlayback],
+    [
+      activeSessionId,
+      client,
+      conversationCharacterId,
+      conversationSceneId,
+      hasExplicitConversationScene,
+      refreshCurrentSession,
+      refreshRunReview,
+      session,
+      stopSpeechPlayback,
+    ],
   );
 
   async function send(): Promise<void> {
@@ -602,6 +856,48 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     const result = await sendTextMessage(draft);
     if (result === 'failed') {
       setText(draft);
+    }
+  }
+
+  async function askAboutImage(attachment: PrivateConversationAttachment): Promise<void> {
+    const accountId = currentAuthUserId();
+    const conversationId = activeSessionId;
+    if (
+      !accountId ||
+      !conversationId ||
+      !canUsePrivateImageInput(client.capabilities.imageInput, settings.provider.providerId)
+    ) {
+      setErrorMessage('聊天看图需要明确支持视觉的自备模型；托管视觉模型暂不支持普通聊天历史');
+      return;
+    }
+    const conversationEpoch = imageConversationEpochRef.current;
+    let accountChanged = false;
+    const unsubscribeAuth = subscribeAuthChanges(() => {
+      accountChanged = true;
+    });
+    try {
+      setPendingSend(true);
+      setErrorMessage(null);
+      const image = await readPrivateImageForModel(accountId, conversationId, attachment);
+      if (
+        accountChanged ||
+        currentAuthUserId() !== accountId ||
+        activeSessionIdRef.current !== conversationId ||
+        imageConversationEpochRef.current !== conversationEpoch
+      )
+        return;
+      await sendTextMessage('请根据我选择的图片回答；如果看不清，请明确说明。', image);
+    } catch (error) {
+      if (
+        !accountChanged &&
+        currentAuthUserId() === accountId &&
+        activeSessionIdRef.current === conversationId &&
+        imageConversationEpochRef.current === conversationEpoch
+      )
+        setErrorMessage(formatUiErrorMessage(error));
+    } finally {
+      unsubscribeAuth();
+      setPendingSend(false);
     }
   }
 
@@ -667,6 +963,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     }
 
     const nextSessionId = createSessionId();
+    replaceAgentConversationLink(nextSessionId);
     setActiveSessionId(nextSessionId);
     setText('');
     clearStreamingAssistantText();
@@ -686,12 +983,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
       if (sessionId === activeSessionId) {
         const nextSessionId = remaining[0]?.id ?? createSessionId();
+        replaceAgentConversationLink(nextSessionId);
         setActiveSessionId(nextSessionId);
         setText('');
         clearStreamingAssistantText();
         stopAllVoiceActivity({ disableMode: false });
         clearEvents();
-        setSession(await client.getSessionSnapshot(nextSessionId));
+        setSession(await client.getSessionDisplaySnapshot(nextSessionId));
       }
 
       setStatusMessage('会话已删除');
@@ -706,7 +1004,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       const sessions = await client.listSessions();
       setSavedSessions(sessions);
       if (sessionId === activeSessionId) {
-        setSession(await client.getSessionSnapshot(sessionId));
+        setSession(await client.getSessionDisplaySnapshot(sessionId));
       }
       setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
     } catch (error) {
@@ -728,8 +1026,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   // Export the chosen sessions as a zip with one JSON file per session.
   async function exportSessions(sessionIds: string[]): Promise<void> {
     try {
-      const all = await client.listSessions();
-      const chosen = all.filter((session) => sessionIds.includes(session.id));
+      // Read and verify each complete transcript page by page; the navigation
+      // list contains summaries only.
+      const chosen: SessionSnapshot[] = [];
+      for (const id of new Set(sessionIds)) chosen.push(await client.getSessionExportSnapshot(id));
       if (chosen.length === 0) {
         setStatusMessage('请选择要导出的会话');
         return;
@@ -788,6 +1088,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     flushSettingsDraft();
     setEditingWaveform(null);
     resetPermissionGrants();
+    replaceAgentConversationLink(sessionId);
     setActiveSessionId(sessionId);
     setText('');
     clearStreamingAssistantText();
@@ -796,6 +1097,37 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setStatusMessage('已切换到所选会话');
     setSidebarOpen(false);
   }
+
+  const consumeInboxSelection = useEffectEvent(() => {
+    const selection = consumeAgentInboxSelection();
+    if (selection?.kind === 'conversation') selectSession(selection.id);
+    if (selection?.kind === 'new') void createNewSession();
+  });
+  const inboxRouteActive = agentRouteActive;
+  const observedSequence = getObservedConversationSequence(session, currentAuthUserId());
+  useVisibleConversationRead({
+    session,
+    activeSessionId,
+    visible:
+      inboxRouteActive &&
+      safetyNoticeAccepted &&
+      !sidebarOpen &&
+      transcriptTail?.visible === true &&
+      transcriptTail.id === session?.id &&
+      transcriptTail.sequence === observedSequence,
+  });
+  useEffect(() => {
+    if (!inboxRouteActive) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) consumeInboxSelection();
+    });
+    const unsubscribe = subscribeAgentInboxSelection(() => consumeInboxSelection());
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [inboxRouteActive]);
 
   function resetSettings(): void {
     resetSettingsManager(() => {
@@ -824,6 +1156,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     sessions: savedSessions,
     activeSessionId,
     onSelect: selectSession,
+    onSearch: (query: string) => client.searchSessions(query),
     onRename: (sessionId: string, title: string | null) => void renameSession(sessionId, title),
     onDelete: (sessionId: string) => void deleteSession(sessionId),
     onCreate: () => void createNewSession(),
@@ -923,7 +1256,28 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           )}
 
           {/* Chat section */}
-          <section className="relative flex min-h-0 min-w-0 overflow-hidden">
+          <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <RelationshipAccess
+              ref={relationshipAccessRef}
+              conversationId={activeSessionId ?? undefined}
+              characterId={conversationCharacterId}
+              marketPortraitId={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)
+                  ?.marketPortraitId
+              }
+              onBack={shellNav?.conversationBack}
+              creditLabel={
+                settings.provider.providerId === 'managed'
+                  ? '平台 Credit · 私人聊天'
+                  : '自带密钥 · 服务商计费'
+              }
+              characterName={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.name ??
+                BUILTIN_PROMPT_PRESETS.find((preset) => preset.id === conversationCharacterId)
+                  ?.name ??
+                'AI'
+              }
+            />
             <FloatingStatusBar
               voiceMode={voiceMode}
               voiceState={voiceState}
@@ -935,7 +1289,58 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onDismissUpdate={() => updateChecker.dismiss()}
               onReload={() => window.location.reload()}
             />
+            {runReview &&
+            runReview.conversationId === activeSessionId &&
+            runReview.accountId === currentAuthUserId() &&
+            runReview.id !== dismissedRunReviewId ? (
+              <div
+                role="status"
+                className="border-b border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    {runReview.status === 'active'
+                      ? '此会话仍有进行中的任务。若原窗口已关闭，任务结果可能未确认；请检查实际状态，待服务器结束旧任务后再发送。'
+                      : '有操作结果待核对。请检查实际状态，再决定是否重试。'}
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[var(--accent)]"
+                    onClick={() => void refreshRunReview(runReview.conversationId)}
+                  >
+                    刷新
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[var(--accent)]"
+                    onClick={() => setDismissedRunReviewId(runReview.id)}
+                  >
+                    关闭
+                  </button>
+                </div>
+                {runReview.calls.length > 0 ? (
+                  <details className="mt-1 text-xs text-[var(--text-soft)]">
+                    <summary className="cursor-pointer">查看调用记录</summary>
+                    <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                      {runReview.calls.map((call) => (
+                        <li key={call.callId}>
+                          {call.name}：
+                          {call.status === 'succeeded'
+                            ? '客户端报告成功，未独立核验'
+                            : call.status === 'failed'
+                              ? '失败'
+                              : call.status === 'denied'
+                                ? '已拒绝'
+                                : '未确认'}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
             <ChatPanel
+              accountId={currentAuthUserId()}
               activeSessionId={activeSessionId}
               text={text}
               statusMessage={statusMessage}
@@ -943,12 +1348,54 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onAbortReply={() => void abortCurrentReply()}
               onToggleVoiceMode={() => void toggleVoiceMode()}
               onSend={() => void send()}
+              onAskImage={(attachment) => void askAboutImage(attachment)}
+              onAttachmentCommitted={(id) => void refreshCurrentSession(id)}
+              onReplyToVoice={(attachment) => {
+                const id = activeSessionId;
+                const accountId = currentAuthUserId();
+                if (!id || !accountId || !attachment.caption) return;
+                let accountChanged = false;
+                const unsubscribe = subscribeAuthChanges(() => {
+                  accountChanged = true;
+                });
+                void (async () => {
+                  try {
+                    await refreshCurrentSession(id);
+                    if (
+                      accountChanged ||
+                      currentAuthUserId() !== accountId ||
+                      activeSessionIdRef.current !== id
+                    )
+                      return;
+                    await sendTextMessage('请回应我刚发的语音文字；录音本身没有经过自动识别。');
+                  } catch (error) {
+                    if (
+                      !accountChanged &&
+                      currentAuthUserId() === accountId &&
+                      activeSessionIdRef.current === id
+                    )
+                      setErrorMessage(formatUiErrorMessage(error));
+                  } finally {
+                    unsubscribe();
+                  }
+                })();
+              }}
+              onVoiceCall={shellNav ? () => void switchConversationMode('voice') : undefined}
+              onCamera={shellNav ? () => void switchConversationMode('video') : undefined}
+              onGenerateMedia={() => relationshipAccessRef.current?.openMedia()}
+              imageInputSupported={canUsePrivateImageInput(
+                client.capabilities.imageInput,
+                settings.provider.providerId,
+              )}
               busy={busy}
               speechRecognitionEnabled={settings.speechRecognitionEnabled}
               voiceMode={voiceMode}
               voiceState={voiceState}
               speechRecognitionSupported={speechCapabilities.recognitionSupported}
               session={session}
+              onLoadEarlier={loadOlderSessionMessages}
+              observedSequence={observedSequence}
+              onTranscriptTailVisibilityChange={onTranscriptTailVisibilityChange}
               traceFeed={traceFeed}
               streamingAssistantText={streamingAssistantText}
               deviceState={deviceState}
@@ -967,12 +1414,21 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onEmergencyStop={() => void stop()}
               onOpenSidebar={() => setSidebarOpen(true)}
               onOpenSettings={() => openShellSettings('scenes')}
-              promptPresetId={sceneLib.selectedId}
-              builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
-                (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
-              )}
+              promptPresetId={conversationCharacterId}
+              sceneId={conversationSceneId}
               savedPresets={sceneLib.scenes}
-              onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
+              onPresetChange={(id) => {
+                updateSceneLib((prev) => ({ ...prev, selectedId: id }));
+                if (
+                  (boundPresetId && boundPresetId !== id) ||
+                  (!boundPresetId && session?.messages.length)
+                ) {
+                  void createNewSession().catch((error) =>
+                    setErrorMessage(formatUiErrorMessage(error)),
+                  );
+                }
+              }}
+              onSceneChange={(id) => void changeConversationScene(id)}
               onImportPreset={(item) =>
                 updateSceneLib((prev) => withImportedMarketScene(prev, item))
               }

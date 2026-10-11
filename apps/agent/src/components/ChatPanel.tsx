@@ -1,8 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
-import type { PromptPreset, SavedPromptPreset } from '@dg-agent/runtime';
+import { savedPromptKind, type SavedScene } from '@0xnullai/scenes';
 import type { MarketItem } from '@0xnullai/market-client';
+import {
+  adaptPrivateAiTimeline,
+  type TimelineItem as ConversationTimelineItem,
+} from '@0xnullai/conversation';
+import {
+  listMediaJobs,
+  currentAuthUserId,
+  PrivateConversationAttachmentChannel,
+  PrivateConversationChannel,
+  type PrivateConversationAttachment,
+  type MediaJob,
+} from '@0xnullai/auth';
 import {
   ArrowUp,
   AudioLines,
@@ -12,6 +24,10 @@ import {
   Gauge,
   Mic,
   CircleStop,
+  Image as ImageIcon,
+  Plus,
+  Phone,
+  Video,
   PanelLeft,
   PawPrint,
   Settings,
@@ -20,19 +36,27 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  ConversationTimeline,
+  ConversationComposer,
+  ConversationEmpty,
+  ConversationMessageRow,
+  conversationBubbleClass,
   ChannelStrengthBar,
   DeviceStatusChip,
   Button,
-  Input,
+  ConversationInput,
+  RecordedVoicePreview,
   MarketImportDialog,
   Z_LOCAL_POPOVER,
-  cn,
   useInShell,
 } from '@0xnullai/ui';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
+import { MediaJobPreview } from './CompanionMediaPanel.js';
+import { VoiceTranscriptionControl } from './VoiceTranscriptionControl.js';
 
 interface ChatPanelProps {
+  accountId: string | null;
   activeSessionId: string | null;
   text: string;
   statusMessage: string | null;
@@ -40,12 +64,22 @@ interface ChatPanelProps {
   onAbortReply: () => void;
   onToggleVoiceMode: () => void;
   onSend: () => void;
+  onAskImage: (attachment: PrivateConversationAttachment) => void;
+  onAttachmentCommitted?: (conversationId: string) => void;
+  onReplyToVoice?: (attachment: PrivateConversationAttachment) => void;
+  onVoiceCall?: () => void;
+  onCamera?: () => void;
+  onGenerateMedia?: () => void;
+  imageInputSupported: boolean;
   busy: boolean;
   speechRecognitionEnabled: boolean;
   voiceMode: boolean;
   voiceState: 'idle' | 'listening' | 'ready' | 'sending' | 'speaking';
   speechRecognitionSupported: boolean;
   session: SessionSnapshot | null;
+  onLoadEarlier: (sessionId: string, before: number) => Promise<void>;
+  observedSequence: number | null;
+  onTranscriptTailVisibilityChange: (id: string, sequence: number, visible: boolean) => void;
   traceFeed: TraceFeedItem[];
   streamingAssistantText: string;
   deviceState: DeviceState;
@@ -65,9 +99,10 @@ interface ChatPanelProps {
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
   promptPresetId: string;
-  builtinPresets: PromptPreset[];
-  savedPresets: SavedPromptPreset[];
+  sceneId: string;
+  savedPresets: SavedScene[];
   onPresetChange: (id: string) => void;
+  onSceneChange: (id: string | null) => void;
   onImportPreset: (item: MarketItem) => void;
   coyoteTargets: Array<{ id: string; label: string }>;
   activeCoyoteId: string | null;
@@ -81,51 +116,17 @@ const MESSAGE_BATCH_SIZE = 120;
 // help users get into pairing mode when the scan turns up no device.
 const BLUETOOTH_PAIR_HINT = '搜不到设备？同时向下按住两侧滚轮 3–5 秒';
 
-const BUBBLE_BASE =
-  'max-w-[min(92%,560px)] overflow-hidden break-words px-4 py-3 text-[14.5px] leading-[1.6]';
-const BUBBLE_ASSISTANT = `${BUBBLE_BASE} whitespace-normal rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text)]`;
-const BUBBLE_USER = `${BUBBLE_BASE} whitespace-pre-wrap rounded-[var(--radius-md)] rounded-br-[var(--radius-2xs)] bg-[var(--accent)] text-[var(--button-text)]`;
+// The message row already caps the width. A second percentage cap here would resolve
+// against a shrink-to-fit parent and wrap short messages one character early.
+const BUBBLE_ASSISTANT = `${conversationBubbleClass(false)} max-w-full whitespace-normal`;
+const BUBBLE_USER = `${conversationBubbleClass(true)} max-w-full whitespace-pre-wrap`;
 const ICON_BTN =
   'h-9 w-9 rounded-[var(--radius-ctl)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]';
 const SYSTEM_MSG =
   'max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border-l-[3px] border-l-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[13px] leading-[1.35] text-[var(--text-soft)]';
 
-function summarizeAssistantContent(content: string): string {
-  const prefix = 'Fake LLM 已完成工具执行：';
-  if (!content.startsWith(prefix)) {
-    return content;
-  }
-
-  const jsonPart = content.slice(prefix.length).trim();
-  try {
-    const parsed = JSON.parse(jsonPart) as {
-      command?: { type?: string; channel?: string; strength?: number; waveform?: { id?: string } };
-    };
-
-    const command = parsed.command;
-    if (!command) {
-      return '工具执行完成，设备状态已更新';
-    }
-
-    if (command.type === 'start') {
-      return `已执行启动指令：${command.channel ?? '通道'} 通道，强度 ${command.strength ?? 0}，波形 ${command.waveform?.id ?? '默认'}`;
-    }
-
-    if (command.type === 'stop') {
-      return `已执行停止指令：${command.channel ? `${command.channel} 通道` : '全部通道'}`;
-    }
-
-    return '工具执行完成，设备状态已更新';
-  } catch {
-    return '工具执行完成，设备状态已更新';
-  }
-}
-
-function isToolExecutionSummary(content: string): boolean {
-  return content.startsWith('Fake LLM 已完成工具执行：');
-}
-
 export function ChatPanel({
+  accountId,
   activeSessionId,
   text,
   statusMessage,
@@ -133,12 +134,22 @@ export function ChatPanel({
   onAbortReply,
   onToggleVoiceMode,
   onSend,
+  onAskImage,
+  onAttachmentCommitted,
+  onReplyToVoice,
+  onVoiceCall,
+  onCamera,
+  onGenerateMedia,
+  imageInputSupported,
   busy,
   speechRecognitionEnabled,
   voiceMode,
   voiceState: _voiceState,
   speechRecognitionSupported,
   session,
+  onLoadEarlier,
+  observedSequence,
+  onTranscriptTailVisibilityChange,
   traceFeed,
   streamingAssistantText,
   deviceState,
@@ -158,40 +169,277 @@ export function ChatPanel({
   onOpenSidebar,
   onOpenSettings,
   promptPresetId,
-  builtinPresets,
+  sceneId,
   savedPresets,
   onPresetChange,
+  onSceneChange,
   onImportPreset,
   coyoteTargets,
   activeCoyoteId,
   onCoyoteTargetChange,
 }: ChatPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const welcomeInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const transcriptTailRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const olderScrollAnchorRef = useRef<{ height: number; top: number } | null>(null);
   const hasText = text.trim().length > 0;
   const messages = useMemo(() => session?.messages ?? [], [session?.messages]);
-  const timelineItems = buildRenderableTimeline(messages, traceFeed);
+  const sessionId = session?.id;
+  const mediaOwner = accountId && sessionId ? `${accountId}\0${sessionId}` : null;
+  const ownerRef = useRef(mediaOwner);
+  useLayoutEffect(() => {
+    ownerRef.current = mediaOwner;
+  }, [mediaOwner]);
+  const pendingUploadRef = useRef<{
+    owner: string;
+    channel: PrivateConversationAttachmentChannel;
+  } | null>(null);
+  const [mediaState, setMediaState] = useState<{ owner: string; items: MediaJob[] } | null>(null);
+  const mediaJobs = useMemo(
+    () => (mediaState?.owner === mediaOwner ? mediaState.items : []),
+    [mediaState, mediaOwner],
+  );
+  const [attachmentRefresh, setAttachmentRefresh] = useState(0);
+  const [attachmentState, setAttachmentState] = useState<{
+    owner: string;
+    items: PrivateConversationAttachment[];
+  } | null>(null);
+  const attachments = attachmentState?.owner === mediaOwner ? attachmentState.items : [];
+  const [attachmentErrorState, setAttachmentErrorState] = useState<{
+    owner: string;
+    message: string;
+  } | null>(null);
+  const attachmentError =
+    attachmentErrorState?.owner === mediaOwner ? attachmentErrorState.message : null;
+  const [attachmentBusyOwner, setAttachmentBusyOwner] = useState<string | null>(null);
+  const attachmentBusy = attachmentBusyOwner !== null && attachmentBusyOwner === mediaOwner;
+  const [recordingOwner, setRecordingOwner] = useState<string | null>(null);
+  const recording = recordingOwner !== null && recordingOwner === mediaOwner;
+  const [pendingVoiceState, setPendingVoiceState] = useState<{
+    owner: string;
+    blob: Blob;
+    caption: string;
+  } | null>(null);
+  const [pendingVoiceOwner, setPendingVoiceOwner] = useState(mediaOwner);
+  if (pendingVoiceOwner !== mediaOwner) {
+    setPendingVoiceOwner(mediaOwner);
+    setPendingVoiceState(null);
+  }
+  const pendingVoice = pendingVoiceState?.owner === mediaOwner ? pendingVoiceState : null;
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const timelineItems = buildRenderableTimeline(
+    {
+      accountId: accountId ?? '',
+      conversationId: sessionId ?? activeSessionId ?? '',
+      agentId: promptPresetId,
+      agentName: savedPresets.find((preset) => preset.id === promptPresetId)?.name ?? 'AI',
+    },
+    messages,
+    traceFeed,
+    mediaJobs,
+    attachments,
+  );
   const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_BATCH_SIZE);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState(false);
   const renderedMessages = timelineItems.slice(-visibleMessageCount);
   const voiceModeAvailable = speechRecognitionEnabled && speechRecognitionSupported;
   const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
   const [marketImportOpen, setMarketImportOpen] = useState(false);
   const sceneDropdownRef = useRef<HTMLDivElement>(null);
-  const [leaving, setLeaving] = useState(false);
-
-  const isWelcome = !busy && !streamingAssistantText && messages.length === 0 && !leaving;
-
-  const allPresets: (PromptPreset | (SavedPromptPreset & { icon?: string }))[] = useMemo(
-    () => [
-      ...builtinPresets,
-      ...savedPresets.map((p) => ({ ...p, icon: undefined, description: undefined })),
-    ],
-    [builtinPresets, savedPresets],
+  const [attachmentMenuState, setAttachmentMenuState] = useState<{ owner: string | null } | null>(
+    null,
   );
-  const activePreset = allPresets.find((p) => p.id === promptPresetId);
+  const attachmentMenuOpen = attachmentMenuState?.owner === mediaOwner;
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!accountId || !sessionId || sessionId !== activeSessionId) return;
+    const owner = `${accountId}\0${sessionId}`;
+    const channel = new PrivateConversationAttachmentChannel(accountId, sessionId);
+    let active = true;
+    void (async () => {
+      try {
+        const items = await channel.list();
+        if (active) setAttachmentState({ owner, items });
+      } catch (error) {
+        if (active && !(error instanceof Error && error.message === '会话不存在或已删除'))
+          setAttachmentErrorState({
+            owner,
+            message: error instanceof Error ? error.message : '无法读取附件',
+          });
+      }
+    })();
+    return () => {
+      active = false;
+      channel.dispose();
+    };
+  }, [accountId, activeSessionId, sessionId, attachmentRefresh]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingUploadRef.current?.owner === mediaOwner) {
+        pendingUploadRef.current.channel.dispose();
+        pendingUploadRef.current = null;
+      }
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.onstop = null;
+        recorder.stop();
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      }
+      recorderRef.current = null;
+    };
+  }, [mediaOwner]);
+
+  async function uploadAttachment(file: Blob, caption = ''): Promise<void> {
+    if (!accountId || !sessionId || sessionId !== activeSessionId) return;
+    const owner = `${accountId}\0${sessionId}`;
+    const conversation = new PrivateConversationChannel({
+      accountId,
+      conversationId: sessionId,
+      characterId: promptPresetId,
+    });
+    const channel = new PrivateConversationAttachmentChannel(accountId, sessionId);
+    pendingUploadRef.current = { owner, channel };
+    setAttachmentErrorState(null);
+    setAttachmentBusyOwner(owner);
+    try {
+      await conversation.ensure();
+      await channel.upload(file, caption);
+      if (ownerRef.current === owner && currentAuthUserId() === accountId) {
+        setAttachmentRefresh((value) => value + 1);
+        setPendingVoiceState((current) =>
+          current?.owner === owner && current.blob === file ? null : current,
+        );
+        onAttachmentCommitted?.(sessionId);
+      }
+    } catch (error) {
+      if (ownerRef.current === owner && currentAuthUserId() === accountId)
+        setAttachmentErrorState({
+          owner,
+          message: error instanceof Error ? error.message : '附件发送失败',
+        });
+    } finally {
+      conversation.dispose();
+      channel.dispose();
+      if (pendingUploadRef.current?.channel === channel) pendingUploadRef.current = null;
+      if (ownerRef.current === owner && currentAuthUserId() === accountId)
+        setAttachmentBusyOwner(null);
+    }
+  }
+
+  async function toggleVoiceRecording(): Promise<void> {
+    const current = recorderRef.current;
+    if (current?.state === 'recording') {
+      current.stop();
+      setRecordingOwner(null);
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      if (mediaOwner)
+        setAttachmentErrorState({ owner: mediaOwner, message: '当前浏览器不支持录制语音' });
+      return;
+    }
+    const mime = ['audio/webm', 'audio/ogg', 'audio/mp4'].find((type) =>
+      MediaRecorder.isTypeSupported(type),
+    );
+    if (!mime) {
+      if (mediaOwner)
+        setAttachmentErrorState({ owner: mediaOwner, message: '当前浏览器不支持此语音格式' });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const owner = accountId && sessionId ? `${accountId}\0${sessionId}` : null;
+      if (!owner || ownerRef.current !== owner || currentAuthUserId() !== accountId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        if (ownerRef.current === owner && currentAuthUserId() === accountId && chunks.length)
+          setPendingVoiceState({ owner, blob: new Blob(chunks, { type: mime }), caption: '' });
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecordingOwner(owner);
+    } catch {
+      if (mediaOwner) setAttachmentErrorState({ owner: mediaOwner, message: '无法使用麦克风' });
+    }
+  }
+
+  useEffect(() => {
+    if (!accountId || !sessionId || sessionId !== activeSessionId) return;
+    const owner = `${accountId}\0${sessionId}`;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await listMediaJobs(sessionId);
+        if (active) setMediaState({ owner, items: result.items });
+      } catch {
+        // Keep the last successfully loaded media; the separate media panel
+        // still exposes service errors and can retry generation independently.
+      }
+    };
+    const changed = (event: Event) => {
+      if ((event as CustomEvent<{ conversationId: string }>).detail?.conversationId === sessionId)
+        void refresh();
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    window.addEventListener('0xnullai:media-jobs-changed', changed);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('0xnullai:media-jobs-changed', changed);
+    };
+  }, [accountId, activeSessionId, sessionId]);
+
+  useEffect(() => {
+    const tail = transcriptTailRef.current;
+    const root = scrollContainerRef.current;
+    if (
+      !tail ||
+      !root ||
+      !sessionId ||
+      sessionId !== activeSessionId ||
+      !observedSequence ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return;
+    const id = sessionId;
+    const sequence = observedSequence;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        onTranscriptTailVisibilityChange(
+          id,
+          sequence,
+          Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5),
+        );
+      },
+      { root, threshold: 0.5 },
+    );
+    observer.observe(tail);
+    return () => {
+      observer.disconnect();
+      onTranscriptTailVisibilityChange(id, sequence, false);
+    };
+  }, [activeSessionId, observedSequence, onTranscriptTailVisibilityChange, sessionId]);
+
+  const characters = savedPresets.filter((preset) => savedPromptKind(preset) === 'character');
+  const scenes = savedPresets.filter((preset) => savedPromptKind(preset) === 'scene');
+  const activeCharacter = characters.find((preset) => preset.id === promptPresetId);
+  const activeScene = scenes.find((preset) => preset.id === sceneId);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -205,24 +453,47 @@ export function ChatPanel({
     }
   }, [sceneDropdownOpen]);
 
+  useEffect(() => {
+    if (!attachmentMenuOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!attachmentMenuRef.current?.contains(event.target as Node)) setAttachmentMenuState(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAttachmentMenuState(null);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [attachmentMenuOpen]);
+
   useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer || !stickToBottomRef.current) {
+    if (!scrollContainer) {
       return;
     }
 
+    const anchor = olderScrollAnchorRef.current;
+    if (anchor) {
+      scrollContainer.scrollTop = anchor.top + scrollContainer.scrollHeight - anchor.height;
+      olderScrollAnchorRef.current = null;
+      return;
+    }
+    if (!stickToBottomRef.current) return;
+
     scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }, [messages, streamingAssistantText, busy, statusMessage]);
+  }, [messages, mediaJobs, streamingAssistantText, busy, statusMessage]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setVisibleMessageCount(MESSAGE_BATCH_SIZE);
-    setLeaving(false);
-  }, [activeSessionId]);
+    setOlderError(false);
+  }, [accountId, activeSessionId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function triggerSend(): void {
-    if (isWelcome) setLeaving(true);
     onSend();
   }
 
@@ -429,292 +700,534 @@ export function ChatPanel({
         </div>
       )}
 
-      {isWelcome ? (
-        /* ===== Welcome state ===== */
+      {
+        /* ===== Conversation timeline ===== */
         <>
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-7 overflow-y-auto px-4 pb-6 pt-[clamp(3.5rem,18vh,10rem)]">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-[var(--text)]">欢迎来到 Agent</h2>
-            </div>
-
-            <div className="flex w-full max-w-[480px] flex-col sm:max-w-[560px] lg:max-w-[620px]">
-              {/* Scene dropdown + bluetooth connect, on one row */}
-              <div className="mb-2 flex items-center gap-1">
-                <div className="relative" ref={sceneDropdownRef}>
-                  <button
-                    type="button"
-                    className="!text-sm inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
-                    onClick={() => setSceneDropdownOpen((v) => !v)}
+          <ConversationTimeline ref={scrollContainerRef} onScroll={handleMessagesScroll}>
+            {timelineItems.length === 0 && !busy && <ConversationEmpty />}
+            {timelineItems.length > renderedMessages.length && (
+              <div className="flex justify-center">
+                <Button
+                  variant="ghost"
+                  className="rounded-full px-4 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                  onClick={() => setVisibleMessageCount((current) => current + MESSAGE_BATCH_SIZE)}
+                >
+                  加载更早消息（还有 {timelineItems.length - renderedMessages.length} 条）
+                </Button>
+              </div>
+            )}
+            {timelineItems.length <= renderedMessages.length &&
+              session?.historyWindow?.nextBefore != null &&
+              sessionId && (
+                <div className="flex flex-col items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    className="rounded-full px-4 text-sm text-[var(--text-soft)]"
+                    disabled={olderLoading}
+                    onClick={() => {
+                      const before = session.historyWindow?.nextBefore;
+                      if (!before) return;
+                      const scrollContainer = scrollContainerRef.current;
+                      if (scrollContainer)
+                        olderScrollAnchorRef.current = {
+                          height: scrollContainer.scrollHeight,
+                          top: scrollContainer.scrollTop,
+                        };
+                      stickToBottomRef.current = false;
+                      setOlderLoading(true);
+                      setOlderError(false);
+                      void onLoadEarlier(sessionId, before)
+                        .catch(() => setOlderError(true))
+                        .finally(() => setOlderLoading(false));
+                    }}
                   >
-                    <span>{activePreset?.icon ?? '📝'}</span>
-                    <span>{activePreset?.name ?? '选择场景'}</span>
-                    <ChevronDown
-                      className={cn(
-                        'h-3.5 w-3.5 transition-transform',
-                        sceneDropdownOpen && 'rotate-180',
-                      )}
-                    />
-                  </button>
-                  {sceneDropdownOpen && (
-                    <div
-                      className={`absolute left-0 top-full ${Z_LOCAL_POPOVER} mt-1 w-[180px] overflow-hidden rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-lg`}
-                    >
-                      {allPresets.map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          className={cn(
-                            'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--bg-soft)]',
-                            preset.id === promptPresetId
-                              ? 'text-[var(--accent)]'
-                              : 'text-[var(--text)]',
-                          )}
-                          onClick={() => {
-                            onPresetChange(preset.id);
-                            setSceneDropdownOpen(false);
-                          }}
-                        >
-                          <span className="shrink-0 text-sm">{preset.icon ?? '📝'}</span>
-                          <span className="flex-1 truncate">{preset.name}</span>
-                          {preset.id === promptPresetId && (
-                            <Check className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
-                          )}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2.5 border-t border-[var(--surface-border)] px-3 py-2 text-left text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-soft)]"
-                        onClick={() => {
-                          setSceneDropdownOpen(false);
-                          setMarketImportOpen(true);
-                        }}
-                      >
-                        <Store className="h-3.5 w-3.5 shrink-0" />
-                        <span>从市场导入</span>
-                      </button>
-                    </div>
+                    {olderLoading ? '加载中…' : '加载更早消息'}
+                  </Button>
+                  {olderError && (
+                    <span className="text-xs text-[var(--danger)]">加载失败，请重试</span>
                   )}
                 </div>
-                {!inShell && !deviceState.connected && (
+              )}
+
+            {renderedMessages.map((message) => {
+              if (message.kind === 'attachment') {
+                return (
+                  <div key={message.id} className="flex justify-end">
+                    <div className={BUBBLE_USER}>
+                      <PrivateAttachmentPreview
+                        accountId={accountId!}
+                        conversationId={sessionId!}
+                        attachment={message.attachment}
+                      />
+                      {message.attachment.kind === 'voice' && message.attachment.caption && (
+                        <p className="mt-2 text-sm">{message.attachment.caption}</p>
+                      )}
+                      <p className="mt-1 text-xs opacity-75">
+                        {message.attachment.kind === 'image'
+                          ? '图片已保存 · 仅在明确请求时交给 AI'
+                          : message.attachment.caption
+                            ? '用户附上的文字可供 AI 阅读；录音尚未自动转写'
+                            : '语音已保存 · AI 尚未读取此附件'}
+                      </p>
+                      {message.attachment.kind === 'image' && imageInputSupported && (
+                        <button
+                          type="button"
+                          className="mt-1 block text-xs underline disabled:opacity-50"
+                          disabled={busy || attachmentBusy}
+                          onClick={() => onAskImage(message.attachment)}
+                        >
+                          让 AI 看图
+                        </button>
+                      )}
+                      {message.attachment.kind === 'voice' &&
+                        message.attachment.caption &&
+                        onReplyToVoice && (
+                          <button
+                            type="button"
+                            className="mt-1 block text-xs underline disabled:opacity-50"
+                            disabled={busy || attachmentBusy}
+                            onClick={() => onReplyToVoice(message.attachment)}
+                          >
+                            请 AI 回应文字
+                          </button>
+                        )}
+                      {message.attachment.kind === 'voice' && accountId && sessionId && (
+                        <VoiceTranscriptionControl
+                          accountId={accountId}
+                          conversationId={sessionId}
+                          attachmentId={message.attachment.id}
+                          onUseText={(draft) =>
+                            onTextChange(text.trim() ? `${text}\n${draft}` : draft)
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              if (message.kind === 'media') {
+                const job = message.job;
+                return (
+                  <div key={message.id} className="flex justify-start">
+                    <div className={BUBBLE_ASSISTANT}>
+                      <p className="text-sm font-medium">
+                        {job.kind === 'video'
+                          ? '角色视频'
+                          : job.kind === 'selfie'
+                            ? '情境自拍'
+                            : '生成图片'}
+                        {' · '}
+                        {job.state === 'succeeded'
+                          ? '已完成'
+                          : job.state === 'needs_review'
+                            ? '账务待核对'
+                            : job.state === 'failed'
+                              ? '失败'
+                              : job.state === 'submission_unknown'
+                                ? '结果待核对'
+                                : '处理中'}
+                      </p>
+                      <p className="mt-1 text-sm">{job.prompt}</p>
+                      {job.state === 'succeeded' && <MediaJobPreview job={job} />}
+                      {job.state !== 'succeeded' && job.lastError && (
+                        <p className="mt-1 text-xs text-[var(--text-soft)]">{job.lastError}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              if (message.kind === 'trace-system') {
+                return (
+                  <div key={message.id} className="flex justify-center">
+                    <div className={SYSTEM_MSG}>{message.content}</div>
+                  </div>
+                );
+              }
+
+              if (message.kind === 'camera_observation') {
+                return (
+                  <div key={message.id} className="flex justify-center">
+                    <div className={SYSTEM_MSG}>
+                      <span className="font-medium">摄像头观察</span>
+                      <span className="ml-2">{message.content}</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (
+                message.role === 'assistant' &&
+                message.content.startsWith('Fake LLM 已完成工具执行：')
+              ) {
+                return (
+                  <div key={message.id} className="flex justify-center">
+                    <div className={SYSTEM_MSG}>旧版模型文字未核验工具执行，请查看设备状态。</div>
+                  </div>
+                );
+              }
+
+              if (message.role === 'system') {
+                return (
+                  <div key={message.id} className="flex justify-center">
+                    <div className={SYSTEM_MSG}>{message.content}</div>
+                  </div>
+                );
+              }
+
+              const userMessage = message.role === 'user';
+              return (
+                <ConversationMessageRow
+                  key={message.id}
+                  own={userMessage}
+                  avatar={
+                    userMessage ? undefined : (
+                      <span
+                        title={activeCharacter?.name ?? 'AI'}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-soft)] text-sm text-[var(--accent)]"
+                      >
+                        {activeCharacter?.icon ?? '✦'}
+                      </span>
+                    )
+                  }
+                  contentClassName="max-w-[min(92%,560px)]"
+                >
+                  <div className={userMessage ? BUBBLE_USER : BUBBLE_ASSISTANT}>
+                    {userMessage ? (
+                      message.content
+                    ) : (
+                      <ScheduledMessageBody content={message.content} />
+                    )}
+                    {message.status === 'pending' && userMessage && (
+                      <p className="mt-1 text-[10px] opacity-75">正在同步…</p>
+                    )}
+                  </div>
+                </ConversationMessageRow>
+              );
+            })}
+
+            {streamingAssistantText && (
+              <div className="flex justify-start">
+                <div className={BUBBLE_ASSISTANT}>
+                  <MarkdownText content={streamingAssistantText} />
+                </div>
+              </div>
+            )}
+
+            {busy && !streamingAssistantText && (
+              <div className="flex justify-start">
+                <div className="inline-flex items-center gap-1 rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
+                  <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:120ms]" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:240ms]" />
+                </div>
+              </div>
+            )}
+            <div ref={transcriptTailRef} aria-hidden="true" className="h-px w-full shrink-0" />
+          </ConversationTimeline>
+
+          <ConversationComposer>
+            {pendingVoice && (
+              <div className="space-y-2 rounded-xl border border-[var(--surface-border)] bg-[var(--bg-soft)] p-3">
+                <p className="text-sm">录音待发送</p>
+                <RecordedVoicePreview blob={pendingVoice.blob} />
+                <input
+                  type="text"
+                  maxLength={2000}
+                  value={pendingVoice.caption}
+                  onChange={(event) =>
+                    setPendingVoiceState((current) =>
+                      current?.owner === mediaOwner
+                        ? { ...current, caption: event.target.value }
+                        : current,
+                    )
+                  }
+                  placeholder="填写语音文字，AI 才能理解内容（不会自动转写）"
+                  aria-label="语音文字"
+                  className="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    disabled={attachmentBusy}
+                    onClick={() => setPendingVoiceState(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    disabled={attachmentBusy}
+                    onClick={() => void uploadAttachment(pendingVoice.blob, pendingVoice.caption)}
+                  >
+                    {pendingVoice.caption.trim() ? '发送语音和文字' : '仅发送语音'}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {attachmentError && (
+              <p role="alert" className="px-2 text-xs text-[var(--danger)]">
+                {attachmentError}
+              </p>
+            )}
+            <div className="relative flex items-center gap-2" ref={sceneDropdownRef}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+                onClick={() => setSceneDropdownOpen((v) => !v)}
+                aria-expanded={sceneDropdownOpen}
+              >
+                <span>{activeCharacter?.icon ?? '✦'}</span>
+                <span className="max-w-36 truncate">
+                  {activeCharacter?.name ?? 'AI'}
+                  {activeScene ? ` · ${activeScene.name}` : ''}
+                </span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {sceneDropdownOpen && (
+                <div
+                  className={`absolute bottom-full left-0 ${Z_LOCAL_POPOVER} mb-1 max-h-72 w-52 overflow-y-auto rounded-lg border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg`}
+                >
+                  <div className="px-2 py-1 text-[11px] text-[var(--text-faint)]">角色</div>
+                  {characters.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                      onClick={() => {
+                        onPresetChange(preset.id);
+                        setSceneDropdownOpen(false);
+                      }}
+                    >
+                      <span>{preset.icon ?? '✦'}</span>
+                      <span className="min-w-0 flex-1 truncate">{preset.name}</span>
+                      {preset.id === promptPresetId && <Check className="h-4 w-4" />}
+                    </button>
+                  ))}
+                  <div className="border-t border-[var(--surface-border)] px-2 py-1 text-[11px] text-[var(--text-faint)]">
+                    场景
+                  </div>
                   <button
                     type="button"
-                    onClick={onConnect}
-                    title={BLUETOOTH_PAIR_HINT}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
+                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                    onClick={() => {
+                      onSceneChange(null);
+                      setSceneDropdownOpen(false);
+                    }}
                   >
-                    <Bluetooth className="h-3.5 w-3.5" />
-                    <span>连接设备</span>
+                    <span className="min-w-0 flex-1">无场景</span>
+                    {!sceneId && <Check className="h-4 w-4" />}
                   </button>
+                  {scenes.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                      onClick={() => {
+                        onSceneChange(preset.id);
+                        setSceneDropdownOpen(false);
+                      }}
+                    >
+                      <span>{preset.icon ?? '✦'}</span>
+                      <span className="min-w-0 flex-1 truncate">{preset.name}</span>
+                      {preset.id === sceneId && <Check className="h-4 w-4" />}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 border-t border-[var(--surface-border)] px-2 py-2 text-left text-sm"
+                    onClick={() => {
+                      setSceneDropdownOpen(false);
+                      setMarketImportOpen(true);
+                    }}
+                  >
+                    <Store className="h-4 w-4" />从 Market 导入角色或场景
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                aria-label="选择发送的图片"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) void uploadAttachment(file);
+                }}
+              />
+              <div className="relative shrink-0" ref={attachmentMenuRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={ICON_BTN}
+                  disabled={!activeSessionId || !accountId || busy || recording || attachmentBusy}
+                  onClick={() =>
+                    setAttachmentMenuState(attachmentMenuOpen ? null : { owner: mediaOwner })
+                  }
+                  aria-label="添加聊天内容"
+                  aria-expanded={attachmentMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+                {attachmentMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="聊天能力"
+                    className={`absolute bottom-full left-0 ${Z_LOCAL_POPOVER} mb-2 max-h-[min(70dvh,380px)] w-48 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg`}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={attachmentBusy || recording}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)] disabled:opacity-50"
+                      onClick={() => {
+                        setAttachmentMenuState(null);
+                        imageInputRef.current?.click();
+                      }}
+                    >
+                      <ImageIcon className="h-4 w-4" />
+                      发送图片
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={attachmentBusy || recording}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)] disabled:opacity-50"
+                      onClick={() => {
+                        setAttachmentMenuState(null);
+                        void toggleVoiceRecording();
+                      }}
+                    >
+                      <Mic className="h-4 w-4" />
+                      录制语音
+                    </button>
+                    {onVoiceCall && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                        onClick={() => {
+                          setAttachmentMenuState(null);
+                          onVoiceCall();
+                        }}
+                      >
+                        <Phone className="h-4 w-4" />
+                        语音通话
+                      </button>
+                    )}
+                    {onCamera && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                        onClick={() => {
+                          setAttachmentMenuState(null);
+                          onCamera();
+                        }}
+                      >
+                        <Video className="h-4 w-4" />
+                        摄像头观察
+                      </button>
+                    )}
+                    {onGenerateMedia && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
+                        onClick={() => {
+                          setAttachmentMenuState(null);
+                          onGenerateMedia();
+                        }}
+                      >
+                        <ImageIcon className="h-4 w-4" />
+                        生成图片或视频
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-
-              {/* Text input + action button */}
-              <div className="flex items-center gap-2 sm:gap-3">
-                <Input
-                  ref={welcomeInputRef}
-                  type="text"
-                  value={text}
-                  disabled={busy || voiceMode}
-                  onChange={(e) => onTextChange(e.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
-                  className="!h-11 flex-1 rounded-full text-[14px] sm:!h-12 sm:text-[15px]"
-                />
-                {voiceMode ? (
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
-                    onClick={onToggleVoiceMode}
-                    aria-label="结束识别"
-                  >
-                    <Mic className="h-4.5 w-4.5" />
-                  </Button>
-                ) : (
-                  <Button
-                    variant={
-                      showVoiceAsPrimary && voiceModeAvailable
+              {recording && (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className={ICON_BTN}
+                  onClick={() => void toggleVoiceRecording()}
+                  aria-label="结束录音"
+                  title="结束录音"
+                >
+                  <CircleStop className="h-4 w-4" />
+                </Button>
+              )}
+              <ConversationInput
+                ref={inputRef}
+                type="text"
+                value={text}
+                disabled={busy || voiceMode}
+                onChange={(e) => onTextChange(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
+              />
+              {!inShell && !deviceState.connected && (
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
+                  onClick={onConnect}
+                  aria-label="连接设备"
+                  title={BLUETOOTH_PAIR_HINT}
+                >
+                  <Bluetooth className="h-4 w-4" />
+                </Button>
+              )}
+              {voiceMode ? (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
+                  onClick={onToggleVoiceMode}
+                  aria-label="结束识别"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant={
+                    busy
+                      ? 'destructive'
+                      : showVoiceAsPrimary && voiceModeAvailable
                         ? 'secondary'
                         : hasText
                           ? 'default'
                           : 'secondary'
-                    }
-                    size="icon"
-                    className="h-11 w-11 shrink-0 rounded-[var(--radius-ctl)] sm:h-12 sm:w-12"
-                    disabled={!activeSessionId || (!hasText && !voiceModeAvailable)}
-                    onClick={handlePrimaryAction}
-                    aria-label={hasText ? '发送' : voiceModeAvailable ? '语音识别' : '发送'}
-                  >
-                    {showVoiceAsPrimary && voiceModeAvailable ? (
-                      <AudioLines className="h-4.5 w-4.5" />
-                    ) : (
-                      <ArrowUp className="h-4.5 w-4.5" />
-                    )}
-                  </Button>
-                )}
-              </div>
-
-              {!inShell && !deviceState.connected && (
-                <p className="mt-2 px-1 text-[12px] leading-relaxed text-[var(--text-faint)]">
-                  {BLUETOOTH_PAIR_HINT}
-                </p>
+                  }
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
+                  disabled={!activeSessionId || (!hasText && !busy && !voiceModeAvailable)}
+                  onClick={handlePrimaryAction}
+                  aria-label={
+                    busy ? '停止回复' : hasText ? '发送' : voiceModeAvailable ? '语音识别' : '发送'
+                  }
+                >
+                  {busy ? (
+                    <CircleStop className="h-4 w-4" />
+                  ) : showVoiceAsPrimary && voiceModeAvailable ? (
+                    <AudioLines className="h-4 w-4" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" />
+                  )}
+                </Button>
               )}
             </div>
-          </div>
-        </>
-      ) : (
-        /* ===== Normal chat state ===== */
-        <>
-          <div
-            ref={scrollContainerRef}
-            className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 [scrollbar-gutter:stable] sm:px-6"
-            onScroll={handleMessagesScroll}
-          >
-            <div className="mx-auto flex min-h-full w-full max-w-[800px] flex-col justify-end gap-4 pb-4">
-              {timelineItems.length > renderedMessages.length && (
-                <div className="flex justify-center">
-                  <Button
-                    variant="ghost"
-                    className="rounded-full px-4 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
-                    onClick={() =>
-                      setVisibleMessageCount((current) => current + MESSAGE_BATCH_SIZE)
-                    }
-                  >
-                    加载更早消息（还有 {timelineItems.length - renderedMessages.length} 条）
-                  </Button>
-                </div>
-              )}
-
-              {renderedMessages.map((message) => {
-                if (message.kind === 'trace-system') {
-                  return (
-                    <div key={message.id} className="flex justify-center">
-                      <div className={SYSTEM_MSG}>{message.content}</div>
-                    </div>
-                  );
-                }
-
-                if (message.role === 'assistant' && isToolExecutionSummary(message.content)) {
-                  return (
-                    <div key={message.id} className="flex justify-center">
-                      <div className="max-w-[min(85%,480px)] rounded-[var(--radius-xs)] border border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm text-[var(--text-soft)]">
-                        {summarizeAssistantContent(message.content)}
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (message.role === 'system') {
-                  return (
-                    <div key={message.id} className="flex justify-center">
-                      <div className={SYSTEM_MSG}>{message.content}</div>
-                    </div>
-                  );
-                }
-
-                const userMessage = message.role === 'user';
-                return (
-                  <div
-                    key={message.id}
-                    className={cn('flex', userMessage ? 'justify-end' : 'justify-start')}
-                  >
-                    <div className={userMessage ? BUBBLE_USER : BUBBLE_ASSISTANT}>
-                      {userMessage ? message.content : <MarkdownText content={message.content} />}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {streamingAssistantText && (
-                <div className="flex justify-start">
-                  <div className={BUBBLE_ASSISTANT}>
-                    <MarkdownText content={streamingAssistantText} />
-                  </div>
-                </div>
-              )}
-
-              {busy && !streamingAssistantText && (
-                <div className="flex justify-start">
-                  <div className="inline-flex items-center gap-1 rounded-[var(--radius-md)] rounded-bl-[var(--radius-2xs)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
-                    <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse" />
-                    <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:120ms]" />
-                    <span className="h-2 w-2 rounded-full bg-[var(--text-faint)] animate-pulse [animation-delay:240ms]" />
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          <div className="mx-auto flex w-full max-w-[800px] shrink-0 items-center gap-2 px-3 pb-1 sm:px-6 mt-3">
-            <Input
-              ref={inputRef}
-              type="text"
-              value={text}
-              disabled={busy || voiceMode}
-              onChange={(e) => onTextChange(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              placeholder={voiceMode ? '语音识别中…' : '输入消息…'}
-              className="!h-10 flex-1 rounded-full"
-            />
-            {!inShell && !deviceState.connected && (
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
-                onClick={onConnect}
-                aria-label="连接设备"
-                title={BLUETOOTH_PAIR_HINT}
-              >
-                <Bluetooth className="h-4 w-4" />
-              </Button>
-            )}
-            {voiceMode ? (
-              <Button
-                variant="destructive"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
-                onClick={onToggleVoiceMode}
-                aria-label="结束识别"
-              >
-                <Mic className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                variant={
-                  busy
-                    ? 'destructive'
-                    : showVoiceAsPrimary && voiceModeAvailable
-                      ? 'secondary'
-                      : hasText
-                        ? 'default'
-                        : 'secondary'
-                }
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-[var(--radius-ctl)]"
-                disabled={!activeSessionId || (!hasText && !busy && !voiceModeAvailable)}
-                onClick={handlePrimaryAction}
-                aria-label={
-                  busy ? '停止回复' : hasText ? '发送' : voiceModeAvailable ? '语音识别' : '发送'
-                }
-              >
-                {busy ? (
-                  <CircleStop className="h-4 w-4" />
-                ) : showVoiceAsPrimary && voiceModeAvailable ? (
-                  <AudioLines className="h-4 w-4" />
-                ) : (
-                  <ArrowUp className="h-4 w-4" />
-                )}
-              </Button>
-            )}
-          </div>
+          </ConversationComposer>
           {!inShell && !deviceState.connected && (
             <p className="mx-auto w-full max-w-[800px] shrink-0 px-3 pt-1.5 text-center text-[11px] leading-relaxed text-[var(--text-faint)] sm:px-6">
               {BLUETOOTH_PAIR_HINT}
             </p>
           )}
         </>
-      )}
+      }
 
       <MarketImportDialog
         open={marketImportOpen}
@@ -730,33 +1243,161 @@ export function ChatPanel({
 }
 
 type TimelineItem =
-  | (SessionSnapshot['messages'][number] & { kind: 'message' })
-  | { kind: 'trace-system'; id: string; content: string; createdAt: number };
+  | (Omit<SessionSnapshot['messages'][number], 'kind'> & {
+      kind: 'message' | 'camera_observation';
+      status: ConversationTimelineItem['status'];
+    })
+  | { kind: 'trace-system'; id: string; content: string; createdAt: number }
+  | { kind: 'media'; id: string; job: MediaJob; createdAt: number }
+  | {
+      kind: 'attachment';
+      id: string;
+      attachment: PrivateConversationAttachment;
+      createdAt: number;
+    };
 
 function buildRenderableTimeline(
+  identity: { accountId: string; conversationId: string; agentId: string; agentName: string },
   messages: SessionSnapshot['messages'],
   traceFeed: TraceFeedItem[],
+  mediaJobs: MediaJob[],
+  attachments: PrivateConversationAttachment[],
 ): TimelineItem[] {
-  const items: TimelineItem[] = [
-    ...messages.filter(shouldRenderTimelineMessage).map((message) => ({
+  const projection = adaptPrivateAiTimeline({ ...identity, messages, attachments });
+  const projectedById = new Map(projection.map((item) => [item.itemId, item]));
+  const visibleMessages: TimelineItem[] = messages
+    .filter((message) => !attachments.some((item) => item.messageId === message.id))
+    .filter(shouldRenderTimelineMessage)
+    .map((message) => ({
       ...message,
-      kind: 'message' as const,
-    })),
+      kind:
+        projectedById.get(message.id)?.kind === 'camera_observation'
+          ? ('camera_observation' as const)
+          : ('message' as const),
+      status: projectedById.get(message.id)?.status ?? 'pending',
+    }));
+  const extras: TimelineItem[] = [
     ...traceFeed.map((item) => ({
       kind: 'trace-system' as const,
       id: `trace-feed:${item.id}`,
       content: item.text,
       createdAt: item.createdAt,
     })),
+    ...mediaJobs.map((job) => ({
+      kind: 'media' as const,
+      id: `media:${job.id}`,
+      job,
+      createdAt: job.createdAt,
+    })),
+    ...attachments.map((attachment) => ({
+      kind: 'attachment' as const,
+      id: `attachment:${attachment.id}`,
+      attachment,
+      createdAt: attachment.createdAt,
+    })),
   ];
-
-  return items.sort((left, right) => left.createdAt - right.createdAt);
+  // Server message array order is authoritative even if an old client clock was wrong.
+  // Auxiliary records have no conversation sequence yet; insert them at a stable boundary.
+  const buckets: TimelineItem[][] = Array.from({ length: visibleMessages.length + 1 }, () => []);
+  for (const extra of extras.sort(
+    (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id),
+  )) {
+    const messageId = extra.kind === 'attachment' ? extra.attachment.messageId : null;
+    let after = messageId ? visibleMessages.findIndex((message) => message.id === messageId) : -1;
+    if (after < 0)
+      for (const [index, message] of visibleMessages.entries())
+        if (message.createdAt <= extra.createdAt) after = index;
+    buckets[after + 1]!.push(extra);
+  }
+  return visibleMessages
+    .flatMap((message, index) => [...buckets[index]!, message])
+    .concat(buckets.at(-1)!);
 }
 
 function shouldRenderTimelineMessage(message: SessionSnapshot['messages'][number]): boolean {
+  if (message.role === 'user' && message.content.trim().length === 0) return false;
   if (message.role !== 'assistant') {
     return true;
   }
 
   return message.content.trim().length > 0;
+}
+
+function PrivateAttachmentPreview({
+  accountId,
+  conversationId,
+  attachment,
+}: {
+  accountId: string;
+  conversationId: string;
+  attachment: PrivateConversationAttachment;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '120px' },
+    );
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!visible) return;
+    const channel = new PrivateConversationAttachmentChannel(accountId, conversationId);
+    let active = true;
+    let objectUrl: string | null = null;
+    void channel
+      .read(attachment)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      channel.dispose();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [accountId, attachment, conversationId, visible]);
+  return (
+    <div ref={hostRef} className="min-h-12 min-w-32">
+      {!url ? (
+        <span className="text-xs">{attachment.kind === 'image' ? '加载图片…' : '加载语音…'}</span>
+      ) : attachment.kind === 'image' ? (
+        <img src={url} alt="已发送图片" className="max-h-72 max-w-full rounded-lg object-contain" />
+      ) : (
+        <audio src={url} controls preload="none" aria-label="已发送语音" />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Server-delivered companion messages start with a one-line kind label. Show it as a tag
+ * above the text rather than as the first words of the reply.
+ */
+const SCHEDULED_LABELS = { AI主动消息: '主动消息', 定时消息: '定时消息' } as const;
+export function ScheduledMessageBody({ content }: { content: string }) {
+  const newline = content.indexOf('\n');
+  const first = newline > 0 ? content.slice(0, newline) : '';
+  const label = SCHEDULED_LABELS[first as keyof typeof SCHEDULED_LABELS];
+  if (!label) return <MarkdownText content={content} />;
+  return (
+    <>
+      <span className="mb-1 inline-block rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] text-[var(--accent)]">
+        {label}
+      </span>
+      <MarkdownText content={content.slice(newline + 1)} />
+    </>
+  );
 }

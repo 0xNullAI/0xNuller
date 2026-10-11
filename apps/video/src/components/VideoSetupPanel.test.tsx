@@ -8,11 +8,8 @@ import {
 } from './VideoSetupPanel.js';
 
 const baseView: VideoSetupPanelViewModel = {
-  scenes: [
-    { id: 'gentle', name: '温柔陪伴', icon: '🌙' },
-    { id: 'market-scene', name: '市场场景' },
-  ],
-  selectedSceneId: 'gentle',
+  scenes: [{ id: 'market-character', name: '温柔陪伴', icon: '🌙' }],
+  selectedSceneId: 'market-character',
   facingMode: 'environment',
   embeddedAvailable: true,
   showCoyoteConnect: true,
@@ -40,6 +37,7 @@ const baseView: VideoSetupPanelViewModel = {
   cadenceSeconds: 10,
   allowEnhanced: false,
   allowBurst: true,
+  managedReadAloud: false,
   visionEnabled: true,
   error: null,
   ctaLabel: '开启',
@@ -58,6 +56,7 @@ function createActions(): VideoSetupPanelActions {
     setCadenceSeconds: vi.fn(),
     setAllowEnhanced: vi.fn(),
     setAllowBurst: vi.fn(),
+    setManagedReadAloud: vi.fn(),
     activate: vi.fn(),
   };
 }
@@ -76,23 +75,35 @@ describe('VideoSetupPanel', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '摄像头' }), {
       target: { value: 'user' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: '场景' }), {
-      target: { value: 'market-scene' },
+    fireEvent.change(screen.getByRole('combobox', { name: '角色' }), {
+      target: { value: 'market-character' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: '允许增强' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '朗读使用托管 Credit' }));
 
     expect(actions.setFacingMode).toHaveBeenCalledWith('user');
-    expect(actions.selectScene).toHaveBeenCalledWith('market-scene');
+    expect(actions.selectScene).toHaveBeenCalledWith('market-character');
     expect(actions.setAllowEnhanced).toHaveBeenCalledWith(true);
+    expect(actions.setManagedReadAloud).toHaveBeenCalledWith(true);
   });
 
   it('shows an explicit empty selection instead of silently applying a background', () => {
     const actions = createActions();
     render(<VideoSetupPanel view={{ ...baseView, selectedSceneId: '' }} actions={actions} />);
 
-    expect((screen.getByRole('combobox', { name: '场景' }) as HTMLSelectElement).value).toBe('');
+    expect((screen.getByRole('combobox', { name: '角色' }) as HTMLSelectElement).value).toBe('');
     fireEvent.click(screen.getByRole('button', { name: '管理' }));
     expect(actions.openSceneSettings).toHaveBeenCalledOnce();
+  });
+
+  it('shows a maximum hold and actual-usage settlement for managed vision', () => {
+    render(
+      <VideoSetupPanel
+        view={{ ...baseView, managedQuote: { maxReservationCredits: 59, priceVersion: 'v1' } }}
+        actions={createActions()}
+      />,
+    );
+    expect(screen.getByText('每次观察最多预留 59 Credit，最终按实际用量扣费。')).toBeTruthy();
   });
 
   it('uses the parent-provided CTA state and exposes settings and errors accessibly', () => {

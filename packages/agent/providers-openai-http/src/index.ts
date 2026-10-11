@@ -21,6 +21,7 @@ const configSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.3),
   endpoint: z.enum(['responses', 'chat/completions']).default('chat/completions'),
   useStrict: z.boolean().default(false),
+  attachPrivateConversation: z.boolean().default(false),
   extraHeaders: z
     .custom<() => Record<string, string> | Promise<Record<string, string>>>()
     .optional(),
@@ -77,6 +78,8 @@ export interface OpenAiHttpLlmClientConfig {
   temperature?: number;
   endpoint?: ProviderEndpoint;
   useStrict?: boolean;
+  /** Only explicitly private account chat composition may enable billing association. */
+  attachPrivateConversation?: boolean;
   /**
    * Per-request headers merged on top of Content-Type / Authorization.
    * Called once per outbound request. The managed service uses it to attach
@@ -120,12 +123,18 @@ export class OpenAiHttpLlmClient implements LlmClient {
   private async requestHeaders(
     baseUrl: string,
     usageKind: 'agent' | 'video' = 'agent',
+    conversationId?: string,
+    runId?: string,
   ): Promise<Record<string, string>> {
     const headers = await this.buildHeaders();
     try {
       if (new URL(baseUrl).hostname === 'llm.0xnullai.com') {
         headers['Idempotency-Key'] = crypto.randomUUID();
         headers['X-0xNullAI-Usage-Kind'] = usageKind;
+        if (this.config.attachPrivateConversation && conversationId) {
+          headers['X-0xNullAI-Conversation-Id'] = conversationId;
+          headers['X-0xNullAI-Run-Id'] = runId ?? headers['Idempotency-Key']!;
+        }
       }
     } catch {
       // URL validation reports the configuration error before this request path.
@@ -143,7 +152,13 @@ export class OpenAiHttpLlmClient implements LlmClient {
   }
 
   private async runChatCompletionsTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
-    const streaming = typeof input.onTextDelta === 'function';
+    // The managed visual binding has a bounded, usage-bearing non-stream result.
+    // Runtime may offer onTextDelta, but sending stream=true would violate the
+    // visual quote protocol before any reservation or model call.
+    const managedVision =
+      this.config.apiKey === 'managed' &&
+      (this.config.model === 'vision' || this.config.model === 'chat-vision');
+    const streaming = !managedVision && typeof input.onTextDelta === 'function';
     const requestBody = {
       model: this.config.model,
       temperature: this.config.temperature,
@@ -169,7 +184,12 @@ export class OpenAiHttpLlmClient implements LlmClient {
       method: 'POST',
       credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
-      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
+      headers: await this.requestHeaders(
+        baseUrl,
+        this.config.model === 'vision' ? 'video' : 'agent',
+        input.session.id,
+        input.runId,
+      ),
       body: JSON.stringify(requestBody),
     });
 
@@ -201,7 +221,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
     return {
       assistantMessage: normalizeContent(message.content),
       reasoningContent: normalizeOptionalContent(message.reasoning_content),
-      toolCalls: (message.tool_calls ?? []).map(toToolCall),
+      toolCalls: (message.tool_calls ?? []).map((toolCall) => {
+        const mapped = toToolCall(toolCall);
+        return mapped.id ? mapped : { ...mapped, id: createToolCallId() };
+      }),
       rawResponse: rawJson,
     };
   }
@@ -232,7 +255,12 @@ export class OpenAiHttpLlmClient implements LlmClient {
       method: 'POST',
       credentials: accountProxyCredentials(baseUrl),
       signal: input.abortSignal,
-      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
+      headers: await this.requestHeaders(
+        baseUrl,
+        input.image ? 'video' : 'agent',
+        input.session.id,
+        input.runId,
+      ),
       body: JSON.stringify(requestBody),
     });
 
@@ -259,7 +287,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
     for (const item of parsed.output) {
       if (item?.type === 'function_call') {
         toolCalls.push({
-          id: String(item.call_id ?? item.id ?? ''),
+          id: String(item.call_id ?? item.id ?? '') || createToolCallId(),
           name: String(item.name ?? ''),
           args: parseArguments(String(item.arguments ?? '{}')),
         });
@@ -344,7 +372,9 @@ async function parseResponsesStream(
   return {
     assistantMessage: streamedText,
     toolCalls: Object.values(fnCallSlots).map((toolCall) => ({
-      id: toolCall.id,
+      // Some OpenAI-compatible servers stream tool calls without an ID. Outputs must still
+      // pair with their call, and the runtime refuses ID-less non-stop calls.
+      id: toolCall.id || createToolCallId(),
       name: toolCall.name,
       args: parseArguments(toolCall.arguments),
     })),
@@ -430,7 +460,9 @@ async function parseChatCompletionsStream(
     assistantMessage: streamedText,
     reasoningContent: streamedReasoning || undefined,
     toolCalls: Object.values(fnCallSlots).map((toolCall) => ({
-      id: toolCall.id,
+      // Some OpenAI-compatible servers stream tool calls without an ID. Outputs must still
+      // pair with their call, and the runtime refuses ID-less non-stop calls.
+      id: toolCall.id || createToolCallId(),
       name: toolCall.name,
       args: parseArguments(toolCall.arguments),
     })),
@@ -668,4 +700,8 @@ async function probeChatCompletion({
   } catch (error) {
     throw new ConnectionTestError('对话接口响应不是有效的 JSON', error);
   }
+}
+
+function createToolCallId(): string {
+  return `call_${crypto.randomUUID().replaceAll('-', '')}`;
 }

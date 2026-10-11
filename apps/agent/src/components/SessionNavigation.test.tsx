@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyDeviceState, type SessionSnapshot } from '@dg-agent/core';
 import type { ReactNode } from 'react';
@@ -59,6 +59,39 @@ const session: SessionSnapshot = {
 afterEach(cleanup);
 
 describe('SessionNavigation', () => {
+  it('searches server history instead of scanning only loaded list messages', async () => {
+    const onSearch = vi.fn().mockResolvedValue([session.id]);
+    render(
+      <SessionNavigation
+        variant="desktop"
+        sessions={[
+          {
+            ...session,
+            messages: [],
+            listSummary: {
+              hasUserMessage: true,
+              preview: 'Recent reply',
+            },
+          },
+        ]}
+        activeSessionId={null}
+        collapsed={false}
+        onToggleCollapsed={vi.fn()}
+        onSelect={vi.fn()}
+        onSearch={onSearch}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onCreate={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('搜索'));
+    fireEvent.change(screen.getByPlaceholderText('历史对话内容'), {
+      target: { value: 'older memory' },
+    });
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith('older memory'));
+    expect((await screen.findAllByText('Recent reply')).length).toBeGreaterThan(0);
+  });
   it('adapts the standalone desktop sidebar controls without owning session lifecycle', () => {
     const onSelect = vi.fn();
     const onCreate = vi.fn();
