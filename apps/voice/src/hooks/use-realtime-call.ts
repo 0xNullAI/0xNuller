@@ -19,10 +19,7 @@ import { createVoiceToolRegistry } from '@voice/lib/tool-registry';
 import { BrowserWaveformLibrary } from '@voice/lib/waveform-library';
 import type { DeviceSession } from '@voice/lib/device-session';
 import { buildVoiceInstructions } from '@voice/lib/build-voice-instructions';
-import {
-  normalizeRealtimeProviderSettings,
-  relationshipVoiceFor,
-} from '@voice/lib/realtime/providers';
+import { managedVoiceFor, normalizeManagedVoice } from '@voice/lib/realtime/managed-voices';
 import { createRealtimeSession } from '@voice/lib/realtime/realtime-session';
 import type {
   RealtimeSession,
@@ -255,18 +252,7 @@ export function useRealtimeCall(
       startedAt: null,
     });
 
-    let providerSettings = normalizeRealtimeProviderSettings({
-      ...settings.providers[settings.activeProviderId],
-      providerId: settings.activeProviderId,
-    });
-    if (!providerSettings.apiKey) {
-      setState((prev) => ({
-        ...prev,
-        status: 'idle',
-        error: '请先配置当前语音服务的 API Key',
-      }));
-      return;
-    }
+    let voice = normalizeManagedVoice(settings.voice);
 
     const sceneLib = loadScenes();
     const selectedConversation = readPrivateConversationSelection();
@@ -314,17 +300,17 @@ export function useRealtimeCall(
       }
       personalContext = prepared.context;
       // A voice chosen for this AI wins over the account default when the
-      // active provider can speak it; a failed lookup keeps the default.
+      // service can speak it; a failed lookup keeps the default.
       const relationshipId = prepared.channel.selection.relationshipId;
       if (relationshipId) {
-        const voice = await getCharacterRelationship(relationshipId)
-          .then(({ item }) => relationshipVoiceFor(providerSettings.providerId, item.voice ?? ''))
+        const relationshipVoice = await getCharacterRelationship(relationshipId)
+          .then(({ item }) => managedVoiceFor(item.voice ?? ''))
           .catch(() => null);
         if (generation !== callGenerationRef.current) {
           prepared.channel.dispose();
           return;
         }
-        if (voice) providerSettings = { ...providerSettings, voice };
+        if (relationshipVoice) voice = relationshipVoice;
       }
       billingConversationId = prepared.channel.selection.conversationId;
       historyRef.current?.dispose();
@@ -512,7 +498,7 @@ export function useRealtimeCall(
       const initialConfiguration = await buildConfiguration();
       if (generation !== callGenerationRef.current) return;
       const session = await createRealtimeSession({
-        settings: providerSettings,
+        voice,
         billingContext: { conversationId: billingConversationId, runId: callId },
         tools: initialConfiguration.tools,
         instructions: initialConfiguration.instructions,

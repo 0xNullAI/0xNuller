@@ -10,16 +10,9 @@ import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
 import { CharacterVoiceField } from './CharacterVoiceField';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
-import {
-  getRealtimeProviderDefinition,
-  type RealtimeProviderId,
-} from '@voice/lib/realtime/providers';
 
 interface CallPanelProps {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
-  /** Active provider key, for providers whose voice list is fetched (xAI). */
-  apiKey?: string;
   onStart: () => void;
   onHangUp: () => void;
   onEmergencyStop: () => void;
@@ -28,8 +21,6 @@ interface CallPanelProps {
 
 export function CallPanel({
   call,
-  providerId,
-  apiKey = '',
   onStart,
   onHangUp,
   onEmergencyStop,
@@ -50,10 +41,7 @@ export function CallPanel({
         <SelectedCharacterPortrait fallbackSource={publicPortrait} />
       )}
       <p className="text-xs text-[var(--text-faint)]">
-        {providerId === 'managed'
-          ? '平台语音 · 使用账户现有 Credit，按通话时长计费'
-          : '自带密钥（BYOK）· 由所选服务商计费，不扣平台 Credit'}
-        。仅最终字幕保存到同一私人对话，不保存录音。
+        猫愿语音 · 按通话时长消耗 Credit。仅保存最终字幕，不保存录音。
       </p>
       {call.historyError && (
         <Alert variant="destructive">
@@ -68,7 +56,6 @@ export function CallPanel({
       {call.status === 'active' || call.status === 'connecting' ? (
         <ActiveCallView
           call={call}
-          providerId={providerId}
           portraitSource={publicPortrait}
           onHangUp={onHangUp}
           onEmergencyStop={onEmergencyStop}
@@ -76,16 +63,7 @@ export function CallPanel({
       ) : (
         <IdleCallView
           call={call}
-          providerId={providerId}
-          voiceField={
-            characterId ? (
-              <CharacterVoiceField
-                characterId={characterId}
-                providerId={providerId}
-                apiKey={apiKey}
-              />
-            ) : null
-          }
+          voiceField={characterId ? <CharacterVoiceField characterId={characterId} /> : null}
           onStart={onStart}
         />
       )}
@@ -95,17 +73,13 @@ export function CallPanel({
 
 function IdleCallView({
   call,
-  providerId,
   voiceField,
   onStart,
 }: {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
   voiceField: ReactNode;
   onStart: () => void;
 }) {
-  const provider = getRealtimeProviderDefinition(providerId);
-
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -122,11 +96,6 @@ function IdleCallView({
         </Alert>
       )}
 
-      <p className="mb-3 text-xs text-[var(--text-faint)]">
-        语音服务：{provider?.name ?? providerId}
-        {provider?.pricePerMinuteUsd ? ` · 约 $${provider.pricePerMinuteUsd}/分钟` : ''}
-      </p>
-
       {voiceField}
 
       <Button className="w-full" onClick={onStart}>
@@ -139,18 +108,15 @@ function IdleCallView({
 
 function ActiveCallView({
   call,
-  providerId,
   portraitSource,
   onHangUp,
   onEmergencyStop,
 }: {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
   portraitSource: string | null;
   onHangUp: () => void;
   onEmergencyStop: () => void;
 }) {
-  const provider = getRealtimeProviderDefinition(providerId);
   const elapsed = useElapsedSeconds(call.startedAt);
   const connecting = call.status === 'connecting';
 
@@ -174,9 +140,9 @@ function ActiveCallView({
       <div className="space-y-1" role="status" aria-live="polite">
         <p className="text-base font-semibold">{connecting ? '正在连接…' : '通话中'}</p>
         <p className="text-xs text-[var(--text-faint)]">
-          {provider?.name ?? providerId}
-          {!connecting && ` · ${formatElapsed(elapsed)}`}
-          {!connecting && (call.speaking ? ' · AI 正在说话' : ' · 等待语音')}
+          {connecting
+            ? '猫愿语音'
+            : `${formatElapsed(elapsed)} · ${call.speaking ? 'AI 正在说话' : '等待语音'}`}
         </p>
       </div>
 
@@ -209,7 +175,7 @@ function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }
   }, [transcript]);
 
   // Skip placeholder entries reserved for ordering (e.g. the user's line, held
-  // in place before GLM sends its late input transcription) until they fill in.
+  // in place before a late input transcription) until they fill in.
   const visible = transcript.filter((entry) => entry.text.trim() !== '');
 
   return (

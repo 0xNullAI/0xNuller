@@ -10,7 +10,7 @@ import { createScopedProviderConfigStore } from './scoped-provider-config-store'
  * provider in Agent and having to do it again in Chat is precisely the
  * friction "one app" is supposed to remove.
  *
- * DG-Voice's realtime provider config does NOT merge in: it is a different
+ * DG-Voice's realtime voice settings do NOT merge in: it is a different
  * domain (voice-session endpoints and auth differ) with a different shape.
  * Forcing them together would make both awkward.
  *

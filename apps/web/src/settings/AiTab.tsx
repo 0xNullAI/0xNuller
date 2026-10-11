@@ -13,7 +13,7 @@ import {
   type LlmConfig,
   type ProviderId,
 } from '@0xnullai/llm-providers';
-import { VoiceProviderSection, VoiceTimbreField } from './VoiceProviderSection';
+import { VoiceTimbreField } from './VoiceTimbreField';
 import { VideoProviderSection } from './VideoProviderSection';
 import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
@@ -29,11 +29,12 @@ import { ModelCombobox, useRecommendedModel } from './ModelCombobox';
  * AI configuration. Agent, Voice and Video are configured here but keep separate stores.
  *
  * The page shows only the model tier and the voice. Everything else (own API, context,
- * voice provider, Video) sits on one flat 高级 sub-page. Agent and Chat share the text
- * config; Voice (realtime protocol) and Video (image-input allowlist, never copies
- * Agent credentials) stay separate sections so their required fields do not mix.
+ * Video) sits on one flat 高级 sub-page. Agent and Chat share the text config; Video
+ * (image-input allowlist, never copies Agent credentials) stays a separate section so
+ * their required fields do not mix. Realtime voice is managed-only: its one setting
+ * is the voice on the main page.
  */
-export type AiSettingsSection = 'voice' | 'video';
+export type AiSettingsSection = 'video';
 
 const PROVIDER_REGION_LABEL = {
   mainland: '中国大陆',
@@ -66,9 +67,6 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
       <AdvancedSubpage title="AI · 高级" onBack={closeAdvanced}>
         <OwnApiSection config={config} update={update} onUseManaged={switchToManaged} />
         <BehaviorSection />
-        <AdvancedSection id="ai-voice" title="语音">
-          <VoiceProviderSection />
-        </AdvancedSection>
         <AdvancedSection id="ai-video" title="Video 视觉模型">
           <VideoProviderSection />
         </AdvancedSection>

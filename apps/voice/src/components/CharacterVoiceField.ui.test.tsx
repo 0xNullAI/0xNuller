@@ -51,7 +51,7 @@ it('saves a voice on the relationship without touching its other fields', async 
   auth.saveCharacterRelationship.mockResolvedValue({
     item: { ...relationship, voice: 'ara', version: 4 },
   });
-  render(<CharacterVoiceField characterId="card" providerId="managed" apiKey="" />);
+  render(<CharacterVoiceField characterId="card" />);
   const select = (await screen.findByRole('combobox', { name: '音色' })) as HTMLSelectElement;
   expect(select.value).toBe('__default__');
   fireEvent.change(select, { target: { value: 'ara' } });
@@ -70,7 +70,7 @@ it('saves a voice on the relationship without touching its other fields', async 
 
 it('shows nothing until the account has a relationship with this AI', async () => {
   auth.listCharacterRelationships.mockResolvedValue({ items: [], limit: 200 });
-  render(<CharacterVoiceField characterId="card" providerId="managed" apiKey="" />);
+  render(<CharacterVoiceField characterId="card" />);
   await waitFor(() => expect(auth.listCharacterRelationships).toHaveBeenCalledWith('card'));
   expect(screen.queryByRole('combobox')).toBeNull();
 });

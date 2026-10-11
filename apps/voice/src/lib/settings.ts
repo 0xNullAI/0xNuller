@@ -12,11 +12,7 @@ import {
  * DG-Agent's per-field key sprawl — DG-Voice has far fewer settings.
  */
 import { z } from 'zod';
-import type { RealtimeProviderId, RealtimeProviderSettings } from './realtime/providers.js';
-import {
-  createDefaultRealtimeProviderSettings,
-  REALTIME_PROVIDER_DEFINITIONS,
-} from './realtime/providers.js';
+import { DEFAULT_MANAGED_VOICE, normalizeManagedVoice } from './realtime/managed-voices.js';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
 
 export const SETTINGS_STORAGE_KEY = 'dg-voice-settings';
@@ -26,24 +22,16 @@ export type ThemeMode = 'auto' | 'dark' | 'light';
 export type { CoyoteSafetySettings, OpossumSafetySettings } from '@0xnullai/settings';
 
 export interface VoiceSettings {
-  activeProviderId: RealtimeProviderId;
-  providers: Record<RealtimeProviderId, RealtimeProviderSettings>;
+  /** Account default voice for 猫愿语音; a character relationship may override it per call. */
+  voice: string;
   permissionMode: BrowserPermissionMode;
   coyoteSafety: CoyoteSafetySettings;
   opossumSafety: OpossumSafetySettings;
 }
 
-function defaultProviders(): Record<RealtimeProviderId, RealtimeProviderSettings> {
-  const entries = REALTIME_PROVIDER_DEFINITIONS.map(
-    (def) => [def.id, createDefaultRealtimeProviderSettings(def.id)] as const,
-  );
-  return Object.fromEntries(entries) as Record<RealtimeProviderId, RealtimeProviderSettings>;
-}
-
 export function createDefaultSettings(): VoiceSettings {
   return {
-    activeProviderId: 'managed',
-    providers: defaultProviders(),
+    voice: DEFAULT_MANAGED_VOICE,
     // "本地最严格" — mirrors DG-Agent's default. Call start explicitly
     // upgrades to a 'timed' one-time authorization; settings can also
     // widen it, same tradeoff DG-Agent's SafetyTab exposes.
@@ -66,19 +54,7 @@ export function createDefaultSettings(): VoiceSettings {
   };
 }
 
-const providerSettingsSchema = z.object({
-  providerId: z.enum(['managed', 'xai', 'openai', 'azure', 'zhipu']),
-  apiKey: z.string(),
-  model: z.string(),
-  baseUrl: z.string(),
-  deployment: z.string(),
-  voice: z.string(),
-  speed: z.number(),
-});
-
 const settingsSchema = z.object({
-  activeProviderId: z.enum(['managed', 'xai', 'openai', 'azure', 'zhipu']),
-  providers: z.record(z.string(), providerSettingsSchema),
   permissionMode: z.enum(['confirm', 'timed', 'allow-all']),
   coyoteSafety: z.object({
     maxStrengthA: z.number(),
@@ -120,25 +96,29 @@ export function loadSettings(): VoiceSettings {
     const raw = readPreference(SETTINGS_STORAGE_KEY);
     if (!raw) return withShared(defaults);
     const stored = JSON.parse(raw) as Record<string, unknown>;
-    if (stored.activeProviderId === 'trial') stored.activeProviderId = 'managed';
-    if (stored.providers && typeof stored.providers === 'object') {
-      const providers = stored.providers as Record<string, unknown>;
-      if (providers.trial && !providers.managed) providers.managed = providers.trial;
-      delete providers.trial;
-      const managed = providers.managed as Record<string, unknown> | undefined;
-      if (managed) managed.providerId = 'managed';
-    }
     const parsed = settingsSchema.partial().safeParse(stored);
     if (!parsed.success) return withShared(defaults);
 
     return withShared({
       ...defaults,
       ...parsed.data,
-      providers: { ...defaults.providers, ...parsed.data.providers },
-    } as VoiceSettings);
+      voice: normalizeManagedVoice(stored.voice ?? legacyManagedVoice(stored.providers)),
+    });
   } catch {
     return withShared(defaults);
   }
+}
+
+/**
+ * Before realtime voice became managed-only, the voice lived per provider under
+ * `providers.managed` (`providers.trial` earlier still). Bring-your-own-key
+ * providers were removed, so whichever provider was active, only the managed
+ * voice carries over; their keys and voice ids are ignored and dropped on save.
+ */
+function legacyManagedVoice(providers: unknown): unknown {
+  if (!providers || typeof providers !== 'object') return undefined;
+  const byId = providers as Record<string, { voice?: unknown } | undefined>;
+  return (byId.managed ?? byId.trial)?.voice;
 }
 
 export function saveSettings(settings: VoiceSettings): void {

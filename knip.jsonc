@@ -27,9 +27,6 @@
       // Vite resolves pi-ai's Node-only environment module to this browser entry by absolute path.
       "entry": ["src/browser-provider-env.ts"],
     },
-    "apps/voice": {
-      "entry": ["scripts/*.mjs"],
-    },
     "workers/auth": {
       "entry": ["src/cloudflare-workers-test.ts"],
       "ignoreDependencies": ["cloudflare"],

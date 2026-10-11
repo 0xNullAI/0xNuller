@@ -59,10 +59,7 @@ vi.mock('@dg-agent/agent-browser/llm', () => ({
   discoverBrowserProviderModels: vi.fn(),
   testBrowserProviderConnection: vi.fn(),
 }));
-vi.mock('./VoiceProviderSection', () => ({
-  VoiceProviderSection: () => <div>语音服务商</div>,
-  VoiceTimbreField: () => <div>音色</div>,
-}));
+vi.mock('./VoiceTimbreField', () => ({ VoiceTimbreField: () => <div>音色</div> }));
 vi.mock('./VideoProviderSection', () => ({ VideoProviderSection: () => <div>视觉服务商</div> }));
 
 afterEach(() => {

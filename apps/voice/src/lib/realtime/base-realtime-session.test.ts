@@ -29,7 +29,7 @@ class TestSession extends BaseRealtimeSession {
 
 function createSession(authorize: (text: string) => boolean): TestSession {
   return new TestSession({
-    settings: {} as RealtimeSessionOptions['settings'],
+    voice: 'eve',
     instructions: '',
     tools: [{ name: 'shock_start' } as ToolDefinition],
     events: { onAuthorizeAudio: authorize },
@@ -100,7 +100,7 @@ describe('device-capable realtime audio', () => {
 it('uses separate subtitle IDs for successive provider turns without item_id', () => {
   const onTranscript = vi.fn();
   const session = new TestSession({
-    settings: {} as RealtimeSessionOptions['settings'],
+    voice: 'eve',
     instructions: '',
     tools: [],
     events: { onTranscript },
@@ -132,7 +132,7 @@ it('uses separate subtitle IDs for successive provider turns without item_id', (
 it('reports the start of each spoken user turn', () => {
   const onUserTurnStarted = vi.fn();
   const session = new TestSession({
-    settings: {} as RealtimeSessionOptions['settings'],
+    voice: 'eve',
     instructions: '',
     tools: [],
     events: { onUserTurnStarted },
@@ -144,7 +144,7 @@ it('reports the start of each spoken user turn', () => {
 it('reserves the user transcript line from the GA conversation.item.added event', () => {
   const onTranscript = vi.fn();
   const session = new TestSession({
-    settings: {} as RealtimeSessionOptions['settings'],
+    voice: 'eve',
     instructions: '',
     tools: [],
     events: { onTranscript },

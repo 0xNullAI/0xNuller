@@ -91,7 +91,7 @@ export function SettingsPanel({
   onLoadAgent?: () => void;
 }) {
   const initialAiSection: AiSettingsSection | undefined =
-    initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : undefined;
+    initialTab === 'ai-video' ? 'video' : undefined;
   const tab = initialTab.startsWith('ai-') ? 'ai' : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell

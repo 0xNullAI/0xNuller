@@ -5,31 +5,16 @@ import {
   type CharacterRelationship,
 } from '@0xnullai/auth';
 import { SettingSelect } from '@0xnullai/ui';
-import { useProviderVoices } from '@voice/hooks/use-provider-voices';
-import {
-  getRealtimeProviderDefinition,
-  relationshipVoiceFor,
-  type RealtimeProviderId,
-} from '@voice/lib/realtime/providers';
+import { MANAGED_VOICES, managedVoiceFor } from '@voice/lib/realtime/managed-voices';
 
 const DEFAULT = '__default__';
 
 /**
  * The voice this AI speaks with, saved on the account's private relationship.
- * "跟随默认" uses the voice chosen under 我的 → AI. A saved voice the active
- * provider cannot speak is shown as the default, since the call will use it.
+ * "跟随默认" uses the voice chosen under 我的 → AI. A saved voice the service
+ * cannot speak is shown as the default, since the call will use it.
  */
-export function CharacterVoiceField({
-  characterId,
-  providerId,
-  apiKey,
-}: {
-  characterId: string;
-  providerId: RealtimeProviderId;
-  apiKey: string;
-}) {
-  const definition = getRealtimeProviderDefinition(providerId);
-  const { voices } = useProviderVoices(providerId, apiKey, definition?.staticVoices ?? []);
+export function CharacterVoiceField({ characterId }: { characterId: string }) {
   // Keyed by character so switching chats never shows the previous AI's voice.
   const [loaded, setLoaded] = useState<{
     characterId: string;
@@ -57,10 +42,10 @@ export function CharacterVoiceField({
   }, [characterId]);
 
   if (!relationship) return null;
-  const current = relationshipVoiceFor(providerId, relationship.voice ?? '') ?? DEFAULT;
+  const current = managedVoiceFor(relationship.voice ?? '') ?? DEFAULT;
   const options = [
     { value: DEFAULT, label: '跟随默认' },
-    ...voices.map((voice) => ({ value: voice, label: voice })),
+    ...MANAGED_VOICES.map((voice) => ({ value: voice, label: voice })),
   ];
 
   async function choose(value: string) {

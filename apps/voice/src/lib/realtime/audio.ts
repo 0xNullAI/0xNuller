@@ -1,7 +1,7 @@
 /**
  * Browser audio capture/playback for the realtime voice call. Both directions
- * run an `AudioContext` pinned to `SAMPLE_RATE` (24kHz, what xAI/OpenAI/Azure
- * speak natively) rather than resampling after the fact — Chrome resamples
+ * run an `AudioContext` pinned to `SAMPLE_RATE` (24kHz pcm16, the managed Worker protocol
+ * rate) rather than resampling after the fact — Chrome resamples
  * the mic input to match a context's requested rate, the same trick
  * DG-Agent's `dashscope-proxy.ts` uses for its 16kHz ASR stream.
  */
@@ -60,33 +60,6 @@ export function base64ToInt16(base64: string): Int16Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 2));
-}
-
-/** GLM-realtime wants wav-framed chunks, not raw pcm16 — wraps one chunk as a standalone 16-bit mono wav. */
-export function wrapPcm16AsWav(int16: Int16Array, sampleRate = SAMPLE_RATE): ArrayBuffer {
-  const dataSize = int16.byteLength;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeString = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
-  };
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true); // fmt chunk size
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // byte rate
-  view.setUint16(32, 2, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-  new Uint8Array(buffer, 44).set(new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength));
-
-  return buffer;
 }
 
 const PCM_CAPTURE_WORKLET_SOURCE = `

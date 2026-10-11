@@ -168,8 +168,6 @@ describe('useRealtimeCall 正常结束', () => {
     } satisfies RealtimeSession;
     realtimeMocks.createSession.mockResolvedValue(realtimeSession);
     const settings = createDefaultSettings();
-    settings.activeProviderId = 'xai';
-    settings.providers.xai.apiKey = 'test-key';
 
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
     await act(async () => result.current.startCall());
@@ -247,8 +245,6 @@ describe('useRealtimeCall 正常结束', () => {
     const session = realtimeSession(async () => undefined);
     realtimeMocks.createSession.mockResolvedValue(session);
     const settings = createDefaultSettings();
-    settings.activeProviderId = 'xai';
-    settings.providers.xai.apiKey = 'test-key';
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
 
     await act(async () => result.current.startCall());
@@ -265,8 +261,6 @@ describe('useRealtimeCall 正常结束', () => {
     const session = realtimeSession(async () => undefined);
     realtimeMocks.createSession.mockResolvedValue(session);
     const settings = createDefaultSettings();
-    settings.activeProviderId = 'xai';
-    settings.providers.xai.apiKey = 'test-key';
     const { result } = renderHook(() =>
       useRealtimeCall(minimalDeviceSession(emergencyStop), settings),
     );
@@ -285,8 +279,6 @@ describe('useRealtimeCall 正常结束', () => {
     const session = realtimeSession(() => connecting.promise);
     realtimeMocks.createSession.mockResolvedValue(session);
     const settings = createDefaultSettings();
-    settings.activeProviderId = 'xai';
-    settings.providers.xai.apiKey = 'test-key';
     const { result } = renderHook(() => useRealtimeCall(deviceSession, settings));
 
     let start!: Promise<void>;
@@ -303,9 +295,18 @@ describe('useRealtimeCall 正常结束', () => {
   });
 });
 
+it('starts the managed service without an API key, using the account voice', async () => {
+  const settings = { ...createDefaultSettings(), voice: 'rex' };
+  realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));
+  const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
+  await act(async () => result.current.startCall());
+  const options = realtimeMocks.createSession.mock.calls[0]![0] as RealtimeSessionOptions;
+  expect(options.voice).toBe('rex');
+  expect(result.current.state).toMatchObject({ status: 'connecting', error: null });
+});
+
 it('extends the same private context, saves only final subtitles, and stops on an account change', async () => {
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   const session = realtimeSession(async () => undefined);
   realtimeMocks.createSession.mockResolvedValue(session);
   const { result, unmount } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
@@ -344,7 +345,6 @@ it('extends the same private context, saves only final subtitles, and stops on a
 
 it('keeps failed final subtitles on the call page until a server retry succeeds', async () => {
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   historyMocks.append
     .mockRejectedValueOnce(new Error('offline'))
     .mockRejectedValueOnce(new Error('still offline'))
@@ -377,7 +377,6 @@ it('warns on reload only while a final subtitle has no server acknowledgement', 
   const pending = deferred<object>();
   historyMocks.append.mockReturnValueOnce(pending.promise);
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));
   const { result, unmount } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   const leaving = () => {
@@ -421,7 +420,6 @@ it('keeps the Agent conversation character and layers its server-bound scene', a
     },
   });
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));
 
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
@@ -451,7 +449,6 @@ it('refuses a missing server-bound scene before opening the microphone', async (
     channel: { selection: { conversationId: 'agent-conversation' }, dispose },
   });
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
 
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
@@ -462,7 +459,6 @@ it('refuses a missing server-bound scene before opening the microphone', async (
 });
 it('fails before opening the microphone when account conversation preparation fails', async () => {
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   historyMocks.prepare.mockRejectedValueOnce(new Error('请先登录'));
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
@@ -477,7 +473,6 @@ it('does not start a new voice conversation from a removed built-in default', as
     hiddenBuiltinIds: [],
   });
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
   expect(historyMocks.prepare).not.toHaveBeenCalled();
@@ -493,7 +488,6 @@ it('requires a character conversation instead of creating a scene-only voice ide
     hiddenBuiltinIds: [],
   });
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   const { result } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
   expect(historyMocks.open).not.toHaveBeenCalled();
@@ -505,7 +499,6 @@ it('requires a character conversation instead of creating a scene-only voice ide
 it('keeps device evidence until the user starts a new spoken turn, not until a late transcript', async () => {
   const { createToolExecutionReceipt } = await import('@dg-agent/runtime');
   const settings = createDefaultSettings();
-  settings.providers[settings.activeProviderId].apiKey = 'test';
   realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));
   const { result, unmount } = renderHook(() => useRealtimeCall(minimalDeviceSession(), settings));
   await act(async () => result.current.startCall());
