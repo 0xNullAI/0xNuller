@@ -139,10 +139,14 @@ async function characterReference(env: MediaEnv, row: Row): Promise<string | nul
     .bind(row.user_id, row.relationship_id)
     .first<{ object_key: string }>();
   if (photo) {
-    const object = await env.PHOTOS.get(photo.object_key);
-    if (object && object.size <= PORTRAIT_LIMIT) {
-      const url = dataUrl(new Uint8Array(await object.arrayBuffer()));
-      if (url) return url;
+    try {
+      const object = await env.PHOTOS.get(photo.object_key);
+      if (object && object.size <= PORTRAIT_LIMIT) {
+        const url = dataUrl(new Uint8Array(await object.arrayBuffer()));
+        if (url) return url;
+      }
+    } catch {
+      // An unreadable portrait degrades to the next reference, never to a failed paid job.
     }
   }
   const found = await boundCharacter(env, row.user_id, row.relationship_id, row.conversation_id);
