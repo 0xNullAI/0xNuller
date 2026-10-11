@@ -252,7 +252,8 @@ describe('外壳与设备控制权', () => {
       fireEvent.click(screen.getByRole('button', { name: '联系人' }));
       expect(window.location.pathname).toBe('/people');
       fireEvent.click(screen.getByRole('button', { name: /^我的$/ }));
-      expect(await screen.findByRole('region', { name: '设置' })).toBeTruthy();
+      // The settings panel is lazy-loaded; a cold CI cache needs more than the default 1 s.
+      expect(await screen.findByRole('region', { name: '设置' }, { timeout: 5_000 })).toBeTruthy();
       expect(window.location.pathname).toBe('/settings/overview');
       expect(screen.queryByRole('dialog', { name: '设置' })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: '设备安全' }));

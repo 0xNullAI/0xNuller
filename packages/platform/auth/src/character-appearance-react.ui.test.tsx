@@ -30,7 +30,8 @@ describe('private character image', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revoke);
     const fetcher = vi.fn(
       async () =>
-        new Response(new Blob(['image'], { type: 'image/png' }), {
+        // Plain bytes: a jsdom Blob is not a body Node 22's fetch Response accepts.
+        new Response(new TextEncoder().encode('image'), {
           headers: { 'content-type': 'image/png' },
         }),
     );

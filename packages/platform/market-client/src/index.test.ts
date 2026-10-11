@@ -106,7 +106,8 @@ it('resolves only public UUID portraits and reads anonymously with missing-image
   const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const fetch = vi.fn(
     async () =>
-      new Response(new Blob(['png'], { type: 'image/png' }), {
+      // Plain bytes: a jsdom Blob is not a body Node 22's fetch Response accepts.
+      new Response(new TextEncoder().encode('png'), {
         headers: { 'Content-Type': 'image/png' },
       }),
   );
