@@ -180,6 +180,11 @@ const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
 const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 const REFERRAL_REWARD_CREDITS = 500;
+// Product decision (2026-10-11): a verified new account can reply on the default platform
+// tier at once. 100 Credit is roughly 30–50 balanced-tier replies. Granted once per account,
+// at email verification, so a registration flood without mailboxes earns nothing.
+const WELCOME_CREDITS = 100;
+const WELCOME_REFERENCE = 'welcome';
 const CREDIT_PRICE_VERSION = 'credits-2026-09';
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
@@ -1648,6 +1653,20 @@ export default {
             `UPDATE referrals SET status = 'rewarded', qualified_at = ?
              WHERE invitee_user_id = ? AND status = 'pending'`,
           ).bind(now, action.user_id),
+          // The ledger's (user, kind, reference) key makes the welcome grant one per account.
+          env.DB.prepare(
+            `INSERT INTO credit_ledger
+             (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+             VALUES (?, ?, 'admin_gift', ?, ?, ?, ?)
+             ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
+          ).bind(
+            action.user_id,
+            WELCOME_CREDITS,
+            WELCOME_REFERENCE,
+            CREDIT_PRICE_VERSION,
+            JSON.stringify({ reason: 'welcome' }),
+            now,
+          ),
         ]);
         return json({ ok: true }, 200, cors);
       }

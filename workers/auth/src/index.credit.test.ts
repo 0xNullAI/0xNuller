@@ -43,7 +43,8 @@ describe('邀请注册与活动 Credit', () => {
       balanceCredits: number;
       rewardCredits: number;
     };
-    expect(initial).toMatchObject({ balanceCredits: 0, rewardCredits: 500 });
+    // The inviter's own verification already paid the one-time welcome Credit.
+    expect(initial).toMatchObject({ balanceCredits: 100, rewardCredits: 500 });
 
     const invitee = await registerUser({
       username: 'bob',
@@ -53,7 +54,7 @@ describe('邀请注册与活动 Credit', () => {
     expect(invitee.res.status).toBe(201);
     expect(
       await prepared(
-        'SELECT 1 FROM credit_ledger WHERE user_id = ?',
+        "SELECT 1 FROM credit_ledger WHERE user_id = ? AND kind = 'referral_reward'",
         inviter.body.user!.id,
       ).first(),
     ).toBeNull();
@@ -61,7 +62,7 @@ describe('邀请注册与活动 Credit', () => {
     const verificationToken = await confirmLatestVerification();
     const after = await worker.fetch(req('/api/auth/referral', { token: inviter.body.token }), env);
     expect(await after.json()).toMatchObject({
-      balanceCredits: 500,
+      balanceCredits: 600,
       rewardedCount: 1,
       pendingCount: 0,
       activity: [expect.objectContaining({ status: 'rewarded', rewardCredits: 500 })],
@@ -71,10 +72,27 @@ describe('邀请注册与活动 Credit', () => {
       (await post('/api/auth/email/verification/confirm', { token: verificationToken })).status,
     ).toBe(400);
     const ledger = await prepared(
-      'SELECT COUNT(*) AS n, SUM(amount_credits) AS cents FROM credit_ledger WHERE user_id = ?',
+      "SELECT COUNT(*) AS n, SUM(amount_credits) AS cents FROM credit_ledger WHERE user_id = ? AND kind = 'referral_reward'",
       inviter.body.user!.id,
     ).first<{ n: number; cents: number }>();
     expect(ledger).toEqual({ n: 1, cents: 500 });
+  });
+
+  it('新账号只在邮箱验证后获得一次 100 Credit 体验额度', async () => {
+    const user = await registerUser();
+    const id = user.body.user!.id;
+    const welcome = () =>
+      prepared(
+        "SELECT COUNT(*) AS n, SUM(amount_credits) AS credits FROM credit_ledger WHERE user_id = ? AND kind = 'admin_gift' AND reference_id = 'welcome'",
+        id,
+      ).first<{ n: number; credits: number | null }>();
+    // Registering alone earns nothing: a flood of accounts without mailboxes gets no Credit.
+    expect(await welcome()).toEqual({ n: 0, credits: null });
+    const token = await confirmLatestVerification();
+    expect(await welcome()).toEqual({ n: 1, credits: 100 });
+    // A replayed link is refused and pays nothing more.
+    expect((await post('/api/auth/email/verification/confirm', { token })).status).toBe(400);
+    expect(await welcome()).toEqual({ n: 1, credits: 100 });
   });
 
   it('未验证账户不能分享，且拒绝不存在的邀请码', async () => {
