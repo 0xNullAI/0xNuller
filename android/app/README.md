@@ -29,9 +29,10 @@ seams are deliberately left in their original shape (see the comments in
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-0xNuller moves directly to `6.0.0`: the user-facing `version` is `6.0.0`, and
-`bundle.android.versionCode` is the aligned monotonic code `6000000`. Tauri
-writes both into `gen/android/app/tauri.properties` **at build time**.
+The user-facing `version` follows the product version (for example `6.5.7`), and
+`bundle.android.versionCode` is the aligned monotonic code (`6005007`: major·1000000 +
+minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
+`5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
 **Bump both before you build, not after.** Building first and bumping second
 produces an APK whose internal version is the previous release while the git

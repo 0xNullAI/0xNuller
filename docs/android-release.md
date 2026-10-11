@@ -24,8 +24,9 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 ### 2. 0xNuller 直接进入 6.0.0
 
 0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
-`tauri.conf.json` 中对用户显示的 `version` 是 `6.0.0`，Android 内部的
-`bundle.android.versionCode` 是 `6000000`。两者和 GitHub Release tag 始终对齐。
+起点是 `6.0.0` / `6000000`，之后 `tauri.conf.json` 的 `version` 跟随产品版本，
+`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `6.5.7` →
+`6005007`）。两者和 GitHub Release tag 始终对齐。
 
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
@@ -68,7 +69,8 @@ npm run android:build -- --apk --target aarch64
 ## 上传前必须验的产物
 
 自动门禁会从 Android SDK 中选择最新的 build-tools，同时核对包名、版本、versionCode、
-应用名、minSdk、arm64 ABI、BLE/旧版定位权限、APK v2 签名、旧 DG-Agent 证书指纹，以及
+应用名、minSdk、arm64 ABI、BLE/旧版定位、摄像头、麦克风与通知权限、APK v2 签名、旧 DG-Agent
+证书指纹，以及
 APK 内嵌的源码 commit 是否等于当前 Git HEAD。release 构建只接受干净工作树：
 
 ```bash
