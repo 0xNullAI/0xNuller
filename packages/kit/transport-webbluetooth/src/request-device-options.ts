@@ -3,6 +3,7 @@ import {
   OPOSSUM_DEVICE_NAME_PREFIX,
   PAW_PRINTS_DEVICE_NAME_PREFIX,
   V3_BATTERY_SERVICE,
+  V3_DOCUMENTED_BATTERY_SERVICE,
   V3_PRIMARY_SERVICE,
   type RequestDeviceOptionsLike,
 } from '@dg-kit/protocol';
@@ -22,15 +23,15 @@ import {
  */
 export const PAW_PRINTS_REQUEST_DEVICE_OPTIONS: RequestDeviceOptionsLike = {
   filters: [{ namePrefix: PAW_PRINTS_DEVICE_NAME_PREFIX }],
-  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE],
+  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE, V3_DOCUMENTED_BATTERY_SERVICE],
 };
 
 export const CIVET_EDGING_REQUEST_DEVICE_OPTIONS: RequestDeviceOptionsLike = {
   filters: [{ namePrefix: CIVET_DEVICE_NAME_PREFIX }],
-  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE],
+  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE, V3_DOCUMENTED_BATTERY_SERVICE],
 };
 
 export const OPOSSUM_REQUEST_DEVICE_OPTIONS: RequestDeviceOptionsLike = {
   filters: [{ namePrefix: OPOSSUM_DEVICE_NAME_PREFIX }],
-  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE],
+  optionalServices: [V3_PRIMARY_SERVICE, V3_BATTERY_SERVICE, V3_DOCUMENTED_BATTERY_SERVICE],
 };

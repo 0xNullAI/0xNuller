@@ -49,7 +49,8 @@ export type {
 export interface DeviceInfo {
   version: DeviceVersion;
   name: string;
-  battery: number;
+  /** Null while the device has not reported a level. */
+  battery: number | null;
 }
 
 export type WaveFrame = KitWaveFrame;

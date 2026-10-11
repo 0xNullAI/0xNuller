@@ -1,18 +1,12 @@
 import type { Channel } from '@dg-kit/core';
-import {
-  V3_BATTERY_CHAR,
-  V3_BATTERY_SERVICE,
-  V3_NOTIFY_CHAR,
-  V3_PRIMARY_SERVICE,
-  V3_WRITE_CHAR,
-} from './constants.js';
+import { V3_NOTIFY_CHAR, V3_PRIMARY_SERVICE, V3_WRITE_CHAR } from './constants.js';
 import {
   BaseCoyoteProtocolAdapter,
   INACTIVE_FREQ,
   INACTIVE_INT,
   type WebBluetoothConnectionContext,
 } from './base.js';
-import { performV3FamilyConnectHandshake } from './gatt-utils.js';
+import { findV3FamilyBatteryChar, performV3FamilyConnectHandshake } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
@@ -38,13 +32,9 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
 
       await performV3FamilyConnectHandshake(context.server, this.writeChar);
 
-      try {
-        const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
-        this.batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
-        await this.readBattery();
-      } catch {
-        this.state.battery = undefined;
-      }
+      this.batteryChar = await findV3FamilyBatteryChar(context.server);
+      if (this.batteryChar) await this.readBattery();
+      else this.state.battery = undefined;
 
       this.resetProtocolState();
       if (!this.writeChar || !this.notifyChar) {

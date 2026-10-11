@@ -2,6 +2,8 @@ import type { WebBluetoothConnectionContext } from './base.js';
 import {
   V3_BATTERY_CHAR,
   V3_BATTERY_SERVICE,
+  V3_DOCUMENTED_BATTERY_CHAR,
+  V3_DOCUMENTED_BATTERY_SERVICE,
   V3_HANDSHAKE_MTU,
   V3_INIT_PACKET,
   V3_LEGACY_NOTIFY_CHAR,
@@ -143,6 +145,27 @@ export interface SensorGattConnection {
 }
 
 /**
+ * The battery level characteristic of a 47L12x-family device: the standard Battery Service
+ * first, then the 0x180A/0x1500 pair from DG-Lab's V3 protocol document. Null when neither
+ * resolves.
+ */
+export async function findV3FamilyBatteryChar(
+  server: BluetoothRemoteGATTServerLike,
+): Promise<BluetoothRemoteGATTCharacteristicLike | null> {
+  for (const [service, characteristic] of [
+    [V3_BATTERY_SERVICE, V3_BATTERY_CHAR],
+    [V3_DOCUMENTED_BATTERY_SERVICE, V3_DOCUMENTED_BATTERY_CHAR],
+  ] as const) {
+    try {
+      return await (await server.getPrimaryService(service)).getCharacteristic(characteristic);
+    } catch {
+      // Try the next layout.
+    }
+  }
+  return null;
+}
+
+/**
  * Shared connect sequence for the sensor-family adapters (paw-prints,
  * civet-edging): open the shared 0x180C write/notify characteristics, wire
  * the notification listener, run the V3-family handshake, then a
@@ -166,16 +189,13 @@ export async function connectSensorGatt(
 
   await performV3FamilyConnectHandshake(context.server, writeChar);
 
+  // Best-effort: a missing battery never fails the connection and stays unknown, not 0%.
+  const batteryChar = await findV3FamilyBatteryChar(context.server);
   let battery: number | undefined;
   try {
-    const batteryService = await context.server.getPrimaryService(V3_BATTERY_SERVICE);
-    const batteryChar = await batteryService.getCharacteristic(V3_BATTERY_CHAR);
-    const value = await batteryChar.readValue();
-    battery = value.getUint8(0);
+    battery = batteryChar ? (await batteryChar.readValue()).getUint8(0) : undefined;
   } catch {
-    // Best-effort — some firmware/pairing states expose the service but
-    // reject the read; a failure here shouldn't fail the whole connection.
-    // Keep it unavailable rather than displaying a false 0% charge.
+    battery = undefined;
   }
 
   return {

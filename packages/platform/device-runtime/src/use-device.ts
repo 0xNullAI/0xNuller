@@ -110,7 +110,8 @@ export function useDevice({ moduleId, registry }: UseDeviceOptions) {
     setConnected(primary?.connected ?? false);
     setStrengthA(primary?.strengthA ?? 0);
     setStrengthB(primary?.strengthB ?? 0);
-    setBattery(primary ? (primary.battery ?? 0) : null);
+    // Unknown battery is null (hidden), never a false 0%.
+    setBattery(primary?.battery ?? null);
     setWaveActiveA(primary?.waveActiveA ?? false);
     setWaveActiveB(primary?.waveActiveB ?? false);
     setWaveIdA(primary?.waveIdA ?? null);
@@ -120,7 +121,7 @@ export function useDevice({ moduleId, registry }: UseDeviceOptions) {
     // Keep deviceInfo on the same host as every other scalar.
     setDeviceInfo(
       primary
-        ? { version: primary.version, name: primary.name, battery: primary.battery ?? 0 }
+        ? { version: primary.version, name: primary.name, battery: primary.battery ?? null }
         : null,
     );
     // The registry emits on every protocol tick while a device is attached. Reuse the previous
