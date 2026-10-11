@@ -17,9 +17,10 @@ CREATE INDEX idx_items_character_portrait
   WHERE type = 'scenario' AND hidden = 0;
 
 -- Final D1 write rejects an image deleted after the Worker preflight check.
+-- Triggers use iif rather than CASE ... END, which D1's remote statement splitter misreads.
 CREATE TRIGGER validate_character_portrait_insert
 BEFORE INSERT ON items
-WHEN CASE WHEN json_valid(NEW.content) THEN json_extract(NEW.content, '$.portraitId') END IS NOT NULL
+WHEN iif(json_valid(NEW.content), json_extract(NEW.content, '$.portraitId'), NULL) IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'invalid character portrait')
   WHERE NOT EXISTS (
@@ -30,7 +31,7 @@ END;
 
 CREATE TRIGGER validate_character_portrait_update
 BEFORE UPDATE OF content ON items
-WHEN CASE WHEN json_valid(NEW.content) THEN json_extract(NEW.content, '$.portraitId') END IS NOT NULL
+WHEN iif(json_valid(NEW.content), json_extract(NEW.content, '$.portraitId'), NULL) IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'invalid character portrait')
   WHERE NOT EXISTS (

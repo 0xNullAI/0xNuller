@@ -8,6 +8,27 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+/**
+ * D1's remote statement splitter ends a trigger at the first `END;`, so a CASE expression that
+ * closes with `END;` inside a trigger body cuts the trigger short ("incomplete input") although
+ * local SQLite accepts it. Use RAISE ... WHERE or iif() instead.
+ */
+function assertD1SplittableTriggers(name, sql) {
+  const code = sql.replace(/--[^\n]*/g, '').replace(/'(?:[^']|'')*'/g, "''");
+  for (const start of code.matchAll(/CREATE\s+TRIGGER\b/gi)) {
+    let caseDepth = 0;
+    const tokens = code.slice(start.index).matchAll(/\b(CASE|END)\b(\s*;)?/gi);
+    for (const token of tokens) {
+      if (token[1].toUpperCase() === 'CASE') caseDepth += 1;
+      else if (caseDepth === 0) break;
+      else {
+        caseDepth -= 1;
+        assert(!token[2], `${name}: a CASE ... END; inside a trigger breaks D1's remote splitter`);
+      }
+    }
+  }
+}
+
 function applyMigrations(relativeDirectory) {
   const directory = join(root, relativeDirectory);
   const db = new DatabaseSync(':memory:');
@@ -16,7 +37,11 @@ function applyMigrations(relativeDirectory) {
     .filter((file) => file.endsWith('.sql'))
     .sort();
   assert(files.length > 0, `${relativeDirectory}: no migrations`);
-  for (const file of files) db.exec(readFileSync(join(directory, file), 'utf8'));
+  for (const file of files) {
+    const sql = readFileSync(join(directory, file), 'utf8');
+    assertD1SplittableTriggers(`${relativeDirectory}/${file}`, sql);
+    db.exec(sql);
+  }
   assert(
     db.prepare('PRAGMA integrity_check').get().integrity_check === 'ok',
     `${relativeDirectory}: integrity_check failed`,

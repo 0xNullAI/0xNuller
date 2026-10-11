@@ -36,8 +36,11 @@ BEGIN SELECT RAISE(ABORT,'memory person must belong to the same active relations
 -- The old fact must never silently return to the model or a human share.
 CREATE TRIGGER validate_memory_supersession BEFORE UPDATE OF superseded_by_id ON personal_memories
 WHEN NEW.superseded_by_id IS NOT OLD.superseded_by_id
+-- No CASE ... END inside a trigger body: D1's remote statement splitter takes that END
+-- for the end of the trigger. RAISE ... WHERE has the same effect.
 BEGIN
-  SELECT CASE WHEN OLD.superseded_by_id IS NOT NULL OR NEW.superseded_by_id IS NULL
+  SELECT RAISE(ABORT,'invalid memory supersession')
+  WHERE OLD.superseded_by_id IS NOT NULL OR NEW.superseded_by_id IS NULL
     OR NEW.superseded_by_id=OLD.id OR OLD.deleted_at IS NOT NULL OR OLD.state<>'active'
     OR NOT EXISTS (
       SELECT 1 FROM personal_memories newer
@@ -46,7 +49,7 @@ BEGIN
         AND newer.state='active' AND newer.deleted_at IS NULL
         AND newer.superseded_by_id IS NULL
         AND (newer.expires_at IS NULL OR newer.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000)
-    ) THEN RAISE(ABORT,'invalid memory supersession') END;
+    );
 END;
 
 CREATE TRIGGER memory_people_on_relationship_delete AFTER UPDATE OF deleted_at ON character_relationships

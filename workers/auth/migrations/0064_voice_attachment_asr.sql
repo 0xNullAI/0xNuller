@@ -22,7 +22,8 @@ CREATE INDEX idx_voice_attachment_asr_jobs_recovery
 CREATE TRIGGER redact_asr_after_attachment_delete
 AFTER DELETE ON private_conversation_attachments BEGIN
   UPDATE voice_attachment_asr_jobs SET transcript=NULL,
-    state=CASE WHEN state IN ('running','settlement_pending') THEN 'needs_review' ELSE state END,
+    -- iif, not CASE ... END: D1's remote splitter ends the trigger at that END.
+    state=iif(state IN ('running','settlement_pending'),'needs_review',state),
     updated_at=CAST(strftime('%s','now') AS INTEGER)*1000
   WHERE user_id=OLD.user_id AND conversation_id=OLD.conversation_id AND attachment_id=OLD.id;
 END;
