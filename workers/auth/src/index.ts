@@ -30,7 +30,6 @@ import { handleAgentRuns, runAgentRunMaintenance } from './agent-runs';
 import { handleCompanionLife } from './companion-life';
 import { handleCreditActivity } from './credit-activity';
 import { handleMediaJobs, runMediaJobs } from './media-jobs';
-import { handleModelCatalog } from './model-catalog';
 import { hashPassword } from './password';
 import { handleMemoryContext } from './memory-context';
 import { normalizeProfileLink, safeProfileLinks } from '@0xnullai/auth/profile-links';
@@ -1382,8 +1381,6 @@ export default {
     );
 
     try {
-      const modelCatalog = await handleModelCatalog(request, cors);
-      if (modelCatalog) return modelCatalog;
       const backupResponse = await handleAuthChatBackupExport(request, env);
       if (backupResponse) return backupResponse;
       const autoMemoryResponse = await handleAutoMemory(request, env, cors);
