@@ -1,7 +1,7 @@
 import { BillingOrdersPanel } from './BillingOrdersPanel';
 import { publicPageUrl } from '@0xnullai/settings';
 import { CreditActivityPanel } from './CreditActivityPanel';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Coins, Copy, Gift, Laptop, Mail, Share2 } from 'lucide-react';
 import { SettingsGroup, SettingsRow } from './settings-list';
 import { Avatar, Button, Input } from '@0xnullai/ui';
@@ -90,16 +90,21 @@ export function AccountContent({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const verifyToken = useRef(new URLSearchParams(window.location.search).get('verify'));
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('verify');
+    const token = verifyToken.current;
     if (!token) return;
+    // A verification link is single-use. Consume it before the request so a
+    // re-run of this effect (a new `onUser`) cannot resubmit a spent token and
+    // show "link expired" next to the success notice.
+    verifyToken.current = null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('verify');
+    window.history.replaceState(null, '', url);
     void confirmEmailVerification(token)
       .then(async () => {
         onUser(await me());
         setNotice('邮箱验证成功');
-        const url = new URL(window.location.href);
-        url.searchParams.delete('verify');
-        window.history.replaceState(null, '', url);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '验证失败'));
   }, [onUser]);
