@@ -97,6 +97,17 @@ export default function App() {
     apply();
     return subscribeDeviceSafety(apply);
   }, []);
+  // The attached Opossum may also have its own, lower limit; the registry enforces the smaller
+  // of the two, so the ring shows that one.
+  const opossumCapA = device.opossum?.limitA;
+  const opossumCapB = device.opossum?.limitB;
+  const opossumCaps = useMemo(
+    () => ({
+      a: Math.min(opossumLimits.a, opossumCapA ?? opossumLimits.a),
+      b: Math.min(opossumLimits.b, opossumCapB ?? opossumLimits.b),
+    }),
+    [opossumLimits, opossumCapA, opossumCapB],
+  );
 
   const outputTargets = useMemo<OutputTarget[]>(
     () => [
@@ -113,13 +124,13 @@ export default function App() {
               kind: 'opossum' as const,
               label: '负鼠',
               opossum: device.opossum,
-              limitA: opossumLimits.a,
-              limitB: opossumLimits.b,
+              limitA: opossumCaps.a,
+              limitB: opossumCaps.b,
             },
           ]
         : []),
     ],
-    [coyotes, device.opossum, opossumLimits],
+    [coyotes, device.opossum, opossumCaps],
   );
   const selectedOutput =
     outputTargets.find((target) => target.id === selectedOutputId) ?? outputTargets[0] ?? null;
@@ -313,7 +324,7 @@ export default function App() {
         if (waveform?.modality === 'vibration') {
           device.setOpossumWaveform(channel, waveform.frames, waveform.id);
         } else return;
-        const limit = channel === 'A' ? opossumLimits.a : opossumLimits.b;
+        const limit = channel === 'A' ? opossumCaps.a : opossumCaps.b;
         device.setOpossumIntensity(channel, Math.min(limit, DEFAULT_OPOSSUM_START_INTENSITY));
         return;
       }
@@ -330,7 +341,7 @@ export default function App() {
     [
       device,
       devicePlayback,
-      opossumLimits,
+      opossumCaps,
       outputTargets,
       startChannel,
       stopFire,
