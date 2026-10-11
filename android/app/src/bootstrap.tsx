@@ -1,5 +1,3 @@
-import { DesktopLifecycle } from './DesktopLifecycle';
-import { withDesktopBleHelp, withDesktopConnectHelp } from './desktop-platform';
 import './polyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -38,15 +36,12 @@ import './styles.css';
  * registry below (`NativeBridge.dglab`); there is no per-module device seam.
  */
 
-const desktop = import.meta.env.MODE === 'desktop';
-const connectHelp = desktop ? withDesktopConnectHelp : withConnectPermissionHelp;
-const permissionHelp = desktop ? withDesktopBleHelp : withBlePermissionHelp;
-if (!desktop) installAndroidShellBehaviours();
+installAndroidShellBehaviours();
 // If Bluetooth permission was granted on an earlier run, begin collecting
 // named DG-Lab advertisements behind the splash screen. Missing permission is
 // deliberately not requested here; the user's first connect action owns that
 // system prompt and its explanatory UI.
-if (!desktop) void prewarmDgLabDeviceScan().catch(() => undefined);
+void prewarmDgLabDeviceScan().catch(() => undefined);
 
 // One provider/controller pair for the whole APK. Constructing it does not invoke the native
 // backend; the local default-off setting and a later human scan action gate initialization.
@@ -59,7 +54,10 @@ const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
 // Coyote and Opossum output, on top of the per-client lifecycle wrapper each Coyote keeps
 // (`wrapWithLifecycleSafety` inside the transport).
 const dglab = createUnifiedShellDgLabRegistry({
-  transport: createTauriDgLabTransport({ connectHelp, permissionHelp }),
+  transport: createTauriDgLabTransport({
+    connectHelp: withConnectPermissionHelp,
+    permissionHelp: withBlePermissionHelp,
+  }),
   attachNativeLifecycle: attachAndroidDgLabLifecycle,
 });
 
@@ -79,7 +77,7 @@ const bridge = {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <SplashDismiss />
-    {desktop ? <DesktopLifecycle /> : <UpdateBanner />}
+    <UpdateBanner />
     <NativeBridgeProvider bridge={bridge}>
       <Shell />
     </NativeBridgeProvider>

@@ -227,12 +227,9 @@ shared shell safety controller independently stops on lease handoff and browser/
 signals. No physical-device or Android lifecycle validation has been performed. See
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
-## Windows and macOS
+## WebView requirements
 
-The same native host also builds independent Windows x64 and macOS arm64 applications.
-Use `npm run desktop:dev` or `npm run desktop:build -- --bundles app` from the repository root.
-The desktop overlay is `src-tauri/tauri.desktop.conf.json`; Android identity/configuration remains
-unchanged. Desktop identity is `ai.nullai.desktop`. See [desktop.md](../../docs/desktop.md).
+Only Android is built from this host; Windows and macOS installers are no longer shipped.
 
 Android 8+ remains the OS minimum, but the installed Android System WebView must be version 111+.
 Older engines show an upgrade message before the application bootstrap is loaded. Removing CSS

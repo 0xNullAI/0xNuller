@@ -10,10 +10,6 @@
     "tauri": "tauri",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",
-    "build:desktop": "vite build --mode desktop",
-    "dev:desktop": "vite --mode desktop",
-    "desktop:build": "tauri build --config src-tauri/tauri.desktop.conf.json",
-    "desktop:dev": "tauri dev --config src-tauri/tauri.desktop.conf.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

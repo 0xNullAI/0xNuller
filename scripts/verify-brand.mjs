@@ -30,7 +30,9 @@ for (const app of apps) {
   }
 }
 
-for (const icon of ['32x32.png', '128x128.png', 'icon.png', 'icon.ico']) {
+// generate_context! takes the default window icon from the bundle PNG; Android
+// launcher icons are generated from brand/icon by prepare-android-release.mjs.
+for (const icon of ['icon.png']) {
   const path = `android/app/src-tauri/icons/${icon}`;
   if (!existsSync(path)) fail(`${path} is missing`);
 }

@@ -46,8 +46,6 @@ const CROSS_ORIGIN_CLIENTS = new Set([
   'https://0xnullai.com',
   'https://www.0xnullai.com',
   'http://tauri.localhost',
-  'https://tauri.localhost',
-  'tauri://localhost',
 ]);
 
 function clientCorsHeaders(request: Request): Headers {

@@ -19,8 +19,8 @@ apps/web                           android/app
                  Web Bluetooth 或 Tauri BLE 传输
 ```
 
-`apps/web` 与 `android/app` 是组合外壳；后者同时装配 Android、Windows 和 macOS 原生版本。功能 app 负责界面特有交互，需要跨界面保持一致的
-行为必须进入共享包。
+`apps/web` 与 `android/app` 是组合外壳；后者只装配 Android 原生版本。功能 app 负责界面特有交互，
+需要跨界面保持一致的行为必须进入共享包。
 
 ## 分层职责
 
@@ -53,7 +53,7 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 ### 共享 DG-Lab 连接
 
 每个应用实例只有一个 `DgLabConnectionRegistry`（`@0xnullai/device-runtime`）。外壳在 React
-渲染前创建它：Web 使用 Web Bluetooth transport，Android/桌面使用 `createTauriDgLabTransport`
+渲染前创建它：Web 使用 Web Bluetooth transport，Android 使用 `createTauriDgLabTransport`
 （郊狼保留 `wrapWithLifecycleSafety`）。外壳通过 `NativeBridge.dglab` 交给模块，模块只用
 `useDgLabRegistry()` 读取；单独构建的模块从同一个 hook 得到惰性创建的 Web Bluetooth registry。
 模块不再有自己的设备注入口或 BLE 连接。

@@ -4,7 +4,7 @@
 
 ## 产品与结构
 
-产品名为「猫愿」（仓库、包名与安卓标识仍沿用 0xNuller / ai.nullai.dgagent）。它是一个统一 Web、Android 与桌面应用，包含七个模块（版本以根 `package.json` 为准）：
+产品名为「猫愿」（仓库、包名与安卓标识仍沿用 0xNuller / ai.nullai.dgagent）。它是一个统一 Web 与 Android 应用，包含七个模块（版本以根 `package.json` 为准）：
 
 1. Control
 2. Agent
@@ -25,7 +25,7 @@ apps/video            摄像头理解与视频
 apps/chat             房间、私聊与媒体
 apps/playground       游戏
 apps/market           场景与波形社区
-android/app           单一 Tauri Android / 桌面外壳
+android/app           单一 Tauri Android 外壳
 packages/kit/*        可发布的 @dg-kit 共享层
 packages/platform/*   应用内部共享层
 packages/agent/*      Agent 运行时与浏览器实现

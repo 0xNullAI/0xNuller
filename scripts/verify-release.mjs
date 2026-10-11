@@ -205,8 +205,7 @@ function verifyProductMetadata() {
     !ciWorkflow.startsWith('name: CI') ||
     !ciWorkflow.includes('node scripts/detect-domain-changes.mjs "$domain"') ||
     !ciWorkflow.includes('npm run test:affected') ||
-    !ciWorkflow.includes('npm run test:full') ||
-    !ciWorkflow.includes('name: desktop-gate')
+    !ciWorkflow.includes('npm run test:full')
   ) {
     fail('Unified CI must detect and verify Product, DG-Kit, and DG-MCP changes');
   }

@@ -44,7 +44,6 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
-      '**/dist-desktop/**',
       '**/node_modules/**',
       '**/*.d.ts',
       '**/src-tauri/target/**',

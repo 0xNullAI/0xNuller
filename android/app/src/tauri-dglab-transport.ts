@@ -1,5 +1,5 @@
 /**
- * The Android/desktop `DgLabTransport` for the shared DG-Lab registry: the only path from any
+ * The Android `DgLabTransport` for the shared DG-Lab registry: the only path from any
  * module to a plugin-blec device.
  *
  * Nothing protocol-level lives here. Every Coyote client keeps `wrapWithLifecycleSafety`, every
@@ -23,9 +23,9 @@ import { wrapWithLifecycleSafety } from './lifecycle-safety';
 import { requestDeviceTauri } from './request-device-tauri';
 
 export interface TauriDgLabTransportOptions {
-  /** `withConnectPermissionHelp` on Android, `withDesktopConnectHelp` on desktop. */
+  /** `withConnectPermissionHelp` from the Android shell. */
   connectHelp: <T extends { connect(): Promise<void> }>(client: T) => T;
-  /** `withBlePermissionHelp` on Android, `withDesktopBleHelp` on desktop. */
+  /** `withBlePermissionHelp` from the Android shell. */
   permissionHelp: <T>(call: () => Promise<T>) => Promise<T>;
 }
 

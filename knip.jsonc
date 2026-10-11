@@ -15,6 +15,17 @@
       // Tailwind is resolved by @tailwindcss/vite from CSS rather than a JS import.
       "ignoreDependencies": ["tailwindcss"],
     },
+    // Control, Playground and Video have no entry of their own: apps/web/src/modules/* mounts
+    // their App through a relative cross-workspace import, which knip does not credit.
+    "apps/control": {
+      "entry": ["src/App.tsx"],
+    },
+    "apps/playground": {
+      "entry": ["src/App.tsx"],
+    },
+    "apps/video": {
+      "entry": ["src/App.tsx"],
+    },
     "apps/chat": {
       "entry": ["src/types/web-bluetooth.d.ts", "worker-configuration.d.ts"],
       // `cloudflare:workers` is a runtime virtual module, not an npm package.

@@ -188,7 +188,6 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
     builder
         .manage(coordinator)
         .invoke_handler(tauri::generate_handler![
-            crate::desktop_lifecycle::desktop_finish_exit,
             dg_blec_claim_scanner,
             dg_blec_release_scanner,
         ])
@@ -197,6 +196,8 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
 /// Stops plugin-blec before releasing its scanner claim when Android tears
 /// down or suspends the WebView. Failure retains the lease and therefore
 /// keeps the experimental scanner fail-closed.
+// Only Android lifecycle hooks call this; host builds compile it for tests.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) fn request_dg_lifecycle_cleanup(coordinator: ScanCoordinator) {
     tauri::async_runtime::spawn(async move {
         let Some(lease) = coordinator.lease() else {
