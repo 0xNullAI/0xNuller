@@ -182,7 +182,8 @@ export interface WireGroup {
 /** Longest group name the DO will store. */
 export const MIN_GROUP_NAME = 4;
 export const MAX_GROUP_NAME = 40;
-export const ROOM_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Every group, long-term or not, is recycled after this long with nobody connected. */
+export const ROOM_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function validGroupName(value: unknown): value is string {
   return (

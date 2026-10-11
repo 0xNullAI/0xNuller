@@ -906,12 +906,7 @@ export class RoomDO extends DurableObject<Env> {
       return;
     }
     await this.reportLobby(0);
-    if (
-      code &&
-      !isDmRoomCode(code) &&
-      (!(await this.ctx.storage.get<boolean>('persistentHistory')) ||
-        (await this.ctx.storage.get<boolean>('closed')) === true)
-    ) {
+    if (code && !isDmRoomCode(code)) {
       const idleSince = (await this.ctx.storage.get<number>('idleSince')) ?? Date.now();
       await this.ctx.storage.put('idleSince', idleSince);
       await this.ctx.storage.setAlarm(idleSince + ROOM_IDLE_MS);
@@ -1194,11 +1189,6 @@ export class RoomDO extends DurableObject<Env> {
   async recycleIdleRoom(lastReport: number): Promise<boolean> {
     const code = await this.code();
     if (!code || isDmRoomCode(code)) return false;
-    if (
-      (await this.ctx.storage.get<boolean>('persistentHistory')) === true &&
-      (await this.ctx.storage.get<boolean>('closed')) !== true
-    )
-      return false;
     const count = this.ctx.getWebSockets().length;
     if (count > 0) {
       // Correct stale legacy lobby reports so occupied rows cannot starve later sweep batches.

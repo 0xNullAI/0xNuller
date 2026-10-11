@@ -355,7 +355,7 @@ export function ChatAppView({
           !peerRoom.persistentHistory &&
           peerRoom.canManageGroup && (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--surface-border)] px-3 py-2 text-xs">
-              <span>此旧群仍使用限量历史与七天闲置回收。</span>
+              <span>此旧群仍使用限量历史。</span>
               <button
                 type="button"
                 onClick={peerRoom.keepGroupHistory}

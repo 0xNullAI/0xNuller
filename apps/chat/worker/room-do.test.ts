@@ -286,14 +286,16 @@ it('rejects oversized room agent updates without truncating or replacing the per
   await r.instance.webSocketMessage(ws, JSON.stringify({ t: 'agent', agent: valid }));
   expect(r.values.get('agent')).toEqual(valid);
 });
-it('长期群不因闲置删除，但显式关闭后仍能完成旧清理流程', async () => {
+it('长期群闲置满 30 天同样回收，未满不回收', async () => {
+  const fresh = room('fresh-room', Date.now() - ROOM_IDLE_MS + 60_000);
+  fresh.values.set('persistentHistory', true);
+  expect(await fresh.instance.recycleIdleRoom(Date.now() - ROOM_IDLE_MS)).toBe(false);
+  expect(fresh.sql.exec).not.toHaveBeenCalledWith('DELETE FROM messages');
   const r = room();
   r.values.set('persistentHistory', true);
-  expect(await r.instance.recycleIdleRoom(Date.now() - ROOM_IDLE_MS)).toBe(false);
-  expect(r.sql.exec).not.toHaveBeenCalledWith('DELETE FROM messages');
-  r.values.set('closed', true);
   expect(await r.instance.recycleIdleRoom(Date.now() - ROOM_IDLE_MS)).toBe(true);
   expect(r.sql.exec).toHaveBeenCalledWith('DELETE FROM messages');
+  expect(ROOM_IDLE_MS).toBe(30 * 24 * 60 * 60 * 1000);
 });
 it('升级长期群仍要求群主账号，主持人和普通参与者都不能更改保留策略', async () => {
   const r = room();
