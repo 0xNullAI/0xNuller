@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { Bot, CheckCheck, MessageCircle, Search, SquarePen, UserRound, Users } from 'lucide-react';
+import {
+  Bot,
+  CheckCheck,
+  Compass,
+  MessageCircle,
+  Search,
+  SquarePen,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { ModuleActions } from '@0xnullai/ui';
 import {
   currentAuthUserId,
@@ -7,7 +16,6 @@ import {
   subscribeAuthChanges,
   listPrivateConversationSummaries,
   selectAgentInboxConversation,
-  requestNewAgentInboxConversation,
 } from '@0xnullai/auth';
 import {
   loadChatInboxDisplayWithStatus,
@@ -16,7 +24,8 @@ import {
 } from '../../chat/src/inbox';
 import type { AuthUser } from '@0xnullai/auth';
 import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
-import { loadScenes } from '@0xnullai/scenes';
+import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
+import { openCharacterChat } from './open-character-chat';
 interface InboxRow {
   id: string;
   routeId: string;
@@ -382,20 +391,30 @@ export function UnifiedInbox({
       if (epoch === authEpoch.current) setLoadingMore(false);
     }
   };
+  // Every AI chat starts with a chosen character; the menu lists them.
   const startAi = () => {
-    if (!accountId) {
-      onOpenAccount();
-      return;
-    }
-    requestNewAgentInboxConversation();
-    setNewChatOpen(false);
-    onNavigate('agent');
+    if (!accountId) onOpenAccount();
+    else setNewChatOpen(true);
   };
+  const startCharacter = (characterId: string) => {
+    setNewChatOpen(false);
+    void openCharacterChat(characterId).then((opened) => {
+      if (opened) onNavigate('agent');
+    });
+  };
+  const characters = newChatOpen
+    ? loadScenes().scenes.filter((scene) => savedPromptKind(scene) === 'character')
+    : [];
   const newChatMenu = user ? (
     <NewChatMenu
       open={newChatOpen}
       onOpenChange={setNewChatOpen}
-      onStartAi={startAi}
+      characters={characters}
+      onStartCharacter={startCharacter}
+      onDiscover={() => {
+        setNewChatOpen(false);
+        onNavigate('market');
+      }}
       onFindContact={() => {
         setNewChatOpen(false);
         onNavigate('people');
@@ -682,13 +701,17 @@ const NEW_CHAT_MENU_ID = 'new-chat-options';
 function NewChatMenu({
   open,
   onOpenChange,
-  onStartAi,
+  characters,
+  onStartCharacter,
+  onDiscover,
   onFindContact,
   onCreateRoom,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onStartAi: () => void;
+  characters: { id: string; name: string; icon?: string }[];
+  onStartCharacter: (id: string) => void;
+  onDiscover: () => void;
   onFindContact: () => void;
   onCreateRoom: () => void;
 }) {
@@ -735,8 +758,25 @@ function NewChatMenu({
           aria-label="选择聊天对象"
           className="ui-menu-in absolute right-0 top-full z-[var(--z-shell-popover)] mt-1 w-48 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-panel)]"
         >
-          <button type="button" role="menuitem" onClick={onStartAi} className={item}>
-            <Bot className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />与 AI 聊天
+          <div className="max-h-56 overflow-y-auto">
+            {characters.map((character) => (
+              <button
+                key={character.id}
+                type="button"
+                role="menuitem"
+                onClick={() => onStartCharacter(character.id)}
+                className={item}
+              >
+                <span className="flex h-[18px] w-[18px] items-center justify-center" aria-hidden>
+                  {character.icon ?? <Bot className="h-[18px] w-[18px] text-[var(--text-soft)]" />}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{character.name}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" role="menuitem" onClick={onDiscover} className={item}>
+            <Compass className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            {characters.length ? '找更多角色' : '找个 AI 角色聊天'}
           </button>
           <button type="button" role="menuitem" onClick={onFindContact} className={item}>
             <UserRound className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />

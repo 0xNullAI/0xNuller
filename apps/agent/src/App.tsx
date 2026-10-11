@@ -36,7 +36,7 @@ import {
   useTheme,
 } from '@0xnullai/ui';
 import { useDgLabRegistry, useIsNative, useNativeBridge } from '@0xnullai/native';
-import { withImportedMarketScene } from '@0xnullai/scenes';
+import { savedPromptKind, withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
@@ -583,11 +583,8 @@ export function App({ servicesOverrides }: AppProps = {}) {
     }
   }, [activeSessionId, dglab, device, liveDeviceState.connected, refreshCurrentSession]);
 
-  const {
-    characterId: conversationCharacterId,
-    sceneId: conversationSceneId,
-    boundPresetId,
-  } = resolveConversationCards(session, activeSessionId, sceneLib);
+  const { characterId: conversationCharacterId, sceneId: conversationSceneId } =
+    resolveConversationCards(session, activeSessionId, sceneLib);
   const hasExplicitConversationScene =
     session?.id === activeSessionId && typeof session.metadata?.sceneId === 'string';
 
@@ -1167,6 +1164,12 @@ export function App({ servicesOverrides }: AppProps = {}) {
               characterIcon={
                 sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.icon
               }
+              scenes={sceneLib.scenes.filter((scene) => savedPromptKind(scene) === 'scene')}
+              sceneId={conversationSceneId || null}
+              onSceneChange={(id) => void changeConversationScene(id)}
+              onImportScene={(item) =>
+                updateSceneLib((prev) => withImportedMarketScene(prev, item))
+              }
               characterName={
                 sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.name ??
                 BUILTIN_PROMPT_PRESETS.find((preset) => preset.id === conversationCharacterId)
@@ -1308,23 +1311,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
               onOpenSidebar={() => setSidebarOpen(true)}
               onOpenSettings={() => openShellSettings('scenes')}
               promptPresetId={conversationCharacterId}
-              sceneId={conversationSceneId}
               savedPresets={sceneLib.scenes}
-              onPresetChange={(id) => {
-                updateSceneLib((prev) => ({ ...prev, selectedId: id }));
-                if (
-                  (boundPresetId && boundPresetId !== id) ||
-                  (!boundPresetId && session?.messages.length)
-                ) {
-                  void createNewSession().catch((error) =>
-                    setErrorMessage(formatUiErrorMessage(error)),
-                  );
-                }
-              }}
-              onSceneChange={(id) => void changeConversationScene(id)}
-              onImportPreset={(item) =>
-                updateSceneLib((prev) => withImportedMarketScene(prev, item))
-              }
               coyoteTargets={connectedCoyotes.map(({ id, state }, index) => ({
                 id,
                 label:

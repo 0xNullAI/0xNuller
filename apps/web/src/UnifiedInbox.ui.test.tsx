@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@0xnullai/auth';
+import type * as ScenesModule from '@0xnullai/scenes';
 import { UnifiedInbox, currentInboxRowId } from './UnifiedInbox';
 
 const state = vi.hoisted(() => ({
@@ -17,7 +18,14 @@ const state = vi.hoisted(() => ({
   selectChat: vi.fn(),
   authChanged: null as (() => void) | null,
   photos: {} as Record<string, string>,
+  scenes: [] as { id: string; name: string; prompt: string; kind?: string }[],
+  openCharacter: vi.fn(async () => true),
 }));
+vi.mock('@0xnullai/scenes', async (importOriginal) => ({
+  ...(await importOriginal<typeof ScenesModule>()),
+  loadScenes: () => ({ scenes: state.scenes, selectedId: '' }),
+}));
+vi.mock('./open-character-chat', () => ({ openCharacterChat: state.openCharacter }));
 vi.mock('@0xnullai/auth/appearance-react', () => ({
   useCharacterPhoto: (photoId: string | null) => (photoId ? (state.photos[photoId] ?? null) : null),
 }));
@@ -58,6 +66,8 @@ beforeEach(() => {
   state.selectAi.mockReset();
   state.newAi.mockReset();
   state.selectChat.mockReset();
+  state.scenes = [];
+  state.openCharacter.mockClear();
   state.list.mockResolvedValue({
     items: [
       {
@@ -276,9 +286,32 @@ it('把 AI 与真人群聊放在同一列表，并从一行进入原有 owner', 
   expect(state.selectChat).toHaveBeenCalledWith({ kind: 'group', code: 'g' });
   expect(navigate).toHaveBeenCalledWith('chat?room=g');
   fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '与 AI 聊天' }));
-  expect(state.newAi).toHaveBeenCalledOnce();
-  expect(navigate).toHaveBeenLastCalledWith('agent');
+  fireEvent.click(screen.getByRole('menuitem', { name: '找个 AI 角色聊天' }));
+  expect(state.newAi).not.toHaveBeenCalled();
+  expect(navigate).toHaveBeenLastCalledWith('market');
+});
+
+it('starts an AI chat by choosing one of the imported characters', async () => {
+  state.list.mockResolvedValue({ items: [] });
+  state.chat.mockResolvedValue([]);
+  state.scenes = [
+    { id: 'market-1', kind: 'character', name: '小夜', prompt: '人设' },
+    { id: 'forest', kind: 'scene', name: '森林', prompt: '环境' },
+  ];
+  const navigate = vi.fn();
+  render(
+    <UnifiedInbox
+      user={user('alice')}
+      onNavigate={navigate}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
+  expect(screen.queryByRole('menuitem', { name: '森林' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: /小夜/ }));
+  expect(state.openCharacter).toHaveBeenCalledWith('market-1');
+  await vi.waitFor(() => expect(navigate).toHaveBeenLastCalledWith('agent'));
 });
 
 it('offers AI and personal chat from the same new-chat entry and labels conversation kinds', async () => {
@@ -762,11 +795,11 @@ it('opens the new-chat icon menu, closes it on Escape or an outside press, and c
   expect(trigger.getAttribute('aria-expanded')).toBe('true');
   const menu = screen.getByRole('menu', { name: '选择聊天对象' });
   expect([...menu.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual([
-    '与 AI 聊天',
+    '找个 AI 角色聊天',
     '找联系人聊天',
     '创建群聊',
   ]);
-  expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '与 AI 聊天' }));
+  expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '找个 AI 角色聊天' }));
 
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.queryByRole('menu')).toBeNull();

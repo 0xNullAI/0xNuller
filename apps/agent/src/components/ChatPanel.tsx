@@ -3,7 +3,6 @@ import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import { savedPromptKind, type SavedScene } from '@0xnullai/scenes';
 import { AssistantAvatar } from './AssistantAvatar.js';
-import type { MarketItem } from '@0xnullai/market-client';
 import {
   adaptPrivateAiTimeline,
   type TimelineItem as ConversationTimelineItem,
@@ -19,8 +18,6 @@ import {
 import {
   ArrowUp,
   Bluetooth,
-  ChevronDown,
-  Check,
   Gauge,
   Mic,
   CircleStop,
@@ -31,7 +28,6 @@ import {
   PanelLeft,
   PawPrint,
   Settings,
-  Store,
   Vibrate,
   Zap,
 } from 'lucide-react';
@@ -52,7 +48,6 @@ import {
   Button,
   ConversationInput,
   RecordedVoicePreview,
-  MarketImportDialog,
   Z_LOCAL_POPOVER,
   useInShell,
 } from '@0xnullai/ui';
@@ -104,11 +99,7 @@ interface ChatPanelProps {
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
   promptPresetId: string;
-  sceneId: string;
   savedPresets: SavedScene[];
-  onPresetChange: (id: string) => void;
-  onSceneChange: (id: string | null) => void;
-  onImportPreset: (item: MarketItem) => void;
   coyoteTargets: Array<{ id: string; label: string }>;
   activeCoyoteId: string | null;
   onCoyoteTargetChange: (id: string) => void;
@@ -175,11 +166,7 @@ export function ChatPanel({
   onOpenSidebar,
   onOpenSettings,
   promptPresetId,
-  sceneId,
   savedPresets,
-  onPresetChange,
-  onSceneChange,
-  onImportPreset,
   coyoteTargets,
   activeCoyoteId,
   onCoyoteTargetChange,
@@ -259,9 +246,6 @@ export function ChatPanel({
     Boolean(streamingAssistantText),
   );
   const voiceModeAvailable = speechRecognitionEnabled && speechRecognitionSupported;
-  const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
-  const [marketImportOpen, setMarketImportOpen] = useState(false);
-  const sceneDropdownRef = useRef<HTMLDivElement>(null);
   const [attachmentMenuState, setAttachmentMenuState] = useState<{ owner: string | null } | null>(
     null,
   );
@@ -449,22 +433,11 @@ export function ChatPanel({
     };
   }, [activeSessionId, observedSequence, onTranscriptTailVisibilityChange, sessionId]);
 
-  const characters = savedPresets.filter((preset) => savedPromptKind(preset) === 'character');
-  const scenes = savedPresets.filter((preset) => savedPromptKind(preset) === 'scene');
-  const activeCharacter = characters.find((preset) => preset.id === promptPresetId);
-  const activeScene = scenes.find((preset) => preset.id === sceneId);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (sceneDropdownRef.current && !sceneDropdownRef.current.contains(e.target as Node)) {
-        setSceneDropdownOpen(false);
-      }
-    }
-    if (sceneDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [sceneDropdownOpen]);
+  // Character and scene are chosen in the conversation's settings (tap the name),
+  // not from the composer.
+  const activeCharacter = savedPresets.find(
+    (preset) => preset.id === promptPresetId && savedPromptKind(preset) === 'character',
+  );
 
   useEffect(() => {
     if (!attachmentMenuOpen) return;
@@ -1021,83 +994,6 @@ export function ChatPanel({
                 {attachmentError}
               </p>
             )}
-            <div className="relative flex items-center px-1" ref={sceneDropdownRef}>
-              <button
-                type="button"
-                className="ui-press inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
-                onClick={() => setSceneDropdownOpen((v) => !v)}
-                aria-expanded={sceneDropdownOpen}
-              >
-                <span>{activeCharacter?.icon ?? '✦'}</span>
-                <span className="max-w-36 truncate">
-                  {activeCharacter?.name ?? 'AI'}
-                  {activeScene ? ` · ${activeScene.name}` : ''}
-                </span>
-                <ChevronDown className="h-3 w-3" />
-              </button>
-              {sceneDropdownOpen && (
-                <div
-                  className={`ui-menu-in absolute bottom-full left-0 ${Z_LOCAL_POPOVER} mb-1 max-h-72 w-52 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-lg`}
-                  style={{ transformOrigin: 'bottom left' }}
-                >
-                  <div className="px-2 py-1 text-[11px] text-[var(--text-faint)]">角色</div>
-                  {characters.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-                      onClick={() => {
-                        onPresetChange(preset.id);
-                        setSceneDropdownOpen(false);
-                      }}
-                    >
-                      <span>{preset.icon ?? '✦'}</span>
-                      <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-                      {preset.id === promptPresetId && <Check className="h-4 w-4" />}
-                    </button>
-                  ))}
-                  <div className="border-t border-[var(--surface-border)] px-2 py-1 text-[11px] text-[var(--text-faint)]">
-                    场景
-                  </div>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-                    onClick={() => {
-                      onSceneChange(null);
-                      setSceneDropdownOpen(false);
-                    }}
-                  >
-                    <span className="min-w-0 flex-1">无场景</span>
-                    {!sceneId && <Check className="h-4 w-4" />}
-                  </button>
-                  {scenes.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-                      onClick={() => {
-                        onSceneChange(preset.id);
-                        setSceneDropdownOpen(false);
-                      }}
-                    >
-                      <span>{preset.icon ?? '✦'}</span>
-                      <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-                      {preset.id === sceneId && <Check className="h-4 w-4" />}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 border-t border-[var(--surface-border)] px-2 py-2 text-left text-sm"
-                    onClick={() => {
-                      setSceneDropdownOpen(false);
-                      setMarketImportOpen(true);
-                    }}
-                  >
-                    <Store className="h-4 w-4" />从 Market 导入角色或场景
-                  </button>
-                </div>
-              )}
-            </div>
             <div className="flex items-end gap-1.5">
               <input
                 ref={imageInputRef}
@@ -1274,16 +1170,6 @@ export function ChatPanel({
           )}
         </>
       }
-
-      <MarketImportDialog
-        open={marketImportOpen}
-        onOpenChange={setMarketImportOpen}
-        type="scenario"
-        onImport={(item) => {
-          onImportPreset(item);
-          setMarketImportOpen(false);
-        }}
-      />
     </div>
   );
 }

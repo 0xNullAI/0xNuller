@@ -10,7 +10,7 @@ import {
   type Ref,
   type ReactNode,
 } from 'react';
-import { ArrowLeft, ChevronRight, Heart, Settings2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Heart, Store } from 'lucide-react';
 import {
   currentAuthUserId,
   subscribeAuthChanges,
@@ -30,11 +30,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  MarketImportDialog,
   ModuleSettingsSection,
   useInShell,
   useSettingsSubpage,
   useOpenShellSettings,
 } from '@0xnullai/ui';
+import type { MarketItem } from '@0xnullai/market-client';
 import { RelationshipPanel } from './RelationshipPanel';
 import { AdvancedSettingsArea } from './AdvancedSettings';
 const MemoryReviewPanel = lazy(() =>
@@ -69,6 +71,11 @@ interface Props {
   onBack?: () => void;
   /** The character's emoji, shown when no portrait is chosen. */
   characterIcon?: string;
+  /** Imported scene cards that can frame this chat; applying one never changes the character. */
+  scenes?: { id: string; name: string; icon?: string }[];
+  sceneId?: string | null;
+  onSceneChange?: (id: string | null) => void;
+  onImportScene?: (item: MarketItem) => void;
 }
 export interface RelationshipAccessHandle {
   openMedia: () => void;
@@ -82,7 +89,12 @@ export function RelationshipAccess({
   conversationId,
   onBack,
   characterIcon,
+  scenes = [],
+  sceneId = null,
+  onSceneChange,
+  onImportScene,
 }: Props) {
+  const [sceneImportOpen, setSceneImportOpen] = useState(false);
   const accountId = useSyncExternalStore(subscribe, currentAuthUserId, () => null);
   const inShell = useInShell();
   const openSettings = useOpenShellSettings();
@@ -161,13 +173,11 @@ export function RelationshipAccess({
         setStandaloneOpen(false);
         openSettings('account');
       }}
-      onScenes={inShell ? () => openSettings('scenes') : undefined}
       pages={[
         {
           id: 'relationship',
           group: '角色与关系',
-          title: '专属称呼与关系',
-          detail: 'AI 的名字、对你的称呼与相处方式',
+          title: '称呼与关系',
           unavailable: !accountId ? '登录后可设置' : undefined,
           content: (
             <RelationshipPanel
@@ -187,8 +197,7 @@ export function RelationshipAccess({
         {
           id: 'memory',
           group: '角色与关系',
-          title: '关系记忆与重要人物',
-          detail: '共同经历、长期记忆和重要的人',
+          title: '记忆',
           advanced: true,
           unavailable: !relationshipId ? '先保存专属关系' : undefined,
           content:
@@ -208,11 +217,47 @@ export function RelationshipAccess({
               </>
             ) : null,
         },
+        ...(onSceneChange
+          ? [
+              {
+                id: 'scene',
+                group: '角色与关系',
+                title: '场景',
+                detail: scenes.find((scene) => scene.id === sceneId)?.name ?? '无场景',
+                unavailable: !characterId ? '先选择角色' : undefined,
+                content: (
+                  <div className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)]">
+                    {[{ id: null, name: '无场景', icon: undefined }, ...scenes].map((scene) => (
+                      <button
+                        key={scene.id ?? 'none'}
+                        type="button"
+                        aria-pressed={scene.id === sceneId}
+                        onClick={() => onSceneChange(scene.id)}
+                        className="flex min-h-11 w-full items-center gap-3 border-b border-[var(--surface-border)] px-4 text-left last:border-b-0 hover:bg-[var(--bg-soft)]"
+                      >
+                        {scene.icon ? <span aria-hidden>{scene.icon}</span> : null}
+                        <span className="min-w-0 flex-1 truncate">{scene.name}</span>
+                        {scene.id === sceneId && <Check className="h-4 w-4" aria-hidden />}
+                      </button>
+                    ))}
+                    {onImportScene && (
+                      <button
+                        type="button"
+                        onClick={() => setSceneImportOpen(true)}
+                        className="flex min-h-11 w-full items-center gap-3 px-4 text-left text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+                      >
+                        <Store className="h-4 w-4" aria-hidden />从 Market 导入场景
+                      </button>
+                    )}
+                  </div>
+                ),
+              },
+            ]
+          : []),
         {
           id: 'appearance',
           group: '角色与关系',
-          title: '角色形象与手绘头像',
-          detail: '选择形象，或亲手给 AI 画头像',
+          title: '头像与形象',
           advanced: true,
           unavailable: !relationshipId ? '先保存专属关系' : undefined,
           content: relationshipId ? (
@@ -225,8 +270,7 @@ export function RelationshipAccess({
         {
           id: 'schedule',
           group: '聊天功能',
-          title: '定时联系与通知',
-          detail: '设置主动联系的时间与方式',
+          title: '定时消息',
           advanced: true,
           unavailable: !relationshipId
             ? '先保存专属关系'
@@ -247,7 +291,6 @@ export function RelationshipAccess({
           id: 'workspace',
           group: '聊天功能',
           title: '任务与文件',
-          detail: '管理这段聊天的任务与资料',
           advanced: true,
           unavailable: !relationshipId
             ? '先保存专属关系'
@@ -264,8 +307,7 @@ export function RelationshipAccess({
         {
           id: 'media',
           group: '聊天功能',
-          title: '生成图片与视频',
-          detail: '创作图片，查看媒体任务',
+          title: '图片与视频',
           unavailable: !relationshipId
             ? '先保存专属关系'
             : !conversationId
@@ -284,19 +326,13 @@ export function RelationshipAccess({
         {
           id: 'device',
           group: '设备',
-          title: '本聊天的设备权限',
-          detail: deviceAllowed ? '已允许请求设备控制' : '未允许请求设备控制',
+          title: '设备权限',
+          detail: deviceAllowed ? '已允许' : '未允许',
           content: (
-            <section
-              aria-label="本聊天的设备权限"
-              className="rounded border border-[var(--surface-border)] p-3"
-            >
-              <h3 className="font-medium">本聊天的设备权限</h3>
-              <p className="my-2 text-xs text-[var(--text-soft)]">
-                开启后本聊天可请求控制设备，停止始终可用。
-              </p>
+            <section aria-label="本聊天的设备权限" className="space-y-2">
               {accountId && conversationId ? (
-                <label className="flex items-center gap-2">
+                <label className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] px-4 py-3">
+                  允许这段聊天控制设备
                   <input
                     type="checkbox"
                     checked={deviceAllowed}
@@ -310,11 +346,11 @@ export function RelationshipAccess({
                       setDeviceAccessError(saved ? '' : '无法保存授权，请检查浏览器存储');
                     }}
                   />
-                  允许这段聊天请求设备控制
                 </label>
               ) : (
                 <p>登录并开始聊天后才能开启。</p>
               )}
+              <p className="px-1 text-xs text-[var(--text-faint)]">停止始终可用。</p>
               {deviceAccessError && (
                 <p role="alert" className="text-[var(--danger)]">
                   {deviceAccessError}
@@ -347,10 +383,9 @@ export function RelationshipAccess({
         ) : null}
         <button
           type="button"
-          onClick={() => open('appearance')}
-          className="shrink-0 rounded-full"
-          aria-label={`更换${displayName}的头像`}
-          title="更换头像"
+          onClick={() => open()}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-full text-left"
+          aria-label={`${displayName} · 聊天设置`}
         >
           <AssistantAvatar
             name={displayName}
@@ -359,27 +394,20 @@ export function RelationshipAccess({
             relationshipId={relationshipId}
             size="md"
           />
+          <strong className="block min-w-0 truncate text-sm">{displayName}</strong>
         </button>
-        <button
-          type="button"
-          onClick={() => open()}
-          className="min-w-0 flex-1 text-left"
-          aria-label={`打开${displayName}的聊天设置`}
-        >
-          <strong className="block truncate text-sm">{displayName}</strong>
-        </button>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => open()}
-            aria-label="聊天设置"
-            title="聊天设置"
-          >
-            <Settings2 className="h-4 w-4" />
-          </Button>
-        </div>
       </ConversationHeader>
+      {onImportScene && (
+        <MarketImportDialog
+          open={sceneImportOpen}
+          onOpenChange={setSceneImportOpen}
+          type="scenario"
+          onImport={(item) => {
+            onImportScene(item);
+            setSceneImportOpen(false);
+          }}
+        />
+      )}
       <ModuleSettingsSection id="agent-companion" label="聊天与角色" icon={Heart} order={25}>
         {settingsBody}
       </ModuleSettingsSection>
@@ -402,7 +430,8 @@ interface RelationshipSettingsPage {
   id: string;
   group: string;
   title: string;
-  detail: string;
+  /** Current value only (场景、设备权限); rows carry no descriptions. */
+  detail?: string;
   unavailable?: string;
   /** The page ends with one flat 高级 section that its panels fill. */
   advanced?: boolean;
@@ -416,14 +445,12 @@ function RelationshipSettingsPages({
   initialPage,
   pages,
   onAccount,
-  onScenes,
 }: {
   title: string;
   accountId: string | null;
   initialPage: string | null;
   pages: RelationshipSettingsPage[];
   onAccount: () => void;
-  onScenes?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialPage);
   const focusHeading = useCallback((node: HTMLHeadingElement | null) => node?.focus(), []);
@@ -475,12 +502,7 @@ function RelationshipSettingsPages({
     );
   return (
     <div className="mx-auto w-full min-w-0 max-w-2xl space-y-6 text-sm">
-      <div className="px-1">
-        <h2 className="text-xl font-semibold tracking-tight">{title} · 聊天设置</h2>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-          管理这段聊天的关系、形象与功能。
-        </p>
-      </div>
+      <h2 className="px-1 text-xl font-semibold tracking-tight">{title}</h2>
       {!accountId && (
         <div className="rounded-2xl bg-[var(--bg-elevated)] p-4">
           <p className="mb-3">登录后可保存专属关系与跨端聊天记录。</p>
@@ -491,11 +513,7 @@ function RelationshipSettingsPages({
       )}
       {['角色与关系', '聊天功能', '设备'].map((group) => (
         <section key={group} aria-label={group}>
-          <h3 className="mb-2 px-3 text-xs font-medium text-[var(--text-faint)]">{group}</h3>
           <div className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)]">
-            {group === '角色与关系' && onScenes && (
-              <SettingsRow title="角色卡与设定" detail="为新聊天选择角色" onClick={onScenes} />
-            )}
             {pages
               .filter((page) => page.group === group)
               .map((page) => (
@@ -510,13 +528,6 @@ function RelationshipSettingsPages({
           </div>
         </section>
       ))}
-      <div className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)]">
-        <SettingsRow
-          title="个人资料与 Credit"
-          detail="管理跨角色资料和账户余额"
-          onClick={onAccount}
-        />
-      </div>
     </div>
   );
 }
@@ -527,7 +538,8 @@ function SettingsRow({
   onClick,
 }: {
   title: string;
-  detail: string;
+  /** A current value (场景、设备权限) or why it is unavailable — never a description. */
+  detail?: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -536,14 +548,14 @@ function SettingsRow({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex min-h-16 w-full min-w-0 items-center gap-3 border-b border-[var(--surface-border)] px-4 py-3 text-left last:border-b-0 hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] disabled:cursor-default disabled:opacity-50"
+      className="flex min-h-12 w-full min-w-0 items-center gap-3 border-b border-[var(--surface-border)] px-4 py-2.5 text-left last:border-b-0 hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] disabled:cursor-default disabled:opacity-50"
     >
-      <span className="min-w-0 flex-1">
-        <span className="block font-medium">{title}</span>
-        <span className="mt-0.5 block text-xs leading-relaxed text-[var(--text-faint)]">
+      <span className="min-w-0 flex-1 font-medium">{title}</span>
+      {detail && (
+        <span className="max-w-[45%] shrink-0 truncate text-xs text-[var(--text-faint)]">
           {detail}
         </span>
-      </span>
+      )}
       <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
     </button>
   );

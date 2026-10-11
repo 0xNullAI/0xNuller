@@ -39,8 +39,6 @@ afterEach(() => {
 });
 
 function makeProps(): ComponentProps<typeof ChatPanel> {
-  const onPresetChange = vi.fn();
-  const onSceneChange = vi.fn();
   const noop = () => undefined;
   return {
     accountId: null,
@@ -83,36 +81,16 @@ function makeProps(): ComponentProps<typeof ChatPanel> {
     onOpenSidebar: noop,
     onOpenSettings: noop,
     promptPresetId: 'character',
-    sceneId: 'forest',
     savedPresets: [
       { id: 'character', kind: 'character', name: '小岚', prompt: '人设' },
       { id: 'forest', kind: 'scene', name: '森林', prompt: '环境' },
       { id: 'city', kind: 'scene', name: '城市', prompt: '环境' },
     ],
-    onPresetChange,
-    onSceneChange,
-    onImportPreset: noop,
     coyoteTargets: [],
     activeCoyoteId: null,
     onCoyoteTargetChange: noop,
   };
 }
-
-it('offers separate character and optional scene choices inside the unified shell', () => {
-  const props = makeProps();
-  render(
-    <ShellChromeProvider openSettings={() => undefined} signedIn>
-      <ChatPanel {...props} />
-    </ShellChromeProvider>,
-  );
-  fireEvent.click(screen.getByRole('button', { name: /小岚 · 森林/ }));
-  fireEvent.click(screen.getByRole('button', { name: /城市/ }));
-  expect(props.onSceneChange).toHaveBeenCalledWith('city');
-  expect(props.onPresetChange).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: /小岚 · 森林/ }));
-  fireEvent.click(screen.getByRole('button', { name: '无场景' }));
-  expect(props.onSceneChange).toHaveBeenLastCalledWith(null);
-});
 
 it('groups AI chat attachments, call, camera and generation in one composer menu', () => {
   const props = makeProps();
