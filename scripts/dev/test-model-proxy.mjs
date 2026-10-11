@@ -1,10 +1,10 @@
 // Local-only test model: forwards OpenAI-compatible requests to Anthropic's
-// OpenAI-compatible endpoint with a key read from a local file, so a dev build
+// OpenAI-compatible endpoint with a key read from a local env file, so a dev build
 // can talk to a real model without anyone pasting a key into the page.
 // Never deploy or expose this; it listens on 127.0.0.1 only.
 //
-//   DG_TEST_MODEL_KEY_FILE=../Private/credentials/.anthropic-api-key.local \
-//     node scripts/dev/test-model-proxy.mjs
+//   node scripts/dev/test-model-proxy.mjs   # ANTHROPIC_API_KEY from ../Private/credentials/.env
+//   DG_TEST_MODEL_ENV_FILE=/other/.env node scripts/dev/test-model-proxy.mjs
 //
 // The local router (scripts/dev/local-router.mjs) serves it at /dev-llm/v1.
 import http from 'node:http';
@@ -12,12 +12,17 @@ import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const keyFile = resolve(
-  process.env.DG_TEST_MODEL_KEY_FILE ??
-    resolve(import.meta.dirname, '../../../Private/credentials/.anthropic-api-key.local'),
+const envFile = resolve(
+  process.env.DG_TEST_MODEL_ENV_FILE ??
+    resolve(import.meta.dirname, '../../../Private/credentials/.env'),
 );
-const key = readFileSync(keyFile, 'utf8').trim();
-if (!key) throw new Error(`empty key file: ${keyFile}`);
+const key =
+  readFileSync(envFile, 'utf8')
+    .split('\n')
+    .find((line) => line.startsWith('ANTHROPIC_API_KEY='))
+    ?.slice('ANTHROPIC_API_KEY='.length)
+    .trim() ?? '';
+if (!key) throw new Error(`ANTHROPIC_API_KEY missing from ${envFile}`);
 const port = Number(process.env.DG_TEST_MODEL_PORT ?? 8791);
 
 const server = http.createServer((req, res) => {

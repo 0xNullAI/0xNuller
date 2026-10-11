@@ -95,7 +95,7 @@ Auth、Market、Chat 和 Web。两个测试账号用两个来源登录：`http:/
 检查，不能代替真机停止验收。
 
 需要真实模型时运行 `node scripts/dev/test-model-proxy.mjs`：它只监听 `127.0.0.1:8791`，从
-`DG_TEST_MODEL_KEY_FILE`（默认 `../Private/credentials/.anthropic-api-key.local`）读取 Key，把
+`DG_TEST_MODEL_ENV_FILE`（默认 `../Private/credentials/.env`）的 `ANTHROPIC_API_KEY` 读取 Key，把
 OpenAI 兼容请求转发到 Anthropic，统一入口以 `/dev-llm/v1` 提供。开发版的 **我的 → AI → 高级**
 会出现“使用本地测试模型”，一键填入不含真实 Key 的配置；正式构建中没有这个按钮。真实 Key 不写进仓库、
 页面或命令行。
