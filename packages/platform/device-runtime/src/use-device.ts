@@ -1,18 +1,16 @@
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import type { DeviceLinkRule } from '@dg-kit/core';
+import type { DeviceKind, DeviceLinkRule } from '@dg-kit/core';
 import { DeviceLifecycleGuard } from '@dg-kit/safety';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import type { DgLabConnectionRegistry } from './dglab/dglab-connection-registry.js';
 import {
   DeviceSession,
   type CoyoteSummary,
-  type DeviceClientFactory,
-  type RequestDeviceFn,
   type WaveFrame,
   type DeviceInfo,
   type SensorSummary,
   type OpossumSummary,
 } from './device-session.js';
-import type { DeviceKind } from '@dg-kit/core';
 
 /**
  * Field-by-field comparison of two host lists, so an unchanged tick can reuse
@@ -46,35 +44,41 @@ function sameCoyotes(a: CoyoteSummary[], b: CoyoteSummary[]): boolean {
 }
 
 export interface UseDeviceOptions {
-  /** Override the underlying DeviceClient transport. Used by the Tauri shell. */
-  clientFactory?: DeviceClientFactory;
   /**
-   * Override `DeviceSession.connectDevice()`'s device-picking step. Defaults
-   * to a single Web Bluetooth chooser scoped to all 4 DG-Lab device kinds.
-   * The Tauri Android shell passes `requestDgLabDeviceTauri()` instead —
-   * same one-chooser, auto-detected-kind experience over plugin-blec.
+   * The lease id this module holds while it is the visible module (`control`, `playground`,
+   * `chat`). Every start, raise and LED write is fenced against it in the registry.
    */
-  requestDevice?: RequestDeviceFn;
+  moduleId: string;
+  /**
+   * The app's one DG-Lab registry (the shell's `NativeBridge.dglab`). Every module that passes
+   * the same registry sees the same devices with the same ids; none opens its own BLE link.
+   */
+  registry: DgLabConnectionRegistry;
 }
 
 /**
- * DG-Lab device control hook.
- * Wraps the DeviceSession class (Coyote + optional sensor + optional Opossum)
- * and mirrors its state into React state.
+ * DG-Lab device control hook for one module.
  *
- * Existing field names/semantics are unchanged (connected/deviceInfo/strengthA/
- * .../setStrength/... all still describe the Coyote only); every new field is
- * purely additive: the sensor/opossum state defaults to null/false, so no
- * existing consumer is affected.
+ * Reads the shared devices from the registry and mirrors them into React state. Writes go
+ * through this module's registry handle. Unmounting or losing the lease never disconnects:
+ * the links belong to the app, not to the module.
  *
- * Several Coyote hosts may be attached at once. The scalar surface above keeps
- * describing exactly one of them — the *primary* (the first connected host) —
- * so consumers written before multi-device keep working unchanged; `coyotes`
- * is the full list, and every command takes an optional trailing `deviceId` to
- * target one host. Omitting it means the primary, which is what those older
- * consumers already meant.
+ * The scalar surface (`connected`, `strengthA`, `setStrength`, ...) describes the *primary*
+ * Coyote — the first connected one. `coyotes` is the full list, and every command takes an
+ * optional trailing `deviceId` to target one host.
  */
-export function useDevice(options: UseDeviceOptions = {}) {
+export function useDevice({ moduleId, registry }: UseDeviceOptions) {
+  const handle = useMemo(() => registry.forModule(moduleId), [registry, moduleId]);
+  const session = useMemo(() => {
+    const safety = loadDeviceSafety();
+    return new DeviceSession(handle, {
+      strengthA: safety.maxStrengthA,
+      strengthB: safety.maxStrengthB,
+      intensityA: safety.maxIntensityA,
+      intensityB: safety.maxIntensityB,
+    });
+  }, [handle]);
+
   const [connected, setConnected] = useState(false);
   const [coyotes, setCoyotes] = useState<CoyoteSummary[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
@@ -85,10 +89,8 @@ export function useDevice(options: UseDeviceOptions = {}) {
   const [waveActiveB, setWaveActiveB] = useState(false);
   const [waveIdA, setWaveIdA] = useState<string | null>(null);
   const [waveIdB, setWaveIdB] = useState<string | null>(null);
-  // Seeded from the shared device-safety settings, not a local 50. Lowering
-  // the cap to 30 in the unified settings used to leave Chat still running at
-  // 50 — a safety control that visibly did nothing in one of the modules it
-  // claimed to govern.
+  // Seeded from the shared device-safety settings, not a local 50: lowering the cap in the
+  // unified settings must show up in every module that claims to follow it.
   const [limitA, setLimitA] = useState(() => loadDeviceSafety().maxStrengthA);
   const [limitB, setLimitB] = useState(() => loadDeviceSafety().maxStrengthB);
   const [sensor, setSensor] = useState<SensorSummary | null>(null);
@@ -99,158 +101,99 @@ export function useDevice(options: UseDeviceOptions = {}) {
   );
   const firePolicyRef = useRef(firePolicy);
   firePolicyRef.current = firePolicy;
-  const sessionRef = useRef<DeviceSession | null>(null);
 
-  /** Sync state from the device instance into React state */
+  /** Mirror the module view into React state. */
   const syncState = useCallback(() => {
-    const session = sessionRef.current;
-    if (!session) return;
-    const s = session.coyote.getState();
-    setConnected(s.connected);
-    setStrengthA(s.strengthA);
-    setStrengthB(s.strengthB);
-    setBattery(s.battery);
-    setWaveActiveA(s.waveActiveA);
-    setWaveActiveB(s.waveActiveB);
-    setWaveIdA(s.waveIdA);
-    setWaveIdB(s.waveIdB);
-    setLimitA(s.limitA);
-    setLimitB(s.limitB);
     const nextCoyotes = session.getCoyoteSummaries();
     const primary = nextCoyotes[0] ?? null;
-    // Every scalar in this hook describes the primary host. Keep deviceInfo
-    // on the same host too: setting it from the most recently attached Coyote
-    // made the name/battery say device #2 while the strength controls still
-    // drove device #1.
+    const caps = loadDeviceSafety();
+    setConnected(primary?.connected ?? false);
+    setStrengthA(primary?.strengthA ?? 0);
+    setStrengthB(primary?.strengthB ?? 0);
+    setBattery(primary ? (primary.battery ?? 0) : null);
+    setWaveActiveA(primary?.waveActiveA ?? false);
+    setWaveActiveB(primary?.waveActiveB ?? false);
+    setWaveIdA(primary?.waveIdA ?? null);
+    setWaveIdB(primary?.waveIdB ?? null);
+    setLimitA(primary?.limitA ?? caps.maxStrengthA);
+    setLimitB(primary?.limitB ?? caps.maxStrengthB);
+    // Keep deviceInfo on the same host as every other scalar.
     setDeviceInfo(
       primary
         ? { version: primary.version, name: primary.name, battery: primary.battery ?? 0 }
         : null,
     );
-    // Keep the previous array when nothing actually changed. The protocol
-    // emits on every tick (100ms) while a device is connected, and syncState
-    // runs on each one; the scalar setters above bail out of re-rendering when
-    // their value is unchanged, but a freshly-built array never compares equal
-    // and would re-render the whole module tree ten times a second for as long
-    // as a device is attached.
-    setCoyotes((prev) => {
-      return sameCoyotes(prev, nextCoyotes) ? prev : nextCoyotes;
-    });
+    // The registry emits on every protocol tick while a device is attached. Reuse the previous
+    // array when nothing changed so the module tree does not re-render ten times a second.
+    setCoyotes((prev) => (sameCoyotes(prev, nextCoyotes) ? prev : nextCoyotes));
     setSensor(session.getSensorSummary());
     setOpossum(session.getOpossumSummary());
     setDeviceLinkState(session.getDeviceLinkRule());
-  }, []);
+  }, [session]);
 
-  // The factory is intended to be stable across the hook's lifetime:
-  // either omitted (web) or set once by the Tauri shell. Capturing once at
-  // first render keeps useCallback's identity stable and avoids the
-  // `Cannot update ref during render` lint that fires when a ref is
-  // assigned in the render body.
-  const clientFactoryRef = useRef(options.clientFactory);
-  const requestDeviceRef = useRef(options.requestDevice);
-
-  /** Ensure the session exists (created lazily — only needed on the first connectDevice). */
-  const ensureSession = useCallback((): DeviceSession => {
-    if (!sessionRef.current) {
-      const safety = loadDeviceSafety();
-      const session = new DeviceSession(clientFactoryRef.current, requestDeviceRef.current, {
-        strengthA: safety.maxStrengthA,
-        strengthB: safety.maxStrengthB,
-        intensityA: safety.maxIntensityA,
-        intensityB: safety.maxIntensityB,
-      });
-      session.setOnStateChange(syncState);
-      sessionRef.current = session;
-    }
-    return sessionRef.current;
-  }, [syncState]);
+  useEffect(() => {
+    const offState = session.subscribe(syncState);
+    const stop = session.start();
+    syncState();
+    return () => {
+      offState();
+      stop();
+    };
+  }, [session, syncState]);
 
   /**
-   * Unified connect entry point: opens one device chooser covering all 4
-   * DG-Lab device kinds (Coyote / paw-prints sensor / civet-edging sensor /
-   * Opossum), identifies the kind by name prefix and attaches it to the
-   * matching slot — a Coyote is routed inside DeviceSession.connectDevice() to
-   * coyote.connectViaChosenDevice(), the other three go to
-   * attachSensor/attachOpossum. Tap it again to add another device. On web
-   * this is the Web Bluetooth chooser; on Tauri Android it is a plugin-blec
-   * scan + device picker (see UseDeviceOptions.requestDevice).
+   * The one shared picker for all four DG-Lab kinds. A device another module already attached
+   * is reused, not opened a second time.
    */
   const connectDevice = useCallback(async (): Promise<{ kind: DeviceKind; name: string }> => {
-    const session = ensureSession();
-    const { coyoteInfo: _coyoteInfo, ...result } = await session.connectDevice();
+    const result = await session.connectDevice();
     syncState();
     return result;
-  }, [ensureSession, syncState]);
+  }, [session, syncState]);
 
   /**
-   * Tear down the whole session (Coyote + sensor + Opossum). Used by the
-   * "断开" button and when leaving the room.
+   * Stop every output and forget this module's held targets, e.g. when leaving a Chat room.
+   * The links stay up: they are shared with every other module, and dropping one here would
+   * pull a device out from under Control.
    */
-  const disconnect = useCallback(() => {
-    sessionRef.current?.disconnectAll();
-    sessionRef.current = null;
-    setConnected(false);
-    setCoyotes([]);
-    setDeviceInfo(null);
-    setBattery(null);
-    setStrengthA(0);
-    setStrengthB(0);
-    setWaveActiveA(false);
-    setWaveActiveB(false);
-    setWaveIdA(null);
-    setWaveIdB(null);
-    setLimitA(loadDeviceSafety().maxStrengthA);
-    setLimitB(loadDeviceSafety().maxStrengthB);
-    setSensor(null);
-    setOpossum(null);
-  }, []);
+  const release = useCallback(() => {
+    session.stopAllOutputs();
+    syncState();
+  }, [session, syncState]);
 
   /**
-   * Disconnect Coyote hosts (keep the sensor / Opossum).
-   *
-   * `deviceId` targets one host; omitting it disconnects every attached
-   * Coyote — see `DeviceSession.disconnectCoyote`.
+   * Disconnect Coyote hosts (keep the sensor / Opossum). `deviceId` targets one host; omitting
+   * it disconnects every Coyote. The registry stops each one before it drops the link.
    */
   const disconnectCoyote = useCallback(
     (deviceId?: string) => {
-      // Anything that is not a string means "all hosts". This function is
-      // wired straight to onClick in places (`onClick={onDisconnect}`), where
-      // React hands the handler a MouseEvent — as a device id that matches
-      // nothing, so the disconnect would silently do nothing at all. TypeScript
-      // cannot see it: those props are declared `() => void`, and a handler
-      // taking fewer parameters is assignable to one taking more.
+      // Anything that is not a string means "all hosts". Wired straight to onClick, React hands
+      // this a MouseEvent, which as a device id would match nothing and disconnect nothing.
       const id = typeof deviceId === 'string' ? deviceId : undefined;
-      const session = sessionRef.current;
-      session?.disconnectCoyote(id);
-      // The scalar surface tracks the primary, and the primary may just have
-      // become a different host (disconnecting #1 while #2 is still attached)
-      // or none at all. Leaving the old name/battery on screen would claim a
-      // device is attached that no longer is.
-      const primary = session?.getCoyoteSummaries()[0] ?? null;
-      setDeviceInfo(
-        primary
-          ? { version: primary.version, name: primary.name, battery: primary.battery ?? 0 }
-          : null,
-      );
-      syncState();
+      return session.disconnectCoyote(id).catch(() => undefined);
     },
-    [syncState],
+    [session],
   );
 
-  /** Disconnect only the sensor (keep the Coyote / Opossum). */
-  const disconnectSensor = useCallback(() => {
-    sessionRef.current?.disconnectSensor();
-  }, []);
+  /** Disconnect the sensor (keep the Coyote / Opossum). */
+  const disconnectSensor = useCallback(
+    () => session.disconnectSensor().catch(() => undefined),
+    [session],
+  );
 
-  /** Disconnect only the Opossum (keep the Coyote / sensor). */
-  const disconnectOpossum = useCallback(() => {
-    sessionRef.current?.disconnectOpossum();
-  }, []);
+  /** Disconnect the Opossum (keep the Coyote / sensor). */
+  const disconnectOpossum = useCallback(
+    () => session.disconnectOpossum().catch(() => undefined),
+    [session],
+  );
 
   /** Set the strength of the given channel. `deviceId` omitted = the primary host. */
-  const setStrength = useCallback((channel: 'A' | 'B', value: number, deviceId?: string) => {
-    sessionRef.current?.coyoteById(deviceId)?.setStrength(channel, value);
-  }, []);
+  const setStrength = useCallback(
+    (channel: 'A' | 'B', value: number, deviceId?: string) => {
+      session.coyoteById(deviceId)?.setStrength(channel, value);
+    },
+    [session],
+  );
 
   /** Set the waveform of the given channel. `deviceId` omitted = the primary host. */
   const setWave = useCallback(
@@ -261,112 +204,114 @@ export function useDevice(options: UseDeviceOptions = {}) {
       loop?: boolean,
       deviceId?: string,
     ) => {
-      sessionRef.current?.coyoteById(deviceId)?.setWave(channel, frames, waveformId, loop);
+      session.coyoteById(deviceId)?.setWave(channel, frames, waveformId, loop);
     },
-    [],
+    [session],
   );
 
   /** Stop the waveform on the given channel. `deviceId` omitted = the primary host. */
-  const stopWave = useCallback((channel: 'A' | 'B', deviceId?: string) => {
-    sessionRef.current?.coyoteById(deviceId)?.stopWave(channel);
-  }, []);
+  const stopWave = useCallback(
+    (channel: 'A' | 'B', deviceId?: string) => {
+      session.coyoteById(deviceId)?.stopWave(channel);
+    },
+    [session],
+  );
 
   /**
-   * Set a channel's strength cap (Coyote and Opossum share one set of caps,
-   * see the DeviceSession docs).
-   *
-   * With no `deviceId` this applies to *every* attached host and to any host
-   * attached later — a cap the user lowered must not quietly fail to cover
-   * the second device.
+   * Set a channel's software cap. With no `deviceId` it applies to every host, including hosts
+   * attached later — a lowered cap must not quietly miss the second device.
    */
   const setLimit = useCallback(
     (channel: 'A' | 'B', value: number, deviceId?: string) => {
-      const session = sessionRef.current;
-      if (!session) return;
       if (deviceId) session.coyoteById(deviceId)?.setLimit(channel, value);
       else session.setCoyoteLimit(channel, value);
       syncState();
     },
-    [syncState],
+    [session, syncState],
   );
 
   /**
-   * Emergency stop: zero **every** attached Coyote and both Opossum channels.
+   * Emergency stop: every Coyote and Opossum in the app.
    *
-   * Deliberately takes NO arguments, unlike every other command here. It is
-   * wired straight to onClick in several places (`onClick={device.stopAll}`),
-   * and an optional `deviceId` would let React hand it a MouseEvent as the
-   * target id — which resolves to no device, so the emergency stop would
-   * silently stop nothing at all. Per-device zeroing is `stopCoyote` below;
-   * this one is never narrowed.
+   * Deliberately takes NO arguments. It is wired straight to onClick, and an optional
+   * `deviceId` would let React pass a MouseEvent as the target, which stops nothing.
    */
   const stopAll = useCallback(() => {
-    sessionRef.current?.stopAllOutputs();
-  }, []);
+    session.stopAllOutputs();
+  }, [session]);
 
-  /**
-   * Zero one Coyote host. A convenience for a per-device 归零 button — it is
-   * NOT the emergency stop, which is `stopAll` above and always covers
-   * everything.
-   */
-  const stopCoyote = useCallback((deviceId: string) => {
-    sessionRef.current?.coyoteById(deviceId)?.stopAll();
-  }, []);
+  /** Zero one Coyote host. Not the emergency stop, which is `stopAll` above. */
+  const stopCoyote = useCallback(
+    (deviceId: string) => {
+      session.coyoteById(deviceId)?.stopAll();
+    },
+    [session],
+  );
 
-  /**
-   * Set an Opossum channel's intensity, capped by the Opossum's own limit.
-   *
-   * This used to borrow the Coyote's limitA/limitB. The shared settings have
-   * always carried separate maxIntensityA/B for the Opossum, and nothing read
-   * them — lowering the Opossum cap in settings had no effect here, which is
-   * a safety control that visibly does nothing.
-   */
-  const setOpossumIntensity = useCallback((channel: 'A' | 'B', value: number) => {
-    const session = sessionRef.current;
-    if (!session) return;
-    const safety = loadDeviceSafety();
-    const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
-    session.setOpossumIntensity(channel, value, limit);
-  }, []);
+  /** Set an Opossum channel's intensity, capped by the Opossum's own shared-settings limit. */
+  const setOpossumIntensity = useCallback(
+    (channel: 'A' | 'B', value: number) => {
+      const safety = loadDeviceSafety();
+      const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
+      session.setOpossumIntensity(channel, value, limit);
+    },
+    [session],
+  );
 
-  /** One-tap Opossum burst: spike to the target strength briefly, then fall back automatically. */
-  const opossumBurst = useCallback((channel: 'A' | 'B', strength: number, durationMs = 500) => {
-    const session = sessionRef.current;
-    if (!session) return;
-    const safety = loadDeviceSafety();
-    const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
-    session.opossumBurst(channel, strength, durationMs, limit);
-  }, []);
+  /** One-tap Opossum burst: spike to the target strength briefly, then fall back. */
+  const opossumBurst = useCallback(
+    (channel: 'A' | 'B', strength: number, durationMs = 500) => {
+      const safety = loadDeviceSafety();
+      const limit = channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB;
+      session.opossumBurst(channel, strength, durationMs, limit);
+    },
+    [session],
+  );
 
   /** Stop one or both Opossum channels. */
-  const opossumStop = useCallback((channel?: 'A' | 'B') => {
-    sessionRef.current?.opossumStop(channel);
-  }, []);
+  const opossumStop = useCallback(
+    (channel?: 'A' | 'B') => {
+      session.opossumStop(channel);
+    },
+    [session],
+  );
 
   /** Select a shared waveform for one Opossum channel. */
   const setOpossumWaveform = useCallback(
     (channel: 'A' | 'B', frames: WaveFrame[], waveformId: string) => {
-      sessionRef.current?.setOpossumWaveform(channel, frames, waveformId);
+      session.setOpossumWaveform(channel, frames, waveformId);
     },
-    [],
+    [session],
   );
 
   const setOpossumPattern = useCallback(
     (channel: 'A' | 'B', pattern: 'constant' | 'pulse' | 'wave' | 'ramp' | 'heartbeat') => {
-      sessionRef.current?.setOpossumPattern(channel, pattern);
+      session.setOpossumPattern(channel, pattern);
     },
-    [],
+    [session],
   );
 
-  const setDeviceLink = useCallback((rule: DeviceLinkRule) => {
-    sessionRef.current?.setDeviceLinkRule(rule);
-    setDeviceLinkState({ ...rule });
-  }, []);
+  const setDeviceLink = useCallback(
+    (rule: DeviceLinkRule) => {
+      session.setDeviceLinkRule(rule);
+      setDeviceLinkState(session.getDeviceLinkRule());
+    },
+    [session],
+  );
 
   /** Set the LED color of the sensor or the Opossum (discrete 0-7 enum, see LedColorPicker). */
-  const setLedColor = useCallback((target: 'sensor' | 'opossum', color: number) => {
-    sessionRef.current?.setLedColor(target, color);
-  }, []);
+  const setLedColor = useCallback(
+    (target: 'sensor' | 'opossum', color: number) => {
+      session.setLedColor(target, color);
+    },
+    [session],
+  );
+
+  /**
+   * Run `listener` when this module loses the lease, right after the registry stopped every
+   * output. For module state the registry cannot see, such as Chat's held fire boosts.
+   */
+  const onRevoked = useCallback((listener: () => void) => handle.onRevoked(listener), [handle]);
 
   /** Set the multi-user fire aggregation policy */
   const setFirePolicy = useCallback((p: 'sum' | 'max' | 'avg') => {
@@ -374,44 +319,34 @@ export function useDevice(options: UseDeviceOptions = {}) {
     localStorage.setItem('dg-fire-policy', p);
   }, []);
 
-  // Background behavior: stop output (Coyote + Opossum) when the page goes to
-  // the background, if that is what the setting says.
-  //
-  // Note this only covers **browser-level foreground/background** (switching
-  // tabs, locking the screen, switching to another app). "Switching to another
-  // module" does not come through here — in the unified shell, switching
-  // modules only sets DOM hidden, the page itself is still visible, and this
-  // handler never fires at all. That path is covered by revoking the
-  // device-control lease (see onRevoke).
-  // Follow the shared caps live: changing them in settings must take effect
-  // in an open Chat session, not only after a reconnect.
+  // Follow the shared caps live: a lowered cap must take effect in an open module, not only
+  // after a reconnect. The registry re-clamps every write against the same settings as well.
   useEffect(() => {
     const apply = () => {
       const safety = loadDeviceSafety();
-      // Every attached host, not just the primary — and the session keeps
-      // these as the seed for hosts attached later.
-      sessionRef.current?.setCoyoteLimit('A', safety.maxStrengthA);
-      sessionRef.current?.setCoyoteLimit('B', safety.maxStrengthB);
-      sessionRef.current?.setOpossumLimits(safety.maxIntensityA, safety.maxIntensityB);
-      setLimitA(safety.maxStrengthA);
-      setLimitB(safety.maxStrengthB);
+      session.setCoyoteLimit('A', safety.maxStrengthA);
+      session.setCoyoteLimit('B', safety.maxStrengthB);
+      session.setOpossumLimits(safety.maxIntensityA, safety.maxIntensityB);
       syncState();
     };
     apply();
     return subscribeDeviceSafety(apply);
-  }, [syncState]);
+  }, [session, syncState]);
 
+  // Browser-level background (tab switch, screen lock) stops output if the setting says so.
+  // Switching modules does not come through here; the lease revoke covers that path.
   useEffect(() => {
     const guard = new DeviceLifecycleGuard({
       onStop: () => {
-        sessionRef.current?.stopAllOutputs();
+        session.stopAllOutputs();
         syncState();
       },
     });
     return guard.start();
-  }, [syncState]);
+  }, [session, syncState]);
 
   return {
+    moduleId,
     connected,
     /**
      * Every attached Coyote host, primary first. The scalars above describe
@@ -426,7 +361,7 @@ export function useDevice(options: UseDeviceOptions = {}) {
     waveActiveB,
     waveIdA,
     waveIdB,
-    disconnect,
+    release,
     disconnectCoyote,
     setStrength,
     setWave,
@@ -453,5 +388,6 @@ export function useDevice(options: UseDeviceOptions = {}) {
     deviceLink,
     setDeviceLink,
     setLedColor,
+    onRevoked,
   };
 }

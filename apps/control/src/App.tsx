@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
-import { useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useDevice, useChannelRotation } from '@0xnullai/device-runtime';
+import { selectDgLabRegistry, useDevice, useChannelRotation } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
 import type {
   ChannelRotationDevice,
@@ -25,7 +25,7 @@ import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
-import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
+import { holdsAnyDevice } from '@0xnullai/device-runtime';
 
 // A value of 5 becomes a B0 ceiling of only 2.5/100 in the Opossum protocol,
 // which is below the physical start threshold of many vibration motors. Start
@@ -60,20 +60,29 @@ function playbackIdForTarget(target: OutputTarget | null): string | null {
  * more than one device is attached. Connection, disconnection and shared
  * safety settings live in the shell's one top device strip.
  *
- * Everything below the UI is borrowed rather than rebuilt: `useDevice` owns the
- * BLE session and the `DeviceCommandQueue` that every write goes through,
+ * Everything below the UI is borrowed rather than rebuilt: the app's one
+ * `DgLabConnectionRegistry` owns the BLE links and the queue every write goes
+ * through (`useDevice` is this module's lease-fenced view of it),
  * `useWaveforms` owns the shared library, and the caps come from
  * `@0xnullai/settings`. There is no second copy of the safety chain here — that
  * is the one thing this repo has decided may never be duplicated.
  */
 export default function App() {
-  // Android has no Web Bluetooth; the native shell injects a plugin-blec client
-  // through NativeBridge. Control uses the platform DeviceSession's shared
-  // transport seam rather than creating another device owner.
+  // The shell's registry is the one owner of every DG-Lab link, shared with
+  // Playground, Chat, Agent and Voice. The old per-module transport seam is
+  // only a fallback for a host that injects no registry.
   const native = useNativeBridge();
+  const fallbackRegistry = useDgLabRegistry();
   const device = useDevice({
-    clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
-    requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
+    moduleId: 'control',
+    registry: selectDgLabRegistry({
+      shell: native.dglab,
+      fallback: fallbackRegistry,
+      legacy: {
+        clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
+        requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
+      },
+    }),
   });
   const waveforms = useWaveforms();
 
@@ -191,38 +200,23 @@ export default function App() {
     device.stopAll();
   }, [cancelFire, device]);
 
-  const disconnectCoyote = useCallback(
-    (deviceId?: string) => {
-      if (deviceId) cancelFire(deviceId);
-      else cancelFire();
-      device.disconnectCoyote(deviceId);
-    },
-    [cancelFire, device],
-  );
-
-  // Register on the global safety bus. This is the shell's only source for the
-  // stop button and the device bar, and it must count every attached device —
-  // an Opossum-only session that reports nothing leaves someone with a running
-  // device and no stop button on screen.
+  // Register on the global safety bus for stop, revoke and the shell's connect
+  // entry. The devices themselves are listed (and disconnected) by the
+  // registry's own `dglab-devices` session: listing them here as well would
+  // show every device twice. A Coyote the bar disconnects drops out of
+  // `coyotes`, and useMomentaryFire clears a fire held on it without restoring.
   useSafetySession({
     id: 'control',
     label: 'Control',
     isActive: () => holdsAnyDevice(device),
     stop: stopAll,
     connect: device.connectDevice,
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return device.disconnectOpossum();
-      if (deviceId === 'paw-prints' || deviceId === 'civet-edging') {
-        return device.disconnectSensor();
-      }
-      return disconnectCoyote(deviceId);
-    },
     onRevoke: () => {
-      // Losing the lease means switching away from Control. Stop the output and
-      // invalidate any held fire before its eventual pointerup can restore it.
+      // Losing the lease means switching away from Control. The registry has
+      // stopped the output; invalidate any held fire before its eventual
+      // pointerup can restore it.
       stopAll();
     },
-    devices: () => attachedDeviceSummaries(device),
   });
 
   // The rotation timer reads the device and the library through refs so that a
@@ -271,8 +265,8 @@ export default function App() {
    * A press is a plain absolute setStrength, with no optimistic local value:
    * the device state is right here, one 100 ms protocol tick away, so the worst
    * a stale read can do is skip a step. It cannot overshoot — the target is
-   * always derived from a value the device has already reported, and
-   * DGLabDevice clamps it against the cap again on the way out.
+   * always derived from a value the device has already reported, and both
+   * this module's view and the registry clamp it against the cap on the way out.
    */
   const adjustStrength = useCallback(
     (deviceId: string, channel: 'A' | 'B', delta: number) => {

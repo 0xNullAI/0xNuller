@@ -5,15 +5,13 @@ import { useGameDevice } from './use-game-device';
 
 const mocks = vi.hoisted(() => ({
   lease: false,
+  moduleId: null as string | null,
   safetySpec: null as SafetySessionSpec | null,
   device: {
     coyotes: [] as Array<{ id: string; connected: boolean }>,
     sensor: null as { connected: boolean } | null,
     opossum: null as { connected: boolean } | null,
     connectDevice: vi.fn(),
-    disconnectCoyote: vi.fn(),
-    disconnectSensor: vi.fn(),
-    disconnectOpossum: vi.fn(),
     setWave: vi.fn(),
     setStrength: vi.fn(),
     stopAll: vi.fn(),
@@ -23,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@0xnullai/native', () => ({
   useNativeBridge: () => ({}),
+  useDgLabRegistry: () => ({}),
 }));
 
 vi.mock('@0xnullai/settings', () => ({
@@ -57,10 +56,13 @@ vi.mock('@dg-kit/waveforms', () => ({
 }));
 
 vi.mock('@0xnullai/device-runtime', () => ({
-  useDevice: () => mocks.device,
+  useDevice: (options: { moduleId: string }) => {
+    mocks.moduleId = options.moduleId;
+    return mocks.device;
+  },
+  selectDgLabRegistry: ({ fallback }: { fallback: unknown }) => fallback,
   holdsAnyDevice: ({ coyotes, sensor, opossum }: typeof mocks.device) =>
     coyotes.some((device) => device.connected) || Boolean(sensor?.connected || opossum?.connected),
-  attachedDeviceSummaries: () => [],
 }));
 
 function renderGameDevice() {
@@ -79,9 +81,6 @@ describe('GameDeviceProvider', () => {
     mocks.device.opossum = null;
     for (const fn of [
       mocks.device.connectDevice,
-      mocks.device.disconnectCoyote,
-      mocks.device.disconnectSensor,
-      mocks.device.disconnectOpossum,
       mocks.device.setWave,
       mocks.device.setStrength,
       mocks.device.stopAll,
@@ -95,22 +94,29 @@ describe('GameDeviceProvider', () => {
     vi.useRealTimers();
   });
 
-  it('registers the shared device-bar session and routes disconnects by device kind', () => {
+  it('uses its own lease id and leaves the device list to the shared registry session', () => {
     const view = renderGameDevice();
 
+    expect(mocks.moduleId).toBe('playground');
     expect(mocks.safetySpec).toMatchObject({ id: 'playground', label: 'Playground' });
     expect(mocks.safetySpec?.isActive()).toBe(false);
+    // Listing here as well would show every device twice in the bar.
+    expect(mocks.safetySpec?.devices).toBeUndefined();
+    expect(mocks.safetySpec?.disconnect).toBeUndefined();
 
     mocks.safetySpec?.connect?.();
-    mocks.safetySpec?.disconnect?.('coyote-2');
-    mocks.safetySpec?.disconnect?.('paw-prints');
-    mocks.safetySpec?.disconnect?.('opossum');
-
     expect(mocks.device.connectDevice).toHaveBeenCalledOnce();
-    expect(mocks.device.disconnectCoyote).toHaveBeenCalledWith('coyote-2');
-    expect(mocks.device.disconnectSensor).toHaveBeenCalledOnce();
-    expect(mocks.device.disconnectOpossum).toHaveBeenCalledOnce();
     view.unmount();
+  });
+
+  it('does not zero shared output on unmount unless Playground holds the lease', () => {
+    mocks.device.coyotes = [{ id: 'coyote-1', connected: true }];
+    renderGameDevice().unmount();
+    expect(mocks.device.stopAll).not.toHaveBeenCalled();
+
+    mocks.lease = true;
+    renderGameDevice().unmount();
+    expect(mocks.device.stopAll).toHaveBeenCalledOnce();
   });
 
   it('does not send output without the Playground device lease', () => {

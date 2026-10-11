@@ -1,37 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
 import { loadDeviceSafety } from '@0xnullai/settings';
 import { useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { listBuiltinWaveforms } from '@dg-kit/waveforms';
 import {
+  holdsAnyDevice,
+  selectDgLabRegistry,
   useDevice,
   type DeviceClientFactory,
   type RequestDeviceFn,
 } from '@0xnullai/device-runtime';
-import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
 import { GameDeviceContext, resolveGamePulse, type PulseIntensity } from './use-game-device';
 
 const GAME_WAVEFORMS = new Map(listBuiltinWaveforms().map((waveform) => [waveform.id, waveform]));
 
 /**
- * Playground's single device owner. It reuses the same session as Control and
- * exposes it through the shell's global bar; games never talk to BLE directly.
+ * Playground's device access for games. It borrows the app's one DG-Lab
+ * registry — the same devices and ids Control sees — through a view fenced to
+ * the `playground` lease; games never talk to BLE directly.
  */
 export function GameDeviceProvider({ children }: { children: React.ReactNode }) {
   const native = useNativeBridge();
+  const fallbackRegistry = useDgLabRegistry();
   const device = useDevice({
-    clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
-    requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
+    moduleId: 'playground',
+    registry: selectDgLabRegistry({
+      shell: native.dglab,
+      fallback: fallbackRegistry,
+      legacy: {
+        clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
+        requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
+      },
+    }),
   });
   const {
     coyotes,
     sensor,
     opossum,
     connectDevice,
-    disconnectCoyote,
-    disconnectSensor,
-    disconnectOpossum,
     setWave,
     setStrength,
     stopAll: stopDeviceOutputs,
@@ -50,23 +57,26 @@ export function GameDeviceProvider({ children }: { children: React.ReactNode }) 
     stopDeviceOutputs();
   }, [clearTimer, stopDeviceOutputs]);
 
-  useEffect(() => stopAll, [stopAll]);
+  // The devices are shared with every module now, so unmounting stops output only while a game
+  // could have started it (Playground holds the lease); otherwise it would zero Control's output.
+  useEffect(
+    () => () => {
+      clearTimer();
+      if (hasDeviceLease('playground')) stopDeviceOutputs();
+    },
+    [clearTimer, stopDeviceOutputs],
+  );
 
+  // Stop, revoke and the shell's connect entry only. The registry's own
+  // `dglab-devices` session lists and disconnects the devices; listing them
+  // here too would show each one twice in the device bar.
   useSafetySession({
     id: 'playground',
     label: 'Playground',
     isActive: () => holdsAnyDevice({ coyotes, sensor, opossum }),
     stop: stopAll,
     connect: connectDevice,
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return disconnectOpossum();
-      if (deviceId === 'paw-prints' || deviceId === 'civet-edging') {
-        return disconnectSensor();
-      }
-      return disconnectCoyote(deviceId);
-    },
     onRevoke: stopAll,
-    devices: () => attachedDeviceSummaries({ coyotes, sensor, opossum }),
   });
 
   const holdsLease = useSyncExternalStore(

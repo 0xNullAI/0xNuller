@@ -32,13 +32,14 @@ export function roomPresenceLabel(isDm: boolean, peerCount: number): string {
 }
 
 export function leaveChatRoom(
-  disconnect: () => void,
+  releaseDevice: () => void,
   leave: () => void,
   clearDmPeer: () => void,
 ): void {
-  // Preserve the safety-sensitive ordering: disconnect output before leaving the transport,
-  // then clear the local DM header only after both lifecycle operations were requested.
-  disconnect();
+  // Preserve the safety-sensitive ordering: stop output before leaving the transport, then
+  // clear the local DM header only after both lifecycle operations were requested. The BLE
+  // links are shared with the other modules and stay up.
+  releaseDevice();
   leave();
   clearDmPeer();
 }
@@ -143,7 +144,7 @@ export function ChatAppView({
   const [conversationListOpen, setConversationListOpen] = useState(false);
   const roomTitle = peerRoom.isDm ? (dmPeer?.name ?? '私聊') : peerRoom.groupName || '群聊';
   const leaveRoom = () => {
-    leaveChatRoom(device.disconnect, peerRoom.leave, () => setDmPeer(null));
+    leaveChatRoom(device.release, peerRoom.leave, () => setDmPeer(null));
   };
 
   return (

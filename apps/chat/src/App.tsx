@@ -14,7 +14,7 @@ import {
   PolicyEngine,
   createDefaultPolicyRules,
 } from '@dg-kit/safety';
-import { useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
 import {
   currentAuthUserId,
   subscribeAuthChanges,
@@ -24,7 +24,7 @@ import {
   subscribeDmRequest,
   type DmRequest,
 } from '@0xnullai/auth';
-import { useChannelRotation, useDevice } from '@0xnullai/device-runtime';
+import { selectDgLabRegistry, useChannelRotation, useDevice } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
@@ -40,22 +40,17 @@ import { sendRoomMedia } from './lib/send-room-media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { isCoyoteOutputActive } from '@dg-kit/core';
 import { ChatAppView } from './components/ChatAppView';
 
 export interface AppProps {
   /**
-   * Override the underlying BLE transport. Defaults to Web Bluetooth.
-   * The Tauri Android shell passes a factory that creates a
-   * `TauriBlecDeviceClient` so the same React UI runs natively.
+   * Legacy Coyote transport seam. Used only when the host injects no shared
+   * DG-Lab registry (`NativeBridge.dglab`); both shells inject one.
    */
   deviceClientFactory?: DeviceClientFactory;
   /**
-   * Override `DeviceSession.connectDevice()`'s device-picking step. Defaults
-   * to a single Web Bluetooth chooser scoped to all 4 DG-Lab device kinds
-   * (`requestDgLabDevice()`). The Tauri Android shell supplies
-   * `requestDgLabDeviceTauri()` instead — same one-button, auto-detected-kind
-   * experience, over plugin-blec.
+   * Legacy picker seam, with the same fallback-only role as
+   * `deviceClientFactory`.
    */
   requestDeviceTauri?: RequestDeviceFn;
 }
@@ -414,10 +409,22 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     },
     [peerRoom.readAdmission, isRoomReadAdmissionCurrent, peerRoom.isDm, peerRoom.roomId],
   );
+  // The app's one DG-Lab registry: the same devices and ids Control and
+  // Playground see. Chat writes through a view fenced to the `chat` lease, so a
+  // room command that arrives after the lease moved is rejected at the holder.
+  const fallbackDgLabRegistry = useDgLabRegistry();
   const device = useDevice({
-    clientFactory:
-      deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
-    requestDevice: requestDeviceTauri ?? (native.chat?.requestDevice as typeof requestDeviceTauri),
+    moduleId: 'chat',
+    registry: selectDgLabRegistry({
+      shell: native.dglab,
+      fallback: fallbackDgLabRegistry,
+      legacy: {
+        clientFactory:
+          deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
+        requestDevice:
+          requestDeviceTauri ?? (native.chat?.requestDevice as typeof requestDeviceTauri),
+      },
+    }),
   });
   const waveforms = useWaveforms();
 
@@ -440,103 +447,51 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     return subscribeSafetySessions(sync);
   }, []);
 
+  /**
+   * Everything Chat holds that the registry cannot see. Runs on both revoke
+   * paths: the safety bus's onRevoke and the registry handle's onRevoked. Both
+   * may fire for one lease change; every step is idempotent.
+   */
+  const dropHeldDeviceState = useCallback(() => {
+    // 1) Clear the fire aggregation. It snapshots the baseline on the empty →
+    //    non-empty edge, so if the lease is revoked while someone is holding fire,
+    //    the matching fire_release never arrives, the map is never cleared, and
+    //    strength stays at baseline+boost instead of falling back — the generic stop
+    //    does not cover this cleanup path.
+    fireBoostsA.current.clear();
+    fireBoostsB.current.clear();
+    baselineARef.current = 0;
+    baselineBRef.current = 0;
+    // 2) Tell the room. Reuse the existing deviceConnected field instead of adding a
+    //    new message type — a new type is silently ignored by old clients, whereas the
+    //    other side already renders this field as 「未连接设备」.
+    //    Without the broadcast the host sees the command go out with no reaction, and
+    //    the instinctive response is to crank it up and resend.
+    setDeviceReleased(true);
+  }, []);
+
+  const { onRevoked: onDeviceRevoked } = device;
+  useEffect(() => onDeviceRevoked(dropHeldDeviceState), [onDeviceRevoked, dropHeldDeviceState]);
+
+  // Stop, revoke and the shell's connect entry. The devices are listed and
+  // disconnected by the registry's own `dglab-devices` session; listing them
+  // here as well would show each one twice in the device bar.
   useSafetySession({
     id: 'chat',
     label: 'Chat',
-    // Any device, not just the Coyote. This gated on the Coyote alone, so an
-    // Opossum-only session reported no active session — and the shell's stop
-    // button renders from that, meaning there was no stop button while a
-    // device was running on the user's body.
+    // Any device, not just the Coyote: an Opossum-only session must still keep
+    // the shell's stop button on screen.
     isActive: () =>
       deviceRef.current.connected ||
       Boolean(deviceRef.current.opossum?.connected) ||
       Boolean(deviceRef.current.sensor?.connected),
     stop: () => deviceRef.current.stopAll(),
     connect: () => deviceRef.current.connectDevice(),
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return deviceRef.current.disconnectOpossum();
-      if (deviceId === 'sensor') return deviceRef.current.disconnectSensor();
-      return deviceRef.current.disconnectCoyote(deviceId);
-    },
     onRevoke: () => {
-      // All three of these are required.
-      // 1) Stop the output.
+      // Stop the output (the registry already did; stop is idempotent), then drop
+      // the held state.
       deviceRef.current.stopAll();
-      // 2) Clear the fire aggregation. It snapshots the baseline on the empty →
-      //    non-empty edge, so if the lease is revoked while someone is holding fire,
-      //    the matching fire_release never arrives, the map is never cleared, and
-      //    strength stays at baseline+boost instead of falling back — the generic stop
-      //    does not cover this cleanup path.
-      fireBoostsA.current.clear();
-      fireBoostsB.current.clear();
-      baselineARef.current = 0;
-      baselineBRef.current = 0;
-      // 3) Tell the room. Reuse the existing deviceConnected field instead of adding a
-      //    new message type — a new type is silently ignored by old clients, whereas the
-      //    other side already renders this field as 「未连接设备」.
-      //    Without the broadcast the host sees the command go out with no reaction, and
-      //    the instinctive response is to crank it up and resend.
-      setDeviceReleased(true);
-    },
-    devices: () => {
-      const d = deviceRef.current;
-      return [
-        // One entry per attached Coyote, each under its own device id. They
-        // used to all report id 'coyote', so two hosts collided on the device
-        // bar's `sessionId:deviceId` key and React dropped the second — the
-        // user lost the on-screen proof that it was attached to them.
-        ...d.coyotes
-          .filter((c) => c.connected)
-          .map((c) => ({
-            id: c.id,
-            kind: 'coyote',
-            name: c.name,
-            connected: true,
-            ...(typeof c.battery === 'number' ? { battery: c.battery } : {}),
-            active: isCoyoteOutputActive(c),
-            channels: [
-              { label: 'A', value: c.strengthA, max: c.limitA },
-              { label: 'B', value: c.strengthB, max: c.limitB },
-            ],
-          })),
-        ...(d.opossum?.connected
-          ? [
-              {
-                id: 'opossum',
-                kind: 'opossum',
-                name: '负鼠',
-                connected: true,
-                ...(typeof d.opossum.battery === 'number' ? { battery: d.opossum.battery } : {}),
-                active: (d.opossum.intensityA ?? 0) > 0 || (d.opossum.intensityB ?? 0) > 0,
-                channels: [
-                  { label: 'A', value: d.opossum.intensityA, max: d.opossum.limitA },
-                  { label: 'B', value: d.opossum.intensityB, max: d.opossum.limitB },
-                ],
-              },
-            ]
-          : []),
-        ...(d.sensor?.connected
-          ? [
-              {
-                id: 'sensor',
-                kind: d.sensor.kind ?? 'paw-prints',
-                name: d.sensor.kind === 'civet-edging' ? '灵猫' : '爪印',
-                connected: true,
-                ...(typeof d.sensor.battery === 'number' ? { battery: d.sensor.battery } : {}),
-                ...(typeof d.sensor.lastValue === 'number'
-                  ? {
-                      readings: [
-                        {
-                          value: d.sensor.lastValue,
-                          ...(d.sensor.kind === 'civet-edging' ? { unit: 'kPa' } : {}),
-                        },
-                      ],
-                    }
-                  : {}),
-              },
-            ]
-          : []),
-      ];
+      dropHeldDeviceState();
     },
   });
   const waveformsRef = useRef(waveforms);
