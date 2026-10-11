@@ -207,6 +207,8 @@ try {
     stdio: 'pipe',
   });
   cpSync(join(generatedIcons, 'android'), resourcesPath, { recursive: true, force: true });
+  // Checked-in resources Tauri does not generate (the status-bar notification icon).
+  cpSync(join(root, 'android/app/res'), resourcesPath, { recursive: true, force: true });
   // Tauri only emits an adaptive `ic_launcher`; without the same XML for the
   // round icon, round-icon launchers fall back to the flat legacy bitmap.
   cpSync(
@@ -220,6 +222,18 @@ try {
 let gradle = readFileSync(gradlePath, 'utf8');
 if (!/\bminSdk\s*=\s*\d+/.test(gradle)) throw new Error('generated Gradle file has no minSdk');
 gradle = gradle.replace(/\bminSdk\s*=\s*\d+/, 'minSdk = 26');
+// targetSdk changes runtime permission, background and edge-to-edge behaviour.
+// It comes from Tauri's template; pin it so a toolchain bump is a reviewed change.
+const ANDROID_TARGET_SDK = 36;
+for (const key of ['compileSdk', 'targetSdk']) {
+  const match = gradle.match(new RegExp(`\\b${key}\\s*=\\s*(\\d+)`));
+  if (!match) throw new Error(`generated Gradle file has no ${key}`);
+  if (Number(match[1]) !== ANDROID_TARGET_SDK) {
+    throw new Error(
+      `generated ${key} is ${match[1]}, expected ${ANDROID_TARGET_SDK}; review Android behaviour changes before updating it`,
+    );
+  }
+}
 const pushGradleMarker = '// 0XNULLER_FCM_FID';
 const pushGradleBlock = `${pushGradleMarker}\ndependencies {\n    implementation("com.google.firebase:firebase-messaging:25.1.3")\n    implementation("com.google.android.gms:play-services-base:18.11.0")\n}`;
 gradle = gradle.includes(pushGradleMarker)
@@ -316,6 +330,7 @@ for (const required of [
   'mipmap-mdpi/ic_launcher.png',
   'mipmap-xxxhdpi/ic_launcher_foreground.png',
   'mipmap-xxxhdpi/ic_launcher_monochrome.png',
+  'drawable/ic_stat_nuller.xml',
 ]) {
   if (!existsSync(join(resourcesPath, required))) {
     throw new Error(`Android project is missing generated 0xNuller launcher icon: ${required}`);
