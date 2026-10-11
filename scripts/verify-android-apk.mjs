@@ -14,6 +14,10 @@ const apk = resolve(process.argv[2] ?? defaultApk);
 const expectedCertificate = '1d847c1ea8dc89a2a07bc8c5194a0f43645907223174c1ea394eb522c7a49491';
 const requiredPermissions = [
   'android.permission.INTERNET',
+  'android.permission.CAMERA',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.MODIFY_AUDIO_SETTINGS',
+  'android.permission.POST_NOTIFICATIONS',
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
   'android.permission.BLUETOOTH',

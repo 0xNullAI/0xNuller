@@ -297,6 +297,9 @@ for (const required of [
   'android.permission.BLUETOOTH_CONNECT',
   'android.hardware.bluetooth_le',
   'android.permission.POST_NOTIFICATIONS',
+  'android.permission.CAMERA',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.MODIFY_AUDIO_SETTINGS',
 ]) {
   if (!manifest.includes(required)) throw new Error(`Android manifest is missing ${required}`);
 }
