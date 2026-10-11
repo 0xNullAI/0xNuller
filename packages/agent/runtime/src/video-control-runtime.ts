@@ -417,6 +417,16 @@ export class VideoControlRuntime {
     }
   }
 
+  /**
+   * Revoke the grant and invalidate in-flight continuations without a device write. For lease
+   * loss, where the lease owner already stopped every output and a stop issued here could zero
+   * the new holder's output.
+   */
+  revoke(): void {
+    this.grant?.revoke();
+    this.invalidateContinuations();
+  }
+
   async emergencyStop(): Promise<void> {
     this.emergencyLatched = true;
     this.grant?.revoke();

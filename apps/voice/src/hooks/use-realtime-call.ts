@@ -111,8 +111,14 @@ export function useRealtimeCall(
     pending?.resolve(decision);
   }, []);
 
+  /**
+   * End the call. By default this also stops every Voice output. Lease loss passes
+   * `stopOutput: false`: the registry and the generic runtime already stopped their outputs on
+   * the switch, and a stop issued from here would bypass the lease fence and zero what the new
+   * holder starts in the meantime.
+   */
   const hangUp = useCallback(
-    async (reason?: string, reportReason = false) => {
+    async (reason?: string, reportReason = false, { stopOutput = true } = {}) => {
       const hangupGeneration = ++callGenerationRef.current;
       // A dialog still on screen when the call ends must not leave its promise
       // dangling — the tool executor would await it forever.
@@ -131,6 +137,16 @@ export function useRealtimeCall(
       sessionRef.current = null;
       pendingSessionRef.current = null;
       for (const session of sessions) session.disconnect();
+      if (!stopOutput) {
+        if (hangupGeneration !== callGenerationRef.current) return;
+        setState((prev) => ({
+          ...prev,
+          status: 'ended',
+          error: reportReason ? (reason ?? '连接已关闭') : null,
+          speaking: false,
+        }));
+        return;
+      }
       const genericRuntime = deviceRuntimeProvider?.current();
       const stops: Promise<unknown>[] = [
         Promise.resolve().then(async () => {

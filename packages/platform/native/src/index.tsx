@@ -8,20 +8,12 @@ import {
 import { loadDeviceSafety } from '@0xnullai/settings';
 
 /**
- * The single entry point where the native (Tauri) shell injects Bluetooth
- * capability into modules.
+ * The single entry point where a shell injects capabilities into modules.
  *
- * Web Bluetooth is unavailable on Android; plugin-blec is mandatory.
- * Pre-merge this seam had a different shape in each of the three shells —
- * Agent used `servicesOverrides` + `connectDeviceTauri`, Chat used
- * `deviceClientFactory` + `requestDeviceTauri`, Voice used `transport`.
- *
- * The three seam shapes are preserved verbatim; only the injection point
- * is unified. Not reshaping them is deliberate: Android has no hot update,
- * a botched injection interface mutes all three modules at once, and the
- * broken build lives on users' phones for a long time. Unifying the shapes
- * is low-reward, high-risk — revisit after several device-verified
- * releases.
+ * Devices: the shell builds one `DgLabConnectionRegistry` before render and passes it as
+ * `dglab`. Every module (Control, Agent, Voice, Video, Chat, Playground) reads it through
+ * `useDgLabRegistry()` and opens no BLE link of its own. There is no per-module device seam:
+ * before the shared registry each module had one, and the same Coyote could carry two adapters.
  *
  * Context instead of prop drilling: the shell lazy-loads modules by route,
  * so props would thread through ModuleSlot / Suspense / ErrorBoundary and
@@ -36,27 +28,15 @@ export interface NativeBridge {
   deviceRuntime?: EmbeddedDeviceRuntimeProvider;
   /**
    * The one DG-Lab connection owner for the whole app instance, built by the shell before render.
-   * Modules read it through `useDgLabRegistry()`. The per-module seams below stay until each
-   * consumer migrates onto it.
+   * Modules read it through `useDgLabRegistry()`.
    */
   dglab?: DgLabConnectionRegistry;
-  /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
+  /**
+   * Agent's non-device service flags (speech, bridge, update checker). Shape mirrors
+   * apps/agent `ServicesOverrides`.
+   */
   agent?: {
     servicesOverrides?: unknown;
-    connectDevice?: unknown;
-  };
-  /** Chat's injection: client factory + device picker. */
-  chat?: {
-    deviceClientFactory?: unknown;
-    requestDevice?: unknown;
-  };
-  /** Voice's injection: the whole transport. */
-  voice?: {
-    transport?: unknown;
-  };
-  /** Video's injection: creates the same control service with native BLE clients. */
-  video?: {
-    createControlService?: unknown;
   };
 }
 

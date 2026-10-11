@@ -21,17 +21,7 @@ import type {
   RuntimeTraceEntry,
   SessionSnapshot,
 } from '@dg-agent/core';
-import {
-  CoyoteProtocolAdapter,
-  type CivetPressureReading,
-  type PawPrintsReading,
-} from '@dg-kit/protocol';
-import {
-  WebBluetoothCivetEdgingClient,
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  WebBluetoothPawPrintsClient,
-} from '@dg-kit/transport-webbluetooth';
+import type { CivetPressureReading, PawPrintsReading } from '@dg-kit/protocol';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import type {
   CivetEdgingClient,
@@ -106,33 +96,14 @@ export interface BrowserServicesOptions {
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**
-   * A pre-built device client to reuse across settings-driven service rebuilds.
-   * When provided, `createDeviceClient` is ignored and no new device is
-   * constructed — this keeps the underlying BLE connection alive when other
-   * settings (provider, voice, bridge, …) change. Web/Android shells pass a
-   * device they own and hold stable across re-renders.
+   * Device clients over the app's shared DG-Lab registry (`createRegistryAgentDevices`). The
+   * caller builds them once and holds them stable across settings-driven service rebuilds; they
+   * own no BLE link, the registry does.
    */
-  device?: DeviceClient;
-  /**
-   * Optional override for the device client. Used by non-browser shells
-   * (e.g. the Tauri Android app) to inject a transport that doesn't depend
-   * on Web Bluetooth. Only consulted when `device` is not supplied. Defaults
-   * to constructing a WebBluetoothDeviceClient.
-   */
-  createDeviceClient?: (protocol: CoyoteProtocolAdapter) => DeviceClient;
-  /**
-   * Pre-built auxiliary device clients (opossum, paw-prints, civet-edging),
-   * reused across settings-driven service rebuilds the same way `device` is
-   * — each defaults to a lazily-constructed `WebBluetoothOpossumClient` /
-   * `WebBluetoothPawPrintsClient` / `WebBluetoothCivetEdgingClient` when not
-   * supplied. Unlike `device`/`createDeviceClient`, there is no non-browser
-   * override hook yet: none of these three kinds have a Tauri/Android
-   * transport (see DG-Chat's `DeviceSession` doc comment — Android WebView
-   * has no Web Bluetooth), so the shells that need one don't exist yet.
-   */
-  opossum?: OpossumClient;
-  pawPrints?: PawPrintsClient;
-  civetEdging?: CivetEdgingClient;
+  device: DeviceClient;
+  opossum: OpossumClient;
+  pawPrints: PawPrintsClient;
+  civetEdging: CivetEdgingClient;
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
   /** Server TaskRun reporter; non-stop tools fail closed without a server run ID. */
@@ -253,6 +224,10 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.reject(new Error(this.message));
   }
 
+  releaseDeviceControl(_sessionId: string): Promise<void> {
+    return Promise.resolve();
+  }
+
   abortCurrentReply(_sessionId: string): Promise<void> {
     return Promise.resolve();
   }
@@ -282,17 +257,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
   const sessionTraceStore = new TransientSessionTraceStore();
   const waveformLibrary = new BrowserWaveformLibrary();
   const bridgeRegistry = new BridgeAdapterRegistry();
-  const device =
-    options.device ??
-    (() => {
-      const deviceProtocol = new CoyoteProtocolAdapter();
-      return options.createDeviceClient
-        ? options.createDeviceClient(deviceProtocol)
-        : new WebBluetoothDeviceClient({ protocol: deviceProtocol });
-    })();
-  const opossum = options.opossum ?? new WebBluetoothOpossumClient();
-  const pawPrints = options.pawPrints ?? new WebBluetoothPawPrintsClient();
-  const civetEdging = options.civetEdging ?? new WebBluetoothCivetEdgingClient();
+  const { device, opossum, pawPrints, civetEdging } = options;
 
   const speechRecognition = options.disableSpeech
     ? createNullSpeechRecognitionController()
@@ -411,9 +376,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     speechSynthesizer,
     speechCapabilities,
     modes: describeBrowserModes(settings, {
-      bluetoothAvailabilityOverride:
-        options.bluetoothAvailabilityOverride ??
-        (options.createDeviceClient ? { supported: true } : undefined),
+      bluetoothAvailabilityOverride: options.bluetoothAvailabilityOverride,
     }),
     resetPermissionGrants: () => bridgePermissionService.clearGrants(),
     warnings,

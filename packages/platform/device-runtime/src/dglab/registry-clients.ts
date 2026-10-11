@@ -91,7 +91,7 @@ export class RegistryCoyoteClient implements DeviceClient {
     command: DeviceCommand,
   ): Promise<DeviceCommandResult | null> {
     if (!this.coyotes().some((coyote) => coyote.id === deviceId)) return null;
-    // Presentation only, as in MultiCoyoteDeviceClient: the UI follows the target the AI drives.
+    // Presentation only: the UI follows the target the AI drives.
     this.selectedId = deviceId;
     return this.handle.execute(deviceId, command);
   }

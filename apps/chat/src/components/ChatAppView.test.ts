@@ -9,15 +9,15 @@ describe('Chat room/lobby shell composition', () => {
     expect(roomPresenceLabel(true, 1)).toBe('对方在线');
   });
 
-  it('disconnects device output before leaving the room and clearing the DM header', () => {
+  it('stops device output before leaving the room and clearing the DM header', () => {
     const events: string[] = [];
 
     leaveChatRoom(
-      vi.fn(() => events.push('disconnect')),
+      vi.fn(() => events.push('release')),
       vi.fn(() => events.push('leave')),
       vi.fn(() => events.push('clear-dm')),
     );
 
-    expect(events).toEqual(['disconnect', 'leave', 'clear-dm']);
+    expect(events).toEqual(['release', 'leave', 'clear-dm']);
   });
 });

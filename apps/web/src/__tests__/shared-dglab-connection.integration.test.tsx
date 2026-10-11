@@ -102,7 +102,8 @@ function ModuleProbe({ id }: { id: 'control' | 'chat' }) {
     isActive: () => device.connected,
     stop: device.stopAll,
     connect: device.connectDevice,
-    onRevoke: device.stopAll,
+    // Module revoke is state-only: the registry already stopped every output on the switch.
+    onRevoke: () => undefined,
   });
   return null;
 }
@@ -115,7 +116,7 @@ function GameProbe() {
   return null;
 }
 
-function renderApp() {
+function renderApp(barModuleId: string = 'control') {
   return render(
     <NativeBridgeProvider bridge={{ dglab: registry }} native={false}>
       <ModuleProbe id="control" />
@@ -123,7 +124,7 @@ function renderApp() {
         <GameProbe />
       </GameDeviceProvider>
       <ModuleProbe id="chat" />
-      <DeviceBar activeSessionId="control" showConnect />
+      <DeviceBar activeSessionId={barModuleId} showConnect />
     </NativeBridgeProvider>,
   );
 }
@@ -201,6 +202,28 @@ describe('shared DG-Lab connection across Control, Playground and Chat', () => {
     );
   });
 
+  it('shows the shared device without an owner tag, and its ✕ only on 设备', async () => {
+    const control = renderApp('control');
+    await act(async () => {
+      await safetySessionById('control')!.connect!();
+    });
+    const bar = () => control.container.querySelector('#shl-device-bar');
+    await waitFor(() => expect(bar()?.querySelectorAll('[aria-label^="断开"]')).toHaveLength(1), {
+      timeout: 2_000,
+    });
+    // The registry session's label is not a module that owns the device.
+    expect(bar()?.textContent).not.toContain('DG-Lab 设备');
+    control.unmount();
+
+    // In the AI chat (or any module other than 设备) the bar keeps stop, not disconnect.
+    const agent = renderApp('agent');
+    await waitFor(() => expect(agent.container.textContent).toContain('郊狼'), { timeout: 2_000 });
+    expect(agent.container.querySelectorAll('[aria-label^="断开"]')).toHaveLength(0);
+    expect(agent.container.textContent).not.toContain('DG-Lab 设备');
+    expect(agent.container.textContent).toMatch(/停止|归零/);
+    expect(registry.list()).toHaveLength(1);
+  });
+
   it('stops output on a lease switch without dropping the link', async () => {
     renderApp();
     await act(async () => {
@@ -223,6 +246,34 @@ describe('shared DG-Lab connection across Control, Playground and Chat', () => {
     expect(clients[0]!.stops).toBeGreaterThan(stops);
     expect(clients[0]!.disconnects).toBe(0);
     expect(registry.list()[0]).toMatchObject({ connected: true });
+  });
+
+  it('the old holder does not zero output the new holder starts right after a switch', async () => {
+    renderApp();
+    await act(async () => {
+      await safetySessionById('control')!.connect!();
+    });
+    await act(async () => {
+      await grantDeviceLease('playground');
+    });
+    await waitFor(() => expect(seen.game?.holdsLease).toBe(true));
+    act(() => seen.game!.pulse('strong'));
+    await waitFor(() => expect(clients[0]!.state.strengthA).toBeGreaterThan(0));
+
+    await act(async () => {
+      await grantDeviceLease('chat');
+    });
+    await waitFor(() => expect(seen.chat?.connected).toBe(true));
+    act(() => seen.chat!.setStrength('A', 10));
+    await waitFor(() => expect(clients[0]!.state.strengthA).toBe(10));
+    const stops = clients[0]!.stops;
+
+    // Past the game's pulse duration: its revoked timer must not fire a stop.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    });
+    expect(clients[0]!.stops).toBe(stops);
+    expect(clients[0]!.state.strengthA).toBe(10);
   });
 
   it('rejects a Chat command after the lease moves away from Chat', async () => {

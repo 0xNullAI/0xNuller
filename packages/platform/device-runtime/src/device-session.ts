@@ -16,12 +16,9 @@ import {
   type OpossumButtonEvent,
   type OpossumState,
   type PawPrintsReading,
-  type RequestedDevice,
-  type WebBluetoothProtocolAdapter,
 } from '@dg-kit/protocol';
 import { DEFAULT_DEVICE_LINK_RULE } from '@dg-kit/core';
 import type {
-  DeviceClient,
   DeviceCommand,
   DeviceKind,
   DeviceLinkRule,
@@ -31,16 +28,7 @@ import type {
   SensorState,
   WaveFrame as KitWaveFrame,
 } from '@dg-kit/core';
-import { loadDeviceSafety } from '@0xnullai/settings';
-import {
-  DgLabConnectionRegistry,
-  type DgLabModuleHandle,
-} from './dglab/dglab-connection-registry.js';
-import {
-  createWebBluetoothDgLabTransport,
-  type DgLabCoyoteClient,
-  type DgLabTransport,
-} from './dglab/dglab-transport.js';
+import type { DgLabModuleHandle } from './dglab/dglab-connection-registry.js';
 import type { DgLabDeviceSnapshot } from './dglab/physical-device.js';
 import type {
   CoyoteSummary,
@@ -57,18 +45,6 @@ export type {
   SensorKind,
   SensorSummary,
 } from './attached-device-state.js';
-
-/**
- * The pre-registry Coyote transport seam (`NativeBridge.chat.deviceClientFactory`). Only used to
- * build a fallback registry when no shell registry is present; see `dgLabRegistryForLegacySeam`.
- */
-export type DeviceClientFactory = (protocol: WebBluetoothProtocolAdapter) => DeviceClient;
-
-/** A picked, already-GATT-connected DG-Lab device plus its identified kind. */
-export type { RequestedDevice };
-
-/** The pre-registry picker seam (`NativeBridge.chat.requestDevice`). */
-export type RequestDeviceFn = () => Promise<RequestedDevice>;
 
 export interface DeviceInfo {
   version: DeviceVersion;
@@ -824,57 +800,4 @@ async function settleAll(actions: Promise<unknown>[]): Promise<void> {
     (result): result is PromiseRejectedResult => result.status === 'rejected',
   );
   if (failure) throw failure.reason;
-}
-
-export interface LegacyDeviceSeam {
-  clientFactory?: DeviceClientFactory;
-  requestDevice?: RequestDeviceFn;
-}
-
-let legacySeamRegistry: DgLabConnectionRegistry | null = null;
-
-/**
- * A registry built from the pre-registry transport seam, for a host that injects only
- * `NativeBridge.chat` (or Chat's standalone props) and no shell registry. Returns null when the
- * seam is empty. One per process, so the modules that fall back still share one owner.
- */
-export function dgLabRegistryForLegacySeam(seam: LegacyDeviceSeam): DgLabConnectionRegistry | null {
-  if (!seam.clientFactory && !seam.requestDevice) return null;
-  legacySeamRegistry ??= new DgLabConnectionRegistry({
-    transport: legacySeamTransport(seam),
-    limits: loadDeviceSafety,
-  });
-  return legacySeamRegistry;
-}
-
-/**
- * Which registry a module uses: the shell's when present (every shell passes one), else one
- * built from the old transport seam, else the standalone Web Bluetooth fallback.
- */
-export function selectDgLabRegistry(options: {
-  shell: DgLabConnectionRegistry | undefined;
-  fallback: DgLabConnectionRegistry;
-  legacy?: LegacyDeviceSeam;
-}): DgLabConnectionRegistry {
-  return options.shell ?? dgLabRegistryForLegacySeam(options.legacy ?? {}) ?? options.fallback;
-}
-
-function legacySeamTransport({ clientFactory, requestDevice }: LegacyDeviceSeam): DgLabTransport {
-  const web = createWebBluetoothDgLabTransport();
-  return {
-    ...web,
-    requestDevice: requestDevice ?? web.requestDevice,
-    createCoyoteClient: clientFactory
-      ? (protocol) => {
-          const client = clientFactory(protocol);
-          const { connectDevice } = client as Partial<DgLabCoyoteClient>;
-          if (typeof connectDevice !== 'function') {
-            throw new Error('当前环境暂不支持免二次选择器直接连接 Coyote 主机');
-          }
-          return client as DgLabCoyoteClient;
-        }
-      : web.createCoyoteClient,
-    // The Opossum and sensor clients attach to whatever `(device, server)` pair the picker
-    // returned, Web Bluetooth or plugin-blec shim alike, so the web ones serve both.
-  };
 }

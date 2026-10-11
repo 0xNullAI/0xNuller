@@ -260,6 +260,25 @@ describe('useRealtimeCall 正常结束', () => {
     expect(result.current.state).toMatchObject({ status: 'ended', error: 'remote closed' });
   });
 
+  it('ends the call on lease loss without a device stop that would hit the new holder', async () => {
+    const emergencyStop = vi.fn(async () => undefined);
+    const session = realtimeSession(async () => undefined);
+    realtimeMocks.createSession.mockResolvedValue(session);
+    const settings = createDefaultSettings();
+    settings.activeProviderId = 'xai';
+    settings.providers.xai.apiKey = 'test-key';
+    const { result } = renderHook(() =>
+      useRealtimeCall(minimalDeviceSession(emergencyStop), settings),
+    );
+
+    await act(async () => result.current.startCall());
+    await act(async () => result.current.hangUp('切换到其他模块', false, { stopOutput: false }));
+
+    expect(session.disconnect).toHaveBeenCalledOnce();
+    expect(result.current.state.status).toBe('ended');
+    expect(emergencyStop).not.toHaveBeenCalled();
+  });
+
   it('disconnects a session whose connection completes after the user cancelled', async () => {
     const connecting = deferred<undefined>();
     const deviceSession = minimalDeviceSession();

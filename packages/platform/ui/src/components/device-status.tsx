@@ -37,12 +37,16 @@ export function BatteryIcon({ level }: { level: number | null | undefined }) {
 export interface DeviceStatusChipProps {
   icon: ReactNode;
   battery: number | null | undefined;
-  onClick: () => void;
+  /** Omit for a display-only chip, such as a sensor that has no output to stop. */
+  onClick?: () => void;
   title: string;
   children?: ReactNode;
 }
 
-/** One device's status block: icon + battery (click to disconnect) + custom right side (usually strength bars). */
+/**
+ * One device's status block: icon + battery + custom right side (usually strength bars).
+ * Modules use the click to stop output; only the 设备 page disconnects a shared device.
+ */
 export function DeviceStatusChip({
   icon,
   battery,
@@ -50,20 +54,33 @@ export function DeviceStatusChip({
   title,
   children,
 }: DeviceStatusChipProps) {
+  const content = (
+    <>
+      {icon}
+      <BatteryIcon level={battery} />
+      <span className="hidden text-[11px] tabular-nums sm:inline">
+        {typeof battery === 'number' ? `${battery}%` : '--'}
+      </span>
+    </>
+  );
+  const className =
+    'flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-1.5 py-1 text-[var(--text-soft)] sm:gap-1.5 sm:px-2';
   return (
     <div className="flex items-center gap-1.5 sm:gap-2">
-      <button
-        type="button"
-        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-1.5 py-1 text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)] sm:gap-1.5 sm:px-2"
-        onClick={onClick}
-        title={title}
-      >
-        {icon}
-        <BatteryIcon level={battery} />
-        <span className="hidden text-[11px] tabular-nums sm:inline">
-          {typeof battery === 'number' ? `${battery}%` : '--'}
+      {onClick ? (
+        <button
+          type="button"
+          className={`${className} transition-colors hover:bg-[var(--bg-soft)]`}
+          onClick={onClick}
+          title={title}
+        >
+          {content}
+        </button>
+      ) : (
+        <span className={className} title={title}>
+          {content}
         </span>
-      </button>
+      )}
       {children}
     </div>
   );

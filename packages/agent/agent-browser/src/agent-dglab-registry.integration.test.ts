@@ -209,4 +209,36 @@ describe('Agent over the shared DG-Lab registry', () => {
     );
     runtime.dispose();
   });
+
+  it('lease loss releases Agent work without zeroing output the new holder starts', async () => {
+    const coyote = new FakeCoyote();
+    registry = createRegistry(coyote);
+    await grantDeviceLease(AGENT_DEVICE_MODULE_ID);
+    const control = registry.forModule('control');
+    const { id } = await control.connect();
+    const { runtime } = createAgentRuntime(registry, new StartFirstTargetLlm());
+    await send(runtime, 'run-before-switch');
+    expect(coyote.state.strengthA).toBe(5);
+
+    // What Agent's revoke does on the registry path: abort and release, no device write.
+    registry.forModule(AGENT_DEVICE_MODULE_ID).onRevoked(() => {
+      void runtime.abortCurrentReply('chat');
+      runtime.releaseDeviceControl('chat');
+    });
+    await grantDeviceLease('control');
+    expect(coyote.state.strengthA).toBe(0);
+
+    // The new holder starts output a few ms after the switch.
+    await control.execute(id, {
+      type: 'start',
+      channel: 'A',
+      strength: 15,
+      waveform: { id: 'w', name: 'w', frames: [[10, 50]] },
+      loop: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(coyote.state.strengthA).toBe(15);
+    runtime.dispose();
+  });
 });

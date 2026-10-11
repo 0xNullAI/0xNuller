@@ -68,12 +68,12 @@ Voice Realtime 不复用文本 HTTP client：WebSocket 事件、双向音频、�
 
 - Realtime 会话只向模型声明当前已连接且可用的设备。连接、断开或通用设备拓扑变化时，Voice 会
   在原会话中一起更新说明和工具列表；断开、故障或仅保存过设置的设备不会留在 AI 上下文中。
-- 郊狼使用与 Agent 相同的 `MultiCoyoteDeviceClient` 和 exact-target router，可同时连接多台同类型
+- 郊狼使用与 Agent 相同的共享 DG-Lab registry 客户端和 exact-target router，可同时连接多台同类型
   甚至同名设备。每个连接实例拥有独立的 opaque `targetId`、协议 client、命令队列与停止路径；
   模型工具必须逐字指定一个当前 `targetId`，不会按名称选择、合并或广播。Web 与 Android 使用同一
   组合方式。
-- 负鼠底层 transport 当前仍为单实例 client，因此 Voice 同一时间只连接一台负鼠；断开重连会生成
-  新的本地 opaque 身份，旧身份不能迁移到新硬件。
+- Voice 只驱动共享 registry 中第一台已连接的负鼠；该负鼠换成其他硬件或重连时会生成新的本地
+  opaque 身份，旧身份不能迁移到新硬件。
 - 通用设备运行时支持多个设备和多个振动功能。模型看到的是每个实例独立的 opaque `deviceId` 与
   `featureId`，每次工具调用必须精确指定一对 ID；名称不进入模型状态，命令不会广播或 fan-out。
 - 输出命令在进入对应目标的独立队列前会重新检查连接身份、权限结果和当前模块租约。身份或租约在

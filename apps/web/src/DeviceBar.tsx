@@ -7,12 +7,17 @@ import { allConnectedDevices, safetySessionById, subscribeSafetySessions } from 
 import { DEVICE_KIND_DISPLAY_NAME, isDevicePickerCancelled } from '@dg-kit/core';
 import type { DeviceSummary } from '@dg-kit/safety';
 import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
+import { DGLAB_SAFETY_SESSION_ID } from '@0xnullai/device-runtime';
 
 /**
  * The one device bar for the unified shell. It stays at the top of every module
  * that can connect devices, even before a device is attached; once anything is
- * connected it also survives navigation to non-device modules so stop and
- * disconnect never disappear.
+ * connected it also survives navigation to non-device modules so stop never
+ * disappears.
+ *
+ * Disconnecting is a 设备-page action only: the devices are shared by every
+ * module, so a ✕ in an AI chat or a game would drop the link for all of them.
+ * Elsewhere the bar shows the device and the stop button, not the ✕.
  *
  * Visibility therefore has two signals: the active module exposes a connect
  * capability, or at least one device is connected. Output state only changes the
@@ -26,6 +31,9 @@ import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
  */
 
 const POLL_MS = 1000;
+
+/** The 设备 module's lease id. Only there does the bar offer per-device disconnect. */
+const DEVICE_PAGE_MODULE_ID = 'control';
 
 function useConnectedDevices() {
   const [groups, setGroups] = useState(() => allConnectedDevices());
@@ -54,8 +62,10 @@ function kindLabel(device: DeviceSummary): string {
 /**
  * One device's row.
  *
- * `owner` is the module holding it, shown when several module sessions are
- * represented or when a background module owns the only attached device.
+ * `owner` is the session that reports it. The shared DG-Lab registry session
+ * gets no tag: its devices belong to the app, not to a module. Other sessions
+ * (for example the generic embedded runtime) keep theirs when several sessions
+ * are represented or when a background module owns the only attached device.
  *
  * An outputting device is marked in words as well as by the dot. The dot alone
  * carries the single most important piece of state on this bar — whether
@@ -236,7 +246,9 @@ export function DeviceBar({
               (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
             const session = safetySessionById(group.sessionId);
             const disconnectKey = `${group.sessionId}:${device.id}`;
-            const canDisconnect = typeof session?.disconnect === 'function';
+            const canDisconnect =
+              activeSessionId === DEVICE_PAGE_MODULE_ID &&
+              typeof session?.disconnect === 'function';
             return (
               // Keyed by module + device id: two modules may legitimately report
               // the same device id, and one module may now report several
@@ -247,7 +259,11 @@ export function DeviceBar({
                 key={`${group.sessionId}:${device.id}`}
                 device={device}
                 owner={
-                  groups.length > 1 || group.sessionId !== activeSessionId ? group.label : null
+                  group.sessionId === DGLAB_SAFETY_SESSION_ID
+                    ? null
+                    : groups.length > 1 || group.sessionId !== activeSessionId
+                      ? group.label
+                      : null
                 }
                 displayLabel={displayLabel}
                 disconnecting={disconnectState.key === disconnectKey}

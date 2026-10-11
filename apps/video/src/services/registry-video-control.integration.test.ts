@@ -261,4 +261,36 @@ describe('Video on the shared DG-Lab registry', () => {
     );
     expect(clients[0]!.state.strengthA).toBe(0);
   });
+
+  it('lease loss revokes the grant without zeroing output the new holder starts', async () => {
+    const { registry, control, clients, events } = harness();
+    const agent = registry.forModule('agent');
+    await agent.connect();
+    await settle();
+    await grantDeviceLease('video');
+    const [target] = control.service.getTargets();
+    await control.service.executeAiAction(
+      target!,
+      { id: 'start', action: 'start', channel: 'A', value: 10 },
+      grantInput,
+    );
+    // What Video's lease-loss handler does: state only, no device write.
+    events.onRevoked.mockImplementation(() => control.service.revoke());
+
+    await grantDeviceLease('agent');
+    // The new holder starts output a few ms after the switch.
+    await agent.execute(registry.list()[0]!.id, {
+      type: 'start',
+      channel: 'A',
+      strength: 15,
+      waveform: { id: 'w', name: 'w', frames: [[10, 50]] },
+      loop: true,
+    });
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(events.onRevoked).toHaveBeenCalledTimes(1);
+    expect(control.service.getGrant()).toMatchObject({ revoked: true });
+    expect(clients[0]!.state.strengthA).toBe(15);
+  });
 });

@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
-import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { selectDgLabRegistry, useDevice, useChannelRotation } from '@0xnullai/device-runtime';
+import { useDevice, useChannelRotation } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
-import type {
-  ChannelRotationDevice,
-  ChannelRotationWaveforms,
-  DeviceClientFactory,
-  RequestDeviceFn,
-} from '@0xnullai/device-runtime';
+import type { ChannelRotationDevice, ChannelRotationWaveforms } from '@0xnullai/device-runtime';
 import {
   isWaveformCompatibleWithDevice,
   type WaveformDefinition,
@@ -68,22 +63,10 @@ function playbackIdForTarget(target: OutputTarget | null): string | null {
  * is the one thing this repo has decided may never be duplicated.
  */
 export default function App() {
-  // The shell's registry is the one owner of every DG-Lab link, shared with
-  // Playground, Chat, Agent and Voice. The old per-module transport seam is
-  // only a fallback for a host that injects no registry.
-  const native = useNativeBridge();
-  const fallbackRegistry = useDgLabRegistry();
-  const device = useDevice({
-    moduleId: 'control',
-    registry: selectDgLabRegistry({
-      shell: native.dglab,
-      fallback: fallbackRegistry,
-      legacy: {
-        clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
-        requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
-      },
-    }),
-  });
+  // The app's one registry owns every DG-Lab link, shared with Playground,
+  // Chat, Agent, Voice and Video. A standalone build gets a lazy Web Bluetooth
+  // registry from the same hook.
+  const device = useDevice({ moduleId: 'control', registry: useDgLabRegistry() });
   const waveforms = useWaveforms();
 
   const devicePlayback = useDevicePlayback();
@@ -213,9 +196,12 @@ export default function App() {
     connect: device.connectDevice,
     onRevoke: () => {
       // Losing the lease means switching away from Control. The registry has
-      // stopped the output; invalidate any held fire before its eventual
-      // pointerup can restore it.
-      stopAll();
+      // already stopped every output and DeviceSession dropped its pending
+      // writes. Only Control's own held fire is left: invalidate it before its
+      // eventual pointerup can restore the old baseline. No device stop here:
+      // stops bypass the lease fence and would zero the new holder's output.
+      cancelFire();
+      setOpossumFiring({ A: false, B: false });
     },
   });
 

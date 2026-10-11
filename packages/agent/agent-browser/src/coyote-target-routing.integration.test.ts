@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEmptyDeviceState, type DeviceState } from '@dg-agent/core';
 import { ToolRegistry } from '@dg-agent/runtime';
 import { CoyoteTargetToolRegistry, createCoyoteTargetRouter } from './coyote-target-routing.js';
-import { MultiCoyoteDeviceClient } from './multi-coyote-client.js';
-import type { BluetoothDeviceLike, BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
+import type { BluetoothDeviceLike } from '@dg-kit/protocol';
 
 class Child {
   state: DeviceState = createEmptyDeviceState();
@@ -33,30 +32,6 @@ function bluetooth(id: string): BluetoothDeviceLike {
 }
 
 describe('Coyote exact target composition', () => {
-  it('keeps same-name devices separate and routes only to the exact opaque target', async () => {
-    const children: Child[] = [];
-    let next = 0;
-    const multi = new MultiCoyoteDeviceClient(
-      () => {
-        const child = new Child();
-        children.push(child);
-        return child;
-      },
-      () => `opaque/${++next}`,
-    );
-    const server = {} as BluetoothRemoteGATTServerLike;
-    await multi.connectDevice(bluetooth('transport-a'), server);
-    await multi.connectDevice(bluetooth('transport-b'), server);
-    const router = createCoyoteTargetRouter(multi);
-    const targets = await router.listTargets();
-
-    expect(targets.map(({ targetId }) => targetId)).toEqual(['opaque/1', 'opaque/2']);
-    expect(targets.map(({ state }) => state.deviceName)).toEqual(['相同名称', '相同名称']);
-    await router.executeTarget('opaque/2', { type: 'stop' });
-    expect(children[0]!.execute).not.toHaveBeenCalled();
-    expect(children[1]!.execute).toHaveBeenCalledTimes(1);
-  });
-
   it('requires the current targetId enum on every Coyote model tool', async () => {
     const legacy = new ToolRegistry();
     for (const name of [

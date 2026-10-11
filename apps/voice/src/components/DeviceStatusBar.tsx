@@ -17,16 +17,15 @@ interface DeviceStatusBarProps {
   state: DeviceSessionState;
   coyoteSafety: CoyoteSafetySettings;
   opossumSafety: OpossumSafetySettings;
-  onDisconnectCoyote: (targetId: string) => void;
-  onDisconnectOpossum: () => void;
+  /** Stops output only. Disconnecting a shared device happens on the 设备 page. */
+  onStop: () => void;
 }
 
 export function DeviceStatusBar({
   state,
   coyoteSafety,
   opossumSafety,
-  onDisconnectCoyote,
-  onDisconnectOpossum,
+  onStop,
 }: DeviceStatusBarProps) {
   if (state.coyotes.length === 0 && !state.opossum.connected) return null;
 
@@ -37,8 +36,8 @@ export function DeviceStatusBar({
           key={targetId}
           icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
           battery={coyote.battery}
-          onClick={() => onDisconnectCoyote(targetId)}
-          title="断开郊狼"
+          onClick={onStop}
+          title="停止输出"
         >
           <div className="flex gap-3 sm:gap-4">
             <ChannelStrengthBar
@@ -59,8 +58,8 @@ export function DeviceStatusBar({
         <DeviceStatusChip
           icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
           battery={state.opossum.battery}
-          onClick={onDisconnectOpossum}
-          title="断开负鼠"
+          onClick={onStop}
+          title="停止输出"
         >
           <div className="flex gap-3 sm:gap-4">
             <ChannelStrengthBar

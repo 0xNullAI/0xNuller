@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@0xnullai/native', () => ({
-  useNativeBridge: () => ({}),
   useDgLabRegistry: () => ({}),
 }));
 
@@ -60,7 +59,6 @@ vi.mock('@0xnullai/device-runtime', () => ({
     mocks.moduleId = options.moduleId;
     return mocks.device;
   },
-  selectDgLabRegistry: ({ fallback }: { fallback: unknown }) => fallback,
   holdsAnyDevice: ({ coyotes, sensor, opossum }: typeof mocks.device) =>
     coyotes.some((device) => device.connected) || Boolean(sensor?.connected || opossum?.connected),
 }));
@@ -154,6 +152,23 @@ describe('GameDeviceProvider', () => {
 
     act(() => vi.advanceTimersByTime(450));
     expect(mocks.device.stopAll).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('on lease loss drops its pulse timer without stopping the new holder', () => {
+    mocks.lease = true;
+    mocks.device.coyotes = [{ id: 'coyote-1', connected: true }];
+    const { result, unmount } = renderGameDevice();
+    act(() => result.current.pulse('strong'));
+    expect(mocks.device.stopAll).toHaveBeenCalledOnce();
+
+    // The registry already stopped every output. A stop from here would bypass the fence and
+    // zero whatever the new holder starts, including the pulse timer firing later.
+    mocks.lease = false;
+    void mocks.safetySpec?.onRevoke?.();
+    act(() => vi.advanceTimersByTime(1_000));
+
+    expect(mocks.device.stopAll).toHaveBeenCalledOnce();
     unmount();
   });
 

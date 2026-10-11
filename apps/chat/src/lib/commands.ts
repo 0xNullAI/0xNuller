@@ -1,5 +1,5 @@
 import type { DeviceCommand } from './protocol';
-import type { DGLabDevice } from './bluetooth';
+import type { DGLabDevice } from '@0xnullai/device-runtime';
 import type { WaveformDefinition } from '@0xnullai/waveforms';
 
 let audioCtx: AudioContext | null = null;

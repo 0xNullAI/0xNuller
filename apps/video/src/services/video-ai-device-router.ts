@@ -180,11 +180,20 @@ export class VideoAiDeviceRouter {
     }
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Revoke the grant and drop in-flight inference, with no device write. Lease loss uses this:
+   * the lease owners already stopped every output, and `stop()` here would bypass the lease
+   * fence and zero what the new holder starts.
+   */
+  revoke(): void {
     if (this.grant) this.grant.revoked = true;
     this.invalidate();
     this.authorizedLlm = null;
     this.activeRoute = null;
+  }
+
+  async stop(): Promise<void> {
+    this.revoke();
     if (!this.stopInFlight) {
       const stopping = this.options.stopAll();
       this.stopInFlight = stopping;

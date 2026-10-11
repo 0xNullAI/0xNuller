@@ -107,7 +107,6 @@ describe('Voice on the shared DG-Lab registry', () => {
     const revoked: string[] = [];
     session.onRevoked(() => revoked.push('voice'));
 
-    expect(session.sharedRegistry).toBe(true);
     const targets = await session.listCoyoteTargets();
     expect(targets.map(({ targetId }) => targetId)).toEqual([id]);
 

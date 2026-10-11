@@ -544,6 +544,26 @@ export class AgentRuntime {
   }
 
   async emergencyStop(sessionId: string): Promise<void> {
+    this.releaseDeviceControl(sessionId);
+
+    const result = await this.stopDevicesBestEffort();
+    if (result) {
+      this.events.emit({
+        type: 'device-command-executed',
+        sessionId,
+        command: { type: 'emergencyStop' },
+        result,
+      });
+    }
+  }
+
+  /**
+   * Drop every piece of Agent work that could still reach a device, with no device write:
+   * stale continuations, in-flight turns, queued system work, timers, sensor triggers and the
+   * device link. Used for lease loss, where the lease owner already stopped every output and a
+   * stop issued here would bypass the fence and zero what the new holder starts.
+   */
+  releaseDeviceControl(sessionId: string): void {
     // Latch first: continuations created before this line stay stale even if
     // their provider or permission promise ignores AbortSignal.
     const affectedSessions = new Set([...this.sessionGenerations.keys(), sessionId]);
@@ -559,16 +579,6 @@ export class AgentRuntime {
     const linkRule = this.deviceLinkEngine?.getRule();
     if (linkRule?.enabled) {
       this.deviceLinkEngine?.setRule({ ...linkRule, enabled: false });
-    }
-
-    const result = await this.stopDevicesBestEffort();
-    if (result) {
-      this.events.emit({
-        type: 'device-command-executed',
-        sessionId,
-        command: { type: 'emergencyStop' },
-        result,
-      });
     }
   }
 

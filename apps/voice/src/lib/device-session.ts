@@ -1,40 +1,18 @@
 /**
- * Unified device layer: holds a shared multi-Coyote aggregate plus one
- * Opossum client (connectable simultaneously and independently) and
- * exposes a single "connect a device" entry point that opens ONE chooser,
- * auto-detects which kind was picked, and routes it to the matching client.
+ * Voice's view of the app's one DG-Lab registry: every connected Coyote as an exact target plus
+ * the first connected Opossum. Voice opens no BLE link of its own. A device connected on 设备
+ * or in another module is the same device here, and every write goes through the registry
+ * handle, so the lease fence, holder re-clamp and the device's single queue apply on top of
+ * Voice's own policies.
  *
- * DG-Voice deliberately does not support the two read-only sensor kinds
- * (paw-prints, civet-edging) — there is no output tool for them and no
- * event-stream-into-realtime-session wiring, so a connected sensor would
- * just sit there doing nothing useful. `requestDgLabDevice()`'s underlying
- * scan filter still matches every DG-Lab kind (that's baked into the kit),
- * so a user could still pick one in the browser's Bluetooth chooser —
- * `connectDevice()` rejects that pick with a clear message instead of
- * silently wiring up something nothing in this app knows how to use.
+ * DG-Voice does not drive the two read-only sensor kinds (paw-prints, civet-edging): there is
+ * no output tool for them. The shared picker still lists every DG-Lab kind, so
+ * `connectDevice()` reports a picked sensor with a clear message and leaves it attached for the
+ * modules that use it.
  *
- * Transport-injectable so the same class serves both the web app
- * (`createWebBluetoothTransport()`, the default) and the Android shell
- * (`@dg-kit/transport-tauri-blec`'s classes, wired up in
- * `apps/tauri-android`) — `requestDgLabDeviceTauri()` was deliberately built
- * to return the exact same `{kind, device, server}` shape as
- * `requestDgLabDevice()` (see that package's `request-device.ts`), and
- * every Tauri client exposes the same `connectDevice(device, server)`
- * passthrough as its Web Bluetooth counterpart, so no branching is needed
- * inside `connectDevice()` below — only which concrete clients and which
- * picker function get constructed differs, and that's exactly what
- * `DeviceSessionTransport` isolates.
- *
- * Inside a shell, Voice no longer opens links itself: `createRegistryTransport()` wraps the
- * app's one DG-Lab registry handle, and the legacy transports above are only the fallback.
+ * Only the 设备 page disconnects devices, so this session has no disconnect.
  */
-import {
-  type BluetoothDeviceLike,
-  type BluetoothRemoteGATTServerLike,
-  type OpossumClient,
-  type OpossumState,
-  type RequestedDevice,
-} from '@dg-kit/protocol';
+import { type OpossumClient, type OpossumState } from '@dg-kit/protocol';
 import {
   createEmptyDeviceState,
   type DeviceClient,
@@ -42,12 +20,7 @@ import {
   type DeviceState,
 } from '@dg-kit/core';
 import type { CoyoteTargetRouter, CoyoteTargetSnapshot } from '@dg-agent/core';
-import { createCoyoteTargetRouter, MultiCoyoteDeviceClient } from '@dg-agent/agent-browser';
-import {
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  requestDgLabDevice,
-} from '@dg-kit/transport-webbluetooth';
+import { createCoyoteTargetRouter } from '@dg-agent/agent-browser';
 import {
   RegistryCoyoteClient,
   RegistryOpossumClient,
@@ -67,28 +40,6 @@ export interface ConnectedDeviceInfo {
   name: string;
 }
 
-/** What every concrete client (Web Bluetooth or Tauri BLE) additionally exposes beyond its formal `@dg-kit/*` interface — the "already scanned and connected, just wire me up" passthrough `requestDevice()`'s result routes to. */
-export interface GattConnectable {
-  connectDevice(device: BluetoothDeviceLike, server: BluetoothRemoteGATTServerLike): Promise<void>;
-}
-
-/**
- * A picked, already-GATT-connected DG-Lab device plus its identified kind.
- * Declared in `@dg-kit/protocol` (both pickers return it); re-exported so
- * transport implementations only need this module.
- */
-export type { RequestedDevice };
-
-/**
- * Legacy: Voice opens and owns its own BLE links. Kept only as the fallback for a shell that
- * injects `voice.transport` without a shared DG-Lab registry.
- */
-export interface DeviceSessionTransport {
-  coyote: DeviceClient & GattConnectable;
-  opossum: OpossumClient & GattConnectable;
-  requestDevice(): Promise<RequestedDevice>;
-}
-
 /**
  * Voice borrows the app's one DG-Lab registry through its module handle. It opens no BLE link:
  * every write goes through the handle, so the lease fence, holder re-clamp and the device's
@@ -102,8 +53,6 @@ export interface RegistryDeviceSessionTransport {
   onRevoked(listener: () => void): () => void;
 }
 
-export type AnyDeviceSessionTransport = DeviceSessionTransport | RegistryDeviceSessionTransport;
-
 /** Voice's view of the shared registry, gated by the lease under `handle.moduleId`. */
 export function createRegistryTransport(handle: DgLabModuleHandle): RegistryDeviceSessionTransport {
   return {
@@ -111,23 +60,6 @@ export function createRegistryTransport(handle: DgLabModuleHandle): RegistryDevi
     opossum: new RegistryOpossumClient(handle),
     connect: () => handle.connect(),
     onRevoked: (listener) => handle.onRevoked(listener),
-  };
-}
-
-function isRegistryTransport(
-  transport: AnyDeviceSessionTransport,
-): transport is RegistryDeviceSessionTransport {
-  return 'connect' in transport && !('requestDevice' in transport);
-}
-
-/** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
-export function createWebBluetoothTransport(): DeviceSessionTransport {
-  return {
-    coyote: new MultiCoyoteDeviceClient(
-      (protocol) => new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
-    ),
-    opossum: new WebBluetoothOpossumClient(),
-    requestDevice: () => requestDgLabDevice(),
   };
 }
 
@@ -140,21 +72,18 @@ const SENSOR_KIND_DISPLAY_NAME: Partial<Record<DeviceKind, string>> = {
 export class DeviceSession {
   readonly coyote: DeviceClient;
   readonly opossum: OpossumClient;
-  /** True when the shared DG-Lab registry owns the links; the shell lists its devices then. */
-  readonly sharedRegistry: boolean;
 
-  private readonly transport: AnyDeviceSessionTransport;
+  private readonly transport: RegistryDeviceSessionTransport;
   readonly coyoteTargetRouter: CoyoteTargetRouter;
   private readonly listeners = new Set<() => void>();
   private opossumTargetId: string | null = null;
   /** Physical identity behind `opossumTargetId`, when the client exposes one. */
   private opossumSourceId: string | null = null;
 
-  constructor(transport: AnyDeviceSessionTransport = createWebBluetoothTransport()) {
+  constructor(transport: RegistryDeviceSessionTransport) {
     this.transport = transport;
     this.coyote = transport.coyote;
     this.opossum = transport.opossum;
-    this.sharedRegistry = isRegistryTransport(transport);
     this.coyoteTargetRouter = createCoyoteTargetRouter(this.coyote);
 
     this.coyote.onStateChanged(() => this.emit());
@@ -164,12 +93,8 @@ export class DeviceSession {
     });
   }
 
-  /**
-   * Lease loss reported by the shared registry, after it already stopped every output. The
-   * legacy transport has no such signal; the safety bus's `onRevoke` covers it.
-   */
+  /** Lease loss reported by the shared registry, after it already stopped every output. */
   onRevoked(listener: () => void): () => void {
-    if (!isRegistryTransport(this.transport)) return () => undefined;
     return this.transport.onRevoked(() => {
       listener();
       this.emit();
@@ -186,7 +111,7 @@ export class DeviceSession {
   }
 
   /**
-   * Opaque identity for the one connected legacy target of this kind. It is
+   * Opaque identity for the connected Opossum target. It is
    * intentionally unrelated to the advertised device name and changes after
    * every disconnect/reconnect so an approval cannot migrate to new hardware.
    */
@@ -203,58 +128,17 @@ export class DeviceSession {
   }
 
   /**
-   * Opens one chooser and routes the picked device to the matching client.
-   * Call repeatedly to connect the other device kind — each call opens a
-   * fresh chooser.
+   * Opens the one shared picker. A device another module already attached is reused, not
+   * reopened. Call again to add another device.
    */
   async connectDevice(): Promise<ConnectedDeviceInfo> {
-    const transport = this.transport;
-    if (isRegistryTransport(transport)) {
-      const picked = await transport.connect();
-      if (picked.kind === 'paw-prints' || picked.kind === 'civet-edging') {
-        // The registry owns the link and other modules may use the sensor, so keep it attached.
-        throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[picked.kind]}这类传感器设备`);
-      }
-      this.updateOpossumTargetIdentity((await this.opossum.getState()).connected);
-      return { kind: picked.kind, name: picked.name };
+    const picked = await this.transport.connect();
+    if (picked.kind === 'paw-prints' || picked.kind === 'civet-edging') {
+      // The registry owns the link and other modules may use the sensor, so keep it attached.
+      throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[picked.kind]}这类传感器设备`);
     }
-
-    const { kind, device, server } = await transport.requestDevice();
-
-    switch (kind) {
-      case 'coyote': {
-        await transport.coyote.connectDevice(device, server);
-        break;
-      }
-      case 'opossum': {
-        if ((await this.opossum.getState()).connected) {
-          device.gatt?.disconnect();
-          throw new Error('语音通话当前只支持一台负鼠；请先断开现有设备再连接另一台');
-        }
-        await transport.opossum.connectDevice(device, server);
-        this.updateOpossumTargetIdentity(true);
-        break;
-      }
-      case 'paw-prints':
-      case 'civet-edging':
-        device.gatt?.disconnect();
-        throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[kind]}这类传感器设备`);
-    }
-
-    return { kind, name: device.name ?? '' };
-  }
-
-  async disconnectCoyote(targetId?: string): Promise<void> {
-    const multi = this.coyote as DeviceClient & {
-      disconnectDeviceById?: (id: string) => Promise<void>;
-    };
-    if (targetId && multi.disconnectDeviceById) await multi.disconnectDeviceById(targetId);
-    else await this.coyote.disconnect();
-  }
-
-  async disconnectOpossum(): Promise<void> {
-    await this.opossum.disconnect();
-    this.updateOpossumTargetIdentity(false);
+    this.updateOpossumTargetIdentity((await this.opossum.getState()).connected);
+    return { kind: picked.kind, name: picked.name };
   }
 
   /** Panic button: stop every Coyote target and the Opossum immediately. */

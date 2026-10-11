@@ -7,37 +7,28 @@ import { setDeviceConversationAccess } from '@0xnullai/settings';
 import { grantDeviceLease } from '@dg-kit/safety';
 import type { DgLabModuleHandle } from '@dg-agent/agent-browser';
 
-const { createBrowserServices, createRegistryAgentDevices, MultiCoyoteDeviceClient } = vi.hoisted(
-  () => ({
-    createBrowserServices: vi.fn(
-      (_options?: {
-        device?: unknown;
-        opossum?: unknown;
-        createDeviceClient?: unknown;
-        bluetoothAvailabilityOverride?: unknown;
-        deviceExecutionGate?: (input: {
-          sessionId: string;
-          context: { sourceType: string };
-        }) => boolean;
-      }) => ({
-        client: { dispose: vi.fn() },
-        warnings: [],
-      }),
-    ),
-    MultiCoyoteDeviceClient: vi.fn(function (
-      this: unknown,
-      createClient: (protocol: unknown) => unknown,
-    ) {
-      return createClient({});
+const { createBrowserServices, createRegistryAgentDevices } = vi.hoisted(() => ({
+  createBrowserServices: vi.fn(
+    (_options?: {
+      device?: unknown;
+      opossum?: unknown;
+      bluetoothAvailabilityOverride?: unknown;
+      deviceExecutionGate?: (input: {
+        sessionId: string;
+        context: { sourceType: string };
+      }) => boolean;
+    }) => ({
+      client: { dispose: vi.fn() },
+      warnings: [],
     }),
-    createRegistryAgentDevices: vi.fn((handle: unknown) => ({
-      device: { from: handle },
-      opossum: { from: handle },
-      pawPrints: { from: handle },
-      civetEdging: { from: handle },
-    })),
-  }),
-);
+  ),
+  createRegistryAgentDevices: vi.fn((handle: unknown) => ({
+    device: { from: handle },
+    opossum: { from: handle },
+    pawPrints: { from: handle },
+    civetEdging: { from: handle },
+  })),
+}));
 
 const auth = vi.hoisted(() => ({ id: null as string | null, listener: () => {} }));
 vi.mock('@0xnullai/auth', () => ({
@@ -51,19 +42,12 @@ vi.mock('@0xnullai/auth', () => ({
 vi.mock('@dg-agent/agent-browser', () => ({
   createBrowserServices,
   createRegistryAgentDevices,
-  MultiCoyoteDeviceClient,
 }));
 
 import { useBrowserAppServices, type ServicesOverrides } from './use-browser-app-services';
 
-const device = {};
-const servicesOverrides = {
-  createDeviceClient: () => device,
-  createOpossumClient: () => ({}),
-  createPawPrintsClient: () => ({}),
-  createCivetEdgingClient: () => ({}),
-  disableUpdateChecker: true,
-} as unknown as ServicesOverrides;
+const servicesOverrides: ServicesOverrides = { disableUpdateChecker: true };
+const dglab = { moduleId: 'agent' } as unknown as DgLabModuleHandle;
 const settings = {} as BrowserAppSettings;
 const saved: SavedScene[] = [];
 const setPendingPermission = vi.fn();
@@ -85,6 +69,7 @@ describe('useBrowserAppServices', () => {
           setPendingPermission,
           resolveBridgeSessionId,
           servicesOverrides,
+          dglab,
         }),
       { initialProps: { scenes: { selectedId: 'default', saved } } },
     );
@@ -106,6 +91,7 @@ it('requires an exact account and AI conversation grant at the final device gate
       setPendingPermission,
       resolveBridgeSessionId,
       servicesOverrides,
+      dglab,
     }),
   );
   const gate = createBrowserServices.mock.lastCall?.[0]?.deviceExecutionGate;
@@ -134,6 +120,7 @@ it('does not treat the mobile inbox null lease as an active Agent lease', async 
       setPendingPermission,
       resolveBridgeSessionId,
       servicesOverrides,
+      dglab,
     }),
   );
   const gate = createBrowserServices.mock.lastCall?.[0]?.deviceExecutionGate;
@@ -152,6 +139,7 @@ it('rebuilds account runtime while preserving physical devices and ignores same-
       setPendingPermission,
       resolveBridgeSessionId,
       servicesOverrides,
+      dglab,
     }),
   );
   const originalDevice = createBrowserServices.mock.calls[0]?.[0]?.device;
@@ -168,10 +156,8 @@ it('rebuilds account runtime while preserving physical devices and ignores same-
   unmount();
 });
 
-it('takes every device client from the shared registry and ignores the legacy factories', () => {
+it('takes every device client from the shared registry', () => {
   createBrowserServices.mockClear();
-  const createDeviceClient = vi.fn(() => device);
-  const createOpossumClient = vi.fn(() => ({}));
   const handle = { moduleId: 'agent' } as unknown as DgLabModuleHandle;
   vi.stubGlobal('__BUILD_ID__', 'test');
   const { unmount } = renderHook(() =>
@@ -180,11 +166,7 @@ it('takes every device client from the shared registry and ignores the legacy fa
       scenes: { selectedId: 'default', saved },
       setPendingPermission,
       resolveBridgeSessionId,
-      servicesOverrides: {
-        ...servicesOverrides,
-        createDeviceClient,
-        createOpossumClient,
-      } as unknown as ServicesOverrides,
+      servicesOverrides,
       dglab: handle,
       nativeBluetooth: true,
     }),
@@ -192,9 +174,6 @@ it('takes every device client from the shared registry and ignores the legacy fa
   const options = createBrowserServices.mock.lastCall?.[0];
   expect(options?.device).toEqual({ from: handle });
   expect(options?.opossum).toEqual({ from: handle });
-  expect(options?.createDeviceClient).toBeUndefined();
   expect(options?.bluetoothAvailabilityOverride).toEqual({ supported: true });
-  expect(createDeviceClient).not.toHaveBeenCalled();
-  expect(createOpossumClient).not.toHaveBeenCalled();
   unmount();
 });

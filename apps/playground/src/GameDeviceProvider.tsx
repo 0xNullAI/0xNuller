@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { loadDeviceSafety } from '@0xnullai/settings';
 import { useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { listBuiltinWaveforms } from '@dg-kit/waveforms';
-import {
-  holdsAnyDevice,
-  selectDgLabRegistry,
-  useDevice,
-  type DeviceClientFactory,
-  type RequestDeviceFn,
-} from '@0xnullai/device-runtime';
+import { holdsAnyDevice, useDevice } from '@0xnullai/device-runtime';
 import { GameDeviceContext, resolveGamePulse, type PulseIntensity } from './use-game-device';
 
 const GAME_WAVEFORMS = new Map(listBuiltinWaveforms().map((waveform) => [waveform.id, waveform]));
@@ -21,19 +15,7 @@ const GAME_WAVEFORMS = new Map(listBuiltinWaveforms().map((waveform) => [wavefor
  * the `playground` lease; games never talk to BLE directly.
  */
 export function GameDeviceProvider({ children }: { children: React.ReactNode }) {
-  const native = useNativeBridge();
-  const fallbackRegistry = useDgLabRegistry();
-  const device = useDevice({
-    moduleId: 'playground',
-    registry: selectDgLabRegistry({
-      shell: native.dglab,
-      fallback: fallbackRegistry,
-      legacy: {
-        clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
-        requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
-      },
-    }),
-  });
+  const device = useDevice({ moduleId: 'playground', registry: useDgLabRegistry() });
   const {
     coyotes,
     sensor,
@@ -76,7 +58,9 @@ export function GameDeviceProvider({ children }: { children: React.ReactNode }) 
     isActive: () => holdsAnyDevice({ coyotes, sensor, opossum }),
     stop: stopAll,
     connect: connectDevice,
-    onRevoke: stopAll,
+    // The registry already stopped every output on the lease switch. Drop only the game's own
+    // pulse timer; a device stop here would bypass the fence and zero the new holder's output.
+    onRevoke: clearTimer,
   });
 
   const holdsLease = useSyncExternalStore(

@@ -14,7 +14,7 @@ import {
   PolicyEngine,
   createDefaultPolicyRules,
 } from '@dg-kit/safety';
-import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import {
   currentAuthUserId,
   subscribeAuthChanges,
@@ -24,7 +24,7 @@ import {
   subscribeDmRequest,
   type DmRequest,
 } from '@0xnullai/auth';
-import { selectDgLabRegistry, useChannelRotation, useDevice } from '@0xnullai/device-runtime';
+import { useChannelRotation, useDevice } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
@@ -37,23 +37,9 @@ import { markDmRead } from './inbox';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
 import { resolveRoomAiCoyoteTarget, roomAgentDeviceTargetId } from './lib/room-agent-device-tools';
 import { sendRoomMedia } from './lib/send-room-media';
-import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { ChatAppView } from './components/ChatAppView';
-
-export interface AppProps {
-  /**
-   * Legacy Coyote transport seam. Used only when the host injects no shared
-   * DG-Lab registry (`NativeBridge.dglab`); both shells inject one.
-   */
-  deviceClientFactory?: DeviceClientFactory;
-  /**
-   * Legacy picker seam, with the same fallback-only role as
-   * `deviceClientFactory`.
-   */
-  requestDeviceTauri?: RequestDeviceFn;
-}
 
 type FirePolicy = 'sum' | 'max' | 'avg';
 
@@ -98,13 +84,7 @@ function applyFire(d: FireApplyDeps) {
   d.setFiring(true);
 }
 
-export default function App({ deviceClientFactory, requestDeviceTauri }: AppProps = {}) {
-  // Native capabilities come from props first (standalone mount), otherwise from
-  // NativeBridge (inside the unified shell). Both paths coexist because Android has
-  // no hot update: getting the injection interface wrong would mute all three modules
-  // at once, and the broken build sticks around on users' phones for a long time, so
-  // the old injection point stays until the new path is proven stable.
-  const native = useNativeBridge();
+export default function App() {
   // The nickname comes from the unified account; when signed out it falls back to the
   // locally saved name, then to anonymous. A flaky account service must not lock
   // people out of a room, so there is always a usable value here.
@@ -412,20 +392,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   // The app's one DG-Lab registry: the same devices and ids Control and
   // Playground see. Chat writes through a view fenced to the `chat` lease, so a
   // room command that arrives after the lease moved is rejected at the holder.
-  const fallbackDgLabRegistry = useDgLabRegistry();
-  const device = useDevice({
-    moduleId: 'chat',
-    registry: selectDgLabRegistry({
-      shell: native.dglab,
-      fallback: fallbackDgLabRegistry,
-      legacy: {
-        clientFactory:
-          deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
-        requestDevice:
-          requestDeviceTauri ?? (native.chat?.requestDevice as typeof requestDeviceTauri),
-      },
-    }),
-  });
+  const device = useDevice({ moduleId: 'chat', registry: useDgLabRegistry() });
   const waveforms = useWaveforms();
 
   // Keep the reference fresh so closures do not go stale
@@ -487,12 +454,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       Boolean(deviceRef.current.sensor?.connected),
     stop: () => deviceRef.current.stopAll(),
     connect: () => deviceRef.current.connectDevice(),
-    onRevoke: () => {
-      // Stop the output (the registry already did; stop is idempotent), then drop
-      // the held state.
-      deviceRef.current.stopAll();
-      dropHeldDeviceState();
-    },
+    // The registry already stopped every output on the lease switch. Only drop
+    // Chat's held state: a device stop here bypasses the fence and would zero
+    // output the new holder starts right after the switch.
+    onRevoke: dropHeldDeviceState,
   });
   const waveformsRef = useRef(waveforms);
   // Refreshing the "latest value" ref during render is deliberate: moving it into an

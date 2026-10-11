@@ -9,16 +9,17 @@ export interface DeviceBarConnectInput {
 /**
  * Decides whether the shell device bar shows the active module's "connect" button.
  *
- * Every module owns its own BLE connection: a Coyote connected on 设备 belongs to
- * the Control session, and the Agent runtime cannot see or drive it. Inside the
- * shell this bar is the only place an AI chat can connect its own device (the
- * Agent panel hides its in-module connect buttons there). Hiding it in AI chats
- * left the AI with no device tools at all, so an Agent lease always gets it.
+ * Every module shares the app's one DG-Lab registry: a Coyote connected on 设备 is
+ * the same device the AI chat, games and rooms see, and any module's connect opens
+ * the same picker. Inside the shell an AI chat has no in-module connect button, so
+ * an Agent lease always gets this one; that keeps "connect a device for this chat"
+ * one tap away without a trip to 设备.
  *
  * Elsewhere the button stays a phone-only shortcut: on wide screens the 设备
  * entry is one click away, and an otherwise empty row would cost every page.
  * This only exposes the user's explicit connect action; execution still goes
- * through the lease, conversation grant and safety chain.
+ * through the lease, conversation grant and safety chain. Disconnect is not
+ * decided here: only the 设备 page offers it (see DeviceBar).
  */
 export function shouldShowDeviceBarConnect({
   narrow,

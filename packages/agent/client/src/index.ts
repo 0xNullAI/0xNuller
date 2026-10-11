@@ -39,6 +39,11 @@ export interface AgentClient {
   setDeviceLinkRule(rule: DeviceLinkRule): Promise<void>;
   getDeviceLinkRule(): DeviceLinkRule | null;
   emergencyStop(sessionId: string): Promise<void>;
+  /**
+   * Lease loss: drop in-flight turns, timers, triggers and the device link without a device
+   * write. The lease owner already stopped every output.
+   */
+  releaseDeviceControl(sessionId: string): Promise<void>;
   abortCurrentReply(sessionId: string): Promise<void>;
   sendUserMessage(input: SendUserMessageInput): Promise<void>;
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
@@ -131,6 +136,11 @@ class EmbeddedAgentClient implements AgentClient {
 
   emergencyStop(sessionId: string): Promise<void> {
     return this.runtime.emergencyStop(sessionId);
+  }
+
+  releaseDeviceControl(sessionId: string): Promise<void> {
+    this.runtime.releaseDeviceControl(sessionId);
+    return Promise.resolve();
   }
 
   abortCurrentReply(sessionId: string): Promise<void> {

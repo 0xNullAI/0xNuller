@@ -33,7 +33,6 @@
     "@dg-kit/protocol": "^1.16.4",
     "@dg-kit/safety": "1.16.4",
     "@dg-kit/tools": "^1.16.4",
-    "@dg-kit/transport-webbluetooth": "^1.16.4",
     "@dg-kit/waveforms": "^1.16.4",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",

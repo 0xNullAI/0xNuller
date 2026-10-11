@@ -39,9 +39,10 @@ interface LifecycleListener {
  * `connectDevice` was added to `TauriBlecDeviceClient` after this wrapper
  * was written and wasn't added to the explicit list, so every Coyote
  * connection made through the unified picker failed with "当前环境不支持连接郊狼设备"
- * — `supportsConnectDevice()` in `connect-any-device-tauri.ts` checked the
- * wrapped client, found no `connectDevice`, and refused. Forwarding it here
- * (when present) closes that gap without giving up the explicit-list safety
+ * — the connect path checked the wrapped client, found no `connectDevice`,
+ * and refused. Forwarding it here (the shared registry's Tauri transport
+ * attaches every picked Coyote through it)
+ * when present closes that gap without giving up the explicit-list safety
  * this wrapper relies on elsewhere.
  */
 interface ConnectDeviceCapable {

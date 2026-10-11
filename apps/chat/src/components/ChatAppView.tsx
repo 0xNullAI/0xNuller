@@ -291,7 +291,6 @@ export function ChatAppView({
                 connected={device.connected}
                 deviceName={device.deviceInfo?.name ?? null}
                 battery={device.battery}
-                onDisconnect={() => device.disconnectCoyote()}
                 limitA={device.limitA}
                 limitB={device.limitB}
                 onSetLimit={device.setLimit}
@@ -299,8 +298,6 @@ export function ChatAppView({
                 sensor={device.sensor}
                 opossum={device.opossum}
                 onConnectDevice={device.connectDevice}
-                onDisconnectSensor={device.disconnectSensor}
-                onDisconnectOpossum={device.disconnectOpossum}
                 deviceLink={device.deviceLink}
                 onSetDeviceLink={device.setDeviceLink}
               />

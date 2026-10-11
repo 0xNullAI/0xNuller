@@ -1,6 +1,6 @@
 /**
- * The Android/desktop `DgLabTransport` for the shared DG-Lab registry, composed from the same
- * plugin-blec clients and helpers the per-module seams in `bootstrap.tsx` use.
+ * The Android/desktop `DgLabTransport` for the shared DG-Lab registry: the only path from any
+ * module to a plugin-blec device.
  *
  * Nothing protocol-level lives here. Every Coyote client keeps `wrapWithLifecycleSafety`, every
  * client keeps the platform connect help, and the one shared chooser is `requestDeviceTauri()`

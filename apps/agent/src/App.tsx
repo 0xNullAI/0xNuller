@@ -25,10 +25,9 @@ import {
   type DeviceLinkRule,
   DEFAULT_DEVICE_LINK_RULE,
 } from '@dg-agent/core';
-import { AGENT_DEVICE_MODULE_ID, connectAnyDgLabDevice } from '@dg-agent/agent-browser';
+import { AGENT_DEVICE_MODULE_ID } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import { getObservedConversationSequence } from '@dg-agent/storage-browser';
-import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
 import {
   useShellNav,
   useInShell,
@@ -36,7 +35,7 @@ import {
   useSafetySession,
   useTheme,
 } from '@0xnullai/ui';
-import { useIsNative, useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry, useIsNative, useNativeBridge } from '@0xnullai/native';
 import { withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
@@ -97,49 +96,24 @@ import type { SessionSnapshot } from '@dg-agent/core';
 
 export interface AppProps {
   /**
-   * Optional override for service construction. Web entry omits this to keep
-   * the historical Web Bluetooth + speech + bridge defaults; the Tauri Android
-   * shell supplies a Tauri device factory and disables speech/bridge.
+   * Optional non-device service flags. The Tauri Android shell disables speech, the bridge
+   * and the update checker through `NativeBridge.agent.servicesOverrides`.
    */
   servicesOverrides?: ServicesOverrides;
-  /**
-   * Override for `connect()`'s device-picking step. Defaults to
-   * `connectAnyDgLabDevice()` (a single Web Bluetooth chooser scoped to all
-   * 4 kinds, auto-detected). The Tauri Android shell supplies the matching
-   * Tauri implementation: `@dg-kit/transport-tauri-blec`'s
-   * `requestDgLabDeviceTauri()` runs one shared scan+picker across all 4
-   * kinds, auto-detects which was picked, and routes it to that kind's
-   * client via `connectDevice(device, server)` — the same one-click
-   * experience as web. See
-   * `apps/tauri-android/src/connect-any-device-tauri.ts`.
-   */
-  connectDeviceTauri?: (clients: {
-    device: DeviceClient;
-    opossum: OpossumClient;
-    pawPrints: PawPrintsClient;
-    civetEdging: CivetEdgingClient;
-  }) => Promise<{ kind: DeviceKind; name: string }>;
 }
 
-export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
+export function App({ servicesOverrides }: AppProps = {}) {
   // Native capabilities come from props first (standalone mount), otherwise from
   // NativeBridge (inside the unified shell).
   const native = useNativeBridge();
   const nativeShell = useIsNative();
-  // The shell's one DG-Lab registry owns every Coyote/Opossum/sensor link. With it, Agent opens
-  // no BLE connection of its own: a device connected on 设备 is the one the AI chat sees, and
-  // the legacy per-module device seams below are not consulted. They stay only for a mount
-  // without a registry.
-  const dglabRegistry = native.dglab ?? null;
-  const dglab = useMemo(
-    () => dglabRegistry?.forModule(AGENT_DEVICE_MODULE_ID) ?? null,
-    [dglabRegistry],
-  );
+  // The app's one DG-Lab registry owns every Coyote/Opossum/sensor link (a lazy Web Bluetooth
+  // one in a standalone build). Agent opens no BLE connection of its own: a device connected on
+  // 设备 is the one the AI chat sees.
+  const dglabRegistry = useDgLabRegistry();
+  const dglab = useMemo(() => dglabRegistry.forModule(AGENT_DEVICE_MODULE_ID), [dglabRegistry]);
   const nativeOverrides = (native.agent?.servicesOverrides ??
     servicesOverrides) as typeof servicesOverrides;
-  const nativeConnect = (
-    dglab ? undefined : (native.agent?.connectDevice ?? connectDeviceTauri)
-  ) as typeof connectDeviceTauri;
   const activeSessionIdRef = useRef<string | null>(null);
   const imageConversationEpochRef = useRef(0);
   const bridgeSessionResolverRef = useRef<
@@ -362,10 +336,12 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const revokeAgentDeviceWork = async (): Promise<void> => {
     // Switching away from Agent also aborts the in-flight reply, not just the output —
     // a tool-call sequence still running would keep issuing commands in the background
-    // while the user believes they already left this module.
+    // while the user believes they already left this module. The registry has already
+    // stopped every output on the switch, so this drops Agent's own work only: a device
+    // stop here bypasses the lease fence and would zero what the new holder starts.
     if (!activeSessionId) return;
     await client.abortCurrentReply(activeSessionId).catch(() => undefined);
-    await client.emergencyStop(activeSessionId).catch(() => undefined);
+    await client.releaseDeviceControl(activeSessionId).catch(() => undefined);
   };
   const onRegistryRevoked = useEffectEvent(() => void revokeAgentDeviceWork());
 
@@ -383,70 +359,16 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       pawPrintsState.connected ||
       civetEdgingState.connected,
     connect: () => connect(),
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return disconnectOpossum();
-      if (deviceId === 'paw-prints') return disconnectPawPrints();
-      if (deviceId === 'civet-edging') return disconnectCivetEdging();
-      return disconnectDevice(deviceId);
-    },
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
     onRevoke: () => revokeAgentDeviceWork(),
-    // Fed to the shell's device bar. One slot per device — the user has to be able to
-    // see at a glance what is attached to them. Registry devices are already listed once by
-    // the registry's own session; listing them here too would show every device twice.
-    devices: () =>
-      dglab
-        ? []
-        : [
-            ...connectedCoyoteStates(device, deviceState).map(({ id, state }) => ({
-              id,
-              kind: 'coyote' as const,
-              name: state.deviceName ?? '郊狼',
-              connected: true,
-              battery: state.battery,
-              active: state.strengthA > 0 || state.strengthB > 0,
-              channels: [
-                { label: 'A', value: state.strengthA, max: settings.maxStrengthA },
-                { label: 'B', value: state.strengthB, max: settings.maxStrengthB },
-              ],
-            })),
-            ...(opossumState.connected
-              ? [
-                  {
-                    id: 'opossum',
-                    kind: 'opossum',
-                    name: '负鼠',
-                    connected: true,
-                    battery: opossumState.battery,
-                    active: opossumState.intensityA > 0 || opossumState.intensityB > 0,
-                    channels: [
-                      {
-                        label: 'A',
-                        value: opossumState.intensityA,
-                        max: settings.maxOpossumIntensityA,
-                      },
-                      {
-                        label: 'B',
-                        value: opossumState.intensityB,
-                        max: settings.maxOpossumIntensityB,
-                      },
-                    ],
-                  },
-                ]
-              : []),
-            ...(pawPrintsState.connected
-              ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
-              : []),
-            ...(civetEdgingState.connected
-              ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵猫', connected: true }]
-              : []),
-          ],
+    // The registry's own `dglab-devices` session lists (and, on 设备, disconnects) every
+    // device; listing them here too would show each one twice in the shell bar.
   });
   // The registry stops every output on a lease change, then tells the losing module. Agent
   // still has to drop its own in-flight reply, timers and triggers, as the bus revoke does.
-  useEffect(() => dglab?.onRevoked(() => onRegistryRevoked()), [dglab]);
+  useEffect(() => dglab.onRevoked(() => onRegistryRevoked()), [dglab]);
 
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
   const [deviceLinkRule, setDeviceLinkRuleState] = useState<DeviceLinkRule>(() => ({
@@ -636,19 +558,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
     try {
       setErrorMessage(null);
-      let kind: DeviceKind;
-      if (dglab) {
-        // The one shared picker; a device another module already attached is reused, not
-        // reopened. The UI follows a newly picked Coyote.
-        const picked = await dglab.connect();
-        if (picked.kind === 'coyote' && supportsCoyoteSelection(device)) {
-          device.selectDeviceById(picked.id);
-        }
-        kind = picked.kind;
-      } else {
-        const pickDevice = nativeConnect ?? connectAnyDgLabDevice;
-        ({ kind } = await pickDevice({ device, opossum, pawPrints, civetEdging }));
+      // The one shared picker; a device another module already attached is reused, not
+      // reopened. The UI follows a newly picked Coyote.
+      const picked = await dglab.connect();
+      if (picked.kind === 'coyote' && supportsCoyoteSelection(device)) {
+        device.selectDeviceById(picked.id);
       }
+      const kind: DeviceKind = picked.kind;
       setStatusMessage(`${DEVICE_KIND_DISPLAY_NAME[kind]}已连接`);
       await refreshCurrentSession(activeSessionId);
       return true;
@@ -665,61 +581,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       setErrorMessage(formatUiErrorMessage(error));
       return false;
     }
-  }, [
-    activeSessionId,
-    dglab,
-    device,
-    opossum,
-    pawPrints,
-    civetEdging,
-    nativeConnect,
-    liveDeviceState.connected,
-    refreshCurrentSession,
-  ]);
-
-  const disconnectDevice = useCallback(
-    async (deviceId?: string): Promise<void> => {
-      try {
-        setErrorMessage(null);
-        if (deviceId && supportsPerCoyoteDisconnect(device)) {
-          await device.disconnectDeviceById(deviceId);
-        } else {
-          await client.disconnectDevice();
-        }
-        setStatusMessage('设备已断开');
-        if (activeSessionId) {
-          await refreshCurrentSession(activeSessionId);
-        }
-      } catch (error) {
-        setErrorMessage(formatUiErrorMessage(error));
-      }
-    },
-    [activeSessionId, client, device, refreshCurrentSession],
-  );
-
-  const disconnectOpossum = useCallback(async (): Promise<void> => {
-    try {
-      await opossum.disconnect();
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-    }
-  }, [opossum]);
-
-  const disconnectPawPrints = useCallback(async (): Promise<void> => {
-    try {
-      await pawPrints.disconnect();
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-    }
-  }, [pawPrints]);
-
-  const disconnectCivetEdging = useCallback(async (): Promise<void> => {
-    try {
-      await civetEdging.disconnect();
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-    }
-  }, [civetEdging]);
+  }, [activeSessionId, dglab, device, liveDeviceState.connected, refreshCurrentSession]);
 
   const {
     characterId: conversationCharacterId,
@@ -1442,10 +1304,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               pawPrintsState={pawPrintsState}
               civetEdgingState={civetEdgingState}
               onConnect={() => void connect()}
-              onDisconnectDevice={() => void disconnectDevice()}
-              onDisconnectOpossum={() => void disconnectOpossum()}
-              onDisconnectPawPrints={() => void disconnectPawPrints()}
-              onDisconnectCivetEdging={() => void disconnectCivetEdging()}
               onEmergencyStop={() => void stop()}
               onOpenSidebar={() => setSidebarOpen(true)}
               onOpenSettings={() => openShellSettings('scenes')}
@@ -1504,7 +1362,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
 interface MultiCoyoteSnapshotClient {
   getConnectedCoyotes(): Array<{ id: string; state: DeviceState }>;
-  disconnectDeviceById(deviceId: string): Promise<void>;
 }
 
 interface MultiCoyoteSelectionClient extends MultiCoyoteSnapshotClient {
@@ -1512,20 +1369,17 @@ interface MultiCoyoteSelectionClient extends MultiCoyoteSnapshotClient {
   selectDeviceById(deviceId: string): void;
 }
 
-function supportsPerCoyoteDisconnect(
+function supportsCoyoteSnapshots(
   client: DeviceClient,
 ): client is DeviceClient & MultiCoyoteSnapshotClient {
-  return (
-    typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function' &&
-    typeof (client as Partial<MultiCoyoteSnapshotClient>).disconnectDeviceById === 'function'
-  );
+  return typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function';
 }
 
 function supportsCoyoteSelection(
   client: DeviceClient,
 ): client is DeviceClient & MultiCoyoteSelectionClient {
   return (
-    supportsPerCoyoteDisconnect(client) &&
+    supportsCoyoteSnapshots(client) &&
     typeof (client as Partial<MultiCoyoteSelectionClient>).selectDeviceById === 'function'
   );
 }
@@ -1534,6 +1388,6 @@ function connectedCoyoteStates(
   client: DeviceClient,
   fallback: DeviceState,
 ): Array<{ id: string; state: DeviceState }> {
-  if (supportsPerCoyoteDisconnect(client)) return client.getConnectedCoyotes();
+  if (supportsCoyoteSnapshots(client)) return client.getConnectedCoyotes();
   return fallback.connected ? [{ id: 'coyote', state: fallback }] : [];
 }

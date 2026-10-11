@@ -53,7 +53,6 @@ import {
 } from '@0xnullai/device-runtime';
 import {
   createBrowserLlmClient,
-  type BrowserVideoControlOptions,
   type BrowserVideoControlService,
   type BrowserVideoDeviceSnapshot,
   type VideoOutputKind,
@@ -279,13 +278,9 @@ export function App() {
   const openSettings = useOpenShellSettings();
   const native = useNativeBridge();
   const genericDevicesEnabled = useEmbeddedDeviceRuntimeEnabled();
+  // The app's one DG-Lab registry owns every Coyote/Opossum link; a standalone build gets a
+  // lazy Web Bluetooth registry from the same hook.
   const dglab = useDgLabRegistry();
-  // The shared registry owns every DG-Lab link. The per-module Video seam is used only by a
-  // shell that injects it without a registry.
-  const legacyControlService = native.dglab
-    ? undefined
-    : (native.video?.createControlService as
-        ((options: BrowserVideoControlOptions) => BrowserVideoControlService) | undefined);
 
   useEffect(() => subscribeVideoLlmConfig(setConfig), []);
   useEffect(() => subscribeDeviceSafety(() => setSafety(toVideoSafety())), []);
@@ -308,19 +303,13 @@ export function App() {
       return null;
     }
   }, [config]);
-  const [control] = useState<{
-    service: BrowserVideoControlService;
-    registry: RegistryVideoControl | null;
-  }>(() => {
-    const options = {
+  const [control] = useState<RegistryVideoControl>(() =>
+    createRegistryVideoControl(dglab, {
       getLlm: () => llm,
       getSafetyLimits: () => safety,
       getSceneLibrary: () => sceneLibrary,
-    };
-    if (legacyControlService) return { service: legacyControlService(options), registry: null };
-    const registry = createRegistryVideoControl(dglab, options);
-    return { service: registry.service, registry };
-  });
+    }),
+  );
   const service = control.service;
 
   useEffect(() => {
@@ -608,40 +597,34 @@ export function App() {
     stopCamera,
   ]);
 
-  const haltForLeaseLoss = async () => {
+  // Lease loss. The registry (and the generic runtime) already stopped every output on the
+  // switch, so this only revokes Video's grants and drops its pending work. A device stop here
+  // would bypass the lease fence and zero output the new holder starts right after the switch.
+  const haltForLeaseLoss = () => {
     startOperationRef.current += 1;
     questionAbortRef.current?.abort();
     abortDictation();
     stopSpeechPlayback();
     autoStartRef.current = null;
-    try {
-      await aiRouter.stop();
-    } finally {
-      session.haltAfterExternalStop('lease-loss');
-      setRoutingGrant(null);
-    }
+    aiRouter.revoke();
+    service.revoke();
+    session.haltAfterExternalStop('lease-loss');
+    setRoutingGrant(null);
   };
 
   useSafetySession({
     id: 'video',
     label: 'Video',
-    // Generic devices are listed and stopped by the shell-owned runtime safety
-    // session. Registry DG-Lab devices are listed by the registry's own session,
-    // so Video lists only the links of a legacy injected service.
+    // Registry DG-Lab devices are listed by the registry's own session and generic devices by
+    // the shell-owned runtime safety session, so Video lists none itself.
     isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
     connect: () => service.connect().then(() => undefined),
-    ...(control.registry
-      ? {}
-      : {
-          disconnect: (deviceId: string) => service.disconnect(deviceId),
-          devices: () => service.getDeviceSummaries(safety),
-        }),
     onRevoke: haltForLeaseLoss,
   });
 
   const registryEventsRef = useRef<{
-    haltForLeaseLoss: () => Promise<void>;
+    haltForLeaseLoss: () => void;
     stopForTopologyChange: () => void;
   } | null>(null);
   // Refreshed after each render so the one registry binding always sees current state.
@@ -661,10 +644,9 @@ export function App() {
     };
   });
   useEffect(() => {
-    if (!control.registry) return;
-    return bindRegistryVideoControl(control.registry, {
+    return bindRegistryVideoControl(control, {
       onTopologyChange: () => registryEventsRef.current?.stopForTopologyChange(),
-      onRevoked: () => void registryEventsRef.current?.haltForLeaseLoss(),
+      onRevoked: () => registryEventsRef.current?.haltForLeaseLoss(),
       onStopError: () => setLocalError('无法确认设备已停止，请立即断开设备或取下电极'),
     });
   }, [control]);

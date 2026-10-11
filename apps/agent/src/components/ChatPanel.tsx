@@ -95,10 +95,6 @@ interface ChatPanelProps {
   pawPrintsState: SensorState;
   civetEdgingState: SensorState;
   onConnect: () => void;
-  onDisconnectDevice: () => void;
-  onDisconnectOpossum: () => void;
-  onDisconnectPawPrints: () => void;
-  onDisconnectCivetEdging: () => void;
   onEmergencyStop: () => void;
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
@@ -166,10 +162,6 @@ export function ChatPanel({
   pawPrintsState,
   civetEdgingState,
   onConnect,
-  onDisconnectDevice,
-  onDisconnectOpossum,
-  onDisconnectPawPrints,
-  onDisconnectCivetEdging,
   onEmergencyStop,
   onOpenSidebar,
   onOpenSettings,
@@ -571,7 +563,8 @@ export function ChatPanel({
           </header>
         )}
 
-      {/* ===== Device status bar — shows whenever any of the four device kinds is connected ===== */}
+      {/* ===== Device status bar — shows whenever any of the four device kinds is connected.
+          A chip click stops output; only the 设备 page disconnects a shared device. ===== */}
       {!inShell &&
         (deviceState.connected ||
           opossumState.connected ||
@@ -593,8 +586,8 @@ export function ChatPanel({
                 <DeviceStatusChip
                   icon={<Zap className="h-3.5 w-3.5 text-[var(--success)]" />}
                   battery={deviceState.battery}
-                  onClick={onDisconnectDevice}
-                  title="断开郊狼"
+                  onClick={onEmergencyStop}
+                  title="停止输出"
                 >
                   <div className="flex gap-3 sm:gap-4">
                     <ChannelStrengthBar
@@ -615,8 +608,8 @@ export function ChatPanel({
                 <DeviceStatusChip
                   icon={<Vibrate className="h-3.5 w-3.5 text-[var(--success)]" />}
                   battery={opossumState.battery}
-                  onClick={onDisconnectOpossum}
-                  title="断开负鼠"
+                  onClick={onEmergencyStop}
+                  title="停止输出"
                 >
                   <div className="flex gap-3 sm:gap-4">
                     <ChannelStrengthBar
@@ -637,8 +630,7 @@ export function ChatPanel({
                 <DeviceStatusChip
                   icon={<PawPrint className="h-3.5 w-3.5 text-[var(--success)]" />}
                   battery={pawPrintsState.battery}
-                  onClick={onDisconnectPawPrints}
-                  title="断开爪印"
+                  title="爪印"
                 />
               )}
 
@@ -646,8 +638,7 @@ export function ChatPanel({
                 <DeviceStatusChip
                   icon={<Gauge className="h-3.5 w-3.5 text-[var(--success)]" />}
                   battery={civetEdgingState.battery}
-                  onClick={onDisconnectCivetEdging}
-                  title="断开灵猫"
+                  title="灵猫"
                 />
               )}
             </div>
