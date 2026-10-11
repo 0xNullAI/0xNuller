@@ -22,7 +22,7 @@ export function GroupMembershipDialog({
           <button onClick={onClose}>关闭</button>
         </div>
         <p className="my-2 text-xs text-[var(--text-faint)]">
-          显示最近 200 位已验证成员。旧匿名成员不会自动关联账号。移除与封禁都需恢复后才能重新加入。
+          被移除或封禁的成员需恢复后才能重新加入。
         </p>
         <button onClick={() => onAction('list')} className="mb-2 text-sm">
           刷新成员

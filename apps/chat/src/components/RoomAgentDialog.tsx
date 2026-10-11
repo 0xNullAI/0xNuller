@@ -10,6 +10,8 @@ import {
   type RoomAgent,
 } from '../../worker/wire';
 
+const DEFAULT_ROOM_AGENT_NAME = '群 AI';
+
 /**
  * Add or edit the room's AI participant.
  *
@@ -51,7 +53,8 @@ export function RoomAgentDialog({
     }
     onSaveAgents(next ? [{ ...next, id: agents[0]?.id ?? ROOM_AGENT_ID }] : []);
   };
-  const [name, setName] = useState(selected?.name ?? '');
+  // A usable default so adding an AI is never blocked on a required empty field.
+  const [name, setName] = useState(selected?.name ?? DEFAULT_ROOM_AGENT_NAME);
   const [persona, setPersona] = useState(selected?.persona ?? '');
   const [scenes, setScenes] = useState<SavedScene[]>([]);
 
@@ -125,7 +128,8 @@ export function RoomAgentDialog({
                   type="button"
                   onClick={() => {
                     setPersona(scene.prompt);
-                    if (!trimmedName) setName(scene.name);
+                    if (!trimmedName || trimmedName === DEFAULT_ROOM_AGENT_NAME)
+                      setName(scene.name);
                   }}
                   className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
                 >

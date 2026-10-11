@@ -8,13 +8,24 @@ import {
   type PreviewMessage,
 } from '../character-preview';
 
-/** Mount keyed by the complete draft fingerprint: edits revoke the old request and transcript. */
-export function CharacterStudioPreview({ snapshot }: { snapshot: PreviewSnapshot }) {
+/**
+ * Mount keyed by the complete draft fingerprint: edits revoke the old request and transcript.
+ * The model choice lives in the editor's advanced area, so it survives that remount; an unknown
+ * or empty `model` falls back to the first catalog model.
+ */
+export function CharacterStudioPreview({
+  snapshot,
+  model: requestedModel = '',
+  onModels,
+}: {
+  snapshot: PreviewSnapshot;
+  model?: string;
+  onModels?: (models: { id: string; name: string }[]) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [owner] = useState(currentAuthUserId);
   const [revoked, setRevoked] = useState(false);
   const [catalog, setCatalog] = useState<Awaited<ReturnType<typeof previewCatalog>> | null>(null);
-  const [model, setModel] = useState('');
   const [messages, setMessages] = useState<PreviewMessage[]>([]);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -22,6 +33,20 @@ export function CharacterStudioPreview({ snapshot }: { snapshot: PreviewSnapshot
   const [charged, setCharged] = useState<number | null>(null);
   const request = useRef<AbortController | null>(null);
   const alive = useRef(true);
+  const model = catalog?.models.some((item) => item.id === requestedModel)
+    ? requestedModel
+    : (catalog?.models[0]?.id ?? '');
+  // A different model starts a new transcript, as the old in-panel selector did.
+  const lastModel = useRef(requestedModel);
+  useEffect(() => {
+    if (lastModel.current === requestedModel) return;
+    lastModel.current = requestedModel;
+    request.current?.abort();
+    request.current = null;
+    setBusy(false);
+    setMessages([]);
+    setCharged(null);
+  }, [requestedModel]);
   const stop = () => {
     request.current?.abort();
     request.current = null;
@@ -66,9 +91,7 @@ export function CharacterStudioPreview({ snapshot }: { snapshot: PreviewSnapshot
       const result = await previewCatalog(owner, controller.signal);
       if (!alive.current || controller.signal.aborted) return;
       setCatalog(result);
-      setModel((previous) =>
-        result.models.some((item) => item.id === previous) ? previous : result.models[0]!.id,
-      );
+      onModels?.(result.models.map(({ id, name }) => ({ id, name })));
     } catch (reason) {
       if (alive.current && !controller.signal.aborted)
         setError(reason instanceof Error ? reason.message : '无法读取价格');
@@ -135,40 +158,12 @@ export function CharacterStudioPreview({ snapshot }: { snapshot: PreviewSnapshot
       </Button>
       {open && (
         <>
-          <p className="text-sm">
-            使用当前未发布人设的真实托管文字模型，每次发送可能扣
-            Credit。取消后已产生的用量仍可能收费，记录归现有文本 / Agent 用量。最多 6 轮、每次最多
-            512 输出 Token。
-          </p>
-          <p className="text-xs">
-            没有工具、设备或私人记忆；试聊不保存为正式聊天或关系，不增加公开浏览/下载计数。修改草稿、关闭试聊会清空试聊记录。
-          </p>
+          <p className="text-sm">每次发送扣 Credit，停止后也可能计费；不保存记录，最多 6 轮。</p>
           {!owner || revoked ? (
             <p role="status">请登录并重新打开编辑器后试聊。</p>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                {catalog && (
-                  <label>
-                    模型{' '}
-                    <select
-                      aria-label="试聊模型"
-                      value={model}
-                      disabled={busy}
-                      onChange={(event) => {
-                        setModel(event.target.value);
-                        setMessages([]);
-                        setCharged(null);
-                      }}
-                    >
-                      {catalog.models.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
                   刷新价格与余额
                 </Button>

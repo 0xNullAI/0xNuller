@@ -55,3 +55,11 @@ it('edits the sole AI while preserving its stable identity', () => {
   fireEvent.click(screen.getByRole('button', { name: '保存' }));
   expect(onSaveAgents).toHaveBeenCalledWith([{ id: 'room', name: '新角色', persona: '新的人设' }]);
 });
+
+it('starts with a usable default name so the owner can add the AI at once', () => {
+  const onSave = vi.fn();
+  render(<RoomAgentDialog agent={null} onSave={onSave} onClose={vi.fn()} />);
+  expect((screen.getByLabelText('名字') as HTMLInputElement).value).toBe('群 AI');
+  fireEvent.click(screen.getByRole('button', { name: '加入群聊' }));
+  expect(onSave).toHaveBeenCalledWith({ name: '群 AI', persona: '' });
+});

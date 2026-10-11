@@ -38,6 +38,7 @@ import {
 } from '../api';
 import type { PrivateCharacterContainer } from '../api';
 import { importExternalCardFile } from '../external-card-file';
+import { listingTagsText } from '../character-listing-tags';
 
 interface Props {
   item?: MarketItem;
@@ -70,10 +71,10 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   const [prompt, setPrompt] = useState(source?.prompt ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
   const [icon, setIcon] = useState(item?.icon ?? '🎭');
-  const [tagsText, setTagsText] = useState(item?.tags.join('、') ?? '');
   const [card, setCard] = useState<CharacterCard>(
     parseCharacterCard(source?.characterCard) ?? emptyCharacterCard(),
   );
+  const [tagsText, setTagsText] = useState(() => listingTagsText(item?.tags ?? [], card.tags));
   const [sourceArchive, setSourceArchive] = useState<ExternalCardArchive | undefined>(
     source?.sourceArchive ?? undefined,
   );
@@ -103,19 +104,16 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   const [accountChanged, setAccountChanged] = useState(false);
   const [reloadDraft, setReloadDraft] = useState(0);
   const published = useRef(false);
-  const importDetails = useRef<HTMLDetailsElement>(null);
   const [serverDraft, setServerDraft] = useState<CharacterDraft | null>(null);
   const [draftNotice, setDraftNotice] = useState('');
   const [versions, setVersions] = useState<CharacterRevisionSummary[]>([]);
   const [historyError, setHistoryError] = useState('');
   const [historyBusy, setHistoryBusy] = useState(false);
+  // Kept here, not in the preview: the preview remounts on every draft edit.
+  const [previewModels, setPreviewModels] = useState<{ id: string; name: string }[]>([]);
+  const [previewModel, setPreviewModel] = useState('');
   const draftKey = item?.id ?? (kind === 'character' ? 'new' : 'new-scene');
   const [owner] = useState(currentAuthUserId);
-  useEffect(() => {
-    if (sourceArchive || originalFile || sourceFileId) {
-      if (importDetails.current) importDetails.current.open = true;
-    }
-  }, [sourceArchive, originalFile, sourceFileId]);
   const saver = useMemo(
     () =>
       new CharacterStudioDraftSaver((draft, revision) => {
@@ -344,7 +342,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
     setPrompt(serverDraft.prompt);
     setDescription(serverDraft.description);
     setIcon(serverDraft.icon);
-    setTagsText(serverDraft.tags.join('、'));
+    setTagsText(listingTagsText(serverDraft.tags, serverDraft.card.tags));
     setCard(serverDraft.card);
     setSourceArchive(serverDraft.sourceArchive);
     setOriginalFile(null);
@@ -394,8 +392,10 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
       setPrompt(snapshot.content.prompt);
       setDescription(snapshot.description ?? '');
       setIcon(snapshot.icon ?? '🎭');
-      setTagsText(snapshot.tags.join('、'));
-      setCard(parseCharacterCard(snapshot.content.characterCard) ?? emptyCharacterCard());
+      const snapshotCard =
+        parseCharacterCard(snapshot.content.characterCard) ?? emptyCharacterCard();
+      setTagsText(listingTagsText(snapshot.tags, snapshotCard.tags));
+      setCard(snapshotCard);
       setSourceArchive(snapshot.content.sourceArchive ?? undefined);
       setOriginalFile(null);
       setSourceFileId(undefined);
@@ -424,7 +424,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
       setName(imported.name);
       setPrompt(imported.prompt);
       setDescription(imported.description);
-      setTagsText(imported.tags.join('、'));
+      setTagsText(listingTagsText(imported.tags, imported.card.tags));
       setCard(imported.card);
       setSourceArchive(imported.archive);
       setOriginalFile(imported.originalFile ?? null);
@@ -780,136 +780,10 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
             {dirty ? ' · 当前仍有未保存修改' : ''}
             {originalFile ? ' · 原文件附件仅在此页面' : ''}
           </p>
-          {owner && (
-            <Button
-              variant="ghost"
-              disabled={busy || autosaveState === '正在自动保存…'}
-              onClick={() => {
-                setDraftReady(false);
-                setReloadDraft((value) => value + 1);
-              }}
-            >
-              重新读取在线草稿
-            </Button>
-          )}
           {!draftValue.success && (
             <p role="alert">内容超出草稿限制，自动保存已暂停；请调整后再保存。</p>
           )}
           {draftNotice && <p className="character-studio-draft-notice">{draftNotice}</p>}
-          {kind === 'character' && (
-            <details ref={importDetails} className="character-studio-import">
-              <summary>导入已有角色文件（可选）</summary>
-              <label className="field">
-                <span>导入 CCv2／CCv3 角色文件</span>
-                <input
-                  type="file"
-                  accept=".json,.png,.apng,.charx,application/json,image/png"
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-                    if (file) void importFile(file);
-                    event.currentTarget.value = '';
-                  }}
-                  disabled={busy}
-                />
-              </label>
-              <small>
-                支持 JSON、PNG/APNG、CHARX；完整原文件私密保存到账号，发布只包含明确选择的
-                JSON，不自动公开图片或附件。
-              </small>
-              {(originalFile || sourceFileId) && (
-                <div className="character-studio-source">
-                  <span>
-                    {sourceFileId ? '账号私有原文件' : '待上传原文件'}：
-                    {sourceFileName ?? originalFile?.name}
-                  </span>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void downloadOriginal()}
-                    disabled={busy}
-                  >
-                    下载完整原文件
-                  </Button>
-                  {originalFile && !sourceFileId && (
-                    <Button
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={() => void uploadPendingOriginal()}
-                    >
-                      重试私密上传
-                    </Button>
-                  )}
-                </div>
-              )}
-              <Button variant="ghost" onClick={() => void loadPrivateContainers()} disabled={busy}>
-                管理私有原文件
-              </Button>
-              {privateContainersError && <p role="alert">{privateContainersError}</p>}
-              {privateContainers && (
-                <div className="character-studio-source">
-                  {privateContainers.length === 0 && <span>暂无私有原文件</span>}
-                  {privateContainers.map((entry) => (
-                    <div key={entry.id}>
-                      <span>
-                        {entry.type.toUpperCase()} · {(entry.bytes / 1_000_000).toFixed(2)} MB ·{' '}
-                        {entry.id.slice(0, 8)}
-                      </span>
-                      <Button
-                        variant="secondary"
-                        onClick={() => void downloadPrivateContainer(entry)}
-                      >
-                        下载
-                      </Button>
-                      <Button variant="ghost" onClick={() => void removePrivateContainer(entry)}>
-                        删除
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {importWarnings.map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
-              {sourceArchive && (
-                <div className="character-studio-source">
-                  <span>已保留 {sourceArchive.format.toUpperCase()} 原件</span>
-                  <Button variant="secondary" onClick={downloadSource} disabled={busy}>
-                    下载原始 JSON
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setSourceArchive(undefined);
-                      setOriginalFile(null);
-                      setSourceFileId(undefined);
-                      setSourceFileName(undefined);
-                      setPublishSource(false);
-                      setImportWarnings([]);
-                    }}
-                    disabled={busy}
-                  >
-                    移除原件
-                  </Button>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={publishSource}
-                      disabled={unresolvedAssets}
-                      onChange={(event) => setPublishSource(event.target.checked)}
-                    />
-                    原始 JSON 随角色公开发布（可能包含扩展字段；请先检查隐私与使用权）
-                  </label>
-                  {!publishSource && (
-                    <small>不勾选时只发布当前人设，原件不会随公开角色保存。</small>
-                  )}
-                  {unresolvedAssets && (
-                    <small>
-                      原始 JSON 引用了当前未公开的附件；可保留在私有草稿，公开时仅发布人物设定。
-                    </small>
-                  )}
-                </div>
-              )}
-            </details>
-          )}
           <label className="field">
             <span>名称</span>
             <input
@@ -989,35 +863,30 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               {portraitId === source?.portraitId ? '移除公开头像' : '移除并清理未发布头像'}
             </Button>
           )}
-          <details className="character-studio-publish">
-            <summary>发布资料（可选）</summary>
-            <label className="field">
-              <span>简介</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={3}
-                maxLength={500}
-              />
-            </label>
-            <label className="field">
-              <span>标签（逗号分隔）</span>
-              <input
-                value={tagsText}
-                onChange={(event) => setTagsText(event.target.value)}
-                placeholder="朋友、幻想、学习"
-              />
-            </label>
-          </details>
+          <label className="field">
+            <span>简介</span>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              maxLength={500}
+            />
+          </label>
+          <label className="field">
+            <span>标签（逗号分隔）</span>
+            <input
+              value={tagsText}
+              onChange={(event) => setTagsText(event.target.value)}
+              placeholder="朋友、幻想、学习"
+            />
+          </label>
           {kind === 'character' && (
-            <details className="character-studio-publish">
-              <summary>详细人设（可选）</summary>
-              <CharacterCardFields
-                value={card}
-                onChange={(next) => setCard(next ?? emptyCharacterCard())}
-                allowRemove={false}
-              />
-            </details>
+            <CharacterCardFields
+              value={card}
+              onChange={(next) => setCard(next ?? emptyCharacterCard())}
+              allowRemove={false}
+              showTags={false}
+            />
           )}
           {item && (
             <details
@@ -1076,6 +945,160 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               取消
             </Button>
           </div>
+          {/* One flat area for rarely needed tools; no nested folds. */}
+          {(owner || kind === 'character') && (
+            <section
+              className="character-studio-advanced"
+              aria-labelledby="character-studio-advanced"
+            >
+              <h2 id="character-studio-advanced">高级</h2>
+              {owner && (
+                <Button
+                  variant="ghost"
+                  disabled={busy || autosaveState === '正在自动保存…'}
+                  onClick={() => {
+                    setDraftReady(false);
+                    setReloadDraft((value) => value + 1);
+                  }}
+                >
+                  重新读取在线草稿
+                </Button>
+              )}
+              {kind === 'character' && (
+                <>
+                  <label className="field">
+                    <span>导入 CCv2／CCv3 角色文件</span>
+                    <input
+                      type="file"
+                      accept=".json,.png,.apng,.charx,application/json,image/png"
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (file) void importFile(file);
+                        event.currentTarget.value = '';
+                      }}
+                      disabled={busy}
+                    />
+                  </label>
+                  <small>JSON、PNG/APNG、CHARX；原文件只私密保存到账号。</small>
+                  {(originalFile || sourceFileId) && (
+                    <div className="character-studio-source">
+                      <span>
+                        {sourceFileId ? '账号私有原文件' : '待上传原文件'}：
+                        {sourceFileName ?? originalFile?.name}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void downloadOriginal()}
+                        disabled={busy}
+                      >
+                        下载完整原文件
+                      </Button>
+                      {originalFile && !sourceFileId && (
+                        <Button
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() => void uploadPendingOriginal()}
+                        >
+                          重试私密上传
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => void loadPrivateContainers()}
+                    disabled={busy}
+                  >
+                    管理私有原文件
+                  </Button>
+                  {privateContainersError && <p role="alert">{privateContainersError}</p>}
+                  {privateContainers && (
+                    <div className="character-studio-source">
+                      {privateContainers.length === 0 && <span>暂无私有原文件</span>}
+                      {privateContainers.map((entry) => (
+                        <div key={entry.id}>
+                          <span>
+                            {entry.type.toUpperCase()} · {(entry.bytes / 1_000_000).toFixed(2)} MB ·{' '}
+                            {entry.id.slice(0, 8)}
+                          </span>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void downloadPrivateContainer(entry)}
+                          >
+                            下载
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => void removePrivateContainer(entry)}
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {importWarnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                  {sourceArchive && (
+                    <div className="character-studio-source">
+                      <span>已保留 {sourceArchive.format.toUpperCase()} 原件</span>
+                      <Button variant="secondary" onClick={downloadSource} disabled={busy}>
+                        下载原始 JSON
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setSourceArchive(undefined);
+                          setOriginalFile(null);
+                          setSourceFileId(undefined);
+                          setSourceFileName(undefined);
+                          setPublishSource(false);
+                          setImportWarnings([]);
+                        }}
+                        disabled={busy}
+                      >
+                        移除原件
+                      </Button>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={publishSource}
+                          disabled={unresolvedAssets}
+                          onChange={(event) => setPublishSource(event.target.checked)}
+                        />
+                        原始 JSON 随角色公开发布（可能包含扩展字段；请先检查隐私与使用权）
+                      </label>
+                      {!publishSource && (
+                        <small>不勾选时只发布当前人设，原件不会随公开角色保存。</small>
+                      )}
+                      {unresolvedAssets && (
+                        <small>
+                          原始 JSON 引用了当前未公开的附件；可保留在私有草稿，公开时仅发布人物设定。
+                        </small>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+              {kind === 'character' && previewModels.length > 1 && (
+                <label className="field">
+                  <span>试聊模型</span>
+                  <select
+                    aria-label="试聊模型"
+                    value={previewModel || previewModels[0]!.id}
+                    onChange={(event) => setPreviewModel(event.target.value)}
+                  >
+                    {previewModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </section>
+          )}
         </fieldset>
 
         <aside className="character-studio-preview" aria-label="公开卡片预览">
@@ -1102,7 +1125,12 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
         </aside>
       </div>
       {kind === 'character' && (
-        <CharacterStudioPreview key={fingerprint} snapshot={{ name, prompt, card }} />
+        <CharacterStudioPreview
+          key={fingerprint}
+          snapshot={{ name, prompt, card }}
+          model={previewModel}
+          onModels={setPreviewModels}
+        />
       )}
     </main>
   );

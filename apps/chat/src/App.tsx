@@ -62,6 +62,12 @@ export interface AppProps {
 
 type FirePolicy = 'sum' | 'max' | 'avg';
 
+/**
+ * Several controllers holding fire combine by taking the largest boost. This was the default of
+ * the removed per-user chooser; a fixed value avoids a stale stored 'sum' that nobody can see.
+ */
+const CHAT_FIRE_POLICY: FirePolicy = 'max';
+
 function aggregate(boosts: Map<string, { boost: number; ts: number }>, policy: FirePolicy): number {
   if (boosts.size === 0) return 0;
   const arr = Array.from(boosts.values()).map((x) => x.boost);
@@ -547,7 +553,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       boosts: channel === 'A' ? fireBoostsA.current : fireBoostsB.current,
       baseline: channel === 'A' ? baselineARef.current : baselineBRef.current,
       device: deviceRef.current as unknown as FireApplyDeps['device'],
-      policy: deviceRef.current.firePolicyRef.current,
+      policy: CHAT_FIRE_POLICY,
       setFiring: channel === 'A' ? setFiringA : setFiringB,
     });
   }, []);

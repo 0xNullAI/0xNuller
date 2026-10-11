@@ -26,17 +26,35 @@ function newRoomCode(): string {
     .slice(0, 10);
 }
 
+/**
+ * A valid starting name so creating a room needs no typing. It uses the nickname when there is
+ * one, otherwise a short random suffix. It never reuses the room code: the code is the private
+ * room's admission credential, and a name is shown in places the code is not.
+ */
+function defaultGroupName(ownerName: string | undefined): string {
+  const owner = ownerName?.trim();
+  if (owner) {
+    const named = `${owner.slice(0, MAX_GROUP_NAME - 3)}的群聊`;
+    if (validGroupName(named)) return named;
+  }
+  const suffix = String(crypto.getRandomValues(new Uint16Array(1))[0]! % 10000).padStart(4, '0');
+  return `新群聊 ${suffix}`;
+}
+
 export function CreateRoomDialog({
+  ownerName,
   onCreate,
   onJoin,
   onClose,
 }: {
+  /** The creator's nickname, used for the default room name. */
+  ownerName?: string;
   onCreate: (code: string, options: { public: boolean; roomName?: string }) => void;
   onJoin: (code: string) => void;
   onClose: () => void;
 }) {
   const [isPublic, setIsPublic] = useState(false);
-  const [roomName, setRoomName] = useState('');
+  const [roomName, setRoomName] = useState(() => defaultGroupName(ownerName));
   const [mode, setMode] = useState<'create' | 'join' | 'public'>('create');
   const [joinCode, setJoinCode] = useState('');
   const [publicRooms, setPublicRooms] = useState<LobbyRoom[]>([]);
@@ -83,7 +101,7 @@ export function CreateRoomDialog({
               <span className="min-w-0">
                 <span className="block text-sm">公开到大厅</span>
                 <span className="block text-xs text-[var(--text-faint)]">
-                  关闭 = 私密群，只有拿到群号的人能进；建好后群主随时可改
+                  关闭时只有拿到群号的人能进
                 </span>
               </span>
               <input
@@ -94,21 +112,19 @@ export function CreateRoomDialog({
               />
             </label>
 
-            {/* Asked for whether or not the room is public: a room persists now and shows up in
-            your own sidebar, and a list of ten-character codes is unreadable. */}
+            {/* A name is always sent: a room persists and shows up in your own sidebar, and a list
+            of ten-character codes is unreadable. The default is valid, so it is never a blocker. */}
             <label className="mt-3 flex flex-col gap-1.5">
               <span className="text-xs text-[var(--text-soft)]">群名称</span>
               <Input
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                placeholder="请输入 4–40 个字符的群名称"
+                placeholder="4–40 个字符"
                 maxLength={MAX_GROUP_NAME}
                 required
               />
             </label>
-            <p className="mt-2 text-xs text-[var(--text-faint)]">
-              新建群的聊天记录保存在服务器，可分页查看；不会因七天无人在线自动回收。
-            </p>
+            <p className="mt-2 text-xs text-[var(--text-faint)]">聊天记录长期保存在服务器。</p>
           </>
         ) : mode === 'join' ? (
           <label className="mt-5 flex flex-col gap-1.5">

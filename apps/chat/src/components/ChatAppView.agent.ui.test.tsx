@@ -155,3 +155,31 @@ it('enables group automatic reading only in the actual chat pane', () => {
   fireEvent.click(screen.getByRole('button', { name: '返回聊天' }));
   expect(panel.visible).toBe(acknowledge);
 });
+
+it('groups the chat consent and the room-AI consent, and the AI one needs the chat one', () => {
+  const setAllowAi = vi.fn();
+  const onSetConversationDeviceEnabled = vi.fn();
+  const props = {
+    inShell: true,
+    activeTab: 'control',
+    allowAi: false,
+    setAllowAi,
+    conversationDeviceEnabled: false,
+    onSetConversationDeviceEnabled,
+    peerRoom: { roomId: 'group', isDm: false, peers: [], members: new Map(), messages: [] },
+    device: {},
+    waveforms: {},
+  } as unknown as ChatAppViewProps;
+  const view = render(<ChatAppView {...props} />);
+  const group = screen.getByRole('group', { name: '设备授权' });
+  const ai = screen.getByLabelText(/也允许群 AI 控制/) as HTMLInputElement;
+  expect(group.contains(ai)).toBe(true);
+  expect(ai.disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText(/允许此聊天控制我的设备/));
+  expect(onSetConversationDeviceEnabled).toHaveBeenCalledWith(true);
+  view.rerender(<ChatAppView {...props} conversationDeviceEnabled />);
+  fireEvent.click(screen.getByLabelText(/也允许群 AI 控制/));
+  expect(setAllowAi).toHaveBeenCalledWith(true);
+  view.rerender(<ChatAppView {...props} peerRoom={{ ...props.peerRoom, isDm: true }} />);
+  expect(screen.queryByLabelText(/也允许群 AI 控制/)).toBeNull();
+});

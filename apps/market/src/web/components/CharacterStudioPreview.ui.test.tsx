@@ -87,3 +87,37 @@ it('revokes the preview permanently on account A to B to A', async () => {
   await waitFor(() => expect(screen.getByText('请登录并重新打开编辑器后试聊。')).toBeTruthy());
   expect(screen.queryByLabelText('试聊输入')).toBeNull();
 });
+it('uses the model chosen in the editor and reports the catalog models upward', async () => {
+  api.catalog.mockResolvedValue({
+    models: [
+      {
+        id: 'basic',
+        name: '基础',
+        inputCreditsPerMillion: 1,
+        outputCreditsPerMillion: 2,
+        priceVersion: 'v',
+      },
+      {
+        id: 'pro',
+        name: '进阶',
+        inputCreditsPerMillion: 3,
+        outputCreditsPerMillion: 4,
+        priceVersion: 'v',
+      },
+    ],
+    credit: { available: 20 },
+  });
+  const onModels = vi.fn();
+  render(<CharacterStudioPreview snapshot={snapshot} model="pro" onModels={onModels} />);
+  fireEvent.click(screen.getByText('试聊当前草稿'));
+  await screen.findByText(/当前可用 20/);
+  expect(onModels).toHaveBeenCalledWith([
+    { id: 'basic', name: '基础' },
+    { id: 'pro', name: '进阶' },
+  ]);
+  expect(screen.queryByLabelText('试聊模型')).toBeNull();
+  fireEvent.change(screen.getByLabelText('试聊输入'), { target: { value: '你好' } });
+  fireEvent.click(screen.getByText('发送并使用 Credit'));
+  await screen.findByText('本次已结算 0.5 Credit');
+  expect(api.turn.mock.calls[0]![2]).toBe('pro');
+});

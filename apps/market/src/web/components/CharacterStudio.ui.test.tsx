@@ -112,7 +112,7 @@ it('creates a public character from only a name and prompt, without private fiel
 
 it('publishes a scene as environment only, without character fields or relationship data', async () => {
   render(<CharacterStudio initialKind="scene" onClose={() => {}} onSaved={() => {}} />);
-  expect(screen.queryByText('导入已有角色文件（可选）')).toBeNull();
+  expect(screen.queryByLabelText('导入 CCv2／CCv3 角色文件')).toBeNull();
   expect(screen.queryByLabelText('公开角色头像')).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '雨夜车站' },
@@ -203,13 +203,19 @@ it('edits an existing public card without discarding its legacy details', async 
     type: 'scenario',
     name: '小岚',
     tags: ['朋友'],
-    content: { prompt: '旧 Prompt', characterCard: card },
+    content: { prompt: '旧 Prompt', characterCard: { ...card, tags: ['朋友', '海边'] } },
     downloads: 0,
     views: 0,
     createdAt: 1,
     revision: 4,
   };
   render(<CharacterStudio item={item} onClose={() => {}} onSaved={() => {}} />);
+  // One tag field: legacy card tags show there, the card's own tag input is gone.
+  expect(screen.queryByText(/角色标签/)).toBeNull();
+  expect(
+    (screen.getByRole('textbox', { name: '标签（逗号分隔）' }) as HTMLInputElement).value,
+  ).toBe('朋友、海边');
+  expect(screen.getByRole('heading', { name: '高级' })).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
     target: { value: '新 Prompt' },
   });
@@ -223,8 +229,9 @@ it('edits an existing public card without discarding its legacy details', async 
   expect(api.update.mock.calls[0]![1].content).toEqual({
     prompt: '新 Prompt',
     kind: 'character',
-    characterCard: card,
+    characterCard: { ...card, tags: ['朋友', '海边'] },
   });
+  expect(api.update.mock.calls[0]![1].tags).toEqual(['朋友', '海边']);
   expect(api.update.mock.calls[0]![1].expectedRevision).toBe(4);
 });
 

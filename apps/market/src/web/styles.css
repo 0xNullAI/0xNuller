@@ -143,25 +143,24 @@
     color: var(--text-soft);
     font-size: 13px;
   }
-  .character-studio-import {
-    padding: 12px;
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-ctl);
+  .character-studio-advanced {
+    display: grid;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--surface-border);
   }
-  .character-studio-import summary {
-    cursor: pointer;
+  .character-studio-advanced h2 {
+    margin: 0;
+    font-size: 14px;
     font-weight: 600;
   }
-  .character-studio-import[open] > :not(summary) {
-    margin-top: 8px;
-  }
-  .character-studio-import p,
-  .character-studio-import small {
+  .character-studio-advanced p,
+  .character-studio-advanced small {
     margin: 0;
     color: var(--text-soft);
     font-size: 12px;
   }
-  .character-studio-import input[type='file'] {
+  .character-studio-advanced input[type='file'] {
     min-width: 0;
     max-width: 100%;
   }
@@ -187,14 +186,6 @@
   }
   .character-studio-form textarea {
     resize: vertical;
-  }
-  .character-studio-publish summary {
-    cursor: pointer;
-    font-weight: 600;
-    margin-bottom: 12px;
-  }
-  .character-studio-publish .field + .field {
-    margin-top: 12px;
   }
   .character-studio-history summary {
     cursor: pointer;

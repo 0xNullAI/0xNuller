@@ -13,10 +13,16 @@ export function CharacterCardFields({
   value,
   onChange,
   allowRemove = true,
+  showTags = true,
 }: {
   value?: CharacterCard;
   onChange: (card: CharacterCard | undefined) => void;
   allowRemove?: boolean;
+  /**
+   * Hide the legacy card tag input where the host editor already has one tag field. The stored
+   * `tags` stay in the card unchanged, so saved cards remain compatible.
+   */
+  showTags?: boolean;
 }) {
   return (
     <fieldset className="space-y-2">
@@ -62,18 +68,20 @@ export function CharacterCardFields({
                 />
               </label>
             ))}
-            <label className="field flex flex-col gap-1 text-sm">
-              <span>角色标签（逗号分隔，最多 16 个，每个 40 字）</span>
-              <input
-                value={value.tags.join(', ')}
-                onChange={(event) =>
-                  onChange({
-                    ...value,
-                    tags: event.target.value.split(/[,，]/).map((tag) => tag.trim()),
-                  })
-                }
-              />
-            </label>
+            {showTags && (
+              <label className="field flex flex-col gap-1 text-sm">
+                <span>角色标签（逗号分隔，最多 16 个，每个 40 字）</span>
+                <input
+                  value={value.tags.join(', ')}
+                  onChange={(event) =>
+                    onChange({
+                      ...value,
+                      tags: event.target.value.split(/[,，]/).map((tag) => tag.trim()),
+                    })
+                  }
+                />
+              </label>
+            )}
             <p className="upload-note">
               角色卡各文本字段合计最多 12000 字。主要人设写在上方 Prompt；已有详细设定不会被清除。
             </p>

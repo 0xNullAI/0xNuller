@@ -60,7 +60,7 @@ export function PermissionModal({
         </h2>
         <div className="mt-3 text-center text-sm text-[var(--text-soft)]">{summary}</div>
 
-        <ArgsCollapsible args={args} />
+        <ArgsDetails args={args} />
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <Button
@@ -116,26 +116,16 @@ export function PermissionModal({
   );
 }
 
-function ArgsCollapsible({ args }: { args: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
-
+/** The exact request, shown in place: a decision about device output should not need a click to see it. */
+function ArgsDetails({ args }: { args: Record<string, unknown> }) {
   if (Object.keys(args).length === 0) return null;
 
   return (
-    <div className="mt-3">
-      <button
-        type="button"
-        className="mx-auto flex items-center gap-1 text-xs text-[var(--text-faint)] transition-colors hover:text-[var(--text-soft)]"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        详细参数
-      </button>
-      {open && (
-        <pre className="mt-2 max-h-[160px] overflow-auto rounded-[var(--radius-xs)] bg-[var(--bg-strong)] p-3 text-[11px] leading-[1.4] text-[var(--text-soft)]">
-          {JSON.stringify(args, null, 2)}
-        </pre>
-      )}
-    </div>
+    <pre
+      aria-label="详细参数"
+      className="mt-3 max-h-[120px] overflow-auto rounded-[var(--radius-xs)] bg-[var(--bg-strong)] p-3 text-[11px] leading-[1.4] text-[var(--text-soft)]"
+    >
+      {JSON.stringify(args, null, 2)}
+    </pre>
   );
 }

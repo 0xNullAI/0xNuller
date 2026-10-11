@@ -210,6 +210,7 @@ export function ChatAppView({
 
         {createRoomOpen && (
           <CreateRoomDialog
+            ownerName={displayName}
             onCreate={(code, options) => peerRoom.join(code, { ...options, claim: true })}
             onJoin={(code) => peerRoom.join(code)}
             onClose={() => setCreateRoomOpen(false)}
@@ -283,16 +284,6 @@ export function ChatAppView({
                   >
                     <Settings2 className="h-4 w-4" />
                   </button>
-                  {device.connected && (
-                    <button
-                      onClick={() => setAllowAi((value) => !value)}
-                      className={`flex h-9 items-center gap-1 rounded-[var(--radius-ctl)] px-2 text-[11px] transition-colors hover:bg-[var(--bg-soft)] ${allowAi ? 'text-[var(--accent)]' : 'text-[var(--text-faint)]'}`}
-                      title={allowAi ? 'AI 可控制你的设备，点击关闭' : '允许群内 AI 控制你的设备'}
-                    >
-                      <Bot className="h-3.5 w-3.5" />
-                      {allowAi ? '允许AI' : '禁AI'}
-                    </button>
-                  )}
                 </>
               )}
               <DeviceSafetyButton
@@ -303,8 +294,6 @@ export function ChatAppView({
                 limitA={device.limitA}
                 limitB={device.limitB}
                 onSetLimit={device.setLimit}
-                firePolicy={device.firePolicy}
-                onSetFirePolicy={device.setFirePolicy}
                 onRestoreDefaults={waveforms.restoreDefaults}
                 sensor={device.sensor}
                 opossum={device.opossum}
@@ -510,19 +499,41 @@ export function ChatAppView({
                       记忆共享
                     </button>
                   )}
-                <label className="flex items-start gap-2 border-b border-[var(--surface-border)] p-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={conversationDeviceEnabled}
-                    onChange={(event) => onSetConversationDeviceEnabled(event.target.checked)}
-                  />
-                  <span>
-                    允许此聊天控制我的设备
-                    <span className="block text-xs text-[var(--text-faint)]">
-                      仅当前账户、此会话和本浏览器；仍受全局安全上限、设备连接与实时授权约束。关闭会停止输出。
+                {/* Two separate gates in one group: the first admits any command from this
+                    conversation (humans and AI); the second additionally admits room-AI commands
+                    and is a browser-wide preference, so it is not per conversation. */}
+                <div
+                  role="group"
+                  aria-label="设备授权"
+                  className="space-y-2 border-b border-[var(--surface-border)] p-3 text-sm"
+                >
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={conversationDeviceEnabled}
+                      onChange={(event) => onSetConversationDeviceEnabled(event.target.checked)}
+                    />
+                    <span>
+                      允许此聊天控制我的设备
+                      <span className="block text-xs text-[var(--text-faint)]">
+                        仅本账户与本浏览器；仍受安全上限限制，关闭即停止输出。
+                      </span>
                     </span>
-                  </span>
-                </label>
+                  </label>
+                  {!peerRoom.isDm && (
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={allowAi}
+                        disabled={!conversationDeviceEnabled}
+                        onChange={(event) => setAllowAi(event.target.checked)}
+                      />
+                      <span className={conversationDeviceEnabled ? '' : 'text-[var(--text-faint)]'}>
+                        也允许群 AI 控制（所有群）
+                      </span>
+                    </label>
+                  )}
+                </div>
                 <ControlPanel
                   key={peerRoom.roomId ?? 'no-room'}
                   members={peerRoom.members}
