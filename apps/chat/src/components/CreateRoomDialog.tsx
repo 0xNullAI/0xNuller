@@ -107,7 +107,7 @@ export function CreateRoomDialog({
               />
             </label>
             <p className="mt-2 text-xs text-[var(--text-faint)]">
-              连续 7 天无人在线，房间及聊天记录将自动回收。
+              新建群的聊天记录保存在服务器，可分页查看；不会因七天无人在线自动回收。
             </p>
           </>
         ) : mode === 'join' ? (

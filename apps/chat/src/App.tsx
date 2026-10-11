@@ -1,4 +1,12 @@
-import { readPreference, writePreference } from '@0xnullai/settings';
+import { markGroupRead } from './group-inbox';
+import type { ChatReplyContext } from './lib/protocol';
+import {
+  deviceConversationAccess,
+  setDeviceConversationAccess,
+  subscribeDeviceConversationAccess,
+  readPreference,
+  writePreference,
+} from '@0xnullai/settings';
 import { useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
 import {
   hasDeviceLease,
@@ -7,16 +15,28 @@ import {
   createDefaultPolicyRules,
 } from '@dg-kit/safety';
 import { useNativeBridge } from '@0xnullai/native';
-import { dmTicket, me, subscribeDmRequest, type DmRequest } from '@0xnullai/auth';
+import {
+  currentAuthUserId,
+  subscribeAuthChanges,
+  dmConversations,
+  dmTicket,
+  me,
+  subscribeDmRequest,
+  type DmRequest,
+} from '@0xnullai/auth';
 import { useChannelRotation, useDevice } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { executeCommand, type CommandContext } from './lib/commands';
-import { markDmRead } from './lib/dm';
+import { selectChatInboxConversation, subscribeChatInboxSelection } from './inbox';
+import { initialChatTarget } from './lib/initial-chat-target';
+import { subscribeChatRouteChanges } from './lib/chat-route-changes';
+import { chatConversationAllowsCommand } from './lib/conversation-device-policy';
+import { markDmRead } from './inbox';
 import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
 import { resolveRoomAiCoyoteTarget, roomAgentDeviceTargetId } from './lib/room-agent-device-tools';
-import { uploadMedia } from './lib/media';
+import { sendRoomMedia } from './lib/send-room-media';
 import type { DeviceClientFactory, RequestDeviceFn } from './lib/bluetooth';
 import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
@@ -108,6 +128,20 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [accountRequired, setAccountRequired] = useState(false);
   /** The conversation currently open, if any. Its name is only for the header. */
   const [dmPeer, setDmPeer] = useState<{ id: string; name: string; room: string } | null>(null);
+  const dmAdmission = useRef<{ account: string; room: string } | null>(null);
+  const dmOpenGeneration = useRef(0);
+  useEffect(() => {
+    let previous = currentAuthUserId();
+    return subscribeAuthChanges(() => {
+      const next = currentAuthUserId();
+      if (next !== previous) {
+        dmAdmission.current = null;
+        dmOpenGeneration.current++;
+        setSignedIn(Boolean(next));
+      }
+      previous = next;
+    });
+  }, []);
   const [dmError, setDmError] = useState<string | null>(null);
   /**
    * Device control has been handed off (switched to another module). As far as the
@@ -163,6 +197,17 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
   const [firingB, setFiringB] = useState(false);
 
   const peerRoom = usePeerRoom(displayName);
+  const conversationDeviceEnabled = useSyncExternalStore(
+    subscribeDeviceConversationAccess,
+    () =>
+      deviceConversationAccess(
+        currentAuthUserId(),
+        peerRoom.isDm ? 'dm' : 'group',
+        peerRoom.roomId ?? '',
+      ),
+    () => false,
+  );
+
   const activeRoomRef = useRef<{ roomId: string | null; mediaToken: string | null }>({
     roomId: null,
     mediaToken: null,
@@ -173,26 +218,6 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       mediaToken: peerRoom.mediaUploadToken,
     };
   }, [peerRoom.mediaUploadToken, peerRoom.roomId]);
-
-  // A room link joins directly; otherwise the account room list remains visible without
-  // silently entering a special global room.
-  const initialRoomOpened = useRef(false);
-  useEffect(() => {
-    if (!authChecked) return;
-    if (initialRoomOpened.current) return;
-    if (peerRoom.connected || peerRoom.status === 'connecting') return;
-    // A conversation that cannot connect keeps retrying on its own (the transport re-mints a
-    // ticket every attempt). Without this guard, its first failed attempt would land here and
-    // drop the user into the public room instead.
-    if (peerRoom.isDm) return;
-    const fromUrl = new URLSearchParams(window.location.search).get('room');
-    initialRoomOpened.current = true;
-    if (fromUrl && signedIn) peerRoom.join(fromUrl);
-    else if (fromUrl) queueMicrotask(() => requireAccount());
-    // Only attempt once while still not connected; putting peerRoom in the deps would
-    // reconnect on every state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, signedIn, peerRoom.connected, peerRoom.status, peerRoom.isDm, requireAccount]);
 
   /**
    * Open a conversation with an account.
@@ -207,17 +232,35 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
    */
   const openDm = useCallback(
     async (request: DmRequest) => {
+      const account = currentAuthUserId();
+      const generation = ++dmOpenGeneration.current;
+      dmAdmission.current = null;
       setDmError(null);
       const ticket = await dmTicket(request.accountId);
+      if (!account || currentAuthUserId() !== account || generation !== dmOpenGeneration.current)
+        return;
       if (!ticket) {
         setDmError('无法开始私聊，需要双方互相关注');
         return;
       }
+      dmAdmission.current = { account, room: ticket.room };
       setDmPeer({
         id: request.accountId,
         name: request.displayName || request.username || '私聊',
         room: ticket.room,
       });
+      // A link or notification names only the account; fill in the person's name.
+      if (!request.displayName && !request.username)
+        void dmConversations().then((list) => {
+          const peer = list?.conversations.find((entry) => entry.id === request.accountId);
+          if (!peer || generation !== dmOpenGeneration.current || currentAuthUserId() !== account)
+            return;
+          setDmPeer((current) =>
+            current?.id === peer.id
+              ? { ...current, name: peer.displayName || peer.username || current.name }
+              : current,
+          );
+        });
       peerRoom.join(ticket.room, {
         dm: {
           peerUserId: request.accountId,
@@ -229,20 +272,125 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     [peerRoom],
   );
 
+  // Direct links must recover through the same server-minted admission as an in-app selection.
+  // In particular, a DM URL is only a peer account id; it is never an authorization ticket.
+  const initialConversationOpened = useRef(false);
+  const initialAccountPrompted = useRef(false);
+  useEffect(() => {
+    if (!authChecked || initialConversationOpened.current) return;
+    const target = initialChatTarget(window.location.search);
+    if (!target) {
+      initialConversationOpened.current = true;
+      return;
+    }
+    if (!signedIn || !currentAuthUserId()) {
+      if (!initialAccountPrompted.current) {
+        initialAccountPrompted.current = true;
+        queueMicrotask(() => requireAccount());
+      }
+      return;
+    }
+    // A live in-app selection wins if it arrived before this startup effect.
+    if (peerRoom.connected || peerRoom.status === 'connecting' || peerRoom.isDm) {
+      initialConversationOpened.current = true;
+      return;
+    }
+    initialConversationOpened.current = true;
+    if (target.kind === 'dm') queueMicrotask(() => void openDm({ accountId: target.accountId }));
+    else peerRoom.join(target.code);
+  }, [authChecked, signedIn, openDm, peerRoom, requireAccount]);
+
+  // A notification can change only the query while Chat stays mounted. Reuse
+  // the inbox selection path so a DM gets a fresh server ticket, and let the
+  // room join path recheck membership before opening a group.
+  useEffect(
+    () =>
+      subscribeChatRouteChanges({
+        accountId: currentAuthUserId,
+        openCreate: () => {
+          setActiveTab('chat');
+          setCreateRoomOpen(true);
+        },
+        isCurrent: (target) => {
+          if (peerRoom.status !== 'connected' && peerRoom.status !== 'connecting') return false;
+          return target.kind === 'dm'
+            ? peerRoom.isDm && dmPeer?.id === target.accountId
+            : !peerRoom.isDm && peerRoom.roomId === target.code;
+        },
+        select: (target) =>
+          selectChatInboxConversation(
+            target.kind === 'dm'
+              ? { kind: 'dm', peer: { accountId: target.accountId } }
+              : { kind: 'group', code: target.code },
+          ),
+      }),
+    [dmPeer?.id, peerRoom.isDm, peerRoom.roomId, peerRoom.status],
+  );
+
   // The entry point is somebody's profile, which is nowhere near this module — see
   // openDirectMessage in @0xnullai/auth. Subscribing also picks up a request made before this
   // module finished loading, which is the normal case: the first press of 私聊 is what causes
   // Chat to be mounted at all.
   useEffect(() => subscribeDmRequest((request) => void openDm(request)), [openDm]);
+  useEffect(
+    () =>
+      subscribeChatInboxSelection((selection) => {
+        if (!requireAccount()) return;
+        setActiveTab('chat');
+        if (selection.kind === 'dm') void openDm(selection.peer);
+        else {
+          setDmPeer(null);
+          peerRoom.join(selection.code);
+        }
+      }),
+    [openDm, peerRoom, requireAccount],
+  );
 
-  // Reading a conversation is what moves its unread mark. It has to be the newest message's
-  // own timestamp rather than "now": a reconnect replays the whole retained history, and
-  // marking up to the present would swallow anything that arrived during the gap.
-  useEffect(() => {
-    if (!dmPeer || peerRoom.roomId !== dmPeer.room) return;
-    const last = peerRoom.messages[peerRoom.messages.length - 1];
-    if (last) markDmRead(dmPeer.room, last.timestamp);
-  }, [dmPeer, peerRoom]);
+  const acknowledgeVisibleDm = useCallback(
+    async (messageId: string, stillVisible: () => boolean) => {
+      const admission = dmAdmission.current;
+      if (
+        !admission ||
+        !dmPeer ||
+        admission.room !== dmPeer.room ||
+        peerRoom.roomId !== dmPeer.room
+      )
+        throw new Error('聊天已切换');
+      await markDmRead(
+        admission.account,
+        dmPeer.id,
+        dmPeer.room,
+        messageId,
+        () =>
+          dmAdmission.current === admission &&
+          activeRoomRef.current.roomId === admission.room &&
+          stillVisible() &&
+          document.visibilityState === 'visible',
+      );
+      window.dispatchEvent(new Event('0xnullai:conversation-updated'));
+    },
+    [dmPeer, peerRoom.roomId],
+  );
+  const isRoomReadAdmissionCurrent = peerRoom.isReadAdmissionCurrent;
+  const acknowledgeVisibleGroup = useCallback(
+    async (messageId: string, stillVisible: () => boolean) => {
+      const admission = peerRoom.readAdmission;
+      if (!admission || peerRoom.isDm || peerRoom.roomId !== admission.room)
+        throw new Error('聊天已切换');
+      await markGroupRead(
+        admission.account,
+        admission.room,
+        messageId,
+        () =>
+          isRoomReadAdmissionCurrent(admission) &&
+          activeRoomRef.current.roomId === admission.room &&
+          stillVisible() &&
+          document.visibilityState === 'visible',
+      );
+      window.dispatchEvent(new Event('0xnullai:conversation-updated'));
+    },
+    [peerRoom.readAdmission, isRoomReadAdmissionCurrent, peerRoom.isDm, peerRoom.roomId],
+  );
   const device = useDevice({
     clientFactory:
       deviceClientFactory ?? (native.chat?.deviceClientFactory as typeof deviceClientFactory),
@@ -441,9 +589,22 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
 
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
+      if (
+        !chatConversationAllowsCommand(
+          currentAuthUserId(),
+          peerRoom.roomId,
+          peerRoom.isDm,
+          cmd.action,
+        )
+      )
+        return;
       const roomAiCommand = peerId.startsWith('ai:');
       const aiTarget = roomAiCommand
-        ? resolveRoomAiCoyoteTarget(allowAi, cmd, deviceRef.current.coyotes)
+        ? resolveRoomAiCoyoteTarget(
+            cmd.action === 'stop' || allowAi,
+            cmd,
+            deviceRef.current.coyotes,
+          )
         : null;
       if (roomAiCommand && (!aiTarget || !['adjust_strength', 'stop'].includes(cmd.action))) {
         return;
@@ -454,7 +615,10 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       //
       // Stop commands are the exception — handing off control must not take away other
       // people's ability to stop your device.
-      if (!hasDeviceLease('chat') && cmd.action !== 'fire_release' && cmd.action !== 'stop') {
+      if (
+        !hasDeviceLease('chat') &&
+        !['fire_release', 'stop', 'stop_wave', 'vibrate_stop'].includes(cmd.action)
+      ) {
         return;
       }
       if (roomAiCommand && cmd.action === 'stop') {
@@ -588,8 +752,24 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       };
       executeCommand(cmd, ctx);
     },
-    [allowAi, callApplyFire, notifyLocal],
+    [allowAi, callApplyFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
   );
+
+  const priorConversationConsent = useRef({ enabled: false, roomId: peerRoom.roomId });
+  useEffect(() => {
+    const prior = priorConversationConsent.current;
+    priorConversationConsent.current = {
+      enabled: conversationDeviceEnabled,
+      roomId: peerRoom.roomId,
+    };
+    if (prior.enabled && (!conversationDeviceEnabled || prior.roomId !== peerRoom.roomId)) {
+      if (hasDeviceLease('chat')) deviceRef.current.stopAll();
+      fireBoostsA.current.clear();
+      fireBoostsB.current.clear();
+      baselineARef.current = 0;
+      baselineBRef.current = 0;
+    }
+  }, [conversationDeviceEnabled, peerRoom.roomId]);
 
   useEffect(() => {
     setCommandHandler(handleCommand);
@@ -601,16 +781,19 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       blob: Blob,
       kind: 'image' | 'audio',
       meta?: { durationMs?: number; w?: number; h?: number },
+      reply?: ChatReplyContext,
     ) => {
-      const room = roomId;
-      const mediaToken = mediaUploadToken;
-      if (!room || !mediaToken) throw new Error('房间尚未连接，无法上传媒体');
-      const media = await uploadMedia(room, mediaToken, blob, kind, meta);
-      const current = activeRoomRef.current;
-      if (current.roomId !== room || current.mediaToken !== mediaToken) {
-        throw new Error('上传期间房间已切换，请重新发送');
-      }
-      if (!sendMessage('', media)) throw new Error('房间连接已断开，请重新发送');
+      await sendRoomMedia(
+        {
+          room: { roomId, mediaToken: mediaUploadToken },
+          active: () => activeRoomRef.current,
+          send: sendMessage,
+        },
+        blob,
+        kind,
+        meta,
+        reply,
+      );
     },
     [roomId, mediaUploadToken, sendMessage],
   );
@@ -706,7 +889,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         intervalB: intervalBSec,
         currentIndexA,
         currentIndexB,
-        allowAi,
+        allowAi: allowAi && conversationDeviceEnabled,
         opossumConnected: device.opossum?.connected ?? false,
         opossumBattery: device.opossum?.battery ?? null,
         // Must resolve to explicit null (not undefined) when disconnected —
@@ -740,6 +923,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
     currentIndexA,
     currentIndexB,
     allowAi,
+    conversationDeviceEnabled,
     device.opossum?.connected,
     device.opossum?.battery,
     device.sensor?.kind,
@@ -765,12 +949,15 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
         : [],
   );
   useRoomAgents({
+    roomId: peerRoom.roomId,
     isHost: peerRoom.isHost,
-    agent: peerRoom.agent,
+    billingMode: peerRoom.agentBillingMode,
+    agents: peerRoom.agents,
     members: peerRoom.members,
     messages: peerRoom.messages,
     deviceTargets: agentDeviceTargets,
     sendChatAs: peerRoom.sendChatAs,
+    requestAgentTurn: peerRoom.requestAgentTurn,
     sendCommandAs: peerRoom.sendCommandAs,
   });
 
@@ -836,11 +1023,23 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       dmPeer={dmPeer}
       setDmPeer={setDmPeer}
       dmError={dmError}
+      onDmMessageVisible={acknowledgeVisibleDm}
+      onGroupMessageVisible={acknowledgeVisibleGroup}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       agentOpen={agentOpen}
       setAgentOpen={setAgentOpen}
       inShell={inShell}
+      conversationDeviceEnabled={conversationDeviceEnabled}
+      onSetConversationDeviceEnabled={(enabled) => {
+        const stored = setDeviceConversationAccess(
+          currentAuthUserId(),
+          peerRoom.isDm ? 'dm' : 'group',
+          peerRoom.roomId ?? '',
+          enabled,
+        );
+        if (!stored) peerRoom.notifyLocal('设备授权未保存，请重试');
+      }}
       allowAi={allowAi}
       setAllowAi={setAllowAi}
       peerRoom={peerRoom}
@@ -860,6 +1059,7 @@ export default function App({ deviceClientFactory, requestDeviceTauri }: AppProp
       requireAccount={requireAccount}
       openDm={openDm}
       openAiSettings={() => openShellSettings('ai')}
+      openMemorySettings={(kind, id) => openShellSettings('memory', { conversation: { kind, id } })}
       sendMedia={sendMedia}
       sendCommand={sendCommand}
     />

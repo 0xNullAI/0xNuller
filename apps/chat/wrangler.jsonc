@@ -9,7 +9,7 @@
   "compatibility_flags": ["nodejs_compat"],
 
   // 与 Auth 使用同一份私聊签名密钥。
-  "secrets": { "required": ["DM_TICKET_SECRET"] },
+  "secrets": { "required": ["DM_TICKET_SECRET", "CHAT_BACKUP_TOKEN"] },
 
   // 统一外壳下的 Chat API 与 WebSocket 路由。
   "routes": [
@@ -17,16 +17,24 @@
     { "pattern": "0xnullai.com/api/lobby/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/upload/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/media/*", "zone_name": "0xnullai.com" },
+    { "pattern": "0xnullai.com/api/groups/*", "zone_name": "0xnullai.com" },
     { "pattern": "0xnullai.com/api/dm/*", "zone_name": "0xnullai.com" },
   ],
   // 生产只通过 0xnullai.com 暴露；关闭绕过 zone 策略的旁路与版本预览。
   "workers_dev": false,
   "preview_urls": false,
 
+  "services": [
+    { "binding": "LLM", "service": "dg-llm-proxy" },
+    { "binding": "AUTH_PUSH", "service": "0xnullai-auth", "entrypoint": "AuthOwnershipService" },
+  ],
+
   // 保持类名和 migration tag 稳定，以保留既有房间数据。
   "durable_objects": {
     "bindings": [
       { "name": "ROOM", "class_name": "RoomDO" },
+      { "name": "ACCOUNT_REGISTRY", "class_name": "AccountRegistryDO" },
+      { "name": "ROOM_INDEX", "class_name": "RoomIndexDO" },
       { "name": "LOBBY", "class_name": "LobbyDO" },
     ],
   },
@@ -35,6 +43,8 @@
       "tag": "v1",
       "new_sqlite_classes": ["RoomDO", "LobbyDO"],
     },
+    { "tag": "v2-account-registry", "new_sqlite_classes": ["AccountRegistryDO"] },
+    { "tag": "v3-room-index", "new_sqlite_classes": ["RoomIndexDO"] },
   ],
 
   // 图片与语音对象存储。

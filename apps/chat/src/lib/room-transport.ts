@@ -12,6 +12,11 @@ export interface RoomConnectOptions {
   code: string;
   peerId: string;
   /**
+   * A direct message connects to `/ws/dm` with its ticket; a group to `/ws/room/:code`.
+   * Stated by the caller: both paths now carry tickets, so the code cannot tell them apart.
+   */
+  dm: boolean;
+  /**
    * Direct message: mint a fresh admission ticket for this connection.
    *
    * Present only on the DM path, and called again for **every reconnect** rather than
@@ -53,11 +58,47 @@ function dmUrl(ticket: string, peerId: string): string {
   return apiWsUrl(`/ws/dm?ticket=${encodeURIComponent(ticket)}&id=${encodeURIComponent(peerId)}`);
 }
 
+/**
+ * Admission tickets live 60 s and the server caps a socket's lease at 65 s. Renewing every
+ * 25 s keeps the same socket alive across one failed mint without ever reconnecting.
+ */
+const LEASE_RENEW_INTERVAL_MS = 25_000;
+
 export function connectRoom(opts: RoomConnectOptions): RoomTransport {
   let ws: WebSocket | null = null;
   let closed = false;
   let retry = 0;
   let reconnectTimer: number | null = null;
+  let renewTimer: number | null = null;
+
+  function stopRenewing() {
+    if (renewTimer !== null) {
+      clearInterval(renewTimer);
+      renewTimer = null;
+    }
+  }
+
+  /**
+   * Starts in-place lease renewal, only after this socket's server said it supports it:
+   * an older server relays unknown frames to the room and would expose the ticket.
+   */
+  function startRenewing(sock: WebSocket) {
+    stopRenewing();
+    const mint = opts.ticket;
+    if (!mint) return;
+    renewTimer = window.setInterval(() => {
+      void mint()
+        .catch(() => null)
+        .then((ticket) => {
+          if (!ticket || closed || ws !== sock || sock.readyState !== WebSocket.OPEN) return;
+          try {
+            sock.send(JSON.stringify({ t: 'renew', ticket }));
+          } catch {
+            /* the close handler reconnects */
+          }
+        });
+    }, LEASE_RENEW_INTERVAL_MS);
+  }
 
   async function open() {
     if (closed) return;
@@ -82,9 +123,7 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
         opts.onStatus('error');
         return;
       }
-      url = opts.code.startsWith('dm_')
-        ? dmUrl(ticket, opts.peerId)
-        : roomUrl(opts.code, opts.peerId, ticket);
+      url = opts.dm ? dmUrl(ticket, opts.peerId) : roomUrl(opts.code, opts.peerId, ticket);
     } else {
       scheduleReconnect();
       opts.onStatus('error');
@@ -100,13 +139,21 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
       opts.onOpen();
     };
     sock.onmessage = (e: MessageEvent) => {
+      let data: Record<string, unknown>;
       try {
-        opts.onMessage(JSON.parse(e.data as string));
+        data = JSON.parse(e.data as string);
       } catch {
-        /* malformed frame; ignore */
+        return; /* malformed frame; ignore */
+      }
+      if (data?.t === 'media-auth' && data.renew === true && ws === sock) startRenewing(sock);
+      try {
+        opts.onMessage(data);
+      } catch {
+        /* a handler error must not break the socket */
       }
     };
     sock.onclose = () => {
+      if (ws === sock) stopRenewing();
       if (!closed) scheduleReconnect();
     };
     sock.onerror = () => {
@@ -138,6 +185,7 @@ export function connectRoom(opts: RoomConnectOptions): RoomTransport {
     },
     close() {
       closed = true;
+      stopRenewing();
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;

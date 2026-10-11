@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { handleMediaUpload } from './media';
+import { describe, expect, it, vi } from 'vitest';
+import { handleMediaUpload, handleMediaRead } from './media';
 import type { Env } from './index';
 
 function request(): Request {
@@ -13,6 +13,7 @@ function request(): Request {
 function fakeEnv(options?: {
   authorize?: (code: string, token: string) => Promise<boolean>;
   note?: (code: string, token: string) => Promise<void>;
+  read?: (code: string, token: string) => Promise<boolean>;
 }) {
   const stored = new Set<string>();
   const deleted: string[] = [];
@@ -28,12 +29,20 @@ function fakeEnv(options?: {
           deleted.push(key);
         }
       },
+      get: async (key: string) => ({
+        body: 'private bytes',
+        etag: 'etag',
+        httpEtag: '"etag"',
+        httpMetadata: { contentType: 'image/png' },
+        key,
+      }),
     },
     ROOM: {
       idFromName: (code: string) => code,
       get: () => ({
         authorizeMediaUpload: options?.authorize ?? (async () => true),
         noteMediaUpload: options?.note ?? (async () => undefined),
+        authorizeMediaRead: options?.read ?? (async () => true),
       }),
     },
   } as unknown as Env;
@@ -78,5 +87,23 @@ describe('媒体孤儿清理调度', () => {
     const response = await handleMediaUpload(request(), env, 'room-a');
     expect(response.status).toBe(403);
     expect(stored.size).toBe(0);
+  });
+
+  it('私聊附件上传和读取都要求当前房间的媒体能力', async () => {
+    const code = `dm:${'a'.repeat(64)}`;
+    const authorized = vi.fn(async (_code: string, token: string) => token === 'live-token');
+    const { env, stored } = fakeEnv({ authorize: authorized, read: authorized });
+    const uploaded = await handleMediaUpload(request(), env, code);
+    expect(uploaded.status).toBe(200);
+    expect(stored.has(`room/${code}/media-1`)).toBe(true);
+    expect((await handleMediaRead(env, code, 'media-1')).status).toBe(403);
+    expect((await handleMediaRead(env, code, 'media-1', 'wrong')).status).toBe(403);
+    const read = await handleMediaRead(env, code, 'media-1', 'live-token');
+    expect(read.status).toBe(200);
+    expect(await read.text()).toBe('private bytes');
+    expect(read.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(read.headers.get('Referrer-Policy')).toBe('no-referrer');
+    expect(authorized).toHaveBeenCalledWith(code, 'live-token');
+    expect((await handleMediaRead(env, 'dm:legacy', 'media-1', 'live-token')).status).toBe(404);
   });
 });

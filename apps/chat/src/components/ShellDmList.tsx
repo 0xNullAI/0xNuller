@@ -75,7 +75,7 @@ export function ShellDmList({ currentRoom, onOpen }: ShellDmListProps) {
             type="button"
             onClick={() => onOpen(entry.peer)}
             className={
-              'flex items-center gap-2 rounded-[var(--radius-ctl)] px-2 py-1.5 text-left text-sm transition-colors ' +
+              'flex items-center gap-3 rounded-xl px-2 py-3 text-left text-sm transition-colors ' +
               (active
                 ? 'bg-[var(--accent-soft)]'
                 : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
@@ -84,7 +84,7 @@ export function ShellDmList({ currentRoom, onOpen }: ShellDmListProps) {
             <ProfileAvatar
               name={entry.peer.displayName || entry.peer.username}
               username={entry.peer.username}
-              size={24}
+              size={40}
               interactive={false}
             />
             <span className="min-w-0 flex-1 truncate">

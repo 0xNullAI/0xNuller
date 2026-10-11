@@ -14,7 +14,10 @@ export type WireType =
   | 'cmd' // device command, directed (to=peerId)
   | 'wave' // waveform transfer, directed (to=peerId)
   | 'leave' // voluntary leave
+  | 'agent-error' // DO→client: rejected agent configuration; persisted configuration is unchanged
   | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
+  | 'agent-billing' // owner selects explicit host BYOK or member-paid managed mode
+  | 'agent-run-status' // DO→payer: a managed group turn could not complete
   | 'group' // group settings: the owner changes them (client→DO); current settings (DO→client)
   | 'media-auth' // DO→client: capability for uploads while this WebSocket remains connected
   // The roleplay feature is gone, but pre-removal Android builds still send these two.
@@ -22,6 +25,7 @@ export type WireType =
   // rather than letting them fall through to the relay-everything default.
   | 'scene' // legacy roleplay, dropped by the DO
   | 'role' // legacy roleplay, dropped by the DO
+  | 'history-before' // client→DO: request an older bounded page
   | 'history' // DO→client: replay for a newly joined peer
   | 'sys'; // DO→client: connection-level presence (joined/left)
 
@@ -41,12 +45,27 @@ export interface MediaRef {
 /** Persisted chat message (DO SQLite row ↔ history replay ↔ chat broadcast body).
  *  Note: `t` is the envelope's message type ('chat') and the timestamp is `ts`; the two
  *  must not be mixed up. */
+export interface WireReply {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  unavailable?: boolean;
+}
+
 export interface WireChat {
+  /** Server-resolved reference; only the source ID is persisted. */
+  replyTo?: WireReply;
   /** Message type marker (always 'chat' in the broadcast body). */
   t?: 'chat';
   id: string;
   /** Sender peerId (injected by the DO, therefore trusted). */
   _from?: string;
+  /**
+   * Sender account (injected by the DO). Peer ids change on every page load; this is what
+   * lets a client recognise its own messages in history from any device.
+   */
+  _account?: string;
   /** Snapshot of the sender's nickname. */
   n: string;
   /** Text body (may be empty for a media message). */
@@ -67,16 +86,47 @@ export interface WireChat {
  * its persona and its permission to speak all came from a scene definition
  * — and so did the ability to @ it at all.
  *
- * Its sender id is fixed (`ai:room`). Keeping the `ai:` prefix is what lets
- * the self-loop guard, the isAi member flag, and the server-side `as` check
- * stay exactly as they were.
+ * New rooms use `ai:room`. Old rooms with no primary may keep the first
+ * additional role's sender id; the `ai:` prefix still identifies all AI messages.
  */
+export interface NamedRoomAgent extends RoomAgent {
+  id: string;
+}
+
+export const MAX_ROOM_AGENTS = 1;
+
+export function validRoomAgents(value: unknown): value is NamedRoomAgent[] {
+  if (!Array.isArray(value) || value.length > MAX_ROOM_AGENTS) return false;
+  const ids = new Set<string>();
+  return value.every((agent) => {
+    if (
+      !agent ||
+      typeof agent !== 'object' ||
+      typeof agent.id !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,64}$/.test(agent.id) ||
+      ids.has(agent.id) ||
+      typeof agent.name !== 'string' ||
+      !agent.name.trim() ||
+      agent.name.trim().length > MAX_ROOM_AGENT_NAME ||
+      typeof agent.persona !== 'string' ||
+      agent.persona.length > MAX_ROOM_AGENT_PERSONA
+    )
+      return false;
+    ids.add(agent.id);
+    return true;
+  });
+}
+
 export interface RoomAgent {
   /** Shown in the room and in the @ list. */
   name: string;
   /** Free-text persona, written by the host. Becomes the system prompt. */
   persona: string;
 }
+
+/** Shared transport limits; imported scenes must fit without truncation. */
+export const MAX_ROOM_AGENT_NAME = 40;
+export const MAX_ROOM_AGENT_PERSONA = 4000;
 
 /** The room agent's fixed member id. */
 export const ROOM_AGENT_ID = 'room';
@@ -88,8 +138,12 @@ export const ROOM_AGENT_SENDER = `ai:${ROOM_AGENT_ID}`;
 export interface WireAgent {
   t: 'agent';
   agent: RoomAgent | null;
+  agents?: NamedRoomAgent[];
   host: string; // hostPeerId
+  billingMode?: 'host-byok' | 'managed';
 }
+
+export type RoomAgentBillingMode = 'host-byok' | 'managed';
 
 /**
  * DO→client: the group's durable settings.
@@ -101,6 +155,7 @@ export interface WireAgent {
  */
 export interface WireGroup {
   t: 'group';
+  persistentHistory?: boolean;
   code: string;
   /** Display name; only meaningful while the group is public (that is where it shows). */
   name?: string;
@@ -147,6 +202,8 @@ export interface WireSys {
 export interface WireHistory {
   t: 'history';
   messages: WireChat[];
+  older?: boolean;
+  before?: { ts: number; id: string } | null;
 }
 
 /** Fixed name of the singleton lobby DO. */
@@ -204,4 +261,22 @@ export function isAllowedMediaType(header: string | null): boolean {
   if (!header) return false;
   const bare = header.split(';')[0]!.trim().toLowerCase();
   return ALLOWED_MEDIA_TYPES.includes(bare);
+}
+
+export interface DmInboxSummary {
+  room: string;
+  lastMessageAt: number | null;
+  preview: string;
+  unread: number | null;
+  lastSequence: number;
+  readSequence: number | null;
+}
+
+export type GroupMembershipState = 'active' | 'left' | 'removed' | 'banned';
+export interface GroupMembership {
+  account_id: string;
+  name: string;
+  state: GroupMembershipState;
+  version: number;
+  updated_at: number;
 }

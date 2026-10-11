@@ -144,3 +144,17 @@ export async function syncKnownGroups(): Promise<KnownGroup[] | null> {
   save(groups);
   return groups;
 }
+
+/** Only the one-time legacy import needs the complete server list. Display paging stays separate. */
+export async function migrateLegacyKnownGroups(): Promise<void> {
+  try {
+    if (localStorage.getItem(GROUPS_MIGRATED_KEY) === '1') return;
+    if (loadKnownGroups().length === 0) {
+      localStorage.setItem(GROUPS_MIGRATED_KEY, '1');
+      return;
+    }
+  } catch {
+    return;
+  }
+  await syncKnownGroups();
+}
