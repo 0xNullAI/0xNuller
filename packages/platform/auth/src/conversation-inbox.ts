@@ -12,6 +12,8 @@ export interface PrivateConversationSummary {
   lastSequence: number;
   readSequence: number | null;
   unread: number | null;
+  /** The caller's own saved relationship portrait; absent from older servers. */
+  avatarPhotoId?: string | null;
 }
 export interface PrivateConversationSummaryPage {
   items: PrivateConversationSummary[];

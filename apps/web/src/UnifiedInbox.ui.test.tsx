@@ -16,6 +16,10 @@ const state = vi.hoisted(() => ({
   newAi: vi.fn(),
   selectChat: vi.fn(),
   authChanged: null as (() => void) | null,
+  photos: {} as Record<string, string>,
+}));
+vi.mock('@0xnullai/auth/appearance-react', () => ({
+  useCharacterPhoto: (photoId: string | null) => (photoId ? (state.photos[photoId] ?? null) : null),
 }));
 vi.mock('@0xnullai/auth', () => ({
   currentAuthUserId: () => state.account,
@@ -703,4 +707,37 @@ it('does not list an AI conversation that has no messages yet', async () => {
   );
   expect(await screen.findByText('聊过')).toBeTruthy();
   expect(screen.queryByText('空会话')).toBeNull();
+});
+
+it('shows the saved character portrait for an AI row and the initial when absent or broken', async () => {
+  state.photos = { loaded: 'blob:loaded', broken: 'blob:broken' };
+  state.chat.mockResolvedValueOnce([]);
+  state.list.mockResolvedValueOnce({
+    items: ['loaded', 'broken', null].map((photo, index) => ({
+      id: `ai-${index}`,
+      metadata: { sessionTitle: ['星', '月', '云'][index] },
+      preview: '你好',
+      lastSequence: 1,
+      lastMessageAt: 10 - index,
+      avatarPhotoId: photo,
+    })),
+  });
+  const { container } = render(
+    <UnifiedInbox
+      user={user('alice')}
+      onNavigate={vi.fn()}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={vi.fn()}
+    />,
+  );
+  await screen.findAllByText('云');
+  const images = () => [...container.querySelectorAll('img')].map((image) => image.src);
+  expect(images()).toEqual(['blob:loaded', 'blob:broken']);
+  fireEvent.error(container.querySelector('img[src="blob:broken"]')!);
+  expect(images()).toEqual(['blob:loaded']);
+  // The broken and missing portraits fall back to the row's first letter.
+  expect(screen.getAllByText('月')).toHaveLength(2);
+  expect(screen.getAllByText('云')).toHaveLength(2);
+  expect(screen.getAllByText('星')).toHaveLength(1);
+  state.photos = {};
 });

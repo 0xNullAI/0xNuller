@@ -14,6 +14,7 @@ import {
   type ChatInboxEntry,
 } from '../../chat/src/inbox';
 import type { AuthUser } from '@0xnullai/auth';
+import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
 import { loadScenes } from '@0xnullai/scenes';
 interface InboxRow {
   id: string;
@@ -24,6 +25,7 @@ interface InboxRow {
   updatedAt: number;
   timeBasis?: string;
   unread: number | null;
+  avatarPhotoId?: string | null;
   activate: () => void;
   markRead?: () => Promise<void>;
 }
@@ -77,6 +79,7 @@ function privateInboxRow(
     updatedAt: item.lastMessageAt ?? 0,
     timeBasis: '最近消息接收时间',
     unread: item.unread ?? null,
+    avatarPhotoId: item.avatarPhotoId ?? null,
     ...(typeof item.lastSequence === 'number' && item.lastSequence > 0 && item.unread !== 0
       ? {
           markRead: async () => {
@@ -91,6 +94,36 @@ function privateInboxRow(
       onNavigate(`agent?conversation=${encodeURIComponent(id)}`);
     },
   };
+}
+/** The character's private portrait when one loads; otherwise the title's first letter. */
+function InboxAvatar({
+  title,
+  photoId,
+  size,
+}: {
+  title: string;
+  photoId: string | null;
+  size: string;
+}) {
+  const source = useCharacterPhoto(photoId);
+  const [failed, setFailed] = useState<string | null>(null);
+  const box = `flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent-soft)] text-sm ${size}`;
+  if (source && failed !== source)
+    return (
+      <span aria-hidden className={box}>
+        <img
+          src={source}
+          alt=""
+          onError={() => setFailed(source)}
+          className="h-full w-full object-cover"
+        />
+      </span>
+    );
+  return (
+    <span aria-hidden className={box}>
+      {title.trim().slice(0, 1) || '·'}
+    </span>
+  );
 }
 /** One visible inbox. AI and human transports stay behind their respective owners. */
 export function UnifiedInbox({
@@ -504,12 +537,11 @@ export function UnifiedInbox({
               aria-current={currentRowId === row.routeId ? 'page' : undefined}
               className={`flex w-full min-w-0 items-center gap-3 rounded-xl text-left hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${currentRowId === row.routeId ? 'bg-[var(--accent-soft)]' : ''} ${presentation === 'page' ? 'min-h-[72px] border-b border-[var(--surface-border)] px-2 py-3' : 'min-h-16 px-2 py-2'}`}
             >
-              <span
-                aria-hidden
-                className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-sm ${presentation === 'page' ? 'h-12 w-12' : 'h-9 w-9'}`}
-              >
-                {row.title.trim().slice(0, 1) || '·'}
-              </span>
+              <InboxAvatar
+                title={row.title}
+                photoId={row.avatarPhotoId ?? null}
+                size={presentation === 'page' ? 'h-12 w-12' : 'h-9 w-9'}
+              />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{row.title}</span>
                 <span className="block truncate text-xs text-[var(--text-faint)]">

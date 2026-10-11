@@ -288,6 +288,14 @@ export async function handleServerConversations(
         ,EXISTS(SELECT 1 FROM server_conversation_messages message
           WHERE message.user_id=server_conversations.user_id AND message.conversation_id=server_conversations.id
             AND message.role='user') AS has_user_message
+        ,(SELECT appearance.photo_id FROM character_appearances appearance
+          JOIN character_relationships relationship ON relationship.user_id=appearance.user_id
+            AND relationship.id=appearance.relationship_id AND relationship.deleted_at IS NULL
+          JOIN user_photos photo ON photo.id=appearance.photo_id
+            AND photo.user_id=appearance.user_id AND photo.status='ready'
+          WHERE appearance.user_id=server_conversations.user_id
+            AND appearance.relationship_id=json_extract(server_conversations.metadata,'$.relationshipId')
+        ) AS avatar_photo_id
         FROM server_conversations WHERE user_id = ? AND ${recent ? 'deleted_at IS NULL AND (COALESCE(last_message_at,0) < ? OR (COALESCE(last_message_at,0) = ? AND id > ?))' : '(updated_at > ? OR (updated_at = ? AND id > ?))'}
         ORDER BY ${recent ? 'COALESCE(last_message_at,0) DESC' : 'updated_at ASC'},id ASC LIMIT ?`,
       )
@@ -296,6 +304,7 @@ export async function handleServerConversations(
           Omit<Row, 'messages_json' | 'mutation_id'> & {
             preview: string | null;
             has_user_message: number;
+            avatar_photo_id: string | null;
             last_sequence: number;
             read_sequence: number | null;
             last_message_at: number | null;
@@ -319,6 +328,8 @@ export async function handleServerConversations(
             metadata: row.deleted_at === null ? JSON.parse(row.metadata) : {},
             preview: row.deleted_at === null ? (row.preview ?? '') : '',
             hasUserMessage: row.deleted_at === null && row.has_user_message !== 0,
+            // Joined in this query so the inbox needs no per-row appearance request.
+            avatarPhotoId: row.deleted_at === null ? row.avatar_photo_id : null,
           })),
           migrationErrors,
           nextCursor:

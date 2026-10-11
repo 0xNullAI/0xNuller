@@ -1125,3 +1125,64 @@ it('isolates staged Video replies by owner and expires abandoned pending text', 
     ).session.messages.map((m) => m.id),
   ).toEqual(['video-user-1']);
 });
+
+it('joins the caller’s own ready relationship avatar into summaries and nothing else', async () => {
+  for (const [user, id, photo] of [
+    ['alice', 'rel', 'alicephoto'],
+    ['bob', 'bobrel', 'bobphoto'],
+  ] as const) {
+    await env.DB.prepare(
+      `INSERT INTO character_relationships(user_id,id,character_id,ai_nickname,user_preferred_name,relationship_type,notes,version,created_at,updated_at) VALUES (?,?,'character','','','','',1,1,1)`,
+    )
+      .bind(user, id)
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO user_photos (id,user_id,object_key,visibility,created_at,status) VALUES (?,?,?,'private',1,'ready')",
+    )
+      .bind(photo, user, `${user}/${photo}`)
+      .run();
+  }
+  await env.DB.prepare(
+    "INSERT INTO character_appearances(user_id,relationship_id,photo_id,scale,position,version) VALUES ('alice','rel','alicephoto',35,'right',1),('bob','bobrel','bobphoto',35,'right',1)",
+  ).run();
+  const bound = (id: string) => {
+    const session = snapshot(id);
+    return {
+      ...session,
+      metadata: { ...session.metadata, promptPresetId: 'character', relationshipId: 'rel' },
+    };
+  };
+  await put(bound('own'));
+  await put(snapshot('plain'));
+  const summaries = async (user = 'alice') =>
+    (
+      (await (await call('?summary=1&order=recent', 'GET', undefined, user)).json()) as {
+        items: Array<{ id: string; avatarPhotoId: string | null }>;
+      }
+    ).items;
+  expect(await summaries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'own', avatarPhotoId: 'alicephoto' }),
+      expect.objectContaining({ id: 'plain', avatarPhotoId: null }),
+    ]),
+  );
+  // A metadata reference to another account's relationship never exposes its photo.
+  await env.DB.prepare(
+    "INSERT INTO server_conversations(user_id,id,created_at,metadata,revision,updated_at,mutation_id) VALUES ('alice','foreign',1,?,1,1,'m')",
+  )
+    .bind(JSON.stringify({ relationshipId: 'bobrel' }))
+    .run();
+  // Bob's appearance pointing at Alice's photo is not resolved for Bob either.
+  await env.DB.prepare(
+    "UPDATE character_appearances SET photo_id='alicephoto' WHERE user_id='bob'",
+  ).run();
+  await env.DB.prepare(
+    "INSERT INTO server_conversations(user_id,id,created_at,metadata,revision,updated_at,mutation_id) VALUES ('bob','borrowed',1,?,1,1,'m')",
+  )
+    .bind(JSON.stringify({ relationshipId: 'bobrel' }))
+    .run();
+  expect((await summaries()).find((item) => item.id === 'foreign')?.avatarPhotoId).toBeNull();
+  expect((await summaries('bob')).find((item) => item.id === 'borrowed')?.avatarPhotoId).toBeNull();
+  await env.DB.prepare("UPDATE user_photos SET status='uploading' WHERE id='alicephoto'").run();
+  expect((await summaries()).find((item) => item.id === 'own')?.avatarPhotoId).toBeNull();
+});
