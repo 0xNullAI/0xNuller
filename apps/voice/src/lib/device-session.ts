@@ -24,6 +24,9 @@
  * inside `connectDevice()` below — only which concrete clients and which
  * picker function get constructed differs, and that's exactly what
  * `DeviceSessionTransport` isolates.
+ *
+ * Inside a shell, Voice no longer opens links itself: `createRegistryTransport()` wraps the
+ * app's one DG-Lab registry handle, and the legacy transports above are only the fallback.
  */
 import {
   type BluetoothDeviceLike,
@@ -45,6 +48,12 @@ import {
   WebBluetoothOpossumClient,
   requestDgLabDevice,
 } from '@dg-kit/transport-webbluetooth';
+import {
+  RegistryCoyoteClient,
+  RegistryOpossumClient,
+  type DgLabDeviceSnapshot,
+  type DgLabModuleHandle,
+} from '@0xnullai/device-runtime';
 
 export interface DeviceSessionState {
   coyotes: CoyoteTargetSnapshot[];
@@ -70,10 +79,45 @@ export interface GattConnectable {
  */
 export type { RequestedDevice };
 
+/**
+ * Legacy: Voice opens and owns its own BLE links. Kept only as the fallback for a shell that
+ * injects `voice.transport` without a shared DG-Lab registry.
+ */
 export interface DeviceSessionTransport {
   coyote: DeviceClient & GattConnectable;
   opossum: OpossumClient & GattConnectable;
   requestDevice(): Promise<RequestedDevice>;
+}
+
+/**
+ * Voice borrows the app's one DG-Lab registry through its module handle. It opens no BLE link:
+ * every write goes through the handle, so the lease fence, holder re-clamp and the device's
+ * single queue apply on top of Voice's own policies.
+ */
+export interface RegistryDeviceSessionTransport {
+  coyote: RegistryCoyoteClient;
+  opossum: RegistryOpossumClient;
+  connect(): Promise<DgLabDeviceSnapshot>;
+  /** Fires after the registry stopped every output because Voice lost the lease. */
+  onRevoked(listener: () => void): () => void;
+}
+
+export type AnyDeviceSessionTransport = DeviceSessionTransport | RegistryDeviceSessionTransport;
+
+/** Voice's view of the shared registry, gated by the lease under `handle.moduleId`. */
+export function createRegistryTransport(handle: DgLabModuleHandle): RegistryDeviceSessionTransport {
+  return {
+    coyote: new RegistryCoyoteClient(handle),
+    opossum: new RegistryOpossumClient(handle),
+    connect: () => handle.connect(),
+    onRevoked: (listener) => handle.onRevoked(listener),
+  };
+}
+
+function isRegistryTransport(
+  transport: AnyDeviceSessionTransport,
+): transport is RegistryDeviceSessionTransport {
+  return 'connect' in transport && !('requestDevice' in transport);
 }
 
 /** The web app's default — every consumer that doesn't explicitly inject a Tauri transport gets this unchanged. */
@@ -94,23 +138,40 @@ const SENSOR_KIND_DISPLAY_NAME: Partial<Record<DeviceKind, string>> = {
 
 /** Owns exact Coyote targets plus the transport-limited single Opossum client. */
 export class DeviceSession {
-  readonly coyote: DeviceSessionTransport['coyote'];
-  readonly opossum: DeviceSessionTransport['opossum'];
+  readonly coyote: DeviceClient;
+  readonly opossum: OpossumClient;
+  /** True when the shared DG-Lab registry owns the links; the shell lists its devices then. */
+  readonly sharedRegistry: boolean;
 
-  private readonly requestDevice: DeviceSessionTransport['requestDevice'];
+  private readonly transport: AnyDeviceSessionTransport;
   readonly coyoteTargetRouter: CoyoteTargetRouter;
   private readonly listeners = new Set<() => void>();
   private opossumTargetId: string | null = null;
+  /** Physical identity behind `opossumTargetId`, when the client exposes one. */
+  private opossumSourceId: string | null = null;
 
-  constructor(transport: DeviceSessionTransport = createWebBluetoothTransport()) {
+  constructor(transport: AnyDeviceSessionTransport = createWebBluetoothTransport()) {
+    this.transport = transport;
     this.coyote = transport.coyote;
     this.opossum = transport.opossum;
-    this.requestDevice = transport.requestDevice;
+    this.sharedRegistry = isRegistryTransport(transport);
     this.coyoteTargetRouter = createCoyoteTargetRouter(this.coyote);
 
     this.coyote.onStateChanged(() => this.emit());
     this.opossum.onStateChanged((state) => {
       this.updateOpossumTargetIdentity(state.connected);
+      this.emit();
+    });
+  }
+
+  /**
+   * Lease loss reported by the shared registry, after it already stopped every output. The
+   * legacy transport has no such signal; the safety bus's `onRevoke` covers it.
+   */
+  onRevoked(listener: () => void): () => void {
+    if (!isRegistryTransport(this.transport)) return () => undefined;
+    return this.transport.onRevoked(() => {
+      listener();
       this.emit();
     });
   }
@@ -147,11 +208,22 @@ export class DeviceSession {
    * fresh chooser.
    */
   async connectDevice(): Promise<ConnectedDeviceInfo> {
-    const { kind, device, server } = await this.requestDevice();
+    const transport = this.transport;
+    if (isRegistryTransport(transport)) {
+      const picked = await transport.connect();
+      if (picked.kind === 'paw-prints' || picked.kind === 'civet-edging') {
+        // The registry owns the link and other modules may use the sensor, so keep it attached.
+        throw new Error(`语音通话暂不支持${SENSOR_KIND_DISPLAY_NAME[picked.kind]}这类传感器设备`);
+      }
+      this.updateOpossumTargetIdentity((await this.opossum.getState()).connected);
+      return { kind: picked.kind, name: picked.name };
+    }
+
+    const { kind, device, server } = await transport.requestDevice();
 
     switch (kind) {
       case 'coyote': {
-        await this.coyote.connectDevice(device, server);
+        await transport.coyote.connectDevice(device, server);
         break;
       }
       case 'opossum': {
@@ -159,7 +231,7 @@ export class DeviceSession {
           device.gatt?.disconnect();
           throw new Error('语音通话当前只支持一台负鼠；请先断开现有设备再连接另一台');
         }
-        await this.opossum.connectDevice(device, server);
+        await transport.opossum.connectDevice(device, server);
         this.updateOpossumTargetIdentity(true);
         break;
       }
@@ -211,10 +283,16 @@ export class DeviceSession {
   }
 
   private updateOpossumTargetIdentity(connected: boolean): void {
-    if (!connected) {
+    // The registry may hold more than one Opossum; Voice drives the first. When that primary
+    // changes to other hardware, the old target id (and any approval bound to it) must not follow.
+    const sourceId = connected
+      ? ((this.opossum as { deviceId?: string | null }).deviceId ?? null)
+      : null;
+    if (!connected || sourceId !== this.opossumSourceId) {
       this.opossumTargetId = null;
-      return;
+      this.opossumSourceId = sourceId;
     }
+    if (!connected) return;
     if (this.opossumTargetId) return;
     const entropy =
       globalThis.crypto?.randomUUID?.() ??

@@ -9,7 +9,8 @@ import {
   useInShell,
   useSafetySession,
 } from '@0xnullai/ui';
-import { useNativeBridge } from '@0xnullai/native';
+import { useEffect, useState } from 'react';
+import { useDgLabRegistry, useNativeBridge } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -17,14 +18,20 @@ import { CallPanel } from '@voice/components/CallPanel';
 import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
 import { PermissionModal } from '@0xnullai/ui';
 import { useTheme } from '@0xnullai/ui';
-import type { DeviceSessionTransport } from '@voice/lib/device-session';
+import {
+  createRegistryTransport,
+  type AnyDeviceSessionTransport,
+  type DeviceSessionTransport,
+} from '@voice/lib/device-session';
 import { isCoyoteOutputActive } from '@dg-kit/core';
+
+/** Must match the shell's lease id for this module (`apps/web/src/routes.ts`). */
+const VOICE_MODULE_ID = 'voice';
 
 interface AppProps {
   /**
-   * Only supplied by the Android shell (`apps/tauri-android`), which injects
-   * the `@dg-kit/transport-tauri-blec` clients. The web build omits it and
-   * falls through to the Web Bluetooth default.
+   * Legacy own-link transport. Used only when the shell provides no shared DG-Lab registry;
+   * with one, Voice borrows the registry's devices and never opens a link itself.
    */
   transport?: DeviceSessionTransport;
 }
@@ -32,8 +39,17 @@ interface AppProps {
 export function App({ transport }: AppProps = {}) {
   const inShell = useInShell();
   const shellNav = useShellNav();
-  // Same as Chat: props win, otherwise take it from the NativeBridge.
+  // The shell's shared DG-Lab registry wins; a legacy transport (prop, then NativeBridge) is only
+  // the fallback when no registry was injected.
   const native = useNativeBridge();
+  const registry = useDgLabRegistry();
+  // Read once: the session is built once and keeps its transport for its lifetime.
+  const [deviceTransport] = useState<AnyDeviceSessionTransport>(() => {
+    const legacy = transport ?? (native.voice?.transport as DeviceSessionTransport | undefined);
+    return native.dglab || !legacy
+      ? createRegistryTransport(registry.forModule(VOICE_MODULE_ID))
+      : legacy;
+  });
   const {
     session,
     state,
@@ -42,13 +58,53 @@ export function App({ transport }: AppProps = {}) {
     emergencyStop,
     disconnectCoyote,
     disconnectOpossum,
-  } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
+    onRevoked,
+  } = useDeviceSession(deviceTransport);
   const { settings, updateSettings } = useSettings();
 
+  // Only for the legacy own-link transport; see `devices` below.
+  const legacyDevices = () => [
+    ...state.coyotes.map(({ targetId, state: coyote }) => ({
+      id: targetId,
+      kind: 'coyote',
+      name: coyote.deviceName ?? '郊狼',
+      connected: true,
+      battery: coyote.battery,
+      active: isCoyoteOutputActive(coyote),
+      channels: [
+        { label: 'A', value: coyote.strengthA, max: coyote.limitA },
+        { label: 'B', value: coyote.strengthB, max: coyote.limitB },
+      ],
+    })),
+    ...(state.opossum?.connected
+      ? [
+          {
+            id: 'opossum',
+            kind: 'opossum',
+            name: '负鼠',
+            connected: true,
+            battery: state.opossum.battery,
+            active: state.opossum.intensityA > 0 || state.opossum.intensityB > 0,
+            channels: [
+              {
+                label: 'A',
+                value: state.opossum.intensityA,
+                max: settings.opossumSafety.maxIntensityA,
+              },
+              {
+                label: 'B',
+                value: state.opossum.intensityB,
+                max: settings.opossumSafety.maxIntensityB,
+              },
+            ],
+          },
+        ]
+      : []),
+  ];
   // Register on the global safety bus — the only data source the shell's
   // global stop button has.
   useSafetySession({
-    id: 'voice',
+    id: VOICE_MODULE_ID,
     label: 'Voice',
     isActive: () => Boolean(state.coyotes.length > 0 || state.opossum?.connected),
     stop: emergencyStop,
@@ -63,46 +119,24 @@ export function App({ transport }: AppProps = {}) {
       await call.hangUp('切换到其他模块').catch(() => undefined);
       await emergencyStop();
     },
-    devices: () => [
-      ...state.coyotes.map(({ targetId, state: coyote }) => ({
-        id: targetId,
-        kind: 'coyote',
-        name: coyote.deviceName ?? '郊狼',
-        connected: true,
-        battery: coyote.battery,
-        active: isCoyoteOutputActive(coyote),
-        channels: [
-          { label: 'A', value: coyote.strengthA, max: coyote.limitA },
-          { label: 'B', value: coyote.strengthB, max: coyote.limitB },
-        ],
-      })),
-      ...(state.opossum?.connected
-        ? [
-            {
-              id: 'opossum',
-              kind: 'opossum',
-              name: '负鼠',
-              connected: true,
-              battery: state.opossum.battery,
-              active: state.opossum.intensityA > 0 || state.opossum.intensityB > 0,
-              channels: [
-                {
-                  label: 'A',
-                  value: state.opossum.intensityA,
-                  max: settings.opossumSafety.maxIntensityA,
-                },
-                {
-                  label: 'B',
-                  value: state.opossum.intensityB,
-                  max: settings.opossumSafety.maxIntensityB,
-                },
-              ],
-            },
-          ]
-        : []),
-    ],
+    // With the shared registry its `dglab-devices` session lists every device; listing them here
+    // too would show each one twice in the shell bar.
+    devices: () => (session.sharedRegistry ? [] : legacyDevices()),
   });
   const call = useRealtimeCall(session, settings, native.deviceRuntime);
+  const { hangUp } = call;
+  // The registry already stopped every output; end the call so the model stops issuing tools,
+  // and clear Voice's own held device state, exactly like the safety bus `onRevoke` above.
+  useEffect(
+    () =>
+      onRevoked(() => {
+        void hangUp('切换到其他模块')
+          .catch(() => undefined)
+          .then(() => emergencyStop())
+          .catch(() => undefined);
+      }),
+    [onRevoked, hangUp, emergencyStop],
+  );
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
   // hung 'connecting' used to latch these buttons disabled forever. Connecting

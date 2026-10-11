@@ -3,8 +3,8 @@ import { createEmptyDeviceState, isDevicePickerCancelled } from '@dg-kit/core';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
 import {
   DeviceSession,
+  type AnyDeviceSessionTransport,
   type DeviceSessionState,
-  type DeviceSessionTransport,
 } from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
@@ -14,11 +14,10 @@ const EMPTY_STATE: DeviceSessionState = {
 };
 
 /**
- * `transport` is only passed by the Android shell (which injects the
- * `@dg-kit/transport-tauri-blec` clients); the web build omits it and gets
- * the Web Bluetooth default from `DeviceSession`'s own constructor.
+ * `transport` is normally the shared DG-Lab registry handle (`createRegistryTransport`). A legacy
+ * own-link transport is only the fallback; omitting it builds the Web Bluetooth default.
  */
-export function useDeviceSession(transport?: DeviceSessionTransport) {
+export function useDeviceSession(transport?: AnyDeviceSessionTransport) {
   // Lazy `useState` initializer (not a ref) — it runs exactly once and is
   // the pattern the stricter react-hooks/refs rule actually wants for
   // "construct once, keep stable across re-renders" values. `transport` is
@@ -79,8 +78,19 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
+  /** Lease loss from the shared registry; output is already stopped when it fires. */
+  const onRevoked = useCallback(
+    (listener: () => void) =>
+      session.onRevoked(() => {
+        listener();
+        refresh();
+      }),
+    [session, refresh],
+  );
+
   return {
     session,
+    onRevoked,
     state,
     error,
     connecting,
