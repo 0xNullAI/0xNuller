@@ -73,7 +73,7 @@ function projectForWorkspace(workspace) {
   if (dir === 'apps/voice') return '0xnullai-voice';
   if (dir === 'apps/web') return 'web';
   if (dir === 'workers/auth') return 'auth';
-  if (dir === 'workers/llm-proxy' || dir === 'workers/speech-proxy') return 'worker-proxies';
+  if (dir === 'workers/llm-proxy') return 'worker-proxies';
   if (dir.startsWith('packages/agent/')) return 'agent-packages';
   if (dir.startsWith('packages/kit/')) return 'kit';
   if (dir.startsWith('packages/platform/')) return 'platform';

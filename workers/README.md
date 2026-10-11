@@ -11,7 +11,6 @@
 | Market       | [`apps/market`](../apps/market/README.md) | 场景和波形目录、账户所有权与审核 |
 | Voice        | [`apps/voice`](../apps/voice/README.md)   | 实时语音会话                     |
 | LLM Proxy    | [`workers/llm-proxy`](./llm-proxy)        | 托管文本模型中继                 |
-| Speech Proxy | [`workers/speech-proxy`](./speech-proxy)  | 可选的自托管语音中继模板         |
 
 ## 本地验证
 
@@ -35,5 +34,4 @@ npm run build
 - 历史子域与跨域浏览器迁移 Worker 已下线；当前产品只使用主站及上述 API 路由。
 - 所有当前产品流量由 `0xnullai.com` 与 `www` 承载。
 
-`workers/speech-proxy` 是用户自托管模板，不是共享生产服务。DG-Kit 与 DG-MCP 的对外迁移仍
-等待单独确认。
+DG-Kit 与 DG-MCP 的对外迁移仍等待单独确认。
