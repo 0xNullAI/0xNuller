@@ -102,7 +102,9 @@ export function isManagedModelId(model: string): boolean {
   );
 }
 
-const CUSTOM_PLACEHOLDER_BASE_URL = 'https://api.example.com/v1';
+export const CUSTOM_PLACEHOLDER_BASE_URL = 'https://api.example.com/v1';
+/** Stored when a custom endpoint has no model yet; shown as an empty field. */
+export const CUSTOM_PLACEHOLDER_MODEL = 'model-name';
 
 export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   {
@@ -197,7 +199,7 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
     // endpoint/useStrict/imageInput stay user-editable: only fill a missing
     // endpoint and never clobber the user's toggles.
     normalized.baseUrl = normalized.baseUrl || CUSTOM_PLACEHOLDER_BASE_URL;
-    normalized.model = normalized.model || 'model-name';
+    normalized.model = normalized.model || CUSTOM_PLACEHOLDER_MODEL;
     normalized.endpoint = normalized.endpoint === 'responses' ? 'responses' : 'chat/completions';
     normalized.useStrict = normalized.useStrict === true;
   }

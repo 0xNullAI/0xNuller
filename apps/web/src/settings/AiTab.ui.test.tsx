@@ -54,12 +54,17 @@ afterEach(() => {
 
 it('shows the custom endpoint with image input off until the user switches it on', () => {
   render(<AiTab />);
-  fireEvent.click(screen.getByRole('button', { name: /^使用自己的 API/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^自定义模型与网络代理/ }));
 
+  expect(screen.getByRole('switch', { name: '使用自定义模型' }).getAttribute('aria-checked')).toBe(
+    'true',
+  );
   expect(screen.getByText('接口地址')).toBeTruthy();
   expect(screen.getByRole('combobox', { name: '模型' })).toBeTruthy();
-  const toggle = screen.getByRole('checkbox', { name: '支持图片输入' }) as HTMLInputElement;
-  expect(toggle.checked).toBe(false);
+  const toggle = screen.getByRole('switch', { name: '支持图片输入' });
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  // The proxy settings sit on the same page, expanded.
+  expect(screen.getByRole('switch', { name: '启用网络代理' })).toBeTruthy();
 
   fireEvent.click(toggle);
   expect(llm.save).toHaveBeenCalledWith(expect.objectContaining({ imageInput: true }));
@@ -68,10 +73,10 @@ it('shows the custom endpoint with image input off until the user switches it on
 it('offers only the custom endpoint as an own-API option', () => {
   llm.config = { ...llm.config, providerId: 'managed', apiKey: '', model: 'balanced' };
   render(<AiTab />);
-  fireEvent.click(screen.getByRole('button', { name: /^使用自己的 API/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^自定义模型与网络代理/ }));
 
-  expect(screen.queryByRole('checkbox', { name: '支持图片输入' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '使用自定义接口' }));
+  expect(screen.queryByRole('switch', { name: '支持图片输入' })).toBeNull();
+  fireEvent.click(screen.getByRole('switch', { name: '使用自定义模型' }));
   expect(llm.save).toHaveBeenCalledWith(
     expect.objectContaining({ providerId: 'custom', apiKey: '', imageInput: false }),
   );

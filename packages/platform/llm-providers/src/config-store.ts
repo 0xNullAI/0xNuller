@@ -1,5 +1,11 @@
 import type { ProviderId } from './index';
-import { MANAGED_DEFAULT_MODEL, MANAGED_SERVICE_URL, getProviderDefinition } from './index';
+import {
+  CUSTOM_PLACEHOLDER_BASE_URL,
+  CUSTOM_PLACEHOLDER_MODEL,
+  MANAGED_DEFAULT_MODEL,
+  MANAGED_SERVICE_URL,
+  getProviderDefinition,
+} from './index';
 import { migrateLegacyProviderSettings } from './legacy-provider-migration';
 import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
@@ -149,5 +155,11 @@ export function isLlmConfigured(c: LlmConfig): boolean {
   if (c.providerId === 'managed') return true;
   const def = getProviderDefinition(c.providerId);
   const needsKey = def ? def.fields.some((f) => f.key === 'apiKey') : true;
+  // A custom endpoint still carrying the placeholder address or model is not set up yet.
+  if (
+    c.providerId === 'custom' &&
+    (c.baseUrl === CUSTOM_PLACEHOLDER_BASE_URL || c.model === CUSTOM_PLACEHOLDER_MODEL)
+  )
+    return false;
   return needsKey ? c.apiKey.trim().length > 0 : true;
 }

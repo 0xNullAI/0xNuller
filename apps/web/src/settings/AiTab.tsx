@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button } from '@0xnullai/ui';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Input } from '@0xnullai/ui';
 import {
   createProviderSettings,
-  getProviderDefinition,
+  CUSTOM_PLACEHOLDER_BASE_URL,
+  CUSTOM_PLACEHOLDER_MODEL,
   isLlmConfigured,
   loadLlmConfig,
   saveLlmConfig,
@@ -16,14 +17,10 @@ import {
   discoverBrowserProviderModels,
   testBrowserProviderConnection,
 } from '@dg-agent/agent-browser/llm';
-import {
-  ProviderCredentialFields,
-  ProviderImageInputToggle,
-  ProviderRememberApiKey,
-} from './ProviderCredentialFields';
 import { AdvancedSubpage } from './SettingsAdvanced';
-import { SettingsGroup, SettingsPage, SettingsRow } from './settings-list';
-import { Brain, Camera, Globe, KeyRound } from 'lucide-react';
+import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SwitchRow } from './settings-list';
+import { SecretHint } from './SecretHint';
+import { Brain, SlidersHorizontal } from 'lucide-react';
 import { loadProxy } from '@0xnullai/settings';
 import { ModelCombobox } from './ModelCombobox';
 
@@ -46,8 +43,8 @@ export function AiTab({
   /** Opens 个人记忆; absent when signed out, since memories live on the account. */
   onOpenMemory?: () => void;
 }) {
-  const [page, setPage] = useState<'main' | 'own-api' | 'proxy' | 'video'>(
-    initialSection === 'video' ? 'video' : 'main',
+  const [page, setPage] = useState<'main' | 'advanced'>(
+    initialSection === 'video' ? 'advanced' : 'main',
   );
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
   const closeSubpage = useCallback(() => setPage('main'), []);
@@ -64,22 +61,21 @@ export function AiTab({
     update({ ...createProviderSettings('managed'), rememberApiKey: config.rememberApiKey });
   }
 
-  if (page === 'own-api')
+  if (page === 'advanced')
     return (
-      <AdvancedSubpage title="使用自己的 API" onBack={closeSubpage}>
-        <OwnApiSection config={config} update={update} onUseManaged={switchToManaged} />
-      </AdvancedSubpage>
-    );
-  if (page === 'proxy')
-    return (
-      <AdvancedSubpage title="网络代理" onBack={closeSubpage}>
-        <ProxySection />
-      </AdvancedSubpage>
-    );
-  if (page === 'video')
-    return (
-      <AdvancedSubpage title="Video 视觉模型" onBack={closeSubpage}>
-        <VideoProviderSection />
+      <AdvancedSubpage title="AI · 高级" onBack={closeSubpage}>
+        <SettingsPage>
+          <CustomModelGroup config={config} update={update} onUseManaged={switchToManaged} />
+          <ProxySection />
+          <SettingsGroup
+            label="Video 视觉模型"
+            footer="Video 看摄像头画面时使用。"
+          >
+            <div className="flex flex-col gap-3 p-4">
+              <VideoProviderSection />
+            </div>
+          </SettingsGroup>
+        </SettingsPage>
       </AdvancedSubpage>
     );
 
@@ -96,24 +92,20 @@ export function AiTab({
       </SettingsGroup>
       <SettingsGroup label="高级">
         <SettingsRow
-          icon={KeyRound}
-          label="使用自己的 API"
-          value={managed ? '未使用' : '使用中'}
-          onClick={() => setPage('own-api')}
+          icon={SlidersHorizontal}
+          label="自定义模型与网络代理"
+          value={[managed ? '' : '自定义模型', loadProxy().enabled ? '代理' : '']
+            .filter(Boolean)
+            .join(' · ')}
+          onClick={() => setPage('advanced')}
         />
-        <SettingsRow
-          icon={Globe}
-          label="网络代理"
-          value={loadProxy().enabled ? '已开启' : '关闭'}
-          onClick={() => setPage('proxy')}
-        />
-        <SettingsRow icon={Camera} label="Video 视觉模型" onClick={() => setPage('video')} />
       </SettingsGroup>
     </SettingsPage>
   );
 }
 
-function OwnApiSection({
+/** 自定义模型: one switch, and the endpoint fields right under it while it is on. */
+function CustomModelGroup({
   config,
   update,
   onUseManaged,
@@ -122,18 +114,90 @@ function OwnApiSection({
   update: (patch: Partial<LlmConfig>) => void;
   onUseManaged: () => void;
 }) {
-  const def = getProviderDefinition(config.providerId);
-  const isManaged = config.providerId === 'managed';
-
+  const custom = config.providerId === 'custom';
+  const configured = isLlmConfigured(config);
   return (
-    <div className="flex flex-col gap-3">
+    <SettingsGroup
+      label="自定义模型"
+      footer={
+        custom ? (
+          configured ? (
+            '文字聊天改用你自己的接口，费用由你的服务商结算，不消耗 Credit。语音、生成图片和记忆仍使用猫愿服务。'
+          ) : (
+            <span className="text-[var(--danger)]">
+              还差接口地址、API 密钥或模型，填好后才会生效。
+            </span>
+          )
+        ) : (
+          '关闭时使用猫愿模型。开启后可接入任意 OpenAI 兼容接口。'
+        )
+      }
+    >
+      <SwitchRow
+        label="使用自定义模型"
+        checked={custom}
+        onCheckedChange={(on) =>
+          on
+            ? // Start from a clean custom config; nothing from managed applies to it.
+              update({ ...createProviderSettings('custom'), rememberApiKey: config.rememberApiKey })
+            : onUseManaged()
+        }
+      />
+      {custom && (
+        <>
+          <div className="flex flex-col gap-3 border-b border-[var(--surface-border)] px-4 py-3">
+            <Field label="接口地址">
+              <Input
+                type="url"
+                // The stored placeholder means "not set yet": show an empty field.
+                value={config.baseUrl === CUSTOM_PLACEHOLDER_BASE_URL ? '' : config.baseUrl}
+                placeholder={CUSTOM_PLACEHOLDER_BASE_URL}
+                onChange={(event) => update({ baseUrl: event.target.value })}
+              />
+            </Field>
+            <Field label="API 密钥">
+              <Input
+                type="password"
+                value={config.apiKey}
+                onChange={(event) => update({ apiKey: event.target.value })}
+              />
+              <SecretHint value={config.apiKey} />
+            </Field>
+            <Field label="模型">
+              <OpenAiModelField config={config} update={update} />
+            </Field>
+          </div>
+          <SelectRow
+            label="接口类型"
+            value={config.endpoint}
+            onChange={(endpoint) => update({ endpoint: endpoint as LlmConfig['endpoint'] })}
+            options={[
+              { value: 'chat/completions', label: 'Chat Completions' },
+              { value: 'responses', label: 'Responses' },
+            ]}
+          />
+          <SwitchRow
+            label="严格 Schema"
+            checked={config.useStrict}
+            onCheckedChange={(useStrict) => update({ useStrict })}
+          />
+          <SwitchRow
+            label="支持图片输入"
+            checked={config.imageInput}
+            onCheckedChange={(imageInput) => update({ imageInput })}
+          />
+          <SwitchRow
+            label="在本设备记住 API 密钥"
+            checked={config.rememberApiKey}
+            onCheckedChange={(rememberApiKey) => update({ rememberApiKey })}
+          />
+        </>
+      )}
       {import.meta.env.DEV && (
         // Local development only (stripped from builds): scripts/dev/test-model-proxy.mjs
         // holds the real key server-side, so nothing secret is typed into the page.
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-fit"
+        <SettingsRow
+          label="使用本地测试模型（开发版）"
           onClick={() =>
             update({
               ...createProviderSettings('custom'),
@@ -145,49 +209,18 @@ function OwnApiSection({
               rememberApiKey: true,
             })
           }
-        >
-          使用本地测试模型
-        </Button>
+        />
       )}
+    </SettingsGroup>
+  );
+}
 
-      {isManaged ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-fit"
-          onClick={() =>
-            // Start from a clean custom config; nothing from managed applies to it.
-            update({ ...createProviderSettings('custom'), rememberApiKey: config.rememberApiKey })
-          }
-        >
-          使用自定义接口
-        </Button>
-      ) : (
-        <>
-          {def?.hint && <p className="text-xs text-[var(--text-faint)]">{def.hint}</p>}
-          <ProviderCredentialFields config={config} definition={def} update={update} />
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">模型</span>
-            <OpenAiModelField config={config} update={update} />
-          </label>
-          <ProviderImageInputToggle config={config} update={update} />
-          <ProviderRememberApiKey
-            config={config}
-            definition={def}
-            label="在当前设备记住 API 密钥"
-            update={update}
-          />
-          {!isLlmConfigured(config) && <p className="text-xs text-[var(--danger)]">配置未完成</p>}
-          <button
-            type="button"
-            className="w-fit text-xs text-[var(--accent)] hover:underline"
-            onClick={onUseManaged}
-          >
-            切换回猫愿模型
-          </button>
-        </>
-      )}
-    </div>
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs text-[var(--text-soft)]">{label}</span>
+      {children}
+    </label>
   );
 }
 
@@ -227,7 +260,7 @@ function OpenAiModelField({
   return (
     <div className="grid gap-2">
       <ModelCombobox
-        value={config.model}
+        value={config.model === CUSTOM_PLACEHOLDER_MODEL ? '' : config.model}
         onChange={(model) => update({ model })}
         options={(models ?? []).map((model) => ({ id: model, label: model }))}
       />
