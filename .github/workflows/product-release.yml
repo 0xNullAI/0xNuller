@@ -112,7 +112,11 @@ jobs:
           npm run verify:android:apk -- "$apk" | tee apk-verification.json
           artifact="$RUNNER_TEMP/maoyuan-v${{ steps.version.outputs.version }}.apk"
           install -m 0644 "$apk" "$artifact"
+          # Apps up to 6.5.x look for the old asset name; the same APK under it keeps them updating.
+          legacy="$RUNNER_TEMP/0xnuller-v${{ steps.version.outputs.version }}.apk"
+          install -m 0644 "$apk" "$legacy"
           echo "path=$artifact" >> "$GITHUB_OUTPUT"
+          echo "legacy=$legacy" >> "$GITHUB_OUTPUT"
 
       - name: Reconfirm current main source
         if: steps.version.outputs.publish == 'true'
@@ -157,7 +161,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.apk.outputs.path }}" \
+          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.legacy }}" \
             --target "${{ steps.source.outputs.sha }}" \
             --title "猫愿 ${{ steps.version.outputs.version }}" \
             --notes-file "docs/releases/${{ steps.version.outputs.version }}.md" \

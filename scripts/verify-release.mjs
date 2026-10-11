@@ -111,6 +111,14 @@ function verifyProductMetadata() {
   ) {
     fail('Product Release must attach the APK under the name the Android updater requires');
   }
+  if (
+    !productReleaseWorkflow.includes(
+      'legacy="$RUNNER_TEMP/0xnuller-v${{ steps.version.outputs.version }}.apk"',
+    ) ||
+    !productReleaseWorkflow.includes('"${{ steps.apk.outputs.legacy }}"')
+  ) {
+    fail('Product Release must also attach the APK under the 0xnuller name older apps look for');
+  }
   for (const required of [
     'setupGitUser: false',
     'GIT_AUTHOR_NAME: 0xNull',

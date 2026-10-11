@@ -29,7 +29,7 @@ Web version.json:       6.3.0 + main commit SHA
 Android versionName:    6.3.0
 Android versionCode:    6003000
 Git tag:                v6.3.0
-APK:                    maoyuan-v6.3.0.apk
+APK:                    maoyuan-v6.3.0.apk（另附同一文件 0xnuller-v6.3.0.apk 供旧版应用检测更新）
 Release 标题:           猫愿 6.3.0
 ```
 
