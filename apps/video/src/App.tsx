@@ -36,7 +36,11 @@ import {
   type ProviderId,
 } from '@0xnullai/llm-providers';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useEmbeddedDeviceRuntimeEnabled, useNativeBridge } from '@0xnullai/native';
+import {
+  useDgLabRegistry,
+  useEmbeddedDeviceRuntimeEnabled,
+  useNativeBridge,
+} from '@0xnullai/native';
 import { useScenes, usePublicMarketPortrait } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import {
@@ -49,7 +53,7 @@ import {
 } from '@0xnullai/device-runtime';
 import {
   createBrowserLlmClient,
-  createBrowserVideoControl,
+  type BrowserVideoControlOptions,
   type BrowserVideoControlService,
   type BrowserVideoDeviceSnapshot,
   type VideoOutputKind,
@@ -65,6 +69,11 @@ import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
 import { VisualSession, type VisualSessionSnapshot } from './services/visual-session.js';
 import { DeviceRuntimeVideoControlService } from './services/device-runtime-video-control.js';
 import { prepareVideoConversation } from './services/prepare-video-conversation.js';
+import {
+  bindRegistryVideoControl,
+  createRegistryVideoControl,
+  type RegistryVideoControl,
+} from './services/registry-video-control.js';
 import {
   loadManagedVisionQuote,
   type ManagedVisionQuote,
@@ -270,8 +279,13 @@ export function App() {
   const openSettings = useOpenShellSettings();
   const native = useNativeBridge();
   const genericDevicesEnabled = useEmbeddedDeviceRuntimeEnabled();
-  const createControlService = (native.video?.createControlService ??
-    createBrowserVideoControl) as typeof createBrowserVideoControl;
+  const dglab = useDgLabRegistry();
+  // The shared registry owns every DG-Lab link. The per-module Video seam is used only by a
+  // shell that injects it without a registry.
+  const legacyControlService = native.dglab
+    ? undefined
+    : (native.video?.createControlService as
+        ((options: BrowserVideoControlOptions) => BrowserVideoControlService) | undefined);
 
   useEffect(() => subscribeVideoLlmConfig(setConfig), []);
   useEffect(() => subscribeDeviceSafety(() => setSafety(toVideoSafety())), []);
@@ -294,13 +308,20 @@ export function App() {
       return null;
     }
   }, [config]);
-  const [service] = useState(() =>
-    createControlService({
+  const [control] = useState<{
+    service: BrowserVideoControlService;
+    registry: RegistryVideoControl | null;
+  }>(() => {
+    const options = {
       getLlm: () => llm,
       getSafetyLimits: () => safety,
       getSceneLibrary: () => sceneLibrary,
-    }),
-  );
+    };
+    if (legacyControlService) return { service: legacyControlService(options), registry: null };
+    const registry = createRegistryVideoControl(dglab, options);
+    return { service: registry.service, registry };
+  });
+  const service = control.service;
 
   useEffect(() => {
     service.updateInputs({ llm, safetyLimits: safety, sceneLibrary });
@@ -587,30 +608,66 @@ export function App() {
     stopCamera,
   ]);
 
+  const haltForLeaseLoss = async () => {
+    startOperationRef.current += 1;
+    questionAbortRef.current?.abort();
+    abortDictation();
+    stopSpeechPlayback();
+    autoStartRef.current = null;
+    try {
+      await aiRouter.stop();
+    } finally {
+      session.haltAfterExternalStop('lease-loss');
+      setRoutingGrant(null);
+    }
+  };
+
   useSafetySession({
     id: 'video',
     label: 'Video',
     // Generic devices are listed and stopped by the shell-owned runtime safety
-    // session. Keep this module session responsible only for its legacy DG links.
+    // session. Registry DG-Lab devices are listed by the registry's own session,
+    // so Video lists only the links of a legacy injected service.
     isActive: () => devices.coyotes.length > 0 || devices.opossumTarget !== null,
     stop: emergencyStop,
     connect: () => service.connect().then(() => undefined),
-    disconnect: (deviceId) => service.disconnect(deviceId),
-    onRevoke: async () => {
-      startOperationRef.current += 1;
-      questionAbortRef.current?.abort();
-      abortDictation();
-      stopSpeechPlayback();
-      autoStartRef.current = null;
-      try {
-        await aiRouter.stop();
-      } finally {
-        session.haltAfterExternalStop('lease-loss');
-        setRoutingGrant(null);
-      }
-    },
-    devices: () => service.getDeviceSummaries(safety),
+    ...(control.registry
+      ? {}
+      : {
+          disconnect: (deviceId: string) => service.disconnect(deviceId),
+          devices: () => service.getDeviceSummaries(safety),
+        }),
+    onRevoke: haltForLeaseLoss,
   });
+
+  const registryEventsRef = useRef<{
+    haltForLeaseLoss: () => Promise<void>;
+    stopForTopologyChange: () => void;
+  } | null>(null);
+  // Refreshed after each render so the one registry binding always sees current state.
+  useEffect(() => {
+    registryEventsRef.current = {
+      haltForLeaseLoss,
+      stopForTopologyChange: () => {
+        // Any change of the shared target set ends the run; the user re-authorizes against the
+        // new set. Without an active grant there is nothing of Video's to stop.
+        const grant = aiRouter.getGrant();
+        if (!grant || grant.revoked) return;
+        startOperationRef.current += 1;
+        autoStartRef.current = null;
+        session.failSafeStop('device-loss');
+        setRoutingGrant(null);
+      },
+    };
+  });
+  useEffect(() => {
+    if (!control.registry) return;
+    return bindRegistryVideoControl(control.registry, {
+      onTopologyChange: () => registryEventsRef.current?.stopForTopologyChange(),
+      onRevoked: () => void registryEventsRef.current?.haltForLeaseLoss(),
+      onStopError: () => setLocalError('无法确认设备已停止，请立即断开设备或取下电极'),
+    });
+  }, [control]);
 
   useEffect(() => {
     if (!routingGrant || routingGrant.revoked) return;
