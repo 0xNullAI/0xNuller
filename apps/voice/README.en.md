@@ -6,16 +6,13 @@ Realtime voice AI with locally enforced device permissions and safety policy.
 
 - Unified site: <https://0xnullai.com/voice>
 
-## Providers
+## Voice service
 
-- xAI Realtime
-- OpenAI Realtime and compatible services
-- Azure OpenAI Realtime
-- Zhipu GLM Realtime
-- Credit-metered managed sessions through the `0xnullai-voice` Worker
-
-Bring-your-own-key sessions connect to the selected provider. 0xNullAI Voice creates a short-lived
-session through `/api/realtime`. Text and voice models are configured independently.
+Realtime voice is offered only as the managed 猫愿语音 service. The browser connects only to
+`/api/realtime` (the `0xnullai-voice` Worker), which validates a short-lived account ticket, meters
+Credit, and chooses the upstream; the upstream key exists only in the Worker. Bring-your-own API
+keys cover text and vision, not voice. Settings saved by older versions with a bring-your-own-key
+voice provider load as the managed service and keep only the voice.
 
 ## Features
 
@@ -36,7 +33,7 @@ npm run cf:dev -w 0xnullai-voice
 ```
 
 Managed Worker configuration is covered by [worker/README.md](worker/README.md). Before release, run
-end-to-end browser and Android checks with a real provider, including a tool call and hang-up stop.
+end-to-end browser and Android checks with the real upstream, including a tool call and hang-up stop.
 
 ## AI device target boundaries
 

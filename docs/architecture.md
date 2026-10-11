@@ -93,7 +93,7 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 | 文本 provider 目录、默认值、能力检查       | `@0xnullai/llm-providers`              | Agent、Chat、Video、Web 设置                | Video 只接受明确支持图片的 provider/model                                  |
 | 文本配置存储                               | `@0xnullai/llm-providers` scoped store | Agent/Chat 共用 profile；Video 独立 profile | Video 的 key、版本与凭据不向文本 profile 迁移                              |
 | 浏览器 LLM client、dialect、代理与模型发现 | `@dg-agent/agent-browser`              | Agent、Chat、Video、Web 设置                | prompt、历史、迭代和视觉帧仍由功能模块组合                                 |
-| Realtime provider                          | `apps/voice/src/lib/realtime`          | Voice、Web Voice 设置                       | WebSocket 事件、音频、换票/JWT 与 voice catalog 不并入文本 HTTP client     |
+| 猫愿语音 realtime client                   | `apps/voice/src/lib/realtime`          | Voice、Web Voice 设置                       | 只连 Voice Worker，上游归 Worker；音频与音色不并入文本 HTTP client         |
 | AI 通用设备 schema、调用与 permission 分类 | `@0xnullai/device-runtime`             | Agent、Voice、Video                         | Agent/Voice 各自适配运行时；Video 额外持有目标 grant、lease 和失效停止升级 |
 | Chat 房间设备工具                          | Chat owner-side command policy         | 房间 Agent                                  | 远端目标由设备持有者授权和钳制，不能改成本地通用设备调用                   |
 
