@@ -245,8 +245,17 @@ export function subscribeChatInboxSelection(
     if (next && next.account === currentAuthUserId()) listener(next.selection);
   };
   window.addEventListener(selectionEvent, consume);
-  consume();
-  return () => window.removeEventListener(selectionEvent, consume);
+  // Deliver a selection queued before mounting on the next microtask, to whichever
+  // subscription is still alive: under StrictMode the first one is torn down at once, and
+  // so is the room connection it would have opened.
+  let active = true;
+  queueMicrotask(() => {
+    if (active) consume();
+  });
+  return () => {
+    active = false;
+    window.removeEventListener(selectionEvent, consume);
+  };
 }
 
 export async function markDmRead(

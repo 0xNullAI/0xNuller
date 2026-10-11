@@ -134,17 +134,22 @@ it('drops delayed list results and pending selections after an account switch', 
   expect(await loadChatInbox()).toEqual([]);
   const listener = vi.fn();
   const stop = subscribeChatInboxSelection(listener);
+  await Promise.resolve();
   expect(listener).not.toHaveBeenCalled();
   stop();
 });
-it('delivers a pending selection once after lazy mounting', () => {
+it('delivers a pending selection once, to the subscription that survives mounting', async () => {
   selectChatInboxConversation({ kind: 'group', code: 'group' });
-  const listener = vi.fn();
-  const stop = subscribeChatInboxSelection(listener);
+  const first = vi.fn();
+  const second = vi.fn();
+  // StrictMode: subscribe, clean up, subscribe again.
+  subscribeChatInboxSelection(first)();
+  const stop = subscribeChatInboxSelection(second);
+  await Promise.resolve();
   stop();
-  const stopAgain = subscribeChatInboxSelection(listener);
-  stopAgain();
-  expect(listener).toHaveBeenCalledOnce();
+  expect(first).not.toHaveBeenCalled();
+  expect(second).toHaveBeenCalledOnce();
+  expect(second).toHaveBeenCalledWith({ kind: 'group', code: 'group' });
 });
 
 it('never derives unread from browser read marks and reports failed server summaries', async () => {

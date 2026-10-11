@@ -103,8 +103,12 @@ export default function App() {
     url.searchParams.delete('create');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }, []);
-  /** Whether there is an account at all. The unified shell also requires a verified email. */
-  const [signedIn, setSignedIn] = useState(false);
+  /**
+   * Whether there is an account at all. The unified shell also requires a verified email.
+   * Seeded from the shell's session: the first inbox selection mounts this module and is
+   * delivered before `me()` below returns, and must not be mistaken for a signed-out user.
+   */
+  const [signedIn, setSignedIn] = useState(() => currentAuthUserId() !== null);
   const [authChecked, setAuthChecked] = useState(false);
   const [accountRequired, setAccountRequired] = useState(false);
   /** The conversation currently open, if any. Its name is only for the header. */
