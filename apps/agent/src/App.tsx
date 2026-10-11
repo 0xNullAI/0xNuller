@@ -1267,10 +1267,8 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
                   ?.marketPortraitId
               }
               onBack={shellNav?.conversationBack}
-              creditLabel={
-                settings.provider.providerId === 'managed'
-                  ? '平台 Credit · 私人聊天'
-                  : '自带密钥 · 服务商计费'
+              characterIcon={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.icon
               }
               characterName={
                 sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.name ??

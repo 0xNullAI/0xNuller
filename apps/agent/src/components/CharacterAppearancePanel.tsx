@@ -62,13 +62,13 @@ function AppearanceEditor({ relationshipId }: { relationshipId: string }) {
       valid = false;
     };
   }, [relationshipId, account]);
-  const save = async () => {
-    if (!draft || busy) return;
+  const save = async (next: CharacterAppearance | null = draft) => {
+    if (!next || busy) return;
     const operation = generation.current;
     setBusy(true);
     setError('');
     try {
-      const result = await saveCharacterAppearance(relationshipId, draft);
+      const result = await saveCharacterAppearance(relationshipId, next);
       if (currentAuthUserId() === account && generation.current === operation) setDraft(result);
     } catch (reason) {
       setError(String(reason));
@@ -77,12 +77,13 @@ function AppearanceEditor({ relationshipId }: { relationshipId: string }) {
     }
   };
   return (
-    <section className="space-y-3 rounded-xl border border-[var(--surface-border)] p-3">
-      <h3 className="font-medium">私人角色形象</h3>
-      <p className="text-xs text-[var(--text-faint)]">
-        仅用于这段私人关系，跨会话同步。使用本人相册图片；不修改公开角色卡。摄像头支持 2D
-        贴图叠加，暂无 3D 或空间跟踪。
-      </p>
+    <section className="space-y-4 rounded-xl border border-[var(--surface-border)] p-4">
+      <div>
+        <h3 className="font-medium">头像</h3>
+        <p className="text-xs text-[var(--text-faint)]">
+          只在你们的聊天里显示，不会改动公开角色卡。
+        </p>
+      </div>
       {error && (
         <p role="alert" className="text-sm text-red-500">
           {error}
@@ -90,18 +91,67 @@ function AppearanceEditor({ relationshipId }: { relationshipId: string }) {
       )}
       {draft && (
         <>
-          <CharacterPortrait photoId={draft.photoId} className="h-28 w-28" />
-          {!photos.length && (
-            <p className="text-xs">相册还没有图片，可以上传一张或亲手绘制头像。</p>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => setDrawing(!drawing)}
-          >
-            {drawing ? '收起画板' : '给 AI 画头像'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-4">
+            <CharacterPortrait
+              photoId={draft.photoId}
+              className="h-24 w-24 shrink-0 rounded-full bg-[var(--bg-soft)]"
+            />
+            <div className="flex flex-wrap gap-2">
+              <label
+                className={`inline-flex h-8 cursor-pointer items-center rounded-md bg-[var(--accent)] px-3 text-sm font-medium text-[var(--accent-foreground,#fff)] ${busy ? 'pointer-events-none opacity-60' : ''}`}
+              >
+                上传图片
+                <input
+                  className="sr-only"
+                  aria-label="上传私人图片"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (!file) return;
+                    if (
+                      !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+                      file.size > 8 * 1024 * 1024
+                    ) {
+                      setError('请选择 8MB 以内的 PNG/JPEG/WebP 图片');
+                      return;
+                    }
+                    const operation = generation.current;
+                    setBusy(true);
+                    setError('');
+                    void uploadPhoto(file, {
+                      visibility: 'private',
+                      purpose: 'album',
+                      caption: '私人角色形象',
+                    })
+                      .then(async (photo) => {
+                        if (currentAuthUserId() !== account || generation.current !== operation)
+                          return;
+                        setPhotos((items) => [photo, ...items]);
+                        const saved = await saveCharacterAppearance(relationshipId, {
+                          ...draft,
+                          photoId: photo.id,
+                        });
+                        if (currentAuthUserId() === account && generation.current === operation)
+                          setDraft(saved);
+                      })
+                      .catch((reason: unknown) => setError(String(reason)))
+                      .finally(() => setBusy(false));
+                  }}
+                />
+              </label>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setDrawing(!drawing)}
+              >
+                {drawing ? '收起画板' : '给 AI 画头像'}
+              </Button>
+            </div>
+          </div>
           {drawing && (
             <CharacterAvatarDrawing
               onClose={() => setDrawing(false)}
@@ -132,89 +182,59 @@ function AppearanceEditor({ relationshipId }: { relationshipId: string }) {
               }}
             />
           )}
-          <label className="block text-sm">
-            相册形象
-            <select
-              className="ml-2 max-w-full rounded border p-1"
-              value={draft.photoId ?? ''}
-              onChange={(event) => setDraft({ ...draft, photoId: event.target.value || null })}
-            >
-              <option value="">默认形象</option>
-              {photos.map((photo) => (
-                <option key={photo.id} value={photo.id}>
-                  {photo.caption || `图片 ${photo.id.slice(0, 8)}`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            上传私人图片
-            <input
-              className="block max-w-full"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              disabled={busy}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (!file) return;
-                if (
-                  !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
-                  file.size > 8 * 1024 * 1024
-                ) {
-                  setError('请选择 8MB 以内的 PNG/JPEG/WebP 图片');
-                  return;
-                }
-                const operation = generation.current;
-                setBusy(true);
-                setError('');
-                void uploadPhoto(file, {
-                  visibility: 'private',
-                  purpose: 'album',
-                  caption: '私人角色形象',
-                })
-                  .then((photo) => {
-                    if (currentAuthUserId() === account && generation.current === operation) {
-                      setPhotos((items) => [photo, ...items]);
-                      setDraft({ ...draft, photoId: photo.id });
-                    }
+          {photos.length > 0 && (
+            <label className="block text-sm">
+              从相册选择
+              <select
+                className="ml-2 max-w-full rounded border p-1"
+                value={draft.photoId ?? ''}
+                disabled={busy}
+                onChange={(event) => void save({ ...draft, photoId: event.target.value || null })}
+              >
+                <option value="">默认形象</option>
+                {photos.map((photo) => (
+                  <option key={photo.id} value={photo.id}>
+                    {photo.caption || `图片 ${photo.id.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
+            <p className="text-sm font-medium">视频通话中的形象</p>
+            <p className="text-xs text-[var(--text-faint)]">摄像头画面上以 2D 贴图显示。</p>
+            <label className="block text-sm">
+              叠加大小 {draft.scale}%
+              <input
+                aria-label="叠加大小"
+                type="range"
+                min={15}
+                max={70}
+                value={draft.scale}
+                onChange={(event) => setDraft({ ...draft, scale: Number(event.target.value) })}
+              />
+            </label>
+            <label className="block text-sm">
+              叠加位置
+              <select
+                className="ml-2 rounded border p-1"
+                value={draft.position}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    position: event.target.value as CharacterAppearance['position'],
                   })
-                  .catch((reason: unknown) => setError(String(reason)))
-                  .finally(() => setBusy(false));
-              }}
-            />
-          </label>
-          <label className="block text-sm">
-            叠加大小 {draft.scale}%
-            <input
-              aria-label="叠加大小"
-              type="range"
-              min={15}
-              max={70}
-              value={draft.scale}
-              onChange={(event) => setDraft({ ...draft, scale: Number(event.target.value) })}
-            />
-          </label>
-          <label className="block text-sm">
-            叠加位置
-            <select
-              className="ml-2 rounded border p-1"
-              value={draft.position}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  position: event.target.value as CharacterAppearance['position'],
-                })
-              }
-            >
-              <option value="left">左</option>
-              <option value="center">中</option>
-              <option value="right">右</option>
-            </select>
-          </label>
-          <Button size="sm" disabled={busy} onClick={() => void save()}>
-            {busy ? '正在保存…' : '保存私人形象'}
-          </Button>
+                }
+              >
+                <option value="left">左</option>
+                <option value="center">中</option>
+                <option value="right">右</option>
+              </select>
+            </label>
+            <Button size="sm" disabled={busy} onClick={() => void save()}>
+              {busy ? '正在保存…' : '保存视频形象'}
+            </Button>
+          </div>
         </>
       )}
     </section>

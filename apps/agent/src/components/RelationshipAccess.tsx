@@ -1,4 +1,4 @@
-import { usePublicMarketPortrait } from '@0xnullai/scenes/react';
+import { AssistantAvatar } from './AssistantAvatar.js';
 import {
   lazy,
   Suspense,
@@ -17,7 +17,6 @@ import {
   listCharacterRelationships,
   ensureCharacterRelationship,
 } from '@0xnullai/auth';
-import { CharacterPortrait, useSelectedCharacterAppearance } from '@0xnullai/auth/appearance-react';
 import {
   deviceConversationAccess,
   setDeviceConversationAccess,
@@ -65,9 +64,10 @@ interface Props {
   characterName: string;
   marketPortraitId?: string;
   conversationId?: string;
-  creditLabel?: string;
   /** Phone-width shell: back to the conversation list from this header. */
   onBack?: () => void;
+  /** The character's emoji, shown when no portrait is chosen. */
+  characterIcon?: string;
 }
 export interface RelationshipAccessHandle {
   openMedia: () => void;
@@ -79,10 +79,9 @@ export function RelationshipAccess({
   characterName,
   marketPortraitId,
   conversationId,
-  creditLabel,
   onBack,
+  characterIcon,
 }: Props) {
-  const publicPortrait = usePublicMarketPortrait(marketPortraitId);
   const accountId = useSyncExternalStore(subscribe, currentAuthUserId, () => null);
   const inShell = useInShell();
   const openSettings = useOpenShellSettings();
@@ -102,7 +101,6 @@ export function RelationshipAccess({
     name: string;
     relationshipId: string | null;
   } | null>(null);
-  const appearance = useSelectedCharacterAppearance();
   const deviceAllowed = useSyncExternalStore(
     subscribeDeviceConversationAccess,
     () => deviceConversationAccess(accountId, 'ai', conversationId ?? ''),
@@ -323,8 +321,8 @@ export function RelationshipAccess({
       ]}
     />
   );
-  const open = () => {
-    setSettingsView((current) => ({ owner: identity, page: null, revision: current.revision + 1 }));
+  const open = (page: string | null = null) => {
+    setSettingsView((current) => ({ owner: identity, page, revision: current.revision + 1 }));
     if (inShell) openSettings('agent-companion');
     else setStandaloneOpen(true);
   };
@@ -342,24 +340,37 @@ export function RelationshipAccess({
             <ArrowLeft className="h-5 w-5" />
           </Button>
         ) : null}
-        <CharacterPortrait
-          photoId={appearance?.photoId ?? null}
-          fallbackSource={publicPortrait}
-          className="h-10 w-10 shrink-0 rounded-full"
-        />
         <button
           type="button"
-          onClick={open}
+          onClick={() => open('appearance')}
+          className="shrink-0 rounded-full"
+          aria-label={`更换${displayName}的头像`}
+          title="更换头像"
+        >
+          <AssistantAvatar
+            name={displayName}
+            icon={characterIcon}
+            marketPortraitId={marketPortraitId}
+            relationshipId={relationshipId}
+            size="md"
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => open()}
           className="min-w-0 flex-1 text-left"
           aria-label={`打开${displayName}的聊天设置`}
         >
           <strong className="block truncate text-sm">{displayName}</strong>
-          <span className="block truncate text-xs text-[var(--text-faint)]">
-            {creditLabel ?? '点击查看聊天设置'}
-          </span>
         </button>
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={open} aria-label="聊天设置" title="聊天设置">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => open()}
+            aria-label="聊天设置"
+            title="聊天设置"
+          >
             <Settings2 className="h-4 w-4" />
           </Button>
         </div>

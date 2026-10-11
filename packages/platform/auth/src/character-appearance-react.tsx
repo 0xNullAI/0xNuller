@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { apiBaseUrl } from '@0xnullai/settings';
 import { authRequestHeaders, currentAuthUserId, subscribeAuthChanges } from './index';
 import {
@@ -66,6 +66,34 @@ export function useCharacterPhoto(photoId: string | null): string | null {
     };
   }, [photoId, account]);
   return source?.account === currentAuthUserId() && source?.photoId === photoId ? source.url : null;
+}
+
+/** The saved appearance for one relationship; refreshes when any appearance is saved. */
+export function useCharacterAppearance(
+  relationshipId: string | null | undefined,
+): CharacterAppearance | null {
+  const accountId = useSyncExternalStore(subscribeAuthChanges, currentAuthUserId, () => null);
+  const [value, setValue] = useState<{ key: string; appearance: CharacterAppearance } | null>(null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRevision((previous) => previous + 1);
+    window.addEventListener('0xnullai:appearance-changed', refresh);
+    return () => window.removeEventListener('0xnullai:appearance-changed', refresh);
+  }, []);
+  const key = accountId && relationshipId ? `${accountId}:${relationshipId}` : '';
+  useEffect(() => {
+    if (!key || !relationshipId) return;
+    let valid = true;
+    void getCharacterAppearance(relationshipId)
+      .then((appearance) => {
+        if (valid) setValue({ key, appearance });
+      })
+      .catch(() => undefined);
+    return () => {
+      valid = false;
+    };
+  }, [key, relationshipId, revision]);
+  return key && value?.key === key ? value.appearance : null;
 }
 
 export function useSelectedCharacterAppearance(): CharacterAppearance | null {

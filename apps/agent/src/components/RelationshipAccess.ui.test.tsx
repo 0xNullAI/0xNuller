@@ -23,6 +23,7 @@ vi.mock('@0xnullai/auth', () => ({
 vi.mock('@0xnullai/auth/appearance-react', () => ({
   CharacterPortrait: () => <span aria-label="角色形象" />,
   useSelectedCharacterAppearance: () => null,
+  useCharacterAppearance: () => null,
 }));
 vi.mock('./RelationshipPanel', async () => {
   const { useState } = await import('react');

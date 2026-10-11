@@ -15,6 +15,7 @@ const mediaApi = vi.hoisted(() => ({
 }));
 vi.mock('@0xnullai/auth', () => ({
   currentAuthUserId: () => mediaApi.account,
+  subscribeAuthChanges: () => () => undefined,
   listMediaJobs: mediaApi.list,
   mediaJobBlob: vi.fn(),
   PrivateConversationAttachmentChannel: class {

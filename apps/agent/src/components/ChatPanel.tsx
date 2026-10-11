@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import { savedPromptKind, type SavedScene } from '@0xnullai/scenes';
+import { AssistantAvatar } from './AssistantAvatar.js';
 import type { MarketItem } from '@0xnullai/market-client';
 import {
   adaptPrivateAiTimeline,
@@ -884,12 +885,16 @@ export function ChatPanel({
                   own={userMessage}
                   avatar={
                     userMessage ? undefined : (
-                      <span
-                        title={activeCharacter?.name ?? 'AI'}
-                        className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-soft)] text-sm text-[var(--accent)]"
-                      >
-                        {activeCharacter?.icon ?? '✦'}
-                      </span>
+                      <AssistantAvatar
+                        name={activeCharacter?.name ?? 'AI'}
+                        icon={activeCharacter?.icon}
+                        marketPortraitId={activeCharacter?.marketPortraitId}
+                        relationshipId={
+                          typeof session?.metadata?.relationshipId === 'string'
+                            ? session.metadata.relationshipId
+                            : null
+                        }
+                      />
                     )
                   }
                   contentClassName="max-w-[min(92%,560px)]"
