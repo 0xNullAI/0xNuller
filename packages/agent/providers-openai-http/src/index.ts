@@ -92,6 +92,14 @@ export interface OpenAiHttpLlmClientConfig {
   transformUrl?: (url: string) => string;
 }
 
+function isOpenAiHost(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname === 'api.openai.com';
+  } catch {
+    return false;
+  }
+}
+
 /** `${baseUrl}|${model}` pairs whose endpoint refused `temperature` this page. */
 const TEMPERATURE_REJECTED = new Set<string>();
 
@@ -221,7 +229,11 @@ export class OpenAiHttpLlmClient implements LlmClient {
           : undefined,
       tool_choice: input.tools.length > 0 ? 'auto' : undefined,
       parallel_tool_calls: input.tools.length > 0 ? true : undefined,
-      max_tokens: input.maxOutputTokens,
+      // api.openai.com deprecates max_tokens (rejected by reasoning models); compatible
+      // gateways (DeepSeek, Qwen, Ark…) still read only max_tokens.
+      ...(isOpenAiHost(this.config.baseUrl)
+        ? { max_completion_tokens: input.maxOutputTokens }
+        : { max_tokens: input.maxOutputTokens }),
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);

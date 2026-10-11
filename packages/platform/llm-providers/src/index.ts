@@ -543,7 +543,9 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
     normalized.baseUrl =
       normalized.baseUrl || DEFAULT_BASE_URL_BY_PROVIDER[normalized.providerId] || '';
     normalized.model = normalized.model.trim();
-    normalized.endpoint = 'chat/completions';
+    // OpenAI's current models call tools only through the Responses API; the other
+    // compatible services implement Chat Completions.
+    normalized.endpoint = normalized.providerId === 'openai' ? 'responses' : 'chat/completions';
     normalized.useStrict = false;
   }
 

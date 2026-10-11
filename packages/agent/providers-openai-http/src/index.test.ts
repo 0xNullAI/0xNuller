@@ -132,6 +132,22 @@ describe('OpenAiHttpLlmClient', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it('sends max_completion_tokens to api.openai.com and max_tokens to compatible gateways', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify(MOCK_CHAT_RESPONSE), { status: 200 });
+    });
+    for (const baseUrl of ['https://api.openai.com/v1', 'https://api.deepseek.com/v1'])
+      await new OpenAiHttpLlmClient({ apiKey: 'sk-test', baseUrl, model: 'm' }).runTurn({
+        ...makeTurnInput(),
+        maxOutputTokens: 512,
+      });
+    expect(bodies[0]).toMatchObject({ max_completion_tokens: 512 });
+    expect(bodies[0]).not.toHaveProperty('max_tokens');
+    expect(bodies[1]).toMatchObject({ max_tokens: 512 });
+  });
+
   it('applies a changed URL transform at every request boundary', async () => {
     captureRequestBody();
     let proxy = 'https://proxy-one.example';

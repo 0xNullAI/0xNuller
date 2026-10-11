@@ -45,3 +45,14 @@ describe('managed Workers AI models', () => {
     });
   });
 });
+
+it('uses the Responses API for OpenAI and Chat Completions for compatible services', () => {
+  const settings = (providerId: 'openai' | 'deepseek') =>
+    normalizeProviderSettings({
+      ...createProviderSettings(providerId),
+      apiKey: 'sk-test',
+      model: 'model',
+    });
+  expect(settings('openai').endpoint).toBe('responses');
+  expect(settings('deepseek').endpoint).toBe('chat/completions');
+});

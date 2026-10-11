@@ -140,3 +140,17 @@ it('reports the start of each spoken user turn', () => {
   session.dispatch({ type: 'input_audio_buffer.speech_started' });
   expect(onUserTurnStarted).toHaveBeenCalledOnce();
 });
+
+it('reserves the user transcript line from the GA conversation.item.added event', () => {
+  const onTranscript = vi.fn();
+  const session = new TestSession({
+    settings: {} as RealtimeSessionOptions['settings'],
+    instructions: '',
+    tools: [],
+    events: { onTranscript },
+  });
+  session.dispatch({ type: 'conversation.item.added', item: { id: 'u1', role: 'user' } });
+  expect(onTranscript).toHaveBeenCalledWith(
+    expect.objectContaining({ role: 'user', text: '', done: false }),
+  );
+});

@@ -71,6 +71,9 @@ const EVENT_ALIASES: Record<string, string> = {
   'response.output_audio.delta': 'response.audio.delta',
   'response.output_audio_transcript.delta': 'response.audio_transcript.delta',
   'response.output_audio_transcript.done': 'response.audio_transcript.done',
+  'response.output_audio.done': 'response.audio.done',
+  // GA renamed the item event; it still carries the item in `item`.
+  'conversation.item.added': 'conversation.item.created',
 };
 
 function canonicalEventType(type: unknown): string {

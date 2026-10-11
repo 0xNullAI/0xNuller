@@ -336,3 +336,38 @@ describe('PiAiLlmClient (google)', () => {
     expect(result.assistantMessage).toBe('Hi from Gemini');
   });
 });
+
+describe('PiAiLlmClient temperature', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('omits temperature when the catalog says the model fixes it', async () => {
+    const chunk = {
+      candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+    };
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        bodies.push(String(init?.body ?? ''));
+        return new Response(`data: ${JSON.stringify(chunk)}\n\n`, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }),
+    );
+    for (const temperature of [true, false]) {
+      const client = new PiAiLlmClient({
+        apiKey: 'test-google-key',
+        model: 'gemini-2.5-flash',
+        providerKey: 'google',
+        temperature: 0.3,
+        modelHints: { temperature },
+      });
+      await client.runTurn(makeTurnInput());
+    }
+    expect(bodies[0]).toContain('"temperature":0.3');
+    expect(bodies[1]).not.toContain('temperature');
+  });
+});

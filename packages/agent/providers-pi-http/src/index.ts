@@ -110,7 +110,14 @@ export class PiAiLlmClient implements LlmClient {
 
     const eventStream = provider.stream(model, context, {
       apiKey: this.config.apiKey,
-      temperature: this.config.temperature,
+      // pi-ai honours supportsTemperature only for Anthropic; models whose catalog entry
+      // says temperature is fixed (Kimi K2.6, current Claude) reject any value elsewhere.
+      temperature:
+        this.config.modelHints?.temperature === false ||
+        (model.compat as { supportsTemperature?: boolean } | undefined)?.supportsTemperature ===
+          false
+          ? undefined
+          : this.config.temperature,
       maxTokens: input.maxOutputTokens,
       signal: input.abortSignal,
       onPayload: (payload) => {
