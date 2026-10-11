@@ -1,7 +1,6 @@
 import { Download, Send } from 'lucide-react';
 import { submitFeedback } from '@0xnullai/auth';
 import { useState } from 'react';
-import { ExperimentalDeviceSection } from './ExperimentalDeviceSection';
 import { CLIENT_DOWNLOAD_URL, PRODUCT_BUILD_ID, PRODUCT_VERSION } from '../product';
 
 export function AboutTab() {
@@ -22,10 +21,9 @@ export function AboutTab() {
           <dd className="break-all font-mono text-xs text-[var(--text-soft)]">{buildLabel}</dd>
         </dl>
       </section>
-      <ExperimentalDeviceSection />
       <section className="border-t border-[var(--surface-border)] pt-4">
         <h3 className="text-sm font-semibold">反馈</h3>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">内容会安全保存并转发给产品维护者。</p>
+        <p className="mt-1 text-xs text-[var(--text-faint)]">转发给产品维护者。</p>
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}

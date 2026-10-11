@@ -52,7 +52,7 @@ push/PR workflow. Version preparation runs only for changesets.
 - Start, increase, resume, and extend fail closed. Stop and emergency stop preempt ordinary work and
   remain reachable after denial, stale work, disconnect, backgrounding, or errors.
 - Never weaken limits, stop paths, or consent to make a test or demo pass.
-- The generic-device opt-in is one local-only switch under **Settings -> About**. Agent, Voice, Video,
+- The generic-device opt-in is one local-only switch under **我的 -> 高级设置**. Agent, Voice, Video,
   and Control share it; disabling it removes generic UI, AI context/tools, and backend startup.
 - Model context is a positive snapshot: include only connected, enabled, healthy capabilities. Every
   physical instance has an opaque target ID even when names match. A call targets one exact instance;

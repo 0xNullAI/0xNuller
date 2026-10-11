@@ -10,6 +10,7 @@ import {
   Bell,
   SlidersHorizontal,
   ShieldAlert,
+  Settings2,
   ShieldCheck,
   UserRound,
   X,
@@ -29,12 +30,17 @@ import { AccountContent } from './AccountContent';
 import { AdminContent } from './AdminContent';
 import { AboutTab } from './AboutTab';
 import { NotificationsTab } from './NotificationsTab';
+import { AdvancedSettingsPage } from './AdvancedSettingsPage';
 
 const PersonalMemoryContent = lazy(() =>
   import('./PersonalMemoryContent').then((module) => ({ default: module.PersonalMemoryContent })),
 );
 
-/** One grouped settings list with second-level pages; modules supply page contents. */
+/**
+ * One settings list with second-level pages; modules supply page contents. The overview
+ * keeps only the pages most people need; the rest sit behind one 高级设置 row. Every page
+ * keeps its own /settings/<id> route, so deep links and browser history still work.
+ */
 
 const DEFERRED_TABS = [
   { id: 'agent-waveforms', label: '波形', icon: AudioWaveform, order: 30 },
@@ -51,7 +57,17 @@ const TABS = [
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
   { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
+  { id: 'advanced', label: '高级设置', icon: Settings2, Component: null, order: 200 },
 ] as const;
+
+/** Pages listed on the 高级设置 page instead of the overview. */
+const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
+  'memory',
+  'scenes',
+  'agent-waveforms',
+  'agent-data',
+  'admin',
+]);
 
 export function SettingsPanel({
   initialTab = 'overview',
@@ -71,8 +87,8 @@ export function SettingsPanel({
   onClose: () => void;
   onLoadAgent?: () => void;
 }) {
-  const initialAiSection: AiSettingsSection =
-    initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : 'agent';
+  const initialAiSection: AiSettingsSection | undefined =
+    initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : undefined;
   const tab = initialTab.startsWith('ai-') ? 'ai' : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
@@ -93,17 +109,12 @@ export function SettingsPanel({
   const activeEntry = navigationTabs.find((item) => item.id === tab);
   const resolvedTab = tab === 'overview' || activeEntry ? tab : 'overview';
   const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
-  const groups = [
-    {
-      title: '聊天与角色',
-      items: navigationTabs.filter((item) => item.order >= 10 && item.order < 50),
-    },
-    {
-      title: '安全与数据',
-      items: navigationTabs.filter((item) => item.order >= 50 && item.order < 90),
-    },
-    { title: '更多', items: navigationTabs.filter((item) => item.order >= 90) },
-  ].filter((group) => group.items.length > 0);
+  const overviewItems = navigationTabs.filter(
+    (item) => item.id !== 'account' && item.id !== 'advanced' && !ADVANCED_PAGE_IDS.has(item.id),
+  );
+  const advancedItems = navigationTabs.filter((item) => ADVANCED_PAGE_IDS.has(item.id));
+  const advancedEntry = navigationTabs.find((item) => item.id === 'advanced');
+  const parentTab = ADVANCED_PAGE_IDS.has(resolvedTab) ? 'advanced' : 'overview';
   useEffect(() => {
     if (tab.startsWith('agent-') || tab === 'safety') onLoadAgent?.();
   }, [tab, onLoadAgent]);
@@ -121,10 +132,16 @@ export function SettingsPanel({
               ? subpage.onBack()
               : resolvedTab === 'overview'
                 ? onClose()
-                : onNavigateTab('overview')
+                : onNavigateTab(parentTab)
           }
           aria-label={
-            subpage ? '返回上一页' : resolvedTab === 'overview' ? '关闭设置' : '返回设置列表'
+            subpage
+              ? '返回上一页'
+              : resolvedTab === 'overview'
+                ? '关闭设置'
+                : parentTab === 'advanced'
+                  ? '返回高级设置'
+                  : '返回设置列表'
           }
           // On a phone 我的 is a top-level tab, so its list page has nothing to close.
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] ${resolvedTab === 'overview' && !subpage ? 'max-md:hidden' : ''}`}
@@ -163,30 +180,23 @@ export function SettingsPanel({
               </span>
               <ChevronRight className="h-4 w-4 text-[var(--text-faint)]" />
             </button>
-            {groups.map((group) => (
-              <div key={group.title}>
-                <h3 className="px-3 pb-2 text-xs font-medium text-[var(--text-soft)]">
-                  {group.title}
-                </h3>
-                <div className="overflow-hidden rounded-2xl bg-[var(--bg-elevated)]">
-                  {group.items.map((item, index) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onNavigateTab(item.id)}
-                        className={`flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm hover:bg-[var(--bg-soft)] ${index > 0 ? 'border-t border-[var(--surface-border)]' : ''}`}
-                      >
-                        {Icon ? <Icon className="h-5 w-5 shrink-0 text-[var(--accent)]" /> : null}
-                        <span className="min-w-0 flex-1">{item.label}</span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            <div className="overflow-hidden rounded-2xl bg-[var(--bg-elevated)] md:col-span-2">
+              {[...overviewItems, ...(advancedEntry ? [advancedEntry] : [])].map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onNavigateTab(item.id)}
+                    className={`flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm hover:bg-[var(--bg-soft)] ${index > 0 ? 'border-t border-[var(--surface-border)]' : ''}`}
+                  >
+                    {Icon ? <Icon className="h-5 w-5 shrink-0 text-[var(--accent)]" /> : null}
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <>
@@ -198,8 +208,10 @@ export function SettingsPanel({
               </Suspense>
             ) : resolvedTab === 'notifications' ? (
               <NotificationsTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
+            ) : resolvedTab === 'advanced' ? (
+              <AdvancedSettingsPage entries={advancedItems} onNavigate={onNavigateTab} />
             ) : resolvedTab === 'ai' ? (
-              <AiTab key={initialAiSection} initialSection={initialAiSection} />
+              <AiTab key={initialAiSection ?? 'main'} initialSection={initialAiSection} />
             ) : Active ? (
               <Active />
             ) : null}

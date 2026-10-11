@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   DEFAULT_DEVICE_SAFETY,
   loadDeviceSafety,
@@ -7,6 +7,7 @@ import {
   type DeviceSafetySettings,
 } from '@0xnullai/settings';
 import { ModuleSettingsSlot } from '@0xnullai/ui';
+import { AdvancedEntryRow, AdvancedSubpage } from './SettingsAdvanced';
 
 /**
  * Device safety. The only setting in the whole software that directly affects a
@@ -17,9 +18,9 @@ import { ModuleSettingsSlot } from '@0xnullai/ui';
  * so a user would raise it in one place, switch to another, and find it back at the
  * old value, with nothing at all indicating that it had reverted.
  *
- * Groups are independently collapsible on narrow screens. The primary Coyote limits
- * stay open by default; less frequently changed burst/auxiliary limits no longer turn
- * the safety page into one long wall of sliders.
+ * The page shows only the channel caps and command confirmation. Cold start, step,
+ * burst and sensor settings sit on one flat 高级 sub-page. Per-turn tool caps are fixed
+ * constants in `@0xnullai/settings`, so they have no control here.
  */
 
 interface NumberFieldSpec {
@@ -31,20 +32,13 @@ interface NumberFieldSpec {
   unit?: string;
 }
 
-const COYOTE_FIELDS: NumberFieldSpec[] = [
-  {
-    key: 'maxStrengthA',
-    label: 'A 通道上限',
-    min: 0,
-    max: 200,
-  },
+const COYOTE_LIMIT_FIELDS: NumberFieldSpec[] = [
+  { key: 'maxStrengthA', label: 'A 通道上限', min: 0, max: 200 },
   { key: 'maxStrengthB', label: 'B 通道上限', min: 0, max: 200 },
-  {
-    key: 'maxColdStartStrength',
-    label: '冷启动上限',
-    min: 0,
-    max: 200,
-  },
+];
+
+const COYOTE_ADVANCED_FIELDS: NumberFieldSpec[] = [
+  { key: 'maxColdStartStrength', label: '冷启动上限', min: 0, max: 200 },
   { key: 'maxAdjustStep', label: '单次调节步长', min: 1, max: 200 },
 ];
 
@@ -57,29 +51,18 @@ const BURST_FIELDS: NumberFieldSpec[] = [
     step: 100,
     unit: 'ms',
   },
-  {
-    key: 'maxBurstStrengthAbsolute',
-    label: '脉冲绝对上限',
-    min: 0,
-    max: 200,
-  },
+  { key: 'maxBurstStrengthAbsolute', label: '脉冲绝对上限', min: 0, max: 200 },
   { key: 'maxBurstStrengthRelative', label: '脉冲相对上限', min: 0, max: 200 },
 ];
 
-const OPOSSUM_FIELDS: NumberFieldSpec[] = [
+const OPOSSUM_LIMIT_FIELDS: NumberFieldSpec[] = [
   { key: 'maxIntensityA', label: 'A 通道上限', min: 0, max: 200 },
   { key: 'maxIntensityB', label: 'B 通道上限', min: 0, max: 200 },
-  { key: 'maxColdStartIntensity', label: '冷启动上限', min: 0, max: 200 },
-  { key: 'maxOpossumAdjustStep', label: '单次调节步长', min: 1, max: 200 },
 ];
 
-const TURN_FIELDS: NumberFieldSpec[] = [
-  { key: 'maxToolIterations', label: '单回合工具轮数', min: 1, max: 32 },
-  { key: 'maxToolCallsPerTurn', label: '单回合工具调用总数', min: 1, max: 64 },
-  { key: 'maxAdjustStrengthCallsPerTurn', label: '单回合调节次数', min: 1, max: 32 },
-  { key: 'maxBurstCallsPerTurn', label: '单回合脉冲次数', min: 0, max: 32 },
-  { key: 'maxVibrateAdjustCallsPerTurn', label: '单回合振动调节次数', min: 1, max: 32 },
-  { key: 'maxVibrateBurstCallsPerTurn', label: '单回合振动脉冲次数', min: 0, max: 32 },
+const OPOSSUM_ADVANCED_FIELDS: NumberFieldSpec[] = [
+  { key: 'maxColdStartIntensity', label: '冷启动上限', min: 0, max: 200 },
+  { key: 'maxOpossumAdjustStep', label: '单次调节步长', min: 1, max: 200 },
 ];
 
 function NumberField({
@@ -113,31 +96,24 @@ function NumberField({
   );
 }
 
+/** One plain group: a heading and its rows. No collapsing. */
 function Group({
   title,
   fields,
   settings,
   onChange,
-  defaultOpen,
+  children,
 }: {
   title: string;
   fields: NumberFieldSpec[];
   settings: DeviceSafetySettings;
   onChange: (patch: Partial<DeviceSafetySettings>) => void;
-  defaultOpen?: boolean;
+  children?: ReactNode;
 }) {
   return (
-    <details
-      open={defaultOpen}
-      className="group rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold">
-        {title}
-        <span aria-hidden className="text-[var(--text-faint)] group-open:rotate-90">
-          ›
-        </span>
-      </summary>
-      <div className="mt-3 divide-y divide-[var(--surface-border)]">
+    <section aria-label={title}>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="mt-1 divide-y divide-[var(--surface-border)]">
         {fields.map((f) => (
           <NumberField
             key={f.key}
@@ -146,72 +122,71 @@ function Group({
             onChange={(v) => onChange({ [f.key]: v } as Partial<DeviceSafetySettings>)}
           />
         ))}
+        {children}
       </div>
-    </details>
+    </section>
   );
 }
 
 export function SafetyTab() {
   const [settings, setSettings] = useState<DeviceSafetySettings>(loadDeviceSafety);
+  const [advanced, setAdvanced] = useState(false);
+  const closeAdvanced = useCallback(() => setAdvanced(false), []);
   useEffect(() => subscribeDeviceSafety(setSettings), []);
 
   function patch(p: Partial<DeviceSafetySettings>) {
     setSettings(updateDeviceSafety((prev) => ({ ...prev, ...p })));
   }
 
+  if (advanced)
+    return (
+      <AdvancedSubpage title="设备安全 · 高级" onBack={closeAdvanced}>
+        <Group title="郊狼" fields={COYOTE_ADVANCED_FIELDS} settings={settings} onChange={patch} />
+        <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch}>
+          <label className="flex items-center justify-between gap-4 py-2">
+            <span className="text-sm">脉冲需要通道已在输出</span>
+            <input
+              type="checkbox"
+              checked={settings.burstRequiresActiveChannel}
+              onChange={(e) => patch({ burstRequiresActiveChannel: e.target.checked })}
+              className="accent-[var(--accent)]"
+            />
+          </label>
+        </Group>
+        <Group title="负鼠" fields={OPOSSUM_ADVANCED_FIELDS} settings={settings} onChange={patch} />
+        <ModuleSettingsSlot id="agent-sensors" />
+        <button
+          type="button"
+          onClick={() => {
+            if (!window.confirm('把全部设备安全设置恢复为默认值？')) return;
+            setSettings(updateDeviceSafety(() => ({ ...DEFAULT_DEVICE_SAFETY })));
+          }}
+          className="self-start text-xs text-[var(--text-soft)] underline underline-offset-2 hover:text-[var(--text)]"
+        >
+          恢复默认值
+        </button>
+      </AdvancedSubpage>
+    );
+
   return (
-    <div className="flex flex-col gap-4">
-      <Group title="郊狼" fields={COYOTE_FIELDS} settings={settings} onChange={patch} defaultOpen />
-
-      <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch} />
-
-      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-sm">脉冲需要通道已在输出</span>
-          <input
-            type="checkbox"
-            checked={settings.burstRequiresActiveChannel}
-            onChange={(e) => patch({ burstRequiresActiveChannel: e.target.checked })}
-            className="accent-[var(--accent)]"
-          />
-        </label>
-      </section>
-
-      <Group title="负鼠" fields={OPOSSUM_FIELDS} settings={settings} onChange={patch} />
-
-      <Group title="单回合上限" fields={TURN_FIELDS} settings={settings} onChange={patch} />
-
-      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-        <h3 className="text-sm font-semibold">权限与生命周期</h3>
-
-        <label className="mt-3 grid grid-cols-[1fr_auto] items-center gap-4">
-          <span className="text-sm">设备指令确认</span>
-          <select
-            value={settings.permissionMode}
-            onChange={(e) =>
-              patch({ permissionMode: e.target.value as DeviceSafetySettings['permissionMode'] })
-            }
-            className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
-          >
-            <option value="confirm">每次确认</option>
-            <option value="timed">确认后 5 分钟免确认</option>
-            <option value="allow-all">完全放行（不推荐）</option>
-          </select>
-        </label>
-      </section>
-
-      <ModuleSettingsSlot id="agent-sensors" />
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!window.confirm('把全部设备安全设置恢复为默认值？')) return;
-          setSettings(updateDeviceSafety(() => ({ ...DEFAULT_DEVICE_SAFETY })));
-        }}
-        className="self-start text-xs text-[var(--text-soft)] underline underline-offset-2 hover:text-[var(--text)]"
-      >
-        恢复默认值
-      </button>
+    <div className="flex flex-col gap-6">
+      <Group title="郊狼" fields={COYOTE_LIMIT_FIELDS} settings={settings} onChange={patch} />
+      <Group title="负鼠" fields={OPOSSUM_LIMIT_FIELDS} settings={settings} onChange={patch} />
+      <label className="grid grid-cols-[1fr_auto] items-center gap-4">
+        <span className="text-sm font-semibold">设备指令确认</span>
+        <select
+          value={settings.permissionMode}
+          onChange={(e) =>
+            patch({ permissionMode: e.target.value as DeviceSafetySettings['permissionMode'] })
+          }
+          className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
+        >
+          <option value="confirm">每次确认</option>
+          <option value="timed">确认后 5 分钟免确认</option>
+          <option value="allow-all">完全放行（不推荐）</option>
+        </select>
+      </label>
+      <AdvancedEntryRow onOpen={() => setAdvanced(true)} />
     </div>
   );
 }

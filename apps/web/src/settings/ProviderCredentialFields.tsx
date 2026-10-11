@@ -12,13 +12,14 @@ export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
   config,
   definition,
   update,
-  showAdvanced = false,
 }: {
   config: T;
   definition: ProviderDefinition | undefined;
   update: (patch: Partial<T>) => void;
-  showAdvanced?: boolean;
 }) {
+  // Catalog providers carry a working baseUrl/endpoint preset; only the custom provider
+  // needs the user to supply them.
+  const showAdvanced = config.providerId === 'custom';
   const hasApiKey = definition?.fields.some((field) => field.key === 'apiKey') ?? false;
   return (
     <>

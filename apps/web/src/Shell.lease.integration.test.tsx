@@ -278,9 +278,13 @@ describe('外壳与设备控制权', () => {
       render(<Shell />);
     });
     fireEvent.click(screen.getByRole('button', { name: '打开我的设置' }));
+    fireEvent.click(await screen.findByRole('button', { name: '高级设置' }));
+    expect(window.location.pathname).toBe('/settings/advanced');
     fireEvent.click(await screen.findByRole('button', { name: '个人记忆' }));
     expect(window.location.pathname).toBe('/settings/memory');
     expect(await screen.findByText('个人记忆内容')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
+    expect(window.location.pathname).toBe('/settings/advanced');
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     fireEvent.click(screen.getByRole('button', { name: /Alice/ }));
     expect(window.location.pathname).toBe('/settings/account');
@@ -330,6 +334,7 @@ describe('外壳与设备控制权', () => {
       await vi.dynamicImportSettled();
     });
 
+    fireEvent.click(await screen.findByRole('button', { name: '高级设置' }));
     const waveforms = await screen.findByRole('button', { name: '波形' });
     expect(screen.getByRole('region', { name: '设置' })).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '设置' })).toBeNull();
@@ -337,6 +342,7 @@ describe('外壳与设备控制权', () => {
     fireEvent.click(waveforms);
     expect(await screen.findByText('波形内容')).toBeTruthy();
     expect(screen.getByText('Control 模块')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(screen.getByRole('button', { name: '设备安全' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));

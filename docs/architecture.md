@@ -74,7 +74,7 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 不能因为 UI 或适配器复用而发生迁移。功能 app 不自行拼接 provider endpoint、代理 URL 或复制
 通用设备 capability schema。
 
-通用设备只使用「软件设置 → 关于」中的一个本机开关。Control、Agent、Voice、Video 订阅同一
+通用设备只使用「我的 → 高级设置」中的一个本机开关。Control、Agent、Voice、Video 订阅同一
 provider 状态，不在各模块增加私有开关。关闭时不渲染通用设备入口、不加载或扫描 backend，
 也不向模型提供通用设备说明、状态、工具或目标；Video 本身以及郊狼、负鼠路径不受影响。
 

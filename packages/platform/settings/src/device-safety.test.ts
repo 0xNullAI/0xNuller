@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_DEVICE_SAFETY,
+  DEVICE_SAFETY_TURN_LIMITS,
   effectivePermissionMode,
   loadDeviceSafety,
   saveDeviceSafety,
@@ -39,6 +40,30 @@ describe('共享设备安全设置', () => {
     localStorage.setItem('0xnullai.device-safety', raw);
     expect(() => loadDeviceSafety()).not.toThrow();
     expect(loadDeviceSafety()).toMatchObject(expected);
+  });
+
+  it('单回合上限是常量：存量与写入都不能放宽，只能更严', () => {
+    localStorage.setItem(
+      '0xnullai.device-safety',
+      JSON.stringify({
+        ...DEFAULT_DEVICE_SAFETY,
+        maxToolIterations: 32,
+        maxBurstCallsPerTurn: 0,
+        maxToolCallsPerTurn: '坏值',
+      }),
+    );
+    const loaded = loadDeviceSafety();
+    expect(loaded.maxToolIterations).toBe(DEVICE_SAFETY_TURN_LIMITS.maxToolIterations);
+    expect(loaded.maxBurstCallsPerTurn).toBe(0);
+    expect(loaded.maxToolCallsPerTurn).toBe(DEVICE_SAFETY_TURN_LIMITS.maxToolCallsPerTurn);
+
+    const saved = saveDeviceSafety({ ...DEFAULT_DEVICE_SAFETY, maxVibrateBurstCallsPerTurn: 99 });
+    expect(saved.maxVibrateBurstCallsPerTurn).toBe(
+      DEVICE_SAFETY_TURN_LIMITS.maxVibrateBurstCallsPerTurn,
+    );
+    expect(loadDeviceSafety().maxVibrateBurstCallsPerTurn).toBe(
+      DEVICE_SAFETY_TURN_LIMITS.maxVibrateBurstCallsPerTurn,
+    );
   });
 
   describe('从三处存量迁移', () => {

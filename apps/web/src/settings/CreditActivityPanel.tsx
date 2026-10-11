@@ -109,7 +109,9 @@ function Activity() {
           <span>
             {entry.kind === 'refund' && entry.amountCredits !== null && entry.amountCredits < 0
               ? '退款扣回'
-              : (LABELS[entry.kind] ?? '账本调整')}
+              : entry.kind === 'admin_gift' && entry.referenceId === 'welcome'
+                ? '新用户体验额度'
+                : (LABELS[entry.kind] ?? '账本调整')}
             {entry.kind === 'usage' ? ` · ${usage(entry.usageType)}` : ''}
           </span>
           <strong className="shrink-0 tabular-nums">

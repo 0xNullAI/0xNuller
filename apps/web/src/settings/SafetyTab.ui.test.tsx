@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SafetyTab } from './SafetyTab';
 
@@ -38,23 +38,34 @@ vi.mock('@0xnullai/settings', () => ({
     return safety.settings;
   },
 }));
-vi.mock('@0xnullai/ui', () => ({ ModuleSettingsSlot: () => null }));
+vi.mock('@0xnullai/ui', () => ({
+  ModuleSettingsSlot: () => null,
+  useSettingsSubpage: () => false,
+}));
 
 afterEach(() => {
   cleanup();
   safety.update.mockClear();
 });
 
-it('exposes the same vibration turn limits enforced by the shared safety policy', () => {
-  render(<SafetyTab />);
-  fireEvent.click(screen.getByText('单回合上限'));
-  const adjust = screen.getByLabelText(/单回合振动调节次数/);
-  const burst = screen.getByLabelText(/单回合振动脉冲次数/);
-  expect(adjust).toBeTruthy();
-  expect(burst).toBeTruthy();
+it('shows only the channel caps first and keeps the rest on one flat 高级 page', () => {
+  const { container } = render(<SafetyTab />);
+  const coyote = screen.getByRole('region', { name: '郊狼' });
+  expect(within(coyote).getByLabelText(/A 通道上限/)).toBeTruthy();
+  expect(screen.getByRole('region', { name: '负鼠' })).toBeTruthy();
+  expect(screen.getByLabelText(/设备指令确认/)).toBeTruthy();
+  expect(screen.queryByLabelText(/冷启动上限/)).toBeNull();
+  // Per-turn caps are fixed constants and have no control.
+  expect(screen.queryByText(/单回合/)).toBeNull();
 
-  fireEvent.change(adjust, { target: { value: '3' } });
-  expect(safety.update).toHaveBeenCalledWith(
-    expect.objectContaining({ maxVibrateAdjustCallsPerTurn: 3 }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: '高级' }));
+  expect(container.querySelector('details')).toBeNull();
+  const burst = screen.getByLabelText(/脉冲最长时长/);
+  expect(screen.getAllByLabelText(/冷启动上限/)).toHaveLength(2);
+  expect(screen.queryByText(/单回合/)).toBeNull();
+  fireEvent.change(burst, { target: { value: '3000' } });
+  expect(safety.update).toHaveBeenCalledWith(expect.objectContaining({ maxBurstDurationMs: 3000 }));
+
+  fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
+  expect(screen.getByRole('button', { name: '高级' })).toBeTruthy();
 });

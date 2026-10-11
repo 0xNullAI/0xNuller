@@ -57,7 +57,7 @@ Windows NSIS 安装时检查/安装 WebView2。桌面版本继承产品版本，
 
 所有桌面模块注入现有 Tauri transport，仍按设备身份区分连接、队列、lease 和安全上限。
 macOS 的 Info.plist 包含蓝牙、摄像头与麦克风用途声明；蓝牙权限被拒绝时给出系统设置路径。
-Windows 使用系统蓝牙，不请求 Android 定位权限。通用设备仍由“设置 → 关于”本机开关控制，
+Windows 使用系统蓝牙，不请求 Android 定位权限。通用设备仍由“我的 → 高级设置”本机开关控制，
 未启用时不启动 Buttplug；原生扫描互斥继续由 ScanCoordinator 管理。
 
 窗口失去焦点时撤销设备控制权并请求停止；返回不会自动恢复 lease 或输出，需要用户继续操作。

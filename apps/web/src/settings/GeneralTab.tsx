@@ -1,7 +1,6 @@
 import { useTheme } from '@0xnullai/ui';
 import { loadLocale, updateLocale, type AppLocale } from '@0xnullai/settings';
 import { useEffect, useState } from 'react';
-import { ProxySection } from './ProxySection';
 
 const THEMES = [
   { value: 'auto', label: '跟随系统' },
@@ -45,8 +44,6 @@ export function GeneralTab() {
           ))}
         </div>
       </section>
-
-      <ProxySection />
 
       <section>
         <h3 className="text-sm font-semibold">语言</h3>

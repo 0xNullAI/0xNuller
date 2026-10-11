@@ -20,7 +20,7 @@ export function ProxySection() {
   const validUrl = isValidHttpProxyBaseUrl(proxy.httpBaseUrl);
 
   return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
+    <section aria-label="AI 网络代理">
       <label className="flex items-center justify-between gap-4">
         <span className="text-sm font-semibold">AI 网络代理</span>
         <input

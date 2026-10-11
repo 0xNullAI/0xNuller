@@ -208,11 +208,6 @@ export function AccountContent({
               >
                 我的主页
               </button>
-              {credit ? (
-                <span className="text-xs tabular-nums text-[var(--accent)]">
-                  {credit.available} Credit
-                </span>
-              ) : null}
             </div>
           </div>
         </div>

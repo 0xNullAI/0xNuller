@@ -14,19 +14,15 @@ import { ProviderFieldControls } from './ProviderFieldControls';
  *
  * A sibling of the text LLM rather than mixed into the same group of fields:
  * realtime is a different protocol, with different endpoints, auth and tunable
- * parameters (voice and speed simply do not exist on the text side). Forcing them
- * into one group makes the two sides' required fields pollute each other — the user
- * would see a pile of inputs that mean nothing for the current provider.
+ * parameters (voice and speed simply do not exist on the text side).
  *
  * It reads and writes Voice's settings module directly instead of copying its shape:
- * a copy is another source of truth, and eliminating that kind of thing is the whole
- * point of the merge.
+ * a copy is another source of truth. The AI page shows only the voice (音色); the
+ * provider, its fields and the speed live on the AI 高级 page.
  */
-export function VoiceProviderSection() {
-  // Reading once per mount is enough — the settings panel is a dialog, so the component
-  // is only created when it opens, which makes the initial value inherently current.
-  // No effect to read it again: that would be a synchronous setState inside an effect,
-  // costing one extra render + commit.
+function useVoiceSettings() {
+  // Reading once per mount is enough — each settings page is created when it opens, so
+  // the initial value is current. The main page and the 高级 page never mount together.
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
 
   function update(updater: (prev: VoiceSettings) => VoiceSettings) {
@@ -34,9 +30,6 @@ export function VoiceProviderSection() {
     setSettings(next);
     saveSettings(next);
   }
-
-  const def = getRealtimeProviderDefinition(settings.activeProviderId);
-  const current = settings.providers[settings.activeProviderId];
 
   function setField(
     key: 'apiKey' | 'model' | 'baseUrl' | 'deployment' | 'voice' | 'speed',
@@ -51,16 +44,39 @@ export function VoiceProviderSection() {
     }));
   }
 
-  return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-      <h3 className="text-sm font-semibold">语音模型</h3>
-      {settings.activeProviderId === 'managed' ? (
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-          登录后使用 Credit，约 120 Credit / 分钟，按每 10 秒结算。
-        </p>
-      ) : null}
+  return {
+    settings,
+    update,
+    setField,
+    def: getRealtimeProviderDefinition(settings.activeProviderId),
+    current: settings.providers[settings.activeProviderId],
+  };
+}
 
-      <div className="mt-3 flex flex-col gap-3">
+/** The voice of the active realtime provider; the voice table follows the provider. */
+export function VoiceTimbreField() {
+  const { settings, setField, def, current } = useVoiceSettings();
+  return (
+    <VoiceField
+      providerId={settings.activeProviderId}
+      apiKey={current?.apiKey ?? ''}
+      staticVoices={def?.staticVoices ?? []}
+      value={current?.voice ?? ''}
+      onChange={(value) => setField('voice', value)}
+    />
+  );
+}
+
+export function VoiceProviderSection() {
+  const { settings, update, setField, def, current } = useVoiceSettings();
+
+  return (
+    <div className="flex flex-col gap-3">
+      {settings.activeProviderId === 'managed' ? (
+        <p className="text-xs text-[var(--text-faint)]">约 120 Credit / 分钟，每 10 秒结算。</p>
+      ) : null}
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-[var(--text-soft)]">语音服务商</span>
         <SettingSelect
           value={settings.activeProviderId}
           onValueChange={(value) =>
@@ -71,39 +87,28 @@ export function VoiceProviderSection() {
           }
           options={REALTIME_PROVIDER_DEFINITIONS.map((p) => ({ value: p.id, label: p.name }))}
         />
+      </label>
 
-        <ProviderFieldControls
-          fields={def?.fields ?? []}
-          getValue={(key) => (current?.[key as keyof typeof current] as string) ?? ''}
-          onValueChange={(key, value) =>
-            setField(key as 'apiKey' | 'model' | 'baseUrl' | 'deployment', value)
-          }
+      <ProviderFieldControls
+        fields={def?.fields ?? []}
+        getValue={(key) => (current?.[key as keyof typeof current] as string) ?? ''}
+        onValueChange={(key, value) =>
+          setField(key as 'apiKey' | 'model' | 'baseUrl' | 'deployment', value)
+        }
+      />
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-[var(--text-soft)]">语速（0.7 – 1.5）</span>
+        <Input
+          type="number"
+          min={0.7}
+          max={1.5}
+          step={0.1}
+          value={current?.speed ?? 1}
+          onChange={(e) => setField('speed', Number(e.target.value))}
         />
-
-        {/* Voice and speed follow the provider (every provider has a different voice
-            table), so they stay in this group instead of getting their own section —
-            they have to change together when the provider changes. */}
-        <VoiceField
-          providerId={settings.activeProviderId}
-          apiKey={current?.apiKey ?? ''}
-          staticVoices={def?.staticVoices ?? []}
-          value={current?.voice ?? ''}
-          onChange={(value) => setField('voice', value)}
-        />
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--text-soft)]">语速（0.7 – 1.5）</span>
-          <Input
-            type="number"
-            min={0.7}
-            max={1.5}
-            step={0.1}
-            value={current?.speed ?? 1}
-            onChange={(e) => setField('speed', Number(e.target.value))}
-          />
-        </label>
-      </div>
-    </section>
+      </label>
+    </div>
   );
 }
 

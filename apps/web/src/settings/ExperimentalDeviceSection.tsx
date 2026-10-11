@@ -10,10 +10,10 @@ export function ExperimentalDeviceSection() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-      <h3 className="text-sm font-semibold">通用设备（实验性）</h3>
-      <p className="mt-1 text-xs text-[var(--text-soft)]">
-        开启后，Control、Agent、Voice 和 Video 共用。
+    <section aria-label="通用设备（实验性）">
+      <h4 className="text-sm font-semibold">通用设备（实验性）</h4>
+      <p className="mt-1 text-xs text-[var(--text-faint)]">
+        仅本机，各模块共用；关闭即停止并断开。
       </p>
       <label className="mt-3 flex items-center justify-between gap-4">
         <span className="text-sm">启用通用设备</span>
@@ -37,9 +37,6 @@ export function ExperimentalDeviceSection() {
           className="accent-[var(--accent)]"
         />
       </label>
-      <p className="mt-2 text-xs text-[var(--text-faint)]">
-        仅保存在本机；关闭会停止输出并断开设备。
-      </p>
       {!deviceRuntime && (
         <p className="mt-2 text-xs text-[var(--text-faint)]">当前入口不提供通用设备运行时。</p>
       )}
