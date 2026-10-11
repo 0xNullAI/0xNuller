@@ -1,3 +1,4 @@
+/* global document */
 // Headless smoke test of the local stack (docs/testing.md 本地联调) with the system Chromium.
 //
 //   node scripts/dev/e2e-smoke.mjs                 # signed-out checks
