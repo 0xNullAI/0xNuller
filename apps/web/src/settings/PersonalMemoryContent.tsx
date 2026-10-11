@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   deletePersonalMemory,
+  exportPersonalMemories,
   listPersonalMemories,
   savePersonalMemory,
   listHumanMemoryConversations,
@@ -294,11 +295,40 @@ export function PersonalMemoryContent({
     }
   }
 
+  async function exportAll() {
+    const epoch = accountEpochRef.current;
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await exportPersonalMemories();
+      if (accountEpochRef.current !== epoch) return;
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `0xnuller-memories-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setNotice('已导出全部记忆');
+    } catch (cause) {
+      if (accountEpochRef.current === epoch)
+        setError(cause instanceof Error ? cause.message : '导出失败');
+    } finally {
+      if (accountEpochRef.current === epoch) setBusy(false);
+    }
+  }
+
   return (
     <div className="mt-3 space-y-3">
-      <p className="text-xs text-[var(--text-soft)]">
-        记录你的偏好、重要的人和共同约定。默认仅自己可见；你可以下方逐条开放给指定真人聊天。
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-[var(--text-soft)]">
+          记录你的偏好、重要的人和共同约定。默认仅自己可见；你可以下方逐条开放给指定真人聊天。
+        </p>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => void exportAll()}>
+          导出
+        </Button>
+      </div>
       {error && (
         <div role="alert" className="text-sm text-[var(--danger)]">
           {error}

@@ -68,6 +68,48 @@ export async function handlePersonalMemories(
     return json({ items: rows.results.map(view), limit: MAX_ITEMS }, 200, headers);
   }
 
+  if (path === `${PATH}/export` && request.method === 'GET') {
+    // Everything the account remembers, across account and relationship scopes,
+    // so the user can keep or inspect it. Deleted memories are already erased.
+    const [memories, relationships] = await Promise.all([
+      env.DB.prepare(
+        `SELECT ${COLUMNS} FROM personal_memories WHERE user_id = ? AND deleted_at IS NULL
+         ORDER BY scope, relationship_id, updated_at DESC, id ASC`,
+      )
+        .bind(user.id)
+        .all<MemoryRow>(),
+      env.DB.prepare(
+        `SELECT id, character_id, ai_nickname, user_preferred_name, relationship_type
+         FROM character_relationships WHERE user_id = ? AND deleted_at IS NULL ORDER BY id`,
+      )
+        .bind(user.id)
+        .all<{
+          id: string;
+          character_id: string;
+          ai_nickname: string;
+          user_preferred_name: string;
+          relationship_type: string;
+        }>(),
+    ]);
+    return json(
+      {
+        format: '0xnuller-memories',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        relationships: relationships.results.map((row) => ({
+          id: row.id,
+          characterId: row.character_id,
+          aiNickname: row.ai_nickname,
+          userPreferredName: row.user_preferred_name,
+          relationshipType: row.relationship_type,
+        })),
+        memories: memories.results.map(view),
+      },
+      200,
+      { ...headers, 'Content-Disposition': 'attachment; filename="0xnuller-memories.json"' },
+    );
+  }
+
   const id = path.slice(PATH.length + 1);
   if (!ID.test(id)) return err('记忆编号无效', 400, headers);
   if (request.method !== 'PUT' && request.method !== 'DELETE') {

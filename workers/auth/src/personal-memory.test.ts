@@ -150,3 +150,38 @@ describe('private personal memories', () => {
     );
   });
 });
+
+describe('memory export', () => {
+  it('exports every live memory of the account and nothing of other accounts', async () => {
+    await env.DB.prepare(
+      "INSERT INTO character_relationships(user_id,id,character_id,ai_nickname,user_preferred_name,relationship_type,notes,version,created_at,updated_at) VALUES('alice','r','character','小夜','阿林','朋友','',1,1,1)",
+    ).run();
+    expect((await call('/kept', 'PUT', draft)).status).toBe(201);
+    expect(
+      (
+        await call('/rel', 'PUT', {
+          ...draft,
+          title: '约定',
+          scope: 'relationship',
+          relationshipId: 'r',
+        })
+      ).status,
+    ).toBe(201);
+    expect((await call('/gone', 'PUT', { ...draft, title: '要删的' })).status).toBe(201);
+    expect((await call('/gone', 'DELETE', { version: 1 })).status).toBe(200);
+    expect((await call('/bobs', 'PUT', draft, 'bob')).status).toBe(201);
+
+    const response = await call('/export');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Disposition')).toContain('attachment');
+    const body = (await response.json()) as {
+      format: string;
+      memories: { id: string; scope: string }[];
+      relationships: { id: string; aiNickname: string }[];
+    };
+    expect(body.format).toBe('0xnuller-memories');
+    expect(body.memories.map((m) => m.id).sort()).toEqual(['kept', 'rel']);
+    expect(body.relationships).toEqual([expect.objectContaining({ id: 'r', aiNickname: '小夜' })]);
+    expect((await call('/export', 'GET', undefined, 'nobody')).status).toBe(401);
+  });
+});

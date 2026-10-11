@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { PersonalMemoryContent } from './PersonalMemoryContent';
 import {
   deletePersonalMemory,
+  exportPersonalMemories,
   listPersonalMemories,
   savePersonalMemory,
   listHumanMemoryConversations,
@@ -20,6 +21,7 @@ vi.mock('@0xnullai/auth', () => ({
   listPersonalMemories: vi.fn(),
   savePersonalMemory: vi.fn(),
   deletePersonalMemory: vi.fn(),
+  exportPersonalMemories: vi.fn(),
   listHumanMemoryConversations: vi.fn(),
   listHumanMemoryShares: vi.fn(),
   listReceivedHumanMemories: vi.fn(),
@@ -286,4 +288,24 @@ it('reuses the creation id when retrying a failed save', async () => {
   await waitFor(() => expect(savePersonalMemory).toHaveBeenCalledTimes(2));
   const calls = vi.mocked(savePersonalMemory).mock.calls;
   expect(calls[0]![0].id).toBe(calls[1]![0].id);
+});
+
+it('downloads the server export of every memory', async () => {
+  vi.mocked(exportPersonalMemories).mockResolvedValue({
+    format: '0xnuller-memories',
+    memories: [],
+  });
+  const createObjectURL = vi.fn(() => 'blob:memories');
+  const revokeObjectURL = vi.fn();
+  Object.assign(URL, { createObjectURL, revokeObjectURL });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  render(<PersonalMemoryContent />);
+  await screen.findByText('小林');
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  await screen.findByText('已导出全部记忆');
+  expect(exportPersonalMemories).toHaveBeenCalledOnce();
+  expect(click).toHaveBeenCalledOnce();
+  const blob = (createObjectURL.mock.calls[0] as unknown as [Blob])[0];
+  expect(JSON.parse(await blob.text())).toEqual({ format: '0xnuller-memories', memories: [] });
+  click.mockRestore();
 });

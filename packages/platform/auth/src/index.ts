@@ -40,6 +40,7 @@ export {
 import { apiBaseUrl } from '@0xnullai/settings';
 export {
   listPersonalMemories,
+  exportPersonalMemories,
   savePersonalMemory,
   deletePersonalMemory,
   type PersonalMemory,

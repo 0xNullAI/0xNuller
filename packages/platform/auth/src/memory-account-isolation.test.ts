@@ -14,7 +14,7 @@ vi.mock('./index', () => ({
 }));
 
 import { getMemoryContext } from './memory-context';
-import { listPersonalMemories } from './personal-memory';
+import { exportPersonalMemories, listPersonalMemories } from './personal-memory';
 import { getAutoMemorySettings } from './auto-memory';
 import { getConversationDigestPreference } from './conversation-digest-preference';
 import { correctMemoryFact, listMemoryPeople } from './memory-facts';
@@ -28,6 +28,7 @@ afterEach(() => {
 it.each([
   ['conversation context', () => getMemoryContext('conversation')],
   ['personal memories', () => listPersonalMemories()],
+  ['personal memory export', () => exportPersonalMemories()],
   ['automatic memory settings', () => getAutoMemorySettings('relationship')],
   ['long conversation digest setting', () => getConversationDigestPreference('relationship')],
   ['relationship person aliases', () => listMemoryPeople('relationship')],

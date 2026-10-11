@@ -64,6 +64,11 @@ export function listPersonalMemories(
   );
 }
 
+/** Every live memory of the signed-in account, as the server's export document. */
+export function exportPersonalMemories(): Promise<Record<string, unknown>> {
+  return request('/export');
+}
+
 export function savePersonalMemory(
   memory: Pick<PersonalMemory, 'id' | 'kind' | 'title' | 'content' | 'version'> &
     Partial<Pick<PersonalMemory, 'scope' | 'relationshipId' | 'tier' | 'state'>>,
