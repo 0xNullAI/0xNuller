@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   Ban,
   ChevronLeft,
@@ -9,7 +9,7 @@ import {
   UserMinus,
   UserPlus,
 } from 'lucide-react';
-import { Avatar, Button, ModuleActions, Overlay } from '@0xnullai/ui';
+import { Avatar, Button, ModuleActions, Overlay, subscribeMediaQuery } from '@0xnullai/ui';
 import {
   avatarSrc,
   followUser,
@@ -538,13 +538,16 @@ function AccountContacts({
     </p>
   );
 
+  const wide = useIsWide();
   const listScreen = (
     <div key="list" className="ui-tab-fade flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-14 items-center gap-2 pl-4 pr-2">
+      {/* On a phone the shell top bar already shows the title and the add action. */}
+      <div className={`flex min-h-14 items-center gap-2 pl-4 pr-2 ${page ? 'max-md:hidden' : ''}`}>
         <h2 className={`min-w-0 flex-1 text-xl font-semibold ${page ? 'hidden md:block' : ''}`}>
           联系人
         </h2>
-        {page ? <ModuleActions>{addButton}</ModuleActions> : addButton}
+        {/* Phone: the add action lives in the shell top bar; wide screens keep it by the title. */}
+        {page && !wide ? <ModuleActions>{addButton}</ModuleActions> : addButton}
       </div>
       <div className="px-4 pb-2">{searchField}</div>
       <div
@@ -713,4 +716,18 @@ function AccountContacts({
     </div>
   );
   return page ? content : <Overlay onDismiss={onClose}>{content}</Overlay>;
+}
+
+const WIDE_QUERY = '(min-width: 768px)';
+
+/** Matches the md breakpoint the layout uses; without matchMedia (tests) it counts as wide. */
+function useIsWide(): boolean {
+  return useSyncExternalStore(
+    (listener) =>
+      typeof window.matchMedia === 'function'
+        ? subscribeMediaQuery(window.matchMedia(WIDE_QUERY), listener)
+        : () => undefined,
+    () => typeof window.matchMedia !== 'function' || window.matchMedia(WIDE_QUERY).matches,
+    () => true,
+  );
 }
