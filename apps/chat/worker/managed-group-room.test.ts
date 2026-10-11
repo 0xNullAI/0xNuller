@@ -20,7 +20,7 @@ vi.mock('cloudflare:workers', () => ({
 }));
 const { RoomDO } = await import('./room-do');
 
-function fixture(proxyResponse: Response, push?: { enqueueChatPush: ReturnType<typeof vi.fn> }) {
+function fixture(proxyResponse: Response) {
   const db = new DatabaseSync(':memory:');
   const values = new Map<string, unknown>([
     ['code', 'managed-room'],
@@ -78,7 +78,6 @@ function fixture(proxyResponse: Response, push?: { enqueueChatPush: ReturnType<t
     {
       DM_TICKET_SECRET: 'test-secret',
       LLM: { fetch: llmFetch },
-      ...(push ? { AUTH_PUSH: push } : {}),
     } as unknown as Env,
   );
   db.exec(
@@ -164,28 +163,6 @@ it('shows insufficient Credit only to the payer and never writes an AI completio
     ).toBe(false);
     await f.mention();
     expect(f.llmFetch).toHaveBeenCalledOnce();
-  } finally {
-    f.db.close();
-  }
-});
-
-it('notifies other members of a managed AI reply through the push outbox', async () => {
-  const enqueueChatPush = vi.fn(async (_input: unknown) => ({ accepted: true }));
-  const f = fixture(
-    Response.json({ choices: [{ message: { content: '你好呀' } }], credit_charged: 1 }),
-    { enqueueChatPush },
-  );
-  try {
-    await f.mention();
-    await Promise.all(f.tasks);
-    await Promise.all(f.tasks);
-    const reply = f.db.prepare("SELECT id FROM messages WHERE from_id='ai:room'").get() as {
-      id: string;
-    };
-    const calls = enqueueChatPush.mock.calls.map(([input]) => input as { eventId: string });
-    const forReply = calls.filter((input) => input.eventId === reply.id);
-    expect(forReply).toHaveLength(1);
-    expect(forReply[0]).toMatchObject({ kind: 'group', recipientAccountIds: ['host'] });
   } finally {
     f.db.close();
   }

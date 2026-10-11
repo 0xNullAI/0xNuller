@@ -270,23 +270,10 @@ CAS（创建 0），支持一次性本地日期或每周星期、本地 HH:mm、
 事务完成；幂等键按任务和本地 occurrence 组成，重叠 cron 不会重复发送。异常回滚后从一分钟
 指数退避到一小时；会话或关系删除会暂停任务。关闭页面不影响后台执行。`GET
 /api/auth/companion-notifications` 返回当前账号最近 100 条站内通知，`PUT /:id/read` 标记已读；
-Android 可以用 Bearer 会话注册 Firebase Installation ID：`PUT /api/auth/push/registrations`
-提交 `{provider:"fcm-fid",installationId,platform:"android"}`，登出时调用
-`DELETE /api/auth/push/registrations/{installationId}`。同一安装切换账号会清除旧账号待发送事件；账号删除立即撤销注册。
-`0057_android_push_installation_key.sql` 为注册表增加可空、账号范围唯一的 `installation_key`。
-新版 Android 另提交原生安装随机生成且持久保存的 `installationKey`，FID 刷新时可附上
-`previousInstallationId` 清理升级前的旧记录；服务端在一笔 D1 batch 中移除当前账号同安装的旧 FID、
-级联删除旧投递并绑定新 FID。删除始终限于已认证账号，旧客户端只传 FID 仍可用。
-新版撤销请求可在 JSON body 中提交同样两个可选字段，连当前 FID 一并移除；这覆盖刷新后
-尚未来得及成功绑定新 FID 就退出登录的情况。离线撤销仍保存在账号本地队列并待该账号重新登录重试。
-部署顺序必须先应用 0057 并更新 Auth，再发布发送新字段的 Android 版本。
-FCM HTTP v1 凭据只从 Worker Secret `FCM_SERVICE_ACCOUNT_JSON` 读取，不能放在客户端或仓库。
-服务端发送 data-only `{kind,targetId,eventId,accountId}`，不传聊天正文或设备指令；
-`kind=dm` 的 `targetId` 是收件人视角的对端账号 ID，`group` 是群号，`ai` 是私人会话 ID。
-站内消息、聊天记录先持久化；推送失败由 D1 outbox 和分钟 cron 重试，不回滚主消息。
-首批外部推送覆盖主动 AI 消息及真人 DM/群消息；群内被 @ 的 AI 回复不单独推送，避免一次 @ 产生双通知。
-实际发送前再次检查 DM 互相关注/拉黑及群成员资格；8 次失败后的停用只记录不含 FID、密钥或正文的计数日志。
-部署时先应用 `0049_android_push.sql` 并更新 Auth，再更新带 `AUTH_PUSH` 命名绑定的 Chat。
+系统推送（FCM）已移除：用户多在国内，多数手机没有 Google 服务。新消息只以站内未读呈现。
+旧版 Android 仍可能调用 `/api/auth/push/registrations`：注册返回 410，撤销返回 404（旧客户端视为
+已撤销，不再重试），均不记错误日志。`push_registrations`／`push_deliveries`（0049、0057）保留在 D1
+中但不再写入或发送；账号删除仍会清除该账号的旧注册。删表需另写迁移，并在不再有旧版 Auth 运行后进行。
 
 Wrangler 源码增加 `* * * * *` 分钟触发，原 `17 4 * * *` 清理任务仍仅每日执行；尚未部署。
 上线前应先迁移 0030，再部署 Auth 并确认 cron 实际注册、时区/DST 与通知链路。执行时使用当前

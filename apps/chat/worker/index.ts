@@ -21,16 +21,6 @@ import {
 export interface Env extends Cloudflare.Env {
   /** Internal managed text service; the browser never receives a group billing ticket. */
   LLM: Fetcher;
-  /** Named Auth RPC; no public push-send endpoint exists. */
-  AUTH_PUSH: Fetcher & {
-    enqueueChatPush(event: {
-      kind: 'dm' | 'group';
-      targetId: string;
-      eventId: string;
-      senderAccountId: string;
-      recipientAccountIds: string[];
-    }): Promise<void>;
-  };
   /**
    * Shared with the account service, which mints the DM tickets this Worker verifies.
    *
@@ -79,28 +69,6 @@ export default {
     const { pathname } = url;
 
     if (pathname.startsWith('/api/groups/backup/')) return handleChatBackupExport(request, env);
-
-    // Auth alone calls this through its existing service binding. The path is outside
-    // Chat's public zone routes, so clients cannot probe private group membership.
-    if (pathname === '/internal/push/group-eligible' && request.method === 'POST') {
-      const body = (await request.json().catch(() => null)) as {
-        room?: unknown;
-        account?: unknown;
-      } | null;
-      if (
-        typeof body?.room !== 'string' ||
-        !/^[A-Za-z0-9._:-]{1,128}$/.test(body.room) ||
-        typeof body.account !== 'string' ||
-        !/^[A-Za-z0-9._:-]{1,128}$/.test(body.account) ||
-        isDmRoomCode(body.room)
-      )
-        return json(400, { error: 'invalid group' });
-      const eligible = await env.ROOM.get(env.ROOM.idFromName(body.room)).groupPushEligible(
-        body.room,
-        body.account,
-      );
-      return json(200, { eligible });
-    }
 
     if (
       request.method === 'POST' &&

@@ -16,9 +16,13 @@ vi.mock('cloudflare:workers', () => ({
 const { RoomDO } = await import('./room-do');
 const dmCode = `dm:${'a'.repeat(64)}`;
 
-function fixture(code: string, send = vi.fn(async () => {})) {
+function fixture(code: string, legacyPushOutbox = false) {
   const mediaDelete = vi.fn(async () => {});
   const db = new DatabaseSync(':memory:');
+  if (legacyPushOutbox)
+    db.exec(
+      "CREATE TABLE push_outbox(message_id TEXT PRIMARY KEY,recipient_accounts TEXT); INSERT INTO push_outbox VALUES('old','[\"bob\"]')",
+    );
   const values = new Map<string, unknown>([
     ['code', code],
     ['persistentHistory', true],
@@ -74,7 +78,7 @@ function fixture(code: string, send = vi.fn(async () => {})) {
       blockConcurrencyWhile: (fn: () => Promise<void>) => fn(),
       waitUntil: (task: Promise<unknown>) => tasks.push(task),
     } as unknown as DurableObjectState,
-    { AUTH_PUSH: { enqueueChatPush: send }, MEDIA: { delete: mediaDelete } } as unknown as Env,
+    { MEDIA: { delete: mediaDelete } } as unknown as Env,
   );
   if (code !== dmCode) {
     db.exec(
@@ -84,117 +88,27 @@ function fixture(code: string, send = vi.fn(async () => {})) {
       "INSERT INTO group_memberships VALUES('alice','Alice','active',1,1),('bob','Bob','active',1,1),('outsider','Outsider','banned',1,1)",
     );
   }
-  return { db, room, send, tasks, values, socket, mediaDelete };
+  return { db, room, tasks, socket, mediaDelete };
 }
 afterEach(() => vi.restoreAllMocks());
 
-it('persists a human group message and retries RPC failure without notifying a banned nonmember', async () => {
-  const now = Date.parse('2027-01-01T00:00Z');
-  vi.spyOn(Date, 'now').mockReturnValue(now);
-  const send = vi
-    .fn()
-    .mockRejectedValueOnce(new Error('Auth unavailable'))
-    .mockResolvedValue(undefined);
-  const f = fixture('group', send);
-  try {
-    await f.room.webSocketMessage(
-      f.socket,
-      JSON.stringify({
-        t: 'chat',
-        id: 'event-1',
-        x: 'hello',
-        mentions: [{ peerId: 'outsider', n: 'Outsider' }],
-      }),
-    );
-    await Promise.all(f.tasks);
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM messages').get()?.n).toBe(1);
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(1);
-    await f.room.webSocketMessage(
-      f.socket,
-      JSON.stringify({ t: 'chat', id: 'event-1', x: 'replay' }),
-    );
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(1);
-    expect(send).toHaveBeenCalledWith({
-      kind: 'group',
-      targetId: 'group',
-      eventId: 'event-1',
-      senderAccountId: 'alice',
-      recipientAccountIds: ['bob'],
-    });
-    vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
-    await (f.room as unknown as { flushPushOutbox(): Promise<void> }).flushPushOutbox();
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(0);
-  } finally {
-    f.db.close();
-  }
-});
-
-it('drops a queued group push if its only recipient was removed before retry', async () => {
-  const now = Date.parse('2027-01-01T00:00Z');
-  vi.spyOn(Date, 'now').mockReturnValue(now);
-  const send = vi.fn().mockRejectedValueOnce(new Error('Auth unavailable'));
-  const f = fixture('group', send);
-  try {
-    await f.room.webSocketMessage(
-      f.socket,
-      JSON.stringify({ t: 'chat', id: 'event-2', x: 'hello' }),
-    );
-    await Promise.all(f.tasks);
-    f.db.exec("UPDATE group_memberships SET state='removed' WHERE account_id='bob'");
-    expect(await f.room.groupPushEligible('group', 'bob')).toBe(false);
-    vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
-    await (f.room as unknown as { flushPushOutbox(): Promise<void> }).flushPushOutbox();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(0);
-  } finally {
-    f.db.close();
-  }
-});
-
-it('uses the server-admitted DM peer and sender account as the receiver-side target', async () => {
-  const f = fixture(dmCode);
-  try {
-    await f.room.webSocketMessage(
-      f.socket,
-      JSON.stringify({
-        t: 'chat',
-        id: 'dm-event',
-        x: 'hello',
-        mentions: [{ peerId: 'forged', n: 'Forged' }],
-      }),
-    );
-    await Promise.all(f.tasks);
-    expect(f.send).toHaveBeenCalledWith({
-      kind: 'dm',
-      targetId: 'alice',
-      eventId: 'dm-event',
-      senderAccountId: 'alice',
-      recipientAccountIds: ['bob'],
-    });
-  } finally {
-    f.db.close();
-  }
-});
-
-it('does not retry a DM push after the conversation was revoked', async () => {
-  const now = Date.parse('2027-01-01T00:00Z');
-  vi.spyOn(Date, 'now').mockReturnValue(now);
-  const send = vi.fn().mockRejectedValueOnce(new Error('Auth unavailable'));
-  const f = fixture(dmCode, send);
-  try {
-    await f.room.webSocketMessage(
-      f.socket,
-      JSON.stringify({ t: 'chat', id: 'dm-revoked', x: 'hello' }),
-    );
-    await Promise.all(f.tasks);
-    f.values.set('revokedAt', now + 1);
-    vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
-    await (f.room as unknown as { flushPushOutbox(): Promise<void> }).flushPushOutbox();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(0);
-  } finally {
-    f.db.close();
+it('persists a human message without keeping a system-push outbox', async () => {
+  for (const code of ['group', dmCode]) {
+    const f = fixture(code, true);
+    try {
+      await f.room.webSocketMessage(
+        f.socket,
+        JSON.stringify({ t: 'chat', id: `event-${code}`, x: 'hello' }),
+      );
+      await Promise.all(f.tasks);
+      expect(f.db.prepare('SELECT COUNT(*) AS n FROM messages').get()?.n).toBe(1);
+      // A room created before FCM was retired loses its leftover recipient lists on wake.
+      expect(
+        f.db.prepare("SELECT name FROM sqlite_master WHERE name='push_outbox'").get(),
+      ).toBeUndefined();
+    } finally {
+      f.db.close();
+    }
   }
 });
 
@@ -220,9 +134,6 @@ it('lets the sender recall their own message within two minutes and erases it ev
       body: string;
     };
     expect(JSON.parse(stored.body)).toEqual({ recalled: true });
-    expect(
-      f.db.prepare("SELECT COUNT(*) AS n FROM push_outbox WHERE message_id='pic'").get()?.n,
-    ).toBe(0);
     expect(f.mediaDelete).toHaveBeenCalledWith(['room/group/img-1']);
     const sent = vi.mocked(f.socket.send).mock.calls.map(([data]) => JSON.parse(String(data)));
     expect(sent).toContainEqual({ t: 'recall', id: 'pic' });

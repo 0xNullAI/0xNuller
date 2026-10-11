@@ -87,13 +87,8 @@ describe('private server companion schedules', () => {
     expect(await count('server_conversation_messages')).toBe(1);
     expect(await count('companion_notifications')).toBe(1);
     expect(await count('companion_deliveries')).toBe(1);
-    expect(
-      await env.DB.prepare('SELECT kind,target_id,event_id FROM push_deliveries').first(),
-    ).toEqual({
-      kind: 'ai',
-      target_id: 'c',
-      event_id: expect.stringMatching(/^scheduled:/),
-    });
+    // System push is retired: a leftover device registration must not queue an FCM delivery.
+    expect(await count('push_deliveries')).toBe(0);
     expect(await count('credit_ledger')).toBe(0);
     expect(
       await env.DB.prepare('SELECT role,content FROM server_conversation_messages').first(),

@@ -6,7 +6,6 @@ import {
   type GenerativeScheduleEnv,
 } from './companion-generations';
 import { currentUser } from './session-domain';
-import { prepareAiPushDelivery } from './push';
 import { json, err, readBodyBounded } from './http';
 import {
   validateScheduleConfig,
@@ -431,7 +430,6 @@ export async function runCompanionSchedules(
         env.DB.prepare(
           `INSERT INTO companion_notifications(user_id,id,conversation_id,message_id,created_at) SELECT ?,?,?,?,? WHERE ${claim} ON CONFLICT(user_id,id) DO NOTHING`,
         ).bind(row.user_id, messageId, row.conversation_id, messageId, now, ...args),
-        prepareAiPushDelivery(env, row.user_id, row.conversation_id, messageId, now),
         env.DB.prepare(
           `UPDATE companion_schedules SET next_run_at=?,occurrence_key=?,paused=?,attempts=0,last_error=NULL,updated_at=?,version=version+1 WHERE user_id=? AND id=? AND ${claim}`,
         ).bind(

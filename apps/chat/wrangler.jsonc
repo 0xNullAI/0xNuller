@@ -24,10 +24,7 @@
   "workers_dev": false,
   "preview_urls": false,
 
-  "services": [
-    { "binding": "LLM", "service": "dg-llm-proxy" },
-    { "binding": "AUTH_PUSH", "service": "0xnullai-auth", "entrypoint": "AuthOwnershipService" },
-  ],
+  "services": [{ "binding": "LLM", "service": "dg-llm-proxy" }],
 
   // 保持类名和 migration tag 稳定，以保留既有房间数据。
   "durable_objects": {

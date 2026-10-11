@@ -102,7 +102,6 @@ export class RoomDO extends DurableObject<Env> {
   private dmReadReady = false;
   private groupMembershipReady = false;
   private roomAgentTurnsReady = false;
-  private pushFlushing = false;
   private ensureRoomAgentTurns(): void {
     if (!this.roomAgentTurnsReady) {
       initializeRoomAgentTurns(this.sql);
@@ -135,11 +134,9 @@ export class RoomDO extends DurableObject<Env> {
     this.sql.exec(
       'CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, from_id TEXT, name TEXT, body TEXT, ts INTEGER)',
     );
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_outbox (
-      message_id TEXT PRIMARY KEY,event_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,
-      sender_account_id TEXT NOT NULL,recipient_accounts TEXT NOT NULL,
-      created_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,
-      next_attempt_at INTEGER NOT NULL,lease_until INTEGER)`);
+    // System push (FCM) was retired. Its outbox held recipient account lists that nothing sends
+    // any more, so drop it rather than keep that data around; a no-op once it is gone.
+    this.sql.exec('DROP TABLE IF EXISTS push_outbox');
     this.ctx.blockConcurrencyWhile(async () => {
       if (this.ctx.getWebSockets().length) await this.scheduleSocketAlarm();
     });
@@ -556,14 +553,12 @@ export class RoomDO extends DurableObject<Env> {
             )
               return false;
             completeRoomAgentTurn(this.sql, triggerId as string, roleId, chat.id);
-            if (att.accountId && this.env.AUTH_PUSH) this.queueChatPush(chat, att, dm);
             return true;
           });
           if (!accepted) return;
         } else {
           const saved = this.ctx.storage.transactionSync(() => {
             if (!this.saveMessage(chat)) return false;
-            if (att.accountId && this.env.AUTH_PUSH) this.queueChatPush(chat, att, dm);
             return true;
           });
           if (!saved) {
@@ -586,8 +581,6 @@ export class RoomDO extends DurableObject<Env> {
           ...chat,
           ...(!aiAs && att.accountId ? { _account: att.accountId } : {}),
         });
-        if (!aiAs && att.accountId && this.env.AUTH_PUSH && this.ctx.waitUntil)
-          this.ctx.waitUntil(this.flushPushOutbox().catch(() => undefined));
         if (!dm && !aiAs && att.accountId && (await this.agentBillingMode()) === 'managed') {
           const agents = await this.getAgents();
           const payer = att.accountId;
@@ -903,7 +896,6 @@ export class RoomDO extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     for (const socket of this.ctx.getWebSockets()) this.socketLeaseAlive(socket);
-    await this.flushPushOutbox();
     const code = await this.code();
     if (await this.recycleIdleRoom(Date.now())) return;
     if (code) await this.sweepOrphanMedia(code);
@@ -922,20 +914,8 @@ export class RoomDO extends DurableObject<Env> {
     ) {
       const idleSince = (await this.ctx.storage.get<number>('idleSince')) ?? Date.now();
       await this.ctx.storage.put('idleSince', idleSince);
-      const pushDue = this.nextPushDue();
-      await this.ctx.storage.setAlarm(Math.min(idleSince + ROOM_IDLE_MS, pushDue ?? Infinity));
-    } else {
-      const pushDue = this.nextPushDue();
-      if (pushDue !== null) await this.ctx.storage.setAlarm(pushDue);
+      await this.ctx.storage.setAlarm(idleSince + ROOM_IDLE_MS);
     }
-  }
-
-  /** Server-side push recheck after an event waited in Auth's FCM outbox. */
-  async groupPushEligible(room: string, account: string): Promise<boolean> {
-    if (isDmRoomCode(room) || (await this.code()) !== room) return false;
-    if ((await this.ctx.storage.get<boolean>('closed')) === true) return false;
-    this.ensureGroupMembership();
-    return !this.accountRevoked(account) && Boolean(activeGroupMember(this.sql, account));
   }
 
   // -- Direct messages (RPC, called by the Worker) --
@@ -1544,117 +1524,7 @@ export class RoomDO extends DurableObject<Env> {
       if (att?.leaseClosed) return [];
       return [typeof att?.expiresAt === 'number' ? Math.max(now + 1, att.expiresAt) : now + 1];
     });
-    await this.ctx.storage.setAlarm(
-      Math.min(now + ROOM_GRACE_MS, this.nextPushDue() ?? Infinity, ...deadlines),
-    );
-  }
-
-  private queueChatPush(chat: WireChat, sender: Attachment, dm: boolean): void {
-    const account = sender.accountId;
-    if (!account) return;
-    const recipients = dm
-      ? sender.dmPeerAccountId && sender.dmPeerAccountId !== account
-        ? [sender.dmPeerAccountId]
-        : []
-      : this.sql
-          .exec(
-            "SELECT account_id FROM group_memberships WHERE state='active' AND account_id<>? ORDER BY account_id",
-            account,
-          )
-          .toArray()
-          .map((row) => String(row.account_id));
-    if (recipients.length === 0) return;
-    for (let index = 0; index < recipients.length; index += 200) {
-      this.sql.exec(
-        `INSERT OR IGNORE INTO push_outbox(message_id,event_id,kind,target_id,sender_account_id,recipient_accounts,created_at,next_attempt_at)
-         VALUES(?,?,?,?,?,?,?,?)`,
-        `${chat.id}:push:${index / 200}`,
-        chat.id,
-        dm ? 'dm' : 'group',
-        dm ? account : (this.codeCache ?? ''),
-        account,
-        JSON.stringify(recipients.slice(index, index + 200)),
-        chat.ts,
-        chat.ts,
-      );
-    }
-  }
-
-  private nextPushDue(): number | null {
-    const row = this.sql
-      .exec('SELECT MIN(MAX(next_attempt_at,COALESCE(lease_until,0))) AS due FROM push_outbox')
-      .toArray()[0];
-    return typeof row?.due === 'number' ? row.due : null;
-  }
-
-  private async flushPushOutbox(): Promise<void> {
-    if (this.pushFlushing || !this.env.AUTH_PUSH) return;
-    this.pushFlushing = true;
-    try {
-      const now = Date.now();
-      const rows = this.sql
-        .exec(
-          `SELECT message_id,event_id,kind,target_id,sender_account_id,recipient_accounts,created_at,attempts
-         FROM push_outbox WHERE next_attempt_at<=? AND COALESCE(lease_until,0)<=?
-         ORDER BY created_at LIMIT 20`,
-          now,
-          now,
-        )
-        .toArray();
-      for (const row of rows) {
-        const id = String(row.message_id);
-        const claimed =
-          this.sql
-            .exec(
-              `UPDATE push_outbox SET lease_until=? WHERE message_id=? AND next_attempt_at<=?
-           AND COALESCE(lease_until,0)<=? RETURNING message_id`,
-              now + 60_000,
-              id,
-              now,
-              now,
-            )
-            .toArray().length > 0;
-        if (!claimed) continue;
-        const sender = String(row.sender_account_id);
-        const intended = JSON.parse(String(row.recipient_accounts)) as string[];
-        const recipients =
-          row.kind === 'group'
-            ? intended.filter(
-                (account) => account !== sender && !!activeGroupMember(this.sql, account),
-              )
-            : ((await this.ctx.storage.get<number>('revokedAt')) ?? 0) >= Number(row.created_at)
-              ? []
-              : intended.filter((account) => account !== sender);
-        try {
-          if (recipients.length)
-            await this.env.AUTH_PUSH.enqueueChatPush({
-              kind: row.kind as 'dm' | 'group',
-              targetId: String(row.target_id),
-              eventId: String(row.event_id),
-              senderAccountId: sender,
-              recipientAccountIds: recipients,
-            });
-          this.sql.exec(
-            'DELETE FROM push_outbox WHERE message_id=? AND lease_until=?',
-            id,
-            now + 60_000,
-          );
-        } catch {
-          const attempts = Number(row.attempts) + 1;
-          this.sql.exec(
-            'UPDATE push_outbox SET attempts=?,lease_until=NULL,next_attempt_at=? WHERE message_id=? AND lease_until=?',
-            attempts,
-            now + Math.min(3_600_000, 60_000 * 2 ** Math.min(attempts - 1, 6)),
-            id,
-            now + 60_000,
-          );
-        }
-      }
-      const due = this.nextPushDue();
-      if (due !== null) await this.scheduleSocketAlarm();
-    } finally {
-      this.pushFlushing = false;
-    }
+    await this.ctx.storage.setAlarm(Math.min(now + ROOM_GRACE_MS, ...deadlines));
   }
 
   private closeAccountSockets(account: string): void {
@@ -1959,15 +1829,10 @@ export class RoomDO extends DurableObject<Env> {
         `agent:ai:${agent.id}`,
         chat.id,
       );
-      // Members who are not in the room learn about the AI reply the same way as about a
-      // person's message. The member who asked is excluded; their own @ started it.
-      if (this.env.AUTH_PUSH) this.queueChatPush(chat, { accountId: payer } as Attachment, false);
       return true;
     });
     if (!accepted) return;
     this.broadcast({ t: 'chat', ...chat });
-    if (this.env.AUTH_PUSH && this.ctx.waitUntil)
-      this.ctx.waitUntil(this.flushPushOutbox().catch(() => undefined));
   }
 
   private async getAgent(): Promise<RoomAgent | null> {

@@ -16,7 +16,7 @@ export function isRecalledBody(body: unknown): boolean {
  * Withdraw one's own message. Only the account recorded as its sender may do
  * it (peer ids change every page load), never for an AI reply, and only within
  * RECALL_WINDOW_MS. The row and its sequence stay so read cursors and unread
- * counts remain valid; its body is erased and any queued push for it dropped.
+ * counts remain valid; only its body is erased.
  * Returns the media id to delete from R2, or null when nothing was recalled.
  */
 export function recallMessage(
@@ -48,6 +48,5 @@ export function recallMessage(
     media = undefined;
   }
   sql.exec('UPDATE messages SET body=? WHERE id=?', RECALLED_BODY, id);
-  sql.exec('DELETE FROM push_outbox WHERE message_id=?', id);
   return { mediaId: typeof media?.id === 'string' ? media.id : null };
 }

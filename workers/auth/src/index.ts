@@ -24,12 +24,7 @@ import { handleBillingOrders } from './billing-orders';
 import { handleCharacterAppearance } from './character-appearance';
 import { handleCharacterDrafts } from './character-drafts';
 import { handleCompanionSchedules, runCompanionSchedules } from './companion-schedules';
-import {
-  enqueueChatPush,
-  handlePushRegistrations,
-  runPushDeliveries,
-  type ChatPushEvent,
-} from './push';
+import { handleRetiredPushRegistrations } from './retired-push';
 import { handleAgentWorkspace } from './agent-workspace';
 import { handleAgentRuns, runAgentRunMaintenance } from './agent-runs';
 import { handleCompanionLife } from './companion-life';
@@ -143,7 +138,6 @@ export interface Env extends Cloudflare.Env {
   DASHSCOPE_TTS_API_KEY?: string;
   DASHSCOPE_WORKSPACE_ID?: string;
   TTS_CREDITS_PER_CHARACTER?: string;
-  FCM_SERVICE_ACCOUNT_JSON?: string;
   AUTH_BACKUP_TOKEN?: string;
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
@@ -486,11 +480,6 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
-  /** Named service-binding RPC; there is no public HTTP equivalent. */
-  async enqueueChatPush(event: ChatPushEvent): Promise<void> {
-    await enqueueChatPush(this.env, event);
-    this.ctx.waitUntil(runPushDeliveries(this.env).catch(() => undefined));
-  }
   async creditBalance(
     credentials: MarketClaimCredentials,
   ): Promise<CreditBalance | 'unauthorized'> {
@@ -1467,7 +1456,7 @@ export default {
       if (relationshipResponse) return relationshipResponse;
       const scheduleResponse = await handleCompanionSchedules(request, env, cors);
       if (scheduleResponse) return scheduleResponse;
-      const pushResponse = await handlePushRegistrations(request, env, cors);
+      const pushResponse = handleRetiredPushRegistrations(request, cors);
       if (pushResponse) return pushResponse;
       const memoryResponse = await handlePersonalMemories(request, env, cors);
       if (memoryResponse) return memoryResponse;
@@ -3551,7 +3540,8 @@ export default {
         )
           .bind(user.id, Date.now())
           .run();
-        // Stop queued pushes immediately, even if cross-service deletion needs cron retry.
+        // Rows left by the retired system push stay in D1 until the table is dropped; erase this
+        // account's device identifiers now, even if cross-service deletion needs cron retry.
         await env.DB.prepare('DELETE FROM push_registrations WHERE user_id=?').bind(user.id).run();
         try {
           await finalizeAccountDeletion(env, user.id);
@@ -3593,7 +3583,6 @@ export default {
           runAutoMemory(env, now),
           runConversationDigest(env, now),
           runTextBilling(env, now),
-          runPushDeliveries(env, now),
           runPendingAccountDeletions(env, now),
           runAgentRunMaintenance(env, now),
           recoverVoiceAttachmentAsr(
