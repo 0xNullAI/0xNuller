@@ -124,10 +124,7 @@ function RelationshipEditor({ characterId, characterName, onChange }: Relationsh
       aria-label="专属关系"
       className="space-y-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
     >
-      <p className="text-sm font-medium">与{characterName}的专属关系</p>
-      <p className="text-xs text-[var(--text-soft)]">
-        仅自己可见。称呼与共同约定随账号保存，不会发布到角色卡或群聊。
-      </p>
+      <p className="text-xs text-[var(--text-soft)]">仅自己可见，不会发布到角色卡。</p>
       {error && (
         <div role="alert" className="text-sm text-[var(--danger)]">
           {error}

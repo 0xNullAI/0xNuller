@@ -204,10 +204,7 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
       aria-label="关系记忆"
       className="space-y-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
     >
-      <p className="text-sm font-medium">关系记忆</p>
-      <p className="text-xs text-[var(--text-soft)]">
-        仅属于当前账号的这个角色关系；候选确认后才用于 AI 回答。
-      </p>
+      <p className="text-xs text-[var(--text-soft)]">只属于你和这个角色；确认后才会被 AI 使用。</p>
       <div className="space-y-2 rounded-lg bg-[var(--bg-soft)] p-3">
         <p className="text-sm font-medium">本聊天可见的个人资料</p>
         <p className="text-xs text-[var(--text-soft)]">账号级记忆默认不开放，可只对本聊天开放。</p>

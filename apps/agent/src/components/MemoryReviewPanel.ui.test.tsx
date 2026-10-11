@@ -91,7 +91,7 @@ it('shows candidate sources and rejects only the selected relationship memory', 
   render(<MemoryReviewPanel relationshipId="relationship-1" conversationId="c" />);
   expect(api.listPersonalMemories).toHaveBeenCalledWith('relationship-1');
   expect(await screen.findByText('一起看过电影')).toBeTruthy();
-  expect(screen.getByText(/仅属于当前账号的这个角色关系/)).toBeTruthy();
+  expect(screen.getByText(/只属于你和这个角色/)).toBeTruthy();
   expect(screen.getByText('来源')).toBeTruthy();
   expect(screen.getByText(/当前聊天 · 会话 c · 消息 message-a/)).toBeTruthy();
   expect(screen.getByText(/其他聊天 · 会话 other-c · 消息 message-b/)).toBeTruthy();
