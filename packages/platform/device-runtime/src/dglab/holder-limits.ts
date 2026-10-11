@@ -8,6 +8,7 @@ import {
   type PolicyRule,
 } from '@dg-kit/safety';
 import type { DeviceSafetySettings } from '@0xnullai/settings';
+import type { DgLabChannelLimits } from './device-limits.js';
 
 /**
  * The caps the device holder applies to every write, whatever module sent it.
@@ -54,6 +55,47 @@ const HOLDER_CONTEXT: ActionContext = {
   traceId: 'dglab-holder-limits',
 };
 
+/**
+ * The caps for one physical device: the global per-type caps, lowered by that device's own
+ * limits. `min()` only, so a device's own record can never loosen a global cap.
+ */
+export function applyDeviceOwnLimits(
+  limits: HolderSafetyLimits,
+  kind: string,
+  own: DgLabChannelLimits | null,
+): HolderSafetyLimits {
+  if (!own) return limits;
+  if (kind === 'coyote') {
+    return {
+      ...limits,
+      maxStrengthA: Math.min(limits.maxStrengthA, own.a),
+      maxStrengthB: Math.min(limits.maxStrengthB, own.b),
+    };
+  }
+  if (kind === 'opossum') {
+    return {
+      ...limits,
+      maxIntensityA: Math.min(limits.maxIntensityA, own.a),
+      maxIntensityB: Math.min(limits.maxIntensityB, own.b),
+    };
+  }
+  return limits;
+}
+
+/**
+ * The software caps a device's channels run under, as `{ a, b }`, normalized the way the kit
+ * rules normalize them (integer, 0..200), so a displayed cap is the enforced one.
+ */
+export function holderChannelLimits(limits: HolderSafetyLimits, kind: string): DgLabChannelLimits {
+  return kind === 'opossum'
+    ? { a: normalizeCap(limits.maxIntensityA), b: normalizeCap(limits.maxIntensityB) }
+    : { a: normalizeCap(limits.maxStrengthA), b: normalizeCap(limits.maxStrengthB) };
+}
+
+function normalizeCap(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(200, Math.round(value))) : 0;
+}
+
 /** Re-clamp one Coyote command against the latest device state and the shared caps. */
 export function clampCoyoteCommandToHolderLimits(
   command: DeviceCommand,
@@ -79,7 +121,29 @@ export function clampCoyoteCommandToHolderLimits(
       reasons.push(decision.reason);
     }
   }
+  const over = coyoteOutputAboveCap(current, deviceState, limits);
+  if (over) return { ok: false, reason: over };
   return { ok: true, command: current, clamped: reasons.length > 0, reasons };
+}
+
+/**
+ * A cap lowered below the running output is normally answered by a stop. If that stop has not
+ * landed yet, a write that would keep the channel at its old level (a new waveform, or a burst
+ * that restores to it) is refused; `start` and `adjustStrength` are clamped down instead.
+ */
+function coyoteOutputAboveCap(
+  command: DeviceCommand,
+  state: DeviceState,
+  limits: HolderSafetyLimits,
+): string | null {
+  if (command.type !== 'changeWave' && command.type !== 'burst') return null;
+  const { channel } = command;
+  const cap = Math.min(
+    channel === 'A' ? state.limitA : state.limitB,
+    channel === 'A' ? limits.maxStrengthA : limits.maxStrengthB,
+  );
+  const current = channel === 'A' ? state.strengthA : state.strengthB;
+  return current > cap ? `${channel} 通道当前强度高于上限 ${cap}，请先降低强度` : null;
 }
 
 /** Re-clamp one Opossum command against the latest device state and the shared caps. */
@@ -109,6 +173,14 @@ export function clampOpossumCommandToHolderLimits(
     if (durationMs !== current.durationMs) {
       current = { ...current, durationMs };
       reasons.push(`Burst 时长上限为 ${durationMs}ms`);
+    }
+  }
+  if (current.type === 'vibrateSetPattern' || current.type === 'vibrateBurst') {
+    const { channel } = current;
+    const cap = channel === 'A' ? limits.maxIntensityA : limits.maxIntensityB;
+    const level = channel === 'A' ? deviceState.intensityA : deviceState.intensityB;
+    if (level > cap) {
+      return { ok: false, reason: `负鼠 ${channel} 通道当前强度高于上限 ${cap}，请先降低强度` };
     }
   }
   return { ok: true, command: current, clamped: reasons.length > 0, reasons };

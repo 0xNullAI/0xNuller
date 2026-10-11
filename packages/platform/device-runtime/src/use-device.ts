@@ -219,16 +219,19 @@ export function useDevice({ moduleId, registry }: UseDeviceOptions) {
   );
 
   /**
-   * Set a channel's software cap. With no `deviceId` it applies to every host, including hosts
-   * attached later — a lowered cap must not quietly miss the second device.
+   * Set a Coyote channel's own limit: the same persisted per-device limit the settings page
+   * edits, so both show one number. With no `deviceId` it applies to every connected host — a
+   * lowered cap must not quietly miss the second device. The effective cap stays
+   * `min(global, own)`; lowering it below the running output stops that host in the registry.
    */
   const setLimit = useCallback(
     (channel: 'A' | 'B', value: number, deviceId?: string) => {
-      if (deviceId) session.coyoteById(deviceId)?.setLimit(channel, value);
-      else session.setCoyoteLimit(channel, value);
+      const targets = deviceId ? [deviceId] : session.getCoyoteSummaries().map(({ id }) => id);
+      const patch = channel === 'A' ? { a: value } : { b: value };
+      for (const id of targets) void registry.setOwnLimits(id, patch).catch(() => undefined);
       syncState();
     },
-    [session, syncState],
+    [registry, session, syncState],
   );
 
   /**

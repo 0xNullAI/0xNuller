@@ -573,8 +573,8 @@ export class DeviceSession {
       battery: state.battery ?? null,
       intensityA: state.intensityA,
       intensityB: state.intensityB,
-      limitA: this.opossumLimitA,
-      limitB: this.opossumLimitB,
+      limitA: this.opossumLimit('A'),
+      limitB: this.opossumLimit('B'),
       waveIdA: this.opossumWaveIdA,
       waveIdB: this.opossumWaveIdB,
       lastButtons: this.opossumLastButtons,
@@ -765,8 +765,12 @@ export class DeviceSession {
     void this.handle.executeOpossum(id, command).catch(ignore);
   }
 
+  /** The module cap, lowered by the holder's cap for the attached Opossum (its own limit). */
   private opossumLimit(channel: Channel): number {
-    return channel === 'A' ? this.opossumLimitA : this.opossumLimitB;
+    const module = channel === 'A' ? this.opossumLimitA : this.opossumLimitB;
+    const holder = this.opossum()?.limits;
+    if (!holder) return module;
+    return Math.min(module, channel === 'A' ? holder.a : holder.b);
   }
 
   private connectedCoyotes(): DGLabDevice[] {

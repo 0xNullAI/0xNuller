@@ -4,7 +4,7 @@ import {
   createWebBluetoothDgLabTransport,
   DgLabConnectionRegistry,
 } from '@0xnullai/device-runtime';
-import { loadDeviceSafety } from '@0xnullai/settings';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
 /**
  * The single entry point where a shell injects capabilities into modules.
@@ -78,6 +78,7 @@ function standaloneDgLabRegistry(): DgLabConnectionRegistry {
   standaloneRegistry ??= new DgLabConnectionRegistry({
     transport: createWebBluetoothDgLabTransport(),
     limits: loadDeviceSafety,
+    subscribeLimits: (listener) => subscribeDeviceSafety(() => listener()),
   });
   return standaloneRegistry;
 }

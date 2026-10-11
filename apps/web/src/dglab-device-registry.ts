@@ -1,5 +1,5 @@
 import { DgLabConnectionRegistry, type DgLabTransport } from '@0xnullai/device-runtime';
-import { loadDeviceSafety } from '@0xnullai/settings';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { reportStopFailure } from '@0xnullai/ui';
 
 export interface UnifiedShellDgLabRegistryOptions {
@@ -17,7 +17,11 @@ const STOP_FAILURE_LABEL = 'DG-Lab 设备';
  * Construct the one DG-Lab connection registry for a unified shell, before React render.
  *
  * Limits are read through `loadDeviceSafety()` at every write, so a lowered setting also applies
- * to work already queued. The registry's `dglab-devices` safety session lists nothing until a
+ * to work already queued; each device's own limits (`@0xnullai/settings` device limits) lower
+ * them further, and a change to either stops a device whose output is now above its cap. The
+ * settings page reads and edits per-device limits through `listDeviceLimits()`,
+ * `subscribeDeviceLimits()`, `setOwnLimits()` and `forgetDeviceLimits()` on this registry
+ * (`useNativeBridge().dglab`), with no lease. The registry's `dglab-devices` safety session lists nothing until a
  * module connects through it.
  */
 export function createUnifiedShellDgLabRegistry(
@@ -26,6 +30,7 @@ export function createUnifiedShellDgLabRegistry(
   const registry = new DgLabConnectionRegistry({
     transport: options.transport,
     limits: loadDeviceSafety,
+    subscribeLimits: (listener) => subscribeDeviceSafety(() => listener()),
   });
 
   if (options.attachNativeLifecycle) {

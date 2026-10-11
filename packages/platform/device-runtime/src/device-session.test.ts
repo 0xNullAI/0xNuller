@@ -437,3 +437,34 @@ describe('DeviceSession over the shared registry', () => {
     await vi.waitFor(() => expect(h.opossums[0]!.state.intensityA).toBe(20));
   });
 });
+
+describe('DeviceSession under per-device limits', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it('shows and clamps to each device own cap, the same value the settings page edits', async () => {
+    const h = harness();
+    registry = h.registry;
+    const session = moduleSession(h.registry);
+    h.pick('coyote', '47L121000', 'addr-1');
+    h.pick('coyote', '47L121000', 'addr-2');
+    h.pick('opossum', '47L130000', 'addr-3');
+    await session.connectDevice();
+    await session.connectDevice();
+    await session.connectDevice();
+    const [first, second] = session.getCoyoteSummaries();
+    await h.registry.setOwnLimits(first!.id, { a: 15 });
+    const opossumId = h.registry.list().find((device) => device.kind === 'opossum')!.id;
+    await h.registry.setOwnLimits(opossumId, { b: 8 });
+
+    expect(session.getCoyoteSummaries().map((coyote) => coyote.limitA)).toEqual([15, 50]);
+    expect(session.getOpossumSummary()).toMatchObject({ limitA: 50, limitB: 8 });
+
+    session.coyoteById(first!.id)!.setStrength('A', 45);
+    session.coyoteById(second!.id)!.setStrength('A', 45);
+    session.setOpossumIntensity('B', 45, 200);
+    await vi.waitFor(() => expect(h.coyotes[0]!.state.strengthA).toBe(15));
+    await vi.waitFor(() => expect(h.coyotes[1]!.state.strengthA).toBe(45));
+    await vi.waitFor(() => expect(h.opossums[0]!.state.intensityB).toBe(8));
+  });
+});

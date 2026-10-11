@@ -27,9 +27,11 @@ import type {
   DgLabSensorReading,
   DgLabTransport,
 } from './dglab-transport.js';
+import { deriveDgLabStableKey, type DgLabChannelLimits } from './device-limits.js';
 import {
   clampCoyoteCommandToHolderLimits,
   clampOpossumCommandToHolderLimits,
+  holderChannelLimits,
   type HolderSafetyLimits,
 } from './holder-limits.js';
 import { checkLeaseFence, type LeaseFence } from './lease-fence.js';
@@ -55,16 +57,31 @@ export class DgLabCommandRejectedError extends Error {
 
 export type DgLabReading = DgLabSensorReading | OpossumButtonEvent;
 
+interface DgLabSnapshotBase {
+  /** Opaque per-connection target id. A new pick of the same device gets a new one. */
+  id: string;
+  /** Opaque key that survives reconnects and restarts; only for remembered settings. */
+  stableKey: string;
+  name: string;
+  connected: boolean;
+}
+
+/**
+ * For output devices, `limits` is what the holder enforces on this device right now:
+ * `min(global type cap, the device's own cap)`. A Coyote's `state.limitA/limitB` already
+ * include it, so every reader of the device's soft limit sees the same number.
+ */
 export type DgLabDeviceSnapshot =
-  | { id: string; kind: 'coyote'; name: string; connected: boolean; state: DeviceState }
-  | { id: string; kind: 'opossum'; name: string; connected: boolean; state: OpossumState }
-  | { id: string; kind: DgLabSensorKind; name: string; connected: boolean; state: SensorState };
+  | (DgLabSnapshotBase & { kind: 'coyote'; state: DeviceState; limits: DgLabChannelLimits })
+  | (DgLabSnapshotBase & { kind: 'opossum'; state: OpossumState; limits: DgLabChannelLimits })
+  | (DgLabSnapshotBase & { kind: DgLabSensorKind; state: SensorState });
 
 export type CoyoteWriteResult = DeviceCommandResult & { interrupted?: true };
 export type OpossumWriteResult = OpossumCommandResult & { interrupted?: true };
 
 export interface PhysicalDeviceDeps {
   leaseSnapshot: () => DeviceLeaseSnapshot;
+  /** This device's caps (global, lowered by its own limits). Read at every write. */
   limits: () => HolderSafetyLimits;
   onChange: () => void;
 }
@@ -96,6 +113,8 @@ export class PhysicalDgLabDevice {
   readonly kind: DeviceKind;
   /** The picked device object. Identity (with its address) is how reconnects find this slot. */
   readonly source: BluetoothDeviceLike;
+  /** Derived once from the picked device; see `deriveDgLabStableKey`. */
+  readonly stableKey: string;
   private readonly clients: Clients;
   private readonly deps: PhysicalDeviceDeps;
   private readonly queue: SerialCommandQueue<FencedTask, unknown>;
@@ -113,6 +132,7 @@ export class PhysicalDgLabDevice {
     this.id = id;
     this.kind = kind;
     this.source = source;
+    this.stableKey = deriveDgLabStableKey(kind, source);
     this.deps = deps;
     this.clients = createClients(kind, transport);
     this.state =
@@ -136,12 +156,24 @@ export class PhysicalDgLabDevice {
 
   snapshot(): DgLabDeviceSnapshot {
     const name = this.state.deviceName || this.source.name || DEVICE_KIND_DISPLAY_NAME[this.kind];
-    const base = { id: this.id, name, connected: this.state.connected };
+    const base = { id: this.id, stableKey: this.stableKey, name, connected: this.state.connected };
     if (this.clients.kind === 'coyote') {
-      return { ...base, kind: 'coyote', state: { ...(this.state as DeviceState) } };
+      const limits = holderChannelLimits(this.deps.limits(), 'coyote');
+      const state = this.state as DeviceState;
+      return {
+        ...base,
+        kind: 'coyote',
+        limits,
+        state: {
+          ...state,
+          limitA: Math.min(state.limitA, limits.a),
+          limitB: Math.min(state.limitB, limits.b),
+        },
+      };
     }
     if (this.clients.kind === 'opossum') {
-      return { ...base, kind: 'opossum', state: { ...(this.state as OpossumState) } };
+      const limits = holderChannelLimits(this.deps.limits(), 'opossum');
+      return { ...base, kind: 'opossum', limits, state: { ...(this.state as OpossumState) } };
     }
     return { ...base, kind: this.clients.kind, state: { ...(this.state as SensorState) } };
   }
