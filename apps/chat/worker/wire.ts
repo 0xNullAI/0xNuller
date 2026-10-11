@@ -161,11 +161,11 @@ export interface WireGroup {
   name?: string;
   /** Whether the group is listed in the lobby. */
   public?: boolean;
-  /** Whether the group has an owner key on file at all. */
+  /** Whether the group is bound to an owner account. */
   owned?: boolean;
   /** Whether *this* connection proved ownership. Per-connection, never broadcast. */
   isOwner?: boolean;
-  /** The minted key, sent exactly once to the connection that created the group. */
+  /** Legacy: older workers sent a minted owner key once. New workers never send it. */
   ownerKey?: string;
 }
 
@@ -194,8 +194,8 @@ export interface WireInbound {
 /** sys frame sent from the DO to the client. */
 export interface WireSys {
   t: 'sys';
-  kind: 'joined' | 'left';
-  peerId: string;
+  kind: 'joined' | 'left' | 'owner-assigned' | 'closed' | 'membership-revoked';
+  peerId?: string;
 }
 
 /** history frame sent from the DO to the client. */

@@ -38,8 +38,7 @@ import { deleteRoomMedia, listRoomMedia } from './media';
 import {
   canAdministerGroup,
   enforceMessageRetention,
-  generateOwnerKey,
-  hashOwnerKey,
+  resolveGroupOwner,
   orphanMediaIds,
   type MediaStore,
   type MessageStore,
@@ -380,9 +379,9 @@ export class RoomDO extends DurableObject<Env> {
           att.membershipVersion = membership.version;
           ws.serializeAttachment(att);
         }
-        const ownerKey = await this.claimIfRequested(code, msg);
-        const owned = (await this.ctx.storage.get<string>('ownerKeyHash')) != null;
-        const isOwner = ownerKey != null || (await this.provesOwnership(code, msg.ownerKey));
+        const assignedOwner = await this.bindOwnerIfNeeded(code, msg, att.accountId);
+        const owned = (await this.ctx.storage.get<string>('ownerAccountId')) != null;
+        const isOwner = await this.canAdminister(code, att.accountId, msg.ownerKey);
 
         // Host = whoever currently runs the AI agent loop, and only that. It is a live role,
         // not ownership: the group outlives every peerId, so a host left over in storage from
@@ -418,10 +417,12 @@ export class RoomDO extends DurableObject<Env> {
             billingMode: await this.agentBillingMode(),
           }),
         );
-        this.sendAuthorized(
-          ws,
-          JSON.stringify(await this.groupFrame(code, { owned, isOwner, ownerKey })),
-        );
+        this.sendAuthorized(ws, JSON.stringify(await this.groupFrame(code, { owned, isOwner })));
+        if (assignedOwner === 'legacy') {
+          // A legacy group just got its first account owner. Tell everyone, so the members
+          // who are not the owner see why their settings controls are read-only.
+          this.broadcast({ t: 'sys', kind: 'owner-assigned', name: att.name });
+        }
         // Tell the other members that someone joined (and that the host moved, if it did).
         this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
         if (hostChanged) {
@@ -600,12 +601,14 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'membership-leave': {
         if (dm || !att.accountId || att.membershipVersion === undefined) return;
-        leaveGroupMembership(this.sql, att.accountId, att.membershipVersion, Date.now());
+        if (leaveGroupMembership(this.sql, att.accountId, att.membershipVersion, Date.now()))
+          await this.releaseOwnership(att.accountId);
         this.closeAccountSockets(att.accountId);
         return;
       }
       case 'membership': {
-        if (dm || !(await this.provesOwnership(await this.code(), msg.ownerKey))) return;
+        if (dm || !(await this.canAdminister(await this.code(), att.accountId, msg.ownerKey)))
+          return;
         this.ensureGroupMembership();
         if (!this.socketLeaseAlive(ws)) return;
         if (
@@ -647,7 +650,7 @@ export class RoomDO extends DurableObject<Env> {
         // Owner-only, and durable: the settings survive the session that changed them.
         const code = await this.code();
         if (
-          !(await this.canAdminister(code, att.peerId, msg.ownerKey)) ||
+          !(await this.canAdminister(code, att.accountId, msg.ownerKey)) ||
           !this.socketLeaseAlive(ws)
         )
           return;
@@ -711,11 +714,10 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'agent': {
         // Owner-only. The agent's device commands are authorized as ai:room on the host's
-        // authority, so whoever defines it must be the group's owner — which is now a durable
-        // key rather than "whoever joined first this session".
+        // authority, so whoever defines it must be the group's owner account.
         const code = await this.code();
         if (
-          !(await this.canAdminister(code, att.peerId, msg.ownerKey)) ||
+          !(await this.canAdminister(code, att.accountId, msg.ownerKey)) ||
           !this.socketLeaseAlive(ws)
         )
           return;
@@ -782,7 +784,7 @@ export class RoomDO extends DurableObject<Env> {
       case 'agent-billing': {
         if (dm || (msg.mode !== 'host-byok' && msg.mode !== 'managed')) return;
         const code = await this.code();
-        if (!(await this.canAdminister(code, att.peerId, msg.ownerKey))) return;
+        if (!(await this.canAdminister(code, att.accountId, msg.ownerKey))) return;
         if (
           !att.accountId ||
           !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)
@@ -1202,6 +1204,7 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.delete([
       'additionalAgents',
       'ownerKeyHash',
+      'ownerAccountId',
       'agent',
       'hostPeerId',
       'roomName',
@@ -1213,53 +1216,50 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   /**
-   * Mint the owner key when the creator asks for one, returning it exactly once.
-   *
-   * Gated on an explicit `claim` rather than "first hello wins": a client that predates
-   * ownership would otherwise silently claim a group and throw away the key it never read,
-   * leaving the group owned by nobody who can prove it. Without the claim the group simply
-   * stays unowned and falls back to host authority.
+   * Bind the group to an owner account when it has none yet. Runs only after the hello
+   * passed membership admission, so the owner is always an active signed-in member.
+   * Returns 'new' for a group created by this hello, 'legacy' when an older group got its
+   * first owner, or null when nothing changed.
    */
-  private async claimIfRequested(
+  private async bindOwnerIfNeeded(
     code: string,
     msg: Record<string, unknown>,
-  ): Promise<string | null> {
-    if (msg.claim !== true) return null;
-    if ((await this.ctx.storage.get<string>('ownerKeyHash')) != null) return null;
-    const key = generateOwnerKey();
-    await this.ctx.storage.put('ownerKeyHash', await hashOwnerKey(code, key));
-    return key;
-  }
-
-  private async provesOwnership(code: string, presentedKey: unknown): Promise<boolean> {
+    accountId: string | undefined,
+  ): Promise<'new' | 'legacy' | null> {
+    const ownerAccountId = (await this.ctx.storage.get<string>('ownerAccountId')) ?? null;
     const ownerKeyHash = (await this.ctx.storage.get<string>('ownerKeyHash')) ?? null;
-    if (!ownerKeyHash) return false;
-    return canAdministerGroup({
+    const owner = await resolveGroupOwner({
       code,
+      ownerAccountId,
       ownerKeyHash,
-      presentedKey,
-      senderPeerId: '',
-      hostPeerId: null,
+      senderAccountId: accountId,
+      claim: msg.claim === true,
+      presentedKey: msg.ownerKey,
     });
+    if (!owner) return null;
+    await this.ctx.storage.put('ownerAccountId', owner);
+    // The browser key was only a bridge to an account owner; it grants nothing from now on.
+    if (ownerKeyHash) await this.ctx.storage.delete('ownerKeyHash');
+    return msg.claim === true ? 'new' : 'legacy';
   }
 
   private async canAdminister(
     code: string,
-    senderPeerId: string,
+    senderAccountId: string | undefined,
     presentedKey: unknown,
   ): Promise<boolean> {
     return canAdministerGroup({
       code,
+      ownerAccountId: (await this.ctx.storage.get<string>('ownerAccountId')) ?? null,
+      senderAccountId,
       ownerKeyHash: (await this.ctx.storage.get<string>('ownerKeyHash')) ?? null,
       presentedKey,
-      senderPeerId,
-      hostPeerId: (await this.ctx.storage.get<string>('hostPeerId')) ?? null,
     });
   }
 
   private async groupFrame(
     code: string,
-    extra: { owned?: boolean; isOwner?: boolean; ownerKey?: string | null },
+    extra: { owned?: boolean; isOwner?: boolean },
   ): Promise<WireGroup> {
     const frame: WireGroup = {
       t: 'group',
@@ -1270,7 +1270,6 @@ export class RoomDO extends DurableObject<Env> {
     };
     if (extra.owned !== undefined) frame.owned = extra.owned;
     if (extra.isOwner !== undefined) frame.isOwner = extra.isOwner;
-    if (extra.ownerKey) frame.ownerKey = extra.ownerKey;
     return frame;
   }
 
@@ -1406,7 +1405,17 @@ export class RoomDO extends DurableObject<Env> {
       account,
     );
     this.sql.exec('DELETE FROM dm_read_cursors WHERE account_id=?', account);
+    await this.releaseOwnership(account);
     this.closeAccountSockets(account);
+  }
+
+  /**
+   * A deleted or departed owner must not leave the group ownerless forever: clear the
+   * binding so the next signed-in member to reconnect becomes the owner.
+   */
+  private async releaseOwnership(account: string): Promise<void> {
+    if ((await this.ctx.storage.get<string>('ownerAccountId')) === account)
+      await this.ctx.storage.delete('ownerAccountId');
   }
   /**
    * Extends a live socket's admission with a freshly minted ticket for the same account

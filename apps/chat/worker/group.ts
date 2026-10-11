@@ -6,25 +6,10 @@
 // SqlStorage and R2, and that tests implement over plain arrays.
 
 /**
- * Bytes of CSPRNG output behind a minted owner key (hex-encoded, so 32 characters).
+ * Hash a legacy owner key the way older Chat Workers stored it (`code:key`, SHA-256).
  *
- * 128 bits is the same class of secret as the room code itself, which is already the
- * only admission credential a private group has.
- */
-const OWNER_KEY_BYTES = 16;
-
-/** Mint an owner key. Handed to the creator once and never stored server-side. */
-export function generateOwnerKey(): string {
-  return hex(crypto.getRandomValues(new Uint8Array(OWNER_KEY_BYTES)));
-}
-
-/**
- * Hash an owner key for storage.
- *
- * The group code is mixed in as the salt so the same key presented for a different
- * group does not match, and so one stolen hash cannot be replayed anywhere else.
- * The key itself is 128 random bits, so the Chat Worker does not need a second secret
- * to protect a human-chosen value.
+ * New groups no longer mint keys; ownership belongs to an account. The hash stays so a
+ * legacy key holder can still prove ownership once and bind the group to their account.
  */
 export async function hashOwnerKey(code: string, key: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${code}:${key}`));
@@ -34,26 +19,52 @@ export async function hashOwnerKey(code: string, key: string): Promise<string> {
 /**
  * Who is allowed to change a group's settings.
  *
- * Owned group: only a presented key that hashes to the stored one. peerId means nothing
- * here — it lasts one session, the group does not.
+ * Product rule (2026-10-11): every group has exactly one owner, and that owner is an
+ * account. Once `ownerAccountId` is set, only that signed-in account administers the group;
+ * a browser-held owner key or the live host role grants nothing.
  *
- * Unowned group: falls back to the current host. Groups created by a client that predates
- * ownership never mint a key, and locking their creator out of their own group in the name
- * of a field their build does not send is not an upgrade. A group only ever becomes owned
- * by the connection that asked to claim it at creation, so this fallback cannot be used to
- * take an owned group away from its owner.
+ * A legacy group that has an owner key but no owner account yet still accepts the key, so
+ * the key holder can reconnect and bind the group to their account (see
+ * `resolveGroupOwner`). peerId and host never administer: they last one session.
  */
 export async function canAdministerGroup(params: {
   code: string;
+  ownerAccountId: string | null;
+  senderAccountId: string | undefined;
   ownerKeyHash: string | null;
   presentedKey: unknown;
-  senderPeerId: string;
-  hostPeerId: string | null;
 }): Promise<boolean> {
-  const { code, ownerKeyHash, presentedKey, senderPeerId, hostPeerId } = params;
-  if (!ownerKeyHash) return !!senderPeerId && senderPeerId === hostPeerId;
-  if (typeof presentedKey !== 'string' || !presentedKey) return false;
+  const { code, ownerAccountId, senderAccountId, ownerKeyHash, presentedKey } = params;
+  if (ownerAccountId) return !!senderAccountId && senderAccountId === ownerAccountId;
+  if (!ownerKeyHash || typeof presentedKey !== 'string' || !presentedKey) return false;
   return timingSafeEqual(await hashOwnerKey(code, presentedKey), ownerKeyHash);
+}
+
+/**
+ * Decide whether a signed-in member's hello binds the group to an owner account.
+ *
+ * - Already bound: nothing changes.
+ * - New group (`claim`) or legacy group with a key the member proves: the member's account.
+ * - Legacy group with neither an owner key nor an owner account: the first signed-in member
+ *   to reconnect becomes the owner, so no group is left without one.
+ * - Legacy group with an owner key the member does not prove: wait for the key holder.
+ */
+export async function resolveGroupOwner(params: {
+  code: string;
+  ownerAccountId: string | null;
+  ownerKeyHash: string | null;
+  senderAccountId: string | undefined;
+  claim: boolean;
+  presentedKey: unknown;
+}): Promise<string | null> {
+  const { code, ownerAccountId, ownerKeyHash, senderAccountId, claim, presentedKey } = params;
+  if (ownerAccountId || !senderAccountId) return null;
+  if (!ownerKeyHash) return senderAccountId;
+  if (claim) return null;
+  if (typeof presentedKey !== 'string' || !presentedKey) return null;
+  return timingSafeEqual(await hashOwnerKey(code, presentedKey), ownerKeyHash)
+    ? senderAccountId
+    : null;
 }
 
 /**

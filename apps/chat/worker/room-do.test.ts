@@ -245,13 +245,30 @@ it('starts idle timing on disconnect and reclaims through the scheduled alarm', 
   expect(r.sql.exec).toHaveBeenCalledWith('DELETE FROM messages');
 });
 
+/** Every account is an active member at version 1 and none is revoked. */
+function activeMembers(r: ReturnType<typeof room>) {
+  r.sql.exec.mockImplementation(((query: string, ...args: unknown[]) => ({
+    toArray: () =>
+      query.includes('group_account_revocations')
+        ? []
+        : query.includes('FROM group_memberships')
+          ? [{ account_id: args[0], name: '', state: 'active', version: 1, updated_at: 1 }]
+          : [],
+  })) as never);
+}
 it('rejects oversized room agent updates without truncating or replacing the persisted persona', async () => {
   const r = room();
   const original = { name: '旧名字', persona: '完整的人设' };
   r.values.set('agent', original);
-  r.values.set('hostPeerId', 'owner');
+  r.values.set('ownerAccountId', 'owner-account');
+  activeMembers(r);
   const ws = {
-    deserializeAttachment: () => ({ peerId: 'owner' }),
+    deserializeAttachment: () => ({
+      peerId: 'owner',
+      accountId: 'owner-account',
+      membershipVersion: 1,
+      indexRegistered: true,
+    }),
     send: vi.fn(),
   } as unknown as WebSocket;
   for (const agent of [
@@ -278,19 +295,35 @@ it('长期群不因闲置删除，但显式关闭后仍能完成旧清理流程'
   expect(await r.instance.recycleIdleRoom(Date.now() - ROOM_IDLE_MS)).toBe(true);
   expect(r.sql.exec).toHaveBeenCalledWith('DELETE FROM messages');
 });
-it('升级长期群仍要求群主权限，普通参与者不能更改保留策略', async () => {
+it('升级长期群仍要求群主账号，主持人和普通参与者都不能更改保留策略', async () => {
   const r = room();
   r.values.set('public', false);
-  r.values.set('hostPeerId', 'owner');
-  const makeSocket = (peerId: string) =>
-    ({ deserializeAttachment: () => ({ peerId }), send: vi.fn() }) as unknown as WebSocket;
+  r.values.set('ownerAccountId', 'owner-account');
+  // The live host runs the AI loop; it is not the owner and must not administer.
+  r.values.set('hostPeerId', 'host');
+  activeMembers(r);
+  const makeSocket = (peerId: string, accountId: string) =>
+    ({
+      deserializeAttachment: () => ({
+        peerId,
+        accountId,
+        membershipVersion: 1,
+        indexRegistered: true,
+      }),
+      send: vi.fn(),
+    }) as unknown as WebSocket;
+  for (const [peerId, accountId] of [
+    ['guest', 'guest-account'],
+    ['host', 'host-account'],
+  ]) {
+    await r.instance.webSocketMessage(
+      makeSocket(peerId!, accountId!),
+      JSON.stringify({ t: 'group', persistentHistory: true }),
+    );
+    expect(r.values.get('persistentHistory')).not.toBe(true);
+  }
   await r.instance.webSocketMessage(
-    makeSocket('guest'),
-    JSON.stringify({ t: 'group', persistentHistory: true }),
-  );
-  expect(r.values.get('persistentHistory')).not.toBe(true);
-  await r.instance.webSocketMessage(
-    makeSocket('owner'),
+    makeSocket('owner', 'owner-account'),
     JSON.stringify({ t: 'group', persistentHistory: true }),
   );
   expect(r.values.get('persistentHistory')).toBe(true);
@@ -318,14 +351,28 @@ it('不转发参与者伪造的服务器历史与会话管理帧', async () => {
 it('stores at most one AI, clears legacy extras on updates, and enforces exact host identity', async () => {
   const r = room();
   r.values.set('persistentHistory', true);
-  r.sql.exec.mockReturnValue({ toArray: () => [{}] } as never);
+  activeMembers(r);
   r.values.set('hostPeerId', 'owner');
+  r.values.set('hostAccountId', 'owner-account');
+  r.values.set('ownerAccountId', 'owner-account');
   const owner = {
-    deserializeAttachment: () => ({ peerId: 'owner', name: 'Owner' }),
+    deserializeAttachment: () => ({
+      peerId: 'owner',
+      name: 'Owner',
+      accountId: 'owner-account',
+      membershipVersion: 1,
+      indexRegistered: true,
+    }),
     send: vi.fn(),
   } as unknown as WebSocket;
   const guest = {
-    deserializeAttachment: () => ({ peerId: 'guest', name: 'Guest' }),
+    deserializeAttachment: () => ({
+      peerId: 'guest',
+      name: 'Guest',
+      accountId: 'guest-account',
+      membershipVersion: 1,
+      indexRegistered: true,
+    }),
     send: vi.fn(),
   } as unknown as WebSocket;
   r.sockets.push(owner, guest);
@@ -926,4 +973,59 @@ it('confirms a retried message the sender already saved to that sender only', as
     },
   );
   expect(peer.send).not.toHaveBeenCalled();
+});
+
+it('只有群主账号能修改群 AI 计费方式，主持人不能', async () => {
+  const r = room('group');
+  activeMembers(r);
+  r.values.set('ownerAccountId', 'owner-account');
+  r.values.set('hostPeerId', 'host');
+  r.values.set('hostAccountId', 'host-account');
+  const socket = (peerId: string, accountId: string) =>
+    ({
+      deserializeAttachment: () => ({
+        peerId,
+        accountId,
+        membershipVersion: 1,
+        indexRegistered: true,
+      }),
+      send: vi.fn(),
+    }) as unknown as WebSocket;
+  await r.instance.webSocketMessage(
+    socket('host', 'host-account'),
+    JSON.stringify({ t: 'agent-billing', mode: 'managed' }),
+  );
+  expect(r.values.get('agentBillingMode')).toBeUndefined();
+  await r.instance.webSocketMessage(
+    socket('owner', 'owner-account'),
+    JSON.stringify({ t: 'agent-billing', mode: 'managed' }),
+  );
+  expect(r.values.get('agentBillingMode')).toBe('managed');
+});
+it('群主退群或注销后释放群主身份，下一位重新进群的成员接任', async () => {
+  const r = room('group');
+  r.values.set('ownerAccountId', 'owner-account');
+  activeMembers(r);
+  const memberQueries = r.sql.exec.getMockImplementation()!;
+  r.sql.exec.mockImplementation(((query: string, ...args: unknown[]) =>
+    query.includes("SET state='left'")
+      ? { toArray: () => [{ account_id: 'owner-account' }] }
+      : memberQueries(query, ...args)) as never);
+  const owner = {
+    deserializeAttachment: () => ({
+      peerId: 'owner',
+      accountId: 'owner-account',
+      membershipVersion: 1,
+      indexRegistered: true,
+    }),
+    send: vi.fn(),
+    close: vi.fn(),
+  } as unknown as WebSocket;
+  r.sockets.push(owner);
+  await r.instance.webSocketMessage(owner, JSON.stringify({ t: 'membership-leave' }));
+  expect(r.values.get('ownerAccountId')).toBeUndefined();
+
+  r.values.set('ownerAccountId', 'owner-account');
+  await r.instance.revokeGroupAccount('group', 'owner-account', 'deletion-1');
+  expect(r.values.get('ownerAccountId')).toBeUndefined();
 });

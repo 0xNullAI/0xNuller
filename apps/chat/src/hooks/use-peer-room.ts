@@ -238,7 +238,6 @@ export function usePeerRoom(displayName: string) {
   const [groupMemberships, setGroupMemberships] = useState<GroupMembership[]>([]);
   const [groupName, setGroupName] = useState('');
   /** The group has an owner key on file at all (groups made by older clients do not). */
-  const [groupOwned, setGroupOwned] = useState(false);
   /** This browser holds the key and the server accepted it. */
   const [isOwner, setIsOwner] = useState(false);
   /**
@@ -378,7 +377,6 @@ export function usePeerRoom(displayName: string) {
     setAgentBillingMode('host-byok');
     setIsOwner(false);
     setGroupMemberships([]);
-    setGroupOwned(false);
     setIsPublic(false);
     setGroupName('');
     setDmPeerUserId(null);
@@ -548,7 +546,6 @@ export function usePeerRoom(displayName: string) {
           if (typeof data.persistentHistory === 'boolean')
             setPersistentHistory(data.persistentHistory);
           if (typeof data.public === 'boolean') setIsPublic(data.public);
-          if (typeof data.owned === 'boolean') setGroupOwned(data.owned);
           if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
           if (typeof data.name === 'string') {
             setGroupName(data.name);
@@ -1179,11 +1176,10 @@ export function usePeerRoom(displayName: string) {
     /**
      * May this browser change the group's settings and its agent?
      *
-     * Mirrors the server's rule exactly: the owner key if the group has one, otherwise the
-     * current host — which is what keeps a group created by a client too old to know about
-     * ownership administrable by the people in it.
+     * Mirrors the server's rule: only the group's owner account. The live host role
+     * (whoever runs the AI loop) never grants administration.
      */
-    canManageGroup: isOwner || (!groupOwned && hostPeerId === selfId),
+    canManageGroup: isOwner,
   };
 }
 
