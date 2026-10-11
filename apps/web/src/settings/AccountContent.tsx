@@ -191,11 +191,6 @@ export function AccountContent({
             </div>
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm text-[var(--text-faint)]">@{user.username}</span>
-              {credit ? (
-                <span className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--accent)]">
-                  {credit.available} Credit
-                </span>
-              ) : null}
             </div>
             <div className="mt-1 flex items-center gap-2">
               <button
