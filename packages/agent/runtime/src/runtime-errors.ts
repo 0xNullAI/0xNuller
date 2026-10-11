@@ -22,12 +22,16 @@ export function throwIfAborted(signal?: AbortSignal): void {
   throw error;
 }
 
+const CREDIT_EXHAUSTED_MESSAGE = 'Credit 不足，可以充值或在「我的 → AI → 高级」使用自己的 API。';
+
 export function normalizeAssistantErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error ?? '未知错误');
 
   if (/API key is required/i.test(raw)) {
     return '还没有配置 API Key，请先在设置里填写';
   }
+
+  if (/Credit\s*不足|insufficient[_ ]credit/i.test(raw)) return CREDIT_EXHAUSTED_MESSAGE;
 
   const statusMatch = raw.match(
     /\b(?:API error|HTTP error|Provider HTTP error)\s+(\d{3})\b|(?:HTTP 错误|模型服务 HTTP 错误)\s+(\d{3})/i,
@@ -36,6 +40,7 @@ export function normalizeAssistantErrorMessage(error: unknown): string {
     const status = Number(statusMatch[1] ?? statusMatch[2]);
     const detail = providerDetail(raw);
     if (status === 400) return `请求被服务端拒绝，请检查模型、参数或接口兼容性${detail}`;
+    if (status === 402) return CREDIT_EXHAUSTED_MESSAGE;
     if (status === 401) return `API Key 无效或已过期，请检查设置${detail}`;
     if (status === 403) return `当前接口访问被拒绝，请检查账号权限、地区限制或代理${detail}`;
     if (status === 429) return '请求过于频繁，已被限流，请稍后再试';

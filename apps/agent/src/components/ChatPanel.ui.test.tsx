@@ -429,3 +429,12 @@ it('shows a failed reply as a page notice outside the saved messages', () => {
   rerender(<ChatPanel {...props} busy failedReplyText="模型服务暂时不可用" />);
   expect(screen.queryByText('模型服务暂时不可用')).toBeNull();
 });
+
+it('asks for per-chat device consent above the composer only while a device is connected', () => {
+  mediaApi.list.mockResolvedValue({ items: [] });
+  const props = { ...makeProps(), accountId: 'alice' };
+  const { rerender } = render(<ChatPanel {...props} />);
+  expect(screen.queryByText('允许本聊天控制设备？')).toBeNull();
+  rerender(<ChatPanel {...props} deviceState={{ ...createEmptyDeviceState(), connected: true }} />);
+  expect(screen.getByText('允许本聊天控制设备？')).toBeTruthy();
+});

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryReviewPanel } from './MemoryReviewPanel';
 
@@ -37,7 +37,11 @@ afterEach(cleanup);
 
 it('keeps long-chat compression as a separate opt-in from fact extraction', async () => {
   render(<MemoryReviewPanel relationshipId="r" conversationId="c" />);
-  const checkbox = await screen.findByLabelText('允许压缩这段关系的较早聊天');
+  const advanced = screen.getByRole('region', { name: '高级' });
+  const checkbox = await within(advanced).findByLabelText('允许压缩这段关系的较早聊天');
+  expect(within(advanced).getByLabelText('记忆层级')).toBeTruthy();
+  expect(within(advanced).queryByLabelText('允许本聊天读取账号级记忆')).toBeNull();
+  expect(document.querySelector('details')).toBeNull();
   fireEvent.click(checkbox);
   await waitFor(() =>
     expect(api.setConversationDigestPreference).toHaveBeenCalledWith('r', true, 0),
@@ -88,7 +92,7 @@ it('shows candidate sources and rejects only the selected relationship memory', 
   expect(api.listPersonalMemories).toHaveBeenCalledWith('relationship-1');
   expect(await screen.findByText('一起看过电影')).toBeTruthy();
   expect(screen.getByText(/仅属于当前账号的这个角色关系/)).toBeTruthy();
-  fireEvent.click(screen.getByText(/来源：同一私人关系的/));
+  expect(screen.getByText('来源')).toBeTruthy();
   expect(screen.getByText(/当前聊天 · 会话 c · 消息 message-a/)).toBeTruthy();
   expect(screen.getByText(/其他聊天 · 会话 other-c · 消息 message-b/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '拒绝候选 一起看过电影' }));

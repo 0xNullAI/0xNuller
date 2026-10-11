@@ -55,6 +55,7 @@ import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
 import { MediaJobPreview } from './CompanionMediaPanel.js';
 import { VoiceTranscriptionControl } from './VoiceTranscriptionControl.js';
+import { DeviceConsentBar } from './DeviceConsentBar.js';
 
 interface ChatPanelProps {
   accountId: string | null;
@@ -948,6 +949,11 @@ export function ChatPanel({
           </ConversationTimeline>
 
           <ConversationComposer>
+            <DeviceConsentBar
+              accountId={accountId}
+              conversationId={activeSessionId}
+              deviceConnected={deviceState.connected || opossumState.connected}
+            />
             {pendingVoice && (
               <div className="space-y-2 rounded-xl border border-[var(--surface-border)] bg-[var(--bg-soft)] p-3">
                 <p className="text-sm">录音待发送</p>

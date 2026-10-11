@@ -36,6 +36,7 @@ import {
   useOpenShellSettings,
 } from '@0xnullai/ui';
 import { RelationshipPanel } from './RelationshipPanel';
+import { AdvancedSettingsArea } from './AdvancedSettings';
 const MemoryReviewPanel = lazy(() =>
   import('./MemoryReviewPanel').then((m) => ({ default: m.MemoryReviewPanel })),
 );
@@ -188,6 +189,7 @@ export function RelationshipAccess({
           group: '角色与关系',
           title: '关系记忆与重要人物',
           detail: '共同经历、长期记忆和重要的人',
+          advanced: true,
           unavailable: !relationshipId ? '先保存专属关系' : undefined,
           content:
             accountId && relationshipId ? (
@@ -211,6 +213,7 @@ export function RelationshipAccess({
           group: '角色与关系',
           title: '角色形象与手绘头像',
           detail: '选择形象，或亲手给 AI 画头像',
+          advanced: true,
           unavailable: !relationshipId ? '先保存专属关系' : undefined,
           content: relationshipId ? (
             <CharacterAppearancePanel
@@ -224,6 +227,7 @@ export function RelationshipAccess({
           group: '聊天功能',
           title: '定时联系与通知',
           detail: '设置主动联系的时间与方式',
+          advanced: true,
           unavailable: !relationshipId
             ? '先保存专属关系'
             : !conversationId
@@ -244,6 +248,7 @@ export function RelationshipAccess({
           group: '聊天功能',
           title: '任务与文件',
           detail: '管理这段聊天的任务与资料',
+          advanced: true,
           unavailable: !relationshipId
             ? '先保存专属关系'
             : !conversationId
@@ -288,7 +293,7 @@ export function RelationshipAccess({
             >
               <h3 className="font-medium">本聊天的设备权限</h3>
               <p className="my-2 text-xs text-[var(--text-soft)]">
-                设备上限由“设备安全”统一设置。开启后，这段聊天才可请求控制；执行时仍检查连接、租约和授权，停止始终可用。这项选择只保存在当前设备。
+                开启后本聊天可请求控制设备，停止始终可用。
               </p>
               {accountId && conversationId ? (
                 <label className="flex items-center gap-2">
@@ -399,6 +404,8 @@ interface RelationshipSettingsPage {
   title: string;
   detail: string;
   unavailable?: string;
+  /** The page ends with one flat 高级 section that its panels fill. */
+  advanced?: boolean;
   content: ReactNode;
 }
 
@@ -456,7 +463,13 @@ function RelationshipSettingsPages({
           {title} · {selected.detail}
         </p>
         <div className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
-          <Suspense fallback={<p role="status">正在读取…</p>}>{selected.content}</Suspense>
+          <Suspense fallback={<p role="status">正在读取…</p>}>
+            {selected.advanced ? (
+              <AdvancedSettingsArea>{selected.content}</AdvancedSettingsArea>
+            ) : (
+              selected.content
+            )}
+          </Suspense>
         </div>
       </section>
     );

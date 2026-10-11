@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RelationshipAccess, type RelationshipAccessHandle } from './RelationshipAccess';
@@ -42,8 +42,29 @@ vi.mock('@0xnullai/settings', () => ({
   setDeviceConversationAccess: auth.permission,
   subscribeDeviceConversationAccess: () => () => undefined,
 }));
-vi.mock('./MemoryReviewPanel', () => ({ MemoryReviewPanel: () => <p>记忆编辑内容</p> }));
-vi.mock('./MemoryFactTools', () => ({ MemoryFactTools: () => <p>人物别名与事实纠错</p> }));
+vi.mock('./MemoryReviewPanel', async () => {
+  const { AdvancedSettings } = await import('./AdvancedSettings');
+  return {
+    MemoryReviewPanel: () => (
+      <>
+        <p>记忆编辑内容</p>
+        <AdvancedSettings>
+          <p>记忆层级内容</p>
+        </AdvancedSettings>
+      </>
+    ),
+  };
+});
+vi.mock('./MemoryFactTools', async () => {
+  const { AdvancedSettings } = await import('./AdvancedSettings');
+  return {
+    MemoryFactTools: () => (
+      <AdvancedSettings>
+        <p>人物别名与事实纠错</p>
+      </AdvancedSettings>
+    ),
+  };
+});
 vi.mock('./CompanionLifePanel', () => ({ CompanionLifePanel: () => <p>重要人物内容</p> }));
 vi.mock('./CharacterAppearancePanel', () => ({
   CharacterAppearancePanel: () => <p>形象编辑内容</p>,
@@ -108,8 +129,14 @@ it('分组入口保留所有功能，只挂载当前二级页并可返回', asyn
     fireEvent.click(screen.getByRole('button', { name: /关系记忆与重要人物/ })),
   );
   expect(screen.getByText('记忆编辑内容')).toBeTruthy();
-  expect(screen.getByText('人物别名与事实纠错')).toBeTruthy();
   expect(screen.getByText('重要人物内容')).toBeTruthy();
+  // Core rows first, then one flat 高级 section that every panel on the page fills.
+  const advanced = screen.getAllByRole('region', { name: '高级' });
+  expect(advanced).toHaveLength(1);
+  expect(within(advanced[0]!).getByText('记忆层级内容')).toBeTruthy();
+  expect(within(advanced[0]!).getByText('人物别名与事实纠错')).toBeTruthy();
+  expect(within(advanced[0]!).queryByText('重要人物内容')).toBeNull();
+  expect(document.querySelector('details')).toBeNull();
   expect(screen.queryByText('形象编辑内容')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '返回聊天设置' }));
   expect(screen.queryByText('记忆编辑内容')).toBeNull();

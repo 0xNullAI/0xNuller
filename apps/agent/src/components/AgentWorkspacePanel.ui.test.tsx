@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AgentWorkspacePanel } from './AgentWorkspacePanel';
 const api = vi.hoisted(() => ({
@@ -70,4 +70,19 @@ it('uploads decoded file content into the current conversation without executing
     ),
   );
   expect(await screen.findByRole('button', { name: '查看文件 notes.md' })).toBeTruthy();
+});
+it('keeps plan status in the flat 高级 section and has no manual refresh button', async () => {
+  render(<AgentWorkspacePanel conversationId="conversation" />);
+  fireEvent.change(await screen.findByLabelText('任务计划标题'), { target: { value: '读书会' } });
+  fireEvent.change(screen.getByLabelText('任务计划步骤'), { target: { value: '选择书籍' } });
+  const advanced = screen.getByRole('region', { name: '高级' });
+  fireEvent.change(within(advanced).getByLabelText('计划状态'), { target: { value: 'active' } });
+  expect(screen.queryByRole('button', { name: '刷新工作区' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '保存计划' }));
+  await waitFor(() =>
+    expect(api.saveAgentTask).toHaveBeenCalledWith(
+      'conversation',
+      expect.objectContaining({ title: '读书会', status: 'active' }),
+    ),
+  );
 });

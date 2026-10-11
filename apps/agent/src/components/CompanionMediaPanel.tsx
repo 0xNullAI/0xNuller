@@ -147,10 +147,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
   return (
     <section className="space-y-3 rounded-xl border border-white/10 p-3">
       <h3 className="font-medium">角色图片与视频</h3>
-      <p className="text-xs text-gray-400">
-        使用统一
-        Credit。图片保存到你的私有相册，可选作角色头像。勾选后可引用已导入的角色与当前场景文字；仍不保证人物外观一致。
-      </p>
+      <p className="text-xs text-gray-400">使用 Credit 生成，图片保存到你的私有相册。</p>
       <select
         aria-label="媒体类型"
         value={kind}

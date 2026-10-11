@@ -1,6 +1,7 @@
 import { CharacterAvatarDrawing } from './CharacterAvatarDrawing';
 import { useEffect, useState, useRef } from 'react';
 import { Button } from '@0xnullai/ui';
+import { AdvancedSettings } from './AdvancedSettings';
 import {
   currentAuthUserId,
   listPhotos,
@@ -200,41 +201,43 @@ function AppearanceEditor({ relationshipId }: { relationshipId: string }) {
               </select>
             </label>
           )}
-          <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
-            <p className="text-sm font-medium">视频通话中的形象</p>
-            <p className="text-xs text-[var(--text-faint)]">摄像头画面上以 2D 贴图显示。</p>
-            <label className="block text-sm">
-              叠加大小 {draft.scale}%
-              <input
-                aria-label="叠加大小"
-                type="range"
-                min={15}
-                max={70}
-                value={draft.scale}
-                onChange={(event) => setDraft({ ...draft, scale: Number(event.target.value) })}
-              />
-            </label>
-            <label className="block text-sm">
-              叠加位置
-              <select
-                className="ml-2 rounded border p-1"
-                value={draft.position}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    position: event.target.value as CharacterAppearance['position'],
-                  })
-                }
-              >
-                <option value="left">左</option>
-                <option value="center">中</option>
-                <option value="right">右</option>
-              </select>
-            </label>
-            <Button size="sm" disabled={busy} onClick={() => void save()}>
-              {busy ? '正在保存…' : '保存视频形象'}
-            </Button>
-          </div>
+          <AdvancedSettings>
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">视频通话中的形象</h4>
+              <p className="text-xs text-[var(--text-faint)]">摄像头画面上以 2D 贴图显示。</p>
+              <label className="block text-sm">
+                叠加大小 {draft.scale}%
+                <input
+                  aria-label="叠加大小"
+                  type="range"
+                  min={15}
+                  max={70}
+                  value={draft.scale}
+                  onChange={(event) => setDraft({ ...draft, scale: Number(event.target.value) })}
+                />
+              </label>
+              <label className="block text-sm">
+                叠加位置
+                <select
+                  className="ml-2 rounded border p-1"
+                  value={draft.position}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      position: event.target.value as CharacterAppearance['position'],
+                    })
+                  }
+                >
+                  <option value="left">左</option>
+                  <option value="center">中</option>
+                  <option value="right">右</option>
+                </select>
+              </label>
+              <Button size="sm" disabled={busy} onClick={() => void save()}>
+                {busy ? '正在保存…' : '保存视频形象'}
+              </Button>
+            </div>
+          </AdvancedSettings>
         </>
       )}
     </section>

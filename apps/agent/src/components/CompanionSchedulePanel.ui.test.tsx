@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompanionSchedulePanel } from './CompanionSchedulePanel';
 const api = vi.hoisted(() => ({
@@ -60,6 +60,22 @@ describe('companion schedule panel', () => {
       ),
     );
     expect(screen.getByText(/0 Credit/)).toBeTruthy();
+  });
+  it('keeps time zone, quiet hours, and daily limit in the flat 高级 section of the same form', async () => {
+    render(<CompanionSchedulePanel accountId="alice" relationshipId="r" conversationId="c" />);
+    const advanced = screen.getByRole('region', { name: '高级' });
+    const zone = within(advanced).getByLabelText('时区') as HTMLInputElement;
+    await waitFor(() => expect(zone.disabled).toBe(false));
+    expect(zone.form).toBe(screen.getByRole('button', { name: '添加定时消息' }).closest('form'));
+    fireEvent.change(zone, { target: { value: 'Asia/Tokyo' } });
+    fireEvent.change(within(advanced).getByLabelText('24小时上限'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('消息模板'), { target: { value: '早安' } });
+    fireEvent.submit(screen.getByRole('button', { name: '添加定时消息' }).closest('form')!);
+    await waitFor(() =>
+      expect(api.saveCompanionSchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ timeZone: 'Asia/Tokyo', dailyLimit: 2, template: '早安' }),
+      ),
+    );
   });
   it('requires explicit budget and context consent for actual model generation', async () => {
     api.listCompanionSchedules.mockResolvedValue({

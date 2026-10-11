@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   listAgentTasks,
   saveAgentTask,
@@ -12,6 +12,7 @@ import {
 } from '@0xnullai/auth';
 import { Button, Input } from '@0xnullai/ui';
 import { readTextUpload } from './read-text-upload';
+import { AdvancedSettings } from './AdvancedSettings';
 export function AgentWorkspacePanel({ conversationId }: { conversationId: string }) {
   return <Workspace key={conversationId} conversationId={conversationId} />;
 }
@@ -30,6 +31,7 @@ function Workspace({ conversationId }: { conversationId: string }) {
   const [notice, setNotice] = useState('');
   const [reload, setReload] = useState(0);
   const alive = useRef(false);
+  const formId = useId();
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -90,19 +92,18 @@ function Workspace({ conversationId }: { conversationId: string }) {
       aria-label="会话工作区"
       className="space-y-4 rounded border border-[var(--surface-border)] p-3"
     >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">会话工作区</h3>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={refresh}>
-          刷新工作区
-        </Button>
-      </div>
+      <h3 className="text-sm font-medium">会话工作区</h3>
       <p className="text-xs text-[var(--text-soft)]">
-        计划和资料仅属于当前私人会话。AI
-        可以阅读文件、整理待确认记忆和协助安排步骤；计划完成记录不等于已执行外部操作。
+        计划和资料仅属于本聊天；完成记录不代表已执行外部操作。
       </p>
       {error && (
         <p role="alert" className="text-sm text-[var(--danger)]">
-          {error}
+          {error}{' '}
+          {!loaded && (
+            <Button size="sm" variant="ghost" onClick={refresh}>
+              重新读取
+            </Button>
+          )}
         </p>
       )}
       {notice && (
@@ -111,7 +112,7 @@ function Workspace({ conversationId }: { conversationId: string }) {
         </p>
       )}
       {!loaded ? (
-        <p className="text-xs">{error ? '暂时无法读取工作区，请刷新重试' : '正在读取工作区…'}</p>
+        <p className="text-xs">{error ? '暂时无法读取工作区' : '正在读取工作区…'}</p>
       ) : (
         <>
           <div className="max-h-72 space-y-2 overflow-y-auto">
@@ -194,6 +195,7 @@ function Workspace({ conversationId }: { conversationId: string }) {
             ))}
           </div>
           <form
+            id={formId}
             className="space-y-2"
             onSubmit={(event) => {
               event.preventDefault();
@@ -236,22 +238,6 @@ function Workspace({ conversationId }: { conversationId: string }) {
               onChange={(event) => setSteps(event.target.value)}
               className="w-full rounded border border-[var(--surface-border)] bg-transparent p-2 text-sm"
             />
-            <label className="text-sm">
-              计划状态
-              <select
-                aria-label="计划状态"
-                value={status}
-                disabled={busy}
-                onChange={(event) => setStatus(event.target.value as AgentTask['status'])}
-                className="ml-2 rounded border bg-transparent p-1"
-              >
-                {Object.entries(STATUS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
             <div className="flex gap-2">
               <Button type="submit" size="sm" disabled={busy || !title.trim() || !steps.trim()}>
                 保存计划
@@ -335,6 +321,26 @@ function Workspace({ conversationId }: { conversationId: string }) {
               </div>
             )}
           </div>
+          <AdvancedSettings>
+            {/* Portaled outside the form element; `form` keeps the select in the submit. */}
+            <label className="block text-sm">
+              计划状态
+              <select
+                aria-label="计划状态"
+                form={formId}
+                value={status}
+                disabled={busy}
+                onChange={(event) => setStatus(event.target.value as AgentTask['status'])}
+                className="ml-2 rounded border bg-transparent p-1"
+              >
+                {Object.entries(STATUS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </AdvancedSettings>
         </>
       )}
     </section>

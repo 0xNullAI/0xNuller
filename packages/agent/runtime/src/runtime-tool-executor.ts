@@ -66,6 +66,13 @@ export interface DeviceExecutionGateInput {
   command: DeviceCommand | OpossumCommand | { type: 'setIndicatorColor'; color: number };
 }
 
+/**
+ * Shown when the execution gate rejects a call before any confirmation dialog. The gate is a
+ * single boolean (per-chat consent and module lease), so the text names both causes.
+ */
+const DEVICE_ACCESS_MISSING_REASON =
+  '本聊天还没有设备权限，请先允许本聊天控制设备，并确认设备由 Agent 控制。';
+
 export type DeviceExecutionGate = (input: DeviceExecutionGateInput) => boolean | Promise<boolean>;
 
 export interface RuntimeToolExecutorOptions {
@@ -504,6 +511,16 @@ export class RuntimeToolExecutor {
       return this.denyToolCall(session, toolCall, resolution.denyReason, context);
     }
 
+    // Ask the gate before a confirmation dialog so the user never approves a call that consent
+    // or lease would reject anyway. The final boundary check below still runs after approval.
+    if (
+      needsConfirm &&
+      !(await this.canExecuteDeviceCommand(session, context, toolCall, 'opossum', command))
+    ) {
+      return this.denyToolCall(session, toolCall, DEVICE_ACCESS_MISSING_REASON, context);
+    }
+    throwIfAborted(abortSignal);
+
     if (needsConfirm) {
       const permission = await this.options.permission.request({
         context,
@@ -689,6 +706,22 @@ export class RuntimeToolExecutor {
     if (resolution.denyReason !== undefined) {
       return this.denyToolCall(session, toolCall, resolution.denyReason, context);
     }
+
+    // Same pre-dialog check as Opossum; the final boundary check below is unchanged.
+    if (
+      needsConfirm &&
+      !(await this.canExecuteDeviceCommand(
+        session,
+        context,
+        toolCall,
+        'coyote',
+        command,
+        targetId ?? undefined,
+      ))
+    ) {
+      return this.denyToolCall(session, toolCall, DEVICE_ACCESS_MISSING_REASON, context);
+    }
+    throwIfAborted(abortSignal);
 
     if (needsConfirm) {
       const permission = await this.options.permission.request({

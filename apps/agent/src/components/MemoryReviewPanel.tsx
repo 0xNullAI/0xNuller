@@ -17,6 +17,7 @@ import {
   type PersonalMemoryKind,
 } from '@0xnullai/auth';
 import { Button, Input } from '@0xnullai/ui';
+import { AdvancedSettings } from './AdvancedSettings';
 import {
   notifyRelationshipMemoryChanged,
   subscribeRelationshipMemoryChanged,
@@ -205,18 +206,11 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
     >
       <p className="text-sm font-medium">关系记忆</p>
       <p className="text-xs text-[var(--text-soft)]">
-        仅这段私人关系可用。手动整理会生成当前聊天原文、同一关系近期聊天的分段原文，以及“记住：”“我们约定：”候选。确认前不会用于
-        AI 回答；请逐条核对真实经历与角色扮演。
-      </p>
-      <p className="text-xs text-[var(--text-soft)]">
-        下方的候选和已确认记忆仅属于当前账号的这个角色关系，不会发布到角色卡，也不会自动给其他角色、真人或群聊。
+        仅属于当前账号的这个角色关系；候选确认后才用于 AI 回答。
       </p>
       <div className="space-y-2 rounded-lg bg-[var(--bg-soft)] p-3">
         <p className="text-sm font-medium">本聊天可见的个人资料</p>
-        <p className="text-xs text-[var(--text-soft)]">
-          这段关系自己的记忆可用于本聊天。设置中的账号级记忆默认不开放；你可以只对当前 AI
-          聊天开放，关闭后后续回复不再读取。
-        </p>
+        <p className="text-xs text-[var(--text-soft)]">账号级记忆默认不开放，可只对本聊天开放。</p>
         {conversationId && accountAccess ? (
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -268,10 +262,7 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
       </div>
       <div className="space-y-2 rounded-lg bg-[var(--bg-soft)] p-3">
         <p className="text-sm font-medium">自动发现待确认记忆</p>
-        <p className="text-xs text-[var(--text-soft)]">
-          开启后，服务器会把这段关系中已有和新发的用户消息分批发给 MiniMax 分析。
-          只生成私人候选；逐条确认后才进入长期记忆。关闭后不再分析新消息，已有记忆仍可手动删除。
-        </p>
+        <p className="text-xs text-[var(--text-soft)]">开启后用 MiniMax 分析消息，确认后才保存。</p>
         {autoSettings ? (
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -298,11 +289,6 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
           </label>
         ) : (
           <p className="text-xs">正在读取自动记忆设置…</p>
-        )}
-        {autoSettings && (
-          <p className="text-xs text-[var(--text-faint)]">
-            开启后会逐批分析已有与新聊天；候选经你确认后才使用。
-          </p>
         )}
         {autoSettings?.item.enabled && autoSettings.progress && (
           <p className="text-xs text-[var(--text-soft)]" role="status">
@@ -331,44 +317,6 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
           >
             刷新候选
           </Button>
-        )}
-      </div>
-      <div className="space-y-2 rounded-lg bg-[var(--bg-soft)] p-3">
-        <p className="text-sm font-medium">长对话概述</p>
-        <p className="text-xs text-[var(--text-soft)]">
-          单独开启后，服务器会把这段关系中较早的双方文字消息分批发给 MiniMax 压缩，
-          帮助长对话接续。概述可能有误，不会成为已确认的长期记忆；关闭会删除已有概述。
-        </p>
-        {digestSettings ? (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={digestSettings.item.enabled}
-              disabled={busy || (!digestSettings.available && !digestSettings.item.enabled)}
-              onChange={(event) => {
-                const enabled = event.target.checked;
-                void run(async () => {
-                  const result = await setConversationDigestPreference(
-                    relationshipId,
-                    enabled,
-                    digestSettings.item.version,
-                  );
-                  if (alive.current) setDigestSettings(result);
-                });
-              }}
-            />
-            允许压缩这段关系的较早聊天
-          </label>
-        ) : (
-          <p className="text-xs">正在读取摘要设置…</p>
-        )}
-        {digestSettings && !digestSettings.available && (
-          <p className="text-xs text-[var(--text-faint)]">服务暂未配置，当前无法开启。</p>
-        )}
-        {digestError && (
-          <p role="alert" className="text-xs text-[var(--danger)]">
-            {digestError}
-          </p>
         )}
       </div>
       {conversationId && (
@@ -438,25 +386,17 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
                 </p>
                 <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
                 {memorySources(item).length > 0 ? (
-                  <details className="text-xs text-[var(--text-soft)]">
-                    <summary className="cursor-pointer">
-                      来源：同一私人关系的{' '}
-                      {new Set(memorySources(item).map((source) => source.conversationId)).size}{' '}
-                      段聊天、
-                      {memorySources(item).length} 条用户消息
-                    </summary>
-                    <p className="mt-1">
-                      下列编号用于核对来源；这里不能逐条跳转原消息。任一来源删改后会撤除整条记忆。
-                    </p>
-                    <ol className="mt-1 list-inside list-decimal space-y-1 break-all">
+                  <div className="text-xs text-[var(--text-soft)]">
+                    <p>来源</p>
+                    <ul className="break-all">
                       {memorySources(item).map((source) => (
                         <li key={`${source.conversationId}:${source.messageId}`}>
                           {source.conversationId === conversationId ? '当前聊天' : '其他聊天'} ·
                           会话 {source.conversationId} · 消息 {source.messageId}
                         </li>
                       ))}
-                    </ol>
-                  </details>
+                    </ul>
+                  </div>
                 ) : (
                   <p className="text-xs text-[var(--text-soft)]">
                     来源：用户手动保存，无聊天消息引用。
@@ -507,22 +447,6 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
           >
             <p className="text-sm">{editing ? '修改后确认记忆' : '手动记下真实信息'}</p>
             <label className="block text-sm">
-              记忆层级
-              <select
-                aria-label="记忆层级"
-                disabled={busy}
-                value={tier}
-                onChange={(event) => setTier(event.target.value as typeof tier)}
-                className="ml-2 rounded border bg-transparent p-1"
-              >
-                {Object.entries(TIERS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
               内容类型
               <select
                 aria-label="内容类型"
@@ -568,6 +492,63 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
           </form>
         </>
       )}
+      <AdvancedSettings>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">
+            记忆层级
+            <select
+              aria-label="记忆层级"
+              disabled={busy}
+              value={tier}
+              onChange={(event) => setTier(event.target.value as typeof tier)}
+              className="ml-2 rounded border bg-transparent p-1"
+            >
+              {Object.entries(TIERS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium">长对话概述</h4>
+          <p className="text-xs text-[var(--text-soft)]">
+            开启后用 MiniMax 压缩较早聊天，不算长期记忆；关闭会删除已有概述。
+          </p>
+          {digestSettings ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={digestSettings.item.enabled}
+                disabled={busy || (!digestSettings.available && !digestSettings.item.enabled)}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  void run(async () => {
+                    const result = await setConversationDigestPreference(
+                      relationshipId,
+                      enabled,
+                      digestSettings.item.version,
+                    );
+                    if (alive.current) setDigestSettings(result);
+                  });
+                }}
+              />
+              允许压缩这段关系的较早聊天
+            </label>
+          ) : (
+            <p className="text-xs">正在读取摘要设置…</p>
+          )}
+          {digestSettings && !digestSettings.available && (
+            <p className="text-xs text-[var(--text-faint)]">服务暂未配置，当前无法开启。</p>
+          )}
+          {digestError && (
+            <p role="alert" className="text-xs text-[var(--danger)]">
+              {digestError}
+            </p>
+          )}
+        </div>
+      </AdvancedSettings>
     </section>
   );
 }

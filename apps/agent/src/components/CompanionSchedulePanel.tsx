@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   listCompanionSchedules,
   saveCompanionSchedule,
@@ -9,6 +9,7 @@ import {
   type CompanionSchedule,
   type CompanionScheduleInput,
 } from '@0xnullai/auth';
+import { AdvancedSettings } from './AdvancedSettings';
 
 interface SchedulePanelProps {
   accountId: string;
@@ -50,6 +51,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
   const locked = useRef(true);
+  const formId = useId();
   useEffect(() => {
     const version = ++generation.current;
     locked.current = true;
@@ -160,10 +162,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
   }
   return (
     <section aria-label="定时陪伴消息" className="space-y-3 p-3 text-sm">
-      <p>
-        设置由服务器发送的定时问候或跟进消息。网页关闭后也可执行；可选择固定模板或付费 AI
-        生成。用户未回复时会逐次延后，最多一周；不调用设备。
-      </p>
+      <p>定时发送问候，网页关闭也会执行。</p>
       {error && (
         <div role="alert">
           {error}{' '}
@@ -244,6 +243,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
         ))}
       </div>
       <form
+        id={formId}
         className="space-y-2"
         onSubmit={(event) => {
           event.preventDefault();
@@ -374,54 +374,6 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
               ))}
             </div>
           )}
-          <label className="block">
-            时区{' '}
-            <input
-              aria-label="时区"
-              required
-              value={timeZone}
-              onChange={(event) => setZone(event.target.value)}
-              className="max-w-full rounded border bg-transparent"
-            />
-          </label>
-          <div className="flex flex-wrap gap-3">
-            <label>
-              安静开始{' '}
-              <input
-                aria-label="安静开始"
-                type="time"
-                value={quietStart}
-                onChange={(event) => setQuietStart(event.target.value)}
-              />
-            </label>
-            <label>
-              安静结束{' '}
-              <input
-                aria-label="安静结束"
-                type="time"
-                value={quietEnd}
-                onChange={(event) => setQuietEnd(event.target.value)}
-              />
-            </label>
-          </div>
-          <p className="text-xs">
-            安静时段内顺延。开始与结束相同时不限制。夏令时不存在的一次性时间需重选，每周任务跳过该次；重复小时只发一次。
-          </p>
-          <label className="block">
-            账号24小时上限{' '}
-            <select
-              aria-label="24小时上限"
-              value={dailyLimit}
-              onChange={(event) => setLimit(Number(event.target.value))}
-            >
-              {[1, 2, 3].map((n) => (
-                <option key={n} value={n}>
-                  {n} 条
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="text-xs">账号内两条消息至少间隔30分钟。超过频率上限会顺延。</p>
           <div className="flex gap-3">
             <button type="submit" disabled={!template.trim()}>
               {editing ? '保存修改' : '添加定时消息'}
@@ -440,6 +392,66 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
           </div>
         </fieldset>
       </form>
+      <AdvancedSettings>
+        {/* Portaled outside the form element; `form` keeps these fields in submit and validation. */}
+        <div className="space-y-2 text-sm">
+          <h4 className="font-medium">定时消息的时区与频率</h4>
+          <label className="block">
+            时区{' '}
+            <input
+              aria-label="时区"
+              form={formId}
+              disabled={busy}
+              required
+              value={timeZone}
+              onChange={(event) => setZone(event.target.value)}
+              className="max-w-full rounded border bg-transparent"
+            />
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <label>
+              安静开始{' '}
+              <input
+                aria-label="安静开始"
+                form={formId}
+                disabled={busy}
+                type="time"
+                value={quietStart}
+                onChange={(event) => setQuietStart(event.target.value)}
+              />
+            </label>
+            <label>
+              安静结束{' '}
+              <input
+                aria-label="安静结束"
+                form={formId}
+                disabled={busy}
+                type="time"
+                value={quietEnd}
+                onChange={(event) => setQuietEnd(event.target.value)}
+              />
+            </label>
+          </div>
+          <p className="text-xs">安静时段内顺延；开始与结束相同时不限制。</p>
+          <label className="block">
+            账号24小时上限{' '}
+            <select
+              aria-label="24小时上限"
+              form={formId}
+              disabled={busy}
+              value={dailyLimit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+            >
+              {[1, 2, 3].map((n) => (
+                <option key={n} value={n}>
+                  {n} 条
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-xs">两条消息至少间隔 30 分钟，超出上限会顺延。</p>
+        </div>
+      </AdvancedSettings>
     </section>
   );
 }

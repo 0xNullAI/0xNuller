@@ -53,9 +53,11 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// The tools render flat inside the 高级 section; nothing needs to be unfolded first.
 function openEditor() {
   render(<MemoryFactTools relationshipId="relationship-1" />);
-  fireEvent.click(screen.getByText('人物别名与事实纠错'));
+  expect(screen.getByRole('region', { name: '高级' })).toBeTruthy();
+  expect(document.querySelector('details')).toBeNull();
 }
 
 it('only requests people and memories inside the selected relationship and links with server versions', async () => {

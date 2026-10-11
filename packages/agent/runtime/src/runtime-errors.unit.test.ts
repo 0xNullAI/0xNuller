@@ -15,4 +15,13 @@ describe('normalizeAssistantErrorMessage', () => {
       'API Key 无效或已过期，请检查设置',
     );
   });
+
+  it.each(['Provider HTTP error 402: 402 {"error":"Credit 不足"}', 'Credit 不足', 'HTTP 错误 402'])(
+    'points to top-up or an own API when Credit is exhausted: %s',
+    (raw) => {
+      expect(normalizeAssistantErrorMessage(new Error(raw))).toBe(
+        'Credit 不足，可以充值或在「我的 → AI → 高级」使用自己的 API。',
+      );
+    },
+  );
 });

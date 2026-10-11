@@ -367,4 +367,70 @@ describe('RuntimeToolExecutor uncertain outcomes', () => {
       expect.objectContaining({ kind: 'tool-unknown', toolCallId: 'vibrate-interrupted' }),
     );
   });
+
+  it('checks per-chat consent and lease before showing a confirmation dialog', async () => {
+    const queue = { enqueue: vi.fn(async () => ({ state: session.deviceState })) };
+    const permission = { request: vi.fn(async () => ({ type: 'allow' })) };
+    const gate = vi.fn(async () => false);
+    const executor = new RuntimeToolExecutor({
+      device: { getState: async () => session.deviceState },
+      queue,
+      permission,
+      toolRegistry: { summarizeCommand: () => undefined },
+      policyEngine: { evaluate: () => ({ type: 'require-confirm', reason: '需要确认' }) },
+      toolCallConfig: resolveToolCallConfig(),
+      deviceExecutionGate: gate,
+      emit: vi.fn(),
+      logger: { warn: vi.fn(), error: vi.fn() },
+      traceStore: { append: vi.fn(async () => ({})) },
+    } as unknown as RuntimeToolExecutorOptions);
+    const output = await executor['executeDeviceCommand']({
+      session,
+      context,
+      toolCall: { id: 'start-no-consent', name: 'shock_start', args: {} },
+      command: { type: 'start', channel: 'A', strength: 10, waveform: 'pulse' } as never,
+    });
+    expect(JSON.parse(output)).toMatchObject({
+      error: expect.stringContaining('本聊天还没有设备权限'),
+      _meta: { kind: 'tool-denied' },
+    });
+    expect(permission.request).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+
+    // A stop never waits on consent, lease, or a dialog.
+    await executor['executeDeviceCommand']({
+      session,
+      context,
+      toolCall: { id: 'stop-no-consent', name: 'shock_stop', args: {} },
+      command: { type: 'stop', channel: 'A' },
+    });
+    expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ type: 'stop' }));
+    expect(gate).toHaveBeenCalledTimes(1);
+  });
+
+  it('still rechecks the gate after approval and fails closed when it was lost', async () => {
+    const queue = { enqueue: vi.fn(async () => ({ state: session.deviceState })) };
+    const gate = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const permission = { request: vi.fn(async () => ({ type: 'allow' })) };
+    const executor = new RuntimeToolExecutor({
+      opossum: { getState: async () => ({ connected: true }) },
+      opossumQueue: queue,
+      permission,
+      opossumPolicyEngine: { evaluate: () => ({ type: 'require-confirm', reason: '需要确认' }) },
+      deviceExecutionGate: gate,
+      emit: vi.fn(),
+      logger: { warn: vi.fn(), error: vi.fn() },
+      traceStore: { append: vi.fn(async () => ({})) },
+    } as unknown as RuntimeToolExecutorOptions);
+    const output = await executor['executeOpossumCommand']({
+      session,
+      context,
+      toolCall: { id: 'vibrate-lost', name: 'vibrate_start', args: {} },
+      command: { type: 'vibrateStart', channel: 'A', intensity: 10 } as never,
+    });
+    expect(permission.request).toHaveBeenCalledOnce();
+    expect(gate).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(output).error).toBe('当前模块已失去设备控制权');
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
 });

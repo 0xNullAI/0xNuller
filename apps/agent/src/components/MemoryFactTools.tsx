@@ -12,6 +12,7 @@ import {
   type PersonalMemory,
 } from '@0xnullai/auth';
 import { Button, Input } from '@0xnullai/ui';
+import { AdvancedSettings } from './AdvancedSettings';
 import {
   notifyRelationshipMemoryChanged,
   subscribeRelationshipMemoryChanged,
@@ -21,17 +22,18 @@ interface Props {
   relationshipId: string;
 }
 
-/** Optional tools for explicit person disambiguation and fact correction in one private relationship. */
+/**
+ * Optional tools for explicit person disambiguation and fact correction in one private
+ * relationship. They live in the page's flat 高级 section.
+ */
 export function MemoryFactTools({ relationshipId }: Props) {
-  const [open, setOpen] = useState(false);
   return (
-    <details
-      className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="cursor-pointer text-sm font-medium">人物别名与事实纠错</summary>
-      {open && <Editor key={relationshipId} relationshipId={relationshipId} />}
-    </details>
+    <AdvancedSettings>
+      <section aria-label="人物别名与事实纠错" className="space-y-2">
+        <h4 className="text-sm font-medium">人物别名与事实纠错</h4>
+        <Editor key={relationshipId} relationshipId={relationshipId} />
+      </section>
+    </AdvancedSettings>
   );
 }
 
@@ -103,9 +105,9 @@ function Editor({ relationshipId }: Props) {
   const selectedReplacement = activeMemories.find((memory) => memory.id === replacementId);
 
   return (
-    <div className="mt-3 space-y-4 text-sm">
+    <div className="space-y-4 text-sm">
       <p className="text-xs text-[var(--text-soft)]">
-        这些别名只用于这段关系内已授权记忆的检索，不读取通讯录或朋友圈；同名人物可分别保存。纠错会让旧事实退出后续回答，并保留修订记录。
+        别名只用于本关系的记忆检索；纠错会保留修订记录。
       </p>
       {error && (
         <p role="alert" className="text-xs text-[var(--danger)]">
@@ -344,47 +346,44 @@ function Editor({ relationshipId }: Props) {
                 </Button>
               </div>
             )}
-            <details className="space-y-2">
-              <summary className="cursor-pointer text-xs text-[var(--text-soft)]">
-                关联已经保存的新事实
-              </summary>
-              <p className="text-xs text-[var(--text-soft)]">
-                如果正确事实已另行保存，可在这里把旧事实替换为它。两条必须属于这段关系。
-              </p>
-              <select
-                aria-label="正确的新事实"
-                value={replacementId}
-                disabled={busy}
-                onChange={(event) => setReplacementId(event.target.value)}
-              >
-                <option value="">选择新事实</option>
-                {activeMemories.map((memory) => (
-                  <option key={memory.id} value={memory.id}>
-                    {memory.title} · {memory.content.slice(0, 60)}
-                  </option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                disabled={busy || !selectedOld || !selectedReplacement || oldId === replacementId}
-                onClick={() =>
-                  void run(async () => {
-                    const result = await supersedeMemoryFact(selectedOld!, selectedReplacement!);
-                    setMemories(
-                      (items) =>
-                        items?.map((item) => (item.id === result.item.id ? result.item : item)) ??
-                        [],
-                    );
-                    notifyRelationshipMemoryChanged(relationshipId);
-                    setOldId('');
-                    setReplacementId('');
-                    setNotice('旧事实已退出后续 AI 回答；新事实仍可编辑或删除');
-                  })
-                }
-              >
-                确认替换旧事实
-              </Button>
-            </details>
+          </div>
+          <div className="space-y-2 border-t border-[var(--surface-border)] pt-3">
+            <h4 className="font-medium">关联已经保存的新事实</h4>
+            <p className="text-xs text-[var(--text-soft)]">
+              正确事实已另行保存时，在这里用它替换旧事实。
+            </p>
+            <select
+              aria-label="正确的新事实"
+              value={replacementId}
+              disabled={busy}
+              onChange={(event) => setReplacementId(event.target.value)}
+            >
+              <option value="">选择新事实</option>
+              {activeMemories.map((memory) => (
+                <option key={memory.id} value={memory.id}>
+                  {memory.title} · {memory.content.slice(0, 60)}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              disabled={busy || !selectedOld || !selectedReplacement || oldId === replacementId}
+              onClick={() =>
+                void run(async () => {
+                  const result = await supersedeMemoryFact(selectedOld!, selectedReplacement!);
+                  setMemories(
+                    (items) =>
+                      items?.map((item) => (item.id === result.item.id ? result.item : item)) ?? [],
+                  );
+                  notifyRelationshipMemoryChanged(relationshipId);
+                  setOldId('');
+                  setReplacementId('');
+                  setNotice('旧事实已退出后续 AI 回答；新事实仍可编辑或删除');
+                })
+              }
+            >
+              确认替换旧事实
+            </Button>
           </div>
         </>
       )}

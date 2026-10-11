@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   account: 'alice',
@@ -41,6 +41,14 @@ afterEach(() => {
   state.listeners.clear();
 });
 describe('drawing appearance persistence', () => {
+  it('keeps the video-call overlay controls in the flat 高级 section', async () => {
+    render(<CharacterAppearancePanel relationshipId="relation" />);
+    await screen.findByRole('button', { name: '给 AI 画头像' });
+    const advanced = screen.getByRole('region', { name: '高级' });
+    expect(within(advanced).getByLabelText('叠加大小')).toBeTruthy();
+    expect(within(advanced).getByRole('button', { name: '保存视频形象' })).toBeTruthy();
+    expect(within(advanced).queryByRole('button', { name: '给 AI 画头像' })).toBeNull();
+  });
   it('uploads privately and changes appearance only after explicit drawing confirmation', async () => {
     state.upload.mockResolvedValue({ id: 'drawn-photo', caption: 'drawing' });
     state.save.mockResolvedValue({
