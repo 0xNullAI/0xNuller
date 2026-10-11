@@ -445,7 +445,7 @@ export default function App() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}
@@ -460,6 +460,12 @@ export default function App() {
           onConnect={device.connectDevice}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
+          onDisconnect={(targetId) => {
+            // The same registry paths as the shell bar: each stops the output before the link drops.
+            const target = outputTargets.find((candidate) => candidate.id === targetId);
+            if (target?.kind === 'coyote') return device.disconnectCoyote(target.coyote.id);
+            if (target?.kind === 'opossum') return device.disconnectOpossum();
+          }}
         />
         <EmbeddedDevicePanel />
       </div>

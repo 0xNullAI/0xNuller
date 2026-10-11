@@ -192,25 +192,25 @@ describe('shared DG-Lab connection across Control, Playground and Chat', () => {
     for (const moduleId of ['control', 'playground', 'chat']) {
       expect(safetySessionById(moduleId)?.devices?.() ?? []).toEqual([]);
     }
-    // The bar polls once a second; one chip, one disconnect button.
+    // The bar polls once a second; the shared device appears as exactly one chip.
     await waitFor(
       () =>
         expect(
-          container.querySelector('#shl-device-bar')?.querySelectorAll('[aria-label^="断开"]'),
+          container.querySelector('#shl-device-bar')?.textContent?.match(/郊狼/g) ?? [],
         ).toHaveLength(1),
       { timeout: 2_000 },
     );
   });
 
-  it('shows the shared device without an owner tag, and its ✕ only on 设备', async () => {
+  it('shows the shared device without an owner tag or a bar ✕ on any page', async () => {
     const control = renderApp('control');
     await act(async () => {
       await safetySessionById('control')!.connect!();
     });
     const bar = () => control.container.querySelector('#shl-device-bar');
-    await waitFor(() => expect(bar()?.querySelectorAll('[aria-label^="断开"]')).toHaveLength(1), {
-      timeout: 2_000,
-    });
+    await waitFor(() => expect(bar()?.textContent).toContain('郊狼'), { timeout: 2_000 });
+    // On 设备 the device card's 断开 is the one disconnect control; the bar does not repeat it.
+    expect(bar()?.querySelectorAll('[aria-label^="断开"]')).toHaveLength(0);
     // The registry session's label is not a module that owns the device.
     expect(bar()?.textContent).not.toContain('DG-Lab 设备');
     control.unmount();

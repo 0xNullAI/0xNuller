@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CoyoteSummary } from '@0xnullai/device-runtime';
 import {
@@ -63,6 +63,7 @@ describe('设备页', () => {
         onConnect={onConnect}
         onAdjust={vi.fn()}
         onTogglePlay={vi.fn()}
+        onDisconnect={vi.fn()}
       />,
     );
 
@@ -91,12 +92,15 @@ describe('设备页', () => {
         onConnect={vi.fn()}
         onAdjust={vi.fn()}
         onTogglePlay={vi.fn()}
+        onDisconnect={vi.fn()}
       />,
     );
 
     expect(screen.getByRole('combobox', { name: '当前设备' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '波形' })).toBeTruthy();
-    expect(screen.getByText('A 4 · B 0')).toBeTruthy();
+    const first = screen.getByRole('article', { name: '郊狼 1' });
+    expect(within(first).getByLabelText('A 通道强度').textContent).toBe('4');
+    expect(within(first).getByLabelText('B 通道强度').textContent).toBe('0');
     fireEvent.change(screen.getByRole('combobox', { name: '当前设备' }), {
       target: { value: 'coyote:host-b' },
     });
@@ -114,12 +118,35 @@ describe('设备页', () => {
         onConnect={vi.fn()}
         onAdjust={vi.fn()}
         onTogglePlay={vi.fn()}
+        onDisconnect={vi.fn()}
       />,
     );
 
     expect(screen.queryByRole('combobox', { name: '当前设备' })).toBeNull();
     expect(screen.getByRole('heading', { name: '波形' })).toBeTruthy();
-    expect(screen.getByText('A 4 · B 0')).toBeTruthy();
+    expect(screen.getByLabelText('A 通道强度').textContent).toBe('4');
+    expect(screen.getAllByText('上限 30')).toHaveLength(2);
+  });
+
+  it('设备卡上停止始终可用，断开只针对这台设备', async () => {
+    const target: OutputTarget = { id: 'coyote:host-a', kind: 'coyote', label: '郊狼', coyote };
+    const onDisconnect = vi.fn();
+    render(
+      <OutputDeviceSection
+        targets={[target]}
+        selected={target}
+        onSelect={vi.fn()}
+        panelForTarget={panel}
+        onConnect={vi.fn()}
+        onAdjust={vi.fn()}
+        onTogglePlay={vi.fn()}
+        onDisconnect={onDisconnect}
+      />,
+    );
+    // Stop lives in the shell device bar on every page; the card keeps only disconnect.
+    expect(screen.queryByRole('button', { name: '停止全部输出' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '断开郊狼' }));
+    await waitFor(() => expect(onDisconnect).toHaveBeenCalledWith('coyote:host-a'));
   });
 
   it('外部切换选中目标时只滚动设备卡，不让旧设备卡与当前控制台错位', () => {
@@ -134,6 +161,7 @@ describe('设备页', () => {
       onConnect: vi.fn(),
       onAdjust: vi.fn(),
       onTogglePlay: vi.fn(),
+      onDisconnect: vi.fn(),
     };
     const view = render(<OutputDeviceSection {...props} selected={targets[0] ?? null} />);
     const carousel = screen.getByLabelText('选择输出设备') as HTMLDivElement;
