@@ -7,7 +7,6 @@ import {
   Database,
   Info,
   LayoutTemplate,
-  Bell,
   SlidersHorizontal,
   ShieldAlert,
   Settings2,
@@ -29,7 +28,6 @@ import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
 import { AdminContent } from './AdminContent';
 import { AboutTab } from './AboutTab';
-import { NotificationsTab } from './NotificationsTab';
 import { AdvancedSettingsPage } from './AdvancedSettingsPage';
 import { SettingsGroup, SettingsRow } from './settings-list';
 
@@ -50,9 +48,8 @@ const DEFERRED_TABS = [
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
-  { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: GeneralTab, order: 10 },
+  { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: null, order: 10 },
   { id: 'memory', label: '个人记忆', icon: Database, Component: null, order: 15 },
-  { id: 'notifications', label: '通知', icon: Bell, Component: null, order: 16 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
   { id: 'scenes', label: '角色与场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
@@ -64,13 +61,7 @@ const TABS = [
 /** Pages listed on the 高级设置 page instead of the overview. */
 /** Settings of the open conversation: reached from its header only, never listed under 我的. */
 const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
-const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
-  'memory',
-  'scenes',
-  'agent-waveforms',
-  'agent-data',
-  'admin',
-]);
+const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms', 'agent-data', 'admin']);
 
 export function SettingsPanel({
   initialTab = 'overview',
@@ -92,7 +83,12 @@ export function SettingsPanel({
 }) {
   const initialAiSection: AiSettingsSection | undefined =
     initialTab === 'ai-video' ? 'video' : undefined;
-  const tab = initialTab.startsWith('ai-') ? 'ai' : initialTab;
+  // 通知 now lives inside 通用; older links to /settings/notifications land there.
+  const tab = initialTab.startsWith('ai-')
+    ? 'ai'
+    : initialTab === 'notifications'
+      ? 'appearance'
+      : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
@@ -228,8 +224,8 @@ export function SettingsPanel({
                 <Suspense fallback={<p role="status">正在读取个人记忆…</p>}>
                   <PersonalMemoryContent key={user.id} initialChat={initialMemoryChat} />
                 </Suspense>
-              ) : resolvedTab === 'notifications' ? (
-                <NotificationsTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
+              ) : resolvedTab === 'appearance' ? (
+                <GeneralTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
               ) : resolvedTab === 'advanced' ? (
                 <AdvancedSettingsPage entries={advancedItems} onNavigate={onNavigateTab} />
               ) : resolvedTab === 'ai' ? (

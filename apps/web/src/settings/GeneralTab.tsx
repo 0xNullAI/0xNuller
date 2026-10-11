@@ -1,6 +1,7 @@
 import { useTheme } from '@0xnullai/ui';
 import { loadLocale, updateLocale, type AppLocale } from '@0xnullai/settings';
 import { useEffect, useState } from 'react';
+import { NotificationSettings } from './NotificationSettings';
 
 const THEMES = [
   { value: 'auto', label: '跟随系统' },
@@ -8,7 +9,7 @@ const THEMES = [
   { value: 'light', label: '浅色' },
 ] as const;
 
-export function GeneralTab() {
+export function GeneralTab({ accountId }: { accountId: string | null }) {
   const { mode, setMode } = useTheme();
   const [locale, setLocale] = useState<AppLocale>(loadLocale);
 
@@ -56,6 +57,8 @@ export function GeneralTab() {
           <option value="ja-JP">日本語</option>
         </select>
       </section>
+
+      <NotificationSettings accountId={accountId} />
     </div>
   );
 }

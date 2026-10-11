@@ -7,7 +7,6 @@ import { SettingsPanel } from './SettingsPanel';
 vi.mock('@0xnullai/auth', () => ({ avatarSrc: () => null }));
 vi.mock('./AccountContent', () => ({ AccountContent: () => <div>账户内容</div> }));
 vi.mock('./AdminContent', () => ({ AdminContent: () => <div>管理内容</div> }));
-vi.mock('./NotificationsTab', () => ({ NotificationsTab: () => <div>通知内容</div> }));
 vi.mock('./PersonalMemoryContent', () => ({ PersonalMemoryContent: () => <div>记忆内容</div> }));
 vi.mock('./AiTab', () => ({ AiTab: () => <div>AI 内容</div> }));
 vi.mock('./GeneralTab', () => ({ GeneralTab: () => <div>通用内容</div> }));
@@ -36,26 +35,33 @@ it('keeps rarely used pages behind 高级设置 and opens a page 高级 under th
   render(<Harness />);
   const route = () => screen.getByRole('status', { name: '路由' }).textContent;
 
-  for (const name of ['AI', '设备安全', '通知', '通用', '关于', '高级设置'])
+  for (const name of ['AI', '设备安全', '个人记忆', '角色与场景', '通用', '关于', '高级设置'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
-  for (const name of ['个人记忆', '角色与场景', '波形', '数据'])
+  for (const name of ['通知', '波形', '数据'])
     expect(screen.queryByRole('button', { name })).toBeNull();
   expect(screen.queryByRole('region', { name: 'AI 网络代理' })).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: '高级设置' }));
   expect(route()).toBe('advanced');
   expect(screen.getByRole('heading', { name: '高级设置' })).toBeTruthy();
-  for (const name of ['个人记忆', '角色与场景', '波形', '数据'])
+  for (const name of ['波形', '数据'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
+  for (const name of ['个人记忆', '角色与场景'])
+    expect(screen.queryByRole('button', { name })).toBeNull();
   expect(screen.getByRole('region', { name: 'AI 网络代理' })).toBeTruthy();
   // The experimental generic-device switch was removed; only DG-Lab devices remain.
   expect(screen.queryByRole('region', { name: '通用设备（实验性）' })).toBeNull();
 
   // An advanced page keeps its own route and returns to 高级设置.
-  fireEvent.click(screen.getByRole('button', { name: '角色与场景' }));
-  expect(route()).toBe('scenes');
+  fireEvent.click(screen.getByRole('button', { name: '数据' }));
+  expect(route()).toBe('agent-data');
   fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
   expect(route()).toBe('advanced');
+  fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
+  expect(route()).toBe('overview');
+  // 角色与场景 is a first-level page now and returns straight to the list.
+  fireEvent.click(screen.getByRole('button', { name: '角色与场景' }));
+  expect(route()).toBe('scenes');
   fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
   expect(route()).toBe('overview');
 

@@ -6,11 +6,12 @@ import { setWebNotificationsEnabled, webNotificationsEnabled } from '@0xnullai/s
  * messages surface as in-app unread counts. The web page can additionally raise a browser
  * notification while it is open in the background; the Android WebView has no such API.
  */
-export function NotificationsTab({ accountId }: { accountId: string | null }) {
+export function NotificationSettings({ accountId }: { accountId: string | null }) {
   const androidShell = Boolean((window as Window & { AndroidSystem?: unknown }).AndroidSystem);
   return (
-    <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
-      <p className="text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
+    <section aria-label="通知">
+      <h3 className="text-sm font-semibold">通知</h3>
+      <p className="mt-3 text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
       {!androidShell && accountId ? <BrowserNotifications accountId={accountId} /> : null}
     </section>
   );

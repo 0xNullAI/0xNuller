@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { NotificationsTab } from './NotificationsTab';
+import { NotificationSettings } from './NotificationSettings';
 
 afterEach(() => {
   cleanup();
@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe('unread-only notifications', () => {
   it('offers no system push on the web, only unread counts and browser notifications', () => {
-    render(<NotificationsTab accountId="alice" />);
+    render(<NotificationSettings accountId="alice" />);
     expect(screen.queryByRole('checkbox', { name: '消息通知' })).toBeNull();
     expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: '浏览器通知' })).toBeTruthy();
@@ -18,7 +18,7 @@ describe('unread-only notifications', () => {
 
   it('shows only unread counts inside the Android app', () => {
     (window as Window & { AndroidSystem?: unknown }).AndroidSystem = {};
-    render(<NotificationsTab accountId="alice" />);
+    render(<NotificationSettings accountId="alice" />);
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.getByText('新消息会在「消息」中显示未读。')).toBeTruthy();
   });
@@ -33,7 +33,7 @@ describe('browser notification preference', () => {
       'Notification',
       Object.assign(vi.fn(), { permission: 'default', requestPermission }),
     );
-    render(<NotificationsTab accountId="alice" />);
+    render(<NotificationSettings accountId="alice" />);
     const toggle = screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement;
     fireEvent.click(toggle);
     expect(
@@ -52,16 +52,16 @@ describe('browser notification preference', () => {
       }),
     });
     vi.stubGlobal('Notification', api);
-    const view = render(<NotificationsTab accountId="alice" />);
+    const view = render(<NotificationSettings accountId="alice" />);
     fireEvent.click(screen.getByRole('checkbox', { name: '浏览器通知' }));
     expect(await screen.findByText('已开启。页面在后台时会提醒新消息。')).toBeTruthy();
     view.unmount();
-    render(<NotificationsTab accountId="alice" />);
+    render(<NotificationSettings accountId="alice" />);
     expect((screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement).checked).toBe(
       true,
     );
     cleanup();
-    render(<NotificationsTab accountId="bob" />);
+    render(<NotificationSettings accountId="bob" />);
     expect((screen.getByRole('checkbox', { name: '浏览器通知' }) as HTMLInputElement).checked).toBe(
       false,
     );

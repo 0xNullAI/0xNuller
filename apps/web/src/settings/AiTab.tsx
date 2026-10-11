@@ -5,7 +5,6 @@ import {
   getProviderDefinition,
   isLlmConfigured,
   loadLlmConfig,
-  MANAGED_MODEL_OPTIONS,
   saveLlmConfig,
   subscribeLlmConfig,
   type LlmConfig,
@@ -71,19 +70,9 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
   return (
     <div className="flex flex-col gap-6">
       <section aria-label="Agent 模型" className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">模型档位</h3>
+        <h3 className="text-sm font-semibold">模型</h3>
         {config.providerId === 'managed' ? (
-          <>
-            <SettingSelect
-              value={config.model}
-              onValueChange={(model) => update({ model })}
-              options={MANAGED_MODEL_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.name,
-              }))}
-            />
-            <p className="text-xs text-[var(--text-faint)]">登录后按用量消耗 Credit。</p>
-          </>
+          <p className="text-sm text-[var(--text-soft)]">猫愿模型 · 登录后按用量消耗 Credit。</p>
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-soft)]">
             <span>正在使用自己的 API：{def?.name ?? config.providerId}</span>

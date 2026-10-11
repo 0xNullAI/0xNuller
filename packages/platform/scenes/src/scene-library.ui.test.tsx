@@ -87,7 +87,8 @@ it.each([
 ])('$name, without character-card editing', ({ scene, selectedId }) => {
   saveScenes({ scenes: [scene], selectedId, hiddenBuiltinIds: [] });
   render(<SceneLibrary />);
-  expect(screen.getByText('场景')).toBeTruthy();
+  // The card's own type label, not the 场景 filter button.
+  expect(screen.getAllByText('场景').some((element) => element.tagName !== 'BUTTON')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: `编辑 ${scene.name}` }));
   // A scene has no character card to add; adding one would give it character memory.
   expect(screen.queryByText('结构化角色卡')).toBeNull();
@@ -339,4 +340,34 @@ it('discards an update result after the account changes', async () => {
   });
   expect(screen.queryByRole('button', { name: '采用新版' })).toBeNull();
   expect(loadScenes().scenes).toEqual([]);
+});
+
+it('filters the library by type and by name', () => {
+  saveScenes({
+    scenes: [
+      { id: 'c1', name: '小夜', prompt: '人设', kind: 'character' as const },
+      { id: 's1', name: '雨夜咖啡馆', prompt: '环境', kind: 'scene' as const },
+      { id: 's2', name: '海边', prompt: '环境', kind: 'scene' as const },
+    ],
+    selectedId: '',
+    hiddenBuiltinIds: [],
+  });
+  render(<SceneLibrary />);
+  const shown = () =>
+    ['小夜', '雨夜咖啡馆', '海边'].filter((name) =>
+      screen.queryByRole('button', { name: `编辑 ${name}` }),
+    );
+  expect(shown()).toEqual(['小夜', '雨夜咖啡馆', '海边']);
+  fireEvent.click(screen.getByRole('button', { name: '角色' }));
+  expect(shown()).toEqual(['小夜']);
+  fireEvent.click(screen.getByRole('button', { name: '场景' }));
+  expect(shown()).toEqual(['雨夜咖啡馆', '海边']);
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索角色与场景' }), {
+    target: { value: '海' },
+  });
+  expect(shown()).toEqual(['海边']);
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索角色与场景' }), {
+    target: { value: '不存在' },
+  });
+  expect(screen.getByText('没有匹配的卡片')).toBeTruthy();
 });

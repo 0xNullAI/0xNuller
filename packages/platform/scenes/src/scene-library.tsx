@@ -67,6 +67,8 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
   // too.
   const [scenes, updateScenes] = useScenes();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [kindFilter, setKindFilter] = useState<'all' | 'character' | 'scene'>('all');
+  const [query, setQuery] = useState('');
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState(DEFAULT_CUSTOM_ICON);
   const [editPrompt, setEditPrompt] = useState('');
@@ -236,6 +238,14 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
   }
 
   const legacyCount = legacyScenesToImportCount();
+  const needle = query.trim().toLowerCase();
+  const visibleScenes = scenes.scenes.filter(
+    (preset) =>
+      // The card being edited stays visible even if the edit stops matching the filter.
+      preset.id === editingId ||
+      ((kindFilter === 'all' || savedPromptKind(preset) === kindFilter) &&
+        (!needle || preset.name.toLowerCase().includes(needle))),
+  );
   return (
     <div className="settings-panel-tab-content">
       <section className="settings-row-card">
@@ -260,14 +270,55 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
             {marketUpdateNotice}
           </p>
         )}
-        {scenes.scenes.length === 0 && (
+        {scenes.scenes.length === 0 ? (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">
             还没有角色或场景。可从 Market 浏览并导入公开卡。
           </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="类型"
+              className="inline-flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-0.5 text-xs"
+            >
+              {(
+                [
+                  ['all', '全部'],
+                  ['character', '角色'],
+                  ['scene', '场景'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={kindFilter === value}
+                  onClick={() => setKindFilter(value)}
+                  className={
+                    'rounded-[var(--radius-xs)] px-3 py-1.5 ' +
+                    (kindFilter === value
+                      ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
+                      : 'text-[var(--text-soft)] hover:text-[var(--text)]')
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索名称"
+              aria-label="搜索角色与场景"
+              className="min-w-0 flex-1 text-sm"
+            />
+          </div>
+        )}
+        {scenes.scenes.length > 0 && visibleScenes.length === 0 && (
+          <p className="py-4 text-center text-sm text-[var(--text-faint)]">没有匹配的卡片</p>
         )}
 
         <div className="space-y-1.5">
-          {scenes.scenes.map((preset) => {
+          {visibleScenes.map((preset) => {
             if (editingId === preset.id) {
               return (
                 <div
