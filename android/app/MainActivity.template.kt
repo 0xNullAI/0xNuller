@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
@@ -18,7 +17,6 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
-import org.json.JSONObject
 import androidx.activity.enableEdgeToEdge
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
@@ -26,25 +24,13 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
-  private var pushWebView: WebView? = null
-  private var pendingPushIntent: Intent? = null
-  private val pushRegistrationListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-    if (key == "installation_id") runOnUiThread {
-      pushWebView?.evaluateJavascript(
-        "window.dispatchEvent(new Event('0xnullai:push-registration'))",
-        null,
-      )
-    }
-  }
+  private var pageWebView: WebView? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     // The app opens dark; the page updates this through setSystemBarTheme.
     applySystemBarTheme(dark = true)
-    getSharedPreferences("android_push", Context.MODE_PRIVATE)
-      .registerOnSharedPreferenceChangeListener(pushRegistrationListener)
-    pendingPushIntent = intent?.takeIf { PushSupport.routeFromIntent(this, it) != null }
 
     // btleplug 0.12 registers its JNI callbacks and captures Android's global
     // BLE adapter here. The Rust entry point is a no-op unless Gate 0 was
@@ -69,7 +55,7 @@ class MainActivity : TauriActivity() {
   override fun onPause() {
     // Ask the page to stop DG-Lab output now, before the WebView is paused: the
     // stop it issues is carried out natively even after the page stops running.
-    pushWebView?.evaluateJavascript(
+    pageWebView?.evaluateJavascript(
       "window.dispatchEvent(new Event('0xnullai:native-pause'))",
       null,
     )
@@ -83,23 +69,13 @@ class MainActivity : TauriActivity() {
 
   override fun onDestroy() {
     requestNativeLifecycleSafety()
-    getSharedPreferences("android_push", Context.MODE_PRIVATE)
-      .unregisterOnSharedPreferenceChangeListener(pushRegistrationListener)
-    pushWebView = null
+    pageWebView = null
     super.onDestroy()
-  }
-
-  override fun onNewIntent(intent: Intent) {
-    super.onNewIntent(intent)
-    setIntent(intent)
-    if (PushSupport.routeFromIntent(this, intent) == null) return
-    pendingPushIntent = intent
-    pushWebView?.evaluateJavascript("window.dispatchEvent(new Event('0xnullai:push-open'))", null)
   }
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
-    pushWebView = webView
+    pageWebView = webView
     webView.addJavascriptInterface(AndroidSystemBridge(), "AndroidSystem")
 
     // CSS safe-area variables are not consistently populated by older Android
@@ -168,62 +144,6 @@ class MainActivity : TauriActivity() {
       runOnUiThread {
         requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
       }
-    }
-
-    @JavascriptInterface
-    fun isPushConfigured(): Boolean = PushSupport.configured(this@MainActivity)
-
-    @JavascriptInterface
-    fun hasNotificationPermission(): Boolean = PushSupport.hasPermission(this@MainActivity)
-
-    @JavascriptInterface
-    fun requestNotificationPermission() {
-      if (Build.VERSION.SDK_INT >= 33 && !PushSupport.hasPermission(this@MainActivity)) {
-        runOnUiThread {
-          requestPermissions(
-            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-            NOTIFICATION_PERMISSION_REQUEST_CODE,
-          )
-        }
-      }
-    }
-
-    @JavascriptInterface
-    fun ensurePushChannels() = PushSupport.ensureChannels(this@MainActivity)
-
-    @JavascriptInterface
-    fun setPushAccountId(accountId: String) = PushSupport.setAccount(this@MainActivity, accountId)
-
-    @JavascriptInterface
-    fun registerPush() = PushSupport.register(this@MainActivity)
-
-    @JavascriptInterface
-    fun unregisterPush() = PushSupport.unregister(this@MainActivity)
-
-    @JavascriptInterface
-    fun getPushRegistrationId(): String = PushSupport.installationId(this@MainActivity)
-
-    @JavascriptInterface
-    fun getPushInstallationKey(): String = PushSupport.installationKey(this@MainActivity)
-
-    @JavascriptInterface
-    fun getPreviousPushRegistrationId(): String = PushSupport.previousInstallationId(this@MainActivity)
-
-    @JavascriptInterface
-    fun consumePushRoute(): String = synchronized(this@MainActivity) {
-      val route = PushSupport.routeFromIntent(this@MainActivity, pendingPushIntent).orEmpty()
-      pendingPushIntent = null
-      route
-    }
-
-    @JavascriptInterface
-    fun consumePushTarget(): String = synchronized(this@MainActivity) {
-      val pending = pendingPushIntent
-      val route = PushSupport.routeFromIntent(this@MainActivity, pending)
-      pendingPushIntent = null
-      val accountId = pending?.getStringExtra("ai.nullai.dgagent.PUSH_ACCOUNT")
-      if (route == null || accountId.isNullOrEmpty()) ""
-      else JSONObject().put("accountId", accountId).put("route", route).toString()
     }
 
     @JavascriptInterface
@@ -299,7 +219,6 @@ class MainActivity : TauriActivity() {
     const val LIGHT_SYSTEM_BAR = 0xFFFFFFFF.toInt()
     const val BLE_PERMISSION_REQUEST_CODE = 4101
     const val CAMERA_PERMISSION_REQUEST_CODE = 4102
-    const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4103
     /** About 24 MB of file data; larger exports would stall the JS bridge. */
     const val MAX_DOWNLOAD_BASE64 = 32 * 1024 * 1024
   }

@@ -17,7 +17,6 @@ const requiredPermissions = [
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
-  'android.permission.POST_NOTIFICATIONS',
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
   'android.permission.BLUETOOTH',

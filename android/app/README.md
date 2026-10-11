@@ -128,55 +128,14 @@ debug builds always use the Android debug key regardless.
 npm run android:dev   # tauri android dev — installs on a connected device
 ```
 
-## Android message push (FCM)
+## Notifications
 
-The native host has separate notification channels for AI, private, and group messages. Android 13+
-asks for `POST_NOTIFICATIONS` only after an authenticated user enters the enabled push flow. FCM uses
-Firebase Installation ID (FID) registration callbacks; the app binds that ID to the signed-in
-account through `PUT /api/auth/push/registrations` and revokes it before logout. Local display is
-disabled immediately on logout or account change. The server must send **data-only** messages with
-`kind` (`ai`, `dm`, `group`), `targetId`, `eventId`, and `accountId`; the app checks the local account and
-opens only the matching chat route after the web session confirms the same account. Cold-start taps
-wait for the authenticated `/me` result; stale-account and route-only legacy bridge targets are
-discarded. Push data cannot invoke devices. Chat text is never placed in the
-notification payload or lock-screen preview. Native display keeps the last 128 hashed
-`(accountId, kind, targetId, eventId)` identities to suppress FCM outbox redelivery without confusing
-different conversations; switching accounts clears that metadata.
-If Firebase refreshes the FID while the app remains open, the native host asks the signed-in web
-session to rebind it immediately; foreground focus and reconnection also retry failed binds. The
-native host keeps a random installation key across FID rotations, and the server atomically replaces
-the previous FID for that key within the authenticated account. A first upgraded bind also supplies
-the preceding FID to remove a legacy registration. This requires Auth migration 0057 before the
-updated APK; older Android shells continue to use FID-only registration. Revocation includes the
-same key and preceding FID so logout after an offline rotation can remove either bound destination
-when the outgoing account still has a valid credential.
-
-Push is explicitly off by default. When the server registration/send path is ready, set
-`VITE_ANDROID_PUSH_BACKEND_ENABLED=true` at the Android web asset build and supply all four public
-Firebase Android app settings to `android:prepare` and the APK build:
-
-On configured builds, a signed-in user must also turn on **设置 → 通知 → 消息通知**. This is a local,
-per-account opt-in for this installation; enabling it requests Android notification permission and
-registers the FID with the signed-in account. Turning it off suppresses local delivery immediately
-and revokes that FID with the current account credential. Logout revokes before credentials are
-cleared. Failed server revocations are retained under that account and retried when it next has a
-valid session; native display remains suppressed in the meantime. If storage cannot save an opt-in,
-registration stays off. Web and unconfigured Android builds show the feature as unavailable.
-
-| Build environment                | Firebase Android app field |
-| -------------------------------- | -------------------------- |
-| `DG_ANDROID_FIREBASE_APP_ID`     | app ID                     |
-| `DG_ANDROID_FIREBASE_API_KEY`    | Android API key            |
-| `DG_ANDROID_FIREBASE_SENDER_ID`  | project number / sender ID |
-| `DG_ANDROID_FIREBASE_PROJECT_ID` | project ID                 |
-
-`android:prepare` writes these values only to ignored generated Android resources. A partial set
-fails preparation; with none, Firebase is unconfigured and registration stays disabled. Do not add
-`google-services.json` or service-account credentials to this repository. The server's FCM sending
-credential belongs only in the backend deployment environment. FCM delivery requires compatible
-Google Play services; devices without it retain the in-app inbox but have no FCM guarantee.
-No real push delivery is verified until both build configuration and server endpoints are deployed
-and tested on a device.
+There is no system push. Most users' phones have no Google services, so FCM was removed: the APK
+has no Firebase dependency, notification permission, push service, or notification channels. New
+messages show as in-app unread counts. Android builds released before the removal may still call
+`/api/auth/push/registrations`; Auth answers 410 (register) or 404 (revoke), which those builds
+handle without retrying. `android:prepare` also strips the old Firebase service, resources, manifest
+entries, and Gradle dependencies from a reused generated project.
 
 ## Build APK
 

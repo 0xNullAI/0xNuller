@@ -23,17 +23,6 @@ const resourcesPath = join(generated, 'src/main/res');
 const signingTemplatePath = join(root, 'android/app/signing.gradle.kts.template');
 const manifestTemplatePath = join(root, 'android/app/AndroidManifest.template.xml');
 const mainActivityTemplatePath = join(root, 'android/app/MainActivity.template.kt');
-const pushMessagingTemplatePath = join(root, 'android/app/PushMessagingService.template.kt');
-const pushMessagingPath = join(generatedJavaPath, 'ai/nullai/dgagent/PushMessagingService.kt');
-const pushMessagingTestTemplatePath = join(
-  root,
-  'android/app/PushMessagingServiceTest.template.kt',
-);
-const pushMessagingTestPath = join(
-  generated,
-  'src/test/java/ai/nullai/dgagent/PushMessagingServiceTest.kt',
-);
-const pushOptionsPath = join(resourcesPath, 'values/0xnuller-push-options.xml');
 const proguardTemplatePath = join(root, 'android/app/proguard-rules.pro.template');
 const proguardPath = join(generated, 'proguard-rules.pro');
 const thirdPartyNoticePath = join(root, 'android/app/THIRD_PARTY_NOTICES.md');
@@ -60,44 +49,15 @@ const mainActivityTemplate = readFileSync(mainActivityTemplatePath, 'utf8');
 if (readFileSync(mainActivityPath, 'utf8') !== mainActivityTemplate) {
   writeFileSync(mainActivityPath, mainActivityTemplate);
 }
-cpSync(pushMessagingTemplatePath, pushMessagingPath, { force: true });
-mkdirSync(dirname(pushMessagingTestPath), { recursive: true });
-cpSync(pushMessagingTestTemplatePath, pushMessagingTestPath, { force: true });
-
-// Firebase's public Android app identifiers come from the build environment.
-// No real project configuration or service-account credential belongs in Git.
-const pushConfig = {
-  google_app_id: process.env.DG_ANDROID_FIREBASE_APP_ID,
-  google_api_key: process.env.DG_ANDROID_FIREBASE_API_KEY,
-  gcm_defaultSenderId: process.env.DG_ANDROID_FIREBASE_SENDER_ID,
-  project_id: process.env.DG_ANDROID_FIREBASE_PROJECT_ID,
-};
-const configuredPushValues = Object.values(pushConfig).filter(Boolean);
-if (configuredPushValues.length !== 0 && configuredPushValues.length !== 4) {
-  throw new Error(
-    'Android FCM configuration is partial; set all four DG_ANDROID_FIREBASE_* values or none',
-  );
-}
-if (configuredPushValues.length === 4) {
-  const xml = (value) =>
-    String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&apos;');
-  mkdirSync(dirname(pushOptionsPath), { recursive: true });
-  writeFileSync(
-    pushOptionsPath,
-    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n${Object.entries(pushConfig)
-      .map(
-        ([key, value]) => `    <string name="${key}" translatable="false">${xml(value)}</string>`,
-      )
-      .join('\n')}\n</resources>\n`,
-  );
-} else {
-  // A reused generated checkout must not retain yesterday's Firebase app.
-  rmSync(pushOptionsPath, { force: true });
+// System push (FCM) was removed. A generated project reused from an older checkout must not
+// keep its Firebase service, test, app options or status-bar icon.
+for (const stale of [
+  join(generatedJavaPath, 'ai/nullai/dgagent/PushMessagingService.kt'),
+  join(generated, 'src/test/java/ai/nullai/dgagent/PushMessagingServiceTest.kt'),
+  join(resourcesPath, 'values/0xnuller-push-options.xml'),
+  join(resourcesPath, 'drawable/ic_stat_nuller.xml'),
+]) {
+  rmSync(stale, { force: true });
 }
 
 // btleplug 0.12's Android backend is hybrid Rust/Java. Resolve the source via
@@ -180,21 +140,14 @@ if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
     '$1        android:roundIcon="@mipmap/ic_launcher_round"\n',
   );
 }
-const pushManifestMarker = 'android:name=".PushMessagingService"';
-if (!manifest.includes(pushManifestMarker)) {
-  const pushComponents = `
-        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
-        <meta-data android:name="firebase_messaging_installation_id_enabled" android:value="true" />
-        <service android:name=".PushMessagingService" android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-    `;
-  if (!manifest.includes('</application>'))
-    throw new Error('generated Android manifest has no application');
-  manifest = manifest.replace('</application>', `${pushComponents}</application>`);
-}
+// Strip what earlier preparations added for FCM from a reused generated manifest.
+manifest = manifest
+  .replace(
+    /\n\s*<uses-permission android:name="android\.permission\.POST_NOTIFICATIONS"\s*\/>/g,
+    '',
+  )
+  .replace(/\n\s*<meta-data android:name="firebase_messaging_[a-z_]+"[^>]*\/>/g, '')
+  .replace(/\n\s*<service android:name="\.PushMessagingService"[\s\S]*?<\/service>/g, '');
 writeFileSync(manifestPath, manifest);
 
 // `tauri android init` leaves Android Studio's green robot launchers in the
@@ -207,8 +160,6 @@ try {
     stdio: 'pipe',
   });
   cpSync(join(generatedIcons, 'android'), resourcesPath, { recursive: true, force: true });
-  // Checked-in resources Tauri does not generate (the status-bar notification icon).
-  cpSync(join(root, 'android/app/res'), resourcesPath, { recursive: true, force: true });
   // Tauri only emits an adaptive `ic_launcher`; without the same XML for the
   // round icon, round-icon launchers fall back to the flat legacy bitmap.
   cpSync(
@@ -262,11 +213,8 @@ gradle = /\bbuildToolsVersion\s*=/.test(gradle)
       /(\bcompileSdk\s*=\s*\d+)/,
       `$1\n    buildToolsVersion = "${ANDROID_BUILD_TOOLS}"`,
     );
-const pushGradleMarker = '// 0XNULLER_FCM_FID';
-const pushGradleBlock = `${pushGradleMarker}\ndependencies {\n    implementation("com.google.firebase:firebase-messaging:25.1.3")\n    implementation("com.google.android.gms:play-services-base:18.11.0")\n}`;
-gradle = gradle.includes(pushGradleMarker)
-  ? gradle.replace(/\/\/ 0XNULLER_FCM_FID\ndependencies \{[^}]*\}/, pushGradleBlock)
-  : `${gradle.trimEnd()}\n\n${pushGradleBlock}\n`;
+// Earlier preparations appended Firebase dependencies under this marker; drop them.
+gradle = gradle.replace(/\n*\/\/ 0XNULLER_FCM_FID\ndependencies \{[^}]*\}\n?/, '\n');
 
 const signingTemplate = readFileSync(signingTemplatePath, 'utf8').trimEnd();
 const signingMarker = '// 0XNULLER_RELEASE_SIGNING';
@@ -338,7 +286,6 @@ for (const required of [
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
   'android.hardware.bluetooth_le',
-  'android.permission.POST_NOTIFICATIONS',
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
@@ -348,7 +295,7 @@ for (const required of [
 if (
   !gradle.includes('minSdk = 26') ||
   !gradle.includes(signingMarker) ||
-  !gradle.includes(pushGradleMarker)
+  /firebase|play-services/.test(gradle)
 ) {
   throw new Error('generated Android Gradle configuration is incomplete');
 }
@@ -358,7 +305,6 @@ for (const required of [
   'mipmap-mdpi/ic_launcher.png',
   'mipmap-xxxhdpi/ic_launcher_foreground.png',
   'mipmap-xxxhdpi/ic_launcher_monochrome.png',
-  'drawable/ic_stat_nuller.xml',
 ]) {
   if (!existsSync(join(resourcesPath, required))) {
     throw new Error(`Android project is missing generated 0xNuller launcher icon: ${required}`);
@@ -375,18 +321,15 @@ for (const required of [
   'maxOf(insets.bottom, imeInsets.bottom)',
   'webView.addJavascriptInterface(AndroidSystemBridge()',
   'initializeButtplugGate0()',
-  'requestNotificationPermission()',
 ]) {
   if (!mainActivity.includes(required)) {
     throw new Error(`Android MainActivity is missing native inset handling: ${required}`);
   }
 }
-for (const required of [pushManifestMarker, 'firebase_messaging_installation_id_enabled']) {
-  if (!manifest.includes(required))
-    throw new Error(`Android manifest is missing FCM setup: ${required}`);
+for (const forbidden of ['POST_NOTIFICATIONS', 'firebase', 'PushMessagingService']) {
+  if (manifest.includes(forbidden))
+    throw new Error(`Android manifest still contains removed push setup: ${forbidden}`);
 }
-if (!existsSync(pushMessagingPath))
-  throw new Error('Android project is missing FCM service source');
 for (const required of ['THIRD_PARTY_NOTICES.md', 'btleplug-0.12.0-LICENSE.md']) {
   if (!existsSync(join(generatedAssetsPath, required))) {
     throw new Error(`Android project is missing packaged third-party notice: ${required}`);

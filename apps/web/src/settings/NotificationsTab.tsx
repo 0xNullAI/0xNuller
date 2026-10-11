@@ -1,87 +1,17 @@
 import { useState } from 'react';
-import {
-  androidPushEnabled,
-  setAndroidPushEnabled,
-  setWebNotificationsEnabled,
-  webNotificationsEnabled,
-} from '@0xnullai/settings';
+import { setWebNotificationsEnabled, webNotificationsEnabled } from '@0xnullai/settings';
 
-type PushStatusBridge = {
-  isPushConfigured(): boolean;
-  hasNotificationPermission(): boolean;
-  openAppSettings(): void;
-};
-
-function nativePush(): PushStatusBridge | undefined {
-  return (window as Window & { AndroidSystem?: PushStatusBridge }).AndroidSystem;
-}
-
+/**
+ * There is no system push: most users' phones lack the Google services FCM needs, so new
+ * messages surface as in-app unread counts. The web page can additionally raise a browser
+ * notification while it is open in the background; the Android WebView has no such API.
+ */
 export function NotificationsTab({ accountId }: { accountId: string | null }) {
-  const [enabled, setEnabled] = useState(() => androidPushEnabled(accountId));
-  const [message, setMessage] = useState('');
-  const bridge = nativePush();
-  const available = Boolean(
-    accountId &&
-    bridge?.isPushConfigured() &&
-    import.meta.env.VITE_ANDROID_PUSH_BACKEND_ENABLED === 'true',
-  );
-  // System push is not offered unless a build and the server both enable it (domestic
-  // Android phones mostly lack the Google services FCM needs); unread counts always show.
-  if (!available)
-    return (
-      <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
-        <p className="text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
-        {!bridge && accountId ? <BrowserNotifications accountId={accountId} /> : null}
-      </section>
-    );
+  const androidShell = Boolean((window as Window & { AndroidSystem?: unknown }).AndroidSystem);
   return (
     <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
-      <label className="flex min-h-12 items-center justify-between gap-4 text-sm">
-        <strong className="font-medium">消息通知</strong>
-        <input
-          aria-label="消息通知"
-          type="checkbox"
-          checked={enabled}
-          onChange={(event) => {
-            if (!accountId) return;
-            const next = event.target.checked;
-            const saved = setAndroidPushEnabled(accountId, next);
-            if (!saved && next) {
-              setMessage('无法保存通知设置，请检查应用存储权限。');
-              return;
-            }
-            setEnabled(next);
-            setMessage(
-              next
-                ? '正在开启通知，请按系统提示授权。'
-                : saved
-                  ? '已关闭通知。'
-                  : '已在本机关闭通知，设置可能无法持久保存。',
-            );
-            window.dispatchEvent(
-              new CustomEvent('0xnullai:push-preference', { detail: { accountId, enabled: next } }),
-            );
-          }}
-        />
-      </label>
-      {enabled && !bridge?.hasNotificationPermission() ? (
-        <p className="mt-2 text-xs text-[var(--text-soft)]">
-          如未弹出系统授权，请在 Android 应用设置中允许通知。{' '}
-          <button
-            type="button"
-            className="text-[var(--accent)] underline"
-            onClick={() => bridge?.openAppSettings()}
-          >
-            打开应用设置
-          </button>
-        </p>
-      ) : null}
-      {message ? (
-        <p role="status" className="mt-2 text-xs text-[var(--text-soft)]">
-          {message}
-        </p>
-      ) : null}
-      {!bridge && accountId ? <BrowserNotifications accountId={accountId} /> : null}
+      <p className="text-sm text-[var(--text-soft)]">新消息会在「消息」中显示未读。</p>
+      {!androidShell && accountId ? <BrowserNotifications accountId={accountId} /> : null}
     </section>
   );
 }
