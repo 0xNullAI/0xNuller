@@ -243,7 +243,6 @@ export function usePeerRoom(displayName: string) {
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   // —— Group settings (durable, owner-controlled) ——
   const [isPublic, setIsPublic] = useState(false);
-  const [persistentHistory, setPersistentHistory] = useState(false);
   const [historyBefore, setHistoryBefore] = useState<{ ts: number; id: string } | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [groupMemberships, setGroupMemberships] = useState<GroupMembership[]>([]);
@@ -383,7 +382,6 @@ export function usePeerRoom(displayName: string) {
     setMessages([]);
     setHistoryBefore(null);
     setHistoryLoading(false);
-    setPersistentHistory(false);
     setMediaUploadToken(null);
     setHostPeerId(null);
     // Group-scoped state must go too, or the next group inherits the previous one's
@@ -580,8 +578,6 @@ export function usePeerRoom(displayName: string) {
           // follows a settings change is broadcast to the whole room and therefore carries
           // neither isOwner nor ownerKey, which are answers to one connection only.
           const code = (data.code as string) || roomIdRef.current || '';
-          if (typeof data.persistentHistory === 'boolean')
-            setPersistentHistory(data.persistentHistory);
           if (typeof data.public === 'boolean') setIsPublic(data.public);
           if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
           if (typeof data.name === 'string') {
@@ -802,7 +798,6 @@ export function usePeerRoom(displayName: string) {
             public: joinOptsRef.current.public,
             roomName: joinOptsRef.current.roomName,
             claim: joinOptsRef.current.claim,
-            persistentHistory: joinOptsRef.current.claim === true,
             // Proof of ownership when this browser created the group. Absent for everyone
             // else, and the server answers with isOwner:false rather than refusing the join.
             ownerKey: loadOwnerKey(roomCode) ?? undefined,
@@ -1181,7 +1176,6 @@ export function usePeerRoom(displayName: string) {
     peers,
     members: membersWithAi,
     messages,
-    persistentHistory,
     groupMemberships,
     manageGroupMembership: (action: 'list' | 'remove' | 'ban' | 'restore', accountId?: string) => {
       const code = roomIdRef.current;
@@ -1209,11 +1203,6 @@ export function usePeerRoom(displayName: string) {
         }, SEARCH_TIMEOUT_MS);
         searchesRef.current.set(requestId, { resolve, timer });
       }),
-    keepGroupHistory: () => {
-      const code = roomIdRef.current;
-      if (code)
-        send({ t: 'group', persistentHistory: true, ownerKey: loadOwnerKey(code) ?? undefined });
-    },
     mediaUploadToken,
     join,
     leave,

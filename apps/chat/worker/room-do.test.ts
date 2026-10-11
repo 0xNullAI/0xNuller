@@ -297,7 +297,7 @@ it('长期群闲置满 30 天同样回收，未满不回收', async () => {
   expect(r.sql.exec).toHaveBeenCalledWith('DELETE FROM messages');
   expect(ROOM_IDLE_MS).toBe(30 * 24 * 60 * 60 * 1000);
 });
-it('升级长期群仍要求群主账号，主持人和普通参与者都不能更改保留策略', async () => {
+it('只有群主账号能改群设置，主持人和普通参与者都不能', async () => {
   const r = room();
   r.values.set('public', false);
   r.values.set('ownerAccountId', 'owner-account');
@@ -320,15 +320,15 @@ it('升级长期群仍要求群主账号，主持人和普通参与者都不能�
   ]) {
     await r.instance.webSocketMessage(
       makeSocket(peerId!, accountId!),
-      JSON.stringify({ t: 'group', persistentHistory: true }),
+      JSON.stringify({ t: 'group', public: true }),
     );
-    expect(r.values.get('persistentHistory')).not.toBe(true);
+    expect(r.values.get('public')).toBe(false);
   }
   await r.instance.webSocketMessage(
     makeSocket('owner', 'owner-account'),
-    JSON.stringify({ t: 'group', persistentHistory: true }),
+    JSON.stringify({ t: 'group', public: true }),
   );
-  expect(r.values.get('persistentHistory')).toBe(true);
+  expect(r.values.get('public')).toBe(true);
 });
 it('不转发参与者伪造的服务器历史与会话管理帧', async () => {
   const r = room();

@@ -41,14 +41,7 @@ import { sha256Body, signGroupAiTicket } from '../../../workers/auth/src/group-a
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { deleteRoomMedia, listRoomMedia } from './media';
-import {
-  canAdministerGroup,
-  enforceMessageRetention,
-  resolveGroupOwner,
-  orphanMediaIds,
-  type MediaStore,
-  type MessageStore,
-} from './group';
+import { canAdministerGroup, resolveGroupOwner, orphanMediaIds } from './group';
 import {
   authorizeDmToken,
   authorizeDmUpgrade,
@@ -612,9 +605,6 @@ export class RoomDO extends DurableObject<Env> {
               );
           }
         }
-        // After the broadcast, never before it: trimming must not add latency to delivery, and
-        // it does nothing at all until the group is actually over the cap.
-        await this.trimHistory();
         return;
       }
 
@@ -725,11 +715,6 @@ export class RoomDO extends DurableObject<Env> {
         if (msg.roomName !== undefined && !validGroupName(msg.roomName)) return;
         const wasPublic = (await this.ctx.storage.get<boolean>('public')) === true;
         let changed = false;
-        // Promotion is one-way: a routine settings frame cannot silently erase old history.
-        if (msg.persistentHistory === true) {
-          await this.ctx.storage.put('persistentHistory', true);
-          changed = true;
-        }
         if (typeof msg.public === 'boolean') {
           await this.ctx.storage.put('public', msg.public);
           changed = true;
@@ -1180,7 +1165,6 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.put({
       public: msg.public === true,
       roomName: msg.roomName.trim(),
-      persistentHistory: msg.persistentHistory === true,
     });
     return true;
   }
@@ -1285,7 +1269,8 @@ export class RoomDO extends DurableObject<Env> {
       code,
       name: (await this.ctx.storage.get<string>('roomName')) ?? '',
       public: (await this.ctx.storage.get<boolean>('public')) === true,
-      persistentHistory: (await this.ctx.storage.get<boolean>('persistentHistory')) === true,
+      // Every group keeps its full history now; older clients read this to hide their upgrade prompt.
+      persistentHistory: true,
     };
     if (extra.owned !== undefined) frame.owned = extra.owned;
     if (extra.isOwner !== undefined) frame.isOwner = extra.isOwner;
@@ -1631,26 +1616,6 @@ export class RoomDO extends DurableObject<Env> {
         )
         .toArray().length > 0
     );
-  }
-
-  /** Apply the retention cap, dropping each message's R2 media along with its row. */
-  private async trimHistory(): Promise<string[]> {
-    const code = await this.code();
-    if (isDmRoomCode(code) || (await this.ctx.storage.get<boolean>('persistentHistory')) === true)
-      return [];
-    const messages: MessageStore = {
-      count: () => Number(this.sql.exec('SELECT COUNT(*) AS n FROM messages').one().n),
-      oldest: (n) =>
-        this.sql
-          .exec('SELECT id, body FROM messages ORDER BY ts ASC, id ASC LIMIT ?', n)
-          .toArray()
-          .map((r) => ({ id: r.id as string, mediaId: mediaIdOf(r.body as string) })),
-      remove: (ids) => {
-        for (const id of ids) this.sql.exec('DELETE FROM messages WHERE id = ?', id);
-      },
-    };
-    const media: MediaStore = { delete: (ids) => deleteRoomMedia(this.env, code, ids) };
-    return enforceMessageRetention(messages, media);
   }
 
   /** Delete R2 objects of this group that no retained message references any more. */

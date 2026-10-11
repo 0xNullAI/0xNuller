@@ -350,21 +350,6 @@ export function ChatAppView({
           />
         )}
 
-        {peerRoom.roomId &&
-          !peerRoom.isDm &&
-          !peerRoom.persistentHistory &&
-          peerRoom.canManageGroup && (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--surface-border)] px-3 py-2 text-xs">
-              <span>此旧群仍使用限量历史。</span>
-              <button
-                type="button"
-                onClick={peerRoom.keepGroupHistory}
-                className="shrink-0 text-[var(--accent)]"
-              >
-                升级为长期群
-              </button>
-            </div>
-          )}
         {!peerRoom.roomId ? (
           <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="mx-auto w-full max-w-2xl rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4 sm:p-6">

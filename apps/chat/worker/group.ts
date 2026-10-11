@@ -1,4 +1,4 @@
-// Group ownership and history retention: the two rules that have to outlive a session.
+// Group ownership and orphaned-media housekeeping: rules that have to outlive a session.
 //
 // This module deliberately imports nothing from `cloudflare:workers`. RoomDO cannot be
 // imported into the app's vitest run (that specifier only resolves inside workerd), so
@@ -65,72 +65,6 @@ export async function resolveGroupOwner(params: {
   return timingSafeEqual(await hashOwnerKey(code, presentedKey), ownerKeyHash)
     ? senderAccountId
     : null;
-}
-
-/**
- * How many messages a group keeps.
- *
- * A group is permanent now, so something has to bound it; a Durable Object's SQLite is
- * not infinite and R2 media is no longer cleaned up by a room dying. The cap is expressed
- * in messages rather than bytes or days because it is the one unit that bounds all three
- * costs at once:
- *
- *  - Storage: a row is a few hundred bytes, so 1000 of them is well under a megabyte, and
- *    the media hanging off them is deleted in the same step (see enforceMessageRetention),
- *    which caps the R2 side too instead of letting it grow behind the rows.
- *  - Replay: the whole retained history is pushed to every joining connection in one
- *    `history` frame, on every reconnect. 1000 messages is a couple of hundred kilobytes;
- *    an uncapped group would eventually make joining it a download.
- *  - Product: this is the QQ-group behaviour people expect — recent history is there,
- *    the backlog from a year ago is not. A time-based rule would fail the opposite way,
- *    keeping nothing for a quiet group and everything for a busy one.
- *
- * One number, used for both retention and replay, so what is stored and what a joiner
- * sees can never drift apart.
- */
-export const GROUP_MESSAGE_LIMIT = 1000;
-
-/** A retained message as retention sees it: an id, plus the media that dies with it. */
-export interface RetainedMessage {
-  id: string;
-  /** R2 object id referenced by this message, or null for a text-only message. */
-  mediaId: string | null;
-}
-
-/** The message rows retention needs to touch (RoomDO implements this over SqlStorage). */
-export interface MessageStore {
-  count(): number;
-  /** The `n` oldest messages, oldest first. */
-  oldest(n: number): RetainedMessage[];
-  remove(ids: string[]): void;
-}
-
-/** The media objects retention needs to touch (RoomDO implements this over R2). */
-export interface MediaStore {
-  delete(ids: string[]): Promise<void>;
-}
-
-/**
- * Drop the oldest messages until the group is back at `limit`, taking their media with them.
- *
- * Media is deleted *before* the rows: if R2 fails the rows survive, the group is still over
- * the cap, and the next message retries. The reverse order would drop the only remaining
- * pointer to the object and leak it. Returns the ids that were dropped.
- */
-export async function enforceMessageRetention(
-  messages: MessageStore,
-  media: MediaStore,
-  limit: number = GROUP_MESSAGE_LIMIT,
-): Promise<string[]> {
-  const excess = messages.count() - limit;
-  if (excess <= 0) return [];
-  const doomed = messages.oldest(excess);
-  if (doomed.length === 0) return [];
-  const mediaIds = doomed.map((m) => m.mediaId).filter((id): id is string => !!id);
-  if (mediaIds.length > 0) await media.delete(mediaIds);
-  const ids = doomed.map((m) => m.id);
-  messages.remove(ids);
-  return ids;
 }
 
 /** An object sitting in the group's R2 prefix. */
