@@ -1,27 +1,49 @@
+import { handleReports } from './reports';
+import { handleDiscovery } from './discovery';
+import { handleDiscoveryFeedback } from './discovery-feedback';
+import {
+  handleCharacterConversion,
+  purgeExpiredCharacterConversions,
+  purgeInactiveDiscoveryOwners,
+} from './character-conversion';
 import {
   annotateScenarioContent,
+  promptKind,
   ItemPatchSchema,
   BatchUploadSchema,
-  MultiSceneContentSchema,
   ModerationPatchSchema,
   ScenarioContentSchema,
   UploadSchema,
 } from '../shared/schema';
-import type { ItemPatchRow, InsertItem } from './db';
+import type { ItemPatchRow, InsertItem, ListParams } from './db';
 import {
   deleteItem,
+  getArchivedCharacterVersion,
   getItem,
   incrementDownloads,
   incrementViews,
   insertItem,
   insertItems,
+  latestItemPublishSeq,
   listAdminItems,
+  listArchivedCharacterVersions,
   listItems,
   recentUploadCount,
   setItemHidden,
   updateItemMeta,
 } from './db';
+import { browseFilter, decodeBrowseCursor, encodeBrowseCursor } from './browse-cursor';
 import { hashSourceIp } from './security';
+import {
+  cleanUnfinishedPortraits,
+  handleCharacterPortraits,
+  validatePortraitReference,
+} from './character-portraits';
+import {
+  cleanUnfinishedCharacterContainers,
+  handleCharacterContainerDrafts,
+  purgeDeletedAccountContainers,
+} from './character-container-drafts';
 
 interface MarketAuthService extends Fetcher {
   claimMarketItems(
@@ -37,6 +59,23 @@ interface MarketAuthService extends Fetcher {
     authorization: string | null;
     cookie: string | null;
   }): Promise<'admin' | 'user' | 'unauthorized'>;
+  marketAccountIdentity(credentials: {
+    authorization: string | null;
+    cookie: string | null;
+  }): Promise<{ id: string } | null>;
+  marketAccountActive(userId: string): Promise<boolean>;
+  marketItemCreator(itemId: string): Promise<{
+    id: string;
+    username: string;
+    displayName: string;
+  } | null>;
+  marketCreatorsForItems(itemIds: string[]): Promise<
+    {
+      itemId: string;
+      creator: { id: string; username: string; displayName: string };
+      workCount: number;
+    }[]
+  >;
   rewardMarketDownload(
     credentials: { authorization: string | null; cookie: string | null },
     itemId: string,
@@ -50,13 +89,14 @@ interface MarketAuthService extends Fetcher {
 
 type Env = Omit<Cloudflare.Env, 'AUTH'> & {
   AUTH: MarketAuthService;
+  PORTRAITS: R2Bucket;
 };
 
 // Compatible clients on other origins can browse and import the public catalog.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Account-Id',
 };
 
 function json(data: unknown, status = 200): Response {
@@ -68,6 +108,18 @@ function json(data: unknown, status = 200): Response {
 
 function err(message: string, status: number): Response {
   return json({ error: message }, status);
+}
+
+function privateJson(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+      Vary: 'Cookie, Authorization',
+      ...CORS,
+    },
+  });
 }
 
 class MarketRequestError extends Error {
@@ -99,13 +151,28 @@ export default {
     }
 
     try {
+      const container = await handleCharacterContainerDrafts(request, env);
+      if (container) return container;
+      const reports = await handleReports(request, env);
+      if (reports) return reports;
+      const feedback = await handleDiscoveryFeedback(request, env);
+      if (feedback) return feedback;
+      const conversion = await handleCharacterConversion(request, env);
+      if (conversion) return conversion;
+      const portrait = await handleCharacterPortraits(request, env);
+      if (portrait) return portrait;
       // GET /api/items —— list / search
+      const discovery = await handleDiscovery(request, env);
+      if (discovery) return discovery;
+
       if (pathname === '/api/items' && request.method === 'GET') {
         const typeParam = url.searchParams.get('type');
-        const type =
-          typeParam === 'waveform' || typeParam === 'scenario' || typeParam === 'multi-scene'
-            ? typeParam
-            : undefined;
+        const type = typeParam === 'waveform' || typeParam === 'scenario' ? typeParam : undefined;
+        if (typeParam && !type) return err('内容类型不受支持', 400);
+        const kindParam = url.searchParams.get('kind');
+        const selectedKind =
+          kindParam === 'character' || kindParam === 'scene' ? kindParam : undefined;
+        if (kindParam && !selectedKind) return err('卡片类型无效', 400);
         const modalityParam = url.searchParams.get('modality');
         const modality =
           modalityParam === 'electrostimulation' || modalityParam === 'vibration'
@@ -121,13 +188,90 @@ export default {
               : 'new';
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-        const items = await listItems(env.DB, { type, modality, q, sort, limit, offset });
-        return json({ items });
+        const params: ListParams = {
+          type,
+          promptKind: selectedKind,
+          modality,
+          q,
+          sort,
+          limit,
+          offset,
+          character: url.searchParams.get('character') === '1',
+        };
+        const cursorMode = url.searchParams.get('pagination') === 'cursor';
+        let nextCursor: string | null = null;
+        let pagination: 'stable' | 'live' | undefined;
+        let items;
+        if (cursorMode) {
+          const filter = browseFilter(params);
+          const rawCursor = url.searchParams.get('cursor');
+          const cursorSecret = requiredSecret(env.MARKET_IP_PEPPER, 'MARKET_IP_PEPPER');
+          const cursor = rawCursor
+            ? await decodeBrowseCursor(rawCursor, filter, cursorSecret)
+            : null;
+          if (rawCursor && !cursor) return err('浏览游标无效或筛选条件已改变', 400);
+          pagination = sort === 'new' ? 'stable' : 'live';
+          if (cursor && cursor.mode !== pagination) return err('浏览游标排序无效', 400);
+          const maxPublishSeq =
+            pagination === 'stable'
+              ? cursor?.mode === 'stable'
+                ? cursor.maxPublishSeq
+                : await latestItemPublishSeq(env.DB)
+              : undefined;
+          const page = await listItems(env.DB, {
+            ...params,
+            limit: limit + 1,
+            offset: pagination === 'live' && cursor?.mode === 'live' ? cursor.offset : 0,
+            maxPublishSeq,
+            after:
+              cursor?.mode === 'stable'
+                ? { createdAt: cursor.createdAt, id: cursor.id }
+                : undefined,
+          });
+          items = page.slice(0, limit);
+          if (page.length > limit && items.length) {
+            const last = items[items.length - 1]!;
+            nextCursor = await encodeBrowseCursor(
+              pagination === 'stable'
+                ? {
+                    version: 1,
+                    mode: 'stable',
+                    filter,
+                    maxPublishSeq: maxPublishSeq!,
+                    createdAt: last.createdAt,
+                    id: last.id,
+                  }
+                : {
+                    version: 1,
+                    mode: 'live',
+                    filter,
+                    offset: (cursor?.mode === 'live' ? cursor.offset : 0) + limit,
+                  },
+              cursorSecret,
+            );
+          }
+        } else {
+          items = await listItems(env.DB, params);
+        }
+        const claims =
+          items.length && env.AUTH.marketCreatorsForItems
+            ? await env.AUTH.marketCreatorsForItems(items.map((item) => item.id))
+            : [];
+        const creators = new Map(claims.map(({ itemId, creator }) => [itemId, creator]));
+        return json({
+          items: items.map((item) => ({
+            ...item,
+            ...(creators.has(item.id) ? { verifiedCreator: creators.get(item.id) } : {}),
+          })),
+          ...(cursorMode ? { nextCursor, pagination } : {}),
+        });
       }
 
       if (pathname === '/api/items/admin' && request.method === 'GET') {
         await requireMarketAdmin(request, env);
         const requestedType = url.searchParams.get('type');
+        if (requestedType && requestedType !== 'scenario' && requestedType !== 'waveform')
+          return err('内容类型不受支持', 400);
         const type = requestedType === 'scenario' ? 'scenario' : 'waveform';
         const requestedStatus = url.searchParams.get('status');
         const status =
@@ -150,12 +294,51 @@ export default {
         return json({ ok: true });
       }
 
+      const revisionsMatch = pathname.match(/^\/api\/items\/([\w-]+)\/revisions(?:\/(\d+))?$/);
+      if (revisionsMatch && request.method === 'GET') {
+        const id = revisionsMatch[1]!;
+        const item = await getItem(env.DB, id);
+        if (!item || item.type !== 'scenario') return err('公开卡不存在或已下架', 404);
+        const access = await marketAccess(request, env, id);
+        if (access === 'unauthorized') return err('请先登录', 401);
+        if (access !== 'owner' && access !== 'admin') return err('无权查看公开卡历史', 403);
+        const currentRevision = item.revision ?? 1;
+        if (!revisionsMatch[2]) {
+          const archived = await listArchivedCharacterVersions(env.DB, id);
+          return privateJson({
+            versions: [
+              { revision: currentRevision, name: item.name, archivedAt: null, current: true },
+              ...archived,
+            ],
+          });
+        }
+        const requestedRevision = Number(revisionsMatch[2]);
+        if (!Number.isSafeInteger(requestedRevision) || requestedRevision < 1)
+          return err('版本编号无效', 400);
+        const snapshot =
+          requestedRevision === currentRevision
+            ? {
+                revision: currentRevision,
+                name: item.name,
+                description: item.description,
+                icon: item.icon,
+                tags: item.tags,
+                content: item.content,
+                archivedAt: null,
+              }
+            : await getArchivedCharacterVersion(env.DB, id, requestedRevision);
+        return snapshot ? privateJson({ snapshot }) : err('版本不存在', 404);
+      }
+
       // GET /api/items/:id —— detail
       const detailMatch = pathname.match(/^\/api\/items\/([\w-]+)$/);
       if (detailMatch && request.method === 'GET') {
         const item = await getItem(env.DB, detailMatch[1]!);
         if (!item) return err('未找到该条目', 404);
-        return json({ item });
+        const creator = env.AUTH.marketItemCreator
+          ? await env.AUTH.marketItemCreator(item.id)
+          : null;
+        return json({ item: { ...item, ...(creator ? { verifiedCreator: creator } : {}) } });
       }
 
       // PATCH /api/items/:id —— account owner or account administrator edits metadata.
@@ -236,6 +419,13 @@ export default {
       return err('服务器错误', 500);
     }
   },
+  async scheduled(_event, env): Promise<void> {
+    await cleanUnfinishedPortraits(env);
+    await cleanUnfinishedCharacterContainers(env);
+    await purgeDeletedAccountContainers(env);
+    await purgeExpiredCharacterConversions(env.DB);
+    await purgeInactiveDiscoveryOwners(env);
+  },
 } satisfies ExportedHandler<Env>;
 
 type UploadOne = ReturnType<typeof UploadSchema.parse>;
@@ -252,10 +442,12 @@ async function toInsert(
     name: payload.name,
     description: payload.description,
     author: payload.author,
-    icon: payload.type === 'scenario' || payload.type === 'multi-scene' ? payload.icon : undefined,
+    icon: payload.type === 'scenario' ? payload.icon : undefined,
     tags: payload.tags,
     content:
-      payload.type === 'scenario' ? annotateScenarioContent(payload.content) : payload.content,
+      payload.type === 'scenario'
+        ? annotateScenarioContent({ ...payload.content, kind: promptKind(payload.content) })
+        : payload.content,
     ipHash,
     createdAt,
   };
@@ -303,6 +495,15 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     return err(`数据校验失败：${parsed.error.issues[0]?.message ?? '未知字段错误'}`, 400);
   }
 
+  if (parsed.data.type === 'scenario' && parsed.data.content.portraitId) {
+    const access = await validatePortraitReference(env, request, parsed.data.content.portraitId);
+    if (access !== 'ok')
+      return err(
+        access === 'unauthorized' ? '请先登录' : '无权使用此头像',
+        access === 'unauthorized' ? 401 : 403,
+      );
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
   const ipHash = await hashSourceIp(ip, requiredSecret(env.MARKET_IP_PEPPER, 'MARKET_IP_PEPPER'));
 
@@ -340,6 +541,15 @@ async function handleBatchUpload(request: Request, env: Env): Promise<Response> 
     return err(`数据校验失败：${where}${issue?.message ?? '未知字段错误'}`, 400);
   }
   const payloads = parsed.data;
+  for (const payload of payloads) {
+    if (payload.type !== 'scenario' || !payload.content.portraitId) continue;
+    const access = await validatePortraitReference(env, request, payload.content.portraitId);
+    if (access !== 'ok')
+      return err(
+        access === 'unauthorized' ? '请先登录' : '无权使用此头像',
+        access === 'unauthorized' ? 401 : 403,
+      );
+  }
 
   const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
   const ipHash = await hashSourceIp(ip, requiredSecret(env.MARKET_IP_PEPPER, 'MARKET_IP_PEPPER'));
@@ -419,17 +629,52 @@ async function handleEditPatch(request: Request, env: Env, id: string): Promise<
     if (item.type === 'scenario') {
       const content = ScenarioContentSchema.safeParse(p.content);
       if (!content.success) return err('剧本内容与条目类型不匹配', 400);
-      row.content = JSON.stringify(annotateScenarioContent(content.data));
-    } else if (item.type === 'multi-scene') {
-      const content = MultiSceneContentSchema.safeParse(p.content);
-      if (!content.success) return err('剧本内容与条目类型不匹配', 400);
-      row.content = JSON.stringify(content.data);
+      // A published card keeps its role as a chat entity or a reusable scene.
+      // Older clients omit `kind`, so infer the existing kind before merging.
+      const oldContent = ScenarioContentSchema.safeParse(item.content);
+      const kind = promptKind(item.content as typeof content.data);
+      if (content.data.kind && content.data.kind !== kind)
+        return err('已发布卡片的角色或场景类型不可修改，请创建新卡片', 409);
+      if (kind === 'scene' && content.data.characterCard)
+        return err('场景不能加入人物设定，请创建角色卡片', 400);
+      const oldPortraitId = oldContent.success
+        ? (oldContent.data.portraitId ?? undefined)
+        : undefined;
+      const portraitId =
+        content.data.portraitId === null ? undefined : (content.data.portraitId ?? oldPortraitId);
+      if (portraitId && portraitId !== oldPortraitId) {
+        const portraitAccess = await validatePortraitReference(env, request, portraitId);
+        if (portraitAccess !== 'ok')
+          return err(
+            portraitAccess === 'unauthorized' ? '请先登录' : '无权使用此头像',
+            portraitAccess === 'unauthorized' ? 401 : 403,
+          );
+      }
+      const next = ScenarioContentSchema.safeParse(
+        annotateScenarioContent({
+          ...content.data,
+          kind,
+          characterCard:
+            kind === 'character'
+              ? (content.data.characterCard ??
+                (oldContent.success ? oldContent.data.characterCard : undefined))
+              : undefined,
+          sourceArchive:
+            kind === 'scene' || content.data.sourceArchive === null
+              ? undefined
+              : (content.data.sourceArchive ??
+                (oldContent.success ? (oldContent.data.sourceArchive ?? undefined) : undefined)),
+          portraitId,
+        }),
+      );
+      if (!next.success) return err('剧本内容与条目类型不匹配', 400);
+      row.content = JSON.stringify(next.data);
     } else {
       return err('波形内容暂不支持在这里修改', 400);
     }
   }
 
-  const ok = await updateItemMeta(env.DB, id, row);
-  if (!ok) return err('未找到该条目', 404);
+  const ok = await updateItemMeta(env.DB, id, row, p.expectedRevision);
+  if (!ok) return err('内容已由其他编辑更新，请重新载入', 409);
   return json({ ok: true });
 }

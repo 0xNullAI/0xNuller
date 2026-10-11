@@ -1,126 +1,515 @@
 @import '@0xnullai/ui/styles/tokens.css';
 
-/* Every rule is nested under .mkt-scope.
- *
- * This stylesheet uses nothing but generic class names — .app / .grid / .btn / .card /
- * .tag / .empty. It belongs to the module layer, and module is ordered after utilities,
- * so its .grid wins over Tailwind's grid-cols-*. Observed consequence: open Market and
- * then look at Agent, and Agent's main layout has been turned into four columns
- * (gridTemplateColumns becomes "291px 291px 291px 291px"), with the content squeezed into
- * a strip on the left.
- *
- * Wrapping one layer of CSS nesting instead of prefixing every rule: prefixing would mean
- * touching 561 lines of CSS and every className in the JSX at once, and any one missed
- * spot fails silently; wrapping only needs one class added on the root element.
- */
+/* Keep Market's legacy card and dialog styles inside its module surface. */
 .mkt-scope {
-  /* Design tokens come from @0xnullai/ui (verified: the tokens this file used to define are
-   a strict subset of the shared layer's, with none unique to it). */
-
   *,
   *::before,
   *::after {
     box-sizing: border-box;
   }
 
-  html,
-  body {
-    margin: 0;
-    min-height: 100%;
-  }
-
-  body {
-    font-family:
-      'PingFang SC', 'HarmonyOS_Regular', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-    color: var(--text);
-    background: var(--bg);
-  }
-
-  /* Sticky-footer page layout: the content expands, the footer always sits at the bottom */
   .app {
-    max-width: 1100px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 20px 16px 0;
-    /* Not 100vh: inside the shell the content area is shorter than the viewport (there is a
-     device bar above it), so a hard-coded vh overflows and cannot be scrolled to. */
+    padding: clamp(20px, 3vw, 40px) clamp(16px, 3vw, 40px) 48px;
     min-height: 100%;
-    display: flex;
-    flex-direction: column;
   }
 
-  /* A single bar. Modeled on DG-Agent's top bar: thin, flush to the edges, separated by a
-   bottom border, taking up no vertical space. */
-  .topbar {
+  /* On a phone the shell's top bar already names this page. */
+  @media (max-width: 767px) {
+    .market-hero {
+      display: none;
+    }
+  }
+
+  .market-hero {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 16px;
+    margin-bottom: 12px;
+  }
+  .market-hero h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .market-hero-actions {
+    display: flex;
     flex-wrap: wrap;
-    padding: 10px 0 12px;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .market-category-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+  .market-create {
+    position: relative;
+    flex: none;
+  }
+  .market-create-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 6px);
+    right: 0;
+    display: grid;
+    min-width: 144px;
+    padding: 6px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+    background: var(--bg-elevated);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  }
+  .market-create-menu button {
+    padding: 10px 12px;
+    border: 0;
+    border-radius: var(--radius-ctl);
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .market-create-menu button:hover {
+    background: var(--bg-soft);
+  }
+
+  .character-studio {
+    width: 100%;
+  }
+  .character-studio-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .character-studio-head h1 {
+    margin: 2px 0 4px;
+    font-size: clamp(24px, 3vw, 32px);
+  }
+  .character-studio-head p,
+  .character-studio-preview p {
+    margin: 0;
+    color: var(--text-soft);
+  }
+  .character-studio-eyebrow {
+    color: var(--accent) !important;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .character-studio-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+    align-items: start;
+    gap: clamp(16px, 3vw, 32px);
+  }
+  .character-studio-form,
+  .character-studio-preview {
+    min-width: 0;
+    padding: clamp(16px, 2vw, 24px);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+    background: var(--bg-strong);
+  }
+  .character-studio-form {
+    display: grid;
+    gap: 16px;
+  }
+  .character-studio-draft {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--radius-ctl);
+    background: var(--accent-soft);
+    font-size: 13px;
+  }
+  .character-studio-draft-notice {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 13px;
+  }
+  .character-studio-import {
+    padding: 12px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+  }
+  .character-studio-import summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .character-studio-import[open] > :not(summary) {
+    margin-top: 8px;
+  }
+  .character-studio-import p,
+  .character-studio-import small {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 12px;
+  }
+  .character-studio-import input[type='file'] {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .character-studio-source {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .character-studio-source label {
+    flex-basis: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .character-studio-form .field {
+    display: grid;
+    gap: 6px;
+  }
+  .character-studio-form .field small {
+    color: var(--text-faint);
+  }
+  .character-studio-form textarea {
+    resize: vertical;
+  }
+  .character-studio-publish summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .character-studio-publish .field + .field {
+    margin-top: 12px;
+  }
+  .character-studio-history summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .character-studio-history-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--surface-border);
+    font-size: 13px;
+  }
+  .character-studio-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .character-studio-preview {
+    position: sticky;
+    top: 16px;
+    display: grid;
+    gap: 14px;
+  }
+  .character-studio-preview h2 {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .character-studio-preview small {
+    color: var(--text-faint);
+  }
+  .character-studio-portrait {
+    display: grid;
+    place-items: center;
+    width: 88px;
+    height: 88px;
+    border-radius: 24px;
+    background: var(--accent-soft);
+    font-size: 44px;
+    overflow: hidden;
+  }
+  .character-studio-portrait img,
+  .card-icon img,
+  .market-detail-portrait {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .market-detail-portrait {
+    width: 56px;
+    height: 56px;
+    flex: none;
+    border-radius: 16px;
+  }
+  .character-studio-prompt-preview {
+    padding: 14px;
+    border-radius: var(--radius-ctl);
+    background: var(--bg-soft);
+  }
+  .character-studio-prompt-preview p {
+    margin-top: 8px;
+    max-height: 18rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 760px) {
+    .character-studio-grid {
+      grid-template-columns: 1fr;
+    }
+    .character-studio-preview {
+      position: static;
+    }
+  }
+  @media (max-width: 540px) {
+    .market-hero {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .market-hero-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
+
+  .market-scope-chip {
+    display: inline-flex;
+    flex: 1;
+    min-height: 40px;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    padding: 0 14px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .market-discovery {
+    display: flex;
+    gap: 22px;
+    overflow-x: auto;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--surface-border);
   }
-
-  .topbar-filters {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1 1 320px;
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-
-  .topbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-left: auto;
+  .market-discovery button {
     flex: none;
-  }
-
-  /* Segmented control.
- *
- * Pulled onto the shared control scale: fully-round pills with a solid accent
- * fill made Market read as a different application from the other five
- * modules, all of which use --radius-ctl with a tinted selected state. The
- * shape and the selected treatment are what the eye compares first, so those
- * are what had to match — the rest of this sheet stays scoped as it is. */
-  .seg {
-    display: inline-flex;
-    background: var(--bg-strong);
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-ctl);
-    padding: 3px;
-  }
-  .seg button {
+    min-height: 42px;
+    padding: 0 2px;
     border: 0;
+    border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--text-soft);
-    padding: 7px 18px;
-    border-radius: var(--radius-xs);
     font-size: 14px;
-    transition:
-      background-color var(--dur) ease,
-      color var(--dur) ease;
+    white-space: nowrap;
   }
-  .seg button.active {
-    background: var(--accent-soft);
+  .market-discovery button:hover {
     color: var(--text);
-    font-weight: 500;
+  }
+  .market-discovery button[aria-pressed='true'] {
+    border-bottom-color: var(--accent);
+    color: var(--text);
+    font-weight: 600;
   }
 
-  /* Two-level tabs: top level + scene sub-filter */
-  .tab-group {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
+  .market-browse {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 24px;
+    container-type: inline-size;
   }
-  .seg-sub {
+  .market-categories {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+  .market-categories button {
+    flex: none;
+    min-height: 42px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--radius-ctl);
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .market-categories button:hover {
     background: var(--bg-soft);
   }
-  .seg-sub button {
-    padding: 5px 14px;
+  .market-categories button[aria-current='page'] {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  @container (max-width: 360px) {
+    .market-categories button {
+      padding-inline: 8px;
+    }
+  }
+  .market-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .market-search {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+  .market-search svg {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 1;
+    transform: translateY(-50%);
+    color: var(--text-faint);
+    pointer-events: none;
+  }
+  .market-search
+    input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+      [type='color']
+    ) {
+    padding-left: 39px;
+  }
+  .market-filter {
+    position: relative;
+    flex: none;
+  }
+  .market-filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+    background: var(--bg-strong);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .market-filter-trigger:hover,
+  .market-filter-trigger[aria-expanded='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .market-filter-count {
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--button-text);
+    font-size: 11px;
+  }
+  .market-filter-panel {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 8px);
+    right: 0;
+    display: grid;
+    gap: 16px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    padding: 16px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow-panel);
+  }
+  .market-filter-panel[data-placement='top'] {
+    top: auto;
+    bottom: calc(100% + 8px);
+  }
+  .market-filter-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .market-filter-head strong {
+    font-size: 15px;
+  }
+  .market-filter-head button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: var(--radius-ctl);
+    background: transparent;
+    color: var(--text-soft);
+  }
+  .market-filter-head button:hover {
+    background: var(--bg-soft);
+    color: var(--text);
+  }
+  .market-filter-group {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .market-filter-group legend {
+    margin-bottom: 9px;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .market-filter-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .market-filter-options button {
+    min-height: 44px;
+    padding: 8px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+    background: var(--bg-strong);
+    color: var(--text);
     font-size: 13px;
+    text-align: center;
+  }
+  .market-filter-options button:hover {
+    border-color: var(--accent);
+  }
+  .market-filter-options button[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .market-filter-reset {
+    justify-self: end;
+    min-height: 44px;
+    padding: 4px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .market-filter-reset:disabled {
+    color: var(--text-faint);
+    cursor: default;
   }
 
   /* DG Agent badge / suggested-player-count badge */
@@ -129,15 +518,6 @@
     font-weight: 600;
     background: var(--accent-soft);
     color: var(--accent-strong);
-    border-radius: 999px;
-    padding: 2px 8px;
-    white-space: nowrap;
-  }
-  .player-badge {
-    font-size: 10px;
-    background: var(--bg-soft);
-    border: 1px solid var(--surface-border);
-    color: var(--text-soft);
     border-radius: 999px;
     padding: 2px 8px;
     white-space: nowrap;
@@ -201,18 +581,77 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 4px var(--ring);
   }
-  .search {
-    flex: 1;
-    min-width: 160px;
-  }
   select {
     width: auto;
   }
 
-  .grid {
+  .market-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 16px;
+  }
+
+  .market-pagination {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 0 8px;
+    text-align: center;
+  }
+
+  .market-pagination p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 13px;
+  }
+
+  .market-template-empty {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+    border: 1px dashed var(--surface-border);
+    border-radius: var(--radius-md);
+  }
+  .market-template-empty > div:first-child p {
+    margin: 4px 0 0;
+    color: var(--text-soft);
+    font-size: 13px;
+  }
+  .market-template-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }
+  .market-template-grid button {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 150px;
+    padding: 14px;
+    text-align: left;
+    color: var(--text);
+    background: var(--bg-elevated);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-ctl);
+  }
+  .market-template-grid button:hover,
+  .market-template-grid button:focus-visible {
+    border-color: var(--accent);
+  }
+  .market-template-grid button > span {
+    font-size: 22px;
+  }
+  .market-template-grid button small {
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+  .market-template-grid button em {
+    align-self: end;
+    color: var(--accent);
+    font-size: 12px;
+    font-style: normal;
   }
 
   .card {
@@ -243,6 +682,13 @@
   }
   .card-icon {
     font-size: 20px;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 9px;
+    flex: none;
   }
   .card-name {
     font-weight: 600;
@@ -289,9 +735,21 @@
 
   .empty {
     grid-column: 1 / -1;
+    display: flex;
+    min-height: 260px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px dashed var(--surface-border);
+    border-radius: var(--radius-md);
+    color: var(--text-soft);
     text-align: center;
-    color: var(--text-faint);
-    padding: 60px 0;
+    padding: 32px;
+  }
+  .empty strong {
+    color: var(--text);
+    font-size: 16px;
   }
 
   .btn {
@@ -465,87 +923,7 @@
     margin: 0;
   }
 
-  .foot {
-    margin-top: auto;
-    text-align: center;
-    color: var(--text-faint);
-    font-size: 12px;
-    padding: 40px 0 20px;
-  }
-  .foot a {
-    color: var(--accent-strong);
-  }
-
-  /* —— Multiplayer scenes —— */
-  /* Upload form: role editing */
-  .role-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 4px;
-  }
-  .role-item {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .role-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .role-persona {
-    width: 100%;
-    font-size: 12px;
-  }
-  .role-row .role-name {
-    flex: 0 0 32%;
-  }
-  .role-row .role-desc {
-    flex: 1;
-    min-width: 0;
-  }
-  .role-ai {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--text-soft);
-    white-space: nowrap;
-    flex: 0 0 auto;
-  }
-  .role-ai input {
-    width: auto;
-    margin: 0;
-  }
-  .btn.add-role {
-    align-self: flex-start;
-    margin-top: 8px;
-    font-size: 13px;
-    padding: 0.4rem 0.9rem;
-  }
-
-  /* Card: multiplayer scene metadata */
-  .card-scene {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .scene-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text-soft);
-  }
-  .scene-meta span {
-    background: var(--bg-soft);
-    border: 1px solid var(--surface-border);
-    border-radius: 999px;
-    padding: 2px 10px;
-  }
-
-  /* Detail: role card grid */
+  /* Legacy detail cards remain until the item-detail view is migrated. */
   .scene-detail {
     display: flex;
     flex-direction: column;
@@ -579,30 +957,21 @@
     color: var(--text-soft);
     line-height: 1.5;
   }
-  .role-persona-view {
-    margin: 6px 0 0;
-    font-size: 11px;
-    color: var(--text-soft);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    border-top: 1px dashed var(--surface-border);
-    padding-top: 6px;
-  }
-  .ai-tag {
-    font-size: 10px;
-    font-weight: 500;
-    background: var(--accent-soft);
-    color: var(--accent-strong);
-    border-radius: 999px;
-    padding: 1px 7px;
-  }
-
   @media (max-width: 480px) {
-    .role-row {
-      flex-wrap: wrap;
+    .app {
+      padding: 20px 16px 32px;
     }
-    .role-row .role-name {
-      flex: 1 1 100%;
+    .market-hero {
+      margin-bottom: 18px;
+    }
+    .market-controls {
+      gap: 8px;
+    }
+    .market-search {
+      flex-basis: auto;
+    }
+    .market-filter-trigger {
+      padding-inline: 12px;
     }
   }
 

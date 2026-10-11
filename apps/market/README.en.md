@@ -2,7 +2,7 @@
 
 [中文](README.md) | English
 
-The community catalog for scenes and waveforms.
+The community catalog for characters, scenes, and waveforms. Characters are chat entities with their own relationship and memory; scenes provide reusable context without a separate relationship or memory.
 
 - Unified site: <https://0xnullai.com/market>
 - Legacy standalone site: <https://market.0xnullai.com>

@@ -12,6 +12,7 @@ import {
   MAX_SCENARIO_PROMPT_LENGTH,
   ScenarioContentSchema,
   STANDARD_SCENARIO_PROMPT_LENGTH,
+  UploadSchema,
 } from '../shared/schema';
 
 const pulse = 'Dungeonlab+pulse:测试波形=0,0,0,1,1/20-0,40-0';
@@ -27,11 +28,6 @@ function manualFields(patch: Partial<ManualUploadFields> = {}): ManualUploadFiel
     tagsText: '',
     waveInput: '[[10,20]]',
     prompt: '',
-    setting: '',
-    playerMin: '2',
-    playerMax: '4',
-    aiMode: 'none',
-    roles: [{ name: '', description: '', aiPlayable: false }],
     ...patch,
   };
 }
@@ -89,32 +85,6 @@ describe('upload model', () => {
     ).toBe(false);
   });
 
-  it('normalizes multiplayer roles and prevents an inverted player range', () => {
-    const payload = buildManualUploadPayload(
-      manualFields({
-        type: 'multi-scene',
-        setting: ' 世界 ',
-        playerMin: '5',
-        playerMax: '2',
-        aiMode: 'solo',
-        roles: [
-          { name: ' 主持人 ', description: ' 引导 ', aiPlayable: true },
-          { name: ' ', description: 'ignored', aiPlayable: false },
-        ],
-      }),
-    );
-
-    expect(payload).toMatchObject({
-      type: 'multi-scene',
-      content: {
-        setting: '世界',
-        playerCount: { min: 5, max: 5 },
-        aiMode: 'solo',
-        roles: [{ name: '主持人', description: '引导', aiPlayable: true }],
-      },
-    });
-  });
-
   it('resolves referenced pulse files in an archive and publishes unreferenced pulses', async () => {
     const archive = zipSync({
       'items.json': strToU8(
@@ -140,13 +110,12 @@ describe('upload model', () => {
     });
   });
 
-  it.each([
-    [manualFields({ type: 'scenario' }), '请填写场景提示词'],
-    [manualFields({ type: 'multi-scene' }), '请填写世界观'],
-    [manualFields({ type: 'multi-scene', setting: '世界' }), '至少填写一个角色'],
-  ])('preserves manual validation errors', (fields, message) => {
-    expect(() => buildManualUploadPayload(fields)).toThrow(message);
-  });
+  it.each([[manualFields({ type: 'scenario' }), '请填写场景提示词']])(
+    'preserves manual validation errors',
+    (fields, message) => {
+      expect(() => buildManualUploadPayload(fields)).toThrow(message);
+    },
+  );
 });
 
 it('rejects oversized pasted scripts without truncating the draft', () => {
@@ -168,14 +137,12 @@ it('keeps a maximum-length script identical through file and manual upload', asy
   expect(ScenarioContentSchema.safeParse(manual.content).success).toBe(true);
 });
 
-it('rejects oversized multiplayer setting and role descriptions without slicing them', () => {
-  const roles = [{ name: '角色', description: '界'.repeat(2001), aiPlayable: false }];
-  expect(() =>
-    buildManualUploadPayload(manualFields({ type: 'multi-scene', setting: '世界', roles })),
-  ).toThrow('角色 1 描述');
-  expect(() =>
-    buildManualUploadPayload(
-      manualFields({ type: 'multi-scene', setting: '界'.repeat(8001), roles }),
-    ),
-  ).toThrow('世界观 / 背景');
+it('rejects legacy multiplayer uploads instead of silently converting them', async () => {
+  const file = {
+    name: 'old.json',
+    text: async () => JSON.stringify({ type: 'multi-scene', name: '旧多人' }),
+  } as File;
+  const items = await parseUploadFile(file, 'electrostimulation');
+  expect(items).toEqual([{ type: 'multi-scene', name: '旧多人' }]);
+  expect(UploadSchema.safeParse(items[0]).success).toBe(false);
 });

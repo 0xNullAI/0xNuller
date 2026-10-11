@@ -1,11 +1,16 @@
+vi.mock('./CreatorFollowAction', () => ({ CreatorFollowAction: () => null }));
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ItemDetail } from './ItemDetail';
 import type { MarketItem } from '../../shared/schema';
+vi.mock('./FavoriteAction', () => ({ FavoriteAction: () => null }));
 const api = vi.hoisted(() => ({ update: vi.fn(), copy: vi.fn() }));
-vi.mock('@0xnullai/ui', () => ({ Overlay: ({ children }: { children: ReactNode }) => children }));
+vi.mock('@0xnullai/ui', () => ({
+  Button: 'button',
+  Overlay: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock('../api', () => ({
   fetchItemAccess: async () => ({ canEdit: true, canDelete: false }),
   updateItem: api.update,
@@ -55,7 +60,7 @@ it('retains oversized editor text, rejects saving, and saves all text after corr
   await waitFor(() =>
     expect(api.update).toHaveBeenCalledWith(
       'test',
-      expect.objectContaining({ content: { prompt } }),
+      expect.objectContaining({ content: { prompt, kind: 'scene' } }),
     ),
   );
 });
@@ -65,4 +70,91 @@ it('reports a clipboard failure instead of claiming the copy succeeded', async (
   await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
   expect(screen.getByRole('alert').textContent).toContain('复制失败');
   expect(screen.queryByRole('button', { name: '已复制 ✓' })).toBeNull();
+});
+it('保留角色卡导出，并允许所有者修改结构化人物设定', async () => {
+  const characterCard = {
+    schemaVersion: 1 as const,
+    description: '背景',
+    personality: '安静',
+    greeting: '你好',
+    exampleDialogue: '示例',
+    tags: ['陪伴'],
+    creator: '作者',
+    license: 'MIT',
+  };
+  render(
+    createElement(ItemDetail, {
+      item: { ...item, content: { prompt: '原始剧本', characterCard } },
+      onClose: () => {},
+    }),
+  );
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
+  expect(JSON.parse(api.copy.mock.calls[0]![0]).characterCard).toEqual(characterCard);
+  fireEvent.click(await screen.findByRole('button', { name: '✏️ 编辑' }));
+  fireEvent.change(screen.getByRole('textbox', { name: /性格与表达方式/ }), {
+    target: { value: '幽默而细心' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() =>
+    expect(api.update).toHaveBeenCalledWith(
+      'test',
+      expect.objectContaining({
+        content: {
+          prompt: '原始剧本',
+          kind: 'character',
+          characterCard: { ...characterCard, personality: '幽默而细心' },
+        },
+      }),
+    ),
+  );
+});
+
+it('starts a relationship only for a character; a scene has no chat entity', async () => {
+  const start = vi.fn().mockResolvedValue(undefined);
+  const characterCard = {
+    schemaVersion: 1 as const,
+    description: '',
+    personality: '',
+    greeting: '',
+    exampleDialogue: '',
+    tags: [],
+    creator: '',
+    license: '',
+  };
+  const character = { ...item, content: { prompt: '人物设定', characterCard } };
+  const view = render(
+    createElement(ItemDetail, { item: character, onClose: () => {}, onStartCharacter: start }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '开始聊天' }));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(character));
+  view.rerender(createElement(ItemDetail, { item, onClose: () => {}, onStartCharacter: start }));
+  expect(screen.queryByRole('button', { name: '开始聊天' })).toBeNull();
+  expect(screen.getByText(/不拥有独立关系或记忆/)).toBeTruthy();
+});
+
+it('offers a scene import without presenting it as a chat character', async () => {
+  const importScene = vi.fn().mockResolvedValue(undefined);
+  render(createElement(ItemDetail, { item, onClose: () => {}, onImportScene: importScene }));
+  expect(screen.queryByRole('button', { name: '开始聊天' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '导入场景' }));
+  await waitFor(() => expect(importScene).toHaveBeenCalledWith(item));
+  expect(screen.getByRole('button', { name: '已导入场景' })).toBeTruthy();
+});
+
+it('updates the visible export when the full detail arrives after a list card', async () => {
+  const first = { ...item, content: { prompt: '人物设定' } };
+  const full = {
+    ...first,
+    content: {
+      prompt: '人物设定',
+      sourceArchive: {
+        format: 'ccv2' as const,
+        raw: { spec: 'chara_card_v2', spec_version: '2.0', data: { name: '书屋' } },
+      },
+    },
+  };
+  const view = render(createElement(ItemDetail, { item: first, onClose: () => {} }));
+  view.rerender(createElement(ItemDetail, { item: full, onClose: () => {} }));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '复制 JSON' })));
+  expect(JSON.parse(api.copy.mock.calls[0]![0]).sourceArchive).toEqual(full.content.sourceArchive);
 });
