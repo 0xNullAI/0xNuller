@@ -43,3 +43,8 @@ gen
 
 # Native desktop frontend and installer output
 android/app/dist-desktop/
+
+# 本地测试用的真实 API 密钥（如 .anthropic-api-key.local）
+*.local
+.anthropic-api-key*
+*api-key*
