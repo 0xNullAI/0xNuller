@@ -88,6 +88,50 @@ describe('OpenAiHttpLlmClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('drops temperature after an endpoint rejects it, and keeps it dropped for that model', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const bodies: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      return 'temperature' in body
+        ? new Response('`temperature` is deprecated for this model.', { status: 400 })
+        : new Response(JSON.stringify(MOCK_CHAT_RESPONSE), { status: 200 });
+    });
+    const client = new OpenAiHttpLlmClient({
+      apiKey: 'sk-test',
+      baseUrl: 'https://gateway.example/v1',
+      model: 'no-temperature-model',
+    });
+
+    expect((await client.runTurn(makeTurnInput())).assistantMessage).toBe('ok');
+    await client.runTurn(makeTurnInput());
+
+    expect(bodies.map((body) => 'temperature' in body)).toEqual([true, false, false]);
+  });
+
+  it('does not retry an unrelated 400 or a managed request', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue(new Response('temperature too high', { status: 400 }));
+    const managed = new OpenAiHttpLlmClient({
+      apiKey: 'managed',
+      baseUrl: 'https://llm.0xnullai.com/v1',
+      model: 'balanced',
+    });
+    await expect(managed.runTurn(makeTurnInput())).rejects.toThrow('HTTP 错误 400');
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(new Response('bad tools', { status: 400 }));
+    const custom = new OpenAiHttpLlmClient({
+      apiKey: 'sk-test',
+      baseUrl: 'https://gateway.example/v1',
+      model: 'other-model',
+    });
+    await expect(custom.runTurn(makeTurnInput())).rejects.toThrow('bad tools');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('applies a changed URL transform at every request boundary', async () => {
     captureRequestBody();
     let proxy = 'https://proxy-one.example';

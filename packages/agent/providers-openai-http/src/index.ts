@@ -92,6 +92,9 @@ export interface OpenAiHttpLlmClientConfig {
   transformUrl?: (url: string) => string;
 }
 
+/** `${baseUrl}|${model}` pairs whose endpoint refused `temperature` this page. */
+const TEMPERATURE_REJECTED = new Set<string>();
+
 export class OpenAiHttpLlmClient implements LlmClient {
   private readonly config: z.infer<typeof configSchema>;
   readonly capabilities;
@@ -142,6 +145,49 @@ export class OpenAiHttpLlmClient implements LlmClient {
     return headers;
   }
 
+  /**
+   * POST one turn. Newer models behind OpenAI-compatible gateways (for example
+   * current Claude models) reject `temperature` outright and no catalog says so
+   * for a custom endpoint. A 400 that names temperature is retried once without
+   * it, and the model is remembered for the rest of the page. The managed
+   * service is never retried: each request there carries its own billing key.
+   */
+  private async postTurn(
+    baseUrl: string,
+    path: '/chat/completions' | '/responses',
+    requestBody: { temperature?: number },
+    headers: () => Promise<Record<string, string>>,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> {
+    const modelKey = `${baseUrl}|${this.config.model}`;
+    const body = TEMPERATURE_REJECTED.has(modelKey)
+      ? { ...requestBody, temperature: undefined }
+      : requestBody;
+    const send = async (payload: object) =>
+      fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        credentials: accountProxyCredentials(baseUrl),
+        signal,
+        headers: await headers(),
+        body: JSON.stringify(payload),
+      });
+    const response = await send(body);
+    if (response.ok) return response;
+    const detail = await response.text();
+    if (
+      response.status === 400 &&
+      body.temperature !== undefined &&
+      this.config.apiKey !== 'managed' &&
+      /temperature/i.test(detail)
+    ) {
+      TEMPERATURE_REJECTED.add(modelKey);
+      const retried = await send({ ...body, temperature: undefined });
+      if (retried.ok) return retried;
+      throw new Error(`模型服务 HTTP 错误 ${retried.status}: ${await retried.text()}`);
+    }
+    throw new Error(`模型服务 HTTP 错误 ${response.status}: ${detail}`);
+  }
+
   async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
     validateApiKey(this.config.apiKey);
     validateImageInput(input, this.capabilities.imageInput);
@@ -180,22 +226,19 @@ export class OpenAiHttpLlmClient implements LlmClient {
     };
     input.onRawRequest?.(requestBody);
     const baseUrl = this.requestBaseUrl();
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      credentials: accountProxyCredentials(baseUrl),
-      signal: input.abortSignal,
-      headers: await this.requestHeaders(
-        baseUrl,
-        this.config.model === 'vision' ? 'video' : 'agent',
-        input.session.id,
-        input.runId,
-      ),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`模型服务 HTTP 错误 ${response.status}: ${await response.text()}`);
-    }
+    const response = await this.postTurn(
+      baseUrl,
+      '/chat/completions',
+      requestBody,
+      () =>
+        this.requestHeaders(
+          baseUrl,
+          this.config.model === 'vision' ? 'video' : 'agent',
+          input.session.id,
+          input.runId,
+        ),
+      input.abortSignal,
+    );
 
     if (streaming && input.onTextDelta) {
       const result = await parseChatCompletionsStream(response, input.onTextDelta);
@@ -251,22 +294,19 @@ export class OpenAiHttpLlmClient implements LlmClient {
     };
     input.onRawRequest?.(requestBody);
     const baseUrl = this.requestBaseUrl();
-    const response = await fetch(`${baseUrl}/responses`, {
-      method: 'POST',
-      credentials: accountProxyCredentials(baseUrl),
-      signal: input.abortSignal,
-      headers: await this.requestHeaders(
-        baseUrl,
-        input.image ? 'video' : 'agent',
-        input.session.id,
-        input.runId,
-      ),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`模型服务 HTTP 错误 ${response.status}: ${await response.text()}`);
-    }
+    const response = await this.postTurn(
+      baseUrl,
+      '/responses',
+      requestBody,
+      () =>
+        this.requestHeaders(
+          baseUrl,
+          input.image ? 'video' : 'agent',
+          input.session.id,
+          input.runId,
+        ),
+      input.abortSignal,
+    );
 
     if (streaming && input.onTextDelta) {
       const result = await parseResponsesStream(response, input.onTextDelta);
