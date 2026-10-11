@@ -782,3 +782,21 @@ it('opens the new-chat icon menu, closes it on Escape or an outside press, and c
   expect(screen.queryByRole('menu')).toBeNull();
   await screen.findByText('小星');
 });
+
+it('asks an unverified account to verify instead of reporting the chat list as broken', async () => {
+  state.list.mockResolvedValue({ items: [] });
+  state.chat.mockClear();
+  const onOpenAccount = vi.fn();
+  render(
+    <UnifiedInbox
+      user={{ ...user('alice'), emailVerified: false }}
+      onNavigate={vi.fn()}
+      onOpenAccount={onOpenAccount}
+      onCreateRoom={vi.fn()}
+    />,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: '验证邮箱后可使用私聊和群聊' }));
+  expect(onOpenAccount).toHaveBeenCalledOnce();
+  expect(state.chat).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alert')).toBeNull();
+});

@@ -141,6 +141,9 @@ export function UnifiedInbox({
   presentation?: 'sidebar' | 'page';
 }) {
   const accountId = user?.id ?? null;
+  // Chat (private and group) requires a verified email; asking anyway only
+  // turns that rule into a misleading "list unavailable, retry" error.
+  const humanChatLocked = user?.emailVerified === false;
   const [result, setResult] = useState<{
     accountId: string;
     rows: InboxRow[];
@@ -193,7 +196,15 @@ export function UnifiedInbox({
         }
         return { items, nextCursor: cursor ?? null };
       })(),
-      loadChatInboxDisplayWithStatus(groupPages),
+      humanChatLocked
+        ? Promise.resolve({
+            entries: [],
+            partialError: null,
+            nextGroupCursor: null,
+            groupPageFailed: false,
+            dmLoadFailed: false,
+          })
+        : loadChatInboxDisplayWithStatus(groupPages),
     ])
       .then(([ai, human]) => {
         if (!active || epoch !== authEpoch.current || currentAuthUserId() !== accountId) return;
@@ -290,7 +301,7 @@ export function UnifiedInbox({
     return () => {
       active = false;
     };
-  }, [accountId, revision, onNavigate, groupPages]);
+  }, [accountId, revision, onNavigate, groupPages, humanChatLocked]);
   useEffect(() => {
     let pending: number | null = null;
     const scheduleRefresh = () => {
@@ -474,6 +485,15 @@ export function UnifiedInbox({
               重试
             </button>
           </p>
+        )}
+        {humanChatLocked && (
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            className="ui-press-row w-full px-4 py-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+          >
+            验证邮箱后可使用私聊和群聊
+          </button>
         )}
         {loading && <InboxSkeleton />}
         {user &&
