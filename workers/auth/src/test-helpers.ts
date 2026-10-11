@@ -46,6 +46,10 @@ class Stmt {
   }
 
   async run(): Promise<{ success: true }> {
+    return this.runSync();
+  }
+
+  runSync(): { success: true } {
     this.db.prepare(this.sql).run(...(this.args as never[]));
     return { success: true };
   }
@@ -75,8 +79,17 @@ export function createTestDb(): { DB: unknown; close: () => void } {
   return {
     DB: {
       prepare: (sql: string) => new Stmt(db, sql),
-      batch: async (statements: Stmt[]) =>
-        Promise.all(statements.map((statement) => statement.run())),
+      batch: async (statements: Stmt[]) => {
+        db.exec('BEGIN');
+        try {
+          const results = statements.map((statement) => statement.runSync());
+          db.exec('COMMIT');
+          return results;
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      },
     },
     close: () => db.close(),
   };

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "0xNullAI 账号服务：可选账号，不参与任何设备控制",
+  "dependencies": {
+    "@0xnullai/auth": "0.1.0",
+    "@0xnullai/scenes": "0.1.0"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",

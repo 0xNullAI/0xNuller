@@ -30,7 +30,7 @@ export function corsHeaders(request: Request, allowedOrigins: string): Record<st
     // the request outright at the preflight stage, which shows up as "the request
     // never even went out" rather than a catchable 401.
     'Access-Control-Allow-Headers':
-      'Content-Type,Authorization,X-Photo-Caption,X-Photo-Visibility,X-Photo-Purpose',
+      'Content-Type,Authorization,X-Account-Id,X-Photo-Caption,X-Photo-Visibility,X-Photo-Purpose',
     Vary: 'Origin',
   };
 }

@@ -34,13 +34,16 @@
   ],
 
   // 定时处理会话、上传补偿和账户删除任务。
-  "triggers": { "crons": ["17 4 * * *"] },
+  "triggers": { "crons": ["17 4 * * *", "* * * * *"] },
 
   "vars": {
     "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost,https://tauri.localhost,tauri://localhost",
   },
 
   // 向 Chat 同步账户侧的私聊状态变化。
-  "services": [{ "binding": "CHAT", "service": "0xnullai-chat" }],
+  "services": [
+    { "binding": "CHAT", "service": "0xnullai-chat" },
+    { "binding": "MARKET", "service": "0xnullai-market" },
+  ],
   "observability": { "enabled": true },
 }

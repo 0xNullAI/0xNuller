@@ -1,6 +1,9 @@
+import { revokeAccountChat, type AccountChatDeletionEnv } from './account-chat-deletion';
+
 const STALE_PHOTO_UPLOAD_MS = 60 * 60 * 1000;
 const MAINTENANCE_BATCH_SIZE = 100;
 const ACCOUNT_DELETION_BATCH_SIZE = 25;
+const MINUTE_DELETION_BATCH_SIZE = 5;
 
 export interface PhotoLifecycleEnv {
   DB: D1Database;
@@ -100,10 +103,12 @@ export async function finishPhotoUpload(
 }
 
 export async function finalizeAccountDeletion(
-  env: PhotoLifecycleEnv,
+  env: PhotoLifecycleEnv & AccountChatDeletionEnv,
   userId: string,
 ): Promise<void> {
+  await revokeAccountChat(env, userId);
   await deleteR2Prefix(env.PHOTOS, `users/${userId}/photos/`);
+  await deleteR2Prefix(env.PHOTOS, `users/${userId}/tts/`);
   await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 }
 
@@ -117,8 +122,48 @@ export async function recordDeletionFailure(env: PhotoLifecycleEnv, userId: stri
     .run();
 }
 
+async function finishDeletionRows(
+  env: PhotoLifecycleEnv & AccountChatDeletionEnv,
+  rows: Array<{ user_id: string }>,
+): Promise<void> {
+  for (const row of rows) {
+    try {
+      await finalizeAccountDeletion(env, row.user_id);
+    } catch (error) {
+      await recordDeletionFailure(env, row.user_id);
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'account_deletion_retry_failed',
+          userId: row.user_id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+}
+
+/** Retry cross-service deletion promptly without repeatedly hammering an unavailable Chat. */
+export async function runPendingAccountDeletions(
+  env: PhotoLifecycleEnv & AccountChatDeletionEnv,
+  now = Date.now(),
+): Promise<void> {
+  const deletions = await env.DB.prepare(
+    `SELECT user_id FROM account_deletions
+      WHERE last_error_at IS NULL OR
+        last_error_at + MIN(3600000, 60000 * (1 << MIN(MAX(attempts - 1, 0), 6))) <= ?
+      ORDER BY requested_at, user_id LIMIT ?`,
+  )
+    .bind(now, MINUTE_DELETION_BATCH_SIZE)
+    .all<{ user_id: string }>();
+  await finishDeletionRows(env, deletions.results ?? []);
+}
+
 /** Exported for deterministic local tests; production calls it from the daily cron. */
-export async function runAuthMaintenance(env: PhotoLifecycleEnv, now = Date.now()): Promise<void> {
+export async function runAuthMaintenance(
+  env: PhotoLifecycleEnv & AccountChatDeletionEnv,
+  now = Date.now(),
+): Promise<void> {
   const stale = await env.DB.prepare(
     `SELECT id, object_key FROM user_photos
       WHERE status = 'uploading' AND created_at < ?
@@ -147,19 +192,5 @@ export async function runAuthMaintenance(env: PhotoLifecycleEnv, now = Date.now(
   )
     .bind(ACCOUNT_DELETION_BATCH_SIZE)
     .all<{ user_id: string }>();
-  for (const row of deletions.results ?? []) {
-    try {
-      await finalizeAccountDeletion(env, row.user_id);
-    } catch (error) {
-      await recordDeletionFailure(env, row.user_id);
-      console.error(
-        JSON.stringify({
-          level: 'error',
-          event: 'account_deletion_retry_failed',
-          userId: row.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  }
+  await finishDeletionRows(env, deletions.results ?? []);
 }

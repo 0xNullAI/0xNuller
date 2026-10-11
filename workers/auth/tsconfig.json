@@ -6,5 +6,5 @@
     "lib": ["ES2022"]
   },
   "include": ["src", "worker-configuration.d.ts"],
-  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts"]
+  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts", "src/test-image.ts"]
 }

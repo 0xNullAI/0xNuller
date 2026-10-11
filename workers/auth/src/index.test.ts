@@ -3,23 +3,25 @@ import worker, {
   claimMarketItemsForCredentials,
   creditBalance,
   marketItemAccessForCredentials,
+  marketAccountIdentityForCredentials,
+  marketAccountActiveForOwner,
   registrationConflict,
   releaseCredits,
   reserveCredits,
   runAuthMaintenance,
+  runPendingAccountDeletions,
   settleCredits,
+  tipMarketItemForCredentials,
   type Env,
 } from './index';
 import { createTestDb } from './test-helpers';
+import { VALID_PNG } from './test-image';
+import { verifyDmTicket } from './dm-ticket';
 
 const ORIGIN = 'https://0xnullai.com';
 let db: ReturnType<typeof createTestDb>;
 let env: Env;
 let photos: FakePhotos;
-const VALID_PNG = new Uint8Array([
-  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 73, 69, 78, 68, 0, 0, 0, 0,
-]);
 let sentEmails: unknown[];
 
 class FakePhotos {
@@ -89,7 +91,31 @@ beforeEach(() => {
         sentEmails.push(message);
       },
     } as unknown as SendEmail,
-    CHAT: { fetch: async () => new Response('ok') } as unknown as Fetcher,
+    CHAT: {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { token?: string; room?: string };
+        const claims = await verifyDmTicket('test-dm-ticket-secret', body.token ?? '', Date.now());
+        if (!claims) return new Response('unauthorized', { status: 401 });
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/groups/account-deletion')
+          return Response.json({
+            accountId: claims.sub,
+            deletionId: claims.deletionId,
+            tombstoned: true,
+            rooms: [],
+            nextCursor: null,
+            coverage: 'registered-and-observed',
+            legacyCoverage: 'unknown',
+          });
+        if (path === '/api/groups/account-deletion/room')
+          return Response.json({ accountId: claims.sub, room: body.room, revoked: true });
+        if (path === '/api/dm/revoke') return Response.json({ ok: true });
+        return new Response('not found', { status: 404 });
+      },
+    } as unknown as Fetcher,
+    MARKET: {
+      fetch: async () => new Response(null, { status: 404 }),
+    } as unknown as Fetcher,
     IP_PEPPER: 'test-pepper',
     DM_TICKET_SECRET: 'test-dm-ticket-secret',
     ALLOWED_ORIGINS: ORIGIN,
@@ -419,6 +445,78 @@ describe('邀请注册与活动 Credit', () => {
 });
 
 describe('Credit 账本与人工充值', () => {
+  it('并发打赏不能透支或单独增加作者Credit，并尊重活跃预留', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await prepared(
+      "INSERT INTO market_claims(item_id,user_id,claimed_at,verified_at) VALUES ('tip-item',?,1,1)",
+      bob.id,
+    ).run();
+    await prepared(
+      "INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,created_at) VALUES (?,100,'support_adjustment','tip-seed','test',1)",
+      alice.id,
+    ).run();
+    await reserveCredits(env, alice.id, {
+      idempotencyKey: 'tip:held:voice',
+      usageKind: 'voice',
+      modelId: 'voice',
+      credits: 20,
+    });
+    const credentials = { authorization: `Bearer ${alice.token}`, cookie: null };
+    const result = await Promise.all([
+      tipMarketItemForCredentials(env, credentials, 'tip-item', 60),
+      tipMarketItemForCredentials(env, credentials, 'tip-item', 60),
+    ]);
+    expect(result.sort()).toEqual(['invalid', 'ok']);
+    expect(await creditBalance(env, alice.id)).toMatchObject({
+      total: 40,
+      reserved: 20,
+      available: 20,
+    });
+    expect(await creditBalance(env, bob.id)).toMatchObject({ total: 60 });
+    expect(
+      await prepared(
+        "SELECT SUM(amount_credits) AS net,COUNT(*) AS n FROM credit_ledger WHERE kind='market_tip'",
+      ).first(),
+    ).toEqual({ net: 0, n: 2 });
+  });
+
+  it('释放先于结算事务时不会扣费或谎报 settled', async () => {
+    const { body } = await registerUser();
+    const userId = body.user!.id;
+    await prepared(
+      "INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,created_at) VALUES (?,1000,'support_adjustment','race-seed','test',?)",
+      userId,
+      Date.now(),
+    ).run();
+    await reserveCredits(env, userId, {
+      idempotencyKey: 'race:release-first',
+      usageKind: 'agent',
+      modelId: 'test/model',
+      credits: 100,
+    });
+    const original = env.DB.batch.bind(env.DB);
+    env.DB.batch = async (statements) => {
+      await releaseCredits(env, userId, 'race:release-first');
+      return original(statements);
+    };
+    try {
+      expect(await settleCredits(env, userId, 'race:release-first', 30, {})).toMatchObject({
+        status: 'released',
+        charged: null,
+        total: 1000,
+      });
+      expect(
+        await prepared(
+          "SELECT COUNT(*) AS n FROM credit_ledger WHERE kind='usage' AND user_id=?",
+          userId,
+        ).first(),
+      ).toEqual({ n: 0 });
+    } finally {
+      env.DB.batch = original;
+    }
+  });
+
   it('冻结并按实际费用结算，同一幂等键只扣一次', async () => {
     const { body } = await registerUser();
     await prepared(
@@ -462,6 +560,26 @@ describe('Credit 账本与人工充值', () => {
         input.idempotencyKey,
       ).first<{ n: number }>(),
     ).toEqual({ n: 1 });
+  });
+
+  it('拒绝非整数或非有限的 Credit 预留而不写入冻结记录', async () => {
+    const { body } = await registerUser();
+    for (const [index, credits] of [1.5, Number.NaN, Number.POSITIVE_INFINITY].entries()) {
+      const key = `request:invalid-credit:${index}`;
+      expect(
+        await reserveCredits(env, body.user!.id, {
+          idempotencyKey: key,
+          usageKind: 'agent',
+          modelId: 'test/model',
+          credits,
+        }),
+      ).toMatchObject({ allowed: false, charged: null });
+      expect(
+        await prepared('SELECT idempotency_key FROM credit_reservations WHERE idempotency_key=?')
+          .bind(key)
+          .first(),
+      ).toBeNull();
+    }
   });
 
   it('释放失败请求的冻结额度，并拒绝余额不足的请求', async () => {
@@ -665,6 +783,72 @@ describe('运营统计', () => {
 });
 
 describe('Chat 房间账户同步', () => {
+  it('按账号与时间戳+房间号稳定分页，超过 50 个群不漏同毫秒记录', async () => {
+    const alice = (await registerUser()).body;
+    const bob = (await registerUser({ username: 'bob', email: 'bob@example.com' })).body;
+    await verifyRegisteredUser(alice);
+    await verifyRegisteredUser(bob);
+    const sameTime = 123456;
+    for (let n = 0; n < 121; n++) {
+      await prepared(
+        'INSERT INTO user_chat_rooms(user_id,code,name,joined_at,updated_at) VALUES(?,?,?,?,?)',
+        alice.user!.id,
+        `room-${String(n).padStart(3, '0')}`,
+        `Room ${n}`,
+        sameTime,
+        sameTime,
+      ).run();
+    }
+    await prepared(
+      'INSERT INTO user_chat_rooms(user_id,code,name,joined_at,updated_at) VALUES(?,?,?,?,?)',
+      bob.user!.id,
+      'bob-private',
+      'Bob',
+      sameTime,
+      sameTime,
+    ).run();
+    const codes: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const path = `/api/auth/chat-rooms?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const response = await worker.fetch(req(path, { token: alice.token }), env);
+      expect(response.status).toBe(200);
+      const page = (await response.json()) as {
+        rooms: { code: string }[];
+        nextCursor: string | null;
+      };
+      expect(page.rooms.length).toBeLessThanOrEqual(50);
+      codes.push(...page.rooms.map((room) => room.code));
+      if (page.nextCursor) {
+        expect(
+          (
+            await worker.fetch(
+              req(`/api/auth/chat-rooms?limit=50&cursor=${encodeURIComponent(page.nextCursor)}`, {
+                token: bob.token,
+              }),
+              env,
+            )
+          ).status,
+        ).toBe(400);
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(codes).toEqual(
+      Array.from({ length: 121 }, (_, n) => `room-${String(n).padStart(3, '0')}`),
+    );
+    expect(
+      (await worker.fetch(req('/api/auth/chat-rooms?limit=0', { token: alice.token }), env)).status,
+    ).toBe(400);
+    expect(
+      (
+        await worker.fetch(
+          req('/api/auth/chat-rooms?limit=50&cursor=bad', { token: alice.token }),
+          env,
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   it('跨会话读取已加入房间，并允许只从自己的列表移除', async () => {
     const { body } = await registerUser();
     await verifyRegisteredUser(body);
@@ -861,6 +1045,9 @@ describe('会话', () => {
 describe('注销账号', () => {
   it('硬删除，且所有设备上的会话随之失效', async () => {
     const { body } = await registerUser();
+    await prepared(
+      "INSERT INTO push_registrations(installation_id,user_id,provider,platform,created_at,updated_at) SELECT 'firebase-installation-01',id,'fcm-fid','android',1,1 FROM users LIMIT 1",
+    ).run();
     const second = await post('/api/auth/login', GOOD);
     const secondToken = ((await second.json()) as { token: string }).token;
 
@@ -882,6 +1069,9 @@ describe('注销账号', () => {
     // this category are extremely sensitive about whether it is really gone.
     const orphans = await prepared('SELECT COUNT(*) AS n FROM sessions').first<{ n: number }>();
     expect(orphans?.n).toBe(0);
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM push_registrations').first<{ n: number }>())?.n,
+    ).toBe(0);
 
     // The username is released along with it and can be registered again.
     expect((await registerUser()).res.status).toBe(201);
@@ -912,12 +1102,19 @@ describe('注销账号', () => {
 
   it('R2 暂时失败时立即冻结账号，并由 maintenance 完成删除', async () => {
     const alice = await seedUser('alice');
+    await prepared(
+      "INSERT INTO push_registrations(installation_id,user_id,provider,platform,created_at,updated_at) VALUES('firebase-installation-01',?,'fcm-fid','android',1,1)",
+      alice.id,
+    ).run();
     await photos.put(`users/${alice.id}/photos/retry`, new Uint8Array([1]).buffer);
     photos.failDeletes = 1;
 
     const response = await del('/api/auth/account', alice.token);
     expect(response.status).toBe(202);
     expect((await response.json()) as object).toEqual({ ok: false, pending: true });
+    expect(
+      (await prepared('SELECT COUNT(*) AS n FROM push_registrations').first<{ n: number }>())?.n,
+    ).toBe(0);
     expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).not.toBeNull();
     expect(
       await prepared('SELECT 1 FROM account_deletions WHERE user_id = ?', alice.id).first(),
@@ -929,6 +1126,91 @@ describe('注销账号', () => {
     await runAuthMaintenance(env, Date.now());
     expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).toBeNull();
     expect(photos.objects.size).toBe(0);
+  });
+
+  it('Chat 撤销未确认时保留删除任务及关系索引，重试确认后才硬删', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await prepared(
+      'INSERT INTO user_chat_rooms(user_id,code,name,joined_at,updated_at) VALUES (?, ?, ?, ?, ?)',
+      alice.id,
+      'old-room',
+      '旧群',
+      Date.now(),
+      Date.now(),
+    ).run();
+    await prepared(
+      'INSERT INTO dm_threads(user_id,peer_id,started_at) VALUES (?, ?, ?)',
+      alice.id,
+      bob.id,
+      Date.now(),
+    ).run();
+    const normalFetch = env.CHAT.fetch.bind(env.CHAT);
+    const paths: string[] = [];
+    let failGroup = true;
+    env.CHAT = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        paths.push(path);
+        if (failGroup && path === '/api/groups/account-deletion/room')
+          return new Response('unavailable', { status: 503 });
+        return normalFetch(input, init);
+      },
+    } as unknown as Fetcher;
+
+    const response = await del('/api/auth/account', alice.token);
+    expect(response.status).toBe(202);
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).not.toBeNull();
+    expect(
+      await prepared('SELECT 1 FROM account_deletions WHERE user_id = ?', alice.id).first(),
+    ).not.toBeNull();
+    expect(
+      await prepared('SELECT 1 FROM dm_threads WHERE user_id = ?', alice.id).first(),
+    ).not.toBeNull();
+    expect(paths).not.toContain('/api/dm/revoke');
+
+    failGroup = false;
+    await runPendingAccountDeletions(env, Date.now());
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).not.toBeNull();
+    await runPendingAccountDeletions(env, Date.now() + 60_001);
+    expect(paths).toContain('/api/groups/account-deletion/room');
+    expect(paths).toContain('/api/dm/revoke');
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).toBeNull();
+  });
+
+  it('无本地书签时仍遍历 Chat 权威群索引，全部确认后才删除账户', async () => {
+    const alice = await seedUser('alice');
+    const pending = new Set(['room-a', 'room-b']);
+    const normalFetch = env.CHAT.fetch.bind(env.CHAT);
+    const revoked: string[] = [];
+    env.CHAT = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        const body = JSON.parse(String(init?.body ?? '{}')) as { token: string; room?: string };
+        const claims = await verifyDmTicket('test-dm-ticket-secret', body.token, Date.now());
+        if (path === '/api/groups/account-deletion')
+          return Response.json({
+            accountId: claims?.sub,
+            deletionId: claims?.deletionId,
+            tombstoned: true,
+            rooms: [...pending].slice(0, 1),
+            nextCursor: null,
+            coverage: 'registered-and-observed',
+            legacyCoverage: 'unknown',
+          });
+        if (path === '/api/groups/account-deletion/room' && body.room) {
+          pending.delete(body.room);
+          revoked.push(body.room);
+          return Response.json({ accountId: claims?.sub, room: body.room, revoked: true });
+        }
+        return normalFetch(input, init);
+      },
+    } as unknown as Fetcher;
+
+    expect((await del('/api/auth/account', alice.token)).status).toBe(200);
+    expect(revoked).toEqual(['room-a', 'room-b']);
+    expect(pending.size).toBe(0);
+    expect(await prepared('SELECT 1 FROM users WHERE id = ?', alice.id).first()).toBeNull();
   });
 });
 
@@ -1333,7 +1615,7 @@ describe('他人主页的可见性', () => {
       env,
     );
 
-  it('私密资料对任何人都不可见——关注了也一样', async () => {
+  it('旧版私密选项不再隐藏登录用户的主页', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'private');
@@ -1342,16 +1624,51 @@ describe('他人主页的可见性', () => {
     const res = await get('/api/auth/users/bob', alice.token);
     const body = (await res.json()) as {
       user: { username: string };
-      profile: unknown;
+      profile: { bio: string; visibility: string };
       following: boolean;
     };
     expect(res.status).toBe(200);
-    // The identity stays visible — it is the username Alice just typed, and
-    // without it there is no way to confirm she found the right person. The
-    // profile body does not, and following is not a way to earn it.
     expect(body.user.username).toBe('bob');
     expect(body.following).toBe(true);
-    expect(body.profile).toBeNull();
+    expect(body.profile).toMatchObject({ bio: '一句话', visibility: 'public' });
+  });
+
+  it('数据库中原有私密资料可读，但旧私密相册仍不外泄', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    await setVisibility(bob.token, 'public');
+    await prepared(
+      "UPDATE user_profiles SET visibility = 'private' WHERE user_id = ?",
+      bob.id,
+    ).run();
+    await prepared(
+      "INSERT INTO user_photos (id, user_id, object_key, visibility, created_at) VALUES (?, ?, ?, 'private', ?)",
+      'old-private',
+      bob.id,
+      'r2/old-private',
+      Date.now(),
+    ).run();
+
+    const response = await get('/api/auth/users/bob', alice.token);
+    const body = (await response.json()) as {
+      profile: { bio: string; visibility: string };
+      photos: Array<{ id: string }>;
+    };
+    expect(response.status).toBe(200);
+    expect(body.profile).toMatchObject({ bio: '一句话', visibility: 'public' });
+    expect(body.photos).toEqual([]);
+    expect((await get('/api/auth/photos/old-private/content', alice.token)).status).toBe(404);
+  });
+
+  it('未填写资料的新账号仍有公开主页', async () => {
+    const alice = await seedUser('alice');
+    await seedUser('bob');
+    const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      profile: { bio: string | null; visibility: string; discoverable: boolean };
+      counts: { followers: number; following: number };
+    };
+    expect(body.profile).toMatchObject({ bio: null, visibility: 'public', discoverable: true });
+    expect(body.counts).toEqual({ followers: 0, following: 0 });
   });
 
   it('公开资料对他人可见', async () => {
@@ -1364,15 +1681,17 @@ describe('他人主页的可见性', () => {
     expect(body.profile?.bio).toBe('一句话');
   });
 
-  it('仅好友资料要求双方互相关注', async () => {
+  it('旧版好友选项不再限制主页资料，私聊仍由互关控制', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'friends');
     await follow(alice.token, bob.id);
     expect(
-      ((await (await get('/api/auth/users/bob', alice.token)).json()) as { profile: unknown })
-        .profile,
-    ).toBeNull();
+      (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+        profile: { bio: string };
+        followedBy: boolean;
+      },
+    ).toMatchObject({ profile: { bio: '一句话' }, followedBy: false });
     await follow(bob.token, alice.id);
     expect(
       (
@@ -1383,38 +1702,42 @@ describe('他人主页的可见性', () => {
     ).toBe('一句话');
   });
 
-  it('发现只返回主动开启的公开资料，并排除拉黑关系', async () => {
+  it('发现默认包含账号，排除主动关闭发现、待删除和拉黑关系的账号', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     const carol = await seedUser('carol');
-    await worker.fetch(
-      req('/api/auth/profile', {
-        method: 'PUT',
-        token: bob.token,
-        body: JSON.stringify({
-          bio: '可发现',
-          visibility: 'public',
-          discoverable: true,
-          interests: ['音乐', '游戏'],
-        }),
-      }),
-      env,
-    );
-    await worker.fetch(
-      req('/api/auth/profile', {
-        method: 'PUT',
-        token: carol.token,
-        body: JSON.stringify({ bio: '未开启发现', visibility: 'public' }),
-      }),
-      env,
-    );
+    const dave = await seedUser('dave');
+    const erin = await seedUser('erin');
+    const save = (token: string, body: Record<string, unknown>) =>
+      worker.fetch(
+        req('/api/auth/profile', { method: 'PUT', token, body: JSON.stringify(body) }),
+        env,
+      );
+    await save(bob.token, { bio: '不想被发现', discoverable: false });
+    await save(carol.token, { bio: '默认开启', interests: ['音乐', '游戏'] });
     const before = (await (await get('/api/auth/discover', alice.token)).json()) as {
       users: Array<{ username: string; interests: string[] }>;
     };
-    expect(before.users).toEqual([
-      expect.objectContaining({ username: 'bob', interests: ['音乐', '游戏'] }),
-    ]);
-    await block(alice.token, bob.id);
+    expect(before.users.map((user) => user.username).sort()).toEqual(['carol', 'dave', 'erin']);
+    expect(before.users).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ username: 'carol', interests: ['音乐', '游戏'] }),
+        expect.objectContaining({ username: 'dave', bio: null, interests: [] }),
+      ]),
+    );
+    expect(
+      await env.DB.prepare('SELECT discoverable FROM user_profiles WHERE user_id=?')
+        .bind(bob.id)
+        .first(),
+    ).toEqual({ discoverable: 0 });
+    // Saving the profile again keeps the owner's choice instead of re-enabling discovery.
+    await save(bob.token, { bio: '还是不想被发现', discoverable: false });
+    await save(carol.token, { bio: '现在关闭', discoverable: false });
+    await prepared(
+      'INSERT INTO account_deletions(user_id, requested_at) VALUES (?, 1)',
+      erin.id,
+    ).run();
+    await block(alice.token, dave.id);
     const after = (await (await get('/api/auth/discover', alice.token)).json()) as {
       users: unknown[];
     };
@@ -1456,6 +1779,36 @@ describe('他人主页的可见性', () => {
       profile: { avatarUrl: string };
     };
     expect(profile.profile.avatarUrl).toBe(photo.photo.url);
+  });
+
+  it('公开主页拒绝可执行链接，并过滤旧库里的异常链接', async () => {
+    const alice = await seedUser('alice');
+    const bob = await seedUser('bob');
+    const rejected = await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({ links: ['javascript:alert(1)'] }),
+      }),
+      env,
+    );
+    expect(rejected.status).toBe(400);
+    const saved = await worker.fetch(
+      req('/api/auth/profile', {
+        method: 'PUT',
+        token: bob.token,
+        body: JSON.stringify({ links: ['https://example.com/about'] }),
+      }),
+      env,
+    );
+    expect(saved.status).toBe(200);
+    await prepared('UPDATE user_profiles SET links=? WHERE user_id=?')
+      .bind(JSON.stringify(['javascript:alert(1)', 'https://example.com/about']), bob.id)
+      .run();
+    const publicView = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
+      profile: { links: string[] };
+    };
+    expect(publicView.profile.links).toEqual(['https://example.com/about']);
   });
 
   it('公开资料也不把生日给别人看', async () => {
@@ -1527,11 +1880,7 @@ describe('他人主页的可见性', () => {
     expect(body.photos).toEqual([]);
   });
 
-  it('私密资料连关注数和加入时间都不给', async () => {
-    // The whole point of the flag. A private profile that still reported its
-    // follower count would publish exactly the presence and popularity signal
-    // it was set to private to withhold, and a moving number tells a watcher
-    // who just followed.
+  it('旧版私密资料的关注数和加入时间对登录用户公开', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'private');
@@ -1543,10 +1892,9 @@ describe('他人主页的可见性', () => {
       photos: unknown[];
       user: { username: string };
     };
-    expect(body.counts).toBeNull();
-    expect(body.createdAt).toBeNull();
+    expect(body.counts).toEqual({ followers: 1, following: 0 });
+    expect(body.createdAt).toEqual(expect.any(Number));
     expect(body.photos).toEqual([]);
-    // The username stays: it is what the viewer typed to get here.
     expect(body.user.username).toBe('bob');
   });
 
@@ -1561,16 +1909,15 @@ describe('他人主页的可见性', () => {
     expect(body.createdAt).toBeGreaterThan(0);
   });
 
-  it('未登录看公开资料也能看到关注数', async () => {
+  it('未登录不能读取主页或关注数', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'public');
     await follow(alice.token, bob.id);
 
-    const body = (await (await get('/api/auth/users/bob')).json()) as {
-      counts: { followers: number } | null;
-    };
-    expect(body.counts?.followers).toBe(1);
+    const response = await get('/api/auth/users/bob');
+    expect(response.status).toBe(401);
+    expect(JSON.stringify(await response.json())).not.toContain('followers');
   });
 
   it('相册对象缺失时取图片返回 404，而不是泄漏存储错误', async () => {
@@ -1585,7 +1932,7 @@ describe('他人主页的可见性', () => {
       Date.now(),
     ).run();
 
-    const listed = (await (await get('/api/auth/users/bob')).json()) as {
+    const listed = (await (await get('/api/auth/users/bob', bob.token)).json()) as {
       photos: { id: string; url: string }[];
     };
     expect(listed.photos).toHaveLength(1);
@@ -1593,10 +1940,11 @@ describe('他人主页的可见性', () => {
     expect(JSON.stringify(listed.photos)).not.toContain('bucket-object-key');
     expect(listed.photos[0]?.url).toBe('/api/auth/photos/p1/content');
 
-    expect((await get('/api/auth/photos/p1/content')).status).toBe(404);
+    expect((await get('/api/auth/photos/p1/content', bob.token)).status).toBe(404);
   });
 
   it('上传、读取、列出和删除照片形成完整的 D1 + R2 生命周期', async () => {
+    const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'public');
     const uploaded = await worker.fetch(
@@ -1625,7 +1973,7 @@ describe('他人主页的可见性', () => {
     ]);
     expect(JSON.stringify(ownList)).not.toContain('users/');
 
-    const content = await get(photo.photo.url);
+    const content = await get(photo.photo.url, bob.token);
     expect(content.status).toBe(200);
     expect(content.headers.get('content-type')).toBe('image/png');
     expect(content.headers.get('cache-control')).toBe('private, no-store');
@@ -1640,12 +1988,12 @@ describe('他人主页的可见性', () => {
       env,
     );
     expect(madePrivate.status).toBe(200);
-    expect((await get(photo.photo.url)).status).toBe(404);
+    expect((await get(photo.photo.url, alice.token)).status).toBe(404);
     expect((await get(photo.photo.url, bob.token)).status).toBe(200);
 
     expect((await del(`/api/auth/photos/${photo.photo.id}`, bob.token)).status).toBe(200);
     expect(photos.objects.size).toBe(0);
-    expect((await get(photo.photo.url)).status).toBe(404);
+    expect((await get(photo.photo.url, bob.token)).status).toBe(404);
   });
 
   it('头像资源与相册分离', async () => {
@@ -1802,6 +2150,15 @@ describe('他人主页的可见性', () => {
     await expect(
       marketItemAccessForCredentials(env, { authorization: null, cookie: null }, 'item-1'),
     ).resolves.toBe('unauthorized');
+    await expect(
+      marketAccountIdentityForCredentials(env, {
+        authorization: `Bearer ${alice.token}`,
+        cookie: null,
+      }),
+    ).resolves.toEqual({ id: alice.id });
+    await expect(
+      marketAccountIdentityForCredentials(env, { authorization: null, cookie: null }),
+    ).resolves.toBeNull();
   });
 
   it('拒绝非图片与超过上限的图片，不写 R2', async () => {
@@ -1819,7 +2176,21 @@ describe('他人主页的可见性', () => {
     expect(photos.objects.size).toBe(0);
   });
 
-  it('私密资料里的公开照片对别人不出现', async () => {
+  it('Market 私有附件回收能识别注销标记与已删除账户', async () => {
+    const user = await seedUser('market_container_owner');
+    await expect(marketAccountActiveForOwner(env, user.id)).resolves.toBe(true);
+    await prepared(
+      'INSERT INTO account_deletions(user_id,requested_at) VALUES(?,?)',
+      user.id,
+      Date.now(),
+    ).run();
+    await expect(marketAccountActiveForOwner(env, user.id)).resolves.toBe(false);
+    await prepared('DELETE FROM users WHERE id=?', user.id).run();
+    await expect(marketAccountActiveForOwner(env, user.id)).resolves.toBe(false);
+    await expect(marketAccountActiveForOwner(env, '../other')).resolves.toBe(false);
+  });
+
+  it('旧私密主页里的公开照片对登录用户可见', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'private');
@@ -1835,8 +2206,8 @@ describe('他人主页的可见性', () => {
     const body = (await (await get('/api/auth/users/bob', alice.token)).json()) as {
       photos: unknown[];
     };
-    expect(body.photos).toEqual([]);
-    // And the bytes are refused too, re-derived rather than trusting the list.
+    expect(body.photos).toEqual([expect.objectContaining({ id: 'p1' })]);
+    // The missing R2 object still returns 404.
     expect((await get('/api/auth/photos/p1/content', alice.token)).status).toBe(404);
   });
 
@@ -1864,19 +2235,11 @@ describe('他人主页的可见性', () => {
     expect(mine.photos.map((p) => p.id)).toEqual(['p1']);
   });
 
-  it('未登录也能看公开资料，但看不到关系', async () => {
+  it('未登录不能读取公开主页', async () => {
     const bob = await seedUser('bob');
     await setVisibility(bob.token, 'public');
-    // The account is optional throughout the product, so an anonymous reader is
-    // not an error case here.
-    const body = (await (await get('/api/auth/users/bob')).json()) as {
-      profile: { bio: string } | null;
-      following: boolean;
-      followedBy: boolean;
-    };
-    expect(body.profile?.bio).toBe('一句话');
-    expect(body.following).toBe(false);
-    expect(body.followedBy).toBe(false);
+    expect((await get('/api/auth/users/bob')).status).toBe(401);
+    expect((await get('/api/auth/photos/unknown/content')).status).toBe(401);
   });
 });
 

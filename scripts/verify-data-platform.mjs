@@ -71,6 +71,7 @@ expectNames(
     'credit_ledger',
     'credit_reservations',
     'admin_credit_audit',
+    'character_drafts',
   ],
   'auth tables',
 );
@@ -174,7 +175,11 @@ assert(
 );
 
 const market = applyMigrations('apps/market/migrations');
-expectNames(names(market.db, 'table'), ['items'], 'market tables');
+expectNames(
+  names(market.db, 'table'),
+  ['items', 'item_favorites', 'creator_follows', 'character_item_versions', 'character_portraits'],
+  'market tables',
+);
 expectNames(
   names(market.db, 'index'),
   [
@@ -185,6 +190,10 @@ expectNames(
     'idx_items_visible_views',
     'idx_items_visible_hot',
     'idx_items_edit_key_scheme',
+    'idx_item_favorites_account',
+    'idx_creator_follows_account',
+    'idx_character_portraits_owner_created',
+    'idx_items_character_portrait',
   ],
   'market indexes',
 );
@@ -233,6 +242,44 @@ assert(
     JSON.stringify(market.db.prepare('PRAGMA table_info(items)').all()),
   'market: schema.sql snapshot drifted from migrations',
 );
+for (const table of ['character_item_versions', 'character_portraits', 'item_publish_order']) {
+  assert(
+    JSON.stringify(snapshot.prepare(`PRAGMA table_info(${table})`).all()) ===
+      JSON.stringify(market.db.prepare(`PRAGMA table_info(${table})`).all()),
+    `market: schema.sql ${table} snapshot drifted from migrations`,
+  );
+}
+assert(
+  JSON.stringify(names(snapshot, 'trigger')) === JSON.stringify(names(market.db, 'trigger')),
+  'market: schema.sql triggers drifted from migrations',
+);
+const versionSource = JSON.stringify({
+  prompt: 'First public definition',
+  characterCard: { schemaVersion: 1 },
+});
+market.db
+  .prepare('INSERT INTO items (id, type, name, content, created_at) VALUES (?, ?, ?, ?, ?)')
+  .run('character-version-test', 'scenario', 'First name', versionSource, 1);
+market.db
+  .prepare('UPDATE items SET name = ?, revision = revision + 1 WHERE id = ? AND revision = ?')
+  .run('Second name', 'character-version-test', 1);
+assert(
+  market.db
+    .prepare('SELECT name, content FROM character_item_versions WHERE item_id = ? AND revision = ?')
+    .get('character-version-test', 1)?.content === versionSource,
+  'market 0007: the first published character definition was not archived',
+);
+assert(
+  market.db.prepare('SELECT revision FROM items WHERE id = ?').get('character-version-test')
+    ?.revision === 2,
+  'market 0007: the current character revision was not incremented',
+);
+assert(
+  market.db
+    .prepare('UPDATE items SET name = ?, revision = revision + 1 WHERE id = ? AND revision = ?')
+    .run('Stale overwrite', 'character-version-test', 1).changes === 0,
+  'market 0007: stale editor was allowed to overwrite a newer version',
+);
 
 const publishedMarket0001 = readFileSync(
   join(root, 'apps/market/migrations/0001_add_edit_key.sql'),
@@ -262,18 +309,17 @@ for (let i = 0; i < 44; i++) {
 marketUpgrade.exec(
   readFileSync(join(root, 'scripts/bootstrap-market-migration-ledger.sql'), 'utf8'),
 );
-marketUpgrade.exec(
-  readFileSync(join(root, 'apps/market/migrations/0002_browse_indexes.sql'), 'utf8'),
-);
-marketUpgrade.exec(
-  readFileSync(join(root, 'apps/market/migrations/0003_separate_security_domains.sql'), 'utf8'),
-);
-marketUpgrade.exec(
-  readFileSync(join(root, 'apps/market/migrations/0004_engagement_sort_indexes.sql'), 'utf8'),
-);
+for (const file of market.files.slice(2)) {
+  marketUpgrade.exec(readFileSync(join(root, 'apps/market/migrations', file), 'utf8'));
+}
 assert(
   JSON.stringify(names(marketUpgrade, 'index')) === JSON.stringify(names(market.db, 'index')),
   'market: raw-ledger bootstrap plus 0002-current differs from fresh migration path',
+);
+assert(
+  JSON.stringify(names(marketUpgrade, 'table').filter((name) => name !== 'd1_migrations')) ===
+    JSON.stringify(names(market.db, 'table')),
+  'market: raw-ledger bootstrap plus 0002-current tables differ from fresh migration path',
 );
 assert(
   marketUpgrade.prepare("SELECT COUNT(*) AS n FROM items WHERE id LIKE 'raw-%'").get().n === 44,

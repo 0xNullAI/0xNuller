@@ -23,6 +23,7 @@ export interface UserRow {
 export interface SessionEnv {
   DB: D1Database;
   EMAIL?: SendEmail;
+  MARKET?: Fetcher;
 }
 
 export async function sha256Hex(input: string): Promise<string> {
