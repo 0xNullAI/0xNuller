@@ -136,3 +136,19 @@ it('shows only admin aggregate counts after five accounts and expires raw events
     n: 0,
   });
 });
+
+it('accepts an empty body stream but still rejects content', async () => {
+  const { env } = setup();
+  const post = (body: BodyInit) =>
+    handleCharacterConversion(
+      new Request('https://market.test/api/items/card/character-detail-open', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer alice', 'X-Account-Id': 'alice' },
+        body,
+      }),
+      env,
+      86_400_000 * 100,
+    );
+  expect((await post(new Uint8Array(0)))?.status).toBe(200);
+  expect((await post('{"x":1}'))?.status).toBe(400);
+});

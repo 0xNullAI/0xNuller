@@ -66,7 +66,10 @@ export async function handleCharacterConversion(
     return json({ windowDays: 30, items: rows.results ?? [] });
   }
   if (request.method !== 'POST') return json({ error: '不支持此操作' }, 405);
-  if (request.body) return json({ error: '此事件不接受正文' }, 400);
+  // An empty POST may still arrive with a (zero-length) body stream through a proxy;
+  // only actual content is rejected.
+  if (request.body && (await request.arrayBuffer()).byteLength > 0)
+    return json({ error: '此事件不接受正文' }, 400);
   const itemId = event![1]!;
   const item = await env.DB.prepare(
     `SELECT 1 FROM items WHERE id=? AND hidden=0 AND type='scenario'
