@@ -136,7 +136,7 @@ it('starts a relationship only for a character; a scene has no chat entity', asy
   await waitFor(() => expect(start).toHaveBeenCalledWith(character));
   view.rerender(createElement(ItemDetail, { item, onClose: () => {}, onStartCharacter: start }));
   expect(screen.queryByRole('button', { name: '开始聊天' })).toBeNull();
-  expect(screen.getByText(/不拥有独立关系或记忆/)).toBeTruthy();
+  expect(screen.getByText(/不是角色，也没有记忆/)).toBeTruthy();
 });
 
 it('offers a scene import without presenting it as a chat character', async () => {

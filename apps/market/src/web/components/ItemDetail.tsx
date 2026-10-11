@@ -618,9 +618,11 @@ export function ItemDetail({
         <p className="modal-hint">
           {view.type === 'scenario'
             ? isCharacter
-              ? '开始聊天会在当前账号建立专属角色；公开卡更新不会覆盖你的名字、关系和记忆。'
-              : '场景只提供环境与规则，可应用到聊天；不拥有独立关系或记忆。'
-            : '在 Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
+              ? '聊天中的称呼、关系和记忆只属于你，作者更新卡片也不会改动。'
+              : importedScene
+                ? '已导入。在角色聊天里点名字 → 场景 即可选用。'
+                : '场景只是聊天发生的环境，不是角色，也没有记忆。'
+            : '在设备页的「波形」里点「从市场导入」即可使用。'}
         </p>
 
         {/* The one primary action. A phone pins it full width at the bottom. */}
