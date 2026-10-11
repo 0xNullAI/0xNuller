@@ -118,15 +118,15 @@ export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
   {
     id: 'xai',
     name: 'xAI Grok',
-    hint: '26 个内置音色 + 自定义音色选用，$0.05/分钟',
+    hint: '26 个内置音色 + 自定义音色选用，$0.08/分钟',
     dialect: 'openai-realtime',
-    defaultModel: 'grok-voice-think-fast-1.0',
-    pricePerMinuteUsd: 0.05,
+    defaultModel: 'grok-voice-think-fast-2.0',
+    pricePerMinuteUsd: 0.08,
     voiceSource: 'api',
     staticVoices: XAI_STATIC_VOICES,
     fields: [
       { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'xai-...' },
-      { key: 'model', label: '模型', type: 'text', placeholder: 'grok-voice-think-fast-1.0' },
+      { key: 'model', label: '模型', type: 'text', placeholder: 'grok-voice-think-fast-2.0' },
     ],
   },
   {
