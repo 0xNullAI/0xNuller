@@ -35,6 +35,7 @@ import { UnreadBadge } from './UnreadBadge';
 import { InboxColumn, NavRail } from './Sidebar';
 import { UnifiedInbox } from './UnifiedInbox';
 import { DeviceBar } from './DeviceBar';
+import { shouldShowDeviceBarConnect } from './device-bar-connect';
 const ContactsDialog = lazy(() =>
   import('./ContactsDialog').then((module) => ({ default: module.ContactsDialog })),
 );
@@ -472,17 +473,15 @@ export function Shell() {
                   <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
                 </div>
 
-                {/* Connected devices (and their stop control) always show. The bare
-                "connect" shortcut only shows on phones: on wide screens the 设备 entry
-                is one click away and an otherwise empty row would cost every page. */}
+                {/* Connected devices (and their stop control) always show. See
+                shouldShowDeviceBarConnect for when the connect shortcut shows. */}
                 <DeviceBar
                   activeSessionId={leaseModuleId}
-                  showConnect={
-                    narrow &&
-                    !conversationDetail &&
-                    leaseModuleId !== null &&
-                    leaseModuleId !== 'control'
-                  }
+                  showConnect={shouldShowDeviceBarConnect({
+                    narrow,
+                    conversationDetail,
+                    leaseModuleId,
+                  })}
                 />
               </div>
 
