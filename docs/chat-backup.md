@@ -43,10 +43,16 @@ node scripts/chat-backup.mjs verify-batch /secure/backups/batch-YYYYMMDD
 独立整理的历史房间清单；每次在根目录下创建唯一批次，依次捕获三份加密包、做结构演练，
 并将 Chat 包与独立清单核对。`scheduled-result.json` 仅记录计数与状态，不记录聊天内容或房间 ID。
 捕获开始前冻结独立清单供本批审计；捕获后若清单字节变化，结果标记为 `ledger-changed`。
-清单与 Chat 包不匹配则标记 `inventory-mismatch`，两者均以非零退出，不能当作已核对备份。
-调度器应将非零退出码视为需人工处理，并监控任务未运行、捕获失败和输出目录未复制到独立存储。
-目前历史覆盖和跨存储恢复点仍未确认，因此**即使清单匹配，此命令也固定返回非零**；
-不能把定时执行或文件存在当作生产备份已通过验收。口令和两个备份令牌仍须由仓库外密钥系统注入。
+清单与 Chat 包不匹配则标记 `inventory-mismatch`；恢复演练出现除“历史覆盖未验证”以外的任何问题，
+或 D1 二次核对不一致，则标记 `integrity-failed` 并在 `blockingIssues` 中列出问题代码。
+目前历史覆盖和跨存储恢复点仍未确认，因此**此命令永远不返回 0**：
+
+| 退出码 | 含义                                                                  | 调度器处理                                     |
+| ------ | --------------------------------------------------------------------- | ---------------------------------------------- |
+| 3      | `captured-unverified`：可运行的检查全部通过，历史覆盖仍未验证         | 记录为“已捕获、未验收”，继续监控复制到独立存储 |
+| 1      | `ledger-changed`、`inventory-mismatch`、`integrity-failed` 或执行失败 | 需人工处理                                     |
+
+不能把定时执行、退出码 3 或文件存在当作生产备份已通过验收。口令和两个备份令牌仍须由仓库外密钥系统注入。
 
 ```bash
 node scripts/chat-backup.mjs capture-scheduled https://0xnullai.com https://0xnullai.com /secure/independent-room-ledger.json /secure/backups --remote

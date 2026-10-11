@@ -138,12 +138,31 @@ describe('AndroidPushCoordinator', () => {
     const bridge = fakeBridge({ hasNotificationPermission: vi.fn(() => false) });
     const api = fakeApi();
     const coordinator = new AndroidPushCoordinator(bridge, api, delay);
-    const pending = coordinator.setAccount('account-a');
+    const pending = coordinator.setAccount('account-a', { askPermission: true });
     await coordinator.setAccount(null);
     release();
     await pending;
     expect(bridge.registerPush).not.toHaveBeenCalled();
     expect(api.register).not.toHaveBeenCalled();
+  });
+
+  it('asks for notification permission only on an explicit opt-in', async () => {
+    const bridge = fakeBridge({ hasNotificationPermission: vi.fn(() => false) });
+    const coordinator = new AndroidPushCoordinator(bridge, fakeApi(), async () => {});
+    await coordinator.setAccount('account-a');
+    expect(bridge.requestNotificationPermission).not.toHaveBeenCalled();
+    expect(bridge.registerPush).not.toHaveBeenCalled();
+    await coordinator.setAccount('account-a', { askPermission: true });
+    expect(bridge.requestNotificationPermission).toHaveBeenCalledOnce();
+  });
+
+  it('unregisters once while push stays off instead of on every focus', async () => {
+    const bridge = fakeBridge();
+    const coordinator = new AndroidPushCoordinator(bridge, fakeApi(), async () => {});
+    await coordinator.setAccount(null);
+    await coordinator.setAccount(null);
+    await coordinator.setAccount(null);
+    expect(bridge.unregisterPush).toHaveBeenCalledOnce();
   });
 
   it('waits for an in-flight old account registration before binding the new account', async () => {

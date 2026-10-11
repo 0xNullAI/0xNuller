@@ -19,9 +19,15 @@ function fakeEnv(options?: {
   const deleted: string[] = [];
   const env = {
     MEDIA: {
-      put: async (key: string) => {
+      // Mirrors R2: a conditional write to an existing key returns null and writes nothing.
+      put: async (
+        key: string,
+        _value: unknown,
+        opts?: { onlyIf?: { etagDoesNotMatch?: string } },
+      ) => {
+        if (opts?.onlyIf?.etagDoesNotMatch === '*' && stored.has(key)) return null;
         stored.add(key);
-        return null;
+        return { key };
       },
       delete: async (keys: string | string[]) => {
         for (const key of Array.isArray(keys) ? keys : [keys]) {
@@ -61,6 +67,14 @@ describe('媒体孤儿清理调度', () => {
     expect(response.status).toBe(200);
     expect(noted).toEqual(['room-a:live-token']);
     expect([...stored]).toEqual(['room/room-a/media-1']);
+  });
+
+  it('拒绝用同一 id 覆盖已经发送的媒体', async () => {
+    const { env, stored, deleted } = fakeEnv();
+    expect((await handleMediaUpload(request(), env, 'room-a')).status).toBe(200);
+    expect((await handleMediaUpload(request(), env, 'room-a')).status).toBe(409);
+    expect([...stored]).toEqual(['room/room-a/media-1']);
+    expect(deleted).toEqual([]);
   });
 
   it('无法安排清扫时补偿删除刚写入的对象', async () => {

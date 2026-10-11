@@ -178,3 +178,32 @@ it('keeps archived JSON through old-client edits and removes it only when explic
   );
   expect(content.sourceArchive).toBeUndefined();
 });
+
+it('archives only real changes and keeps at most fifty versions per card', () => {
+  const { sql } = setup();
+  const versions = () =>
+    Number(
+      (
+        sql
+          .prepare("SELECT COUNT(*) AS n FROM character_item_versions WHERE item_id='card-1'")
+          .get() as {
+          n: number;
+        }
+      ).n,
+    );
+  const before = versions();
+  sql.prepare("UPDATE items SET name=name, revision=revision+1 WHERE id='card-1'").run();
+  expect(versions()).toBe(before);
+  for (let index = 0; index < 80; index += 1)
+    sql
+      .prepare("UPDATE items SET content=?, revision=revision+1 WHERE id='card-1'")
+      .run(JSON.stringify({ prompt: `第${index}版` }));
+  expect(versions()).toBe(50);
+  const newest = sql
+    .prepare("SELECT MAX(revision) AS r FROM character_item_versions WHERE item_id='card-1'")
+    .get() as { r: number };
+  const current = sql.prepare("SELECT revision FROM items WHERE id='card-1'").get() as {
+    revision: number;
+  };
+  expect(newest.r).toBe(current.revision - 1);
+});

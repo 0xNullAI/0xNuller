@@ -61,6 +61,9 @@ export function installHistoryNavigationGuard(target: Window = window): () => vo
   history.replaceState = wrappedReplace;
   const onPop = (event: PopStateEvent) => {
     const destinationIndex = indexOf(event.state);
+    // Features announce their own pushState with a synthetic, state-less popstate. The
+    // document did not move, so it is not a traversal and must not shift the index.
+    if (destinationIndex === null && target.location.href === acceptedUrl) return;
     if (restoring !== null && destinationIndex === restoring) {
       restoring = null;
       event.stopImmediatePropagation();

@@ -25,19 +25,27 @@ export function ProfileWorks({
   viewerId: string;
   onOpen?: (id: string) => void;
 }) {
-  const [items, setItems] = useState<MarketItem[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  // A result belongs to one profile; opening another profile must not show the previous
+  // person's works or error while the new list loads.
+  const key = `${creatorId}\0${viewerId}`;
+  const [result, setResult] = useState<{
+    key: string;
+    items: MarketItem[] | null;
+    failed: boolean;
+  } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     void fetchCreatorMarketItems(creatorId, viewerId, controller.signal)
       .then((next) => {
-        if (!controller.signal.aborted) setItems(next);
+        if (!controller.signal.aborted) setResult({ key, items: next, failed: false });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
+        if (!controller.signal.aborted) setResult({ key, items: null, failed: true });
       });
     return () => controller.abort();
-  }, [creatorId, viewerId]);
+  }, [creatorId, viewerId, key]);
+  const items = result?.key === key ? result.items : null;
+  const failed = result?.key === key && result.failed;
   if (failed) return <p className="text-xs text-[var(--text-faint)]">公开作品暂不可用</p>;
   if (!items?.length) return null;
   return (

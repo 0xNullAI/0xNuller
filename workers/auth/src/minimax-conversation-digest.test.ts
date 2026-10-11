@@ -45,3 +45,19 @@ it('rejects unbounded input, incomplete output and model tool calls', async () =
   expect(fetcher).not.toHaveBeenCalled();
   await expect(generateConversationDigest('key', '', source)).rejects.toThrow('未完成');
 });
+
+it('accepts a 900-character emoji message the source query already bounded', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({
+        choices: [
+          { finish_reason: 'stop', message: { content: JSON.stringify({ summary: '表情' }) } },
+        ],
+      }),
+    ),
+  );
+  const emoji = [{ id: 'u1', role: 'user' as const, content: '😀'.repeat(900) }];
+  expect(emoji[0]!.content.length).toBe(1800);
+  expect(await generateConversationDigest('test-key', '', emoji)).toBe('表情');
+});

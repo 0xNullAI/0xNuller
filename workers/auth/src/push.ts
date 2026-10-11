@@ -46,6 +46,8 @@ export async function handlePushRegistrations(
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+      // `null`, numbers and arrays parse fine but are not a request object.
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error();
     } catch {
       return err('请求无效', 400, headers);
     }
@@ -139,6 +141,7 @@ export async function handlePushRegistrations(
       let body: Record<string, unknown>;
       try {
         body = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error();
       } catch {
         return err('请求无效', 400, headers);
       }

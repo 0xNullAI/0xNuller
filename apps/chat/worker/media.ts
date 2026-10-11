@@ -44,9 +44,13 @@ export async function handleMediaUpload(
   if (buf.byteLength > MAX_MEDIA_BYTES) return json(413, { error: 'too large' });
 
   const key = mediaKey(code, id);
-  await env.MEDIA.put(key, buf, {
+  // Ids come from the client. Write only a new object: another member's image or voice
+  // must never be replaced in place (it is also served with a one-year immutable cache).
+  const written = await env.MEDIA.put(key, buf, {
     httpMetadata: { contentType: mime },
+    onlyIf: { etagDoesNotMatch: '*' },
   });
+  if (!written) return json(409, { error: 'media id already used' });
 
   try {
     // An upload can happen before its chat message. If the tab closes in between,

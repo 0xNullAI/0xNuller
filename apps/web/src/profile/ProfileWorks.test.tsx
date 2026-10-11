@@ -24,3 +24,12 @@ it('shows only verified public works and opens Market in the current shell', asy
   expect(screen.getByText('波形')).toBeTruthy();
   expect(market.fetch).toHaveBeenCalledWith('alice', 'viewer', expect.any(AbortSignal));
 });
+
+it('never shows the previous profile works or error while another profile loads', async () => {
+  market.fetch.mockRejectedValueOnce(new Error('offline'));
+  const view = render(<ProfileWorks creatorId="alice" viewerId="viewer" />);
+  expect(await screen.findByText('公开作品暂不可用')).toBeTruthy();
+  market.fetch.mockReturnValueOnce(new Promise(() => {}));
+  view.rerender(<ProfileWorks creatorId="bob" viewerId="viewer" />);
+  expect(screen.queryByText('公开作品暂不可用')).toBeNull();
+});

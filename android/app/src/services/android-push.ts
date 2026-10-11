@@ -107,6 +107,8 @@ export class AndroidPushCoordinator {
   private accountId: string | null = null;
   private registrationTail: Promise<void> = Promise.resolve();
 
+  private unregistered = false;
+
   constructor(
     private readonly bridge: AndroidPushBridge,
     private readonly api: PushRegistrationApi,
@@ -123,15 +125,27 @@ export class AndroidPushCoordinator {
     return pending;
   }
 
-  async setAccount(accountId: string | null): Promise<void> {
+  /**
+   * `askPermission` is true only for the user's explicit opt-in. Background reconciliation
+   * (focus, online, sign-in) never shows the system prompt: right after a denial, the
+   * dialog closing returns focus and would ask again at once.
+   */
+  async setAccount(
+    accountId: string | null,
+    options: { askPermission?: boolean } = {},
+  ): Promise<void> {
     const generation = ++this.generation;
     if (!accountId) {
+      // Already unregistered: every focus or online event would otherwise make another
+      // FCM unregister network call while push is off (the default).
+      if (this.accountId === null && this.unregistered) return;
       this.accountId = null;
       // Revoke locally before any asynchronous network work. The auth package
       // clears its Bearer before announcing logout, so server revocation must
       // also be called explicitly from a pre-logout hook when it is added.
       this.bridge.setPushAccountId('');
       this.bridge.unregisterPush();
+      this.unregistered = true;
       return;
     }
     if (this.accountId && accountId !== this.accountId) {
@@ -143,6 +157,7 @@ export class AndroidPushCoordinator {
     this.bridge.ensurePushChannels();
     this.bridge.setPushAccountId(accountId);
     if (!this.bridge.hasNotificationPermission()) {
+      if (!options.askPermission) return;
       this.bridge.requestNotificationPermission();
       for (let attempt = 0; attempt < 50 && generation === this.generation; attempt += 1) {
         if (this.bridge.hasNotificationPermission()) break;
@@ -150,6 +165,7 @@ export class AndroidPushCoordinator {
       }
     }
     if (generation !== this.generation || !this.bridge.hasNotificationPermission()) return;
+    this.unregistered = false;
     this.bridge.registerPush();
     for (let attempt = 0; attempt < 50 && generation === this.generation; attempt += 1) {
       const installationId = this.bridge.getPushRegistrationId();
@@ -182,6 +198,7 @@ export class AndroidPushCoordinator {
       setPendingAndroidPushRevocation(outgoingAccount, installationId);
     this.bridge.setPushAccountId('');
     this.bridge.unregisterPush();
+    this.unregistered = true;
     ++this.generation;
     this.accountId = null;
     if (outgoingAccount) await this.retryPendingRevocation(outgoingAccount);
@@ -245,7 +262,7 @@ export function installAndroidPush(bridge: AndroidPushBridge | undefined): () =>
   const coordinator = new AndroidPushCoordinator(bridge, accountPushApi);
   let reconcileGeneration = 0;
   let logoutPending = false;
-  const reconcile = (accountId: string | null) => {
+  const reconcile = (accountId: string | null, askPermission = false) => {
     const generation = ++reconcileGeneration;
     if (logoutPending || !accountId || !androidPushEnabled(accountId)) {
       void coordinator.setAccount(null);
@@ -261,7 +278,7 @@ export function installAndroidPush(bridge: AndroidPushBridge | undefined): () =>
           currentAuthUserId() === accountId &&
           androidPushEnabled(accountId)
         )
-          return coordinator.setAccount(accountId);
+          return coordinator.setAccount(accountId, { askPermission });
       })
       .catch(() => undefined);
   };
@@ -269,7 +286,7 @@ export function installAndroidPush(bridge: AndroidPushBridge | undefined): () =>
     const detail = (event as CustomEvent<{ accountId?: string; enabled?: boolean }>).detail;
     const accountId = currentAuthUserId();
     if (!accountId || detail?.accountId !== accountId) return;
-    if (detail.enabled && androidPushEnabled(accountId)) reconcile(accountId);
+    if (detail.enabled && androidPushEnabled(accountId)) reconcile(accountId, true);
     else {
       ++reconcileGeneration;
       void coordinator.revokeBeforeLogout(accountId).catch(() => undefined);

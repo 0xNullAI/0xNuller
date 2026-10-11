@@ -149,6 +149,19 @@ it('grants one claim for a call and records only the matching result token', asy
   });
 });
 
+it('records the final outcome of a tool that first reported pending, once', async () => {
+  const { item, ownerToken } = await start();
+  const claim = await call(`/${item.id}/calls/call-1?conversationId=one`, 'PUT', {
+    name: 'web_search',
+    ownerToken,
+  });
+  const { claimToken } = (await claim.json()) as { claimToken: string };
+  const receiptPath = `/${item.id}/calls/call-1/receipt?conversationId=one`;
+  expect((await call(receiptPath, 'PUT', { claimToken, status: 'pending' })).status).toBe(200);
+  expect((await call(receiptPath, 'PUT', { claimToken, status: 'pending' })).status).toBe(200);
+  expect((await call(receiptPath, 'PUT', { claimToken, status: 'succeeded' })).status).toBe(200);
+  expect((await call(receiptPath, 'PUT', { claimToken, status: 'failed' })).status).toBe(409);
+});
 it('lets another window inspect a run but never append a different call or finish it', async () => {
   const { item, ownerToken } = await start();
   const replay = await call('', 'POST', { conversationId: 'one', requestId: 'request-0001' });

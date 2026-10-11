@@ -16,7 +16,9 @@ export async function generateConversationDigest(
     !messages.length ||
     messages.length > 16 ||
     previous.length > 4000 ||
-    messages.some((message) => message.content.length > 1000)
+    // Count code points, as SQLite's substr() did when it cut each message to 900: an
+    // emoji is one character there but two UTF-16 units in `length`.
+    messages.some((message) => [...message.content].length > 1000)
   )
     throw new Error('摘要输入范围无效');
   let response: Response;

@@ -12,7 +12,7 @@ import {
 import { assertStableObjectListing } from './chat-backup-consistency.mjs';
 import { captureChatBackupBatch, verifyChatBackupBatch } from './chat-backup-batch.mjs';
 import { auditHistoricalRoomBundle } from './chat-backup-history-audit.mjs';
-import { runScheduledChatBackup } from './chat-backup-scheduled.mjs';
+import { runScheduledChatBackup, SCHEDULED_SUCCESS_STATE } from './chat-backup-scheduled.mjs';
 import { assertAuthD1ChatTablesStable } from './chat-backup-d1-stability.mjs';
 
 function usage() {
@@ -436,7 +436,9 @@ async function main() {
       chat: (destination) => captureChat(second, '--index', destination, passphrase),
       authMedia: (destination) => captureAuthMedia(first, destination, passphrase),
     });
-    if (result.state !== 'verified') process.exitCode = 1;
+    // Never exit 0: historical coverage and a cross-store restore point stay unproven.
+    // Exit 3 means every check that can run passed; exit 1 means a problem to handle.
+    process.exitCode = result.state === SCHEDULED_SUCCESS_STATE ? 3 : 1;
   } else usage();
   // Counts only; never print sensitive filenames or plaintext.
   process.stdout.write(`${JSON.stringify(result)}\n`);

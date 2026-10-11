@@ -59,3 +59,24 @@ it('cancels back and forward before feature listeners, restores original entries
   remove();
   uninstall();
 });
+it('ignores a synthetic state-less popstate a feature sends after its own pushState', () => {
+  const originalReplace = window.history.replaceState.bind(window.history);
+  window.history.replaceState(null, '', '/people');
+  const uninstall = installHistoryNavigationGuard();
+  const people = window.history.state;
+  window.history.pushState(null, '', '/chat');
+  // A DM intent announces the route change itself.
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  window.history.pushState(null, '', '/market');
+  const remove = registerNavigationGuard((_to, from) =>
+    from.pathname === '/market' ? '未保存' : null,
+  );
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const go = vi.spyOn(window.history, 'go').mockImplementation(() => {});
+  // Back twice lands on /people, two entries behind /market.
+  originalReplace(people, '', '/people');
+  window.dispatchEvent(new PopStateEvent('popstate', { state: people }));
+  expect(go).toHaveBeenLastCalledWith(2);
+  remove();
+  uninstall();
+});

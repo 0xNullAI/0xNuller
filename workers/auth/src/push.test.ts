@@ -546,3 +546,18 @@ it('sends live AI replies but drops a queued notification after its conversation
   ]);
   expect((await rows()).results).toHaveLength(1);
 });
+
+it('answers a non-object registration body with 400 instead of a server error', async () => {
+  for (const body of ['null', '[]', '7']) {
+    const response = (await handlePushRegistrations(
+      new Request('https://test/api/auth/push/registrations', {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer alice', 'X-Account-Id': 'alice' },
+        body,
+      }),
+      env,
+      {},
+    ))!;
+    expect(response.status).toBe(400);
+  }
+});

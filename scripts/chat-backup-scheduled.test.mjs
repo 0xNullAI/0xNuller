@@ -33,12 +33,18 @@ test('a scheduled run captures once, audits the independent ledger, and stays un
       root,
       ledger,
       passphrase,
-      { d1: capture('d1'), chat: capture('chat'), authMedia: capture('authMedia') },
+      {
+        d1: capture('d1'),
+        d1Postflight: async () => ({ state: 'chat-tables-matched' }),
+        chat: capture('chat'),
+        authMedia: capture('authMedia'),
+      },
       {
         exercise: async () => ({ passed: false, issues: ['historical_room_coverage_unverified'] }),
       },
     );
     expect(calls).toEqual(['d1', 'chat', 'authMedia']);
+    expect(result.blockingIssues).toEqual([]);
     expect(result).toMatchObject({
       state: 'captured-unverified',
       batchState: 'captured-unverified',
@@ -157,6 +163,50 @@ test('a scheduled run refuses an empty ledger or readable-by-others backup root 
     expect((await readFile(ledger, 'utf8')).length).toBeGreaterThan(0);
   } finally {
     await chmod(root, 0o700);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a scheduled run with any other recovery issue is an integrity failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scheduled-backup-integrity-'));
+  const ledger = join(root, 'ledger.json');
+  await writeFile(ledger, JSON.stringify([{ code: 'room-1', kind: 'group' }]));
+  const capture = (name) => async (destination) => {
+    if (name !== 'chat') {
+      await mkdir(destination);
+      await writeFile(join(destination, 'encrypted.bin'), name);
+      return;
+    }
+    const source = join(root, 'chat-source');
+    await mkdir(join(source, 'rooms'), { recursive: true });
+    await writeFile(
+      join(source, 'room-index.json'),
+      JSON.stringify([{ code: 'room-1', kind: 'group' }]),
+    );
+    await writeFile(join(source, 'rooms', 'room-1.json'), '[]');
+    await createChatBackupBundle(source, destination, passphrase);
+  };
+  try {
+    const result = await runScheduledChatBackup(
+      root,
+      ledger,
+      passphrase,
+      {
+        d1: capture('d1'),
+        d1Postflight: async () => ({ state: 'chat-tables-matched' }),
+        chat: capture('chat'),
+        authMedia: capture('authMedia'),
+      },
+      {
+        exercise: async () => ({
+          passed: false,
+          issues: ['historical_room_coverage_unverified', 'room_media_reference_missing'],
+        }),
+      },
+    );
+    expect(result.state).toBe('integrity-failed');
+    expect(result.blockingIssues).toEqual(['room_media_reference_missing']);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

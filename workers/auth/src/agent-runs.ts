@@ -249,11 +249,23 @@ export async function handleAgentRuns(
     const now = Date.now();
     const updated = await env.DB.prepare(
       `UPDATE agent_run_calls SET status=?,updated_at=? WHERE user_id=? AND run_id=? AND call_id=?
-       AND claim_hash=? AND status='claimed'
+       AND claim_hash=? AND (status='claimed' OR (status='pending' AND ?<>'pending'))
        AND EXISTS(SELECT 1 FROM agent_runs WHERE user_id=? AND id=? AND conversation_id=? AND status='active')
        RETURNING ${CALL_COLUMNS}`,
     )
-      .bind(body.status, now, user.id, runId, callId, hash, user.id, runId, conversationId)
+      // A tool that first reported "pending" later records its final outcome.
+      .bind(
+        body.status,
+        now,
+        user.id,
+        runId,
+        callId,
+        hash,
+        body.status,
+        user.id,
+        runId,
+        conversationId,
+      )
       .first<CallRow>();
     if (updated) {
       await env.DB.prepare(
