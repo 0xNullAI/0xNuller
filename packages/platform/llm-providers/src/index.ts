@@ -193,7 +193,7 @@ function piAiFields(
 const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> = [
   {
     id: 'managed',
-    name: '0xNullAI 模型',
+    name: '猫愿模型',
     hint: '登录后使用 Credit，费用按实际模型用量结算。',
     browserSupported: true,
     fields: [],

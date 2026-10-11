@@ -313,7 +313,7 @@ export async function withBlePermissionHelp<T>(
     const granted = await waitForBlePermission(platform);
     if (!granted) {
       const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
-      await showBleGuidance(`请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`, {
+      await showBleGuidance(`请允许猫愿的${permissionName}，才能扫描和连接蓝牙设备。`, {
         label: '打开应用设置',
         run: platform.openAppSettings,
       });
@@ -329,8 +329,8 @@ export async function withBlePermissionHelp<T>(
       const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
       const explanation =
         sdk >= 31
-          ? `请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`
-          : `Android 11 及以下需要授予 0xNuller ${permissionName}，才能扫描蓝牙设备。`;
+          ? `请允许猫愿的${permissionName}，才能扫描和连接蓝牙设备。`
+          : `Android 11 及以下需要授予猫愿${permissionName}，才能扫描蓝牙设备。`;
       if (platform.isPermissionPermanentlyDenied()) {
         await showBleGuidance(`${explanation} 当前系统不会再次弹出授权框，请到应用设置中开启。`, {
           label: '打开应用设置',

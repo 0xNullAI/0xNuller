@@ -70,7 +70,7 @@ export function DevicePicker({ open, devices, scanning, onSelect, onCancel }: Pr
           </div>
         </details>
         <footer className="dgaa-picker-footer">
-          <span className="dgaa-picker-hint">仅显示 0xNuller 支持的设备</span>
+          <span className="dgaa-picker-hint">仅显示猫愿支持的设备</span>
           <button className="dgaa-picker-cancel" type="button" onClick={onCancel}>
             关闭
           </button>

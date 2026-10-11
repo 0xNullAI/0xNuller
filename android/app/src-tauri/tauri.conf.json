@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "0xNuller",
+  "productName": "猫愿",
   "version": "6.5.7",
   "identifier": "ai.nullai.dgagent",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "0xNuller",
+        "title": "猫愿",
         "width": 800,
         "height": 600,
         "resizable": true,

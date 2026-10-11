@@ -100,7 +100,7 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
               className="text-[var(--accent)] hover:underline"
               onClick={switchToManaged}
             >
-              切换回 0xNullAI 模型
+              切换回猫愿模型
             </button>
           </div>
         )}
@@ -276,7 +276,7 @@ function OwnApiSection({
               setProviderQuery('');
             }}
           >
-            切换回 0xNullAI 模型
+            切换回猫愿模型
           </button>
         </>
       )}

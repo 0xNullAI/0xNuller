@@ -387,7 +387,7 @@ export function Shell() {
         <DeviceBar activeSessionId={null} showConnect={false} />
         <main aria-label="账户登录" className="flex flex-1 items-center justify-center px-4 py-10">
           <div className="w-full max-w-sm rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]">
-            <div className="mb-6 text-lg font-semibold">0xNuller</div>
+            <div className="mb-6 text-lg font-semibold">猫愿</div>
             {authChecked ? (
               <Suspense fallback={<PageLoading label="账户" />}>
                 <AccountContent user={null} onUser={setUser} onDone={() => undefined} />

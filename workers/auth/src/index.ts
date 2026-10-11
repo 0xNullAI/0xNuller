@@ -1132,8 +1132,8 @@ async function sendAccountEmail(
   const safeUrl = escapeHtml(url.toString());
   await env.EMAIL.send({
     to,
-    from: { email: 'no-reply@0xnullai.com', name: '0xNuller' },
-    subject: `0xNuller ${action}`,
+    from: { email: 'no-reply@0xnullai.com', name: '猫愿' },
+    subject: `猫愿${action}`,
     text: `${action}：${url.toString()}\n链接将在 ${expiry}后失效。若非本人操作，请忽略。`,
     html: `<p>请点击下方链接完成${action}：</p><p><a href="${safeUrl}">${action}</a></p><p>链接将在 ${expiry}后失效。若非本人操作，请忽略。</p>`,
   });
@@ -3304,8 +3304,8 @@ export default {
           try {
             await env.EMAIL.send({
               to: FEEDBACK_RECIPIENT,
-              from: { email: 'no-reply@0xnullai.com', name: '0xNuller Feedback' },
-              subject: '收到新的 0xNuller 反馈',
+              from: { email: 'no-reply@0xnullai.com', name: '猫愿反馈' },
+              subject: '收到新的猫愿反馈',
               text: `反馈编号：${id}\n用户：${user?.username ?? '未登录'}\n联系方式：${contact || '未提供'}\n\n${message}`,
             });
           } catch (error) {

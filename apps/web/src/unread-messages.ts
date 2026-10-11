@@ -5,7 +5,7 @@ import { loadChatInboxDisplayWithStatus } from '../../chat/src/inbox';
 
 const POLL_MS = 30_000;
 const CONVERSATION_SEQUENCES_EVENT = '0xnullai:conversation-sequences';
-const BASE_TITLE = '0xNuller';
+const BASE_TITLE = '猫愿';
 
 /** Sum of known unread counts; unknown (null) counts are not guessed. */
 export function totalUnread(counts: readonly (number | null | undefined)[]): number {

@@ -75,7 +75,7 @@ function verifyProductMetadata() {
       `android versionCode is ${tauri.bundle?.android?.versionCode}, expected ${expectedCode} for ${root.version}`,
     );
   }
-  if (tauri.productName !== '0xNuller') fail('Tauri productName must remain 0xNuller');
+  if (tauri.productName !== '猫愿') fail('Tauri productName must remain 猫愿');
   if (tauri.identifier !== 'ai.nullai.dgagent') {
     fail('Android identifier must remain ai.nullai.dgagent for upgrade compatibility');
   }
@@ -257,7 +257,7 @@ function verifyBumps(base) {
 const version = verifyProductMetadata();
 const baseFlag = process.argv.find((argument) => argument.startsWith('--base='));
 const bumps = baseFlag ? verifyBumps(baseFlag.slice('--base='.length)) : [];
-console.log(`release metadata OK: 0xNuller ${version}`);
+console.log(`release metadata OK: 猫愿 ${version}`);
 console.log(`tag boundary OK: unified source/product v${version} with Android APK`);
 for (const bump of bumps) console.log(`version bump: ${bump}`);
 if (baseFlag && bumps.length === 0) console.log('version bump: none (maintenance promotion)');

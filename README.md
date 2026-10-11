@@ -1,8 +1,8 @@
 <div align="center">
 
-# 0xNuller
+# 猫愿
 
-**DG-Lab 设备的统一控制平台**
+**AI 陪伴聊天，与 DG-Lab 设备的统一控制平台**（仓库名 0xNuller）
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![@dg-kit/core](https://img.shields.io/npm/v/%40dg-kit%2Fcore?label=%40dg-kit%2Fcore&color=cb3837)](https://www.npmjs.com/package/@dg-kit/core)

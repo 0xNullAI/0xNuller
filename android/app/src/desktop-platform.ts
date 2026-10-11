@@ -9,7 +9,7 @@ export async function withDesktopBleHelp<T>(connect: () => Promise<T>): Promise<
     const message = error instanceof Error ? error.message : String(error);
     if (/permission|unauthorized|denied|not authorized/i.test(message)) {
       throw new Error(
-        '未获得蓝牙权限。macOS：系统设置 → 隐私与安全性 → 蓝牙，允许 0xNuller；Windows：检查系统蓝牙开关和设备驱动。',
+        '未获得蓝牙权限。macOS：系统设置 → 隐私与安全性 → 蓝牙，允许猫愿；Windows：检查系统蓝牙开关和设备驱动。',
         { cause: error },
       );
     }

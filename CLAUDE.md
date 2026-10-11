@@ -4,7 +4,7 @@
 
 ## 产品与结构
 
-0xNuller 是一个统一 Web、Android 与桌面应用，包含七个模块（版本以根 `package.json` 为准）：
+产品名为「猫愿」（仓库、包名与安卓标识仍沿用 0xNuller / ai.nullai.dgagent）。它是一个统一 Web、Android 与桌面应用，包含七个模块（版本以根 `package.json` 为准）：
 
 1. Control
 2. Agent

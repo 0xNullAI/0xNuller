@@ -13,7 +13,7 @@ export function AboutTab() {
   return (
     <div className="flex max-w-lg flex-col gap-5">
       <section>
-        <h3 className="text-sm font-semibold">0xNuller</h3>
+        <h3 className="text-sm font-semibold">猫愿</h3>
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-[var(--text-faint)]">产品版本</dt>
           <dd className="font-mono text-[var(--text)]">v{PRODUCT_VERSION}</dd>

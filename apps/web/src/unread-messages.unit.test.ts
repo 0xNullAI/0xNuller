@@ -7,9 +7,9 @@ describe('unread messages', () => {
   });
 
   it('shows the count in the tab title and caps it', () => {
-    expect(unreadTitle(0)).toBe('0xNuller');
-    expect(unreadTitle(3)).toBe('(3) 0xNuller');
-    expect(unreadTitle(150)).toBe('(99+) 0xNuller');
+    expect(unreadTitle(0)).toBe('猫愿');
+    expect(unreadTitle(3)).toBe('(3) 猫愿');
+    expect(unreadTitle(150)).toBe('(99+) 猫愿');
   });
 
   it('notifies only for a rise while hidden, opted in and permitted', () => {

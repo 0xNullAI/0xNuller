@@ -106,7 +106,7 @@ const ZHIPU_STATIC_VOICES = [
 export const REALTIME_PROVIDER_DEFINITIONS: RealtimeProviderDefinition[] = [
   {
     id: 'managed',
-    name: '0xNullAI Voice',
+    name: '猫愿语音',
     hint: '登录后使用 Credit，约 120 Credit/分钟',
     dialect: 'openai-realtime',
     // Pinned by the Worker upstream; the managed-service user can't change it.
