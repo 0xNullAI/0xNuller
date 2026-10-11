@@ -209,3 +209,78 @@ it('backs off after provider failure without advancing the source cursor', async
   expect(await runConversationDigest(env, 1061_000)).toBe(1);
   expect((await readConversationDigest(env, 'alice', 'c', 'r'))?.throughMessageId).toBe('m15');
 });
+
+async function seedFact(
+  id: string,
+  sourceMessageIds: string[],
+  relationshipId: string | null = 'r',
+) {
+  await env.DB.prepare(
+    `INSERT INTO personal_memories(user_id,id,kind,title,content,version,created_at,updated_at,
+       scope,relationship_id,tier,state,source_conversation_id,source_message_ids)
+     VALUES('alice',?,'preference','喜欢的书','喜欢读《沙丘》',1,1,1,?,?,'long','active','c',?)`,
+  )
+    .bind(
+      id,
+      relationshipId ? 'relationship' : 'account',
+      relationshipId,
+      JSON.stringify(sourceMessageIds),
+    )
+    .run();
+}
+
+it('drops the digest when a memory in that relationship is deleted or replaced', async () => {
+  await optIn();
+  await seedFact('f1', ['m2']);
+  await seedFact('f2', ['m4']);
+  expect(await runConversationDigest(env, 1000)).toBe(1);
+  await env.DB.prepare(
+    "UPDATE personal_memories SET title='',content='',deleted_at=2000,updated_at=2000,version=version+1 WHERE id='f1'",
+  ).run();
+  expect(await readConversationDigest(env, 'alice', 'c', 'r')).toBeNull();
+
+  expect(await runConversationDigest(env, 3000)).toBe(1);
+  await seedFact('f3', []);
+  await env.DB.prepare(
+    "UPDATE personal_memories SET superseded_by_id='f3',updated_at=4000,version=version+1 WHERE id='f2'",
+  ).run();
+  expect(await readConversationDigest(env, 'alice', 'c', 'r')).toBeNull();
+});
+
+it('drops every digest when an account-wide memory is deleted', async () => {
+  await optIn();
+  await seedFact('account-fact', ['m2'], null);
+  expect(await runConversationDigest(env, 1000)).toBe(1);
+  await env.DB.prepare(
+    "UPDATE personal_memories SET title='',content='',deleted_at=2000,updated_at=2000,version=version+1 WHERE id='account-fact'",
+  ).run();
+  expect(await readConversationDigest(env, 'alice', 'c', 'r')).toBeNull();
+});
+
+it('rebuilds without the source messages of a deleted memory', async () => {
+  await optIn();
+  await seedFact('f1', ['m2', 'm3']);
+  await env.DB.prepare(
+    "UPDATE personal_memories SET title='',content='',deleted_at=500,updated_at=500,version=version+1 WHERE id='f1'",
+  ).run();
+  expect(await runConversationDigest(env, 1000)).toBe(1);
+  const sent = (model.generate.mock.calls[0]![2] as { id: string }[]).map((source) => source.id);
+  expect(sent).not.toContain('m2');
+  expect(sent).not.toContain('m3');
+  expect(sent).toContain('m4');
+  // The cursor still covers the skipped messages.
+  expect((await readConversationDigest(env, 'alice', 'c', 'r'))?.throughMessageId).toBe('m15');
+});
+
+it('rejects a summary generated while a memory in scope was being deleted', async () => {
+  await optIn();
+  await seedFact('f1', ['m2']);
+  model.generate.mockImplementationOnce(async () => {
+    await env.DB.prepare(
+      "UPDATE personal_memories SET title='',content='',deleted_at=1000,updated_at=1000,version=version+1 WHERE id='f1'",
+    ).run();
+    return '用户喜欢读《沙丘》';
+  });
+  expect(await runConversationDigest(env, 1000)).toBe(0);
+  expect(await readConversationDigest(env, 'alice', 'c', 'r')).toBeNull();
+});

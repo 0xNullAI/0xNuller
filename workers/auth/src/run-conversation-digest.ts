@@ -19,6 +19,42 @@ interface Source extends DigestSourceMessage {
   position: number;
 }
 
+async function suppressedSourceMessageIds(
+  env: AutoMemoryEnv,
+  candidate: Candidate,
+): Promise<Set<string>> {
+  const rows = await env.DB.prepare(
+    `SELECT source_conversation_id,source_message_ids,source_refs FROM personal_memories
+     WHERE user_id=? AND (relationship_id IS NULL OR relationship_id=?)
+       AND (deleted_at IS NOT NULL OR superseded_by_id IS NOT NULL)`,
+  )
+    .bind(candidate.user_id, candidate.relationship_id)
+    .all<{
+      source_conversation_id: string | null;
+      source_message_ids: string | null;
+      source_refs: string | null;
+    }>();
+  const ids = new Set<string>();
+  const parse = (raw: string | null): unknown => {
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  for (const row of rows.results) {
+    const messageIds = parse(row.source_message_ids);
+    if (row.source_conversation_id === candidate.conversation_id && Array.isArray(messageIds))
+      for (const id of messageIds) if (typeof id === 'string') ids.add(id);
+    const refs = parse(row.source_refs);
+    if (Array.isArray(refs))
+      for (const ref of refs as Array<{ conversationId?: unknown; messageId?: unknown }>)
+        if (ref?.conversationId === candidate.conversation_id && typeof ref.messageId === 'string')
+          ids.add(ref.messageId);
+  }
+  return ids;
+}
+
 /** One bounded, opt-in private conversation segment per minute. */
 export async function runConversationDigest(env: AutoMemoryEnv, now = Date.now()): Promise<number> {
   const key = env.MINIMAX_MEDIA_API_KEY?.trim();
@@ -140,7 +176,13 @@ export async function runConversationDigest(env: AutoMemoryEnv, now = Date.now()
       )
       .first();
     if (!stillAllowed) return 0;
-    const summary = await generateConversationDigest(key, candidate.previous_summary, sources);
+    // Messages that produced a memory the user deleted or replaced are not
+    // summarized again; otherwise the rebuilt digest would bring it back.
+    const suppressed = await suppressedSourceMessageIds(env, candidate);
+    const modelSources = sources.filter((source) => !suppressed.has(source.id));
+    const summary = modelSources.length
+      ? await generateConversationDigest(key, candidate.previous_summary, modelSources)
+      : candidate.previous_summary;
     const last = sources.at(-1)!;
     if (
       !(await saveConversationDigest(env, {
@@ -155,6 +197,7 @@ export async function runConversationDigest(env: AutoMemoryEnv, now = Date.now()
         now,
         requireOptIn: true,
         expectedConsentVersion: candidate.consent_version,
+        memoryUnchangedSince: now,
         sourceChecks: sources.map(({ id, role, content, position }) => ({
           id,
           role,

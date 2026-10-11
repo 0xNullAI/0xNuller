@@ -23,6 +23,12 @@ export async function saveConversationDigest(
     now: number;
     requireOptIn?: boolean;
     expectedConsentVersion?: number;
+    /**
+     * Reject the save if a memory in this relationship (or account scope) was
+     * deleted or replaced at or after this time: the summary may have been
+     * generated from it while the delete was invalidating digests.
+     */
+    memoryUnchangedSince?: number;
     sourceChecks: Array<{
       id: string;
       role: 'user' | 'assistant';
@@ -60,6 +66,12 @@ export async function saveConversationDigest(
          WHERE checked.id IS NULL OR checked.role<>json_extract(source.value,'$.role')
            OR checked.position<>json_extract(source.value,'$.position')
            OR substr(checked.content,1,900)<>json_extract(source.value,'$.content')
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM personal_memories pm
+         WHERE pm.user_id=? AND (pm.relationship_id IS NULL OR pm.relationship_id=?)
+           AND pm.updated_at>=?
+           AND (pm.deleted_at IS NOT NULL OR pm.superseded_by_id IS NOT NULL)
        )
        AND EXISTS (
        SELECT 1 FROM server_conversations c
@@ -104,6 +116,9 @@ export async function saveConversationDigest(
       JSON.stringify(input.sourceChecks),
       input.userId,
       input.conversationId,
+      input.userId,
+      input.relationshipId,
+      input.memoryUnchangedSince ?? Number.MAX_SAFE_INTEGER,
       input.userId,
       input.conversationId,
       input.expectedRevision,
