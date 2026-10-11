@@ -1,4 +1,4 @@
-import { BookOpen, Compass, Cpu, MessageCircle, Users } from 'lucide-react';
+import { BookOpen, Compass, Cpu, MessageCircle, UserRound, Users } from 'lucide-react';
 import {
   Avatar,
   useClaimedSidebarSections,
@@ -68,10 +68,10 @@ export function NavRail({
     },
   ];
   const item = (current: boolean) =>
-    `flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-xl text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${current ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent)]' : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'}`;
+    `ui-press flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-xl text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${current ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent-text)]' : 'text-[var(--text-faint)] hover:bg-[var(--bg-soft)]'}`;
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col items-stretch gap-1 border-r border-[var(--surface-border)] bg-[var(--bg-elevated)] px-1.5 py-3">
+    <aside className="flex h-full min-h-0 w-full flex-col items-stretch gap-1 border-r-[0.5px] border-[var(--surface-border)] bg-[var(--bg-elevated)] px-1.5 py-3">
       <nav aria-label="主要功能" className="flex flex-col gap-1">
         {navigation.map(({ label, Icon, current, run, badge }) => (
           <button
@@ -141,7 +141,7 @@ export function InboxColumn({
   return (
     <aside
       aria-label="消息列表"
-      className="flex h-full min-h-0 w-full flex-col border-r border-[var(--surface-border)] bg-[var(--bg-elevated)]"
+      className="flex h-full min-h-0 w-full flex-col border-r-[0.5px] border-[var(--surface-border)] bg-[var(--bg-elevated)]"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         {sections.some((section) => section.id === 'pinned') && (
@@ -155,5 +155,57 @@ export function InboxColumn({
         />
       </div>
     </aside>
+  );
+}
+
+export type MobileTab = 'messages' | 'people' | 'discover' | 'device' | 'me';
+
+const MOBILE_TABS: { id: MobileTab; label: string; Icon: typeof MessageCircle }[] = [
+  { id: 'messages', label: '消息', Icon: MessageCircle },
+  { id: 'people', label: '联系人', Icon: Users },
+  { id: 'discover', label: '发现', Icon: Compass },
+  { id: 'device', label: '设备', Icon: Cpu },
+  { id: 'me', label: '我的', Icon: UserRound },
+];
+
+/**
+ * Phone bottom navigation. The active tab is the only accent on the bar; the rest stay
+ * faint, and a hairline is the only separation from the content above.
+ */
+export function MobileTabBar({
+  current,
+  unreadMessages,
+  onSelect,
+}: {
+  current: MobileTab | null;
+  unreadMessages: number;
+  onSelect: (tab: MobileTab) => void;
+}) {
+  return (
+    <nav
+      aria-label="手机主导航"
+      className="flex shrink-0 border-t-[0.5px] border-[var(--surface-border)] bg-[var(--bg-elevated)] pb-[env(safe-area-inset-bottom)]"
+    >
+      {MOBILE_TABS.map(({ id, label, Icon }) => {
+        const active = current === id;
+        const badge = id === 'messages' ? unreadMessages : 0;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelect(id)}
+            aria-current={active ? 'page' : undefined}
+            aria-label={badge ? `${label}，${badge} 条未读` : undefined}
+            className={`ui-press flex h-[var(--tabbar-h)] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] ${active ? 'font-medium text-[var(--accent-text)]' : 'text-[var(--text-faint)]'}`}
+          >
+            <span className="relative">
+              <Icon className="h-6 w-6" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+              {badge ? <UnreadBadge count={badge} /> : null}
+            </span>
+            {label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }

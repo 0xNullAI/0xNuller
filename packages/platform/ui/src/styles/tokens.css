@@ -164,10 +164,29 @@
      Anything at or above 1s is ambient (spinners, background drift) and is
      not on this scale. */
   --dur-fast: 120ms;
-  --dur: 160ms;
+  --dur: 150ms;
   --dur-mid: 200ms;
-  --dur-slow: 300ms;
+  --dur-slow: 280ms;
   --dur-enter: 500ms;
+  /* Enter decelerates into place; exit accelerates away. Shared so a menu, a sheet and a
+     pushed screen arrive with the same feel. */
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: ease-in;
+
+  /* Type scale for list-and-title surfaces. Hierarchy comes from size and color, so these
+     are the only sizes a list screen needs. */
+  --text-page-title: 20px;
+  --text-topbar-title: 17px;
+  --text-section: 13px;
+  --text-row-title: 16px;
+  --text-row-secondary: 14px;
+  --text-meta: 12px;
+
+  /* Flat list geometry: 16px phone gutter, 48px avatar, divider inset past the avatar. */
+  --gutter-phone: 16px;
+  --list-avatar: 48px;
+  --list-divider-inset: calc(var(--gutter-phone) + var(--list-avatar) + 12px);
+  --tabbar-h: 52px;
 }
 
 :root[data-theme='dark'] {

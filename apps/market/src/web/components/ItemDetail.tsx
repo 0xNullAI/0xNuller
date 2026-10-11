@@ -7,6 +7,7 @@ import { scriptLengthError } from '../script-length';
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
+import { ChevronLeft, X } from 'lucide-react';
 import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent } from '../../shared/schema';
 import { isExtraLargeScenario, promptKind } from '../../shared/schema';
 import { MAX_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
@@ -253,56 +254,89 @@ export function ItemDetail({
   };
 
   const pulse = view.type === 'waveform' ? (view.content as WaveformContent).pulse : undefined;
+  const primaryAction =
+    isCharacter && onStartCharacter ? (
+      <button
+        className="btn primary ui-press"
+        onClick={() => void handleStartCharacter()}
+        disabled={starting}
+      >
+        {starting ? '正在打开聊天…' : '开始聊天'}
+      </button>
+    ) : view.type === 'scenario' && !isCharacter && onImportScene ? (
+      <button
+        className="btn primary ui-press"
+        onClick={() => void handleImportScene()}
+        disabled={starting}
+      >
+        {starting ? '正在导入…' : importedScene ? '已导入场景' : '导入场景'}
+      </button>
+    ) : null;
 
   return (
-    <Overlay onDismiss={onClose} className="mkt-scope">
-      <div role="dialog" aria-modal="true" aria-labelledby="market-item-title" className="modal">
-        <header className="modal-head">
-          {view.type === 'scenario' && (view.content as ScenarioContent).portraitId && (
-            <img
-              className="market-detail-portrait"
-              src={characterPortraitUrl((view.content as ScenarioContent).portraitId!)}
-              alt=""
-            />
-          )}
-          <h2 id="market-item-title">
-            {view.type === 'waveform' ? '〰️ ' : `${view.icon || '🎭'} `}
-            {view.name}
-          </h2>
-          <button type="button" className="icon-btn" aria-label="关闭条目详情" onClick={onClose}>
-            ✕
+    <Overlay onDismiss={onClose} className="mkt-scope market-detail-overlay">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-item-title"
+        className="modal market-detail"
+      >
+        {/* One bar: back (a phone pushes this screen) or close (a dialog on wide screens). */}
+        <header className="modal-head market-detail-bar">
+          <button
+            type="button"
+            className="icon-btn market-detail-back ui-press"
+            aria-label="关闭条目详情"
+            onClick={onClose}
+          >
+            <ChevronLeft className="market-detail-back-icon h-6 w-6" aria-hidden="true" />
+            <X className="market-detail-close-icon h-5 w-5" aria-hidden="true" />
           </button>
+          <h2 id="market-item-title">{view.name}</h2>
         </header>
 
-        <p className="modal-meta">
-          {view.type === 'waveform' ? '波形' : isCharacter ? '角色' : '场景'} ·{' '}
-          {view.verifiedCreator
-            ? `✓ @${view.verifiedCreator.username}`
-            : view.author
-              ? `署名：${view.author}`
-              : '未认证作者'}{' '}
-          · 👁 {view.views} · ↓ {view.downloads}
-          {view.type === 'scenario' && (
-            <span className="agent-badge">{isCharacter ? '角色' : '场景'}</span>
-          )}
-          {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent) && (
-            <span className="scale-badge">超大场景</span>
-          )}
-          {view.type === 'waveform' && (
-            <span className="agent-badge">
-              {(view.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
+        <div className="market-detail-identity">
+          <span className="market-detail-art" aria-hidden="true">
+            {view.type === 'scenario' && (view.content as ScenarioContent).portraitId ? (
+              <img
+                className="market-detail-portrait"
+                src={characterPortraitUrl((view.content as ScenarioContent).portraitId!)}
+                alt=""
+              />
+            ) : view.type === 'waveform' ? (
+              '〰️'
+            ) : (
+              view.icon || '🎭'
+            )}
+          </span>
+          <p className="modal-meta">
+            {view.type === 'waveform'
+              ? (view.content as WaveformContent).modality === 'vibration'
+                ? '震动波形'
+                : '电击波形'
+              : isCharacter
+                ? '角色'
+                : '场景'}
+            {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent)
+              ? ' · 超大场景'
+              : ''}
+            {' · '}
+            {view.verifiedCreator
+              ? `@${view.verifiedCreator.username}`
+              : view.author || '未认证作者'}
+            <br />
+            <span className="tabular-nums">
+              {view.views} 次浏览 · {view.downloads} 次下载
             </span>
-          )}
-        </p>
+          </p>
+        </div>
 
-        {view.description && <p className="modal-desc">{view.description}</p>}
-        <div className="mt-3 flex gap-2">
-          <button type="button" className="btn" onClick={() => void handleTip()}>
+        {view.description?.trim() && <p className="modal-desc">{view.description}</p>}
+        <div className="market-detail-tip">
+          <button type="button" className="btn ui-press" onClick={() => void handleTip()}>
             给作者打赏
           </button>
-          <span className="text-xs text-[var(--text-faint)]">
-            每位用户首次下载，作者获得 5 Credit
-          </span>
+          <span>每位用户首次下载，作者获得 5 Credit</span>
         </div>
 
         {editing && (
@@ -407,35 +441,11 @@ export function ItemDetail({
         <FavoriteAction key={view.id} itemId={view.id} />
         {view.type === 'scenario' && <CharacterReportAction itemId={view.id} />}
         <div className="modal-actions">
-          {isCharacter && onStartCharacter && (
-            <button
-              className="btn primary"
-              onClick={() => void handleStartCharacter()}
-              disabled={starting}
-            >
-              {starting ? '正在打开聊天…' : '开始聊天'}
+          {primaryAction && (
+            <button className="btn" onClick={handleCopy}>
+              {copied ? '已复制 ✓' : '复制 JSON'}
             </button>
           )}
-          {view.type === 'scenario' && !isCharacter && onImportScene && (
-            <button
-              className="btn primary"
-              onClick={() => void handleImportScene()}
-              disabled={starting}
-            >
-              {starting ? '正在导入…' : importedScene ? '已导入场景' : '导入场景'}
-            </button>
-          )}
-          <button
-            className={
-              (isCharacter && onStartCharacter) ||
-              (view.type === 'scenario' && !isCharacter && onImportScene)
-                ? 'btn'
-                : 'btn primary'
-            }
-            onClick={handleCopy}
-          >
-            {copied ? '已复制 ✓' : '复制 JSON'}
-          </button>
           <button className="btn" onClick={handleDownload}>
             下载 .json
           </button>
@@ -477,6 +487,15 @@ export function ItemDetail({
               : '场景只提供环境与规则，可应用到聊天；不拥有独立关系或记忆。'
             : '在 Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
         </p>
+
+        {/* The one primary action. A phone pins it full width at the bottom. */}
+        <div className="market-detail-primary">
+          {primaryAction ?? (
+            <button className="btn primary ui-press" onClick={handleCopy}>
+              {copied ? '已复制 ✓' : '复制 JSON'}
+            </button>
+          )}
+        </div>
       </div>
     </Overlay>
   );

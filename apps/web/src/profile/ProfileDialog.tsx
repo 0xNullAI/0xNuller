@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   CalendarDays,
@@ -52,12 +52,15 @@ export function ProfileDialog({
   onClose,
   presentation = 'dialog',
   onOpenMarketItem,
+  shellBack = false,
 }: {
   username: string;
   viewer: AuthUser | null;
   onClose: () => void;
   presentation?: 'dialog' | 'page';
   onOpenMarketItem?: (id: string) => void;
+  /** The shell top bar already shows back + title (phone), so the page omits its own row. */
+  shellBack?: boolean;
 }) {
   const [resolved, setResolved] = useState<ResolvedProfile | null>(null);
   const [follow, setFollow] = useState<FollowState | null>(null);
@@ -166,17 +169,17 @@ export function ProfileDialog({
       className={
         presentation === 'dialog'
           ? 'flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]'
-          : 'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)]'
+          : 'ui-push-in mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)]'
       }
     >
-      {presentation === 'page' ? (
-        <div className="shrink-0 border-b border-[var(--surface-border)] px-3 py-2 sm:px-5">
+      {presentation === 'page' && !shellBack ? (
+        <div className="shrink-0 px-2 py-1 sm:px-4">
           <Button variant="ghost" size="sm" onClick={onClose}>
             <ArrowLeft className="h-4 w-4" /> 返回
           </Button>
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:p-6">
         {resolved === null ? (
           <p
             role="status"
@@ -208,6 +211,16 @@ export function ProfileDialog({
             follow={follow}
             viewerId={viewerId}
             onOpenMarketItem={onOpenMarketItem}
+            actions={
+              <ProfileActions
+                resolved={resolved}
+                follow={follow}
+                error={error}
+                onEdit={startEditing}
+                onToggleFollow={() => void toggleFollow()}
+                onClose={onClose}
+              />
+            }
           />
         )}
       </div>
@@ -229,16 +242,7 @@ export function ProfileDialog({
             </div>
           </div>
         </div>
-      ) : resolved && resolved.state !== 'unavailable' ? (
-        <ProfileActions
-          resolved={resolved}
-          follow={follow}
-          error={error}
-          onEdit={startEditing}
-          onToggleFollow={() => void toggleFollow()}
-          onClose={onClose}
-        />
-      ) : (
+      ) : resolved && resolved.state !== 'unavailable' ? null : (
         <div className="flex justify-end border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
           <Button variant="secondary" onClick={onClose}>
             关闭
@@ -256,11 +260,13 @@ function ProfileBody({
   follow,
   viewerId,
   onOpenMarketItem,
+  actions,
 }: {
   resolved: Exclude<ResolvedProfile, { state: 'unavailable' }>;
   follow: FollowState | null;
   viewerId: string | null;
   onOpenMarketItem?: (id: string) => void;
+  actions: ReactNode;
 }) {
   const mutual = follow?.following === true && follow.followedBy === true;
   const badge = mutual ? (
@@ -274,31 +280,33 @@ function ProfileBody({
 
   return (
     <div className="flex flex-col gap-6">
-      <ProfileIdentity
-        displayName={resolved.user.displayName}
-        username={resolved.user.username}
-        avatarUrl={resolved.profile.avatarUrl}
-        badge={badge}
-      />
-
-      <ProfileStats
-        followers={follow?.followerCount ?? resolved.followers}
-        following={resolved.following}
-      />
-
-      {resolved.profile.bio ? (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text)]">
-          {resolved.profile.bio}
-        </p>
-      ) : resolved.relationship === 'self' && !resolved.profile.location ? (
-        // Your own untouched profile, which is otherwise three numbers and a
-        // date. Worded as an invitation and not as a task: an account that
-        // stays empty is a finished account, and a nag bar would say the
-        // opposite of what this product promises.
-        <p className="text-sm leading-relaxed text-[var(--text-faint)]">
-          暂无资料，所有内容均为选填
-        </p>
-      ) : null}
+      {/* One header: who, what they say about themselves, the counts, then what you can do. */}
+      <header className="flex flex-col gap-3">
+        <ProfileIdentity
+          displayName={resolved.user.displayName}
+          username={resolved.user.username}
+          avatarUrl={resolved.profile.avatarUrl}
+          badge={badge}
+        />
+        {resolved.profile.bio ? (
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--text)]">
+            {resolved.profile.bio}
+          </p>
+        ) : resolved.relationship === 'self' && !resolved.profile.location ? (
+          // Your own untouched profile, which is otherwise three numbers and a
+          // date. Worded as an invitation and not as a task: an account that
+          // stays empty is a finished account, and a nag bar would say the
+          // opposite of what this product promises.
+          <p className="text-sm leading-relaxed text-[var(--text-faint)]">
+            暂无资料，所有内容均为选填
+          </p>
+        ) : null}
+        <ProfileStats
+          followers={follow?.followerCount ?? resolved.followers}
+          following={resolved.following}
+        />
+        {actions}
+      </header>
 
       {resolved.profile.interests.length > 0 ? (
         <div className="flex flex-wrap gap-2">
@@ -406,12 +414,14 @@ function ProfileActions({
 
   if (relationship === 'self') {
     return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-        <span className="text-xs text-[var(--text-faint)]">公开主页</span>
-        <Button onClick={onEdit}>
-          <Pencil className="h-4 w-4" />
-          编辑资料
-        </Button>
+      <div className="flex flex-col gap-2">
+        {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" className="ui-press" onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+            编辑资料
+          </Button>
+        </div>
       </div>
     );
   }
@@ -424,7 +434,7 @@ function ProfileActions({
   const dmAllowed = follow ? canDirectMessage(follow, relationship) : false;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
+    <div className="flex flex-col gap-2">
       {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
       {safetyNotice && <p className="text-xs text-[var(--success)]">{safetyNotice}</p>}
       <div className="flex items-center gap-2">
@@ -432,16 +442,18 @@ function ProfileActions({
             「互相关注」 — that is the badge's job up by the name, and saying it
             twice makes the button look like a label rather than a control. */}
         <Button
+          size="sm"
           variant={following ? 'secondary' : 'default'}
           disabled={pending}
           onClick={onToggleFollow}
-          className="flex-1"
+          className="ui-press min-w-[88px]"
         >
           {following ? '已关注' : relationship === 'followsYou' ? '回关' : '关注'}
         </Button>
         <Button
+          size="sm"
           variant="secondary"
-          className="flex-1"
+          className="ui-press min-w-[88px]"
           disabled={!dmAllowed}
           title={!dmAllowed ? '互相关注后可私聊' : undefined}
           onClick={() => {
@@ -453,7 +465,9 @@ function ProfileActions({
           私聊
         </Button>
         <Button
+          size="icon"
           variant="ghost"
+          className="ui-press"
           aria-label="更多用户操作"
           onClick={() => {
             setSafetyOpen((open) => !open);
@@ -463,7 +477,7 @@ function ProfileActions({
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </div>
-      {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注后可私聊</p>}
+      {!dmAllowed && <p className="text-xs text-[var(--text-faint)]">互相关注后可私聊</p>}
       {safetyOpen ? (
         <div className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-2">
           {reportOpen ? (

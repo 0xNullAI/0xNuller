@@ -3,7 +3,7 @@ import { FollowedCreators } from './components/FollowedCreators';
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Gamepad2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Compass, Gamepad2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   promptKind,
   type ItemType,
@@ -19,13 +19,7 @@ import {
   markViewed,
   recordCharacterDetailOpen,
 } from './api';
-import {
-  Button,
-  useInShell,
-  useOpenShellSettings,
-  useShellNav,
-  useShellSignedIn,
-} from '@0xnullai/ui';
+import { useInShell, useOpenShellSettings, useShellNav, useShellSignedIn } from '@0xnullai/ui';
 import { ItemCard } from './components/ItemCard';
 import { ItemDetail } from './components/ItemDetail';
 import { UploadDialog } from './components/UploadDialog';
@@ -445,23 +439,28 @@ export function App(): JSX.Element {
               <div className="market-row-actions">
                 {shellNav ? (
                   // Games live under 发现 rather than as a separate top-level module.
-                  <Button size="sm" variant="ghost" onClick={() => shellNav.navigate('playground')}>
-                    <Gamepad2 className="h-4 w-4" /> 游戏
-                  </Button>
+                  <button
+                    type="button"
+                    className="market-chip ui-press"
+                    onClick={() => shellNav.navigate('playground')}
+                  >
+                    <Gamepad2 className="h-4 w-4" aria-hidden="true" /> 游戏
+                  </button>
                 ) : null}
                 <div className="market-create" ref={createMenuRef}>
-                  <Button
-                    size="sm"
+                  <button
+                    type="button"
+                    className="market-chip market-chip-accent ui-press"
                     aria-expanded={openMenu === 'create'}
                     aria-controls="market-create-menu"
                     onClick={() => setOpenMenu((open) => (open === 'create' ? null : 'create'))}
                   >
-                    <Plus className="h-4 w-4" /> 创建
-                  </Button>
+                    <Plus className="h-4 w-4" aria-hidden="true" /> 创建
+                  </button>
                   {openMenu === 'create' && (
                     <div
                       id="market-create-menu"
-                      className="market-create-menu"
+                      className="market-create-menu ui-menu-in"
                       role="group"
                       aria-label="创建内容"
                     >
@@ -508,7 +507,7 @@ export function App(): JSX.Element {
                     <input
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
-                      placeholder="搜索名称、简介或标签"
+                      placeholder="搜索"
                       aria-label="搜索公开内容"
                     />
                   </label>
@@ -527,13 +526,13 @@ export function App(): JSX.Element {
                   <button
                     type="button"
                     ref={filterTriggerRef}
-                    className="market-filter-trigger"
+                    className="market-filter-trigger ui-press"
+                    aria-label="筛选"
                     aria-expanded={openMenu === 'filters'}
                     aria-controls="market-filter-panel"
                     onClick={() => setOpenMenu((open) => (open === 'filters' ? null : 'filters'))}
                   >
-                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    筛选
+                    <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
                     {activeFilterCount > 0 && (
                       <span
                         className="market-filter-count"
@@ -546,7 +545,7 @@ export function App(): JSX.Element {
                   {openMenu === 'filters' && (
                     <div
                       id="market-filter-panel"
-                      className="market-filter-panel"
+                      className="market-filter-panel ui-menu-in"
                       data-placement={filterPosition?.side ?? 'bottom'}
                       style={
                         filterPosition ? { maxHeight: `${filterPosition.maxHeight}px` } : undefined
@@ -642,7 +641,7 @@ export function App(): JSX.Element {
           </section>
         }
 
-        <main className="market-grid">
+        <main key={`${category}:${discovery}`} className="market-grid ui-tab-fade">
           {requiresAccount ? (
             <div className="empty">
               <strong>登录后继续发现</strong>
@@ -652,9 +651,18 @@ export function App(): JSX.Element {
               </button>
             </div>
           ) : loading ? (
-            <p role="status" aria-live="polite" className="empty">
-              加载中…
-            </p>
+            <>
+              <p role="status" aria-live="polite" className="sr-only">
+                加载中…
+              </p>
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="card card-skeleton" aria-hidden="true">
+                  <span className="card-art ui-skeleton" />
+                  <span className="card-skeleton-line ui-skeleton" />
+                  <span className="card-skeleton-line card-skeleton-short ui-skeleton" />
+                </div>
+              ))}
+            </>
           ) : error ? (
             <div role="alert" className="empty">
               <p>没能加载市场内容</p>
@@ -665,6 +673,9 @@ export function App(): JSX.Element {
             </div>
           ) : items.length === 0 ? (
             <div className="empty">
+              <span className="empty-icon" aria-hidden="true">
+                {q.trim() ? <Search className="h-5 w-5" /> : <Compass className="h-5 w-5" />}
+              </span>
               <strong>
                 {discovery === 'favorites'
                   ? '还没有收藏的内容'

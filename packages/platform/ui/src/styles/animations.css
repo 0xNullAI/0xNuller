@@ -1,7 +1,7 @@
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
 
   to {
@@ -140,11 +140,143 @@
   animation: ui-sheet-out-left var(--dur-mid) ease-in;
 }
 
+/* ── Shared motion utilities. CSS only; every module uses these names instead of
+   writing its own keyframes, so one change of feel lands everywhere. ── */
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-push-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ui-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Tab content: opacity only. A transform here would change the containing block of
+   fixed-position children inside a module for the length of the animation. */
+.ui-tab-fade {
+  animation: ui-fade-in var(--dur) var(--ease-enter);
+}
+
+/* A pushed screen on a phone (conversation, settings sub-page, profile). Going back is
+   not animated. Re-runs whenever the element goes from display:none to shown. */
+.ui-push-in {
+  animation: ui-push-in var(--dur-slow) var(--ease-enter);
+}
+
+/* A new list item or a newly arrived message. Never on history load. */
+.ui-fade-up {
+  animation: fade-up var(--dur-mid) var(--ease-enter) both;
+}
+
+/* Menus, popovers and bottom sheets grow from their anchor. Set the anchor with
+   transform-origin on the element (default: the top right, where top-bar menus sit). */
+.ui-menu-in {
+  transform-origin: top right;
+  animation: ui-menu-in var(--dur-mid) var(--ease-enter);
+}
+
+.ui-toast-in {
+  animation: ui-toast-in var(--dur-mid) var(--ease-enter);
+}
+
+/* Press feedback. ui-press shrinks a button under the finger; ui-press-row highlights a
+   full-width row instead, because scaling a row edge to edge reads as a glitch. */
+.ui-press {
+  transition:
+    transform var(--dur) var(--ease-exit),
+    background-color var(--dur) ease,
+    color var(--dur) ease,
+    opacity var(--dur) ease;
+}
+
+.ui-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.ui-press-row {
+  transition: background-color var(--dur) ease;
+}
+
+.ui-press-row:active {
+  background-color: var(--bg-soft);
+}
+
+/* Loading placeholder for list rows and text lines. */
+.ui-skeleton {
+  border-radius: var(--radius-2xs);
+  background: linear-gradient(
+      90deg,
+      var(--bg-strong) 25%,
+      var(--surface-border) 50%,
+      var(--bg-strong) 75%
+    )
+    0 0 / 200% 100%;
+  animation: ui-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ui-overlay-enter,
   .ui-dialog-overlay,
   .ui-dialog-content,
-  .ui-sheet-content {
+  .ui-sheet-content,
+  .ui-tab-fade,
+  .ui-push-in,
+  .ui-fade-up,
+  .ui-menu-in,
+  .ui-toast-in,
+  .ui-skeleton {
     animation: none !important;
+  }
+
+  .ui-press:active:not(:disabled) {
+    transform: none;
   }
 }

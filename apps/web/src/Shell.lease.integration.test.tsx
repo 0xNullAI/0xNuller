@@ -643,3 +643,38 @@ it('guards mobile bottom navigation before changing route', async () => {
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: original });
   }
 });
+
+it('redirects a guessed /contacts address to the real 联系人 page', async () => {
+  window.history.pushState(null, '', '/contacts');
+  await act(async () => {
+    render(<Shell />);
+  });
+  expect(window.location.pathname).toBe('/people');
+  expect(screen.getByRole('main', { name: '联系人' })).toBeTruthy();
+});
+
+it('shows only the page title on the phone top bar, without an avatar', async () => {
+  const original = window.matchMedia;
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: (query: string) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  });
+  window.history.replaceState(null, '', '/');
+  try {
+    await act(async () => {
+      render(<Shell />);
+    });
+    const actions = document.getElementById('shl-actions')!;
+    expect(within(actions).getByRole('heading', { level: 1, name: '消息' })).toBeTruthy();
+    expect(within(actions).queryByRole('button', { name: '我的账户' })).toBeNull();
+    expect(actions.querySelector('img')).toBeNull();
+  } finally {
+    cleanup();
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: original });
+  }
+});

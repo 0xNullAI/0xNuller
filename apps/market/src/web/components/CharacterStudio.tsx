@@ -10,6 +10,7 @@ import {
 import { type ExternalCardArchive } from '@0xnullai/scenes/character-draft';
 import { CharacterCardFields } from '@0xnullai/scenes/character-editor';
 import { Button, registerNavigationGuard } from '@0xnullai/ui';
+import { ChevronLeft } from 'lucide-react';
 import { useEffect, useLayoutEffect, useState, useMemo, useRef } from 'react';
 import type {
   CharacterDraft,
@@ -747,23 +748,27 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
           : `创建公开${kind === 'character' ? '角色' : '场景'}`
       }
     >
+      {/* One bar: back and the page title. The primary action sits at the bottom. */}
       <header className="character-studio-head">
-        <div>
-          <p className="character-studio-eyebrow">Market · 公开 Prompt 创作</p>
-          <h1>
-            {item ? '编辑' : '创建'}
-            {kind === 'character' ? '角色' : '场景'}
-          </h1>
-          <p>
-            {kind === 'character'
-              ? '角色拥有公开人设；每位用户的名字、关系和记忆由自己的聊天设置管理。'
-              : '场景只定义环境与规则，可应用到聊天，不拥有独立关系或记忆。'}
-          </p>
-        </div>
-        <Button variant="secondary" onClick={closeEditor} disabled={busy}>
-          返回发现
-        </Button>
+        <button
+          type="button"
+          className="icon-btn character-studio-back ui-press"
+          aria-label="返回发现"
+          onClick={closeEditor}
+          disabled={busy}
+        >
+          <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+        </button>
+        <h1>
+          {item ? '编辑' : '创建'}
+          {kind === 'character' ? '角色' : '场景'}
+        </h1>
       </header>
+      <p className="character-studio-lede">
+        {kind === 'character'
+          ? '角色拥有公开人设；每位用户的名字、关系和记忆由自己的聊天设置管理。'
+          : '场景只定义环境与规则，可应用到聊天，不拥有独立关系或记忆。'}
+      </p>
 
       <div className="character-studio-grid">
         <fieldset disabled={busy} className="character-studio-form" aria-label="公开 Prompt 设定">
@@ -934,15 +939,16 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
             >
               {serverDraft ? '用当前内容替换在线草稿' : '保存在线草稿'}
             </Button>
-            <Button onClick={() => void save()} disabled={busy || !draftReady}>
+            <Button
+              className="character-studio-primary ui-press"
+              onClick={() => void save()}
+              disabled={busy || !draftReady}
+            >
               {busy
                 ? '保存中…'
                 : item
                   ? '保存修改'
                   : `发布${kind === 'character' ? '角色' : '场景'}`}
-            </Button>
-            <Button variant="ghost" onClick={closeEditor} disabled={busy}>
-              取消
             </Button>
           </div>
           {/* One flat area for rarely needed tools; no nested folds. */}

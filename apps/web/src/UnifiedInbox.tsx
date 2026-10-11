@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { CheckCheck, Plus, Search } from 'lucide-react';
+import { Bot, CheckCheck, MessageCircle, Search, SquarePen, UserRound, Users } from 'lucide-react';
+import { ModuleActions } from '@0xnullai/ui';
 import {
   currentAuthUserId,
   markPrivateConversationRead,
@@ -107,7 +108,7 @@ function InboxAvatar({
 }) {
   const source = useCharacterPhoto(photoId);
   const [failed, setFailed] = useState<string | null>(null);
-  const box = `flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent-soft)] text-sm ${size}`;
+  const box = `flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent-soft)] text-base font-medium text-[var(--accent-text)] ${size}`;
   if (source && failed !== source)
     return (
       <span aria-hidden className={box}>
@@ -147,6 +148,8 @@ export function UnifiedInbox({
     aiNextCursor: string | null;
     groupNextCursor: string | null;
     groupPageFailed: boolean;
+    /** Rows that arrived on a refresh after the first load; only these animate in. */
+    fresh: ReadonlySet<string>;
   } | null>(null);
   const authEpoch = useRef(0);
   const loadedAiPages = useRef<{ accountId: string | null; count: number }>({
@@ -265,9 +268,14 @@ export function UnifiedInbox({
             }
             results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
           }
+          const known =
+            previous?.accountId === accountId ? new Set(previous.rows.map((row) => row.id)) : null;
           return {
             accountId,
             rows: results,
+            fresh: new Set(
+              known ? results.filter((row) => !known.has(row.id)).map((r) => r.id) : [],
+            ),
             error: missing.length ? `部分聊天尚未读取：${missing.join('、')}。可重新加载。` : '',
             aiNextCursor: ai.status === 'fulfilled' ? ai.value.nextCursor : null,
             groupNextCursor:
@@ -372,87 +380,61 @@ export function UnifiedInbox({
     setNewChatOpen(false);
     onNavigate('agent');
   };
-  const newChatButton = (
-    <button
-      type="button"
-      onClick={() => setNewChatOpen((open) => !open)}
-      aria-expanded={newChatOpen}
-      aria-controls="new-chat-options"
-      className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-sm font-medium text-[var(--button-text)] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-    >
-      <Plus className="h-4 w-4" aria-hidden />
-      新聊天
-    </button>
-  );
+  const newChatMenu = user ? (
+    <NewChatMenu
+      open={newChatOpen}
+      onOpenChange={setNewChatOpen}
+      onStartAi={startAi}
+      onFindContact={() => {
+        setNewChatOpen(false);
+        onNavigate('people');
+      }}
+      onCreateRoom={() => {
+        setNewChatOpen(false);
+        onCreateRoom();
+      }}
+    />
+  ) : null;
+  const page = presentation === 'page';
+  const fresh = accountId === result?.accountId ? result.fresh : null;
   return (
     <section
       aria-label="所有聊天"
-      className={presentation === 'page' ? 'h-full overflow-y-auto bg-[var(--bg)]' : 'px-2 py-2'}
+      className={page ? 'h-full overflow-y-auto bg-[var(--bg)]' : 'pb-2'}
     >
-      <div className={presentation === 'page' ? 'mx-auto max-w-3xl px-3 pt-2' : ''}>
-        {presentation === 'sidebar' && (
-          <div className="flex min-h-12 items-center gap-2 px-1">
-            <h2 className="min-w-0 flex-1 px-1 text-base font-semibold">
-              {presentation === 'sidebar' ? '消息' : ''}
-            </h2>
-            {user && newChatButton}
-          </div>
-        )}
-        {user && newChatOpen && (
-          <div
-            id="new-chat-options"
-            role="group"
-            aria-label="选择聊天对象"
-            className="rounded-xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1"
-          >
-            <button
-              type="button"
-              onClick={startAi}
-              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-            >
-              与 AI 聊天
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setNewChatOpen(false);
-                onNavigate('people');
-              }}
-              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-            >
-              找联系人聊天
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setNewChatOpen(false);
-                onCreateRoom();
-              }}
-              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--bg-soft)]"
-            >
-              创建群聊
-            </button>
+      <div className={page ? 'mx-auto max-w-3xl' : ''}>
+        {page ? (
+          <>
+            {/* Phone: the shell top bar already shows 「消息」, and ModuleActions moves the
+                new-chat button there. Wider screens have no top-bar title, so show one here. */}
+            <div className="hidden min-h-14 items-center px-4 pt-2 md:flex">
+              <h1 className="min-w-0 flex-1 text-xl font-semibold">消息</h1>
+            </div>
+            {newChatMenu && <ModuleActions>{newChatMenu}</ModuleActions>}
+          </>
+        ) : (
+          <div className="flex min-h-14 items-center gap-2 pl-4 pr-2">
+            <h2 className="min-w-0 flex-1 text-[17px] font-semibold">消息</h2>
+            {newChatMenu}
           </div>
         )}
         {user && (
-          <>
-            <div className="mt-1 flex items-center gap-2">
-              <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-xl bg-[var(--bg-soft)] px-3 text-[var(--text-faint)]">
-                <Search className="h-4 w-4 shrink-0" />
-                <input
-                  type="search"
-                  aria-label="搜索聊天"
-                  placeholder="搜索聊天"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="min-h-0 min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-sm text-[var(--text)] shadow-none outline-none placeholder:text-[var(--text-faint)] focus:ring-0"
-                />
-              </label>
-              {presentation === 'page' && newChatButton}
-            </div>
+          <div className="px-4 pb-2 pt-1">
+            <label className="flex min-h-9 min-w-0 items-center gap-2 rounded-full bg-[var(--bg-soft)] px-3 text-[var(--text-faint)]">
+              <Search className="h-4 w-4 shrink-0" aria-hidden />
+              <input
+                type="search"
+                aria-label="搜索聊天"
+                placeholder="搜索"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="min-h-0 min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-sm text-[var(--text)] shadow-none outline-none placeholder:text-[var(--text-faint)] focus:ring-0"
+              />
+            </label>
             <div
-              className="flex gap-1 border-b border-[var(--surface-border)] py-2"
+              role="group"
               aria-label="消息筛选"
+              className="mt-2 inline-flex rounded-full bg-[var(--bg-soft)] p-0.5"
             >
               {[
                 { label: '全部', selected: !unreadOnly, value: false },
@@ -463,147 +445,136 @@ export function UnifiedInbox({
                   type="button"
                   aria-pressed={option.selected}
                   onClick={() => setUnreadOnly(option.value)}
-                  className={`min-h-9 rounded-lg px-3 text-sm ${option.selected ? 'bg-[var(--accent-soft)] font-semibold text-[var(--accent)]' : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'}`}
+                  className={`ui-press min-h-7 rounded-full px-3 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${option.selected ? 'bg-[var(--bg-elevated)] font-medium text-[var(--text)] shadow-[var(--shadow-soft)]' : 'text-[var(--text-soft)]'}`}
                 >
                   {option.label}
                 </button>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
       {!user &&
-        (presentation === 'page' ? (
-          <div className="flex flex-col items-center gap-3 px-4 py-20 text-center">
-            <span
-              aria-hidden
-              className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-2xl"
-            >
-              💬
-            </span>
-            <h2 className="text-base font-semibold">登录后继续聊天</h2>
-            <p className="max-w-64 text-sm text-[var(--text-soft)]">聊天记录随账号跨端同步。</p>
-            <button
-              type="button"
-              onClick={onOpenAccount}
-              className="rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-medium text-[var(--button-text)]"
-            >
-              登录 / 注册
-            </button>
-          </div>
+        (page ? (
+          <EmptyState text="登录后继续聊天" action="登录 / 注册" onAction={onOpenAccount} />
         ) : (
           <button
             type="button"
             onClick={onOpenAccount}
-            className="rounded px-2 py-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+            className="ui-press-row w-full px-4 py-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
           >
             登录以查看跨端聊天记录
           </button>
         ))}
-      <div className={presentation === 'page' ? 'mx-auto max-w-3xl px-3' : ''}>
+      <div className={page ? 'mx-auto max-w-3xl' : ''}>
         {error && (
-          <p role="alert" className="px-2 py-2 text-sm text-[var(--danger)]">
+          <p role="alert" className="px-4 py-2 text-sm text-[var(--danger)]">
             {error}
             <button type="button" onClick={refresh} className="ml-2 underline">
               重试
             </button>
           </p>
         )}
-        {loading && (
-          <p role="status" className="px-2 text-sm">
-            正在读取聊天…
-          </p>
-        )}
-        {user && !loading && !error && visibleRows.length === 0 && (
-          <div className="px-2 py-12 text-center text-sm text-[var(--text-faint)]">
-            {needle
-              ? moreGroups
-                ? '已加载的聊天没有匹配项，还有群聊可加载'
-                : '没有匹配的聊天'
-              : unreadOnly
+        {loading && <InboxSkeleton />}
+        {user &&
+          !loading &&
+          !error &&
+          visibleRows.length === 0 &&
+          (needle || unreadOnly || moreGroups ? (
+            <p className="px-4 py-12 text-center text-sm text-[var(--text-faint)]">
+              {needle
                 ? moreGroups
-                  ? '已加载的聊天没有未读消息，还有群聊可加载'
-                  : '没有未读消息'
-                : moreGroups
-                  ? '还有群聊未加载'
-                  : '暂无聊天'}
-          </div>
-        )}
-        {visibleRows.map((row) => (
-          <div key={row.id} className="relative min-w-0">
-            <button
-              type="button"
-              onClick={row.activate}
-              aria-current={currentRowId === row.routeId ? 'page' : undefined}
-              className={`flex w-full min-w-0 items-center gap-3 rounded-xl text-left hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${currentRowId === row.routeId ? 'bg-[var(--accent-soft)]' : ''} ${presentation === 'page' ? 'min-h-[72px] border-b border-[var(--surface-border)] px-2 py-3' : 'min-h-16 px-2 py-2'}`}
+                  ? '已加载的聊天没有匹配项，还有群聊可加载'
+                  : '没有匹配的聊天'
+                : unreadOnly
+                  ? moreGroups
+                    ? '已加载的聊天没有未读消息，还有群聊可加载'
+                    : '没有未读消息'
+                  : '还有群聊未加载'}
+            </p>
+          ) : (
+            <EmptyState text="暂无聊天" action="开始聊天" onAction={startAi} />
+          ))}
+        {visibleRows.map((row) => {
+          const current = currentRowId === row.routeId;
+          const unread = row.unread !== null && row.unread > 0 ? row.unread : 0;
+          return (
+            <div
+              key={row.id}
+              className={`relative min-w-0 ${fresh?.has(row.id) ? 'ui-fade-up' : ''}`}
             >
-              <InboxAvatar
-                title={row.title}
-                photoId={row.avatarPhotoId ?? null}
-                size={presentation === 'page' ? 'h-12 w-12' : 'h-9 w-9'}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{row.title}</span>
-                <span className="block truncate text-xs text-[var(--text-faint)]">
-                  {/* Character chats read like any contact; only groups carry a tag. */}
-                  {row.kind === 'group' && (
-                    <span className="mr-1 font-medium text-[var(--text-soft)]">群聊</span>
-                  )}
-                  {row.preview}
-                </span>
-              </span>
-              <span className="mt-1 flex shrink-0 self-start flex-col items-end gap-1 text-xs text-[var(--text-faint)]">
-                {row.updatedAt ? (
-                  <time dateTime={new Date(row.updatedAt).toISOString()} title={row.timeBasis}>
-                    {formatInboxTime(row.updatedAt)}
-                  </time>
-                ) : (
-                  ''
-                )}
-                {!row.markRead && row.unread !== null && row.unread > 0 && (
-                  <span className="rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[var(--button-text)]">
-                    {row.unread > 99 ? '99+' : row.unread}
-                  </span>
-                )}
-              </span>
-            </button>
-            {row.markRead && (
               <button
                 type="button"
-                className="absolute bottom-1 right-2 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] text-[var(--button-text)] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-                aria-label={`${row.title}标为已读`}
-                title="标为已读"
-                onClick={() => {
-                  const epoch = authEpoch.current;
-                  void row.markRead!()
-                    .then(refresh)
-                    .catch(() => {
-                      if (epoch === authEpoch.current)
-                        setResult((value) =>
-                          value ? { ...value, error: '标为已读失败，请重试。' } : value,
-                        );
-                    });
-                }}
+                onClick={row.activate}
+                aria-current={current ? 'page' : undefined}
+                className={`ui-press-row flex min-h-[72px] w-full min-w-0 items-center gap-3 pl-4 text-left hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] ${current ? 'bg-[var(--accent-soft)]' : ''}`}
               >
-                {row.unread !== null && row.unread > 0 ? (
-                  row.unread > 99 ? (
-                    '99+'
-                  ) : (
-                    row.unread
-                  )
-                ) : (
-                  <CheckCheck className="h-3.5 w-3.5" aria-hidden />
-                )}
+                <InboxAvatar
+                  title={row.title}
+                  photoId={row.avatarPhotoId ?? null}
+                  size="h-12 w-12"
+                />
+                {/* The divider sits on this block, so it starts after the avatar. */}
+                <span className="flex min-h-[72px] min-w-0 flex-1 items-center gap-2 border-b-[0.5px] border-[var(--surface-border)] py-3 pr-4">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-base font-medium leading-6">
+                      {row.title}
+                    </span>
+                    <span className="block truncate text-sm leading-5 text-[var(--text-faint)]">
+                      {/* Character chats read like any contact; only groups carry a tag. */}
+                      {row.kind === 'group' && (
+                        <span className="mr-1 text-[var(--text-soft)]">群聊</span>
+                      )}
+                      {row.preview}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 self-start flex-col items-end gap-1.5 pt-0.5 text-xs tabular-nums text-[var(--text-faint)]">
+                    {row.updatedAt ? (
+                      <time dateTime={new Date(row.updatedAt).toISOString()} title={row.timeBasis}>
+                        {formatInboxTime(row.updatedAt)}
+                      </time>
+                    ) : (
+                      ''
+                    )}
+                    {!row.markRead && unread > 0 && <CountBadge count={unread} />}
+                  </span>
+                </span>
               </button>
-            )}
-          </div>
-        ))}
+              {row.markRead && (
+                // A sibling of the row: a button inside a button is invalid markup.
+                <button
+                  type="button"
+                  className="ui-press absolute right-3 top-[34px] flex min-h-6 min-w-6 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label={`${row.title}标为已读`}
+                  title="标为已读"
+                  onClick={() => {
+                    const epoch = authEpoch.current;
+                    void row.markRead!()
+                      .then(refresh)
+                      .catch(() => {
+                        if (epoch === authEpoch.current)
+                          setResult((value) =>
+                            value ? { ...value, error: '标为已读失败，请重试。' } : value,
+                          );
+                      });
+                  }}
+                >
+                  {unread > 0 ? (
+                    <CountBadge count={unread} />
+                  ) : (
+                    <CheckCheck className="h-3.5 w-3.5 text-[var(--text-faint)]" aria-hidden />
+                  )}
+                </button>
+              )}
+            </div>
+          );
+        })}
         {accountId === result?.accountId && result.aiNextCursor && (
           <button
             type="button"
             onClick={() => void loadMoreAi()}
             disabled={loadingMore}
-            className="mx-2 my-3 min-h-10 rounded-lg px-3 text-sm text-[var(--accent)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
+            className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
           >
             {loadingMore ? '正在加载…' : '加载更多 AI 聊天'}
           </button>
@@ -617,7 +588,7 @@ export function UnifiedInbox({
               else setGroupPages((count) => count + 1);
             }}
             disabled={loadingMoreGroups}
-            className="mx-2 my-3 min-h-10 rounded-lg px-3 text-sm text-[var(--accent)] hover:bg-[var(--bg-soft)]"
+            className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)]"
           >
             {loadingMoreGroups
               ? '正在加载群聊…'
@@ -628,5 +599,135 @@ export function UnifiedInbox({
         )}
       </div>
     </section>
+  );
+}
+
+/** Small red unread count, the one unread signal in every list. */
+function CountBadge({ count }: { count: number }) {
+  return (
+    <span className="min-w-[18px] rounded-full bg-[var(--danger)] px-1 text-center text-[11px] font-semibold leading-[18px] text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function EmptyState({
+  text,
+  action,
+  onAction,
+}: {
+  text: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
+      <span
+        aria-hidden
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]"
+      >
+        <MessageCircle className="h-5 w-5" />
+      </span>
+      <p className="text-sm text-[var(--text-soft)]">{text}</p>
+      <button
+        type="button"
+        onClick={onAction}
+        className="ui-press min-h-9 rounded-full bg-[var(--accent)] px-5 text-sm font-medium text-[var(--button-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+function InboxSkeleton() {
+  return (
+    <div role="status" aria-label="正在读取聊天">
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div key={index} aria-hidden className="flex min-h-[72px] items-center gap-3 px-4">
+          <span className="ui-skeleton h-12 w-12 shrink-0 rounded-full" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2">
+            <span className="ui-skeleton h-3.5 w-1/3" />
+            <span className="ui-skeleton h-3 w-2/3" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const NEW_CHAT_MENU_ID = 'new-chat-options';
+
+/** The top-bar new-chat icon and its menu. Escape or a press outside closes it. */
+function NewChatMenu({
+  open,
+  onOpenChange,
+  onStartAi,
+  onFindContact,
+  onCreateRoom,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onStartAi: () => void;
+  onFindContact: () => void;
+  onCreateRoom: () => void;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const onPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) onOpenChange(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onOpenChange(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onOpenChange]);
+  const item =
+    'flex min-h-11 w-full items-center gap-3 rounded-[var(--radius-ctl)] px-3 text-left text-[15px] hover:bg-[var(--bg-soft)] focus-visible:bg-[var(--bg-soft)] focus-visible:outline-none';
+  return (
+    <div ref={root} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-label="新聊天"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? NEW_CHAT_MENU_ID : undefined}
+        className="ui-press flex h-11 w-11 items-center justify-center rounded-full text-[var(--text)] hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <SquarePen className="h-[22px] w-[22px]" aria-hidden />
+      </button>
+      {open && (
+        <div
+          id={NEW_CHAT_MENU_ID}
+          role="menu"
+          aria-label="选择聊天对象"
+          className="ui-menu-in absolute right-0 top-full z-[var(--z-shell-popover)] mt-1 w-48 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-panel)]"
+        >
+          <button type="button" role="menuitem" onClick={onStartAi} className={item}>
+            <Bot className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />与 AI 聊天
+          </button>
+          <button type="button" role="menuitem" onClick={onFindContact} className={item}>
+            <UserRound className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            找联系人聊天
+          </button>
+          <button type="button" role="menuitem" onClick={onCreateRoom} className={item}>
+            <Users className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            创建群聊
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

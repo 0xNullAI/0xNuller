@@ -60,9 +60,9 @@ export function ProfileWorks({
               event.preventDefault();
               onOpen(item.id);
             }}
-            className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3 hover:bg-[var(--bg-soft)]"
+            className="ui-press rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-3 hover:bg-[var(--bg-soft)]"
           >
-            <span className="block truncate text-sm font-medium">
+            <span className="block truncate text-base font-medium">
               {item.icon ? `${item.icon} ` : ''}
               {item.name}
             </span>

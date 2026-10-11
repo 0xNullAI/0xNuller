@@ -276,7 +276,7 @@ it('把 AI 与真人群聊放在同一列表，并从一行进入原有 owner', 
   expect(state.selectChat).toHaveBeenCalledWith({ kind: 'group', code: 'g' });
   expect(navigate).toHaveBeenCalledWith('chat?room=g');
   fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
-  fireEvent.click(screen.getByRole('button', { name: '与 AI 聊天' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '与 AI 聊天' }));
   expect(state.newAi).toHaveBeenCalledOnce();
   expect(navigate).toHaveBeenLastCalledWith('agent');
 });
@@ -317,10 +317,10 @@ it('offers AI and personal chat from the same new-chat entry and labels conversa
   expect(screen.getByRole('button', { name: /好友.*你好/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: /朋友们.*群聊.*周末见/ })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
-  fireEvent.click(screen.getByRole('button', { name: '找联系人聊天' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '找联系人聊天' }));
   expect(navigate).toHaveBeenCalledWith('people');
   expect(state.newAi).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: '与 AI 聊天' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '与 AI 聊天' })).toBeNull();
 });
 
 it('真人私聊保留可刷新定位的对象 ID，仍由原 Chat owner 验证准入', async () => {
@@ -671,7 +671,7 @@ it('shows only account entry when signed out and opens contacts from the signed-
   expect(onOpenAccount).toHaveBeenCalledOnce();
   view.rerender(<UnifiedInbox user={user('alice')} {...props} />);
   fireEvent.click(await screen.findByRole('button', { name: '新聊天' }));
-  fireEvent.click(screen.getByRole('button', { name: '找联系人聊天' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '找联系人聊天' }));
   expect(onNavigate).toHaveBeenCalledWith('people');
 });
 
@@ -740,4 +740,45 @@ it('shows the saved character portrait for an AI row and the initial when absent
   expect(screen.getAllByText('云')).toHaveLength(2);
   expect(screen.getAllByText('星')).toHaveLength(1);
   state.photos = {};
+});
+
+it('opens the new-chat icon menu, closes it on Escape or an outside press, and creates a group', async () => {
+  const onCreateRoom = vi.fn();
+  render(
+    <UnifiedInbox
+      presentation="page"
+      user={user('alice')}
+      onNavigate={vi.fn()}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={onCreateRoom}
+    />,
+  );
+  const trigger = screen.getByRole('button', { name: '新聊天' });
+  // An icon button: the label is accessible only, never a visible pill.
+  expect(trigger.textContent).toBe('');
+  expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+
+  fireEvent.click(trigger);
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  const menu = screen.getByRole('menu', { name: '选择聊天对象' });
+  expect([...menu.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual([
+    '与 AI 聊天',
+    '找联系人聊天',
+    '创建群聊',
+  ]);
+  expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '与 AI 聊天' }));
+
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+
+  fireEvent.click(trigger);
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('menu')).toBeNull();
+
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('menuitem', { name: '创建群聊' }));
+  expect(onCreateRoom).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).toBeNull();
+  await screen.findByText('小星');
 });

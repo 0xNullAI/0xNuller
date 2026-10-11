@@ -72,14 +72,14 @@ export function ProfileIdentity({
  */
 export function ProfileStats({ followers, following }: { followers: number; following: number }) {
   return (
-    <div className="flex gap-6">
+    <div className="flex gap-5">
       {[
         { label: '关注', value: following },
         { label: '粉丝', value: followers },
       ].map((stat) => (
         <div key={stat.label} className="flex items-baseline gap-1.5">
           <span className="text-base font-semibold tabular-nums">{stat.value}</span>
-          <span className="text-xs text-[var(--text-soft)]">{stat.label}</span>
+          <span className="text-[13px] text-[var(--text-faint)]">{stat.label}</span>
         </div>
       ))}
     </div>
@@ -99,7 +99,7 @@ export function ProfileSection({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-xs font-medium tracking-wide text-[var(--text-soft)]">{title}</h3>
+        <h3 className="text-[13px] font-medium text-[var(--text-faint)]">{title}</h3>
         {hint ? <span className="text-[10px] text-[var(--text-faint)]">{hint}</span> : null}
       </div>
       {children}

@@ -207,6 +207,12 @@
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
+  /* The phone tab bar pads itself for the home indicator. Padding the root as well
+     doubled the inset and floated the bar above the screen edge. */
+  #shl-root[data-narrow][data-tabbar] {
+    padding-bottom: 0;
+  }
+
   /* Settings replaces the content column; the desktop sidebar stays available. */
   #shl-root[data-settings-open] #shl-slot {
     display: none;
@@ -282,10 +288,11 @@
     padding-block: 0;
   }
 
+  /* Phone top bar: title left, at most two icon buttons right, a hairline below. */
   #shl-root[data-narrow] #shl-topbar {
     flex-direction: row;
     align-items: center;
-    border-bottom: 1px solid var(--surface-border);
+    border-bottom: 0.5px solid var(--surface-border);
     background: var(--bg-elevated);
   }
 
@@ -295,6 +302,13 @@
   }
 
   #shl-root[data-narrow] #shl-actions:not(:empty) {
+    padding-block: 0.125rem;
+    padding-top: calc(0.125rem + env(safe-area-inset-top));
+  }
+
+  /* A page title keeps the full bar height even when the page has no icon button. */
+  #shl-root[data-narrow] #shl-actions:has(> h1) {
+    min-height: calc(48px + env(safe-area-inset-top));
     padding-block: 0.125rem;
     padding-top: calc(0.125rem + env(safe-area-inset-top));
   }

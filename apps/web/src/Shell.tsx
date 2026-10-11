@@ -1,7 +1,7 @@
 import { allowGuardedNavigation, installHistoryNavigationGuard } from '@0xnullai/ui';
 import { PersistenceNotice } from './PersistenceNotice';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Compass, Cpu, MessageCircle, UserRound, Users } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import {
   useTheme,
   subscribeMediaQuery,
@@ -16,13 +16,11 @@ import {
   StopFailureBanner,
   useOverlayRoot,
   useModuleOverlayLayer,
-  Avatar,
   ShellNavProvider,
 } from '@0xnullai/ui';
 import {
   me,
   getCreditBalance,
-  avatarSrc,
   subscribeAuthChanges,
   subscribeProfileChanges,
   subscribeProfileRequests,
@@ -30,9 +28,9 @@ import {
 } from '@0xnullai/auth';
 import { loadModelCatalog } from '@0xnullai/llm-providers';
 import { MODULES, moduleIdFromPath } from './routes';
+import { pageAliasFromPath } from './page-aliases';
 import { useUnreadMessages } from './unread-messages';
-import { UnreadBadge } from './UnreadBadge';
-import { InboxColumn, NavRail } from './Sidebar';
+import { InboxColumn, MobileTabBar, NavRail, type MobileTab } from './Sidebar';
 import { UnifiedInbox } from './UnifiedInbox';
 import { DeviceBar } from './DeviceBar';
 import { shouldShowDeviceBarConnect } from './device-bar-connect';
@@ -135,6 +133,13 @@ function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: s
   return [state, navigate, ensureModuleOpened];
 }
 
+const MOBILE_TAB_PATHS: Record<Exclude<MobileTab, 'me'>, string> = {
+  messages: '/',
+  people: '/people',
+  discover: '/market',
+  device: '/control',
+};
+
 /** Below this width the sidebar gives way to the mobile chat layout. */
 const NARROW_QUERY = '(max-width: 767px)';
 
@@ -187,6 +192,8 @@ export function Shell() {
   const activeId = moduleIdFromPath(pathname);
   const profileRoute = profileUsernameFromPath(pathname);
   const peopleRoute = pathname === '/people';
+  // A screen pushed inside 联系人 (/people?view=…) draws its own back arrow and title.
+  const peopleSubview = peopleRoute && new URLSearchParams(window.location.search).has('view');
   const pageLabel = peopleRoute ? '联系人' : profileRoute ? '个人主页' : null;
   const activeLabel =
     activeId === 'control'
@@ -252,6 +259,15 @@ export function Shell() {
   }, []);
 
   useEffect(loadAuth, [loadAuth]);
+
+  // Old or guessed addresses (/contacts) go to the real page instead of an untitled inbox.
+  // Only after sign-in: the sign-in screen keeps the original URL to return to.
+  useEffect(() => {
+    const alias = authenticated ? pageAliasFromPath(pathname) : null;
+    if (!alias) return;
+    window.history.replaceState(null, '', alias);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, [authenticated, pathname]);
   const unreadMessages = useUnreadMessages(authChecked ? user : null);
   // Model ids, vision support and limits come from models.dev; load them once per page.
   useEffect(() => {
@@ -334,6 +350,10 @@ export function Shell() {
     if (navigate(destination)) setSettingsReturnPath(null);
   }, [navigate, settingsReturnPath]);
 
+  const closeProfile = useCallback(() => {
+    if (window.location.pathname.startsWith('/u/')) navigate('/people');
+  }, [navigate]);
+
   const navigateFromShell = useCallback(
     (path: string) => {
       navigate(path);
@@ -395,6 +415,19 @@ export function Shell() {
     );
   }
 
+  const mobileTab: MobileTab | null =
+    settingsTab !== null
+      ? 'me'
+      : mobileInbox
+        ? 'messages'
+        : peopleRoute
+          ? 'people'
+          : activeId === 'market' || activeId === 'playground'
+            ? 'discover'
+            : activeId === 'control'
+              ? 'device'
+              : null;
+
   const rail = (
     <NavRail
       activeId={activeId}
@@ -425,6 +458,7 @@ export function Shell() {
             data-narrow={narrow || undefined}
             data-inbox={showDesktopInbox || undefined}
             data-settings-open={settingsTab !== null || undefined}
+            data-tabbar={(narrow && !conversationDetail) || undefined}
           >
             {/* Wide screens: a navigation rail, plus the conversation list only while a
             conversation is open. Narrow screens use the bottom tab bar instead. */}
@@ -442,7 +476,7 @@ export function Shell() {
 
             <main
               id="shl-slot"
-              aria-label={mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '首页')}
+              aria-label={mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '消息')}
             >
               {/* Wide screens stack module actions above device state. Narrow screens use
               the same wrapper as one compact toolbar, while the device section keeps
@@ -451,23 +485,24 @@ export function Shell() {
                 <div id="shl-actions">
                   {/* In a conversation the module header carries the back arrow (see
                     ShellNav.conversationBack), so this row only remains for device state. */}
-                  {narrow && !conversationDetail && (
+                  {/* Phone: the page title only. The account lives in the 我的 tab, so the
+                    bar carries no avatar; page actions (at most two icons) project to the
+                    right through ModuleActions. */}
+                  {narrow && profileRoute && (
+                    // A pushed screen: back arrow + title, and the profile drops its own row.
                     <button
                       type="button"
-                      onClick={() => openSettings('overview')}
-                      aria-label="我的账户"
-                      className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-sm font-bold tracking-tight transition-colors hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      onClick={closeProfile}
+                      aria-label="返回"
+                      className="ui-press flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
-                      <Avatar
-                        name={user?.displayName ?? null}
-                        username={user?.username}
-                        src={avatarSrc(user?.avatarUrl)}
-                        size={28}
-                      />
-                      <span className="truncate">
-                        {mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '0xNuller')}
-                      </span>
+                      <ChevronLeft className="h-6 w-6" aria-hidden />
                     </button>
+                  )}
+                  {narrow && !conversationDetail && !peopleSubview && (
+                    <h1 className="flex min-h-11 min-w-0 shrink items-center truncate px-2 text-[17px] font-semibold">
+                      {mobileInbox ? '消息' : (pageLabel ?? activeLabel ?? '消息')}
+                    </h1>
                   )}
                   <div className="min-w-0 flex-1" />
                   <div ref={actionsRef} className="flex shrink-0 items-center gap-1" />
@@ -487,29 +522,32 @@ export function Shell() {
 
               <PersistenceNotice />
               <div id="shl-content">
-                {mobileInbox && (
-                  <UnifiedInbox
-                    presentation="page"
-                    user={user}
-                    onNavigate={go}
-                    onOpenAccount={() => openSettings('account')}
-                    onCreateRoom={() => navigate('/chat?create=1')}
-                  />
-                )}
-                {activeId === null && !peopleRoute && !profileRoute && !settingsTab ? (
-                  <UnifiedInbox
-                    presentation="page"
-                    user={user}
-                    onNavigate={go}
-                    onOpenAccount={() => openSettings('account')}
-                    onCreateRoom={() => navigate('/chat?create=1')}
-                  />
-                ) : null}
-                {peopleRoute ? (
-                  <Suspense fallback={<PageLoading label="交友" />}>
-                    <ContactsDialog user={user} presentation="page" onClose={() => navigate('/')} />
-                  </Suspense>
-                ) : null}
+                {/* Shell pages project their top-bar icons the same way modules do. */}
+                <ModuleActionsProvider container={actionsContainer}>
+                  {mobileInbox ||
+                  (activeId === null && !peopleRoute && !profileRoute && !settingsTab) ? (
+                    <div className="ui-tab-fade h-full min-h-0">
+                      <UnifiedInbox
+                        presentation="page"
+                        user={user}
+                        onNavigate={go}
+                        onOpenAccount={() => openSettings('account')}
+                        onCreateRoom={() => navigate('/chat?create=1')}
+                      />
+                    </div>
+                  ) : null}
+                  {peopleRoute ? (
+                    <div className="ui-tab-fade h-full min-h-0">
+                      <Suspense fallback={<PageLoading label="交友" />}>
+                        <ContactsDialog
+                          user={user}
+                          presentation="page"
+                          onClose={() => navigate('/')}
+                        />
+                      </Suspense>
+                    </div>
+                  ) : null}
+                </ModuleActionsProvider>
                 {profileRoute ? (
                   <Suspense fallback={<PageLoading label="个人主页" />}>
                     <ProfileDialog
@@ -520,11 +558,8 @@ export function Shell() {
                         if (navigate(`/market?item=${encodeURIComponent(id)}`))
                           window.dispatchEvent(new PopStateEvent('popstate'));
                       }}
-                      onClose={() => {
-                        if (window.location.pathname.startsWith('/u/')) {
-                          navigate(user ? '/people' : '/');
-                        }
-                      }}
+                      shellBack={narrow}
+                      onClose={closeProfile}
                     />
                   </Suspense>
                 ) : null}
@@ -547,8 +582,11 @@ export function Shell() {
                       key={id}
                       mod={mod}
                       active={id === visibleModuleId}
+                      motion={conversationDetail ? 'push' : 'fade'}
                       overlayRoot={overlayRoot}
-                      actionsContainer={id === activeId ? actionsContainer : null}
+                      // Only the visible module may fill the top bar; a hidden one (Agent
+                      // under the phone inbox) must not leave its buttons there.
+                      actionsContainer={id === visibleModuleId ? actionsContainer : null}
                       openSettings={openSettings}
                       signedIn={!!user}
                     />
@@ -591,59 +629,14 @@ export function Shell() {
             {/* Outside the content column so the tabs stay on every top-level page,
             including 我的 (settings), which replaces the content column. */}
             {narrow && !conversationDetail && (
-              <nav
-                aria-label="手机主导航"
-                className="flex shrink-0 border-t border-[var(--surface-border)] bg-[var(--bg-elevated)] pb-[env(safe-area-inset-bottom)]"
-              >
-                {[
-                  {
-                    label: '消息',
-                    icon: MessageCircle,
-                    current: mobileInbox,
-                    run: () => navigate('/'),
-                    badge: unreadMessages,
-                  },
-                  {
-                    label: '联系人',
-                    icon: Users,
-                    current: peopleRoute,
-                    run: () => navigate('/people'),
-                  },
-                  {
-                    label: '发现',
-                    icon: Compass,
-                    current: activeId === 'market' || activeId === 'playground',
-                    run: () => navigate('/market'),
-                  },
-                  {
-                    label: '设备',
-                    icon: Cpu,
-                    current: activeId === 'control',
-                    run: () => navigate('/control'),
-                  },
-                  {
-                    label: '我的',
-                    icon: UserRound,
-                    current: settingsTab !== null,
-                    run: () => openSettings('overview'),
-                  },
-                ].map(({ label, icon: Icon, current, run, badge }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={run}
-                    aria-current={current ? 'page' : undefined}
-                    aria-label={badge ? `${label}，${badge} 条未读` : undefined}
-                    className={`flex min-h-[56px] min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] ${current ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
-                  >
-                    <span className="relative">
-                      <Icon className="h-5 w-5" />
-                      {badge ? <UnreadBadge count={badge} /> : null}
-                    </span>
-                    {label}
-                  </button>
-                ))}
-              </nav>
+              <MobileTabBar
+                current={mobileTab}
+                unreadMessages={unreadMessages}
+                onSelect={(tab) => {
+                  if (tab === 'me') openSettings('overview');
+                  else navigate(MOBILE_TAB_PATHS[tab]);
+                }}
+              />
             )}
 
             <OverlayProvider container={overlayRoot}>
@@ -728,6 +721,7 @@ function EmailVerificationGate({ onOpenAccount }: { onOpenAccount: () => void })
 function ModuleSlot({
   mod,
   active,
+  motion,
   overlayRoot,
   actionsContainer,
   openSettings,
@@ -735,6 +729,8 @@ function ModuleSlot({
 }: {
   mod: (typeof MODULES)[number];
   active: boolean;
+  /** push: a conversation opened from the phone inbox slides in; fade: a tab switch. */
+  motion: 'push' | 'fade';
   overlayRoot: HTMLElement | undefined;
   actionsContainer: HTMLElement | null;
   openSettings: (tab?: ShellSettingsTab) => void;
@@ -749,10 +745,16 @@ function ModuleSlot({
             hidden={!active}
             // Modules that are not current stay in the DOM but invisible — both the
             // connection and the state are preserved.
-            // Do not add transform/filter here for a switch animation: that flips the
-            // reference frame for fixed-position elements inside the module that rely
-            // on the viewport as their containing block. Animate opacity instead.
-            className={active ? 'h-full min-h-0' : 'hidden'}
+            // Do not add a lasting transform/filter here: that flips the reference frame
+            // for fixed-position elements inside the module that rely on the viewport as
+            // their containing block. A tab switch animates opacity only; the phone push
+            // holds a transform for its 280ms and then leaves none.
+            // The motion classes run only while the slot appears, then leave no transform.
+            className={
+              active
+                ? `h-full min-h-0 ${motion === 'push' ? 'ui-push-in' : 'ui-tab-fade'}`
+                : 'hidden'
+            }
             aria-hidden={!active}
           >
             {/* The boundary sits inside Suspense and outside the module: a throw

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@0xnullai/auth';
 import { ContactsDialog } from './ContactsDialog';
@@ -12,6 +12,10 @@ const state = vi.hoisted(() => ({
   lookup: vi.fn(),
   dm: vi.fn(),
   profile: vi.fn(),
+  follow: vi.fn(),
+  unfollow: vi.fn(),
+  removeFollower: vi.fn(),
+  unblock: vi.fn(),
 }));
 
 vi.mock('@0xnullai/auth', () => ({
@@ -23,10 +27,11 @@ vi.mock('@0xnullai/auth', () => ({
   getUser: state.lookup,
   openDirectMessage: state.dm,
   requestProfileView: state.profile,
-  followUser: vi.fn(),
-  unfollowUser: vi.fn(),
-  removeFollower: vi.fn(),
-  unblockUser: vi.fn(),
+  avatarSrc: (url?: string | null) => url ?? undefined,
+  followUser: state.follow,
+  unfollowUser: state.unfollow,
+  removeFollower: state.removeFollower,
+  unblockUser: state.unblock,
 }));
 
 const user = { id: 'owner', username: 'owner', displayName: '我' } as AuthUser;
@@ -50,6 +55,9 @@ beforeEach(() => {
   state.followers.mockResolvedValue({ users: [], nextOffset: null });
   state.blocks.mockResolvedValue([]);
   state.lookup.mockResolvedValue(null);
+  for (const action of [state.follow, state.unfollow, state.removeFollower, state.unblock])
+    action.mockResolvedValue({ ok: true });
+  window.history.replaceState(null, '', '/people');
 });
 
 afterEach(cleanup);
@@ -75,9 +83,9 @@ it.each([
 
 it('switches discovery without showing a stale username lookup after editing the query', async () => {
   render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: '发现' }));
+  fireEvent.click(screen.getByRole('button', { name: '添加朋友' }));
   expect(await screen.findByText('暂无可发现的用户')).toBeTruthy();
-  const search = screen.getByRole('textbox', { name: '搜索用户名或联系人' });
+  const search = screen.getByRole('searchbox', { name: '搜索用户名' });
   fireEvent.change(search, { target: { value: 'hidden' } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '查找' }));
@@ -107,7 +115,7 @@ it('starts discovery at the first page and cycles through available pages', asyn
     .mockResolvedValueOnce({ users: [second], nextOffset: null })
     .mockResolvedValueOnce({ users: [first], nextOffset: 20 });
   render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: '发现' }));
+  fireEvent.click(screen.getByRole('button', { name: '添加朋友' }));
   expect(await screen.findByText('第一位')).toBeTruthy();
   expect(state.discover).toHaveBeenNthCalledWith(1, { limit: 20, offset: 0 });
 
@@ -151,4 +159,70 @@ it('hides old contacts immediately when the signed-in account changes', async ()
   view.rerender(<ContactsDialog user={next} presentation="page" onClose={vi.fn()} />);
   expect(screen.queryByText('@friend')).toBeNull();
   expect(await screen.findByText('暂无好友，互相关注后会显示在这里')).toBeTruthy();
+});
+
+it('keeps only 好友 / 关注 / 粉丝 as tabs and opens discovery and the block list as pushed screens', async () => {
+  render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    '好友',
+    '关注',
+    '粉丝',
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: '添加朋友' }));
+  expect(window.location.search).toBe('?view=discover');
+  expect(screen.getByRole('heading', { name: '添加朋友' })).toBeTruthy();
+  expect(screen.queryByRole('tablist')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '返回联系人' }));
+  // jsdom delivers the popstate for history.back() asynchronously.
+  await waitFor(() => expect(window.location.search).toBe(''));
+  expect(await screen.findByRole('tablist', { name: '联系人分类' })).toBeTruthy();
+
+  state.blocks.mockResolvedValue([
+    { id: 'blocked', username: 'blocked', displayName: '已屏蔽', blockedAt: 1 },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: '黑名单' }));
+  fireEvent.click(await screen.findByRole('button', { name: '解除屏蔽' }));
+  await act(async () => {});
+  expect(state.unblock).toHaveBeenCalledWith('blocked');
+});
+
+it('opens the block list from a deep link', async () => {
+  window.history.replaceState(null, '', '/people?view=blocked');
+  render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
+  expect(screen.getByRole('heading', { name: '黑名单' })).toBeTruthy();
+  expect(await screen.findByText('黑名单为空')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '返回联系人' }));
+  expect(window.location.pathname + window.location.search).toBe('/people');
+  expect(await screen.findByRole('tab', { name: '好友' })).toBeTruthy();
+});
+
+it('opens the profile from the whole row and keeps one trailing action per relationship', async () => {
+  state.following.mockResolvedValue({
+    users: [
+      { id: 'one-way', username: 'oneway', displayName: '单向', followedAt: 1, mutual: false },
+    ],
+    nextOffset: null,
+  });
+  state.followers.mockResolvedValue({
+    users: [{ id: 'fan', username: 'fan', displayName: '粉丝甲', followedAt: 1, mutual: false }],
+    nextOffset: null,
+  });
+  render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /好友.*@friend/ }));
+  expect(state.profile).toHaveBeenCalledWith('friend');
+  // 取消关注 lives on the profile page, never on a row.
+  expect(screen.queryByRole('button', { name: '取消关注' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('tab', { name: '关注' }));
+  expect(await screen.findByText('单向')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '私聊' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '取消关注' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('tab', { name: '粉丝' }));
+  fireEvent.click(await screen.findByRole('button', { name: '回关' }));
+  await act(async () => {});
+  expect(state.follow).toHaveBeenCalledWith('fan');
+  fireEvent.click(await screen.findByRole('button', { name: '移除粉丝' }));
+  await act(async () => {});
+  expect(state.removeFollower).toHaveBeenCalledWith('fan');
 });
