@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@0xnullai/ui';
 import {
   createProviderSettings,
@@ -12,7 +12,6 @@ import {
 import { VoiceTimbreField } from './VoiceTimbreField';
 import { VideoProviderSection } from './VideoProviderSection';
 import { ProxySection } from './ProxySection';
-import { BrowserAppSettingsStore, type ModelBehaviorSettings } from '@dg-agent/storage-browser';
 import {
   discoverBrowserProviderModels,
   testBrowserProviderConnection,
@@ -23,8 +22,8 @@ import {
   ProviderRememberApiKey,
 } from './ProviderCredentialFields';
 import { AdvancedSubpage } from './SettingsAdvanced';
-import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SliderRow } from './settings-list';
-import { Camera, Globe, KeyRound } from 'lucide-react';
+import { SettingsGroup, SettingsPage, SettingsRow } from './settings-list';
+import { Brain, Camera, Globe, KeyRound } from 'lucide-react';
 import { loadProxy } from '@0xnullai/settings';
 import { ModelCombobox } from './ModelCombobox';
 
@@ -39,7 +38,14 @@ import { ModelCombobox } from './ModelCombobox';
  */
 export type AiSettingsSection = 'video';
 
-export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }) {
+export function AiTab({
+  initialSection,
+  onOpenMemory,
+}: {
+  initialSection?: AiSettingsSection;
+  /** Opens 个人记忆; absent when signed out, since memories live on the account. */
+  onOpenMemory?: () => void;
+}) {
   const [page, setPage] = useState<'main' | 'own-api' | 'proxy' | 'video'>(
     initialSection === 'video' ? 'video' : 'main',
   );
@@ -80,13 +86,14 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
   const managed = config.providerId === 'managed';
   return (
     <SettingsPage>
-      <SettingsGroup label="模型" footer={managed ? '登录后按用量消耗 Credit。' : undefined}>
-        <SettingsRow label="对话模型" value={managed ? '猫愿模型' : '自己的 API'} />
-      </SettingsGroup>
+      {onOpenMemory ? (
+        <SettingsGroup label="记忆">
+          <SettingsRow icon={Brain} label="个人记忆" onClick={onOpenMemory} />
+        </SettingsGroup>
+      ) : null}
       <SettingsGroup label="语音">
         <VoiceTimbreField />
       </SettingsGroup>
-      <BehaviorSection />
       <SettingsGroup label="高级">
         <SettingsRow
           icon={KeyRound}
@@ -181,54 +188,6 @@ function OwnApiSection({
         </>
       )}
     </div>
-  );
-}
-
-function BehaviorSection() {
-  const behaviorStore = useMemo(() => new BrowserAppSettingsStore(), []);
-  const [behavior, setBehavior] = useState<ModelBehaviorSettings>(() =>
-    behaviorStore.loadModelBehavior(),
-  );
-  useEffect(() => behaviorStore.subscribeModelBehavior(setBehavior), [behaviorStore]);
-
-  function updateBehavior(patch: Partial<ModelBehaviorSettings>) {
-    // Persisting dispatches a synchronous cross-module event so the mounted Agent
-    // picks the change up immediately. Do that in the input handler, not inside a
-    // React state-updater callback: the latter runs during render work and makes the
-    // event update Agent's App while React is still rendering this one.
-    const next = behaviorStore.saveModelBehavior({
-      ...behaviorStore.loadModelBehavior(),
-      ...patch,
-    });
-    setBehavior(next);
-  }
-
-  return (
-    <SettingsGroup label="回复" footer="仅本设备，下一条消息生效。">
-      <SelectRow
-        label="上下文"
-        value={behavior.modelContextStrategy}
-        onChange={(value) =>
-          updateBehavior({
-            modelContextStrategy: value as ModelBehaviorSettings['modelContextStrategy'],
-          })
-        }
-        options={[
-          { value: 'last-user-turn', label: '基础（最近 1 轮）' },
-          { value: 'last-five-user-turns', label: '中等（最近 5 轮）' },
-          { value: 'full-history', label: '更多历史' },
-        ]}
-      />
-      <SliderRow
-        label="回复多样性"
-        min={0}
-        max={1}
-        step={0.05}
-        value={behavior.temperature}
-        format={(value) => value.toFixed(2)}
-        onChange={(temperature) => updateBehavior({ temperature })}
-      />
-    </SettingsGroup>
   );
 }
 

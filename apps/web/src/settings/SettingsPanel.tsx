@@ -45,18 +45,20 @@ const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
   { id: 'scenes', label: '角色与场景', icon: Drama, Component: ScenesTab, order: 10 },
   { id: 'memory', label: '个人记忆', icon: Brain, Component: null, order: 15 },
-  { id: 'ai', label: 'AI 与语音', icon: Sparkles, Component: AiTab, order: 20 },
+  { id: 'ai', label: 'AI', icon: Sparkles, Component: AiTab, order: 20 },
   { id: 'safety', label: '设备与安全', icon: Zap, Component: null, order: 50 },
   { id: 'appearance', label: '通用', icon: Settings2, Component: null, order: 80 },
   { id: 'about', label: '关于', icon: Info, Component: null, order: 90 },
   { id: 'admin', label: '管理', icon: Wrench, Component: AdminContent, order: 100 },
 ] as const;
 
+/** Pages opened from inside another page; their back arrow returns there. */
+const PARENT_PAGES: Readonly<Record<string, string>> = { memory: 'ai' };
+
 const OVERVIEW_GROUPS = [
-  { label: '陪伴', ids: ['scenes', 'memory', 'ai'] },
-  { label: '设备', ids: ['safety'] },
-  { label: '应用', ids: ['appearance', 'about'] },
-  { label: '管理', ids: ['admin'] },
+  { label: '', ids: ['appearance', 'safety'] },
+  { label: '陪伴', ids: ['scenes', 'ai'] },
+  { label: '其他', ids: ['about', 'admin'] },
 ] as const satisfies readonly { label: string; ids: readonly string[] }[];
 
 const THEME_LABELS = { auto: '跟随系统', dark: '深色', light: '浅色' } as const;
@@ -175,7 +177,7 @@ export function SettingsPanel({
               ? subpage.onBack()
               : resolvedTab === 'overview' || CONVERSATION_PAGE_IDS.has(resolvedTab)
                 ? onClose()
-                : onNavigateTab('overview')
+                : onNavigateTab(PARENT_PAGES[resolvedTab] ?? 'overview')
           }
           aria-label={
             subpage
@@ -184,7 +186,9 @@ export function SettingsPanel({
                 ? '关闭设置'
                 : CONVERSATION_PAGE_IDS.has(resolvedTab)
                   ? '返回聊天'
-                  : '返回设置列表'
+                  : PARENT_PAGES[resolvedTab]
+                    ? '返回上一页'
+                    : '返回设置列表'
           }
           // On a phone 我的 is a top-level tab, so its list page has nothing to close.
           className={`ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] ${resolvedTab === 'overview' && !subpage ? 'max-md:hidden' : ''}`}
@@ -235,10 +239,11 @@ export function SettingsPanel({
               </button>
               {OVERVIEW_GROUPS.map((group) => {
                 const ids: readonly string[] = group.ids;
-                const rows = overviewItems.filter((item) => ids.includes(item.id));
+                // The group's own order, not the pages' sort order.
+                const rows = ids.flatMap((id) => overviewItems.filter((item) => item.id === id));
                 if (rows.length === 0) return null;
                 return (
-                  <SettingsGroup key={group.label} label={group.label}>
+                  <SettingsGroup key={group.ids[0]} label={group.label || undefined}>
                     {rows.map((item) => (
                       <SettingsRow
                         key={item.id}
@@ -283,7 +288,11 @@ export function SettingsPanel({
                   }
                 />
               ) : resolvedTab === 'ai' ? (
-                <AiTab key={initialAiSection ?? 'main'} initialSection={initialAiSection} />
+                <AiTab
+                  key={initialAiSection ?? 'main'}
+                  initialSection={initialAiSection}
+                  onOpenMemory={user ? () => onNavigateTab('memory') : undefined}
+                />
               ) : Active ? (
                 <Active />
               ) : null}

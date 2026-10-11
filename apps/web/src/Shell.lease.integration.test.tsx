@@ -282,9 +282,13 @@ describe('外壳与设备控制权', () => {
       render(<Shell />);
     });
     fireEvent.click(screen.getByRole('button', { name: '打开我的设置' }));
+    // 个人记忆 lives inside AI, and its back arrow returns there.
+    fireEvent.click(await screen.findByRole('button', { name: /^AI/ }));
     fireEvent.click(await screen.findByRole('button', { name: '个人记忆' }));
     expect(window.location.pathname).toBe('/settings/memory');
     expect(await screen.findByText('个人记忆内容')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
+    expect(window.location.pathname).toBe('/settings/ai');
     fireEvent.click(screen.getByRole('button', { name: '返回设置列表' }));
     expect(window.location.pathname).toBe('/settings/overview');
     fireEvent.click(screen.getByRole('button', { name: /Alice/ }));
