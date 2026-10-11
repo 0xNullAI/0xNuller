@@ -1,4 +1,4 @@
-import { boundedResponse } from './minimax-media';
+import { boundedResponse } from './bounded-response';
 
 /**
  * Doubao speech synthesis over HTTP chunked transfer (`/api/v3/tts/unidirectional`).
