@@ -59,7 +59,7 @@
 
 本机 Android 构建环境由 paru 管理：`jdk17-openjdk`、`/opt/android-sdk`（cmdline-tools、platform-tools、build-tools 37、`android-platform` 37、`android-ndk` r30、`android-emulator` 与 x86_64 系统镜像）。设置 `JAVA_HOME=/usr/lib/jvm/java-17-openjdk`、`ANDROID_HOME=/opt/android-sdk`、`NDK_HOME=/opt/android-ndk` 后，`npm run android:init`，再在 `android/app` 运行 `npx tauri android build --debug --apk --target aarch64`（模拟器用 `x86_64`）。
 
-仍待真机或真实服务验收：用真实模型 Key 跑完整陪伴路径（角色、场景、记忆、长对话、主动消息、群 AI、故障）；郊狼真机停止链路；APK 装机后的麦克风、返回键、下载保存、推送与后台停止。Android 切后台时 DG-Lab 的停止仍只靠网页生命周期事件，原生层兜底停止和 CSP 收紧尚未实现。消息撤回、真人聊天全文搜索、已读回执仍未做。
+仍待真机或真实服务验收：用真实模型 Key 跑完整陪伴路径（角色、场景、记忆、长对话、主动消息、群 AI、故障）；郊狼真机停止链路；APK 装机后的麦克风、返回键、下载保存、推送与后台停止。Android 切后台时除网页生命周期事件外，MainActivity.onPause 会在 WebView 暂停前发出 `0xnullai:native-pause` 触发停止（模拟器已验证信号送达，真机停止仍需郊狼验证）；WebView 已启用 CSP。已在 Android 16 模拟器验证：启动无 ANR、启动时不弹权限、系统栏随主题、导出保存到下载、物理返回键、麦克风授权。消息撤回已完成；真人聊天全文搜索、已读回执仍未做。
 
 ## 当前代码与验证状态
 
