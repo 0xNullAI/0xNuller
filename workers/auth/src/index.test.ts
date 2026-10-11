@@ -1702,6 +1702,26 @@ describe('他人主页的可见性', () => {
     ).toBe('一句话');
   });
 
+  it('迁移 0067 把旧版未开启发现的资料一起打开', async () => {
+    const legacy = await seedUser('legacy');
+    await prepared(
+      `INSERT INTO user_profiles (user_id, links, interests, discoverable, visibility, updated_at)
+       VALUES (?, '[]', '[]', 0, 'private', 1)`,
+      legacy.id,
+    ).run();
+    const { readFileSync } = await import('node:fs');
+    const sql = readFileSync(
+      new URL('../migrations/0067_discoverable_by_default.sql', import.meta.url),
+      'utf8',
+    );
+    await env.DB.prepare(sql.replace(/--.*$/gm, '').trim()).run();
+    expect(
+      await env.DB.prepare('SELECT discoverable FROM user_profiles WHERE user_id=?')
+        .bind(legacy.id)
+        .first(),
+    ).toEqual({ discoverable: 1 });
+  });
+
   it('发现默认包含账号，排除主动关闭发现、待删除和拉黑关系的账号', async () => {
     const alice = await seedUser('alice');
     const bob = await seedUser('bob');

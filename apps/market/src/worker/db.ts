@@ -324,7 +324,7 @@ export async function updateItemMeta(
   db: D1Database,
   id: string,
   patch: ItemPatchRow,
-  expectedRevision?: number,
+  expectedRevision: number,
 ): Promise<boolean> {
   const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags', 'content'];
   const sets: string[] = [];
@@ -336,10 +336,10 @@ export async function updateItemMeta(
   }
   if (sets.length === 0) return false;
   binds.push(id);
-  if (expectedRevision !== undefined) binds.push(expectedRevision);
+  binds.push(expectedRevision);
   const res = await db
     .prepare(
-      `UPDATE items SET ${sets.join(', ')}, revision = revision + 1 WHERE id = ?${expectedRevision === undefined ? '' : ' AND revision = ?'}`,
+      `UPDATE items SET ${sets.join(', ')}, revision = revision + 1 WHERE id = ? AND revision = ?`,
     )
     .bind(...binds)
     .run();

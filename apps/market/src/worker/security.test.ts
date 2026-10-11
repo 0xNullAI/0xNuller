@@ -143,7 +143,7 @@ describe('Market account ownership', () => {
     const patch = new Request('https://market.test/api/items/scene-1', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer alice' },
-      body: JSON.stringify({ name: '新剧本', content: { prompt: '新内容' } }),
+      body: JSON.stringify({ expectedRevision: 1, name: '新剧本', content: { prompt: '新内容' } }),
     });
 
     const ownerResponse = await worker.fetch(patch, {
@@ -155,13 +155,19 @@ describe('Market account ownership', () => {
     expect(updates).toHaveLength(1);
     expect(updates[0]!.sql).toContain('name = ?');
     expect(updates[0]!.sql).toContain('content = ?');
-    expect(updates[0]!.values).toEqual(['新剧本', '{"prompt":"新内容","kind":"scene"}', 'scene-1']);
+    expect(updates[0]!.values).toEqual([
+      '新剧本',
+      '{"prompt":"新内容","kind":"scene"}',
+      'scene-1',
+      1,
+    ]);
+    expect(updates[0]!.sql).toContain('AND revision = ?');
 
     const otherResponse = await worker.fetch(
       new Request('https://market.test/api/items/scene-1', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bob' },
-        body: JSON.stringify({ content: { prompt: '越权内容' } }),
+        body: JSON.stringify({ expectedRevision: 1, content: { prompt: '越权内容' } }),
       }),
       {
         DB: db,
@@ -256,7 +262,7 @@ describe('Market account ownership', () => {
       new Request('https://market.test/api/items/character-1', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
-        body: JSON.stringify({ content: { prompt: '新' } }),
+        body: JSON.stringify({ expectedRevision: 1, content: { prompt: '新' } }),
       }),
       { DB: db, AUTH: { marketItemAccess: async () => 'owner' as const } } as never,
     );
@@ -300,7 +306,7 @@ describe('Market account ownership', () => {
       worker.fetch(
         new Request(`https://market.test/api/items/${id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ expectedRevision: 1, content }),
         }),
         { DB: db, AUTH: { marketItemAccess: async () => 'owner' } } as never,
       );

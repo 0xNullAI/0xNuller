@@ -31,7 +31,9 @@ describe('Market公开角色卡', () => {
       prompt: '书屋店主',
       characterCard,
     });
-    expect(ItemPatchSchema.parse({ content: uploaded.content }).content).toEqual(uploaded.content);
+    expect(
+      ItemPatchSchema.parse({ expectedRevision: 1, content: uploaded.content }).content,
+    ).toEqual(uploaded.content);
   });
 
   it('rejects publishing source JSON with unresolved local container references', () => {
@@ -95,6 +97,7 @@ describe('Market公开角色卡', () => {
     if (upload.type !== 'scenario') throw new Error('wrong type');
     expect(annotateScenarioContent(upload.content).sourceArchive).toEqual(sourceArchive);
     const removed = ItemPatchSchema.parse({
+      expectedRevision: 1,
       content: {
         prompt: '阿岚的人设',
         characterCard,
@@ -105,4 +108,9 @@ describe('Market公开角色卡', () => {
       removed.content && 'sourceArchive' in removed.content && removed.content.sourceArchive,
     ).toBeNull();
   });
+});
+
+it('refuses a card edit that does not name the revision it was made from', () => {
+  expect(ItemPatchSchema.safeParse({ name: '新名字' }).success).toBe(false);
+  expect(ItemPatchSchema.safeParse({ expectedRevision: 3, name: '新名字' }).success).toBe(true);
 });

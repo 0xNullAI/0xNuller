@@ -206,6 +206,7 @@ export function ItemDetail({
     }
 
     const patch: ItemPatch = {
+      expectedRevision: view.revision ?? 1,
       name: eName.trim(),
       author: eAuthor.trim(),
       description: eDesc.trim(),
@@ -225,6 +226,7 @@ export function ItemDetail({
         icon: hasIcon ? eIcon.trim() || undefined : view.icon,
         tags,
         content: content ?? view.content,
+        revision: (view.revision ?? 1) + 1,
       };
       setViewOverride(updated);
       onUpdated?.(updated);

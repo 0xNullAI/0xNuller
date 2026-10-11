@@ -161,7 +161,9 @@ export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 // Authentication happens at the transport layer through account ownership.
 export const ItemPatchSchema = z
   .object({
-    expectedRevision: z.number().int().positive().optional(),
+    // Required: an edit made from a stale copy is refused instead of silently replacing a
+    // newer version (clients that cannot send it are no longer allowed to edit).
+    expectedRevision: z.number().int().positive(),
     name: z.string().trim().min(1).max(60).optional(),
     description: z.string().trim().max(500).optional(),
     author: z.string().trim().max(30).optional(),
