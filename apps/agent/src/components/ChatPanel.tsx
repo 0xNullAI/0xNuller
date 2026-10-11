@@ -53,7 +53,7 @@ import {
 } from '@0xnullai/ui';
 import { MarkdownText } from './MarkdownText.js';
 import type { TraceFeedItem } from '../utils/trace-feed.js';
-import { MediaJobPreview } from './CompanionMediaPanel.js';
+import { MediaJobPreview, mediaKindName } from './CompanionMediaPanel.js';
 import { VoiceTranscriptionControl } from './VoiceTranscriptionControl.js';
 import { DeviceConsentBar } from './DeviceConsentBar.js';
 
@@ -829,11 +829,7 @@ export function ChatPanel({
                     >
                       <div className={bubbleAssistant(position.continued)}>
                         <p className="text-sm font-medium">
-                          {job.kind === 'video'
-                            ? '角色视频'
-                            : job.kind === 'selfie'
-                              ? '情境自拍'
-                              : '生成图片'}
+                          {mediaKindName[job.kind]}
                           {' · '}
                           {job.state === 'succeeded'
                             ? '已完成'
@@ -1093,7 +1089,7 @@ export function ChatPanel({
                         }}
                       >
                         <ImageIcon className="h-4 w-4" />
-                        生成图片或视频
+                        生成图片
                       </button>
                     )}
                   </div>

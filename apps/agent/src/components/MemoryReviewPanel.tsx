@@ -259,7 +259,9 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
       </div>
       <div className="space-y-2 rounded-lg bg-[var(--bg-soft)] p-3">
         <p className="text-sm font-medium">自动发现待确认记忆</p>
-        <p className="text-xs text-[var(--text-soft)]">开启后用 MiniMax 分析消息，确认后才保存。</p>
+        <p className="text-xs text-[var(--text-soft)]">
+          开启后用火山引擎免费分析消息，确认后才保存。
+        </p>
         {autoSettings ? (
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -511,7 +513,7 @@ function MemoryReviewEditor({ relationshipId, conversationId }: MemoryReviewPane
         <div className="space-y-2">
           <h4 className="text-sm font-medium">长对话概述</h4>
           <p className="text-xs text-[var(--text-soft)]">
-            开启后用 MiniMax 压缩较早聊天，不算长期记忆；关闭会删除已有概述。
+            开启后用火山引擎免费压缩较早聊天，不算长期记忆；关闭会删除已有概述。
           </p>
           {digestSettings ? (
             <label className="flex items-center gap-2 text-sm">

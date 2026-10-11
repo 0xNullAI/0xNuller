@@ -119,7 +119,7 @@ it('分组入口保留所有功能，只挂载当前二级页并可返回', asyn
     '头像与形象',
     '定时消息',
     '任务与文件',
-    '图片与视频',
+    '生成图片',
     '设备权限',
   ])
     expect(screen.getByRole('button', { name: new RegExp(`^${name}`) })).toBeTruthy();
@@ -159,7 +159,7 @@ it('generation request opens the media detail directly and settings returns to o
   expect(screen.getByText('媒体编辑内容')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '返回聊天设置' }));
   expect(screen.queryByText('媒体编辑内容')).toBeNull();
-  expect(screen.getByRole('button', { name: /^图片与视频/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^生成图片/ })).toBeTruthy();
 });
 it('设备权限在二级页仍绑定当前账户和会话，缺少关系的入口保留条件提示', () => {
   render(<RelationshipAccess characterId="gentle" characterName="小岚" conversationId="session" />);

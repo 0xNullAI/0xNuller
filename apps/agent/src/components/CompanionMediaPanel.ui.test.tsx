@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@0xnullai/auth', () => api);
 const offer = {
   kind: 'image',
-  model: 'image-01',
+  model: 'example-image-model',
   credits: 20,
   priceVersion: 'v1',
   enabled: true,
@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe('private generated media panel', () => {
-  it('requires an available quoted capability and sends context only when explicitly selected', async () => {
+  it('offers images only and sends character context only when the character is featured', async () => {
     render(<CompanionMediaPanel accountId="alice" relationshipId="r" conversationId="c" />);
     await screen.findByText(/本次预留 20/);
     fireEvent.change(screen.getByLabelText('画面描述'), { target: { value: 'scene' } });
@@ -40,24 +40,34 @@ describe('private generated media panel', () => {
           conversationId: 'c',
           acceptedCredits: 20,
           priceVersion: 'v1',
-          useConversationContext: false,
-          useCharacterContext: false,
+          kind: 'image',
+          featureCharacter: false,
           prompt: 'scene',
         }),
       ),
     );
+    expect(screen.queryByText(/视频/)).toBeNull();
+    expect(screen.queryByText(/火山引擎/)).toBeNull();
   });
-  it('opts in to the account-owned character and scene snapshot separately from messages', async () => {
+  it('「让角色出镜」 discloses what is sent and features the character', async () => {
     render(<CompanionMediaPanel accountId="alice" relationshipId="r" conversationId="c" />);
     await screen.findByText(/本次预留 20/);
     fireEvent.change(screen.getByLabelText('画面描述'), { target: { value: 'scene' } });
-    fireEvent.click(screen.getByText(/将我的角色卡和当前场景设定/));
+    fireEvent.click(screen.getByRole('switch', { name: '让角色出镜' }));
+    expect(screen.getByText(/角色形象图、角色卡、当前场景和最近4条消息/)).toBeTruthy();
     fireEvent.click(screen.getByText('确认生成'));
     await waitFor(() =>
       expect(api.createMediaJob).toHaveBeenCalledWith(
-        expect.objectContaining({ useCharacterContext: true, useConversationContext: false }),
+        expect.objectContaining({ kind: 'image', featureCharacter: true }),
       ),
     );
+  });
+  it('keeps old video jobs in history', async () => {
+    api.listMediaJobs.mockResolvedValue({
+      items: [{ id: 'old-video', kind: 'video', state: 'failed', prompt: 'scene' }],
+    });
+    render(<CompanionMediaPanel accountId="alice" relationshipId="r" conversationId="c" />);
+    await screen.findByText('角色视频 · 失败');
   });
   it('disables submission without provider credentials', async () => {
     api.listMediaCapabilities.mockResolvedValue({

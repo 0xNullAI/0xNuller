@@ -115,7 +115,7 @@ it('groups AI chat attachments, call, camera and generation in one composer menu
   fireEvent.click(screen.getByRole('menuitem', { name: '摄像头观察' }));
   expect(props.onCamera).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '添加聊天内容' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '生成图片或视频' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '生成图片' }));
   expect(props.onGenerateMedia).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '添加聊天内容' }));
   view.rerender(

@@ -1,9 +1,10 @@
 import { apiBaseUrl } from '@0xnullai/settings';
 import { authRequestHeaders, currentAuthUserId, subscribeAuthChanges } from './index';
+/** Stored job kinds. Only `image` is offered; `selfie` and `video` remain in old history. */
 export type MediaKind = 'image' | 'selfie' | 'video';
 export interface MediaCapability {
-  kind: MediaKind;
-  model: string;
+  kind: 'image';
+  model: string | null;
   credits: number | null;
   priceVersion: string;
   enabled: boolean;
@@ -26,12 +27,12 @@ export interface MediaJob {
 }
 export interface MediaJobInput {
   id: string;
-  kind: MediaKind;
+  kind: 'image';
   conversationId: string;
   relationshipId: string;
   prompt: string;
-  useConversationContext: boolean;
-  useCharacterContext: boolean;
+  /** 「让角色出镜」: send the card, scene, recent messages and the character's portrait. */
+  featureCharacter: boolean;
   acceptedCredits: number;
   priceVersion: string;
 }

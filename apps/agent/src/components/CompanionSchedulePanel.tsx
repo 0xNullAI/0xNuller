@@ -206,7 +206,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
             <p className="whitespace-pre-wrap break-words">{item.template}</p>
             <p className="text-xs">
               {item.mode === 'model'
-                ? `AI主动消息 · 每条 ${item.acceptedCredits} Credit`
+                ? `AI主动消息 · 每条最多 ${item.acceptedCredits} Credit`
                 : '固定模板 · 免费'}
             </p>
             <p>
@@ -288,7 +288,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
           {modelMode ? (
             <>
               <p className="text-xs">
-                每条成功发送扣 {capability?.credits}{' '}
+                每条按实际用量扣费，最多 {capability?.credits}{' '}
                 Credit，失败释放；按下方频率自动运行，可随时暂停。
               </p>
               <label className="flex gap-2 text-xs">
@@ -298,7 +298,7 @@ function ScheduleForm({ accountId, relationshipId, conversationId }: SchedulePan
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
                 />
-                允许将本角色关系资料、最近6条会话及最多4条已确认关系记忆发送给MiniMax，按所示价格自动扣费
+                允许将本角色关系资料、最近6条会话及最多4条已确认关系记忆发送给火山引擎，按所示上限自动扣费
               </label>
               <p className="text-xs">
                 下方填写聊天主题，例如温和跟进最近谈到的安排；AI不会控制设备。

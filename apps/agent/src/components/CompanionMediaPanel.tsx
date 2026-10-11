@@ -7,14 +7,14 @@ import {
   mediaJobBlob,
   type MediaCapability,
   type MediaJob,
-  type MediaKind,
 } from '@0xnullai/auth';
 interface Props {
   accountId: string;
   relationshipId: string;
   conversationId: string;
 }
-const names = { image: '生成图片', selfie: '情境自拍', video: '角色视频（5秒）' };
+/** Old `selfie` and `video` jobs stay visible in history; only images are offered. */
+export const mediaKindName = { image: '生成图片', selfie: '情境自拍', video: '角色视频' };
 export function MediaJobPreview({ job }: { job: MediaJob }) {
   const [url, setUrl] = useState('');
   const [requested, setRequested] = useState(false);
@@ -63,10 +63,8 @@ export function CompanionMediaPanel(props: Props) {
 function MediaPanel({ relationshipId, conversationId }: Props) {
   const [offers, setOffers] = useState<MediaCapability[]>([]);
   const [jobs, setJobs] = useState<MediaJob[]>([]);
-  const [kind, setKind] = useState<MediaKind>('image');
   const [prompt, setPrompt] = useState('');
-  const [context, setContext] = useState(false);
-  const [characterContext, setCharacterContext] = useState(false);
+  const [featureCharacter, setFeatureCharacter] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const alive = useRef(false);
@@ -96,7 +94,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
       clearInterval(timer);
     };
   }, [conversationId]);
-  const offer = offers.find((x) => x.kind === kind);
+  const offer = offers.find((x) => x.kind === 'image');
   async function submit() {
     if (!offer?.enabled || !offer.credits || busy) return;
     setBusy(true);
@@ -105,12 +103,11 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
     try {
       const result = await createMediaJob({
         id: pending.current,
-        kind,
+        kind: 'image',
         relationshipId,
         conversationId,
         prompt,
-        useConversationContext: context,
-        useCharacterContext: characterContext,
+        featureCharacter,
         acceptedCredits: offer.credits,
         priceVersion: offer.priceVersion,
       });
@@ -146,60 +143,38 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
   }
   return (
     <section className="space-y-3 rounded-xl border border-white/10 p-3">
-      <h3 className="font-medium">角色图片与视频</h3>
+      <h3 className="font-medium">生成图片</h3>
       <p className="text-xs text-gray-400">使用 Credit 生成，图片保存到你的私有相册。</p>
-      <select
-        aria-label="媒体类型"
-        value={kind}
-        disabled={busy}
-        onChange={(e) => {
-          setKind(e.target.value as MediaKind);
-          pending.current = null;
-        }}
-        className="w-full rounded bg-zinc-900 p-2"
-      >
-        {Object.entries(names).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
       <textarea
         aria-label="画面描述"
         value={prompt}
         maxLength={1000}
         disabled={busy}
-        placeholder="描述角色外观、场景和动作"
+        placeholder="描述画面、场景和动作"
         onChange={(e) => {
           setPrompt(e.target.value);
           pending.current = null;
         }}
         className="w-full rounded bg-zinc-900 p-2"
       />
-      <label className="flex gap-2 text-xs">
+      <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
-          checked={characterContext}
+          role="switch"
+          checked={featureCharacter}
           disabled={busy}
           onChange={(e) => {
-            setCharacterContext(e.target.checked);
+            setFeatureCharacter(e.target.checked);
             pending.current = null;
           }}
         />
-        将我的角色卡和当前场景设定发送给 MiniMax（不含私人记忆）
+        让角色出镜
       </label>
-      <label className="flex gap-2 text-xs">
-        <input
-          type="checkbox"
-          checked={context}
-          disabled={busy}
-          onChange={(e) => {
-            setContext(e.target.checked);
-            pending.current = null;
-          }}
-        />
-        将此会话最近4条消息作为场景参考发送给 MiniMax
-      </label>
+      {featureCharacter && (
+        <p className="text-xs text-gray-400">
+          将角色形象图、角色卡、当前场景和最近4条消息发送给火山引擎（不含私人记忆）；没有形象图时只用文字描述。
+        </p>
+      )}
       <p className="text-xs">
         {offer?.enabled
           ? `本次预留 ${offer.credits} Credit，保存并确认账务后扣费；异常待核对。`
@@ -221,7 +196,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
         {jobs.map((job) => (
           <li key={job.id} className="space-y-2 border-t border-white/10 pt-2">
             <p className="text-sm">
-              {names[job.kind]} ·{' '}
+              {mediaKindName[job.kind]} ·{' '}
               {job.state === 'succeeded'
                 ? '已完成'
                 : job.state === 'needs_review'

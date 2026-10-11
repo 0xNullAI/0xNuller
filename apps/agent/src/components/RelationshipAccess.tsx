@@ -307,7 +307,7 @@ export function RelationshipAccess({
         {
           id: 'media',
           group: '聊天功能',
-          title: '图片与视频',
+          title: '生成图片',
           unavailable: !relationshipId
             ? '先保存专属关系'
             : !conversationId
