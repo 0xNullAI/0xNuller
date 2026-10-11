@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Input, Switch } from '@0xnullai/ui';
+import { Input } from '@0xnullai/ui';
+import { SettingsGroup, SettingsPage, SwitchRow } from './settings-list';
 import {
   isValidHttpProxyBaseUrl,
   loadProxy,
@@ -20,37 +21,45 @@ export function ProxySection() {
   const validUrl = isValidHttpProxyBaseUrl(proxy.httpBaseUrl);
 
   return (
-    <section aria-label="AI 网络代理">
-      <div className="flex items-center justify-between gap-4">
-        <h4 className="text-sm font-semibold">AI 网络代理</h4>
-        <Switch
-          label="AI 网络代理"
+    <SettingsPage>
+      <SettingsGroup
+        label="代理地址"
+        footer={
+          proxy.httpBaseUrl.length > 0 && !validUrl ? (
+            <span role="alert" className="text-[var(--danger)]">
+              请输入有效的 HTTP 或 HTTPS 地址
+            </span>
+          ) : (
+            'AI 请求经此反向代理转发，仅本设备生效。'
+          )
+        }
+      >
+        <div className="px-4 py-3">
+          <Input
+            aria-label="反向代理地址"
+            value={proxy.httpBaseUrl}
+            onChange={(event) => {
+              const httpBaseUrl = event.target.value;
+              patch({
+                httpBaseUrl,
+                ...(proxy.enabled && !isValidHttpProxyBaseUrl(httpBaseUrl)
+                  ? { enabled: false }
+                  : {}),
+              });
+            }}
+            placeholder="http://127.0.0.1:8080"
+            aria-invalid={proxy.httpBaseUrl.length > 0 && !validUrl}
+          />
+        </div>
+      </SettingsGroup>
+      <SettingsGroup>
+        <SwitchRow
+          label="启用网络代理"
           checked={proxy.enabled}
           disabled={!proxy.enabled && !validUrl}
           onCheckedChange={(enabled) => patch({ enabled })}
         />
-      </div>
-
-      <label className="mt-3 flex flex-col gap-1.5">
-        <span className="text-xs text-[var(--text-soft)]">反向代理地址</span>
-        <Input
-          value={proxy.httpBaseUrl}
-          onChange={(event) => {
-            const httpBaseUrl = event.target.value;
-            patch({
-              httpBaseUrl,
-              ...(proxy.enabled && !isValidHttpProxyBaseUrl(httpBaseUrl) ? { enabled: false } : {}),
-            });
-          }}
-          placeholder="http://127.0.0.1:8080"
-          aria-invalid={proxy.httpBaseUrl.length > 0 && !validUrl}
-        />
-      </label>
-      {proxy.httpBaseUrl.length > 0 && !validUrl && (
-        <p role="alert" className="mt-2 text-xs text-[var(--danger)]">
-          请输入有效的 HTTP 或 HTTPS 地址
-        </p>
-      )}
-    </section>
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

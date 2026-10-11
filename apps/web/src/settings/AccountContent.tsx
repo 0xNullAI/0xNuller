@@ -2,7 +2,7 @@ import { BillingOrdersPanel } from './BillingOrdersPanel';
 import { publicPageUrl } from '@0xnullai/settings';
 import { CreditActivityPanel } from './CreditActivityPanel';
 import { useEffect, useRef, useState } from 'react';
-import { Check, Coins, Copy, Gift, Laptop, Mail, Share2 } from 'lucide-react';
+import { Check, Coins, Copy, Gift, Laptop, LogOut, Mail, Share2, UserX } from 'lucide-react';
 import { SettingsGroup, SettingsRow } from './settings-list';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
@@ -399,6 +399,7 @@ export function AccountContent({
 
         <SettingsGroup>
           <SettingsRow
+            icon={LogOut}
             label="退出登录"
             chevron={false}
             onClick={async () => {
@@ -408,6 +409,7 @@ export function AccountContent({
             }}
           />
           <SettingsRow
+            icon={UserX}
             label="注销账户"
             tone="danger"
             chevron={false}

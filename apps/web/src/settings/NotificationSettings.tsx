@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Switch } from '@0xnullai/ui';
+import { SettingsGroup, SwitchRow } from './settings-list';
 import { setWebNotificationsEnabled, webNotificationsEnabled } from '@0xnullai/settings';
 
 /**
@@ -48,23 +48,20 @@ function BrowserNotifications({ accountId }: { accountId: string }) {
     setNote('');
   }
   return (
-    <section aria-label="通知">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-sm font-semibold">通知</h3>
-        <Switch
-          label="通知"
-          checked={enabled}
-          disabled={!supported}
-          onCheckedChange={(next) => void toggle(next)}
-        />
-      </div>
-      {!supported ? (
-        <p className="mt-2 text-xs text-[var(--text-faint)]">当前浏览器不支持通知。</p>
-      ) : note ? (
-        <p role="status" className="mt-2 text-xs text-[var(--text-faint)]">
-          {note}
-        </p>
-      ) : null}
-    </section>
+    <SettingsGroup
+      label="通知"
+      footer={
+        !supported
+          ? '当前浏览器不支持通知。'
+          : note || '页面在后台时提醒新消息；App 内以未读数提醒。'
+      }
+    >
+      <SwitchRow
+        label="新消息通知"
+        checked={enabled}
+        disabled={!supported}
+        onCheckedChange={(next) => void toggle(next)}
+      />
+    </SettingsGroup>
   );
 }

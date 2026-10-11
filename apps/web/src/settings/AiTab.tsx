@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Button, SettingSelect } from '@0xnullai/ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from '@0xnullai/ui';
 import {
   createProviderSettings,
   getProviderDefinition,
@@ -22,7 +22,10 @@ import {
   ProviderImageInputToggle,
   ProviderRememberApiKey,
 } from './ProviderCredentialFields';
-import { AdvancedEntryRow, AdvancedSection, AdvancedSubpage } from './SettingsAdvanced';
+import { AdvancedSubpage } from './SettingsAdvanced';
+import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SliderRow } from './settings-list';
+import { Camera, Globe, KeyRound } from 'lucide-react';
+import { loadProxy } from '@0xnullai/settings';
 import { ModelCombobox } from './ModelCombobox';
 
 /**
@@ -37,14 +40,13 @@ import { ModelCombobox } from './ModelCombobox';
 export type AiSettingsSection = 'video';
 
 export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }) {
-  const [advanced, setAdvanced] = useState(initialSection !== undefined);
+  const [page, setPage] = useState<'main' | 'own-api' | 'proxy' | 'video'>(
+    initialSection === 'video' ? 'video' : 'main',
+  );
   const [config, setConfig] = useState<LlmConfig>(loadLlmConfig);
-  const closeAdvanced = useCallback(() => setAdvanced(false), []);
+  const closeSubpage = useCallback(() => setPage('main'), []);
 
   useEffect(() => subscribeLlmConfig(setConfig), []);
-  useEffect(() => {
-    if (initialSection) document.getElementById(`ai-${initialSection}`)?.scrollIntoView?.();
-  }, [initialSection]);
 
   function update(patch: Partial<LlmConfig>) {
     const next = { ...config, ...patch };
@@ -56,44 +58,51 @@ export function AiTab({ initialSection }: { initialSection?: AiSettingsSection }
     update({ ...createProviderSettings('managed'), rememberApiKey: config.rememberApiKey });
   }
 
-  if (advanced)
+  if (page === 'own-api')
     return (
-      <AdvancedSubpage title="AI · 高级" onBack={closeAdvanced}>
+      <AdvancedSubpage title="使用自己的 API" onBack={closeSubpage}>
         <OwnApiSection config={config} update={update} onUseManaged={switchToManaged} />
+      </AdvancedSubpage>
+    );
+  if (page === 'proxy')
+    return (
+      <AdvancedSubpage title="网络代理" onBack={closeSubpage}>
         <ProxySection />
-        <AdvancedSection id="ai-video" title="Video 视觉模型">
-          <VideoProviderSection />
-        </AdvancedSection>
+      </AdvancedSubpage>
+    );
+  if (page === 'video')
+    return (
+      <AdvancedSubpage title="Video 视觉模型" onBack={closeSubpage}>
+        <VideoProviderSection />
       </AdvancedSubpage>
     );
 
-  const def = getProviderDefinition(config.providerId);
+  const managed = config.providerId === 'managed';
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-label="Agent 模型" className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">模型</h3>
-        {config.providerId === 'managed' ? (
-          <p className="text-sm text-[var(--text-soft)]">猫愿模型 · 登录后按用量消耗 Credit。</p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-soft)]">
-            <span>正在使用自己的 API：{def?.name ?? config.providerId}</span>
-            <button
-              type="button"
-              className="text-[var(--accent)] hover:underline"
-              onClick={switchToManaged}
-            >
-              切换回猫愿模型
-            </button>
-          </div>
-        )}
-      </section>
-      <section aria-label="语音" className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">语音</h3>
+    <SettingsPage>
+      <SettingsGroup label="模型" footer={managed ? '登录后按用量消耗 Credit。' : undefined}>
+        <SettingsRow label="对话模型" value={managed ? '猫愿模型' : '自己的 API'} />
+      </SettingsGroup>
+      <SettingsGroup label="语音">
         <VoiceTimbreField />
-      </section>
+      </SettingsGroup>
       <BehaviorSection />
-      <AdvancedEntryRow onOpen={() => setAdvanced(true)} />
-    </div>
+      <SettingsGroup label="高级">
+        <SettingsRow
+          icon={KeyRound}
+          label="使用自己的 API"
+          value={managed ? '未使用' : '使用中'}
+          onClick={() => setPage('own-api')}
+        />
+        <SettingsRow
+          icon={Globe}
+          label="网络代理"
+          value={loadProxy().enabled ? '已开启' : '关闭'}
+          onClick={() => setPage('proxy')}
+        />
+        <SettingsRow icon={Camera} label="Video 视觉模型" onClick={() => setPage('video')} />
+      </SettingsGroup>
+    </SettingsPage>
   );
 }
 
@@ -110,7 +119,7 @@ function OwnApiSection({
   const isManaged = config.providerId === 'managed';
 
   return (
-    <AdvancedSection title="使用自己的 API">
+    <div className="flex flex-col gap-3">
       {import.meta.env.DEV && (
         // Local development only (stripped from builds): scripts/dev/test-model-proxy.mjs
         // holds the real key server-side, so nothing secret is typed into the page.
@@ -171,7 +180,7 @@ function OwnApiSection({
           </button>
         </>
       )}
-    </AdvancedSection>
+    </div>
   );
 }
 
@@ -195,41 +204,31 @@ function BehaviorSection() {
   }
 
   return (
-    <AdvancedSection title="上下文与回复" note="仅本设备，下一条消息生效。">
-      <label className="grid gap-1.5">
-        <span className="text-xs text-[var(--text-soft)]">上下文策略</span>
-        <SettingSelect
-          value={behavior.modelContextStrategy}
-          onValueChange={(value) =>
-            updateBehavior({
-              modelContextStrategy: value as ModelBehaviorSettings['modelContextStrategy'],
-            })
-          }
-          options={[
-            { value: 'last-user-turn', label: '基础（最近 1 轮）' },
-            { value: 'last-five-user-turns', label: '中等（最近 5 轮）' },
-            { value: 'full-history', label: '更多历史（自动限制上下文）' },
-          ]}
-        />
-      </label>
-      <label className="grid gap-2">
-        <span className="flex items-center justify-between text-xs text-[var(--text-soft)]">
-          <span>回复多样性</span>
-          <output className="font-mono tabular-nums">{behavior.temperature.toFixed(2)}</output>
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={behavior.temperature}
-          aria-label="回复多样性"
-          onChange={(event) => updateBehavior({ temperature: Number(event.target.value) })}
-          className="w-full accent-[var(--accent)]"
-          style={{ '--strength-value': `${behavior.temperature * 100}%` } as CSSProperties}
-        />
-      </label>
-    </AdvancedSection>
+    <SettingsGroup label="回复" footer="仅本设备，下一条消息生效。">
+      <SelectRow
+        label="上下文"
+        value={behavior.modelContextStrategy}
+        onChange={(value) =>
+          updateBehavior({
+            modelContextStrategy: value as ModelBehaviorSettings['modelContextStrategy'],
+          })
+        }
+        options={[
+          { value: 'last-user-turn', label: '基础（最近 1 轮）' },
+          { value: 'last-five-user-turns', label: '中等（最近 5 轮）' },
+          { value: 'full-history', label: '更多历史' },
+        ]}
+      />
+      <SliderRow
+        label="回复多样性"
+        min={0}
+        max={1}
+        step={0.05}
+        value={behavior.temperature}
+        format={(value) => value.toFixed(2)}
+        onChange={(temperature) => updateBehavior({ temperature })}
+      />
+    </SettingsGroup>
   );
 }
 

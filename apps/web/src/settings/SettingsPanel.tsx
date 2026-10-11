@@ -1,24 +1,27 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
+  Brain,
   ChevronLeft,
   ChevronRight,
-  Cpu,
-  Database,
+  Drama,
   Info,
-  LayoutTemplate,
-  SlidersHorizontal,
-  ShieldAlert,
-  ShieldCheck,
+  Settings2,
+  Sparkles,
   UserRound,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   ModuleSettingsSlot,
   useModuleSettingsClaims,
   useSettingsSubpageHeader,
 } from '@0xnullai/ui';
-import { avatarSrc, type AuthUser } from '@0xnullai/auth';
-import { Avatar } from '@0xnullai/ui';
+import { avatarSrc, getCreditBalance, type AuthUser } from '@0xnullai/auth';
+import { Avatar, useTheme } from '@0xnullai/ui';
+import { loadLlmConfig } from '@0xnullai/llm-providers';
+import { loadScenes, subscribeScenes } from '@0xnullai/scenes';
+import { PRODUCT_VERSION } from '../product';
 import { GeneralTab } from './GeneralTab';
 import { AiTab, type AiSettingsSection } from './AiTab';
 import { SafetyTab } from './SafetyTab';
@@ -40,16 +43,59 @@ const PersonalMemoryContent = lazy(() =>
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
-  { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: null, order: 10 },
-  { id: 'memory', label: '个人记忆', icon: Database, Component: null, order: 15 },
-  { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
-  { id: 'scenes', label: '角色与场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
-  { id: 'safety', label: '设备', icon: ShieldAlert, Component: null, order: 50 },
+  { id: 'scenes', label: '角色与场景', icon: Drama, Component: ScenesTab, order: 10 },
+  { id: 'memory', label: '个人记忆', icon: Brain, Component: null, order: 15 },
+  { id: 'ai', label: 'AI 与语音', icon: Sparkles, Component: AiTab, order: 20 },
+  { id: 'safety', label: '设备与安全', icon: Zap, Component: null, order: 50 },
+  { id: 'appearance', label: '通用', icon: Settings2, Component: null, order: 80 },
   { id: 'about', label: '关于', icon: Info, Component: null, order: 90 },
-  { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
+  { id: 'admin', label: '管理', icon: Wrench, Component: AdminContent, order: 100 },
 ] as const;
 
-/** Pages listed on the 高级设置 page instead of the overview. */
+const OVERVIEW_GROUPS = [
+  { label: '陪伴', ids: ['scenes', 'memory', 'ai'] },
+  { label: '设备', ids: ['safety'] },
+  { label: '应用', ids: ['appearance', 'about'] },
+  { label: '管理', ids: ['admin'] },
+] as const satisfies readonly { label: string; ids: readonly string[] }[];
+
+const THEME_LABELS = { auto: '跟随系统', dark: '深色', light: '浅色' } as const;
+
+/** The current value each overview row shows, read from local state only (no requests). */
+function useOverviewValues(active: boolean): Record<string, string> {
+  const { mode } = useTheme();
+  const [sceneCount, setSceneCount] = useState(() => loadScenes().scenes.length);
+  useEffect(
+    () => (active ? subscribeScenes((library) => setSceneCount(library.scenes.length)) : undefined),
+    [active],
+  );
+  const managed = loadLlmConfig().providerId === 'managed';
+  return {
+    scenes: sceneCount ? `${sceneCount} 个` : '',
+    ai: managed ? '猫愿模型' : '自己的 API',
+    appearance: THEME_LABELS[mode as keyof typeof THEME_LABELS] ?? '',
+    about: `v${PRODUCT_VERSION}`,
+  };
+}
+
+/** The signed-in balance for the profile card; refreshed whenever the overview opens. */
+function useCreditBalance(accountId: string | null): number | null {
+  const [state, setState] = useState<{ accountId: string; available: number } | null>(null);
+  useEffect(() => {
+    if (!accountId) return;
+    let active = true;
+    void getCreditBalance()
+      .then((balance) => {
+        if (active) setState({ accountId, available: balance.available });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [accountId]);
+  return state && state.accountId === accountId ? state.available : null;
+}
+
 /** Settings of the open conversation: reached from its header only, never listed under 我的. */
 const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
 /** Module pages shown inside a built-in page instead of as their own entry. */
@@ -93,6 +139,8 @@ export function SettingsPanel({
   // does not have, so the module declares the page and the shell places it.
   const moduleClaims = useModuleSettingsClaims();
   const subpage = useSettingsSubpageHeader();
+  const overviewValues = useOverviewValues(tab === 'overview');
+  const credit = useCreditBalance(tab === 'overview' ? (user?.id ?? null) : null);
   const builtinTabs = user?.role === 'admin' ? TABS : TABS.filter((item) => item.id !== 'admin');
   const navigationTabs = [
     ...builtinTabs.map((item) => ({
@@ -178,33 +226,31 @@ export function SettingsPanel({
                     {user ? `@${user.username}` : '登录后同步聊天和个人内容'}
                   </span>
                 </span>
+                {user && credit !== null ? (
+                  <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-[var(--text-soft)]">
+                    {credit} Credit
+                  </span>
+                ) : null}
                 <ChevronRight className="h-4 w-4 text-[var(--text-faint)]" aria-hidden />
               </button>
-              <SettingsGroup>
-                {overviewItems
-                  .filter((item) => item.id !== 'about' && item.id !== 'admin')
-                  .map((item) => (
-                    <SettingsRow
-                      key={item.id}
-                      icon={item.icon}
-                      label={item.label}
-                      onClick={() => onNavigateTab(item.id)}
-                    />
-                  ))}
-              </SettingsGroup>
-              <SettingsGroup>
-                {[
-                  ...overviewItems.filter((item) => item.id === 'about'),
-                  ...overviewItems.filter((item) => item.id === 'admin'),
-                ].map((item) => (
-                  <SettingsRow
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    onClick={() => onNavigateTab(item.id)}
-                  />
-                ))}
-              </SettingsGroup>
+              {OVERVIEW_GROUPS.map((group) => {
+                const ids: readonly string[] = group.ids;
+                const rows = overviewItems.filter((item) => ids.includes(item.id));
+                if (rows.length === 0) return null;
+                return (
+                  <SettingsGroup key={group.label} label={group.label}>
+                    {rows.map((item) => (
+                      <SettingsRow
+                        key={item.id}
+                        icon={item.icon}
+                        label={item.label}
+                        value={overviewValues[item.id]}
+                        onClick={() => onNavigateTab(item.id)}
+                      />
+                    ))}
+                  </SettingsGroup>
+                );
+              })}
             </div>
           ) : (
             <>

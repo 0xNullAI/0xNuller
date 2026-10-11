@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSettingsSubpage } from '@0xnullai/ui';
 
@@ -36,7 +36,14 @@ export function AdvancedSubpage({
   onBack: () => void;
   children: ReactNode;
 }) {
-  const sharedHeader = useSettingsSubpage({ title, onBack });
+  // The header registration depends on the handler's identity; keep it stable so an inline
+  // arrow from the caller cannot make the header re-register on every render.
+  const backRef = useRef(onBack);
+  useEffect(() => {
+    backRef.current = onBack;
+  });
+  const stableBack = useCallback(() => backRef.current(), []);
+  const sharedHeader = useSettingsSubpage({ title, onBack: stableBack });
   const focusHeading = useCallback((node: HTMLHeadingElement | null) => node?.focus(), []);
   return (
     <section aria-label={title} className="flex flex-col gap-6">
@@ -49,7 +56,7 @@ export function AdvancedSubpage({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onBack}
+            onClick={stableBack}
             aria-label="返回上一页"
             className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-[var(--bg-soft)]"
           >

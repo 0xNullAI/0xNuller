@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   deletePersonalMemory,
   exportPersonalMemories,
@@ -17,8 +17,10 @@ import {
   type PersonalMemory,
   type PersonalMemoryKind,
 } from '@0xnullai/auth';
-import { Button, Input, SegmentedControl, Switch } from '@0xnullai/ui';
-import { Download, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Button, Input, SegmentedControl } from '@0xnullai/ui';
+import { Download, Plus, Trash2, Users } from 'lucide-react';
+import { AdvancedSubpage } from './SettingsAdvanced';
+import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SwitchRow } from './settings-list';
 
 const LABELS: Record<PersonalMemoryKind, string> = {
   preference: '我的偏好',
@@ -57,11 +59,10 @@ export function PersonalMemoryContent({
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
-  const [filter, setFilter] = useState<PersonalMemoryKind | 'all'>('all');
   const [query, setQuery] = useState('');
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  /** list → one memory (new or existing) → back; received shows what others shared. */
+  const [page, setPage] = useState<'list' | 'edit' | 'chats'>(initialChat ? 'chats' : 'list');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [conversations, setConversations] = useState<HumanMemoryConversation[] | null>(null);
   const [nextConversations, setNextConversations] = useState<HumanMemoryPageCursor | null>(null);
   const [selectedKey, setSelectedKey] = useState('');
@@ -99,8 +100,8 @@ export function PersonalMemoryContent({
       setTitle('');
       setContent('');
       setDraftId(crypto.randomUUID());
-      setEditorOpen(false);
-      setPendingDelete(null);
+      setPage('list');
+      setConfirmDelete(false);
       setError(null);
       setNotice('');
       setRefresh((value) => value + 1);
@@ -236,13 +237,27 @@ export function PersonalMemoryContent({
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
-  function clearEditor() {
+  // Stable: the subpage header re-registers whenever its back handler changes.
+  const clearEditor = useCallback(() => {
     setDraftId(crypto.randomUUID());
     setEditing(null);
     setTitle('');
     setContent('');
     setKind('preference');
-    setEditorOpen(false);
+    setConfirmDelete(false);
+    setPage('list');
+  }, []);
+  const backToList = useCallback(() => setPage('list'), []);
+
+  function startNew() {
+    setDraftId(crypto.randomUUID());
+    setEditing(null);
+    setTitle('');
+    setContent('');
+    setKind('preference');
+    setNotice('');
+    setConfirmDelete(false);
+    setPage('edit');
   }
 
   function startEdit(item: PersonalMemory) {
@@ -251,8 +266,8 @@ export function PersonalMemoryContent({
     setTitle(item.title);
     setContent(item.content);
     setNotice('');
-    setPendingDelete(null);
-    setEditorOpen(true);
+    setConfirmDelete(false);
+    setPage('edit');
   }
 
   async function save() {
@@ -294,7 +309,6 @@ export function PersonalMemoryContent({
       setLoadedChatKey('');
       setChatRefresh((value) => value + 1);
       if (editing?.id === item.id) clearEditor();
-      setPendingDelete(null);
       setNotice('已删除');
     } catch (cause) {
       if (accountEpochRef.current === epoch)
@@ -355,379 +369,277 @@ export function PersonalMemoryContent({
   const needle = query.trim().toLowerCase();
   const visible = (items ?? []).filter(
     (item) =>
-      (filter === 'all' || item.kind === filter) &&
-      (!needle ||
-        item.title.toLowerCase().includes(needle) ||
-        item.content.toLowerCase().includes(needle)),
+      !needle ||
+      item.title.toLowerCase().includes(needle) ||
+      item.content.toLowerCase().includes(needle),
   );
-  const shareableItems = (items ?? []).filter(shareable);
 
-  return (
-    <div className="flex flex-col gap-6">
-      <section aria-label="我的记忆" className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="flex-1 text-sm font-semibold">
-            我的记忆
-            {items ? (
-              <span className="ml-1.5 font-normal text-[var(--text-faint)]">{items.length}</span>
-            ) : null}
-          </h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy || items === null}
-            onClick={() => {
-              clearEditor();
-              setEditorOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            添加
-          </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void exportAll()}>
-            <Download className="h-4 w-4" />
-            导出
-          </Button>
-        </div>
-        <p className="text-xs text-[var(--text-faint)]">只有你能看到，除非在下方共享给某个聊天。</p>
+  const errorBanner = error && (
+    <div
+      role="alert"
+      className="flex items-center justify-between gap-2 rounded-2xl bg-[var(--danger-soft)] px-4 py-2 text-sm text-[var(--danger)]"
+    >
+      <span className="min-w-0">{error}</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy}
+        onClick={() => {
+          setError(null);
+          setItems(null);
+          clearEditor();
+          setRefresh((value) => value + 1);
+        }}
+      >
+        重新读取
+      </Button>
+    </div>
+  );
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
-          >
-            <span className="min-w-0">{error}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => {
-                setError(null);
-                setItems(null);
-                clearEditor();
-                setRefresh((value) => value + 1);
-              }}
+  const chatPicker =
+    conversations && conversations.length > 0 ? (
+      <SelectRow
+        label="聊天"
+        value={selectedKey}
+        onChange={(key) => {
+          selectionRef.current = key;
+          setSelectedKey(key);
+        }}
+        options={conversations.map((chat) => ({
+          value: `${chat.kind}:${chat.id}`,
+          label: `${chat.kind === 'dm' ? '私聊' : '群聊'} · ${chat.name || chat.id}`,
+        }))}
+      />
+    ) : null;
+
+  const moreChats = nextConversations ? (
+    <SettingsRow label="加载更早的聊天" onClick={() => void loadMoreConversations()} />
+  ) : null;
+
+  if (page === 'chats')
+    return (
+      <AdvancedSubpage title="聊天中的共享" onBack={backToList}>
+        <SettingsPage>
+          {errorBanner}
+          {conversations === null ? (
+            <p className="px-4 text-xs text-[var(--text-faint)]">正在核验可用聊天…</p>
+          ) : conversations.length === 0 && !nextConversations ? (
+            <p className="px-4 text-xs text-[var(--text-faint)]">暂无可共享的真人聊天。</p>
+          ) : (
+            <SettingsGroup>
+              {chatPicker}
+              {moreChats}
+            </SettingsGroup>
+          )}
+          {selectedChat && items !== null && (
+            <SettingsGroup
+              label="我共享给这个聊天的"
+              footer="群里现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。"
             >
-              重新读取
-            </Button>
-          </div>
-        )}
-        {notice && (
-          <p role="status" className="text-xs text-[var(--text-soft)]">
-            {notice}
-          </p>
-        )}
+              {items.filter(shareable).length === 0 ? (
+                <SettingsRow label="没有可共享的记忆" />
+              ) : (
+                items
+                  .filter(shareable)
+                  .map((item) => (
+                    <SwitchRow
+                      key={item.id}
+                      label={item.title}
+                      checked={!!shares?.[item.id]?.enabled}
+                      disabled={busy || !chatReady || !shares}
+                      onCheckedChange={() => void toggleShare(item)}
+                    />
+                  ))
+              )}
+            </SettingsGroup>
+          )}
+          {selectedChat && (
+            <SettingsGroup label="对方共享给我的">
+              {!chatReady || received === null ? (
+                <SettingsRow label="正在读取…" />
+              ) : received.length === 0 ? (
+                <SettingsRow label="暂无收到的记忆" />
+              ) : (
+                received.map((entry) => (
+                  <SettingsRow
+                    key={`${entry.ownerId}:${entry.memory.id}`}
+                    label={entry.memory.title}
+                    detail={`${entry.ownerName} · ${entry.memory.content}`}
+                  />
+                ))
+              )}
+              {chatReady && nextReceivedOffset !== null && (
+                <SettingsRow label="加载更多" onClick={() => void loadMoreReceived()} />
+              )}
+            </SettingsGroup>
+          )}
+        </SettingsPage>
+      </AdvancedSubpage>
+    );
 
-        {editorOpen && items !== null && (
+  if (page === 'edit' && items !== null) {
+    const canShare = editing !== null && shareable(editing);
+    const sharedHere = canShare && !!shares?.[editing.id]?.enabled;
+    return (
+      <AdvancedSubpage title={editing ? '编辑记忆' : '新记忆'} onBack={clearEditor}>
+        <SettingsPage>
+          {errorBanner}
           <form
             aria-label={editing ? '编辑记忆' : '新记忆'}
-            className="flex flex-col gap-2 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] p-3"
+            className="flex flex-col gap-6"
             onSubmit={(event) => {
               event.preventDefault();
               void save();
             }}
           >
-            <SegmentedControl
-              label="记忆类型"
-              className="w-fit"
-              value={kind}
-              disabled={busy}
-              onChange={setKind}
-              options={(Object.keys(LABELS) as PersonalMemoryKind[]).map(
-                (value) => [value, SHORT_LABELS[value]] as const,
-              )}
-            />
-            <Input
-              aria-label="记忆标题"
-              placeholder="标题，例如：我希望的称呼"
-              value={title}
-              maxLength={TITLE_MAX}
-              disabled={busy}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <textarea
-              aria-label="记忆内容"
-              placeholder="写下你希望 AI 记住的内容"
-              value={content}
-              maxLength={CONTENT_MAX}
-              disabled={busy}
-              onChange={(event) => setContent(event.target.value)}
-              rows={4}
-              className="w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
-            />
-            <div className="flex items-center gap-2">
-              <span className="flex-1 text-xs text-[var(--text-faint)]">
-                {content.length}/{CONTENT_MAX}
-              </span>
-              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={clearEditor}>
-                取消
-              </Button>
-              <Button type="submit" size="sm" disabled={busy || !title.trim() || !content.trim()}>
-                {busy ? '处理中…' : editing ? '保存修改' : '添加记忆'}
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {items === null ? (
-          <p className="text-xs text-[var(--text-faint)]">
-            {error ? '暂时无法读取记忆' : '正在读取记忆…'}
-          </p>
-        ) : items.length === 0 ? (
-          !editorOpen && (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <p className="text-sm text-[var(--text-faint)]">还没有个人记忆。</p>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  clearEditor();
-                  setEditorOpen(true);
-                }}
-              >
-                添加第一条
-              </Button>
-            </div>
-          )
-        ) : (
-          <>
-            <div className="flex items-center gap-2">
-              <SegmentedControl
-                label="记忆类型筛选"
-                value={filter}
-                onChange={setFilter}
-                options={[
-                  ['all', '全部'],
-                  ...(Object.keys(SHORT_LABELS) as PersonalMemoryKind[]).map(
-                    (value) => [value, SHORT_LABELS[value]] as const,
-                  ),
-                ]}
-              />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索"
-                aria-label="搜索记忆"
-                className="h-9 min-w-0 flex-1 text-sm"
-              />
-            </div>
-            {visible.length === 0 ? (
-              <p className="py-4 text-center text-sm text-[var(--text-faint)]">没有匹配的记忆</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-[var(--surface-border)]">
-                {visible.map((item) => {
-                  const open = expanded.has(item.id);
-                  const long = item.content.length > 80 || item.content.includes('\n');
-                  return (
-                    <li key={item.id} className="flex flex-col gap-1 py-3">
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="rounded-full bg-[var(--bg-strong)] px-2 py-0.5 text-[11px] text-[var(--text-soft)]">
-                              {SHORT_LABELS[item.kind]}
-                            </span>
-                            {item.state === 'suggested' && (
-                              <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[11px]">
-                                AI 建议
-                              </span>
-                            )}
-                            <p className="min-w-0 break-words text-sm font-medium">{item.title}</p>
-                          </div>
-                          <p
-                            className={`mt-1 whitespace-pre-wrap break-words text-sm text-[var(--text-soft)] ${open ? '' : 'line-clamp-2'}`}
-                          >
-                            {item.content}
-                          </p>
-                          {long && (
-                            <button
-                              type="button"
-                              className="mt-0.5 text-xs text-[var(--accent)]"
-                              onClick={() =>
-                                setExpanded((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(item.id)) next.delete(item.id);
-                                  else next.add(item.id);
-                                  return next;
-                                })
-                              }
-                            >
-                              {open ? '收起' : '展开'}
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`编辑 ${item.title}`}
-                            onClick={() => startEdit(item)}
-                            className="ui-press rounded-full p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`删除 ${item.title}`}
-                            onClick={() =>
-                              setPendingDelete((current) => (current === item.id ? null : item.id))
-                            }
-                            className="ui-press rounded-full p-2 text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--danger)]"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                      {pendingDelete === item.id && (
-                        <div className="flex items-center justify-end gap-2 text-xs">
-                          <span className="text-[var(--text-soft)]">删除后 AI 不再记得这条</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => setPendingDelete(null)}
-                          >
-                            取消
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={busy}
-                            aria-label={`确认删除 ${item.title}`}
-                            onClick={() => void remove(item)}
-                          >
-                            删除
-                          </Button>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </>
-        )}
-      </section>
-
-      {items !== null && (
-        <section aria-label="共享到真人聊天" className="flex flex-col gap-3">
-          <div>
-            <h3 className="text-sm font-semibold">共享到真人聊天</h3>
-            <p className="mt-1 text-xs text-[var(--text-faint)]">
-              群内现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。
-            </p>
-          </div>
-          {conversations === null ? (
-            <p className="text-xs text-[var(--text-faint)]">正在核验可用聊天…</p>
-          ) : conversations.length === 0 && !nextConversations ? (
-            <p className="text-xs text-[var(--text-faint)]">暂无可共享的真人聊天。</p>
-          ) : (
-            <>
-              {conversations.length > 0 && (
-                <select
-                  aria-label="选择记忆共享聊天"
-                  value={selectedKey}
-                  onChange={(event) => {
-                    selectionRef.current = event.target.value;
-                    setSelectedKey(event.target.value);
-                  }}
-                  className="w-full min-w-0 rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
-                >
-                  {conversations.map((chat) => (
-                    <option key={`${chat.kind}:${chat.id}`} value={`${chat.kind}:${chat.id}`}>
-                      {chat.kind === 'dm' ? '私聊' : '群聊'} · {chat.name || chat.id}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {nextConversations && (
-                <Button
-                  variant="ghost"
-                  size="sm"
+            <SettingsGroup footer={`${content.length}/${CONTENT_MAX}`}>
+              <div className="flex flex-col gap-3 p-4">
+                <SegmentedControl
+                  label="记忆类型"
                   className="w-fit"
+                  value={kind}
                   disabled={busy}
-                  onClick={() => void loadMoreConversations()}
-                >
-                  加载更早的聊天
-                </Button>
-              )}
+                  onChange={setKind}
+                  options={(Object.keys(LABELS) as PersonalMemoryKind[]).map(
+                    (value) => [value, SHORT_LABELS[value]] as const,
+                  )}
+                />
+                <Input
+                  aria-label="记忆标题"
+                  placeholder="标题，例如：我希望的称呼"
+                  value={title}
+                  maxLength={TITLE_MAX}
+                  disabled={busy}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+                <textarea
+                  aria-label="记忆内容"
+                  placeholder="写下你希望 AI 记住的内容"
+                  value={content}
+                  maxLength={CONTENT_MAX}
+                  disabled={busy}
+                  onChange={(event) => setContent(event.target.value)}
+                  rows={5}
+                  className="w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
+                />
+              </div>
+            </SettingsGroup>
+            <Button
+              type="submit"
+              className="w-fit"
+              disabled={busy || !title.trim() || !content.trim()}
+            >
+              {busy ? '处理中…' : editing ? '保存修改' : '添加记忆'}
+            </Button>
+          </form>
+
+          {canShare && conversations && (conversations.length > 0 || nextConversations) && (
+            <SettingsGroup
+              label="共享到真人聊天"
+              footer="群里现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。"
+            >
+              {chatPicker}
+              {moreChats}
               {selectedChat && (
-                <>
-                  {!chatReady || !shares ? (
-                    <p className="text-xs text-[var(--text-faint)]">正在读取…</p>
-                  ) : shareableItems.length === 0 ? (
-                    <p className="text-xs text-[var(--text-faint)]">没有可共享的记忆。</p>
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-[var(--surface-border)]">
-                      {shareableItems.map((item) => {
-                        const on = !!shares[item.id]?.enabled;
-                        return (
-                          <li key={item.id} className="flex items-center gap-3 py-2.5">
-                            <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
-                            <Switch
-                              label={`共享 ${item.title}`}
-                              checked={on}
-                              disabled={busy}
-                              onCheckedChange={() => void toggleShare(item)}
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <div className="flex items-center justify-between gap-2 pt-2">
-                    <h4 className="text-xs font-semibold text-[var(--text-soft)]">
-                      对方共享给我的
-                    </h4>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setLoadedChatKey('');
-                        setChatRefresh((value) => value + 1);
-                      }}
-                    >
-                      刷新
-                    </Button>
-                  </div>
-                  {!chatReady || received === null ? (
-                    <p className="text-xs text-[var(--text-faint)]">正在读取…</p>
-                  ) : received.length === 0 ? (
-                    <p className="text-xs text-[var(--text-faint)]">暂无收到的记忆。</p>
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-[var(--surface-border)]">
-                      {received.map((entry) => (
-                        <li key={`${entry.ownerId}:${entry.memory.id}`} className="py-2.5 text-sm">
-                          <p className="font-medium">
-                            {entry.memory.title}
-                            <span className="ml-1.5 font-normal text-[var(--text-faint)]">
-                              来自 {entry.ownerName}
-                            </span>
-                          </p>
-                          <p className="mt-0.5 whitespace-pre-wrap break-words text-[var(--text-soft)]">
-                            {entry.memory.content}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {chatReady && nextReceivedOffset !== null && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-fit"
-                      disabled={busy}
-                      onClick={() => void loadMoreReceived()}
-                    >
-                      加载更多
-                    </Button>
-                  )}
-                </>
+                <SwitchRow
+                  label="共享给这个聊天"
+                  checked={sharedHere}
+                  disabled={busy || !chatReady || !shares}
+                  onCheckedChange={() => void toggleShare(editing)}
+                />
               )}
-            </>
+            </SettingsGroup>
           )}
-        </section>
+
+          {editing && (
+            <SettingsGroup>
+              {confirmDelete ? (
+                <>
+                  <SettingsRow
+                    label="确认删除"
+                    tone="danger"
+                    onClick={() => void remove(editing)}
+                  />
+                  <SettingsRow label="取消" onClick={() => setConfirmDelete(false)} />
+                </>
+              ) : (
+                <SettingsRow
+                  icon={Trash2}
+                  tone="danger"
+                  label="删除这条记忆"
+                  onClick={() => setConfirmDelete(true)}
+                />
+              )}
+            </SettingsGroup>
+          )}
+        </SettingsPage>
+      </AdvancedSubpage>
+    );
+  }
+
+  return (
+    <SettingsPage>
+      <div className="flex items-center gap-2">
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索记忆"
+          aria-label="搜索记忆"
+          className="h-10 min-w-0 flex-1 text-sm"
+        />
+        <Button variant="secondary" disabled={busy || items === null} onClick={startNew}>
+          <Plus className="h-4 w-4" />
+          添加
+        </Button>
+      </div>
+      {errorBanner}
+      {notice && (
+        <p role="status" className="px-4 text-xs text-[var(--text-soft)]">
+          {notice}
+        </p>
       )}
-    </div>
+      {items === null ? (
+        <p className="px-4 text-xs text-[var(--text-faint)]">
+          {error ? '暂时无法读取记忆' : '正在读取记忆…'}
+        </p>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <p className="text-sm text-[var(--text-faint)]">还没有个人记忆。</p>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={startNew}>
+            添加第一条
+          </Button>
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="py-6 text-center text-sm text-[var(--text-faint)]">没有匹配的记忆</p>
+      ) : (
+        (Object.keys(LABELS) as PersonalMemoryKind[]).map((group) => {
+          const rows = visible.filter((item) => item.kind === group);
+          if (rows.length === 0) return null;
+          return (
+            <SettingsGroup key={group} label={LABELS[group]}>
+              {rows.map((item) => (
+                <SettingsRow
+                  key={item.id}
+                  label={item.title}
+                  detail={item.content}
+                  value={item.state === 'suggested' ? 'AI 建议' : undefined}
+                  onClick={() => startEdit(item)}
+                />
+              ))}
+            </SettingsGroup>
+          );
+        })
+      )}
+      {items !== null && (
+        <SettingsGroup>
+          <SettingsRow icon={Users} label="聊天中的共享" onClick={() => setPage('chats')} />
+          <SettingsRow
+            icon={Download}
+            label="导出全部记忆"
+            onClick={() => (busy ? undefined : void exportAll())}
+          />
+        </SettingsGroup>
+      )}
+    </SettingsPage>
   );
 }

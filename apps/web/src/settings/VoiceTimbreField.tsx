@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SettingSelect } from '@0xnullai/ui';
+import { SelectRow } from './settings-list';
 import { MANAGED_VOICES } from '../../../voice/src/lib/realtime/managed-voices';
 import { loadSettings, saveSettings } from '../../../voice/src/lib/settings';
 
@@ -12,17 +12,15 @@ export function VoiceTimbreField() {
   const [settings, setSettings] = useState(loadSettings);
 
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs text-[var(--text-soft)]">音色</span>
-      <SettingSelect
-        value={settings.voice}
-        onValueChange={(voice) => {
-          const next = { ...settings, voice };
-          setSettings(next);
-          saveSettings(next);
-        }}
-        options={MANAGED_VOICES.map((voice) => ({ value: voice.id, label: voice.label }))}
-      />
-    </label>
+    <SelectRow
+      label="音色"
+      value={settings.voice}
+      onChange={(voice) => {
+        const next = { ...settings, voice };
+        setSettings(next);
+        saveSettings(next);
+      }}
+      options={MANAGED_VOICES.map((voice) => ({ value: voice.id, label: voice.label }))}
+    />
   );
 }

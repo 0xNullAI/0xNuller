@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const toggle = () => screen.getByRole('switch', { name: '通知' });
+const toggle = () => screen.getByRole('switch', { name: '新消息通知' });
 
 describe('通知 switch', () => {
   it('is a single switch on the web and absent inside the Android app or signed out', () => {

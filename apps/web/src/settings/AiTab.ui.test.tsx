@@ -54,7 +54,7 @@ afterEach(() => {
 
 it('shows the custom endpoint with image input off until the user switches it on', () => {
   render(<AiTab />);
-  fireEvent.click(screen.getByRole('button', { name: '高级' }));
+  fireEvent.click(screen.getByRole('button', { name: /^使用自己的 API/ }));
 
   expect(screen.getByText('接口地址')).toBeTruthy();
   expect(screen.getByRole('combobox', { name: '模型' })).toBeTruthy();
@@ -68,7 +68,7 @@ it('shows the custom endpoint with image input off until the user switches it on
 it('offers only the custom endpoint as an own-API option', () => {
   llm.config = { ...llm.config, providerId: 'managed', apiKey: '', model: 'balanced' };
   render(<AiTab />);
-  fireEvent.click(screen.getByRole('button', { name: '高级' }));
+  fireEvent.click(screen.getByRole('button', { name: /^使用自己的 API/ }));
 
   expect(screen.queryByRole('checkbox', { name: '支持图片输入' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '使用自定义接口' }));
