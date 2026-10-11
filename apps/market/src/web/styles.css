@@ -48,6 +48,12 @@
     gap: 12px;
     min-width: 0;
   }
+  .market-row-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+  }
   .market-create {
     position: relative;
     flex: none;

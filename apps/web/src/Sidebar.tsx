@@ -56,7 +56,8 @@ export function NavRail({
     {
       label: '发现',
       Icon: Compass,
-      current: !settingsActive && activeId === 'market',
+      // Games are reached from 发现, so they keep it highlighted.
+      current: !settingsActive && (activeId === 'market' || activeId === 'playground'),
       run: () => onNavigate('market'),
     },
     {

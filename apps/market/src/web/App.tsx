@@ -3,7 +3,7 @@ import { FollowedCreators } from './components/FollowedCreators';
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Gamepad2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   promptKind,
   type ItemType,
@@ -442,54 +442,62 @@ export function App(): JSX.Element {
                   </button>
                 ))}
               </nav>
-              <div className="market-create" ref={createMenuRef}>
-                <Button
-                  size="sm"
-                  aria-expanded={openMenu === 'create'}
-                  aria-controls="market-create-menu"
-                  onClick={() => setOpenMenu((open) => (open === 'create' ? null : 'create'))}
-                >
-                  <Plus className="h-4 w-4" /> 创建
-                </Button>
-                {openMenu === 'create' && (
-                  <div
-                    id="market-create-menu"
-                    className="market-create-menu"
-                    role="group"
-                    aria-label="创建内容"
+              <div className="market-row-actions">
+                {shellNav ? (
+                  // Games live under 发现 rather than as a separate top-level module.
+                  <Button size="sm" variant="ghost" onClick={() => shellNav.navigate('playground')}>
+                    <Gamepad2 className="h-4 w-4" /> 游戏
+                  </Button>
+                ) : null}
+                <div className="market-create" ref={createMenuRef}>
+                  <Button
+                    size="sm"
+                    aria-expanded={openMenu === 'create'}
+                    aria-controls="market-create-menu"
+                    onClick={() => setOpenMenu((open) => (open === 'create' ? null : 'create'))}
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        if (inShell && !signedIn) return openShellSettings('account');
-                        openStudio({ kind: 'new', cardKind: 'character' });
-                      }}
+                    <Plus className="h-4 w-4" /> 创建
+                  </Button>
+                  {openMenu === 'create' && (
+                    <div
+                      id="market-create-menu"
+                      className="market-create-menu"
+                      role="group"
+                      aria-label="创建内容"
                     >
-                      创建角色
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        if (inShell && !signedIn) return openShellSettings('account');
-                        openStudio({ kind: 'new', cardKind: 'scene' });
-                      }}
-                    >
-                      创建场景
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        if (inShell && !signedIn) return openShellSettings('account');
-                        setUploading(true);
-                      }}
-                    >
-                      发布波形
-                    </button>
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (inShell && !signedIn) return openShellSettings('account');
+                          openStudio({ kind: 'new', cardKind: 'character' });
+                        }}
+                      >
+                        创建角色
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (inShell && !signedIn) return openShellSettings('account');
+                          openStudio({ kind: 'new', cardKind: 'scene' });
+                        }}
+                      >
+                        创建场景
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (inShell && !signedIn) return openShellSettings('account');
+                          setUploading(true);
+                        }}
+                      >
+                        发布波形
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             {

@@ -192,7 +192,9 @@ export function Shell() {
       ? '设备'
       : activeId === 'market'
         ? '发现'
-        : MODULES.find((m) => m.id === activeId)?.label;
+        : activeId === 'playground'
+          ? '游戏'
+          : MODULES.find((m) => m.id === activeId)?.label;
   const overlayRoot = useOverlayRoot();
   const narrow = useIsNarrow();
   const mobileInbox = narrow && pathname === '/';
@@ -611,7 +613,7 @@ export function Shell() {
                   {
                     label: '发现',
                     icon: Compass,
-                    current: activeId === 'market',
+                    current: activeId === 'market' || activeId === 'playground',
                     run: () => navigate('/market'),
                   },
                   {
