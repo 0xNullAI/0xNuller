@@ -438,3 +438,43 @@ it('locates a quoted source only in messages already loaded for the current conv
     (screen.getByRole('button', { name: '定位 伙伴 的原消息' }) as HTMLButtonElement).disabled,
   ).toBe(true);
 });
+
+it('offers 撤回 only on a fresh confirmed own message and shows a recalled one as a notice', () => {
+  const now = Date.now();
+  const props = {
+    conversationId: 'test-room',
+    onSend: vi.fn(),
+    onSendMedia: vi.fn(),
+    onRecallMessage: vi.fn(),
+  };
+  const fresh = {
+    id: 'fresh',
+    fromSelf: true,
+    serverConfirmed: true,
+    senderId: 'self',
+    senderName: '我',
+    text: '刚发的',
+    timestamp: now - 10_000,
+  };
+  const old = { ...fresh, id: 'old', text: '很早发的', timestamp: now - 10 * 60_000 };
+  const theirs = { ...fresh, id: 'theirs', fromSelf: false, senderId: 'b', senderName: '小波' };
+  const view = render(<ChatPanel {...props} messages={[old, theirs, fresh]} />);
+  const buttons = screen.getAllByRole('button', { name: '撤回这条消息' });
+  expect(buttons).toHaveLength(1);
+  fireEvent.click(buttons[0]!);
+  expect(props.onRecallMessage).toHaveBeenCalledWith('fresh');
+
+  view.rerender(
+    <ChatPanel
+      {...props}
+      messages={[
+        old,
+        { ...theirs, recalled: true, text: '' },
+        { ...fresh, recalled: true, text: '' },
+      ]}
+    />,
+  );
+  expect(screen.getByText('你撤回了一条消息')).toBeTruthy();
+  expect(screen.getByText('小波 撤回了一条消息')).toBeTruthy();
+  expect(screen.queryByText('刚发的')).toBeNull();
+});

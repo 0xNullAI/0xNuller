@@ -17,7 +17,18 @@ import {
 import { requestProfileView } from '@0xnullai/auth';
 import { adaptHumanChatTimeline } from '@0xnullai/conversation';
 import { Fragment, useState, useRef, useEffect } from 'react';
-import { ArrowUp, Image as ImageIcon, Mic, Plus, X, AtSign, UserRound, Reply } from 'lucide-react';
+import {
+  ArrowUp,
+  Image as ImageIcon,
+  Mic,
+  Plus,
+  X,
+  AtSign,
+  UserRound,
+  Reply,
+  Undo2,
+} from 'lucide-react';
+import { RECALL_WINDOW_MS } from '../../worker/wire';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
 import { PublicCharacterShareDialog } from './PublicCharacterShareDialog';
@@ -63,6 +74,8 @@ interface ChatPanelProps {
   onRetryMessage?: (id: string) => boolean;
   /** Drop a failed local message. */
   onDiscardMessage?: (id: string) => void;
+  /** Withdraw one of this account's confirmed messages within RECALL_WINDOW_MS. */
+  onRecallMessage?: (id: string) => void;
 }
 
 function mediaSource(url: string, privateMediaToken?: string | null): string | null {
@@ -121,10 +134,17 @@ export function ChatPanel({
   privateMediaToken,
   onRetryMessage,
   onDiscardMessage,
+  onRecallMessage,
   hasOlderHistory,
   historyLoading,
   onLoadOlderHistory,
 }: ChatPanelProps) {
+  // Re-evaluated every 15 s so the 撤回 button disappears once the window closes.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Sender id to account handle. Rebuilt per render from a list that is at most
   // a roomful long, which is cheaper than the memo that would guard it.
   const usernameByPeer = new Map(members.map((m) => [m.peerId, m.username ?? null]));
@@ -386,6 +406,21 @@ export function ChatPanel({
           const grouped = position.continued;
           const hasMedia = !!msg.media;
 
+          if (msg.recalled)
+            return (
+              <Fragment key={msg.id}>
+                {position.showTime && <ConversationTimeSeparator at={msg.timestamp} />}
+                <p className="py-1 text-center text-[11px] text-[var(--text-faint)]">
+                  {isSelf ? '你撤回了一条消息' : `${msg.senderName || '对方'} 撤回了一条消息`}
+                </p>
+              </Fragment>
+            );
+          const recallable =
+            !!onRecallMessage &&
+            isSelf &&
+            msg.serverConfirmed === true &&
+            now - msg.timestamp <= RECALL_WINDOW_MS;
+
           return (
             <Fragment key={msg.id}>
               {position.showTime && <ConversationTimeSeparator at={msg.timestamp} />}
@@ -530,6 +565,17 @@ export function ChatPanel({
                       }}
                     >
                       <Reply size={14} />
+                    </button>
+                  )}
+                  {recallable && (
+                    <button
+                      type="button"
+                      aria-label="撤回这条消息"
+                      title="撤回（发送后 2 分钟内）"
+                      className="ui-press flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-faint)] opacity-60 hover:bg-[var(--bg-soft)] hover:opacity-100"
+                      onClick={() => onRecallMessage(msg.id)}
+                    >
+                      <Undo2 size={14} />
                     </button>
                   )}
                 </div>

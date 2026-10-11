@@ -36,7 +36,19 @@ export function readHistoryPage(
   const messages: WireChat[] = page.map((row) => {
     const body = JSON.parse(row.body as string) as Pick<WireChat, 'x' | 'm' | 'mentions'> & {
       replyToId?: string;
+      recalled?: true;
     };
+    if (body.recalled)
+      return {
+        id: row.id as string,
+        _from: row.from_id as string,
+        ...(typeof row.sender_account === 'string' && !row.sender_account.startsWith('agent:')
+          ? { _account: row.sender_account }
+          : {}),
+        n: row.name as string,
+        ts: row.ts as number,
+        recalled: true as const,
+      };
     return {
       id: row.id as string,
       _from: row.from_id as string,

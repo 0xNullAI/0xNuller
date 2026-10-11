@@ -52,6 +52,8 @@ export interface ChatMessage {
   media?: ChatMedia;
   /** List of @-mentioned members (used for highlighting + notification). */
   mentions?: ChatMention[];
+  /** Withdrawn by its sender; text, media and mentions are gone. */
+  recalled?: boolean;
 }
 
 export type CmdAction =

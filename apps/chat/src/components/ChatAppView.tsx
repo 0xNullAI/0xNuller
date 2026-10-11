@@ -422,6 +422,7 @@ export function ChatAppView({
                   }
                   onRetryMessage={peerRoom.retryMessage}
                   onDiscardMessage={peerRoom.discardMessage}
+                  onRecallMessage={peerRoom.recallMessage}
                   onSendMedia={sendMedia}
                   members={[
                     { peerId: peerRoom.selfId, name: displayName, username },

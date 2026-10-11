@@ -26,6 +26,7 @@ export type WireType =
   | 'scene' // legacy roleplay, dropped by the DO
   | 'role' // legacy roleplay, dropped by the DO
   | 'history-before' // client→DO: request an older bounded page
+  | 'recall' // client→DO: withdraw one's own message; DO→client: { id } was recalled
   | 'history' // DO→client: replay for a newly joined peer
   | 'sys'; // DO→client: connection-level presence (joined/left)
 
@@ -51,7 +52,12 @@ export interface WireReply {
   senderName: string;
   text: string;
   unavailable?: boolean;
+  /** The quoted message was withdrawn by its sender. */
+  recalled?: true;
 }
+
+/** How long after sending a member may withdraw their own message. */
+export const RECALL_WINDOW_MS = 2 * 60_000;
 
 export interface WireChat {
   /** Server-resolved reference; only the source ID is persisted. */
@@ -76,6 +82,8 @@ export interface WireChat {
   mentions?: { peerId: string; n: string }[];
   /** Send timestamp in milliseconds. */
   ts: number;
+  /** Withdrawn by its sender: x, m and mentions are absent. */
+  recalled?: true;
 }
 
 /**

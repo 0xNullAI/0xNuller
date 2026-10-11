@@ -9,6 +9,7 @@ import {
 import { initializeDmReadState, dmReadState, advanceDmRead } from './dm-read-state';
 import type { DmInboxSummary } from './wire';
 import { resolveMessageReply } from './message-reply';
+import { isRecalledBody, recallMessage } from './message-recall';
 import { parseHistoryCursor, readHistoryPage } from './room-history';
 import {
   canCompleteRoomAgentTurn,
@@ -599,6 +600,25 @@ export class RoomDO extends DurableObject<Env> {
         return;
       }
 
+      case 'recall': {
+        if (!att.accountId) return;
+        if (!dm && !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)) return;
+        const accountId = att.accountId;
+        const recalled = this.ctx.storage.transactionSync(() =>
+          recallMessage(this.sql, msg.id, accountId, Date.now()),
+        );
+        if (!recalled) return;
+        this.broadcast({ t: 'recall', id: msg.id as string });
+        if (recalled.mediaId) {
+          const code = await this.code();
+          const removal = deleteRoomMedia(this.env, code, [recalled.mediaId]).catch(
+            () => undefined,
+          );
+          if (this.ctx.waitUntil) this.ctx.waitUntil(removal);
+        }
+        return;
+      }
+
       case 'membership-leave': {
         if (dm || !att.accountId || att.membershipVersion === undefined) return;
         if (leaveGroupMembership(this.sql, att.accountId, att.membershipVersion, Date.now()))
@@ -980,13 +1000,15 @@ export class RoomDO extends DurableObject<Env> {
     if (!row) return { room, lastMessageAt: null, preview: '', ...read };
     const body = JSON.parse(row.body as string) as { x?: string; m?: { kind?: string } };
     const preview = (
-      typeof body.x === 'string' && body.x
-        ? body.x
-        : body.m?.kind === 'image'
-          ? '[图片]'
-          : body.m?.kind === 'audio'
-            ? '[语音]'
-            : '[消息]'
+      isRecalledBody(row.body)
+        ? '消息已撤回'
+        : typeof body.x === 'string' && body.x
+          ? body.x
+          : body.m?.kind === 'image'
+            ? '[图片]'
+            : body.m?.kind === 'audio'
+              ? '[语音]'
+              : '[消息]'
     )
       .replace(/\s+/g, ' ')
       .slice(0, 160);
@@ -1041,7 +1063,9 @@ export class RoomDO extends DurableObject<Env> {
       ? (JSON.parse(row.body as string) as { x?: string; m?: { kind?: string } })
       : null;
     const preview = (
-      body?.x || (body?.m?.kind === 'image' ? '[图片]' : body?.m?.kind === 'audio' ? '[语音]' : '')
+      (row && isRecalledBody(row.body) ? '消息已撤回' : '') ||
+      body?.x ||
+      (body?.m?.kind === 'image' ? '[图片]' : body?.m?.kind === 'audio' ? '[语音]' : '')
     )
       .replace(/\s+/g, ' ')
       .slice(0, 160);
@@ -1672,6 +1696,20 @@ export class RoomDO extends DurableObject<Env> {
     try {
       body = JSON.parse(row.body);
     } catch {
+      return;
+    }
+    if (isRecalledBody(row.body)) {
+      this.sendAuthorized(
+        ws,
+        JSON.stringify({
+          t: 'chat',
+          id: row.id,
+          _from: row.from_id,
+          n: row.name,
+          ts: row.ts,
+          recalled: true,
+        }),
+      );
       return;
     }
     this.sendAuthorized(

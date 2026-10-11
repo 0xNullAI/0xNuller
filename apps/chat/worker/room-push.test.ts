@@ -17,6 +17,7 @@ const { RoomDO } = await import('./room-do');
 const dmCode = `dm:${'a'.repeat(64)}`;
 
 function fixture(code: string, send = vi.fn(async () => {})) {
+  const mediaDelete = vi.fn(async () => {});
   const db = new DatabaseSync(':memory:');
   const values = new Map<string, unknown>([
     ['code', code],
@@ -73,7 +74,7 @@ function fixture(code: string, send = vi.fn(async () => {})) {
       blockConcurrencyWhile: (fn: () => Promise<void>) => fn(),
       waitUntil: (task: Promise<unknown>) => tasks.push(task),
     } as unknown as DurableObjectState,
-    { AUTH_PUSH: { enqueueChatPush: send } } as unknown as Env,
+    { AUTH_PUSH: { enqueueChatPush: send }, MEDIA: { delete: mediaDelete } } as unknown as Env,
   );
   if (code !== dmCode) {
     db.exec(
@@ -83,7 +84,7 @@ function fixture(code: string, send = vi.fn(async () => {})) {
       "INSERT INTO group_memberships VALUES('alice','Alice','active',1,1),('bob','Bob','active',1,1),('outsider','Outsider','banned',1,1)",
     );
   }
-  return { db, room, send, tasks, values, socket };
+  return { db, room, send, tasks, values, socket, mediaDelete };
 }
 afterEach(() => vi.restoreAllMocks());
 
@@ -192,6 +193,69 @@ it('does not retry a DM push after the conversation was revoked', async () => {
     await (f.room as unknown as { flushPushOutbox(): Promise<void> }).flushPushOutbox();
     expect(send).toHaveBeenCalledTimes(1);
     expect(f.db.prepare('SELECT COUNT(*) AS n FROM push_outbox').get()?.n).toBe(0);
+  } finally {
+    f.db.close();
+  }
+});
+
+it('lets the sender recall their own message within two minutes and erases it everywhere', async () => {
+  const now = Date.parse('2027-01-01T00:00Z');
+  vi.spyOn(Date, 'now').mockReturnValue(now);
+  const f = fixture('group');
+  try {
+    const media = { kind: 'image', id: 'img-1', mime: 'image/png', size: 10 };
+    await f.room.webSocketMessage(
+      f.socket,
+      JSON.stringify({ t: 'chat', id: 'pic', x: '看这张图', m: media }),
+    );
+    await f.room.webSocketMessage(
+      f.socket,
+      JSON.stringify({ t: 'chat', id: 'quote', x: '引用', replyToId: 'pic' }),
+    );
+    vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
+    await f.room.webSocketMessage(f.socket, JSON.stringify({ t: 'recall', id: 'pic' }));
+    await Promise.all(f.tasks);
+
+    const stored = f.db.prepare("SELECT body FROM messages WHERE id='pic'").get() as {
+      body: string;
+    };
+    expect(JSON.parse(stored.body)).toEqual({ recalled: true });
+    expect(
+      f.db.prepare("SELECT COUNT(*) AS n FROM push_outbox WHERE message_id='pic'").get()?.n,
+    ).toBe(0);
+    expect(f.mediaDelete).toHaveBeenCalledWith(['room/group/img-1']);
+    const sent = vi.mocked(f.socket.send).mock.calls.map(([data]) => JSON.parse(String(data)));
+    expect(sent).toContainEqual({ t: 'recall', id: 'pic' });
+
+    const { readHistoryPage } = await import('./room-history');
+    const history = readHistoryPage((f.room as unknown as { sql: SqlStorage }).sql);
+    const recalled = history.messages.find((message) => message.id === 'pic');
+    expect(recalled).toMatchObject({ recalled: true });
+    expect(recalled?.x).toBeUndefined();
+    expect(history.messages.find((message) => message.id === 'quote')?.replyTo).toMatchObject({
+      text: '消息已撤回',
+      recalled: true,
+    });
+  } finally {
+    f.db.close();
+  }
+});
+
+it('refuses a recall after two minutes or of a message the account did not send', async () => {
+  const now = Date.parse('2027-01-01T00:00Z');
+  vi.spyOn(Date, 'now').mockReturnValue(now);
+  const f = fixture('group');
+  try {
+    await f.room.webSocketMessage(f.socket, JSON.stringify({ t: 'chat', id: 'old', x: 'hi' }));
+    f.db.exec("INSERT INTO messages VALUES('bobs','bob-peer','Bob','{\"x\":\"yo\"}',0)");
+    f.db.exec("UPDATE message_sequences SET sender_account='bob' WHERE message_id='bobs'");
+    vi.spyOn(Date, 'now').mockReturnValue(now + 2 * 60_000 + 1);
+    await f.room.webSocketMessage(f.socket, JSON.stringify({ t: 'recall', id: 'old' }));
+    await f.room.webSocketMessage(f.socket, JSON.stringify({ t: 'recall', id: 'bobs' }));
+    const bodies = f.db.prepare('SELECT body FROM messages ORDER BY id').all() as {
+      body: string;
+    }[];
+    expect(bodies.map((row) => JSON.parse(row.body).recalled)).toEqual([undefined, undefined]);
   } finally {
     f.db.close();
   }

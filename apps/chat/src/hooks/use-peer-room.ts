@@ -471,6 +471,7 @@ export function usePeerRoom(displayName: string) {
             media: buildMedia(room, m.m as WireMedia | undefined),
             mentions: mapMentions(m.mentions),
             replyTo: m.replyTo as WireReply | undefined,
+            ...(m.recalled === true ? { recalled: true } : {}),
           }));
           for (const message of page) clearPendingSend(message.id);
           setMessages((previous) => {
@@ -581,6 +582,7 @@ export function usePeerRoom(displayName: string) {
                 media: buildMedia(roomIdRef.current, data.m as WireMedia | undefined),
                 mentions: mapMentions(data.mentions),
                 replyTo: data.replyTo as WireReply | undefined,
+                ...(data.recalled === true ? { recalled: true } : {}),
               };
               const existing = prev.findIndex((message) => message.id === confirmed.id);
               if (existing < 0) return [...prev, confirmed];
@@ -589,6 +591,31 @@ export function usePeerRoom(displayName: string) {
               return next;
             });
             break;
+          case 'recall': {
+            // Only the server sends this, after checking the sender and the time window.
+            const recalledId = data.id;
+            if (typeof recalledId !== 'string') break;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === recalledId
+                  ? {
+                      ...message,
+                      recalled: true,
+                      text: '',
+                      media: undefined,
+                      mentions: undefined,
+                      replyTo: undefined,
+                    }
+                  : message.replyTo?.id === recalledId
+                    ? {
+                        ...message,
+                        replyTo: { ...message.replyTo, text: '消息已撤回', recalled: true },
+                      }
+                    : message,
+              ),
+            );
+            break;
+          }
           case 'cmd':
             onCommandRef.current?.(
               {
@@ -1143,6 +1170,8 @@ export function usePeerRoom(displayName: string) {
     sendMessage,
     retryMessage,
     discardMessage,
+    /** Ask the server to withdraw one of this account's messages (RECALL_WINDOW_MS). */
+    recallMessage: (id: string) => send({ t: 'recall', id }),
     sendCommand,
     sendWaveform,
     broadcastStateFast,
