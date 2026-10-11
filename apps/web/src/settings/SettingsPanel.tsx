@@ -54,7 +54,7 @@ const TABS = [
   { id: 'memory', label: '个人记忆', icon: Database, Component: null, order: 15 },
   { id: 'notifications', label: '通知', icon: Bell, Component: null, order: 16 },
   { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
-  { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
+  { id: 'scenes', label: '角色与场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
   { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
   { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
   { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },

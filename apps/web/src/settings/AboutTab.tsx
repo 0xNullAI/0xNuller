@@ -23,7 +23,6 @@ export function AboutTab() {
       </section>
       <section className="border-t border-[var(--surface-border)] pt-4">
         <h3 className="text-sm font-semibold">反馈</h3>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">转发给产品维护者。</p>
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}

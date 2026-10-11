@@ -35,10 +35,7 @@ export function NotificationsTab({ accountId }: { accountId: string | null }) {
   return (
     <section className="max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-4">
       <label className="flex min-h-12 items-center justify-between gap-4 text-sm">
-        <span>
-          <strong className="block font-medium">消息通知</strong>
-          <span className="mt-1 block text-xs text-[var(--text-soft)]">AI、私聊与群聊的新消息</span>
-        </span>
+        <strong className="font-medium">消息通知</strong>
         <input
           aria-label="消息通知"
           type="checkbox"
@@ -107,12 +104,7 @@ function BrowserNotifications({ accountId }: { accountId: string }) {
   return (
     <div className="mt-4 border-t border-[var(--surface-border)] pt-4">
       <label className="flex min-h-12 items-center justify-between gap-4 text-sm">
-        <span>
-          <strong className="block font-medium">浏览器通知</strong>
-          <span className="mt-1 block text-xs text-[var(--text-soft)]">
-            页面在后台时，用系统通知提醒新消息
-          </span>
-        </span>
+        <strong className="font-medium">浏览器通知</strong>
         <input
           aria-label="浏览器通知"
           type="checkbox"

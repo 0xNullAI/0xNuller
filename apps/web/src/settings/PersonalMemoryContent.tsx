@@ -322,9 +322,7 @@ export function PersonalMemoryContent({
   return (
     <div className="mt-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-xs text-[var(--text-soft)]">
-          记录你的偏好、重要的人和共同约定。默认仅自己可见；你可以下方逐条开放给指定真人聊天。
-        </p>
+        <p className="text-xs text-[var(--text-soft)]">仅自己可见，除非下方共享给某个聊天。</p>
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => void exportAll()}>
           导出
         </Button>
@@ -466,7 +464,7 @@ export function PersonalMemoryContent({
           <section className="space-y-2 border-t border-[var(--surface-border)] pt-3">
             <h3 className="text-sm font-semibold">真人聊天记忆共享</h3>
             <p className="text-xs text-[var(--text-soft)]">
-              每条记忆只向你选中的私聊或群聊开放。群聊中的当前及之后加入的成员都可能看到。修改或删除记忆、撤销共享后，之后的读取会使用最新状态；对方已经看过或复制的内容无法收回。
+              群内现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。
             </p>
             {conversations === null ? (
               <p className="text-xs">正在核验可用聊天…</p>

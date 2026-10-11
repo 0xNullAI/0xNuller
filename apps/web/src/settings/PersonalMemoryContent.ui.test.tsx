@@ -76,7 +76,7 @@ it('shares only the chosen memory in the chosen human chat and can revoke it', a
     enabled: false,
     version: 1,
   });
-  expect(screen.getByText(/已经看过或复制的内容无法收回/)).toBeTruthy();
+  expect(screen.getByText(/已看过的内容无法收回/)).toBeTruthy();
 });
 
 it('opens a deep-linked conversation even when it is older than the first list page', async () => {

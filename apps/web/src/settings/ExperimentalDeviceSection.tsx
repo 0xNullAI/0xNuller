@@ -12,9 +12,7 @@ export function ExperimentalDeviceSection() {
   return (
     <section aria-label="通用设备（实验性）">
       <h4 className="text-sm font-semibold">通用设备（实验性）</h4>
-      <p className="mt-1 text-xs text-[var(--text-faint)]">
-        仅本机，各模块共用；关闭即停止并断开。
-      </p>
+      <p className="mt-1 text-xs text-[var(--text-faint)]">关闭即停止并断开。</p>
       <label className="mt-3 flex items-center justify-between gap-4">
         <span className="text-sm">启用通用设备</span>
         <input

@@ -41,20 +41,20 @@ it('keeps rarely used pages behind 高级设置 and opens a page 高级 under th
 
   for (const name of ['AI', '设备安全', '通知', '通用', '关于', '高级设置'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
-  for (const name of ['个人记忆', '场景', '波形', '数据'])
+  for (const name of ['个人记忆', '角色与场景', '波形', '数据'])
     expect(screen.queryByRole('button', { name })).toBeNull();
   expect(screen.queryByRole('region', { name: 'AI 网络代理' })).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: '高级设置' }));
   expect(route()).toBe('advanced');
   expect(screen.getByRole('heading', { name: '高级设置' })).toBeTruthy();
-  for (const name of ['个人记忆', '场景', '波形', '数据'])
+  for (const name of ['个人记忆', '角色与场景', '波形', '数据'])
     expect(screen.getByRole('button', { name })).toBeTruthy();
   expect(screen.getByRole('region', { name: 'AI 网络代理' })).toBeTruthy();
   expect(screen.getByRole('region', { name: '通用设备（实验性）' })).toBeTruthy();
 
   // An advanced page keeps its own route and returns to 高级设置.
-  fireEvent.click(screen.getByRole('button', { name: '场景' }));
+  fireEvent.click(screen.getByRole('button', { name: '角色与场景' }));
   expect(route()).toBe('scenes');
   fireEvent.click(screen.getByRole('button', { name: '返回高级设置' }));
   expect(route()).toBe('advanced');
