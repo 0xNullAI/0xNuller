@@ -1,5 +1,12 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import {
+  collectRepositoryFiles,
+  isTestFile,
+  testLayer,
+  TEST_LAYERS,
+} from './lib/repository-files.mjs';
 import { projectsForDomain, TEST_DOMAINS } from './lib/test-impact.mjs';
 
 const args = process.argv.slice(2);
@@ -9,9 +16,27 @@ if (domainArgument && !TEST_DOMAINS.includes(domain)) {
   console.error(`Unknown test domain: ${domain}`);
   process.exit(2);
 }
-const vitestArgs = args.filter((argument) => argument !== domainArgument);
+const layerArgument = args.find((argument) => argument.startsWith('--layer='));
+const layer = layerArgument?.slice('--layer='.length);
+if (layerArgument && !TEST_LAYERS.includes(layer)) {
+  console.error(`Unknown test layer: ${layer} (expected ${TEST_LAYERS.join(', ')})`);
+  process.exit(2);
+}
+const vitestArgs = args.filter(
+  (argument) => argument !== domainArgument && argument !== layerArgument,
+);
 if (domain) {
   vitestArgs.push(...projectsForDomain(domain).map((project) => `--project=${project}`));
+}
+if (layer) {
+  // Vitest treats positional arguments as file filters. Passing the exact files of one
+  // layer composes with --domain and with any project selection.
+  const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+  vitestArgs.push(
+    ...collectRepositoryFiles(root, ['android', 'apps', 'packages', 'scripts', 'workers']).filter(
+      (file) => isTestFile(file) && testLayer(file) === layer,
+    ),
+  );
 }
 
 // Node's experimental Web Storage is process-wide and, when enabled without a

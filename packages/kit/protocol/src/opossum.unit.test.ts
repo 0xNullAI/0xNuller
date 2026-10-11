@@ -12,7 +12,7 @@ import {
   OpossumVibrateAdapter,
 } from './opossum.js';
 
-// Minimal duplicate of protocol.test.ts's MockCharacteristic — kept local so
+// Minimal duplicate of protocol.unit.test.ts's MockCharacteristic — kept local so
 // this test file doesn't import across test files.
 class MockCharacteristic extends EventTarget {
   value: DataView | null = null;
@@ -286,7 +286,7 @@ describe('OpossumVibrateAdapter B0 tick loop and vibration patterns', () => {
 
     // Reach past the public API to fire one tick synchronously rather than
     // waiting on the real ~100ms Worker/setInterval loop, mirroring how
-    // protocol.test.ts drives CoyoteV3ProtocolAdapter's onTick() directly.
+    // protocol.unit.test.ts drives CoyoteV3ProtocolAdapter's onTick() directly.
     const adapterInternal = adapter as unknown as { performTick(): Promise<void> };
     await adapterInternal.performTick();
 

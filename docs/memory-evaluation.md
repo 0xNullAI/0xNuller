@@ -4,7 +4,7 @@
 它是诊断用例，不是中文语义记忆达标声明。运行方式：
 
 ```bash
-npx vitest run workers/auth/src/memory-evaluation.test.ts --reporter=verbose
+npx vitest run workers/auth/src/memory-evaluation.integration.test.ts --reporter=verbose
 ```
 
 输出中的 `MEMORY_EVAL` 单行 JSON 可供脚本收集。测试使用真实 SQLite 执行 Auth 的所有迁移，

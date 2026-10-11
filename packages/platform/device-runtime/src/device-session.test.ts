@@ -38,7 +38,7 @@ vi.mock('@dg-kit/protocol', async (importOriginal) => {
 
 /**
  * Minimal Web Bluetooth mocks, mirroring the pattern DG-Kit's own adapter
- * tests use (see packages/protocol/src/opossum.test.ts) — a fake
+ * tests use (see packages/kit/protocol/src/opossum.unit.test.ts) — a fake
  * characteristic that records writes and can be told to emit a
  * notification, and a fake GATT server that serves the shared V3 skeleton
  * (service 0x180C, write 0x150A, notify 0x150B, battery 0x180A/0x1500) that

@@ -26,6 +26,28 @@ waveform-playback.test.ts
 只有跨文件的应用组合契约使用 `__tests__`。所有 test/spec 文件都必须被 Vitest project 收集；
 `npm run check:structure` 会检查遗漏。
 
+## 分层
+
+文件后缀标明测试所在的层。没有后缀的文件是契约测试，也是最常见的一层。
+
+| 层          | 文件名                        | 测什么                                                              |
+| ----------- | ----------------------------- | ------------------------------------------------------------------- |
+| unit        | `name.unit.test.ts`           | 纯函数与纯状态：没有 mock、网络、存储、DOM 或数据库                 |
+| contract    | `name.test.ts`                | 一个模块的对外行为，边界处使用假实现：Worker 路由、DO、存储、客户端 |
+| ui          | `name.ui.test.tsx`            | 用 `@testing-library` 渲染的组件或 hook                             |
+| integration | `name.integration.test.ts(x)` | 多个模块组合：运行时 + 执行器 + 安全链、外壳 + 模块、备份流程       |
+
+`npm run check:structure` 会检查后缀：unit 文件不能使用 mock、I/O、存储或 DOM；用
+`@testing-library` 渲染的文件必须是 ui 或 integration。
+
+```bash
+npm run test:unit         # 最快，几秒内完成
+npm run test:contract
+npm run test:ui
+npm run test:integration
+node scripts/run-vitest.mjs run --layer=unit --domain=product   # 可与责任域组合
+```
+
 ## 两个日常命令
 
 ```bash
