@@ -7,6 +7,7 @@ import {
   resolveProviderRuntimeSettings,
   supportsProviderModelImageInput,
 } from './index';
+import { defaultVideoLlmConfig, isVideoLlmConfigured } from './video-config-store';
 
 describe('getProviderRegion', () => {
   it('keeps mainland, international, and custom providers in separate groups', () => {
@@ -39,5 +40,20 @@ describe('managed Workers AI models', () => {
       }),
     ).toMatchObject({ model: 'basic', imageInput: false });
     expect(supportsProviderModelImageInput('managed', 'balanced')).toBe(false);
+  });
+
+  it('offers the managed image model only to Video, while preserving BYOK image providers', () => {
+    const video = defaultVideoLlmConfig();
+    expect(video).toMatchObject({ providerId: 'managed', model: 'vision' });
+    expect(isVideoLlmConfigured(video)).toBe(true);
+    expect(resolveProviderRuntimeSettings(createProviderSettings('managed'))).toMatchObject({
+      imageInput: false,
+    });
+    expect(
+      resolveProviderRuntimeSettings({ ...createProviderSettings('managed'), model: 'vision' }),
+    ).toMatchObject({
+      imageInput: true,
+    });
+    expect(MANAGED_MODEL_OPTIONS.some((model) => model.id === 'vision')).toBe(false);
   });
 });

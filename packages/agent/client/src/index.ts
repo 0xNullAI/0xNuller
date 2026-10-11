@@ -3,6 +3,7 @@ import type {
   LlmCapabilities,
   RuntimeEvent,
   RuntimeTraceEntry,
+  SessionMessagePage,
   SessionSnapshot,
 } from '@dg-agent/core';
 import {
@@ -16,7 +17,11 @@ export interface AgentClient {
   readonly supportsLiveEvents: boolean;
   readonly capabilities: LlmCapabilities;
   listSessions(): Promise<SessionSnapshot[]>;
+  searchSessions(query: string): Promise<string[]>;
+  getSessionMessagesPage(sessionId: string, before?: number): Promise<SessionMessagePage>;
   getSessionSnapshot(sessionId: string): Promise<SessionSnapshot>;
+  getSessionDisplaySnapshot(sessionId: string): Promise<SessionSnapshot>;
+  getSessionExportSnapshot(sessionId: string): Promise<SessionSnapshot>;
   getSessionTrace(sessionId: string): Promise<RuntimeTraceEntry[]>;
   /**
    * Restore exported sessions into the store. Sessions sharing an id with an
@@ -24,6 +29,7 @@ export interface AgentClient {
    */
   importSessions(sessions: SessionSnapshot[]): Promise<void>;
   renameSession(sessionId: string, title: string | null): Promise<void>;
+  setSessionScene(sessionId: string, sceneId: string | null): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   connectDevice(sessionId?: string): Promise<void>;
   disconnectDevice(): Promise<void>;
@@ -58,8 +64,24 @@ class EmbeddedAgentClient implements AgentClient {
     return this.runtime.listSessions();
   }
 
+  searchSessions(query: string): Promise<string[]> {
+    return this.runtime.searchSessions(query);
+  }
+
+  getSessionMessagesPage(sessionId: string, before?: number): Promise<SessionMessagePage> {
+    return this.runtime.getSessionMessagesPage(sessionId, before);
+  }
+
   getSessionSnapshot(sessionId: string): Promise<SessionSnapshot> {
     return this.runtime.getSessionSnapshot(sessionId);
+  }
+
+  getSessionDisplaySnapshot(sessionId: string): Promise<SessionSnapshot> {
+    return this.runtime.getSessionDisplaySnapshot(sessionId);
+  }
+
+  getSessionExportSnapshot(sessionId: string): Promise<SessionSnapshot> {
+    return this.runtime.getSessionExportSnapshot(sessionId);
   }
 
   getSessionTrace(sessionId: string): Promise<RuntimeTraceEntry[]> {
@@ -72,6 +94,10 @@ class EmbeddedAgentClient implements AgentClient {
 
   renameSession(sessionId: string, title: string | null): Promise<void> {
     return this.runtime.renameSession(sessionId, title);
+  }
+
+  setSessionScene(sessionId: string, sceneId: string | null): Promise<void> {
+    return this.runtime.setSessionScene(sessionId, sceneId);
   }
 
   deleteSession(sessionId: string): Promise<void> {

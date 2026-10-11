@@ -1,5 +1,6 @@
 import {
   createProviderSettings,
+  MANAGED_VISION_MODEL,
   getProviderDefinition,
   providerRequiresUserApiKey,
   supportsProviderModelImageInput,
@@ -26,7 +27,8 @@ const SESSION_KEY = '0xnullai.video-llm-api-key.v1';
 export function defaultVideoLlmConfig(): VideoLlmConfig {
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
-    ...createProviderSettings('qwen'),
+    ...createProviderSettings('managed'),
+    model: MANAGED_VISION_MODEL,
     rememberApiKey: false,
   };
 }
@@ -37,10 +39,12 @@ function coerceVideoLlmConfig(raw: unknown): VideoLlmConfig | null {
   if (value.version !== VIDEO_LLM_CONFIG_VERSION || typeof value.providerId !== 'string') {
     return null;
   }
-  // Managed Credit tiers are text-only. Move the old managed Video default to
-  // a visible vision-capable provider so the settings page can guide the user
-  // to enter their own key instead of retaining an unusable hidden selection.
-  const migratedManaged = value.providerId === 'managed' ? createProviderSettings('qwen') : null;
+  // Older managed Video settings may carry a text-only tier. Preserve their
+  // chosen billing path while upgrading only its model to the vision allowlist.
+  const migratedManaged =
+    value.providerId === 'managed'
+      ? { ...createProviderSettings('managed'), model: MANAGED_VISION_MODEL }
+      : null;
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
     providerId: migratedManaged?.providerId ?? value.providerId,

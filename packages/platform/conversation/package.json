@@ -1,0 +1,10 @@
+{
+  "name": "@0xnullai/conversation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only conversation timeline contract and server record adapters",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

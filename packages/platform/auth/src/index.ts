@@ -1,3 +1,25 @@
+export {
+  listCompanionSchedules,
+  saveCompanionSchedule,
+  deleteCompanionSchedule,
+  listCompanionNotifications,
+  readCompanionNotification,
+  type CompanionSchedule,
+  type CompanionScheduleInput,
+  type CompanionNotification,
+} from './companion-schedules';
+export {
+  startAgentRun,
+  getAgentRun,
+  listAgentRuns,
+  claimAgentRunCall,
+  recordAgentRunCall,
+  finishAgentRun,
+  type AgentRun,
+  type AgentRunCall,
+  type AgentRunStatus,
+  type AgentCallStatus,
+} from './agent-runs';
 /**
  * Account client.
  *
@@ -16,6 +38,38 @@
  */
 
 import { apiBaseUrl } from '@0xnullai/settings';
+export {
+  listPersonalMemories,
+  savePersonalMemory,
+  deletePersonalMemory,
+  type PersonalMemory,
+  type PersonalMemoryKind,
+} from './personal-memory';
+export {
+  listMemoryPeople,
+  saveMemoryPerson,
+  deleteMemoryPerson,
+  linkMemoryPerson,
+  unlinkMemoryPerson,
+  supersedeMemoryFact,
+  correctMemoryFact,
+  type MemoryPerson,
+} from './memory-facts';
+export {
+  getAccountMemoryAccess,
+  setAccountMemoryAccess,
+  type AccountMemoryAccess,
+} from './account-memory-access';
+export {
+  listHumanMemoryConversations,
+  listHumanMemoryShares,
+  listReceivedHumanMemories,
+  setHumanMemoryShare,
+  type HumanMemoryConversation,
+  type HumanMemoryPageCursor,
+  type HumanMemoryShare,
+  type ReceivedHumanMemory,
+} from './human-memory-shares';
 
 export interface AuthUser {
   id: string;
@@ -38,6 +92,8 @@ export interface AuthUser {
 const TOKEN_KEY = '0xnullai.auth-token';
 let currentUserId: string | null = null;
 const AUTH_CHANGED_EVENT = '0xnullai:auth-changed';
+const beforeLogout = new Set<() => Promise<void> | void>();
+const BEFORE_LOGOUT_TIMEOUT_MS = 3_000;
 
 function publishAuthUser(user: AuthUser | null): void {
   currentUserId = user?.id ?? null;
@@ -55,6 +111,26 @@ export function subscribeAuthChanges(listener: (user: AuthUser | null) => void):
   const handler = (event: Event) => listener((event as CustomEvent<AuthUser | null>).detail);
   window.addEventListener(AUTH_CHANGED_EVENT, handler);
   return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
+}
+
+/** Native integrations can revoke account-bound registrations while credentials still exist. */
+export function registerBeforeLogout(listener: () => Promise<void> | void): () => void {
+  beforeLogout.add(listener);
+  return () => beforeLogout.delete(listener);
+}
+
+async function runBeforeLogout(listener: () => Promise<void> | void): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(listener),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, BEFORE_LOGOUT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function storedToken(): string | null {
@@ -93,6 +169,13 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 401 && token && storedToken() === token) {
+    // The account service answers 401 only for a missing or dead session. Forget it so
+    // every surface returns to sign-in instead of failing request by request. A token
+    // replaced by a newer sign-in meanwhile is left alone.
+    setStoredToken(null);
+    publishAuthUser(null);
+  }
   if (!res.ok) throw new Error((data.error as string) || `请求失败（${res.status}）`);
   return data as T;
 }
@@ -312,9 +395,16 @@ export async function me(): Promise<AuthUser | null> {
 }
 
 export async function logout(): Promise<void> {
-  await call('/api/auth/logout', { method: 'POST' });
-  setStoredToken(null);
-  publishAuthUser(null);
+  // A failed optional cleanup must not strand the user in a signed-in session.
+  await Promise.allSettled([...beforeLogout].map(runBeforeLogout));
+  try {
+    await call('/api/auth/logout', { method: 'POST' });
+  } finally {
+    // Signing out locally must not depend on the network: a token left behind would sign
+    // this device back in on the next load and keep account-scoped stores open.
+    setStoredToken(null);
+    publishAuthUser(null);
+  }
 }
 
 export async function requestEmailVerification(): Promise<void> {
@@ -411,8 +501,9 @@ export async function deleteAccount(): Promise<void> {
  * product, a home address sitting in a database is a physical-safety risk if
  * it ever leaks, and nothing in the product needs that precision.
  *
- * New profile drafts default to public; users can explicitly switch to
- * friends-only or private before saving.
+ * Profiles are readable by signed-in users. `visibility` is retained in the
+ * wire shape for older clients; the server always returns `public` and ignores
+ * legacy write values. Album photos retain independent access controls.
  */
 export interface UserProfile {
   avatarUrl: string | null;
@@ -582,12 +673,9 @@ export interface PublicPhoto {
 /**
  * Another user as seen by someone else.
  *
- * `profile` is null unless it is public (or your own), and **everything that is
- * profile content rather than identity follows that same flag**: `counts` and
- * `createdAt` come back null and `photos` empty for a profile the viewer may
- * not see. They are separate fields rather than nested inside `profile` because
- * the server computes them separately — but the UI must treat them as one
- * decision, which is what `resolveProfileView` is for.
+ * The endpoint requires a signed-in viewer and returns a public profile even
+ * for accounts that have not filled it in yet. Album photos are independently
+ * filtered according to each photo's access setting.
  *
  * A blocked viewer does not get this object at all; the lookup 404s and
  * `getUser` returns null, indistinguishable from "no such user".
@@ -841,3 +929,98 @@ export function ageFromBirthDate(birthDate: string | null): number | null {
     (now.getMonth() === born.getMonth() && now.getDate() < born.getDate());
   return beforeBirthday ? age - 1 : age;
 }
+
+export {
+  listCharacterRelationships,
+  ensureCharacterRelationship,
+  getCharacterRelationship,
+  saveCharacterRelationship,
+  deleteCharacterRelationship,
+  type CharacterRelationship,
+  type CharacterRelationshipInput,
+} from './character-relationships';
+
+export {
+  getMemoryContext,
+  suggestConversationMemories,
+  type MemoryContext,
+} from './memory-context';
+export * from './conversation-selection';
+export * from './conversation-client';
+export * from './conversation-attachments';
+export * from './private-conversation-context';
+export {
+  listAgentTasks,
+  saveAgentTask,
+  deleteAgentTask,
+  listConversationFiles,
+  readConversationFile,
+  uploadConversationFile,
+  deleteConversationFile,
+  type AgentTask,
+  type AgentTaskStep,
+  type ConversationTextFile,
+} from './agent-workspace';
+export {
+  listCompanionLife,
+  saveCompanionLife,
+  deleteCompanionLife,
+  companionLifeContext,
+  type CompanionLifeRecord,
+  type CompanionLifeInput,
+  type CompanionLifeKind,
+} from './companion-life';
+
+export {
+  listMediaCapabilities,
+  listMediaJobs,
+  createMediaJob,
+  deleteMediaJob,
+  mediaJobBlob,
+} from './media-jobs';
+export type { MediaKind, MediaCapability, MediaJob, MediaJobInput } from './media-jobs';
+export {
+  getCreditActivity,
+  type CreditActivity,
+  type CreditActivityEntry,
+} from './credit-activity';
+
+export * from './conversation-inbox';
+
+export {
+  getBillingCatalog,
+  listBillingOrders,
+  createBillingOrder,
+  cancelBillingOrder,
+  requestBillingRefund,
+  listBillingReconciliation,
+  listTextBillingReviews,
+  recordTextBillingReview,
+  type TextBillingReview,
+  confirmBillingPayment,
+} from './billing-orders';
+export type { BillingOrder, BillingCatalog, BillingReconciliation } from './billing-orders';
+
+export {
+  getAutoMemorySettings,
+  setAutoMemorySettings,
+  type AutoMemoryPreference,
+  type AutoMemorySettings,
+} from './auto-memory';
+export {
+  getConversationDigestPreference,
+  setConversationDigestPreference,
+  type ConversationDigestPreference,
+} from './conversation-digest-preference';
+
+export {
+  listVoiceBillingReviews,
+  recordVoiceBillingReview,
+  type VoiceBillingReview,
+  type VoiceReviewFilter,
+  listMediaBillingReviews,
+  recordMediaBillingReview,
+  type MediaBillingReview,
+  listAsrBillingReviews,
+  type AsrBillingReview,
+} from './billing-orders';

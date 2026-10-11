@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Download, Search, X } from 'lucide-react';
 import { Button } from './button';
 import { Input } from './input';
@@ -41,10 +41,24 @@ export function MarketImportDialog({
   const [items, setItems] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const accountGeneration = useRef(0);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    const reset = () => {
+      accountGeneration.current += 1;
+      setImportedIds(new Set());
+      setImportError(null);
+      setImportingId(null);
+    };
+    window.addEventListener('0xnullai:auth-changed', reset);
+    return () => window.removeEventListener('0xnullai:auth-changed', reset);
+  }, []);
 
   const load = useCallback(
     async (q: string) => {
@@ -75,9 +89,21 @@ export function MarketImportDialog({
   }, [open, query, load]);
 
   async function handleImport(item: MarketItem) {
-    await onImport(item);
-    void markMarketDownloaded(item.id);
-    setImportedIds((prev) => new Set(prev).add(item.id));
+    if (importingId) return;
+    const generation = accountGeneration.current;
+    setImportingId(item.id);
+    setImportError(null);
+    try {
+      await onImport(item);
+      if (generation !== accountGeneration.current) return;
+      void markMarketDownloaded(item.id);
+      setImportedIds((prev) => new Set(prev).add(item.id));
+    } catch (cause) {
+      if (generation === accountGeneration.current)
+        setImportError(cause instanceof Error ? cause.message : '导入失败，请重试');
+    } finally {
+      if (generation === accountGeneration.current) setImportingId(null);
+    }
   }
 
   const label =
@@ -87,7 +113,7 @@ export function MarketImportDialog({
         : modality === 'vibration'
           ? '震动波形'
           : '波形'
-      : '场景';
+      : '角色或场景';
 
   if (!open) return null;
 
@@ -113,7 +139,7 @@ export function MarketImportDialog({
               从市场导入{label}
             </h2>
             <p id={descriptionId} className="mt-1 text-sm text-[var(--text-soft)]">
-              浏览社区上传的{label}，一键加入本地库
+              浏览社区上传的{label}，导入到当前账号
             </p>
           </div>
           <button
@@ -138,6 +164,14 @@ export function MarketImportDialog({
           </div>
 
           <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pb-1">
+            {importError && (
+              <div
+                role="alert"
+                className="rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] px-3 py-2 text-sm text-[var(--danger)]"
+              >
+                {importError}
+              </div>
+            )}
             {loading && (
               <div
                 role="status"
@@ -150,9 +184,7 @@ export function MarketImportDialog({
             {error && (
               <div role="alert" className="py-8 text-center text-sm text-[var(--danger)]">
                 {error}
-                <div className="mt-1 text-[12px] text-[var(--text-faint)]">
-                  请确认已部署 Market 并配置了市场地址
-                </div>
+                <div className="mt-1 text-[12px] text-[var(--text-faint)]">请检查网络后重试</div>
               </div>
             )}
             {!loading && !error && items.length === 0 && (
@@ -183,11 +215,11 @@ export function MarketImportDialog({
                       size="sm"
                       variant={imported ? 'ghost' : 'secondary'}
                       className="shrink-0 gap-1"
-                      disabled={imported}
+                      disabled={imported || importingId !== null}
                       onClick={() => void handleImport(item)}
                     >
                       <Download className="h-3.5 w-3.5" />
-                      {imported ? '已导入' : '导入'}
+                      {imported ? '已导入' : importingId === item.id ? '导入中…' : '导入'}
                     </Button>
                   </div>
                 );

@@ -127,8 +127,8 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
     };
     const queue = new DeviceCommandQueue(client);
 
-    void queue.enqueue({ type: 'adjustStrength', channel: 'A', delta: 10 });
-    void queue.enqueue({ type: 'adjustStrength', channel: 'A', delta: 20 });
+    const inFlight = queue.enqueue({ type: 'adjustStrength', channel: 'A', delta: 10 });
+    const queued = queue.enqueue({ type: 'adjustStrength', channel: 'A', delta: 20 });
     await Promise.resolve();
     void queue.enqueue({ type: 'emergencyStop' });
 
@@ -141,6 +141,8 @@ describe('安全链端到端（策略 → 队列 → 传输层边界）', () => 
 
     // The command still queued and not yet executing must be dropped.
     expect(landed.commands.filter((c) => c.type === 'adjustStrength')).toHaveLength(1);
+    expect((await inFlight).interrupted).toBe(true);
+    expect((await queued).interrupted).toBe(true);
 
     // Final strength MUST be 0. That is what the user cares about; how many
     // stops it took does not matter.

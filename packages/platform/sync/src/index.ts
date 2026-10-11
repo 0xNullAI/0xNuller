@@ -196,9 +196,42 @@ export async function listMarketClaims(): Promise<{ item_id: string; claimed_at:
   return res?.claims ?? [];
 }
 
+export interface ChatRoomPage {
+  rooms: SyncedChatRoom[];
+  nextCursor: string | null;
+}
+
+export async function pullChatRoomsPage(
+  cursor: string | null = null,
+): Promise<ChatRoomPage | null> {
+  const accountToken = authHeaders().Authorization;
+  const query = new URLSearchParams({ limit: '100' });
+  if (cursor) query.set('cursor', cursor);
+  const page = await call<ChatRoomPage>(`/api/auth/chat-rooms?${query}`);
+  return authHeaders().Authorization === accountToken &&
+    page &&
+    Array.isArray(page.rooms) &&
+    (page.nextCursor === null || typeof page.nextCursor === 'string')
+    ? page
+    : null;
+}
+
+/** Complete list for existing callers; never return an incomplete successful prefix. */
 export async function pullChatRooms(): Promise<SyncedChatRoom[] | null> {
-  const res = await call<{ rooms: SyncedChatRoom[] }>('/api/auth/chat-rooms');
-  return res?.rooms ?? null;
+  const rooms: SyncedChatRoom[] = [];
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  const accountToken = authHeaders().Authorization;
+  do {
+    if (authHeaders().Authorization !== accountToken) return null;
+    const page = await pullChatRoomsPage(cursor);
+    if (!page || authHeaders().Authorization !== accountToken) return null;
+    rooms.push(...page.rooms);
+    cursor = page.nextCursor;
+    if (cursor && (cursors.has(cursor) || page.rooms.length === 0)) return null;
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return rooms;
 }
 
 export async function rememberChatRoom(

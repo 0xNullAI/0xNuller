@@ -1,3 +1,4 @@
+import { getCatalogModel, getCatalogModels, MODELS_DEV_PROVIDER } from './model-catalog';
 import { applyHttpProxy } from '@0xnullai/settings';
 import { z } from 'zod';
 
@@ -152,6 +153,8 @@ export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
 
 /** Stable public model ids; the Worker maps them to Cloudflare-hosted models. */
 export const MANAGED_DEFAULT_MODEL = 'balanced';
+/** The only managed model that accepts a transient Video camera frame. */
+export const MANAGED_VISION_MODEL = 'vision';
 export const MANAGED_MODEL_OPTIONS = [
   {
     id: 'basic',
@@ -171,7 +174,9 @@ export const MANAGED_MODEL_OPTIONS = [
 ] as const;
 
 export function isManagedModelId(model: string): boolean {
-  return MANAGED_MODEL_OPTIONS.some((option) => option.id === model);
+  return (
+    model === MANAGED_VISION_MODEL || MANAGED_MODEL_OPTIONS.some((option) => option.id === model)
+  );
 }
 
 /** apiKey + model only — no baseUrl/endpoint/useStrict fields, shared by every `dialect: 'pi-ai'` entry below. */
@@ -283,7 +288,7 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
     browserSupported: true,
     dialect: 'pi-ai',
     piProviderKey: 'anthropic',
-    fields: piAiFields('sk-ant-...', 'claude-sonnet-4-5'),
+    fields: piAiFields('sk-ant-...', 'claude-opus-5-5'),
   },
   {
     id: 'google',
@@ -432,47 +437,34 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
 ];
 
 /**
- * Explicit vision allowlist. An absent provider or an unrecognized model id
- * is not assumed to support images, even when its API dialect could serialize
- * them. Managed Credit models are text-only; Video keeps its own explicitly
- * vision-capable provider selection.
+ * Vision support. The managed service's own models are ours to declare; every other
+ * provider's comes from the models.dev catalog. A model missing from the catalog, or a
+ * catalog that has not loaded, never counts as image-capable.
  */
-const IMAGE_MODELS: Partial<Record<ProviderId, readonly string[]>> = {
-  qwen: ['qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen3-vl-plus', 'qwen3.5-plus'],
-  doubao: ['doubao-seed-2-0-mini-250415'],
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
-  anthropic: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
-  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  openrouter: [
-    'anthropic/claude-sonnet-4.5',
-    'anthropic/claude-opus-4.5',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4o',
-  ],
-  zai: ['glm-4.5v'],
-  'zai-coding-cn': ['glm-4.5v'],
-  xai: ['grok-2-vision-1212'],
-  mistral: ['pixtral-large-latest'],
-};
+const MANAGED_IMAGE_MODELS: readonly string[] = [MANAGED_VISION_MODEL];
 
 export const PROVIDER_DEFINITIONS: ProviderDefinition[] = PROVIDER_DEFINITION_INPUTS.map(
   (provider) => ({
     ...provider,
-    imageInput: IMAGE_MODELS[provider.id]?.length ? 'known-models' : 'none',
+    imageInput:
+      provider.id === 'managed' || MODELS_DEV_PROVIDER[provider.id] ? 'known-models' : 'none',
   }),
 );
 
 /** Models whose image support is explicitly known. Unknown ids always fail closed. */
 export function getProviderImageModels(providerId: ProviderId): readonly string[] {
-  return IMAGE_MODELS[providerId] ?? [];
+  if (providerId === 'managed') return MANAGED_IMAGE_MODELS;
+  return (getCatalogModels(providerId) ?? [])
+    .filter((model) => model.image)
+    .map((model) => model.id);
 }
 
 export function supportsProviderModelImageInput(providerId: ProviderId, model: string): boolean {
   const normalizedModel = model.trim().toLowerCase();
   if (!normalizedModel) return false;
-  return getProviderImageModels(providerId).some(
-    (knownModel) => knownModel.toLowerCase() === normalizedModel,
-  );
+  if (providerId === 'managed')
+    return MANAGED_IMAGE_MODELS.some((known) => known.toLowerCase() === normalizedModel);
+  return getCatalogModel(providerId, model)?.image === true;
 }
 
 export function getProviderDefinition(id: ProviderId): ProviderDefinition | undefined {
@@ -500,31 +492,6 @@ export function createProviderSettings(providerId: ProviderId): ProviderSettings
 export function createDefaultProviderSettings(): ProviderSettings {
   return createProviderSettings('managed');
 }
-
-/** `providerId -> default model id`, applied by `normalizeProviderSettings` below for every built-in provider (skips `custom`, which stays fully user-editable). */
-const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
-  qwen: 'qwen3.5-plus',
-  deepseek: 'deepseek-v4-pro',
-  doubao: 'doubao-seed-2-0-mini-250415',
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-sonnet-4-5',
-  google: 'gemini-2.5-flash',
-  openrouter: 'anthropic/claude-sonnet-4.5',
-  groq: 'llama-3.3-70b-versatile',
-  moonshotai: 'kimi-k2-0905-preview',
-  'moonshotai-cn': 'kimi-k2-0905-preview',
-  zai: 'glm-4.7',
-  'zai-coding-cn': 'glm-4.7',
-  minimax: 'MiniMax-M2.7',
-  'minimax-cn': 'MiniMax-M2.7',
-  xai: 'grok-4.3',
-  cerebras: 'gpt-oss-120b',
-  together: 'Qwen/Qwen3.6-Plus',
-  huggingface: 'Qwen/Qwen3-235B-A22B',
-  mistral: 'mistral-large-latest',
-  fireworks: 'accounts/fireworks/models/deepseek-v4-pro',
-  xiaomi: 'mimo-v2.5-pro',
-};
 
 /** `providerId -> default baseUrl`, applied only for `dialect: 'openai-compat'` providers with a fixed host (qwen/deepseek/doubao/openai — `managed` and `custom` are handled separately above/below). */
 const DEFAULT_BASE_URL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
@@ -568,14 +535,14 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
     // providers — pi-ai's own provider registry owns the host, and there is
     // no OpenAI-compat "responses vs chat/completions" choice to make.
     normalized.baseUrl = '';
-    normalized.model = normalized.model || DEFAULT_MODEL_BY_PROVIDER[normalized.providerId] || '';
+    normalized.model = normalized.model.trim();
     normalized.endpoint = 'chat/completions';
     normalized.useStrict = false;
   } else {
     // Remaining openai-compat built-ins: qwen / deepseek / doubao / openai.
     normalized.baseUrl =
       normalized.baseUrl || DEFAULT_BASE_URL_BY_PROVIDER[normalized.providerId] || '';
-    normalized.model = normalized.model || DEFAULT_MODEL_BY_PROVIDER[normalized.providerId] || '';
+    normalized.model = normalized.model.trim();
     normalized.endpoint = 'chat/completions';
     normalized.useStrict = false;
   }
@@ -609,7 +576,7 @@ export function resolveProviderRuntimeSettings(input: ProviderSettings): Provide
       useStrict: false,
       browserSupported: true,
       dialect,
-      imageInput: false,
+      imageInput: supportsProviderModelImageInput('managed', normalized.model),
     };
   }
 
@@ -629,4 +596,5 @@ export function isProviderUsableInBrowser(settings: ProviderSettings): boolean {
 }
 
 export * from './config-store';
+export * from './model-catalog';
 export * from './video-config-store';

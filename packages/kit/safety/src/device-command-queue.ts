@@ -101,7 +101,10 @@ export class SerialCommandQueue<TCommand, TResult> {
 }
 
 export class DeviceCommandQueue {
-  private readonly queue: SerialCommandQueue<DeviceCommand, DeviceCommandResult>;
+  private readonly queue: SerialCommandQueue<
+    DeviceCommand,
+    DeviceCommandResult & { interrupted?: true }
+  >;
 
   constructor(private readonly device: DeviceClient) {
     this.queue = new SerialCommandQueue({
@@ -118,12 +121,13 @@ export class DeviceCommandQueue {
         skippedResult: async () => ({
           state: await this.device.getState(),
           notes: ['skipped-after-priority-interrupt'],
+          interrupted: true,
         }),
       },
     });
   }
 
-  async enqueue(command: DeviceCommand): Promise<DeviceCommandResult> {
+  async enqueue(command: DeviceCommand): Promise<DeviceCommandResult & { interrupted?: true }> {
     return this.queue.enqueue(command);
   }
 
@@ -139,7 +143,10 @@ export class DeviceCommandQueue {
  * by another stop instead of restoring vibration.
  */
 export class OpossumCommandQueue {
-  private readonly queue: SerialCommandQueue<OpossumCommand, OpossumCommandResult>;
+  private readonly queue: SerialCommandQueue<
+    OpossumCommand,
+    OpossumCommandResult & { interrupted?: true }
+  >;
 
   constructor(private readonly device: OpossumClient) {
     this.queue = new SerialCommandQueue({
@@ -147,17 +154,18 @@ export class OpossumCommandQueue {
     });
   }
 
-  async enqueue(command: OpossumCommand): Promise<OpossumCommandResult> {
+  async enqueue(command: OpossumCommand): Promise<OpossumCommandResult & { interrupted?: true }> {
     return this.queue.enqueue(command);
   }
 
   async emergencyStop(): Promise<OpossumCommandResult> {
-    const stoppedResult = async (): Promise<OpossumCommandResult> => ({
+    const stoppedResult = async (): Promise<OpossumCommandResult & { interrupted: true }> => ({
       state: await this.device.getState(),
+      interrupted: true,
     });
     return this.queue.interrupt(async () => {
       await this.device.emergencyStop();
-      return stoppedResult();
+      return { state: await this.device.getState() };
     }, stoppedResult);
   }
 }
