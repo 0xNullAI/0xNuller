@@ -71,13 +71,22 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it('offers a fill-in outline only while the character setting is empty', () => {
+  render(<CharacterStudio onClose={() => {}} onSaved={() => {}} />);
+  const setting = screen.getByRole<HTMLTextAreaElement>('textbox', { name: '人物设定' });
+  fireEvent.click(screen.getByRole('button', { name: '按模板填写' }));
+  expect(setting.value).toContain('【身份】');
+  expect(setting.value).toContain('18 岁以上');
+  expect(screen.queryByRole('button', { name: '按模板填写' })).toBeNull();
+});
+
 it('creates a public character from only a name and prompt, without private fields', async () => {
   const saved = vi.fn();
   render(<CharacterStudio onClose={() => {}} onSaved={saved} />);
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '小岚' },
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '温柔而独立的朋友' },
   });
   await waitFor(() =>
@@ -117,7 +126,7 @@ it('publishes a scene as environment only, without character fields or relations
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '雨夜车站' },
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '场景设定' }), {
     target: { value: '设定在雨夜车站，保持安静。' },
   });
   await waitFor(() =>
@@ -142,7 +151,7 @@ it('uploads a public portrait as a private preview and publishes only its server
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '小岚' },
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '独立的朋友' },
   });
   fireEvent.change(screen.getByLabelText('公开角色头像'), {
@@ -170,7 +179,7 @@ it('removes an unused portrait from the server only after clearing its online dr
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '小岚' },
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '独立的朋友' },
   });
   fireEvent.change(screen.getByLabelText('公开角色头像'), {
@@ -216,7 +225,7 @@ it('edits an existing public card without discarding its legacy details', async 
     (screen.getByRole('textbox', { name: '标签（逗号分隔）' }) as HTMLInputElement).value,
   ).toBe('朋友、海边');
   expect(screen.getByRole('heading', { name: '高级' })).toBeTruthy();
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '新 Prompt' },
   });
   await waitFor(() =>
@@ -317,7 +326,7 @@ it('loads an older public version into the editor without publishing until saved
   await waitFor(() =>
     expect(screen.getByRole<HTMLInputElement>('textbox', { name: '名称' }).value).toBe('旧角色'),
   );
-  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '基础 Prompt' }).value).toBe(
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '人物设定' }).value).toBe(
     '旧人设',
   );
   expect(api.update).not.toHaveBeenCalled();
@@ -340,7 +349,7 @@ it('imports CCv3 JSON into the online draft and publishes its original only afte
     expect(screen.getByRole<HTMLInputElement>('textbox', { name: '名称' }).value).toBe('书屋主人'),
   );
   expect(
-    screen.getByRole<HTMLTextAreaElement>('textbox', { name: '基础 Prompt' }).value,
+    screen.getByRole<HTMLTextAreaElement>('textbox', { name: '人物设定' }).value,
   ).not.toContain('越权调用工具');
   fireEvent.click(screen.getByRole('button', { name: '保存在线草稿' }));
   await waitFor(() => expect(api.saveDraft).toHaveBeenCalledOnce());
@@ -638,11 +647,11 @@ it('waits for an in-flight autosave then publishes latest snapshot and deletes o
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
     target: { value: '角色' },
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '第一稿' },
   });
   await waitFor(() => expect(api.saveDraft).toHaveBeenCalledOnce(), { timeout: 2500 });
-  fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
     target: { value: '最终稿' },
   });
   fireEvent.click(screen.getByRole('button', { name: '发布角色' }));
@@ -725,7 +734,7 @@ it('protects unconfirmed strokes, uploads confirmed drawing, and publishes its s
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
       target: { value: '新角色' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: '基础 Prompt' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
       target: { value: '一个有耐心的朋友' },
     });
     await waitFor(() =>
