@@ -1,7 +1,5 @@
 # 0xNuller Market
 
-中文 | [English](README.en.md)
-
 用于浏览和分享角色、场景与波形的社区市场。
 
 - 统一主站：<https://0xnullai.com/market>

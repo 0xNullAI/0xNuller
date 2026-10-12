@@ -1,7 +1,5 @@
 # 0xNuller Web
 
-中文 | [English](README.en.md)
-
 `0xNuller` 的统一网页版外壳。Control、Chat、Agent、Voice、Video、Market 和 Playground 在同一
 SPA 中按路由加载，共用账户、设备横栏、设置、主题和弹窗层。桌面版使用单列侧栏，聊天时在导航下显示消息列表；手机端
 以消息列表为首页，底部导航进入联系人、发现、设备和账户。左上角不再提供模块切换器。

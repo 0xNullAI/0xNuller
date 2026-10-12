@@ -1,7 +1,5 @@
 # 0xNuller Agent
 
-中文 | [English](README.en.md)
-
 通过文字对话调用设备工具。Agent 既可作为 `0xNuller` 的模块运行，也保留独立构建。
 
 - 统一主站：<https://0xnullai.com/agent>
