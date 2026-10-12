@@ -174,15 +174,16 @@ function imageOffer(env: MediaEnv) {
     credits: priced ? credits : null,
     priceVersion: ark ? `ark-image:${ark.table.version}:${credits}` : 'unavailable',
     enabled: Boolean(env.IMAGE_GENERATION_ENABLED === '1' && ark && env.PHOTOS && priced),
-    reason: env.IMAGE_GENERATION_ENABLED !== '1'
-      ? '图片生成暂未开放'
-      : !env.VOLC_ARK_API_KEY?.trim()
-      ? '管理员尚未配置媒体服务'
-      : !priced
-        ? '管理员尚未配置媒体价格'
-        : !env.PHOTOS
-          ? '媒体存储未配置'
-          : null,
+    reason:
+      env.IMAGE_GENERATION_ENABLED !== '1'
+        ? '图片生成暂未开放'
+        : !env.VOLC_ARK_API_KEY?.trim()
+          ? '管理员尚未配置媒体服务'
+          : !priced
+            ? '管理员尚未配置媒体价格'
+            : !env.PHOTOS
+              ? '媒体存储未配置'
+              : null,
   };
 }
 function featuresCharacter(row: Row): boolean {

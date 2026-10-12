@@ -10,12 +10,12 @@ workers.dev/Preview URL 由 `wrangler.toml` 管理。
 
 ## 配置
 
-| 名称                 | 类型   | 说明                                                                                 |
-| -------------------- | ------ | ------------------------------------------------------------------------------------ |
-| `AI_PRICE_TABLE`     | Secret | 价格与路由表（JSON），由 `@0xnullai/ai-pricing` 解析；模型 ID 与备用模型也来自此表   |
-| `VOLC_ARK_API_KEY`   | Secret | 方舟 API Key                                                                         |
-| `ALLOWED_ORIGINS`    | Var    | 浏览器来源白名单                                                                     |
-| `ENABLE_CHAT_VISION` | Var    | 仅在验收后设为 `true` 才开放私人聊天看图协议                                         |
+| 名称                 | 类型   | 说明                                                                               |
+| -------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `AI_PRICE_TABLE`     | Secret | 价格与路由表（JSON），由 `@0xnullai/ai-pricing` 解析；模型 ID 与备用模型也来自此表 |
+| `VOLC_ARK_API_KEY`   | Secret | 方舟 API Key                                                                       |
+| `ALLOWED_ORIGINS`    | Var    | 浏览器来源白名单                                                                   |
+| `ENABLE_CHAT_VISION` | Var    | 仅在验收后设为 `true` 才开放私人聊天看图协议                                       |
 
 仓库公开，因此这里不保存任何价格、成本或换算比例。价格表缺失或无效、或缺少 API Key 时，
 `/v1/models` 与 `/v1/chat/completions` 都直接返回 503，不预留 Credit、不调用上游，绝不按默认价扣费。

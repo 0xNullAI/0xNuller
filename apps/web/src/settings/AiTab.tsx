@@ -67,10 +67,7 @@ export function AiTab({
         <SettingsPage>
           <CustomModelGroup config={config} update={update} onUseManaged={switchToManaged} />
           <ProxySection />
-          <SettingsGroup
-            label="Video 视觉模型"
-            footer="Video 看摄像头画面时使用。"
-          >
+          <SettingsGroup label="Video 视觉模型" footer="Video 看摄像头画面时使用。">
             <div className="flex flex-col gap-3 p-4">
               <VideoProviderSection />
             </div>
