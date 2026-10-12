@@ -591,3 +591,16 @@ History 的 callId 一致。此关联方便账务归集，不把客户端 TaskRu
 再次在 SQL 内校验管理员权限和删除状态。新表保留操作者、观察快照、事件hash与时间。
 只可追加不可改写；不标记完成，不自动追扣，不修改原审计、预留或账本。删除账户时按原级联
 删除关联记录。部署前先应用0045，现有文字审核行为不变。
+
+## 运行状况（0072）
+
+- `POST /api/auth/client-errors`：匿名客户端错误上报，不读取会话。请求体 ≤ 8 KiB，经
+  `@0xnullai/observability` 校验并重新脱敏；按签名（规范化消息 + 首帧的 SHA-256）写入
+  `client_error_hourly`。每 IP 哈希 10 分钟 60 条、全站每小时 5000 条，超出返回 429。
+- `GET /api/auth/admin/runtime-health`：仅管理员，返回近 24 小时各 Worker 的 5xx/异常/cron 失败计数
+  与前 20 个客户端错误签名。
+- `AuthOwnershipService.recordServerErrors` 与仅含此方法的 `AuthMonitoringService`（Chat 的
+  `AUTH_MONITOR` 绑定）接收各 Worker 合并后的计数，写入 `server_error_hourly`；格式错误直接忽略。
+  Auth 自身由 `withServerErrorCounting` 包装后直接写 D1。
+- 每分钟 cron 每 5 分钟清理限流台账并检查告警；每日 cron 删除 30 天前的汇总和 `monitoring_alerts`。
+- 告警收件人 `ALERT_EMAIL` 是 Secret（逗号分隔），阈值变量与规则见 [部署文档](../../docs/deploy.md#运行状况与告警)。

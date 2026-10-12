@@ -1,3 +1,5 @@
+import type { ServerErrorReport } from '@0xnullai/observability';
+
 /** Provider-reported token usage summed over a call's rounds (see `@0xnullai/ai-pricing`). */
 export interface RealtimeUsageTotals {
   inputAudioTokens: number;
@@ -11,6 +13,8 @@ export interface RealtimeUsageTotals {
 export interface Env {
   VOICE_SESSION: DurableObjectNamespace;
   AUTH: {
+    /** Fail-open error counter on the Auth binding (see @0xnullai/observability). */
+    recordServerErrors?(report: ServerErrorReport): Promise<unknown>;
     finalizeVoiceReservation(
       subject: string,
       reservationKey: string,

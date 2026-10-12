@@ -9,7 +9,8 @@
     "test": "node ../../scripts/run-vitest.mjs run --root ../.. --config vitest.config.ts --project worker-proxies"
   },
   "dependencies": {
-    "@0xnullai/ai-pricing": "0.1.0"
+    "@0xnullai/ai-pricing": "0.1.0",
+    "@0xnullai/observability": "0.1.0"
   },
   "devDependencies": {
     "vitest": "^4.1.10",

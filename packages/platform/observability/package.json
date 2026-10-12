@@ -1,0 +1,14 @@
+{
+  "name": "@0xnullai/observability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "运行状况采集：客户端错误脱敏上报与 Worker 错误计数，不含聊天内容、密钥或账户标识。",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client-reporter": "./src/client-reporter.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

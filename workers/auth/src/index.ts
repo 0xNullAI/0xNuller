@@ -66,6 +66,13 @@ import {
 } from './dm-ticket';
 import { verifyGroupAiTicket } from './group-ai-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { withServerErrorCounting } from '@0xnullai/observability';
+import {
+  handleRuntimeMonitoring,
+  monitoringRetentionStatements,
+  recordServerErrors,
+  runRuntimeMonitoring,
+} from './runtime-monitoring';
 import { registrationConflict, validateCredentials } from './account-validation';
 import { decodeContentCursor, encodeContentCursor } from './content-cursor';
 import {
@@ -158,6 +165,8 @@ export interface Env extends Cloudflare.Env {
    * follows, which stops the next ticket from being minted, so the conversation
    * dies within the ticket TTL instead of instantly.
    */
+  /** Comma-separated admin addresses for runtime alerts (Cloudflare secret); unset disables. */
+  ALERT_EMAIL?: string;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -479,6 +488,11 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
+  /** Coalesced error counts from Market, Voice and the LLM proxy; malformed input is ignored. */
+  async recordServerErrors(report: unknown): Promise<boolean> {
+    return recordServerErrors(this.env, report);
+  }
+
   async creditBalance(
     credentials: MarketClaimCredentials,
   ): Promise<CreditBalance | 'unauthorized'> {
@@ -1369,7 +1383,17 @@ function contactListSql(direction: 'following' | 'followers', mutualOnly = false
  LIMIT ? OFFSET ?`;
 }
 
-export default {
+/**
+ * Monitoring-only entrypoint for Chat, which needs no ownership or Credit access. Keeping it
+ * separate means Chat's binding cannot reach anything but the error counter.
+ */
+export class AuthMonitoringService extends WorkerEntrypoint<Env> {
+  async recordServerErrors(report: unknown): Promise<boolean> {
+    return recordServerErrors(this.env, report);
+  }
+}
+
+const authWorker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env.ALLOWED_ORIGINS);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -1455,6 +1479,8 @@ export default {
       if (scheduleResponse) return scheduleResponse;
       const pushResponse = handleRetiredPushRegistrations(request, cors);
       if (pushResponse) return pushResponse;
+      const monitoringResponse = await handleRuntimeMonitoring(request, env, cors, ipHash);
+      if (monitoringResponse) return monitoringResponse;
       const memoryResponse = await handlePersonalMemories(request, env, cors);
       if (memoryResponse) return memoryResponse;
       // ── Register ──
@@ -3615,6 +3641,8 @@ export default {
             now,
           ),
           expireStagedVideoReplies(env, now),
+          // Every five minutes: prune the intake ledger and check alert thresholds.
+          new Date(now).getUTCMinutes() % 5 === 0 ? runRuntimeMonitoring(env, now) : undefined,
         ]).then(() => undefined),
       );
       return;
@@ -3631,6 +3659,7 @@ export default {
             now - REGISTER_WINDOW_MS,
           ),
           env.DB.prepare('DELETE FROM email_action_tokens WHERE expires_at < ?').bind(now),
+          ...monitoringRetentionStatements(env, now),
         ]),
         runAuthMaintenance(env, now),
         runConversationAttachmentCleanup(env),
@@ -3639,3 +3668,9 @@ export default {
     );
   },
 } satisfies ExportedHandler<Env>;
+
+// Auth records its own 5xx and cron failures straight into D1; fail-open like every Worker.
+export default withServerErrorCounting(authWorker, {
+  worker: 'auth',
+  sink: (env: Env) => ({ recordServerErrors: (report) => recordServerErrors(env, report) }),
+});

@@ -38,6 +38,11 @@
 
   "vars": {
     "ALLOWED_ORIGINS": "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost",
+    // 运行状况告警阈值（UTC 整点小时内计数）；收件人 ALERT_EMAIL 是 Secret，不写在这里。
+    "ALERT_CLIENT_ERRORS_PER_HOUR": "100",
+    "ALERT_SERVER_ERRORS_PER_HOUR": "20",
+    "ALERT_NEW_SIGNATURE_HITS": "20",
+    "ALERT_COOLDOWN_HOURS": "6",
   },
 
   // 向 Chat 同步账户侧的私聊状态变化。

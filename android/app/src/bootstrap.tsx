@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
 import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
 import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
+import { installShellErrorReporting } from '@0xnullai/web/client-error-reporting';
 import { prewarmDgLabDeviceScan } from '@dg-kit/transport-tauri-blec';
 import { UpdateBanner } from './components/UpdateBanner';
 import { attachAndroidDgLabLifecycle } from './lifecycle-safety';
@@ -32,6 +33,8 @@ import './styles.css';
  */
 
 installAndroidShellBehaviours();
+// Same reporter as the web shell; sends no cookies or Bearer token.
+installShellErrorReporting('android');
 // If Bluetooth permission was granted on an earlier run, begin collecting
 // named DG-Lab advertisements behind the splash screen. Missing permission is
 // deliberately not requested here; the user's first connect action owns that

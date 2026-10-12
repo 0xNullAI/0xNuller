@@ -7,6 +7,7 @@
   "dependencies": {
     "@0xnullai/ai-pricing": "0.1.0",
     "@0xnullai/auth": "0.1.0",
+    "@0xnullai/observability": "0.1.0",
     "@0xnullai/scenes": "0.1.0"
   },
   "scripts": {

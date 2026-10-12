@@ -19,6 +19,7 @@ import {
   publicCatalog,
 } from './routing.js';
 import { normalizeVisionResult, prepareVisionRequest, requestHash } from './vision.js';
+import { withServerErrorCounting } from '@0xnullai/observability';
 
 /**
  * Managed 猫愿 model service on Volcengine Ark. Every successful request consumes Credit.
@@ -361,7 +362,7 @@ async function relayAndSettle(
 
 const MANAGED_OFF = '平台模型暂未开放';
 
-export default {
+const llmProxyWorker = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin');
     const cors = corsHeaders(origin, env);
@@ -756,3 +757,8 @@ export default {
     }
   },
 };
+
+export default withServerErrorCounting(llmProxyWorker, {
+  worker: 'llm-proxy',
+  sink: (env) => env.AUTH,
+});

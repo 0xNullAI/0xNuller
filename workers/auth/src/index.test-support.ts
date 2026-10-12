@@ -115,6 +115,10 @@ export function useAuthWorkerTestEnv(createTestDb: () => TestDb): void {
       IP_PEPPER: 'test-pepper',
       DM_TICKET_SECRET: 'test-dm-ticket-secret',
       ALLOWED_ORIGINS: ORIGIN,
+      ALERT_CLIENT_ERRORS_PER_HOUR: '100',
+      ALERT_SERVER_ERRORS_PER_HOUR: '20',
+      ALERT_NEW_SIGNATURE_HITS: '20',
+      ALERT_COOLDOWN_HOURS: '6',
     };
   });
   afterEach(() => db.close());

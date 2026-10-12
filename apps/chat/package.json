@@ -22,6 +22,7 @@
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
     "@0xnullai/native": "0.1.0",
+    "@0xnullai/observability": "0.1.0",
     "@0xnullai/scenes": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/sync": "0.1.0",

@@ -44,8 +44,11 @@ import {
   handleCharacterContainerDrafts,
   purgeDeletedAccountContainers,
 } from './character-container-drafts';
+import { withServerErrorCounting, type ServerErrorReport } from '@0xnullai/observability';
 
 interface MarketAuthService extends Fetcher {
+  /** Fail-open error counter (see @0xnullai/observability). */
+  recordServerErrors(report: ServerErrorReport): Promise<unknown>;
   claimMarketItems(
     credentials: { authorization: string | null; cookie: string | null },
     itemIds: string[],
@@ -139,7 +142,7 @@ function requiredSecret(value: string | undefined, name: string): string {
   return value;
 }
 
-export default {
+const marketWorker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -428,6 +431,10 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+export default withServerErrorCounting(marketWorker, {
+  worker: 'market',
+  sink: (env: Env) => env.AUTH,
+});
 type UploadOne = ReturnType<typeof UploadSchema.parse>;
 
 // A validated single payload -> a database row. Ownership lives in Auth.
