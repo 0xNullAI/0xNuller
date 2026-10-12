@@ -28,7 +28,7 @@ describe('公开的法律文档地址', () => {
       render(<Shell />);
     });
     const page = await screen.findByRole('main', { name: title });
-    expect(page.textContent).toContain('草稿 · 待法务审阅');
+    expect(page.textContent).toContain('版本：');
     expect(screen.getByRole('article', { name: title })).toBeTruthy();
     expect(screen.queryByRole('main', { name: '账户登录' })).toBeNull();
   });

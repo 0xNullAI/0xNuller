@@ -6,4 +6,4 @@
  * either text in apps/web/src/legal changes in substance, so the record says which wording each
  * account agreed to. Lives in the auth package because both sides of that contract import it.
  */
-export const LEGAL_TERMS_VERSION = '2026-10-11-draft';
+export const LEGAL_TERMS_VERSION = '2026-10-11';

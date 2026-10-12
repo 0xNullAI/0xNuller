@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 import { parseLegalMarkdown } from './legal-markdown';
 import { legalDocumentFromPath, legalDocumentPath } from './legal-routes';
@@ -17,10 +18,7 @@ describe('法律文档地址', () => {
   });
 });
 
-describe.each([
-  ['隐私政策', PRIVACY_POLICY_MARKDOWN],
-  ['用户协议', USER_AGREEMENT_MARKDOWN],
-])('%s', (_name, source) => {
+describe.each([['隐私政策', PRIVACY_POLICY_MARKDOWN]])('%s', (_name, source) => {
   it('开头标明草稿与待法务审阅，并写明当前版本', () => {
     const [first] = parseLegalMarkdown(source);
     expect(first).toMatchObject({ kind: 'note' });
@@ -35,16 +33,24 @@ describe.each([
   });
 });
 
-describe('用户协议的设备安全条款', () => {
-  it('写明成年、非医疗、禁忌人群、紧急停止与他人同意', () => {
+describe('用户协议', () => {
+  it('写明当前版本，且保持简短', () => {
+    expect(USER_AGREEMENT_MARKDOWN).toContain(`版本：${LEGAL_TERMS_VERSION}`);
+    expect(USER_AGREEMENT_MARKDOWN).not.toContain('【');
+    expect(USER_AGREEMENT_MARKDOWN.length).toBeLessThan(1500);
+  });
+
+  it('沿用使用须知，并写明成年、非医疗、立刻停止与他人同意', () => {
+    for (const { title } of SAFETY_NOTICE_SECTIONS)
+      expect(USER_AGREEMENT_MARKDOWN).toContain(`## ${title}`);
     for (const phrase of [
       '年满 18 周岁',
       '不是医疗器械',
       '心脏起搏器',
       '孕期',
       '癫痫',
-      '紧急停止',
-      '事先明确、自愿地同意',
+      '立刻停止',
+      '事先明确、自愿的同意',
     ]) {
       expect(USER_AGREEMENT_MARKDOWN).toContain(phrase);
     }
