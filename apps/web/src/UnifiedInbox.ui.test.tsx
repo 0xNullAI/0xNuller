@@ -20,12 +20,16 @@ const state = vi.hoisted(() => ({
   photos: {} as Record<string, string>,
   scenes: [] as { id: string; name: string; prompt: string; kind?: string }[],
   openCharacter: vi.fn(async () => true),
+  openScene: vi.fn(async () => true),
 }));
 vi.mock('@0xnullai/scenes', async (importOriginal) => ({
   ...(await importOriginal<typeof ScenesModule>()),
   loadScenes: () => ({ scenes: state.scenes, selectedId: '' }),
 }));
-vi.mock('./open-character-chat', () => ({ openCharacterChat: state.openCharacter }));
+vi.mock('@0xnullai/scenes/start-chat', () => ({
+  openCharacterChat: state.openCharacter,
+  openSceneChat: state.openScene,
+}));
 vi.mock('@0xnullai/auth/appearance-react', () => ({
   useCharacterPhoto: (photoId: string | null) => (photoId ? (state.photos[photoId] ?? null) : null),
 }));
@@ -68,6 +72,7 @@ beforeEach(() => {
   state.selectChat.mockReset();
   state.scenes = [];
   state.openCharacter.mockClear();
+  state.openScene.mockClear();
   state.list.mockResolvedValue({
     items: [
       {
@@ -308,9 +313,37 @@ it('starts an AI chat by choosing one of the imported characters', async () => {
     />,
   );
   fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
-  expect(screen.queryByRole('menuitem', { name: '森林' })).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', { name: /小夜/ }));
   expect(state.openCharacter).toHaveBeenCalledWith('market-1');
+  expect(state.openScene).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(navigate).toHaveBeenLastCalledWith('agent'));
+});
+
+it('lists library scenes under 场景 and starts a scene-only chat in one', async () => {
+  state.list.mockResolvedValue({ items: [] });
+  state.chat.mockResolvedValue([]);
+  state.scenes = [
+    { id: 'market-1', kind: 'character', name: '小夜', prompt: '人设' },
+    { id: 'private-forest', kind: 'scene', name: '森林', prompt: '环境' },
+    { id: 'market-rain', kind: 'scene', name: '雨夜', prompt: '环境' },
+  ];
+  const navigate = vi.fn();
+  render(
+    <UnifiedInbox
+      user={user('alice')}
+      onNavigate={navigate}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '新聊天' }));
+  const group = screen.getByRole('group', { name: '场景' });
+  expect(group.textContent).toContain('森林');
+  expect(group.textContent).toContain('雨夜');
+  expect(group.textContent).not.toContain('小夜');
+  fireEvent.click(screen.getByRole('menuitem', { name: /森林/ }));
+  expect(state.openScene).toHaveBeenCalledWith('private-forest');
+  expect(state.openCharacter).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(navigate).toHaveBeenLastCalledWith('agent'));
 });
 

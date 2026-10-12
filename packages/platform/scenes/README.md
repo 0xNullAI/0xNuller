@@ -1,6 +1,6 @@
 # @0xnullai/scenes
 
-Agent 与 Voice 共用的个人角色／场景库，保存已从 Market 导入的卡片及历史自建内容、
+Agent 与 Voice 共用的个人角色／场景库，保存已从 Market 导入的卡片及私有自建内容、
 当前选择、账户同步和 React 选择器组件。
 
 ```ts
@@ -15,8 +15,28 @@ import { loadScenes, updateScenes } from '@0xnullai/scenes';
 
 ## 公开卡与个人内容
 
-新角色和场景从 Market 导入；历史自建卡保持可读、可编辑。没有可用卡时当前选择为空，
-旧版选中的内置 ID 自动回退到首张已保存卡或空值，不删除旧卡或聊天记录。
+角色和场景可从 Market 导入，也可私有创建：个人列表的「新建」（角色／场景）、「导入文件」
+（CCv2/CCv3 的 JSON、PNG/APNG、CHARX，导入为私有角色）以及 Market 编辑器的「仅自己可见」
+都只写入当前账号的个人库，使用随机 ID，从不发布。列表标注「私有」或「来自发现 · vN」。
+没有可用卡时当前选择为空，旧版选中的内置 ID 自动回退到首张已保存卡或空值，不删除旧卡或聊天记录。
+
+`SceneLibrary` 通过 `onStartChat` 回调提供每行的「聊天」；外壳决定打开方式。
+`./start-chat` 的 `openSceneChat(id)` 对任意个人库场景（私有或来自发现）选中该场景，重开最近的
+无角色场景会话，否则新建，不创建关系或记忆；`openCharacterChat(id)` 像打开联系人一样打开角色
+（先确保私人关系，再重开最近会话或新建）。
+
+## 拆分角色 / 提取角色
+
+`./script-splitter` 的 `ScriptSplitterDialog` 用猫愿模型（托管 `balanced`，按 Credit 计费，
+与用户自选的聊天模型无关，需要登录）把超长剧本整理成一个场景和若干单独角色卡。个人列表对
+Prompt ≥ 3000 字的卡提供「拆分角色」，发现详情页对公开卡提供「提取角色」。网关单次输出上限
+2048 token，所以分步调用：先用全文生成大纲（场景简介／规则与 ≤12 个角色），用户勾选后再逐个
+生成角色。每次调用前显示「预计约 N Credit」（输入按约 1.5 字／token，价格来自 `/v1/models`），
+可随时停止；模型返回的 JSON 校验失败时不保存，已完成的角色可继续或只保存已完成部分。
+
+结果只写入个人库的私有卡（随机 ID），从不发布。角色卡记录 `creator`（原作者或「我」）与
+`license`；来源是他人的公开卡时另存 `SavedScene.derivedFrom = { itemId, name }`，随同步保留，
+列表显示「私有 · 改编自《X》」。纯逻辑（提示词、解析、估价、署名）在 `script-splitter.ts`。
 
 `SavedScene.characterCard` 是可选的原生 v1 公开元数据，包含简介、性格、开场、示例、标签、
 作者与许可；保存、读取和账户同步保留它，非法元数据不影响原有场景正文。它不保存私人记忆、
@@ -43,7 +63,8 @@ Market 导入保存稳定的 `market-<itemId>` ID 与已采用的公开版本号
 
 `./external-character-card` 接受标记完整的 CCv2/CCv3 JSON（上限 120 KB），将常规人物字段投影到
 原生 Prompt/卡片，同时保留原始 JSON。原件中的 system prompt、角色书与资源引用不进入运行时，
-更不授予工具或设备权限。Market 编辑器在此 JSON 投影之上解析 PNG/APNG 与 CHARX 的人物数据；
+更不授予工具或设备权限。`./external-card-container` 在此 JSON 投影之上解析 PNG/APNG 与 CHARX
+的人物数据（文件上限 20 MB），供个人列表和 Market 编辑器、Worker 共用；
 Market 将完整 PNG/APNG/CHARX 原容器保存在所属账户的私有 R2 文件中，在线草稿只同步受限
 `sourceFileId` 与 `sourceFileName`；跨端恢复后仍可原样下载。公开角色不会包含私有文件 ID 或
 附件字节，含未公开本地资产引用的原始 JSON 也不允许公开。编辑后重新生成完整容器及公开资产

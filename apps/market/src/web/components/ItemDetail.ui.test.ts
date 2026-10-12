@@ -7,6 +7,17 @@ import type { MarketItem } from '../../shared/schema';
 vi.mock('./FavoriteAction', () => ({ FavoriteAction: () => null }));
 vi.mock('./CharacterReports', () => ({ CharacterReportAction: () => 'report-form' }));
 const api = vi.hoisted(() => ({ update: vi.fn(), copy: vi.fn() }));
+const session = vi.hoisted(() => ({ account: 'alice' as string | null, source: null as unknown }));
+vi.mock('@0xnullai/auth', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  currentAuthUserId: () => session.account,
+}));
+vi.mock('@0xnullai/scenes/script-splitter', () => ({
+  ScriptSplitterDialog: ({ source }: { source: unknown }) => {
+    session.source = source;
+    return 'splitter-dialog';
+  },
+}));
 vi.mock('@0xnullai/ui', () => ({
   Button: 'button',
   Overlay: ({ children }: { children: ReactNode }) => children,
@@ -32,6 +43,8 @@ const item: MarketItem = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  session.account = 'alice';
+  session.source = null;
   vi.stubGlobal('navigator', { clipboard: { writeText: api.copy } });
   api.copy.mockResolvedValue(undefined);
   api.update.mockResolvedValue(undefined);
@@ -177,4 +190,25 @@ it('keeps secondary actions in the ⋯ menu and closes it on Escape without clos
   fireEvent.keyDown(download, { key: 'Escape' });
   expect(screen.queryByRole('menu')).toBeNull();
   expect(onClose).not.toHaveBeenCalled();
+});
+it('offers 提取角色 on a public card only when signed in inside the shell', async () => {
+  const card = { ...item, author: '作者甲' };
+  const { unmount } = render(createElement(ItemDetail, { item: card, onClose: () => {} }));
+  expect(screen.queryByRole('button', { name: '提取角色' })).toBeNull();
+  unmount();
+  session.account = null;
+  const signedOut = render(
+    createElement(ItemDetail, { item: card, onClose: () => {}, onStartExtracted: vi.fn() }),
+  );
+  expect(screen.queryByRole('button', { name: '提取角色' })).toBeNull();
+  signedOut.unmount();
+  session.account = 'alice';
+  render(createElement(ItemDetail, { item: card, onClose: () => {}, onStartExtracted: vi.fn() }));
+  fireEvent.click(screen.getByRole('button', { name: '提取角色' }));
+  expect(session.source).toEqual({
+    name: '长剧本',
+    prompt,
+    author: '作者甲',
+    derivedFrom: { itemId: 'test', name: '长剧本' },
+  });
 });

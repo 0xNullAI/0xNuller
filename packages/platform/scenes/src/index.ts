@@ -36,6 +36,14 @@ export interface SavedScene {
   marketRevision?: number;
   /** Public default image reference, separate from private account photos. */
   marketPortraitId?: string;
+  /** Private card adapted from a public 发现 card; it is never offered for publishing. */
+  derivedFrom?: SceneDerivation;
+}
+
+export interface SceneDerivation {
+  /** Market item id of the public source card. */
+  itemId: string;
+  name: string;
 }
 import {
   pullContent,
@@ -128,6 +136,31 @@ function marketPortraitMetadata(id: string, value: unknown): { marketPortraitId?
   return portrait ? { marketPortraitId: portrait } : {};
 }
 
+function derivedFromMetadata(value: unknown): { derivedFrom?: SceneDerivation } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  return typeof raw.itemId === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(raw.itemId) &&
+    name &&
+    name.length <= 120
+    ? { derivedFrom: { itemId: raw.itemId, name } }
+    : {};
+}
+
+/** The synchronized form of one card; every push path uses it so no field is dropped. */
+function scenePayload(scene: SavedScene): Record<string, unknown> {
+  return {
+    prompt: scene.prompt,
+    ...(scene.icon ? { icon: scene.icon } : {}),
+    ...promptKindMetadata(scene.kind),
+    ...(scene.kind === 'scene' ? {} : characterMetadata(scene.characterCard)),
+    ...marketRevisionMetadata(scene.id, scene.marketRevision),
+    ...marketPortraitMetadata(scene.id, scene.marketPortraitId),
+    ...derivedFromMetadata(scene.derivedFrom),
+  };
+}
+
 /**
  * Parse per item. A bad item drops only itself — this is exactly the
  * property the extraction from the big blob buys; whole-blob fallback means
@@ -151,6 +184,7 @@ function coerceScenes(raw: unknown): SavedScene[] {
       ...(o.kind === 'scene' ? {} : characterMetadata(o.characterCard)),
       ...marketRevisionMetadata(o.id, o.marketRevision),
       ...marketPortraitMetadata(o.id, o.marketPortraitId),
+      ...derivedFromMetadata(o.derivedFrom),
     });
   }
   return out;
@@ -298,14 +332,7 @@ export function saveScenes(lib: SceneLibrary, skipRemotePush = false): void {
           id: scene.id,
           kind: 'scene' as const,
           name: scene.name,
-          payload: {
-            prompt: scene.prompt,
-            ...(scene.icon ? { icon: scene.icon } : {}),
-            ...promptKindMetadata(scene.kind),
-            ...(scene.kind === 'scene' ? {} : characterMetadata(scene.characterCard)),
-            ...marketRevisionMetadata(scene.id, scene.marketRevision),
-            ...marketPortraitMetadata(scene.id, scene.marketPortraitId),
-          },
+          payload: scenePayload(scene),
           order,
         }))
         .filter((scene) => changedIds.has(scene.id)),
@@ -350,6 +377,7 @@ export function syncScenes(): Promise<void> {
             ...(payload.kind === 'scene' ? {} : characterMetadata(payload.characterCard)),
             ...marketRevisionMetadata(item.id, payload.marketRevision),
             ...marketPortraitMetadata(item.id, payload.marketPortraitId),
+            ...derivedFromMetadata(payload.derivedFrom),
           });
       }
     }
@@ -380,14 +408,7 @@ export function syncScenes(): Promise<void> {
         id: s.id,
         kind: 'scene' as const,
         name: s.name,
-        payload: {
-          prompt: s.prompt,
-          ...(s.icon ? { icon: s.icon } : {}),
-          ...promptKindMetadata(s.kind),
-          ...(s.kind === 'scene' ? {} : characterMetadata(s.characterCard)),
-          ...marketRevisionMetadata(s.id, s.marketRevision),
-          ...marketPortraitMetadata(s.id, s.marketPortraitId),
-        },
+        payload: scenePayload(s),
         order,
       }));
     if (currentAuthUserId() !== account || generation !== syncGeneration) return;
@@ -579,14 +600,7 @@ export async function importMarketSceneOnline(
         id: selected.id,
         kind: 'scene',
         name: selected.name,
-        payload: {
-          prompt: selected.prompt,
-          ...(selected.icon ? { icon: selected.icon } : {}),
-          ...promptKindMetadata(selected.kind),
-          ...(selected.kind === 'scene' ? {} : characterMetadata(selected.characterCard)),
-          ...marketRevisionMetadata(selected.id, selected.marketRevision),
-          ...marketPortraitMetadata(selected.id, selected.marketPortraitId),
-        },
+        payload: scenePayload(selected),
         order: current.scenes.length,
       },
     ]);

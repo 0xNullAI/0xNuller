@@ -43,6 +43,10 @@ export class CharacterStudioDraftSaver {
   resume(): void {
     this.paused = false;
   }
+  /** Last server revision this editor knows; 0 when the account has no draft. */
+  currentRevision(): number {
+    return this.revision;
+  }
   isSaved(draft: CharacterDraft): boolean {
     return this.saved === JSON.stringify(draft);
   }

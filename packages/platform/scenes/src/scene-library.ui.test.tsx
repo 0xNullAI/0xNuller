@@ -42,7 +42,15 @@ vi.mock('@0xnullai/ui', async (importOriginal) => ({
     </button>
   ),
 }));
+const splitter = vi.hoisted(() => ({ source: null as unknown }));
+vi.mock('./script-splitter-dialog.js', () => ({
+  ScriptSplitterDialog: ({ source }: { source: unknown }) => {
+    splitter.source = source;
+    return <div role="dialog">拆分对话框</div>;
+  },
+}));
 beforeEach(() => {
+  splitter.source = null;
   auth.account = 'alice';
   localStorage.clear();
   __resetSceneSyncForTests();
@@ -53,7 +61,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it('removes built-in scenes and local creation while preserving editable legacy cards', () => {
+it('removes built-in scenes while preserving editable legacy cards', () => {
   saveScenes({
     scenes: [{ id: 'legacy-card', name: '旧自建卡', prompt: '原文' }],
     selectedId: 'gentle',
@@ -62,7 +70,6 @@ it('removes built-in scenes and local creation while preserving editable legacy 
   render(<SceneLibrary />);
   expect(screen.queryByText('内置场景')).toBeNull();
   expect(screen.queryByText('内置陪伴')).toBeNull();
-  expect(screen.queryByRole('button', { name: '新建场景' })).toBeNull();
   expect(screen.queryByText('原创陪伴模板')).toBeNull();
   expect(screen.getByRole('button', { name: '从 Market 导入' })).toBeTruthy();
   expect(loadScenes().selectedId).toBe('legacy-card');
@@ -98,7 +105,7 @@ it.each([
 
 it('shows a Market import entry and an honest empty state for a new account', () => {
   render(<SceneLibrary />);
-  expect(screen.getByText('还没有角色或场景。可从 Market 浏览并导入公开卡。')).toBeTruthy();
+  expect(screen.getByText('还没有角色或场景。可新建、导入文件，或从发现导入公开卡。')).toBeTruthy();
   expect(screen.getByRole('button', { name: '从 Market 导入' })).toBeTruthy();
   expect(loadScenes().selectedId).toBe('');
 });
@@ -370,4 +377,143 @@ it('filters the library by type and by name', () => {
     target: { value: '不存在' },
   });
   expect(screen.getByText('没有匹配的卡片')).toBeTruthy();
+});
+
+it.each([
+  {
+    kind: 'character' as const,
+    label: '新建角色',
+    placeholder: '角色名称',
+    prompt: '描述 AI 的人设和互动风格…',
+  },
+  {
+    kind: 'scene' as const,
+    label: '新建场景',
+    placeholder: '场景名称',
+    prompt: '描述环境、规则和氛围…',
+  },
+])('creates a private $kind in the library', ({ kind, label, placeholder, prompt }) => {
+  render(<SceneLibrary />);
+  fireEvent.click(screen.getByRole('button', { name: '新建' }));
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  expect(Boolean(screen.queryByText('结构化角色卡'))).toBe(kind === 'character');
+  fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value: ' 小雨 ' } });
+  fireEvent.change(screen.getByPlaceholderText(prompt), { target: { value: '设定' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  const [created] = loadScenes().scenes;
+  expect(created).toMatchObject({ kind, name: '小雨', prompt: '设定' });
+  expect(created!.id.startsWith('market-')).toBe(false);
+  expect(screen.getByText('私有')).toBeTruthy();
+  // Never published: creating a card only syncs the account library.
+  expect(market.fetchItem).not.toHaveBeenCalled();
+});
+
+it('imports a local CCv2 file as a private character and shows the parser warnings', async () => {
+  render(<SceneLibrary />);
+  const card = {
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: {
+      name: '海边旧友',
+      description: '住在海边',
+      personality: '安静',
+      first_mes: '好久不见',
+      extensions: { custom: true },
+    },
+  };
+  const file = new File([JSON.stringify(card)], 'friend.json', { type: 'application/json' });
+  fireEvent.change(screen.getByLabelText('导入 CCv2／CCv3 角色文件'), {
+    target: { files: [file] },
+  });
+  await waitFor(() => expect(loadScenes().scenes).toHaveLength(1));
+  const [created] = loadScenes().scenes;
+  expect(created).toMatchObject({ kind: 'character', name: '海边旧友' });
+  expect(created!.prompt).toContain('住在海边');
+  expect(created!.characterCard).toMatchObject({ greeting: '好久不见' });
+  expect(created!.id.startsWith('market-')).toBe(false);
+  expect(screen.getByRole('status').textContent).toContain('已导入角色「海边旧友」');
+});
+
+it('reports an unreadable file without adding a card', async () => {
+  render(<SceneLibrary />);
+  const file = new File(['not json'], 'broken.json', { type: 'application/json' });
+  fireEvent.change(screen.getByLabelText('导入 CCv2／CCv3 角色文件'), {
+    target: { files: [file] },
+  });
+  await screen.findByRole('alert');
+  expect(loadScenes().scenes).toHaveLength(0);
+});
+
+it('labels where each card came from', () => {
+  saveScenes({
+    scenes: [
+      { id: 'mine', name: '自建', prompt: '人设', kind: 'character' as const },
+      { id: 'market-a', name: '公开', prompt: '人设', kind: 'scene' as const, marketRevision: 3 },
+    ],
+    selectedId: '',
+    hiddenBuiltinIds: [],
+  });
+  render(<SceneLibrary />);
+  expect(screen.getByText('私有')).toBeTruthy();
+  expect(screen.getByText('来自发现 · v3')).toBeTruthy();
+  expect(screen.queryByText(/公开卡 v/)).toBeNull();
+});
+
+it('starts a chat with the chosen card through the host callback', () => {
+  const scenes = [
+    { id: 'mine', name: '小夜', prompt: '人设', kind: 'character' as const },
+    { id: 'market-a', name: '雨夜', prompt: '环境', kind: 'scene' as const },
+  ];
+  saveScenes({ scenes, selectedId: '', hiddenBuiltinIds: [] });
+  const { unmount } = render(<SceneLibrary />);
+  // Without a host that can open chats, the library offers no dead button.
+  expect(screen.queryByRole('button', { name: '和 小夜 聊天' })).toBeNull();
+  unmount();
+  const onStartChat = vi.fn();
+  render(<SceneLibrary onStartChat={onStartChat} />);
+  fireEvent.click(screen.getByRole('button', { name: '和 雨夜 聊天' }));
+  expect(onStartChat).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'market-a' }));
+  fireEvent.click(screen.getByRole('button', { name: '和 小夜 聊天' }));
+  expect(onStartChat).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'mine' }));
+});
+
+it('offers 拆分角色 only for long scripts and passes attribution for each source', async () => {
+  const long = '剧本'.repeat(1500);
+  saveScenes({
+    scenes: [
+      { id: 'short', name: '短卡', prompt: '人设', kind: 'character' as const },
+      { id: 'mine', name: '我的剧本', prompt: long, kind: 'scene' as const },
+      { id: 'market-pub', name: '公开剧本', prompt: long, kind: 'scene' as const },
+      {
+        id: 'adapted',
+        name: '林雾',
+        prompt: long,
+        kind: 'scene' as const,
+        derivedFrom: { itemId: 'pub', name: '雾港' },
+      },
+    ],
+    selectedId: '',
+    hiddenBuiltinIds: [],
+  });
+  market.fetchItem.mockResolvedValue({ id: 'pub', author: '作者甲' });
+  render(<SceneLibrary />);
+  expect(screen.getByText('私有 · 改编自《雾港》')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '拆分角色：短卡' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：我的剧本' }));
+  expect(splitter.source).toEqual({ name: '我的剧本', prompt: long, author: '我' });
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：公开剧本' }));
+  await waitFor(() =>
+    expect(splitter.source).toEqual({
+      name: '公开剧本',
+      prompt: long,
+      author: '作者甲',
+      derivedFrom: { itemId: 'pub', name: '公开剧本' },
+    }),
+  );
+  expect(market.fetchItem).toHaveBeenCalledWith('pub');
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：林雾' }));
+  expect(splitter.source).toMatchObject({ derivedFrom: { itemId: 'pub', name: '雾港' } });
 });

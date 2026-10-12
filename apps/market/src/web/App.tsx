@@ -28,6 +28,8 @@ import { marketEditorHref, marketEditorRoute } from './market-editor-route';
 import { startCharacterChat } from './start-character-chat';
 import { importSceneCard } from './import-scene-card';
 import { startSceneChat } from './start-scene-chat';
+import { savedPromptKind } from '@0xnullai/scenes';
+import { openCharacterChat, openSceneChat } from '@0xnullai/scenes/start-chat';
 import { appendBrowsePage, MARKET_PAGE_SIZE } from './browse-pages';
 import { filterPlacement } from './filter-placement';
 
@@ -68,6 +70,7 @@ export function App(): JSX.Element {
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [studioNotice, setStudioNotice] = useState<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const requestId = useRef(0);
   const detailRequestId = useRef(0);
@@ -356,6 +359,7 @@ export function App(): JSX.Element {
     setRouteError(null);
     setRouteBusy(false);
     setActive(null);
+    setStudioNotice(null);
     setStudio(next);
   }
 
@@ -404,6 +408,10 @@ export function App(): JSX.Element {
               closeStudio(id);
               load();
             }}
+            onSavedPrivately={(notice) => {
+              closeStudio();
+              setStudioNotice(notice);
+            }}
           />
         </div>
       </div>
@@ -414,6 +422,7 @@ export function App(): JSX.Element {
     <div className="mkt-scope h-full overflow-y-auto">
       <div className="app">
         {(linkError || routeError) && <p role="alert">{linkError || routeError}</p>}
+        {studioNotice && <p role="status">{studioNotice}</p>}
         <header className="market-hero">
           <h1>发现</h1>
         </header>
@@ -732,6 +741,20 @@ export function App(): JSX.Element {
                     if (currentAuthUserId() !== account)
                       throw new Error('账号已切换，请重新打开公开内容');
                     shellNav.navigate('agent');
+                  }
+                : undefined
+            }
+            onStartExtracted={
+              shellNav
+                ? (card) => {
+                    // Extracted cards are private library cards, opened like any other.
+                    const open =
+                      savedPromptKind(card) === 'character'
+                        ? openCharacterChat(card.id)
+                        : openSceneChat(card.id);
+                    void open.then((opened) => {
+                      if (opened) shellNav.navigate('agent');
+                    });
                   }
                 : undefined
             }

@@ -5,6 +5,7 @@ import {
   CheckCheck,
   ChevronRight,
   Compass,
+  MapPin,
   MessageCircle,
   Search,
   SquarePen,
@@ -29,7 +30,7 @@ import {
 import type { AuthUser } from '@0xnullai/auth';
 import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
 import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
-import { openCharacterChat } from './open-character-chat';
+import { openCharacterChat, openSceneChat } from '@0xnullai/scenes/start-chat';
 interface InboxRow {
   id: string;
   routeId: string;
@@ -408,15 +409,23 @@ export function UnifiedInbox({
       if (opened) onNavigate('agent');
     });
   };
-  const characters = newChatOpen
-    ? loadScenes().scenes.filter((scene) => savedPromptKind(scene) === 'character')
-    : [];
+  const startScene = (sceneId: string) => {
+    setNewChatOpen(false);
+    void openSceneChat(sceneId).then((opened) => {
+      if (opened) onNavigate('agent');
+    });
+  };
+  const libraryCards = newChatOpen ? loadScenes().scenes : [];
+  const characters = libraryCards.filter((scene) => savedPromptKind(scene) === 'character');
+  const scenes = libraryCards.filter((scene) => savedPromptKind(scene) === 'scene');
   const newChatMenu = user ? (
     <NewChatMenu
       open={newChatOpen}
       onOpenChange={setNewChatOpen}
       characters={characters}
+      scenes={scenes}
       onStartCharacter={startCharacter}
+      onStartScene={startScene}
       onDiscover={() => {
         setNewChatOpen(false);
         onNavigate('market');
@@ -786,7 +795,9 @@ function NewChatMenu({
   open,
   onOpenChange,
   characters,
+  scenes,
   onStartCharacter,
+  onStartScene,
   onDiscover,
   onFindContact,
   onCreateRoom,
@@ -794,7 +805,10 @@ function NewChatMenu({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   characters: { id: string; name: string; icon?: string }[];
+  scenes: { id: string; name: string; icon?: string }[];
   onStartCharacter: (id: string) => void;
+  /** A scene starts a chat in that place with no character. */
+  onStartScene: (id: string) => void;
   onDiscover: () => void;
   onFindContact: () => void;
   onCreateRoom: () => void;
@@ -857,6 +871,32 @@ function NewChatMenu({
                 <span className="min-w-0 flex-1 truncate">{character.name}</span>
               </button>
             ))}
+            {scenes.length > 0 && (
+              <div role="group" aria-label="场景">
+                <p className="px-3 pb-1 pt-2 text-xs text-[var(--text-faint)]" aria-hidden>
+                  场景
+                </p>
+                {scenes.map((scene) => (
+                  <button
+                    key={scene.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => onStartScene(scene.id)}
+                    className={item}
+                  >
+                    <span
+                      className="flex h-[18px] w-[18px] items-center justify-center"
+                      aria-hidden
+                    >
+                      {scene.icon ?? (
+                        <MapPin className="h-[18px] w-[18px] text-[var(--text-soft)]" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{scene.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button type="button" role="menuitem" onClick={onDiscover} className={item}>
             <Compass className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />

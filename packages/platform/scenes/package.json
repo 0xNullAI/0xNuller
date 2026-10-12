@@ -11,16 +11,21 @@
     "./character-card": "./src/character-card.ts",
     "./character-draft": "./src/character-draft.ts",
     "./external-character-card": "./src/external-character-card.ts",
-    "./character-editor": "./src/character-card-fields.tsx"
+    "./character-editor": "./src/character-card-fields.tsx",
+    "./external-card-container": "./src/external-card-container.ts",
+    "./start-chat": "./src/start-scene-chat.ts",
+    "./script-splitter": "./src/script-splitter-dialog.tsx"
   },
   "peerDependencies": {
     "react": "^19.2.5"
   },
   "dependencies": {
     "@0xnullai/auth": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/sync": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
-    "lucide-react": "^1.11.0"
+    "lucide-react": "^1.11.0",
+    "fflate": "^0.8.3"
   }
 }
