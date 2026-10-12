@@ -89,71 +89,56 @@ export interface WireChat {
 }
 
 /**
- * The room's AI participant.
+ * A group AI. Each one belongs to the member who brought it in: it is that member's own
+ * character, it runs only on the server, and only that member's Credit pays for it. Any
+ * member may @ it. The `ai:` sender prefix identifies every AI message.
  *
- * Exactly one per room, addressed by @-mention. It replaced a system where
- * the AI was modelled as a *claimed scene role*, which meant its identity,
- * its persona and its permission to speak all came from a scene definition
- * — and so did the ability to @ it at all.
- *
- * New rooms use `ai:room`. Old rooms with no primary may keep the first
- * additional role's sender id; the `ai:` prefix still identifies all AI messages.
+ * Groups from before AIs had owners used the fixed id `room` (or an old additional role's
+ * id); migration keeps that id so the history still reads as the same speaker.
  */
 export interface NamedRoomAgent extends RoomAgent {
   id: string;
 }
 
-export const MAX_ROOM_AGENTS = 1;
-
-export function validRoomAgents(value: unknown): value is NamedRoomAgent[] {
-  if (!Array.isArray(value) || value.length > MAX_ROOM_AGENTS) return false;
-  const ids = new Set<string>();
-  return value.every((agent) => {
-    if (
-      !agent ||
-      typeof agent !== 'object' ||
-      typeof agent.id !== 'string' ||
-      !/^[a-zA-Z0-9_-]{1,64}$/.test(agent.id) ||
-      ids.has(agent.id) ||
-      typeof agent.name !== 'string' ||
-      !agent.name.trim() ||
-      agent.name.trim().length > MAX_ROOM_AGENT_NAME ||
-      typeof agent.persona !== 'string' ||
-      agent.persona.length > MAX_ROOM_AGENT_PERSONA
-    )
-      return false;
-    ids.add(agent.id);
-    return true;
-  });
-}
-
 export interface RoomAgent {
   /** Shown in the room and in the @ list. */
   name: string;
-  /** Free-text persona, written by the host. Becomes the system prompt. */
+  /** Persona text copied from the owner's character when it joined. */
   persona: string;
 }
 
-/** Shared transport limits; imported scenes must fit without truncation. */
+/** Shared transport limits; imported characters must fit without truncation. */
 export const MAX_ROOM_AGENT_NAME = 40;
 export const MAX_ROOM_AGENT_PERSONA = 4000;
 
-/** The room agent's fixed member id. */
-export const ROOM_AGENT_ID = 'room';
+/** Most AIs one group holds; each member may bring one. */
+export const MAX_GROUP_AGENTS = 3;
 
-/** The room agent's fixed sender id, as it appears in `as` and in `senderId`. */
-export const ROOM_AGENT_SENDER = `ai:${ROOM_AGENT_ID}`;
+/** The sender id pre-ownership groups used for their single AI. */
+export const LEGACY_ROOM_AGENT_ID = 'room';
 
-/** DO→client: the room's agent. Null means the host has not added one. */
-export interface WireAgent {
-  t: 'agent';
-  agent: RoomAgent | null;
-  agents?: NamedRoomAgent[];
-  host: string; // hostPeerId
-  billingMode?: 'host-byok' | 'managed';
+/** A group AI as every member sees it. */
+export interface WireRoomAgent extends NamedRoomAgent {
+  /** Owner account id; the same id members already see on chat frames. */
+  owner: string;
+  ownerName: string;
+  /** Credit per day the owner allows in this group; null when only the balance limits it. */
+  dailyCap: number | null;
 }
 
-export type RoomAgentBillingMode = 'host-byok' | 'managed';
+/**
+ * DO→client: the group's AIs.
+ *
+ * `agent`, `host` and `billingMode` are only for clients from before AIs had owners. An
+ * empty host and `managed` keep such a client from trying to run an AI in its browser.
+ */
+export interface WireAgent {
+  t: 'agent';
+  agents: WireRoomAgent[];
+  agent: RoomAgent | null;
+  host: '';
+  billingMode: 'managed';
+}
 
 /**
  * DO→client: the group's durable settings.

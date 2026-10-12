@@ -233,8 +233,13 @@ export interface MemberState {
   // —— Added for the room AI ——
   /** Whether this is the AI pseudo-member (peerId shaped like "ai:&lt;id&gt;"). */
   isAi?: boolean;
-  /** Whether this member allows the room's AI to control their device (opt-in). */
-  allowAi?: boolean;
+  /** For an AI pseudo-member: the member who brought it in and pays for it. */
+  aiOwnerName?: string;
+  /**
+   * Whether this member lets people in this conversation control their device. Undefined
+   * for clients too old to report it; their own device still enforces their real choice.
+   */
+  deviceAccess?: boolean;
   // —— Added for the Opossum (dual-channel vibration controller) ——
   opossumConnected?: boolean;
   opossumIntensityA?: number;
@@ -293,8 +298,8 @@ export interface StateSlow {
   intervalB: number;
   currentIndexA: number;
   currentIndexB: number;
-  /** Whether the room's AI may control this machine's device (opt-in; off by default). */
-  allowAi?: boolean;
+  /** Whether this conversation may control this machine's device (off by default). */
+  deviceAccess?: boolean;
   // —— Opossum connection state / battery (low frequency) ——
   opossumConnected?: boolean;
   opossumBattery?: number | null;

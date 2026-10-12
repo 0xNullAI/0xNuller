@@ -17,12 +17,26 @@ import {
   searchHistory,
 } from './room-history';
 import {
-  canCompleteRoomAgentTurn,
   claimRoomAgentTurn,
   completeRoomAgentTurn,
+  firstMentionedAgent,
   initializeRoomAgentTurns,
   managedRoomAgentTurnCurrent,
 } from './room-agent-turn';
+import {
+  addRoomAgent,
+  agentOverDailyCap,
+  clearRoomAgents,
+  initializeRoomAgents,
+  listRoomAgents,
+  migrateLegacyAgent,
+  recordAgentSpend,
+  removeOwnerAgents,
+  removeRoomAgent,
+  setRoomAgentDailyCap,
+  wireRoomAgents,
+  type RoomAgentRecord,
+} from './room-agents';
 import { managedGroupAnswer, managedGroupPrompt } from './managed-group-ai';
 import { sha256Body, signGroupAiTicket } from '../../../workers/auth/src/group-ai-ticket';
 // RoomDO: one instance per group (idFromName(roomCode)), and one per direct-message
@@ -34,7 +48,7 @@ import { sha256Body, signGroupAiTicket } from '../../../workers/auth/src/group-a
 // Groups expire after seven consecutive days without connections; DMs retain history.
 //
 // A conversation is the same object with the group's *administration* removed: no ownership,
-// no host and therefore no room agent, no lobby row. Everything else is identical on purpose —
+// no AIs, no lobby row. Everything else is identical on purpose —
 // it is a room with two people in it, so history, media, presence and device control all work
 // the way they do in a group, by being this class rather than a parallel implementation of the
 // same problems. What differs is only what a two-person conversation cannot have.
@@ -55,15 +69,11 @@ import {
   validGroupName,
   ROOM_IDLE_MS,
   ROOM_GRACE_MS,
-  ROOM_AGENT_ID,
-  validRoomAgents,
+  LEGACY_ROOM_AGENT_ID,
   type NamedRoomAgent,
-  MAX_ROOM_AGENT_NAME,
-  MAX_ROOM_AGENT_PERSONA,
+  type WireAgent,
   type WireChat,
   type WireGroup,
-  type RoomAgent,
-  type RoomAgentBillingMode,
 } from './wire';
 
 interface Attachment {
@@ -77,7 +87,6 @@ interface Attachment {
   expiresAt?: number;
   leaseClosed?: boolean;
   indexRegistered?: boolean;
-  agentTurnCapable?: boolean;
 }
 
 /** Minimum interval (ms) between lobby keepalive reports from a public group. */
@@ -113,8 +122,7 @@ export class RoomDO extends DurableObject<Env> {
       this.dmReadReady = true;
     }
   }
-  // In-memory cache of the room agent (storage is the durable copy; reloaded lazily after hibernation wakes the DO).
-  private agentCache: RoomAgent | null | undefined;
+  private roomAgentsReady = false;
   // Same treatment for the code. It is read on every frame now that it decides whether this
   // instance is a DM, and hibernation can wake the DO straight into webSocketMessage without
   // fetch() ever running again — so it cannot be a field set on connect.
@@ -324,7 +332,6 @@ export class RoomDO extends DurableObject<Env> {
       }
       case 'hello': {
         att.name = typeof msg.name === 'string' ? msg.name.slice(0, 80) : '';
-        att.agentTurnCapable = msg.agentTurns === true;
         ws.serializeAttachment(att);
         // Upload is a separate HTTP request. This random capability ties it back to the
         // currently-live WebSocket instead of treating knowledge of a room code as write access.
@@ -337,7 +344,7 @@ export class RoomDO extends DurableObject<Env> {
         );
         const code = await this.code();
         if (dm) {
-          // Nothing to seed, nobody to make owner, no host to elect and no lobby to appear in.
+          // Nothing to seed, nobody to make owner, no AI and no lobby to appear in.
           // A DM has exactly one durable thing: its history.
           this.sendAuthorized(
             ws,
@@ -381,16 +388,6 @@ export class RoomDO extends DurableObject<Env> {
         const owned = (await this.ctx.storage.get<string>('ownerAccountId')) != null;
         const isOwner = await this.canAdminister(code, att.accountId, msg.ownerKey);
 
-        // Host = whoever currently runs the AI agent loop, and only that. It is a live role,
-        // not ownership: the group outlives every peerId, so a host left over in storage from
-        // a session that ended is reassigned to someone who is actually connected — otherwise
-        // a permanent group would end up with a host nobody can be, and no agent would ever run.
-        // The permanent discussion room has no host (pure open chat): don't assign one, and
-        // clear any leftover.
-        const assigned = await this.ensureHost(att.peerId, att.accountId);
-        const host = assigned.host;
-        const hostChanged = assigned.changed;
-
         if (
           att.accountId &&
           !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)
@@ -405,30 +402,14 @@ export class RoomDO extends DurableObject<Env> {
             readHistoryPage(this.sql, undefined, msg.historyPaging === true ? 100 : 1000),
           ),
         );
-        this.sendAuthorized(
-          ws,
-          JSON.stringify({
-            t: 'agent',
-            agent: await this.getAgent(),
-            agents: await this.getAgents(),
-            host,
-            billingMode: await this.agentBillingMode(),
-          }),
-        );
+        this.sendAuthorized(ws, JSON.stringify(await this.agentFrame()));
         this.sendAuthorized(ws, JSON.stringify(await this.groupFrame(code, { owned, isOwner })));
         if (assignedOwner === 'legacy') {
           // A legacy group just got its first account owner. Tell everyone, so the members
           // who are not the owner see why their settings controls are read-only.
           this.broadcast({ t: 'sys', kind: 'owner-assigned', name: att.name });
         }
-        // Tell the other members that someone joined (and that the host moved, if it did).
         this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
-        if (hostChanged) {
-          this.broadcast(
-            { t: 'agent', agent: await this.getAgent(), agents: await this.getAgents(), host },
-            ws,
-          );
-        }
         await this.reportLobby(this.ctx.getWebSockets().length);
         return;
       }
@@ -457,52 +438,19 @@ export class RoomDO extends DurableObject<Env> {
         return;
       }
       case 'agent-claim': {
-        if (
-          dm ||
-          typeof msg.requestId !== 'string' ||
-          !/^[A-Za-z0-9._:-]{1,128}$/.test(msg.requestId)
-        )
+        // Clients from before AIs ran on the server ask to run one. Nobody does any more.
+        if (typeof msg.requestId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(msg.requestId))
           return;
-        const agents = await this.getAgents();
-        const host = await this.ctx.storage.get<string>('hostPeerId');
-        const hostAccount = await this.ctx.storage.get<string>('hostAccountId');
-        let grantId: string | null = null;
-        if (
-          (await this.agentBillingMode()) === 'host-byok' &&
-          host === att.peerId &&
-          att.accountId &&
-          hostAccount === att.accountId &&
-          activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1) &&
-          this.socketLeaseAlive(ws)
-        ) {
-          this.ensureRoomAgentTurns();
-          grantId = claimRoomAgentTurn(
-            this.sql,
-            msg.triggerId,
-            msg.roleId,
-            att.peerId,
-            agents,
-            Date.now(),
-          );
-        }
         this.sendAuthorized(
           ws,
-          JSON.stringify({
-            t: 'agent-claim-result',
-            requestId: msg.requestId,
-            grantId,
-          }),
+          JSON.stringify({ t: 'agent-claim-result', requestId: msg.requestId, grantId: null }),
         );
         return;
       }
       case 'chat': {
-        // The host may speak as the room agent (checked: sender=host and the room really has an agent).
-        const aiAs = await this.aiSenderOk(att, msg.as);
-        if (msg.as !== undefined && !aiAs) return;
-        const currentAgent = aiAs
-          ? (await this.getAgents()).find((agent) => `ai:${agent.id}` === aiAs)
-          : null;
-        const fromId = aiAs ?? att.peerId;
+        // Only the server speaks as an AI; a participant claiming to is dropped.
+        if (msg.as !== undefined) return;
+        const fromId = att.peerId;
         const chat: WireChat = {
           id:
             typeof msg.id === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(msg.id)
@@ -510,7 +458,7 @@ export class RoomDO extends DurableObject<Env> {
               : crypto.randomUUID(),
           _from: fromId,
           replyTo: resolveMessageReply(this.sql, msg.replyToId),
-          n: currentAgent?.name ?? att.name,
+          n: att.name,
           x: msg.x as string | undefined,
           m: msg.m as WireChat['m'],
           mentions: msg.mentions as WireChat['mentions'],
@@ -524,47 +472,18 @@ export class RoomDO extends DurableObject<Env> {
           !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)
         )
           return;
-        if (aiAs && (await this.ctx.storage.get<string>('hostPeerId')) !== att.peerId) return;
-        if (aiAs && (await this.ctx.storage.get<string>('hostAccountId')) !== att.accountId) return;
         if (!this.socketLeaseAlive(ws)) return;
-        if (aiAs) {
-          this.ensureRoomAgentTurns();
-          const accepted = this.ctx.storage.transactionSync(() => {
-            const triggerId = msg.triggerId;
-            const roleId = aiAs.slice(3);
-            if (
-              !canCompleteRoomAgentTurn(
-                this.sql,
-                triggerId,
-                roleId,
-                currentAgent ?? undefined,
-                msg.grantId,
-                att.peerId,
-                Date.now(),
-              ) ||
-              !this.saveMessage(chat)
-            )
-              return false;
-            completeRoomAgentTurn(this.sql, triggerId as string, roleId, chat.id);
-            return true;
-          });
-          if (!accepted) return;
-        } else {
-          const saved = this.ctx.storage.transactionSync(() => {
-            if (!this.saveMessage(chat)) return false;
-            return true;
-          });
-          if (!saved) {
-            // A retry of a message this sender already saved: confirm it to the sender only,
-            // so a lost echo cannot leave the message pending forever or send it twice.
-            this.echoStoredMessage(ws, chat.id, fromId);
-            return;
-          }
+        const saved = this.ctx.storage.transactionSync(() => this.saveMessage(chat));
+        if (!saved) {
+          // A retry of a message this sender already saved: confirm it to the sender only,
+          // so a lost echo cannot leave the message pending forever or send it twice.
+          this.echoStoredMessage(ws, chat.id, fromId);
+          return;
         }
-        if (att.accountId || (!dm && aiAs))
+        if (att.accountId)
           this.sql.exec(
             'UPDATE message_sequences SET sender_account=? WHERE message_id=?',
-            !dm && aiAs ? `agent:${aiAs}` : att.accountId!,
+            att.accountId,
             chat.id,
           );
         // Echo the saved message to the sender so a local optimistic copy can become
@@ -572,39 +491,9 @@ export class RoomDO extends DurableObject<Env> {
         this.broadcast({
           t: 'chat',
           ...chat,
-          ...(!aiAs && att.accountId ? { _account: att.accountId } : {}),
+          ...(att.accountId ? { _account: att.accountId } : {}),
         });
-        if (!dm && !aiAs && att.accountId && (await this.agentBillingMode()) === 'managed') {
-          const agents = await this.getAgents();
-          const payer = att.accountId;
-          const responders = [...new Set((chat.mentions ?? []).map((m) => m?.peerId))]
-            .filter((id) => agents.some((agent) => id === `ai:${agent.id}`))
-            .slice(0, 1);
-          for (const sender of responders) {
-            const role = agents.find((agent) => sender === `ai:${agent.id}`);
-            if (!role) continue;
-            this.ensureRoomAgentTurns();
-            const grantId = claimRoomAgentTurn(
-              this.sql,
-              chat.id,
-              role.id,
-              'managed',
-              agents,
-              Date.now(),
-            );
-            if (grantId)
-              this.ctx.waitUntil(
-                this.runManagedGroupTurn(chat.id, role, payer, grantId).catch(() => {
-                  this.managedTurnNotice(
-                    payer,
-                    chat.id,
-                    role.id,
-                    '群 AI 未完成，请查看 Credit 账本后再发送新的 @ 消息',
-                  );
-                }),
-              );
-          }
-        }
+        if (!dm && att.accountId) await this.startAgentTurn(chat, att.accountId);
         return;
       }
 
@@ -629,8 +518,10 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'membership-leave': {
         if (dm || !att.accountId || att.membershipVersion === undefined) return;
-        if (leaveGroupMembership(this.sql, att.accountId, att.membershipVersion, Date.now()))
+        if (leaveGroupMembership(this.sql, att.accountId, att.membershipVersion, Date.now())) {
           await this.releaseOwnership(att.accountId);
+          await this.retireOwnerAgents(att.accountId);
+        }
         this.closeAccountSockets(att.accountId);
         return;
       }
@@ -656,7 +547,10 @@ export class RoomDO extends DurableObject<Env> {
             action as 'remove' | 'ban' | 'restore',
             Date.now(),
           );
-          if (action !== 'restore') this.closeAccountSockets(msg.accountId);
+          if (action !== 'restore') {
+            await this.retireOwnerAgents(msg.accountId);
+            this.closeAccountSockets(msg.accountId);
+          }
         }
         this.sendAuthorized(
           ws,
@@ -700,6 +594,8 @@ export class RoomDO extends DurableObject<Env> {
             "UPDATE group_memberships SET state='removed',version=version+1,updated_at=? WHERE state='active'",
             Date.now(),
           );
+          await this.ensureRoomAgents();
+          clearRoomAgents(this.sql);
           await this.pushLobby(0, false);
           this.broadcast({ t: 'sys', kind: 'closed' });
           for (const socket of this.ctx.getWebSockets()) {
@@ -735,92 +631,87 @@ export class RoomDO extends DurableObject<Env> {
         return;
       }
 
-      case 'agent': {
-        // Owner-only. The agent's device commands are authorized as ai:room on the host's
-        // authority, so whoever defines it must be the group's owner account.
-        const code = await this.code();
-        if (
-          !(await this.canAdminister(code, att.accountId, msg.ownerKey)) ||
-          !this.socketLeaseAlive(ws)
-        )
-          return;
-        if (
-          att.accountId &&
-          !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)
-        )
-          return;
-        if (Object.hasOwn(msg, 'agents')) {
-          if (!validRoomAgents(msg.agents)) {
-            this.sendAuthorized(
-              ws,
-              JSON.stringify({
-                t: 'agent-error',
-                message: '每群最多 1 位 AI；名字 1–40、人设最多 4000 字符，原配置未更改',
-              }),
-            );
-            return;
-          }
-          const agents = msg.agents.map(({ id, name, persona }) => ({
-            id,
-            name: name.trim(),
-            persona,
-          }));
-          const primary = agents.find((a) => a.id === ROOM_AGENT_ID);
-          this.agentCache = primary ? { name: primary.name, persona: primary.persona } : null;
-          await this.ctx.storage.put({
-            agent: this.agentCache,
-            additionalAgents: agents.filter((a) => a.id !== ROOM_AGENT_ID),
-          });
-          const host = (await this.ctx.storage.get<string>('hostPeerId')) ?? '';
-          this.broadcast({ t: 'agent', agent: this.agentCache, agents, host });
-          return;
-        }
-        const raw = msg.agent as Record<string, unknown> | null | undefined;
-        if (
-          raw != null &&
-          (typeof raw !== 'object' ||
-            typeof raw.name !== 'string' ||
-            !raw.name.trim() ||
-            raw.name.trim().length > MAX_ROOM_AGENT_NAME ||
-            typeof raw.persona !== 'string' ||
-            raw.persona.length > MAX_ROOM_AGENT_PERSONA)
-        ) {
-          this.sendAuthorized(
-            ws,
-            JSON.stringify({
-              t: 'agent-error',
-              message: `房间 AI 名字须为 1–${MAX_ROOM_AGENT_NAME} 个字符，人设最多 ${MAX_ROOM_AGENT_PERSONA} 个字符；原配置未更改`,
-            }),
-          );
-          return;
-        }
-        const next: RoomAgent | null = raw
-          ? { name: (raw.name as string).trim(), persona: raw.persona as string }
-          : null;
-        this.agentCache = next;
-        await this.ctx.storage.put({ agent: next, additionalAgents: [] });
-        const host = (await this.ctx.storage.get<string>('hostPeerId')) ?? '';
-        this.broadcast({ t: 'agent', agent: next, agents: await this.getAgents(), host });
+      case 'agent':
+      case 'agent-billing': {
+        // Pre-ownership clients configured one group-wide AI. AIs belong to members now.
+        if (dm) return;
+        this.sendAuthorized(
+          ws,
+          JSON.stringify({ t: 'agent-error', message: '请更新到最新版本后再设置群 AI' }),
+        );
         return;
       }
 
-      case 'agent-billing': {
-        if (dm || (msg.mode !== 'host-byok' && msg.mode !== 'managed')) return;
+      case 'agent-add': {
+        if (dm || !att.accountId) return;
         const code = await this.code();
-        if (!(await this.canAdminister(code, att.accountId, msg.ownerKey))) return;
+        const ticket = await authorizeDmToken({
+          secret: this.env.DM_TICKET_SECRET,
+          token: typeof msg.ticket === 'string' ? msg.ticket : null,
+          audience: 'group-agent',
+          now: Date.now(),
+        });
+        // The account service vouches that this member owns the character and has Credit;
+        // the ticket names this group so it cannot be replayed into another one.
         if (
-          !att.accountId ||
-          !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)
+          !ticket.ok ||
+          ticket.claims.sub !== att.accountId ||
+          ticket.claims.room !== code ||
+          !ticket.claims.characterId
+        ) {
+          this.sendAuthorized(
+            ws,
+            JSON.stringify({ t: 'agent-error', message: '无法确认角色归属，请重试' }),
+          );
+          return;
+        }
+        if (
+          !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1) ||
+          !this.socketLeaseAlive(ws)
         )
           return;
-        await this.ctx.storage.put('agentBillingMode', msg.mode);
-        this.broadcast({
-          t: 'agent',
-          agent: await this.getAgent(),
-          agents: await this.getAgents(),
-          host: (await this.ctx.storage.get<string>('hostPeerId')) ?? '',
-          billingMode: msg.mode,
-        });
+        await this.ensureRoomAgents();
+        const added = addRoomAgent(
+          this.sql,
+          {
+            owner: att.accountId,
+            ownerName: att.name,
+            characterId: ticket.claims.characterId,
+            name: typeof msg.name === 'string' ? msg.name : '',
+            persona: typeof msg.persona === 'string' ? msg.persona : '',
+          },
+          Date.now(),
+        );
+        if (!added.ok) {
+          this.sendAuthorized(ws, JSON.stringify({ t: 'agent-error', message: added.message }));
+          return;
+        }
+        this.broadcast(await this.agentFrame());
+        return;
+      }
+
+      case 'agent-cap': {
+        if (dm || !att.accountId) return;
+        if (!activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)) return;
+        await this.ensureRoomAgents();
+        if (setRoomAgentDailyCap(this.sql, msg.agentId, att.accountId, msg.dailyCap))
+          this.broadcast(await this.agentFrame());
+        return;
+      }
+
+      case 'agent-remove': {
+        if (dm || !att.accountId) return;
+        if (!activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)) return;
+        await this.ensureRoomAgents();
+        const agent = listRoomAgents(this.sql).find((candidate) => candidate.id === msg.agentId);
+        // The owner withdraws their own AI; the group's owner may remove anyone's.
+        if (
+          !agent ||
+          (agent.owner !== att.accountId &&
+            !(await this.canAdminister(await this.code(), att.accountId, msg.ownerKey)))
+        )
+          return;
+        if (removeRoomAgent(this.sql, agent.id)) this.broadcast(await this.agentFrame());
         return;
       }
 
@@ -838,8 +729,8 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'cmd':
       case 'wave': {
-        // Forward directly to the target peer. The host may act as the room agent (_from = ai:room, which the device side uses for authorization checks).
-        const aiAs = await this.aiSenderOk(att, msg.as);
+        // Forward directly to the target peer under the sender's own identity. No participant
+        // may act as an AI: a device must never mistake a member's command for an AI's.
         if (
           !dm &&
           att.accountId &&
@@ -847,7 +738,8 @@ export class RoomDO extends DurableObject<Env> {
         )
           return;
         if (!this.socketLeaseAlive(ws)) return;
-        this.sendTo(msg.to as string, { ...msg, _from: aiAs ?? att.peerId });
+        const { as: _ignored, ...forwarded } = msg;
+        this.sendTo(msg.to as string, { ...forwarded, _from: att.peerId });
         return;
       }
 
@@ -1139,7 +1031,6 @@ export class RoomDO extends DurableObject<Env> {
     const remaining = this.ctx.getWebSockets().filter((w) => w !== ws);
     if (att) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
-      await this.handoverHost(att.peerId, remaining, ws);
     }
     if (remaining.length === 0) {
       // Keep the first empty instant stable across duplicate close/error callbacks.
@@ -1204,16 +1095,19 @@ export class RoomDO extends DurableObject<Env> {
       );
     }
     this.sql.exec('DELETE FROM messages');
+    await this.ensureRoomAgents();
+    clearRoomAgents(this.sql);
     await this.ctx.storage.delete([
       'additionalAgents',
       'ownerKeyHash',
       'ownerAccountId',
       'agent',
+      'agentBillingMode',
       'hostPeerId',
+      'hostAccountId',
       'roomName',
       'public',
     ]);
-    this.agentCache = null;
     await this.ctx.storage.deleteAlarm();
     return true;
   }
@@ -1277,89 +1171,6 @@ export class RoomDO extends DurableObject<Env> {
     return frame;
   }
 
-  /** Current live peerIds, used to tell a real host from one left over in storage. */
-  private livePeerIds(sockets: WebSocket[]): Set<string> {
-    const ids = new Set<string>();
-    for (const ws of sockets) {
-      try {
-        const att = ws.deserializeAttachment() as Attachment | null;
-        if (att?.peerId) ids.add(att.peerId);
-      } catch {
-        /* socket without an attachment; ignore */
-      }
-    }
-    return ids;
-  }
-
-  private capablePeerIds(sockets: WebSocket[]): Set<string> {
-    const ids = new Set<string>();
-    for (const socket of sockets) {
-      try {
-        const att = socket.deserializeAttachment() as Attachment | null;
-        if (att?.peerId && att.agentTurnCapable) ids.add(att.peerId);
-      } catch {
-        /* socket without an attachment; ignore */
-      }
-    }
-    return ids;
-  }
-
-  private socketAccountForPeer(sockets: WebSocket[], peerId: string): string {
-    for (const socket of sockets) {
-      try {
-        const att = socket.deserializeAttachment() as Attachment | null;
-        if (att?.peerId === peerId) return att.accountId ?? '';
-      } catch {
-        /* socket without an attachment; ignore */
-      }
-    }
-    return '';
-  }
-
-  private async ensureHost(
-    candidate: string,
-    accountId?: string,
-  ): Promise<{ host: string; changed: boolean }> {
-    const stored = (await this.ctx.storage.get<string>('hostPeerId')) ?? '';
-    const storedAccount = (await this.ctx.storage.get<string>('hostAccountId')) ?? '';
-    const sockets = this.ctx.getWebSockets();
-    const live = this.livePeerIds(sockets);
-    const capable = this.capablePeerIds(sockets);
-    const liveAccount = this.socketAccountForPeer(sockets, stored);
-    if (
-      stored &&
-      live.has(stored) &&
-      (!storedAccount || storedAccount === liveAccount) &&
-      (!capable.has(candidate) || capable.has(stored))
-    ) {
-      if (!storedAccount) {
-        if (liveAccount) await this.ctx.storage.put('hostAccountId', liveAccount);
-      }
-      return { host: stored, changed: false };
-    }
-    await this.ctx.storage.put({ hostPeerId: candidate, hostAccountId: accountId ?? '' });
-    return { host: candidate, changed: true };
-  }
-
-  /** The host left: hand the agent loop to someone still connected, so exactly one browser runs it. */
-  private async handoverHost(
-    leavingPeerId: string,
-    remaining: WebSocket[],
-    except: WebSocket,
-  ): Promise<void> {
-    const stored = (await this.ctx.storage.get<string>('hostPeerId')) ?? '';
-    if (!stored || stored !== leavingPeerId) return;
-    const next =
-      [...this.capablePeerIds(remaining)][0] ?? [...this.livePeerIds(remaining)][0] ?? '';
-    const nextAccount = this.socketAccountForPeer(remaining, next);
-    await this.ctx.storage.put({ hostPeerId: next, hostAccountId: nextAccount });
-    if (next)
-      this.broadcast(
-        { t: 'agent', agent: await this.getAgent(), agents: await this.getAgents(), host: next },
-        except,
-      );
-  }
-
   private accountRevoked(account: string): boolean {
     this.ensureGroupMembership();
     return (
@@ -1410,6 +1221,7 @@ export class RoomDO extends DurableObject<Env> {
     );
     this.sql.exec('DELETE FROM dm_read_cursors WHERE account_id=?', account);
     await this.releaseOwnership(account);
+    await this.retireOwnerAgents(account);
     this.closeAccountSockets(account);
   }
 
@@ -1424,7 +1236,7 @@ export class RoomDO extends DurableObject<Env> {
   /**
    * Extends a live socket's admission with a freshly minted ticket for the same account
    * (and, for a DM, the same conversation). Closing and reopening the socket every lease
-   * period instead would rotate the host, drop in-flight AI turns and lose unsent frames.
+   * period instead would drop presence and lose unsent frames.
    * Any ticket that does not prove the same identity leaves the lease to expire normally.
    */
   private async renewSocketLease(
@@ -1631,32 +1443,123 @@ export class RoomDO extends DurableObject<Env> {
     if (orphans.length > 0) await deleteRoomMedia(this.env, code, orphans);
   }
 
-  private async getAgents(): Promise<NamedRoomAgent[]> {
-    const primary = await this.getAgent();
-    if (primary) return [{ ...primary, id: ROOM_AGENT_ID }];
-    // Old rooms may only have an additional role. Keep the first stored identity
-    // readable without re-enabling several AI participants or changing its sender ID.
+  /**
+   * Create the AI table on first use and move a pre-ownership AI into it. That AI goes to the
+   * group's owner, who pays for it from now on; until the group has an owner it stays stored.
+   */
+  private async ensureRoomAgents(): Promise<void> {
+    if (this.roomAgentsReady) return;
+    initializeRoomAgents(this.sql);
+    const primary = (await this.ctx.storage.get<NamedRoomAgent>('agent')) ?? null;
     const additional = (await this.ctx.storage.get<NamedRoomAgent[]>('additionalAgents')) ?? [];
-    return additional.slice(0, 1);
+    const legacy = primary
+      ? { name: primary.name, persona: primary.persona, id: LEGACY_ROOM_AGENT_ID }
+      : (additional[0] ?? null);
+    const ownerAccount = (await this.ctx.storage.get<string>('ownerAccountId')) ?? null;
+    this.ensureGroupMembership();
+    const owner =
+      ownerAccount && activeGroupMember(this.sql, ownerAccount)
+        ? {
+            account: ownerAccount,
+            name: String(
+              this.sql
+                .exec('SELECT name FROM group_memberships WHERE account_id=?', ownerAccount)
+                .toArray()[0]?.name ?? '',
+            ),
+          }
+        : null;
+    if (legacy && !migrateLegacyAgent(this.sql, legacy, owner, Date.now())) return;
+    if (legacy)
+      await this.ctx.storage.delete([
+        'agent',
+        'additionalAgents',
+        'agentBillingMode',
+        'hostPeerId',
+        'hostAccountId',
+      ]);
+    this.roomAgentsReady = true;
   }
 
-  private async agentBillingMode(): Promise<RoomAgentBillingMode> {
-    return (await this.ctx.storage.get<RoomAgentBillingMode>('agentBillingMode')) === 'managed'
-      ? 'managed'
-      : 'host-byok';
+  private async roomAgents(): Promise<RoomAgentRecord[]> {
+    await this.ensureRoomAgents();
+    return listRoomAgents(this.sql);
   }
 
-  private managedTurnNotice(
-    payer: string,
+  private async agentFrame(): Promise<WireAgent> {
+    const agents = wireRoomAgents(await this.roomAgents());
+    const first = agents[0];
+    return {
+      t: 'agent',
+      agents,
+      agent: first ? { name: first.name, persona: first.persona } : null,
+      host: '',
+      billingMode: 'managed',
+    };
+  }
+
+  /** The member is gone from the group, so is every AI they brought. */
+  private async retireOwnerAgents(account: string): Promise<void> {
+    await this.ensureRoomAgents();
+    if (removeOwnerAgents(this.sql, account)) this.broadcast(await this.agentFrame());
+  }
+
+  /** A saved human message that @-mentions an AI starts that AI's turn, paid by its owner. */
+  private async startAgentTurn(chat: WireChat, requester: string): Promise<void> {
+    if (
+      !chat.mentions?.some(
+        (mention) => typeof mention?.peerId === 'string' && mention.peerId.startsWith('ai:'),
+      )
+    )
+      return;
+    const agents = await this.roomAgents();
+    const agentId = firstMentionedAgent(chat.mentions, agents);
+    const agent = agents.find((candidate) => candidate.id === agentId);
+    if (!agent) return;
+    if (agentOverDailyCap(this.sql, agent, Date.now())) {
+      this.agentNotice(agent, requester, chat.id, '今日额度已用完', '今天的群 AI 额度已用完');
+      return;
+    }
+    this.ensureRoomAgentTurns();
+    const grantId = claimRoomAgentTurn(this.sql, chat.id, agent.id, agents, Date.now());
+    if (!grantId) return;
+    this.ctx.waitUntil(
+      this.runManagedGroupTurn(chat.id, agent, requester, grantId).catch(() => {
+        this.agentNotice(
+          agent,
+          requester,
+          chat.id,
+          '暂时无法回复，请稍后再 @',
+          '群 AI 未完成，请查看 Credit 账本',
+        );
+      }),
+    );
+  }
+
+  /**
+   * Tell the member who asked why the AI stayed silent, and its owner the real reason. A
+   * failure is never written into the conversation.
+   */
+  private agentNotice(
+    agent: RoomAgentRecord,
+    requester: string,
     triggerId: string,
-    roleId: string,
-    message: string,
+    forRequester: string,
+    forOwner: string,
   ): void {
-    const data = JSON.stringify({ t: 'agent-run-status', triggerId, roleId, message });
     for (const socket of this.ctx.getWebSockets()) {
       try {
-        if ((socket.deserializeAttachment() as Attachment | null)?.accountId === payer)
-          this.sendAuthorized(socket, data);
+        const account = (socket.deserializeAttachment() as Attachment | null)?.accountId;
+        const message =
+          account === agent.owner
+            ? `「${agent.name}」${forOwner}`
+            : account === requester
+              ? `「${agent.name}」${forRequester}`
+              : null;
+        if (message)
+          this.sendAuthorized(
+            socket,
+            JSON.stringify({ t: 'agent-run-status', triggerId, roleId: agent.id, message }),
+          );
       } catch {
         /* The notice is private and best effort; the durable billing state remains authoritative. */
       }
@@ -1666,41 +1569,43 @@ export class RoomDO extends DurableObject<Env> {
   /** The RoomDO alone builds the paid request; browsers never receive its signed billing ticket. */
   private async runManagedGroupTurn(
     triggerId: string,
-    agent: NamedRoomAgent,
-    payer: string,
+    agent: RoomAgentRecord,
+    requester: string,
     grantId: string,
   ): Promise<void> {
     const room = await this.code();
-    const hostPeerId = await this.ctx.storage.get<string>('hostPeerId');
-    const hostAccountId = await this.ctx.storage.get<string>('hostAccountId');
+    const owner = agent.owner;
     const current = async () =>
-      (await this.agentBillingMode()) === 'managed' &&
       (await this.ctx.storage.get<boolean>('closed')) !== true &&
-      (await this.ctx.storage.get<string>('hostPeerId')) === hostPeerId &&
-      (await this.ctx.storage.get<string>('hostAccountId')) === hostAccountId &&
-      (await this.getAgents()).some(
+      (await this.roomAgents()).some(
         (role) =>
-          role.id === agent.id && role.name === agent.name && role.persona === agent.persona,
+          role.id === agent.id &&
+          role.owner === owner &&
+          role.name === agent.name &&
+          role.persona === agent.persona,
       ) &&
-      managedRoomAgentTurnCurrent(this.sql, triggerId, agent.id, agent, grantId, payer, Date.now());
+      managedRoomAgentTurnCurrent(this.sql, triggerId, agent.id, agent, grantId, owner, Date.now());
+    const notice = (forRequester: string, forOwner: string) =>
+      this.agentNotice(agent, requester, triggerId, forRequester, forOwner);
     if (!room || !(await current())) return;
     if (!this.env.LLM) {
-      this.managedTurnNotice(payer, triggerId, agent.id, '群 AI 服务暂不可用');
+      notice('暂时无法回复', '群 AI 服务暂不可用');
       return;
     }
     const payload = managedGroupPrompt(this.sql, triggerId, agent);
     if (!payload) return;
     const body = JSON.stringify(payload);
     const { ticket, reservationKey } = await signGroupAiTicket(this.env.DM_TICKET_SECRET, {
-      payer,
+      payer: owner,
       room,
       triggerId,
       roleId: agent.id,
       grantId,
       modelId: payload.model,
       bodyHash: await sha256Body(body),
+      ...(agent.characterId ? { characterId: agent.characterId } : {}),
     });
-    // Recheck after ticket creation too: no paid request after an owner edit or member removal.
+    // Recheck after ticket creation too: no paid request after a removal or persona change.
     if (!(await current())) return;
     let response: Response;
     try {
@@ -1716,12 +1621,7 @@ export class RoomDO extends DurableObject<Env> {
         }),
       );
     } catch {
-      this.managedTurnNotice(
-        payer,
-        triggerId,
-        agent.id,
-        '模型连接失败，请查看 Credit 账本后再尝试新的 @ 消息',
-      );
+      notice('暂时无法回复，请稍后再 @', '模型连接失败，请查看 Credit 账本');
       return;
     }
     let result: { credit_charged?: unknown; billing_status?: unknown; choices?: unknown } | null;
@@ -1730,31 +1630,28 @@ export class RoomDO extends DurableObject<Env> {
     } catch {
       result = null;
     }
+    if (typeof result?.credit_charged === 'number')
+      recordAgentSpend(this.sql, agent.id, result.credit_charged, Date.now());
     if (!response.ok || typeof result?.credit_charged !== 'number') {
-      this.managedTurnNotice(
-        payer,
-        triggerId,
-        agent.id,
+      notice(
+        '暂时无法回复',
         response.status === 402
-          ? 'Credit 不足，群 AI 未调用模型'
-          : result?.billing_status === 'pending' || result?.billing_status === 'unknown'
-            ? '群 AI 账务待核对，请勿重试同一条 @ 消息'
-            : '群 AI 暂时无法回复；请用新的 @ 消息重试',
+          ? 'Credit 不足，没有回复'
+          : response.status === 401
+            ? '对应的角色已删除或账号不可用，请撤出这个 AI'
+            : result?.billing_status === 'pending' || result?.billing_status === 'unknown'
+              ? '账务待核对，请查看 Credit 账本'
+              : '暂时无法回复',
       );
       return;
     }
     const answer = managedGroupAnswer(result);
     if (!answer) {
-      this.managedTurnNotice(
-        payer,
-        triggerId,
-        agent.id,
-        '群 AI 没有生成可发送的回复，本次已结算；可以换个说法再 @ 一次',
-      );
+      notice('没有生成可发送的回复，可以换个说法再 @', '没有生成可发送的回复，本次已结算');
       return;
     }
     if (!(await current())) {
-      this.managedTurnNotice(payer, triggerId, agent.id, '角色或群状态已改变，已结算的回复未发送');
+      notice('已离开或设置已改变', '已离开或设置已改变，已结算的回复未发送');
       return;
     }
     const chat: WireChat = {
@@ -1772,7 +1669,7 @@ export class RoomDO extends DurableObject<Env> {
           agent.id,
           agent,
           grantId,
-          payer,
+          owner,
           Date.now(),
         ) ||
         !this.saveMessage(chat)
@@ -1788,28 +1685,6 @@ export class RoomDO extends DurableObject<Env> {
     });
     if (!accepted) return;
     this.broadcast({ t: 'chat', ...chat });
-  }
-
-  private async getAgent(): Promise<RoomAgent | null> {
-    if (this.agentCache === undefined) {
-      this.agentCache = (await this.ctx.storage.get<RoomAgent>('agent')) ?? null;
-    }
-    return this.agentCache;
-  }
-
-  /**
-   * Check whether "the host speaking/acting as the room agent" is legitimate.
-   * Returns the agent's sender id when it is, otherwise null.
-   * Conditions: `as` matches the one active agent identity, the sender is the host,
-   * and the room actually has an agent.
-   */
-  private async aiSenderOk(sender: Attachment, as: unknown): Promise<string | null> {
-    if (typeof as !== 'string' || !as.startsWith('ai:')) return null;
-    if ((await this.agentBillingMode()) === 'managed') return null;
-    const host = await this.ctx.storage.get<string>('hostPeerId');
-    const account = await this.ctx.storage.get<string>('hostAccountId');
-    if (sender.peerId !== host || !sender.accountId || sender.accountId !== account) return null;
-    return (await this.getAgents()).some((agent) => as === `ai:${agent.id}`) ? as : null;
   }
 
   /** Only public groups touch the lobby, so a private group stays entirely invisible to it. */

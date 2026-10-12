@@ -1,4 +1,4 @@
-import { ROOM_AGENT_ID, type NamedRoomAgent } from './wire';
+import type { NamedRoomAgent } from './wire';
 
 const TURN_WINDOW_MS = 5 * 60_000;
 const MAX_PENDING_TURNS = 4;
@@ -18,24 +18,25 @@ export function initializeRoomAgentTurns(sql: SqlStorage): void {
   )`);
 }
 
-/** A claimed turn is never reissued, even after host handover: a fresh human mention retries it. */
+/** The server is the only runner; the column predates owned AIs and keeps its old name. */
+export const SERVER_TURN_RUNNER = 'managed';
+
+/** A claimed turn is never reissued: a fresh human mention retries it. */
 export function claimRoomAgentTurn(
   sql: SqlStorage,
   triggerId: unknown,
   roleId: unknown,
-  hostPeerId: string,
   agents: NamedRoomAgent[],
   now: number,
 ): string | null {
-  const activeAgent = agents.find((agent) => agent.id === ROOM_AGENT_ID) ?? agents[0];
+  const agent = agents.find((candidate) => candidate.id === roleId);
   if (
     typeof triggerId !== 'string' ||
     !/^[A-Za-z0-9._:-]{1,128}$/.test(triggerId) ||
     typeof roleId !== 'string' ||
-    activeAgent?.id !== roleId
+    !agent
   )
     return null;
-  const agent = activeAgent;
   const trigger = sql
     .exec(
       `SELECT m.from_id,m.body,m.ts,s.sender_account FROM messages m
@@ -62,11 +63,7 @@ export function claimRoomAgentTurn(
     return null;
   }
   if (!Array.isArray(body.mentions)) return null;
-  const known = `ai:${agent.id}`;
-  const responders = [...new Set(body.mentions.map((mention) => mention?.peerId))]
-    .filter((peerId): peerId is string => typeof peerId === 'string' && peerId === known)
-    .slice(0, 1);
-  if (!responders.includes(`ai:${roleId}`)) return null;
+  if (firstMentionedAgent(body.mentions, agents) !== agent.id) return null;
   // A trigger expires before its claim is pruned; the one-hour ledger bounds
   // rate-limit state without reopening an old message for replay.
   sql.exec('DELETE FROM room_agent_turns WHERE claimed_at<?', now - 60 * 60_000);
@@ -96,12 +93,26 @@ export function claimRoomAgentTurn(
       triggerId,
       roleId,
       JSON.stringify([agent.name, agent.persona]),
-      hostPeerId,
+      SERVER_TURN_RUNNER,
       grantId,
       now,
     )
     .toArray();
   return inserted.length ? grantId : null;
+}
+
+/** One message wakes at most one AI: the first configured one it mentions. */
+export function firstMentionedAgent(
+  mentions: unknown,
+  agents: readonly NamedRoomAgent[],
+): string | null {
+  if (!Array.isArray(mentions)) return null;
+  for (const mention of mentions) {
+    const peerId = (mention as { peerId?: unknown } | null)?.peerId;
+    const agent = agents.find((candidate) => peerId === `ai:${candidate.id}`);
+    if (agent) return agent.id;
+  }
+  return null;
 }
 
 /** Called inside the same synchronous transaction as inserting the AI message. */
@@ -111,7 +122,6 @@ export function canCompleteRoomAgentTurn(
   roleId: string,
   agent: NamedRoomAgent | undefined,
   grantId: unknown,
-  hostPeerId: string,
   now: number,
 ): boolean {
   if (typeof triggerId !== 'string' || typeof grantId !== 'string' || !agent) return false;
@@ -123,24 +133,26 @@ export function canCompleteRoomAgentTurn(
       roleId,
       JSON.stringify([agent.name, agent.persona]),
       grantId,
-      hostPeerId,
+      SERVER_TURN_RUNNER,
     )
     .toArray()[0];
   return !!row && row.response_id == null && Number(row.claimed_at) + TURN_WINDOW_MS >= now;
 }
 
-/** Recheck the durable trigger and payer whenever a managed turn crosses network I/O. */
+/**
+ * Recheck the durable trigger and both accounts whenever a turn crosses network I/O: the
+ * member who asked must still be in the group, and so must the owner who pays.
+ */
 export function managedRoomAgentTurnCurrent(
   sql: SqlStorage,
   triggerId: string,
   roleId: string,
   agent: NamedRoomAgent,
   grantId: string,
-  payer: string,
+  owner: string,
   now: number,
 ): boolean {
-  if (!canCompleteRoomAgentTurn(sql, triggerId, roleId, agent, grantId, 'managed', now))
-    return false;
+  if (!canCompleteRoomAgentTurn(sql, triggerId, roleId, agent, grantId, now)) return false;
   const trigger = sql
     .exec(
       `SELECT m.from_id,s.sender_account FROM messages m
@@ -152,8 +164,9 @@ export function managedRoomAgentTurnCurrent(
     !!trigger &&
     typeof trigger.from_id === 'string' &&
     !trigger.from_id.startsWith('ai:') &&
-    trigger.sender_account === payer &&
-    activeMember(sql, payer)
+    typeof trigger.sender_account === 'string' &&
+    activeMember(sql, trigger.sender_account) &&
+    activeMember(sql, owner)
   );
 }
 

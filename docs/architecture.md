@@ -94,7 +94,7 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 | 文本配置存储                               | `@0xnullai/llm-providers` scoped store | Agent/Chat 共用 profile；Video 独立 profile | Video 的 key、版本与凭据不向文本 profile 迁移                      |
 | 浏览器 LLM client、dialect、代理与模型发现 | `@dg-agent/agent-browser`              | Agent、Chat、Video、Web 设置                | prompt、历史、迭代和视觉帧仍由功能模块组合                         |
 | 猫愿语音 realtime client                   | `apps/voice/src/lib/realtime`          | Voice、Web Voice 设置                       | 只连 Voice Worker，上游归 Worker；音频与音色不并入文本 HTTP client |
-| Chat 房间设备工具                          | Chat owner-side command policy         | 房间 Agent                                  | 远端目标由设备持有者授权和钳制，不能改成本地设备调用               |
+| 群 AI                                      | Chat RoomDO + LLM Proxy 群票据         | 群聊                                        | 只在服务器运行、扣 AI 主人的 Credit；目前没有设备工具              |
 
 共享边界只统一相同语义：API key 的存储范围、provider 请求协议、工具授权、租约和停止顺序
 不能因为 UI 或适配器复用而发生迁移。功能 app 不自行拼接 provider endpoint 或代理 URL。

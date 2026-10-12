@@ -65,7 +65,7 @@ interface ChatPanelProps {
    * knows. Absent for anonymous peers, for the room AI, and for history from
    * someone who has since left — all of which correctly render an inert avatar.
    */
-  members?: { peerId: string; name: string; username?: string | null }[];
+  members?: { peerId: string; name: string; username?: string | null; hint?: string }[];
   /** Your own peerId (used to highlight messages that mention you). */
   selfId?: string;
   /** Current socket capability; only private DM media requires it for reads. */
@@ -154,6 +154,8 @@ export function ChatPanel({
   // Sender id to account handle. Rebuilt per render from a list that is at most
   // a roomful long, which is cheaper than the memo that would guard it.
   const usernameByPeer = new Map(members.map((m) => [m.peerId, m.username ?? null]));
+  // Whose AI a group AI is, shown next to its name so nobody mistakes it for a person.
+  const hintByPeer = new Map(members.flatMap((m) => (m.hint ? [[m.peerId, m.hint]] : [])));
   const [sharingCharacter, setSharingCharacter] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage['replyTo']>();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -517,6 +519,9 @@ export function ChatPanel({
                     ) : (
                       <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
                     )}
+                    {hintByPeer.get(msg.senderId) && (
+                      <span className="shrink-0">· {hintByPeer.get(msg.senderId)}</span>
+                    )}
                   </div>
                 )}
 
@@ -684,6 +689,9 @@ export function ChatPanel({
               >
                 <AtSign size={13} className="shrink-0 text-[var(--text-faint)]" />
                 <span className="truncate">{m.name}</span>
+                {m.hint && (
+                  <span className="shrink-0 text-xs text-[var(--text-faint)]">{m.hint}</span>
+                )}
               </button>
             ))}
           </div>

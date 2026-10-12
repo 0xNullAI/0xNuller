@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
 import type { Env } from './index';
 import { ROOM_IDLE_MS } from './wire';
 
@@ -189,22 +188,6 @@ it('preserves occupied rooms, recent rooms and direct messages', async () => {
     expect(r.media.delete).not.toHaveBeenCalled();
   }
 });
-it('prefers an updated agent-turn-capable participant when handing over a mixed-version host', async () => {
-  const r = room();
-  r.values.set('hostPeerId', 'legacy');
-  const socket = (peerId: string, agentTurnCapable: boolean) =>
-    ({
-      deserializeAttachment: () => ({ peerId, agentTurnCapable }),
-      send: vi.fn(),
-    }) as unknown as WebSocket;
-  r.sockets.push(socket('legacy', false), socket('updated', true));
-  const select = r.instance as unknown as {
-    ensureHost(candidate: string): Promise<{ host: string; changed: boolean }>;
-  };
-  expect(await select.ensureHost('updated')).toEqual({ host: 'updated', changed: true });
-  expect(r.values.get('hostPeerId')).toBe('updated');
-  expect(await select.ensureHost('legacy')).toEqual({ host: 'updated', changed: false });
-});
 it('keeps a retry alarm and history if media cleanup fails', async () => {
   const r = room();
   r.media.delete.mockRejectedValueOnce(new Error('R2 unavailable'));
@@ -256,36 +239,6 @@ function activeMembers(r: ReturnType<typeof room>) {
           : [],
   })) as never);
 }
-it('rejects oversized room agent updates without truncating or replacing the persisted persona', async () => {
-  const r = room();
-  const original = { name: '旧名字', persona: '完整的人设' };
-  r.values.set('agent', original);
-  r.values.set('ownerAccountId', 'owner-account');
-  activeMembers(r);
-  const ws = {
-    deserializeAttachment: () => ({
-      peerId: 'owner',
-      accountId: 'owner-account',
-      membershipVersion: 1,
-      indexRegistered: true,
-    }),
-    send: vi.fn(),
-  } as unknown as WebSocket;
-  for (const agent of [
-    { name: '新名字', persona: '人'.repeat(4001) },
-    { name: '名'.repeat(41), persona: '新的人设' },
-  ]) {
-    await r.instance.webSocketMessage(ws, JSON.stringify({ t: 'agent', agent }));
-    expect(r.values.get('agent')).toEqual(original);
-    expect(JSON.parse(vi.mocked(ws.send).mock.calls.at(-1)![0] as string)).toMatchObject({
-      t: 'agent-error',
-      message: expect.stringContaining('原配置未更改'),
-    });
-  }
-  const valid = { name: '名'.repeat(40), persona: '人'.repeat(4000) };
-  await r.instance.webSocketMessage(ws, JSON.stringify({ t: 'agent', agent: valid }));
-  expect(r.values.get('agent')).toEqual(valid);
-});
 it('长期群闲置满 30 天同样回收，未满不回收', async () => {
   const fresh = room('fresh-room', Date.now() - ROOM_IDLE_MS + 60_000);
   fresh.values.set('persistentHistory', true);
@@ -301,8 +254,6 @@ it('只有群主账号能改群设置，主持人和普通参与者都不能', a
   const r = room();
   r.values.set('public', false);
   r.values.set('ownerAccountId', 'owner-account');
-  // The live host runs the AI loop; it is not the owner and must not administer.
-  r.values.set('hostPeerId', 'host');
   activeMembers(r);
   const makeSocket = (peerId: string, accountId: string) =>
     ({
@@ -348,224 +299,6 @@ it('不转发参与者伪造的服务器历史与会话管理帧', async () => {
     );
   }
   expect(receiver.send).not.toHaveBeenCalled();
-});
-
-it('stores at most one AI, clears legacy extras on updates, and enforces exact host identity', async () => {
-  const r = room();
-  r.values.set('persistentHistory', true);
-  activeMembers(r);
-  r.values.set('hostPeerId', 'owner');
-  r.values.set('hostAccountId', 'owner-account');
-  r.values.set('ownerAccountId', 'owner-account');
-  const owner = {
-    deserializeAttachment: () => ({
-      peerId: 'owner',
-      name: 'Owner',
-      accountId: 'owner-account',
-      membershipVersion: 1,
-      indexRegistered: true,
-    }),
-    send: vi.fn(),
-  } as unknown as WebSocket;
-  const guest = {
-    deserializeAttachment: () => ({
-      peerId: 'guest',
-      name: 'Guest',
-      accountId: 'guest-account',
-      membershipVersion: 1,
-      indexRegistered: true,
-    }),
-    send: vi.fn(),
-  } as unknown as WebSocket;
-  r.sockets.push(owner, guest);
-  const agents = [
-    { id: 'room', name: 'A', persona: 'a' },
-    { id: 'friend', name: 'B', persona: 'b' },
-  ];
-  await r.instance.webSocketMessage(guest, JSON.stringify({ t: 'agent', agents }));
-  expect(r.values.get('additionalAgents')).toBeUndefined();
-  await r.instance.webSocketMessage(owner, JSON.stringify({ t: 'agent', agents }));
-  expect(JSON.parse(vi.mocked(owner.send).mock.calls.at(-1)![0] as string).t).toBe('agent-error');
-  expect(r.values.get('additionalAgents')).toBeUndefined();
-  await r.instance.webSocketMessage(owner, JSON.stringify({ t: 'agent', agents: [agents[0]] }));
-  expect(r.values.get('agent')).toEqual({ name: 'A', persona: 'a' });
-  expect(r.values.get('additionalAgents')).toEqual([]);
-  for (const invalid of [
-    [...agents, agents[1]],
-    [...agents, { ...agents[1], id: 'c' }, { ...agents[1], id: 'd' }],
-  ]) {
-    await r.instance.webSocketMessage(owner, JSON.stringify({ t: 'agent', agents: invalid }));
-    expect(JSON.parse(vi.mocked(owner.send).mock.calls.at(-1)![0] as string).t).toBe('agent-error');
-    expect(r.values.get('additionalAgents')).toEqual([]);
-  }
-  await r.instance.webSocketMessage(
-    owner,
-    JSON.stringify({ t: 'agent', agent: { name: 'Legacy', persona: '' } }),
-  );
-  expect(r.values.get('additionalAgents')).toEqual([]);
-  for (const [socket, as] of [
-    [owner, 'ai:friend'],
-    [guest, 'ai:friend'],
-    [owner, 'ai:unknown'],
-  ] as const) {
-    const before =
-      vi.mocked(guest.send).mock.calls.length + vi.mocked(owner.send).mock.calls.length;
-    await r.instance.webSocketMessage(
-      socket,
-      JSON.stringify({ t: 'chat', id: crypto.randomUUID(), as, x: 'hello' }),
-    );
-    expect(vi.mocked(guest.send).mock.calls.length + vi.mocked(owner.send).mock.calls.length).toBe(
-      before,
-    );
-  }
-  await r.instance.webSocketMessage(owner, JSON.stringify({ t: 'agent', agents: [] }));
-  expect(r.values.get('agent')).toBeNull();
-  expect(r.values.get('additionalAgents')).toEqual([]);
-});
-
-it('reads an old multi-AI room as one active identity without deleting its history', async () => {
-  const extras = [
-    { id: 'old-first', name: 'First', persona: 'first' },
-    { id: 'old-second', name: 'Second', persona: 'second' },
-  ];
-  const onlyExtras = room();
-  onlyExtras.values.set('additionalAgents', extras);
-  const readExtras = onlyExtras.instance as unknown as {
-    getAgents(): Promise<typeof extras>;
-  };
-  expect(await readExtras.getAgents()).toEqual([extras[0]]);
-  expect(onlyExtras.values.get('additionalAgents')).toEqual(extras);
-
-  const withPrimary = room();
-  withPrimary.values.set('agent', { name: 'Primary', persona: 'primary' });
-  withPrimary.values.set('additionalAgents', extras);
-  const readPrimary = withPrimary.instance as unknown as {
-    getAgents(): Promise<typeof extras>;
-  };
-  expect(await readPrimary.getAgents()).toEqual([
-    { id: 'room', name: 'Primary', persona: 'primary' },
-  ]);
-  expect(withPrimary.values.get('additionalAgents')).toEqual(extras);
-});
-
-it('binds one AI reply to a saved human mention, host and configured role', async () => {
-  const db = new DatabaseSync(':memory:');
-  try {
-    const values = new Map<string, unknown>([
-      ['code', 'persistent-group'],
-      ['persistentHistory', true],
-      ['hostPeerId', 'host'],
-      ['hostAccountId', 'host'],
-      ['agent', { name: '助手', persona: '' }],
-    ]);
-    const sql = {
-      exec: (query: string, ...args: unknown[]) => {
-        const rows = db.prepare(query).all(...(args as never[]));
-        return { toArray: () => rows };
-      },
-    } as unknown as SqlStorage;
-    const storage = {
-      sql,
-      get: async (key: string) => values.get(key),
-      put: async (key: string, value: unknown) => values.set(key, value),
-      delete: async (key: string) => values.delete(key),
-      setAlarm: vi.fn(),
-      transactionSync: <T>(fn: () => T): T => {
-        db.exec('BEGIN');
-        try {
-          const result = fn();
-          db.exec('COMMIT');
-          return result;
-        } catch (error) {
-          db.exec('ROLLBACK');
-          throw error;
-        }
-      },
-    };
-    const sockets: WebSocket[] = [];
-    const room = new RoomDO(
-      {
-        storage,
-        getWebSockets: () => sockets,
-        blockConcurrencyWhile: (fn: () => Promise<void>) => fn(),
-      } as unknown as DurableObjectState,
-      {} as Env,
-    );
-    db.exec(
-      'CREATE TABLE group_memberships(account_id TEXT PRIMARY KEY,name TEXT,state TEXT,version INTEGER,updated_at INTEGER)',
-    );
-    db.exec(
-      "INSERT INTO group_memberships VALUES('alice','Alice','active',1,1),('host','Host','active',1,1)",
-    );
-    const socket = (peerId: string, accountId: string) => {
-      const attachment = {
-        peerId,
-        accountId,
-        membershipVersion: 1,
-        indexRegistered: true,
-        name: accountId,
-        expiresAt: Date.now() + 60_000,
-      };
-      return {
-        deserializeAttachment: () => attachment,
-        serializeAttachment: vi.fn(),
-        send: vi.fn(),
-        close: vi.fn(),
-      } as unknown as WebSocket;
-    };
-    const human = socket('human-peer', 'alice');
-    const host = socket('host', 'host');
-    sockets.push(human, host);
-    const triggerId = 'human-mention';
-    await room.webSocketMessage(
-      human,
-      JSON.stringify({
-        t: 'chat',
-        id: triggerId,
-        x: '@助手 你好',
-        mentions: [{ peerId: 'ai:room', n: '助手' }],
-      }),
-    );
-    expect(vi.mocked(host.send).mock.calls.length).toBe(1);
-    values.set('hostAccountId', 'alice');
-    await room.webSocketMessage(
-      host,
-      JSON.stringify({ t: 'agent-claim', requestId: 'wrong-account', triggerId, roleId: 'room' }),
-    );
-    expect(JSON.parse(vi.mocked(host.send).mock.calls.at(-1)![0] as string).grantId).toBeNull();
-    values.set('hostAccountId', 'host');
-    await room.webSocketMessage(
-      host,
-      JSON.stringify({ t: 'agent-claim', requestId: 'claim-1', triggerId, roleId: 'room' }),
-    );
-    const grantId = JSON.parse(vi.mocked(host.send).mock.calls.at(-1)![0] as string).grantId;
-    expect(grantId).toEqual(expect.any(String));
-    await room.webSocketMessage(
-      host,
-      JSON.stringify({ t: 'agent-claim', requestId: 'claim-2', triggerId, roleId: 'room' }),
-    );
-    expect(JSON.parse(vi.mocked(host.send).mock.calls.at(-1)![0] as string).grantId).toBeNull();
-    const sendAi = (id: string, grant: string) =>
-      room.webSocketMessage(
-        host,
-        JSON.stringify({ t: 'chat', id, as: 'ai:room', triggerId, grantId: grant, x: '你好' }),
-      );
-    await sendAi('forged', 'wrong');
-    expect(db.prepare("SELECT COUNT(*) AS n FROM messages WHERE from_id='ai:room'").get()?.n).toBe(
-      0,
-    );
-    await sendAi('reply-1', grantId);
-    await sendAi('reply-2', grantId);
-    expect(db.prepare("SELECT COUNT(*) AS n FROM messages WHERE from_id='ai:room'").get()?.n).toBe(
-      1,
-    );
-    expect(
-      db.prepare("SELECT response_id FROM room_agent_turns WHERE trigger_id='human-mention'").get()
-        ?.response_id,
-    ).toBe('reply-1');
-  } finally {
-    db.close();
-  }
 });
 
 it.each(['image', 'audio'])(
@@ -784,51 +517,6 @@ it('a revoked socket cannot resurrect membership by repeating hello or forge a m
   );
   expect(anonymous.send).not.toHaveBeenCalled();
 });
-it.each(['chat', 'cmd'])(
-  'rechecks membership after async sender resolution before %s delivery',
-  async (t) => {
-    const r = room('group');
-    let active = true;
-    const sender = {
-      deserializeAttachment: () => ({
-        peerId: 'alice-peer',
-        accountId: 'alice',
-        membershipVersion: 1,
-        name: 'Alice',
-      }),
-      send: vi.fn(),
-      close: vi.fn(),
-    } as unknown as WebSocket;
-    const recipient = {
-      deserializeAttachment: () => ({ peerId: 'target' }),
-      send: vi.fn(),
-    } as unknown as WebSocket;
-    r.sockets.push(sender, recipient);
-    r.sql.exec.mockImplementation(((query: string) => ({
-      toArray: () =>
-        query.startsWith('SELECT account_id') && active
-          ? [{ account_id: 'alice', state: 'active', version: 1 }]
-          : [],
-    })) as never);
-    vi.spyOn(
-      r.instance as unknown as { aiSenderOk: () => Promise<null> },
-      'aiSenderOk',
-    ).mockImplementation(async () => {
-      active = false;
-      return null;
-    });
-    await r.instance.webSocketMessage(
-      sender,
-      JSON.stringify({ t, id: 'new', x: 'text', to: 'target', a: 'set_strength', v: 10 }),
-    );
-    expect(recipient.send).not.toHaveBeenCalled();
-    expect(
-      (r.sql.exec.mock.calls as unknown[][]).some((args) =>
-        String(args[0]).startsWith('INSERT INTO messages'),
-      ),
-    ).toBe(false);
-  },
-);
 it('denies expired and legacy sockets before messages or broadcasts and schedules expiry', async () => {
   const r = room();
   for (const expiresAt of [undefined, Date.now() - 1]) {
@@ -977,33 +665,6 @@ it('confirms a retried message the sender already saved to that sender only', as
   expect(peer.send).not.toHaveBeenCalled();
 });
 
-it('只有群主账号能修改群 AI 计费方式，主持人不能', async () => {
-  const r = room('group');
-  activeMembers(r);
-  r.values.set('ownerAccountId', 'owner-account');
-  r.values.set('hostPeerId', 'host');
-  r.values.set('hostAccountId', 'host-account');
-  const socket = (peerId: string, accountId: string) =>
-    ({
-      deserializeAttachment: () => ({
-        peerId,
-        accountId,
-        membershipVersion: 1,
-        indexRegistered: true,
-      }),
-      send: vi.fn(),
-    }) as unknown as WebSocket;
-  await r.instance.webSocketMessage(
-    socket('host', 'host-account'),
-    JSON.stringify({ t: 'agent-billing', mode: 'managed' }),
-  );
-  expect(r.values.get('agentBillingMode')).toBeUndefined();
-  await r.instance.webSocketMessage(
-    socket('owner', 'owner-account'),
-    JSON.stringify({ t: 'agent-billing', mode: 'managed' }),
-  );
-  expect(r.values.get('agentBillingMode')).toBe('managed');
-});
 it('群主退群或注销后释放群主身份，下一位重新进群的成员接任', async () => {
   const r = room('group');
   r.values.set('ownerAccountId', 'owner-account');

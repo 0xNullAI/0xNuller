@@ -14,13 +14,7 @@ import {
   type StateFast,
   type StateSlow,
 } from '../lib/protocol';
-import {
-  ROOM_AGENT_ID,
-  type NamedRoomAgent,
-  type RoomAgent,
-  type RoomAgentBillingMode,
-  type WireReply,
-} from '../../worker/wire';
+import { type WireReply, type WireRoomAgent } from '../../worker/wire';
 import {
   closeOwnedGroup,
   forgetGroup,
@@ -28,7 +22,13 @@ import {
   rememberGroup,
   saveOwnerKey,
 } from '../lib/groups';
-import { currentAuthUserId, subscribeAuthChanges, dmTicket, getChatTicket } from '@0xnullai/auth';
+import {
+  currentAuthUserId,
+  subscribeAuthChanges,
+  dmTicket,
+  getChatTicket,
+  getGroupAgentTicket,
+} from '@0xnullai/auth';
 
 const OPOSSUM_PATTERNS: readonly OpossumVibrationPatternName[] = [
   'constant',
@@ -227,11 +227,6 @@ export function usePeerRoom(displayName: string) {
       if (current !== previous) {
         readAdmissionRef.current = null;
         setReadAdmission(null);
-        for (const claim of agentClaimsRef.current.values()) {
-          clearTimeout(claim.timer);
-          claim.resolve(null);
-        }
-        agentClaimsRef.current.clear();
       }
       previous = current;
     });
@@ -244,15 +239,8 @@ export function usePeerRoom(displayName: string) {
   const [members, setMembers] = useState<Map<string, MemberState>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mediaUploadToken, setMediaUploadToken] = useState<string | null>(null);
-  // —— Room AI ——
-  const [agents, setAgentsState] = useState<NamedRoomAgent[]>([]);
-  const [agent, setAgentState] = useState<RoomAgent | null>(null);
-  const [agentBillingMode, setAgentBillingMode] = useState<RoomAgentBillingMode>('host-byok');
-  // The host is whoever the DO says it is. Only that browser runs the agent
-  // loop, which is what keeps one @mention from producing several replies.
-  // It is a live role that moves when the current host disconnects — not
-  // ownership, which is durable and lives in the owner key below.
-  const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  // —— Group AIs: each belongs to the member who brought it in and runs on the server ——
+  const [agents, setAgentsState] = useState<WireRoomAgent[]>([]);
   // —— Group settings (durable, owner-controlled) ——
   const [isPublic, setIsPublic] = useState(false);
   const [historyBefore, setHistoryBefore] = useState<{ ts: number; id: string } | null>(null);
@@ -272,16 +260,6 @@ export function usePeerRoom(displayName: string) {
   const [dmPeerUserId, setDmPeerUserId] = useState<string | null>(null);
 
   const transportRef = useRef<RoomTransport | null>(null);
-  const agentClaimsRef = useRef<
-    Map<
-      string,
-      {
-        admission: RoomReadAdmission;
-        resolve: (grantId: string | null) => void;
-        timer: number;
-      }
-    >
-  >(new Map());
   const roomIdRef = useRef<string | null>(null);
   const joinOptsRef = useRef<JoinOptions>({});
   const onCommandRef = useRef<((cmd: DeviceCommand, peerId: string) => void) | null>(null);
@@ -363,11 +341,6 @@ export function usePeerRoom(displayName: string) {
   const teardown = useCallback(() => {
     for (const pending of pendingSendsRef.current.values()) clearTimeout(pending.timer);
     pendingSendsRef.current.clear();
-    for (const claim of agentClaimsRef.current.values()) {
-      clearTimeout(claim.timer);
-      claim.resolve(null);
-    }
-    agentClaimsRef.current.clear();
     readAdmissionRef.current = null;
     setReadAdmission(null);
     send({ t: 'leave' });
@@ -395,12 +368,9 @@ export function usePeerRoom(displayName: string) {
     setHistoryBefore(null);
     setHistoryLoading(false);
     setMediaUploadToken(null);
-    setHostPeerId(null);
     // Group-scoped state must go too, or the next group inherits the previous one's
-    // agent and settings for as long as it takes the new frames to arrive.
-    setAgentState(null);
+    // AIs and settings for as long as it takes the new frames to arrive.
     setAgentsState([]);
-    setAgentBillingMode('host-byok');
     setIsOwner(false);
     setGroupMemberships([]);
     setIsPublic(false);
@@ -476,23 +446,7 @@ export function usePeerRoom(displayName: string) {
           return;
         }
 
-        if (t === 'agent-claim-result') {
-          const claim = agentClaimsRef.current.get(String(data.requestId));
-          if (!claim) return;
-          agentClaimsRef.current.delete(String(data.requestId));
-          clearTimeout(claim.timer);
-          claim.resolve(
-            readAdmissionRef.current === claim.admission &&
-              currentAuthUserId() === claim.admission.account &&
-              claim.admission.room === roomIdRef.current &&
-              typeof data.grantId === 'string'
-              ? data.grantId
-              : null,
-          );
-          return;
-        }
-
-        if (t === 'agent-run-status') {
+        if (t === 'agent-run-status' || t === 'agent-error') {
           if (typeof data.message === 'string') setError(data.message.slice(0, 200));
           return;
         }
@@ -570,18 +524,7 @@ export function usePeerRoom(displayName: string) {
         }
 
         if (t === 'agent') {
-          const incoming = Array.isArray(data.agents)
-            ? (data.agents as NamedRoomAgent[])
-            : data.agent
-              ? [{ ...(data.agent as RoomAgent), id: ROOM_AGENT_ID }]
-              : [];
-          const active =
-            incoming.find((candidate) => candidate.id === ROOM_AGENT_ID) ?? incoming[0];
-          setAgentsState(active ? [active] : []);
-          setAgentState(active ? { name: active.name, persona: active.persona } : null);
-          setHostPeerId((data.host as string) ?? null);
-          if (data.billingMode === 'managed' || data.billingMode === 'host-byok')
-            setAgentBillingMode(data.billingMode);
+          setAgentsState(parseRoomAgents(data.agents));
           return;
         }
 
@@ -750,7 +693,7 @@ export function usePeerRoom(displayName: string) {
                 intervalB: (data.iB as number) ?? cur.intervalB,
                 currentIndexA: (data.ciA as number) ?? cur.currentIndexA,
                 currentIndexB: (data.ciB as number) ?? cur.currentIndexB,
-                allowAi: (data.aa as boolean | undefined) ?? cur.allowAi,
+                deviceAccess: typeof data.da === 'boolean' ? data.da : cur.deviceAccess,
                 opossumConnected: (data.oc as boolean | undefined) ?? cur.opossumConnected,
                 // No `?? cur.X` fallback — App.tsx's 'ss' broadcast always
                 // includes these keys (see the matching comment on the 'sf'
@@ -806,7 +749,6 @@ export function usePeerRoom(displayName: string) {
           send({
             t: 'hello',
             join,
-            agentTurns: true,
             historyPaging: true,
             name: displayNameRef.current,
             public: joinOptsRef.current.public,
@@ -908,33 +850,46 @@ export function usePeerRoom(displayName: string) {
   );
 
   /**
-   * Owner adds, edits, or removes the group's agent. The server verifies the key (and falls
-   * back to host authority for a group that never got an owner, so older clients still work).
+   * Bring one of this account's own characters into the group as its AI. The account service
+   * vouches for ownership and Credit with a ticket bound to this group; the AI then answers
+   * whoever @-mentions it and bills this account. Resolves false when nothing was sent.
    */
-  const setAgent = useCallback(
-    (next: RoomAgent | null) => {
+  const addMyAgent = useCallback(
+    async (character: { id: string; name: string; persona: string }): Promise<boolean> => {
+      const room = roomIdRef.current;
+      const account = currentAuthUserId();
+      if (!room || room.startsWith('dm:') || !account) return false;
+      let ticket: string;
+      try {
+        ticket = (await getGroupAgentTicket(room, character.id)).ticket;
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : '无法把 AI 带进群');
+        return false;
+      }
+      // Never deliver a ticket into a group or account the user has since left.
+      if (roomIdRef.current !== room || currentAuthUserId() !== account) return false;
+      return send({ t: 'agent-add', ticket, name: character.name, persona: character.persona });
+    },
+    [send],
+  );
+
+  /** The owner sets how much Credit their AI may spend per day here; null removes the cap. */
+  const setAgentDailyCap = useCallback(
+    (agentId: string, dailyCap: number | null) => {
+      send({ t: 'agent-cap', agentId, dailyCap });
+    },
+    [send],
+  );
+
+  /** The owner withdraws their AI, or the group owner removes anyone's. */
+  const removeAgent = useCallback(
+    (agentId: string) => {
       const code = roomIdRef.current;
       send({
-        t: 'agent',
-        agent: next,
+        t: 'agent-remove',
+        agentId,
         ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined,
       });
-    },
-    [send],
-  );
-
-  const setAgents = useCallback(
-    (next: NamedRoomAgent[]) => {
-      const code = roomIdRef.current;
-      send({ t: 'agent', agents: next, ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined });
-    },
-    [send],
-  );
-
-  const setRoomAgentBillingMode = useCallback(
-    (mode: RoomAgentBillingMode) => {
-      const code = roomIdRef.current;
-      if (code) send({ t: 'agent-billing', mode, ownerKey: loadOwnerKey(code) ?? undefined });
     },
     [send],
   );
@@ -964,72 +919,6 @@ export function usePeerRoom(displayName: string) {
     send({ t: 'group', closed: true, ownerKey: loadOwnerKey(code) ?? undefined });
     forgetGroup(code);
   }, [send]);
-
-  /** A saved human @-message must receive a one-use server grant before model work starts. */
-  const requestAgentTurn = useCallback(
-    (roleId: string, triggerId: string): Promise<string | null> => {
-      const room = roomIdRef.current;
-      const admission = readAdmissionRef.current;
-      if (
-        !room ||
-        room.startsWith('dm:') ||
-        !admission ||
-        admission.room !== room ||
-        currentAuthUserId() !== admission.account
-      )
-        return Promise.resolve(null);
-      const requestId = shortId();
-      return new Promise((resolve) => {
-        const timer = window.setTimeout(() => {
-          agentClaimsRef.current.delete(requestId);
-          resolve(null);
-        }, 8000);
-        agentClaimsRef.current.set(requestId, { admission, resolve, timer });
-        if (!send({ t: 'agent-claim', requestId, roleId, triggerId })) {
-          clearTimeout(timer);
-          agentClaimsRef.current.delete(requestId);
-          resolve(null);
-        }
-      });
-    },
-    [send],
-  );
-
-  /** Host speaks as a configured AI after the server granted this exact turn. */
-  const sendChatAs = useCallback(
-    (roleId: string, text: string, triggerId: string, grantId: string) => {
-      const admission = readAdmissionRef.current;
-      if (
-        !admission ||
-        admission.room !== roomIdRef.current ||
-        currentAuthUserId() !== admission.account
-      )
-        return;
-      const name = agents.find((a) => a.id === roleId)?.name ?? 'AI';
-      send({
-        t: 'chat',
-        as: `ai:${roleId}`,
-        triggerId,
-        grantId,
-        id: shortId(),
-        n: name,
-        x: text,
-        ts: Date.now(),
-      });
-    },
-    [send, agents],
-  );
-
-  /**
-   * Host sends a device command as the room agent (an agent tool call).
-   * _from is set to ai:<roleId> by the server.
-   */
-  const sendCommandAs = useCallback(
-    (roleId: string, target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
-      send({ t: 'cmd', as: `ai:${roleId}`, to: target, a: action, ...params });
-    },
-    [send],
-  );
 
   const sendCommand = useCallback(
     (target: string, action: CmdAction, params?: Omit<DeviceCommand, 'action'>) => {
@@ -1120,7 +1009,7 @@ export function usePeerRoom(displayName: string) {
         iB: s.intervalB,
         ciA: s.currentIndexA,
         ciB: s.currentIndexB,
-        aa: s.allowAi,
+        da: s.deviceAccess,
         oc: s.opossumConnected,
         obt: s.opossumBattery,
         sk: s.sensorKind,
@@ -1146,13 +1035,18 @@ export function usePeerRoom(displayName: string) {
     };
   }, []);
 
-  // Synthesize the room agent as a pseudo-member (peerId = ROOM_AGENT_SENDER)
-  // so it shows up in the member list and the @-mention candidates.
+  // Each group AI is a pseudo-member (peerId = ai:<id>) so it shows up in the member list
+  // and the @-mention candidates, labelled with whose AI it is.
   const membersWithAi = useMemo(() => {
     const m = new Map(members);
     for (const agent of agents) {
       const sender = `ai:${agent.id}`;
-      m.set(sender, { ...emptyMember(sender), displayName: agent.name || 'AI', isAi: true });
+      m.set(sender, {
+        ...emptyMember(sender),
+        displayName: agent.name || 'AI',
+        isAi: true,
+        aiOwnerName: agent.ownerName,
+      });
     }
     return m;
   }, [members, agents]);
@@ -1232,18 +1126,11 @@ export function usePeerRoom(displayName: string) {
     setCommandHandler,
     setWaveformHandler,
     notifyLocal,
-    // —— Room AI ——
-    agent,
-    setAgent,
+    // —— Group AIs ——
     agents,
-    setAgents,
-    agentBillingMode,
-    setRoomAgentBillingMode,
-    hostPeerId,
-    isHost: hostPeerId === selfId,
-    sendChatAs,
-    requestAgentTurn,
-    sendCommandAs,
+    addMyAgent,
+    setAgentDailyCap,
+    removeAgent,
     // —— Direct message ——
     /** The account on the other end, or null when this is a group. */
     dmPeerUserId,
@@ -1256,13 +1143,39 @@ export function usePeerRoom(displayName: string) {
     renameGroup,
     closeGroup,
     /**
-     * May this browser change the group's settings and its agent?
+     * May this browser change the group's settings and remove anyone's AI?
      *
-     * Mirrors the server's rule: only the group's owner account. The live host role
-     * (whoever runs the AI loop) never grants administration.
+     * Mirrors the server's rule: only the group's owner account.
      */
     canManageGroup: isOwner,
   };
+}
+
+/** Keep only well-formed AIs from the server frame; anything else is dropped, not guessed. */
+export function parseRoomAgents(value: unknown): WireRoomAgent[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const agent = entry as Partial<WireRoomAgent> | null;
+    if (
+      !agent ||
+      typeof agent.id !== 'string' ||
+      typeof agent.name !== 'string' ||
+      typeof agent.persona !== 'string' ||
+      typeof agent.owner !== 'string' ||
+      typeof agent.ownerName !== 'string'
+    )
+      return [];
+    return [
+      {
+        id: agent.id,
+        name: agent.name,
+        persona: agent.persona,
+        owner: agent.owner,
+        ownerName: agent.ownerName,
+        dailyCap: typeof agent.dailyCap === 'number' ? agent.dailyCap : null,
+      },
+    ];
+  });
 }
 
 function emptyMember(peerId: string): MemberState {
