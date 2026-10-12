@@ -1,5 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import {
+  NATIVE_API_FILE,
+  RUST_OTA_FILE,
+  nativeFingerprint,
+  rustNativeApi,
+} from './lib/native-fingerprint.mjs';
 
 const PRODUCT_FILES = {
   root: 'package.json',
@@ -178,6 +184,22 @@ function verifyProductMetadata() {
     !productReleaseWorkflow.includes('name: Reconfirm current main source')
   ) {
     fail('Product Release must support manual runs and verified main releases');
+  }
+  const nativeApi = json(NATIVE_API_FILE);
+  if (nativeApi.nativeApi !== rustNativeApi(readFileSync(RUST_OTA_FILE, 'utf8'))) {
+    fail(`${NATIVE_API_FILE} and ${RUST_OTA_FILE} disagree on the native API`);
+  }
+  if (nativeApi.fingerprint !== nativeFingerprint(process.cwd())) {
+    fail('the Android native layer changed; run node scripts/native-fingerprint.mjs');
+  }
+  for (const required of [
+    'node scripts/ota-bundle.mjs',
+    'secrets.OTA_SIGNING_KEY',
+    'node scripts/native-fingerprint.mjs --against=',
+  ]) {
+    if (!productReleaseWorkflow.includes(required)) {
+      fail(`Product Release must publish the signed Android hot update: missing ${required}`);
+    }
   }
   if (!productReleaseWorkflow.includes("steps.version.outputs.publish == 'true'")) {
     fail('Product Release must skip versions that already have a signed release');

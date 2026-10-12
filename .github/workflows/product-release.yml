@@ -1,10 +1,17 @@
 name: Release · 0xNuller
 
-# Web and the Android APK are one product release, built from the exact verified
-# main commit and share the root product version. npm packages are not handled here.
+# Web and Android are one product release, built from the exact verified main commit and sharing
+# the root product version. Every release publishes the Android UI as a signed hot-update bundle;
+# an APK (and the GitHub Release that carries it) is built only when the native layer changed
+# since the last APK, or on request. npm packages are not handled here.
 
 on:
   workflow_dispatch:
+    inputs:
+      force_apk:
+        description: Build and release an APK even if the native layer is unchanged
+        type: boolean
+        default: false
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -72,7 +79,8 @@ jobs:
           tag="v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          # UI-only releases are tags without a GitHub Release, so the tag is what marks a release.
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "::notice::猫愿 $version is already released."
           else
@@ -80,12 +88,39 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Decide whether this release ships an APK
+        if: steps.version.outputs.publish == 'true'
+        id: native
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_APK: ${{ inputs.force_apk == true }}
+        run: |
+          # GitHub Releases exist only for APK releases; the latest one is the native baseline.
+          last=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
+          if [ -n "$last" ]; then
+            # Fails the release when the native layer changed without a NATIVE_API bump.
+            node scripts/native-fingerprint.mjs --against="$last" | tee native.txt
+          fi
+          if [ "$FORCE_APK" = true ] || [ -z "$last" ] || ! grep -q 'UI-only release' native.txt; then
+            apk=true
+          else
+            apk=false
+          fi
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "::notice::APK baseline ${last:-none}; this release ships an APK: $apk"
+
       - name: Build production Web
         if: steps.version.outputs.publish == 'true'
         run: npm run web:build:release
 
+      - name: Build Android UI (hot update only)
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk != 'true'
+        env:
+          SOURCE_BUILD_ID: ${{ steps.source.outputs.sha }}
+        run: npm run build -w @0xnullai/android
+
       - name: Restore Android signing keystore
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
         run: |
@@ -94,7 +129,7 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dg-agent-release.jks"
 
       - name: Build signed Android APK
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk == 'true'
         env:
           DG_AGENT_KEYSTORE: ${{ runner.temp }}/dg-agent-release.jks
           DG_AGENT_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
@@ -105,7 +140,7 @@ jobs:
           npm run android:build -- --apk --target aarch64
 
       - name: Verify and name APK
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk == 'true'
         id: apk
         run: |
           apk='android/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk'
@@ -117,6 +152,16 @@ jobs:
           install -m 0644 "$apk" "$legacy"
           echo "path=$artifact" >> "$GITHUB_OUTPUT"
           echo "legacy=$legacy" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the Android hot-update bundle
+        if: steps.version.outputs.publish == 'true'
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          test -n "$OTA_SIGNING_KEY" || { echo 'Missing OTA_SIGNING_KEY' >&2; exit 1; }
+          node scripts/ota-bundle.mjs \
+            --version="${{ steps.version.outputs.version }}" \
+            --build-id="${{ steps.source.outputs.sha }}"
 
       - name: Reconfirm current main source
         if: steps.version.outputs.publish == 'true'
@@ -156,8 +201,17 @@ jobs:
           EXPECTED_BUILD_ID: ${{ steps.source.outputs.sha }}
         run: npm run smoke:production
 
+      - name: Tag the UI-only release
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/${{ steps.version.outputs.tag }}" \
+            -f sha="${{ steps.source.outputs.sha }}" >/dev/null
+
       - name: Create product GitHub Release
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -174,7 +228,12 @@ jobs:
             echo '## 猫愿 product released'
             echo ''
             echo '- Web: https://0xnullai.com'
-            echo '- Android: `maoyuan-v${{ steps.version.outputs.version }}.apk`'
-            echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
+            echo '- Android UI hot update: https://0xnullai.com/ota/android/latest.json'
+            if [ '${{ steps.native.outputs.apk }}' = true ]; then
+              echo '- Android: `maoyuan-v${{ steps.version.outputs.version }}.apk`'
+              echo '- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'
+            else
+              echo '- Android: UI-only release, no new APK'
+            fi
             echo '- Source: `${{ steps.source.outputs.sha }}`'
           } >> "$GITHUB_STEP_SUMMARY"

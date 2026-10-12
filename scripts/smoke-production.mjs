@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { releasePublicKey, sha256Hex, verifyLatest } from './lib/ota-bundle.mjs';
 import { retry } from './lib/retry.mjs';
 
 const base = (process.env.PRODUCTION_ORIGIN ?? 'https://0xnullai.com').replace(/\/$/, '');
@@ -85,6 +87,32 @@ checks.push(['market', market.durationMs]);
 const voice = await request('/api/realtime', 426);
 assert(voice.body.includes('WebSocket upgrade'), 'Voice upgrade boundary changed');
 checks.push(['voice', voice.durationMs]);
+
+// The Android hot-update bundle: signed by the key the APK trusts, for this release, complete.
+if (expectedVersion) {
+  const latest = await request('/ota/android/latest.json', 200);
+  const publicKey = releasePublicKey(
+    readFileSync(new URL('../android/app/src-tauri/ota-public-key.txt', import.meta.url), 'utf8'),
+  );
+  const manifest = verifyLatest(json('/ota/android/latest.json', latest.body), publicKey);
+  assert(
+    manifest.version === expectedVersion,
+    `OTA is ${manifest.version}, expected ${expectedVersion}`,
+  );
+  if (expectedBuildId) {
+    assert(manifest.buildId === expectedBuildId, `OTA build is ${manifest.buildId}`);
+  }
+  for (const file of manifest.files) {
+    const response = await fetch(
+      `${base}/ota/android/${manifest.buildId}/${file.path.split('/').map(encodeURIComponent).join('/')}`,
+      { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) },
+    );
+    assert(response.ok, `OTA ${file.path}: HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert(sha256Hex(bytes) === file.sha256, `OTA ${file.path} does not match its manifest hash`);
+  }
+  checks.push(['ota', latest.durationMs]);
+}
 
 for (const [service, durationMs] of checks) {
   console.log(`${service}: ok (${durationMs} ms)`);

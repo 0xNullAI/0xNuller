@@ -37,6 +37,18 @@ jobs:
       - name: Require npm version preparation to be consumed
         run: npm run verify:changesets:consumed
 
+      - name: Require a native API bump when the Android native layer changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          last=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName 2>/dev/null || true)
+          if [ -n "$last" ]; then
+            node scripts/native-fingerprint.mjs --against="$last"
+          else
+            node scripts/native-fingerprint.mjs
+          fi
+
       - name: Verify release metadata and non-decreasing versions
         run: |
           set -euo pipefail

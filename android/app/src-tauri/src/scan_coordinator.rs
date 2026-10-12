@@ -129,14 +129,14 @@ pub(crate) fn release_dg_plugin_blec_scanner(
 }
 
 #[tauri::command]
-fn dg_blec_claim_scanner(
+pub(crate) fn dg_blec_claim_scanner(
     coordinator: State<'_, ScanCoordinator>,
 ) -> Result<DgScannerClaim, ScannerCoordinationError> {
     claim_dg_plugin_blec_scanner(&coordinator)
 }
 
 #[tauri::command]
-fn dg_blec_release_scanner(
+pub(crate) fn dg_blec_release_scanner(
     coordinator: State<'_, ScanCoordinator>,
     request: DgScannerReleaseRequest,
 ) -> Result<(), ScannerCoordinationError> {
@@ -152,12 +152,8 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
         move || request_dg_lifecycle_cleanup(coordinator.clone())
     });
 
-    builder
-        .manage(coordinator)
-        .invoke_handler(tauri::generate_handler![
-            dg_blec_claim_scanner,
-            dg_blec_release_scanner,
-        ])
+    // The app's single invoke handler, which lists these commands, lives in lib.rs.
+    builder.manage(coordinator)
 }
 
 /// Stops plugin-blec before releasing its scanner claim when Android tears

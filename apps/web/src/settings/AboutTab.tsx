@@ -1,7 +1,8 @@
 import { HardDrive, MessageSquare, Send } from 'lucide-react';
 import { submitFeedback } from '@0xnullai/auth';
 import { Button, Input, Textarea } from '@0xnullai/ui';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useNativeBridge } from '@0xnullai/native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { PRODUCT_BUILD_ID, PRODUCT_VERSION } from '../product';
 import { LegalDocumentsRow } from '../legal/LegalDocumentsRow';
 import { AdvancedSubpage } from './SettingsAdvanced';
@@ -13,6 +14,23 @@ export function AboutTab({ data }: { data?: ReactNode }) {
   const back = useCallback(() => setPage('main'), []);
   const buildLabel =
     PRODUCT_BUILD_ID.length === 40 ? PRODUCT_BUILD_ID.slice(0, 12) : PRODUCT_BUILD_ID;
+  const nativeApp = useNativeBridge().app;
+  const [installed, setInstalled] = useState<{
+    installedVersion: string;
+    hotUpdate: boolean;
+  } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  useEffect(() => {
+    if (!nativeApp) return;
+    let live = true;
+    void nativeApp.status().then(
+      (status) => live && setInstalled(status),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [nativeApp]);
 
   if (page === 'data')
     return (
@@ -32,6 +50,20 @@ export function AboutTab({ data }: { data?: ReactNode }) {
       <SettingsGroup label="猫愿">
         <SettingsRow label="版本" value={`v${PRODUCT_VERSION}`} />
         <SettingsRow label="构建" value={<span className="font-mono text-xs">{buildLabel}</span>} />
+        {installed ? <SettingsRow label="安装包" value={`v${installed.installedVersion}`} /> : null}
+        {installed?.hotUpdate && nativeApp ? (
+          <SettingsRow
+            label={resetting ? '正在恢复…' : '恢复安装包自带的版本'}
+            onClick={
+              resetting
+                ? undefined
+                : () => {
+                    setResetting(true);
+                    void nativeApp.resetUi().finally(() => setResetting(false));
+                  }
+            }
+          />
+        ) : null}
       </SettingsGroup>
       <SettingsGroup>
         {data ? (

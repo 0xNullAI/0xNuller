@@ -1,6 +1,6 @@
 [package]
 name = "nuller-app"
-version = "7.0.3"
+version = "7.1.0"
 description = "0xNuller unified Android shell"
 authors = ["0xNullAI"]
 license = "MIT"
@@ -21,6 +21,11 @@ tauri-build = { version = "2.5.6", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
+# Signed Web-bundle hot updates (src/ota.rs).
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+sha2 = "0.10"
+base64 = "0.22"
+semver = "1"
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"

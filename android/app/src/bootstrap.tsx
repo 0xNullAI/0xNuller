@@ -6,7 +6,9 @@ import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
 import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
 import { installShellErrorReporting } from '@0xnullai/web/client-error-reporting';
 import { prewarmDgLabDeviceScan } from '@dg-kit/transport-tauri-blec';
+import { OtaConfirm } from './components/OtaConfirm';
 import { UpdateBanner } from './components/UpdateBanner';
+import { otaUpdater } from './services/ota';
 import { attachAndroidDgLabLifecycle } from './lifecycle-safety';
 import { createTauriDgLabTransport } from './tauri-dglab-transport';
 import { SplashDismiss } from './SplashDismiss';
@@ -27,8 +29,10 @@ import './styles.css';
  * device, the safety settings, the scene library, the waveform library and
  * the account.
  *
- * **Android has no hot updates.** Any mistake made here lives on users' phones
- * for a long time. Every module reaches DG-Lab devices only through the one
+ * **This file's shell is hot-updatable, its native layer is not.** UI bundles
+ * reach installed apps through `services/ota.ts`; a mistake that stops the UI
+ * from rendering is rolled back after a few starts, but anything needing new
+ * Rust/Kotlin/plugin code still waits for the next APK. Every module reaches DG-Lab devices only through the one
  * registry below (`NativeBridge.dglab`); there is no per-module device seam.
  */
 
@@ -54,6 +58,13 @@ const dglab = createUnifiedShellDgLabRegistry({
 
 const bridge = {
   dglab,
+  app: {
+    status: async () => {
+      const status = await otaUpdater.nativeStatus();
+      return { installedVersion: status.embeddedVersion, hotUpdate: status.active !== null };
+    },
+    resetUi: () => otaUpdater.reset(),
+  },
   // Non-device Agent flags only: no speech, bridge or version.json on the native shell.
   agent: {
     servicesOverrides: {
@@ -67,9 +78,10 @@ const bridge = {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <SplashDismiss />
-    <UpdateBanner />
+    <UpdateBanner dglab={dglab} />
     <NativeBridgeProvider bridge={bridge}>
       <Shell />
     </NativeBridgeProvider>
+    <OtaConfirm buildId={__BUILD_ID__} />
   </React.StrictMode>,
 );

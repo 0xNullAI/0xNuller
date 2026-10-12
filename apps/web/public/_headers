@@ -1,0 +1,5 @@
+# The Android app (origin http://tauri.localhost) downloads its hot-update bundle from here.
+# The bundle is public and signed, and the app checks every file's hash, so any origin may read it.
+/ota/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
