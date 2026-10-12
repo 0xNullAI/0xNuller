@@ -160,19 +160,13 @@ export function useVideoSpeechPlayback(enabled: boolean, managed = false) {
         setError('请先在 AI 语音设置中开启语音合成');
         return;
       }
-      if (
-        !getBrowserSpeechCapabilities({ synthesisMode: settings.voice.mode }).synthesisSupported
-      ) {
-        setError('当前环境不支持所选语音合成方式');
+      if (!getBrowserSpeechCapabilities().synthesisSupported) {
+        setError('当前环境不支持语音合成');
         return;
       }
       const current = ++generation.current;
       const speech = createSpeechSynthesizer({
         lang: settings.speechSynthesisLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        speaker: settings.voice.speaker,
         browserVoiceUri: settings.voice.browserVoiceUri,
       });
       synthesizer.current = speech;

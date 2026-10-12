@@ -14,12 +14,6 @@ const MODES = {
 const SPEECH = {
   recognitionSupported: true,
   synthesisSupported: true,
-  recognitionMode: 'browser' as const,
-  synthesisMode: 'browser' as const,
-  nativeRecognitionSupported: true,
-  nativeSynthesisSupported: true,
-  proxyRecognitionSupported: false,
-  proxySynthesisSupported: false,
 };
 
 const BASE_URL_WARNING = '当前模型接口地址无效，请在设置里检查接口地址';

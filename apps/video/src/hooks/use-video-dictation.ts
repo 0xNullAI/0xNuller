@@ -47,19 +47,13 @@ export function useVideoDictation(enabled: boolean) {
         setError('请先在 AI 语音设置中开启语音识别');
         return;
       }
-      if (
-        !getBrowserSpeechCapabilities({ recognitionMode: settings.voice.mode }).recognitionSupported
-      ) {
-        setError('当前环境不支持所选语音识别方式');
+      if (!getBrowserSpeechCapabilities().recognitionSupported) {
+        setError('当前环境不支持语音识别');
         return;
       }
       const current = ++generation.current;
       const speech = createSpeechRecognitionController({
         lang: settings.speechRecognitionLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        autoStopEnabled: settings.voice.autoStopEnabled,
       });
       controller.current = speech;
       setError('');

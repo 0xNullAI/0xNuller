@@ -18,24 +18,19 @@ import type {
 } from './browser-settings-types.js';
 
 export const DEFAULT_VOICE_SETTINGS: BrowserVoiceSettings = {
-  mode: 'browser',
-  speaker: 'longxiaochun_v2',
   browserVoiceUri: '',
-  apiKey: '',
-  proxyUrl: '',
-  autoStopEnabled: true,
 };
 
+/**
+ * Older versions also stored a bring-your-own DashScope speech mode, key, proxy URL,
+ * speaker and auto-stop flag. Those fields are ignored here, so such settings load as
+ * plain browser speech.
+ */
 export function normalizeVoiceSettings(
   input: Partial<BrowserVoiceSettings> = {},
 ): BrowserVoiceSettings {
   return {
-    mode: input.mode === 'dashscope-proxy' ? 'dashscope-proxy' : 'browser',
-    speaker: input.speaker?.trim() || DEFAULT_VOICE_SETTINGS.speaker,
     browserVoiceUri: input.browserVoiceUri?.trim() ?? '',
-    apiKey: input.apiKey?.trim() ?? '',
-    proxyUrl: input.proxyUrl?.trim() ?? '',
-    autoStopEnabled: input.autoStopEnabled ?? true,
   };
 }
 

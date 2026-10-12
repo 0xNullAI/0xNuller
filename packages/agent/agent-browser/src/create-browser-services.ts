@@ -259,27 +259,16 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     ? createNullSpeechRecognitionController()
     : createSpeechRecognitionController({
         lang: settings.speechRecognitionLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        autoStopEnabled: settings.voice.autoStopEnabled,
       });
   const speechSynthesizer = options.disableSpeech
     ? createNullSpeechSynthesizer()
     : createSpeechSynthesizer({
         lang: settings.speechSynthesisLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        speaker: settings.voice.speaker,
         browserVoiceUri: settings.voice.browserVoiceUri,
       });
   const speechCapabilities = options.disableSpeech
     ? NULL_SPEECH_CAPABILITIES
-    : getBrowserSpeechCapabilities({
-        recognitionMode: settings.voice.mode,
-        synthesisMode: settings.voice.mode,
-      });
+    : getBrowserSpeechCapabilities();
 
   const localPermissionService = new BrowserPermissionService({
     mode: settings.permissionMode,
