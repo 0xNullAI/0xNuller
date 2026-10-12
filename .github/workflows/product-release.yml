@@ -99,9 +99,9 @@ jobs:
           last=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
           if [ -n "$last" ]; then
             # Fails the release when the native layer changed without a NATIVE_API bump.
-            node scripts/native-fingerprint.mjs --against="$last" | tee native.txt
+            node scripts/native-fingerprint.mjs --against="$last" | tee "$RUNNER_TEMP/native.txt"
           fi
-          if [ "$FORCE_APK" = true ] || [ -z "$last" ] || ! grep -q 'UI-only release' native.txt; then
+          if [ "$FORCE_APK" = true ] || [ -z "$last" ] || ! grep -q 'UI-only release' "$RUNNER_TEMP/native.txt"; then
             apk=true
           else
             apk=false
