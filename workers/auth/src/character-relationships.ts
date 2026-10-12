@@ -1,5 +1,6 @@
 import { err, json, readBodyBounded } from './http';
 import { currentUser, type SessionEnv } from './session-domain';
+import { validCharacterId } from './group-ai-ticket';
 
 const PATH = '/api/auth/character-relationships';
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
@@ -32,15 +33,6 @@ function view(row: RelationshipRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-function validCharacterId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= 200 &&
-    value === value.trim() &&
-    ![...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
-  );
 }
 
 /** Private account preferences only: neither public card updates nor group requests write these. */

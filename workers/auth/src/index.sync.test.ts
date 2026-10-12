@@ -11,6 +11,7 @@ import {
   useAuthWorkerTestEnv,
 } from './index.test-support';
 import { createTestDb } from './test-helpers';
+import { verifyDmTicket } from './dm-ticket';
 
 useAuthWorkerTestEnv(createTestDb);
 
@@ -179,6 +180,42 @@ describe('Chat 房间账户同步', () => {
       (await worker.fetch(req('/api/auth/chat/ticket', { method: 'POST', token: body.token }), env))
         .status,
     ).toBe(403);
+  });
+});
+
+describe('群 AI 进群票据', () => {
+  const ticket = (token: string, body: unknown) =>
+    worker.fetch(
+      req('/api/auth/group-agent/ticket', { method: 'POST', token, body: JSON.stringify(body) }),
+      env,
+    );
+
+  it('只给自己已有的角色、且账户有 Credit 时签发，并绑定群号和角色', async () => {
+    const { body } = await registerUser();
+    await verifyRegisteredUser(body);
+    const id = body.user!.id;
+    const token = body.token!;
+    expect((await ticket(token, { room: 'group-1', characterId: 'kitty' })).status).toBe(403);
+    await prepared(
+      "INSERT INTO character_relationships(user_id,id,character_id,ai_nickname,user_preferred_name,relationship_type,notes,version,created_at,updated_at) VALUES(?,'r','kitty','','','','',1,1,1)",
+      id,
+    ).run();
+    await prepared('DELETE FROM credit_ledger WHERE user_id=?', id).run();
+    expect((await ticket(token, { room: 'group-1', characterId: 'kitty' })).status).toBe(402);
+    await prepared(
+      "INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES(?,5,'support_adjustment','seed','test','{}',1)",
+      id,
+    ).run();
+    expect((await ticket(token, { room: 'dm:x', characterId: 'kitty' })).status).toBe(400);
+    const response = await ticket(token, { room: 'group-1', characterId: 'kitty' });
+    expect(response.status).toBe(200);
+    const { ticket: signed } = (await response.json()) as { ticket: string };
+    expect(await verifyDmTicket(env.DM_TICKET_SECRET!, signed, Date.now())).toMatchObject({
+      aud: 'group-agent',
+      sub: id,
+      room: 'group-1',
+      characterId: 'kitty',
+    });
   });
 });
 

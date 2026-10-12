@@ -82,7 +82,15 @@ export const DM_DIGEST_MAX_ROOMS = 50;
  * you have is not the same permission as joining one of them.
  */
 export type DmTicketAudience =
-  'dm' | 'digest' | 'revoke' | 'voice' | 'chat' | 'group-read' | 'chat-account-delete' | 'group-ai';
+  | 'dm'
+  | 'digest'
+  | 'revoke'
+  | 'voice'
+  | 'chat'
+  | 'group-read'
+  | 'chat-account-delete'
+  | 'group-ai'
+  | 'group-agent';
 
 export interface DmTicketClaims {
   aud: DmTicketAudience;
@@ -94,6 +102,8 @@ export interface DmTicketClaims {
   triggerId?: string;
   roleId?: string;
   grantId?: string;
+  /** The owner's character behind a group AI: 'group-agent', and 'group-ai' when known. */
+  characterId?: string;
   modelId?: string;
   bodyHash?: string;
   /** Account id the ticket was minted for. On a 'revoke' this is the account that caused it. */

@@ -1,9 +1,12 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import { AuthOwnershipService, type Env } from './index';
 import { createTestDb } from './test-helpers';
 import { sha256Body, signGroupAiTicket } from './group-ai-ticket';
 
-const db = createTestDb();
+let db: ReturnType<typeof createTestDb>;
+beforeEach(() => {
+  db = createTestDb();
+});
 afterEach(() => db.close());
 
 it('reserves the verified triggering member once and rejects altered billing identity', async () => {
@@ -90,4 +93,41 @@ it('reserves the verified triggering member once and rejects altered billing ide
   expect(
     await env.DB.prepare('SELECT COUNT(*) AS n FROM group_ai_reservation_context').first(),
   ).toEqual({ n: 1 });
+});
+
+it('bills the AI owner only while that owner still has the character behind it', async () => {
+  const env = { DB: db.DB, DM_TICKET_SECRET: 'group-test-key' } as Env;
+  const service = Object.create(AuthOwnershipService.prototype) as AuthOwnershipService;
+  Object.assign(service, { env });
+  await env.DB.prepare(
+    "INSERT INTO users(id,username,display_name,password_hash,email_verified_at,created_at) VALUES('owner','owner','Owner','unused',1,1)",
+  ).run();
+  await env.DB.prepare(
+    "INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES('owner',10,'support_adjustment','seed','test','{}',1)",
+  ).run();
+  const bodyHash = await sha256Body('{"model":"balanced","messages":[]}');
+  const signed = await signGroupAiTicket(env.DM_TICKET_SECRET, {
+    payer: 'owner',
+    room: 'group-1',
+    triggerId: 'message-1',
+    roleId: 'agent-1',
+    grantId: '12345678-1234-4234-8234-123456789abc',
+    modelId: 'balanced',
+    bodyHash,
+    characterId: 'kitty',
+  });
+  const input = {
+    idempotencyKey: signed.reservationKey,
+    modelId: 'balanced',
+    credits: 2,
+    bodyHash,
+  };
+  expect(await service.reserveManagedGroupTextCredits(signed.ticket, input)).toBe('unauthorized');
+  await env.DB.prepare(
+    "INSERT INTO character_relationships(user_id,id,character_id,ai_nickname,user_preferred_name,relationship_type,notes,version,created_at,updated_at) VALUES('owner','r','kitty','','','','',1,1,1)",
+  ).run();
+  expect(await service.reserveManagedGroupTextCredits(signed.ticket, input)).toMatchObject({
+    allowed: true,
+    groupContext: { payer: 'owner', roleId: 'agent-1' },
+  });
 });
