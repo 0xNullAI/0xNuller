@@ -398,11 +398,6 @@ export function UnifiedInbox({
       if (epoch === authEpoch.current) setLoadingMore(false);
     }
   };
-  // Every AI chat starts with a chosen character; the menu lists them.
-  const startAi = () => {
-    if (!accountId) onOpenAccount();
-    else setNewChatOpen(true);
-  };
   const startCharacter = (characterId: string) => {
     setNewChatOpen(false);
     void openCharacterChat(characterId).then((opened) => {
