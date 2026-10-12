@@ -11,6 +11,7 @@ import {
   useAuthWorkerTestEnv,
 } from './index.test-support';
 import { createTestDb } from './test-helpers';
+import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 
 useAuthWorkerTestEnv(createTestDb);
 
@@ -86,6 +87,27 @@ describe('注册', () => {
     },
   ])('$name', async ({ run }) => {
     await run();
+  });
+
+  it('要求同意当前版本的用户协议与隐私政策，并记录同意的版本', async () => {
+    for (const acceptedTerms of [undefined, '', 'an-older-version', true]) {
+      const { res, body } = await registerUser({ acceptedTerms });
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('请更新到最新版本后注册');
+    }
+    expect(await prepared('SELECT COUNT(*) AS n FROM users').first()).toEqual({ n: 0 });
+
+    const before = Date.now();
+    const { res, body } = await registerUser();
+    expect(res.status).toBe(201);
+    const recorded = await prepared(
+      'SELECT terms_version, accepted_at FROM legal_acceptances WHERE user_id = ?',
+      body.user!.id,
+    ).all<{ terms_version: string; accepted_at: number }>();
+    expect(recorded.results).toEqual([
+      { terms_version: LEGAL_TERMS_VERSION, accepted_at: expect.any(Number) as number },
+    ]);
+    expect(recorded.results[0]!.accepted_at).toBeGreaterThanOrEqual(before);
   });
 
   it('限制同一来源短时间批量注册', async () => {

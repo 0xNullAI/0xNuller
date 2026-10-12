@@ -33,6 +33,7 @@ import { handleMediaJobs, runMediaJobs } from './media-jobs';
 import { hashPassword } from './password';
 import { handleMemoryContext } from './memory-context';
 import { normalizeProfileLink, safeProfileLinks } from '@0xnullai/auth/profile-links';
+import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 import { handleMemoryFacts } from './memory-facts';
 import { expireStagedVideoReplies, handleServerConversations } from './server-conversations';
 import {
@@ -1473,6 +1474,12 @@ export default {
           .bind(ipHash, Date.now())
           .run();
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        // Consent to the current 用户协议 and 隐私政策 is part of the account. A client that
+        // predates the consent box sends no version (or an older one) and must be updated first;
+        // checked before anything else so that client gets this one clear answer.
+        if (body.acceptedTerms !== LEGAL_TERMS_VERSION) {
+          return err('请更新到最新版本后注册', 400, cors);
+        }
         const invalid = validateCredentials(body.username, body.password);
         if (invalid) return err(invalid, 400, cors);
         const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -1525,6 +1532,9 @@ export default {
             env.DB.prepare(
               'INSERT INTO referral_codes (user_id, code, created_at) VALUES (?, ?, ?)',
             ).bind(id, newReferralCode(), now),
+            env.DB.prepare(
+              'INSERT INTO legal_acceptances (user_id, terms_version, accepted_at) VALUES (?, ?, ?)',
+            ).bind(id, LEGAL_TERMS_VERSION, now),
           ];
           if (inviter) {
             statements.push(
