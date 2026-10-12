@@ -1,5 +1,12 @@
 # @dg-kit/protocol
 
+## 1.16.5
+
+### Patch Changes
+
+- 82404f4: Read the Coyote/47L12x battery level from the standard Battery Service (0x180F/0x2A19) or, when that is absent, the 0x180A/0x1500 pair from DG-Lab's V3 protocol document; both services are requested for Web Bluetooth. A level that cannot be read stays unknown instead of showing 0%.
+  - @dg-kit/core@1.16.5
+
 ## 1.16.4
 
 ### Patch Changes
