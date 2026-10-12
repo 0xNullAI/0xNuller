@@ -64,7 +64,7 @@ import {
   signDmTicket,
   verifyDmTicket,
 } from './dm-ticket';
-import { verifyGroupAiTicket } from './group-ai-ticket';
+import { validCharacterId, verifyGroupAiTicket } from './group-ai-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { withServerErrorCounting } from '@0xnullai/observability';
 import {
@@ -274,6 +274,15 @@ export async function creditBalance(
   const total = Number(ledger?.total ?? 0);
   const reserved = Number(reservations?.reserved ?? 0);
   return { total, reserved, available: Math.max(0, total - reserved) };
+}
+
+/** The account still has this character as its own (a live, undeleted relationship). */
+async function hasCharacter(env: Env, userId: string, characterId: string): Promise<boolean> {
+  return !!(await env.DB.prepare(
+    'SELECT 1 AS ok FROM character_relationships WHERE user_id=? AND character_id=? AND deleted_at IS NULL LIMIT 1',
+  )
+    .bind(userId, characterId)
+    .first());
 }
 
 export async function reserveCredits(
@@ -555,7 +564,7 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     );
     return { ...result, capability };
   }
-  /** Chat-only signed turn: the member who sent the saved @ message pays. */
+  /** Chat-only signed turn: the account that brought the AI into the group pays. */
   async authorizeManagedGroupText(
     ticket: string,
     input: { idempotencyKey: string; modelId: string; bodyHash: string },
@@ -586,6 +595,12 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
       .bind(claim.payer)
       .first<{ id: string }>();
     if (!active) return 'unauthorized';
+    // A group AI is the owner's own character; deleting that character retires it everywhere.
+    if (
+      claim.characterId !== undefined &&
+      !(await hasCharacter(this.env, claim.payer, claim.characterId))
+    )
+      return 'unauthorized';
     const result = await reserveCredits(this.env, claim.payer, {
       idempotencyKey: input.idempotencyKey,
       usageKind: 'agent',
@@ -2042,6 +2057,42 @@ const authWorker = {
         const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
           aud: 'chat',
           sub: user.id,
+          iat: now,
+          exp: now + DM_TICKET_TTL_MS,
+        });
+        return json({ ticket, expiresAt: now + DM_TICKET_TTL_MS }, 200, cors);
+      }
+
+      if (path === '/api/auth/group-agent/ticket' && request.method === 'POST') {
+        const user = await currentUser(request, env);
+        if (!user) return err('未登录', 401, cors);
+        if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
+        if (!env.DM_TICKET_SECRET) return err('Chat 尚未启用', 503, cors);
+        let body: { room?: unknown; characterId?: unknown };
+        try {
+          body = (await request.json()) as typeof body;
+        } catch {
+          return err('请求无效', 400, cors);
+        }
+        if (
+          typeof body.room !== 'string' ||
+          !/^[A-Za-z0-9._:-]{1,128}$/.test(body.room) ||
+          body.room.startsWith('dm:') ||
+          !validCharacterId(body.characterId)
+        )
+          return err('请求无效', 400, cors);
+        if (!(await hasCharacter(env, user.id, body.characterId)))
+          return err('只能把自己已有的角色带进群', 403, cors);
+        // Group AI always runs on the platform model and bills its owner, so an owner with
+        // nothing to spend cannot bring one in. Each reply still reserves on its own.
+        if ((await creditBalance(env, user.id)).available <= 0)
+          return err('群 AI 使用 Credit，当前余额不足', 402, cors);
+        const now = Date.now();
+        const ticket = await signDmTicket(env.DM_TICKET_SECRET, {
+          aud: 'group-agent',
+          sub: user.id,
+          room: body.room,
+          characterId: body.characterId,
           iat: now,
           exp: now + DM_TICKET_TTL_MS,
         });

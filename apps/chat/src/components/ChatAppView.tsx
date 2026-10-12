@@ -2,6 +2,8 @@ import { GroupMembershipDialog } from './GroupMembershipDialog';
 import type { ChatReplyContext } from '../lib/protocol';
 import { ConversationHeader, ConversationTitle, useShellNav } from '@0xnullai/ui';
 import { ArrowLeft, Bot, ChevronRight, LogOut, Search, Settings2, Users } from 'lucide-react';
+import { currentAuthUserId } from '@0xnullai/auth';
+import type { WireRoomAgent } from '../../worker/wire';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DmRequest } from '@0xnullai/auth';
 import type { useDevice } from '@0xnullai/device-runtime';
@@ -25,6 +27,11 @@ interface DmPeer {
   id: string;
   name: string;
   room: string;
+}
+
+export function groupAiSummary(agents: readonly WireRoomAgent[]): string {
+  if (agents.length === 0) return '带你的 AI 进群';
+  return `群 AI：${agents.map((agent) => `${agent.name}（${agent.ownerName}的 AI）`).join('、')}`;
 }
 
 export function roomPresenceLabel(isDm: boolean, peerCount: number): string {
@@ -67,8 +74,6 @@ export interface ChatAppViewProps {
   inShell: boolean;
   conversationDeviceEnabled: boolean;
   onSetConversationDeviceEnabled: (enabled: boolean) => void;
-  allowAi: boolean;
-  setAllowAi: Dispatch<SetStateAction<boolean>>;
   peerRoom: PeerRoom;
   device: Device;
   waveforms: Waveforms;
@@ -85,7 +90,6 @@ export interface ChatAppViewProps {
   showChat: () => void;
   requireAccount: () => boolean;
   openDm: (request: DmRequest) => Promise<void>;
-  openAiSettings: () => void;
   sendMedia: (
     blob: Blob,
     kind: 'image' | 'audio',
@@ -119,8 +123,6 @@ export function ChatAppView({
   inShell,
   conversationDeviceEnabled,
   onSetConversationDeviceEnabled,
-  allowAi,
-  setAllowAi,
   peerRoom,
   device,
   waveforms,
@@ -137,7 +139,6 @@ export function ChatAppView({
   showChat,
   requireAccount,
   openDm,
-  openAiSettings,
   sendMedia,
   sendCommand,
 }: ChatAppViewProps) {
@@ -262,21 +263,12 @@ export function ChatAppView({
             <div className="flex shrink-0 items-center gap-1">
               {!peerRoom.isDm && (
                 <>
-                  {peerRoom.canManageGroup && (
-                    <button
-                      onClick={() => setAgentOpen(true)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agent ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
-                      title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
-                    >
-                      <Bot className="h-4 w-4" />
-                    </button>
-                  )}
                   <button
-                    onClick={openAiSettings}
-                    className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
-                    title="AI 设置"
+                    onClick={() => setAgentOpen(true)}
+                    className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-ctl)] transition-colors hover:bg-[var(--bg-soft)] ${peerRoom.agents.length ? 'text-[var(--accent)]' : 'text-[var(--text-soft)]'}`}
+                    title={groupAiSummary(peerRoom.agents)}
                   >
-                    <Settings2 className="h-4 w-4" />
+                    <Bot className="h-4 w-4" />
                   </button>
                 </>
               )}
@@ -385,14 +377,14 @@ export function ChatAppView({
                 </button>
               </div>
             )}
-            {agentOpen && !peerRoom.isDm && peerRoom.canManageGroup && (
+            {agentOpen && !peerRoom.isDm && (
               <RoomAgentDialog
-                agent={peerRoom.agent}
                 agents={peerRoom.agents}
-                onSaveAgents={peerRoom.setAgents}
-                billingMode={peerRoom.agentBillingMode}
-                onBillingModeChange={peerRoom.setRoomAgentBillingMode}
-                onSave={peerRoom.setAgent}
+                selfAccountId={currentAuthUserId()}
+                canRemoveAny={peerRoom.canManageGroup}
+                onAdd={peerRoom.addMyAgent}
+                onSetDailyCap={peerRoom.setAgentDailyCap}
+                onRemove={peerRoom.removeAgent}
                 onClose={() => setAgentOpen(false)}
               />
             )}
@@ -432,7 +424,11 @@ export function ChatAppView({
                     })),
                     ...[...peerRoom.members.values()]
                       .filter((member) => member.isAi)
-                      .map((member) => ({ peerId: member.peerId, name: member.displayName })),
+                      .map((member) => ({
+                        peerId: member.peerId,
+                        name: member.displayName,
+                        hint: member.aiOwnerName ? `${member.aiOwnerName}的 AI` : 'AI',
+                      })),
                   ]}
                   selfId={peerRoom.selfId}
                 />
@@ -453,18 +449,18 @@ export function ChatAppView({
                     <span className="flex-1">搜索聊天记录</span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
                   </button>
-                  {inShell && !peerRoom.isDm && peerRoom.canManageGroup && (
+                  {inShell && !peerRoom.isDm && (
                     <button
                       type="button"
                       onClick={() => setAgentOpen(true)}
                       className={SETTINGS_ROW}
-                      title={peerRoom.agent ? `群 AI：${peerRoom.agent.name}` : '给群加个 AI'}
+                      title={groupAiSummary(peerRoom.agents)}
                     >
                       <Bot className="h-5 w-5 shrink-0 text-[var(--text-soft)]" />
                       <span className="flex-1">群 AI</span>
-                      {peerRoom.agent && (
+                      {peerRoom.agents.length > 0 && (
                         <span className="truncate text-sm text-[var(--text-faint)]">
-                          {peerRoom.agent.name}
+                          {peerRoom.agents.map((agent) => agent.name).join('、')}
                         </span>
                       )}
                       <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
@@ -495,9 +491,8 @@ export function ChatAppView({
                     </button>
                   )}
                 </div>
-                {/* Two separate gates in one group: the first admits any command from this
-                    conversation (humans and AI); the second additionally admits room-AI commands
-                    and is a browser-wide preference, so it is not per conversation. */}
+                {/* Group AIs have no device tools, so this one gate covers everyone who can
+                    send a command here: the people in this conversation. */}
                 <div
                   role="group"
                   aria-label="设备授权"
@@ -516,19 +511,6 @@ export function ChatAppView({
                       </span>
                     </span>
                   </label>
-                  {!peerRoom.isDm && (
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={allowAi}
-                        disabled={!conversationDeviceEnabled}
-                        onChange={(event) => setAllowAi(event.target.checked)}
-                      />
-                      <span className={conversationDeviceEnabled ? '' : 'text-[var(--text-faint)]'}>
-                        也允许群 AI 控制（所有群）
-                      </span>
-                    </label>
-                  )}
                 </div>
                 <ControlPanel
                   key={peerRoom.roomId ?? 'no-room'}

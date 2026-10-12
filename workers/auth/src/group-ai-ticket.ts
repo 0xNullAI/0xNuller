@@ -12,6 +12,8 @@ export interface GroupAiTicket {
   grantId: string;
   modelId: GroupAiModelId;
   bodyHash: string;
+  /** The owner's character; absent for a group AI migrated from before AIs had owners. */
+  characterId?: string;
   reservationKey: string;
 }
 
@@ -42,6 +44,7 @@ export async function signGroupAiTicket(
       grantId: input.grantId,
       modelId: input.modelId,
       bodyHash: input.bodyHash,
+      ...(input.characterId ? { characterId: input.characterId } : {}),
       iat: now,
       exp: now + TICKET_MS,
     }),
@@ -64,6 +67,7 @@ export async function verifyGroupAiTicket(
     grantId: claims.grantId ?? '',
     modelId: claims.modelId as GroupAiModelId,
     bodyHash: claims.bodyHash ?? '',
+    ...(claims.characterId !== undefined ? { characterId: claims.characterId } : {}),
   };
   if (
     !validInput(input) ||
@@ -84,6 +88,18 @@ function validInput(input: Omit<GroupAiTicket, 'reservationKey'>): boolean {
     /^[A-Za-z0-9_-]{1,64}$/.test(input.roleId) &&
     /^[0-9a-f-]{36}$/.test(input.grantId) &&
     GROUP_AI_MODEL_IDS.includes(input.modelId) &&
-    /^[0-9a-f]{64}$/.test(input.bodyHash)
+    /^[0-9a-f]{64}$/.test(input.bodyHash) &&
+    (input.characterId === undefined || validCharacterId(input.characterId))
+  );
+}
+
+/** Same shape the account service accepts for a character relationship. */
+export function validCharacterId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    value === value.trim() &&
+    ![...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
   );
 }

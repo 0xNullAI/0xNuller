@@ -420,6 +420,16 @@ export function MemberControl({
       </div>
 
       <div className="flex-1 px-4 py-4">
+        {/* The device's own side is what refuses; this only says so instead of silence.
+            Stops stay usable, because the owner's side always accepts them. */}
+        {!isSelf && member?.deviceAccess === false && (
+          <p
+            role="status"
+            className="mb-4 rounded-[var(--radius-md)] bg-[var(--bg-soft)] px-3 py-2 text-xs text-[var(--text-soft)]"
+          >
+            {name} 还没有允许此聊天控制设备，调节不会生效；停止仍然有效。
+          </p>
+        )}
         {/* ==================== Dual Channel Strength ==================== */}
         <div className="flex items-center justify-center gap-6">
           {/* Channel A */}

@@ -532,3 +532,27 @@ describe('搜索结果定位', () => {
     expect(settled).toHaveBeenCalledWith(false);
   });
 });
+
+it('names whose AI a group AI is beside its messages and in the @ list', () => {
+  render(
+    <ChatPanel
+      conversationId="test-room"
+      messages={[
+        {
+          id: 'ai-said',
+          senderId: 'ai:a1',
+          senderName: '小猫',
+          text: '喵',
+          timestamp: 1,
+          fromSelf: false,
+        },
+      ]}
+      members={[{ peerId: 'ai:a1', name: '小猫', hint: 'Bob的 AI' }]}
+      onSend={vi.fn()}
+      onSendMedia={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('· Bob的 AI')).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '@小' } });
+  expect(screen.getByRole('button', { name: /小猫\s*Bob的 AI/ })).toBeTruthy();
+});

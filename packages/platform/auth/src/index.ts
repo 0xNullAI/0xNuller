@@ -435,6 +435,20 @@ export async function getChatTicket(): Promise<{ ticket: string; expiresAt: numb
   return call('/api/auth/chat/ticket', { method: 'POST' });
 }
 
+/**
+ * Proof that this account owns `characterId` and has Credit, for bringing it into one group
+ * as the account's group AI. Chat accepts it only for that group and only from this account.
+ */
+export async function getGroupAgentTicket(
+  room: string,
+  characterId: string,
+): Promise<{ ticket: string; expiresAt: number }> {
+  return call('/api/auth/group-agent/ticket', {
+    method: 'POST',
+    body: JSON.stringify({ room, characterId }),
+  });
+}
+
 export interface AdminStats {
   generatedAt: number;
   users: number;

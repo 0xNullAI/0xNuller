@@ -8,12 +8,7 @@ import {
   writePreference,
 } from '@0xnullai/settings';
 import { useOpenShellSettings, useInShell, useSafetySession } from '@0xnullai/ui';
-import {
-  hasDeviceLease,
-  subscribeSafetySessions,
-  PolicyEngine,
-  createDefaultPolicyRules,
-} from '@dg-kit/safety';
+import { hasDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
 import { useDgLabRegistry } from '@0xnullai/native';
 import {
   currentAuthUserId,
@@ -35,11 +30,8 @@ import { initialChatTarget } from './lib/initial-chat-target';
 import { subscribeChatRouteChanges } from './lib/chat-route-changes';
 import { chatConversationAllowsCommand } from './lib/conversation-device-policy';
 import { markDmRead } from './inbox';
-import { useRoomAgents, type AgentDeviceTarget } from './hooks/use-room-agents';
-import { resolveRoomAiCoyoteTarget, roomAgentDeviceTargetId } from './lib/room-agent-device-tools';
 import { sendRoomMedia } from './lib/send-room-media';
 import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
-import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { ChatAppView } from './components/ChatAppView';
 
 type FirePolicy = 'sum' | 'max' | 'avg';
@@ -162,7 +154,6 @@ export default function App() {
     openShellSettings('account');
     return false;
   }, [openShellSettings, signedIn]);
-  const [allowAi, setAllowAi] = useState(() => readPreference('dg-chat-allow-ai') === '1');
   // The theme is owned by the shell (the shared store in @0xnullai/ui); this module no
   // longer has a toggle of its own.
 
@@ -528,34 +519,6 @@ export default function App() {
   const { addRemoteWaveform } = waveforms;
 
   // Register the remote command handler
-  /**
-   * The shared safety policy, applied to AI-issued commands.
-   *
-   * Chat was the only module with an AI-to-device path that never touched
-   * @dg-kit/safety's PolicyEngine — Agent and Voice both do. Its AI could
-   * move a channel by ±50 in a single call (Agent's cap is ±10), with no
-   * cold-start clamp, so a device sitting at 0 under a cap of 50 could be
-   * taken to 50 by one tool call. That is a second copy of clamping logic
-   * evolving on its own, which CLAUDE.md forbids outright.
-   *
-   * Scoped to AI commands on purpose. Human peers drag sliders, and
-   * step-adjust's ±10 would make that crawl; they also consent differently —
-   * per session, by being in the room and holding the lease, not per
-   * command. Which is also why permission-gate is dropped: Chat's consent
-   * for the AI is `allowAi`, granted once by the device's owner, and there
-   * is no per-command confirm UI on this path to answer it.
-   */
-  const policyRef = useRef<PolicyEngine | null>(null);
-  useEffect(() => {
-    const rebuild = () => {
-      policyRef.current = new PolicyEngine(
-        createDefaultPolicyRules(loadDeviceSafety()).filter((r) => r.name !== 'permission-gate'),
-      );
-    };
-    rebuild();
-    return subscribeDeviceSafety(rebuild);
-  }, []);
-
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string) => {
       if (
@@ -567,20 +530,12 @@ export default function App() {
         )
       )
         return;
-      const roomAiCommand = peerId.startsWith('ai:');
-      const aiTarget = roomAiCommand
-        ? resolveRoomAiCoyoteTarget(
-            cmd.action === 'stop' || allowAi,
-            cmd,
-            deviceRef.current.coyotes,
-          )
-        : null;
-      if (roomAiCommand && (!aiTarget || !['adjust_strength', 'stop'].includes(cmd.action))) {
-        return;
-      }
+      // Group AIs run on the server and have no device tools; the server also refuses to
+      // relay a command under an AI's name. Anything that still claims to be one is dropped.
+      if (peerId.startsWith('ai:')) return;
       // Hard-reject when we do not hold the device lease. **It has to be blocked here**
       // rather than by only disabling UI buttons: commands from other people in the room
-      // and from the AI travel over the WebRTC data channel and never touch the UI.
+      // arrive over the room relay and never touch the UI.
       //
       // Stop commands are the exception — handing off control must not take away other
       // people's ability to stop your device.
@@ -591,10 +546,6 @@ export default function App() {
         return;
       }
       if (cmd.action === 'stop') cancelHeldFire();
-      if (roomAiCommand && cmd.action === 'stop') {
-        deviceRef.current.stopCoyote(aiTarget!.id);
-        return;
-      }
       // Queue intent: update the local authoritative state. broadcastStateSlow syncs it
       // out to everyone from an effect.
       // After a queue change, if the currently playing waveform is still in the new
@@ -649,40 +600,9 @@ export default function App() {
       // increment gets wiped out on release.
       if (cmd.action === 'adjust_strength' && cmd.c && cmd.v != null) {
         const dev = deviceRef.current;
-        const targetState = aiTarget ?? dev;
         const channel = cmd.c;
-        let delta = cmd.v;
-        // Evaluated on the device holder's side, the only side that can be
-        // trusted with the cap (CLAUDE.md constraint 2).
-        if (roomAiCommand) {
-          const decision = policyRef.current?.evaluate({
-            context: { sessionId: 'chat-room', sourceType: 'api', traceId: peerId },
-            command: { type: 'adjustStrength', channel, delta },
-            deviceState: {
-              connected: targetState.connected,
-              strengthA: targetState.strengthA,
-              strengthB: targetState.strengthB,
-              limitA: targetState.limitA,
-              limitB: targetState.limitB,
-              waveActiveA: targetState.waveActiveA,
-              waveActiveB: targetState.waveActiveB,
-            },
-          });
-          if (decision && decision.type !== 'allow') {
-            if (decision.type === 'clamp' && decision.command.type === 'adjustStrength') {
-              delta = decision.command.delta;
-            } else {
-              // deny, or a require-confirm nobody can answer on this path.
-              return;
-            }
-          }
-        }
-        const limit = channel === 'A' ? targetState.limitA : targetState.limitB;
-        if (aiTarget) {
-          const current = channel === 'A' ? aiTarget.strengthA : aiTarget.strengthB;
-          dev.setStrength(channel, Math.max(0, Math.min(limit, current + delta)), aiTarget.id);
-          return;
-        }
+        const delta = cmd.v;
+        const limit = channel === 'A' ? dev.limitA : dev.limitB;
         const boosts = channel === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (boosts.size > 0) {
           const baseRef = channel === 'A' ? baselineARef : baselineBRef;
@@ -724,7 +644,7 @@ export default function App() {
       };
       executeCommand(cmd, ctx);
     },
-    [allowAi, callApplyFire, cancelHeldFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
+    [callApplyFire, cancelHeldFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
   );
 
   const priorConversationConsent = useRef({ enabled: false, roomId: peerRoom.roomId });
@@ -858,7 +778,7 @@ export default function App() {
         intervalB: intervalBSec,
         currentIndexA,
         currentIndexB,
-        allowAi: allowAi && conversationDeviceEnabled,
+        deviceAccess: conversationDeviceEnabled,
         opossumConnected: device.opossum?.connected ?? false,
         opossumBattery: device.opossum?.battery ?? null,
         // Must resolve to explicit null (not undefined) when disconnected —
@@ -891,7 +811,6 @@ export default function App() {
     intervalBSec,
     currentIndexA,
     currentIndexB,
-    allowAi,
     conversationDeviceEnabled,
     device.opossum?.connected,
     device.opossum?.battery,
@@ -899,36 +818,6 @@ export default function App() {
     device.sensor?.connected,
     device.sensor?.battery,
   ]);
-
-  // Persist the "allow AI control" toggle.
-  useEffect(() => {
-    writePreference('dg-chat-allow-ai', allowAi ? '1' : '0');
-  }, [allowAi]);
-
-  // The room agent's brain (only actually runs in the host's browser; triggered by @-ing it).
-  const agentDeviceTargets: AgentDeviceTarget[] = [...peerRoom.members.values()].flatMap(
-    (member) =>
-      !member.isAi && member.allowAi
-        ? (member.coyotes ?? []).map(({ deviceId, name }) => ({
-            targetId: roomAgentDeviceTargetId(member.peerId, deviceId),
-            peerId: member.peerId,
-            deviceId,
-            name: `${member.displayName || member.peerId.slice(0, 6)} · ${name}`,
-          }))
-        : [],
-  );
-  useRoomAgents({
-    roomId: peerRoom.roomId,
-    isHost: peerRoom.isHost,
-    billingMode: peerRoom.agentBillingMode,
-    agents: peerRoom.agents,
-    members: peerRoom.members,
-    messages: peerRoom.messages,
-    deviceTargets: agentDeviceTargets,
-    sendChatAs: peerRoom.sendChatAs,
-    requestAgentTurn: peerRoom.requestAgentTurn,
-    sendCommandAs: peerRoom.sendCommandAs,
-  });
 
   // A/B channels: the controlled side authoritatively rotates on a timer (it holds the
   // source of truth)
@@ -1010,8 +899,6 @@ export default function App() {
         );
         if (!stored) peerRoom.notifyLocal('设备授权未保存，请重试');
       }}
-      allowAi={allowAi}
-      setAllowAi={setAllowAi}
       peerRoom={peerRoom}
       device={{ ...device, stopAll: stopAllOutput }}
       waveforms={waveforms}
@@ -1028,7 +915,6 @@ export default function App() {
       showChat={showChat}
       requireAccount={requireAccount}
       openDm={openDm}
-      openAiSettings={() => openShellSettings('ai')}
       sendMedia={sendMedia}
       sendCommand={sendCommand}
     />

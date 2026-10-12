@@ -6,6 +6,10 @@ const state = vi.hoisted(() => ({
   send: vi.fn((_payload: object) => true),
   close: vi.fn(),
   onMessage: null as ((data: Record<string, unknown>) => void) | null,
+  groupAgentTicket: vi.fn(async (_room: string, _characterId: string) => ({
+    ticket: 'signed',
+    expiresAt: 0,
+  })),
 }));
 vi.mock('@0xnullai/auth', () => ({
   currentAuthUserId: () => state.account,
@@ -15,6 +19,7 @@ vi.mock('@0xnullai/auth', () => ({
   },
   dmTicket: vi.fn(),
   getChatTicket: vi.fn(),
+  getGroupAgentTicket: state.groupAgentTicket,
 }));
 vi.mock('../lib/room-transport', () => ({
   connectRoom: (opts: { onMessage: (data: Record<string, unknown>) => void }) => {
@@ -58,28 +63,61 @@ it('confirms the sender’s optimistic chat only after the saved server echo', (
   });
 });
 
-it('resolves a room AI claim only from the matching current room and drops pending claims on leave', async () => {
+it('brings an own character in with a ticket for this group, never into a group left meanwhile', async () => {
   const { result } = renderHook(() => usePeerRoom('Alice'));
   act(() => result.current.join('group'));
-  const first = result.current.requestAgentTurn('room', 'message-1');
-  const requestId = (state.send.mock.calls.at(-1)![0] as { requestId: string }).requestId;
-  act(() => state.onMessage!({ t: 'agent-claim-result', requestId, grantId: 'grant' }));
-  await expect(first).resolves.toBe('grant');
-  const second = result.current.requestAgentTurn('room', 'message-2');
-  act(() => result.current.leave());
-  await expect(second).resolves.toBeNull();
-  act(() => result.current.join('group'));
-  const third = result.current.requestAgentTurn('room', 'message-3');
-  act(() => {
-    state.account = 'bob';
-    for (const fn of state.listeners) fn();
-    state.account = 'alice';
-    for (const fn of state.listeners) fn();
+  const character = { id: 'kitty', name: '小猫', persona: '温柔' };
+  await act(async () => {
+    expect(await result.current.addMyAgent(character)).toBe(true);
   });
-  await expect(third).resolves.toBeNull();
-  const before = state.send.mock.calls.length;
-  act(() => result.current.sendChatAs('room', 'stale', 'message-3', 'grant-3'));
-  expect(state.send.mock.calls.length).toBe(before);
+  expect(state.groupAgentTicket).toHaveBeenCalledWith('group', 'kitty');
+  expect(state.send).toHaveBeenLastCalledWith({
+    t: 'agent-add',
+    ticket: 'signed',
+    name: '小猫',
+    persona: '温柔',
+  });
+  let release!: () => void;
+  state.groupAgentTicket.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ ticket: 'late', expiresAt: 0 });
+      }),
+  );
+  let pending!: Promise<boolean>;
+  act(() => {
+    pending = result.current.addMyAgent(character);
+  });
+  act(() => result.current.join('another'));
+  await act(async () => {
+    release();
+    expect(await pending).toBe(false);
+  });
+  expect(state.send).not.toHaveBeenCalledWith(expect.objectContaining({ ticket: 'late' }));
+});
+it('lists each group AI as a member labelled with its owner', () => {
+  const { result } = renderHook(() => usePeerRoom('Alice'));
+  act(() => result.current.join('group'));
+  act(() =>
+    state.onMessage!({
+      t: 'agent',
+      agents: [
+        { id: 'a1', name: '小猫', persona: '', owner: 'bob', ownerName: 'Bob', dailyCap: 5 },
+        { id: 'bad', name: 3 },
+      ],
+      agent: null,
+      host: '',
+      billingMode: 'managed',
+    }),
+  );
+  expect(result.current.agents).toEqual([
+    { id: 'a1', name: '小猫', persona: '', owner: 'bob', ownerName: 'Bob', dailyCap: 5 },
+  ]);
+  expect(result.current.members.get('ai:a1')).toMatchObject({
+    displayName: '小猫',
+    isAi: true,
+    aiOwnerName: 'Bob',
+  });
 });
 it('pins the room read admission to the joining account and invalidates A-B-A before React rerender', () => {
   const { result } = renderHook(() => usePeerRoom('Alice'));

@@ -52,6 +52,9 @@ export function MemberCard({ peerId, member, onClick }: MemberCardProps) {
               <span>A:{member!.strengthA}</span>
               <span>B:{member!.strengthB}</span>
               {member!.battery != null && <span>{member!.battery}%</span>}
+              {member!.deviceAccess === false && (
+                <span className="text-[var(--text-faint)]">未授权控制</span>
+              )}
             </>
           ) : (
             <span>未连接设备</span>

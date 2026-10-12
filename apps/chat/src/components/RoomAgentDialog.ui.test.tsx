@@ -1,65 +1,78 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { RoomAgentDialog } from './RoomAgentDialog';
-import { MAX_ROOM_AGENT_NAME, MAX_ROOM_AGENT_PERSONA } from '../../worker/wire';
+import { MAX_ROOM_AGENT_PERSONA, type WireRoomAgent } from '../../worker/wire';
 
-const scene = vi.hoisted(() => ({
-  id: 'imported',
-  name: '长'.repeat(60),
-  prompt: '人'.repeat(5000),
+const library = vi.hoisted(() => ({
+  scenes: [
+    { id: 'kitty', name: '小猫', prompt: '温柔的猫', kind: 'character' },
+    { id: 'huge', name: '长篇', prompt: '人'.repeat(5000), kind: 'character' },
+    { id: 'cafe', name: '咖啡馆', prompt: '一个场景', kind: 'scene' },
+  ],
+  hiddenBuiltinIds: [] as string[],
 }));
 vi.mock('@0xnullai/scenes', () => ({
-  loadScenes: () => ({ scenes: [scene], hiddenBuiltinIds: [] }),
+  loadScenes: () => library,
   subscribeScenes: () => () => {},
+  savedPromptKind: (scene: { kind?: string }) => scene.kind ?? 'scene',
 }));
 afterEach(cleanup);
 
-it('preserves an oversized imported scene and requires editing before saving the room copy', () => {
-  const onSave = vi.fn();
-  render(<RoomAgentDialog agent={null} onSave={onSave} onClose={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: scene.name }));
-  const name = screen.getByLabelText('名字') as HTMLInputElement;
-  const persona = screen.getByLabelText('人设（可留空）') as HTMLTextAreaElement;
-  const save = screen.getByRole('button', { name: '加入群聊' }) as HTMLButtonElement;
-  expect(name.value).toBe(scene.name);
-  expect(persona.value).toBe(scene.prompt);
-  expect(screen.getByRole('alert').textContent).toContain('完整内容已保留');
-  expect(save.disabled).toBe(true);
-  fireEvent.click(save);
-  expect(onSave).not.toHaveBeenCalled();
-  fireEvent.change(name, { target: { value: '名字'.slice(0, MAX_ROOM_AGENT_NAME) } });
-  expect(save.disabled).toBe(true);
-  const shortened = scene.prompt.slice(0, MAX_ROOM_AGENT_PERSONA);
-  fireEvent.change(persona, { target: { value: shortened } });
-  expect(save.disabled).toBe(false);
-  fireEvent.click(save);
-  expect(onSave).toHaveBeenCalledWith({ name: '名字', persona: shortened });
-  expect(scene.prompt.length).toBe(5000);
+const agent = (owner: string, ownerName: string, id = `ai-${owner}`): WireRoomAgent => ({
+  id,
+  name: `${ownerName}的猫`,
+  persona: '',
+  owner,
+  ownerName,
+  dailyCap: null,
 });
 
-it('edits the sole AI while preserving its stable identity', () => {
-  const agents = [{ id: 'room', name: '原角色', persona: '原文' }];
-  const onSaveAgents = vi.fn();
+function open(agents: WireRoomAgent[], canRemoveAny = false) {
+  const props = {
+    onAdd: vi.fn(async () => true),
+    onSetDailyCap: vi.fn(),
+    onRemove: vi.fn(),
+    onClose: vi.fn(),
+  };
   render(
-    <RoomAgentDialog
-      agent={agents[0]!}
-      agents={agents}
-      onSaveAgents={onSaveAgents}
-      onSave={vi.fn()}
-      onClose={vi.fn()}
-    />,
+    <RoomAgentDialog agents={agents} selfAccountId="me" canRemoveAny={canRemoveAny} {...props} />,
   );
-  expect(screen.queryByRole('button', { name: /添加角色/ })).toBeNull();
-  fireEvent.change(screen.getByLabelText('名字'), { target: { value: '新角色' } });
-  fireEvent.change(screen.getByLabelText('人设（可留空）'), { target: { value: '新的人设' } });
-  fireEvent.click(screen.getByRole('button', { name: '保存' }));
-  expect(onSaveAgents).toHaveBeenCalledWith([{ id: 'room', name: '新角色', persona: '新的人设' }]);
+  return props;
+}
+
+it('offers only my characters that fit, and brings one in without editing it', () => {
+  const props = open([]);
+  expect(screen.queryByText('咖啡馆')).toBeNull();
+  const huge = screen.getByRole('button', { name: /长篇/ }) as HTMLButtonElement;
+  expect(huge.disabled).toBe(true);
+  expect(huge.textContent).toContain('人设过长');
+  expect('人'.repeat(5000).length).toBeGreaterThan(MAX_ROOM_AGENT_PERSONA);
+  fireEvent.click(screen.getByRole('button', { name: /小猫/ }));
+  expect(props.onAdd).toHaveBeenCalledWith({ id: 'kitty', name: '小猫', persona: '温柔的猫' });
 });
 
-it('starts with a usable default name so the owner can add the AI at once', () => {
-  const onSave = vi.fn();
-  render(<RoomAgentDialog agent={null} onSave={onSave} onClose={vi.fn()} />);
-  expect((screen.getByLabelText('名字') as HTMLInputElement).value).toBe('群 AI');
-  fireEvent.click(screen.getByRole('button', { name: '加入群聊' }));
-  expect(onSave).toHaveBeenCalledWith({ name: '群 AI', persona: '' });
+it('labels each AI with its owner and lets me cap or withdraw only my own', () => {
+  const props = open([agent('me', 'Me'), agent('bob', 'Bob')]);
+  expect(screen.getByText(/我的 AI/)).toBeTruthy();
+  expect(screen.getByText(/Bob的 AI/)).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: /撤出|移出/ })).toHaveLength(1);
+  expect(screen.queryByRole('region', { name: '带我的角色进群' })).toBeNull();
+  const cap = screen.getByLabelText('每日 Credit 上限');
+  fireEvent.change(cap, { target: { value: '20' } });
+  fireEvent.blur(cap);
+  expect(props.onSetDailyCap).toHaveBeenCalledWith('ai-me', 20);
+  fireEvent.change(cap, { target: { value: '' } });
+  fireEvent.blur(cap);
+  expect(props.onSetDailyCap).toHaveBeenLastCalledWith('ai-me', null);
+  fireEvent.click(screen.getByRole('button', { name: /撤出/ }));
+  expect(props.onRemove).toHaveBeenCalledWith('ai-me');
+});
+
+it('lets the group owner remove anyone, and stops new AIs at the group limit', () => {
+  const props = open([agent('a', 'A'), agent('b', 'B'), agent('c', 'C')], true);
+  expect(screen.getByText(/本群已有 3 个 AI/)).toBeTruthy();
+  const remove = screen.getAllByRole('button', { name: /移出/ });
+  expect(remove).toHaveLength(3);
+  fireEvent.click(remove[1]!);
+  expect(props.onRemove).toHaveBeenCalledWith('ai-b');
 });

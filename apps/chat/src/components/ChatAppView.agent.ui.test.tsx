@@ -14,12 +14,17 @@ vi.mock('./ControlPanel', () => ({ ControlPanel: () => null }));
 vi.mock('./ShellRoomList', () => ({ ShellRoomList: () => null }));
 vi.mock('./ShellDmList', () => ({ ShellDmList: () => null }));
 vi.mock('@0xnullai/scenes', () => ({
-  loadScenes: () => ({ scenes: [], hiddenBuiltinIds: [] }),
+  loadScenes: () => ({
+    scenes: [{ id: 'kitty', name: '小雨', prompt: '温和的读书伙伴', kind: 'character' }],
+    hiddenBuiltinIds: [],
+  }),
   subscribeScenes: () => () => {},
+  savedPromptKind: (scene: { kind?: string }) => scene.kind ?? 'scene',
 }));
+vi.mock('@0xnullai/auth', () => ({ currentAuthUserId: () => 'me' }));
 afterEach(cleanup);
 
-function ShellRoom({ canManage = true, isDm = false, save = vi.fn() }) {
+function ShellRoom({ canManage = true, isDm = false, add = vi.fn(async () => true) }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'control'>('chat');
   const props = {
@@ -37,8 +42,8 @@ function ShellRoom({ canManage = true, isDm = false, save = vi.fn() }) {
       peers: [],
       members: new Map(),
       messages: [],
-      agent: null,
-      setAgent: save,
+      agents: [],
+      addMyAgent: add,
     },
     device: {},
     waveforms: {},
@@ -46,28 +51,23 @@ function ShellRoom({ canManage = true, isDm = false, save = vi.fn() }) {
   return <ChatAppView {...props} />;
 }
 
-it('lets a room owner add a named AI from the unified website header', () => {
-  const save = vi.fn();
-  render(<ShellRoom save={save} />);
-  fireEvent.click(screen.getByRole('button', { name: '聊天设置' }));
-  fireEvent.click(screen.getByRole('button', { name: '群 AI' }));
-  fireEvent.change(screen.getByLabelText('名字'), { target: { value: '小雨' } });
-  fireEvent.change(screen.getByLabelText('人设（可留空）'), {
-    target: { value: '温和的读书伙伴' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: '加入群聊' }));
-  expect(save).toHaveBeenCalledWith({ name: '小雨', persona: '温和的读书伙伴' });
-  expect(screen.queryByRole('dialog')).toBeNull();
-});
-
-it.each([{ canManage: false }, { isDm: true }])(
-  'keeps the agent action out of non-owner and private conversations: %j',
+it.each([{ canManage: true }, { canManage: false }])(
+  'lets any group member bring their own character in from chat settings: %j',
   (props) => {
-    render(<ShellRoom {...props} />);
+    const add = vi.fn(async () => true);
+    render(<ShellRoom {...props} add={add} />);
     fireEvent.click(screen.getByRole('button', { name: '聊天设置' }));
-    expect(screen.queryByRole('button', { name: '群 AI' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '群 AI' }));
+    fireEvent.click(screen.getByRole('button', { name: /小雨/ }));
+    expect(add).toHaveBeenCalledWith({ id: 'kitty', name: '小雨', persona: '温和的读书伙伴' });
   },
 );
+
+it('keeps the group AI entry out of private conversations', () => {
+  render(<ShellRoom isDm />);
+  fireEvent.click(screen.getByRole('button', { name: '聊天设置' }));
+  expect(screen.queryByRole('button', { name: '群 AI' })).toBeNull();
+});
 
 it('keeps the shell conversation on one chat surface and opens per-chat device access in settings', () => {
   render(<ShellRoom isDm />);
@@ -90,6 +90,7 @@ it('offers no memory sharing entry in a human conversation', () => {
       peers: [],
       members: new Map(),
       messages: [],
+      agents: [],
     },
     device: {},
     waveforms: {},
@@ -114,7 +115,7 @@ it('enables group automatic reading only in the actual chat pane', () => {
         peers: [],
         members: new Map(),
         messages: [],
-        agent: null,
+        agents: [],
       },
       device: {},
       waveforms: {},
@@ -129,30 +130,28 @@ it('enables group automatic reading only in the actual chat pane', () => {
   expect(panel.visible).toBe(acknowledge);
 });
 
-it('groups the chat consent and the room-AI consent, and the AI one needs the chat one', () => {
-  const setAllowAi = vi.fn();
+it('has one device consent per chat and no separate group-AI switch', () => {
   const onSetConversationDeviceEnabled = vi.fn();
   const props = {
     inShell: true,
     activeTab: 'control',
-    allowAi: false,
-    setAllowAi,
     conversationDeviceEnabled: false,
     onSetConversationDeviceEnabled,
-    peerRoom: { roomId: 'group', isDm: false, peers: [], members: new Map(), messages: [] },
+    peerRoom: {
+      roomId: 'group',
+      isDm: false,
+      peers: [],
+      members: new Map(),
+      messages: [],
+      agents: [],
+    },
     device: {},
     waveforms: {},
   } as unknown as ChatAppViewProps;
-  const view = render(<ChatAppView {...props} />);
+  render(<ChatAppView {...props} />);
   const group = screen.getByRole('group', { name: '设备授权' });
-  const ai = screen.getByLabelText(/也允许群 AI 控制/) as HTMLInputElement;
-  expect(group.contains(ai)).toBe(true);
-  expect(ai.disabled).toBe(true);
+  expect(group.querySelectorAll('input[type=checkbox]')).toHaveLength(1);
+  expect(screen.queryByLabelText(/群 AI 控制/)).toBeNull();
   fireEvent.click(screen.getByLabelText(/允许此聊天控制我的设备/));
   expect(onSetConversationDeviceEnabled).toHaveBeenCalledWith(true);
-  view.rerender(<ChatAppView {...props} conversationDeviceEnabled />);
-  fireEvent.click(screen.getByLabelText(/也允许群 AI 控制/));
-  expect(setAllowAi).toHaveBeenCalledWith(true);
-  view.rerender(<ChatAppView {...props} peerRoom={{ ...props.peerRoom, isDm: true }} />);
-  expect(screen.queryByLabelText(/也允许群 AI 控制/)).toBeNull();
 });
