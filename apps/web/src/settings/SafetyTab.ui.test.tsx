@@ -38,34 +38,88 @@ vi.mock('@0xnullai/settings', () => ({
     return safety.settings;
   },
 }));
-vi.mock('@0xnullai/ui', () => ({
+vi.mock('@0xnullai/ui', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   ModuleSettingsSlot: () => null,
   useSettingsSubpage: () => false,
 }));
+const registry = vi.hoisted(() => ({
+  setOwnLimits: vi.fn(async () => undefined),
+  forgetDeviceLimits: vi.fn(),
+}));
+const devices = vi.hoisted(() => [
+  {
+    stableKey: 'coyote:id:1',
+    kind: 'coyote',
+    name: '郊狼 #1',
+    id: 'c1',
+    connected: true,
+    battery: 80,
+    ownLimits: { a: 30, b: 200 },
+    globalLimits: { a: 50, b: 50 },
+    effectiveLimits: { a: 30, b: 50 },
+  },
+  {
+    stableKey: 'opossum:id:2',
+    kind: 'opossum',
+    name: '负鼠',
+    id: null,
+    connected: false,
+    battery: null,
+    ownLimits: { a: 200, b: 200 },
+    globalLimits: { a: 50, b: 50 },
+    effectiveLimits: { a: 50, b: 50 },
+  },
+]);
+vi.mock('@0xnullai/native', () => ({ useDgLabRegistry: () => registry }));
+vi.mock('@0xnullai/device-runtime', () => ({ useDgLabDeviceLimits: () => devices }));
 
 afterEach(() => {
   cleanup();
   safety.update.mockClear();
+  registry.setOwnLimits.mockClear();
+  registry.forgetDeviceLimits.mockClear();
 });
 
-it('shows only the channel caps first and keeps the rest on one flat 高级 page', () => {
-  const { container } = render(<SafetyTab />);
-  const coyote = screen.getByRole('region', { name: '郊狼' });
-  expect(within(coyote).getByLabelText(/A 通道上限/)).toBeTruthy();
-  expect(screen.getByRole('region', { name: '负鼠' })).toBeTruthy();
-  expect(screen.getByLabelText(/设备指令确认/)).toBeTruthy();
-  expect(screen.queryByLabelText(/冷启动上限/)).toBeNull();
-  // Per-turn caps are fixed constants and have no control.
-  expect(screen.queryByText(/单回合/)).toBeNull();
+it('shows shared limits, every device with its effective limit, and controls', () => {
+  render(<SafetyTab />);
+  const shared = screen.getByRole('region', { name: '所有设备共用的上限' });
+  for (const label of ['郊狼 A 通道', '郊狼 B 通道', '负鼠 A 通道', '负鼠 B 通道'])
+    expect(within(shared).getByLabelText(label)).toBeTruthy();
+  fireEvent.change(within(shared).getByLabelText('郊狼 A 通道'), { target: { value: '40' } });
+  expect(safety.update).toHaveBeenCalledWith(expect.objectContaining({ maxStrengthA: 40 }));
 
+  const mine = screen.getByRole('region', { name: '我的设备' });
+  expect(within(mine).getByRole('button', { name: /郊狼 #1.*电量 80%.*A 30 · B 50/ })).toBeTruthy();
+  expect(within(mine).getByRole('button', { name: /负鼠.*未连接/ })).toBeTruthy();
+  expect(screen.getByLabelText('设备指令确认')).toBeTruthy();
+  // Per-turn AI caps are fixed constants and never shown.
+  expect(screen.queryByText(/单回合|每回合/)).toBeNull();
+});
+
+it('sets one device’s own limit and forgets a disconnected one', () => {
+  render(<SafetyTab />);
+  fireEvent.click(screen.getByRole('button', { name: /郊狼 #1/ }));
+  expect(screen.getByText(/实际生效：A 30 · B 50/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('A 通道'), { target: { value: '20' } });
+  expect(registry.setOwnLimits).toHaveBeenCalledWith('coyote:id:1', { a: 20 });
+  // A connected device cannot be forgotten.
+  expect(screen.queryByRole('button', { name: '忘记这台设备' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
+
+  fireEvent.click(screen.getByRole('button', { name: /负鼠.*未连接/ }));
+  fireEvent.click(screen.getByRole('button', { name: '忘记这台设备' }));
+  expect(registry.forgetDeviceLimits).toHaveBeenCalledWith('opossum:id:2');
+});
+
+it('keeps start, step and burst limits on one flat 高级 page', () => {
+  const { container } = render(<SafetyTab />);
+  expect(screen.queryByLabelText('启动上限')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '高级' }));
   expect(container.querySelector('details')).toBeNull();
-  const burst = screen.getByLabelText(/脉冲最长时长/);
-  expect(screen.getAllByLabelText(/冷启动上限/)).toHaveLength(2);
-  expect(screen.queryByText(/单回合/)).toBeNull();
-  fireEvent.change(burst, { target: { value: '3000' } });
+  expect(screen.getAllByLabelText('启动上限')).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText('最长时长'), { target: { value: '3000' } });
   expect(safety.update).toHaveBeenCalledWith(expect.objectContaining({ maxBurstDurationMs: 3000 }));
-
   fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
   expect(screen.getByRole('button', { name: '高级' })).toBeTruthy();
 });
