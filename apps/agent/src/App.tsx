@@ -86,7 +86,7 @@ import {
   linkedAgentConversationId,
   replaceAgentConversationLink,
 } from './utils/conversation-link.js';
-import { resolveConversationCards, sceneNeedsCharacter } from './utils/conversation-cards.js';
+import { resolveConversationCards } from './utils/conversation-cards.js';
 import {
   parseSessionsFromJson,
   serializeSessionFile,
@@ -653,10 +653,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
 
   async function changeConversationScene(id: string | null): Promise<void> {
     if (!activeSessionId) return;
-    if (id && sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, id)) {
-      setErrorMessage('场景只提供环境，请先选择角色，再为角色聊天添加场景。');
-      return;
-    }
     try {
       setErrorMessage(null);
       await client.setSessionScene(activeSessionId, id);
@@ -698,12 +694,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
   const sendTextMessage = useCallback(
     async (message: string, image?: LlmImageInput): Promise<'sent' | 'aborted' | 'failed'> => {
       if (!message.trim() || !activeSessionId) return 'failed';
-      if (
-        sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, conversationSceneId)
-      ) {
-        setErrorMessage('场景只提供环境，请先选择角色，再开始聊天。');
-        return 'failed';
-      }
 
       let allocatedRunId: string | null = null;
       setPendingSend(true);
@@ -763,7 +753,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
       hasExplicitConversationScene,
       refreshCurrentSession,
       refreshRunReview,
-      session,
       stopSpeechPlayback,
     ],
   );
@@ -787,7 +776,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       !conversationId ||
       !canUsePrivateImageInput(client.capabilities.imageInput, settings.provider.providerId)
     ) {
-      setErrorMessage('聊天看图需要明确支持视觉的自备模型；托管视觉模型暂不支持普通聊天历史');
+      setErrorMessage('自备模型需要在「AI → 高级」打开「支持图片输入」才能看图');
       return;
     }
     const conversationEpoch = imageConversationEpochRef.current;
@@ -1182,12 +1171,15 @@ export function App({ servicesOverrides }: AppProps = {}) {
               conversationId={activeSessionId ?? undefined}
               characterId={conversationCharacterId}
               marketPortraitId={
-                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)
-                  ?.marketPortraitId
+                sceneLib.scenes.find(
+                  (scene) => scene.id === (conversationCharacterId || conversationSceneId),
+                )?.marketPortraitId
               }
               onBack={shellNav?.conversationBack}
               characterIcon={
-                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.icon
+                sceneLib.scenes.find(
+                  (scene) => scene.id === (conversationCharacterId || conversationSceneId),
+                )?.icon
               }
               scenes={sceneLib.scenes.filter((scene) => savedPromptKind(scene) === 'scene')}
               sceneId={conversationSceneId || null}
@@ -1199,6 +1191,10 @@ export function App({ servicesOverrides }: AppProps = {}) {
                 sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.name ??
                 BUILTIN_PROMPT_PRESETS.find((preset) => preset.id === conversationCharacterId)
                   ?.name ??
+                // A scene-only chat is named after the scene it hosts.
+                (!conversationCharacterId && conversationSceneId
+                  ? sceneLib.scenes.find((scene) => scene.id === conversationSceneId)?.name
+                  : undefined) ??
                 'AI'
               }
             />
@@ -1338,6 +1334,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
               onOpenSidebar={() => setSidebarOpen(true)}
               onOpenSettings={() => openShellSettings('scenes')}
               promptPresetId={conversationCharacterId}
+              hostPresetId={conversationCharacterId || conversationSceneId}
               savedPresets={sceneLib.scenes}
               coyoteTargets={connectedCoyotes.map(({ id, state }, index) => ({
                 id,

@@ -99,6 +99,8 @@ interface ChatPanelProps {
   onOpenSidebar: () => void;
   onOpenSettings: () => void;
   promptPresetId: string;
+  /** The character, or for a scene-only chat the scene, that speaks in this chat. */
+  hostPresetId?: string;
   savedPresets: SavedScene[];
   coyoteTargets: Array<{ id: string; label: string }>;
   activeCoyoteId: string | null;
@@ -166,6 +168,7 @@ export function ChatPanel({
   onOpenSidebar,
   onOpenSettings,
   promptPresetId,
+  hostPresetId = promptPresetId,
   savedPresets,
   coyoteTargets,
   activeCoyoteId,
@@ -227,7 +230,7 @@ export function ChatPanel({
       accountId: accountId ?? '',
       conversationId: sessionId ?? activeSessionId ?? '',
       agentId: promptPresetId,
-      agentName: savedPresets.find((preset) => preset.id === promptPresetId)?.name ?? 'AI',
+      agentName: savedPresets.find((preset) => preset.id === hostPresetId)?.name ?? 'AI',
     },
     messages,
     traceFeed,
@@ -438,6 +441,8 @@ export function ChatPanel({
   const activeCharacter = savedPresets.find(
     (preset) => preset.id === promptPresetId && savedPromptKind(preset) === 'character',
   );
+  // A scene-only chat shows the scene as its host.
+  const activeHost = activeCharacter ?? savedPresets.find((preset) => preset.id === hostPresetId);
 
   useEffect(() => {
     if (!attachmentMenuOpen) return;
@@ -519,9 +524,9 @@ export function ChatPanel({
   const showVoiceAsPrimary = !hasText && !busy;
   const assistantAvatar = (
     <AssistantAvatar
-      name={activeCharacter?.name ?? 'AI'}
-      icon={activeCharacter?.icon}
-      marketPortraitId={activeCharacter?.marketPortraitId}
+      name={activeHost?.name ?? 'AI'}
+      icon={activeHost?.icon}
+      marketPortraitId={activeHost?.marketPortraitId}
       relationshipId={
         typeof session?.metadata?.relationshipId === 'string'
           ? session.metadata.relationshipId

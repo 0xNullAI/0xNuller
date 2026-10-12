@@ -85,9 +85,13 @@ function privateInboxRow(
     id: `ai:${id}`,
     routeId: `ai:${id}`,
     kind: 'ai',
-    // A conversation without its own title is named after its character, like a contact.
+    // A conversation without its own title is named after its character (or, with no character,
+    // its scene), like a contact.
     title:
-      item.metadata.sessionTitle || characterName(item.metadata.promptPresetId) || '未命名聊天',
+      item.metadata.sessionTitle ||
+      characterName(item.metadata.promptPresetId) ||
+      characterName(item.metadata.sceneId) ||
+      '未命名聊天',
     // Server-delivered companion messages carry a kind line; the row already says "AI".
     preview: item.preview?.replace(/^(AI主动消息|定时消息)\s*/, '') || '开始聊天',
     updatedAt: item.lastMessageAt ?? 0,

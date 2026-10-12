@@ -2,7 +2,10 @@ import { savedPromptKind, type SceneLibrary } from '@0xnullai/scenes';
 import { BUILTIN_PROMPT_PRESETS } from '@dg-agent/runtime';
 import type { SessionSnapshot } from '@dg-agent/core';
 
-/** A character owns the relationship; a scene only changes the environment of that chat. */
+/**
+ * A character owns the relationship; a scene is the environment of that chat. A chat with a scene
+ * and no character is hosted by the AI as the scene's narrator.
+ */
 export function resolveConversationCards(
   session: SessionSnapshot | null,
   activeSessionId: string | null,
@@ -32,18 +35,4 @@ export function resolveConversationCards(
           ? selectedPreset.id
           : '';
   return { characterId, sceneId, boundPresetId };
-}
-
-/** Preserve readable legacy scene chats, but do not start a new scene-only conversation. */
-export function sceneNeedsCharacter(
-  session: SessionSnapshot | null,
-  activeSessionId: string | null,
-  characterId: string,
-  sceneId: string,
-): boolean {
-  return Boolean(
-    sceneId &&
-    !characterId &&
-    (!session || session.id !== activeSessionId || session.messages.length === 0),
-  );
 }

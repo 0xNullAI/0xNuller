@@ -27,6 +27,7 @@ import { CharacterStudio } from './components/CharacterStudio';
 import { marketEditorHref, marketEditorRoute } from './market-editor-route';
 import { startCharacterChat } from './start-character-chat';
 import { importSceneCard } from './import-scene-card';
+import { startSceneChat } from './start-scene-chat';
 import { appendBrowsePage, MARKET_PAGE_SIZE } from './browse-pages';
 import { filterPlacement } from './filter-placement';
 
@@ -719,6 +720,21 @@ export function App(): JSX.Element {
             key={active.id}
             item={active}
             onImportScene={shellNav ? (item) => importSceneCard(item.id) : undefined}
+            onStartScene={
+              shellNav
+                ? async (item) => {
+                    const account = currentAuthUserId();
+                    if (!account) {
+                      openShellSettings('account');
+                      return;
+                    }
+                    await startSceneChat(item.id);
+                    if (currentAuthUserId() !== account)
+                      throw new Error('账号已切换，请重新打开公开内容');
+                    shellNav.navigate('agent');
+                  }
+                : undefined
+            }
             onStartCharacter={
               shellNav
                 ? async (item) => {

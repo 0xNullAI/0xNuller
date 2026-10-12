@@ -6,7 +6,13 @@ export interface PrivateConversationSummary {
   createdAt: number;
   updatedAt: number;
   deleted: boolean;
-  metadata: { sessionTitle?: string; promptPresetId?: string; relationshipId?: string };
+  metadata: {
+    sessionTitle?: string;
+    promptPresetId?: string;
+    relationshipId?: string;
+    /** Set when the chat happens in a scene; with no character the scene hosts the chat. */
+    sceneId?: string;
+  };
   preview: string;
   lastMessageAt: number | null;
   lastSequence: number;
