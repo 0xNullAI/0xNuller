@@ -1,5 +1,14 @@
 # @dg-kit/transport-tauri-blec
 
+## 1.16.5
+
+### Patch Changes
+
+- 787ca53: Describe native scanner coordination as DG-only scan serialization now that the experimental generic-device backend is gone, and report a busy scanner as a scan already in progress.
+- Updated dependencies [82404f4]
+  - @dg-kit/protocol@1.16.5
+  - @dg-kit/core@1.16.5
+
 ## 1.16.4
 
 ### Patch Changes

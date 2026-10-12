@@ -1,5 +1,14 @@
 # @dg-kit/safety
 
+## 1.16.5
+
+### Patch Changes
+
+- 1d64c9d: Mark queued or in-flight device commands interrupted by emergency stop, so callers cannot present their post-stop state as proof that the original command completed.
+- Updated dependencies [82404f4]
+  - @dg-kit/protocol@1.16.5
+  - @dg-kit/core@1.16.5
+
 ## 1.16.4
 
 ### Patch Changes

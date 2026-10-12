@@ -1,5 +1,16 @@
 # dg-mcp
 
+## 1.2.4
+
+### Patch Changes
+
+- d441a93: Require `@modelcontextprotocol/sdk` 1.32.1 or newer, outside the range of GHSA-6qxp-vccf-f47h (OAuth client credentials sent to a server-chosen authorization server). DG-MCP only uses the stdio server transport, so the advisory never applied at run time; the new floor keeps audits of installs clean.
+- Updated dependencies [82404f4]
+  - @dg-kit/protocol@1.16.5
+  - @dg-kit/core@1.16.5
+  - @dg-kit/waveforms@1.16.5
+  - @dg-kit/tools@1.16.5
+
 ## 1.2.3
 
 ### Patch Changes
