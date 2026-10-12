@@ -4,6 +4,7 @@
 import { afterEach, beforeEach } from 'vitest';
 import worker, { type Env } from './index';
 import { verifyDmTicket } from './dm-ticket';
+import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 
 export const ORIGIN = 'https://0xnullai.com';
 // The suites pass createTestDb in, so this module does not import node:sqlite and
@@ -150,6 +151,7 @@ export const GOOD = {
   username: 'alice',
   email: 'alice@example.com',
   password: 'correct-horse-battery',
+  acceptedTerms: LEGAL_TERMS_VERSION,
 };
 
 export async function registerUser(overrides: Record<string, unknown> = {}) {

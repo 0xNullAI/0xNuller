@@ -1,4 +1,6 @@
 import { BillingOrdersPanel } from './BillingOrdersPanel';
+import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
+import { RegistrationConsent } from '../legal/RegistrationConsent';
 import { publicPageUrl } from '@0xnullai/settings';
 import { CreditActivityPanel } from './CreditActivityPanel';
 import { useEffect, useRef, useState } from 'react';
@@ -161,6 +163,7 @@ export function AccountContent({
               email: email.trim(),
               password,
               referralCode: referralCode.trim() || undefined,
+              acceptedTerms: LEGAL_TERMS_VERSION,
             });
       onUser(next);
       if (mode === 'register' && referralCode) {
@@ -512,15 +515,7 @@ export function AccountContent({
       {registerMode && (
         <>
           <Agreement />
-          <label className="mt-2 flex cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(event) => setAgreed(event.target.checked)}
-              className="mt-0.5 accent-[var(--accent)]"
-            />
-            <span className="text-xs text-[var(--text-soft)]">我已阅读并同意上述内容</span>
-          </label>
+          <RegistrationConsent checked={agreed} onCheckedChange={setAgreed} />
         </>
       )}
 

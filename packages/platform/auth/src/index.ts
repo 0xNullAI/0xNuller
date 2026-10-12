@@ -187,6 +187,8 @@ export async function register(input: {
   displayName?: string;
   email: string;
   referralCode?: string;
+  /** LEGAL_TERMS_VERSION from `@0xnullai/auth/legal`, sent only after the person consents. */
+  acceptedTerms: string;
 }): Promise<AuthUser> {
   const r = await call<{ user: AuthUser; token: string }>('/api/auth/register', {
     method: 'POST',

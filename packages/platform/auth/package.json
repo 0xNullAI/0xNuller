@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./appearance-react": "./src/character-appearance-react.tsx",
     "./appearance": "./src/character-appearance.ts",
+    "./legal": "./src/legal.ts",
     "./photo-sanitizer": "./src/photo-sanitizer.ts",
     "./profile-links": "./src/profile-links.ts"
   },

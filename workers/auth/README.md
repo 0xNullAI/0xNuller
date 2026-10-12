@@ -580,6 +580,15 @@ History 的 callId 一致。此关联方便账务归集，不把客户端 TaskRu
 `GET /api/auth/admin/billing/voice-reconciliation` 的首页同时返回 `usageItems` 供运营只读核对。
 不带用量的旧版本任务仍按原确认时长规则完成。0070 只新增表，旧代码不读写它。
 
+## 注册同意用户协议与隐私政策（0071）
+
+`POST /api/auth/register` 必须携带 `acceptedTerms`，其值等于 `@0xnullai/auth/legal` 的
+`LEGAL_TERMS_VERSION`。缺失或版本不符时在校验其他字段前返回 400「请更新到最新版本后注册」，
+因此没有同意框的旧客户端无法再注册。成功注册在建号的同一批写入中向 `legal_acceptances`
+（`user_id, terms_version, accepted_at`，随账户级联删除）记录同意的版本与时间。已有账户
+没有记录，目前不要求重新同意。文本草稿位于 `apps/web/src/legal/`，公开地址为 `/legal/terms` 与
+`/legal/privacy`；修改文本实质内容时同步提升版本号。先迁移 0071，再升级 Auth Worker 与 Web。
+
 ## Voice 审核备注（0045，未部署）
 
 `GET /api/auth/admin/billing/voice-reconciliation` 返回过期 Voice 审计记录与当前预留状态，

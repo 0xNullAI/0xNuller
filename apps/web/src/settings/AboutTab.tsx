@@ -3,6 +3,7 @@ import { submitFeedback } from '@0xnullai/auth';
 import { Button, Input, Textarea } from '@0xnullai/ui';
 import { useCallback, useState, type ReactNode } from 'react';
 import { PRODUCT_BUILD_ID, PRODUCT_VERSION } from '../product';
+import { LegalDocumentsRow } from '../legal/LegalDocumentsRow';
 import { AdvancedSubpage } from './SettingsAdvanced';
 import { SettingsGroup, SettingsPage, SettingsRow } from './settings-list';
 
@@ -37,6 +38,7 @@ export function AboutTab({ data }: { data?: ReactNode }) {
           <SettingsRow icon={HardDrive} label="数据" onClick={() => setPage('data')} />
         ) : null}
         <SettingsRow icon={MessageSquare} label="反馈" onClick={() => setPage('feedback')} />
+        <LegalDocumentsRow />
       </SettingsGroup>
     </SettingsPage>
   );

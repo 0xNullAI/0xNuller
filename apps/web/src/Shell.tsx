@@ -28,6 +28,7 @@ import {
 } from '@0xnullai/auth';
 import { MODULES, moduleIdFromPath } from './routes';
 import { pageAliasFromPath } from './page-aliases';
+import { legalDocumentFromPath } from './legal/legal-routes';
 import { useUnreadMessages } from './unread-messages';
 import { InboxColumn, MobileTabBar, NavRail, type MobileTab } from './Sidebar';
 import { UnifiedInbox } from './UnifiedInbox';
@@ -44,6 +45,9 @@ const SettingsPanel = lazy(() =>
 );
 const AccountContent = lazy(() =>
   import('./settings/AccountContent').then((module) => ({ default: module.AccountContent })),
+);
+const LegalPage = lazy(() =>
+  import('./legal/LegalPage').then((module) => ({ default: module.LegalPage })),
 );
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
 import { grantDeviceLease } from '@dg-kit/safety';
@@ -371,6 +375,23 @@ export function Shell() {
     }),
     [activeId, conversationDetail, go, navigate],
   );
+
+  // The legal texts are public: they render before (and regardless of) the account check, so
+  // the sign-up form and outside links can open them without an account.
+  const legalDocument = legalDocumentFromPath(pathname);
+  if (legalDocument) {
+    // Same device bar and stop banner as the sign-in screen: no module holds the lease here,
+    // but a connected device's state and stop stay one action away.
+    return (
+      <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--text)]">
+        <DeviceBar activeSessionId={null} showConnect={false} />
+        <Suspense fallback={<PageLoading label="文档" />}>
+          <LegalPage id={legalDocument} onNavigate={navigateFromShell} />
+        </Suspense>
+        <StopFailureBanner />
+      </div>
+    );
+  }
 
   if (!authenticated) {
     return (
