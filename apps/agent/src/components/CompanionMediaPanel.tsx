@@ -40,7 +40,7 @@ export function MediaJobPreview({ job }: { job: MediaJob }) {
   }, [job.id, requested]);
   if (!requested)
     return (
-      <button onClick={() => setRequested(true)} className="text-sm text-violet-300">
+      <button onClick={() => setRequested(true)} className="text-sm text-[var(--accent-text)]">
         {job.kind === 'video' ? '查看视频' : '查看图片'}
       </button>
     );
@@ -144,7 +144,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
   return (
     <section className="space-y-3 rounded-xl border border-white/10 p-3">
       <h3 className="font-medium">生成图片</h3>
-      <p className="text-xs text-gray-400">使用 Credit 生成，图片保存到你的私有相册。</p>
+      <p className="text-xs text-[var(--text-faint)]">使用 Credit 生成，图片保存到你的私有相册。</p>
       <textarea
         aria-label="画面描述"
         value={prompt}
@@ -155,7 +155,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
           setPrompt(e.target.value);
           pending.current = null;
         }}
-        className="w-full rounded bg-zinc-900 p-2"
+        className="w-full rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-2"
       />
       <label className="flex items-center gap-2 text-sm">
         <input
@@ -171,7 +171,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
         让角色出镜
       </label>
       {featureCharacter && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-[var(--text-faint)]">
           将角色形象图、角色卡、当前场景和最近4条消息发送给火山引擎（不含私人记忆）；没有形象图时只用文字描述。
         </p>
       )}
@@ -183,7 +183,7 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
       <button
         disabled={busy || !offer?.enabled || !prompt.trim()}
         onClick={() => void submit()}
-        className="rounded bg-violet-600 px-3 py-2 disabled:opacity-40"
+        className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-2 font-medium text-[var(--button-text)] disabled:opacity-40"
       >
         {busy ? '处理中…' : '确认生成'}
       </button>
@@ -210,12 +210,12 @@ function MediaPanel({ relationshipId, conversationId }: Props) {
                         : '后台处理中'}
             </p>
             {job.state === 'succeeded' && <MediaJobPreview job={job} />}
-            <p className="text-xs text-gray-400">{job.lastError ?? job.prompt}</p>
+            <p className="text-xs text-[var(--text-faint)]">{job.lastError ?? job.prompt}</p>
             {!['submitting', 'processing', 'storing', 'needs_review'].includes(job.state) && (
               <button
                 disabled={busy}
                 onClick={() => void remove(job.id)}
-                className="text-xs text-gray-400"
+                className="text-xs text-[var(--text-faint)]"
               >
                 删除
               </button>

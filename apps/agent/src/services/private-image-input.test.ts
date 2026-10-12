@@ -29,9 +29,9 @@ beforeEach(() => {
   auth.dispose.mockReset();
 });
 
-it('withholds ordinary chat vision from text-only and managed observation providers', () => {
+it('lets managed chat and image-capable own APIs read a chosen image, never a text-only own API', () => {
   expect(canUsePrivateImageInput(false, 'custom')).toBe(false);
-  expect(canUsePrivateImageInput(true, 'managed')).toBe(false);
+  expect(canUsePrivateImageInput(false, 'managed')).toBe(true);
   expect(canUsePrivateImageInput(true, 'custom')).toBe(true);
 });
 afterEach(() => {

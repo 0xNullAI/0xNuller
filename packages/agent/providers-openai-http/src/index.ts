@@ -121,7 +121,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
 
   constructor(inputConfig: OpenAiHttpLlmClientConfig) {
     this.config = configSchema.parse(inputConfig);
-    this.capabilities = { imageInput: this.config.supportsImageInput };
+    // Managed turns that carry an image switch to the chat-vision binding (see below).
+    this.capabilities = {
+      imageInput: this.config.supportsImageInput || this.config.apiKey === 'managed',
+    };
   }
 
   private requestBaseUrl(): string {
@@ -148,13 +151,16 @@ export class OpenAiHttpLlmClient implements LlmClient {
     usageKind: 'agent' | 'video' = 'agent',
     conversationId?: string,
     runId?: string,
+    requireConversation = false,
   ): Promise<Record<string, string>> {
     const headers = await this.buildHeaders();
     try {
       if (isManagedServiceUrl(baseUrl)) {
         headers['Idempotency-Key'] = crypto.randomUUID();
         headers['X-0xNullAI-Usage-Kind'] = usageKind;
-        if (this.config.attachPrivateConversation && conversationId) {
+        // Managed vision always names its owned conversation: the service verifies it before
+        // reading an image, and it adds no personal context.
+        if ((this.config.attachPrivateConversation || requireConversation) && conversationId) {
           headers['X-0xNullAI-Conversation-Id'] = conversationId;
           headers['X-0xNullAI-Run-Id'] = runId ?? headers['Idempotency-Key']!;
         }
@@ -221,12 +227,15 @@ export class OpenAiHttpLlmClient implements LlmClient {
     // The managed visual binding has a bounded, usage-bearing non-stream result.
     // Runtime may offer onTextDelta, but sending stream=true would violate the
     // visual quote protocol before any reservation or model call.
-    const managedVision =
-      this.config.apiKey === 'managed' &&
-      (this.config.model === 'vision' || this.config.model === 'chat-vision');
+    const managed = this.config.apiKey === 'managed';
+    // A managed chat turn carrying the image the user asked about goes to the bounded
+    // chat-vision binding; the text model never receives image content.
+    const model =
+      managed && input.image && this.config.model !== 'vision' ? 'chat-vision' : this.config.model;
+    const managedVision = managed && (model === 'vision' || model === 'chat-vision');
     const streaming = !managedVision && typeof input.onTextDelta === 'function';
     const requestBody = {
-      model: this.config.model,
+      model,
       temperature: this.config.temperature,
       thinking: isDeepSeekModel(this.config) ? { type: 'disabled' } : undefined,
       messages: toChatMessages(
@@ -257,9 +266,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
       () =>
         this.requestHeaders(
           baseUrl,
-          this.config.model === 'vision' ? 'video' : 'agent',
+          model === 'vision' ? 'video' : 'agent',
           input.session.id,
           input.runId,
+          managedVision,
         ),
       input.abortSignal,
     );
