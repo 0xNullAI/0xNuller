@@ -12,15 +12,9 @@ export interface StorageLike {
 }
 
 export type ProviderConfigMap = Partial<Record<ProviderId, ProviderSettings>>;
-export type BrowserVoiceMode = 'browser' | 'dashscope-proxy';
-
+/** Agent speech uses only the browser's built-in Web Speech engines. */
 export interface BrowserVoiceSettings {
-  mode: BrowserVoiceMode;
-  speaker: string;
   browserVoiceUri: string;
-  apiKey: string;
-  proxyUrl: string;
-  autoStopEnabled: boolean;
 }
 
 export interface BrowserAppSettings {

@@ -8,12 +8,6 @@ import type {
 export const NULL_SPEECH_CAPABILITIES: BrowserSpeechCapabilities = {
   recognitionSupported: false,
   synthesisSupported: false,
-  recognitionMode: 'browser',
-  synthesisMode: 'browser',
-  nativeRecognitionSupported: false,
-  nativeSynthesisSupported: false,
-  proxyRecognitionSupported: false,
-  proxySynthesisSupported: false,
 };
 
 export function createNullSpeechRecognitionController(): SpeechRecognitionController {

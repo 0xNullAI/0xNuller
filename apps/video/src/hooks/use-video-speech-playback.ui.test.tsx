@@ -7,7 +7,7 @@ const speech = vi.hoisted(() => ({
   settings: {
     speechSynthesisEnabled: true,
     speechSynthesisLanguage: 'zh-CN',
-    voice: { mode: 'browser', proxyUrl: '', apiKey: '', speaker: '', browserVoiceUri: '' },
+    voice: { browserVoiceUri: '' },
   },
   speak: vi.fn(),
   stop: vi.fn(),

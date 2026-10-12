@@ -54,10 +54,9 @@ export function buildWarnings(
 
   if (
     !settings.rememberApiKey &&
-    ((settings.llmMode === 'provider-http' &&
-      providerRequiresUserApiKey(settings.provider) &&
-      settings.provider.apiKey.trim()) ||
-      (settings.voice.mode === 'dashscope-proxy' && settings.voice.apiKey.trim()))
+    settings.llmMode === 'provider-http' &&
+    providerRequiresUserApiKey(settings.provider) &&
+    settings.provider.apiKey.trim()
   ) {
     warnings.push('当前 API Key 只会保留在当前页面运行期间；刷新或关闭页面后会丢失');
   }
@@ -108,11 +107,7 @@ export function buildWarnings(
     settings.speechRecognitionEnabled &&
     !speechCapabilities.recognitionSupported
   ) {
-    warnings.push(
-      settings.voice.mode === 'dashscope-proxy'
-        ? '已启用语音识别，但当前浏览器无法使用 DashScope 代理识别链路'
-        : '已启用语音识别，但当前浏览器不支持语音识别',
-    );
+    warnings.push('已启用语音识别，但当前浏览器不支持语音识别');
   }
 
   if (
@@ -120,22 +115,7 @@ export function buildWarnings(
     settings.speechSynthesisEnabled &&
     !speechCapabilities.synthesisSupported
   ) {
-    warnings.push(
-      settings.voice.mode === 'dashscope-proxy'
-        ? '已启用语音合成，但当前浏览器无法使用 DashScope 代理合成链路'
-        : '已启用语音合成，但当前浏览器不支持语音合成',
-    );
-  }
-
-  if (
-    !options.suppressSpeech &&
-    settings.voice.mode === 'dashscope-proxy' &&
-    settings.voice.proxyUrl.trim() &&
-    !settings.voice.apiKey.trim()
-  ) {
-    warnings.push(
-      '已设置自定义语音服务代理地址，但没有填写 DashScope API Key；请确认代理会自行注入鉴权',
-    );
+    warnings.push('已启用语音合成，但当前浏览器不支持语音合成');
   }
 
   return warnings;

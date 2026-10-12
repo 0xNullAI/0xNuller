@@ -18,8 +18,8 @@ import {
   API_KEYS_SESSION,
   SETTINGS_KEY,
   TIMED_PERMISSION_WINDOW_MS,
-  VOICE_API_KEY_LOCAL,
-  VOICE_API_KEY_SESSION,
+  LEGACY_VOICE_API_KEY_LOCAL,
+  LEGACY_VOICE_API_KEY_SESSION,
 } from './browser-settings-constants.js';
 import { defaultBrowserAppSettings, normalizeVoiceSettings } from './browser-settings-defaults.js';
 import { settingsSchema, type PersistedBrowserAppSettings } from './browser-settings-schema.js';
@@ -55,7 +55,6 @@ export class BrowserAppSettingsStore {
   /** Fallback for injected/non-browser stores where shared localStorage is unavailable. */
   private sessionPermissionModeOverride: 'allow-all' | null = null;
   private runtimeApiKeys: Partial<Record<ProviderId, string>> = {};
-  private runtimeVoiceApiKey = '';
 
   constructor(options: BrowserAppSettingsStoreOptions = {}) {
     this.localStorageRef =
@@ -90,7 +89,6 @@ export class BrowserAppSettingsStore {
     const activeProviderId =
       llm?.providerId ?? persisted?.provider?.providerId ?? this.defaults.provider.providerId;
     const apiKeys = migrateApiKeys(this.readApiKeys(activeProviderId), customKeySource);
-    const voiceApiKey = this.readVoiceApiKey();
     const providerConfigs = this.buildProviderConfigs(persisted, apiKeys);
     // The shared config wins field by field, but only where it actually has a
     // value: a user who never opened the panel keeps whatever Agent persisted.
@@ -149,7 +147,6 @@ export class BrowserAppSettingsStore {
       voice: normalizeVoiceSettings({
         ...this.defaults.voice,
         ...(persisted?.voice ?? {}),
-        apiKey: voiceApiKey,
       }),
       rememberApiKey: llm?.rememberApiKey ?? persisted?.rememberApiKey ?? false,
     };
@@ -295,11 +292,7 @@ export class BrowserAppSettingsStore {
         ]),
       ),
       voice: {
-        mode: settings.voice.mode,
-        speaker: settings.voice.speaker,
         browserVoiceUri: settings.voice.browserVoiceUri,
-        proxyUrl: settings.voice.proxyUrl,
-        autoStopEnabled: settings.voice.autoStopEnabled,
       },
     };
 
@@ -315,7 +308,7 @@ export class BrowserAppSettingsStore {
       );
     }
     this.persistApiKeys(providerConfigs, settings.rememberApiKey);
-    this.persistVoiceApiKey(settings.voice.apiKey, settings.rememberApiKey);
+    this.removeLegacyVoiceApiKey();
     return this.load();
   }
 
@@ -324,12 +317,10 @@ export class BrowserAppSettingsStore {
     const safety = loadDeviceSafety();
     saveDeviceSafety({ ...safety, permissionMode: 'confirm', permissionModeExpiresAt: undefined });
     this.runtimeApiKeys = {};
-    this.runtimeVoiceApiKey = '';
     this.localStorageRef?.removeItem(SETTINGS_KEY);
     this.localStorageRef?.removeItem(API_KEYS_LOCAL);
-    this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
-    this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
+    this.removeLegacyVoiceApiKey();
     return this.defaults;
   }
 
@@ -459,29 +450,10 @@ export class BrowserAppSettingsStore {
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
   }
 
-  private readVoiceApiKey(): string {
-    if (this.runtimeVoiceApiKey) return this.runtimeVoiceApiKey;
-
-    return this.localStorageRef?.getItem(VOICE_API_KEY_LOCAL) ?? this.defaults.voice.apiKey;
-  }
-
-  private persistVoiceApiKey(apiKey: string, remember: boolean): void {
-    const trimmedApiKey = apiKey.trim();
-
-    if (remember) {
-      this.runtimeVoiceApiKey = '';
-      if (trimmedApiKey) {
-        this.localStorageRef?.setItem(VOICE_API_KEY_LOCAL, trimmedApiKey);
-      } else {
-        this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
-      }
-      this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
-      return;
-    }
-
-    this.runtimeVoiceApiKey = trimmedApiKey;
-    this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
-    this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
+  /** Bring-your-own-key users get text only; drop the old DashScope speech key. */
+  private removeLegacyVoiceApiKey(): void {
+    this.localStorageRef?.removeItem(LEGACY_VOICE_API_KEY_LOCAL);
+    this.sessionStorageRef?.removeItem(LEGACY_VOICE_API_KEY_SESSION);
   }
 
   private parseApiKeyMap(

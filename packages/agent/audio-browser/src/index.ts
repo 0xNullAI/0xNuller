@@ -1,34 +1,23 @@
-import {
-  DashscopeProxySpeechRecognitionController,
-  DashscopeProxySpeechSynthesizer,
-  isDashscopeProxyRecognitionSupported,
-  isDashscopeProxySynthesisSupported,
-} from './dashscope-proxy.js';
 import { SPEECH_ABORTED_ERROR_MESSAGE, SPEECH_SYNTHESIS_ABORTED_ERROR_MESSAGE } from './types.js';
 import type {
   BrowserSpeechCapabilities,
   BrowserSpeechRecognitionOptions,
   BrowserSpeechSynthesisOptions,
   BrowserSpeechSynthesisVoiceOption,
-  SpeechCapabilityOptions,
   SpeechRecognitionController,
   SpeechRecognitionRequest,
   SpeechSynthesisSession,
   SpeechSynthesizer,
 } from './types.js';
 export {
-  DEFAULT_PROXY_TTS_SPEAKER,
-  PROXY_TTS_SPEAKERS,
   SPEECH_ABORTED_ERROR_MESSAGE,
   SPEECH_SYNTHESIS_ABORTED_ERROR_MESSAGE,
   type BrowserSpeechCapabilities,
   type BrowserSpeechRecognitionOptions,
   type BrowserSpeechSynthesisOptions,
   type BrowserSpeechSynthesisVoiceOption,
-  type SpeechCapabilityOptions,
   type SpeechRecognitionController,
   type SpeechRecognitionRequest,
-  type SpeechServiceMode,
   type SpeechSynthesisSession,
   type SpeechSynthesizer,
 } from './types.js';
@@ -169,30 +158,11 @@ function formatSpeechSynthesisError(errorCode?: string): string {
   }
 }
 
-export function getBrowserSpeechCapabilities(
-  options: SpeechCapabilityOptions = {},
-): BrowserSpeechCapabilities {
-  const recognitionMode = options.recognitionMode ?? 'browser';
-  const synthesisMode = options.synthesisMode ?? 'browser';
-  const nativeRecognitionSupported = Boolean(getNativeRecognitionCtor());
-  const nativeSynthesisSupported =
-    typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
-  const proxyRecognitionSupported = isDashscopeProxyRecognitionSupported();
-  const proxySynthesisSupported = isDashscopeProxySynthesisSupported();
-
+export function getBrowserSpeechCapabilities(): BrowserSpeechCapabilities {
   return {
-    recognitionMode,
-    synthesisMode,
-    nativeRecognitionSupported,
-    nativeSynthesisSupported,
-    proxyRecognitionSupported,
-    proxySynthesisSupported,
-    recognitionSupported:
-      recognitionMode === 'dashscope-proxy'
-        ? proxyRecognitionSupported
-        : nativeRecognitionSupported,
+    recognitionSupported: Boolean(getNativeRecognitionCtor()),
     synthesisSupported:
-      synthesisMode === 'dashscope-proxy' ? proxySynthesisSupported : nativeSynthesisSupported,
+      typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined',
   };
 }
 
@@ -348,19 +318,11 @@ class BrowserSpeechSynthesisSession implements SpeechSynthesisSession {
 export function createSpeechRecognitionController(
   options: BrowserSpeechRecognitionOptions = {},
 ): SpeechRecognitionController {
-  if (options.mode === 'dashscope-proxy') {
-    return new DashscopeProxySpeechRecognitionController(options);
-  }
-
   return new BrowserSpeechRecognitionController(options);
 }
 
 export function createSpeechSynthesizer(
   options: BrowserSpeechSynthesisOptions = {},
 ): SpeechSynthesizer {
-  if (options.mode === 'dashscope-proxy') {
-    return new DashscopeProxySpeechSynthesizer(options);
-  }
-
   return new BrowserSpeechSynthesizer(options);
 }

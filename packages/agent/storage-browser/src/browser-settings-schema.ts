@@ -56,13 +56,11 @@ export const settingsSchema = z.object({
   voiceInputEnabled: z.boolean().optional(),
   ttsEnabled: z.boolean().optional(),
   voiceLanguage: z.string().min(2).optional(),
+  // Unknown legacy voice keys (the removed DashScope mode, proxy URL, speaker and
+  // auto-stop flag) are stripped by zod instead of failing the whole parse.
   voice: z
     .object({
-      mode: z.enum(['browser', 'dashscope-proxy']).optional(),
-      speaker: z.string().optional(),
       browserVoiceUri: z.string().optional(),
-      proxyUrl: z.string().optional(),
-      autoStopEnabled: z.boolean().optional(),
     })
     .optional(),
   bridge: z
