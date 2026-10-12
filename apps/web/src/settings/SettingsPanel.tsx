@@ -110,6 +110,7 @@ export function SettingsPanel({
   onUser,
   onClose,
   onLoadAgent,
+  onOpenAgent,
 }: {
   /** Which page to land on when opened. AI entry points may target one module subsection. */
   initialTab?: string;
@@ -118,6 +119,8 @@ export function SettingsPanel({
   onUser: (user: AuthUser | null) => void;
   onClose: () => void;
   onLoadAgent?: () => void;
+  /** Leave settings for the Agent chat after a chat was opened from the library. */
+  onOpenAgent?: () => void;
 }) {
   const initialAiSection: AiSettingsSection | undefined =
     initialTab === 'ai-video' ? 'video' : undefined;
@@ -291,6 +294,8 @@ export function SettingsPanel({
                   initialSection={initialAiSection}
                   onOpenMemory={user ? () => onNavigateTab('memory') : undefined}
                 />
+              ) : resolvedTab === 'scenes' ? (
+                <ScenesTab onOpenAgent={onOpenAgent} />
               ) : Active ? (
                 <Active />
               ) : null}

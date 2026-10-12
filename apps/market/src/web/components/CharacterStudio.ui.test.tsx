@@ -4,6 +4,8 @@ import { strToU8, zipSync } from 'fflate';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { MarketItem } from '../../shared/schema';
+import type * as ScenesModule from '@0xnullai/scenes';
+import type { SavedScene, SceneLibrary } from '@0xnullai/scenes';
 import { CharacterStudio } from './CharacterStudio';
 
 const api = vi.hoisted(() => ({
@@ -23,6 +25,16 @@ const api = vi.hoisted(() => ({
   fetchContainer: vi.fn(),
   listContainers: vi.fn(),
   deleteContainer: vi.fn(),
+  library: [] as SavedScene[],
+}));
+vi.mock('@0xnullai/scenes', async (importOriginal) => ({
+  ...(await importOriginal<typeof ScenesModule>()),
+  newSceneId: () => 'private-1',
+  updateScenes: (updater: (library: SceneLibrary) => SceneLibrary) => {
+    const next = updater({ scenes: api.library, selectedId: '', hiddenBuiltinIds: [] });
+    api.library = next.scenes;
+    return next;
+  },
 }));
 vi.mock('@0xnullai/auth', () => ({
   currentAuthUserId: () => api.account,
@@ -51,6 +63,7 @@ vi.mock('../api', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   api.account = 'alice';
+  api.library = [];
   api.listeners.clear();
   api.upload.mockResolvedValue({ id: 'new-card' });
   api.update.mockResolvedValue(undefined);
@@ -800,4 +813,77 @@ it('rejects oversized or unsupported portrait files before upload', async () => 
   });
   expect(api.uploadPortrait).not.toHaveBeenCalled();
   expect(screen.getByRole('alert').textContent).toContain('4 MB');
+});
+
+it('saves a private character into the personal library without touching Market', async () => {
+  api.fetchDraft.mockResolvedValue({ draft: null, revision: 4 });
+  const saved = vi.fn();
+  const savedPrivately = vi.fn();
+  render(<CharacterStudio onClose={() => {}} onSaved={saved} onSavedPrivately={savedPrivately} />);
+  expect(screen.getByRole('button', { name: '发布角色' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('radio', { name: '仅自己可见' }));
+  // A private card never uploads a public portrait.
+  expect(screen.queryByLabelText('公开角色头像')).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '小岚' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
+    target: { value: '温柔而独立的朋友' },
+  });
+  const button = screen.getByRole('button', { name: '保存到我的角色' });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(button);
+  expect(savedPrivately).toHaveBeenCalledWith('已保存到我的角色：小岚');
+  expect(api.library).toEqual([
+    expect.objectContaining({
+      id: 'private-1',
+      kind: 'character',
+      name: '小岚',
+      icon: '🎭',
+      prompt: '温柔而独立的朋友',
+      characterCard: expect.objectContaining({ schemaVersion: 1 }),
+    }),
+  ]);
+  expect(api.upload).not.toHaveBeenCalled();
+  expect(api.uploadPortrait).not.toHaveBeenCalled();
+  expect(saved).not.toHaveBeenCalled();
+  expect(api.deleteDraft).toHaveBeenCalledWith('new', 'alice', 4);
+});
+
+it('saves a private scene without a character card and keeps 公开发布 only when editing', async () => {
+  const savedPrivately = vi.fn();
+  const view = render(
+    <CharacterStudio
+      initialKind="scene"
+      onClose={() => {}}
+      onSaved={() => {}}
+      onSavedPrivately={savedPrivately}
+    />,
+  );
+  fireEvent.click(screen.getByRole('radio', { name: '仅自己可见' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '雨夜' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '场景设定' }), {
+    target: { value: '窗外下雨' },
+  });
+  const button = screen.getByRole('button', { name: '保存到我的场景' });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(button);
+  expect(savedPrivately).toHaveBeenCalledWith('已保存到我的场景：雨夜');
+  expect(api.library[0]).toMatchObject({ kind: 'scene', name: '雨夜', prompt: '窗外下雨' });
+  expect(api.library[0]!.characterCard).toBeUndefined();
+  view.unmount();
+  render(
+    <CharacterStudio
+      item={
+        {
+          id: 'published',
+          type: 'scenario',
+          name: '公开',
+          revision: 1,
+          content: { kind: 'scene', prompt: '环境' },
+        } as MarketItem
+      }
+      onClose={() => {}}
+      onSaved={() => {}}
+    />,
+  );
+  expect(screen.queryByRole('radio', { name: '仅自己可见' })).toBeNull();
 });

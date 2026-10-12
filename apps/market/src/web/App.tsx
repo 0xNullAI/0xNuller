@@ -68,6 +68,7 @@ export function App(): JSX.Element {
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [studioNotice, setStudioNotice] = useState<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const requestId = useRef(0);
   const detailRequestId = useRef(0);
@@ -356,6 +357,7 @@ export function App(): JSX.Element {
     setRouteError(null);
     setRouteBusy(false);
     setActive(null);
+    setStudioNotice(null);
     setStudio(next);
   }
 
@@ -404,6 +406,10 @@ export function App(): JSX.Element {
               closeStudio(id);
               load();
             }}
+            onSavedPrivately={(notice) => {
+              closeStudio();
+              setStudioNotice(notice);
+            }}
           />
         </div>
       </div>
@@ -414,6 +420,7 @@ export function App(): JSX.Element {
     <div className="mkt-scope h-full overflow-y-auto">
       <div className="app">
         {(linkError || routeError) && <p role="alert">{linkError || routeError}</p>}
+        {studioNotice && <p role="status">{studioNotice}</p>}
         <header className="market-hero">
           <h1>发现</h1>
         </header>

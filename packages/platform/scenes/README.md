@@ -1,6 +1,6 @@
 # @0xnullai/scenes
 
-Agent 与 Voice 共用的个人角色／场景库，保存已从 Market 导入的卡片及历史自建内容、
+Agent 与 Voice 共用的个人角色／场景库，保存已从 Market 导入的卡片及私有自建内容、
 当前选择、账户同步和 React 选择器组件。
 
 ```ts
@@ -15,8 +15,14 @@ import { loadScenes, updateScenes } from '@0xnullai/scenes';
 
 ## 公开卡与个人内容
 
-新角色和场景从 Market 导入；历史自建卡保持可读、可编辑。没有可用卡时当前选择为空，
-旧版选中的内置 ID 自动回退到首张已保存卡或空值，不删除旧卡或聊天记录。
+角色和场景可从 Market 导入，也可私有创建：个人列表的「新建」（角色／场景）、「导入文件」
+（CCv2/CCv3 的 JSON、PNG/APNG、CHARX，导入为私有角色）以及 Market 编辑器的「仅自己可见」
+都只写入当前账号的个人库，使用随机 ID，从不发布。列表标注「私有」或「来自发现 · vN」。
+没有可用卡时当前选择为空，旧版选中的内置 ID 自动回退到首张已保存卡或空值，不删除旧卡或聊天记录。
+
+`SceneLibrary` 通过 `onStartChat` 回调提供每行的「聊天」；外壳决定打开方式。
+`./start-chat` 的 `openSceneChat(id)` 对任意个人库场景（私有或来自发现）选中该场景，重开最近的
+无角色场景会话，否则新建，不创建关系或记忆。
 
 `SavedScene.characterCard` 是可选的原生 v1 公开元数据，包含简介、性格、开场、示例、标签、
 作者与许可；保存、读取和账户同步保留它，非法元数据不影响原有场景正文。它不保存私人记忆、
@@ -43,7 +49,8 @@ Market 导入保存稳定的 `market-<itemId>` ID 与已采用的公开版本号
 
 `./external-character-card` 接受标记完整的 CCv2/CCv3 JSON（上限 120 KB），将常规人物字段投影到
 原生 Prompt/卡片，同时保留原始 JSON。原件中的 system prompt、角色书与资源引用不进入运行时，
-更不授予工具或设备权限。Market 编辑器在此 JSON 投影之上解析 PNG/APNG 与 CHARX 的人物数据；
+更不授予工具或设备权限。`./external-card-container` 在此 JSON 投影之上解析 PNG/APNG 与 CHARX
+的人物数据（文件上限 20 MB），供个人列表和 Market 编辑器、Worker 共用；
 Market 将完整 PNG/APNG/CHARX 原容器保存在所属账户的私有 R2 文件中，在线草稿只同步受限
 `sourceFileId` 与 `sourceFileName`；跨端恢复后仍可原样下载。公开角色不会包含私有文件 ID 或
 附件字节，含未公开本地资产引用的原始 JSON 也不允许公开。编辑后重新生成完整容器及公开资产

@@ -8,6 +8,7 @@ import {
   type CharacterCard,
 } from '@0xnullai/scenes/character-card';
 import { type ExternalCardArchive } from '@0xnullai/scenes/character-draft';
+import { newSceneId, updateScenes, type SavedScene } from '@0xnullai/scenes';
 import { CharacterCardFields } from '@0xnullai/scenes/character-editor';
 import { Button, registerNavigationGuard } from '@0xnullai/ui';
 import { ChevronLeft } from 'lucide-react';
@@ -55,6 +56,8 @@ interface Props {
   initialKind?: PromptKind;
   onClose: () => void;
   onSaved: (id: string) => void;
+  /** After 仅自己可见 saved the card into the personal library; closes the editor. */
+  onSavedPrivately?: (notice: string) => void;
 }
 
 function hasLocalAssetReferences(archive: ExternalCardArchive | undefined): boolean {
@@ -71,13 +74,16 @@ function hasLocalAssetReferences(archive: ExternalCardArchive | undefined): bool
 }
 
 /** A page-sized editor for a public Prompt card; private companion settings live in Chat. */
-export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) {
+export function CharacterStudio({ item, initialKind, onClose, onSaved, onSavedPrivately }: Props) {
   const source = item?.type === 'scenario' ? (item.content as ScenarioContent) : null;
   const sourceKind = source ? promptKind(source) : null;
   const [kind, setKind] = useState<PromptKind>(
     source ? promptKind(source) : (initialKind ?? 'character'),
   );
   const settingLabel = kind === 'character' ? '人物设定' : '场景设定';
+  // A published item can only be republished; a new card may stay in the personal library.
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const privateOnly = !item && visibility === 'private';
   const [name, setName] = useState(item?.name ?? '');
   const [prompt, setPrompt] = useState(source?.prompt ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
@@ -748,6 +754,45 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
     }
   };
 
+  /** 仅自己可见: the card goes into this account's library only; nothing is uploaded to Market. */
+  const savePrivately = () => {
+    if (publishing.current) return;
+    const account = currentAuthUserId();
+    if (!account) return setError('请先登录后保存');
+    if (!name.trim()) return setError('请填写名称');
+    if (!prompt.trim()) return setError(`请填写${settingLabel}`);
+    if (prompt.length > MAX_SCENARIO_PROMPT_LENGTH)
+      return setError(`Prompt 最多 ${MAX_SCENARIO_PROMPT_LENGTH} 字，编辑内容已保留`);
+    if (kind === 'character' && !parseCharacterCard(card))
+      return setError('旧版详细设定超出限制，编辑内容已保留');
+    const created: SavedScene = {
+      id: newSceneId(),
+      kind,
+      name: name.trim(),
+      icon: icon.trim() || '🎭',
+      prompt,
+      ...(kind === 'character' ? { characterCard: card } : {}),
+    };
+    const library = updateScenes((current) => ({
+      ...current,
+      scenes: [created, ...current.scenes],
+    }));
+    if (!library.scenes.some((scene) => scene.id === created.id))
+      return setError('保存失败，请重新登录后再试');
+    saver.pause();
+    published.current = true;
+    // The online draft is done with; keep it only while it still holds a private original file.
+    const revision = saver.currentRevision();
+    if (revision > 0 && !sourceFileId)
+      void deleteCharacterDraft(draftKey, account, revision).catch(() => undefined);
+    const notice =
+      kind === 'character'
+        ? `已保存到我的角色：${created.name}`
+        : `已保存到我的场景：${created.name}`;
+    if (onSavedPrivately) onSavedPrivately(notice);
+    else onClose();
+  };
+
   if (accountChanged)
     return (
       <main className="character-studio">
@@ -849,7 +894,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               placeholder="🎭"
             />
           </label>
-          {kind === 'character' && (
+          {kind === 'character' && !privateOnly && (
             <label className="field">
               <span>公开角色头像（可选）</span>
               <input
@@ -866,7 +911,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               <small>最大 4 MB。发布后所有人可见；私人头像在聊天设置中管理。</small>
             </label>
           )}
-          {kind === 'character' && (
+          {kind === 'character' && !privateOnly && (
             <Button
               variant="secondary"
               disabled={busy || drawingOpen}
@@ -875,7 +920,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               绘制公开头像
             </Button>
           )}
-          {kind === 'character' && drawingOpen && (
+          {kind === 'character' && !privateOnly && drawingOpen && (
             <CharacterStudioDrawing
               onDirtyChange={setDrawingDirty}
               onClose={() => {
@@ -953,6 +998,30 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
               ))}
             </details>
           )}
+          {!item && (
+            <div className="field" role="radiogroup" aria-label="可见范围">
+              <span>可见范围</span>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="character-studio-visibility"
+                  checked={visibility === 'public'}
+                  onChange={() => setVisibility('public')}
+                />
+                公开发布
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="character-studio-visibility"
+                  checked={visibility === 'private'}
+                  onChange={() => setVisibility('private')}
+                />
+                仅自己可见
+              </label>
+              {privateOnly && <small>只保存到我的角色与场景，不会上传到发现。</small>}
+            </div>
+          )}
           {error && (
             <p role="alert" className="error">
               {error}
@@ -968,14 +1037,16 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
             </Button>
             <Button
               className="character-studio-primary ui-press"
-              onClick={() => void save()}
+              onClick={() => (privateOnly ? savePrivately() : void save())}
               disabled={busy || !draftReady}
             >
               {busy
                 ? '保存中…'
                 : item
                   ? '保存修改'
-                  : `发布${kind === 'character' ? '角色' : '场景'}`}
+                  : privateOnly
+                    ? `保存到我的${kind === 'character' ? '角色' : '场景'}`
+                    : `发布${kind === 'character' ? '角色' : '场景'}`}
             </Button>
           </div>
           {/* One flat area for rarely needed tools; no nested folds. */}

@@ -1,6 +1,6 @@
 import { strToU8, zipSync, zlibSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { cardJsonFromPng, importExternalCardFile } from './external-card-file';
+import { cardJsonFromPng, importExternalCardFile } from './external-card-container.js';
 
 const v2 = {
   spec: 'chara_card_v2',

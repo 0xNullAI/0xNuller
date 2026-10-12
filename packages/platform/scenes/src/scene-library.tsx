@@ -1,5 +1,6 @@
 import { CharacterCardFields } from './character-card-fields.js';
 import { parseCharacterCard } from './character-card.js';
+import { importExternalCardFile } from './external-card-container.js';
 import { useEffect, useRef, useState } from 'react';
 import {
   canImportLegacyScenes,
@@ -7,6 +8,7 @@ import {
   importMarketSceneOnline,
   legacyScenesToImportCount,
   loadScenes,
+  newSceneId,
   savedPromptKind,
   syncScenes,
   withImportedMarketScene,
@@ -15,7 +17,7 @@ import {
 } from './index.js';
 import type { CharacterCard } from './character-card.js';
 import { useScenes } from './use-scenes.js';
-import { Check, Pencil, RotateCcw, Store, Trash2 } from 'lucide-react';
+import { Check, FileUp, MessageCircle, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
 import {
   Button,
   Input,
@@ -29,6 +31,9 @@ import { fetchMarketItem, type MarketItem } from '@0xnullai/market-client';
 import { currentAuthUserId } from '@0xnullai/auth';
 
 const DEFAULT_CUSTOM_ICON = '📝';
+/** Editor id for a card that does not exist yet; never a valid saved id. */
+const NEW_CARD_ID = '\u0000new';
+const CARD_FILE_TYPES = '.json,.png,.apng,.charx,application/json,image/png';
 
 const EMOJI_OPTIONS = [
   '📝',
@@ -66,15 +71,21 @@ const EMOJI_OPTIONS = [
 interface SceneLibraryProps {
   /** Notification after a successful delete. The delete itself runs directly against the shared library. */
   onNotify?: (message: string) => void;
+  /** Open a chat with this card; the host decides how (character chat or scene-only chat). */
+  onStartChat?: (preset: SavedScene) => void;
 }
 
-export function SceneLibrary({ onNotify }: SceneLibraryProps) {
+export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
   // The library moved out of Agent's settings blob: shared across modules
   // (Voice sees the same set), and one corrupt scene no longer reverts the
   // whole settings blob to defaults — the strength caps lived in that blob
   // too.
   const [scenes, updateScenes] = useScenes();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [newKind, setNewKind] = useState<'character' | 'scene'>('character');
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [fileBusy, setFileBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [kindFilter, setKindFilter] = useState<'all' | 'character' | 'scene'>('all');
   const [query, setQuery] = useState('');
   const [editName, setEditName] = useState('');
@@ -120,6 +131,16 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
     setEditCharacterCard(preset.characterCard);
   }
 
+  function startCreate(kind: 'character' | 'scene') {
+    setNewMenuOpen(false);
+    setNewKind(kind);
+    setEditingId(NEW_CARD_ID);
+    setEditName('');
+    setEditIcon(kind === 'character' ? '🎭' : DEFAULT_CUSTOM_ICON);
+    setEditPrompt('');
+    setEditCharacterCard(undefined);
+  }
+
   function saveEdit() {
     if (
       !editingId ||
@@ -127,6 +148,23 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
       (editCharacterCard && !parseCharacterCard(editCharacterCard))
     )
       return;
+    if (editingId === NEW_CARD_ID) {
+      // A card made here is private: it lives only in this account's library.
+      const created: SavedScene = {
+        id: newSceneId(),
+        kind: newKind,
+        name: editName.trim(),
+        icon: editIcon,
+        prompt: editPrompt,
+        ...(newKind === 'character' && editCharacterCard
+          ? { characterCard: editCharacterCard }
+          : {}),
+      };
+      updateScenes((current) => ({ ...current, scenes: [created, ...current.scenes] }));
+      setEditingId(null);
+      onNotify?.(newKind === 'character' ? '已新建角色' : '已新建场景');
+      return;
+    }
     updateScenes((current) => ({
       ...current,
       scenes: current.scenes.map((p) =>
@@ -171,6 +209,38 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
     ).scenes[0];
     if (!preview) throw new Error('公开卡内容无效，无法导入');
     await importMarketSceneOnline(latest, { select: savedPromptKind(preview) === 'character' });
+  }
+
+  async function importFromFile(file: File) {
+    const importingAccount = currentAuthUserId();
+    setMarketUpdateError('');
+    setMarketUpdateNotice('');
+    if (!importingAccount) {
+      setMarketUpdateError('请先登录后导入角色文件');
+      return;
+    }
+    setFileBusy(true);
+    try {
+      const imported = await importExternalCardFile(file);
+      if (currentAuthUserId() !== importingAccount) throw new Error('账号已切换，请重新导入');
+      if (!imported.name.trim()) throw new Error('角色文件缺少名称');
+      const created: SavedScene = {
+        id: newSceneId(),
+        kind: 'character',
+        name: imported.name.trim(),
+        icon: '🎭',
+        prompt: imported.prompt,
+        ...(parseCharacterCard(imported.card) ? { characterCard: imported.card } : {}),
+      };
+      updateScenes((current) => ({ ...current, scenes: [created, ...current.scenes] }));
+      const notice = [`已导入角色「${created.name}」`, ...imported.warnings].join('；');
+      setMarketUpdateNotice(notice);
+      onNotify?.(`已导入角色「${created.name}」`);
+    } catch (error) {
+      setMarketUpdateError(error instanceof Error ? error.message : '角色文件导入失败');
+    } finally {
+      setFileBusy(false);
+    }
   }
 
   async function importFromOldBrowserLibrary() {
@@ -254,6 +324,49 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
       ((kindFilter === 'all' || savedPromptKind(preset) === kindFilter) &&
         (!needle || preset.name.toLowerCase().includes(needle))),
   );
+  const renderEditor = (key: string, kind: 'character' | 'scene') => (
+    <div
+      key={key}
+      className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--bg-strong)] p-3"
+    >
+      <div className="flex gap-2">
+        <EmojiPicker value={editIcon} onChange={setEditIcon} />
+        <Input
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder={kind === 'character' ? '角色名称' : '场景名称'}
+          className="text-sm"
+        />
+      </div>
+      <Textarea
+        value={editPrompt}
+        onChange={(e) => setEditPrompt(e.target.value)}
+        rows={4}
+        placeholder={kind === 'character' ? '描述 AI 的人设和互动风格…' : '描述环境、规则和氛围…'}
+        className="text-sm"
+      />
+      {kind === 'character' ? (
+        <details>
+          <summary className="cursor-pointer text-sm">结构化角色卡</summary>
+          <CharacterCardFields value={editCharacterCard} onChange={setEditCharacterCard} />
+        </details>
+      ) : null}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={saveEdit}
+          disabled={Boolean(
+            !editName.trim() || (editCharacterCard && !parseCharacterCard(editCharacterCard)),
+          )}
+        >
+          保存
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
+          取消
+        </Button>
+      </div>
+    </div>
+  );
   return (
     <div className="settings-panel-tab-content">
       <div className="flex flex-col gap-3">
@@ -272,43 +385,83 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
             {marketUpdateNotice}
           </p>
         )}
-        <div className="flex items-center gap-2">
-          {scenes.scenes.length > 0 && (
+        {scenes.scenes.length > 0 && (
+          <div className="flex items-center gap-2">
+            <SegmentedControl
+              label="类型"
+              value={kindFilter}
+              onChange={setKindFilter}
+              options={[
+                ['all', '全部'],
+                ['character', '角色'],
+                ['scene', '场景'],
+              ]}
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索名称"
+              aria-label="搜索角色与场景"
+              className="h-9 min-w-0 flex-1 text-sm"
+            />
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={newMenuOpen}
+            disabled={editingId === NEW_CARD_ID}
+            onClick={() => setNewMenuOpen((open) => !open)}
+          >
+            <Plus className="h-4 w-4" />
+            新建
+          </Button>
+          {newMenuOpen && (
             <>
-              <SegmentedControl
-                label="类型"
-                value={kindFilter}
-                onChange={setKindFilter}
-                options={[
-                  ['all', '全部'],
-                  ['character', '角色'],
-                  ['scene', '场景'],
-                ]}
-              />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索名称"
-                aria-label="搜索角色与场景"
-                className="h-9 min-w-0 flex-1 text-sm"
-              />
+              <Button variant="secondary" size="sm" onClick={() => startCreate('character')}>
+                新建角色
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => startCreate('scene')}>
+                新建场景
+              </Button>
             </>
           )}
-          {scenes.scenes.length === 0 && <div className="flex-1" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={fileBusy}
+            onClick={() => fileInput.current?.click()}
+          >
+            <FileUp className="h-4 w-4" />
+            {fileBusy ? '导入中…' : '导入文件'}
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept={CARD_FILE_TYPES}
+            aria-label="导入 CCv2／CCv3 角色文件"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) void importFromFile(file);
+              event.currentTarget.value = '';
+            }}
+          />
           <Button
             variant="ghost"
             size="sm"
             aria-label="从 Market 导入"
-            className="shrink-0"
             onClick={() => setMarketOpen(true)}
           >
             <Store className="h-4 w-4" />
             导入
           </Button>
         </div>
-        {scenes.scenes.length === 0 && (
+        {editingId === NEW_CARD_ID && renderEditor(NEW_CARD_ID, newKind)}
+        {scenes.scenes.length === 0 && editingId !== NEW_CARD_ID && (
           <div className="py-4 text-center text-sm text-[var(--text-faint)]">
-            还没有角色或场景。可从 Market 浏览并导入公开卡。
+            还没有角色或场景。可新建、导入文件，或从发现导入公开卡。
           </div>
         )}
         {scenes.scenes.length > 0 && visibleScenes.length === 0 && (
@@ -317,55 +470,7 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
 
         <div className="space-y-1.5">
           {visibleScenes.map((preset) => {
-            if (editingId === preset.id) {
-              return (
-                <div
-                  key={preset.id}
-                  className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--bg-strong)] p-3"
-                >
-                  <div className="flex gap-2">
-                    <EmojiPicker value={editIcon} onChange={setEditIcon} />
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="场景名称"
-                      className="text-sm"
-                    />
-                  </div>
-                  <Textarea
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    rows={4}
-                    placeholder="描述 AI 的人设和互动风格…"
-                    className="text-sm"
-                  />
-                  {savedPromptKind(preset) === 'character' ? (
-                    <details>
-                      <summary className="cursor-pointer text-sm">结构化角色卡</summary>
-                      <CharacterCardFields
-                        value={editCharacterCard}
-                        onChange={setEditCharacterCard}
-                      />
-                    </details>
-                  ) : null}
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={saveEdit}
-                      disabled={Boolean(
-                        editCharacterCard && !parseCharacterCard(editCharacterCard),
-                      )}
-                    >
-                      保存
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
-                      取消
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
-
+            if (editingId === preset.id) return renderEditor(preset.id, savedPromptKind(preset));
             const active = scenes.selectedId === preset.id;
 
             return (
@@ -388,16 +493,29 @@ export function SceneLibrary({ onNotify }: SceneLibraryProps) {
                       <div className={cn('truncate text-sm', active && 'font-medium')}>
                         {preset.name}
                       </div>
-                      <div className="text-[11px] text-[var(--text-faint)]">
-                        {savedPromptKind(preset) === 'character' ? '角色' : '场景'}
+                      <div className="truncate text-[11px] text-[var(--text-faint)]">
+                        <span>{savedPromptKind(preset) === 'character' ? '角色' : '场景'}</span>
+                        {' · '}
+                        <span>
+                          {preset.id.startsWith('market-')
+                            ? `来自发现${preset.marketRevision ? ` · v${preset.marketRevision}` : ''}`
+                            : '私有'}
+                        </span>
                       </div>
-                      {preset.marketRevision && (
-                        <div className="text-[11px] text-[var(--text-faint)]">
-                          公开卡 v{preset.marketRevision}
-                        </div>
-                      )}
                     </div>
                   </button>
+                  {onStartChat && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[var(--text-soft)] hover:text-[var(--text)]"
+                      aria-label={`和 ${preset.name} 聊天`}
+                      onClick={() => onStartChat(preset)}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      聊天
+                    </Button>
+                  )}
                   {preset.id.startsWith('market-') && (
                     <Button
                       variant="ghost"

@@ -609,6 +609,7 @@ export function Shell() {
                         initialTab={settingsTab}
                         onNavigateTab={(tab) => navigate(`/settings/${encodeURIComponent(tab)}`)}
                         onLoadAgent={() => ensureModuleOpened('agent')}
+                        onOpenAgent={() => go('agent')}
                         user={user}
                         onUser={setUser}
                         onClose={closeSettings}
