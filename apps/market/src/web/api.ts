@@ -130,7 +130,7 @@ export interface ListQuery {
   kind?: PromptKind;
   modality?: 'electrostimulation' | 'vibration';
   q?: string;
-  sort?: 'new' | 'hot' | 'views' | 'downloads';
+  sort?: 'trending' | 'new' | 'hot' | 'views' | 'downloads';
   limit?: number;
   offset?: number;
 }

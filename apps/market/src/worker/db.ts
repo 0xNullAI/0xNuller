@@ -54,15 +54,21 @@ function rowToAdminItem(row: ItemRow): MarketAdminItem {
   };
 }
 
+const TRENDING_BASE = 2;
+const TRENDING_OFFSET_HOURS = 12;
+const TRENDING_GRAVITY = 1.2;
+
 export interface ListParams {
   character?: boolean;
   type?: ItemType;
   promptKind?: PromptKind;
   modality?: 'electrostimulation' | 'vibration';
   q?: string;
-  sort: 'new' | 'hot' | 'views' | 'downloads';
+  sort: 'trending' | 'new' | 'hot' | 'views' | 'downloads';
   limit: number;
   offset: number;
+  /** Clock for 综合 ranking; tests pin it. */
+  now?: number;
   /** Cursor browsing pins the insertion boundary and advances by the immutable publish tuple. */
   maxPublishSeq?: number;
   after?: { createdAt: number; id: string };
@@ -111,12 +117,16 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
   }
 
   const order = {
+    // 综合: engagement decays with age, so a fresh card gets a look but a popular one stays
+    // ahead for days. The base score lets new cards with no views start above dead ones.
+    trending: `(views + downloads * 4 + (SELECT COUNT(*) FROM item_favorites f WHERE f.item_id = items.id) * 4 + ${TRENDING_BASE}) / pow((? - created_at) / 3600000.0 + ${TRENDING_OFFSET_HOURS}, ${TRENDING_GRAVITY}) DESC, created_at DESC, id DESC`,
     new: 'created_at DESC, id DESC',
     hot: '(views + downloads * 4) DESC, created_at DESC, id DESC',
     views: 'views DESC, created_at DESC, id DESC',
     downloads: 'downloads DESC, created_at DESC, id DESC',
   }[params.sort];
   const sql = `SELECT ${ITEM_COLUMNS} FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
+  if (params.sort === 'trending') binds.push(params.now ?? Date.now());
   binds.push(params.limit, params.offset);
 
   const { results } = await db
