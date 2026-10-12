@@ -44,7 +44,13 @@ export {
  * queue, and AI-issued ones go through the policy engine — all of that lives in the client
  * that owns the device, not in this relay, so routing a frame here changes none of it.
  */
-const DM_REMOVED_FRAMES: ReadonlySet<string> = new Set(['group', 'agent']);
+const DM_REMOVED_FRAMES: ReadonlySet<string> = new Set([
+  'group',
+  'agent',
+  'membership',
+  'membership-leave',
+  'membership-state',
+]);
 
 /** Whether a conversation relays this frame type. */
 export function dmAllowsFrame(t: string): boolean {
@@ -80,7 +86,7 @@ export function dmTicketRevoked(iat: number, revokedAt: number | undefined): boo
 export type DmAuthFailure = { ok: false; status: number; message: string };
 
 export type DmUpgradeAuth =
-  { ok: true; code: string; iat: number; self: string; peer: string } | DmAuthFailure;
+  { ok: true; code: string; iat: number; exp: number; self: string; peer: string } | DmAuthFailure;
 
 /**
  * Decide whether a WebSocket upgrade may enter a DM's Durable Object.
@@ -112,7 +118,14 @@ export async function authorizeDmUpgrade(params: {
   if ((await dmRoomCode(secret, claims.sub, claims.peer)) !== claims.room) {
     return { ok: false, status: 403, message: 'invalid ticket' };
   }
-  return { ok: true, code: claims.room, iat: claims.iat, self: claims.sub, peer: claims.peer };
+  return {
+    ok: true,
+    code: claims.room,
+    iat: claims.iat,
+    exp: claims.exp,
+    self: claims.sub,
+    peer: claims.peer,
+  };
 }
 
 export type DmClaimsAuth = { ok: true; claims: DmTicketClaims } | DmAuthFailure;
@@ -121,7 +134,7 @@ export type DmClaimsAuth = { ok: true; claims: DmTicketClaims } | DmAuthFailure;
 export async function authorizeDmToken(params: {
   secret: string | undefined;
   token: string | null;
-  audience: 'digest' | 'revoke' | 'chat';
+  audience: 'digest' | 'revoke' | 'chat' | 'group-read';
   now: number;
 }): Promise<DmClaimsAuth> {
   const { secret, token, audience, now } = params;

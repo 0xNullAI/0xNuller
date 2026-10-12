@@ -38,7 +38,7 @@ export interface TauriUpdateCheckerOptions {
 
 const DISMISSED_KEY = 'dg-agent-android-update-dismissed-version';
 const DEFAULT_TAG_PREFIX = 'v';
-const APK_ASSET_PREFIX = '0xnuller-v';
+const APK_ASSET_PREFIX = 'maoyuan-v';
 
 function inMemoryStorage(): UpdateStorage {
   const store = new Map<string, string>();

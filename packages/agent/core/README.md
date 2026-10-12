@@ -8,3 +8,6 @@ import type { SessionSnapshot, LlmClient } from '@dg-agent/core';
 ```
 
 浏览器、Node 和测试环境均可使用；本包不访问 DOM、网络或设备。
+
+工具追踪的 `tool-unknown` 表示调用可能已执行，但结果或回执未能确认；它既不是
+`tool-result`，也不是 `tool-failed`。旧追踪记录继续使用原有 kind，无需迁移。

@@ -1,6 +1,6 @@
 [package]
 name = "nuller-app"
-version = "6.5.7"
+version = "7.0.0"
 description = "0xNuller unified Android shell"
 authors = ["0xNullAI"]
 license = "MIT"
@@ -9,23 +9,6 @@ edition = "2021"
 rust-version = "1.88"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[features]
-# The backend ships in the APK, but product initialization remains gated by the separate
-# default-off local experimental setting and an explicit human scan action.
-default = ["experimental-buttplug-gate0"]
-experimental-buttplug-gate0 = [
-  "dep:btleplug",
-  "dep:buttplug_client",
-  "dep:buttplug_client_in_process",
-  "dep:buttplug_core",
-  "dep:buttplug_server",
-  "dep:buttplug_server_device_config",
-  "dep:buttplug_server_hwmgr_btleplug",
-  "dep:futures",
-  "dep:tokio",
-  "dep:uuid",
-]
 
 [lib]
 name = "app_lib"
@@ -38,17 +21,6 @@ tauri-build = { version = "2.5.6", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-buttplug_client = { version = "=10.0.3", default-features = false, features = ["tokio-runtime"], optional = true }
-buttplug_client_in_process = { version = "=10.0.3", default-features = false, features = ["tokio-runtime", "btleplug-manager"], optional = true }
-buttplug_core = { version = "=10.0.3", default-features = false, optional = true }
-# These exact constraints also prevent buttplug_client_in_process's caret
-# dependencies from drifting to a mixed Gate 0 stack.
-buttplug_server = { version = "=10.0.3", default-features = false, optional = true }
-buttplug_server_device_config = { version = "=10.1.0", optional = true }
-buttplug_server_hwmgr_btleplug = { version = "=10.0.3", optional = true }
-futures = { version = "=0.3.32", optional = true }
-tokio = { version = "=1.52.1", features = ["sync", "time"], optional = true }
-uuid = { version = "=1.23.1", features = ["v4"], optional = true }
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
@@ -60,9 +32,8 @@ tauri-plugin-opener = "2"
 # the JS bindings now pass an `address` parameter the upstream 0.4 Rust
 # plugin doesn't understand). Interim measure until the fork is published to
 # crates.io or upstreamed.
-tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "27c6e80" }
+tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "6b6044d" }
 
 [target.'cfg(target_os = "android")'.dependencies]
-btleplug = { version = "=0.12.0", optional = true }
-# Must match btleplug 0.12's Android ABI-facing JNI dependency.
+# JNI exports for MainActivity lifecycle hooks; kept on the version btleplug 0.12 (via plugin-blec) links.
 jni = "=0.19.0"

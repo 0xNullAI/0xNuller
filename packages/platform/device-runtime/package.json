@@ -3,18 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SDK-free multi-backend device discovery, fencing, and output safety runtime.",
+  "description": "DG-Lab device session, shared connection registry, and output-target model for product surfaces.",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
     "@0xnullai/settings": "0.1.0",
-    "@dg-kit/core": "1.16.4",
-    "@dg-kit/protocol": "1.16.4",
-    "@dg-kit/safety": "1.16.4",
-    "@dg-kit/transport-webbluetooth": "1.16.4",
-    "buttplug": "4.0.2",
-    "buttplug-wasm": "3.0.0"
+    "@dg-kit/core": "1.16.5",
+    "@dg-kit/protocol": "1.16.5",
+    "@dg-kit/safety": "1.16.5",
+    "@dg-kit/transport-webbluetooth": "1.16.5"
   },
   "peerDependencies": {
     "react": "^19.2.5"

@@ -1,9 +1,5 @@
 import type { getBrowserSpeechCapabilities } from '@dg-agent/audio-browser';
-import {
-  getProviderDefinition,
-  isProviderUsableInBrowser,
-  providerRequiresUserApiKey,
-} from '@0xnullai/llm-providers';
+import { isProviderUsableInBrowser, providerRequiresUserApiKey } from '@0xnullai/llm-providers';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { describeBrowserModes } from '@dg-agent/agent-browser';
 
@@ -47,13 +43,9 @@ export function buildWarnings(
     warnings.push(`当前服务提供方「${settings.provider.providerId}」不支持浏览器直连`);
   }
 
-  // Native/pi-ai-routed providers have no baseUrl concept — providers-catalog
-  // always normalizes their baseUrl to '' (see normalizeProviderSettings),
-  // which would otherwise trip this check for every one of them.
   if (
     settings.llmMode === 'provider-http' &&
     isProviderUsableInBrowser(settings.provider) &&
-    getProviderDefinition(settings.provider.providerId)?.dialect !== 'pi-ai' &&
     settings.provider.apiKey.trim() &&
     !isValidHttpUrl(settings.provider.baseUrl)
   ) {
@@ -62,10 +54,9 @@ export function buildWarnings(
 
   if (
     !settings.rememberApiKey &&
-    ((settings.llmMode === 'provider-http' &&
-      providerRequiresUserApiKey(settings.provider) &&
-      settings.provider.apiKey.trim()) ||
-      (settings.voice.mode === 'dashscope-proxy' && settings.voice.apiKey.trim()))
+    settings.llmMode === 'provider-http' &&
+    providerRequiresUserApiKey(settings.provider) &&
+    settings.provider.apiKey.trim()
   ) {
     warnings.push('当前 API Key 只会保留在当前页面运行期间；刷新或关闭页面后会丢失');
   }
@@ -116,11 +107,7 @@ export function buildWarnings(
     settings.speechRecognitionEnabled &&
     !speechCapabilities.recognitionSupported
   ) {
-    warnings.push(
-      settings.voice.mode === 'dashscope-proxy'
-        ? '已启用语音识别，但当前浏览器无法使用 DashScope 代理识别链路'
-        : '已启用语音识别，但当前浏览器不支持语音识别',
-    );
+    warnings.push('已启用语音识别，但当前浏览器不支持语音识别');
   }
 
   if (
@@ -128,22 +115,7 @@ export function buildWarnings(
     settings.speechSynthesisEnabled &&
     !speechCapabilities.synthesisSupported
   ) {
-    warnings.push(
-      settings.voice.mode === 'dashscope-proxy'
-        ? '已启用语音合成，但当前浏览器无法使用 DashScope 代理合成链路'
-        : '已启用语音合成，但当前浏览器不支持语音合成',
-    );
-  }
-
-  if (
-    !options.suppressSpeech &&
-    settings.voice.mode === 'dashscope-proxy' &&
-    settings.voice.proxyUrl.trim() &&
-    !settings.voice.apiKey.trim()
-  ) {
-    warnings.push(
-      '已设置自定义语音服务代理地址，但没有填写 DashScope API Key；请确认代理会自行注入鉴权',
-    );
+    warnings.push('已启用语音合成，但当前浏览器不支持语音合成');
   }
 
   return warnings;

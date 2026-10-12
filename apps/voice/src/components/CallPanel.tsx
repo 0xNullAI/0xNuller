@@ -1,52 +1,85 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  readPrivateConversationSelection,
+  subscribePrivateConversationSelection,
+} from '@0xnullai/auth';
+import { useScenes, usePublicMarketPortrait } from '@0xnullai/scenes/react';
+import { SelectedCharacterPortrait } from '@0xnullai/auth/appearance-react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
+import { CharacterVoiceField } from './CharacterVoiceField';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
-import {
-  getRealtimeProviderDefinition,
-  type RealtimeProviderId,
-} from '@voice/lib/realtime/providers';
 
 interface CallPanelProps {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
   onStart: () => void;
   onHangUp: () => void;
   onEmergencyStop: () => void;
+  onRetryHistory?: () => void;
 }
 
 export function CallPanel({
   call,
-  providerId,
   onStart,
   onHangUp,
   onEmergencyStop,
+  onRetryHistory,
 }: CallPanelProps) {
-  if (call.status === 'active' || call.status === 'connecting') {
-    return (
-      <ActiveCallView
-        call={call}
-        providerId={providerId}
-        onHangUp={onHangUp}
-        onEmergencyStop={onEmergencyStop}
-      />
-    );
-  }
-  return <IdleCallView call={call} providerId={providerId} onStart={onStart} />;
+  const [scenes] = useScenes();
+  const characterId = useSyncExternalStore(
+    subscribePrivateConversationSelection,
+    () => readPrivateConversationSelection()?.characterId ?? '',
+    () => '',
+  );
+  const publicPortrait = usePublicMarketPortrait(
+    scenes.scenes.find((scene) => scene.id === characterId)?.marketPortraitId,
+  );
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      {call.status !== 'active' && call.status !== 'connecting' && (
+        <SelectedCharacterPortrait fallbackSource={publicPortrait} />
+      )}
+      <p className="text-xs text-[var(--text-faint)]">
+        猫愿语音 · 按通话时长消耗 Credit。仅保存最终字幕，不保存录音。
+      </p>
+      {call.historyError && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {call.historyError} 未保存字幕暂留当前页面，请在离开前重试。
+            <Button size="sm" variant="secondary" onClick={onRetryHistory}>
+              重试保存字幕
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {call.status === 'active' || call.status === 'connecting' ? (
+        <ActiveCallView
+          call={call}
+          portraitSource={publicPortrait}
+          onHangUp={onHangUp}
+          onEmergencyStop={onEmergencyStop}
+        />
+      ) : (
+        <IdleCallView
+          call={call}
+          voiceField={characterId ? <CharacterVoiceField characterId={characterId} /> : null}
+          onStart={onStart}
+        />
+      )}
+    </div>
+  );
 }
 
 function IdleCallView({
   call,
-  providerId,
+  voiceField,
   onStart,
 }: {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
+  voiceField: ReactNode;
   onStart: () => void;
 }) {
-  const provider = getRealtimeProviderDefinition(providerId);
-
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -63,10 +96,7 @@ function IdleCallView({
         </Alert>
       )}
 
-      <p className="mb-3 text-xs text-[var(--text-faint)]">
-        语音服务：{provider?.name ?? providerId}
-        {provider?.pricePerMinuteUsd ? ` · 约 $${provider.pricePerMinuteUsd}/分钟` : ''}
-      </p>
+      {voiceField}
 
       <Button className="w-full" onClick={onStart}>
         <Phone className="h-4 w-4" />
@@ -78,16 +108,15 @@ function IdleCallView({
 
 function ActiveCallView({
   call,
-  providerId,
+  portraitSource,
   onHangUp,
   onEmergencyStop,
 }: {
   call: RealtimeCallState;
-  providerId: RealtimeProviderId;
+  portraitSource: string | null;
   onHangUp: () => void;
   onEmergencyStop: () => void;
 }) {
-  const provider = getRealtimeProviderDefinition(providerId);
   const elapsed = useElapsedSeconds(call.startedAt);
   const connecting = call.status === 'connecting';
 
@@ -99,26 +128,21 @@ function ActiveCallView({
         </Alert>
       )}
 
-      <div className="relative flex h-28 w-28 items-center justify-center">
+      <div className="relative flex min-h-28 items-center justify-center">
         {call.speaking && (
-          <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent)]/30" />
+          <span className="pointer-events-none absolute h-24 w-24 animate-ping rounded-full bg-[var(--accent)]/20 motion-reduce:animate-none" />
         )}
-        <span
-          className={`absolute inset-0 rounded-full bg-[var(--accent)]/15 transition-transform duration-[var(--dur-enter)] ${
-            call.speaking ? 'scale-110' : 'scale-100'
-          }`}
-        />
-        <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--button-text)]">
-          <Radio className="h-8 w-8" />
-        </span>
+        <div className="relative rounded-2xl bg-[var(--accent)]/10 p-2">
+          <SelectedCharacterPortrait speaking={call.speaking} fallbackSource={portraitSource} />
+        </div>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1" role="status" aria-live="polite">
         <p className="text-base font-semibold">{connecting ? '正在连接…' : '通话中'}</p>
         <p className="text-xs text-[var(--text-faint)]">
-          {provider?.name ?? providerId}
-          {!connecting && ` · ${formatElapsed(elapsed)}`}
-          {!connecting && call.speaking && ' · AI 正在说话'}
+          {connecting
+            ? '猫愿语音'
+            : `${formatElapsed(elapsed)} · ${call.speaking ? 'AI 正在说话' : '等待语音'}`}
         </p>
       </div>
 
@@ -151,7 +175,7 @@ function TranscriptLog({ transcript }: { transcript: RealtimeTranscriptEntry[] }
   }, [transcript]);
 
   // Skip placeholder entries reserved for ordering (e.g. the user's line, held
-  // in place before GLM sends its late input transcription) until they fill in.
+  // in place before a late input transcription) until they fill in.
   const visible = transcript.filter((entry) => entry.text.trim() !== '');
 
   return (

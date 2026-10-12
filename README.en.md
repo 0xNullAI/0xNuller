@@ -17,15 +17,15 @@
 
 0xNuller brings device control, AI chat, realtime voice, multiplayer interaction, games, and community content into one web and Android application.
 
-| Module         | Purpose                               |
-| -------------- | ------------------------------------- |
-| **Control**    | Manual device control                 |
-| **Chat**       | Rooms, direct messages, and sharing   |
-| **Agent**      | Text interaction with AI              |
-| **Voice**      | Realtime voice interaction            |
-| **Video**      | Camera-based visual control           |
-| **Market**     | Browse and share scenes and waveforms |
-| **Playground** | Game interactions                     |
+| Module         | Purpose                                            |
+| -------------- | -------------------------------------------------- |
+| **Control**    | Manual device control                              |
+| **Chat**       | Rooms, direct messages, and sharing                |
+| **Agent**      | Text interaction with AI                           |
+| **Voice**      | Realtime voice interaction                         |
+| **Video**      | Camera-based visual control                        |
+| **Market**     | Browse and share characters, scenes, and waveforms |
+| **Playground** | Game interactions                                  |
 
 New users should begin with Control and review the device safety limits before use.
 
@@ -74,7 +74,7 @@ npm run format
 - [`apps/chat`](./apps/chat/README.en.md) — rooms and direct messages
 - [`apps/voice`](./apps/voice/README.en.md) — realtime voice
 - [`apps/playground`](./apps/playground/README.en.md) — games
-- [`apps/market`](./apps/market/README.en.md) — community scenes and waveforms
+- [`apps/market`](./apps/market/README.en.md) — community characters, scenes, and waveforms
 - [`android/app`](./android/app/README.md) — Android app
 - [`apps/mcp`](./apps/mcp/README.en.md) — MCP server published as [`dg-mcp`](https://www.npmjs.com/package/dg-mcp)
 - [`packages/kit`](./packages/kit/README.md) — public DG-Kit packages and standalone usage guide

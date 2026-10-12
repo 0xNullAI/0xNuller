@@ -100,7 +100,8 @@ describe('设备控制权租约', () => {
         label: 'agent',
         isActive: () => true,
         stop,
-        onRevoke: () => {
+        // Async onRevoke that rejects: covers the rejected-promise path.
+        onRevoke: async () => {
           throw new Error('撤权失败');
         },
       }),

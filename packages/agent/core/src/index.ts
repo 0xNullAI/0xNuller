@@ -41,6 +41,10 @@ export interface ConversationMessage {
   role: MessageRole;
   content: string;
   createdAt: number;
+  /** Server-classified visual observation; excluded from ordinary dialogue prompts. */
+  kind?: 'camera_observation';
+  /** Display-only acknowledgement; excluded from server transcript serialization. */
+  serverConfirmed?: boolean;
   reasoningContent?: string;
   toolCalls?: ToolCall[];
 }
@@ -52,6 +56,15 @@ export interface SessionSnapshot {
   messages: ConversationMessage[];
   deviceState: DeviceState;
   metadata?: Record<string, unknown>;
+  /** Navigation-only server projection; never use as a saved transcript. */
+  listSummary?: { hasUserMessage: boolean; preview: string };
+  /** Read-only display window. Never pass this partial transcript to SessionStore.save. */
+  historyWindow?: { nextBefore: number | null };
+}
+
+export interface SessionMessagePage {
+  items: Array<ConversationMessage & { sequence: number }>;
+  nextBefore: number | null;
 }
 
 /** Optional user-assigned title stored with the session itself. */
@@ -180,6 +193,7 @@ export type RuntimeTraceEntryKind =
   | 'tool-result'
   | 'tool-denied'
   | 'tool-failed'
+  | 'tool-unknown'
   | 'timer-scheduled'
   | 'timer-fired'
   | 'sensor-fired';
@@ -233,6 +247,13 @@ export type RuntimeEvent =
       type: 'assistant-message-aborted';
       sessionId: string;
       reason: string;
+      message: ConversationMessage;
+      sourceType: SourceType;
+    }
+  | {
+      // A failed reply is shown to the user but never written to the conversation record.
+      type: 'assistant-message-failed';
+      sessionId: string;
       message: ConversationMessage;
       sourceType: SourceType;
     }
@@ -337,6 +358,8 @@ export interface LlmTurnInput {
   session: SessionSnapshot;
   message: string;
   context: ActionContext;
+  /** Parent TaskRun for billing/audit grouping; each provider request keeps its own idempotency key. */
+  runId?: string;
   instructions: string;
   tools: ToolDefinition[];
   /** Ephemeral for this request only; never copy into session or conversation. */
@@ -379,6 +402,12 @@ export interface SessionStore {
   get(sessionId: string): Promise<SessionSnapshot | null>;
   save(session: SessionSnapshot): Promise<void>;
   list(): Promise<SessionSnapshot[]>;
+  listSummaries?(): Promise<SessionSnapshot[]>;
+  messagesPage?(sessionId: string, before?: number): Promise<SessionMessagePage>;
+  getRecent?(sessionId: string): Promise<SessionSnapshot | null>;
+  getRuntimeWindow?(sessionId: string): Promise<SessionSnapshot | null>;
+  getCompleteByPages?(sessionId: string): Promise<SessionSnapshot | null>;
+  search?(query: string): Promise<string[]>;
   delete(sessionId: string): Promise<void>;
 }
 

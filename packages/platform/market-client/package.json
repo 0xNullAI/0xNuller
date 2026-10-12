@@ -8,7 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@0xnullai/auth": "0.1.0",
     "@0xnullai/settings": "0.1.0",
-    "@dg-kit/core": "1.16.4"
+    "@dg-kit/core": "1.16.5"
   }
 }

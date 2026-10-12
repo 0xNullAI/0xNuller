@@ -15,17 +15,6 @@ const RULES = {
     /^docs\/(?:platform-release|android-release|testing)\.md$/,
     /^\.github\/workflows\/(?:ci|product-release|rollback-cloudflare)\.yml$/,
   ],
-  // Native installers embed the full Web shell, but Worker-only configuration and
-  // backend changes do not alter their bundles. Product version metadata remains
-  // shared and deliberately forces fresh release artifacts.
-  desktop: [
-    /^android\//,
-    /^apps\/(?:agent|chat|control|market|playground|video|voice|web)\/(?!wrangler\.jsonc$|worker\/|src\/worker\/)/,
-    /^packages\/(?:agent|platform|kit)\//,
-    /^brand\//,
-    /^docs\/(?:platform-release|android-release|testing)\.md$/,
-    /^\.github\/workflows\/ci\.yml$/,
-  ],
   kit: [
     /^packages\/kit\//,
     /^\.changeset\//,

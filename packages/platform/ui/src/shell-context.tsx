@@ -17,7 +17,17 @@ import type { ReactNode } from 'react';
  */
 
 export type ShellSettingsTab =
-  'account' | 'appearance' | 'ai' | 'ai-agent' | 'ai-voice' | 'ai-video' | 'scenes' | 'safety';
+  | 'overview'
+  | 'account'
+  | 'memory'
+  | 'appearance'
+  | 'ai'
+  | 'ai-agent'
+  | 'ai-voice'
+  | 'ai-video'
+  | 'scenes'
+  | 'safety'
+  | 'agent-companion';
 
 interface ShellChrome {
   inShell: boolean;

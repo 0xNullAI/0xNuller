@@ -7,8 +7,19 @@ export interface TraceFeedItem {
 }
 
 export function buildTraceFeed(entries: RuntimeTraceEntry[]): TraceFeedItem[] {
+  const uncertainCalls = new Set(
+    entries
+      .filter((entry) => entry.kind === 'tool-unknown' && entry.toolCallId)
+      .map((entry) => `${entry.turnId ?? ''}:${entry.toolCallId}`),
+  );
   return entries
     .flatMap((entry) => {
+      if (
+        (entry.kind === 'tool-result' || entry.kind === 'tool-failed') &&
+        entry.toolCallId &&
+        uncertainCalls.has(`${entry.turnId ?? ''}:${entry.toolCallId}`)
+      )
+        return [];
       const text = formatTraceEntry(entry);
       if (!text) return [];
       return [
@@ -90,6 +101,8 @@ function formatTraceEntry(entry: RuntimeTraceEntry): string | null {
       return `未执行：${entry.toolDisplayName ?? entry.toolName ?? '工具'}。原因：${entry.detail ?? '未知原因。'}`;
     case 'tool-failed':
       return `执行失败：${entry.toolDisplayName ?? entry.toolName ?? '工具'}。原因：${entry.detail ?? '未知错误。'}`;
+    case 'tool-unknown':
+      return `待核对：${entry.toolDisplayName ?? entry.toolName ?? '工具'}。${entry.detail ?? '执行状态未确认，请检查实际结果后再决定是否重试。'}`;
     case 'timer-scheduled':
       return entry.label && typeof entry.seconds === 'number'
         ? `已设定定时：${entry.label}（${entry.seconds} 秒后）`

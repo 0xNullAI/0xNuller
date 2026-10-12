@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { AudioWaveform, Radio, SlidersHorizontal, Waves, Zap } from 'lucide-react';
 import {
   DEFAULT_DEVICE_SAFETY,
   loadDeviceSafety,
@@ -7,209 +8,277 @@ import {
   type DeviceSafetySettings,
 } from '@0xnullai/settings';
 import { ModuleSettingsSlot } from '@0xnullai/ui';
+import { useDgLabRegistry } from '@0xnullai/native';
+import { useDgLabDeviceLimits, type DgLabDeviceLimitEntry } from '@0xnullai/device-runtime';
+import { AdvancedSubpage } from './SettingsAdvanced';
+import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SliderRow } from './settings-list';
 
 /**
- * Device safety. The only setting in the whole software that directly affects a
- * human body.
+ * 设备与安全. The only settings in the app that directly affect a human body.
  *
- * **One copy shared by the whole app.** A cap set here is immediately the value in
- * Agent / Chat / Voice — before the merge the three modules each stored their own,
- * so a user would raise it in one place, switch to another, and find it back at the
- * old value, with nothing at all indicating that it had reverted.
- *
- * Groups are independently collapsible on narrow screens. The primary Coyote limits
- * stay open by default; less frequently changed burst/auxiliary limits no longer turn
- * the safety page into one long wall of sliders.
+ * Two layers, both enforced by the device holder on every write: limits shared by every
+ * device of a type, and each device's own limit. The effective limit is the lower one.
+ * Settings users cannot change (per-turn AI caps) are product constants and never shown.
  */
 
-interface NumberFieldSpec {
-  key: keyof DeviceSafetySettings;
-  label: string;
-  min: number;
-  max: number;
-  step?: number;
-  unit?: string;
-}
+const LIMIT_MAX = 200;
+type Page = 'main' | 'advanced' | 'waveforms' | 'sensors' | { device: string };
 
-const COYOTE_FIELDS: NumberFieldSpec[] = [
-  {
-    key: 'maxStrengthA',
-    label: 'A 通道上限',
-    min: 0,
-    max: 200,
-  },
-  { key: 'maxStrengthB', label: 'B 通道上限', min: 0, max: 200 },
-  {
-    key: 'maxColdStartStrength',
-    label: '冷启动上限',
-    min: 0,
-    max: 200,
-  },
-  { key: 'maxAdjustStep', label: '单次调节步长', min: 1, max: 200 },
-];
-
-const BURST_FIELDS: NumberFieldSpec[] = [
-  {
-    key: 'maxBurstDurationMs',
-    label: '脉冲最长时长',
-    min: 100,
-    max: 20_000,
-    step: 100,
-    unit: 'ms',
-  },
-  {
-    key: 'maxBurstStrengthAbsolute',
-    label: '脉冲绝对上限',
-    min: 0,
-    max: 200,
-  },
-  { key: 'maxBurstStrengthRelative', label: '脉冲相对上限', min: 0, max: 200 },
-];
-
-const OPOSSUM_FIELDS: NumberFieldSpec[] = [
-  { key: 'maxIntensityA', label: 'A 通道上限', min: 0, max: 200 },
-  { key: 'maxIntensityB', label: 'B 通道上限', min: 0, max: 200 },
-  { key: 'maxColdStartIntensity', label: '冷启动上限', min: 0, max: 200 },
-  { key: 'maxOpossumAdjustStep', label: '单次调节步长', min: 1, max: 200 },
-];
-
-const TURN_FIELDS: NumberFieldSpec[] = [
-  { key: 'maxToolIterations', label: '单回合工具轮数', min: 1, max: 32 },
-  { key: 'maxToolCallsPerTurn', label: '单回合工具调用总数', min: 1, max: 64 },
-  { key: 'maxAdjustStrengthCallsPerTurn', label: '单回合调节次数', min: 1, max: 32 },
-  { key: 'maxBurstCallsPerTurn', label: '单回合脉冲次数', min: 0, max: 32 },
-];
-
-function NumberField({
-  spec,
-  value,
-  onChange,
-}: {
-  spec: NumberFieldSpec;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 py-2">
-      <span className="text-sm">{spec.label}</span>
-      <span className="flex items-center gap-2">
-        <input
-          type="range"
-          min={spec.min}
-          max={spec.max}
-          step={spec.step ?? 1}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-[140px] accent-[var(--accent)] sm:w-[200px]"
-        />
-        <span className="w-[64px] shrink-0 text-right font-mono text-sm tabular-nums">
-          {value}
-          {spec.unit ?? ''}
-        </span>
-      </span>
-    </label>
-  );
-}
-
-function Group({
-  title,
-  fields,
-  settings,
-  onChange,
-  defaultOpen,
-}: {
-  title: string;
-  fields: NumberFieldSpec[];
-  settings: DeviceSafetySettings;
-  onChange: (patch: Partial<DeviceSafetySettings>) => void;
-  defaultOpen?: boolean;
-}) {
-  return (
-    <details
-      open={defaultOpen}
-      className="group rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4"
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold">
-        {title}
-        <span aria-hidden className="text-[var(--text-faint)] group-open:rotate-90">
-          ›
-        </span>
-      </summary>
-      <div className="mt-3 divide-y divide-[var(--surface-border)]">
-        {fields.map((f) => (
-          <NumberField
-            key={f.key}
-            spec={f}
-            value={settings[f.key] as number}
-            onChange={(v) => onChange({ [f.key]: v } as Partial<DeviceSafetySettings>)}
-          />
-        ))}
-      </div>
-    </details>
-  );
-}
-
-export function SafetyTab() {
+export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
   const [settings, setSettings] = useState<DeviceSafetySettings>(loadDeviceSafety);
+  const [page, setPage] = useState<Page>('main');
+  const back = useCallback(() => setPage('main'), []);
+  const registry = useDgLabRegistry();
+  const devices = useDgLabDeviceLimits(registry);
   useEffect(() => subscribeDeviceSafety(setSettings), []);
 
   function patch(p: Partial<DeviceSafetySettings>) {
     setSettings(updateDeviceSafety((prev) => ({ ...prev, ...p })));
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <Group title="郊狼" fields={COYOTE_FIELDS} settings={settings} onChange={patch} defaultOpen />
+  if (page === 'waveforms')
+    return (
+      <AdvancedSubpage title="波形库" onBack={back}>
+        {waveforms}
+      </AdvancedSubpage>
+    );
 
-      <Group title="脉冲" fields={BURST_FIELDS} settings={settings} onChange={patch} />
+  if (page === 'sensors')
+    return (
+      <AdvancedSubpage title="传感器" onBack={back}>
+        <ModuleSettingsSlot id="agent-sensors" />
+      </AdvancedSubpage>
+    );
 
-      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-sm">脉冲需要通道已在输出</span>
-          <input
-            type="checkbox"
-            checked={settings.burstRequiresActiveChannel}
-            onChange={(e) => patch({ burstRequiresActiveChannel: e.target.checked })}
-            className="accent-[var(--accent)]"
+  if (typeof page === 'object') {
+    const device = devices.find((entry) => entry.stableKey === page.device);
+    return (
+      <AdvancedSubpage title={device?.name ?? '设备'} onBack={back}>
+        {device ? (
+          <DeviceLimitsPage
+            device={device}
+            onChange={(limits) => void registry.setOwnLimits(device.stableKey, limits)}
+            onForget={() => {
+              registry.forgetDeviceLimits(device.stableKey);
+              back();
+            }}
           />
-        </label>
-      </section>
+        ) : (
+          <p className="px-4 text-sm text-[var(--text-faint)]">这台设备已不在列表中。</p>
+        )}
+      </AdvancedSubpage>
+    );
+  }
 
-      <Group title="负鼠" fields={OPOSSUM_FIELDS} settings={settings} onChange={patch} />
-
-      <Group title="单回合上限" fields={TURN_FIELDS} settings={settings} onChange={patch} />
-
-      <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-        <h3 className="text-sm font-semibold">权限与生命周期</h3>
-
-        <label className="mt-3 grid grid-cols-[1fr_auto] items-center gap-4">
-          <span className="text-sm">设备指令确认</span>
-          <select
-            value={settings.permissionMode}
-            onChange={(e) =>
-              patch({ permissionMode: e.target.value as DeviceSafetySettings['permissionMode'] })
-            }
-            className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-1.5 text-sm"
+  if (page === 'advanced')
+    return (
+      <AdvancedSubpage title="设备 · 高级" onBack={back}>
+        <SettingsPage>
+          <SettingsGroup
+            label="郊狼"
+            footer="从停止开始时，第一步最多到「启动上限」；之后每次最多加「单次调节步长」。"
           >
-            <option value="confirm">每次确认</option>
-            <option value="timed">确认后 5 分钟免确认</option>
-            <option value="allow-all">完全放行（不推荐）</option>
-          </select>
-        </label>
-      </section>
+            <SliderRow
+              label="启动上限"
+              min={0}
+              max={LIMIT_MAX}
+              value={settings.maxColdStartStrength}
+              onChange={(maxColdStartStrength) => patch({ maxColdStartStrength })}
+            />
+            <SliderRow
+              label="单次调节步长"
+              min={1}
+              max={LIMIT_MAX}
+              value={settings.maxAdjustStep}
+              onChange={(maxAdjustStep) => patch({ maxAdjustStep })}
+            />
+          </SettingsGroup>
+          <SettingsGroup
+            label="脉冲"
+            footer="脉冲是短促的加强。绝对上限、相对上限设为 0 表示不额外限制。"
+          >
+            <SliderRow
+              label="最长时长"
+              min={100}
+              max={20_000}
+              step={100}
+              value={settings.maxBurstDurationMs}
+              format={(ms) => `${(ms / 1000).toFixed(1)} 秒`}
+              onChange={(maxBurstDurationMs) => patch({ maxBurstDurationMs })}
+            />
+            <SliderRow
+              label="绝对上限"
+              min={0}
+              max={LIMIT_MAX}
+              value={settings.maxBurstStrengthAbsolute}
+              onChange={(maxBurstStrengthAbsolute) => patch({ maxBurstStrengthAbsolute })}
+            />
+            <SliderRow
+              label="相对上限"
+              min={0}
+              max={LIMIT_MAX}
+              value={settings.maxBurstStrengthRelative}
+              format={(value) => (value ? `+${value}` : '0')}
+              onChange={(maxBurstStrengthRelative) => patch({ maxBurstStrengthRelative })}
+            />
+          </SettingsGroup>
+          <SettingsGroup label="负鼠">
+            <SliderRow
+              label="启动上限"
+              min={0}
+              max={LIMIT_MAX}
+              value={settings.maxColdStartIntensity}
+              onChange={(maxColdStartIntensity) => patch({ maxColdStartIntensity })}
+            />
+            <SliderRow
+              label="单次调节步长"
+              min={1}
+              max={LIMIT_MAX}
+              value={settings.maxOpossumAdjustStep}
+              onChange={(maxOpossumAdjustStep) => patch({ maxOpossumAdjustStep })}
+            />
+          </SettingsGroup>
+          <SettingsGroup>
+            <SettingsRow icon={Radio} label="传感器" onClick={() => setPage('sensors')} />
+          </SettingsGroup>
+          <SettingsGroup>
+            <SettingsRow
+              label="恢复默认值"
+              tone="danger"
+              chevron={false}
+              onClick={() => {
+                if (!window.confirm('把全部设备安全设置恢复为默认值？')) return;
+                setSettings(updateDeviceSafety(() => ({ ...DEFAULT_DEVICE_SAFETY })));
+              }}
+            />
+          </SettingsGroup>
+        </SettingsPage>
+      </AdvancedSubpage>
+    );
 
-      <ModuleSettingsSlot id="agent-sensors" />
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!window.confirm('把全部设备安全设置恢复为默认值？')) return;
-          setSettings(updateDeviceSafety(() => ({ ...DEFAULT_DEVICE_SAFETY })));
-        }}
-        className="self-start text-xs text-[var(--text-soft)] underline underline-offset-2 hover:text-[var(--text)]"
+  return (
+    <SettingsPage>
+      <SettingsGroup
+        label="所有设备共用的上限"
+        footer="每台设备都不会超过这里的值；设备自己的上限更低时，以更低的为准。"
       >
-        恢复默认值
-      </button>
-    </div>
+        <SliderRow
+          label="郊狼 A 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={settings.maxStrengthA}
+          onChange={(maxStrengthA) => patch({ maxStrengthA })}
+        />
+        <SliderRow
+          label="郊狼 B 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={settings.maxStrengthB}
+          onChange={(maxStrengthB) => patch({ maxStrengthB })}
+        />
+        <SliderRow
+          label="负鼠 A 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={settings.maxIntensityA}
+          onChange={(maxIntensityA) => patch({ maxIntensityA })}
+        />
+        <SliderRow
+          label="负鼠 B 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={settings.maxIntensityB}
+          onChange={(maxIntensityB) => patch({ maxIntensityB })}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup
+        label="我的设备"
+        footer="点开一台设备可单独设置它的上限。急停会同时停止所有已连接设备。"
+      >
+        {devices.length === 0 ? (
+          <SettingsRow label="还没有连接过设备" detail="在「设备」页连接后会出现在这里" />
+        ) : (
+          devices.map((device) => (
+            <SettingsRow
+              key={device.stableKey}
+              icon={device.kind === 'coyote' ? Zap : Waves}
+              label={device.name}
+              detail={deviceStatus(device)}
+              value={`A ${device.effectiveLimits.a} · B ${device.effectiveLimits.b}`}
+              onClick={() => setPage({ device: device.stableKey })}
+            />
+          ))
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup label="控制">
+        <SelectRow
+          label="设备指令确认"
+          value={settings.permissionMode}
+          onChange={(value) =>
+            patch({ permissionMode: value as DeviceSafetySettings['permissionMode'] })
+          }
+          options={[
+            { value: 'confirm', label: '每次确认' },
+            { value: 'timed', label: '确认后 5 分钟免确认' },
+            { value: 'allow-all', label: '完全放行（不推荐）' },
+          ]}
+        />
+        {waveforms ? (
+          <SettingsRow icon={AudioWaveform} label="波形库" onClick={() => setPage('waveforms')} />
+        ) : null}
+        <SettingsRow icon={SlidersHorizontal} label="高级" onClick={() => setPage('advanced')} />
+      </SettingsGroup>
+    </SettingsPage>
+  );
+}
+
+function deviceStatus(device: DgLabDeviceLimitEntry): string {
+  const kind = device.kind === 'coyote' ? '郊狼' : '负鼠';
+  if (!device.connected) return `${kind} · 未连接`;
+  return device.battery === null ? `${kind} · 已连接` : `${kind} · 电量 ${device.battery}%`;
+}
+
+function DeviceLimitsPage({
+  device,
+  onChange,
+  onForget,
+}: {
+  device: DgLabDeviceLimitEntry;
+  onChange: (limits: { a?: number; b?: number }) => void;
+  onForget: () => void;
+}) {
+  const kind = device.kind === 'coyote' ? '郊狼' : '负鼠';
+  return (
+    <SettingsPage>
+      <SettingsGroup
+        label="这台设备的上限"
+        footer={`实际生效：A ${device.effectiveLimits.a} · B ${device.effectiveLimits.b}（不超过所有${kind}共用的 A ${device.globalLimits.a} · B ${device.globalLimits.b}）。设为 ${LIMIT_MAX} 表示不额外限制。`}
+      >
+        <SliderRow
+          label="A 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={device.ownLimits.a}
+          onChange={(a) => onChange({ a })}
+        />
+        <SliderRow
+          label="B 通道"
+          min={0}
+          max={LIMIT_MAX}
+          value={device.ownLimits.b}
+          onChange={(b) => onChange({ b })}
+        />
+      </SettingsGroup>
+      <SettingsGroup>
+        <SettingsRow label={kind} detail={deviceStatus(device)} />
+      </SettingsGroup>
+      {!device.connected && (
+        <SettingsGroup>
+          <SettingsRow label="忘记这台设备" tone="danger" chevron={false} onClick={onForget} />
+        </SettingsGroup>
+      )}
+    </SettingsPage>
   );
 }

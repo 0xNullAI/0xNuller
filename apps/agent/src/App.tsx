@@ -1,4 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  currentAuthUserId,
+  consumeAgentInboxSelection,
+  subscribeAuthChanges,
+  subscribeAgentInboxSelection,
+  readPrivateConversationSelection,
+  selectPrivateConversation,
+  startAgentRun,
+  listAgentRuns,
+  getAgentRun,
+  finishAgentRun,
+  listMediaCapabilities,
+  type AgentRunCall,
+  type AgentRunStatus,
+} from '@0xnullai/auth';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { type MessageOrigin } from '@dg-agent/bridge';
 import {
   createEmptyDeviceState,
@@ -6,21 +21,37 @@ import {
   type DeviceClient,
   type DeviceKind,
   type DeviceState,
+  type LlmImageInput,
   type PermissionDecision,
   type DeviceLinkRule,
   DEFAULT_DEVICE_LINK_RULE,
 } from '@dg-agent/core';
-import { connectAnyDgLabDevice } from '@dg-agent/agent-browser';
+import { AGENT_DEVICE_MODULE_ID } from '@dg-agent/agent-browser';
 import { createEmptyOpossumState } from '@dg-kit/protocol';
-import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
-import { useInShell, useOpenShellSettings, useSafetySession, useTheme } from '@0xnullai/ui';
-import { useNativeBridge } from '@0xnullai/native';
-import { withImportedMarketScene } from '@0xnullai/scenes';
+import { getObservedConversationSequence } from '@dg-agent/storage-browser';
+import {
+  useShellNav,
+  useInShell,
+  useOpenShellSettings,
+  useSafetySession,
+  useTheme,
+} from '@0xnullai/ui';
+import { useDgLabRegistry, useIsNative, useNativeBridge } from '@0xnullai/native';
+import { savedPromptKind, withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
+import {
+  RelationshipAccess,
+  type RelationshipAccessHandle,
+} from './components/RelationshipAccess.js';
 import { ChatPanel } from './components/ChatPanel.js';
+import {
+  canUsePrivateImageInput,
+  readPrivateImageForModel,
+} from './services/private-image-input.js';
+import type { PrivateConversationAttachment } from '@0xnullai/auth';
 import { PermissionModal } from '@0xnullai/ui';
 import { SafetyNotice } from '@0xnullai/ui';
 import { SessionNavigation } from './components/SessionNavigation.js';
@@ -36,6 +67,7 @@ import {
 import { useAuxDeviceState } from './hooks/use-aux-device-state.js';
 import { useModelLog } from './hooks/use-model-log.js';
 import { useRuntimeSessionState } from './hooks/use-runtime-session-state.js';
+import { useVisibleConversationRead } from './hooks/use-visible-conversation-read.js';
 import { useSettingsManager } from './hooks/use-settings-manager.js';
 import { useToastManager } from './hooks/use-toast-manager.js';
 import { useVoiceController } from './hooks/use-voice-controller.js';
@@ -50,6 +82,12 @@ import {
 } from './utils/ui-formatters.js';
 import { buildTraceFeed } from './utils/trace-feed.js';
 import {
+  clearAgentConversationLink,
+  linkedAgentConversationId,
+  replaceAgentConversationLink,
+} from './utils/conversation-link.js';
+import { resolveConversationCards, sceneNeedsCharacter } from './utils/conversation-cards.js';
+import {
   parseSessionsFromJson,
   serializeSessionFile,
   sessionFileName,
@@ -59,39 +97,26 @@ import type { SessionSnapshot } from '@dg-agent/core';
 
 export interface AppProps {
   /**
-   * Optional override for service construction. Web entry omits this to keep
-   * the historical Web Bluetooth + speech + bridge defaults; the Tauri Android
-   * shell supplies a Tauri device factory and disables speech/bridge.
+   * Optional non-device service flags. The Tauri Android shell disables speech, the bridge
+   * and the update checker through `NativeBridge.agent.servicesOverrides`.
    */
   servicesOverrides?: ServicesOverrides;
-  /**
-   * Override for `connect()`'s device-picking step. Defaults to
-   * `connectAnyDgLabDevice()` (a single Web Bluetooth chooser scoped to all
-   * 4 kinds, auto-detected). The Tauri Android shell supplies the matching
-   * Tauri implementation: `@dg-kit/transport-tauri-blec`'s
-   * `requestDgLabDeviceTauri()` runs one shared scan+picker across all 4
-   * kinds, auto-detects which was picked, and routes it to that kind's
-   * client via `connectDevice(device, server)` — the same one-click
-   * experience as web. See
-   * `apps/tauri-android/src/connect-any-device-tauri.ts`.
-   */
-  connectDeviceTauri?: (clients: {
-    device: DeviceClient;
-    opossum: OpossumClient;
-    pawPrints: PawPrintsClient;
-    civetEdging: CivetEdgingClient;
-  }) => Promise<{ kind: DeviceKind; name: string }>;
 }
 
-export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
+export function App({ servicesOverrides }: AppProps = {}) {
   // Native capabilities come from props first (standalone mount), otherwise from
   // NativeBridge (inside the unified shell).
   const native = useNativeBridge();
+  const nativeShell = useIsNative();
+  // The app's one DG-Lab registry owns every Coyote/Opossum/sensor link (a lazy Web Bluetooth
+  // one in a standalone build). Agent opens no BLE connection of its own: a device connected on
+  // 设备 is the one the AI chat sees.
+  const dglabRegistry = useDgLabRegistry();
+  const dglab = useMemo(() => dglabRegistry.forModule(AGENT_DEVICE_MODULE_ID), [dglabRegistry]);
   const nativeOverrides = (native.agent?.servicesOverrides ??
     servicesOverrides) as typeof servicesOverrides;
-  const nativeConnect = (native.agent?.connectDevice ??
-    connectDeviceTauri) as typeof connectDeviceTauri;
   const activeSessionIdRef = useRef<string | null>(null);
+  const imageConversationEpochRef = useRef(0);
   const bridgeSessionResolverRef = useRef<
     (origin: MessageOrigin) => Promise<string | null> | string | null
   >(() => activeSessionIdRef.current);
@@ -114,24 +139,41 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const [pendingSend, setPendingSend] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [runReview, setRunReview] = useState<{
+    id: string;
+    conversationId: string;
+    accountId: string;
+    status: AgentRunStatus;
+    calls: AgentRunCall[];
+  } | null>(null);
+  const [dismissedRunReviewId, setDismissedRunReviewId] = useState<string | null>(null);
   const inShell = useInShell();
+  const shellNav = useShellNav();
   const openShellSettings = useOpenShellSettings();
   // The scene library moved out of the settings blob into cross-module shared storage —
   // Voice sees the same set, and one broken scene no longer drags the whole settings
   // object back to its defaults (that blob also holds the strength caps).
   const [sceneLib, updateSceneLib] = useScenes();
-  useEffect(() => {
-    const selectedExists =
-      BUILTIN_PROMPT_PRESETS.some((preset) => preset.id === sceneLib.selectedId) ||
-      sceneLib.scenes.some((scene) => scene.id === sceneLib.selectedId);
-    if (!selectedExists) {
-      updateSceneLib((current) => ({ ...current, selectedId: 'gentle' }));
-    }
-  }, [sceneLib.scenes, sceneLib.selectedId, updateSceneLib]);
   const [safetyNoticeAccepted, setSafetyNoticeAccepted] = useState(
     () => inShell || !settings.showSafetyNoticeOnStartup || isSafetyNoticeAccepted(),
   );
+  const [transcriptTail, setTranscriptTail] = useState<{
+    id: string;
+    sequence: number;
+    visible: boolean;
+  } | null>(null);
+  const onTranscriptTailVisibilityChange = useCallback(
+    (id: string, sequence: number, visible: boolean) => {
+      setTranscriptTail((current) =>
+        current?.id === id && current.sequence === sequence && current.visible === visible
+          ? current
+          : { id, sequence, visible },
+      );
+    },
+    [],
+  );
   const [text, setText] = useState('');
+  const relationshipAccessRef = useRef<RelationshipAccessHandle>(null);
   const [resetSettingsDialogOpen, setResetSettingsDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -152,12 +194,14 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     pawPrints,
     civetEdging,
   } = useBrowserAppServices({
+    inShell,
     resolveBridgeSessionId,
     settings,
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
     servicesOverrides: nativeOverrides,
-    deviceRuntimeProvider: native.deviceRuntime,
+    dglab,
+    nativeBluetooth: nativeShell,
   });
 
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckerStatus>(() =>
@@ -177,6 +221,14 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const runtimeSession = useRuntimeSessionState({
     client,
     enabled: safetyNoticeAccepted,
+    onError: setErrorMessage,
+    onAccountChange: () => {
+      resetPermissionGrants();
+      setPendingPermission((pending) => {
+        pending?.resolve({ type: 'deny', reason: '账户已切换，请重新授权' });
+        return null;
+      });
+    },
     onRuntimeEvent: useCallback(
       (event) => {
         voice.handleRuntimeEvent(event);
@@ -206,10 +258,97 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     liveDeviceState,
     replyBusy,
     streamingAssistantText,
+    failedReplyText,
     clearStreamingAssistantText,
     liveTraceItems,
     refreshCurrentSession,
+    loadOlderSessionMessages,
   } = runtimeSession;
+
+  const agentRouteActive = !shellNav || shellNav.activeId === 'agent';
+  // 生成图片 appears only while the server offers it; the owner can keep it closed.
+  const [imageGenerationOpen, setImageGenerationOpen] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const check = () => {
+      if (!currentAuthUserId()) {
+        setImageGenerationOpen(false);
+        return;
+      }
+      void listMediaCapabilities()
+        .then(({ items }) => {
+          if (active) setImageGenerationOpen(items.some((x) => x.kind === 'image' && x.enabled));
+        })
+        .catch(() => {
+          if (active) setImageGenerationOpen(false);
+        });
+    };
+    check();
+    const unsubscribe = subscribeAuthChanges(check);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!agentRouteActive) return;
+    let active = true;
+    let request = 0;
+    let account = currentAuthUserId();
+    const openLink = () => {
+      const currentRequest = ++request;
+      const linkedId = linkedAgentConversationId(window.location.pathname, window.location.search);
+      if (!new URLSearchParams(window.location.search).has('conversation')) {
+        const selection = readPrivateConversationSelection();
+        if (selection)
+          queueMicrotask(() => {
+            if (active && request === currentRequest) setActiveSessionId(selection.conversationId);
+          });
+        return;
+      }
+      if (!linkedId) {
+        queueMicrotask(() => {
+          if (active && request === currentRequest)
+            setErrorMessage('聊天链接无效，请从消息列表重新打开。');
+        });
+        return;
+      }
+      const requestedAccount = currentAuthUserId();
+      void client
+        .listSessions()
+        .then((sessions) => {
+          if (
+            !active ||
+            request !== currentRequest ||
+            requestedAccount !== currentAuthUserId() ||
+            linkedAgentConversationId(window.location.pathname, window.location.search) !== linkedId
+          )
+            return;
+          if (sessions.some((item) => item.id === linkedId)) setActiveSessionId(linkedId);
+          else setErrorMessage('找不到这段聊天，或当前账户无权查看。');
+        })
+        .catch((error) => {
+          if (active && request === currentRequest) setErrorMessage(formatUiErrorMessage(error));
+        });
+    };
+    const onAuthChange = () => {
+      const nextAccount = currentAuthUserId();
+      if (account === nextAccount) return;
+      account = nextAccount;
+      request++;
+      clearAgentConversationLink();
+    };
+    window.addEventListener('popstate', openLink);
+    const unsubscribe = subscribeAuthChanges(onAuthChange);
+    openLink();
+    return () => {
+      active = false;
+      request++;
+      window.removeEventListener('popstate', openLink);
+      unsubscribe();
+    };
+  }, [agentRouteActive, client, setActiveSessionId, setErrorMessage]);
 
   const busy = pendingSend || replyBusy;
   const deviceState = liveDeviceState ?? createEmptyDeviceState();
@@ -218,6 +357,18 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   const opossumState = useAuxDeviceState(opossum, createEmptyOpossumState());
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
+
+  const revokeAgentDeviceWork = async (): Promise<void> => {
+    // Switching away from Agent also aborts the in-flight reply, not just the output —
+    // a tool-call sequence still running would keep issuing commands in the background
+    // while the user believes they already left this module. The registry has already
+    // stopped every output on the switch, so this drops Agent's own work only: a device
+    // stop here bypasses the lease fence and would zero what the new holder starts.
+    if (!activeSessionId) return;
+    await client.abortCurrentReply(activeSessionId).catch(() => undefined);
+    await client.releaseDeviceControl(activeSessionId).catch(() => undefined);
+  };
+  const onRegistryRevoked = useEffectEvent(() => void revokeAgentDeviceWork());
 
   // Register with the global safety bus — this is the only data source the shell's
   // global stop button has. Before this, nothing in the repo registered, so the button
@@ -233,70 +384,16 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       pawPrintsState.connected ||
       civetEdgingState.connected,
     connect: () => connect(),
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return disconnectOpossum();
-      if (deviceId === 'paw-prints') return disconnectPawPrints();
-      if (deviceId === 'civet-edging') return disconnectCivetEdging();
-      return disconnectDevice(deviceId);
-    },
     stop: async () => {
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
-    onRevoke: async () => {
-      // Switching away from Agent also aborts the in-flight reply, not just the output —
-      // a tool-call sequence still running would keep issuing commands in the background
-      // while the user believes they already left this module.
-      if (!activeSessionId) return;
-      await client.abortCurrentReply(activeSessionId).catch(() => undefined);
-      await client.emergencyStop(activeSessionId).catch(() => undefined);
-    },
-    // Fed to the shell's device bar. One slot per device — the user has to be able to
-    // see at a glance what is attached to them.
-    devices: () => [
-      ...connectedCoyoteStates(device, deviceState).map(({ id, state }) => ({
-        id,
-        kind: 'coyote' as const,
-        name: state.deviceName ?? '郊狼',
-        connected: true,
-        battery: state.battery,
-        active: state.strengthA > 0 || state.strengthB > 0,
-        channels: [
-          { label: 'A', value: state.strengthA, max: settings.maxStrengthA },
-          { label: 'B', value: state.strengthB, max: settings.maxStrengthB },
-        ],
-      })),
-      ...(opossumState.connected
-        ? [
-            {
-              id: 'opossum',
-              kind: 'opossum',
-              name: '负鼠',
-              connected: true,
-              battery: opossumState.battery,
-              active: opossumState.intensityA > 0 || opossumState.intensityB > 0,
-              channels: [
-                {
-                  label: 'A',
-                  value: opossumState.intensityA,
-                  max: settings.maxOpossumIntensityA,
-                },
-                {
-                  label: 'B',
-                  value: opossumState.intensityB,
-                  max: settings.maxOpossumIntensityB,
-                },
-              ],
-            },
-          ]
-        : []),
-      ...(pawPrintsState.connected
-        ? [{ id: 'paw-prints', kind: 'paw-prints', name: '爪印', connected: true }]
-        : []),
-      ...(civetEdgingState.connected
-        ? [{ id: 'civet-edging', kind: 'civet-edging', name: '灵猫', connected: true }]
-        : []),
-    ],
+    onRevoke: () => revokeAgentDeviceWork(),
+    // The registry's own `dglab-devices` session lists (and, on 设备, disconnects) every
+    // device; listing them here too would show each one twice in the shell bar.
   });
+  // The registry stops every output on a lease change, then tells the losing module. Agent
+  // still has to drop its own in-flight reply, timers and triggers, as the bus revoke does.
+  useEffect(() => dglab.onRevoked(() => onRegistryRevoked()), [dglab]);
 
   const [sensorTriggersEnabled, setSensorTriggersEnabledState] = useState(false);
   const [deviceLinkRule, setDeviceLinkRuleState] = useState<DeviceLinkRule>(() => ({
@@ -357,6 +454,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
+    imageConversationEpochRef.current += 1;
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -485,8 +583,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
     try {
       setErrorMessage(null);
-      const pickDevice = nativeConnect ?? connectAnyDgLabDevice;
-      const { kind } = await pickDevice({ device, opossum, pawPrints, civetEdging });
+      // The one shared picker; a device another module already attached is reused, not
+      // reopened. The UI follows a newly picked Coyote.
+      const picked = await dglab.connect();
+      if (picked.kind === 'coyote' && supportsCoyoteSelection(device)) {
+        device.selectDeviceById(picked.id);
+      }
+      const kind: DeviceKind = picked.kind;
       setStatusMessage(`${DEVICE_KIND_DISPLAY_NAME[kind]}已连接`);
       await refreshCurrentSession(activeSessionId);
       return true;
@@ -503,84 +606,145 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       setErrorMessage(formatUiErrorMessage(error));
       return false;
     }
-  }, [
-    activeSessionId,
-    device,
-    opossum,
-    pawPrints,
-    civetEdging,
-    nativeConnect,
-    liveDeviceState.connected,
-    refreshCurrentSession,
-  ]);
+  }, [activeSessionId, dglab, device, liveDeviceState.connected, refreshCurrentSession]);
 
-  const disconnectDevice = useCallback(
-    async (deviceId?: string): Promise<void> => {
-      try {
-        setErrorMessage(null);
-        if (deviceId && supportsPerCoyoteDisconnect(device)) {
-          await device.disconnectDeviceById(deviceId);
-        } else {
-          await client.disconnectDevice();
-        }
-        setStatusMessage('设备已断开');
-        if (activeSessionId) {
-          await refreshCurrentSession(activeSessionId);
-        }
-      } catch (error) {
-        setErrorMessage(formatUiErrorMessage(error));
+  const { characterId: conversationCharacterId, sceneId: conversationSceneId } =
+    resolveConversationCards(session, activeSessionId, sceneLib);
+  const hasExplicitConversationScene =
+    session?.id === activeSessionId && typeof session.metadata?.sceneId === 'string';
+
+  const refreshRunReview = useCallback(async (conversationId: string) => {
+    const accountId = currentAuthUserId();
+    if (!accountId) {
+      setRunReview(null);
+      return;
+    }
+    try {
+      const { items } = await listAgentRuns(conversationId);
+      const unresolved = items.find(
+        (item) => item.status === 'active' || item.status === 'needs_review',
+      );
+      if (!unresolved) {
+        if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+          setRunReview(null);
+        return;
       }
-    },
-    [activeSessionId, client, device, refreshCurrentSession],
-  );
+      const { item, calls } = await getAgentRun(conversationId, unresolved.id);
+      if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+        setRunReview(
+          item.status === 'active' || item.status === 'needs_review'
+            ? { id: item.id, conversationId, accountId, status: item.status, calls }
+            : null,
+        );
+    } catch {
+      // Chat remains usable; a failed recovery read must not invent a verified outcome.
+      if (accountId === currentAuthUserId() && activeSessionIdRef.current === conversationId)
+        setRunReview(null);
+    }
+  }, []);
+  useEffect(() => {
+    if (!activeSessionId) {
+      queueMicrotask(() => setRunReview(null));
+      return;
+    }
+    const sessionId = activeSessionId;
+    queueMicrotask(() => void refreshRunReview(sessionId));
+  }, [activeSessionId, client, refreshRunReview]);
 
-  const disconnectOpossum = useCallback(async (): Promise<void> => {
+  async function changeConversationScene(id: string | null): Promise<void> {
+    if (!activeSessionId) return;
+    if (id && sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, id)) {
+      setErrorMessage('场景只提供环境，请先选择角色，再为角色聊天添加场景。');
+      return;
+    }
     try {
-      await opossum.disconnect();
+      setErrorMessage(null);
+      await client.setSessionScene(activeSessionId, id);
+      await refreshCurrentSession(activeSessionId);
+      setStatusMessage(id ? '已切换场景' : '已移除场景');
     } catch (error) {
       setErrorMessage(formatUiErrorMessage(error));
     }
-  }, [opossum]);
+  }
 
-  const disconnectPawPrints = useCallback(async (): Promise<void> => {
+  async function switchConversationMode(mode: 'voice' | 'video') {
+    const accountId = currentAuthUserId();
+    if (!accountId || !activeSessionId) {
+      setErrorMessage('请先登录并打开私人对话。');
+      return;
+    }
+    if (!conversationCharacterId) {
+      setErrorMessage('这段聊天没有角色身份。请先打开角色聊天，再进入语音或摄像头观察。');
+      return;
+    }
     try {
-      await pawPrints.disconnect();
+      await refreshCurrentSession(activeSessionId);
+      selectPrivateConversation({
+        accountId,
+        conversationId: activeSessionId,
+        characterId: conversationCharacterId,
+        ...(typeof session?.metadata?.relationshipId === 'string'
+          ? { relationshipId: session.metadata.relationshipId }
+          : {}),
+      });
+      if (conversationCharacterId)
+        updateSceneLib((current) => ({ ...current, selectedId: conversationCharacterId }));
+      shellNav?.navigate(mode);
     } catch (error) {
       setErrorMessage(formatUiErrorMessage(error));
     }
-  }, [pawPrints]);
-
-  const disconnectCivetEdging = useCallback(async (): Promise<void> => {
-    try {
-      await civetEdging.disconnect();
-    } catch (error) {
-      setErrorMessage(formatUiErrorMessage(error));
-    }
-  }, [civetEdging]);
+  }
 
   const sendTextMessage = useCallback(
-    async (message: string): Promise<'sent' | 'aborted' | 'failed'> => {
+    async (message: string, image?: LlmImageInput): Promise<'sent' | 'aborted' | 'failed'> => {
       if (!message.trim() || !activeSessionId) return 'failed';
+      if (
+        sceneNeedsCharacter(session, activeSessionId, conversationCharacterId, conversationSceneId)
+      ) {
+        setErrorMessage('场景只提供环境，请先选择角色，再开始聊天。');
+        return 'failed';
+      }
 
+      let allocatedRunId: string | null = null;
       setPendingSend(true);
       try {
         setErrorMessage(null);
         stopSpeechPlayback();
 
+        if (conversationSceneId && !hasExplicitConversationScene) {
+          await client.setSessionScene(activeSessionId, conversationSceneId);
+        }
+
+        // Persist the empty server conversation before allocating the authoritative run.
+        await client.getSessionDisplaySnapshot(activeSessionId);
+        const requestId = `web-${crypto.randomUUID()}`;
+        const { item: run, claimed } = await startAgentRun(activeSessionId, requestId);
+        if (!claimed || run.status !== 'active') throw new Error('服务器任务已存在，请刷新后重试');
+        allocatedRunId = run.id;
+
         await client.sendUserMessage({
           sessionId: activeSessionId,
+          runId: run.id,
           text: message,
+          image,
+          characterId: conversationCharacterId,
           context: {
             sessionId: activeSessionId,
             sourceType: 'web',
-            traceId: `web-${Date.now()}`,
+            traceId: requestId,
           },
         });
+        allocatedRunId = null;
 
         setStatusMessage('消息已发送');
         await refreshCurrentSession(activeSessionId);
+        void refreshRunReview(activeSessionId);
         return 'sent';
       } catch (error) {
+        if (allocatedRunId)
+          void finishAgentRun(activeSessionId, allocatedRunId, 'needs_review')
+            .catch(() => undefined)
+            .finally(() => void refreshRunReview(activeSessionId));
         if (isReplyAbortError(error)) {
           setStatusMessage('已停止当前回复');
           return 'aborted';
@@ -591,7 +755,17 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
         setPendingSend(false);
       }
     },
-    [activeSessionId, client, refreshCurrentSession, stopSpeechPlayback],
+    [
+      activeSessionId,
+      client,
+      conversationCharacterId,
+      conversationSceneId,
+      hasExplicitConversationScene,
+      refreshCurrentSession,
+      refreshRunReview,
+      session,
+      stopSpeechPlayback,
+    ],
   );
 
   async function send(): Promise<void> {
@@ -602,6 +776,48 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     const result = await sendTextMessage(draft);
     if (result === 'failed') {
       setText(draft);
+    }
+  }
+
+  async function askAboutImage(attachment: PrivateConversationAttachment): Promise<void> {
+    const accountId = currentAuthUserId();
+    const conversationId = activeSessionId;
+    if (
+      !accountId ||
+      !conversationId ||
+      !canUsePrivateImageInput(client.capabilities.imageInput, settings.provider.providerId)
+    ) {
+      setErrorMessage('聊天看图需要明确支持视觉的自备模型；托管视觉模型暂不支持普通聊天历史');
+      return;
+    }
+    const conversationEpoch = imageConversationEpochRef.current;
+    let accountChanged = false;
+    const unsubscribeAuth = subscribeAuthChanges(() => {
+      accountChanged = true;
+    });
+    try {
+      setPendingSend(true);
+      setErrorMessage(null);
+      const image = await readPrivateImageForModel(accountId, conversationId, attachment);
+      if (
+        accountChanged ||
+        currentAuthUserId() !== accountId ||
+        activeSessionIdRef.current !== conversationId ||
+        imageConversationEpochRef.current !== conversationEpoch
+      )
+        return;
+      await sendTextMessage('请根据我选择的图片回答；如果看不清，请明确说明。', image);
+    } catch (error) {
+      if (
+        !accountChanged &&
+        currentAuthUserId() === accountId &&
+        activeSessionIdRef.current === conversationId &&
+        imageConversationEpochRef.current === conversationEpoch
+      )
+        setErrorMessage(formatUiErrorMessage(error));
+    } finally {
+      unsubscribeAuth();
+      setPendingSend(false);
     }
   }
 
@@ -667,6 +883,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     }
 
     const nextSessionId = createSessionId();
+    replaceAgentConversationLink(nextSessionId);
     setActiveSessionId(nextSessionId);
     setText('');
     clearStreamingAssistantText();
@@ -686,12 +903,13 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
       if (sessionId === activeSessionId) {
         const nextSessionId = remaining[0]?.id ?? createSessionId();
+        replaceAgentConversationLink(nextSessionId);
         setActiveSessionId(nextSessionId);
         setText('');
         clearStreamingAssistantText();
         stopAllVoiceActivity({ disableMode: false });
         clearEvents();
-        setSession(await client.getSessionSnapshot(nextSessionId));
+        setSession(await client.getSessionDisplaySnapshot(nextSessionId));
       }
 
       setStatusMessage('会话已删除');
@@ -706,7 +924,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
       const sessions = await client.listSessions();
       setSavedSessions(sessions);
       if (sessionId === activeSessionId) {
-        setSession(await client.getSessionSnapshot(sessionId));
+        setSession(await client.getSessionDisplaySnapshot(sessionId));
       }
       setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
     } catch (error) {
@@ -728,8 +946,10 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
   // Export the chosen sessions as a zip with one JSON file per session.
   async function exportSessions(sessionIds: string[]): Promise<void> {
     try {
-      const all = await client.listSessions();
-      const chosen = all.filter((session) => sessionIds.includes(session.id));
+      // Read and verify each complete transcript page by page; the navigation
+      // list contains summaries only.
+      const chosen: SessionSnapshot[] = [];
+      for (const id of new Set(sessionIds)) chosen.push(await client.getSessionExportSnapshot(id));
       if (chosen.length === 0) {
         setStatusMessage('请选择要导出的会话');
         return;
@@ -788,6 +1008,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     flushSettingsDraft();
     setEditingWaveform(null);
     resetPermissionGrants();
+    replaceAgentConversationLink(sessionId);
     setActiveSessionId(sessionId);
     setText('');
     clearStreamingAssistantText();
@@ -796,6 +1017,37 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     setStatusMessage('已切换到所选会话');
     setSidebarOpen(false);
   }
+
+  const consumeInboxSelection = useEffectEvent(() => {
+    const selection = consumeAgentInboxSelection();
+    if (selection?.kind === 'conversation') selectSession(selection.id);
+    if (selection?.kind === 'new') void createNewSession();
+  });
+  const inboxRouteActive = agentRouteActive;
+  const observedSequence = getObservedConversationSequence(session, currentAuthUserId());
+  useVisibleConversationRead({
+    session,
+    activeSessionId,
+    visible:
+      inboxRouteActive &&
+      safetyNoticeAccepted &&
+      !sidebarOpen &&
+      transcriptTail?.visible === true &&
+      transcriptTail.id === session?.id &&
+      transcriptTail.sequence === observedSequence,
+  });
+  useEffect(() => {
+    if (!inboxRouteActive) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) consumeInboxSelection();
+    });
+    const unsubscribe = subscribeAgentInboxSelection(() => consumeInboxSelection());
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [inboxRouteActive]);
 
   function resetSettings(): void {
     resetSettingsManager(() => {
@@ -824,6 +1076,7 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
     sessions: savedSessions,
     activeSessionId,
     onSelect: selectSession,
+    onSearch: (query: string) => client.searchSessions(query),
     onRename: (sessionId: string, title: string | null) => void renameSession(sessionId, title),
     onDelete: (sessionId: string) => void deleteSession(sessionId),
     onCreate: () => void createNewSession(),
@@ -923,7 +1176,32 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
           )}
 
           {/* Chat section */}
-          <section className="relative flex min-h-0 min-w-0 overflow-hidden">
+          <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <RelationshipAccess
+              ref={relationshipAccessRef}
+              conversationId={activeSessionId ?? undefined}
+              characterId={conversationCharacterId}
+              marketPortraitId={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)
+                  ?.marketPortraitId
+              }
+              onBack={shellNav?.conversationBack}
+              characterIcon={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.icon
+              }
+              scenes={sceneLib.scenes.filter((scene) => savedPromptKind(scene) === 'scene')}
+              sceneId={conversationSceneId || null}
+              onSceneChange={(id) => void changeConversationScene(id)}
+              onImportScene={(item) =>
+                updateSceneLib((prev) => withImportedMarketScene(prev, item))
+              }
+              characterName={
+                sceneLib.scenes.find((scene) => scene.id === conversationCharacterId)?.name ??
+                BUILTIN_PROMPT_PRESETS.find((preset) => preset.id === conversationCharacterId)
+                  ?.name ??
+                'AI'
+              }
+            />
             <FloatingStatusBar
               voiceMode={voiceMode}
               voiceState={voiceState}
@@ -935,7 +1213,58 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onDismissUpdate={() => updateChecker.dismiss()}
               onReload={() => window.location.reload()}
             />
+            {runReview &&
+            runReview.conversationId === activeSessionId &&
+            runReview.accountId === currentAuthUserId() &&
+            runReview.id !== dismissedRunReviewId ? (
+              <div
+                role="status"
+                className="border-b border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    {runReview.status === 'active'
+                      ? '此会话仍有进行中的任务。若原窗口已关闭，任务结果可能未确认；请检查实际状态，待服务器结束旧任务后再发送。'
+                      : '有操作结果待核对。请检查实际状态，再决定是否重试。'}
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[var(--accent)]"
+                    onClick={() => void refreshRunReview(runReview.conversationId)}
+                  >
+                    刷新
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[var(--accent)]"
+                    onClick={() => setDismissedRunReviewId(runReview.id)}
+                  >
+                    关闭
+                  </button>
+                </div>
+                {runReview.calls.length > 0 ? (
+                  <details className="mt-1 text-xs text-[var(--text-soft)]">
+                    <summary className="cursor-pointer">查看调用记录</summary>
+                    <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                      {runReview.calls.map((call) => (
+                        <li key={call.callId}>
+                          {call.name}：
+                          {call.status === 'succeeded'
+                            ? '客户端报告成功，未独立核验'
+                            : call.status === 'failed'
+                              ? '失败'
+                              : call.status === 'denied'
+                                ? '已拒绝'
+                                : '未确认'}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
             <ChatPanel
+              accountId={currentAuthUserId()}
               activeSessionId={activeSessionId}
               text={text}
               statusMessage={statusMessage}
@@ -943,14 +1272,59 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               onAbortReply={() => void abortCurrentReply()}
               onToggleVoiceMode={() => void toggleVoiceMode()}
               onSend={() => void send()}
+              onAskImage={(attachment) => void askAboutImage(attachment)}
+              onAttachmentCommitted={(id) => void refreshCurrentSession(id)}
+              onReplyToVoice={(attachment) => {
+                const id = activeSessionId;
+                const accountId = currentAuthUserId();
+                if (!id || !accountId || !attachment.caption) return;
+                let accountChanged = false;
+                const unsubscribe = subscribeAuthChanges(() => {
+                  accountChanged = true;
+                });
+                void (async () => {
+                  try {
+                    await refreshCurrentSession(id);
+                    if (
+                      accountChanged ||
+                      currentAuthUserId() !== accountId ||
+                      activeSessionIdRef.current !== id
+                    )
+                      return;
+                    await sendTextMessage('请回应我刚发的语音文字；录音本身没有经过自动识别。');
+                  } catch (error) {
+                    if (
+                      !accountChanged &&
+                      currentAuthUserId() === accountId &&
+                      activeSessionIdRef.current === id
+                    )
+                      setErrorMessage(formatUiErrorMessage(error));
+                  } finally {
+                    unsubscribe();
+                  }
+                })();
+              }}
+              onVoiceCall={shellNav ? () => void switchConversationMode('voice') : undefined}
+              onCamera={shellNav ? () => void switchConversationMode('video') : undefined}
+              onGenerateMedia={
+                imageGenerationOpen ? () => relationshipAccessRef.current?.openMedia() : undefined
+              }
+              imageInputSupported={canUsePrivateImageInput(
+                client.capabilities.imageInput,
+                settings.provider.providerId,
+              )}
               busy={busy}
               speechRecognitionEnabled={settings.speechRecognitionEnabled}
               voiceMode={voiceMode}
               voiceState={voiceState}
               speechRecognitionSupported={speechCapabilities.recognitionSupported}
               session={session}
+              onLoadEarlier={loadOlderSessionMessages}
+              observedSequence={observedSequence}
+              onTranscriptTailVisibilityChange={onTranscriptTailVisibilityChange}
               traceFeed={traceFeed}
               streamingAssistantText={streamingAssistantText}
+              failedReplyText={failedReplyText}
               deviceState={deviceState}
               maxStrengthA={settings.maxStrengthA}
               maxStrengthB={settings.maxStrengthB}
@@ -960,22 +1334,11 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
               pawPrintsState={pawPrintsState}
               civetEdgingState={civetEdgingState}
               onConnect={() => void connect()}
-              onDisconnectDevice={() => void disconnectDevice()}
-              onDisconnectOpossum={() => void disconnectOpossum()}
-              onDisconnectPawPrints={() => void disconnectPawPrints()}
-              onDisconnectCivetEdging={() => void disconnectCivetEdging()}
               onEmergencyStop={() => void stop()}
               onOpenSidebar={() => setSidebarOpen(true)}
               onOpenSettings={() => openShellSettings('scenes')}
-              promptPresetId={sceneLib.selectedId}
-              builtinPresets={BUILTIN_PROMPT_PRESETS.filter(
-                (p) => !sceneLib.hiddenBuiltinIds.includes(p.id),
-              )}
+              promptPresetId={conversationCharacterId}
               savedPresets={sceneLib.scenes}
-              onPresetChange={(id) => updateSceneLib((prev) => ({ ...prev, selectedId: id }))}
-              onImportPreset={(item) =>
-                updateSceneLib((prev) => withImportedMarketScene(prev, item))
-              }
               coyoteTargets={connectedCoyotes.map(({ id, state }, index) => ({
                 id,
                 label:
@@ -1013,7 +1376,6 @@ export function App({ servicesOverrides, connectDeviceTauri }: AppProps = {}) {
 
 interface MultiCoyoteSnapshotClient {
   getConnectedCoyotes(): Array<{ id: string; state: DeviceState }>;
-  disconnectDeviceById(deviceId: string): Promise<void>;
 }
 
 interface MultiCoyoteSelectionClient extends MultiCoyoteSnapshotClient {
@@ -1021,20 +1383,17 @@ interface MultiCoyoteSelectionClient extends MultiCoyoteSnapshotClient {
   selectDeviceById(deviceId: string): void;
 }
 
-function supportsPerCoyoteDisconnect(
+function supportsCoyoteSnapshots(
   client: DeviceClient,
 ): client is DeviceClient & MultiCoyoteSnapshotClient {
-  return (
-    typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function' &&
-    typeof (client as Partial<MultiCoyoteSnapshotClient>).disconnectDeviceById === 'function'
-  );
+  return typeof (client as Partial<MultiCoyoteSnapshotClient>).getConnectedCoyotes === 'function';
 }
 
 function supportsCoyoteSelection(
   client: DeviceClient,
 ): client is DeviceClient & MultiCoyoteSelectionClient {
   return (
-    supportsPerCoyoteDisconnect(client) &&
+    supportsCoyoteSnapshots(client) &&
     typeof (client as Partial<MultiCoyoteSelectionClient>).selectDeviceById === 'function'
   );
 }
@@ -1043,6 +1402,6 @@ function connectedCoyoteStates(
   client: DeviceClient,
   fallback: DeviceState,
 ): Array<{ id: string; state: DeviceState }> {
-  if (supportsPerCoyoteDisconnect(client)) return client.getConnectedCoyotes();
+  if (supportsCoyoteSnapshots(client)) return client.getConnectedCoyotes();
   return fallback.connected ? [{ id: 'coyote', state: fallback }] : [];
 }

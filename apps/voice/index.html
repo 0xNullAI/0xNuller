@@ -12,7 +12,7 @@
     <link rel="icon" href="/favicon-dark.svg" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <title>0xNuller · Voice</title>
+    <title>猫愿 · 语音</title>
     <script>
       // No-flash theme bootstrap: resolve the saved theme before first paint
       // so the page never renders in the wrong scheme. The `data-theme="dark"`
@@ -21,10 +21,11 @@
       (function () {
         try {
           var raw = localStorage.getItem('dg-voice-settings');
-          var mode = raw ? JSON.parse(raw).theme : 'auto';
-          if (mode !== 'dark' && mode !== 'light') {
+          var mode = localStorage.getItem('0xnullai.theme') || (raw ? JSON.parse(raw).theme : null);
+          if (mode === 'auto') {
             mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
           }
+          if (mode !== 'light') mode = 'dark';
           document.documentElement.setAttribute('data-theme', mode);
           document.documentElement.style.colorScheme = mode;
           var meta = document.querySelector('meta[name="theme-color"]');

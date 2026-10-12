@@ -1,4 +1,62 @@
+import {
+  ReservationContextRejected,
+  reserveWithContext,
+  type ReservationContext,
+} from './reservation-context';
+import { handleVoiceBillingReview } from './voice-billing-review';
+import { handleTextBillingReview } from './text-billing-review';
+import { handleMediaBillingReview } from './media-billing-review';
+import { validManagedTextReservation } from './managed-vision-reservation';
+import {
+  heartbeatTextBilling,
+  registerTextBilling,
+  checkpointTextBilling,
+  finalizeTextBilling,
+  inspectTextBilling,
+  runTextBilling,
+} from './text-billing-outbox';
+import { handleAutoMemory, runAutoMemory } from './auto-memory';
+import { runConversationDigest } from './run-conversation-digest';
+import { handleConversationDigestPreference } from './conversation-digest-preference';
+import { handleAccountMemoryAccess } from './account-memory-access';
+import { handleBillingOrders } from './billing-orders';
+import { handleCharacterAppearance } from './character-appearance';
+import { handleCharacterDrafts } from './character-drafts';
+import { handleCompanionSchedules, runCompanionSchedules } from './companion-schedules';
+import { handleRetiredPushRegistrations } from './retired-push';
+import { handleAgentWorkspace } from './agent-workspace';
+import { handleAgentRuns, runAgentRunMaintenance } from './agent-runs';
+import { handleCompanionLife } from './companion-life';
+import { handleCreditActivity } from './credit-activity';
+import { handleMediaJobs, runMediaJobs } from './media-jobs';
 import { hashPassword } from './password';
+import { handleMemoryContext } from './memory-context';
+import { normalizeProfileLink, safeProfileLinks } from '@0xnullai/auth/profile-links';
+import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
+import { handleMemoryFacts } from './memory-facts';
+import { expireStagedVideoReplies, handleServerConversations } from './server-conversations';
+import {
+  handleConversationAttachments,
+  runConversationAttachmentCleanup,
+} from './conversation-attachments';
+import {
+  handleAsrBillingReview,
+  handleVoiceAttachmentAsr,
+  recoverVoiceAttachmentAsr,
+} from './voice-attachment-asr';
+import { handleManagedTts, recoverManagedTts } from './managed-tts';
+import { handleAuthChatBackupExport } from './chat-backup-export';
+import { handleCharacterRelationships } from './character-relationships';
+import { expireMediumMemories, handlePersonalMemories } from './personal-memory';
+import {
+  publicMarketCreator,
+  publicMarketCreatorItems,
+  publicMarketCreatorsForItems,
+} from './public-market-creator';
+import {
+  finalizeVoiceReservation as finalizeManagedVoiceReservation,
+  type VoiceFinalization,
+} from './voice-credit-domain';
 import {
   DM_DIGEST_MAX_ROOMS,
   DM_TICKET_TTL_MS,
@@ -6,9 +64,22 @@ import {
   signDmTicket,
   verifyDmTicket,
 } from './dm-ticket';
+import { verifyGroupAiTicket } from './group-ai-ticket';
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { withServerErrorCounting } from '@0xnullai/observability';
+import {
+  handleRuntimeMonitoring,
+  monitoringRetentionStatements,
+  recordServerErrors,
+  runRuntimeMonitoring,
+} from './runtime-monitoring';
 import { registrationConflict, validateCredentials } from './account-validation';
 import { decodeContentCursor, encodeContentCursor } from './content-cursor';
+import {
+  chatRoomAccountHash,
+  decodeChatRoomCursor,
+  encodeChatRoomCursor,
+} from './chat-room-cursor';
 import { corsHeaders, err, json, readBodyBounded } from './http';
 import { readToken, sessionCookie } from './session-credentials';
 import {
@@ -18,8 +89,9 @@ import {
   recordDeletionFailure,
   reservePhotoSlot,
   runAuthMaintenance,
+  runPendingAccountDeletions,
 } from './photo-lifecycle';
-import { sanitizePhoto } from './photo-sanitizer';
+import { sanitizePhoto } from '@0xnullai/auth/photo-sanitizer';
 import {
   currentUser,
   login,
@@ -33,6 +105,7 @@ import {
 
 export { registrationConflict } from './account-validation';
 export { runAuthMaintenance } from './photo-lifecycle';
+export { runPendingAccountDeletions } from './photo-lifecycle';
 
 /**
  * 0xNullAI account service.
@@ -61,6 +134,14 @@ export { runAuthMaintenance } from './photo-lifecycle';
 
 export interface Env extends Cloudflare.Env {
   EMAIL: SendEmail;
+  MARKET: Fetcher;
+  /** Volcengine Ark key for background text and image generation. */
+  VOLC_ARK_API_KEY?: string;
+  /** Doubao speech (TTS, recorded-clip ASR); one key sent as `X-Api-Key`. */
+  VOLC_SPEECH_API_KEY?: string;
+  /** Managed AI model ids and Credit prices; see @0xnullai/ai-pricing. */
+  AI_PRICE_TABLE?: string;
+  AUTH_BACKUP_TOKEN?: string;
   /**
    * Pepper for ip_hash. Kept separate from every other use — it must never be
    * rotated, or every rate-limit record becomes worthless.
@@ -84,6 +165,8 @@ export interface Env extends Cloudflare.Env {
    * follows, which stops the next ticket from being minted, so the conversation
    * dies within the ticket TTL instead of instantly.
    */
+  /** Comma-separated admin addresses for runtime alerts (Cloudflare secret); unset disables. */
+  ALERT_EMAIL?: string;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -96,6 +179,11 @@ const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
 const EMAIL_ACTION_COOLDOWN_MS = 60 * 1000;
 const VOICE_TICKET_TTL_MS = 25 * 60 * 1000;
 const REFERRAL_REWARD_CREDITS = 500;
+// Product decision (2026-10-11): a verified new account can reply on the default platform
+// tier at once. 100 Credit is roughly 30–50 balanced-tier replies. Granted once per account,
+// at email verification, so a registration flood without mailboxes earns nothing.
+const WELCOME_CREDITS = 100;
+const WELCOME_REFERENCE = 'welcome';
 const CREDIT_PRICE_VERSION = 'credits-2026-09';
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
@@ -156,7 +244,9 @@ export interface CreditBalance {
 
 export interface CreditReservationResult extends CreditBalance {
   allowed: boolean;
-  status: 'pending' | 'settled' | 'released' | 'insufficient';
+  /** Internal proof that this invocation inserted the reservation. */
+  created?: boolean;
+  status: 'pending' | 'settled' | 'released' | 'insufficient' | 'rejected';
   charged: number | null;
 }
 
@@ -196,9 +286,10 @@ export async function reserveCredits(
     credits: number;
   },
 ): Promise<CreditReservationResult> {
-  const credits = Math.trunc(input.credits);
+  const credits = input.credits;
   if (
     !/^[A-Za-z0-9._:-]{8,128}$/.test(input.idempotencyKey) ||
+    !Number.isSafeInteger(credits) ||
     credits < 1 ||
     credits > 1_000_000
   ) {
@@ -252,6 +343,7 @@ export async function reserveCredits(
   return {
     ...balance,
     allowed: status === 'pending' && created != null,
+    created: created != null,
     status,
     charged: row.charged_credits == null ? null : Number(row.charged_credits),
   };
@@ -265,15 +357,50 @@ export async function settleCredits(
   metadata: Record<string, unknown>,
 ): Promise<CreditReservationResult> {
   const reservation = await env.DB.prepare(
-    `SELECT reserved_credits, charged_credits, status FROM credit_reservations
+    `SELECT reserved_credits, charged_credits, status, usage_kind, model_id, created_at FROM credit_reservations
       WHERE idempotency_key = ? AND user_id = ?`,
   )
     .bind(idempotencyKey, userId)
     .first<{
+      usage_kind: string;
+      model_id: string;
+      created_at: number;
       reserved_credits: number;
       charged_credits: number | null;
       status: 'pending' | 'settled' | 'released';
     }>();
+  // Legacy Voice RPCs share the same TTL and audit boundary as the durable finalizer.
+  if (reservation?.usage_kind === 'voice') {
+    const final = await finalizeManagedVoiceReservation(
+      env,
+      userId,
+      idempotencyKey,
+      {
+        action: 'settle',
+        durationMs: typeof metadata.durationMs === 'number' ? metadata.durationMs : NaN,
+      },
+      CREDIT_PRICE_VERSION,
+    );
+    return {
+      ...(await creditBalance(env, userId)),
+      allowed: false,
+      // Older clients understand released; review evidence remains in the audit/timeline.
+      status:
+        final.status === 'needs_review' || final.status === 'missing' ? 'released' : final.status,
+      charged: final.charged,
+    };
+  }
+  // Recorded ASR uses the legacy agent wallet enum, but must not inherit the
+  // generic text path's ability to settle an expired, reusable hold.
+  if (
+    // Older ids stay listed for holds created before the speech provider changed.
+    ['voice-asr', 'managed-tts', 'qwen3-asr-flash', 'cosyvoice-v3-flash'].includes(
+      reservation?.model_id ?? '',
+    ) &&
+    reservation?.status === 'pending' &&
+    reservation.created_at <= Date.now() - CREDIT_RESERVATION_TTL_MS
+  )
+    return releaseCredits(env, userId, idempotencyKey);
   const charge = Math.max(1, Math.trunc(chargedCredits));
   if (reservation?.status === 'pending' && charge > reservation.reserved_credits) {
     return releaseCredits(env, userId, idempotencyKey);
@@ -288,7 +415,8 @@ export async function settleCredits(
       env.DB.prepare(
         `INSERT INTO credit_ledger
           (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
-         VALUES (?, ?, 'usage', ?, ?, ?, ?)
+         SELECT ?, ?, 'usage', ?, ?, ?, ? FROM credit_reservations
+         WHERE idempotency_key=? AND user_id=? AND status='pending'
          ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
       ).bind(
         userId,
@@ -297,6 +425,8 @@ export async function settleCredits(
         CREDIT_PRICE_VERSION,
         JSON.stringify(metadata).slice(0, 4000),
         now,
+        idempotencyKey,
+        userId,
       ),
       env.DB.prepare(
         `UPDATE credit_reservations SET charged_credits = ?, status = 'settled', updated_at = ?
@@ -304,12 +434,17 @@ export async function settleCredits(
       ).bind(charge, now, idempotencyKey, userId),
     ]);
   }
+  const final = await env.DB.prepare(
+    'SELECT status,charged_credits FROM credit_reservations WHERE idempotency_key=? AND user_id=?',
+  )
+    .bind(idempotencyKey, userId)
+    .first<{ status: 'pending' | 'settled' | 'released'; charged_credits: number | null }>();
   const balance = await creditBalance(env, userId);
   return {
     ...balance,
     allowed: false,
-    status: 'settled',
-    charged: reservation.charged_credits ?? charge,
+    status: final?.status ?? 'released',
+    charged: final?.charged_credits ?? null,
   };
 }
 
@@ -353,6 +488,11 @@ function requestFromClaimCredentials(credentials: MarketClaimCredentials): Reque
  * Market owns item proof, Auth owns session identity and the durable account relation.
  */
 export class AuthOwnershipService extends WorkerEntrypoint<Env> {
+  /** Coalesced error counts from Market, Voice and the LLM proxy; malformed input is ignored. */
+  async recordServerErrors(report: unknown): Promise<boolean> {
+    return recordServerErrors(this.env, report);
+  }
+
   async creditBalance(
     credentials: MarketClaimCredentials,
   ): Promise<CreditBalance | 'unauthorized'> {
@@ -371,6 +511,145 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
   ): Promise<CreditReservationResult | 'unauthorized'> {
     const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
     return user ? reserveCredits(this.env, user.id, input) : 'unauthorized';
+  }
+
+  async reserveManagedTextCredits(
+    credentials: MarketClaimCredentials,
+    input: {
+      idempotencyKey: string;
+      usageKind: 'agent' | 'video';
+      modelId: string;
+      credits: number;
+      context?: ReservationContext;
+      bodyHash?: string;
+    },
+  ) {
+    const vision = input.modelId === 'vision' || input.modelId === 'chat-vision';
+    if (!validManagedTextReservation(input)) return { allowed: false, status: 'rejected' };
+    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
+    if (!user) return 'unauthorized';
+    let result: CreditReservationResult;
+    try {
+      result = await reserveWithContext(
+        this.env,
+        user.id,
+        input.idempotencyKey,
+        input.context,
+        () => reserveCredits(this.env, user.id, input),
+      );
+    } catch (error) {
+      if (!(error instanceof ReservationContextRejected)) throw error;
+      return {
+        ...(await creditBalance(this.env, user.id)),
+        allowed: false,
+        status: 'rejected' as const,
+        charged: null,
+      };
+    }
+    if (!result.allowed) return result;
+    const capability = await registerTextBilling(
+      this.env,
+      input.idempotencyKey,
+      user.id,
+      vision ? input.bodyHash : undefined,
+    );
+    return { ...result, capability };
+  }
+  /** Chat-only signed turn: the member who sent the saved @ message pays. */
+  async authorizeManagedGroupText(
+    ticket: string,
+    input: { idempotencyKey: string; modelId: string; bodyHash: string },
+  ): Promise<{ payer: string } | 'unauthorized'> {
+    const claim = await verifyGroupAiTicket(this.env.DM_TICKET_SECRET, ticket, {
+      reservationKey: input.idempotencyKey,
+      modelId: input.modelId,
+      bodyHash: input.bodyHash,
+    });
+    return claim ? { payer: claim.payer } : 'unauthorized';
+  }
+
+  /** Final reservation re-verifies the ticket; no unsigned payer ID is accepted. */
+  async reserveManagedGroupTextCredits(
+    ticket: string,
+    input: { idempotencyKey: string; modelId: string; credits: number; bodyHash: string },
+  ) {
+    const claim = await verifyGroupAiTicket(this.env.DM_TICKET_SECRET, ticket, {
+      reservationKey: input.idempotencyKey,
+      modelId: input.modelId,
+      bodyHash: input.bodyHash,
+    });
+    if (!claim) return 'unauthorized';
+    const active = await this.env.DB.prepare(
+      `SELECT id FROM users WHERE id=? AND banned_at IS NULL AND email_verified_at IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM account_deletions WHERE user_id=users.id)`,
+    )
+      .bind(claim.payer)
+      .first<{ id: string }>();
+    if (!active) return 'unauthorized';
+    const result = await reserveCredits(this.env, claim.payer, {
+      idempotencyKey: input.idempotencyKey,
+      usageKind: 'agent',
+      modelId: input.modelId,
+      credits: input.credits,
+    });
+    if (!result.allowed) return result;
+    try {
+      const saved = await this.env.DB.prepare(
+        `INSERT INTO group_ai_reservation_context
+          (reservation_key,user_id,room_id,trigger_id,role_id,created_at)
+         SELECT ?,r.user_id,?,?,?,? FROM credit_reservations r
+         WHERE r.idempotency_key=? AND r.user_id=? AND r.status='pending'
+         ON CONFLICT(reservation_key) DO NOTHING RETURNING reservation_key`,
+      )
+        .bind(
+          input.idempotencyKey,
+          claim.room,
+          claim.triggerId,
+          claim.roleId,
+          Date.now(),
+          input.idempotencyKey,
+          claim.payer,
+        )
+        .first();
+      if (!saved) throw new Error('group_credit_context_not_saved');
+    } catch (error) {
+      // No model request has begun. Do not leave a chargeable hold without its signed origin.
+      await this.env.DB.prepare(
+        "UPDATE credit_reservations SET status='released',updated_at=? WHERE idempotency_key=? AND user_id=? AND status='pending'",
+      )
+        .bind(Date.now(), input.idempotencyKey, claim.payer)
+        .run()
+        .catch(() => console.error('Group Credit context cleanup deferred'));
+      throw error;
+    }
+    const capability = await registerTextBilling(this.env, input.idempotencyKey, claim.payer);
+    return {
+      ...result,
+      capability,
+      groupContext: {
+        room: claim.room,
+        triggerId: claim.triggerId,
+        roleId: claim.roleId,
+        payer: claim.payer,
+      },
+    };
+  }
+  async checkpointManagedText(
+    key: string,
+    capability: string,
+    charge: number,
+    metadata: Record<string, unknown>,
+  ) {
+    return checkpointTextBilling(this.env, key, capability, charge, metadata);
+  }
+  async finalizeManagedText(key: string, capability: string, action: 'settle' | 'release') {
+    return finalizeTextBilling(this.env, key, capability, action);
+  }
+  async heartbeatManagedText(key: string, capability: string) {
+    return heartbeatTextBilling(this.env, key, capability);
+  }
+  async inspectManagedText(key: string, capability: string) {
+    return inspectTextBilling(this.env, key, capability);
   }
 
   async settleCredits(
@@ -399,20 +678,48 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     return { subject: userId, ...(await creditBalance(this.env, userId)) };
   }
 
+  /** Service-binding only: finalization survives expiry of the opening ticket. */
+  async finalizeVoiceReservation(
+    subject: string,
+    reservationKey: string,
+    input: VoiceFinalization,
+  ) {
+    return finalizeManagedVoiceReservation(
+      this.env,
+      subject,
+      reservationKey,
+      input,
+      CREDIT_PRICE_VERSION,
+    );
+  }
+
   async reserveVoiceCredits(
     ticket: string,
     idempotencyKey: string,
     credits: number,
+    context?: ReservationContext,
   ): Promise<CreditReservationResult | 'unauthorized'> {
     const userId = await voiceTicketUser(this.env, ticket);
-    return userId
-      ? reserveCredits(this.env, userId, {
-          idempotencyKey,
-          usageKind: 'voice',
-          modelId: 'voice',
-          credits,
-        })
-      : 'unauthorized';
+    try {
+      return userId
+        ? await reserveWithContext(this.env, userId, idempotencyKey, context, () =>
+            reserveCredits(this.env, userId, {
+              idempotencyKey,
+              usageKind: 'voice',
+              modelId: 'voice',
+              credits,
+            }),
+          )
+        : 'unauthorized';
+    } catch (error) {
+      if (!(error instanceof ReservationContextRejected) || !userId) throw error;
+      return {
+        ...(await creditBalance(this.env, userId)),
+        allowed: false,
+        status: 'rejected',
+        charged: null,
+      };
+    }
   }
 
   async settleVoiceCredits(
@@ -454,12 +761,33 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     return marketItemAccessForCredentials(this.env, credentials, itemId);
   }
 
+  async marketItemCreator(itemId: string) {
+    return publicMarketCreator(this.env.DB, itemId);
+  }
+
+  async marketCreatorItems(creatorIds: string[], viewerId?: string) {
+    return publicMarketCreatorItems(this.env.DB, creatorIds, viewerId);
+  }
+
+  async marketCreatorsForItems(itemIds: string[]) {
+    return publicMarketCreatorsForItems(this.env.DB, itemIds);
+  }
+
   async marketAccountAccess(
     credentials: MarketClaimCredentials,
   ): Promise<MarketAccountAccessResult> {
     const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
     if (!user) return 'unauthorized';
     return user.role === 'admin' ? 'admin' : 'user';
+  }
+
+  async marketAccountIdentity(credentials: MarketClaimCredentials): Promise<{ id: string } | null> {
+    return marketAccountIdentityForCredentials(this.env, credentials);
+  }
+
+  /** Service-binding only; Market uses this to purge private R2 originals after account deletion. */
+  async marketAccountActive(userId: string): Promise<boolean> {
+    return marketAccountActiveForOwner(this.env, userId);
   }
 
   async rewardMarketDownload(
@@ -499,36 +827,72 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     itemId: string,
     amount: number,
   ): Promise<MarketRewardResult> {
-    const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
-    if (!user) return 'unauthorized';
-    const credits = Math.trunc(amount);
-    if (credits < 1 || credits > 10000) return 'invalid';
-    const claim = await this.env.DB.prepare(
-      `SELECT user_id AS author_id FROM market_claims WHERE item_id = ? AND verified_at IS NOT NULL LIMIT 1`,
-    )
-      .bind(itemId)
-      .first<{ author_id: string }>();
-    if (!claim || claim.author_id === user.id) return 'invalid';
-    const balance = await creditBalance(this.env, user.id);
-    if (balance.available < credits) return 'invalid';
-    const ref = `${itemId}:${user.id}:${crypto.randomUUID()}`;
-    await this.env.DB.batch([
-      this.env.DB.prepare(
-        `INSERT INTO credit_ledger (user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES (?, ?, 'market_tip', ?, ?, ?, ?)`,
-      ).bind(user.id, -credits, ref, CREDIT_PRICE_VERSION, JSON.stringify({ itemId }), Date.now()),
-      this.env.DB.prepare(
-        `INSERT INTO credit_ledger (user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at) VALUES (?, ?, 'market_tip', ?, ?, ?, ?)`,
-      ).bind(
-        claim.author_id,
-        credits,
-        ref,
-        CREDIT_PRICE_VERSION,
-        JSON.stringify({ itemId }),
-        Date.now(),
-      ),
-    ]);
-    return 'ok';
+    return tipMarketItemForCredentials(this.env, credentials, itemId, amount);
   }
+}
+
+/** A tip transfers existing Credit; recipient income is gated by the same atomic sender debit. */
+export async function tipMarketItemForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+  itemId: string,
+  amount: number,
+): Promise<MarketRewardResult> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  if (!user) return 'unauthorized';
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10000) return 'invalid';
+  const claim = await env.DB.prepare(
+    'SELECT user_id AS author_id FROM market_claims WHERE item_id=? AND verified_at IS NOT NULL LIMIT 1',
+  )
+    .bind(itemId)
+    .first<{ author_id: string }>();
+  if (!claim || claim.author_id === user.id) return 'invalid';
+  const now = Date.now();
+  const ref = `${itemId}:${user.id}:${crypto.randomUUID()}`;
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at)
+   SELECT ?,?,'market_tip',?,?,?,? WHERE ? <= (SELECT COALESCE(SUM(amount_credits),0) FROM credit_ledger WHERE user_id=?) - (SELECT COALESCE(SUM(reserved_credits),0) FROM credit_reservations WHERE user_id=? AND status='pending' AND updated_at>?)
+   AND EXISTS(SELECT 1 FROM market_claims m JOIN users u ON u.id=m.user_id WHERE m.item_id=? AND m.user_id=? AND m.verified_at IS NOT NULL AND u.banned_at IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM account_deletions WHERE user_id IN (?,?))`,
+    ).bind(
+      user.id,
+      -amount,
+      ref,
+      CREDIT_PRICE_VERSION,
+      JSON.stringify({ itemId }),
+      now,
+      amount,
+      user.id,
+      user.id,
+      now - CREDIT_RESERVATION_TTL_MS,
+      itemId,
+      claim.author_id,
+      user.id,
+      claim.author_id,
+    ),
+    env.DB.prepare(
+      `INSERT INTO credit_ledger(user_id,amount_credits,kind,reference_id,price_version,metadata_json,created_at)
+   SELECT ?,?,'market_tip',?,?,?,? WHERE EXISTS(SELECT 1 FROM credit_ledger WHERE user_id=? AND reference_id=? AND kind='market_tip' AND amount_credits=?)`,
+    ).bind(
+      claim.author_id,
+      amount,
+      ref,
+      CREDIT_PRICE_VERSION,
+      JSON.stringify({ itemId }),
+      now,
+      user.id,
+      ref,
+      -amount,
+    ),
+  ]);
+  return (await env.DB.prepare(
+    "SELECT 1 FROM credit_ledger WHERE user_id=? AND reference_id=? AND kind='market_tip'",
+  )
+    .bind(user.id, ref)
+    .first())
+    ? 'ok'
+    : 'invalid';
 }
 
 async function voiceTicketUser(env: Env, ticket: string): Promise<string | null> {
@@ -542,6 +906,30 @@ async function voiceTicketUser(env: Env, ticket: string): Promise<string | null>
     .bind(claims.sub)
     .first<{ id: string }>();
   return user?.id ?? null;
+}
+
+/** Service-binding only: resolve the live account, including deletion and ban checks. */
+export async function marketAccountIdentityForCredentials(
+  env: Env,
+  credentials: MarketClaimCredentials,
+): Promise<{ id: string } | null> {
+  const user = await currentUser(requestFromClaimCredentials(credentials), env);
+  return user ? { id: user.id } : null;
+}
+
+export async function marketAccountActiveForOwner(
+  env: Pick<Env, 'DB'>,
+  userId: string,
+): Promise<boolean> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(userId)) return false;
+  return Boolean(
+    await env.DB.prepare(
+      `SELECT 1 FROM users WHERE id=?
+     AND NOT EXISTS(SELECT 1 FROM account_deletions WHERE user_id=users.id)`,
+    )
+      .bind(userId)
+      .first(),
+  );
 }
 
 /** Resolve Market permissions without exposing account roles on a public endpoint. */
@@ -628,17 +1016,27 @@ function ageFrom(birthDate: string): number {
 }
 
 function publicProfile(row: Record<string, unknown>) {
-  const visibility =
-    row.visibility === 'public' || row.visibility === 'friends' ? row.visibility : 'private';
+  let links: unknown;
+  try {
+    links = row.links ? JSON.parse(String(row.links)) : [];
+  } catch {
+    links = [];
+  }
   return {
     avatarUrl: row.avatar_url ?? null,
     bio: row.bio ?? null,
     birthDate: row.birth_date ?? null,
     location: row.location ?? null,
-    links: row.links ? (JSON.parse(String(row.links)) as string[]) : [],
+    links: safeProfileLinks(links),
     interests: row.interests ? (JSON.parse(String(row.interests)) as string[]) : [],
-    discoverable: Number(row.discoverable) === 1,
-    visibility,
+    // Discovery listing is the owner's choice (on by default); the profile page itself is
+    // readable by every signed-in user either way.
+    discoverable:
+      row.discoverable === undefined || row.discoverable === null
+        ? true
+        : Number(row.discoverable) === 1,
+    // Legacy visibility is ignored: every profile is readable by signed-in users.
+    visibility: 'public' as const,
   };
 }
 
@@ -736,8 +1134,8 @@ async function sendAccountEmail(
   const safeUrl = escapeHtml(url.toString());
   await env.EMAIL.send({
     to,
-    from: { email: 'no-reply@0xnullai.com', name: '0xNuller' },
-    subject: `0xNuller ${action}`,
+    from: { email: 'no-reply@0xnullai.com', name: '猫愿' },
+    subject: `猫愿${action}`,
     text: `${action}：${url.toString()}\n链接将在 ${expiry}后失效。若非本人操作，请忽略。`,
     html: `<p>请点击下方链接完成${action}：</p><p><a href="${safeUrl}">${action}</a></p><p>链接将在 ${expiry}后失效。若非本人操作，请忽略。</p>`,
   });
@@ -824,10 +1222,9 @@ async function countFollows(
 /**
  * The album as somebody else may see it.
  *
- * Per-photo visibility is a second gate **inside** an already-visible profile,
- * not an alternative to it — the caller checks the profile first. The owner
- * sees their own private photos here so the editor and the public view read
- * from one place and cannot disagree about what exists.
+ * Per-photo visibility remains independent of the public profile. The owner
+ * sees their own private photos here; other viewers see only what the photo
+ * itself allows. Old private photos stay private after the profile change.
  *
  * No R2 bucket is bound yet, so in practice this returns an empty list: there
  * is no upload path, therefore no rows. The gating is written now because it is
@@ -986,7 +1383,17 @@ function contactListSql(direction: 'following' | 'followers', mutualOnly = false
  LIMIT ? OFFSET ?`;
 }
 
-export default {
+/**
+ * Monitoring-only entrypoint for Chat, which needs no ownership or Credit access. Keeping it
+ * separate means Chat's binding cannot reach anything but the error counter.
+ */
+export class AuthMonitoringService extends WorkerEntrypoint<Env> {
+  async recordServerErrors(report: unknown): Promise<boolean> {
+    return recordServerErrors(this.env, report);
+  }
+}
+
+const authWorker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env.ALLOWED_ORIGINS);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -998,6 +1405,82 @@ export default {
     );
 
     try {
+      const backupResponse = await handleAuthChatBackupExport(request, env);
+      if (backupResponse) return backupResponse;
+      const autoMemoryResponse = await handleAutoMemory(request, env, cors);
+      if (autoMemoryResponse) return autoMemoryResponse;
+      const digestPreferenceResponse = await handleConversationDigestPreference(request, env, cors);
+      if (digestPreferenceResponse) return digestPreferenceResponse;
+      const lifeResponse = await handleCompanionLife(request, env, cors);
+      if (lifeResponse) return lifeResponse;
+      const voiceBillingReview = await handleVoiceBillingReview(request, env, cors);
+      if (voiceBillingReview) return voiceBillingReview;
+      const textBillingReview = await handleTextBillingReview(request, env, cors);
+      if (textBillingReview) return textBillingReview;
+      const mediaBillingReview = await handleMediaBillingReview(request, env, cors);
+      if (mediaBillingReview) return mediaBillingReview;
+      const asrBillingReview = await handleAsrBillingReview(request, env, cors);
+      if (asrBillingReview) return asrBillingReview;
+      const billingOrderResponse = await handleBillingOrders(request, env, cors);
+      if (billingOrderResponse) return billingOrderResponse;
+      const creditActivityResponse = await handleCreditActivity(request, env, cors);
+      if (creditActivityResponse) return creditActivityResponse;
+      const mediaResponse = await handleMediaJobs(request, env, cors);
+      if (mediaResponse) return mediaResponse;
+      const workspaceResponse = await handleAgentWorkspace(request, env, cors);
+      if (workspaceResponse) return workspaceResponse;
+      const agentRunsResponse = await handleAgentRuns(request, env, cors);
+      if (agentRunsResponse) return agentRunsResponse;
+      const memoryContextResponse = await handleMemoryContext(request, env, cors);
+      if (memoryContextResponse) return memoryContextResponse;
+      const memoryFactsResponse = await handleMemoryFacts(request, env, cors);
+      if (memoryFactsResponse) return memoryFactsResponse;
+      const accountMemoryAccessResponse = await handleAccountMemoryAccess(request, env, cors);
+      if (accountMemoryAccessResponse) return accountMemoryAccessResponse;
+      const asrResponse = await handleVoiceAttachmentAsr(request, env, cors, {
+        reserve: (userId, key, credits) =>
+          reserveCredits(env, userId, {
+            idempotencyKey: key,
+            usageKind: 'agent',
+            modelId: 'voice-asr',
+            credits,
+          }),
+        settle: (userId, key, charge, metadata) =>
+          settleCredits(env, userId, key, charge, metadata),
+        release: (userId, key) => releaseCredits(env, userId, key),
+      });
+      if (asrResponse) return asrResponse;
+      const ttsResponse = await handleManagedTts(request, env, cors, {
+        reserve: (userId, key, credits) =>
+          reserveCredits(env, userId, {
+            idempotencyKey: key,
+            usageKind: 'agent',
+            modelId: 'managed-tts',
+            credits,
+          }),
+        settle: (userId, key, charge, metadata) =>
+          settleCredits(env, userId, key, charge, metadata),
+        release: (userId, key) => releaseCredits(env, userId, key),
+      });
+      if (ttsResponse) return ttsResponse;
+      const attachmentResponse = await handleConversationAttachments(request, env, cors);
+      if (attachmentResponse) return attachmentResponse;
+      const conversationResponse = await handleServerConversations(request, env, cors);
+      if (conversationResponse) return conversationResponse;
+      const appearanceResponse = await handleCharacterAppearance(request, env, cors);
+      if (appearanceResponse) return appearanceResponse;
+      const draftResponse = await handleCharacterDrafts(request, env, cors);
+      if (draftResponse) return draftResponse;
+      const relationshipResponse = await handleCharacterRelationships(request, env, cors);
+      if (relationshipResponse) return relationshipResponse;
+      const scheduleResponse = await handleCompanionSchedules(request, env, cors);
+      if (scheduleResponse) return scheduleResponse;
+      const pushResponse = handleRetiredPushRegistrations(request, cors);
+      if (pushResponse) return pushResponse;
+      const monitoringResponse = await handleRuntimeMonitoring(request, env, cors, ipHash);
+      if (monitoringResponse) return monitoringResponse;
+      const memoryResponse = await handlePersonalMemories(request, env, cors);
+      if (memoryResponse) return memoryResponse;
       // ── Register ──
       if (path === '/api/auth/register' && request.method === 'POST') {
         const registrationCount = await env.DB.prepare(
@@ -1014,6 +1497,12 @@ export default {
           .bind(ipHash, Date.now())
           .run();
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        // Consent to the current 用户协议 is part of the account. A client that
+        // predates the consent box sends no version (or an older one) and must be updated first;
+        // checked before anything else so that client gets this one clear answer.
+        if (body.acceptedTerms !== LEGAL_TERMS_VERSION) {
+          return err('请更新到最新版本后注册', 400, cors);
+        }
         const invalid = validateCredentials(body.username, body.password);
         if (invalid) return err(invalid, 400, cors);
         const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -1066,6 +1555,9 @@ export default {
             env.DB.prepare(
               'INSERT INTO referral_codes (user_id, code, created_at) VALUES (?, ?, ?)',
             ).bind(id, newReferralCode(), now),
+            env.DB.prepare(
+              'INSERT INTO legal_acceptances (user_id, terms_version, accepted_at) VALUES (?, ?, ?)',
+            ).bind(id, LEGAL_TERMS_VERSION, now),
           ];
           if (inviter) {
             statements.push(
@@ -1180,6 +1672,20 @@ export default {
             `UPDATE referrals SET status = 'rewarded', qualified_at = ?
              WHERE invitee_user_id = ? AND status = 'pending'`,
           ).bind(now, action.user_id),
+          // The ledger's (user, kind, reference) key makes the welcome grant one per account.
+          env.DB.prepare(
+            `INSERT INTO credit_ledger
+             (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+             VALUES (?, ?, 'admin_gift', ?, ?, ?, ?)
+             ON CONFLICT (user_id, kind, reference_id) DO NOTHING`,
+          ).bind(
+            action.user_id,
+            WELCOME_CREDITS,
+            WELCOME_REFERENCE,
+            CREDIT_PRICE_VERSION,
+            JSON.stringify({ reason: 'welcome' }),
+            now,
+          ),
         ]);
         return json({ ok: true }, 200, cors);
       }
@@ -1678,8 +2184,8 @@ export default {
       // exactly as well. Two deliberate limits, for this product's users
       // rather than out of caution: `location` is region-level and capped
       // short, because a street address in a leaked database is a physical
-      // risk here and no feature needs one. New profile drafts default to
-      // public in the client; existing stored profiles keep their choice.
+      // risk here and no feature needs one. Profile visibility is public to
+      // signed-in users; legacy visibility values are no longer honored.
       if (path === '/api/auth/profile' && request.method === 'GET') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
@@ -1711,10 +2217,15 @@ export default {
               .filter(Boolean)
               .slice(0, 8)
           : [];
-        const visibility =
-          body.visibility === 'public' || body.visibility === 'friends'
-            ? body.visibility
-            : 'private';
+        const visibility = 'public';
+        const submittedLinks = body.links ?? [];
+        if (
+          !Array.isArray(submittedLinks) ||
+          submittedLinks.length > 5 ||
+          submittedLinks.some((link) => normalizeProfileLink(link) === null)
+        )
+          return err('主页链接须为 HTTP(S) 网址', 400, cors);
+        const links = submittedLinks.map((link) => normalizeProfileLink(link));
 
         let avatarUrl: string | null = null;
         if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
@@ -1749,9 +2260,9 @@ export default {
             birthDate || null,
             // Region-level. The cap is the point, not a guess at a sane length.
             typeof body.location === 'string' ? body.location.slice(0, 60) : null,
-            Array.isArray(body.links) ? JSON.stringify(body.links.slice(0, 5)) : null,
+            JSON.stringify(links),
             JSON.stringify(interests),
-            visibility === 'public' && body.discoverable === true ? 1 : 0,
+            body.discoverable === false ? 0 : 1,
             visibility,
             now,
           )
@@ -1856,9 +2367,8 @@ export default {
        *
        * The gate is re-derived here from scratch rather than trusting that the
        * caller got this URL from a profile they were allowed to see. URLs get
-       * copied, pasted and kept after a profile is switched back to private,
-       * so the only safe assumption is that whoever is asking found the id
-       * somewhere else.
+       * copied and pasted, so each read rechecks login, block and per-photo
+       * visibility before touching R2.
        *
        * Every refusal is the same 404. "Exists but you may not see it" would
        * confirm the photo — and by extension the account and its activity —
@@ -1869,6 +2379,8 @@ export default {
         path.endsWith('/content') &&
         request.method === 'GET'
       ) {
+        const viewer = await currentUser(request, env);
+        if (!viewer) return err('未登录', 401, cors);
         const id = decodeURIComponent(path.slice('/api/auth/photos/'.length, -'/content'.length));
         const photo = await env.DB.prepare(
           "SELECT user_id, object_key, visibility FROM user_photos WHERE id = ? AND status = 'ready'",
@@ -1877,24 +2389,13 @@ export default {
           .first<{ user_id: string; object_key: string; visibility: string }>();
         if (!photo) return err('不存在', 404, cors);
 
-        const viewer = await currentUser(request, env);
-        const isOwner = viewer?.id === photo.user_id;
+        const isOwner = viewer.id === photo.user_id;
         if (!isOwner) {
-          if (viewer && (await blockedBetween(env, viewer.id, photo.user_id))) {
+          if (await blockedBetween(env, viewer.id, photo.user_id)) {
             return err('不存在', 404, cors);
           }
-          const isFriend = viewer ? await mutualFollow(env, viewer.id, photo.user_id) : false;
+          const isFriend = await mutualFollow(env, viewer.id, photo.user_id);
           if (photo.visibility !== 'public' && !(photo.visibility === 'friends' && isFriend)) {
-            return err('不存在', 404, cors);
-          }
-          // The owning profile has to be public too. A public photo inside a
-          // profile its owner has since made private is not public any more.
-          const owner = await env.DB.prepare(
-            'SELECT visibility FROM user_profiles WHERE user_id = ?',
-          )
-            .bind(photo.user_id)
-            .first<{ visibility: string }>();
-          if (owner?.visibility !== 'public' && !(owner?.visibility === 'friends' && isFriend)) {
             return err('不存在', 404, cors);
           }
         }
@@ -1962,11 +2463,31 @@ export default {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
+        const paged = url.searchParams.has('limit') || url.searchParams.has('cursor');
+        const requestedLimit = Number(url.searchParams.get('limit') ?? '100');
+        if (
+          paged &&
+          (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 100)
+        )
+          return err('分页大小无效', 400, cors);
+        const rawCursor = url.searchParams.get('cursor');
+        const cursor = decodeChatRoomCursor(rawCursor);
+        if (rawCursor && (!cursor || cursor.accountHash !== (await chatRoomAccountHash(user.id))))
+          return err('群聊游标无效', 400, cors);
         const rows = await env.DB.prepare(
           `SELECT code, name, owner_key, joined_at, updated_at FROM user_chat_rooms
-           WHERE user_id = ? ORDER BY updated_at DESC`,
+           WHERE user_id = ?
+             AND (? IS NULL OR updated_at < ? OR (updated_at = ? AND code > ?))
+           ORDER BY updated_at DESC, code ASC LIMIT ?`,
         )
-          .bind(user.id)
+          .bind(
+            user.id,
+            cursor?.updatedAt ?? null,
+            cursor?.updatedAt ?? null,
+            cursor?.updatedAt ?? null,
+            cursor?.code ?? '',
+            paged ? requestedLimit + 1 : 1001,
+          )
           .all<{
             code: string;
             name: string;
@@ -1974,15 +2495,29 @@ export default {
             joined_at: number;
             updated_at: number;
           }>();
+        const visible = paged ? rows.results.slice(0, requestedLimit) : rows.results;
+        const last = visible.at(-1);
         return json(
           {
-            rooms: rows.results.map((room) => ({
+            rooms: visible.map((room) => ({
               code: room.code,
               name: room.name,
               joinedAt: room.joined_at,
               updatedAt: room.updated_at,
               ...(room.owner_key ? { ownerKey: room.owner_key } : {}),
             })),
+            ...(paged
+              ? {
+                  nextCursor:
+                    rows.results.length > requestedLimit && last
+                      ? encodeChatRoomCursor({
+                          updatedAt: last.updated_at,
+                          code: last.code,
+                          accountHash: await chatRoomAccountHash(user.id),
+                        })
+                      : null,
+                }
+              : {}),
           },
           200,
           cors,
@@ -2538,13 +3073,15 @@ export default {
                            WHERE f.follower_id = ? AND f.followee_id = u.id) AS following,
                   EXISTS (SELECT 1 FROM user_follows f
                            WHERE f.follower_id = u.id AND f.followee_id = ?) AS followed_by
-             FROM user_profiles p JOIN users u ON u.id = p.user_id
-            WHERE p.discoverable = 1 AND p.visibility = 'public' AND u.id <> ?
+             FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id
+            WHERE u.id <> ?
               AND u.banned_at IS NULL
+              AND COALESCE(p.discoverable, 1) = 1
+              AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id)
               AND NOT EXISTS (SELECT 1 FROM user_blocks b
                     WHERE (b.blocker_id = ? AND b.blocked_id = u.id)
                        OR (b.blocker_id = u.id AND b.blocked_id = ?))
-            ORDER BY p.updated_at DESC, u.id
+            ORDER BY COALESCE(p.updated_at, u.created_at) DESC, u.id
             LIMIT ? OFFSET ?`,
         )
           .bind(user.id, user.id, user.id, user.id, user.id, limit + 1, offset)
@@ -2786,8 +3323,8 @@ export default {
           try {
             await env.EMAIL.send({
               to: FEEDBACK_RECIPIENT,
-              from: { email: 'no-reply@0xnullai.com', name: '0xNuller Feedback' },
-              subject: '收到新的 0xNuller 反馈',
+              from: { email: 'no-reply@0xnullai.com', name: '猫愿反馈' },
+              subject: '收到新的猫愿反馈',
               text: `反馈编号：${id}\n用户：${user?.username ?? '未登录'}\n联系方式：${contact || '未提供'}\n\n${message}`,
             });
           } catch (error) {
@@ -2949,20 +3486,11 @@ export default {
       // Looked up by username because that is the only handle a person can type;
       // it goes in the path, never a query string.
       //
-      // `user_profiles.visibility` decides the profile body and it is honoured
-      // literally: private means nobody but the owner, following or not. Following
-      // someone is not a grant of access to them — treating it as one would mean a
-      // profile silently becomes visible to whoever presses a button.
-      //
-      // What a private profile still returns is the identity that was already
-      // public: the username the caller just typed, and the display name attached
-      // to it. Without that there is no way to confirm you found the right person
-      // before following them, and the username was never the secret.
+      // Every signed-in viewer can read profile fields, irrespective of legacy
+      // visibility. Blocks still return the same 404 as a missing account.
       if (path.startsWith('/api/auth/users/') && request.method === 'GET') {
-        // Signed-out callers are allowed here; the account is optional and a public
-        // profile is public. What they cannot get is any relationship state, and a
-        // block cannot apply to a viewer with no identity.
         const viewer = await currentUser(request, env);
+        if (!viewer) return err('未登录', 401, cors);
         const username = decodeURIComponent(path.slice('/api/auth/users/'.length)).toLowerCase();
         if (!username) return err('用户不存在', 404, cors);
 
@@ -2971,54 +3499,48 @@ export default {
           .first<UserRow>();
         if (!target) return err('用户不存在', 404, cors);
 
-        const isSelf = viewer?.id === target.id;
-        if (viewer && !isSelf && (await blockedBetween(env, viewer.id, target.id))) {
+        const isSelf = viewer.id === target.id;
+        if (!isSelf && (await blockedBetween(env, viewer.id, target.id))) {
           return err('用户不存在', 404, cors);
         }
 
         const row = await env.DB.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
           .bind(target.id)
           .first<Record<string, unknown>>();
-        const profile = row ? publicProfile(row) : null;
-        const [following, followedBy] =
-          viewer && !isSelf
-            ? await Promise.all([
-                follows(env, viewer.id, target.id),
-                follows(env, target.id, viewer.id),
-              ])
-            : [false, false];
+        const profile = row
+          ? publicProfile(row)
+          : {
+              avatarUrl: null,
+              bio: null,
+              birthDate: null,
+              location: null,
+              links: [],
+              interests: [],
+              discoverable: true,
+              visibility: 'public' as const,
+            };
+        const [following, followedBy] = !isSelf
+          ? await Promise.all([
+              follows(env, viewer.id, target.id),
+              follows(env, target.id, viewer.id),
+            ])
+          : [false, false];
         const isFriend = following && followedBy;
-        const visible =
-          isSelf ||
-          profile?.visibility === 'public' ||
-          (profile?.visibility === 'friends' && isFriend);
 
         // The birth date never leaves its owner's own view. The profile editor
         // tells users in so many words that it is collected to confirm they are
         // an adult and that the date itself is not shown — marking a profile
         // public is consent to the bio and the region, not to that. A promise
         // made in the UI has to be kept by the endpoint, or it is not a promise.
-        const shown =
-          !visible || !profile ? null : isSelf ? profile : { ...profile, birthDate: null };
+        const shown = isSelf ? profile : { ...profile, birthDate: null };
 
-        // Everything below is gated on the same `visible` flag as the profile
-        // body. Follower counts and a join date are not identity — they are
-        // profile content, and a private profile that still reported "312
-        // followers, joined 2023" would be leaking exactly the presence and
-        // popularity signals it was set to private to withhold. Counts also
-        // make a private account probe-able: watching the number move tells
-        // you who just followed them.
-        const [followerCount, followingCount] = visible
-          ? await Promise.all([
-              countFollows(env, 'followee_id', target.id),
-              countFollows(env, 'follower_id', target.id),
-            ])
-          : [0, 0];
+        const [followerCount, followingCount] = await Promise.all([
+          countFollows(env, 'followee_id', target.id),
+          countFollows(env, 'follower_id', target.id),
+        ]);
 
-        // Only the owner's public photos, and only on a visible profile — a
-        // per-photo visibility of 'public' inside a private profile is still
-        // inside a private profile.
-        const photos = visible ? await visiblePhotos(env, target.id, isSelf, isFriend) : [];
+        // Album photos retain their independent per-photo access policy.
+        const photos = await visiblePhotos(env, target.id, isSelf, isFriend);
 
         return json(
           {
@@ -3026,11 +3548,8 @@ export default {
             profile: shown,
             following,
             followedBy,
-            // null rather than 0: the client has to be able to tell "not
-            // allowed to know" from "nobody follows them", or it will render a
-            // confident zero for a profile it cannot see.
-            counts: visible ? { followers: followerCount, following: followingCount } : null,
-            createdAt: visible ? Number(target.created_at) : null,
+            counts: { followers: followerCount, following: followingCount },
+            createdAt: Number(target.created_at),
             photos,
           },
           200,
@@ -3051,6 +3570,9 @@ export default {
         )
           .bind(user.id, Date.now())
           .run();
+        // Rows left by the retired system push stay in D1 until the table is dropped; erase this
+        // account's device identifiers now, even if cross-service deletion needs cron retry.
+        await env.DB.prepare('DELETE FROM push_registrations WHERE user_id=?').bind(user.id).run();
         try {
           await finalizeAccountDeletion(env, user.id);
           return json({ ok: true }, 200, { ...cors, 'Set-Cookie': sessionCookie('', 0) });
@@ -3081,12 +3603,57 @@ export default {
     }
   },
 
-  async scheduled(
-    _controller: ScheduledController,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const now = Date.now();
+    if (controller.cron === '* * * * *') {
+      ctx.waitUntil(
+        Promise.all([
+          runCompanionSchedules(env, now),
+          runMediaJobs(env, now),
+          runAutoMemory(env, now),
+          runConversationDigest(env, now),
+          runTextBilling(env, now),
+          runPendingAccountDeletions(env, now),
+          runAgentRunMaintenance(env, now),
+          recoverVoiceAttachmentAsr(
+            env,
+            {
+              reserve: (userId, key, credits) =>
+                reserveCredits(env, userId, {
+                  idempotencyKey: key,
+                  usageKind: 'agent',
+                  modelId: 'voice-asr',
+                  credits,
+                }),
+              settle: (userId, key, charge, metadata) =>
+                settleCredits(env, userId, key, charge, metadata),
+              release: (userId, key) => releaseCredits(env, userId, key),
+            },
+            now,
+          ),
+          recoverManagedTts(
+            env,
+            {
+              reserve: (userId, key, credits) =>
+                reserveCredits(env, userId, {
+                  idempotencyKey: key,
+                  usageKind: 'agent',
+                  modelId: 'managed-tts',
+                  credits,
+                }),
+              settle: (userId, key, charge, metadata) =>
+                settleCredits(env, userId, key, charge, metadata),
+              release: (userId, key) => releaseCredits(env, userId, key),
+            },
+            now,
+          ),
+          expireStagedVideoReplies(env, now),
+          // Every five minutes: prune the intake ledger and check alert thresholds.
+          new Date(now).getUTCMinutes() % 5 === 0 ? runRuntimeMonitoring(env, now) : undefined,
+        ]).then(() => undefined),
+      );
+      return;
+    }
     const keepLoginAttemptsAfter = now - 24 * 60 * 60 * 1000;
     ctx.waitUntil(
       Promise.all([
@@ -3099,9 +3666,18 @@ export default {
             now - REGISTER_WINDOW_MS,
           ),
           env.DB.prepare('DELETE FROM email_action_tokens WHERE expires_at < ?').bind(now),
+          ...monitoringRetentionStatements(env, now),
         ]),
         runAuthMaintenance(env, now),
+        runConversationAttachmentCleanup(env),
+        expireMediumMemories(env, now),
       ]).then(() => undefined),
     );
   },
 } satisfies ExportedHandler<Env>;
+
+// Auth records its own 5xx and cron failures straight into D1; fail-open like every Worker.
+export default withServerErrorCounting(authWorker, {
+  worker: 'auth',
+  sink: (env: Env) => ({ recordServerErrors: (report) => recordServerErrors(env, report) }),
+});

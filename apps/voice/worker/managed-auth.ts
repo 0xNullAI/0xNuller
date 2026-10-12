@@ -2,9 +2,9 @@ import type { Env } from './env.js';
 
 /**
  * Pulls the short-lived account ticket out of the offered WebSocket subprotocols. The
- * browser connects with `['realtime', 'openai-insecure-api-key.<key>']`
- * (the same shape as a direct xAI connection), which arrives here as the
- * `Sec-WebSocket-Protocol` request header.
+ * browser connects with `['realtime', 'openai-insecure-api-key.<ticket>']` (browsers
+ * cannot set headers on a WebSocket), which arrives here as the `Sec-WebSocket-Protocol`
+ * request header. The name is historical; the value is our own account ticket.
  */
 export function parseVoiceTicket(header: string | null): string | null {
   if (!header) return null;

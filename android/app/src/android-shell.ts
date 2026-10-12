@@ -8,14 +8,17 @@
  */
 
 import { getAdapterState, type AdapterState } from '@mnlphlp/plugin-blec';
+import { installBackButton } from './android-back-button';
+import { installNativeDownloads } from './android-download';
 
-const DARK_BG = '#0b1020';
+const DARK_BG = '#080808';
 const LIGHT_BG = '#ffffff';
 
 /**
- * Keep `<meta name="theme-color">` in sync with `<html data-theme="...">`.
- * Status-bar tint on Android Tauri reads from theme-color; without this
- * the status bar stays dark even after the user switches to light mode.
+ * Keep the system bars in step with `<html data-theme="...">`. Edge-to-edge
+ * draws the window background behind the status and navigation bars, which
+ * `theme-color` does not reach, so the native bridge sets that colour and the
+ * icon contrast; the meta tag still serves other WebViews.
  */
 function syncStatusBarColor(): void {
   const apply = () => {
@@ -28,6 +31,7 @@ function syncStatusBarColor(): void {
       document.head.appendChild(meta);
     }
     meta.content = colour;
+    window.AndroidSystem?.setSystemBarTheme?.(theme !== 'light');
   };
   apply();
   const observer = new MutationObserver(apply);
@@ -86,39 +90,6 @@ export function syncVisualViewport(viewport = window.visualViewport): () => void
   };
 }
 
-/**
- * Intercept Android's hardware/gesture back button so it doesn't exit
- * the app on the first press. Tauri Android maps the back button to
- * the WebView's history-back; we push a synthetic state on every app
- * load so the first back press pops that state instead of leaving.
- *
- * Apps that want to react to back press should listen for
- * `window.addEventListener('app:back', ...)`. The default handler shows
- * a "再按一次退出" toast — second press within 2s actually exits.
- */
-function interceptBackButton(): void {
-  history.pushState({ dgaa: 'guard' }, '');
-  let lastBackPress = 0;
-  window.addEventListener('popstate', () => {
-    const detail = new CustomEvent('app:back', { cancelable: true });
-    const accepted = window.dispatchEvent(detail);
-    if (accepted === false) {
-      // A listener consumed it (e.g. closed a modal). Re-push the guard.
-      history.pushState({ dgaa: 'guard' }, '');
-      return;
-    }
-    const now = Date.now();
-    if (now - lastBackPress < 2000) {
-      // User pressed back twice quickly → really exit. Pop the guard so
-      // the next popstate actually closes the activity.
-      return;
-    }
-    lastBackPress = now;
-    showBackToast('再按一次退出');
-    history.pushState({ dgaa: 'guard' }, '');
-  });
-}
-
 function showBackToast(text: string): void {
   let toast = document.getElementById('dgaa-back-toast');
   if (!toast) {
@@ -161,6 +132,8 @@ interface AndroidSystemBridge {
   openAppSettings(): void;
   openBluetoothSettings(): void;
   openLocationSettings(): void;
+  saveDownload?(fileName: string, mimeType: string, base64: string): boolean;
+  setSystemBarTheme?(dark: boolean): void;
 }
 
 declare global {
@@ -331,7 +304,7 @@ export async function withBlePermissionHelp<T>(
     const granted = await waitForBlePermission(platform);
     if (!granted) {
       const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
-      await showBleGuidance(`请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`, {
+      await showBleGuidance(`请允许猫愿的${permissionName}，才能扫描和连接蓝牙设备。`, {
         label: '打开应用设置',
         run: platform.openAppSettings,
       });
@@ -347,8 +320,8 @@ export async function withBlePermissionHelp<T>(
       const permissionName = sdk >= 31 ? '“附近的设备”权限' : '位置信息权限';
       const explanation =
         sdk >= 31
-          ? `请允许 0xNuller 的${permissionName}，才能扫描和连接蓝牙设备。`
-          : `Android 11 及以下需要授予 0xNuller ${permissionName}，才能扫描蓝牙设备。`;
+          ? `请允许猫愿的${permissionName}，才能扫描和连接蓝牙设备。`
+          : `Android 11 及以下需要授予猫愿${permissionName}，才能扫描蓝牙设备。`;
       if (platform.isPermissionPermanentlyDenied()) {
         await showBleGuidance(`${explanation} 当前系统不会再次弹出授权框，请到应用设置中开启。`, {
           label: '打开应用设置',
@@ -392,5 +365,6 @@ export function installAndroidShellBehaviours(): void {
   syncStatusBarColor();
   autoScrollFocusedInput();
   syncVisualViewport();
-  interceptBackButton();
+  void installBackButton({ notify: showBackToast });
+  installNativeDownloads({ bridge: () => window.AndroidSystem, notify: showBackToast });
 }

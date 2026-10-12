@@ -75,7 +75,7 @@ function verifyProductMetadata() {
       `android versionCode is ${tauri.bundle?.android?.versionCode}, expected ${expectedCode} for ${root.version}`,
     );
   }
-  if (tauri.productName !== '0xNuller') fail('Tauri productName must remain 0xNuller');
+  if (tauri.productName !== '猫愿') fail('Tauri productName must remain 猫愿');
   if (tauri.identifier !== 'ai.nullai.dgagent') {
     fail('Android identifier must remain ai.nullai.dgagent for upgrade compatibility');
   }
@@ -101,8 +101,23 @@ function verifyProductMetadata() {
   if (!updateChecker.includes("DEFAULT_TAG_PREFIX = 'v'")) {
     fail('Android updater must only consume unified v<version> releases');
   }
-  if (!updateChecker.includes("APK_ASSET_PREFIX = '0xnuller-v'")) {
-    fail('Android updater must require the versioned 0xnuller APK asset');
+  if (!updateChecker.includes("APK_ASSET_PREFIX = 'maoyuan-v'")) {
+    fail('Android updater must require the versioned maoyuan APK asset');
+  }
+  if (
+    !productReleaseWorkflow.includes(
+      'artifact="$RUNNER_TEMP/maoyuan-v${{ steps.version.outputs.version }}.apk"',
+    )
+  ) {
+    fail('Product Release must attach the APK under the name the Android updater requires');
+  }
+  if (
+    !productReleaseWorkflow.includes(
+      'legacy="$RUNNER_TEMP/0xnuller-v${{ steps.version.outputs.version }}.apk"',
+    ) ||
+    !productReleaseWorkflow.includes('"${{ steps.apk.outputs.legacy }}"')
+  ) {
+    fail('Product Release must also attach the APK under the 0xnuller name older apps look for');
   }
   for (const required of [
     'setupGitUser: false',
@@ -184,7 +199,7 @@ function verifyProductMetadata() {
     }
   }
   for (const required of [
-    '--title "0xNuller ${{ steps.version.outputs.version }}"',
+    '--title "猫愿 ${{ steps.version.outputs.version }}"',
     '--notes-file "docs/releases/${{ steps.version.outputs.version }}.md"',
     '--target "${{ steps.source.outputs.sha }}"',
     '--latest',
@@ -205,8 +220,7 @@ function verifyProductMetadata() {
     !ciWorkflow.startsWith('name: CI') ||
     !ciWorkflow.includes('node scripts/detect-domain-changes.mjs "$domain"') ||
     !ciWorkflow.includes('npm run test:affected') ||
-    !ciWorkflow.includes('npm run test:full') ||
-    !ciWorkflow.includes('name: desktop-gate')
+    !ciWorkflow.includes('npm run test:full')
   ) {
     fail('Unified CI must detect and verify Product, DG-Kit, and DG-MCP changes');
   }
@@ -257,7 +271,7 @@ function verifyBumps(base) {
 const version = verifyProductMetadata();
 const baseFlag = process.argv.find((argument) => argument.startsWith('--base='));
 const bumps = baseFlag ? verifyBumps(baseFlag.slice('--base='.length)) : [];
-console.log(`release metadata OK: 0xNuller ${version}`);
+console.log(`release metadata OK: 猫愿 ${version}`);
 console.log(`tag boundary OK: unified source/product v${version} with Android APK`);
 for (const bump of bumps) console.log(`version bump: ${bump}`);
 if (baseFlag && bumps.length === 0) console.log('version bump: none (maintenance promotion)');

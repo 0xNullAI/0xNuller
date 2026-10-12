@@ -6,22 +6,19 @@ import type { DeviceKind } from '@dg-kit/core';
 import { isDevicePickerCancelled } from '@dg-kit/core';
 import type { DeviceLinkRule } from '@dg-kit/core';
 
+/**
+ * Connect entry, device status and per-module caps for modules other than 设备.
+ * It offers no disconnect: the devices are shared by every module, and only the
+ * 设备 page drops a link. Stopping output stays on each module's stop button and
+ * the shell bar.
+ */
 export interface DeviceSafetyButtonProps {
   connected: boolean;
   deviceName: string | null;
   battery: number | null;
-  onDisconnect: () => void;
   limitA: number;
   limitB: number;
   onSetLimit: (channel: 'A' | 'B', value: number) => void;
-  /**
-   * How several controllers holding fire at once combine. Optional, and the whole block
-   * disappears when it is left out: in a single-user module there is never more than one
-   * controller, so a chooser between 取最大 / 叠加 / 平均 offers a decision that cannot
-   * arise, in the one panel where every visible control has to mean something.
-   */
-  firePolicy?: 'sum' | 'max' | 'avg';
-  onSetFirePolicy?: (p: 'sum' | 'max' | 'avg') => void;
   /** Omit in modules without a waveform library, such as Voice. */
   onRestoreDefaults?: () => void;
   /** The attached sensor (paw-prints or civet-edging, one of the two), null when none. */
@@ -36,8 +33,6 @@ export interface DeviceSafetyButtonProps {
    * Tauri Android through a plugin-blec scan + device picker — both behave the same.
    */
   onConnectDevice: () => Promise<unknown>;
-  onDisconnectSensor?: () => void;
-  onDisconnectOpossum: () => void;
   /** Device families this module can actually use. Defaults to every supported family. */
   supportedDeviceKinds?: readonly DeviceKind[];
   /** Optional, explicit sensor/button → Opossum linkage controls. */
@@ -54,18 +49,13 @@ export function DeviceSafetyButton({
   connected,
   deviceName,
   battery,
-  onDisconnect,
   limitA,
   limitB,
   onSetLimit,
-  firePolicy,
-  onSetFirePolicy,
   onRestoreDefaults,
   sensor,
   opossum,
   onConnectDevice,
-  onDisconnectSensor,
-  onDisconnectOpossum,
   supportedDeviceKinds = ['coyote', 'paw-prints', 'civet-edging', 'opossum'],
   deviceLink,
   onSetDeviceLink,
@@ -167,6 +157,7 @@ export function DeviceSafetyButton({
             )}
             <p className="text-[10px] text-[var(--text-faint)]">
               自动识别{supportedDeviceText}，点击后从选择器中选取即可；重复点击可依次连接设备。
+              断开设备请到「设备」页。
             </p>
           </div>
 
@@ -180,14 +171,6 @@ export function DeviceSafetyButton({
                   : '未连接'}
               </p>
             </div>
-            {connected && (
-              <button
-                onClick={onDisconnect}
-                className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)]"
-              >
-                断开
-              </button>
-            )}
           </div>
 
           {/* Status of the attached sensor / Opossum (shown only once attached; connecting
@@ -209,12 +192,6 @@ export function DeviceSafetyButton({
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => onDisconnectSensor?.()}
-                    className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--danger)]"
-                  >
-                    断开
-                  </button>
                 </div>
               )}
 
@@ -231,12 +208,6 @@ export function DeviceSafetyButton({
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={onDisconnectOpossum}
-                    className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--danger)]"
-                  >
-                    断开
-                  </button>
                 </div>
               )}
             </div>
@@ -371,30 +342,8 @@ export function DeviceSafetyButton({
             </div>
           </div>
 
-          {/* Backgrounding always stops output now — it is not a choice, so
-              there is nothing here to toggle. */}
-          {/* Multi-controller fire aggregation — only where several people can hold fire at once. */}
-          {onSetFirePolicy && (
-            <div className="border-t border-[var(--surface-border)] pt-3">
-              <p className="mb-2 text-xs font-medium text-[var(--text-soft)]">多人开火聚合策略</p>
-              <div className="flex gap-1">
-                {(['max', 'sum', 'avg'] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => onSetFirePolicy(p)}
-                    className={`flex-1 rounded-[var(--radius-sm)] py-1.5 text-xs transition-colors ${
-                      firePolicy === p
-                        ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                        : 'border border-[var(--surface-border)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
-                    }`}
-                  >
-                    {p === 'max' ? '取最大' : p === 'sum' ? '叠加' : '平均'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* Backgrounding always stops output now, and multi-controller fire aggregation is
+              a fixed module constant (Chat: max), so neither is a choice shown here. */}
           {/* Restore default waveforms */}
           {onRestoreDefaults && (
             <div className="border-t border-[var(--surface-border)] pt-3">

@@ -29,9 +29,10 @@ seams are deliberately left in their original shape (see the comments in
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-0xNuller moves directly to `6.0.0`: the user-facing `version` is `6.0.0`, and
-`bundle.android.versionCode` is the aligned monotonic code `6000000`. Tauri
-writes both into `gen/android/app/tauri.properties` **at build time**.
+The user-facing `version` follows the product version (for example `7.0.0`), and
+`bundle.android.versionCode` is the aligned monotonic code (`7000000`: major·1000000 +
+minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
+`5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
 **Bump both before you build, not after.** Building first and bumping second
 produces an APK whose internal version is the previous release while the git
@@ -45,13 +46,13 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v6.5.7`, `0xNuller 6.5.7`, `6.5.7`, and `6005007`.
+code all advance together: `v7.0.0`, `猫愿 7.0.0`, `7.0.0`, and `7000000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
-the workflow attaches the signed APK and Latest badge.
+the workflow attaches the signed `maoyuan-vX.Y.Z.apk` and Latest badge.
 
 ## Prerequisites
 
-- Node.js 22.19+
+- Node.js 26+
 - Rust 1.88+ with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - Android SDK with platform 34/35/36 + build-tools 34/35
 - Android NDK 26.x (set `NDK_HOME` or `ANDROID_NDK_HOME`)
@@ -103,7 +104,9 @@ seconds, versus a two-minute Gradle run that reports the wrong cause.
 re-applies the 0xNuller launcher icons, release signing, and native compatibility settings. It
 fails a release Gradle task when any signing variable is absent; an unsigned APK can no longer
 look like a successful release build. Do not edit generated `mipmap-*` resources directly: the
-canonical launcher source is `src-tauri/icons/icon.png` and preparation regenerates all densities.
+canonical launcher source is `brand/icon/manifest.json` (adaptive foreground `fg.png`, background
+`#080808`, Android 13 themed-icon `mono.png`), and preparation regenerates all densities plus the
+adaptive round icon. Each PNG there is rendered from the SVG beside it.
 
 To produce an installable release APK, load these environment variables before building
 (keystore path + passwords are kept outside the repo, mode 600, and never committed):
@@ -125,6 +128,15 @@ debug builds always use the Android debug key regardless.
 npm run android:dev   # tauri android dev — installs on a connected device
 ```
 
+## Notifications
+
+There is no system push. Most users' phones have no Google services, so FCM was removed: the APK
+has no Firebase dependency, notification permission, push service, or notification channels. New
+messages show as in-app unread counts. Android builds released before the removal may still call
+`/api/auth/push/registrations`; Auth answers 410 (register) or 404 (revoke), which those builds
+handle without retrying. `android:prepare` also strips the old Firebase service, resources, manifest
+entries, and Gradle dependencies from a reused generated project.
+
 ## Build APK
 
 ```bash
@@ -138,10 +150,9 @@ npm run android:build -- --apk
 Shell (@0xnullai/web) + seven modules, reused via vite alias
   ↓
 NativeBridgeProvider (@0xnullai/native) — the one injection point
-  ↓ three seams, each kept in its original shape:
-      Agent  servicesOverrides + connectDevice
-      Chat   deviceClientFactory + requestDevice
-      Voice  transport
+  ↓ dglab: one DgLabConnectionRegistry for every module
+  ↓   (Agent also gets non-device flags: no speech, bridge or update check)
+createTauriDgLabTransport — one shared chooser (requestDeviceTauri)
   ↓
 wrapWithLifecycleSafety  ← Android safety net (see below)
   ↓
@@ -174,54 +185,18 @@ Android Tauri is different: when the user swipes home / locks the screen, the ho
 
 The wrapper is transparent: every method except `disconnect()` forwards unchanged. `disconnect()` additionally detaches the listeners so they don't leak across reconnects.
 
-## Experimental embedded device backend
+## BLE scanner ownership
 
-The APK includes the Buttplug 10.0.3 backend through the
-`experimental-buttplug-gate0` Cargo feature. Product use remains default-off behind a separate
-local-only setting: a normal launch neither initializes the native session nor scans. The matching
-[`ButtplugDeviceBackend`](./src/buttplug-device-backend.ts) is injected once into the unified
-shell's shared `@0xnullai/device-runtime`; only an explicit Control scan after opt-in opens it.
+`ScanCoordinator` (`src-tauri/src/scan_coordinator.rs`) gives plugin-blec scans exclusive ownership of
+Android's single scanner callback. Each scan claims a generation-scoped lease through
+`dg_blec_claim_scanner`, releases it through `dg_blec_release_scanner` only after confirmed
+stop/cleanup, and retains it when scanner state is uncertain. `MainActivity.onPause`/`onDestroy` call
+`requestNativeLifecycleSafety`, which stops the active scan before releasing its lease. Output stops
+are handled by the JS lifecycle wrappers above.
 
-The strict v1 IPC surface contains initialize/close, scan start/stop, topology, disconnect,
-Vibrate, stop-feature, stop-all, and Battery/RSSI reads. Unknown fields and stale session, topology,
-or safety generations are rejected. Device and feature IDs are random and scoped to one native
-connection appearance. Only exact `deviceId` + `featureId` Vibrate writes are accepted; native
-quantization rounds down to the advertised step count.
+## WebView requirements
 
-Battery and RSSI capabilities are published only when the Buttplug feature declares the `Read`
-command. Failed or timed-out reads remain `null`; no value is inferred. Unsupported capabilities,
-Raw messages, arbitrary protocol/BLE bytes, addresses, websocket, serial, HID, XInput, automatic
-reconnect, output restoration, and name-based brand/capability guesses are not exposed.
-
-Buttplug 10 does not expose safe per-device transport disconnect through its client API. A validated
-DeviceRuntime disconnect therefore performs global stop and ends the entire embedded session. This
-is intentionally stronger than pretending one BLE link was released or bypassing Buttplug with raw
-transport access. The resulting topology is terminal and a new runtime must be explicitly created.
-
-Every structural topology transition advances both native topology and safety generations and
-preempts output with global stop before publishing. Telemetry-only refreshes preserve both
-fences. Stop-feature and stop-all do not require a current generation fence; an unknown feature stop
-falls back to global stop. Stop failures latch the native session, report terminal loss to the
-shared runtime, and always retain `hardwareState: "unknown"`.
-
-`ScanCoordinator` is the single ownership seam for the Buttplug and DG plugin scanners. Both paths
-claim a generation-scoped lease before scanning, release only after confirmed stop/cleanup, and
-retain ownership when scanner state is uncertain. Native Android lifecycle cleanup stops the active
-scanner before releasing its lease. The commands remain present in default builds, where they
-preserve plugin-blec behavior without compiling the experimental backend.
-
-btleplug 0.12 requires JNI initialization after Tauri loads the Rust library. The Activity also
-requests native global stop in `onPause` and `onDestroy`, before WebView timer suspension. The
-shared shell safety controller independently stops on lease handoff and browser/Tauri lifecycle
-signals. No physical-device or Android lifecycle validation has been performed. See
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
-
-## Windows and macOS
-
-The same native host also builds independent Windows x64 and macOS arm64 applications.
-Use `npm run desktop:dev` or `npm run desktop:build -- --bundles app` from the repository root.
-The desktop overlay is `src-tauri/tauri.desktop.conf.json`; Android identity/configuration remains
-unchanged. Desktop identity is `ai.nullai.desktop`. See [desktop.md](../../docs/desktop.md).
+Only Android is built from this host; Windows and macOS installers are no longer shipped.
 
 Android 8+ remains the OS minimum, but the installed Android System WebView must be version 111+.
 Older engines show an upgrade message before the application bootstrap is loaded. Removing CSS

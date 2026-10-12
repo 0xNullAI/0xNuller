@@ -167,7 +167,7 @@ export function ControlPanel({
       {roomId && !isDm && (
         <div className="border-b border-[var(--surface-border)] px-4 py-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-medium text-[var(--text-soft)]">房间号</p>
+            <p className="text-xs font-medium text-[var(--text-soft)]">群号</p>
             <button
               onClick={copyRoomId}
               className="flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
@@ -190,7 +190,7 @@ export function ControlPanel({
           </p>
           {canManage ? (
             <label className="mb-3 flex flex-col gap-1.5">
-              <span className="text-xs text-[var(--text-soft)]">房间名</span>
+              <span className="text-xs text-[var(--text-soft)]">群名称</span>
               <Input
                 value={nameDraft}
                 maxLength={MAX_GROUP_NAME}
@@ -214,13 +214,13 @@ export function ControlPanel({
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-xs text-[var(--text-soft)]">
               {isPublic ? <Globe size={14} /> : <Lock size={14} />}
-              {isPublic ? '公开到大厅' : '私密房间'}
+              {isPublic ? '公开到大厅' : '私密群'}
             </span>
             {canManage ? (
               <button
                 onClick={() => onSetPublic(!isPublic)}
                 className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--bg-soft)]"
-                title={isPublic ? '从大厅移除，只有拿到房间号的人能进' : '公开到大厅，所有人可见'}
+                title={isPublic ? '从大厅移除，只有拿到群号的人能进' : '公开到大厅，所有人可见'}
               >
                 {isPublic ? '设为私密' : '公开'}
               </button>
@@ -232,14 +232,14 @@ export function ControlPanel({
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('关闭房间后所有成员都会退出，且不能重新加入。继续吗？')) {
+                if (window.confirm('解散群聊后所有成员都会退出，且不能重新加入。继续吗？')) {
                   onCloseRoom();
                 }
               }}
               className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-ctl)] border border-[var(--danger-border)] text-sm text-[var(--danger)] hover:bg-[var(--danger-soft)]"
             >
               <Trash2 className="h-4 w-4" />
-              关闭房间
+              解散群聊
             </button>
           ) : null}
         </div>
@@ -265,7 +265,7 @@ export function ControlPanel({
         </div>
         {peers.length === 0 && (
           <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
-            {isDm ? '对方当前不在线，消息会保留' : '分享房间号邀请其他人加入'}
+            {isDm ? '对方当前不在线，消息会保留' : '分享群号邀请其他人加入'}
           </p>
         )}
       </div>

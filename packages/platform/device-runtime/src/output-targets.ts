@@ -1,35 +1,21 @@
 import type { DeviceSafetySettings } from '@0xnullai/settings';
-import type { DeviceSnapshot, FeatureId } from './contracts.js';
-import { genericDeviceIntensityCap } from './device-policy.js';
 
-export type UnifiedOutputKind = 'coyote' | 'opossum' | 'embedded';
+export type UnifiedOutputKind = 'coyote' | 'opossum';
 export type UnifiedOutputModality = 'electrostimulation' | 'vibration';
 
-interface UnifiedOutputTargetBase {
-  /** Stable across snapshots for as long as the physical/runtime identity remains valid. */
+export interface UnifiedOutputTarget {
+  /** Stable across snapshots for as long as the physical identity remains valid. */
   id: string;
   kind: UnifiedOutputKind;
+  targetId: string;
   label: string;
   modality: UnifiedOutputModality;
   battery: number | null;
   active: boolean;
 }
 
-export interface UnifiedDgLabOutputTarget extends UnifiedOutputTargetBase {
-  kind: 'coyote' | 'opossum';
-  targetId: string;
-}
-
-export interface UnifiedEmbeddedOutputTarget extends UnifiedOutputTargetBase {
-  kind: 'embedded';
-  deviceId: DeviceSnapshot['devices'][number]['deviceId'];
-  featureId: FeatureId;
-}
-
-export type UnifiedOutputTarget = UnifiedDgLabOutputTarget | UnifiedEmbeddedOutputTarget;
-
 export interface DgLabOutputCandidate {
-  kind: 'coyote' | 'opossum';
+  kind: UnifiedOutputKind;
   targetId: string;
   name: string;
   battery?: number | null;
@@ -39,37 +25,18 @@ export interface DgLabOutputCandidate {
 export interface OutputTargetSafetyControl {
   max: number;
   step: number;
-  normalized: boolean;
 }
 
-function identityPart(value: string): string {
-  return encodeURIComponent(value);
-}
-
-export function unifiedOutputIdentity(kind: 'coyote' | 'opossum', targetId: string): string;
-export function unifiedOutputIdentity(
-  kind: 'embedded',
-  deviceId: string,
-  featureId: string,
-): string;
-export function unifiedOutputIdentity(
-  kind: UnifiedOutputKind,
-  firstId: string,
-  secondId?: string,
-): string {
-  return kind === 'embedded'
-    ? `embedded/${identityPart(firstId)}/${identityPart(secondId ?? '')}`
-    : `${kind}/${identityPart(firstId)}`;
+export function unifiedOutputIdentity(kind: UnifiedOutputKind, targetId: string): string {
+  return `${kind}/${encodeURIComponent(targetId)}`;
 }
 
 /**
- * Project legacy DG-Lab targets and generic runtime vibration capabilities into
- * one selection model. The target keeps enough opaque identity to authorize
- * exactly one physical output without teaching the UI about either runtime.
+ * Project connected Coyote and Opossum targets into one selection model. Each target keeps its
+ * opaque physical identity so one selection authorizes exactly one output, even when names match.
  */
 export function createUnifiedOutputTargets(
   dgLabTargets: readonly DgLabOutputCandidate[],
-  embeddedSnapshot: DeviceSnapshot | null,
 ): UnifiedOutputTarget[] {
   const labelTotals = new Map<string, number>();
   for (const target of dgLabTargets) {
@@ -77,7 +44,7 @@ export function createUnifiedOutputTargets(
     labelTotals.set(key, (labelTotals.get(key) ?? 0) + 1);
   }
   const labelSeen = new Map<string, number>();
-  const targets: UnifiedOutputTarget[] = dgLabTargets.map((target) => {
+  return dgLabTargets.map((target) => {
     const key = `${target.kind}:${target.name}`;
     const occurrence = (labelSeen.get(key) ?? 0) + 1;
     labelSeen.set(key, occurrence);
@@ -92,30 +59,6 @@ export function createUnifiedOutputTargets(
       active: target.active ?? false,
     };
   });
-
-  for (const device of embeddedSnapshot?.devices ?? []) {
-    const battery = device.capabilities.find((feature) => feature.kind === 'battery');
-    const vibrationFeatures = device.capabilities.filter(
-      (feature): feature is Extract<typeof feature, { kind: 'vibrate' }> =>
-        feature.kind === 'vibrate' && !feature.faulted,
-    );
-    vibrationFeatures.forEach((feature, index) => {
-      targets.push({
-        id: unifiedOutputIdentity('embedded', device.deviceId, feature.featureId),
-        kind: 'embedded',
-        deviceId: device.deviceId,
-        featureId: feature.featureId,
-        label: `通用设备 · ${device.name} · 振动 ${index + 1}`,
-        modality: 'vibration',
-        battery:
-          battery?.kind === 'battery' && battery.value !== null
-            ? Math.round(battery.value * 100)
-            : null,
-        active: false,
-      });
-    });
-  }
-  return targets;
 }
 
 /** Keep the current identity when possible, otherwise select the first live output. */
@@ -126,7 +69,7 @@ export function resolveUnifiedOutputTarget(
   return targets.find((target) => target.id === selectedId) ?? targets[0] ?? null;
 }
 
-/** Shared settings are the sole cap source; generic runtimes use normalized 0..1 intensity. */
+/** Shared settings are the sole cap source: Coyote strength or Opossum intensity per channel. */
 export function outputTargetSafetyControl(
   target: UnifiedOutputTarget | null,
   channel: 'A' | 'B',
@@ -136,22 +79,7 @@ export function outputTargetSafetyControl(
   >,
 ): OutputTargetSafetyControl {
   if (target?.kind === 'coyote') {
-    return {
-      max: channel === 'A' ? safety.maxStrengthA : safety.maxStrengthB,
-      step: 1,
-      normalized: false,
-    };
+    return { max: channel === 'A' ? safety.maxStrengthA : safety.maxStrengthB, step: 1 };
   }
-  if (target?.kind === 'embedded') {
-    return {
-      max: genericDeviceIntensityCap(safety),
-      step: 0.01,
-      normalized: true,
-    };
-  }
-  return {
-    max: channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB,
-    step: 1,
-    normalized: false,
-  };
+  return { max: channel === 'A' ? safety.maxIntensityA : safety.maxIntensityB, step: 1 };
 }

@@ -88,6 +88,66 @@ describe('OpenAiHttpLlmClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('drops temperature after an endpoint rejects it, and keeps it dropped for that model', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const bodies: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      return 'temperature' in body
+        ? new Response('`temperature` is deprecated for this model.', { status: 400 })
+        : new Response(JSON.stringify(MOCK_CHAT_RESPONSE), { status: 200 });
+    });
+    const client = new OpenAiHttpLlmClient({
+      apiKey: 'sk-test',
+      baseUrl: 'https://gateway.example/v1',
+      model: 'no-temperature-model',
+    });
+
+    expect((await client.runTurn(makeTurnInput())).assistantMessage).toBe('ok');
+    await client.runTurn(makeTurnInput());
+
+    expect(bodies.map((body) => 'temperature' in body)).toEqual([true, false, false]);
+  });
+
+  it('does not retry an unrelated 400 or a managed request', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue(new Response('temperature too high', { status: 400 }));
+    const managed = new OpenAiHttpLlmClient({
+      apiKey: 'managed',
+      baseUrl: 'https://llm.0xnullai.com/v1',
+      model: 'balanced',
+    });
+    await expect(managed.runTurn(makeTurnInput())).rejects.toThrow('HTTP 错误 400');
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(new Response('bad tools', { status: 400 }));
+    const custom = new OpenAiHttpLlmClient({
+      apiKey: 'sk-test',
+      baseUrl: 'https://gateway.example/v1',
+      model: 'other-model',
+    });
+    await expect(custom.runTurn(makeTurnInput())).rejects.toThrow('bad tools');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('sends max_completion_tokens to api.openai.com and max_tokens to compatible gateways', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify(MOCK_CHAT_RESPONSE), { status: 200 });
+    });
+    for (const baseUrl of ['https://api.openai.com/v1', 'https://api.deepseek.com/v1'])
+      await new OpenAiHttpLlmClient({ apiKey: 'sk-test', baseUrl, model: 'm' }).runTurn({
+        ...makeTurnInput(),
+        maxOutputTokens: 512,
+      });
+    expect(bodies[0]).toMatchObject({ max_completion_tokens: 512 });
+    expect(bodies[0]).not.toHaveProperty('max_tokens');
+    expect(bodies[1]).toMatchObject({ max_tokens: 512 });
+  });
+
   it('applies a changed URL transform at every request boundary', async () => {
     captureRequestBody();
     let proxy = 'https://proxy-one.example';
@@ -112,56 +172,20 @@ describe('OpenAiHttpLlmClient', () => {
   });
 
   describe('DeepSeek V4 thinking 禁用', () => {
-    it('deepseek-v4-flash 请求体包含 thinking: disabled', async () => {
+    it.each([
+      ['deepseek-v4-flash', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+      ['deepseek-v4-pro', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+      // 非 DeepSeek 模型请求体不含 thinking 字段
+      ['gpt-4o-mini', 'https://api.openai.com/v1', undefined],
+      // baseUrl 含 deepseek 时也注入 thinking: disabled
+      ['custom-model', 'https://api.deepseek.com/v1', { type: 'disabled' }],
+    ])('%s @ %s 请求体 thinking 为 %o', async (model, baseUrl, expected) => {
       const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-v4-flash',
-      });
+      const client = new OpenAiHttpLlmClient({ apiKey: 'sk-test', baseUrl, model });
 
       await client.runTurn(makeTurnInput());
 
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
-    });
-
-    it('deepseek-v4-pro 请求体包含 thinking: disabled', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-v4-pro',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
-    });
-
-    it('非 DeepSeek 模型请求体不含 thinking 字段', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o-mini',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toBeUndefined();
-    });
-
-    it('baseUrl 含 deepseek 时也注入 thinking: disabled', async () => {
-      const captured = captureRequestBody();
-      const client = new OpenAiHttpLlmClient({
-        apiKey: 'sk-test',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'custom-model',
-      });
-
-      await client.runTurn(makeTurnInput());
-
-      expect(captured.body?.thinking).toEqual({ type: 'disabled' });
+      expect(captured.body?.thinking).toEqual(expected);
     });
   });
 
@@ -202,6 +226,37 @@ describe('OpenAiHttpLlmClient', () => {
   });
 
   describe('vision serialization and capability gate', () => {
+    it('keeps managed private chat vision non-streaming and billed as agent', async () => {
+      let init: RequestInit | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async (_url: string, request: RequestInit) => {
+          init = request;
+          return { ok: true, json: async () => MOCK_CHAT_RESPONSE, body: null };
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'managed',
+        baseUrl: 'https://llm.0xnullai.com/v1',
+        model: 'chat-vision',
+        supportsImageInput: true,
+        attachPrivateConversation: true,
+      });
+      await client.runTurn({
+        ...makeTurnInput(),
+        image: TEST_IMAGE,
+        onTextDelta: vi.fn(),
+        runId: 'run:chat:001',
+      });
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      expect(body.stream).toBeUndefined();
+      expect(init?.headers).toMatchObject({
+        'X-0xNullAI-Usage-Kind': 'agent',
+        'X-0xNullAI-Conversation-Id': 'test',
+        'X-0xNullAI-Run-Id': 'run:chat:001',
+      });
+    });
+
     it('serializes one image on the latest user message for Chat Completions', async () => {
       const captured = captureRequestBody();
       const client = new OpenAiHttpLlmClient({
@@ -329,11 +384,8 @@ describe('OpenAiHttpLlmClient', () => {
     });
   });
 
-  // Mirrors packages/providers-pi-http/src/index.test.ts's contract suite —
-  // same four cases (successful text reply, tool-call round-trip, aborted
-  // request, error response) exercised against the pi-ai-backed client, so
-  // both LlmClient implementations are held to the same observable
-  // behavior even though their wire formats differ.
+  // The LlmClient contract every provider client must meet: successful text
+  // reply, tool-call round-trip, aborted request and error response.
   describe('contract: successful text reply / tool-call / abort / error', () => {
     it('resolves a successful text reply', async () => {
       vi.stubGlobal(
@@ -401,6 +453,37 @@ describe('OpenAiHttpLlmClient', () => {
       ]);
     });
 
+    it('assigns an ID to a tool call that the server returned without one', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    { id: '', type: 'function', function: { name: 'shock_stop', arguments: '{}' } },
+                  ],
+                },
+              },
+            ],
+          }),
+          body: null,
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'gpt-4o-mini',
+      });
+      const result = await client.runTurn(makeTurnInput());
+      expect(result.toolCalls?.[0]).toMatchObject({ name: 'shock_stop', args: {} });
+      expect(result.toolCalls?.[0]?.id).toMatch(/^call_[0-9a-f]{32}$/);
+    });
+
     it('rejects when the request is aborted', async () => {
       vi.stubGlobal(
         'fetch',
@@ -443,9 +526,7 @@ describe('OpenAiHttpLlmClient', () => {
       });
 
       // Already matches normalizeAssistantErrorMessage's
-      // `模型服务 HTTP 错误 (\d{3})` pattern directly — this is the reference
-      // shape providers-pi-http's classifyPiAiError reshapes pi-ai's own error
-      // strings into (`Provider HTTP error NNN: ...`).
+      // `模型服务 HTTP 错误 (\d{3})` pattern directly.
       await expect(client.runTurn(makeTurnInput())).rejects.toThrow(/模型服务 HTTP 错误 401/);
     });
   });
@@ -527,4 +608,54 @@ describe('testConnection', () => {
       testConnection({ baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'ark-test' }),
     ).rejects.toBeInstanceOf(ListModelsError);
   });
+});
+
+it('attaches the actual private turn session and request run only when explicitly enabled', async () => {
+  const captured = captureRequestInit();
+  const client = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    extraHeaders: () => ({}),
+    attachPrivateConversation: true,
+  });
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-parent-task' });
+  expect(captured.headers?.['X-0xNullAI-Conversation-Id']).toBe(EMPTY_SESSION.id);
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe('run-parent-task');
+  const firstKey = captured.headers?.['Idempotency-Key'];
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-parent-task' });
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe('run-parent-task');
+  expect(captured.headers?.['Idempotency-Key']).not.toBe(firstKey);
+  await client.runTurn(makeTurnInput());
+  expect(captured.headers?.['X-0xNullAI-Run-Id']).toBe(captured.headers?.['Idempotency-Key']);
+  const publicClient = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    extraHeaders: () => ({}),
+  });
+  await publicClient.runTurn(makeTurnInput());
+  expect(captured.headers?.['X-0xNullAI-Conversation-Id']).toBeUndefined();
+});
+
+it('keeps the parent TaskRun on the managed Responses path as well', async () => {
+  let headers: Record<string, string> | undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      headers = init.headers as Record<string, string>;
+      return { ok: true, json: async () => ({ output: [], output_text: 'ok' }), body: null };
+    }),
+  );
+  const client = new OpenAiHttpLlmClient({
+    apiKey: 'managed',
+    baseUrl: 'https://llm.0xnullai.com/v1',
+    model: 'balanced',
+    endpoint: 'responses',
+    extraHeaders: () => ({}),
+    attachPrivateConversation: true,
+  });
+  await client.runTurn({ ...makeTurnInput(), runId: 'run-responses-task' });
+  expect(headers?.['X-0xNullAI-Run-Id']).toBe('run-responses-task');
+  expect(headers?.['Idempotency-Key']).not.toBe('run-responses-task');
 });

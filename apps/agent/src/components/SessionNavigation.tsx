@@ -16,6 +16,7 @@ interface SessionNavigationCallbacks {
   sessions: SessionSnapshot[];
   activeSessionId: string | null;
   onSelect: (sessionId: string) => void;
+  onSearch?: (query: string) => Promise<string[]>;
   onRename: (sessionId: string, title: string | null) => void;
   onDelete: (sessionId: string) => void;
   onCreate: () => void;
@@ -72,6 +73,7 @@ export function SessionNavigation(props: SessionNavigationProps) {
           savedSessions={sessions}
           activeSessionId={activeSessionId}
           onSelectSession={onSelect}
+          onSearchSessions={props.onSearch ?? (async () => [])}
           onRenameSession={onRename}
           onDeleteSession={onDelete}
           onCreateSession={onCreate}
@@ -109,6 +111,7 @@ export function SessionNavigation(props: SessionNavigationProps) {
             savedSessions={sessions}
             activeSessionId={activeSessionId}
             onSelectSession={onSelect}
+            onSearchSessions={props.onSearch ?? (async () => [])}
             onRenameSession={onRename}
             onDeleteSession={onDelete}
             onCreateSession={onCreate}

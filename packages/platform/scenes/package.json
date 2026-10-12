@@ -7,12 +7,17 @@
   "exports": {
     ".": "./src/index.ts",
     "./react": "./src/use-scenes.ts",
-    "./library": "./src/scene-library.tsx"
+    "./library": "./src/scene-library.tsx",
+    "./character-card": "./src/character-card.ts",
+    "./character-draft": "./src/character-draft.ts",
+    "./external-character-card": "./src/external-character-card.ts",
+    "./character-editor": "./src/character-card-fields.tsx"
   },
   "peerDependencies": {
     "react": "^19.2.5"
   },
   "dependencies": {
+    "@0xnullai/auth": "0.1.0",
     "@0xnullai/sync": "0.1.0",
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/market-client": "0.1.0",

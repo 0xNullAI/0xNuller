@@ -10,7 +10,6 @@ const IGNORED_DIRECTORIES = new Set([
   '.wrangler',
   'coverage',
   'dist',
-  'dist-desktop',
   'node_modules',
   'target',
 ]);

@@ -10,7 +10,12 @@ import type {
 } from '@dg-agent/core';
 import { withCoyoteTargetIds } from '@dg-agent/core';
 import { ToolRegistry } from '@dg-agent/runtime';
-import type { ConnectedCoyote } from './multi-coyote-client.js';
+
+/** One connected Coyote host behind an opaque, connection-scoped target id. */
+export interface ConnectedCoyote {
+  id: string;
+  state: CoyoteTargetSnapshot['state'];
+}
 
 interface MultiCoyoteExactClient extends DeviceClient {
   getConnectedCoyotes(): ConnectedCoyote[];

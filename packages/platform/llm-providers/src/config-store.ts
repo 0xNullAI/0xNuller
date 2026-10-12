@@ -1,5 +1,12 @@
 import type { ProviderId } from './index';
-import { MANAGED_DEFAULT_MODEL, MANAGED_SERVICE_URL, getProviderDefinition } from './index';
+import {
+  CUSTOM_PLACEHOLDER_BASE_URL,
+  CUSTOM_PLACEHOLDER_MODEL,
+  MANAGED_DEFAULT_MODEL,
+  MANAGED_SERVICE_URL,
+  getProviderDefinition,
+} from './index';
+import { migrateLegacyProviderSettings } from './legacy-provider-migration';
 import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
 /**
@@ -10,23 +17,25 @@ import { createScopedProviderConfigStore } from './scoped-provider-config-store'
  * provider in Agent and having to do it again in Chat is precisely the
  * friction "one app" is supposed to remove.
  *
- * DG-Voice's realtime provider config does NOT merge in: it is a different
+ * DG-Voice's realtime voice settings do NOT merge in: it is a different
  * domain (voice-session endpoints and auth differ) with a different shape.
  * Forcing them together would make both awkward.
  *
  * API keys live in localStorage, same as each module did pre-merge. This
  * is not encrypted storage — same-origin scripts can read it and so can
  * browser extensions. The managed provider does not use a user API key; it
- * runs through the account's Cloudflare Workers AI binding.
+ * calls Volcengine Ark through the llm-proxy Worker.
  */
 
 export interface LlmConfig {
-  providerId: string;
+  providerId: ProviderId;
   apiKey: string;
   model: string;
   baseUrl: string;
   endpoint: 'responses' | 'chat/completions';
   useStrict: boolean;
+  /** Custom endpoint only: the user confirmed the model accepts images. */
+  imageInput: boolean;
   rememberApiKey: boolean;
 }
 
@@ -43,36 +52,41 @@ export function defaultLlmConfig(): LlmConfig {
     baseUrl: MANAGED_SERVICE_URL,
     endpoint: 'chat/completions',
     useStrict: false,
+    imageInput: false,
     rememberApiKey: false,
   };
 }
 
-function coerce(raw: unknown): LlmConfig | null {
+/** Exported for tests: parses and migrates one stored config. */
+export function coerceLlmConfig(raw: unknown): LlmConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.providerId !== 'string') return null;
-  const providerId = o.providerId === 'free' ? 'managed' : o.providerId;
-  return {
-    providerId,
+  // A removed provider becomes `custom` (same key/model, its OpenAI-compatible
+  // host) or falls back to `managed`; see legacy-provider-migration.ts.
+  return migrateLegacyProviderSettings({
+    providerId: o.providerId === 'free' ? 'managed' : o.providerId,
     apiKey: typeof o.apiKey === 'string' ? o.apiKey : '',
     model: typeof o.model === 'string' ? o.model : '',
     baseUrl: typeof o.baseUrl === 'string' ? o.baseUrl : '',
     endpoint: o.endpoint === 'responses' ? 'responses' : 'chat/completions',
     useStrict: o.useStrict === true,
+    imageInput: o.imageInput === true,
     // Existing installations wrote the key to localStorage unconditionally.
     rememberApiKey: typeof o.rememberApiKey === 'boolean' ? o.rememberApiKey : true,
-  };
+  });
 }
 
 const store = createScopedProviderConfigStore<LlmConfig>({
   localStorageKey: KEY,
   sessionStorageKey: SESSION_KEY,
   createDefault: defaultLlmConfig,
-  coerce,
+  coerce: coerceLlmConfig,
   normalize: (config) => ({
     ...config,
     endpoint: config.endpoint ?? 'chat/completions',
     useStrict: config.useStrict ?? false,
+    imageInput: config.providerId === 'custom' && config.imageInput === true,
     rememberApiKey: config.rememberApiKey ?? true,
   }),
 });
@@ -85,7 +99,7 @@ export function loadLlmConfig(): LlmConfig {
     // One-time migration: copy a legacy key over, write the new key, and
     // never read the legacy keys again.
     for (const legacy of LEGACY_KEYS) {
-      const old = coerce(JSON.parse(localStorage.getItem(legacy) ?? 'null'));
+      const old = coerceLlmConfig(JSON.parse(localStorage.getItem(legacy) ?? 'null'));
       if (old) {
         saveLlmConfig(old);
         return old;
@@ -110,8 +124,10 @@ export function loadLlmConfig(): LlmConfig {
 export function hasLlmConfig(): boolean {
   if (typeof localStorage === 'undefined') return false;
   try {
-    if (coerce(JSON.parse(localStorage.getItem(KEY) ?? 'null'))) return true;
-    return LEGACY_KEYS.some((k) => coerce(JSON.parse(localStorage.getItem(k) ?? 'null')) !== null);
+    if (coerceLlmConfig(JSON.parse(localStorage.getItem(KEY) ?? 'null'))) return true;
+    return LEGACY_KEYS.some(
+      (k) => coerceLlmConfig(JSON.parse(localStorage.getItem(k) ?? 'null')) !== null,
+    );
   } catch {
     return false;
   }
@@ -137,7 +153,13 @@ export function subscribeLlmConfig(listener: (c: LlmConfig) => void): () => void
 /** Whether the config is usable. The managed provider needs no user key; the rest do. */
 export function isLlmConfigured(c: LlmConfig): boolean {
   if (c.providerId === 'managed') return true;
-  const def = getProviderDefinition(c.providerId as ProviderId);
+  const def = getProviderDefinition(c.providerId);
   const needsKey = def ? def.fields.some((f) => f.key === 'apiKey') : true;
+  // A custom endpoint still carrying the placeholder address or model is not set up yet.
+  if (
+    c.providerId === 'custom' &&
+    (c.baseUrl === CUSTOM_PLACEHOLDER_BASE_URL || c.model === CUSTOM_PLACEHOLDER_MODEL)
+  )
+    return false;
   return needsKey ? c.apiKey.trim().length > 0 : true;
 }

@@ -1,6 +1,6 @@
 {
   "name": "0xnuller",
-  "version": "6.5.7",
+  "version": "7.0.0",
   "private": true,
   "type": "module",
   "description": "0xNullAI 平台 monorepo：七模块统一 Web 与 Android 应用、共享 Kit、Cloudflare 后端、MCP 与文档",
@@ -11,7 +11,7 @@
   },
   "packageManager": "npm@11.6.2",
   "engines": {
-    "node": ">=22.19"
+    "node": ">=26"
   },
   "workspaces": [
     "packages/*/*",
@@ -34,6 +34,10 @@
     "test:full": "npm run build:kit && npm run test:full:prepared",
     "test:full:prepared": "node scripts/run-vitest.mjs run",
     "test:repository": "node scripts/run-vitest.mjs run --domain=repository",
+    "test:unit": "node scripts/run-vitest.mjs run --layer=unit",
+    "test:contract": "npm run build:kit && node scripts/run-vitest.mjs run --layer=contract",
+    "test:ui": "npm run build:kit && node scripts/run-vitest.mjs run --layer=ui",
+    "test:integration": "npm run build:kit && node scripts/run-vitest.mjs run --layer=integration",
     "test:kit": "npm run build:kit && npm run test:kit:prepared",
     "test:kit:prepared": "node scripts/run-vitest.mjs run --domain=kit",
     "test:mcp": "npm run build:kit && npm run test:mcp:prepared",
@@ -57,6 +61,7 @@
     "verify:release": "node scripts/verify-release.mjs",
     "smoke:production": "node scripts/smoke-production.mjs",
     "verify:brand": "node scripts/verify-brand.mjs",
+    "e2e:local": "node scripts/dev/e2e-smoke.mjs",
     "verify:packages": "npm run build:mcp && node scripts/verify-publish-packages.mjs",
     "verify:kit": "npm run build:kit && node scripts/verify-publish-packages.mjs --scope=kit",
     "verify:mcp": "npm run build:mcp && node scripts/verify-publish-packages.mjs --scope=mcp",
@@ -66,8 +71,7 @@
     "check:dead-code": "knip --no-progress --include files,dependencies,unlisted,duplicates",
     "verify:data": "node scripts/verify-data-platform.mjs",
     "account:role": "node scripts/set-account-role.mjs",
-    "desktop:build": "npm run build:kit && npm run desktop:build -w @0xnullai/android --",
-    "desktop:dev": "npm run build:kit && npm run desktop:dev -w @0xnullai/android --"
+    "build:ai-price-table": "node scripts/build-ai-price-table.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
@@ -81,7 +85,8 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.9.0",
     "jsdom": "^29.1.1",
-    "knip": "^5.68.0",
+    "knip": "^6.41.0",
+    "playwright-core": "^1.64.0",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.2",
@@ -94,10 +99,17 @@
     "singleQuote": true,
     "trailingComma": "all"
   },
+  "overrides": {
+    "@stoprocent/noble": {
+      "patch-package": "npm:empty-npm-package@1.0.0"
+    },
+    "@stoprocent/bluetooth-hci-socket": {
+      "patch-package": "npm:empty-npm-package@1.0.0"
+    }
+  },
   "allowScripts": {
     "esbuild@0.28.1": true,
     "esbuild@0.21.5": true,
-    "workerd@1.20260801.1": true,
     "sharp@0.35.2": true,
     "sharp@0.33.5": true,
     "protobufjs@7.6.5": true,
@@ -106,6 +118,8 @@
     "@stoprocent/noble@2.7.1": true,
     "@stoprocent/bluetooth-hci-socket@2.3.0": true,
     "usb@2.18.0": true,
-    "@serialport/bindings-cpp@12.0.1": true
+    "@serialport/bindings-cpp@12.0.1": true,
+    "workerd@1.20261006.1": true,
+    "esbuild@0.28.2": true
   }
 }

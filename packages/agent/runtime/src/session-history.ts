@@ -16,10 +16,11 @@ export function normalizeSessionHistory(session: SessionSnapshot): boolean {
       continue;
     }
 
-    if (message.role === 'assistant') {
+    if (message.role === 'assistant' && message.kind !== 'camera_observation') {
       const previousComparable = findPreviousComparableMessage(normalizedMessages);
       if (
         previousComparable?.role === 'assistant' &&
+        previousComparable.kind !== 'camera_observation' &&
         areAssistantMessagesEquivalent(previousComparable, message)
       ) {
         changed = true;

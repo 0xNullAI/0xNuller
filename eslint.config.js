@@ -44,13 +44,14 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
-      '**/dist-desktop/**',
       '**/node_modules/**',
       '**/*.d.ts',
       '**/src-tauri/target/**',
       '**/src-tauri/gen/**',
       '**/.astro/**',
       '**/.wrangler/**',
+      // Agent worktrees are separate checkouts, not this tree's source.
+      '.claude/**',
     ],
   },
   js.configs.recommended,
@@ -98,7 +99,7 @@ export default tseslint.config(
     rules: tsRules,
   },
 
-  // 纯 JS 的 Worker 中继（llm-proxy 免费 provider / speech-proxy）
+  // 纯 JS 的 Worker 中继（llm-proxy 免费 provider）
   {
     files: ['workers/**/*.js'],
     languageOptions: {

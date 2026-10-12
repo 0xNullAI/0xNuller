@@ -17,11 +17,80 @@ import type { CoyoteSummary } from '@0xnullai/device-runtime';
 import type { PlayMode, WaveformDefinition } from '@dg-kit/core';
 import { PLAY_INTERVAL_OPTIONS } from '@control/hooks/use-playback';
 
-const RING_CLASS =
-  'flex h-24 w-24 flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[var(--surface-border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--accent)]';
+const STEP_CLASS =
+  'ui-press flex h-12 w-12 select-none items-center justify-center rounded-full bg-[var(--bg-strong)] text-2xl font-medium text-[var(--text)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-30';
 
-const STRENGTH_BTN_CLASS =
-  'flex h-10 w-10 select-none items-center justify-center rounded-full border-2 border-[var(--surface-border)] bg-[var(--bg-elevated)] text-xl font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] active:scale-[0.92] disabled:cursor-not-allowed disabled:opacity-30';
+/**
+ * One channel: a large live number, its enforced cap and two press-and-hold steppers.
+ * The caller clamps every step against the cap; the number here is the device's own report.
+ */
+export function ChannelStepper({
+  channel,
+  value,
+  limit,
+  firing,
+  playing,
+  playDisabled,
+  playTitle,
+  onAdjust,
+  onTogglePlay,
+}: {
+  channel: 'A' | 'B';
+  value: number;
+  limit: number;
+  firing: boolean;
+  playing: boolean;
+  playDisabled: boolean;
+  playTitle: string;
+  onAdjust: (delta: number) => void;
+  onTogglePlay: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center rounded-[var(--radius-sm)] bg-[var(--bg-strong)]/60 px-2 pb-3 pt-2">
+      <div className="flex w-full items-center justify-between">
+        <span className="pl-1 text-[13px] font-medium text-[var(--text-faint)]">{channel}</span>
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          disabled={playDisabled}
+          className={`ui-press flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-30 ${
+            playing
+              ? 'bg-[var(--danger-button)] text-white'
+              : 'bg-[var(--accent)] text-[var(--button-text)]'
+          }`}
+          title={playTitle}
+        >
+          {playing ? (
+            <Pause size={16} fill="currentColor" />
+          ) : (
+            <Play size={16} fill="currentColor" />
+          )}
+        </button>
+      </div>
+      <output
+        aria-label={`${channel} 通道强度`}
+        className={`text-5xl font-semibold leading-none tabular-nums ${
+          value > 0 ? 'text-[var(--accent-text)]' : 'text-[var(--text)]'
+        }`}
+      >
+        {value}
+      </output>
+      <span className="mt-1 text-xs tabular-nums text-[var(--text-faint)]">上限 {limit}</span>
+      <div className="mt-3 flex items-center gap-4">
+        <RepeatButton onAction={() => onAdjust(-1)} className={STEP_CLASS} disabled={firing}>
+          −
+        </RepeatButton>
+        <RepeatButton onAction={() => onAdjust(+1)} className={STEP_CLASS} disabled={firing}>
+          +
+        </RepeatButton>
+      </div>
+    </div>
+  );
+}
+
+// One horizontal, swipeable line of waveform chips; it bleeds to the card edge on a phone.
+const CHIP_ROW =
+  '-mx-4 flex snap-x gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-5 sm:px-5 [&::-webkit-scrollbar]:hidden';
 
 const MODE_BUTTONS: { mode: PlayMode; label: string; title: string }[] = [
   { mode: 'single', label: '单曲', title: '单曲循环' },
@@ -64,66 +133,32 @@ export function CoyoteControl({
   onAdjustStrength,
   onTogglePlay,
 }: CoyoteControlProps) {
-  const renderChannel = (channel: 'A' | 'B') => {
-    const strength = channel === 'A' ? coyote.strengthA : coyote.strengthB;
-    const limit = channel === 'A' ? coyote.limitA : coyote.limitB;
-    const playing = channel === 'A' ? coyote.waveActiveA : coyote.waveActiveB;
-    const firing = channel === 'A' ? firingA : firingB;
-    const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
-    return (
-      <div className="flex flex-col items-center">
-        <button
-          onClick={() => onTogglePlay(channel)}
-          disabled={!coyote.connected || (!playing && queueLength === 0)}
-          className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-30 ${
-            playing
-              ? 'bg-[var(--danger)] text-white'
-              : 'bg-[var(--accent)] text-[var(--button-text)]'
-          }`}
-          title={
-            playing
-              ? `暂停 ${channel}`
-              : queueLength > 0
-                ? `启动 ${channel}`
-                : `请先选择 ${channel} 通道波形`
-          }
-        >
-          {playing ? (
-            <Pause size={16} fill="currentColor" />
-          ) : (
-            <Play size={16} fill="currentColor" />
-          )}
-        </button>
-        <div className={RING_CLASS}>
-          <span className="text-2xl font-bold tabular-nums text-[var(--text)]">{strength}</span>
-          <span className="text-[10px] text-[var(--text-faint)]">
-            {channel}:{limit}
-          </span>
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <RepeatButton
-            onAction={() => onAdjustStrength(channel, -1)}
-            className={STRENGTH_BTN_CLASS}
-            disabled={firing}
-          >
-            −
-          </RepeatButton>
-          <RepeatButton
-            onAction={() => onAdjustStrength(channel, +1)}
-            className={STRENGTH_BTN_CLASS}
-            disabled={firing}
-          >
-            +
-          </RepeatButton>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="flex items-center justify-center gap-6">
-      {renderChannel('A')}
-      {renderChannel('B')}
+    <div className="grid grid-cols-2 gap-3">
+      {(['A', 'B'] as const).map((channel) => {
+        const playing = channel === 'A' ? coyote.waveActiveA : coyote.waveActiveB;
+        const queueLength = channel === 'A' ? queueLengthA : queueLengthB;
+        return (
+          <ChannelStepper
+            key={channel}
+            channel={channel}
+            value={channel === 'A' ? coyote.strengthA : coyote.strengthB}
+            limit={channel === 'A' ? coyote.limitA : coyote.limitB}
+            firing={channel === 'A' ? firingA : firingB}
+            playing={playing}
+            playDisabled={!coyote.connected || (!playing && queueLength === 0)}
+            playTitle={
+              playing
+                ? `暂停 ${channel}`
+                : queueLength > 0
+                  ? `启动 ${channel}`
+                  : `请先选择 ${channel} 通道波形`
+            }
+            onAdjust={(delta) => onAdjustStrength(channel, delta)}
+            onTogglePlay={() => onTogglePlay(channel)}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -297,26 +332,17 @@ export function WaveformPanel({
             onToggleWaveform(waveform);
           }
         }}
-        className={`group relative flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border-[1.5px] px-1 pt-3 pb-2.5 transition-all ${disabled ? 'cursor-not-allowed' : 'cursor-pointer active:scale-95'} ${
+        className={`ui-press group relative flex h-10 shrink-0 snap-start items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'} ${
           active
-            ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+            ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--button-text)]'
             : queued
-              ? 'border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--accent)] opacity-60'
+              ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]'
               : 'border-[var(--surface-border)] bg-[var(--bg-elevated)] text-[var(--text-soft)] hover:bg-[var(--bg-soft)]'
         }`}
       >
-        <svg viewBox="0 0 40 20" className="h-[18px] w-9">
-          <path
-            d="M2 10 Q8 2 14 10 Q20 18 26 10 Q32 2 38 10"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className="max-w-full truncate text-[11px] leading-tight">{waveform.name}</span>
+        <span className="max-w-32 truncate">{waveform.name}</span>
         {queued && (
-          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[8px] font-bold text-[var(--button-text)]">
+          <span className="text-xs font-semibold tabular-nums opacity-80">
             {queue.indexOf(waveform.id) + 1}
           </span>
         )}
@@ -326,10 +352,10 @@ export function WaveformPanel({
               e.stopPropagation();
               onRemoveWaveform(waveform.id);
             }}
-            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--danger)] text-white opacity-0 transition-opacity group-hover:opacity-100"
+            className="-mr-1.5 hidden h-5 w-5 items-center justify-center rounded-full text-[var(--text-faint)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] group-hover:flex"
             title={waveform.custom ? '删除自定义波形' : '隐藏内置波形'}
           >
-            <Trash2 size={8} />
+            <Trash2 size={11} />
           </button>
         )}
       </div>
@@ -472,13 +498,13 @@ export function WaveformPanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">{builtins.map(renderCard)}</div>
+        <div className={CHIP_ROW}>{builtins.map(renderCard)}</div>
         {customs.length > 0 && (
           <>
             <p className="mt-3 mb-2 text-[11px] text-[var(--text-faint)]">
               自定义波形（{customs.length}）
             </p>
-            <div className="grid grid-cols-4 gap-2">{customs.map(renderCard)}</div>
+            <div className={CHIP_ROW}>{customs.map(renderCard)}</div>
           </>
         )}
       </div>

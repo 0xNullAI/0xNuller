@@ -1,0 +1,7 @@
+{
+  "default": "desktop.png",
+  "bg_color": "#080808",
+  "android_fg": "fg.png",
+  "android_fg_scale": 100,
+  "android_monochrome": "mono.png"
+}

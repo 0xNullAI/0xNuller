@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const generated = join(root, 'android/app/src-tauri/gen/android/app');
@@ -27,9 +27,10 @@ const proguardTemplatePath = join(root, 'android/app/proguard-rules.pro.template
 const proguardPath = join(generated, 'proguard-rules.pro');
 const thirdPartyNoticePath = join(root, 'android/app/THIRD_PARTY_NOTICES.md');
 const btleplugLicensePath = join(root, 'android/app/licenses/btleplug-0.12.0-LICENSE.md');
-const cargoManifestPath = join(root, 'android/app/src-tauri/Cargo.toml');
 const tauriPath = join(root, 'android/app/src-tauri/tauri.conf.json');
-const iconPath = join(root, 'android/app/src-tauri/icons/icon.png');
+// Tauri icon manifest: separate adaptive foreground, background color and
+// Android 13 monochrome layer, so launchers mask the cat instead of a tile.
+const iconPath = join(root, 'brand/icon/manifest.json');
 const tauriCliPath = join(
   root,
   'node_modules/.bin',
@@ -47,19 +48,22 @@ const mainActivityTemplate = readFileSync(mainActivityTemplatePath, 'utf8');
 if (readFileSync(mainActivityPath, 'utf8') !== mainActivityTemplate) {
   writeFileSync(mainActivityPath, mainActivityTemplate);
 }
-
-// btleplug 0.12's Android backend is hybrid Rust/Java. Resolve the source via
-// Cargo metadata so the Java copied into the generated project is exactly the
-// registry package selected by Cargo.lock; generated sources remain untracked.
-const btleplugRoot = lockedCargoPackage('btleplug', '0.12.0');
-const btleplugJavaPath = join(btleplugRoot, 'src/droidplug/java/src/main/java');
-if (!existsSync(btleplugJavaPath)) {
-  throw new Error(`locked btleplug package has no Android Java sources: ${btleplugJavaPath}`);
+// System push (FCM) was removed. A generated project reused from an older checkout must not
+// keep its Firebase service, test, app options or status-bar icon.
+for (const stale of [
+  join(generatedJavaPath, 'ai/nullai/dgagent/PushMessagingService.kt'),
+  join(generated, 'src/test/java/ai/nullai/dgagent/PushMessagingServiceTest.kt'),
+  join(resourcesPath, 'values/0xnuller-push-options.xml'),
+  join(resourcesPath, 'drawable/ic_stat_nuller.xml'),
+]) {
+  rmSync(stale, { force: true });
 }
+
+// Earlier generated projects carried btleplug's Java bridge for the removed
+// generic-device backend. Drop it so a reused checkout cannot ship it.
 for (const packagePath of ['com/nonpolynomial/btleplug', 'io/github/gedgygedgy']) {
   rmSync(join(generatedJavaPath, packagePath), { recursive: true, force: true });
 }
-cpSync(btleplugJavaPath, generatedJavaPath, { recursive: true, force: true });
 cpSync(proguardTemplatePath, proguardPath, { force: true });
 
 function attribute(node, name) {
@@ -68,28 +72,6 @@ function attribute(node, name) {
 
 function git(...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-}
-
-function lockedCargoPackage(name, version) {
-  const metadata = JSON.parse(
-    execFileSync(
-      'cargo',
-      ['metadata', '--locked', '--format-version', '1', '--manifest-path', cargoManifestPath],
-      {
-        cwd: root,
-        encoding: 'utf8',
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ['ignore', 'pipe', 'inherit'],
-      },
-    ),
-  );
-  const cargoPackage = metadata.packages.find(
-    (candidate) => candidate.name === name && candidate.version === version,
-  );
-  if (!cargoPackage || !cargoPackage.source?.startsWith('registry+')) {
-    throw new Error(`Cargo.lock must resolve registry package ${name} ${version}`);
-  }
-  return dirname(cargoPackage.manifest_path);
 }
 
 function kotlinBlocks(source, name) {
@@ -128,6 +110,14 @@ if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
     '$1        android:roundIcon="@mipmap/ic_launcher_round"\n',
   );
 }
+// Strip what earlier preparations added for FCM from a reused generated manifest.
+manifest = manifest
+  .replace(
+    /\n\s*<uses-permission android:name="android\.permission\.POST_NOTIFICATIONS"\s*\/>/g,
+    '',
+  )
+  .replace(/\n\s*<meta-data android:name="firebase_messaging_[a-z_]+"[^>]*\/>/g, '')
+  .replace(/\n\s*<service android:name="\.PushMessagingService"[\s\S]*?<\/service>/g, '');
 writeFileSync(manifestPath, manifest);
 
 // `tauri android init` leaves Android Studio's green robot launchers in the
@@ -140,6 +130,12 @@ try {
     stdio: 'pipe',
   });
   cpSync(join(generatedIcons, 'android'), resourcesPath, { recursive: true, force: true });
+  // Tauri only emits an adaptive `ic_launcher`; without the same XML for the
+  // round icon, round-icon launchers fall back to the flat legacy bitmap.
+  cpSync(
+    join(resourcesPath, 'mipmap-anydpi-v26/ic_launcher.xml'),
+    join(resourcesPath, 'mipmap-anydpi-v26/ic_launcher_round.xml'),
+  );
 } finally {
   rmSync(generatedIcons, { recursive: true, force: true });
 }
@@ -147,6 +143,48 @@ try {
 let gradle = readFileSync(gradlePath, 'utf8');
 if (!/\bminSdk\s*=\s*\d+/.test(gradle)) throw new Error('generated Gradle file has no minSdk');
 gradle = gradle.replace(/\bminSdk\s*=\s*\d+/, 'minSdk = 26');
+// targetSdk changes runtime permission, background and edge-to-edge behaviour, so it is
+// set here rather than taken from whatever Tauri's template ships; a bump is a reviewed change.
+const ANDROID_TARGET_SDK = 37;
+const ANDROID_BUILD_TOOLS = '37.0.0';
+for (const key of ['compileSdk', 'targetSdk']) {
+  const pattern = new RegExp(`\\b${key}\\s*=\\s*\\d+`);
+  if (!pattern.test(gradle)) throw new Error(`generated Gradle file has no ${key}`);
+  gradle = gradle.replace(pattern, `${key} = ${ANDROID_TARGET_SDK}`);
+}
+// Tauri's and the plugins' library modules pin their own (older) compileSdk and default
+// build-tools; compile every Android module against the same SDK so one installed platform
+// and build-tools suffice. A higher compileSdk does not change any module's runtime behaviour.
+const rootGradlePath = join(generated, '..', 'build.gradle.kts');
+const sdkOverrideMarker = '// 0XNULLER_SDK_OVERRIDE';
+const rootGradle = readFileSync(rootGradlePath, 'utf8');
+if (!rootGradle.includes(sdkOverrideMarker))
+  writeFileSync(
+    rootGradlePath,
+    `${rootGradle}
+${sdkOverrideMarker}
+subprojects {
+    afterEvaluate {
+        extensions.findByType(com.android.build.gradle.LibraryExtension::class.java)?.apply {
+            compileSdk = ${ANDROID_TARGET_SDK}
+            buildToolsVersion = "${ANDROID_BUILD_TOOLS}"
+        }
+    }
+}
+`,
+  );
+// Matching build-tools, so the Android Gradle plugin does not fall back to its own default.
+gradle = /\bbuildToolsVersion\s*=/.test(gradle)
+  ? gradle.replace(
+      /\bbuildToolsVersion\s*=\s*"[^"]*"/,
+      `buildToolsVersion = "${ANDROID_BUILD_TOOLS}"`,
+    )
+  : gradle.replace(
+      /(\bcompileSdk\s*=\s*\d+)/,
+      `$1\n    buildToolsVersion = "${ANDROID_BUILD_TOOLS}"`,
+    );
+// Earlier preparations appended Firebase dependencies under this marker; drop them.
+gradle = gradle.replace(/\n*\/\/ 0XNULLER_FCM_FID\ndependencies \{[^}]*\}\n?/, '\n');
 
 const signingTemplate = readFileSync(signingTemplatePath, 'utf8').trimEnd();
 const signingMarker = '// 0XNULLER_RELEASE_SIGNING';
@@ -218,16 +256,25 @@ for (const required of [
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
   'android.hardware.bluetooth_le',
+  'android.permission.CAMERA',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.MODIFY_AUDIO_SETTINGS',
 ]) {
   if (!manifest.includes(required)) throw new Error(`Android manifest is missing ${required}`);
 }
-if (!gradle.includes('minSdk = 26') || !gradle.includes(signingMarker)) {
+if (
+  !gradle.includes('minSdk = 26') ||
+  !gradle.includes(signingMarker) ||
+  /firebase|play-services/.test(gradle)
+) {
   throw new Error('generated Android Gradle configuration is incomplete');
 }
 for (const required of [
   'mipmap-anydpi-v26/ic_launcher.xml',
+  'mipmap-anydpi-v26/ic_launcher_round.xml',
   'mipmap-mdpi/ic_launcher.png',
   'mipmap-xxxhdpi/ic_launcher_foreground.png',
+  'mipmap-xxxhdpi/ic_launcher_monochrome.png',
 ]) {
   if (!existsSync(join(resourcesPath, required))) {
     throw new Error(`Android project is missing generated 0xNuller launcher icon: ${required}`);
@@ -243,35 +290,26 @@ for (const required of [
   'WindowInsetsCompat.Type.ime()',
   'maxOf(insets.bottom, imeInsets.bottom)',
   'webView.addJavascriptInterface(AndroidSystemBridge()',
-  'initializeButtplugGate0()',
+  'requestNativeLifecycleSafety()',
 ]) {
   if (!mainActivity.includes(required)) {
     throw new Error(`Android MainActivity is missing native inset handling: ${required}`);
   }
+}
+for (const forbidden of ['POST_NOTIFICATIONS', 'firebase', 'PushMessagingService']) {
+  if (manifest.includes(forbidden))
+    throw new Error(`Android manifest still contains removed push setup: ${forbidden}`);
 }
 for (const required of ['THIRD_PARTY_NOTICES.md', 'btleplug-0.12.0-LICENSE.md']) {
   if (!existsSync(join(generatedAssetsPath, required))) {
     throw new Error(`Android project is missing packaged third-party notice: ${required}`);
   }
 }
-for (const required of [
-  'com/nonpolynomial/btleplug/android/impl/Adapter.java',
-  'io/github/gedgygedgy/rust/future/Future.java',
-]) {
-  if (!existsSync(join(generatedJavaPath, required))) {
-    throw new Error(`Android project is missing locked btleplug Java source: ${required}`);
-  }
-}
 const proguard = readFileSync(proguardPath, 'utf8');
-for (const required of [
-  '-keep class com.nonpolynomial.**',
-  '-keep class io.github.gedgygedgy.**',
-]) {
-  if (!proguard.includes(required)) {
-    throw new Error(`Android project is missing btleplug Proguard rule: ${required}`);
-  }
+if (!proguard.includes('native boolean requestNativeLifecycleSafety()')) {
+  throw new Error('Android project is missing the MainActivity JNI Proguard rule');
 }
 
 console.log(
-  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, locked btleplug 0.12 Java, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
 );

@@ -35,7 +35,8 @@
  * ids, not a plain hash of them. Account ids are discoverable — looking someone up
  * by username returns theirs — so a plain hash would let anyone who knows both ids
  * compute the conversation's R2 media prefix, which is served unauthenticated the
- * way every room's is. Keying it closes that.
+ * way every room's used to be. Media reads now also require the live conversation socket's
+ * short-lived capability; keying the room id still keeps its address from being enumerable.
  *
  * **Can keep a ticket it legitimately obtained until it expires**, including
  * through a block landing inside that window. That is exactly why blocking pushes
@@ -80,10 +81,21 @@ export const DM_DIGEST_MAX_ROOMS = 50;
  * cannot be presented for another — reading the unread counts of every conversation
  * you have is not the same permission as joining one of them.
  */
-export type DmTicketAudience = 'dm' | 'digest' | 'revoke' | 'voice' | 'chat';
+export type DmTicketAudience =
+  'dm' | 'digest' | 'revoke' | 'voice' | 'chat' | 'group-read' | 'chat-account-delete' | 'group-ai';
 
 export interface DmTicketClaims {
   aud: DmTicketAudience;
+  /** Active durable group membership version, only for group-read. */
+  membershipVersion?: number;
+  /** Stable deletion attempt identifier, only for chat-account-delete. */
+  deletionId?: string;
+  /** Server-owned group AI completion identity; never minted for a browser. */
+  triggerId?: string;
+  roleId?: string;
+  grantId?: string;
+  modelId?: string;
+  bodyHash?: string;
   /** Account id the ticket was minted for. On a 'revoke' this is the account that caused it. */
   sub: string;
   /** Conversation this admits to. Present for 'dm' and 'revoke'. */

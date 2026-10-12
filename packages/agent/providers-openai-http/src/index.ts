@@ -1,3 +1,4 @@
+import { MANAGED_SERVICE_URL } from '@0xnullai/llm-providers';
 import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import type { ToolCall } from '@dg-agent/core';
 import type { ProviderEndpoint } from '@0xnullai/llm-providers';
@@ -14,6 +15,17 @@ import {
   normalizeOptionalContent,
 } from './serialization.js';
 
+/** The managed service, wherever this build points it (a dev server may use a local proxy). */
+function isManagedServiceUrl(baseUrl: string): boolean {
+  try {
+    return (
+      baseUrl.startsWith(MANAGED_SERVICE_URL) || new URL(baseUrl).hostname === 'llm.0xnullai.com'
+    );
+  } catch {
+    return false;
+  }
+}
+
 const configSchema = z.object({
   apiKey: z.string().min(1),
   baseUrl: z.string().url().default('https://api.openai.com/v1'),
@@ -21,6 +33,7 @@ const configSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.3),
   endpoint: z.enum(['responses', 'chat/completions']).default('chat/completions'),
   useStrict: z.boolean().default(false),
+  attachPrivateConversation: z.boolean().default(false),
   extraHeaders: z
     .custom<() => Record<string, string> | Promise<Record<string, string>>>()
     .optional(),
@@ -64,7 +77,7 @@ const responsesSchema = z.object({
 
 function accountProxyCredentials(baseUrl: string): RequestCredentials {
   try {
-    return new URL(baseUrl).hostname === 'llm.0xnullai.com' ? 'include' : 'omit';
+    return isManagedServiceUrl(baseUrl) ? 'include' : 'omit';
   } catch {
     return 'omit';
   }
@@ -77,6 +90,8 @@ export interface OpenAiHttpLlmClientConfig {
   temperature?: number;
   endpoint?: ProviderEndpoint;
   useStrict?: boolean;
+  /** Only explicitly private account chat composition may enable billing association. */
+  attachPrivateConversation?: boolean;
   /**
    * Per-request headers merged on top of Content-Type / Authorization.
    * Called once per outbound request. The managed service uses it to attach
@@ -88,6 +103,17 @@ export interface OpenAiHttpLlmClientConfig {
   /** Applied at request time so a changed global proxy takes effect immediately. */
   transformUrl?: (url: string) => string;
 }
+
+function isOpenAiHost(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname === 'api.openai.com';
+  } catch {
+    return false;
+  }
+}
+
+/** `${baseUrl}|${model}` pairs whose endpoint refused `temperature` this page. */
+const TEMPERATURE_REJECTED = new Set<string>();
 
 export class OpenAiHttpLlmClient implements LlmClient {
   private readonly config: z.infer<typeof configSchema>;
@@ -120,17 +146,66 @@ export class OpenAiHttpLlmClient implements LlmClient {
   private async requestHeaders(
     baseUrl: string,
     usageKind: 'agent' | 'video' = 'agent',
+    conversationId?: string,
+    runId?: string,
   ): Promise<Record<string, string>> {
     const headers = await this.buildHeaders();
     try {
-      if (new URL(baseUrl).hostname === 'llm.0xnullai.com') {
+      if (isManagedServiceUrl(baseUrl)) {
         headers['Idempotency-Key'] = crypto.randomUUID();
         headers['X-0xNullAI-Usage-Kind'] = usageKind;
+        if (this.config.attachPrivateConversation && conversationId) {
+          headers['X-0xNullAI-Conversation-Id'] = conversationId;
+          headers['X-0xNullAI-Run-Id'] = runId ?? headers['Idempotency-Key']!;
+        }
       }
     } catch {
       // URL validation reports the configuration error before this request path.
     }
     return headers;
+  }
+
+  /**
+   * POST one turn. Newer models behind OpenAI-compatible gateways (for example
+   * current Claude models) reject `temperature` outright and no catalog says so
+   * for a custom endpoint. A 400 that names temperature is retried once without
+   * it, and the model is remembered for the rest of the page. The managed
+   * service is never retried: each request there carries its own billing key.
+   */
+  private async postTurn(
+    baseUrl: string,
+    path: '/chat/completions' | '/responses',
+    requestBody: { temperature?: number },
+    headers: () => Promise<Record<string, string>>,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> {
+    const modelKey = `${baseUrl}|${this.config.model}`;
+    const body = TEMPERATURE_REJECTED.has(modelKey)
+      ? { ...requestBody, temperature: undefined }
+      : requestBody;
+    const send = async (payload: object) =>
+      fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        credentials: accountProxyCredentials(baseUrl),
+        signal,
+        headers: await headers(),
+        body: JSON.stringify(payload),
+      });
+    const response = await send(body);
+    if (response.ok) return response;
+    const detail = await response.text();
+    if (
+      response.status === 400 &&
+      body.temperature !== undefined &&
+      this.config.apiKey !== 'managed' &&
+      /temperature/i.test(detail)
+    ) {
+      TEMPERATURE_REJECTED.add(modelKey);
+      const retried = await send({ ...body, temperature: undefined });
+      if (retried.ok) return retried;
+      throw new Error(`模型服务 HTTP 错误 ${retried.status}: ${await retried.text()}`);
+    }
+    throw new Error(`模型服务 HTTP 错误 ${response.status}: ${detail}`);
   }
 
   async runTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
@@ -143,7 +218,13 @@ export class OpenAiHttpLlmClient implements LlmClient {
   }
 
   private async runChatCompletionsTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
-    const streaming = typeof input.onTextDelta === 'function';
+    // The managed visual binding has a bounded, usage-bearing non-stream result.
+    // Runtime may offer onTextDelta, but sending stream=true would violate the
+    // visual quote protocol before any reservation or model call.
+    const managedVision =
+      this.config.apiKey === 'managed' &&
+      (this.config.model === 'vision' || this.config.model === 'chat-vision');
+    const streaming = !managedVision && typeof input.onTextDelta === 'function';
     const requestBody = {
       model: this.config.model,
       temperature: this.config.temperature,
@@ -160,22 +241,28 @@ export class OpenAiHttpLlmClient implements LlmClient {
           : undefined,
       tool_choice: input.tools.length > 0 ? 'auto' : undefined,
       parallel_tool_calls: input.tools.length > 0 ? true : undefined,
-      max_tokens: input.maxOutputTokens,
+      // api.openai.com deprecates max_tokens (rejected by reasoning models); compatible
+      // gateways (DeepSeek, Qwen, Ark…) still read only max_tokens.
+      ...(isOpenAiHost(this.config.baseUrl)
+        ? { max_completion_tokens: input.maxOutputTokens }
+        : { max_tokens: input.maxOutputTokens }),
       stream: streaming || undefined,
     };
     input.onRawRequest?.(requestBody);
     const baseUrl = this.requestBaseUrl();
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      credentials: accountProxyCredentials(baseUrl),
-      signal: input.abortSignal,
-      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`模型服务 HTTP 错误 ${response.status}: ${await response.text()}`);
-    }
+    const response = await this.postTurn(
+      baseUrl,
+      '/chat/completions',
+      requestBody,
+      () =>
+        this.requestHeaders(
+          baseUrl,
+          this.config.model === 'vision' ? 'video' : 'agent',
+          input.session.id,
+          input.runId,
+        ),
+      input.abortSignal,
+    );
 
     if (streaming && input.onTextDelta) {
       const result = await parseChatCompletionsStream(response, input.onTextDelta);
@@ -201,7 +288,10 @@ export class OpenAiHttpLlmClient implements LlmClient {
     return {
       assistantMessage: normalizeContent(message.content),
       reasoningContent: normalizeOptionalContent(message.reasoning_content),
-      toolCalls: (message.tool_calls ?? []).map(toToolCall),
+      toolCalls: (message.tool_calls ?? []).map((toolCall) => {
+        const mapped = toToolCall(toolCall);
+        return mapped.id ? mapped : { ...mapped, id: createToolCallId() };
+      }),
       rawResponse: rawJson,
     };
   }
@@ -228,17 +318,19 @@ export class OpenAiHttpLlmClient implements LlmClient {
     };
     input.onRawRequest?.(requestBody);
     const baseUrl = this.requestBaseUrl();
-    const response = await fetch(`${baseUrl}/responses`, {
-      method: 'POST',
-      credentials: accountProxyCredentials(baseUrl),
-      signal: input.abortSignal,
-      headers: await this.requestHeaders(baseUrl, input.image ? 'video' : 'agent'),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`模型服务 HTTP 错误 ${response.status}: ${await response.text()}`);
-    }
+    const response = await this.postTurn(
+      baseUrl,
+      '/responses',
+      requestBody,
+      () =>
+        this.requestHeaders(
+          baseUrl,
+          input.image ? 'video' : 'agent',
+          input.session.id,
+          input.runId,
+        ),
+      input.abortSignal,
+    );
 
     if (streaming && input.onTextDelta) {
       const result = await parseResponsesStream(response, input.onTextDelta);
@@ -259,7 +351,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
     for (const item of parsed.output) {
       if (item?.type === 'function_call') {
         toolCalls.push({
-          id: String(item.call_id ?? item.id ?? ''),
+          id: String(item.call_id ?? item.id ?? '') || createToolCallId(),
           name: String(item.name ?? ''),
           args: parseArguments(String(item.arguments ?? '{}')),
         });
@@ -344,7 +436,9 @@ async function parseResponsesStream(
   return {
     assistantMessage: streamedText,
     toolCalls: Object.values(fnCallSlots).map((toolCall) => ({
-      id: toolCall.id,
+      // Some OpenAI-compatible servers stream tool calls without an ID. Outputs must still
+      // pair with their call, and the runtime refuses ID-less non-stop calls.
+      id: toolCall.id || createToolCallId(),
       name: toolCall.name,
       args: parseArguments(toolCall.arguments),
     })),
@@ -430,7 +524,9 @@ async function parseChatCompletionsStream(
     assistantMessage: streamedText,
     reasoningContent: streamedReasoning || undefined,
     toolCalls: Object.values(fnCallSlots).map((toolCall) => ({
-      id: toolCall.id,
+      // Some OpenAI-compatible servers stream tool calls without an ID. Outputs must still
+      // pair with their call, and the runtime refuses ID-less non-stop calls.
+      id: toolCall.id || createToolCallId(),
       name: toolCall.name,
       args: parseArguments(toolCall.arguments),
     })),
@@ -668,4 +764,8 @@ async function probeChatCompletion({
   } catch (error) {
     throw new ConnectionTestError('对话接口响应不是有效的 JSON', error);
   }
+}
+
+function createToolCallId(): string {
+  return `call_${crypto.randomUUID().replaceAll('-', '')}`;
 }

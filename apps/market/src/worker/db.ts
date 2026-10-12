@@ -1,4 +1,11 @@
-import type { ItemType, MarketAdminItem, MarketItem } from '../shared/schema';
+import type {
+  CharacterRevisionSnapshot,
+  CharacterRevisionSummary,
+  ItemType,
+  PromptKind,
+  MarketAdminItem,
+  MarketItem,
+} from '../shared/schema';
 
 // D1 row -> MarketItem. content/tags are deserialized.
 interface ItemRow {
@@ -14,13 +21,16 @@ interface ItemRow {
   views: number;
   hidden: number;
   created_at: number;
+  revision?: number;
 }
 
 // `reports` remains only as a legacy D1 column. Runtime queries deliberately do not read it.
 const ITEM_COLUMNS =
-  'id, type, name, description, author, icon, tags, content, downloads, views, hidden, created_at';
+  'id, type, name, description, author, icon, tags, content, downloads, views, hidden, created_at, revision';
 
-export function rowToItem(row: ItemRow): MarketItem {
+export function rowToItem(row: ItemRow, includeSourceArchive = false): MarketItem {
+  const content = JSON.parse(row.content);
+  if (!includeSourceArchive && content && typeof content === 'object') delete content.sourceArchive;
   return {
     id: row.id,
     type: row.type as ItemType,
@@ -29,10 +39,11 @@ export function rowToItem(row: ItemRow): MarketItem {
     author: row.author ?? undefined,
     icon: row.icon ?? undefined,
     tags: row.tags ? row.tags.split(',').filter(Boolean) : [],
-    content: JSON.parse(row.content),
+    content,
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
+    revision: row.revision ?? 1,
   };
 }
 
@@ -44,21 +55,40 @@ function rowToAdminItem(row: ItemRow): MarketAdminItem {
 }
 
 export interface ListParams {
+  character?: boolean;
   type?: ItemType;
+  promptKind?: PromptKind;
   modality?: 'electrostimulation' | 'vibration';
   q?: string;
   sort: 'new' | 'hot' | 'views' | 'downloads';
   limit: number;
   offset: number;
+  /** Cursor browsing pins the insertion boundary and advances by the immutable publish tuple. */
+  maxPublishSeq?: number;
+  after?: { createdAt: number; id: string };
+}
+
+export async function latestItemPublishSeq(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare('SELECT COALESCE(MAX(seq), 0) AS last_seq FROM item_publish_order')
+    .first<{ last_seq: number }>();
+  return row?.last_seq ?? 0;
 }
 
 export async function listItems(db: D1Database, params: ListParams): Promise<MarketItem[]> {
-  const where: string[] = ['hidden = 0'];
+  const where: string[] = ['hidden = 0', "type IN ('scenario','waveform')"];
   const binds: unknown[] = [];
 
   if (params.type) {
     where.push('type = ?');
     binds.push(params.type);
+  }
+  const selectedKind = params.promptKind ?? (params.character ? 'character' : undefined);
+  if (selectedKind) {
+    const character =
+      "(CASE WHEN json_valid(content) THEN COALESCE(json_extract(content, '$.kind') = 'character' OR (json_extract(content, '$.kind') IS NULL AND json_extract(content, '$.characterCard.schemaVersion') = 1), 0) ELSE 0 END)";
+    where.push("type = 'scenario'");
+    where.push(selectedKind === 'character' ? character : `NOT ${character}`);
   }
   if (params.modality) {
     where.push(
@@ -71,12 +101,20 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
     const like = `%${params.q}%`;
     binds.push(like, like, like);
   }
+  if (params.maxPublishSeq !== undefined) {
+    where.push('id IN (SELECT item_id FROM item_publish_order WHERE seq <= ?)');
+    binds.push(params.maxPublishSeq);
+  }
+  if (params.after) {
+    where.push('(created_at < ? OR (created_at = ? AND id < ?))');
+    binds.push(params.after.createdAt, params.after.createdAt, params.after.id);
+  }
 
   const order = {
-    new: 'created_at DESC',
-    hot: '(views + downloads * 4) DESC, created_at DESC',
-    views: 'views DESC, created_at DESC',
-    downloads: 'downloads DESC, created_at DESC',
+    new: 'created_at DESC, id DESC',
+    hot: '(views + downloads * 4) DESC, created_at DESC, id DESC',
+    views: 'views DESC, created_at DESC, id DESC',
+    downloads: 'downloads DESC, created_at DESC, id DESC',
   }[params.sort];
   const sql = `SELECT ${ITEM_COLUMNS} FROM items WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`;
   binds.push(params.limit, params.offset);
@@ -85,7 +123,22 @@ export async function listItems(db: D1Database, params: ListParams): Promise<Mar
     .prepare(sql)
     .bind(...binds)
     .all<ItemRow>();
-  return (results ?? []).map(rowToItem);
+  return (results ?? []).map((row) => rowToItem(row));
+}
+
+/** Public works are resolved from verified Auth claims, then rechecked against Market visibility. */
+export async function visibleItemsByIds(db: D1Database, ids: string[]): Promise<MarketItem[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  if (unique.length > 200 || unique.some((id) => !/^[\w-]{1,128}$/.test(id))) return [];
+  const rows = await db
+    .prepare(
+      `SELECT ${ITEM_COLUMNS} FROM items WHERE hidden=0 AND type IN ('scenario','waveform')
+     AND id IN (${unique.map(() => '?').join(',')}) ORDER BY created_at DESC,id DESC`,
+    )
+    .bind(...unique)
+    .all<ItemRow>();
+  return (rows.results ?? []).map((row) => rowToItem(row));
 }
 
 export type AdminItemType = 'waveform' | 'scenario';
@@ -109,9 +162,8 @@ export async function listAdminItems(
     where.push('type = ?');
     binds.push('waveform');
   } else {
-    // The admin's scenario category intentionally groups solo and multiplayer scenes.
-    where.push('type IN (?, ?)');
-    binds.push('scenario', 'multi-scene');
+    where.push('type = ?');
+    binds.push('scenario');
   }
   if (params.status === 'visible') where.push('hidden = 0');
   if (params.status === 'hidden') where.push('hidden = 1');
@@ -133,10 +185,61 @@ export async function listAdminItems(
 
 export async function getItem(db: D1Database, id: string): Promise<MarketItem | null> {
   const row = await db
-    .prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND hidden = 0`)
+    .prepare(
+      `SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND hidden = 0 AND type IN ('scenario','waveform')`,
+    )
     .bind(id)
     .first<ItemRow>();
-  return row ? rowToItem(row) : null;
+  return row ? rowToItem(row, true) : null;
+}
+
+export async function listArchivedCharacterVersions(
+  db: D1Database,
+  id: string,
+): Promise<CharacterRevisionSummary[]> {
+  const rows = await db
+    .prepare(
+      'SELECT revision, name, archived_at FROM character_item_versions WHERE item_id = ? ORDER BY revision DESC LIMIT 200',
+    )
+    .bind(id)
+    .all<{ revision: number; name: string; archived_at: number }>();
+  return (rows.results ?? []).map((row) => ({
+    revision: row.revision,
+    name: row.name,
+    archivedAt: row.archived_at,
+    current: false,
+  }));
+}
+
+export async function getArchivedCharacterVersion(
+  db: D1Database,
+  id: string,
+  revision: number,
+): Promise<CharacterRevisionSnapshot | null> {
+  const row = await db
+    .prepare(
+      'SELECT revision, name, description, icon, tags, content, archived_at FROM character_item_versions WHERE item_id = ? AND revision = ?',
+    )
+    .bind(id, revision)
+    .first<{
+      revision: number;
+      name: string;
+      description: string | null;
+      icon: string | null;
+      tags: string | null;
+      content: string;
+      archived_at: number;
+    }>();
+  if (!row) return null;
+  return {
+    revision: row.revision,
+    name: row.name,
+    description: row.description ?? undefined,
+    icon: row.icon ?? undefined,
+    tags: row.tags ? row.tags.split(',').filter(Boolean) : [],
+    content: JSON.parse(row.content),
+    archivedAt: row.archived_at,
+  };
 }
 
 export interface InsertItem {
@@ -221,6 +324,7 @@ export async function updateItemMeta(
   db: D1Database,
   id: string,
   patch: ItemPatchRow,
+  expectedRevision: number,
 ): Promise<boolean> {
   const cols: (keyof ItemPatchRow)[] = ['name', 'description', 'author', 'icon', 'tags', 'content'];
   const sets: string[] = [];
@@ -232,8 +336,11 @@ export async function updateItemMeta(
   }
   if (sets.length === 0) return false;
   binds.push(id);
+  binds.push(expectedRevision);
   const res = await db
-    .prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`)
+    .prepare(
+      `UPDATE items SET ${sets.join(', ')}, revision = revision + 1 WHERE id = ? AND revision = ?`,
+    )
     .bind(...binds)
     .run();
   return (res.meta.changes ?? 0) > 0;

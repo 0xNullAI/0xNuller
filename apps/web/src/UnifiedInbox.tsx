@@ -1,0 +1,793 @@
+import { useCallback, useEffect, useState, useRef } from 'react';
+import {
+  Bot,
+  CheckCheck,
+  Compass,
+  MessageCircle,
+  Search,
+  SquarePen,
+  UserRound,
+  Users,
+} from 'lucide-react';
+import { ModuleActions } from '@0xnullai/ui';
+import {
+  currentAuthUserId,
+  markPrivateConversationRead,
+  subscribeAuthChanges,
+  listPrivateConversationSummaries,
+  selectAgentInboxConversation,
+} from '@0xnullai/auth';
+import {
+  loadChatInboxDisplayWithStatus,
+  selectChatInboxConversation,
+  type ChatInboxEntry,
+} from '../../chat/src/inbox';
+import type { AuthUser } from '@0xnullai/auth';
+import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
+import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
+import { openCharacterChat } from './open-character-chat';
+interface InboxRow {
+  id: string;
+  routeId: string;
+  kind: 'ai' | 'dm' | 'group';
+  title: string;
+  preview: string;
+  updatedAt: number;
+  timeBasis?: string;
+  unread: number | null;
+  avatarPhotoId?: string | null;
+  activate: () => void;
+  markRead?: () => Promise<void>;
+}
+
+/** Chat-list time: clock time today, 昨天, month and day this year, full date before. */
+export function formatInboxTime(timestamp: number, now = Date.now()): string {
+  const date = new Date(timestamp);
+  const today = new Date(now);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  if (timestamp >= startOfToday)
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (timestamp >= startOfToday - 86_400_000) return '昨天';
+  if (date.getFullYear() === today.getFullYear())
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function characterName(id: string | undefined): string | null {
+  if (!id) return null;
+  return loadScenes().scenes.find((scene) => scene.id === id)?.name ?? null;
+}
+
+/** The URL identifies the open conversation; the inbox never guesses from a cached selection. */
+export function currentInboxRowId(pathname: string, search: string): string | null {
+  const params = new URLSearchParams(search);
+  const route =
+    pathname === '/agent'
+      ? { kind: 'ai', id: params.get('conversation') }
+      : pathname === '/chat' && params.get('dm')
+        ? { kind: 'dm', id: params.get('dm') }
+        : pathname === '/chat'
+          ? { kind: 'group', id: params.get('room') }
+          : null;
+  return route?.id ? `${route.kind}:${route.id}` : null;
+}
+function privateInboxRow(
+  item: Awaited<ReturnType<typeof listPrivateConversationSummaries>>['items'][number],
+  accountId: string,
+  onNavigate: (moduleId: string | null) => void,
+): InboxRow {
+  const id = item.id;
+  return {
+    id: `ai:${id}`,
+    routeId: `ai:${id}`,
+    kind: 'ai',
+    // A conversation without its own title is named after its character, like a contact.
+    title:
+      item.metadata.sessionTitle || characterName(item.metadata.promptPresetId) || '未命名聊天',
+    // Server-delivered companion messages carry a kind line; the row already says "AI".
+    preview: item.preview?.replace(/^(AI主动消息|定时消息)\s*/, '') || '开始聊天',
+    updatedAt: item.lastMessageAt ?? 0,
+    timeBasis: '最近消息接收时间',
+    unread: item.unread ?? null,
+    avatarPhotoId: item.avatarPhotoId ?? null,
+    ...(typeof item.lastSequence === 'number' && item.lastSequence > 0 && item.unread !== 0
+      ? {
+          markRead: async () => {
+            if (currentAuthUserId() !== accountId) return;
+            await markPrivateConversationRead(id, item.lastSequence);
+          },
+        }
+      : {}),
+    activate: () => {
+      if (currentAuthUserId() !== accountId) return;
+      selectAgentInboxConversation(id);
+      onNavigate(`agent?conversation=${encodeURIComponent(id)}`);
+    },
+  };
+}
+/** The character's private portrait when one loads; otherwise the title's first letter. */
+function InboxAvatar({
+  title,
+  photoId,
+  size,
+}: {
+  title: string;
+  photoId: string | null;
+  size: string;
+}) {
+  const source = useCharacterPhoto(photoId);
+  const [failed, setFailed] = useState<string | null>(null);
+  const box = `flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent-soft)] text-base font-medium text-[var(--accent-text)] ${size}`;
+  if (source && failed !== source)
+    return (
+      <span aria-hidden className={box}>
+        <img
+          src={source}
+          alt=""
+          onError={() => setFailed(source)}
+          className="h-full w-full object-cover"
+        />
+      </span>
+    );
+  return (
+    <span aria-hidden className={box}>
+      {title.trim().slice(0, 1) || '·'}
+    </span>
+  );
+}
+/** One visible inbox. AI and human transports stay behind their respective owners. */
+export function UnifiedInbox({
+  user,
+  onNavigate,
+  onOpenAccount,
+  onCreateRoom,
+  presentation = 'sidebar',
+}: {
+  user: AuthUser | null;
+  onNavigate: (moduleId: string | null) => void;
+  onOpenAccount: () => void;
+  onCreateRoom: () => void;
+  presentation?: 'sidebar' | 'page';
+}) {
+  const accountId = user?.id ?? null;
+  // Chat (private and group) requires a verified email; asking anyway only
+  // turns that rule into a misleading "list unavailable, retry" error.
+  const humanChatLocked = user?.emailVerified === false;
+  const [result, setResult] = useState<{
+    accountId: string;
+    rows: InboxRow[];
+    error: string;
+    aiNextCursor: string | null;
+    groupNextCursor: string | null;
+    groupPageFailed: boolean;
+    /** Rows that arrived on a refresh after the first load; only these animate in. */
+    fresh: ReadonlySet<string>;
+  } | null>(null);
+  const authEpoch = useRef(0);
+  const loadedAiPages = useRef<{ accountId: string | null; count: number }>({
+    accountId: null,
+    count: 1,
+  });
+  const [revision, setRevision] = useState(0);
+  const [query, setQuery] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingMoreGroups, setLoadingMoreGroups] = useState(false);
+  const [groupPages, setGroupPages] = useState(1);
+  const refresh = useCallback(() => setRevision((v) => v + 1), []);
+  useEffect(() => {
+    if (!accountId) return;
+    if (loadedAiPages.current.accountId !== accountId)
+      loadedAiPages.current = { accountId, count: 1 };
+    let active = true;
+    const epoch = authEpoch.current;
+    const pageCount = loadedAiPages.current.count;
+    Promise.allSettled([
+      (async () => {
+        const items: Awaited<ReturnType<typeof listPrivateConversationSummaries>>['items'] = [];
+        const seen = new Set<string>();
+        let cursor: string | undefined;
+        for (let page = 0; page < pageCount; page++) {
+          if (!active || epoch !== authEpoch.current || currentAuthUserId() !== accountId)
+            return { items: [], nextCursor: null };
+          const result = await listPrivateConversationSummaries({
+            limit: 100,
+            ...(cursor ? { cursor } : {}),
+          });
+          for (const item of result.items) {
+            if (seen.has(item.id)) continue;
+            seen.add(item.id);
+            items.push(item);
+          }
+          if (!result.nextCursor) return { items, nextCursor: null };
+          cursor = result.nextCursor;
+        }
+        return { items, nextCursor: cursor ?? null };
+      })(),
+      humanChatLocked
+        ? Promise.resolve({
+            entries: [],
+            partialError: null,
+            nextGroupCursor: null,
+            groupPageFailed: false,
+            dmLoadFailed: false,
+          })
+        : loadChatInboxDisplayWithStatus(groupPages),
+    ])
+      .then(([ai, human]) => {
+        if (!active || epoch !== authEpoch.current || currentAuthUserId() !== accountId) return;
+        const results: InboxRow[] = [];
+        if (ai.status === 'fulfilled')
+          for (const item of ai.value.items) {
+            // A conversation with no messages yet is not listed, as in other messaging apps;
+            // it appears once something is said in it.
+            if (item.deleted || item.lastSequence === 0) continue;
+            results.push(privateInboxRow(item, accountId, onNavigate));
+          }
+        if (human.status === 'fulfilled')
+          for (const item of human.value.entries as ChatInboxEntry[]) {
+            results.push({
+              id: item.id,
+              // A DM row is keyed by its private room, while its URL names the
+              // peer account. They must not be compared as though they match.
+              routeId:
+                item.selection.kind === 'dm'
+                  ? `dm:${item.selection.peer.accountId ?? ''}`
+                  : `group:${item.selection.code}`,
+              kind: item.kind,
+              title: item.title,
+              preview: item.preview ?? (item.kind === 'dm' ? '私人聊天' : '群聊'),
+              updatedAt: item.updatedAt,
+              unread: item.unread,
+              markRead: item.markRead,
+              activate: () => {
+                if (currentAuthUserId() !== accountId) return;
+                selectChatInboxConversation(item.selection);
+                onNavigate(
+                  item.selection.kind === 'group'
+                    ? `chat?room=${encodeURIComponent(item.selection.code)}`
+                    : `chat?dm=${encodeURIComponent(item.selection.peer.accountId)}`,
+                );
+              },
+            });
+          }
+        results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+        const missing: string[] = [];
+        if (ai.status === 'rejected') missing.push('AI 聊天');
+        if (human.status === 'rejected') missing.push('真人聊天');
+        else {
+          if (human.value.partialError) missing.push(human.value.partialError);
+          if (human.value.entries.some((item) => item.summaryStatus === 'failed'))
+            missing.push('部分群聊摘要');
+        }
+        const groupPageFailed = human.status === 'rejected' || Boolean(human.value.groupPageFailed);
+        const dmLoadFailed = human.status === 'rejected' || Boolean(human.value.dmLoadFailed);
+        const aiLoadFailed = ai.status === 'rejected';
+        setResult((previous) => {
+          if (
+            previous?.accountId === accountId &&
+            (groupPageFailed || dmLoadFailed || aiLoadFailed)
+          ) {
+            const seen = new Set(results.map((row) => row.id));
+            for (const row of previous.rows) {
+              const failed =
+                row.kind === 'group'
+                  ? groupPageFailed
+                  : row.kind === 'dm'
+                    ? dmLoadFailed
+                    : aiLoadFailed;
+              if (!failed || seen.has(row.id)) continue;
+              results.push({
+                ...row,
+                updatedAt: 0,
+                unread: null,
+                preview: `${row.kind === 'group' ? '群聊' : '聊天'}暂未重新验证，请重试`,
+                markRead: undefined,
+              });
+            }
+            results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+          }
+          const known =
+            previous?.accountId === accountId ? new Set(previous.rows.map((row) => row.id)) : null;
+          return {
+            accountId,
+            rows: results,
+            fresh: new Set(
+              known ? results.filter((row) => !known.has(row.id)).map((r) => r.id) : [],
+            ),
+            error: missing.length ? `部分聊天尚未读取：${missing.join('、')}。可重新加载。` : '',
+            aiNextCursor: ai.status === 'fulfilled' ? ai.value.nextCursor : null,
+            groupNextCursor:
+              human.status === 'fulfilled' ? (human.value.nextGroupCursor ?? null) : null,
+            groupPageFailed,
+          };
+        });
+      })
+      .finally(() => {
+        if (active && epoch === authEpoch.current) setLoadingMoreGroups(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, revision, onNavigate, groupPages, humanChatLocked]);
+  useEffect(() => {
+    let pending: number | null = null;
+    const scheduleRefresh = () => {
+      if (pending !== null) window.clearTimeout(pending);
+      pending = window.setTimeout(() => {
+        pending = null;
+        refresh();
+      }, 300);
+    };
+    const timer = window.setInterval(scheduleRefresh, 30_000);
+    window.addEventListener('focus', scheduleRefresh);
+    window.addEventListener('0xnullai:conversation-updated', scheduleRefresh);
+    const unsubscribe = subscribeAuthChanges(() => {
+      authEpoch.current += 1;
+      setResult(null);
+      setQuery('');
+      setUnreadOnly(false);
+      setNewChatOpen(false);
+      setLoadingMore(false);
+      setLoadingMoreGroups(false);
+      setGroupPages(1);
+      loadedAiPages.current = { accountId: null, count: 1 };
+      refresh();
+    });
+    return () => {
+      if (pending !== null) window.clearTimeout(pending);
+      window.clearInterval(timer);
+      window.removeEventListener('focus', scheduleRefresh);
+      window.removeEventListener('0xnullai:conversation-updated', scheduleRefresh);
+      unsubscribe();
+    };
+  }, [refresh]);
+  const rows = accountId === result?.accountId ? result.rows : [];
+  const error = accountId === result?.accountId ? result.error : '';
+  const loading = Boolean(accountId && result?.accountId !== accountId);
+  const moreGroups = accountId === result?.accountId ? result.groupNextCursor : null;
+  const needle = query.trim().toLocaleLowerCase();
+  const visibleRows = rows.filter(
+    (row) =>
+      (!unreadOnly || (row.unread ?? 0) > 0) &&
+      (!needle || `${row.title} ${row.preview}`.toLocaleLowerCase().includes(needle)),
+  );
+  const currentRowId = currentInboxRowId(window.location.pathname, window.location.search);
+  const loadMoreAi = async () => {
+    const cursor = result?.accountId === accountId ? result.aiNextCursor : null;
+    if (!accountId || !cursor || loadingMore) return;
+    const source = result;
+    const epoch = authEpoch.current;
+    setLoadingMore(true);
+    try {
+      const page = await listPrivateConversationSummaries({ limit: 100, cursor });
+      if (epoch !== authEpoch.current || currentAuthUserId() !== accountId) return;
+      if (loadedAiPages.current.accountId === accountId) loadedAiPages.current.count += 1;
+      setResult((current) => {
+        if (!current || current !== source) return current;
+        const seen = new Set(current.rows.map((row) => row.id));
+        const nextRows = [...current.rows];
+        for (const item of page.items) {
+          if (item.deleted || seen.has(`ai:${item.id}`)) continue;
+          seen.add(`ai:${item.id}`);
+          nextRows.push(privateInboxRow(item, accountId, onNavigate));
+        }
+        nextRows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+        return {
+          ...current,
+          rows: nextRows,
+          aiNextCursor: page.nextCursor && page.nextCursor !== cursor ? page.nextCursor : null,
+        };
+      });
+    } catch {
+      if (epoch === authEpoch.current && currentAuthUserId() === accountId)
+        setResult((current) =>
+          current && current === source
+            ? { ...current, error: '更多 AI 聊天读取失败，请重试。' }
+            : current,
+        );
+    } finally {
+      if (epoch === authEpoch.current) setLoadingMore(false);
+    }
+  };
+  // Every AI chat starts with a chosen character; the menu lists them.
+  const startAi = () => {
+    if (!accountId) onOpenAccount();
+    else setNewChatOpen(true);
+  };
+  const startCharacter = (characterId: string) => {
+    setNewChatOpen(false);
+    void openCharacterChat(characterId).then((opened) => {
+      if (opened) onNavigate('agent');
+    });
+  };
+  const characters = newChatOpen
+    ? loadScenes().scenes.filter((scene) => savedPromptKind(scene) === 'character')
+    : [];
+  const newChatMenu = user ? (
+    <NewChatMenu
+      open={newChatOpen}
+      onOpenChange={setNewChatOpen}
+      characters={characters}
+      onStartCharacter={startCharacter}
+      onDiscover={() => {
+        setNewChatOpen(false);
+        onNavigate('market');
+      }}
+      onFindContact={() => {
+        setNewChatOpen(false);
+        onNavigate('people');
+      }}
+      onCreateRoom={() => {
+        setNewChatOpen(false);
+        onCreateRoom();
+      }}
+    />
+  ) : null;
+  const page = presentation === 'page';
+  const fresh = accountId === result?.accountId ? result.fresh : null;
+  return (
+    <section
+      aria-label="所有聊天"
+      className={page ? 'h-full overflow-y-auto bg-[var(--bg)]' : 'pb-2'}
+    >
+      <div className={page ? 'mx-auto max-w-3xl' : ''}>
+        {page ? (
+          <>
+            {/* Phone: the shell top bar already shows 「消息」, and ModuleActions moves the
+                new-chat button there. Wider screens have no top-bar title, so show one here. */}
+            <div className="hidden min-h-14 items-center px-4 pt-2 md:flex">
+              <h1 className="min-w-0 flex-1 text-xl font-semibold">消息</h1>
+            </div>
+            {newChatMenu && <ModuleActions>{newChatMenu}</ModuleActions>}
+          </>
+        ) : (
+          <div className="flex min-h-14 items-center gap-2 pl-4 pr-2">
+            <h2 className="min-w-0 flex-1 text-[17px] font-semibold">消息</h2>
+            {newChatMenu}
+          </div>
+        )}
+        {user && (
+          <div className="px-4 pb-2 pt-1">
+            <label className="flex min-h-9 min-w-0 items-center gap-2 rounded-full bg-[var(--bg-soft)] px-3 text-[var(--text-faint)]">
+              <Search className="h-4 w-4 shrink-0" aria-hidden />
+              <input
+                type="search"
+                aria-label="搜索聊天"
+                placeholder="搜索"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="min-h-0 min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-sm text-[var(--text)] shadow-none outline-none placeholder:text-[var(--text-faint)] focus:ring-0"
+              />
+            </label>
+            <div
+              role="group"
+              aria-label="消息筛选"
+              className="mt-2 inline-flex rounded-full bg-[var(--bg-soft)] p-0.5"
+            >
+              {[
+                { label: '全部', selected: !unreadOnly, value: false },
+                { label: '未读', selected: unreadOnly, value: true },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  aria-pressed={option.selected}
+                  onClick={() => setUnreadOnly(option.value)}
+                  className={`ui-press min-h-7 rounded-full px-3 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${option.selected ? 'bg-[var(--bg-elevated)] font-medium text-[var(--text)] shadow-[var(--shadow-soft)]' : 'text-[var(--text-soft)]'}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {!user &&
+        (page ? (
+          <EmptyState text="登录后继续聊天" action="登录 / 注册" onAction={onOpenAccount} />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            className="ui-press-row w-full px-4 py-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+          >
+            登录以查看跨端聊天记录
+          </button>
+        ))}
+      <div className={page ? 'mx-auto max-w-3xl' : ''}>
+        {error && (
+          <p role="alert" className="px-4 py-2 text-sm text-[var(--danger)]">
+            {error}
+            <button type="button" onClick={refresh} className="ml-2 underline">
+              重试
+            </button>
+          </p>
+        )}
+        {humanChatLocked && (
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            className="ui-press-row w-full px-4 py-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+          >
+            验证邮箱后可使用私聊和群聊
+          </button>
+        )}
+        {loading && <InboxSkeleton />}
+        {user &&
+          !loading &&
+          !error &&
+          visibleRows.length === 0 &&
+          (needle || unreadOnly || moreGroups ? (
+            <p className="px-4 py-12 text-center text-sm text-[var(--text-faint)]">
+              {needle
+                ? moreGroups
+                  ? '已加载的聊天没有匹配项，还有群聊可加载'
+                  : '没有匹配的聊天'
+                : unreadOnly
+                  ? moreGroups
+                    ? '已加载的聊天没有未读消息，还有群聊可加载'
+                    : '没有未读消息'
+                  : '还有群聊未加载'}
+            </p>
+          ) : (
+            <EmptyState text="暂无聊天" action="开始聊天" onAction={startAi} />
+          ))}
+        {visibleRows.map((row) => {
+          const current = currentRowId === row.routeId;
+          const unread = row.unread !== null && row.unread > 0 ? row.unread : 0;
+          return (
+            <div
+              key={row.id}
+              className={`relative min-w-0 ${fresh?.has(row.id) ? 'ui-fade-up' : ''}`}
+            >
+              <button
+                type="button"
+                onClick={row.activate}
+                aria-current={current ? 'page' : undefined}
+                className={`ui-press-row flex min-h-[72px] w-full min-w-0 items-center gap-3 pl-4 text-left hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] ${current ? 'bg-[var(--accent-soft)]' : ''}`}
+              >
+                <InboxAvatar
+                  title={row.title}
+                  photoId={row.avatarPhotoId ?? null}
+                  size="h-12 w-12"
+                />
+                {/* The divider sits on this block, so it starts after the avatar. */}
+                <span className="flex min-h-[72px] min-w-0 flex-1 items-center gap-2 border-b-[0.5px] border-[var(--surface-border)] py-3 pr-4">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-base font-medium leading-6">
+                      {row.title}
+                    </span>
+                    <span className="block truncate text-sm leading-5 text-[var(--text-faint)]">
+                      {/* Character chats read like any contact; only groups carry a tag. */}
+                      {row.kind === 'group' && (
+                        <span className="mr-1 text-[var(--text-soft)]">群聊</span>
+                      )}
+                      {row.preview}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 self-start flex-col items-end gap-1.5 pt-0.5 text-xs tabular-nums text-[var(--text-faint)]">
+                    {row.updatedAt ? (
+                      <time dateTime={new Date(row.updatedAt).toISOString()} title={row.timeBasis}>
+                        {formatInboxTime(row.updatedAt)}
+                      </time>
+                    ) : (
+                      ''
+                    )}
+                    {!row.markRead && unread > 0 && <CountBadge count={unread} />}
+                  </span>
+                </span>
+              </button>
+              {row.markRead && (
+                // A sibling of the row: a button inside a button is invalid markup.
+                <button
+                  type="button"
+                  className="ui-press absolute right-3 top-[34px] flex min-h-6 min-w-6 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label={`${row.title}标为已读`}
+                  title="标为已读"
+                  onClick={() => {
+                    const epoch = authEpoch.current;
+                    void row.markRead!()
+                      .then(refresh)
+                      .catch(() => {
+                        if (epoch === authEpoch.current)
+                          setResult((value) =>
+                            value ? { ...value, error: '标为已读失败，请重试。' } : value,
+                          );
+                      });
+                  }}
+                >
+                  {unread > 0 ? (
+                    <CountBadge count={unread} />
+                  ) : (
+                    <CheckCheck className="h-3.5 w-3.5 text-[var(--text-faint)]" aria-hidden />
+                  )}
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {accountId === result?.accountId && result.aiNextCursor && (
+          <button
+            type="button"
+            onClick={() => void loadMoreAi()}
+            disabled={loadingMore}
+            className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
+          >
+            {loadingMore ? '正在加载…' : '加载更多 AI 聊天'}
+          </button>
+        )}
+        {accountId === result?.accountId && moreGroups && (
+          <button
+            type="button"
+            onClick={() => {
+              setLoadingMoreGroups(true);
+              if (result.groupPageFailed) refresh();
+              else setGroupPages((count) => count + 1);
+            }}
+            disabled={loadingMoreGroups}
+            className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)]"
+          >
+            {loadingMoreGroups
+              ? '正在加载群聊…'
+              : result.groupPageFailed
+                ? '重试加载群聊'
+                : '加载更多群聊'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Small red unread count, the one unread signal in every list. */
+function CountBadge({ count }: { count: number }) {
+  return (
+    <span className="min-w-[18px] rounded-full bg-[var(--danger)] px-1 text-center text-[11px] font-semibold leading-[18px] text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function EmptyState({
+  text,
+  action,
+  onAction,
+}: {
+  text: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
+      <span
+        aria-hidden
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]"
+      >
+        <MessageCircle className="h-5 w-5" />
+      </span>
+      <p className="text-sm text-[var(--text-soft)]">{text}</p>
+      <button
+        type="button"
+        onClick={onAction}
+        className="ui-press min-h-9 rounded-full bg-[var(--accent)] px-5 text-sm font-medium text-[var(--button-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+function InboxSkeleton() {
+  return (
+    <div role="status" aria-label="正在读取聊天">
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div key={index} aria-hidden className="flex min-h-[72px] items-center gap-3 px-4">
+          <span className="ui-skeleton h-12 w-12 shrink-0 rounded-full" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2">
+            <span className="ui-skeleton h-3.5 w-1/3" />
+            <span className="ui-skeleton h-3 w-2/3" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const NEW_CHAT_MENU_ID = 'new-chat-options';
+
+/** The top-bar new-chat icon and its menu. Escape or a press outside closes it. */
+function NewChatMenu({
+  open,
+  onOpenChange,
+  characters,
+  onStartCharacter,
+  onDiscover,
+  onFindContact,
+  onCreateRoom,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  characters: { id: string; name: string; icon?: string }[];
+  onStartCharacter: (id: string) => void;
+  onDiscover: () => void;
+  onFindContact: () => void;
+  onCreateRoom: () => void;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const onPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) onOpenChange(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onOpenChange(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onOpenChange]);
+  const item =
+    'flex min-h-11 w-full items-center gap-3 rounded-[var(--radius-ctl)] px-3 text-left text-[15px] hover:bg-[var(--bg-soft)] focus-visible:bg-[var(--bg-soft)] focus-visible:outline-none';
+  return (
+    <div ref={root} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-label="新聊天"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? NEW_CHAT_MENU_ID : undefined}
+        className="ui-press flex h-11 w-11 items-center justify-center rounded-full text-[var(--text)] hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <SquarePen className="h-[22px] w-[22px]" aria-hidden />
+      </button>
+      {open && (
+        <div
+          id={NEW_CHAT_MENU_ID}
+          role="menu"
+          aria-label="选择聊天对象"
+          className="ui-menu-in absolute right-0 top-full z-[var(--z-shell-popover)] mt-1 w-48 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-panel)]"
+        >
+          <div className="max-h-56 overflow-y-auto">
+            {characters.map((character) => (
+              <button
+                key={character.id}
+                type="button"
+                role="menuitem"
+                onClick={() => onStartCharacter(character.id)}
+                className={item}
+              >
+                <span className="flex h-[18px] w-[18px] items-center justify-center" aria-hidden>
+                  {character.icon ?? <Bot className="h-[18px] w-[18px] text-[var(--text-soft)]" />}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{character.name}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" role="menuitem" onClick={onDiscover} className={item}>
+            <Compass className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            {characters.length ? '找更多角色' : '找个 AI 角色聊天'}
+          </button>
+          <button type="button" role="menuitem" onClick={onFindContact} className={item}>
+            <UserRound className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            找联系人聊天
+          </button>
+          <button type="button" role="menuitem" onClick={onCreateRoom} className={item}>
+            <Users className="h-[18px] w-[18px] text-[var(--text-soft)]" aria-hidden />
+            创建群聊
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

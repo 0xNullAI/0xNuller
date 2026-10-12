@@ -57,6 +57,41 @@ export interface DeviceSafetySettings {
   permissionModeExpiresAt?: number;
 }
 
+type TurnLimitKey =
+  | 'maxToolIterations'
+  | 'maxToolCallsPerTurn'
+  | 'maxAdjustStrengthCallsPerTurn'
+  | 'maxBurstCallsPerTurn'
+  | 'maxVibrateAdjustCallsPerTurn'
+  | 'maxVibrateBurstCallsPerTurn';
+
+/**
+ * Per-turn AI call caps. They are fixed product constants, not user settings: no screen
+ * edits them. A stored value can only make a cap stricter, never looser, so an older
+ * record or another module's write can never raise them above these numbers.
+ */
+export const DEVICE_SAFETY_TURN_LIMITS: Readonly<Pick<DeviceSafetySettings, TurnLimitKey>> =
+  Object.freeze({
+    maxToolIterations: 8,
+    maxToolCallsPerTurn: 12,
+    maxAdjustStrengthCallsPerTurn: 4,
+    maxBurstCallsPerTurn: 2,
+    maxVibrateAdjustCallsPerTurn: 4,
+    maxVibrateBurstCallsPerTurn: 2,
+  });
+
+const TURN_LIMIT_KEYS = Object.keys(DEVICE_SAFETY_TURN_LIMITS) as TurnLimitKey[];
+
+/** Never let a per-turn cap exceed its constant; an invalid value falls back to it. */
+function withTurnLimits(settings: DeviceSafetySettings): DeviceSafetySettings {
+  const out = { ...settings };
+  for (const key of TURN_LIMIT_KEYS) {
+    const limit = DEVICE_SAFETY_TURN_LIMITS[key];
+    out[key] = Math.min(num(settings[key], limit), limit);
+  }
+  return out;
+}
+
 export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
   maxStrengthA: 50,
   maxStrengthB: 50,
@@ -72,12 +107,7 @@ export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
   maxColdStartIntensity: 10,
   maxOpossumAdjustStep: 10,
 
-  maxToolIterations: 8,
-  maxToolCallsPerTurn: 12,
-  maxAdjustStrengthCallsPerTurn: 4,
-  maxBurstCallsPerTurn: 2,
-  maxVibrateAdjustCallsPerTurn: 4,
-  maxVibrateBurstCallsPerTurn: 2,
+  ...DEVICE_SAFETY_TURN_LIMITS,
 
   permissionMode: 'confirm',
 };
@@ -126,7 +156,7 @@ function coerce(raw: unknown): DeviceSafetySettings {
   if (typeof o.permissionModeExpiresAt === 'number') {
     out.permissionModeExpiresAt = o.permissionModeExpiresAt;
   }
-  return out;
+  return withTurnLimits(out);
 }
 
 /**
@@ -237,7 +267,7 @@ function migrate(): DeviceSafetySettings | null {
     // Same as above.
   }
 
-  return found ? out : null;
+  return found ? withTurnLimits(out) : null;
 }
 
 const listeners = new Set<(s: DeviceSafetySettings) => void>();
@@ -270,7 +300,7 @@ export function loadDeviceSafety(): DeviceSafetySettings {
 export function saveDeviceSafety(next: DeviceSafetySettings): DeviceSafetySettings {
   sessionPermissionModeOverride = next.permissionMode === 'allow-all' ? 'allow-all' : null;
   const effective: DeviceSafetySettings = {
-    ...next,
+    ...withTurnLimits(next),
     ...(next.permissionMode === 'timed' && !next.permissionModeExpiresAt
       ? { permissionModeExpiresAt: Date.now() + TIMED_PERMISSION_WINDOW_MS }
       : {}),

@@ -79,3 +79,17 @@ textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px var(--ring);
 }
+
+/* Reduced motion: animations off and transitions instant, everywhere. A near-zero
+   duration rather than `none`, so code that waits for animationend or transitionend still
+   gets the event. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

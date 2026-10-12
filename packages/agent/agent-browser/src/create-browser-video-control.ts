@@ -10,14 +10,9 @@ import type {
 } from '@dg-agent/core';
 import { createEmptyDeviceState } from '@dg-agent/core';
 import { createEmptyOpossumState, type OpossumState } from '@dg-kit/protocol';
-import { hasDeviceLease, type DeviceSummary } from '@dg-kit/safety';
-import {
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-} from '@dg-kit/transport-webbluetooth';
+import { hasDeviceLease } from '@dg-kit/safety';
 import {
   VideoControlRuntime,
-  getAnyPromptPresetById,
   type VideoControlGrantInput,
   type VideoControlGrantSnapshot,
   type VideoControlRuntimeOptions,
@@ -25,8 +20,7 @@ import {
   type VideoControlSafetyLimits,
 } from '@dg-agent/runtime';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
-import { connectAnyDgLabDevice } from './connect-any-device.js';
-import { MultiCoyoteDeviceClient, type ConnectedCoyote } from './multi-coyote-client.js';
+import type { ConnectedCoyote } from './coyote-target-routing.js';
 
 export interface BrowserVideoSceneLibrary {
   selectedId: string;
@@ -39,10 +33,14 @@ export interface BrowserVideoControlOptions {
   getSceneLibrary?: () => BrowserVideoSceneLibrary;
   hasLease?: () => boolean;
   onEffectSettled?: VideoControlRuntimeOptions['onEffectSettled'];
-  /** Native shells inject Tauri clients; web defaults to a multi-Coyote aggregate. */
-  device?: DeviceClient;
-  opossum?: OpossumClient;
-  connectOutputDevice?: (clients: {
+  /**
+   * Output clients over the app's shared DG-Lab registry (`RegistryCoyoteClient`,
+   * `RegistryOpossumClient`). Video opens no BLE link of its own.
+   */
+  device: DeviceClient;
+  opossum: OpossumClient;
+  /** The shared picker. */
+  connectOutputDevice: (clients: {
     device: DeviceClient;
     opossum: OpossumClient;
   }) => Promise<{ kind: string; name: string }>;
@@ -93,7 +91,6 @@ interface MultiCoyoteTargetClient extends DeviceClient {
   getDeviceStateById(deviceId: string): Promise<DeviceState | null>;
   executeDeviceById(deviceId: string, command: DeviceCommand): Promise<DeviceCommandResult | null>;
   selectDeviceById(deviceId: string): void;
-  disconnectDeviceById(deviceId: string): Promise<void>;
   emergencyStopDeviceById(deviceId: string): Promise<boolean>;
 }
 
@@ -119,11 +116,9 @@ export class BrowserVideoControlService {
   private snapshot: BrowserVideoDeviceSnapshot = emptySnapshot();
 
   constructor(options: BrowserVideoControlOptions) {
-    this.device =
-      options.device ??
-      new MultiCoyoteDeviceClient((protocol) => new WebBluetoothDeviceClient({ protocol }));
+    this.device = options.device;
     this.multiCoyote = isMultiCoyoteTargetClient(this.device) ? this.device : null;
-    this.opossum = options.opossum ?? new WebBluetoothOpossumClient();
+    this.opossum = options.opossum;
     this.connectOutputDevice = options.connectOutputDevice;
     this.llm = options.getLlm();
     this.safetyLimits = options.getSafetyLimits();
@@ -136,7 +131,7 @@ export class BrowserVideoControlService {
       getScene: () => {
         const library = this.sceneLibrary;
         if (!library) return null;
-        const selected = getAnyPromptPresetById(library.selectedId, library.scenes);
+        const selected = library.scenes.find((scene) => scene.id === library.selectedId);
         return selected ? { name: selected.name, prompt: selected.prompt } : null;
       },
       hasLease: options.hasLease ?? (() => hasDeviceLease('video')),
@@ -211,9 +206,10 @@ export class BrowserVideoControlService {
       if (this.snapshot.opossum.connected) throw new Error('负鼠设备已连接');
       await this.opossum.connect();
     } else {
-      const result = this.connectOutputDevice
-        ? await this.connectOutputDevice({ device: this.device, opossum: this.opossum })
-        : await connectAnyDgLabDevice({ device: this.device, opossum: this.opossum });
+      const result = await this.connectOutputDevice({
+        device: this.device,
+        opossum: this.opossum,
+      });
       if (result.kind !== 'coyote' && result.kind !== 'opossum') {
         throw new Error('Video 仅支持郊狼与负鼠输出设备');
       }
@@ -228,56 +224,6 @@ export class BrowserVideoControlService {
       ) ?? this.getTargets().find((candidate) => candidate.kind === kind);
     if (!target) throw new Error('连接后无法确认物理目标身份');
     return target;
-  }
-
-  async disconnect(targetIdOrKind: string): Promise<void> {
-    if (targetIdOrKind === 'coyote') {
-      await this.device.disconnect();
-    } else if (targetIdOrKind === 'opossum') {
-      await this.opossum.disconnect();
-    } else {
-      const coyote = this.findCoyoteTarget(targetIdOrKind);
-      if (coyote) {
-        if (this.multiCoyote) await this.multiCoyote.disconnectDeviceById(coyote.sourceId);
-        else await this.device.disconnect();
-      } else if (this.opossumTarget?.targetId === targetIdOrKind) {
-        await this.opossum.disconnect();
-      } else {
-        return;
-      }
-    }
-    await this.refresh();
-  }
-
-  getDeviceSummaries(safety: VideoControlSafetyLimits): DeviceSummary[] {
-    const out: DeviceSummary[] = this.snapshot.coyotes.map((target) => ({
-      id: target.targetId,
-      kind: 'coyote',
-      name: target.name,
-      connected: true,
-      battery: target.state.battery,
-      active: target.state.strengthA > 0 || target.state.strengthB > 0,
-      channels: [
-        { label: 'A', value: target.state.strengthA, max: safety.maxStrengthA },
-        { label: 'B', value: target.state.strengthB, max: safety.maxStrengthB },
-      ],
-    }));
-    const target = this.snapshot.opossumTarget;
-    if (target) {
-      out.push({
-        id: target.targetId,
-        kind: 'opossum',
-        name: target.name,
-        connected: true,
-        battery: target.state.battery,
-        active: target.state.intensityA > 0 || target.state.intensityB > 0,
-        channels: [
-          { label: 'A', value: target.state.intensityA, max: safety.maxIntensityA },
-          { label: 'B', value: target.state.intensityB, max: safety.maxIntensityB },
-        ],
-      });
-    }
-    return out;
   }
 
   authorize(input: VideoControlGrantInput): Promise<VideoControlGrantSnapshot> {
@@ -327,6 +273,15 @@ export class BrowserVideoControlService {
 
   emergencyStop(): Promise<void> {
     return this.runtime.emergencyStop();
+  }
+
+  /**
+   * Lease loss: revoke the grant and drop pending model work, with no device write. The
+   * registry already stopped every output; a stop from here would bypass the lease fence and
+   * zero what the new holder starts.
+   */
+  revoke(): void {
+    this.runtime.revoke();
   }
 
   isEmergencyLatched(): boolean {
@@ -517,7 +472,6 @@ function isMultiCoyoteTargetClient(device: DeviceClient): device is MultiCoyoteT
     typeof candidate.getDeviceStateById === 'function' &&
     typeof candidate.executeDeviceById === 'function' &&
     typeof candidate.selectDeviceById === 'function' &&
-    typeof candidate.disconnectDeviceById === 'function' &&
     typeof candidate.emergencyStopDeviceById === 'function'
   );
 }

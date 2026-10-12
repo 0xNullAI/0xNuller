@@ -1,3 +1,4 @@
+import type { WireReply } from '../../worker/wire';
 // P2P message protocol type definitions.
 // Public types (used by the UI) keep long field names; the wire format (inside
 // use-peer-room) uses short keys to shrink the payload.
@@ -18,6 +19,8 @@ export type { DeviceKind, PlayMode };
 /** Media attached to a chat message (image/audio). The blob lives in R2; this holds the already-resolved, directly accessible URL. */
 export interface ChatMedia {
   kind: 'image' | 'audio';
+  /** Exact R2 object ID returned on the wire; older UI records may omit it. */
+  objectId?: string;
   /** Accessible address after resolving `/api/media/:code/:id`. */
   url: string;
   mime: string;
@@ -35,6 +38,11 @@ export interface ChatMention {
 }
 
 export interface ChatMessage {
+  /** Present only after server history or a server message frame was received. */
+  serverConfirmed?: boolean;
+  /** A local message the server did not confirm in time; the text is kept for a retry. */
+  sendFailed?: boolean;
+  replyTo?: WireReply;
   id: string;
   fromSelf: boolean;
   senderId: string;
@@ -44,6 +52,8 @@ export interface ChatMessage {
   media?: ChatMedia;
   /** List of @-mentioned members (used for highlighting + notification). */
   mentions?: ChatMention[];
+  /** Withdrawn by its sender; text, media and mentions are gone. */
+  recalled?: boolean;
 }
 
 export type CmdAction =
@@ -292,4 +302,10 @@ export interface StateSlow {
   sensorKind?: SensorKind | null;
   sensorConnected?: boolean;
   sensorBattery?: number | null;
+}
+
+/** Optional context for text, image and voice replies; the server resolves the source ID. */
+export interface ChatReplyContext {
+  replyTo?: WireReply;
+  mentions?: ChatMention[];
 }

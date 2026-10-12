@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MarketImportDialog, useSafetySession } from '@0xnullai/ui';
 import { currentDeviceLease, subscribeSafetySessions } from '@dg-kit/safety';
-import { useNativeBridge } from '@0xnullai/native';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import { useDevice, useChannelRotation } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
-import type {
-  ChannelRotationDevice,
-  ChannelRotationWaveforms,
-  DeviceClientFactory,
-  RequestDeviceFn,
-} from '@0xnullai/device-runtime';
+import type { ChannelRotationDevice, ChannelRotationWaveforms } from '@0xnullai/device-runtime';
 import {
   isWaveformCompatibleWithDevice,
   type WaveformDefinition,
@@ -21,11 +16,10 @@ import {
   type OutputPanelState,
   type OutputTarget,
 } from '@control/components/OutputDeviceSection';
-import { EmbeddedDevicePanel } from '@control/components/EmbeddedDevicePanel';
 import { startWaveformId } from '@control/hooks/use-playback';
 import { useDevicePlayback } from '@control/hooks/use-device-playback';
 import { useMomentaryFire } from '@control/hooks/use-momentary-fire';
-import { attachedDeviceSummaries, holdsAnyDevice } from '@0xnullai/device-runtime';
+import { holdsAnyDevice } from '@0xnullai/device-runtime';
 
 // A value of 5 becomes a B0 ceiling of only 2.5/100 in the Opossum protocol,
 // which is below the physical start threshold of many vibration motors. Start
@@ -60,21 +54,18 @@ function playbackIdForTarget(target: OutputTarget | null): string | null {
  * more than one device is attached. Connection, disconnection and shared
  * safety settings live in the shell's one top device strip.
  *
- * Everything below the UI is borrowed rather than rebuilt: `useDevice` owns the
- * BLE session and the `DeviceCommandQueue` that every write goes through,
+ * Everything below the UI is borrowed rather than rebuilt: the app's one
+ * `DgLabConnectionRegistry` owns the BLE links and the queue every write goes
+ * through (`useDevice` is this module's lease-fenced view of it),
  * `useWaveforms` owns the shared library, and the caps come from
  * `@0xnullai/settings`. There is no second copy of the safety chain here — that
  * is the one thing this repo has decided may never be duplicated.
  */
 export default function App() {
-  // Android has no Web Bluetooth; the native shell injects a plugin-blec client
-  // through NativeBridge. Control uses the platform DeviceSession's shared
-  // transport seam rather than creating another device owner.
-  const native = useNativeBridge();
-  const device = useDevice({
-    clientFactory: native.chat?.deviceClientFactory as DeviceClientFactory | undefined,
-    requestDevice: native.chat?.requestDevice as RequestDeviceFn | undefined,
-  });
+  // The app's one registry owns every DG-Lab link, shared with Playground,
+  // Chat, Agent, Voice and Video. A standalone build gets a lazy Web Bluetooth
+  // registry from the same hook.
+  const device = useDevice({ moduleId: 'control', registry: useDgLabRegistry() });
   const waveforms = useWaveforms();
 
   const devicePlayback = useDevicePlayback();
@@ -106,6 +97,17 @@ export default function App() {
     apply();
     return subscribeDeviceSafety(apply);
   }, []);
+  // The attached Opossum may also have its own, lower limit; the registry enforces the smaller
+  // of the two, so the ring shows that one.
+  const opossumCapA = device.opossum?.limitA;
+  const opossumCapB = device.opossum?.limitB;
+  const opossumCaps = useMemo(
+    () => ({
+      a: Math.min(opossumLimits.a, opossumCapA ?? opossumLimits.a),
+      b: Math.min(opossumLimits.b, opossumCapB ?? opossumLimits.b),
+    }),
+    [opossumLimits, opossumCapA, opossumCapB],
+  );
 
   const outputTargets = useMemo<OutputTarget[]>(
     () => [
@@ -122,13 +124,13 @@ export default function App() {
               kind: 'opossum' as const,
               label: '负鼠',
               opossum: device.opossum,
-              limitA: opossumLimits.a,
-              limitB: opossumLimits.b,
+              limitA: opossumCaps.a,
+              limitB: opossumCaps.b,
             },
           ]
         : []),
     ],
-    [coyotes, device.opossum, opossumLimits],
+    [coyotes, device.opossum, opossumCaps],
   );
   const selectedOutput =
     outputTargets.find((target) => target.id === selectedOutputId) ?? outputTargets[0] ?? null;
@@ -191,38 +193,26 @@ export default function App() {
     device.stopAll();
   }, [cancelFire, device]);
 
-  const disconnectCoyote = useCallback(
-    (deviceId?: string) => {
-      if (deviceId) cancelFire(deviceId);
-      else cancelFire();
-      device.disconnectCoyote(deviceId);
-    },
-    [cancelFire, device],
-  );
-
-  // Register on the global safety bus. This is the shell's only source for the
-  // stop button and the device bar, and it must count every attached device —
-  // an Opossum-only session that reports nothing leaves someone with a running
-  // device and no stop button on screen.
+  // Register on the global safety bus for stop, revoke and the shell's connect
+  // entry. The devices themselves are listed (and disconnected) by the
+  // registry's own `dglab-devices` session: listing them here as well would
+  // show every device twice. A Coyote the bar disconnects drops out of
+  // `coyotes`, and useMomentaryFire clears a fire held on it without restoring.
   useSafetySession({
     id: 'control',
     label: 'Control',
     isActive: () => holdsAnyDevice(device),
     stop: stopAll,
     connect: device.connectDevice,
-    disconnect: (deviceId) => {
-      if (deviceId === 'opossum') return device.disconnectOpossum();
-      if (deviceId === 'paw-prints' || deviceId === 'civet-edging') {
-        return device.disconnectSensor();
-      }
-      return disconnectCoyote(deviceId);
-    },
     onRevoke: () => {
-      // Losing the lease means switching away from Control. Stop the output and
-      // invalidate any held fire before its eventual pointerup can restore it.
-      stopAll();
+      // Losing the lease means switching away from Control. The registry has
+      // already stopped every output and DeviceSession dropped its pending
+      // writes. Only Control's own held fire is left: invalidate it before its
+      // eventual pointerup can restore the old baseline. No device stop here:
+      // stops bypass the lease fence and would zero the new holder's output.
+      cancelFire();
+      setOpossumFiring({ A: false, B: false });
     },
-    devices: () => attachedDeviceSummaries(device),
   });
 
   // The rotation timer reads the device and the library through refs so that a
@@ -271,8 +261,8 @@ export default function App() {
    * A press is a plain absolute setStrength, with no optimistic local value:
    * the device state is right here, one 100 ms protocol tick away, so the worst
    * a stale read can do is skip a step. It cannot overshoot — the target is
-   * always derived from a value the device has already reported, and
-   * DGLabDevice clamps it against the cap again on the way out.
+   * always derived from a value the device has already reported, and both
+   * this module's view and the registry clamp it against the cap on the way out.
    */
   const adjustStrength = useCallback(
     (deviceId: string, channel: 'A' | 'B', delta: number) => {
@@ -334,7 +324,7 @@ export default function App() {
         if (waveform?.modality === 'vibration') {
           device.setOpossumWaveform(channel, waveform.frames, waveform.id);
         } else return;
-        const limit = channel === 'A' ? opossumLimits.a : opossumLimits.b;
+        const limit = channel === 'A' ? opossumCaps.a : opossumCaps.b;
         device.setOpossumIntensity(channel, Math.min(limit, DEFAULT_OPOSSUM_START_INTENSITY));
         return;
       }
@@ -351,7 +341,7 @@ export default function App() {
     [
       device,
       devicePlayback,
-      opossumLimits,
+      opossumCaps,
       outputTargets,
       startChannel,
       stopFire,
@@ -464,10 +454,8 @@ export default function App() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-3 py-5 sm:px-4">
-        <EmbeddedDevicePanel />
-
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
         <OutputDeviceSection
           targets={outputTargets}
           selected={selectedOutput}
@@ -482,6 +470,12 @@ export default function App() {
           onConnect={device.connectDevice}
           onAdjust={adjustOutput}
           onTogglePlay={togglePlay}
+          onDisconnect={(targetId) => {
+            // The same registry paths as the shell bar: each stops the output before the link drops.
+            const target = outputTargets.find((candidate) => candidate.id === targetId);
+            if (target?.kind === 'coyote') return device.disconnectCoyote(target.coyote.id);
+            if (target?.kind === 'opossum') return device.disconnectOpossum();
+          }}
         />
       </div>
 

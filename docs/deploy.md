@@ -18,9 +18,10 @@ Cloudflare 会优先匹配更具体的路径。提交前运行 `npm run check:ro
 
 ## 准备
 
-- Node.js 22.19 或更高版本
+- Node.js 26 或更高版本
 - Wrangler 已登录目标 Cloudflare 账户
 - 已创建配置中声明的 D1、R2 和 Durable Object 资源
+- Market 公开角色头像使用独立 R2 bucket `dg-market-character-portraits`；配置 `PORTRAITS` 绑定前先创建资源并验证权限
 - Worker 密钥保存在仓库外，并限制文件权限
 
 配置只声明密钥名称，不保存密钥值。当前 Worker 使用的变量可从各自的
@@ -48,7 +49,7 @@ npm run check:routes
 
 1. Auth（先提供向后兼容的票据/API）
 2. Chat
-3. LLM Proxy（依赖 Auth 的账户额度）
+3. LLM Proxy（依赖 Auth 的账户额度；需要 Secret `AI_PRICE_TABLE` 与 `VOLC_ARK_API_KEY`，缺少时托管模型返回 503）
 4. Market
 5. Voice（启用体验服务时）
 6. Web
@@ -112,7 +113,41 @@ npm run account:role -- --remote-write \
 - 部署后分别检查 Auth、Chat、Market、Voice 和 Web 的错误率、延迟与异常日志，不能只检查首页。
 - 生产 smoke 定期检查 Web 版本、Auth 匿名契约、Chat 邮箱门禁、Market 查询和 Voice 边界；它不
   代替 Cloudflare 的错误率观察。
-- 仓库没有内置外部告警接收方。配置通知渠道前，只能声称已采集观测数据，不能声称已有主动告警。
+- 主动告警只在配置 `ALERT_EMAIL` 后生效，规则见下节；未配置时只能声称已采集观测数据。
+
+## 运行状况与告警
+
+采集与存储由 `@0xnullai/observability` 与 Auth 的 `runtime-monitoring.ts` 负责，数据只在 Auth D1
+（migration `0072_runtime_monitoring.sql`，纯新增表）。管理员在「设置 → 管理 → 运行状况」查看近
+24 小时汇总（`GET /api/auth/admin/runtime-health`）。
+
+- **客户端错误**：Web 与 Android 外壳把未处理异常、未处理 Promise 拒绝和模块错误边界的错误脱敏后
+  发到 `POST /api/auth/client-errors`（匿名、不带 Cookie/Bearer、请求体上限 8 KiB）。服务端重新
+  脱敏，按「消息 + 首帧」哈希归并为每小时计数；不保存账户、IP、会话 ID 或任何聊天内容。限流：
+  每个 IP 哈希 10 分钟 60 条，全站每小时 5000 条；客户端自身每分钟 5 条、每次启动 50 条并去重。
+- **服务端错误**：Auth、Chat、Market、Voice、LLM Proxy 的默认导出由 `withServerErrorCounting`
+  包装，按小时记录 5xx、fetch 异常与失败的 cron。Auth 直接写 D1；Market、Voice、LLM Proxy 通过已有
+  `AUTH`（`AuthOwnershipService.recordServerErrors`）；Chat 使用新增的仅含计数方法的
+  `AUTH_MONITOR` 绑定（`AuthMonitoringService`）。任何监控失败都不影响请求。Web 是纯静态资源
+  Worker，没有脚本可包装，前端错误由客户端上报覆盖。
+- **告警**：Auth 每 5 分钟检查当前与上一个 UTC 整点小时，满足任一条件即向 `ALERT_EMAIL` 发送
+  **一封**汇总邮件（发件人 `no-reply@0xnullai.com`，复用 `EMAIL` 绑定）：
+
+  | 条件                                  | 变量                           | 默认 |
+  | ------------------------------------- | ------------------------------ | ---- |
+  | 单小时客户端错误总数 ≥                | `ALERT_CLIENT_ERRORS_PER_HOUR` | 100  |
+  | 单小时服务端错误总数 ≥                | `ALERT_SERVER_ERRORS_PER_HOUR` | 20   |
+  | 24 小时内首次出现的错误近两小时命中 ≥ | `ALERT_NEW_SIGNATURE_HITS`     | 20   |
+  | 同一总量告警的最小重复间隔（小时）    | `ALERT_COOLDOWN_HOURS`         | 6    |
+
+  新错误签名只告警一次；邮件发送失败不记为已发送，下次检查重试。
+
+- **配置**：阈值写在 `workers/auth/wrangler.jsonc` 的 `vars`。收件人是逗号分隔的地址，作为 Secret
+  设置，不写入仓库：`wrangler secret put ALERT_EMAIL --config workers/auth/wrangler.jsonc`。未设置
+  时不发邮件，采集与管理视图照常工作。
+- **保留**：每日 cron 删除 30 天前的小时汇总与告警记录；限流台账只保留 1 小时。
+- **发布**：先执行 Auth migration `0072`，再部署 Auth，然后部署 Chat（新增 `AUTH_MONITOR` 绑定）。
+  顺序颠倒时计数调用失败并被忽略，不影响业务。
 
 ## 已退役入口
 

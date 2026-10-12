@@ -1,5 +1,5 @@
 import { Z_OVERLAY, Z_OVERLAY_PANEL, cn, useOverlayContainer } from '@0xnullai/ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Search, X } from 'lucide-react';
@@ -9,6 +9,7 @@ interface SessionSearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sessions: SessionSnapshot[];
+  onSearch: (query: string) => Promise<string[]>;
   onSelectSession: (sessionId: string) => void;
 }
 
@@ -16,11 +17,18 @@ export function SessionSearchDialog({
   open,
   onOpenChange,
   sessions,
+  onSearch,
   onSelectSession,
 }: SessionSearchDialogProps) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [searchResult, setSearchResult] = useState<{ query: string; ids: string[] }>({
+    query: '',
+    ids: [],
+  });
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -30,17 +38,34 @@ export function SessionSearchDialog({
     }
   }, [open]);
 
-  const results = useMemo(() => {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return [];
-    return sessions.filter((session) => {
-      const title = getSessionTitle(session).toLowerCase();
-      if (title.includes(trimmed)) return true;
-      return session.messages.some(
-        (msg) => typeof msg.content === 'string' && msg.content.toLowerCase().includes(trimmed),
-      );
-    });
-  }, [sessions, query]);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!open || trimmed.length < 2) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      setSearchError(false);
+      void onSearch(trimmed)
+        .then((ids) => {
+          if (active) setSearchResult({ query: trimmed, ids });
+        })
+        .catch(() => {
+          if (active) setSearchError(true);
+        })
+        .finally(() => {
+          if (active) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [open, onSearch, query]);
+
+  const results = (searchResult.query === query.trim() ? searchResult.ids : []).flatMap((id) => {
+    const session = sessions.find((item) => item.id === id);
+    return session ? [session] : [];
+  });
 
   useEffect(() => {
     setActiveIndex(0);
@@ -110,15 +135,23 @@ export function SessionSearchDialog({
 
           {/* Results */}
           <div className="max-h-[min(50dvh,360px)] overflow-y-auto border-t border-[var(--surface-border)]">
-            {query.trim() && results.length === 0 && (
+            {query.trim().length >= 2 && !searching && !searchError && results.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-[var(--text-faint)]">
                 <Search className="h-7 w-7 opacity-30" />
                 <span className="text-sm">没有匹配的对话</span>
               </div>
             )}
-            {!query.trim() && (
+            {query.trim().length < 2 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-[var(--text-faint)]">
-                <span className="text-sm">输入关键词搜索历史对话</span>
+                <span className="text-sm">输入至少两个字搜索历史对话</span>
+              </div>
+            )}
+            {searching && (
+              <div className="py-8 text-center text-sm text-[var(--text-faint)]">搜索中…</div>
+            )}
+            {searchError && (
+              <div className="py-8 text-center text-sm text-[var(--text-faint)]">
+                搜索失败，请重试
               </div>
             )}
             {results.length > 0 && (

@@ -220,8 +220,8 @@ export async function scanAndSelectDevice(
       }));
 
   // Native ownership is claimed before plugin-blec can register Android's
-  // single scanner callback. A competing backend (or a parallel DG scan)
-  // therefore fails before touching the radio.
+  // single scanner callback. A parallel scan therefore fails before touching
+  // the radio.
   const lease = await DgScannerLease.claim();
   try {
     await api.startScan((devices) => {
@@ -262,7 +262,7 @@ export async function scanAndSelectDevice(
   } catch (error) {
     // A rejected start can still leave platform scanner state uncertain.
     // Confirm stop before releasing; a failed stop intentionally keeps the
-    // native claim held so Buttplug continues to fail closed.
+    // native claim held so the next scan fails closed.
     await lease.cleanup(() => api.stopScan());
     throw error;
   }
@@ -297,7 +297,7 @@ export async function scanAndSelectDevice(
   };
   // plugin-blec's `startScan()` resolves when the native scan has STARTED,
   // not when its timeout has elapsed. A cancellable window avoids a delayed
-  // stop from an early picker choice tearing down a newer backend's scan.
+  // stop from an early picker choice tearing down a newer scan.
   const scanWindow = createScanWindow(scanDuration);
   const scanCompletion = scanWindow.done
     .then((elapsed) =>

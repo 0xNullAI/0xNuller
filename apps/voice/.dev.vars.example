@@ -1,3 +1,5 @@
 # Copy to `.dev.vars` for `wrangler dev`; never commit real values.
-# Production uses `wrangler secret put XAI_API_KEY`.
-XAI_API_KEY="xai-REPLACE_ME"
+# Production uses `wrangler secret put VOLC_SPEECH_API_KEY` and `wrangler secret put AI_PRICE_TABLE`.
+VOLC_SPEECH_API_KEY="REPLACE_ME"
+# JSON in the shape of packages/platform/ai-pricing/src/example-price-table.json.
+AI_PRICE_TABLE="REPLACE_ME"

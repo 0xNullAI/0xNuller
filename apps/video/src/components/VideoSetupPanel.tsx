@@ -8,7 +8,6 @@ export interface VideoSetupPanelViewModel {
   scenes: readonly { id: string; name: string; icon?: string }[];
   selectedSceneId: string;
   facingMode: CameraFacingMode;
-  embeddedAvailable: boolean;
   showCoyoteConnect: boolean;
   coyoteConnectLabel: string;
   showOpossumConnect: boolean;
@@ -20,7 +19,10 @@ export interface VideoSetupPanelViewModel {
   cadenceSeconds: number;
   allowEnhanced: boolean;
   allowBurst: boolean;
+  managedReadAloud: boolean;
   visionEnabled: boolean;
+  managedQuote?: { maxReservationCredits: number; priceVersion: string } | null;
+  managedQuotePending?: boolean;
   error: string | null;
   ctaLabel: string;
   ctaDisabled: boolean;
@@ -32,11 +34,11 @@ export interface VideoSetupPanelActions {
   selectScene: (id: string) => void;
   setFacingMode: (value: CameraFacingMode) => void;
   connect: (kind: VideoOutputKind) => void;
-  discoverEmbeddedDevices: () => void;
   setDurationMinutes: (value: number) => void;
   setCadenceSeconds: (value: number) => void;
   setAllowEnhanced: (value: boolean) => void;
   setAllowBurst: (value: boolean) => void;
+  setManagedReadAloud: (value: boolean) => void;
   activate: () => void;
 }
 
@@ -77,16 +79,16 @@ export function VideoSetupPanel({
 
       <div className="grid gap-3">
         <label className="grid gap-1 text-xs text-[var(--text-soft)]">
-          场景
+          角色
           <div className="flex gap-2">
             <select
-              aria-label="场景"
+              aria-label="角色"
               value={view.selectedSceneId}
               onChange={(event) => actions.selectScene(event.target.value)}
               className={`${selectClassName} min-w-0 flex-1`}
             >
               <option value="" disabled>
-                选择场景
+                选择角色
               </option>
               {view.scenes.map((scene) => (
                 <option key={scene.id} value={scene.id}>
@@ -125,14 +127,17 @@ export function VideoSetupPanel({
             <Link aria-hidden="true" className="h-3.5 w-3.5" /> 连接负鼠
           </Button>
         )}
-        {view.embeddedAvailable && (
-          <Button size="sm" variant="secondary" onClick={actions.discoverEmbeddedDevices}>
-            <Link aria-hidden="true" className="h-3.5 w-3.5" /> 查找通用设备
-          </Button>
-        )}
       </div>
 
       <OutputCapabilityList targets={view.targets} />
+
+      {view.managedQuote ? (
+        <p className="text-xs text-[var(--text-soft)]">
+          每次观察最多预留 {view.managedQuote.maxReservationCredits} Credit，最终按实际用量扣费。
+        </p>
+      ) : view.managedQuotePending ? (
+        <p className="text-xs text-[var(--text-soft)]">正在获取视觉 Credit 报价…</p>
+      ) : null}
 
       <details className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)]">
         <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text-soft)]">
@@ -185,6 +190,14 @@ export function VideoSetupPanel({
               onChange={(event) => actions.setAllowBurst(event.target.checked)}
             />
             允许脉冲
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={view.managedReadAloud}
+              onChange={(event) => actions.setManagedReadAloud(event.target.checked)}
+            />
+            朗读使用托管 Credit
           </label>
         </div>
       </details>

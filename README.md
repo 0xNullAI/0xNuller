@@ -1,8 +1,8 @@
 <div align="center">
 
-# 0xNuller
+# 猫愿
 
-**DG-Lab 设备的统一控制平台**
+**AI 陪伴聊天，与 DG-Lab 设备的统一控制平台**（仓库名 0xNuller）
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![@dg-kit/core](https://img.shields.io/npm/v/%40dg-kit%2Fcore?label=%40dg-kit%2Fcore&color=cb3837)](https://www.npmjs.com/package/@dg-kit/core)
@@ -17,21 +17,19 @@
 
 ## 这是什么
 
-0xNuller 将设备控制、AI 对话、实时语音、多人互动、游戏和社区内容整合在统一网页、Android 应用，以及独立的 Windows/macOS 桌面应用中。
+0xNuller 将设备控制、AI 对话、实时语音、多人互动、游戏和社区内容整合在统一网页与 Android 应用中。
 
-| 模块           | 功能                 |
-| -------------- | -------------------- |
-| **Control**    | 手动控制设备         |
-| **Chat**       | 房间、私聊与远程互动 |
-| **Agent**      | 通过文字与 AI 交互   |
-| **Voice**      | 实时语音交互         |
-| **Video**      | 摄像头视觉控制       |
-| **Market**     | 浏览和分享场景与波形 |
-| **Playground** | 游戏互动             |
+| 模块           | 功能                       |
+| -------------- | -------------------------- |
+| **Control**    | 手动控制设备               |
+| **Chat**       | 房间、私聊与远程互动       |
+| **Agent**      | 通过文字与 AI 交互         |
+| **Voice**      | 实时语音交互               |
+| **Video**      | 摄像头视觉控制             |
+| **Market**     | 浏览和分享角色、场景与波形 |
+| **Playground** | 游戏互动                   |
 
 第一次使用建议从 Control 开始，并先在软件设置中确认设备安全上限。
-
-桌面构建和系统要求见 [桌面版本说明](./docs/desktop.md)。
 
 ## 开发包与 MCP
 

@@ -22,6 +22,8 @@ export function throwIfAborted(signal?: AbortSignal): void {
   throw error;
 }
 
+const CREDIT_EXHAUSTED_MESSAGE = 'Credit 不足，可以充值或在「我的 → AI → 高级」使用自己的 API。';
+
 export function normalizeAssistantErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error ?? '未知错误');
 
@@ -29,14 +31,18 @@ export function normalizeAssistantErrorMessage(error: unknown): string {
     return '还没有配置 API Key，请先在设置里填写';
   }
 
+  if (/Credit\s*不足|insufficient[_ ]credit/i.test(raw)) return CREDIT_EXHAUSTED_MESSAGE;
+
   const statusMatch = raw.match(
     /\b(?:API error|HTTP error|Provider HTTP error)\s+(\d{3})\b|(?:HTTP 错误|模型服务 HTTP 错误)\s+(\d{3})/i,
   );
   if (statusMatch) {
     const status = Number(statusMatch[1] ?? statusMatch[2]);
-    if (status === 400) return '请求被服务端拒绝，请检查模型、参数或接口兼容性';
-    if (status === 401) return 'API Key 无效或已过期，请检查设置';
-    if (status === 403) return '当前接口访问被拒绝，请检查账号权限、地区限制或代理';
+    const detail = providerDetail(raw);
+    if (status === 400) return `请求被服务端拒绝，请检查模型、参数或接口兼容性${detail}`;
+    if (status === 402) return CREDIT_EXHAUSTED_MESSAGE;
+    if (status === 401) return `API Key 无效或已过期，请检查设置${detail}`;
+    if (status === 403) return `当前接口访问被拒绝，请检查账号权限、地区限制或代理${detail}`;
     if (status === 429) return '请求过于频繁，已被限流，请稍后再试';
     if (status >= 500) return 'AI 服务暂时不可用，请稍后重试';
   }
@@ -46,4 +52,22 @@ export function normalizeAssistantErrorMessage(error: unknown): string {
   }
 
   return `出错了：${raw}`;
+}
+
+/**
+ * The provider's own explanation (for example "API key is not scoped to a workspace")
+ * is usually the only actionable part of a 4xx; a generic hint alone hides it.
+ */
+function providerDetail(raw: string): string {
+  const quoted = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw)?.[1];
+  let message = quoted;
+  if (quoted) {
+    try {
+      message = JSON.parse(`"${quoted}"`) as string;
+    } catch {
+      message = quoted;
+    }
+  }
+  const text = message?.replace(/\s+/g, ' ').trim();
+  return text ? `（服务商说明：${text.length > 200 ? `${text.slice(0, 200)}…` : text}）` : '';
 }

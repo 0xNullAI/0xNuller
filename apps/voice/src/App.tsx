@@ -1,4 +1,6 @@
 import {
+  Button,
+  useShellNav,
   Alert,
   AlertDescription,
   DeviceSafetyButton,
@@ -7,7 +9,8 @@ import {
   useInShell,
   useSafetySession,
 } from '@0xnullai/ui';
-import { useNativeBridge } from '@0xnullai/native';
+import { useEffect, useState } from 'react';
+import { useDgLabRegistry } from '@0xnullai/native';
 import { useDeviceSession } from '@voice/hooks/use-device-session';
 import { useSettings } from '@voice/hooks/use-settings';
 import { useRealtimeCall } from '@voice/hooks/use-realtime-call';
@@ -15,91 +18,51 @@ import { CallPanel } from '@voice/components/CallPanel';
 import { DeviceStatusBar } from '@voice/components/DeviceStatusBar';
 import { PermissionModal } from '@0xnullai/ui';
 import { useTheme } from '@0xnullai/ui';
-import type { DeviceSessionTransport } from '@voice/lib/device-session';
-import { isCoyoteOutputActive } from '@dg-kit/core';
+import { createRegistryTransport } from '@voice/lib/device-session';
 
-interface AppProps {
-  /**
-   * Only supplied by the Android shell (`apps/tauri-android`), which injects
-   * the `@dg-kit/transport-tauri-blec` clients. The web build omits it and
-   * falls through to the Web Bluetooth default.
-   */
-  transport?: DeviceSessionTransport;
-}
+/** Must match the shell's lease id for this module (`apps/web/src/routes.ts`). */
+const VOICE_MODULE_ID = 'voice';
 
-export function App({ transport }: AppProps = {}) {
+export function App() {
   const inShell = useInShell();
-  // Same as Chat: props win, otherwise take it from the NativeBridge.
-  const native = useNativeBridge();
-  const {
-    session,
-    state,
-    error,
-    connectDevice,
-    emergencyStop,
-    disconnectCoyote,
-    disconnectOpossum,
-  } = useDeviceSession(transport ?? (native.voice?.transport as typeof transport));
+  const shellNav = useShellNav();
+  // The app's one DG-Lab registry (a lazy Web Bluetooth one in a standalone build). Read once:
+  // the session is built once and keeps its transport for its lifetime.
+  const registry = useDgLabRegistry();
+  const [deviceTransport] = useState(() =>
+    createRegistryTransport(registry.forModule(VOICE_MODULE_ID)),
+  );
+  const { session, state, error, connectDevice, emergencyStop, onRevoked } =
+    useDeviceSession(deviceTransport);
   const { settings, updateSettings } = useSettings();
 
   // Register on the global safety bus — the only data source the shell's
   // global stop button has.
   useSafetySession({
-    id: 'voice',
+    id: VOICE_MODULE_ID,
     label: 'Voice',
     isActive: () => Boolean(state.coyotes.length > 0 || state.opossum?.connected),
     stop: emergencyStop,
     connect: connectDevice,
-    disconnect: (deviceId) =>
-      deviceId === 'opossum' ? disconnectOpossum() : disconnectCoyote(deviceId),
+    // Ending the call stops the model from issuing more tool calls while the user believes
+    // they already left. The registry has already stopped every output on the lease switch,
+    // so the hang-up issues no device stop: stops bypass the lease fence and would zero
+    // output the new holder starts right after the switch. The devices themselves are
+    // listed by the registry's own `dglab-devices` session.
     onRevoke: async () => {
-      // Hang the call up before stopping output when switching away from
-      // Voice. Stopping output alone leaves the call connected: the model keeps
-      // talking and keeps issuing tool calls — while the user believes they
-      // already left.
-      await call.hangUp('切换到其他模块').catch(() => undefined);
-      await emergencyStop();
+      await call.hangUp('切换到其他模块', false, { stopOutput: false }).catch(() => undefined);
     },
-    devices: () => [
-      ...state.coyotes.map(({ targetId, state: coyote }) => ({
-        id: targetId,
-        kind: 'coyote',
-        name: coyote.deviceName ?? '郊狼',
-        connected: true,
-        battery: coyote.battery,
-        active: isCoyoteOutputActive(coyote),
-        channels: [
-          { label: 'A', value: coyote.strengthA, max: coyote.limitA },
-          { label: 'B', value: coyote.strengthB, max: coyote.limitB },
-        ],
-      })),
-      ...(state.opossum?.connected
-        ? [
-            {
-              id: 'opossum',
-              kind: 'opossum',
-              name: '负鼠',
-              connected: true,
-              battery: state.opossum.battery,
-              active: state.opossum.intensityA > 0 || state.opossum.intensityB > 0,
-              channels: [
-                {
-                  label: 'A',
-                  value: state.opossum.intensityA,
-                  max: settings.opossumSafety.maxIntensityA,
-                },
-                {
-                  label: 'B',
-                  value: state.opossum.intensityB,
-                  max: settings.opossumSafety.maxIntensityB,
-                },
-              ],
-            },
-          ]
-        : []),
-    ],
   });
-  const call = useRealtimeCall(session, settings, native.deviceRuntime);
+  const call = useRealtimeCall(session, settings);
+  const { hangUp } = call;
+  // The registry tells Voice directly as well; same state-only hang-up as the bus revoke above.
+  useEffect(
+    () =>
+      onRevoked(() => {
+        void hangUp('切换到其他模块', false, { stopOutput: false }).catch(() => undefined);
+      }),
+    [onRevoked, hangUp],
+  );
   // Only an *active* call locks the settings entry (reconfiguring mid-call is
   // disruptive). A call that's merely dialing must NOT lock the header — a
   // hung 'connecting' used to latch these buttons disabled forever. Connecting
@@ -126,7 +89,6 @@ export function App({ transport }: AppProps = {}) {
             connected={state.coyote.connected}
             deviceName={state.coyote.deviceName ?? null}
             battery={state.coyote.battery ?? null}
-            onDisconnect={() => void disconnectCoyote(state.coyotes[0]?.targetId)}
             limitA={settings.coyoteSafety.maxStrengthA}
             limitB={settings.coyoteSafety.maxStrengthB}
             onSetLimit={(channel, value) =>
@@ -157,7 +119,6 @@ export function App({ transport }: AppProps = {}) {
                 : null
             }
             onConnectDevice={connectDevice}
-            onDisconnectOpossum={() => void disconnectOpossum()}
             supportedDeviceKinds={['coyote', 'opossum']}
           />
         )}
@@ -168,8 +129,7 @@ export function App({ transport }: AppProps = {}) {
           state={state}
           coyoteSafety={settings.coyoteSafety}
           opossumSafety={settings.opossumSafety}
-          onDisconnectCoyote={(targetId) => void disconnectCoyote(targetId)}
-          onDisconnectOpossum={() => void disconnectOpossum()}
+          onStop={() => void emergencyStop().catch(() => undefined)}
         />
       )}
 
@@ -214,9 +174,33 @@ export function App({ transport }: AppProps = {}) {
           }
         />
 
+        {shellNav && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void call.hangUp().then(async () => {
+                  if (await call.retryHistory()) shellNav.navigate('agent');
+                })
+              }
+            >
+              继续文字对话
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void call.hangUp().then(async () => {
+                  if (await call.retryHistory()) shellNav.navigate('video');
+                })
+              }
+            >
+              摄像头观察
+            </Button>
+          </div>
+        )}
         <CallPanel
           call={call.state}
-          providerId={settings.activeProviderId}
+          onRetryHistory={() => void call.retryHistory()}
           onStart={() => void call.startCall()}
           onHangUp={() => void call.hangUp()}
           onEmergencyStop={() => void emergencyStop()}

@@ -1,30 +1,14 @@
-import { DesktopLifecycle } from './DesktopLifecycle';
-import { withDesktopBleHelp, withDesktopConnectHelp } from './desktop-platform';
 import './polyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
 import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
-import { createUnifiedShellEmbeddedDeviceRuntime } from '@0xnullai/web/embedded-device-runtime';
-import {
-  createBrowserVideoControl,
-  type BrowserVideoControlOptions,
-} from '@dg-agent/agent-browser';
-import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
-import {
-  TauriBlecDeviceClient,
-  TauriBlecOpossumClient,
-  TauriBlecPawPrintsClient,
-  TauriBlecCivetEdgingClient,
-  prewarmDgLabDeviceScan,
-} from '@dg-kit/transport-tauri-blec';
-import { showDevicePicker } from './components/show-device-picker';
+import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
+import { installShellErrorReporting } from '@0xnullai/web/client-error-reporting';
+import { prewarmDgLabDeviceScan } from '@dg-kit/transport-tauri-blec';
 import { UpdateBanner } from './components/UpdateBanner';
-import { connectAnyDgLabDeviceTauri } from './connect-any-device-tauri';
-import { requestDeviceTauri } from './request-device-tauri';
-import { createTauriTransport } from './tauri-transport';
-import { attachAndroidDeviceRuntimeLifecycle, wrapWithLifecycleSafety } from './lifecycle-safety';
-import { ButtplugDeviceBackend } from './buttplug-device-backend';
+import { attachAndroidDgLabLifecycle } from './lifecycle-safety';
+import { createTauriDgLabTransport } from './tauri-dglab-transport';
 import { SplashDismiss } from './SplashDismiss';
 import {
   installAndroidShellBehaviours,
@@ -44,120 +28,38 @@ import './styles.css';
  * the account.
  *
  * **Android has no hot updates.** Any mistake made here lives on users' phones
- * for a long time, so the shape of the three native injection seams is kept
- * exactly as it was (see the comments in @0xnullai/native); only the injection
- * point is merged into one.
+ * for a long time. Every module reaches DG-Lab devices only through the one
+ * registry below (`NativeBridge.dglab`); there is no per-module device seam.
  */
 
-const desktop = import.meta.env.MODE === 'desktop';
-const connectHelp = desktop ? withDesktopConnectHelp : withConnectPermissionHelp;
-const permissionHelp = desktop ? withDesktopBleHelp : withBlePermissionHelp;
-if (!desktop) installAndroidShellBehaviours();
+installAndroidShellBehaviours();
+// Same reporter as the web shell; sends no cookies or Bearer token.
+installShellErrorReporting('android');
 // If Bluetooth permission was granted on an earlier run, begin collecting
 // named DG-Lab advertisements behind the splash screen. Missing permission is
 // deliberately not requested here; the user's first connect action owns that
 // system prompt and its explanatory UI.
-if (!desktop) void prewarmDgLabDeviceScan().catch(() => undefined);
+void prewarmDgLabDeviceScan().catch(() => undefined);
 
-// One provider/controller pair for the whole APK. Constructing it does not invoke the native
-// backend; the local default-off setting and a later human scan action gate initialization.
-const embeddedDevices = createUnifiedShellEmbeddedDeviceRuntime({
-  backendFactory: () => new ButtplugDeviceBackend(),
-  attachNativeLifecycle: attachAndroidDeviceRuntimeLifecycle,
+// The one DG-Lab connection owner for the whole APK. Every off-screen signal stops all of its
+// Coyote and Opossum output, on top of the per-client lifecycle wrapper each Coyote keeps
+// (`wrapWithLifecycleSafety` inside the transport).
+const dglab = createUnifiedShellDgLabRegistry({
+  transport: createTauriDgLabTransport({
+    connectHelp: withConnectPermissionHelp,
+    permissionHelp: withBlePermissionHelp,
+  }),
+  attachNativeLifecycle: attachAndroidDgLabLifecycle,
 });
 
-/**
- * Wrap `connect()` with the permission help in place, returning the same instance.
- *
- * **Deliberately not `{ ...inner, connect }`**: inner here is a class instance,
- * and methods declared in the class body live on the prototype, not on the
- * instance. Spreading only copies own enumerable properties, so
- * disconnect/getState/execute are all lost, and every call other than connect
- * then throws "is not a function".
- */
 const bridge = {
-  deviceRuntime: embeddedDevices.deviceRuntime,
+  dglab,
+  // Non-device Agent flags only: no speech, bridge or version.json on the native shell.
   agent: {
     servicesOverrides: {
       disableSpeech: true,
       disableBridge: true,
       disableUpdateChecker: true,
-      createDeviceClient: (
-        protocol: ConstructorParameters<typeof TauriBlecDeviceClient>[0]['protocol'],
-      ) => {
-        const inner = wrapWithLifecycleSafety(
-          new TauriBlecDeviceClient({
-            protocol,
-            selectDevice: showDevicePicker,
-            namePrefixes: ['47L121', 'D-LAB'],
-            scanDurationMs: 8000,
-          }),
-        );
-        // Give the user an understandable prompt when they deny the Bluetooth
-        // permission. The inner client throws 「未授予蓝牙权限」, which without
-        // this wrapper is just a small notice and leaves the user with no idea
-        // what to do about it.
-        return connectHelp(inner);
-      },
-      createOpossumClient: () =>
-        connectHelp(
-          new TauriBlecOpossumClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
-        ),
-      createPawPrintsClient: () =>
-        connectHelp(
-          new TauriBlecPawPrintsClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
-        ),
-      createCivetEdgingClient: () =>
-        connectHelp(
-          new TauriBlecCivetEdgingClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
-        ),
-    },
-    connectDevice: (clients: unknown) =>
-      permissionHelp(() => connectAnyDgLabDeviceTauri(clients as never)),
-  },
-  chat: {
-    deviceClientFactory: (
-      protocol: ConstructorParameters<typeof TauriBlecDeviceClient>[0]['protocol'],
-    ) => {
-      const inner = wrapWithLifecycleSafety(
-        new TauriBlecDeviceClient({
-          protocol,
-          selectDevice: showDevicePicker,
-          namePrefixes: ['47L121', 'D-LAB'],
-          scanDurationMs: 8000,
-        }),
-      );
-      return connectHelp(inner);
-    },
-    requestDevice: () => permissionHelp(() => requestDeviceTauri()),
-  },
-  voice: {
-    transport: createTauriTransport(),
-  },
-  video: {
-    createControlService: (options: BrowserVideoControlOptions) => {
-      // Keep one native Coyote client: the shared Video service assigns an
-      // opaque ID per connection and rejects a second target when this
-      // transport composition cannot independently prove multiple identities.
-      const device = connectHelp(
-        wrapWithLifecycleSafety(
-          new TauriBlecDeviceClient({
-            protocol: new CoyoteProtocolAdapter(),
-            selectDevice: showDevicePicker,
-            namePrefixes: ['47L121', 'D-LAB'],
-            scanDurationMs: 8000,
-          }),
-        ),
-      );
-      const opossum = connectHelp(
-        new TauriBlecOpossumClient({ selectDevice: showDevicePicker, scanDurationMs: 8000 }),
-      );
-      return createBrowserVideoControl({
-        ...options,
-        device,
-        opossum,
-        connectOutputDevice: (clients) => permissionHelp(() => connectAnyDgLabDeviceTauri(clients)),
-      });
     },
   },
 } satisfies NativeBridge;
@@ -165,7 +67,7 @@ const bridge = {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <SplashDismiss />
-    {desktop ? <DesktopLifecycle /> : <UpdateBanner />}
+    <UpdateBanner />
     <NativeBridgeProvider bridge={bridge}>
       <Shell />
     </NativeBridgeProvider>

@@ -79,20 +79,19 @@ function hide() {
 }
 
 describe('安卓生命周期安全网', () => {
-  it('页面隐藏时停止输出', async () => {
-    hide();
-    await tick();
-    expect(fake.stops()).toBe(1);
-  });
-
-  it('pagehide 也停——WebView 被系统回收时可能只走这一个', async () => {
-    window.dispatchEvent(new Event('pagehide'));
-    await tick();
-    expect(fake.stops()).toBe(1);
-  });
-
-  it('freeze 也停——Chromium 的 bfcache 驱逐走这个', async () => {
-    document.dispatchEvent(new Event('freeze'));
+  it.each([
+    ['visibilitychange: 页面隐藏', hide],
+    [
+      'pagehide: WebView 被系统回收时可能只走这一个',
+      () => window.dispatchEvent(new Event('pagehide')),
+    ],
+    ['freeze: Chromium 的 bfcache 驱逐走这个', () => document.dispatchEvent(new Event('freeze'))],
+    [
+      'native-pause: 原生 onPause 在 WebView 暂停前通知',
+      () => window.dispatchEvent(new Event('0xnullai:native-pause')),
+    ],
+  ])('%s 时停止输出', async (_reason, fire) => {
+    fire();
     await tick();
     expect(fake.stops()).toBe(1);
   });

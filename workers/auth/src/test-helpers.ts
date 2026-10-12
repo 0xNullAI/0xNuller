@@ -1,6 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parsePriceTable } from '@0xnullai/ai-pricing';
+import examplePriceTable from '@0xnullai/ai-pricing/example-price-table.json';
+
+/** The repository's fictional price table, as the AI_PRICE_TABLE secret string. */
+export const TEST_PRICE_TABLE = JSON.stringify(examplePriceTable);
+export const testPriceTable = parsePriceTable(examplePriceTable)!;
 
 /**
  * A subset of the D1 interface implemented on Node 26's built-in `node:sqlite`, for
@@ -46,6 +52,10 @@ class Stmt {
   }
 
   async run(): Promise<{ success: true }> {
+    return this.runSync();
+  }
+
+  runSync(): { success: true } {
     this.db.prepare(this.sql).run(...(this.args as never[]));
     return { success: true };
   }
@@ -75,8 +85,17 @@ export function createTestDb(): { DB: unknown; close: () => void } {
   return {
     DB: {
       prepare: (sql: string) => new Stmt(db, sql),
-      batch: async (statements: Stmt[]) =>
-        Promise.all(statements.map((statement) => statement.run())),
+      batch: async (statements: Stmt[]) => {
+        db.exec('BEGIN');
+        try {
+          const results = statements.map((statement) => statement.runSync());
+          db.exec('COMMIT');
+          return results;
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      },
     },
     close: () => db.close(),
   };

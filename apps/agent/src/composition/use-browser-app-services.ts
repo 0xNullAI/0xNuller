@@ -1,25 +1,21 @@
-import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
+import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
+import { deviceConversationAccess } from '@0xnullai/settings';
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   createBrowserServices,
-  MultiCoyoteDeviceClient,
+  createRegistryAgentDevices,
   type BrowserServices,
   type BrowserServicesOptions,
+  type DgLabModuleHandle,
   type PermissionRequestInput,
 } from '@dg-agent/agent-browser';
 import type { MessageOrigin } from '@dg-agent/bridge';
-import type { DeviceClient, PermissionDecision } from '@dg-agent/core';
-import {
-  WebBluetoothCivetEdgingClient,
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  WebBluetoothPawPrintsClient,
-} from '@dg-kit/transport-webbluetooth';
-import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from '@dg-agent/runtime';
+import type { PermissionDecision } from '@dg-agent/core';
 import { currentDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
 import type { SavedScene } from '@0xnullai/scenes';
-import type { NativeBridge } from '@0xnullai/native';
 import { BrowserUpdateChecker } from '../services/update-checker.js';
+import { createAgentTaskRunReporter } from '../services/agent-task-run-reporter.js';
 
 export interface PendingPermissionRequest {
   input: PermissionRequestInput;
@@ -27,41 +23,26 @@ export interface PendingPermissionRequest {
 }
 
 /**
- * Subset of BrowserServicesOptions a non-browser shell (Tauri Android) may
- * supply. Web entry point always omits this; defaults preserve the historical
- * Web Bluetooth + speech + bridge behavior.
+ * Non-device service flags a non-browser shell (Tauri Android) may supply. Web omits them.
+ * Device clients always come from the shared DG-Lab registry, never from an override.
  */
-export type ServicesOverrides = Pick<
-  BrowserServicesOptions,
-  'createDeviceClient' | 'disableSpeech' | 'disableBridge'
-> & {
+export type ServicesOverrides = Pick<BrowserServicesOptions, 'disableSpeech' | 'disableBridge'> & {
   /** Skip the update-checker poll loop (no version.json on non-web shells). */
   disableUpdateChecker?: boolean;
-  /**
-   * Override hooks for the three auxiliary device clients, mirroring
-   * `createDeviceClient`'s pattern. Used by the Tauri Android shell to
-   * inject `TauriBlecOpossumClient`/`TauriBlecPawPrintsClient`/
-   * `TauriBlecCivetEdgingClient` (`@dg-kit/transport-tauri-blec`, via
-   * `@dg-agent/device-tauri-ble`) instead of the Web-Bluetooth-backed
-   * defaults. Only consulted when the corresponding client isn't already
-   * pre-built (mirrors `createDeviceClient`'s "only used when `device` is
-   * not supplied" rule at the `createBrowserServices()` level, one layer
-   * further out — here it's "only used when this hook hasn't already built
-   * one this render's lifetime").
-   */
-  createOpossumClient?: () => OpossumClient;
-  createPawPrintsClient?: () => PawPrintsClient;
-  createCivetEdgingClient?: () => CivetEdgingClient;
 };
 
 export interface UseBrowserAppServicesOptions {
   settings: BrowserAppSettings;
+  inShell?: boolean;
   /** The current scene (persona). Comes from the shared scene library. */
   scenes: { selectedId: string; saved: SavedScene[] };
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
-  deviceRuntimeProvider?: NativeBridge['deviceRuntime'];
+  /** Agent's handle on the app's one DG-Lab registry. Every device client comes from it. */
+  dglab: DgLabModuleHandle;
+  /** The registry's transport is native BLE, so the Web Bluetooth probe does not apply. */
+  nativeBluetooth?: boolean;
 }
 
 export interface UseBrowserAppServicesResult extends BrowserServices {
@@ -78,7 +59,9 @@ export function useBrowserAppServices(
     scenes,
     setPendingPermission,
     servicesOverrides,
-    deviceRuntimeProvider,
+    dglab,
+    nativeBluetooth = false,
+    inShell = false,
   } = options;
 
   const disableUpdateChecker = servicesOverrides?.disableUpdateChecker ?? false;
@@ -92,66 +75,23 @@ export function useBrowserAppServices(
     [disableUpdateChecker],
   );
 
-  // Build the device client once for the lifetime of the component. Settings
-  // changes that rebuild the services (LLM client, bridge, permissions, …)
-  // must not tear down the BLE connection — that used to disconnect users
-  // every time they closed the settings drawer.
-  //
-  // autoReconnect is on by default: if the Coyote briefly drops the GATT
-  // link (background WebView, brief out-of-range), the transport silently
-  // reconnects via the cached BluetoothDevice rather than forcing the user
-  // back to the chooser. The Tauri shell brings its own factory and decides
-  // for itself.
-  const createDeviceClient = servicesOverrides?.createDeviceClient;
-  const deviceRef = useRef<DeviceClient | null>(null);
-  if (deviceRef.current === null) {
-    deviceRef.current = new MultiCoyoteDeviceClient((protocol) =>
-      createDeviceClient
-        ? createDeviceClient(protocol)
-        : new WebBluetoothDeviceClient({ protocol, autoReconnect: true }),
-    );
-  }
-  const device = deviceRef.current;
+  // The clients own no BLE link (the registry does), so building them once is only about
+  // keeping runtime listeners stable across settings-driven service rebuilds. The registry
+  // handle is shell-lifetime.
+  const [{ device, opossum, pawPrints, civetEdging }] = useState(() =>
+    createRegistryAgentDevices(dglab),
+  );
+  const taskRunReporter = useMemo(() => createAgentTaskRunReporter(), []);
 
-  // Same "build once, hold stable" pattern as `device` above — each of these
-  // three auxiliary devices is independently connectable/disconnectable from
-  // the UI, and settings-driven service rebuilds must not tear any of them
-  // down. Override hooks mirror `createDeviceClient`: the Tauri Android
-  // shell injects Tauri-backed clients instead of the Web-Bluetooth defaults.
-  const createOpossumClient = servicesOverrides?.createOpossumClient;
-  const opossumRef = useRef<OpossumClient | null>(null);
-  if (opossumRef.current === null) {
-    opossumRef.current = createOpossumClient
-      ? createOpossumClient()
-      : new WebBluetoothOpossumClient();
-  }
-  const opossum = opossumRef.current;
+  const { disableUpdateChecker: _disableUpdateChecker, ...browserServicesOverrides } =
+    servicesOverrides ?? {};
+  // The registry's transport is native BLE on Android, so the Web Bluetooth probe does not apply.
+  const deviceOverrides: Pick<BrowserServicesOptions, 'bluetoothAvailabilityOverride'> =
+    nativeBluetooth ? { bluetoothAvailabilityOverride: { supported: true } } : {};
 
-  const createPawPrintsClient = servicesOverrides?.createPawPrintsClient;
-  const pawPrintsRef = useRef<PawPrintsClient | null>(null);
-  if (pawPrintsRef.current === null) {
-    pawPrintsRef.current = createPawPrintsClient
-      ? createPawPrintsClient()
-      : new WebBluetoothPawPrintsClient();
-  }
-  const pawPrints = pawPrintsRef.current;
-
-  const createCivetEdgingClient = servicesOverrides?.createCivetEdgingClient;
-  const civetEdgingRef = useRef<CivetEdgingClient | null>(null);
-  if (civetEdgingRef.current === null) {
-    civetEdgingRef.current = createCivetEdgingClient
-      ? createCivetEdgingClient()
-      : new WebBluetoothCivetEdgingClient();
-  }
-  const civetEdging = civetEdgingRef.current;
-
-  const {
-    createOpossumClient: _createOpossumClient,
-    createPawPrintsClient: _createPawPrintsClient,
-    createCivetEdgingClient: _createCivetEdgingClient,
-    ...browserServicesOverrides
-  } = servicesOverrides ?? {};
-
+  const [accountId, setAccountId] = useState(currentAuthUserId);
+  useEffect(() => subscribeAuthChanges(() => setAccountId(currentAuthUserId())), []);
+  // Rebuild only the runtime on identity changes; shell-owned physical clients remain stable.
   const services = useMemo(
     () =>
       createBrowserServices({
@@ -163,17 +103,25 @@ export function useBrowserAppServices(
         civetEdging,
         // A standalone build has no shell lease holder; inside the shell a
         // different holder must block every non-stop command at the boundary.
-        deviceExecutionGate: () => currentDeviceLease() === null || hasDeviceLease('agent'),
-        deviceRuntimeProvider,
+        deviceExecutionGate: ({ sessionId, context }) =>
+          (inShell
+            ? hasDeviceLease('agent')
+            : currentDeviceLease() === null || hasDeviceLease('agent')) &&
+          (context.sourceType === 'sensor' ||
+            deviceConversationAccess(currentAuthUserId(), 'ai', sessionId)),
+        taskRunReporter,
         resolveBridgeSessionId,
         onPermissionRequest: (input) =>
           new Promise<PermissionDecision>((resolve) => {
             setPendingPermission({ input, resolve });
           }),
         ...browserServicesOverrides,
+        ...deviceOverrides,
       }),
     [
       settings,
+      accountId,
+      inShell,
       scenes.selectedId,
       scenes.saved,
       device,
@@ -183,7 +131,8 @@ export function useBrowserAppServices(
       resolveBridgeSessionId,
       setPendingPermission,
       servicesOverrides,
-      deviceRuntimeProvider,
+      nativeBluetooth,
+      taskRunReporter,
     ],
   );
 

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   CalendarDays,
   Flag,
   Link2,
-  Lock,
   MapPin,
   MessageSquare,
   MoreHorizontal,
@@ -12,6 +11,7 @@ import {
   ShieldOff,
 } from 'lucide-react';
 import { Badge, Button, Overlay } from '@0xnullai/ui';
+import { safeProfileLinks } from '@0xnullai/auth/profile-links';
 import {
   beginFollowToggle,
   blockUser,
@@ -34,21 +34,14 @@ import {
 import { openDirectMessage } from '../dm-entry';
 import { cleanProfile, ProfileForm } from './ProfileForm';
 import { formatJoined, ProfileIdentity, ProfileMeta, ProfileSection, ProfileStats } from './frame';
+import { ProfileWorks } from './ProfileWorks';
 
 /**
  * Somebody's profile — including your own, which is the same surface in edit
  * mode rather than a separate form somewhere else.
  *
- * **The UI never decides who may see what.** The account service returns
- * exactly what the viewer is entitled to: a private profile arrives with no
- * body, no counts and no join date, and a block arrives as "no such user".
- * Everything here is derived from that answer by `resolveProfileView`, so
- * there is no branch that could render a value the server withheld — the
- * hidden case simply has no fields on it.
- *
- * Signed out is a first-class state, not a degraded one. Anonymous use is a
- * hard product constraint: a public profile is readable with no account, and
- * the actions that do need one say so instead of failing.
+ * The account service requires login, hides blocked users and filters private
+ * album photos. The UI displays only the returned profile projection.
  */
 
 type Mode = 'view' | 'edit';
@@ -58,11 +51,16 @@ export function ProfileDialog({
   viewer,
   onClose,
   presentation = 'dialog',
+  onOpenMarketItem,
+  shellBack = false,
 }: {
   username: string;
   viewer: AuthUser | null;
   onClose: () => void;
   presentation?: 'dialog' | 'page';
+  onOpenMarketItem?: (id: string) => void;
+  /** The shell top bar already shows back + title (phone), so the page omits its own row. */
+  shellBack?: boolean;
 }) {
   const [resolved, setResolved] = useState<ResolvedProfile | null>(null);
   const [follow, setFollow] = useState<FollowState | null>(null);
@@ -171,17 +169,17 @@ export function ProfileDialog({
       className={
         presentation === 'dialog'
           ? 'flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(480px,calc(100vw-2rem))] flex-col rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)]'
-          : 'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)]'
+          : 'ui-push-in mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)]'
       }
     >
-      {presentation === 'page' ? (
-        <div className="shrink-0 border-b border-[var(--surface-border)] px-3 py-2 sm:px-5">
+      {presentation === 'page' && !shellBack ? (
+        <div className="shrink-0 px-2 py-1 sm:px-4">
           <Button variant="ghost" size="sm" onClick={onClose}>
             <ArrowLeft className="h-4 w-4" /> 返回
           </Button>
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:p-6">
         {resolved === null ? (
           <p
             role="status"
@@ -208,7 +206,22 @@ export function ProfileDialog({
             <ProfileForm draft={draft} onChange={setDraft} />
           </div>
         ) : (
-          <ProfileBody resolved={resolved} follow={follow} />
+          <ProfileBody
+            resolved={resolved}
+            follow={follow}
+            viewerId={viewerId}
+            onOpenMarketItem={onOpenMarketItem}
+            actions={
+              <ProfileActions
+                resolved={resolved}
+                follow={follow}
+                error={error}
+                onEdit={startEditing}
+                onToggleFollow={() => void toggleFollow()}
+                onClose={onClose}
+              />
+            }
+          />
         )}
       </div>
 
@@ -217,7 +230,7 @@ export function ProfileDialog({
           {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] text-[var(--text-faint)]">
-              {draft.visibility === 'public' ? '所有人可见' : '仅自己可见'}
+              登录用户可见 · 相册照片可单独设置范围
             </span>
             <div className="flex items-center gap-2">
               <Button variant="ghost" disabled={saving} onClick={() => setMode('view')}>
@@ -229,16 +242,7 @@ export function ProfileDialog({
             </div>
           </div>
         </div>
-      ) : resolved && resolved.state !== 'unavailable' ? (
-        <ProfileActions
-          resolved={resolved}
-          follow={follow}
-          error={error}
-          onEdit={startEditing}
-          onToggleFollow={() => void toggleFollow()}
-          onClose={onClose}
-        />
-      ) : (
+      ) : resolved && resolved.state !== 'unavailable' ? null : (
         <div className="flex justify-end border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
           <Button variant="secondary" onClick={onClose}>
             关闭
@@ -250,13 +254,19 @@ export function ProfileDialog({
   return presentation === 'page' ? content : <Overlay onDismiss={onClose}>{content}</Overlay>;
 }
 
-/** Everything above the action bar, in both the visible and the hidden case. */
+/** Everything above the action bar. */
 function ProfileBody({
   resolved,
   follow,
+  viewerId,
+  onOpenMarketItem,
+  actions,
 }: {
   resolved: Exclude<ResolvedProfile, { state: 'unavailable' }>;
   follow: FollowState | null;
+  viewerId: string | null;
+  onOpenMarketItem?: (id: string) => void;
+  actions: ReactNode;
 }) {
   const mutual = follow?.following === true && follow.followedBy === true;
   const badge = mutual ? (
@@ -265,55 +275,38 @@ function ProfileBody({
     <Badge>关注了你</Badge>
   ) : null;
 
-  if (resolved.state === 'hidden') {
-    return (
-      <div className="flex flex-col gap-6">
-        <ProfileIdentity
-          displayName={resolved.user.displayName}
-          username={resolved.user.username}
-          badge={badge}
-        />
-        {/* No counts, no join date, no placeholder rows. A greyed-out skeleton
-            of what is being withheld still tells the viewer this account is
-            active and how popular it is, which is what private was for. */}
-        <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-4 py-3">
-          <Lock className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
-          <p className="text-sm text-[var(--text-soft)]">主页内容不可见</p>
-        </div>
-      </div>
-    );
-  }
-
   const joined = formatJoined(resolved.createdAt);
-  const links = resolved.profile.links.filter((l) => l.trim());
+  const links = safeProfileLinks(resolved.profile.links);
 
   return (
     <div className="flex flex-col gap-6">
-      <ProfileIdentity
-        displayName={resolved.user.displayName}
-        username={resolved.user.username}
-        avatarUrl={resolved.profile.avatarUrl}
-        badge={badge}
-      />
-
-      <ProfileStats
-        followers={follow?.followerCount ?? resolved.followers}
-        following={resolved.following}
-      />
-
-      {resolved.profile.bio ? (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text)]">
-          {resolved.profile.bio}
-        </p>
-      ) : resolved.relationship === 'self' && !resolved.profile.location ? (
-        // Your own untouched profile, which is otherwise three numbers and a
-        // date. Worded as an invitation and not as a task: an account that
-        // stays empty is a finished account, and a nag bar would say the
-        // opposite of what this product promises.
-        <p className="text-sm leading-relaxed text-[var(--text-faint)]">
-          暂无资料，所有内容均为选填
-        </p>
-      ) : null}
+      {/* One header: who, what they say about themselves, the counts, then what you can do. */}
+      <header className="flex flex-col gap-3">
+        <ProfileIdentity
+          displayName={resolved.user.displayName}
+          username={resolved.user.username}
+          avatarUrl={resolved.profile.avatarUrl}
+          badge={badge}
+        />
+        {resolved.profile.bio ? (
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--text)]">
+            {resolved.profile.bio}
+          </p>
+        ) : resolved.relationship === 'self' && !resolved.profile.location ? (
+          // Your own untouched profile, which is otherwise three numbers and a
+          // date. Worded as an invitation and not as a task: an account that
+          // stays empty is a finished account, and a nag bar would say the
+          // opposite of what this product promises.
+          <p className="text-sm leading-relaxed text-[var(--text-faint)]">
+            暂无资料，所有内容均为选填
+          </p>
+        ) : null}
+        <ProfileStats
+          followers={follow?.followerCount ?? resolved.followers}
+          following={resolved.following}
+        />
+        {actions}
+      </header>
 
       {resolved.profile.interests.length > 0 ? (
         <div className="flex flex-wrap gap-2">
@@ -377,6 +370,10 @@ function ProfileBody({
           </div>
         </ProfileSection>
       )}
+
+      {viewerId && (
+        <ProfileWorks creatorId={resolved.user.id} viewerId={viewerId} onOpen={onOpenMarketItem} />
+      )}
     </div>
   );
 }
@@ -417,34 +414,14 @@ function ProfileActions({
 
   if (relationship === 'self') {
     return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-        <span className="text-xs text-[var(--text-faint)]">
-          {resolved.state === 'visible' && resolved.profile.visibility === 'public'
-            ? resolved.profile.discoverable
-              ? '公开 · 可在交友中发现'
-              : '公开主页'
-            : resolved.state === 'visible' && resolved.profile.visibility === 'friends'
-              ? '仅好友可见'
-              : '仅自己可见'}
-        </span>
-        <Button onClick={onEdit}>
-          <Pencil className="h-4 w-4" />
-          编辑资料
-        </Button>
-      </div>
-    );
-  }
-
-  if (relationship === 'anonymous') {
-    return (
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
-        {/* Signed out is not broken. The profile above is fully readable; only
-            the actions that need an identity are unavailable, and they say so
-            rather than being offered and then failing. */}
-        <span className="text-xs text-[var(--text-faint)]">登录后可关注和私聊</span>
-        <Button variant="secondary" onClick={onClose}>
-          关闭
-        </Button>
+      <div className="flex flex-col gap-2">
+        {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" className="ui-press" onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+            编辑资料
+          </Button>
+        </div>
       </div>
     );
   }
@@ -457,7 +434,7 @@ function ProfileActions({
   const dmAllowed = follow ? canDirectMessage(follow, relationship) : false;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-[var(--surface-border)] px-5 py-4 sm:px-6">
+    <div className="flex flex-col gap-2">
       {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
       {safetyNotice && <p className="text-xs text-[var(--success)]">{safetyNotice}</p>}
       <div className="flex items-center gap-2">
@@ -465,16 +442,18 @@ function ProfileActions({
             「互相关注」 — that is the badge's job up by the name, and saying it
             twice makes the button look like a label rather than a control. */}
         <Button
+          size="sm"
           variant={following ? 'secondary' : 'default'}
           disabled={pending}
           onClick={onToggleFollow}
-          className="flex-1"
+          className="ui-press min-w-[88px]"
         >
           {following ? '已关注' : relationship === 'followsYou' ? '回关' : '关注'}
         </Button>
         <Button
+          size="sm"
           variant="secondary"
-          className="flex-1"
+          className="ui-press min-w-[88px]"
           disabled={!dmAllowed}
           title={!dmAllowed ? '互相关注后可私聊' : undefined}
           onClick={() => {
@@ -486,7 +465,9 @@ function ProfileActions({
           私聊
         </Button>
         <Button
+          size="icon"
           variant="ghost"
+          className="ui-press"
           aria-label="更多用户操作"
           onClick={() => {
             setSafetyOpen((open) => !open);
@@ -496,7 +477,7 @@ function ProfileActions({
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </div>
-      {!dmAllowed && <p className="text-[10px] text-[var(--text-faint)]">互相关注后可私聊</p>}
+      {!dmAllowed && <p className="text-xs text-[var(--text-faint)]">互相关注后可私聊</p>}
       {safetyOpen ? (
         <div className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--surface-raised)] p-2">
           {reportOpen ? (

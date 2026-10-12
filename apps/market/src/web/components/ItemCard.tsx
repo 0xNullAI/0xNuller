@@ -1,79 +1,71 @@
 import type { JSX } from 'react';
+import { BadgeCheck, Download, Eye } from 'lucide-react';
 import {
   isExtraLargeScenario,
   type MarketItem,
   type WaveformContent,
-  type MultiSceneContent,
   type ScenarioContent,
 } from '../../shared/schema';
 import { WaveformPreview } from './WaveformPreview';
+import { characterPortraitUrl } from '../api';
 
 interface Props {
   item: MarketItem;
   onOpen: (item: MarketItem) => void;
 }
 
+/**
+ * One card: the picture, the name, a two-line intro, then author and counts. The kind is
+ * not repeated here because the category tab above already says it; an empty intro is
+ * left out rather than filled with a placeholder.
+ */
 export function ItemCard({ item, onOpen }: Props): JSX.Element {
+  const scenario = item.type === 'scenario' ? (item.content as ScenarioContent) : null;
+  const waveform = item.type === 'waveform' ? (item.content as WaveformContent) : null;
+  const portraitId = scenario?.portraitId;
+  const description = item.description?.trim();
   return (
-    <button className="card" onClick={() => onOpen(item)}>
-      <div className="card-head">
-        <span className="card-icon">
-          {item.type === 'waveform'
-            ? '〰️'
-            : item.icon || (item.type === 'multi-scene' ? '🎬' : '🎭')}
-        </span>
+    <button type="button" className="card ui-press" onClick={() => onOpen(item)}>
+      <span className="card-art" aria-hidden="true">
+        {portraitId ? (
+          <img src={characterPortraitUrl(portraitId)} alt="" loading="lazy" />
+        ) : waveform ? (
+          <WaveformPreview frames={waveform.frames} height={72} />
+        ) : (
+          <span className="card-emoji">{item.icon || '🎭'}</span>
+        )}
+        {waveform && (
+          <span className="card-badge">{waveform.modality === 'vibration' ? '震动' : '电击'}</span>
+        )}
+        {scenario && isExtraLargeScenario(scenario) && (
+          <span className="card-badge card-badge-warning">超大场景</span>
+        )}
+      </span>
+      <span className="card-body">
         <span className="card-name">{item.name}</span>
-        {item.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
-        {item.type === 'scenario' && isExtraLargeScenario(item.content as ScenarioContent) && (
-          <span className="scale-badge">超大场景</span>
-        )}
-        {item.type === 'waveform' && (
-          <span className="agent-badge">
-            {(item.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
-          </span>
-        )}
-        {item.type === 'multi-scene' && (item.content as MultiSceneContent).playerCount && (
-          <span className="player-badge">
-            👥 {(item.content as MultiSceneContent).playerCount!.min}-
-            {(item.content as MultiSceneContent).playerCount!.max} 人
-          </span>
-        )}
-      </div>
-
-      {item.type === 'waveform' ? (
-        <WaveformPreview frames={(item.content as WaveformContent).frames} />
-      ) : item.type === 'multi-scene' ? (
-        <div className="card-scene">
-          <p className="card-desc">{item.description || '（无简介）'}</p>
-          <div className="scene-meta">
-            <span>🎭 {(item.content as MultiSceneContent).roles.length} 角色</span>
-            {(item.content as MultiSceneContent).playerCount && (
-              <span>
-                👥 {(item.content as MultiSceneContent).playerCount!.min}-
-                {(item.content as MultiSceneContent).playerCount!.max} 人
-              </span>
+        {description ? <span className="card-desc">{description}</span> : null}
+        {item.recommendationReason ? (
+          <span className="card-reason">{item.recommendationReason}</span>
+        ) : null}
+        <span className="card-foot">
+          <span className="card-author">
+            {item.verifiedCreator ? (
+              <>
+                <BadgeCheck className="h-3 w-3 shrink-0" aria-label="已认证" />@
+                {item.verifiedCreator.username}
+              </>
+            ) : (
+              item.author || '未认证作者'
             )}
-          </div>
-        </div>
-      ) : (
-        <p className="card-desc">{item.description || '（无简介）'}</p>
-      )}
-
-      <div className="card-foot">
-        <span className="card-author">{item.author ? `@${item.author}` : '匿名'}</span>
-        <span className="card-stats">
-          👁 {item.views} · ↓ {item.downloads}
+          </span>
+          <span className="card-stats">
+            <Eye className="h-3 w-3" aria-label="浏览" />
+            {item.views}
+            <Download className="h-3 w-3" aria-label="下载" />
+            {item.downloads}
+          </span>
         </span>
-      </div>
-      {item.tags.length > 0 && (
-        <div className="tags">
-          {item.tags.map((t) => (
-            <span key={t} className="tag">
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
+      </span>
     </button>
   );
 }

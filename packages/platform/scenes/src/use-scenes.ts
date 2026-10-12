@@ -1,4 +1,5 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { fetchPublicMarketPortrait } from '@0xnullai/market-client';
+import { useCallback, useSyncExternalStore, useEffect, useState } from 'react';
 import { loadScenes, subscribeScenes, updateScenes } from './index';
 import type { SceneLibrary } from './index';
 
@@ -25,7 +26,7 @@ function snapshot(): SceneLibrary {
   return cachedLib;
 }
 
-const SERVER_SNAPSHOT: SceneLibrary = { scenes: [], selectedId: 'gentle', hiddenBuiltinIds: [] };
+const SERVER_SNAPSHOT: SceneLibrary = { scenes: [], selectedId: '', hiddenBuiltinIds: [] };
 
 export function useScenes(): [
   SceneLibrary,
@@ -36,4 +37,52 @@ export function useScenes(): [
     updateScenes(updater);
   }, []);
   return [lib, update];
+}
+
+/** Public default only. Bytes stay in memory, never enter private photos or content sync. */
+export function usePublicMarketPortrait(portraitId: string | null | undefined): string | null {
+  const [loaded, setLoaded] = useState<{ id: string; url: string; signal: AbortSignal } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!portraitId) return;
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    let image: HTMLImageElement | undefined;
+    let active = true;
+    const release = () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = undefined;
+      }
+    };
+    void fetchPublicMarketPortrait(portraitId, controller.signal)
+      .then((blob) => {
+        if (!active || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        image = new Image();
+        image.onload = () => {
+          if (active && objectUrl)
+            setLoaded({ id: portraitId, url: objectUrl, signal: controller.signal });
+        };
+        image.onerror = () => {
+          release();
+          if (active) setLoaded(null);
+        };
+        image.src = objectUrl;
+      })
+      .catch(() => {
+        if (active) setLoaded(null);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+      if (image) {
+        image.onload = null;
+        image.onerror = null;
+      }
+      release();
+    };
+  }, [portraitId]);
+  return loaded && loaded.id === portraitId && !loaded.signal.aborted ? loaded.url : null;
 }

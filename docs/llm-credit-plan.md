@@ -9,8 +9,10 @@ provider 存在，也不做长期双轨。用户登录后使用 Credit；余额�
 基础兑换比例先定为 **1 美元 = 1000 Credit**。人民币人工充值采用固定产品价
 **7 元 = 1000 Credit**，不跟随每日汇率浮动；成功邀请奖励 **500 Credit**。
 
-自己的 API 继续保留现有官方、第三方和自定义兼容能力，不消耗 Credit。旧 BYOK 配置继续可用，
-避免升级后要求用户重新填写 Key。
+平台托管模型提供全部 AI 能力。自己的 API（BYOK）只保留一个“自定义” OpenAI 兼容接口，默认只发文字，
+不消耗 Credit。旧版保存的预置服务商（Qwen、DeepSeek、OpenAI 等）读取时转为“自定义”，保留 Key 和
+模型并填入该服务的 OpenAI 兼容地址；无法确定兼容地址的（Anthropic、MiniMax）回到托管模型。
+实时语音只通过平台的猫愿语音提供。
 
 ## 简化后的 UI
 
@@ -23,14 +25,13 @@ Agent 默认只显示一个模型选择器：
 - 未登录时把发送按钮替换为明确的“登录后使用”。
 
 模型选择器底部保留一个低强调入口 **“使用自己的 API”**，不再用两张大卡片让用户先选择模式。
-进入后默认只显示服务商、API Key 和模型。
+进入后是“自定义”接口：Base URL、接口协议、Strict Schema、API Key、模型和连接测试。代理字段只说明
+“启用后，模型请求将通过该地址发送”，不增加额外模式或确认弹窗。
 
-Base URL、接口协议、Strict Schema、网络代理和连接测试收进同一个“高级设置”。普通预置服务商使用
-默认值；选择“自定义”时才自动展开必要字段。代理字段只说明“启用后，模型请求将通过该地址发送”，
-不增加额外模式或确认弹窗。
+“支持图片输入”是自定义接口上的用户开关，默认关闭；关闭时 Video 与图片附件都不向该接口发送图片。
+托管侧只有声明的 `vision` 模型接受图片。
 
-设置页提供“切换回 0xNullAI 模型”。Agent、Chat 和 Video 共享模型来源；Video 只展示明确支持视觉
-输入的模型。Voice 保持独立模型设置和通话页面，但在 6.5.0 一并接入同一个 Credit 余额。
+设置页提供“切换回猫愿模型”。Agent 与 Chat 共享模型来源；Video 使用独立配置。Voice 保持独立模型设置和通话页面，但在 6.5.0 一并接入同一个 Credit 余额。
 
 账户页保留余额、充值、用量记录和邀请记录。小屏中 Credit 只出现在用户名旁，邀请卡片只显示
 “邀请好友，获得 500 Credit”、链接和分享按钮，详细记录进入二级页面。
@@ -106,14 +107,14 @@ Base URL、接口协议、Strict Schema、网络代理和连接测试收进同�
 独立的账本类型。没有管理员确认实际到账时不得增加 Credit。
 
 生成请求通过登录 Cookie 或 Bearer 会话鉴权，并携带 `Idempotency-Key`。Worker 验证模型白名单，
-预留额度，通过同账号的 Cloudflare Workers AI binding 调用模型，再按实际用量结算，不需要第三方
+预留额度，通过火山引擎方舟调用模型，再按实际用量结算，用户不需要自己的
 模型 API Key。失败、取消或模型不可用时释放预留。
 
 ## Agent、Video 与 Voice 计价
 
 所有平台模型在调用前预留 Credit，成功后结算，失败或取消释放预留；使用自己的 API 时三者都不扣
 Credit。客户端显示预计消耗，价格和最终用量只能由服务端决定。首发统一使用
-`ceil(上游实际成本（美元） × 1500)`，单次成功调用最低 1 Credit；价格版本保存在每笔账单中。
+Worker 密钥 `AI_PRICE_TABLE` 中的 Credit 单价（仓库不保存价格），单次成功调用最低 1 Credit；价格版本保存在每笔账单中。
 
 ### Agent
 
@@ -134,13 +135,19 @@ Credit。客户端显示预计消耗，价格和最终用量只能由服务端�
 
 ### Voice
 
-平台 Voice 首发使用当前实时语音 Worker，但升级到受支持的 xAI `grok-voice-think-fast-2.0`。官方基础
-价格当前为每分钟 0.08 美元，平台暂定 **每 10 秒 20 Credit**，即最多 120 Credit/分钟。连接失败不
-收费；成功连接后按实际连接时长向上取整到 10 秒，单次最低 20 Credit。
+平台 Voice 使用豆包端到端实时语音（Seeduplex，经 Voice Worker 转接，保留工具调用）。模型 ID 与
+Credit 单价只来自 `AI_PRICE_TABLE` 的 `realtime` 路由，仓库内不记录价格。服务商每轮上报输入、
+缓存命中与输出的文本／音频 token，Worker 逐轮累计，Auth 按价格表计价；连接失败或没有可计费
+用量时释放冻结，不收费。
 
-建立连接前按账户余额和单次时长上限预留本次通话可能使用的 Credit，结束后释放未使用部分。余额不足
-20 Credit 时不建立连接；达到余额对应时长或单次上限时由 Durable Object alarm 结束通话。结算使用
-Durable Object 记录的实际连接时长，异常断线仍按已连接时间结算。
+建立连接前按价格表和每分钟用量上限估算冻结额度，余额不足一分钟用量时不建立连接；达到冻结
+对应时长、单次上限或已上报用量接近冻结时，Durable Object 结束通话。挂断后最多等待 20 秒让已
+说完的轮次补报用量；仍未上报的轮次只记入核对队列，不估算扣费。
+
+### 情境图片与生成视频
+
+当前异步媒体任务按用户提交时接受的固定服务报价预留并结算，和文字／摄像头视觉的实际 Token 用量计费不同。
+结果对象在 R2 保存成功、会话与关系仍有效且预留未过期后才记入账本；超过两小时才恢复的旧任务不能迟扣已失效预留，须走失败释放与核对路径。价格版本和任务 ID 随账本保存。未来若服务商提供可信逐任务用量，可在同一预留／结算契约内换计量适配器，不改变账户钱包。
 
 ## 与 Agent 的对应
 
@@ -150,13 +157,12 @@ Agent Core 继续只依赖 `LlmClient.runTurn()`，不感知 Cloudflare、Credit
 Agent Runtime
   -> LlmClient.runTurn()
      -> OpenAiHttpLlmClient     -> llm.0xnullai.com/v1/chat/completions（平台托管）
-     -> OpenAiHttpLlmClient     -> 用户选择的 OpenAI 兼容 API
-     -> PiAiLlmClient           -> Anthropic、Google 及现有第三方 API
+     -> OpenAiHttpLlmClient     -> 用户填写的自定义 OpenAI 兼容 API
   -> LlmTurnResult
   -> 工具权限与设备安全执行
 ```
 
-组合层只根据当前来源创建对应客户端。三类客户端把流式文本、推理内容和工具调用转换为同一个
+组合层只根据当前来源创建客户端。两种来源都把流式文本、推理内容和工具调用转换为同一个
 `LlmTurnResult`，因此 Agent 的会话、工具、权限、多设备路由和紧急停止逻辑不需要分叉。
 
 ## Credit 与数据
@@ -175,16 +181,15 @@ Credit 使用追加式账本，记录购买、邀请奖励、预留、消费、�
 
 保留：
 
-- OpenAI、Anthropic、Google、Qwen、DeepSeek、豆包和目前可用的第三方 provider。
 - 自定义 Base URL、Responses/Chat Completions、Strict Schema、代理和模型发现。
-- 现有 OpenAI 兼容与 pi-ai 协议客户端。
-- 能验证成功的旧 BYOK 数据和设置。
+- OpenAI 兼容协议客户端。
+- 旧 BYOK 数据：可确定兼容地址的转为“自定义”。
 
 清理：
 
 - `free` provider、`openrouter/free` 展示模型和每日体验额度。
 - 免费代理专用 HMAC、cookie 分支、APK 内共享 secret 和相关环境变量。
-- 失效或没有真实调用路径的 provider 定义。
+- 预置第三方 provider、pi-ai 协议客户端和 models.dev 模型目录（Auth `/api/auth/model-catalog`）。
 - 重复的 provider 判断、连接测试、设置状态和兼容测试夹具。
 
 ## 实施顺序

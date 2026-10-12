@@ -20,9 +20,10 @@ import {
 import type { CivetEdgingClient, OpossumClient, PawPrintsClient } from './device-clients.js';
 import { DeviceCommandQueue, type OpossumCommandQueue } from '@dg-kit/safety';
 import { throwIfAborted } from './runtime-errors.js';
-import { consumeTurnQuota, type TurnState } from './runtime-turn-state.js';
+import { consumeTurnQuota, isStopTool, type TurnState } from './runtime-turn-state.js';
 import type { OpossumPolicyEngine, PolicyEngine } from '@dg-kit/safety';
 import type { ToolCallConfig } from './tool-call-config.js';
+import type { ContextualTools } from './contextual-tools.js';
 import type { ToolRegistry } from './tool-registry.js';
 import {
   filterToolDefinitionsByConnectedDevices,
@@ -65,6 +66,13 @@ export interface DeviceExecutionGateInput {
   command: DeviceCommand | OpossumCommand | { type: 'setIndicatorColor'; color: number };
 }
 
+/**
+ * Shown when the execution gate rejects a call before any confirmation dialog. The gate is a
+ * single boolean (per-chat consent and module lease), so the text names both causes.
+ */
+const DEVICE_ACCESS_MISSING_REASON =
+  '本聊天还没有设备权限，请先允许本聊天控制设备，并确认设备由 Agent 控制。';
+
 export type DeviceExecutionGate = (input: DeviceExecutionGateInput) => boolean | Promise<boolean>;
 
 export interface RuntimeToolExecutorOptions {
@@ -77,6 +85,7 @@ export interface RuntimeToolExecutorOptions {
   queue: DeviceCommandQueue;
   opossumQueue?: OpossumCommandQueue;
   toolRegistry: ToolRegistry;
+  contextualTools?: ContextualTools;
   policyEngine: PolicyEngine;
   opossumPolicyEngine: OpossumPolicyEngine;
   logger: Logger;
@@ -102,12 +111,15 @@ export interface ExecuteToolCallInput {
 export class RuntimeToolExecutor {
   private readonly scheduledTimers = new Map<string, ScheduledTimer>();
   private readonly coyoteTargetQueues = new Map<string, DeviceCommandQueue>();
+  private timerSequence = 0;
 
   constructor(private readonly options: RuntimeToolExecutorOptions) {}
 
   async execute(input: ExecuteToolCallInput): Promise<string> {
     const { session, toolCall, context, turnState, abortSignal } = input;
-    const toolDisplayName = this.options.toolRegistry.getDisplayName(toolCall.name);
+    const toolDisplayName =
+      this.options.contextualTools?.displayNames[toolCall.name] ??
+      this.options.toolRegistry.getDisplayName(toolCall.name);
     const displayToolCall = toolDisplayName
       ? { ...toolCall, displayName: toolDisplayName }
       : toolCall;
@@ -118,15 +130,41 @@ export class RuntimeToolExecutor {
       sessionId: session.id,
       toolCall: displayToolCall,
     });
-    await this.options.traceStore.append(session.id, {
-      kind: 'tool-call',
-      turnId: context.traceId,
-      sourceType: context.sourceType,
-      toolCallId: toolCall.id,
-      toolName: toolCall.name,
-      toolDisplayName,
-      args: toolCall.args,
-    });
+    let proposalTraceFailed = false;
+    let proposalTraceFailure: unknown;
+    try {
+      await this.options.traceStore.append(session.id, {
+        kind: 'tool-call',
+        turnId: context.traceId,
+        sourceType: context.sourceType,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        toolDisplayName,
+        args: toolCall.args,
+      });
+    } catch (error) {
+      // A logging outage must never make a stop unreachable. We still mark
+      // the result unconfirmed, because its proposal lacks an audit record.
+      if (!isStopTool(toolCall.name)) {
+        this.options.logger.error('Tool proposal could not be recorded; execution denied.', {
+          sessionId: session.id,
+          toolName: toolCall.name,
+          toolCallId: toolCall.id,
+        });
+        this.options.emit({
+          type: 'tool-call-denied',
+          sessionId: session.id,
+          toolCall: displayToolCall,
+          reason: '工具记录不可用，未执行',
+        });
+        return JSON.stringify({
+          error: '工具记录不可用，未执行',
+          _meta: { kind: 'tool-denied', toolName: toolCall.name },
+        });
+      }
+      proposalTraceFailed = true;
+      proposalTraceFailure = error;
+    }
 
     const quotaError = consumeTurnQuota(
       toolCall.name,
@@ -152,7 +190,10 @@ export class RuntimeToolExecutor {
     // Generic runtime tools resolve to an inline plan because their own
     // fenced executor owns transport semantics. Ask through Agent's existing
     // permission service before registry resolution can invoke that executor.
-    if (this.options.permissionRequiredToolNames?.has(toolCall.name)) {
+    if (
+      this.options.permissionRequiredToolNames?.has(toolCall.name) ||
+      this.options.contextualTools?.permissionRequiredToolNames.has(toolCall.name)
+    ) {
       const permission = await this.options.permission.request({
         context,
         toolName: toolCall.name,
@@ -171,54 +212,35 @@ export class RuntimeToolExecutor {
       }
     }
 
-    const planResult = await this.resolvePlan(session.id, displayToolCall);
+    const planResult = await this.resolvePlan(session, displayToolCall, context, abortSignal);
     if ('error' in planResult) {
-      await this.options.traceStore.append(session.id, {
-        kind: 'tool-denied',
-        turnId: context.traceId,
-        sourceType: context.sourceType,
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        toolDisplayName,
-        args: toolCall.args,
-        detail: planResult.error,
-      });
-      return JSON.stringify({
-        error: planResult.error,
-        _meta: {
-          kind: 'tool-denied',
-          toolName: toolCall.name,
-        },
-      });
+      // A contextual owner may have committed a write before its response was
+      // lost. An exception cannot prove the action did not happen.
+      return this.uncertainToolResult(session, displayToolCall, planResult.error, context);
     }
 
     throwIfAborted(abortSignal);
 
+    let output: string;
     if (planResult.plan.type === 'timer') {
-      return this.scheduleTimer(session, planResult.plan.command, context, displayToolCall);
-    }
-
-    if (planResult.plan.type === 'inline') {
-      return this.recordInlineResult({
+      output = await this.scheduleTimer(session, planResult.plan.command, context, displayToolCall);
+    } else if (planResult.plan.type === 'inline') {
+      output = await this.recordInlineResult({
         session,
         toolCall: displayToolCall,
         context,
         plan: planResult.plan,
       });
-    }
-
-    if (planResult.plan.type === 'opossum') {
-      return this.executeOpossumCommand({
+    } else if (planResult.plan.type === 'opossum') {
+      output = await this.executeOpossumCommand({
         session,
         toolCall: displayToolCall,
         context,
         command: planResult.plan.command,
         abortSignal,
       });
-    }
-
-    if (planResult.plan.type === 'setIndicatorColor') {
-      return this.executeSetIndicatorColor({
+    } else if (planResult.plan.type === 'setIndicatorColor') {
+      output = await this.executeSetIndicatorColor({
         session,
         toolCall: displayToolCall,
         context,
@@ -226,15 +248,18 @@ export class RuntimeToolExecutor {
         color: planResult.plan.color,
         abortSignal,
       });
+    } else {
+      output = await this.executeDeviceCommand({
+        session,
+        toolCall: displayToolCall,
+        context,
+        command: planResult.plan.command,
+        abortSignal,
+      });
     }
-
-    return this.executeDeviceCommand({
-      session,
-      toolCall: displayToolCall,
-      context,
-      command: planResult.plan.command,
-      abortSignal,
-    });
+    return proposalTraceFailed
+      ? this.uncertainToolResult(session, displayToolCall, proposalTraceFailure, context)
+      : output;
   }
 
   /**
@@ -313,16 +338,20 @@ export class RuntimeToolExecutor {
       sessionId: session.id,
       toolCall,
     });
-    await this.options.traceStore.append(session.id, {
-      kind: 'tool-result',
-      turnId: context.traceId,
-      sourceType: context.sourceType,
-      toolCallId: toolCall.id,
-      toolName: toolCall.name,
-      toolDisplayName: toolCall.displayName,
-      args: toolCall.args,
-      output: plan.output,
-    });
+    try {
+      await this.options.traceStore.append(session.id, {
+        kind: 'tool-result',
+        turnId: context.traceId,
+        sourceType: context.sourceType,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        toolDisplayName: toolCall.displayName,
+        args: toolCall.args,
+        output: plan.output,
+      });
+    } catch (error) {
+      return this.uncertainToolResult(session, toolCall, error, context);
+    }
     return plan.output;
   }
 
@@ -346,22 +375,23 @@ export class RuntimeToolExecutor {
   }
 
   private async resolvePlan(
-    sessionId: string,
+    session: SessionSnapshot,
     toolCall: ToolCall,
+    context: ActionContext,
+    abortSignal?: AbortSignal,
   ): Promise<{ plan: ToolExecutionPlan } | { error: string }> {
     try {
       return {
-        plan: await this.options.toolRegistry.resolve(toolCall),
+        plan:
+          (await this.options.contextualTools?.resolve({
+            session,
+            toolCall,
+            context,
+            abortSignal,
+          })) ?? (await this.options.toolRegistry.resolve(toolCall)),
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.options.emit({
-        type: 'tool-call-denied',
-        sessionId,
-        toolCall,
-        reason,
-      });
-      return { error: reason };
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -377,30 +407,10 @@ export class RuntimeToolExecutor {
       toolCall,
     });
     const dueAt = Date.now() + command.seconds * 1000;
-    const timerId = `${session.id}:${command.label}:${dueAt}`;
+    const timerId = `${session.id}:${command.label}:${dueAt}:${++this.timerSequence}`;
     const generation = this.options.getSessionGeneration(session.id);
-    const timer = setTimeout(() => {
-      const firedAt = Date.now();
-      this.scheduledTimers.delete(timerId);
-      this.options.emit({
-        type: 'timer-fired',
-        sessionId: session.id,
-        label: command.label,
-        firedAt,
-      });
-      this.options.enqueueTimerTrigger({
-        sessionId: session.id,
-        label: command.label,
-        seconds: command.seconds,
-        firedAt,
-        generation,
-      });
-    }, command.seconds * 1000);
-    this.scheduledTimers.set(timerId, {
-      sessionId: session.id,
-      timer,
-      generation,
-    });
+    // Record the accepted action before arming it. If trace persistence fails,
+    // no timer may fire without an auditable tool result.
     await this.options.traceStore.append(session.id, {
       kind: 'timer-scheduled',
       turnId: context.traceId,
@@ -409,7 +419,31 @@ export class RuntimeToolExecutor {
       seconds: command.seconds,
       dueAt,
     });
-
+    const timer = setTimeout(
+      () => {
+        const firedAt = Date.now();
+        this.scheduledTimers.delete(timerId);
+        this.options.emit({
+          type: 'timer-fired',
+          sessionId: session.id,
+          label: command.label,
+          firedAt,
+        });
+        this.options.enqueueTimerTrigger({
+          sessionId: session.id,
+          label: command.label,
+          seconds: command.seconds,
+          firedAt,
+          generation,
+        });
+      },
+      Math.max(0, dueAt - Date.now()),
+    );
+    this.scheduledTimers.set(timerId, {
+      sessionId: session.id,
+      timer,
+      generation,
+    });
     this.options.emit({
       type: 'timer-scheduled',
       sessionId: session.id,
@@ -477,6 +511,16 @@ export class RuntimeToolExecutor {
       return this.denyToolCall(session, toolCall, resolution.denyReason, context);
     }
 
+    // Ask the gate before a confirmation dialog so the user never approves a call that consent
+    // or lease would reject anyway. The final boundary check below still runs after approval.
+    if (
+      needsConfirm &&
+      !(await this.canExecuteDeviceCommand(session, context, toolCall, 'opossum', command))
+    ) {
+      return this.denyToolCall(session, toolCall, DEVICE_ACCESS_MISSING_REASON, context);
+    }
+    throwIfAborted(abortSignal);
+
     if (needsConfirm) {
       const permission = await this.options.permission.request({
         context,
@@ -508,6 +552,15 @@ export class RuntimeToolExecutor {
     try {
       const result = await opossumQueue.enqueue(command);
 
+      if ('interrupted' in result && result.interrupted === true) {
+        return this.uncertainToolResult(
+          session,
+          toolCall,
+          '设备命令被急停抢占，原操作不能视为完成',
+          context,
+        );
+      }
+
       const output = JSON.stringify({
         ok: clampedFrom ? 'clamped' : true,
         command,
@@ -532,30 +585,7 @@ export class RuntimeToolExecutor {
       });
       return output;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.options.emit({
-        type: 'tool-call-failed',
-        sessionId: session.id,
-        toolCall,
-        error: reason,
-      });
-      await this.options.traceStore.append(session.id, {
-        kind: 'tool-failed',
-        turnId: context.traceId,
-        sourceType: context.sourceType,
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        toolDisplayName: toolCall.displayName,
-        args: toolCall.args,
-        detail: reason,
-      });
-      return JSON.stringify({
-        error: reason,
-        _meta: {
-          kind: 'tool-failed',
-          toolName: toolCall.name,
-        },
-      });
+      return this.uncertainToolResult(session, toolCall, error, context);
     }
   }
 
@@ -610,30 +640,7 @@ export class RuntimeToolExecutor {
       });
       return output;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.options.emit({
-        type: 'tool-call-failed',
-        sessionId: session.id,
-        toolCall,
-        error: reason,
-      });
-      await this.options.traceStore.append(session.id, {
-        kind: 'tool-failed',
-        turnId: context.traceId,
-        sourceType: context.sourceType,
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        toolDisplayName: toolCall.displayName,
-        args: toolCall.args,
-        detail: reason,
-      });
-      return JSON.stringify({
-        error: reason,
-        _meta: {
-          kind: 'tool-failed',
-          toolName: toolCall.name,
-        },
-      });
+      return this.uncertainToolResult(session, toolCall, error, context);
     }
   }
 
@@ -700,6 +707,22 @@ export class RuntimeToolExecutor {
       return this.denyToolCall(session, toolCall, resolution.denyReason, context);
     }
 
+    // Same pre-dialog check as Opossum; the final boundary check below is unchanged.
+    if (
+      needsConfirm &&
+      !(await this.canExecuteDeviceCommand(
+        session,
+        context,
+        toolCall,
+        'coyote',
+        command,
+        targetId ?? undefined,
+      ))
+    ) {
+      return this.denyToolCall(session, toolCall, DEVICE_ACCESS_MISSING_REASON, context);
+    }
+    throwIfAborted(abortSignal);
+
     if (needsConfirm) {
       const permission = await this.options.permission.request({
         context,
@@ -746,6 +769,14 @@ export class RuntimeToolExecutor {
       const result = targetId
         ? await this.getCoyoteTargetQueue(targetId).enqueue(command)
         : await this.options.queue.enqueue(command);
+      if ('interrupted' in result && result.interrupted === true) {
+        return this.uncertainToolResult(
+          session,
+          toolCall,
+          '设备命令被急停抢占，原操作不能视为完成',
+          context,
+        );
+      }
       session.deviceState = result.state;
 
       this.options.emit({
@@ -763,6 +794,7 @@ export class RuntimeToolExecutor {
       const output = JSON.stringify({
         ok: clampedFrom ? 'clamped' : true,
         command,
+        ...(targetId ? { targetId } : {}),
         state: result.state,
         notes,
         ...(clampedFrom
@@ -785,30 +817,7 @@ export class RuntimeToolExecutor {
       });
       return output;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.options.emit({
-        type: 'tool-call-failed',
-        sessionId: session.id,
-        toolCall,
-        error: reason,
-      });
-      await this.options.traceStore.append(session.id, {
-        kind: 'tool-failed',
-        turnId: context.traceId,
-        sourceType: context.sourceType,
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        toolDisplayName: toolCall.displayName,
-        args: toolCall.args,
-        detail: reason,
-      });
-      return JSON.stringify({
-        error: reason,
-        _meta: {
-          kind: 'tool-failed',
-          toolName: toolCall.name,
-        },
-      });
+      return this.uncertainToolResult(session, toolCall, error, context);
     }
   }
 
@@ -845,6 +854,49 @@ export class RuntimeToolExecutor {
       targetId,
       toolName: toolCall.name,
       command,
+    });
+  }
+
+  private async uncertainToolResult(
+    session: SessionSnapshot,
+    toolCall: ToolCall,
+    error: unknown,
+    context: ActionContext,
+  ): Promise<string> {
+    const reason = error instanceof Error ? error.message : String(error);
+    this.options.logger.error('Tool outcome could not be confirmed.', {
+      sessionId: session.id,
+      toolName: toolCall.name,
+      toolCallId: toolCall.id,
+      reason,
+    });
+    try {
+      await this.options.traceStore.append(session.id, {
+        kind: 'tool-unknown',
+        turnId: context.traceId,
+        sourceType: context.sourceType,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        toolDisplayName: toolCall.displayName,
+        args: toolCall.args,
+        detail: '工具执行状态未确认，请检查实际结果后再决定是否重试。',
+      });
+    } catch (traceError) {
+      this.options.logger.error('Unconfirmed tool outcome could not be recorded.', {
+        sessionId: session.id,
+        toolName: toolCall.name,
+        toolCallId: toolCall.id,
+        reason: traceError instanceof Error ? traceError.message : String(traceError),
+      });
+    }
+    this.options.emit({
+      type: 'runtime-warning',
+      sessionId: session.id,
+      message: '工具执行状态未确认，请检查实际结果后再决定是否重试。',
+    });
+    return JSON.stringify({
+      error: '工具执行状态未确认，请检查实际结果后再决定是否重试。',
+      _meta: { kind: 'tool-unknown', toolName: toolCall.name, toolCallId: toolCall.id },
     });
   }
 

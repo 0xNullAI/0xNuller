@@ -33,13 +33,13 @@ export const MODULES: ModuleRoute[] = [
   {
     id: 'chat',
     label: 'Chat',
-    blurb: '多人房间远程控制',
+    blurb: '真人私聊、群聊与互动',
     Component: lazy(() => import('./modules/chat')),
   },
   {
     id: 'agent',
     label: 'Agent',
-    blurb: '对话控制设备',
+    blurb: 'AI 陪伴、角色与工具',
     Component: lazy(() => import('./modules/agent')),
   },
   {
@@ -57,7 +57,7 @@ export const MODULES: ModuleRoute[] = [
   {
     id: 'market',
     label: 'Market',
-    blurb: '波形与场景社区',
+    blurb: '发现角色、场景与波形',
     Component: lazy(() => import('./modules/market')),
   },
   {
@@ -69,6 +69,7 @@ export const MODULES: ModuleRoute[] = [
 ];
 
 export function moduleIdFromPath(pathname: string): string | null {
+  if (pathname === '/') return 'agent';
   const seg = pathname.replace(/^\/+/, '').split('/')[0] ?? '';
   return MODULES.some((m) => m.id === seg) ? seg : null;
 }

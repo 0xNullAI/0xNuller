@@ -4,7 +4,7 @@ import { createEmptyOpossumState } from '@dg-kit/protocol';
 import {
   DeviceSession,
   type DeviceSessionState,
-  type DeviceSessionTransport,
+  type RegistryDeviceSessionTransport,
 } from '@voice/lib/device-session';
 
 const EMPTY_STATE: DeviceSessionState = {
@@ -13,12 +13,8 @@ const EMPTY_STATE: DeviceSessionState = {
   opossum: createEmptyOpossumState(),
 };
 
-/**
- * `transport` is only passed by the Android shell (which injects the
- * `@dg-kit/transport-tauri-blec` clients); the web build omits it and gets
- * the Web Bluetooth default from `DeviceSession`'s own constructor.
- */
-export function useDeviceSession(transport?: DeviceSessionTransport) {
+/** `transport` is Voice's view of the shared DG-Lab registry (`createRegistryTransport`). */
+export function useDeviceSession(transport: RegistryDeviceSessionTransport) {
   // Lazy `useState` initializer (not a ref) — it runs exactly once and is
   // the pattern the stricter react-hooks/refs rule actually wants for
   // "construct once, keep stable across re-renders" values. `transport` is
@@ -66,27 +62,23 @@ export function useDeviceSession(transport?: DeviceSessionTransport) {
     refresh();
   }, [session, refresh]);
 
-  const disconnectCoyote = useCallback(
-    async (targetId?: string) => {
-      await session.disconnectCoyote(targetId);
-      refresh();
-    },
+  /** Lease loss from the shared registry; output is already stopped when it fires. */
+  const onRevoked = useCallback(
+    (listener: () => void) =>
+      session.onRevoked(() => {
+        listener();
+        refresh();
+      }),
     [session, refresh],
   );
 
-  const disconnectOpossum = useCallback(async () => {
-    await session.disconnectOpossum();
-    refresh();
-  }, [session, refresh]);
-
   return {
     session,
+    onRevoked,
     state,
     error,
     connecting,
     connectDevice,
     emergencyStop,
-    disconnectCoyote,
-    disconnectOpossum,
   };
 }

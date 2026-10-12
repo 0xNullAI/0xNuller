@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const variants = {
   light: 'brand/logo/0xnuller-light.svg',
@@ -30,9 +30,22 @@ for (const app of apps) {
   }
 }
 
-for (const icon of ['32x32.png', '128x128.png', 'icon.png', 'icon.ico']) {
+// generate_context! takes the default window icon from the bundle PNG; Android
+// launcher icons are generated from brand/icon by prepare-android-release.mjs.
+for (const icon of ['icon.png']) {
   const path = `android/app/src-tauri/icons/${icon}`;
   if (!existsSync(path)) fail(`${path} is missing`);
+}
+
+// tauri::generate_context! refuses any bundled PNG that is not 8-bit RGBA, and
+// image optimisers silently turn opaque or small icons into palette PNGs.
+for (const path of readdirSync('android/app/src-tauri/icons', { recursive: true })
+  .filter((name) => String(name).endsWith('.png'))
+  .map((name) => `android/app/src-tauri/icons/${name}`)) {
+  const header = readFileSync(path).subarray(0, 26);
+  if (header.readUInt8(24) !== 8 || header.readUInt8(25) !== 6) {
+    fail(`${path} must be an 8-bit RGBA PNG`);
+  }
 }
 
 console.log('brand assets are aligned across standalone apps, unified web, and Android');

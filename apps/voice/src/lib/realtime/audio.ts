@@ -1,12 +1,14 @@
 /**
- * Browser audio capture/playback for the realtime voice call. Both directions
- * run an `AudioContext` pinned to `SAMPLE_RATE` (24kHz, what xAI/OpenAI/Azure
- * speak natively) rather than resampling after the fact — Chrome resamples
- * the mic input to match a context's requested rate, the same trick
- * DG-Agent's `dashscope-proxy.ts` uses for its 16kHz ASR stream.
+ * Browser audio capture/playback for the realtime voice call. Each direction runs an
+ * `AudioContext` pinned to the rate the managed Worker protocol uses (pcm16 16 kHz in,
+ * 24 kHz out) rather than resampling after the fact — Chrome resamples the mic input to
+ * match a context's requested rate.
  */
 
-export const SAMPLE_RATE = 24000;
+/** Microphone rate: the speech model takes 16 kHz mono pcm16. */
+export const INPUT_SAMPLE_RATE = 16000;
+/** Playback rate of the model's pcm16 audio. */
+export const OUTPUT_SAMPLE_RATE = 24000;
 
 interface BrowserAudioWindowLike extends Window {
   AudioContext?: typeof AudioContext;
@@ -62,38 +64,12 @@ export function base64ToInt16(base64: string): Int16Array {
   return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 2));
 }
 
-/** GLM-realtime wants wav-framed chunks, not raw pcm16 — wraps one chunk as a standalone 16-bit mono wav. */
-export function wrapPcm16AsWav(int16: Int16Array, sampleRate = SAMPLE_RATE): ArrayBuffer {
-  const dataSize = int16.byteLength;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeString = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
-  };
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true); // fmt chunk size
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // byte rate
-  view.setUint16(32, 2, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-  new Uint8Array(buffer, 44).set(new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength));
-
-  return buffer;
-}
-
 const PCM_CAPTURE_WORKLET_SOURCE = `
 class PcmCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this._batchSize = 1200; // 50ms @ 24kHz
+    // 20 ms at 16 kHz: the provider expects real-time 20 ms frames.
+    this._batchSize = 320;
     this._buffer = new Float32Array(this._batchSize);
     this._filled = 0;
   }
@@ -120,17 +96,16 @@ registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
 let workletModuleUrl: string | null = null;
 
 /**
- * Captures the mic as 50ms Float32 frames at 24kHz. Buffers frames produced
- * before the caller attaches a listener (xAI's own guidance: don't wait for
- * the WebSocket to open before opening the mic — buffer then flush) via
- * `drainBuffered()`.
+ * Captures the mic as 20 ms Float32 frames at 16 kHz. The mic opens before the WebSocket
+ * (inside the click's user activation); frames produced before a listener attaches are
+ * dropped, not flushed later: the speech model requires audio at real-time pace, and a
+ * burst of stale frames is rejected.
  */
 export class MicCapture {
   private mediaStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private listener: ((frame: Float32Array) => void) | null = null;
-  private buffered: Float32Array[] = [];
 
   async start(): Promise<void> {
     if (!isRealtimeAudioSupported()) {
@@ -140,14 +115,14 @@ export class MicCapture {
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        sampleRate: SAMPLE_RATE,
+        sampleRate: INPUT_SAMPLE_RATE,
         echoCancellation: true,
         noiseSuppression: true,
       },
     });
 
     const AudioContextCtor = getAudioContextCtor()!;
-    this.audioContext = new AudioContextCtor({ sampleRate: SAMPLE_RATE });
+    this.audioContext = new AudioContextCtor({ sampleRate: INPUT_SAMPLE_RATE });
     const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
     if (!this.audioContext.audioWorklet) {
@@ -162,12 +137,7 @@ export class MicCapture {
 
     this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-capture-processor');
     this.workletNode.port.onmessage = (event) => {
-      const frame = event.data as Float32Array;
-      if (this.listener) {
-        this.listener(frame);
-      } else {
-        this.buffered.push(frame);
-      }
+      this.listener?.(event.data as Float32Array);
     };
 
     source.connect(this.workletNode);
@@ -179,19 +149,13 @@ export class MicCapture {
     silence.connect(this.audioContext.destination);
   }
 
-  /** Attaches the frame listener and immediately flushes anything captured before this call. */
+  /** Attaches the frame listener; only frames captured from now on are delivered. */
   onFrame(listener: (frame: Float32Array) => void): void {
     this.listener = listener;
-    if (this.buffered.length > 0) {
-      const pending = this.buffered;
-      this.buffered = [];
-      for (const frame of pending) listener(frame);
-    }
   }
 
   stop(): void {
     this.listener = null;
-    this.buffered = [];
     if (this.workletNode) {
       this.workletNode.port.onmessage = null;
       this.workletNode.disconnect();
@@ -223,7 +187,7 @@ export class AudioPlayback {
     if (!this.audioContext) {
       const AudioContextCtor = getAudioContextCtor();
       if (!AudioContextCtor) throw new Error('当前浏览器无法使用 AudioContext');
-      this.audioContext = new AudioContextCtor({ sampleRate: SAMPLE_RATE });
+      this.audioContext = new AudioContextCtor({ sampleRate: OUTPUT_SAMPLE_RATE });
     }
     return this.audioContext;
   }
@@ -252,7 +216,7 @@ export class AudioPlayback {
       void ctx.resume().catch(() => undefined);
     }
     const float32 = int16ToFloat32(int16);
-    const buffer = ctx.createBuffer(1, float32.length, SAMPLE_RATE);
+    const buffer = ctx.createBuffer(1, float32.length, OUTPUT_SAMPLE_RATE);
     buffer.getChannelData(0).set(float32);
 
     const source = ctx.createBufferSource();

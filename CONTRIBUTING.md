@@ -25,7 +25,7 @@ Product 不依赖 DG-MCP。三条版本线互不要求版本号相同，但共�
 
 ## 开始开发
 
-需要 Node.js `>=22.19` 和仓库声明的 npm 版本。功能分支应从最新 `dev` 创建：
+需要 Node.js `>=26` 和仓库声明的 npm 版本。功能分支应从最新 `dev` 创建：
 
 ```bash
 git switch dev

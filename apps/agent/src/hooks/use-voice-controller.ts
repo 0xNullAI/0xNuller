@@ -201,6 +201,12 @@ export function useVoiceController(options: UseVoiceControllerOptions) {
         return;
       }
 
+      if (event.type === 'assistant-message-failed') {
+        stopSpeechPlayback();
+        setVoiceState('idle');
+        return;
+      }
+
       if (event.type !== 'assistant-message-completed') return;
 
       if (speechSynthesisEnabledRef.current && event.message.content.trim()) {

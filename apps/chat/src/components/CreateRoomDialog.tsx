@@ -26,17 +26,35 @@ function newRoomCode(): string {
     .slice(0, 10);
 }
 
+/**
+ * A valid starting name so creating a room needs no typing. It uses the nickname when there is
+ * one, otherwise a short random suffix. It never reuses the room code: the code is the private
+ * room's admission credential, and a name is shown in places the code is not.
+ */
+function defaultGroupName(ownerName: string | undefined): string {
+  const owner = ownerName?.trim();
+  if (owner) {
+    const named = `${owner.slice(0, MAX_GROUP_NAME - 3)}的群聊`;
+    if (validGroupName(named)) return named;
+  }
+  const suffix = String(crypto.getRandomValues(new Uint16Array(1))[0]! % 10000).padStart(4, '0');
+  return `新群聊 ${suffix}`;
+}
+
 export function CreateRoomDialog({
+  ownerName,
   onCreate,
   onJoin,
   onClose,
 }: {
+  /** The creator's nickname, used for the default room name. */
+  ownerName?: string;
   onCreate: (code: string, options: { public: boolean; roomName?: string }) => void;
   onJoin: (code: string) => void;
   onClose: () => void;
 }) {
   const [isPublic, setIsPublic] = useState(false);
-  const [roomName, setRoomName] = useState('');
+  const [roomName, setRoomName] = useState(() => defaultGroupName(ownerName));
   const [mode, setMode] = useState<'create' | 'join' | 'public'>('create');
   const [joinCode, setJoinCode] = useState('');
   const [publicRooms, setPublicRooms] = useState<LobbyRoom[]>([]);
@@ -54,10 +72,10 @@ export function CreateRoomDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="建房间"
+        aria-label="新建群聊"
         className="w-[min(400px,calc(100vw-2rem))] rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]"
       >
-        <h2 className="text-lg font-semibold">房间</h2>
+        <h2 className="text-lg font-semibold">群聊</h2>
         <div className="mt-4 grid grid-cols-3 rounded-[var(--radius-ctl)] bg-[var(--bg-soft)] p-1">
           {(['create', 'join', 'public'] as const).map((item) => (
             <button
@@ -72,7 +90,7 @@ export function CreateRoomDialog({
                   : 'text-[var(--text-soft)]')
               }
             >
-              {item === 'create' ? '新建' : item === 'join' ? '加入' : '公开房间'}
+              {item === 'create' ? '新建' : item === 'join' ? '加入' : '公开群'}
             </button>
           ))}
         </div>
@@ -83,7 +101,7 @@ export function CreateRoomDialog({
               <span className="min-w-0">
                 <span className="block text-sm">公开到大厅</span>
                 <span className="block text-xs text-[var(--text-faint)]">
-                  关闭 = 私密房间，只有拿到房间号的人能进；建好后房主随时可改
+                  关闭时只有拿到群号的人能进
                 </span>
               </span>
               <input
@@ -94,29 +112,27 @@ export function CreateRoomDialog({
               />
             </label>
 
-            {/* Asked for whether or not the room is public: a room persists now and shows up in
-            your own sidebar, and a list of ten-character codes is unreadable. */}
+            {/* A name is always sent: a room persists and shows up in your own sidebar, and a list
+            of ten-character codes is unreadable. The default is valid, so it is never a blocker. */}
             <label className="mt-3 flex flex-col gap-1.5">
-              <span className="text-xs text-[var(--text-soft)]">房间名</span>
+              <span className="text-xs text-[var(--text-soft)]">群名称</span>
               <Input
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                placeholder="请输入 4–40 个字符的房间名"
+                placeholder="4–40 个字符"
                 maxLength={MAX_GROUP_NAME}
                 required
               />
             </label>
-            <p className="mt-2 text-xs text-[var(--text-faint)]">
-              连续 7 天无人在线，房间及聊天记录将自动回收。
-            </p>
+            <p className="mt-2 text-xs text-[var(--text-faint)]">聊天记录长期保存在服务器。</p>
           </>
         ) : mode === 'join' ? (
           <label className="mt-5 flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--text-soft)]">房间号</span>
+            <span className="text-xs text-[var(--text-soft)]">群号</span>
             <Input
               value={joinCode}
               onChange={(event) => setJoinCode(event.target.value)}
-              placeholder="输入房间号"
+              placeholder="输入群号"
               autoFocus
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && joinCode.trim()) {
@@ -131,8 +147,8 @@ export function CreateRoomDialog({
             <Input
               value={publicQuery}
               onChange={(event) => setPublicQuery(event.target.value)}
-              placeholder="搜索公开房间名称或房间号"
-              aria-label="搜索公开房间"
+              placeholder="搜索公开群名称或群号"
+              aria-label="搜索公开群"
             />
             <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
               {publicRooms

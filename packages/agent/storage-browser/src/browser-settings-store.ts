@@ -18,11 +18,22 @@ import {
   API_KEYS_SESSION,
   SETTINGS_KEY,
   TIMED_PERMISSION_WINDOW_MS,
-  VOICE_API_KEY_LOCAL,
-  VOICE_API_KEY_SESSION,
+  LEGACY_VOICE_API_KEY_LOCAL,
+  LEGACY_VOICE_API_KEY_SESSION,
 } from './browser-settings-constants.js';
 import { defaultBrowserAppSettings, normalizeVoiceSettings } from './browser-settings-defaults.js';
 import { settingsSchema, type PersistedBrowserAppSettings } from './browser-settings-schema.js';
+import {
+  migrateApiKeys,
+  migratePersistedProviders,
+  type MigratedPersistedProviders,
+} from './browser-settings-provider-migration.js';
+
+type NormalizedPersistedSettings = Omit<
+  PersistedBrowserAppSettings,
+  'provider' | 'providerConfigs'
+> &
+  Pick<MigratedPersistedProviders, 'provider' | 'providerConfigs'>;
 
 export interface BrowserAppSettingsStoreOptions {
   localStorageRef?: StorageLike;
@@ -44,7 +55,6 @@ export class BrowserAppSettingsStore {
   /** Fallback for injected/non-browser stores where shared localStorage is unavailable. */
   private sessionPermissionModeOverride: 'allow-all' | null = null;
   private runtimeApiKeys: Partial<Record<ProviderId, string>> = {};
-  private runtimeVoiceApiKey = '';
 
   constructor(options: BrowserAppSettingsStoreOptions = {}) {
     this.localStorageRef =
@@ -59,7 +69,9 @@ export class BrowserAppSettingsStore {
   }
 
   load(): BrowserAppSettings {
-    const persisted = this.normalizePersistedSettings(this.readPersistedSettings());
+    const { persisted, customKeySource } = this.normalizePersistedSettings(
+      this.readPersistedSettings(),
+    );
     // The source of truth for device safety settings is @0xnullai/settings, one
     // copy shared by the whole app — if the user lowers the cap to 30 in Agent,
     // switching to Chat / Voice must not put it back at 50. This just spreads it
@@ -75,11 +87,8 @@ export class BrowserAppSettingsStore {
     // with the default.
     const llm = hasLlmConfig() ? loadLlmConfig() : null;
     const activeProviderId =
-      (llm?.providerId as ProviderId | undefined) ??
-      persisted?.provider?.providerId ??
-      this.defaults.provider.providerId;
-    const apiKeys = this.readApiKeys(activeProviderId);
-    const voiceApiKey = this.readVoiceApiKey();
+      llm?.providerId ?? persisted?.provider?.providerId ?? this.defaults.provider.providerId;
+    const apiKeys = migrateApiKeys(this.readApiKeys(activeProviderId), customKeySource);
     const providerConfigs = this.buildProviderConfigs(persisted, apiKeys);
     // The shared config wins field by field, but only where it actually has a
     // value: a user who never opened the panel keeps whatever Agent persisted.
@@ -89,7 +98,9 @@ export class BrowserAppSettingsStore {
       ...(llm ? { apiKey: llm.apiKey } : {}),
       ...(llm?.model ? { model: llm.model } : {}),
       ...(llm?.baseUrl ? { baseUrl: llm.baseUrl } : {}),
-      ...(llm ? { endpoint: llm.endpoint, useStrict: llm.useStrict } : {}),
+      ...(llm
+        ? { endpoint: llm.endpoint, useStrict: llm.useStrict, imageInput: llm.imageInput }
+        : {}),
     });
     providerConfigs[activeProviderId] = activeProvider;
     const effectivePermissionState = this.resolvePermissionState(safety);
@@ -136,7 +147,6 @@ export class BrowserAppSettingsStore {
       voice: normalizeVoiceSettings({
         ...this.defaults.voice,
         ...(persisted?.voice ?? {}),
-        apiKey: voiceApiKey,
       }),
       rememberApiKey: llm?.rememberApiKey ?? persisted?.rememberApiKey ?? false,
     };
@@ -266,6 +276,7 @@ export class BrowserAppSettingsStore {
         model: settings.provider.model,
         endpoint: settings.provider.endpoint,
         useStrict: settings.provider.useStrict,
+        imageInput: settings.provider.imageInput,
       },
       providerConfigs: Object.fromEntries(
         Object.entries(providerConfigs).map(([providerId, provider]) => [
@@ -276,15 +287,12 @@ export class BrowserAppSettingsStore {
             model: provider.model,
             endpoint: provider.endpoint,
             useStrict: provider.useStrict,
+            imageInput: provider.imageInput,
           },
         ]),
       ),
       voice: {
-        mode: settings.voice.mode,
-        speaker: settings.voice.speaker,
         browserVoiceUri: settings.voice.browserVoiceUri,
-        proxyUrl: settings.voice.proxyUrl,
-        autoStopEnabled: settings.voice.autoStopEnabled,
       },
     };
 
@@ -300,7 +308,7 @@ export class BrowserAppSettingsStore {
       );
     }
     this.persistApiKeys(providerConfigs, settings.rememberApiKey);
-    this.persistVoiceApiKey(settings.voice.apiKey, settings.rememberApiKey);
+    this.removeLegacyVoiceApiKey();
     return this.load();
   }
 
@@ -309,12 +317,10 @@ export class BrowserAppSettingsStore {
     const safety = loadDeviceSafety();
     saveDeviceSafety({ ...safety, permissionMode: 'confirm', permissionModeExpiresAt: undefined });
     this.runtimeApiKeys = {};
-    this.runtimeVoiceApiKey = '';
     this.localStorageRef?.removeItem(SETTINGS_KEY);
     this.localStorageRef?.removeItem(API_KEYS_LOCAL);
-    this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
-    this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
+    this.removeLegacyVoiceApiKey();
     return this.defaults;
   }
 
@@ -342,18 +348,26 @@ export class BrowserAppSettingsStore {
     }
   }
 
-  private normalizePersistedSettings(
-    persisted: PersistedBrowserAppSettings | null,
-  ): PersistedBrowserAppSettings | null {
-    if (!persisted) return null;
+  private normalizePersistedSettings(persisted: PersistedBrowserAppSettings | null): {
+    persisted: NormalizedPersistedSettings | null;
+    customKeySource?: string;
+  } {
+    if (!persisted) return { persisted: null };
 
     // 6.0 accidentally shipped the terse/samey pair as persisted defaults.
     // Migrate only that exact pair; any other combination reflects a user choice.
     const legacyConversationDefaults =
       persisted.modelContextStrategy === 'last-user-turn' && persisted.temperature === 0.3;
+    const { provider, providerConfigs, customKeySource } = migratePersistedProviders(
+      persisted.provider,
+      persisted.providerConfigs,
+    );
+    const { provider: _provider, providerConfigs: _providerConfigs, ...rest } = persisted;
 
-    return {
-      ...persisted,
+    const normalized: NormalizedPersistedSettings = {
+      ...rest,
+      ...(provider ? { provider } : {}),
+      ...(providerConfigs ? { providerConfigs } : {}),
       ...(legacyConversationDefaults
         ? { modelContextStrategy: 'last-five-user-turns' as const, temperature: 0.7 }
         : {}),
@@ -366,10 +380,11 @@ export class BrowserAppSettingsStore {
       speechSynthesisLanguage:
         persisted.speechSynthesisLanguage ?? persisted.speechLanguage ?? persisted.voiceLanguage,
     };
+    return { persisted: normalized, customKeySource };
   }
 
   private buildProviderConfigs(
-    persisted: PersistedBrowserAppSettings | null,
+    persisted: NormalizedPersistedSettings | null,
     apiKeys: Partial<Record<ProviderId, string>>,
   ): ProviderConfigMap {
     const providerConfigs: ProviderConfigMap = {
@@ -405,7 +420,8 @@ export class BrowserAppSettingsStore {
     return providerConfigs;
   }
 
-  private readApiKeys(activeProviderId: ProviderId): Partial<Record<ProviderId, string>> {
+  /** Keys by stored provider id, which may still name a removed provider. */
+  private readApiKeys(activeProviderId: ProviderId): Record<string, string | undefined> {
     if (Object.keys(this.runtimeApiKeys).length > 0) return this.runtimeApiKeys;
 
     return this.parseApiKeyMap(this.localStorageRef?.getItem(API_KEYS_LOCAL), activeProviderId);
@@ -434,42 +450,23 @@ export class BrowserAppSettingsStore {
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
   }
 
-  private readVoiceApiKey(): string {
-    if (this.runtimeVoiceApiKey) return this.runtimeVoiceApiKey;
-
-    return this.localStorageRef?.getItem(VOICE_API_KEY_LOCAL) ?? this.defaults.voice.apiKey;
-  }
-
-  private persistVoiceApiKey(apiKey: string, remember: boolean): void {
-    const trimmedApiKey = apiKey.trim();
-
-    if (remember) {
-      this.runtimeVoiceApiKey = '';
-      if (trimmedApiKey) {
-        this.localStorageRef?.setItem(VOICE_API_KEY_LOCAL, trimmedApiKey);
-      } else {
-        this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
-      }
-      this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
-      return;
-    }
-
-    this.runtimeVoiceApiKey = trimmedApiKey;
-    this.localStorageRef?.removeItem(VOICE_API_KEY_LOCAL);
-    this.sessionStorageRef?.removeItem(VOICE_API_KEY_SESSION);
+  /** Bring-your-own-key users get text only; drop the old DashScope speech key. */
+  private removeLegacyVoiceApiKey(): void {
+    this.localStorageRef?.removeItem(LEGACY_VOICE_API_KEY_LOCAL);
+    this.sessionStorageRef?.removeItem(LEGACY_VOICE_API_KEY_SESSION);
   }
 
   private parseApiKeyMap(
     raw: string | null | undefined,
     fallbackProviderId: ProviderId,
-  ): Partial<Record<ProviderId, string>> {
+  ): Record<string, string> {
     if (!raw) return {};
 
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const entries = Object.entries(parsed).filter(
-          (entry): entry is [ProviderId, string] => typeof entry[1] === 'string',
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
         );
         return Object.fromEntries(entries);
       }

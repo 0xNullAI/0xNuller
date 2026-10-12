@@ -19,8 +19,8 @@ apps/web                           android/app
                  Web Bluetooth 或 Tauri BLE 传输
 ```
 
-`apps/web` 与 `android/app` 是组合外壳；后者同时装配 Android、Windows 和 macOS 原生版本。功能 app 负责界面特有交互，需要跨界面保持一致的
-行为必须进入共享包。
+`apps/web` 与 `android/app` 是组合外壳；后者只装配 Android 原生版本。功能 app 负责界面特有交互，
+需要跨界面保持一致的行为必须进入共享包。
 
 ## 分层职责
 
@@ -50,6 +50,33 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 连接设备之间不共享播放状态。队列、模式、间隔、通道游标与运行状态都按设备 ID 隔离；
 只有波形定义列表按类型共享。
 
+### 共享 DG-Lab 连接
+
+每个应用实例只有一个 `DgLabConnectionRegistry`（`@0xnullai/device-runtime`）。外壳在 React
+渲染前创建它：Web 使用 Web Bluetooth transport，Android 使用 `createTauriDgLabTransport`
+（郊狼保留 `wrapWithLifecycleSafety`）。外壳通过 `NativeBridge.dglab` 交给模块，模块只用
+`useDgLabRegistry()` 读取；单独构建的模块从同一个 hook 得到惰性创建的 Web Bluetooth registry。
+模块不再有自己的设备注入口或 BLE 连接。
+
+```text
+外壳 ── NativeBridge.dglab ──> DgLabConnectionRegistry（每台物理设备一个连接与一个队列）
+                                  │ forModule(moduleId)
+     Control / Agent / Voice / Video / Chat / Playground（各自的租约句柄）
+```
+
+- 一台物理设备只有一个连接、一个协议 adapter 和一个命令队列。任一模块连接的设备，在所有模块
+  中都是同一个目标 ID。再次选择已连接的设备会复用原连接。
+- 启动、增加、改波形与指示灯写入都要通过租约栅栏（lease fence），并在持有者一侧按共享安全
+  设置再次钳制。写入时模块不持有租约即被拒绝。
+- 停止与紧急停止不经过栅栏，任何模块在任何时候都能停止全部郊狼与负鼠。
+- 租约切换时，registry 立即停止每台输出设备，然后通知失去租约的模块；连接保持。模块的
+  `onRevoke` 和 `onRevoked` 只清理模块自己的状态（中止回复、撤销授权、挂断、清除按住的输出），
+  不再发出设备停止：停止不经过栅栏，迟到的停止会把新持有者刚开始的输出归零。用户点击的停止
+  按钮与安全总线的 `stop` 不受影响。
+- 只有「设备」页（Control）断开设备。其他模块不提供断开操作，只提供停止输出；外壳设备栏只在
+  「设备」模块激活时显示每台设备的 ✕。registry 的安全会话（`dglab-devices`）统一列出设备，
+  设备栏不为它显示所属模块标签。
+
 ## 状态放置
 
 - 单个组件的视觉状态留在组件或专用 hook。
@@ -59,24 +86,21 @@ Bluetooth 与 Tauri BLE 的差异，不应改变上层语义。安全和权限�
 - 浏览器持久化通过共享 settings/sync/storage 包完成，不在功能组件里新增直接的
   `localStorage` 或 IndexedDB 实现。
 
-## AI 与通用设备边界
+## AI 与设备边界
 
-| 能力                                       | 共享来源                               | 消费端                                      | 保留差异                                                                   |
-| ------------------------------------------ | -------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------- |
-| 文本 provider 目录、默认值、能力检查       | `@0xnullai/llm-providers`              | Agent、Chat、Video、Web 设置                | Video 只接受明确支持图片的 provider/model                                  |
-| 文本配置存储                               | `@0xnullai/llm-providers` scoped store | Agent/Chat 共用 profile；Video 独立 profile | Video 的 key、版本与凭据不向文本 profile 迁移                              |
-| 浏览器 LLM client、dialect、代理与模型发现 | `@dg-agent/agent-browser`              | Agent、Chat、Video、Web 设置                | prompt、历史、迭代和视觉帧仍由功能模块组合                                 |
-| Realtime provider                          | `apps/voice/src/lib/realtime`          | Voice、Web Voice 设置                       | WebSocket 事件、音频、换票/JWT 与 voice catalog 不并入文本 HTTP client     |
-| AI 通用设备 schema、调用与 permission 分类 | `@0xnullai/device-runtime`             | Agent、Voice、Video                         | Agent/Voice 各自适配运行时；Video 额外持有目标 grant、lease 和失效停止升级 |
-| Chat 房间设备工具                          | Chat owner-side command policy         | 房间 Agent                                  | 远端目标由设备持有者授权和钳制，不能改成本地通用设备调用                   |
+| 能力                                       | 共享来源                               | 消费端                                      | 保留差异                                                           |
+| ------------------------------------------ | -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| 文本 provider 目录、默认值、能力检查       | `@0xnullai/llm-providers`              | Agent、Chat、Video、Web 设置                | Video 只接受明确支持图片的 provider/model                          |
+| 文本配置存储                               | `@0xnullai/llm-providers` scoped store | Agent/Chat 共用 profile；Video 独立 profile | Video 的 key、版本与凭据不向文本 profile 迁移                      |
+| 浏览器 LLM client、dialect、代理与模型发现 | `@dg-agent/agent-browser`              | Agent、Chat、Video、Web 设置                | prompt、历史、迭代和视觉帧仍由功能模块组合                         |
+| 猫愿语音 realtime client                   | `apps/voice/src/lib/realtime`          | Voice、Web Voice 设置                       | 只连 Voice Worker，上游归 Worker；音频与音色不并入文本 HTTP client |
+| Chat 房间设备工具                          | Chat owner-side command policy         | 房间 Agent                                  | 远端目标由设备持有者授权和钳制，不能改成本地设备调用               |
 
 共享边界只统一相同语义：API key 的存储范围、provider 请求协议、工具授权、租约和停止顺序
-不能因为 UI 或适配器复用而发生迁移。功能 app 不自行拼接 provider endpoint、代理 URL 或复制
-通用设备 capability schema。
+不能因为 UI 或适配器复用而发生迁移。功能 app 不自行拼接 provider endpoint 或代理 URL。
 
-通用设备只使用「软件设置 → 关于」中的一个本机开关。Control、Agent、Voice、Video 订阅同一
-provider 状态，不在各模块增加私有开关。关闭时不渲染通用设备入口、不加载或扫描 backend，
-也不向模型提供通用设备说明、状态、工具或目标；Video 本身以及郊狼、负鼠路径不受影响。
+产品只支持 DG-Lab 设备（郊狼、负鼠及 DG 传感器）。6.2.0 引入的实验性通用设备（Buttplug）后端、
+开关与工具已移除；旧版本保存的相关本机设置会被忽略。
 
 AI 设备上下文采用当前可用能力的正向快照。只有当前已连接、功能已启用且 capability 健康的设备
 可以进入 instructions、状态块、工具定义和 target allowlist；未连接、已禁用、已失效或只存在于
@@ -97,7 +121,7 @@ AI 设备上下文采用当前可用能力的正向快照。只有当前已连�
 1. 共享 core 类型和规则；
 2. 协议与两套 transport；
 3. 安全与权限行为；
-4. Control、Chat、Voice、Agent 消费端；
+4. Control、Chat、Voice、Agent、Video、Playground 消费端（都经共享 registry）；
 5. Web 与 Android 生命周期/错误路径；
 6. 共享领域回归测试与受影响界面的专项测试。
 

@@ -23,7 +23,11 @@
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@0xnullai/scenes": "0.1.0",
+    "@0xnullai/auth": "0.1.0",
+    "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/observability": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260809.1",

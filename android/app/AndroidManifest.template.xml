@@ -20,6 +20,10 @@
       with neverForLocation instead.
     * CAMERA — only requested after the user explicitly enables Agent's local
       preview. Camera hardware remains optional and capture failures stay closed.
+    * RECORD_AUDIO / MODIFY_AUDIO_SETTINGS — realtime Voice and chat voice
+      messages call getUserMedia({ audio }). wry's WebChromeClient asks for
+      both at runtime, but Android denies any permission the manifest does not
+      declare, so without these the microphone is always refused.
     * INTERNET — outbound LLM API calls.
     * uses-feature bluetooth_le required="false" — we want the app to
       install on emulators and devices without BLE, where it can still
@@ -32,6 +36,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Android 12+ (API 31+) BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -51,6 +57,8 @@
     <uses-feature android:name="android.hardware.bluetooth_le"
                   android:required="false" />
     <uses-feature android:name="android.hardware.camera.any"
+                  android:required="false" />
+    <uses-feature android:name="android.hardware.microphone"
                   android:required="false" />
 
     <!--

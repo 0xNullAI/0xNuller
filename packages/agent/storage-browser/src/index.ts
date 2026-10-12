@@ -4,3 +4,6 @@ export * from './browser-settings-store.js';
 export * from './browser-session-store.js';
 export * from './browser-session-trace-store.js';
 export * from './browser-diagnostic-store.js';
+export * from './server-session-store.js';
+export * from './server-session-migration.js';
+export * from './transient-session-trace-store.js';

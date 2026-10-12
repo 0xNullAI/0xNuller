@@ -1,47 +1,14 @@
 import { applyHttpProxy } from '@0xnullai/settings';
 import { z } from 'zod';
-
-export type ProviderId =
-  | 'managed'
-  | 'qwen'
-  | 'deepseek'
-  | 'doubao'
-  | 'openai'
-  | 'custom'
-  | 'anthropic'
-  | 'google'
-  | 'openrouter'
-  | 'groq'
-  | 'moonshotai'
-  | 'moonshotai-cn'
-  | 'zai'
-  | 'zai-coding-cn'
-  | 'minimax'
-  | 'minimax-cn'
-  | 'xai'
-  | 'cerebras'
-  | 'together'
-  | 'huggingface'
-  | 'mistral'
-  | 'fireworks'
-  | 'xiaomi';
-export type ProviderEndpoint = 'responses' | 'chat/completions';
+import { migrateLegacyProviderSettings } from './legacy-provider-migration';
 
 /**
- * Which transport a provider goes through:
- * - `openai-compat`: the original hand-rolled OpenAI Chat-Completions /
- *   Responses HTTP client in `providers-openai-http` (`managed`/`qwen`/
- *   `deepseek`/`doubao`/`openai`/`custom` — unchanged by this field's
- *   introduction, still routed exactly as before).
- * - `pi-ai`: `providers-pi-http`'s `PiAiLlmClient`, wrapping
- *   `@earendil-works/pi-ai`. `piProviderKey` then names which of pi-ai's
- *   built-in provider factories (`registry.ts` in that package) to load —
- *   pi-ai itself picks the right wire dialect (anthropic-messages /
- *   google-generative-ai / openai-completions / ...) per model, so this
- *   catalog never needs to know or care which one a given provider uses.
+ * The platform's managed plan provides every AI capability. A user's own key
+ * ("BYOK") goes through exactly one OpenAI-compatible `custom` endpoint; image
+ * input there is an explicit user opt-in.
  */
-export type ProviderDialect = 'openai-compat' | 'pi-ai';
-export type ProviderRegion = 'mainland' | 'international' | 'custom';
+export type ProviderId = 'managed' | 'custom';
+export type ProviderEndpoint = 'responses' | 'chat/completions';
 
 export interface ProviderFieldDefinition {
   key: 'apiKey' | 'model' | 'baseUrl' | 'endpoint' | 'useStrict';
@@ -57,16 +24,6 @@ export interface ProviderDefinition {
   hint?: string;
   browserSupported: boolean;
   fields: ProviderFieldDefinition[];
-  dialect: ProviderDialect;
-  /** Provider-level vision policy. Model ids still have to match the allowlist below. */
-  imageInput: 'known-models' | 'none';
-  /**
-   * Loosely typed (not `PiAiProviderKey`) so this package doesn't have to
-   * depend on `providers-pi-http` just for a string literal union — the
-   * dependency runs the other way (agent-browser depends on both and wires
-   * them together). Only meaningful when `dialect === 'pi-ai'`.
-   */
-  piProviderKey?: string;
 }
 
 export interface ProviderSettings {
@@ -76,67 +33,33 @@ export interface ProviderSettings {
   baseUrl: string;
   endpoint: ProviderEndpoint;
   useStrict: boolean;
-}
-
-const MAINLAND_PROVIDER_IDS = new Set<ProviderId>([
-  'qwen',
-  'deepseek',
-  'doubao',
-  'moonshotai-cn',
-  'zai-coding-cn',
-  'minimax-cn',
-  'xiaomi',
-]);
-
-/** Display grouping for user-owned API endpoints. */
-export function getProviderRegion(id: ProviderId): ProviderRegion {
-  if (id === 'custom') return 'custom';
-  return MAINLAND_PROVIDER_IDS.has(id) ? 'mainland' : 'international';
+  /**
+   * The user's own statement that the `custom` model accepts images. Defaults to
+   * off and is ignored for `managed`, whose vision model is declared below.
+   */
+  imageInput: boolean;
 }
 
 export interface ProviderRuntimeSettings extends ProviderSettings {
   browserSupported: boolean;
-  dialect: ProviderDialect;
-  piProviderKey?: string;
-  /** Fail-closed capability resolved from both provider and normalized model id. */
-  imageInput: boolean;
 }
 
-const PROVIDER_IDS = [
-  'managed',
-  'qwen',
-  'deepseek',
-  'doubao',
-  'openai',
-  'custom',
-  'anthropic',
-  'google',
-  'openrouter',
-  'groq',
-  'moonshotai',
-  'moonshotai-cn',
-  'zai',
-  'zai-coding-cn',
-  'minimax',
-  'minimax-cn',
-  'xai',
-  'cerebras',
-  'together',
-  'huggingface',
-  'mistral',
-  'fireworks',
-  'xiaomi',
-] as const satisfies ProviderId[];
-// These seed every freshly created provider config. For built-in providers
-// `normalizeProviderSettings` overrides `endpoint`/`useStrict` below, so these
-// values only survive for the user-editable `custom` provider — hence the
-// Chat-Completions + non-strict defaults requested for custom backends.
+const PROVIDER_IDS = ['managed', 'custom'] as const satisfies ProviderId[];
+
+export function isProviderId(value: unknown): value is ProviderId {
+  return (PROVIDER_IDS as readonly unknown[]).includes(value);
+}
+
+// These seed every freshly created provider config. `normalizeProviderSettings`
+// overrides them for `managed`; for `custom` they are the Chat-Completions +
+// non-strict, text-only defaults.
 const BASE_PROVIDER_SETTINGS = {
   apiKey: '',
   model: '',
   baseUrl: '',
   endpoint: 'chat/completions' as const,
   useStrict: false,
+  imageInput: false,
 };
 
 const providerSettingsSchema = z.object({
@@ -146,12 +69,23 @@ const providerSettingsSchema = z.object({
   baseUrl: z.string(),
   endpoint: z.enum(['responses', 'chat/completions']),
   useStrict: z.boolean(),
+  imageInput: z.boolean(),
 });
 
-export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
+const viteEnv = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
+/**
+ * The managed model service. A dev server may point it at a local LLM Proxy through
+ * VITE_MANAGED_LLM_URL (docs/testing.md); production builds always use the public one.
+ */
+export const MANAGED_SERVICE_URL =
+  (viteEnv?.DEV === true && typeof viteEnv.VITE_MANAGED_LLM_URL === 'string'
+    ? viteEnv.VITE_MANAGED_LLM_URL
+    : '') || 'https://llm.0xnullai.com';
 
-/** Stable public model ids; the Worker maps them to Cloudflare-hosted models. */
+/** Stable public model ids; the Worker maps every text id to one Ark model. */
 export const MANAGED_DEFAULT_MODEL = 'balanced';
+/** The only managed model that accepts a transient Video camera frame. */
+export const MANAGED_VISION_MODEL = 'vision';
 export const MANAGED_MODEL_OPTIONS = [
   {
     id: 'basic',
@@ -171,87 +105,32 @@ export const MANAGED_MODEL_OPTIONS = [
 ] as const;
 
 export function isManagedModelId(model: string): boolean {
-  return MANAGED_MODEL_OPTIONS.some((option) => option.id === model);
+  return (
+    model === MANAGED_VISION_MODEL || MANAGED_MODEL_OPTIONS.some((option) => option.id === model)
+  );
 }
 
-/** apiKey + model only — no baseUrl/endpoint/useStrict fields, shared by every `dialect: 'pi-ai'` entry below. */
-function piAiFields(
-  apiKeyPlaceholder: string,
-  modelPlaceholder: string,
-): ProviderFieldDefinition[] {
-  return [
-    { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: apiKeyPlaceholder },
-    { key: 'model', label: '模型', type: 'text', placeholder: modelPlaceholder },
-  ];
-}
+export const CUSTOM_PLACEHOLDER_BASE_URL = 'https://api.example.com/v1';
+/** Stored when a custom endpoint has no model yet; shown as an empty field. */
+export const CUSTOM_PLACEHOLDER_MODEL = 'model-name';
 
-const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> = [
+export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   {
     id: 'managed',
-    name: '0xNullAI 模型',
+    name: '猫愿模型',
     hint: '登录后使用 Credit，费用按实际模型用量结算。',
     browserSupported: true,
     fields: [],
-    dialect: 'openai-compat',
-  },
-  {
-    id: 'qwen',
-    name: 'Qwen',
-    browserSupported: true,
-    dialect: 'openai-compat',
-    fields: [
-      { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'sk-...' },
-      { key: 'model', label: '模型', type: 'text', placeholder: 'qwen3.5-plus' },
-    ],
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek（不推荐，存在幻觉）',
-    hint: '默认使用 Chat Completions 兼容模式',
-    browserSupported: true,
-    dialect: 'openai-compat',
-    fields: [
-      { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'sk-...' },
-      { key: 'model', label: '模型', type: 'text', placeholder: 'deepseek-v4-pro' },
-    ],
-  },
-  {
-    id: 'doubao',
-    name: '豆包',
-    hint: '默认使用火山引擎 / Ark 接口配置',
-    browserSupported: true,
-    dialect: 'openai-compat',
-    fields: [
-      { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'ARK API 密钥' },
-      {
-        key: 'model',
-        label: '模型 / Endpoint ID',
-        type: 'text',
-        placeholder: 'doubao-seed-2-0-mini-250415',
-      },
-    ],
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    browserSupported: true,
-    dialect: 'openai-compat',
-    fields: [
-      { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'sk-...' },
-      { key: 'model', label: '模型', type: 'text', placeholder: 'gpt-4o-mini' },
-      { key: 'baseUrl', label: '接口地址', type: 'url', placeholder: 'https://api.openai.com/v1' },
-    ],
   },
   {
     id: 'custom',
     name: '自定义',
-    hint: '适用于 OpenAI 兼容后端或私有网关',
+    hint: 'OpenAI 兼容接口',
     browserSupported: true,
-    dialect: 'openai-compat',
     fields: [
       { key: 'apiKey', label: 'API 密钥', type: 'password', placeholder: 'sk-...' },
       { key: 'model', label: '模型', type: 'text', placeholder: 'model-name' },
-      { key: 'baseUrl', label: '接口地址', type: 'url', placeholder: 'https://api.example.com/v1' },
+      { key: 'baseUrl', label: '接口地址', type: 'url', placeholder: CUSTOM_PLACEHOLDER_BASE_URL },
       {
         key: 'endpoint',
         label: '接口类型',
@@ -272,222 +151,23 @@ const PROVIDER_DEFINITION_INPUTS: Array<Omit<ProviderDefinition, 'imageInput'>> 
       },
     ],
   },
-  // —— pi-ai-routed providers (@dg-agent/providers-pi-http). Native Anthropic
-  // / Google first, then the OpenAI-/Anthropic-compatible-but-not-
-  // `api.openai.com` providers, each CORS-checked live against its real
-  // host before being added (see providers-pi-http's types.ts for the notes).
-  {
-    id: 'anthropic',
-    name: 'Claude (Anthropic)',
-    hint: '通过 Anthropic 官方接口直连，浏览器可直接访问',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'anthropic',
-    fields: piAiFields('sk-ant-...', 'claude-sonnet-4-5'),
-  },
-  {
-    id: 'google',
-    name: 'Gemini (Google)',
-    hint: '通过 Google 官方接口直连，浏览器可直接访问',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'google',
-    fields: piAiFields('AIza...', 'gemini-2.5-flash'),
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    hint: '聚合多家模型的路由服务',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'openrouter',
-    fields: piAiFields('sk-or-...', 'anthropic/claude-sonnet-4.5'),
-  },
-  {
-    id: 'groq',
-    name: 'Groq',
-    hint: '低延迟开源模型推理服务',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'groq',
-    fields: piAiFields('gsk_...', 'llama-3.3-70b-versatile'),
-  },
-  {
-    id: 'moonshotai',
-    name: 'Moonshot AI（Kimi，国际）',
-    hint: '月之暗面 Kimi 国际接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'moonshotai',
-    fields: piAiFields('sk-...', 'kimi-k2-0905-preview'),
-  },
-  {
-    id: 'moonshotai-cn',
-    name: 'Moonshot AI（Kimi，国内）',
-    hint: '月之暗面 Kimi 中国大陆接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'moonshotai-cn',
-    fields: piAiFields('sk-...', 'kimi-k2-0905-preview'),
-  },
-  {
-    id: 'zai',
-    name: 'Z.AI（GLM，国际）',
-    hint: '智谱 GLM 国际接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'zai',
-    fields: piAiFields('sk-...', 'glm-4.7'),
-  },
-  {
-    id: 'zai-coding-cn',
-    name: '智谱 GLM（国内）',
-    hint: '智谱 AI 中国大陆接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'zai-coding-cn',
-    fields: piAiFields('sk-...', 'glm-4.7'),
-  },
-  {
-    id: 'minimax',
-    name: 'MiniMax（国际）',
-    hint: 'MiniMax 国际接口（Claude 兼容协议）',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'minimax',
-    fields: piAiFields('sk-...', 'MiniMax-M2.7'),
-  },
-  {
-    id: 'minimax-cn',
-    name: 'MiniMax（国内）',
-    hint: 'MiniMax 中国大陆接口（Claude 兼容协议）',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'minimax-cn',
-    fields: piAiFields('sk-...', 'MiniMax-M2.7'),
-  },
-  {
-    id: 'xai',
-    name: 'xAI（Grok）',
-    hint: 'xAI 官方接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'xai',
-    fields: piAiFields('xai-...', 'grok-4.3'),
-  },
-  {
-    id: 'cerebras',
-    name: 'Cerebras',
-    hint: '高速开源模型推理服务',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'cerebras',
-    fields: piAiFields('csk-...', 'gpt-oss-120b'),
-  },
-  {
-    id: 'together',
-    name: 'Together AI',
-    hint: '开源模型托管服务',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'together',
-    fields: piAiFields('sk-...', 'Qwen/Qwen3.6-Plus'),
-  },
-  {
-    id: 'huggingface',
-    name: 'Hugging Face',
-    hint: 'Hugging Face 推理路由',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'huggingface',
-    fields: piAiFields('hf_...', 'Qwen/Qwen3-235B-A22B'),
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral AI',
-    hint: 'Mistral 官方接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'mistral',
-    fields: piAiFields('sk-...', 'mistral-large-latest'),
-  },
-  {
-    id: 'fireworks',
-    name: 'Fireworks AI',
-    hint: '开源模型托管服务',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'fireworks',
-    fields: piAiFields('fw_...', 'accounts/fireworks/models/deepseek-v4-pro'),
-  },
-  {
-    id: 'xiaomi',
-    name: '小米 MiMo',
-    hint: '小米 MiMo 官方接口',
-    browserSupported: true,
-    dialect: 'pi-ai',
-    piProviderKey: 'xiaomi',
-    fields: piAiFields('sk-...', 'mimo-v2.5-pro'),
-  },
 ];
 
 /**
- * Explicit vision allowlist. An absent provider or an unrecognized model id
- * is not assumed to support images, even when its API dialect could serialize
- * them. Managed Credit models are text-only; Video keeps its own explicitly
- * vision-capable provider selection.
+ * Image support for one config. Managed accepts images only on its declared vision
+ * model; custom only after the user switched it on. Everything else fails closed.
  */
-const IMAGE_MODELS: Partial<Record<ProviderId, readonly string[]>> = {
-  qwen: ['qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen3-vl-plus', 'qwen3.5-plus'],
-  doubao: ['doubao-seed-2-0-mini-250415'],
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
-  anthropic: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
-  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  openrouter: [
-    'anthropic/claude-sonnet-4.5',
-    'anthropic/claude-opus-4.5',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4o',
-  ],
-  zai: ['glm-4.5v'],
-  'zai-coding-cn': ['glm-4.5v'],
-  xai: ['grok-2-vision-1212'],
-  mistral: ['pixtral-large-latest'],
-};
-
-export const PROVIDER_DEFINITIONS: ProviderDefinition[] = PROVIDER_DEFINITION_INPUTS.map(
-  (provider) => ({
-    ...provider,
-    imageInput: IMAGE_MODELS[provider.id]?.length ? 'known-models' : 'none',
-  }),
-);
-
-/** Models whose image support is explicitly known. Unknown ids always fail closed. */
-export function getProviderImageModels(providerId: ProviderId): readonly string[] {
-  return IMAGE_MODELS[providerId] ?? [];
-}
-
-export function supportsProviderModelImageInput(providerId: ProviderId, model: string): boolean {
-  const normalizedModel = model.trim().toLowerCase();
-  if (!normalizedModel) return false;
-  return getProviderImageModels(providerId).some(
-    (knownModel) => knownModel.toLowerCase() === normalizedModel,
-  );
+export function supportsProviderImageInput(
+  settings: Pick<ProviderSettings, 'providerId' | 'model' | 'imageInput'>,
+): boolean {
+  const model = settings.model.trim();
+  if (settings.providerId === 'managed') return model === MANAGED_VISION_MODEL;
+  if (settings.providerId === 'custom') return settings.imageInput === true && model.length > 0;
+  return false;
 }
 
 export function getProviderDefinition(id: ProviderId): ProviderDefinition | undefined {
   return PROVIDER_DEFINITIONS.find((provider) => provider.id === id);
-}
-
-/** Shared capability-filtered catalog used by every browser settings surface. */
-export function getBrowserProviderDefinitions(options?: {
-  requireImageInput?: boolean;
-}): ProviderDefinition[] {
-  return PROVIDER_DEFINITIONS.filter(
-    (provider) =>
-      provider.browserSupported &&
-      (!options?.requireImageInput || provider.imageInput === 'known-models'),
-  );
 }
 
 export function createProviderSettings(providerId: ProviderId): ProviderSettings {
@@ -501,53 +181,19 @@ export function createDefaultProviderSettings(): ProviderSettings {
   return createProviderSettings('managed');
 }
 
-/** `providerId -> default model id`, applied by `normalizeProviderSettings` below for every built-in provider (skips `custom`, which stays fully user-editable). */
-const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
-  qwen: 'qwen3.5-plus',
-  deepseek: 'deepseek-v4-pro',
-  doubao: 'doubao-seed-2-0-mini-250415',
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-sonnet-4-5',
-  google: 'gemini-2.5-flash',
-  openrouter: 'anthropic/claude-sonnet-4.5',
-  groq: 'llama-3.3-70b-versatile',
-  moonshotai: 'kimi-k2-0905-preview',
-  'moonshotai-cn': 'kimi-k2-0905-preview',
-  zai: 'glm-4.7',
-  'zai-coding-cn': 'glm-4.7',
-  minimax: 'MiniMax-M2.7',
-  'minimax-cn': 'MiniMax-M2.7',
-  xai: 'grok-4.3',
-  cerebras: 'gpt-oss-120b',
-  together: 'Qwen/Qwen3.6-Plus',
-  huggingface: 'Qwen/Qwen3-235B-A22B',
-  mistral: 'mistral-large-latest',
-  fireworks: 'accounts/fireworks/models/deepseek-v4-pro',
-  xiaomi: 'mimo-v2.5-pro',
-};
-
-/** `providerId -> default baseUrl`, applied only for `dialect: 'openai-compat'` providers with a fixed host (qwen/deepseek/doubao/openai — `managed` and `custom` are handled separately above/below). */
-const DEFAULT_BASE_URL_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
-  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  deepseek: 'https://api.deepseek.com',
-  doubao: 'https://ark.cn-beijing.volces.com/api/v3',
-  openai: 'https://api.openai.com/v1',
-};
-
 export function normalizeProviderSettings(input: ProviderSettings): ProviderSettings {
-  const normalized = { ...input };
-  const definition = getProviderDefinition(normalized.providerId);
+  // Persisted data may still name a removed provider (cast to `ProviderId` on the
+  // way in). Migrate it here instead of letting the schema below throw.
+  const normalized: ProviderSettings = isProviderId(input.providerId)
+    ? { ...input }
+    : migrateLegacyProviderSettings(input);
 
-  // Trim before the default-fallback checks below (a whitespace-only model
-  // id must fall back to the provider default, not survive as-is) and
-  // before this ever reaches PiAiLlmClient — otherwise a model id with
-  // incidental leading/trailing whitespace (e.g. pasted from somewhere) can
-  // show as "known" in the settings UI's catalog lookup (which trims for
-  // display) while resolving to a *different*, untrimmed, synthetic model
-  // at actual request time. Trimming once here, at the single place every
-  // persisted/draft `ProviderSettings.model` value passes through, is the
-  // one normalization every other reader can then rely on.
-  normalized.model = normalized.model.trim();
+  // Trim before the default-fallback checks below, once, at the single place every
+  // persisted/draft value passes through, so readers see the id the request uses.
+  normalized.model = typeof normalized.model === 'string' ? normalized.model.trim() : '';
+  normalized.apiKey = typeof normalized.apiKey === 'string' ? normalized.apiKey : '';
+  normalized.baseUrl = typeof normalized.baseUrl === 'string' ? normalized.baseUrl : '';
+  normalized.imageInput = normalized.imageInput === true;
 
   if (normalized.providerId === 'managed') {
     normalized.baseUrl = MANAGED_SERVICE_URL + '/v1';
@@ -556,28 +202,14 @@ export function normalizeProviderSettings(input: ProviderSettings): ProviderSett
       : MANAGED_DEFAULT_MODEL;
     normalized.endpoint = 'chat/completions';
     normalized.useStrict = false;
-  } else if (normalized.providerId === 'custom') {
-    // endpoint/useStrict stay user-editable: only fill the endpoint when it's
-    // missing (seeded to chat/completions via BASE_PROVIDER_SETTINGS) and never
-    // clobber the user's strict toggle.
-    normalized.baseUrl = normalized.baseUrl || 'https://api.example.com/v1';
-    normalized.model = normalized.model || 'model-name';
-    normalized.endpoint = normalized.endpoint || 'chat/completions';
-  } else if (definition?.dialect === 'pi-ai') {
-    // No baseUrl/endpoint/useStrict concept for native/pi-ai-routed
-    // providers — pi-ai's own provider registry owns the host, and there is
-    // no OpenAI-compat "responses vs chat/completions" choice to make.
-    normalized.baseUrl = '';
-    normalized.model = normalized.model || DEFAULT_MODEL_BY_PROVIDER[normalized.providerId] || '';
-    normalized.endpoint = 'chat/completions';
-    normalized.useStrict = false;
+    normalized.imageInput = false;
   } else {
-    // Remaining openai-compat built-ins: qwen / deepseek / doubao / openai.
-    normalized.baseUrl =
-      normalized.baseUrl || DEFAULT_BASE_URL_BY_PROVIDER[normalized.providerId] || '';
-    normalized.model = normalized.model || DEFAULT_MODEL_BY_PROVIDER[normalized.providerId] || '';
-    normalized.endpoint = 'chat/completions';
-    normalized.useStrict = false;
+    // endpoint/useStrict/imageInput stay user-editable: only fill a missing
+    // endpoint and never clobber the user's toggles.
+    normalized.baseUrl = normalized.baseUrl || CUSTOM_PLACEHOLDER_BASE_URL;
+    normalized.model = normalized.model || CUSTOM_PLACEHOLDER_MODEL;
+    normalized.endpoint = normalized.endpoint === 'responses' ? 'responses' : 'chat/completions';
+    normalized.useStrict = normalized.useStrict === true;
   }
 
   normalized.baseUrl = normalized.baseUrl.replace(/\/+$/, '');
@@ -596,31 +228,15 @@ export function resolveProviderRequestUrl(url: string): string {
 
 export function resolveProviderRuntimeSettings(input: ProviderSettings): ProviderRuntimeSettings {
   const normalized = normalizeProviderSettings(input);
-  const definition = getProviderDefinition(normalized.providerId);
-  const dialect: ProviderDialect = definition?.dialect ?? 'openai-compat';
+  const runtime = {
+    ...normalized,
+    imageInput: supportsProviderImageInput(normalized),
+  };
 
   if (normalized.providerId === 'managed') {
-    return {
-      ...normalized,
-      apiKey: 'managed',
-      model: normalized.model,
-      baseUrl: MANAGED_SERVICE_URL + '/v1',
-      endpoint: 'chat/completions',
-      useStrict: false,
-      browserSupported: true,
-      dialect,
-      imageInput: false,
-    };
+    return { ...runtime, apiKey: 'managed', browserSupported: true };
   }
-
-  return {
-    ...normalized,
-    baseUrl: normalized.baseUrl,
-    browserSupported: isProviderUsableInBrowser(normalized),
-    dialect,
-    piProviderKey: definition?.piProviderKey,
-    imageInput: supportsProviderModelImageInput(normalized.providerId, normalized.model),
-  };
+  return { ...runtime, browserSupported: isProviderUsableInBrowser(normalized) };
 }
 
 export function isProviderUsableInBrowser(settings: ProviderSettings): boolean {
@@ -629,4 +245,5 @@ export function isProviderUsableInBrowser(settings: ProviderSettings): boolean {
 }
 
 export * from './config-store';
+export * from './legacy-provider-migration';
 export * from './video-config-store';

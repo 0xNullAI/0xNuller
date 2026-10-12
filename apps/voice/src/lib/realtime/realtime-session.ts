@@ -1,5 +1,4 @@
 import type { ToolDefinition } from '@dg-kit/core';
-import { getRealtimeProviderDefinition, type RealtimeProviderSettings } from './providers.js';
 
 export interface RealtimeFunctionCall {
   callId: string;
@@ -25,6 +24,8 @@ export interface RealtimeSessionEvents {
   onError?(error: Error): void;
   onFunctionCall?(call: RealtimeFunctionCall): void;
   onTranscript?(entry: RealtimeTranscriptEntry): void;
+  /** Fail-closed playback gate for a completed device-capable audio response. */
+  onAuthorizeAudio?(transcript: string): boolean;
   /** Assistant audio started/stopped playing — drives the call UI's "speaking" indicator. */
   onSpeakingChange?(speaking: boolean): void;
   /**
@@ -34,24 +35,24 @@ export interface RealtimeSessionEvents {
    * it mid-cycle would race with a response that's still being generated.
    */
   onResponseDone?(): void;
+  /**
+   * The user started a new spoken turn (server or client voice activity). Evidence from
+   * tool calls belongs to one user turn; transcription events arrive too late to mark it.
+   */
+  onUserTurnStarted?(): void;
 }
 
 /**
- * Dialect-agnostic realtime voice connection. `VoiceToolBridge` and the call
- * UI only ever talk to this interface — `OpenAIRealtimeSession` (xAI/OpenAI/
- * Azure) and `GlmRealtimeSession` (Zhipu) are interchangeable behind it.
+ * Realtime voice connection. `VoiceToolBridge` and the call UI only ever talk
+ * to this interface; `ManagedVoiceSession` implements it against our Worker.
  */
 export interface RealtimeSession {
   connect(): Promise<void>;
   disconnect(): void;
   sendFunctionCallOutput(callId: string, output: string): void;
   /**
-   * Explicit "generate the next turn" step. OpenAI-family dialects require
-   * this after a tool result; some other realtime APIs (not currently
-   * supported by DG-Voice, but the interface leaves room) auto-continue and
-   * would implement this as a no-op — see the provider-catalog notes in
-   * `providers.ts` for why DG-Voice only ships the two dialects that need
-   * this method to actually do something.
+   * Explicit "generate the next turn" step, required after a tool result. A
+   * protocol that auto-continues would implement this as a no-op.
    */
   requestResponse(): void;
   /** Resolves once all currently-queued assistant audio has finished playing. */
@@ -61,8 +62,7 @@ export interface RealtimeSession {
    * Re-sends `session.update` with fresh instructions (same tools/voice,
    * just the instructions text) — used to keep the live device-status block
    * in `build-voice-instructions.ts` current as strength/connection state
-   * changes mid-call. Both dialects support updating `instructions` after
-   * connect; safe to call as often as the debounced caller wants.
+   * changes mid-call. Safe to call as often as the debounced caller wants.
    */
   updateInstructions(instructions: string): void;
   /** Atomically refreshes the model-visible instructions and tool allowlist. */
@@ -70,26 +70,18 @@ export interface RealtimeSession {
 }
 
 export interface RealtimeSessionOptions {
-  settings: RealtimeProviderSettings;
+  billingContext?: { conversationId: string; runId: string };
+  /** Voice id from `managed-voices.ts`. */
+  voice: string;
   tools: ToolDefinition[];
   instructions: string;
   events: RealtimeSessionEvents;
 }
 
-/** Picks the dialect implementation for `settings.providerId` — the only place that needs to know both classes exist. */
+/** Lazily loads the session implementation, keeping audio/WS code out of the initial bundle. */
 export async function createRealtimeSession(
   options: RealtimeSessionOptions,
 ): Promise<RealtimeSession> {
-  const definition = getRealtimeProviderDefinition(options.settings.providerId);
-  if (!definition) {
-    throw new Error(`未知的语音 provider：${options.settings.providerId}`);
-  }
-
-  if (definition.dialect === 'glm-realtime') {
-    const { GlmRealtimeSession } = await import('./glm-realtime-session.js');
-    return new GlmRealtimeSession(options);
-  }
-
-  const { OpenAiRealtimeSession } = await import('./openai-realtime-session.js');
-  return new OpenAiRealtimeSession(options.settings.providerId, options);
+  const { ManagedVoiceSession } = await import('./managed-voice-session.js');
+  return new ManagedVoiceSession(options);
 }

@@ -21,13 +21,7 @@ import type {
   RuntimeTraceEntry,
   SessionSnapshot,
 } from '@dg-agent/core';
-import { CoyoteProtocolAdapter } from '@dg-kit/protocol';
-import {
-  WebBluetoothCivetEdgingClient,
-  WebBluetoothDeviceClient,
-  WebBluetoothOpossumClient,
-  WebBluetoothPawPrintsClient,
-} from '@dg-kit/transport-webbluetooth';
+import type { CivetPressureReading, PawPrintsReading } from '@dg-kit/protocol';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import type {
   CivetEdgingClient,
@@ -35,15 +29,50 @@ import type {
   PawPrintsClient,
   SavedPromptPreset,
   DeviceExecutionGate,
+  RuntimeTaskRunReporter,
 } from '@dg-agent/runtime';
 import {
-  BrowserSessionStore,
-  BrowserSessionTraceStore,
+  ServerSessionStore,
+  TransientSessionTraceStore,
   type BrowserAppSettings,
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
 import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
-import { createAiDeviceToolAdapter, type DeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import {
+  RegistryCoyoteClient,
+  RegistryOpossumClient,
+  RegistrySensorClient,
+  type DgLabModuleHandle,
+} from '@0xnullai/device-runtime';
+
+export type { DgLabModuleHandle } from '@0xnullai/device-runtime';
+
+/** The module id the shell grants the device lease to while Agent is visible. */
+export const AGENT_DEVICE_MODULE_ID = 'agent';
+
+export interface RegistryAgentDevices {
+  device: DeviceClient;
+  opossum: OpossumClient;
+  pawPrints: PawPrintsClient;
+  civetEdging: CivetEdgingClient;
+}
+
+/**
+ * Agent's device clients over the shell's one DG-Lab registry.
+ *
+ * They own no BLE link: a Coyote connected on 设备 is the same physical device the AI chat sees,
+ * and every output write is lease-fenced and re-clamped by the registry. The Coyote client keeps
+ * the exact-target surface (`getConnectedCoyotes`, `executeDeviceById`, …) that
+ * `createCoyoteTargetRouter` needs, so each tool call still names one opaque target id.
+ */
+export function createRegistryAgentDevices(handle: DgLabModuleHandle): RegistryAgentDevices {
+  return {
+    device: new RegistryCoyoteClient(handle),
+    opossum: new RegistryOpossumClient(handle),
+    pawPrints: new RegistrySensorClient<PawPrintsReading>(handle, 'paw-prints'),
+    civetEdging: new RegistrySensorClient<CivetPressureReading>(handle, 'civet-edging'),
+  };
+}
 
 export interface PermissionRequestInput {
   toolName: string;
@@ -65,37 +94,18 @@ export interface BrowserServicesOptions {
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**
-   * A pre-built device client to reuse across settings-driven service rebuilds.
-   * When provided, `createDeviceClient` is ignored and no new device is
-   * constructed — this keeps the underlying BLE connection alive when other
-   * settings (provider, voice, bridge, …) change. Web/Android shells pass a
-   * device they own and hold stable across re-renders.
+   * Device clients over the app's shared DG-Lab registry (`createRegistryAgentDevices`). The
+   * caller builds them once and holds them stable across settings-driven service rebuilds; they
+   * own no BLE link, the registry does.
    */
-  device?: DeviceClient;
-  /**
-   * Optional override for the device client. Used by non-browser shells
-   * (e.g. the Tauri Android app) to inject a transport that doesn't depend
-   * on Web Bluetooth. Only consulted when `device` is not supplied. Defaults
-   * to constructing a WebBluetoothDeviceClient.
-   */
-  createDeviceClient?: (protocol: CoyoteProtocolAdapter) => DeviceClient;
-  /**
-   * Pre-built auxiliary device clients (opossum, paw-prints, civet-edging),
-   * reused across settings-driven service rebuilds the same way `device` is
-   * — each defaults to a lazily-constructed `WebBluetoothOpossumClient` /
-   * `WebBluetoothPawPrintsClient` / `WebBluetoothCivetEdgingClient` when not
-   * supplied. Unlike `device`/`createDeviceClient`, there is no non-browser
-   * override hook yet: none of these three kinds have a Tauri/Android
-   * transport (see DG-Chat's `DeviceSession` doc comment — Android WebView
-   * has no Web Bluetooth), so the shells that need one don't exist yet.
-   */
-  opossum?: OpossumClient;
-  pawPrints?: PawPrintsClient;
-  civetEdging?: CivetEdgingClient;
+  device: DeviceClient;
+  opossum: OpossumClient;
+  pawPrints: PawPrintsClient;
+  civetEdging: CivetEdgingClient;
   /** Optional final boundary check, typically backed by the shell's module lease. */
   deviceExecutionGate?: DeviceExecutionGate;
-  /** Shell-owned generic runtime; binding is lazy and uses the Agent module id. */
-  deviceRuntimeProvider?: DeviceRuntimeProvider;
+  /** Server TaskRun reporter; non-stop tools fail closed without a server run ID. */
+  taskRunReporter?: RuntimeTaskRunReporter;
   /**
    * If true, speech recognition / synthesis are stubbed with no-op controllers
    * and capabilities report nothing supported. Used by shells (Android WebView)
@@ -108,6 +118,11 @@ export interface BrowserServicesOptions {
    * ship without bridge integrations.
    */
   disableBridge?: boolean;
+  /**
+   * Replaces the Web Bluetooth probe. A shell whose registry brings a native BLE transport sets
+   * it, so the UI does not warn that this WebView lacks Web Bluetooth.
+   */
+  bluetoothAvailabilityOverride?: ReturnType<typeof describeBrowserModes>['bluetoothAvailability'];
 }
 
 export interface BrowserServices {
@@ -137,7 +152,23 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.resolve([]);
   }
 
+  searchSessions(_query: string): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+
+  getSessionMessagesPage(_sessionId: string, _before?: number) {
+    return Promise.resolve({ items: [], nextBefore: null });
+  }
+
   getSessionSnapshot(_sessionId: string): Promise<SessionSnapshot> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  getSessionDisplaySnapshot(_sessionId: string): Promise<SessionSnapshot> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  getSessionExportSnapshot(_sessionId: string): Promise<SessionSnapshot> {
     return Promise.reject(new Error(this.message));
   }
 
@@ -150,6 +181,10 @@ class UnavailableAgentClient implements AgentClient {
   }
 
   renameSession(_sessionId: string, _title: string | null): Promise<void> {
+    return Promise.reject(new Error(this.message));
+  }
+
+  setSessionScene(_sessionId: string, _sceneId: string | null): Promise<void> {
     return Promise.reject(new Error(this.message));
   }
 
@@ -185,6 +220,10 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.reject(new Error(this.message));
   }
 
+  releaseDeviceControl(_sessionId: string): Promise<void> {
+    return Promise.resolve();
+  }
+
   abortCurrentReply(_sessionId: string): Promise<void> {
     return Promise.resolve();
   }
@@ -210,47 +249,26 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
 
   const warnings: string[] = [];
 
-  const sessionStore = new BrowserSessionStore();
-  const sessionTraceStore = new BrowserSessionTraceStore();
+  const sessionStore = new ServerSessionStore();
+  const sessionTraceStore = new TransientSessionTraceStore();
   const waveformLibrary = new BrowserWaveformLibrary();
   const bridgeRegistry = new BridgeAdapterRegistry();
-  const device =
-    options.device ??
-    (() => {
-      const deviceProtocol = new CoyoteProtocolAdapter();
-      return options.createDeviceClient
-        ? options.createDeviceClient(deviceProtocol)
-        : new WebBluetoothDeviceClient({ protocol: deviceProtocol });
-    })();
-  const opossum = options.opossum ?? new WebBluetoothOpossumClient();
-  const pawPrints = options.pawPrints ?? new WebBluetoothPawPrintsClient();
-  const civetEdging = options.civetEdging ?? new WebBluetoothCivetEdgingClient();
+  const { device, opossum, pawPrints, civetEdging } = options;
 
   const speechRecognition = options.disableSpeech
     ? createNullSpeechRecognitionController()
     : createSpeechRecognitionController({
         lang: settings.speechRecognitionLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        autoStopEnabled: settings.voice.autoStopEnabled,
       });
   const speechSynthesizer = options.disableSpeech
     ? createNullSpeechSynthesizer()
     : createSpeechSynthesizer({
         lang: settings.speechSynthesisLanguage,
-        mode: settings.voice.mode,
-        proxyUrl: settings.voice.proxyUrl,
-        apiKey: settings.voice.apiKey,
-        speaker: settings.voice.speaker,
         browserVoiceUri: settings.voice.browserVoiceUri,
       });
   const speechCapabilities = options.disableSpeech
     ? NULL_SPEECH_CAPABILITIES
-    : getBrowserSpeechCapabilities({
-        recognitionMode: settings.voice.mode,
-        synthesisMode: settings.voice.mode,
-      });
+    : getBrowserSpeechCapabilities();
 
   const localPermissionService = new BrowserPermissionService({
     mode: settings.permissionMode,
@@ -269,15 +287,11 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     registry: bridgeRegistry,
   });
 
-  const deviceRuntimeProvider = options.deviceRuntimeProvider;
-  const deviceRuntimeTools = deviceRuntimeProvider
-    ? createAiDeviceToolAdapter(deviceRuntimeProvider, 'agent')
-    : undefined;
-
   let client: AgentClient;
   try {
     client = createBrowserAgentClient({
       settings,
+      allowPersonalContext: true,
       scenes,
       device,
       opossum,
@@ -288,7 +302,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       waveformLibrary,
       permissionService: bridgePermissionService,
       deviceExecutionGate: options.deviceExecutionGate,
-      deviceRuntimeTools,
+      taskRunReporter: options.taskRunReporter,
     });
   } catch (error) {
     const message = formatInitError('模型服务初始化失败', error);
@@ -323,6 +337,12 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     }
   }
 
+  const disposeClient = client.dispose?.bind(client);
+  client.dispose = () => {
+    sessionStore.dispose();
+    disposeClient?.();
+  };
+
   return {
     client,
     device,
@@ -335,7 +355,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     speechSynthesizer,
     speechCapabilities,
     modes: describeBrowserModes(settings, {
-      bluetoothAvailabilityOverride: options.createDeviceClient ? { supported: true } : undefined,
+      bluetoothAvailabilityOverride: options.bluetoothAvailabilityOverride,
     }),
     resetPermissionGrants: () => bridgePermissionService.clearGrants(),
     warnings,

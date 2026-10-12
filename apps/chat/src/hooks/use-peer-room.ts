@@ -1,3 +1,4 @@
+import type { GroupMembership } from '../../worker/wire';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { connectRoom, type RoomTransport, type TransportStatus } from '../lib/room-transport';
 import {
@@ -12,7 +13,13 @@ import {
   type StateFast,
   type StateSlow,
 } from '../lib/protocol';
-import { ROOM_AGENT_ID, ROOM_AGENT_SENDER, type RoomAgent } from '../../worker/wire';
+import {
+  ROOM_AGENT_ID,
+  type NamedRoomAgent,
+  type RoomAgent,
+  type RoomAgentBillingMode,
+  type WireReply,
+} from '../../worker/wire';
 import {
   closeOwnedGroup,
   forgetGroup,
@@ -20,7 +27,7 @@ import {
   rememberGroup,
   saveOwnerKey,
 } from '../lib/groups';
-import { dmTicket, getChatTicket } from '@0xnullai/auth';
+import { currentAuthUserId, subscribeAuthChanges, dmTicket, getChatTicket } from '@0xnullai/auth';
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -53,6 +60,32 @@ export interface JoinOptions {
    */
   dm?: DmJoinOptions;
 }
+
+/**
+ * Peer ids are new on every page load, so history from an earlier visit or another device
+ * is recognised by the sender account the server attaches; the peer id covers frames from
+ * a server that does not send it yet.
+ */
+function isOwnMessage(frame: Record<string, unknown>): boolean {
+  const account = currentAuthUserId();
+  return typeof frame._account === 'string' && account
+    ? frame._account === account
+    : frame._from === selfId;
+}
+
+/** One match from the server-side history search, newest first. */
+export interface ChatSearchHit {
+  id: string;
+  senderName: string;
+  fromSelf: boolean;
+  text: string;
+  timestamp: number;
+}
+
+const SEARCH_TIMEOUT_MS = 8000;
+
+/** Without the server echo by then, a sent message is shown as failed with a retry. */
+const SEND_CONFIRM_TIMEOUT_MS = 15_000;
 
 /** How much of a ticket's life has to be left for it to be worth spending on a connect. */
 const TICKET_MIN_REMAINING_MS = 5000;
@@ -140,6 +173,7 @@ function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | 
   if (!m || !room) return undefined;
   return {
     kind: m.kind,
+    objectId: m.id,
     url: `/api/media/${encodeURIComponent(room)}/${encodeURIComponent(m.id)}`,
     mime: m.mime,
     durationMs: m.durationMs,
@@ -163,7 +197,34 @@ function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | 
  * A single WS connection is ordered and reliable, so none of MQTT's
  * multi-broker fan-out / QoS / message dedup is needed.
  */
+export interface RoomReadAdmission {
+  account: string;
+  room: string;
+}
 export function usePeerRoom(displayName: string) {
+  const readAdmissionRef = useRef<RoomReadAdmission | null>(null);
+  const [readAdmission, setReadAdmission] = useState<RoomReadAdmission | null>(null);
+  const isReadAdmissionCurrent = useCallback(
+    (candidate: RoomReadAdmission) => readAdmissionRef.current === candidate,
+    [],
+  );
+  useEffect(() => {
+    let previous = currentAuthUserId();
+    return subscribeAuthChanges(() => {
+      const current = currentAuthUserId();
+      if (current !== previous) {
+        readAdmissionRef.current = null;
+        setReadAdmission(null);
+        for (const claim of agentClaimsRef.current.values()) {
+          clearTimeout(claim.timer);
+          claim.resolve(null);
+        }
+        agentClaimsRef.current.clear();
+      }
+      previous = current;
+    });
+  }, []);
+
   const [status, setStatus] = useState<RoomStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -172,7 +233,9 @@ export function usePeerRoom(displayName: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mediaUploadToken, setMediaUploadToken] = useState<string | null>(null);
   // —— Room AI ——
+  const [agents, setAgentsState] = useState<NamedRoomAgent[]>([]);
   const [agent, setAgentState] = useState<RoomAgent | null>(null);
+  const [agentBillingMode, setAgentBillingMode] = useState<RoomAgentBillingMode>('host-byok');
   // The host is whoever the DO says it is. Only that browser runs the agent
   // loop, which is what keeps one @mention from producing several replies.
   // It is a live role that moves when the current host disconnects — not
@@ -180,9 +243,11 @@ export function usePeerRoom(displayName: string) {
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   // —— Group settings (durable, owner-controlled) ——
   const [isPublic, setIsPublic] = useState(false);
+  const [historyBefore, setHistoryBefore] = useState<{ ts: number; id: string } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [groupMemberships, setGroupMemberships] = useState<GroupMembership[]>([]);
   const [groupName, setGroupName] = useState('');
   /** The group has an owner key on file at all (groups made by older clients do not). */
-  const [groupOwned, setGroupOwned] = useState(false);
   /** This browser holds the key and the server accepted it. */
   const [isOwner, setIsOwner] = useState(false);
   /**
@@ -195,6 +260,16 @@ export function usePeerRoom(displayName: string) {
   const [dmPeerUserId, setDmPeerUserId] = useState<string | null>(null);
 
   const transportRef = useRef<RoomTransport | null>(null);
+  const agentClaimsRef = useRef<
+    Map<
+      string,
+      {
+        admission: RoomReadAdmission;
+        resolve: (grantId: string | null) => void;
+        timer: number;
+      }
+    >
+  >(new Map());
   const roomIdRef = useRef<string | null>(null);
   const joinOptsRef = useRef<JoinOptions>({});
   const onCommandRef = useRef<((cmd: DeviceCommand, peerId: string) => void) | null>(null);
@@ -241,8 +316,48 @@ export function usePeerRoom(displayName: string) {
     return transportRef.current?.send(payload) ?? false;
   }, []);
 
+  /** Search requests awaiting their `search-result` frame. */
+  const searchesRef = useRef(
+    new Map<string, { resolve: (hits: ChatSearchHit[]) => void; timer: number }>(),
+  );
+
+  /** Outgoing chat frames awaiting the server echo, kept so a retry resends the same id. */
+  const pendingSendsRef = useRef(new Map<string, { payload: object; timer: number }>());
+
+  const clearPendingSend = useCallback((id: string) => {
+    const pending = pendingSendsRef.current.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingSendsRef.current.delete(id);
+  }, []);
+
+  const trackPendingSend = useCallback((id: string, payload: object) => {
+    const previous = pendingSendsRef.current.get(id);
+    if (previous) clearTimeout(previous.timer);
+    const timer = window.setTimeout(() => {
+      if (!pendingSendsRef.current.has(id)) return;
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === id && !message.serverConfirmed
+            ? { ...message, sendFailed: true }
+            : message,
+        ),
+      );
+    }, SEND_CONFIRM_TIMEOUT_MS);
+    pendingSendsRef.current.set(id, { payload, timer });
+  }, []);
+
   /** Close the connection and drop everything that belonged to that group. */
   const teardown = useCallback(() => {
+    for (const pending of pendingSendsRef.current.values()) clearTimeout(pending.timer);
+    pendingSendsRef.current.clear();
+    for (const claim of agentClaimsRef.current.values()) {
+      clearTimeout(claim.timer);
+      claim.resolve(null);
+    }
+    agentClaimsRef.current.clear();
+    readAdmissionRef.current = null;
+    setReadAdmission(null);
     send({ t: 'leave' });
 
     if (presenceTimerRef.current) {
@@ -265,13 +380,17 @@ export function usePeerRoom(displayName: string) {
     setPeers([]);
     setMembers(new Map());
     setMessages([]);
+    setHistoryBefore(null);
+    setHistoryLoading(false);
     setMediaUploadToken(null);
     setHostPeerId(null);
     // Group-scoped state must go too, or the next group inherits the previous one's
     // agent and settings for as long as it takes the new frames to arrive.
     setAgentState(null);
+    setAgentsState([]);
+    setAgentBillingMode('host-byok');
     setIsOwner(false);
-    setGroupOwned(false);
+    setGroupMemberships([]);
     setIsPublic(false);
     setGroupName('');
     setDmPeerUserId(null);
@@ -289,6 +408,10 @@ export function usePeerRoom(displayName: string) {
       setStatus('connecting');
       setError(null);
       roomIdRef.current = roomCode;
+      const account = currentAuthUserId();
+      const admission = account ? { account, room: roomCode } : null;
+      readAdmissionRef.current = admission;
+      setReadAdmission(admission);
       joinOptsRef.current = options ?? {};
       const dm = options?.dm ?? null;
       setDmPeerUserId(dm?.peerUserId ?? null);
@@ -321,21 +444,93 @@ export function usePeerRoom(displayName: string) {
       function handleMessage(data: Record<string, unknown>) {
         const t = data.t as string;
 
+        if (t === 'search-result') {
+          const search = searchesRef.current.get(String(data.requestId));
+          if (!search) return;
+          searchesRef.current.delete(String(data.requestId));
+          clearTimeout(search.timer);
+          const list = Array.isArray(data.messages)
+            ? (data.messages as Array<Record<string, unknown>>)
+            : [];
+          search.resolve(
+            list.map((m) => ({
+              id: String(m.id),
+              senderName: typeof m.n === 'string' ? m.n : '',
+              fromSelf: isOwnMessage(m),
+              text: typeof m.x === 'string' ? m.x : '',
+              timestamp: typeof m.ts === 'number' ? m.ts : 0,
+            })),
+          );
+          return;
+        }
+
+        if (t === 'agent-claim-result') {
+          const claim = agentClaimsRef.current.get(String(data.requestId));
+          if (!claim) return;
+          agentClaimsRef.current.delete(String(data.requestId));
+          clearTimeout(claim.timer);
+          claim.resolve(
+            readAdmissionRef.current === claim.admission &&
+              currentAuthUserId() === claim.admission.account &&
+              claim.admission.room === roomIdRef.current &&
+              typeof data.grantId === 'string'
+              ? data.grantId
+              : null,
+          );
+          return;
+        }
+
+        if (t === 'agent-run-status') {
+          if (typeof data.message === 'string') setError(data.message.slice(0, 200));
+          return;
+        }
+
+        if (t === 'membership-state') {
+          setGroupMemberships(
+            Array.isArray(data.members) ? (data.members as GroupMembership[]) : [],
+          );
+          return;
+        }
         if (t === 'history') {
           const room = roomIdRef.current;
           const list = (data.messages as Array<Record<string, unknown>>) ?? [];
-          setMessages(
-            list.map((m) => ({
-              id: m.id as string,
-              fromSelf: m._from === selfId,
-              senderId: (m._from as string) ?? '',
-              senderName: (m.n as string) ?? '',
-              text: (m.x as string) ?? '',
-              timestamp: (m.ts as number) ?? 0,
-              media: buildMedia(room, m.m as WireMedia | undefined),
-              mentions: mapMentions(m.mentions),
-            })),
+          const page: ChatMessage[] = list.map((m) => ({
+            id: m.id as string,
+            serverConfirmed: true,
+            fromSelf: isOwnMessage(m),
+            senderId: (m._from as string) ?? '',
+            senderName: (m.n as string) ?? '',
+            text: (m.x as string) ?? '',
+            timestamp: (m.ts as number) ?? 0,
+            media: buildMedia(room, m.m as WireMedia | undefined),
+            mentions: mapMentions(m.mentions),
+            replyTo: m.replyTo as WireReply | undefined,
+            ...(m.recalled === true ? { recalled: true } : {}),
+          }));
+          for (const message of page) clearPendingSend(message.id);
+          setMessages((previous) => {
+            if (data.older === true)
+              return [
+                ...new Map([...page, ...previous].map((message) => [message.id, message])).values(),
+              ].sort(
+                (a, b) => a.timestamp - b.timestamp || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+              );
+            // A reconnect replays history. Unconfirmed local sends are not in it yet; keep
+            // them (and their text) after the replay instead of silently dropping them.
+            const replayed = new Set(page.map((message) => message.id));
+            const unconfirmed = previous.filter(
+              (message) =>
+                message.fromSelf && !message.serverConfirmed && !replayed.has(message.id),
+            );
+            return [...page, ...unconfirmed];
+          });
+          const before = data.before as { ts?: unknown; id?: unknown } | null;
+          setHistoryBefore(
+            before && typeof before.ts === 'number' && typeof before.id === 'string'
+              ? { ts: before.ts, id: before.id }
+              : null,
           );
+          setHistoryLoading(false);
           return;
         }
 
@@ -346,9 +541,14 @@ export function usePeerRoom(displayName: string) {
 
         if (t === 'sys') {
           if (data.kind === 'closed') {
-            setError('房间已关闭');
+            setError('群聊已解散');
             const code = roomIdRef.current;
             if (code) void closeOwnedGroup(code).finally(() => forgetGroup(code));
+            return;
+          }
+          if (data.kind === 'membership-revoked') {
+            teardown();
+            setError('已退出或被移出群聊');
             return;
           }
           const peerId = data.peerId as string;
@@ -358,8 +558,18 @@ export function usePeerRoom(displayName: string) {
         }
 
         if (t === 'agent') {
-          setAgentState((data.agent as RoomAgent | null) ?? null);
+          const incoming = Array.isArray(data.agents)
+            ? (data.agents as NamedRoomAgent[])
+            : data.agent
+              ? [{ ...(data.agent as RoomAgent), id: ROOM_AGENT_ID }]
+              : [];
+          const active =
+            incoming.find((candidate) => candidate.id === ROOM_AGENT_ID) ?? incoming[0];
+          setAgentsState(active ? [active] : []);
+          setAgentState(active ? { name: active.name, persona: active.persona } : null);
           setHostPeerId((data.host as string) ?? null);
+          if (data.billingMode === 'managed' || data.billingMode === 'host-byok')
+            setAgentBillingMode(data.billingMode);
           return;
         }
 
@@ -369,7 +579,6 @@ export function usePeerRoom(displayName: string) {
           // neither isOwner nor ownerKey, which are answers to one connection only.
           const code = (data.code as string) || roomIdRef.current || '';
           if (typeof data.public === 'boolean') setIsPublic(data.public);
-          if (typeof data.owned === 'boolean') setGroupOwned(data.owned);
           if (typeof data.isOwner === 'boolean') setIsOwner(data.isOwner);
           if (typeof data.name === 'string') {
             setGroupName(data.name);
@@ -384,27 +593,61 @@ export function usePeerRoom(displayName: string) {
         }
 
         const from = data._from as string;
-        if (!from || from === selfId) return;
+        if (!from) return;
+        if (from === selfId && t !== 'chat') return;
 
         switch (t) {
           case 'presence':
             touchPeer(from, data.n as string | undefined);
             break;
           case 'chat':
-            setMessages((prev) => [
-              ...prev,
-              {
+            if (from === selfId && typeof data.id === 'string') clearPendingSend(data.id);
+            setMessages((prev) => {
+              const confirmed: ChatMessage = {
                 id: (data.id as string) ?? shortId(),
-                fromSelf: false,
+                serverConfirmed: true,
+                fromSelf: isOwnMessage(data),
                 senderId: from,
                 senderName: (data.n as string) ?? from.slice(0, 6),
                 text: (data.x as string) ?? '',
                 timestamp: (data.ts as number) ?? Date.now(),
                 media: buildMedia(roomIdRef.current, data.m as WireMedia | undefined),
                 mentions: mapMentions(data.mentions),
-              },
-            ]);
+                replyTo: data.replyTo as WireReply | undefined,
+                ...(data.recalled === true ? { recalled: true } : {}),
+              };
+              const existing = prev.findIndex((message) => message.id === confirmed.id);
+              if (existing < 0) return [...prev, confirmed];
+              const next = [...prev];
+              next[existing] = confirmed;
+              return next;
+            });
             break;
+          case 'recall': {
+            // Only the server sends this, after checking the sender and the time window.
+            const recalledId = data.id;
+            if (typeof recalledId !== 'string') break;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === recalledId
+                  ? {
+                      ...message,
+                      recalled: true,
+                      text: '',
+                      media: undefined,
+                      mentions: undefined,
+                      replyTo: undefined,
+                    }
+                  : message.replyTo?.id === recalledId
+                    ? {
+                        ...message,
+                        replyTo: { ...message.replyTo, text: '消息已撤回', recalled: true },
+                      }
+                    : message,
+              ),
+            );
+            break;
+          }
           case 'cmd':
             onCommandRef.current?.(
               {
@@ -516,11 +759,21 @@ export function usePeerRoom(displayName: string) {
         }
       }
 
+      // Only the first hello of this join may reactivate a membership the account left;
+      // an automatic reconnect must not undo a leave made on another device meanwhile.
+      let explicitJoinSent = false;
       const transport = connectRoom({
         code: roomCode,
         peerId: selfId,
+        dm: dm !== null,
         ticket: dm ? dmTicketProvider(dm) : chatTicketProvider(),
-        onStatus: (s: TransportStatus) => setStatus(s),
+        onStatus: (s: TransportStatus) => {
+          setStatus(s);
+          if (s !== 'connected') {
+            setHistoryLoading(false);
+            setMediaUploadToken(null);
+          }
+        },
         onOpen: () => {
           setRoomId(roomCode);
           if (dm) {
@@ -528,14 +781,19 @@ export function usePeerRoom(displayName: string) {
             // seed, no ownership to claim and no key to present — none of those exist for a
             // conversation between two accounts, and sending them anyway would be asking the
             // server to ignore them.
-            send({ t: 'hello', name: displayNameRef.current });
+            send({ t: 'hello', name: displayNameRef.current, historyPaging: true });
             return;
           }
           // First frame on join: declare nickname, plus the settings the group is seeded
           // with if this is its first hello ever. A reconnect fires this too → the DO
           // replays history again.
+          const join = !explicitJoinSent;
+          explicitJoinSent = true;
           send({
             t: 'hello',
+            join,
+            agentTurns: true,
+            historyPaging: true,
             name: displayNameRef.current,
             public: joinOptsRef.current.public,
             roomName: joinOptsRef.current.roomName,
@@ -560,7 +818,7 @@ export function usePeerRoom(displayName: string) {
   );
 
   const sendMessage = useCallback(
-    (text: string, media?: OutgoingMedia, mentions?: ChatMention[]) => {
+    (text: string, media?: OutgoingMedia, mentions?: ChatMention[], replyTo?: WireReply) => {
       const id = shortId();
       const now = Date.now();
       const name = displayNameRef.current;
@@ -568,8 +826,9 @@ export function usePeerRoom(displayName: string) {
 
       const localMedia: ChatMedia | undefined = media ? buildMedia(room, media) : undefined;
 
-      const accepted = send({
+      const payload = {
         t: 'chat',
+        replyToId: replyTo?.id,
         id,
         n: name,
         x: text,
@@ -586,8 +845,9 @@ export function usePeerRoom(displayName: string) {
             }
           : undefined,
         mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
-      });
-      if (!accepted) return false;
+      };
+      if (!send(payload)) return false;
+      trackPendingSend(id, payload);
 
       setMessages((prev) => [
         ...prev,
@@ -600,11 +860,37 @@ export function usePeerRoom(displayName: string) {
           timestamp: now,
           media: localMedia,
           mentions,
+          replyTo,
         },
       ]);
       return true;
     },
-    [send],
+    [send, trackPendingSend],
+  );
+
+  /** Resend a failed message with its original id; the server confirms a duplicate once. */
+  const retryMessage = useCallback(
+    (id: string) => {
+      const pending = pendingSendsRef.current.get(id);
+      if (!pending || !send(pending.payload)) return false;
+      trackPendingSend(id, pending.payload);
+      setMessages((current) =>
+        current.map((message) => (message.id === id ? { ...message, sendFailed: false } : message)),
+      );
+      return true;
+    },
+    [send, trackPendingSend],
+  );
+
+  /** Drop a failed local message the user no longer wants to send. */
+  const discardMessage = useCallback(
+    (id: string) => {
+      clearPendingSend(id);
+      setMessages((current) =>
+        current.filter((message) => message.id !== id || message.serverConfirmed),
+      );
+    },
+    [clearPendingSend],
   );
 
   /**
@@ -619,6 +905,22 @@ export function usePeerRoom(displayName: string) {
         agent: next,
         ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined,
       });
+    },
+    [send],
+  );
+
+  const setAgents = useCallback(
+    (next: NamedRoomAgent[]) => {
+      const code = roomIdRef.current;
+      send({ t: 'agent', agents: next, ownerKey: (code ? loadOwnerKey(code) : null) ?? undefined });
+    },
+    [send],
+  );
+
+  const setRoomAgentBillingMode = useCallback(
+    (mode: RoomAgentBillingMode) => {
+      const code = roomIdRef.current;
+      if (code) send({ t: 'agent-billing', mode, ownerKey: loadOwnerKey(code) ?? undefined });
     },
     [send],
   );
@@ -649,24 +951,59 @@ export function usePeerRoom(displayName: string) {
     forgetGroup(code);
   }, [send]);
 
-  /**
-   * Host speaks as the room agent (called by the agent loop). The server
-   * verifies the sender is the host and that the room really has an agent.
-   */
+  /** A saved human @-message must receive a one-use server grant before model work starts. */
+  const requestAgentTurn = useCallback(
+    (roleId: string, triggerId: string): Promise<string | null> => {
+      const room = roomIdRef.current;
+      const admission = readAdmissionRef.current;
+      if (
+        !room ||
+        room.startsWith('dm:') ||
+        !admission ||
+        admission.room !== room ||
+        currentAuthUserId() !== admission.account
+      )
+        return Promise.resolve(null);
+      const requestId = shortId();
+      return new Promise((resolve) => {
+        const timer = window.setTimeout(() => {
+          agentClaimsRef.current.delete(requestId);
+          resolve(null);
+        }, 8000);
+        agentClaimsRef.current.set(requestId, { admission, resolve, timer });
+        if (!send({ t: 'agent-claim', requestId, roleId, triggerId })) {
+          clearTimeout(timer);
+          agentClaimsRef.current.delete(requestId);
+          resolve(null);
+        }
+      });
+    },
+    [send],
+  );
+
+  /** Host speaks as a configured AI after the server granted this exact turn. */
   const sendChatAs = useCallback(
-    (roleId: string, text: string, mentions?: ChatMention[]) => {
-      const name = roleId === ROOM_AGENT_ID ? (agent?.name ?? 'AI') : 'AI';
+    (roleId: string, text: string, triggerId: string, grantId: string) => {
+      const admission = readAdmissionRef.current;
+      if (
+        !admission ||
+        admission.room !== roomIdRef.current ||
+        currentAuthUserId() !== admission.account
+      )
+        return;
+      const name = agents.find((a) => a.id === roleId)?.name ?? 'AI';
       send({
         t: 'chat',
         as: `ai:${roleId}`,
+        triggerId,
+        grantId,
         id: shortId(),
         n: name,
         x: text,
         ts: Date.now(),
-        mentions: mentions?.map((x) => ({ peerId: x.peerId, n: x.displayName })),
       });
     },
-    [send, agent],
+    [send, agents],
   );
 
   /**
@@ -781,8 +1118,9 @@ export function usePeerRoom(displayName: string) {
   );
 
   const leave = useCallback(() => {
+    if (roomIdRef.current && !joinOptsRef.current.dm) send({ t: 'membership-leave' });
     teardown();
-  }, [teardown]);
+  }, [teardown, send]);
 
   useEffect(() => {
     const timers = peerTimersRef.current;
@@ -797,15 +1135,13 @@ export function usePeerRoom(displayName: string) {
   // Synthesize the room agent as a pseudo-member (peerId = ROOM_AGENT_SENDER)
   // so it shows up in the member list and the @-mention candidates.
   const membersWithAi = useMemo(() => {
-    if (!agent) return members;
     const m = new Map(members);
-    m.set(ROOM_AGENT_SENDER, {
-      ...emptyMember(ROOM_AGENT_SENDER),
-      displayName: agent.name || 'AI',
-      isAi: true,
-    });
+    for (const agent of agents) {
+      const sender = `ai:${agent.id}`;
+      m.set(sender, { ...emptyMember(sender), displayName: agent.name || 'AI', isAi: true });
+    }
     return m;
-  }, [members, agent]);
+  }, [members, agents]);
 
   /**
    * Show a remote peer's notice as a line in the transcript.
@@ -831,6 +1167,8 @@ export function usePeerRoom(displayName: string) {
 
   return {
     selfId,
+    readAdmission,
+    isReadAdmissionCurrent,
     status,
     connected: status === 'connected',
     error,
@@ -838,10 +1176,41 @@ export function usePeerRoom(displayName: string) {
     peers,
     members: membersWithAi,
     messages,
+    groupMemberships,
+    manageGroupMembership: (action: 'list' | 'remove' | 'ban' | 'restore', accountId?: string) => {
+      const code = roomIdRef.current;
+      if (code && !joinOptsRef.current.dm)
+        send({ t: 'membership', action, accountId, ownerKey: loadOwnerKey(code) ?? undefined });
+    },
+    historyLoading,
+    hasOlderHistory: historyBefore !== null,
+    loadOlderHistory: () => {
+      if (historyLoading || !historyBefore || status !== 'connected') return;
+      setHistoryLoading(true);
+      send({ t: 'history-before', before: historyBefore });
+    },
+    /** Text search over this conversation's retained server history. */
+    searchMessages: (query: string) =>
+      new Promise<ChatSearchHit[]>((resolve, reject) => {
+        const requestId = crypto.randomUUID();
+        if (!send({ t: 'search', q: query, requestId })) {
+          reject(new Error('未连接'));
+          return;
+        }
+        const timer = window.setTimeout(() => {
+          searchesRef.current.delete(requestId);
+          reject(new Error('搜索超时'));
+        }, SEARCH_TIMEOUT_MS);
+        searchesRef.current.set(requestId, { resolve, timer });
+      }),
     mediaUploadToken,
     join,
     leave,
     sendMessage,
+    retryMessage,
+    discardMessage,
+    /** Ask the server to withdraw one of this account's messages (RECALL_WINDOW_MS). */
+    recallMessage: (id: string) => send({ t: 'recall', id }),
     sendCommand,
     sendWaveform,
     broadcastStateFast,
@@ -852,9 +1221,14 @@ export function usePeerRoom(displayName: string) {
     // —— Room AI ——
     agent,
     setAgent,
+    agents,
+    setAgents,
+    agentBillingMode,
+    setRoomAgentBillingMode,
     hostPeerId,
     isHost: hostPeerId === selfId,
     sendChatAs,
+    requestAgentTurn,
     sendCommandAs,
     // —— Direct message ——
     /** The account on the other end, or null when this is a group. */
@@ -870,11 +1244,10 @@ export function usePeerRoom(displayName: string) {
     /**
      * May this browser change the group's settings and its agent?
      *
-     * Mirrors the server's rule exactly: the owner key if the group has one, otherwise the
-     * current host — which is what keeps a group created by a client too old to know about
-     * ownership administrable by the people in it.
+     * Mirrors the server's rule: only the group's owner account. The live host role
+     * (whoever runs the AI loop) never grants administration.
      */
-    canManageGroup: isOwner || (!groupOwned && hostPeerId === selfId),
+    canManageGroup: isOwner,
   };
 }
 

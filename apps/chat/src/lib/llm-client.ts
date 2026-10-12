@@ -7,7 +7,6 @@ import type {
   ToolDefinition,
 } from '@dg-agent/core';
 import { createEmptyDeviceState } from '@dg-agent/core';
-import type { ProviderId } from '@0xnullai/llm-providers';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -51,12 +50,13 @@ export async function callLlm(
   const conversation = toConversation(messages);
   const client = createBrowserLlmClient({
     provider: {
-      providerId: cfg.providerId as ProviderId,
+      providerId: cfg.providerId,
       apiKey: cfg.apiKey,
       model: cfg.model,
       baseUrl: cfg.baseUrl,
       endpoint: cfg.endpoint,
       useStrict: cfg.useStrict,
+      imageInput: cfg.imageInput,
     },
   });
   const result = await client.runTurn({

@@ -30,7 +30,7 @@ const androidCssCompatibility: Plugin = {
   },
 };
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [react(), tailwindcss(), androidCssCompatibility],
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
@@ -63,6 +63,6 @@ export default defineConfig(({ mode }) => ({
     // Tailwind 4 requires a modern engine; older WebViews receive an upgrade screen.
     target: ['chrome111', 'safari16.4'],
     sourcemap: true,
-    outDir: mode === 'desktop' ? 'dist-desktop' : 'dist',
+    outDir: 'dist',
   },
-}));
+});

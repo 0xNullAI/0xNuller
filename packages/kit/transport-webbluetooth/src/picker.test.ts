@@ -29,29 +29,20 @@ function setupNav(deviceName: string): {
 }
 
 describe('requestDgLabDevice', () => {
-  it('detects a Coyote V3 pick and connects its GATT server', async () => {
-    const { nav, device } = setupNav('47L121000');
+  it.each([
+    ['47L121000', 'coyote'],
+    ['47L120000', 'paw-prints'],
+    ['47L124000', 'civet-edging'],
+    ['47L127000', 'opossum'],
+  ])('detects %s as %s by name prefix and connects its GATT server', async (name, kind) => {
+    const { nav, device } = setupNav(name);
 
     const result = await requestDgLabDevice({ navigatorRef: nav as any });
 
-    expect(result.kind).toBe('coyote');
+    expect(result.kind).toBe(kind);
     expect(result.device).toBe(device);
     expect(device.gatt.connect).toHaveBeenCalledTimes(1);
     expect(device.gatt.connected).toBe(true);
-  });
-
-  it('detects each of the three new device kinds by name prefix', async () => {
-    const cases: Array<[string, string]> = [
-      ['47L120000', 'paw-prints'],
-      ['47L124000', 'civet-edging'],
-      ['47L127000', 'opossum'],
-    ];
-    for (const [name, kind] of cases) {
-      const { nav } = setupNav(name);
-
-      const result = await requestDgLabDevice({ navigatorRef: nav as any });
-      expect(result.kind).toBe(kind);
-    }
   });
 
   it('rejects and disconnects an unrecognized device name', async () => {

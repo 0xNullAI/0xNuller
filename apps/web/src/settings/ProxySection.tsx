@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Input } from '@0xnullai/ui';
+import { SettingsGroup, SwitchRow } from './settings-list';
 import {
   isValidHttpProxyBaseUrl,
   loadProxy,
@@ -20,21 +21,28 @@ export function ProxySection() {
   const validUrl = isValidHttpProxyBaseUrl(proxy.httpBaseUrl);
 
   return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4">
-      <label className="flex items-center justify-between gap-4">
-        <span className="text-sm font-semibold">AI 网络代理</span>
-        <input
-          type="checkbox"
-          checked={proxy.enabled}
-          disabled={!proxy.enabled && !validUrl}
-          onChange={(e) => patch({ enabled: e.target.checked })}
-          className="accent-[var(--accent)]"
-        />
-      </label>
-
-      <label className="mt-3 flex flex-col gap-1.5">
-        <span className="text-xs text-[var(--text-soft)]">反向代理地址</span>
+    <SettingsGroup
+      label="网络代理"
+      footer={
+        proxy.httpBaseUrl.length > 0 && !validUrl ? (
+          <span role="alert" className="text-[var(--danger)]">
+            请输入有效的 HTTP 或 HTTPS 地址
+          </span>
+        ) : (
+          '开启后，AI 请求经这个反向代理地址转发，仅本设备生效。先填地址，再打开开关。'
+        )
+      }
+    >
+      <SwitchRow
+        label="启用网络代理"
+        checked={proxy.enabled}
+        disabled={!proxy.enabled && !validUrl}
+        onCheckedChange={(enabled) => patch({ enabled })}
+      />
+      <div className="flex flex-col gap-1.5 px-4 py-3">
+        <span className="text-xs text-[var(--text-soft)]">代理地址</span>
         <Input
+          aria-label="反向代理地址"
           value={proxy.httpBaseUrl}
           onChange={(event) => {
             const httpBaseUrl = event.target.value;
@@ -46,12 +54,7 @@ export function ProxySection() {
           placeholder="http://127.0.0.1:8080"
           aria-invalid={proxy.httpBaseUrl.length > 0 && !validUrl}
         />
-      </label>
-      {proxy.httpBaseUrl.length > 0 && !validUrl && (
-        <p role="alert" className="mt-2 text-xs text-[var(--danger)]">
-          请输入有效的 HTTP 或 HTTPS 地址
-        </p>
-      )}
-    </section>
+      </div>
+    </SettingsGroup>
   );
 }

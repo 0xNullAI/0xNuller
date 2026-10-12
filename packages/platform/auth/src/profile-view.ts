@@ -4,12 +4,9 @@
  * Three things here fail silently if they are wrong, which is why they are
  * pure functions with tests rather than conditions spread through JSX:
  *
- * 1. **What a viewer is allowed to see.** The account service already refuses
- *    to send a private profile or anything about a block. A UI that renders
- *    `counts?.followers ?? 0` next to a hidden profile does not disagree with
- *    the server loudly — it quietly publishes a number the server withheld.
- *    `resolveProfileView` turns the server's answer into a shape where the
- *    hidden case has no fields to accidentally read.
+ * 1. **What a viewer is allowed to see.** Profiles require an account and
+ *    blocks are indistinguishable from missing users. Private album entries
+ *    stay filtered by the account service.
  *
  * 2. **Optimistic follow.** The button has to move on click and go back if the
  *    request fails. Rollback is the branch nobody exercises by hand.
@@ -24,27 +21,15 @@ import type { AuthUser, PublicPhoto, PublicUserView, UserProfile } from './index
 /**
  * The viewer's relationship to the profile's owner.
  *
- * `anonymous` is its own case rather than a flavour of `none`: a signed-out
- * visitor is not "not following", they have no identity to follow with, and the
- * UI has to invite them to sign in instead of offering a button that cannot
- * work. Anonymous use is a hard product constraint, so this is the common case,
- * not the edge one.
  */
-export type FollowRelationship =
-  'self' | 'anonymous' | 'none' | 'following' | 'followsYou' | 'mutual';
+export type FollowRelationship = 'self' | 'none' | 'following' | 'followsYou' | 'mutual';
 
 /**
  * What the UI may render.
  *
- * `hidden` deliberately carries only the identity the viewer already had to
- * know to get here — the username they typed or the avatar they clicked — and
- * carries no counts, no join date and no photos, because there is nothing to
- * be tempted into rendering. A private profile is private to followers too;
- * following someone is not a way to be let in.
  */
 export type ResolvedProfile =
   | { state: 'unavailable' }
-  | { state: 'hidden'; user: AuthUser; relationship: FollowRelationship }
   | {
       state: 'visible';
       user: AuthUser;
@@ -57,8 +42,7 @@ export type ResolvedProfile =
     };
 
 /**
- * An untouched profile. New profiles start public so the homepage works without
- * an extra setup step; users can switch to friends-only or private before saving.
+ * An untouched profile. Every signed-in account has a public page.
  */
 export function emptyProfile(): UserProfile {
   return {
@@ -75,12 +59,10 @@ export function emptyProfile(): UserProfile {
 
 export function deriveRelationship(input: {
   self: boolean;
-  signedIn: boolean;
   following: boolean;
   followedBy: boolean;
 }): FollowRelationship {
   if (input.self) return 'self';
-  if (!input.signedIn) return 'anonymous';
   if (input.following && input.followedBy) return 'mutual';
   if (input.following) return 'following';
   if (input.followedBy) return 'followsYou';
@@ -96,21 +78,18 @@ export function deriveRelationship(input: {
  * by probing. That collapse has to survive into the UI: every one of them is
  * `unavailable` and gets the same wording.
  *
- * A profile with `visibility: 'private'` arrives with `profile: null` from the
- * server. The extra `visibility` check here is not redundant — it is the case
- * where a future server sends the body but leaves the flag private, and the two
- * disagreeing must resolve to the more restrictive reading.
+ * A missing signed-in viewer is unavailable even if a caller supplies a stale
+ * cached response. The server is authoritative for the profile and album.
  */
 export function resolveProfileView(
   view: PublicUserView | null,
   viewerId: string | null,
 ): ResolvedProfile {
-  if (!view) return { state: 'unavailable' };
+  if (!view || !viewerId) return { state: 'unavailable' };
 
   const self = viewerId != null && viewerId === view.user.id;
   const relationship = deriveRelationship({
     self,
-    signedIn: viewerId != null,
     following: view.following,
     followedBy: view.followedBy,
   });
@@ -119,22 +98,14 @@ export function resolveProfileView(
   // anything. A brand-new account has no profile row at all, and treating that
   // as "hidden" would show the owner the stranger's view of themselves with no
   // way to start filling it in.
-  const profile = self ? (view.profile ?? emptyProfile()) : view.profile;
-  const open =
-    profile != null &&
-    (self ||
-      profile.visibility === 'public' ||
-      (profile.visibility === 'friends' && relationship === 'mutual'));
-  if (!open || !profile) return { state: 'hidden', user: view.user, relationship };
+  const profile = view.profile ?? emptyProfile();
 
   return {
     state: 'visible',
     user: view.user,
     profile,
     relationship,
-    // The server sends null counts for a profile it would not show. Reaching
-    // this branch with null counts means the server showed the body but
-    // withheld the numbers, so zero is the honest floor rather than a guess.
+    // Older service responses may lack counts; render zero until refreshed.
     followers: view.counts?.followers ?? 0,
     following: view.counts?.following ?? 0,
     createdAt: view.createdAt,
@@ -158,7 +129,7 @@ export interface FollowState {
 }
 
 export function followStateFrom(resolved: ResolvedProfile): FollowState {
-  const rel = resolved.state === 'unavailable' ? 'anonymous' : resolved.relationship;
+  const rel = resolved.state === 'unavailable' ? 'none' : resolved.relationship;
   return {
     following: rel === 'following' || rel === 'mutual',
     followedBy: rel === 'followsYou' || rel === 'mutual',
@@ -232,6 +203,6 @@ export function isMutual(state: FollowState): boolean {
  * never accepted.
  */
 export function canDirectMessage(state: FollowState, relationship: FollowRelationship): boolean {
-  if (relationship === 'self' || relationship === 'anonymous') return false;
+  if (relationship === 'self') return false;
   return isMutual(state) && state.pending == null;
 }

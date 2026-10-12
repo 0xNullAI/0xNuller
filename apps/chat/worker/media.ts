@@ -4,6 +4,11 @@
 import type { Env } from './index';
 import type { StoredMediaObject } from './group';
 import { MAX_MEDIA_BYTES, isAllowedMediaType } from './wire';
+import { isDmRoomCode } from './dm';
+
+function validMediaRoom(code: string): boolean {
+  return /^[A-Za-z0-9_-]{1,96}$/.test(code) || /^dm:[a-f0-9]{64}$/.test(code);
+}
 
 function mediaKey(code: string, id: string): string {
   return `room/${code}/${id}`;
@@ -15,7 +20,7 @@ export async function handleMediaUpload(
   env: Env,
   code: string,
 ): Promise<Response> {
-  if (!/^[A-Za-z0-9_-]{1,96}$/.test(code)) {
+  if (!validMediaRoom(code)) {
     return json(400, { error: 'invalid room' });
   }
   const mediaToken = request.headers.get('x-media-token') ?? '';
@@ -39,9 +44,13 @@ export async function handleMediaUpload(
   if (buf.byteLength > MAX_MEDIA_BYTES) return json(413, { error: 'too large' });
 
   const key = mediaKey(code, id);
-  await env.MEDIA.put(key, buf, {
+  // Ids come from the client. Write only a new object: another member's image or voice
+  // must never be replaced in place (it is also served with a one-year immutable cache).
+  const written = await env.MEDIA.put(key, buf, {
     httpMetadata: { contentType: mime },
+    onlyIf: { etagDoesNotMatch: '*' },
   });
+  if (!written) return json(409, { error: 'media id already used' });
 
   try {
     // An upload can happen before its chat message. If the tab closes in between,
@@ -59,16 +68,30 @@ export async function handleMediaUpload(
 }
 
 /** GET /api/media/:code/:id reads media back, with its content-type and a long cache. */
-export async function handleMediaRead(env: Env, code: string, id: string): Promise<Response> {
-  if (!/^[A-Za-z0-9_-]{1,96}$/.test(code) || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+export async function handleMediaRead(
+  env: Env,
+  code: string,
+  id: string,
+  token?: string | null,
+): Promise<Response> {
+  if (!validMediaRoom(code) || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
     return new Response('not found', { status: 404 });
+  }
+  if (isDmRoomCode(code)) {
+    const room = env.ROOM.get(env.ROOM.idFromName(code));
+    if (!token || !(await room.authorizeMediaRead(code, token)))
+      return new Response('forbidden', { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
   const obj = await env.MEDIA.get(mediaKey(code, id));
   if (!obj) return new Response('not found', { status: 404 });
 
   const headers = new Headers();
   headers.set('Content-Type', obj.httpMetadata?.contentType ?? 'application/octet-stream');
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  headers.set(
+    'Cache-Control',
+    isDmRoomCode(code) ? 'private, no-store' : 'public, max-age=31536000, immutable',
+  );
+  if (isDmRoomCode(code)) headers.set('Referrer-Policy', 'no-referrer');
   headers.set('ETag', obj.httpEtag);
   // Defense in depth behind the upload allow-list. This response is served
   // from the app's own origin, where the session cookie lives, so anything

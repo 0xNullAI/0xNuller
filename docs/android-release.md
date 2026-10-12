@@ -24,21 +24,26 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 ### 2. 0xNuller 直接进入 6.0.0
 
 0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
-`tauri.conf.json` 中对用户显示的 `version` 是 `6.0.0`，Android 内部的
-`bundle.android.versionCode` 是 `6000000`。两者和 GitHub Release tag 始终对齐。
+起点是 `6.0.0` / `6000000`，之后 `tauri.conf.json` 的 `version` 跟随产品版本，
+`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.0.0` →
+`7000000`）。两者和 GitHub Release tag 始终对齐。
 
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v6.5.7`，Release 标题和 APK 都显示 `0xNuller 6.5.7`。GitHub 自动生成的
+当前版本使用 tag `v7.0.0`，Release 标题和 APK 都显示 `猫愿 7.0.0`，APK 附件名为
+`maoyuan-v7.0.0.apk`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
 Latest；Android 更新检查器按 `v` 前缀过滤，并确认 Release 内确实存在 APK。
 
 对应实现与测试在 `android/app/src/services/update-checker.ts`。
+
+APK 不含系统推送：没有 Firebase 依赖、通知权限或推送服务，新消息只以站内未读呈现（见
+[`android/app/README.md`](../android/app/README.md)）。发布说明不能宣称有系统推送。
 
 ## 顺序
 
@@ -63,7 +68,8 @@ npm run android:build -- --apk --target aarch64
 ## 上传前必须验的产物
 
 自动门禁会从 Android SDK 中选择最新的 build-tools，同时核对包名、版本、versionCode、
-应用名、minSdk、arm64 ABI、BLE/旧版定位权限、APK v2 签名、旧 DG-Agent 证书指纹，以及
+应用名、minSdk、arm64 ABI、BLE/旧版定位、摄像头、麦克风与通知权限、APK v2 签名、旧 DG-Agent
+证书指纹，以及
 APK 内嵌的源码 commit 是否等于当前 Git HEAD。release 构建只接受干净工作树：
 
 ```bash
@@ -76,15 +82,15 @@ npm run verify:android:apk -- "$APK"
 ```json
 {
   "package": "ai.nullai.dgagent",
-  "versionName": "6.5.7",
-  "versionCode": 6005007,
-  "label": "0xNuller",
+  "versionName": "7.0.0",
+  "versionCode": 7000000,
+  "label": "猫愿",
   "sourceCommit": "<当前 Git HEAD>"
 }
 ```
 
 `package` 决定能不能覆盖安装到老用户手机上；`label` 是桌面上显示的名字（已经是
-0xNuller）；证书 SHA-256 必须匹配旧 DG-Agent；`sourceCommit` 证明 APK 确实来自准备发布的
+猫愿）；证书 SHA-256 必须匹配旧 DG-Agent；`sourceCommit` 证明 APK 确实来自准备发布的
 提交，而不是同版本号的旧候选。APK 约 15MB。
 
 签名配置是 fail-closed：release 任务缺任一 `DG_AGENT_*` 变量都会直接失败，不能产出
@@ -93,8 +99,9 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-gh release create "v6.5.7" --repo 0xNullAI/0xNuller \
-  --title "0xNuller 6.5.7" --notes-file docs/releases/6.5.7.md "$APK"
+cp "$APK" maoyuan-v7.0.0.apk
+gh release create "v7.0.0" --repo 0xNullAI/0xNuller \
+  --title "猫愿 7.0.0" --notes-file docs/releases/7.0.0.md maoyuan-v7.0.0.apk
 ```
 
 ## 发布之后

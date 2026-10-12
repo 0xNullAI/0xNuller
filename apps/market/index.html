@@ -3,19 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#080808" />
     <link rel="icon" href="/favicon-light.svg" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/favicon-dark.svg" />
-    <title>0xNuller · Market</title>
-    <meta name="description" content="浏览和分享 0xNuller 场景与波形" />
+    <title>猫愿 · 发现</title>
+    <meta name="description" content="浏览和分享猫愿的角色、场景与波形" />
     <script>
-      // 首屏避免闪烁：优先用已保存的偏好，否则跟随系统。
+      // 首屏避免闪烁：优先用已保存的偏好，否则深色。
       (function () {
-        var saved = localStorage.getItem('dg-market.theme');
+        var saved =
+          localStorage.getItem('0xnullai.theme') || localStorage.getItem('dg-market.theme');
         var dark =
-          saved === 'dark' ||
-          (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          saved === 'light'
+            ? false
+            : saved === 'auto'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              : true;
         var root = document.documentElement;
         root.setAttribute('data-theme', dark ? 'dark' : 'light');
         root.style.colorScheme = dark ? 'dark' : 'light';

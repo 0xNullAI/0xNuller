@@ -1,56 +1,70 @@
 import {
   createProviderSettings,
+  MANAGED_VISION_MODEL,
   getProviderDefinition,
   providerRequiresUserApiKey,
-  supportsProviderModelImageInput,
+  supportsProviderImageInput,
   type ProviderEndpoint,
   type ProviderId,
 } from './index';
+import { migrateLegacyProviderSettings } from './legacy-provider-migration';
 import { createScopedProviderConfigStore } from './scoped-provider-config-store';
 
 export const VIDEO_LLM_CONFIG_VERSION = 1 as const;
 
 export interface VideoLlmConfig {
   version: typeof VIDEO_LLM_CONFIG_VERSION;
-  providerId: string;
+  providerId: ProviderId;
   apiKey: string;
   model: string;
   baseUrl: string;
   endpoint: ProviderEndpoint;
   useStrict: boolean;
+  /** Custom endpoint only: the user confirmed the model accepts images. */
+  imageInput: boolean;
   rememberApiKey: boolean;
 }
 
 const KEY = '0xnullai.video-llm-config.v1';
 const SESSION_KEY = '0xnullai.video-llm-api-key.v1';
+
+function managedVideoSettings() {
+  return { ...createProviderSettings('managed'), model: MANAGED_VISION_MODEL };
+}
+
 export function defaultVideoLlmConfig(): VideoLlmConfig {
   return {
     version: VIDEO_LLM_CONFIG_VERSION,
-    ...createProviderSettings('qwen'),
+    ...managedVideoSettings(),
     rememberApiKey: false,
   };
 }
 
-function coerceVideoLlmConfig(raw: unknown): VideoLlmConfig | null {
+/** Exported for tests: parses and migrates one stored Video config. */
+export function coerceVideoLlmConfig(raw: unknown): VideoLlmConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
   if (value.version !== VIDEO_LLM_CONFIG_VERSION || typeof value.providerId !== 'string') {
     return null;
   }
-  // Managed Credit tiers are text-only. Move the old managed Video default to
-  // a visible vision-capable provider so the settings page can guide the user
-  // to enter their own key instead of retaining an unusable hidden selection.
-  const migratedManaged = value.providerId === 'managed' ? createProviderSettings('qwen') : null;
-  return {
-    version: VIDEO_LLM_CONFIG_VERSION,
-    providerId: migratedManaged?.providerId ?? value.providerId,
-    apiKey: migratedManaged?.apiKey ?? (typeof value.apiKey === 'string' ? value.apiKey : ''),
-    model: migratedManaged?.model ?? (typeof value.model === 'string' ? value.model : ''),
-    baseUrl: migratedManaged?.baseUrl ?? (typeof value.baseUrl === 'string' ? value.baseUrl : ''),
+  // A removed provider becomes `custom` with image input off (the user re-confirms
+  // it) or falls back to managed vision.
+  const migrated = migrateLegacyProviderSettings({
+    providerId: value.providerId,
+    apiKey: typeof value.apiKey === 'string' ? value.apiKey : '',
+    model: typeof value.model === 'string' ? value.model : '',
+    baseUrl: typeof value.baseUrl === 'string' ? value.baseUrl : '',
     endpoint: value.endpoint === 'responses' ? 'responses' : 'chat/completions',
     useStrict: value.useStrict === true,
-    rememberApiKey: value.rememberApiKey === true,
-  };
+    imageInput: value.imageInput === true,
+  });
+  const rememberApiKey = value.rememberApiKey === true;
+  if (migrated.providerId === 'managed') {
+    // Older managed Video settings may carry a text-only tier. Keep the managed
+    // billing path while upgrading only its model to the vision model.
+    return { version: VIDEO_LLM_CONFIG_VERSION, ...managedVideoSettings(), rememberApiKey };
+  }
+  return { version: VIDEO_LLM_CONFIG_VERSION, ...migrated, rememberApiKey };
 }
 
 const store = createScopedProviderConfigStore<VideoLlmConfig>({
@@ -63,6 +77,7 @@ const store = createScopedProviderConfigStore<VideoLlmConfig>({
     version: VIDEO_LLM_CONFIG_VERSION,
     endpoint: config.endpoint === 'responses' ? 'responses' : 'chat/completions',
     useStrict: config.useStrict === true,
+    imageInput: config.providerId === 'custom' && config.imageInput === true,
     rememberApiKey: config.rememberApiKey === true,
   }),
 });
@@ -79,15 +94,10 @@ export function subscribeVideoLlmConfig(listener: (config: VideoLlmConfig) => vo
   return store.subscribe(listener);
 }
 
-export function filterVideoModelIds(providerId: string, models: readonly string[]): string[] {
-  const definition = getProviderDefinition(providerId as ProviderId);
-  if (!definition?.browserSupported || definition.imageInput !== 'known-models') return [];
-  return models.filter((model) => supportsProviderModelImageInput(definition.id, model));
-}
-
+/** Video needs a model that accepts images: managed vision, or a custom model the user marked. */
 export function isVideoLlmConfigured(config: VideoLlmConfig): boolean {
-  const definition = getProviderDefinition(config.providerId as ProviderId);
-  if (!definition?.browserSupported || definition.imageInput !== 'known-models') return false;
-  if (!supportsProviderModelImageInput(definition.id, config.model)) return false;
+  const definition = getProviderDefinition(config.providerId);
+  if (!definition?.browserSupported) return false;
+  if (!supportsProviderImageInput(config)) return false;
   return !providerRequiresUserApiKey(definition.id) || config.apiKey.trim().length > 0;
 }

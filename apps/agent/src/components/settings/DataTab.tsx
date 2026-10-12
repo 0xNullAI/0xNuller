@@ -1,3 +1,4 @@
+import { LegacyHistoryMigration } from './LegacyHistoryMigration.js';
 import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { Button, Checkbox } from '@0xnullai/ui';
@@ -39,6 +40,7 @@ export function DataTab({ sessions, onExport, onImport }: DataTabProps) {
 
   return (
     <div className="settings-panel-tab-content">
+      <LegacyHistoryMigration />
       <section className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--surface-border)] p-3 sm:p-4">
         <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--surface-border)] pb-3">
           <h3 className="text-sm font-semibold text-[var(--text)]">聊天记录</h3>

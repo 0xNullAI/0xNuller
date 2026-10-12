@@ -26,6 +26,28 @@ waveform-playback.test.ts
 只有跨文件的应用组合契约使用 `__tests__`。所有 test/spec 文件都必须被 Vitest project 收集；
 `npm run check:structure` 会检查遗漏。
 
+## 分层
+
+文件后缀标明测试所在的层。没有后缀的文件是契约测试，也是最常见的一层。
+
+| 层          | 文件名                        | 测什么                                                              |
+| ----------- | ----------------------------- | ------------------------------------------------------------------- |
+| unit        | `name.unit.test.ts`           | 纯函数与纯状态：没有 mock、网络、存储、DOM 或数据库                 |
+| contract    | `name.test.ts`                | 一个模块的对外行为，边界处使用假实现：Worker 路由、DO、存储、客户端 |
+| ui          | `name.ui.test.tsx`            | 用 `@testing-library` 渲染的组件或 hook                             |
+| integration | `name.integration.test.ts(x)` | 多个模块组合：运行时 + 执行器 + 安全链、外壳 + 模块、备份流程       |
+
+`npm run check:structure` 会检查后缀：unit 文件不能使用 mock、I/O、存储或 DOM；用
+`@testing-library` 渲染的文件必须是 ui 或 integration。
+
+```bash
+npm run test:unit         # 最快，几秒内完成
+npm run test:contract
+npm run test:ui
+npm run test:integration
+node scripts/run-vitest.mjs run --layer=unit --domain=product   # 可与责任域组合
+```
+
 ## 两个日常命令
 
 ```bash
@@ -44,6 +66,41 @@ npm run test:product
 npm run test:kit
 npm run test:mcp
 ```
+
+## 本地联调
+
+全部服务只监听 `127.0.0.1`，数据放在临时目录，不连生产；`--var` 都是本地测试值。
+
+```bash
+S=~/dg-local; mkdir -p $S
+# 首次建库
+npx wrangler d1 migrations apply 0xnullai-auth --local -c workers/auth/wrangler.jsonc --persist-to $S/wstate
+npx wrangler d1 migrations apply dg-market --local -c apps/market/wrangler.jsonc --persist-to $S/wstate
+# 各开一个终端
+npx wrangler dev -c workers/auth/wrangler.jsonc --local --persist-to $S/wstate --port 8787 \
+  --var IP_PEPPER:local-test-pepper --var DM_TICKET_SECRET:local-test-dm-secret \
+  --var ALLOWED_ORIGINS:http://localhost:5173 --var AUTH_BACKUP_TOKEN:local-auth-backup-token-0123456789
+npx wrangler dev -c apps/market/wrangler.jsonc --local --persist-to $S/wstate --port 8788 \
+  --inspector-port 9230 --var MARKET_IP_PEPPER:local-market-pepper
+npx wrangler dev -c apps/chat/wrangler.jsonc --local --persist-to $S/wstate --port 8789 \
+  --inspector-port 9231 --var DM_TICKET_SECRET:local-test-dm-secret --var CHAT_BACKUP_TOKEN:local-chat-backup-token-0123456789
+DEV_API_PROXY=http://127.0.0.1:8787 npm run dev -w @0xnullai/web -- --port 5173 --strictPort
+node scripts/dev/local-router.mjs
+```
+
+打开 `http://localhost:8790`。`scripts/dev/local-router.mjs` 像生产一样把同一来源按路径分到
+Auth、Market、Chat 和 Web。两个测试账号用两个来源登录：`http://localhost:8790` 与
+`http://127.0.0.1:8790`。没有实体郊狼时，在页面控制台粘贴运行 `scripts/dev/fake-coyote.js`
+（模拟 V3 协议，`window.__fakeCoyote` 记录写入），再点「连接设备」。模拟设备只用于界面与链路
+检查，不能代替真机停止验收。
+
+需要真实模型时运行 `node scripts/dev/test-model-proxy.mjs`：它只监听 `127.0.0.1:8791`，从
+`DG_TEST_MODEL_ENV_FILE`（默认 `../Private/credentials/.env`）的 `ANTHROPIC_API_KEY` 读取 Key，把
+OpenAI 兼容请求转发到 Anthropic，统一入口以 `/dev-llm/v1` 提供。开发版的 **我的 → AI → 高级**
+会出现“使用本地测试模型”，一键填入不含真实 Key 的配置；正式构建中没有这个按钮。真实 Key 不写进仓库、
+页面或命令行。
+
+本地服务运行时，`npm run e2e:local` 用系统 Chromium（`/usr/bin/chromium`，可用 `CHROMIUM` 覆盖）无头检查登录页、深色默认和页面报错；设置 `E2E_USER`/`E2E_PASS`（本地测试账号）后还会登录检查收件箱、新聊天菜单与设置列表。
 
 ## 交付门禁
 

@@ -23,6 +23,12 @@ export interface ShellNav {
   activeId: string | null;
   modules: readonly ShellModule[];
   navigate: (moduleId: string | null) => void;
+  /**
+   * Present on a phone-width screen while one conversation fills the screen. The module
+   * shows it as the back arrow in its own conversation header, so the screen keeps a
+   * single top bar instead of a shell bar stacked over the conversation header.
+   */
+  conversationBack?: () => void;
 }
 
 const ShellNavContext = createContext<ShellNav | null>(null);

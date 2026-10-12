@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectRepositoryFiles, isTestFile } from './lib/repository-files.mjs';
+import { collectRepositoryFiles, isTestFile, testLayerViolation } from './lib/repository-files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const expected = collectRepositoryFiles(root, ['android', 'apps', 'packages', 'scripts', 'workers'])
@@ -31,6 +32,16 @@ const missing = expected.filter((file) => !discoveredSet.has(file));
 if (missing.length > 0) {
   console.error('Tests not discovered by the root Vitest configuration:');
   for (const file of missing) console.error(`- ${file}`);
+  process.exit(1);
+}
+
+const misplaced = expected.flatMap((file) => {
+  const reason = testLayerViolation(file, readFileSync(path.join(root, file), 'utf8'));
+  return reason ? [`- ${file}: ${reason}`] : [];
+});
+if (misplaced.length > 0) {
+  console.error('Test files whose name does not match their layer (see docs/testing.md):');
+  for (const line of misplaced) console.error(line);
   process.exit(1);
 }
 

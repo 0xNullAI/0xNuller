@@ -1,24 +1,27 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
-  Cpu,
-  AudioWaveform,
-  Database,
+  Brain,
+  ChevronLeft,
+  ChevronRight,
+  Drama,
   Info,
-  LayoutTemplate,
-  SlidersHorizontal,
-  ShieldAlert,
-  ShieldCheck,
+  Settings2,
+  Sparkles,
   UserRound,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   ModuleSettingsSlot,
-  Overlay,
-  SettingSelect,
   useModuleSettingsClaims,
-  type ShellSettingsTab,
+  useSettingsSubpageHeader,
 } from '@0xnullai/ui';
-import type { AuthUser } from '@0xnullai/auth';
+import { avatarSrc, getCreditBalance, type AuthUser } from '@0xnullai/auth';
+import { Avatar, useTheme } from '@0xnullai/ui';
+import { loadLlmConfig } from '@0xnullai/llm-providers';
+import { loadScenes, subscribeScenes } from '@0xnullai/scenes';
+import { PRODUCT_VERSION } from '../product';
 import { GeneralTab } from './GeneralTab';
 import { AiTab, type AiSettingsSection } from './AiTab';
 import { SafetyTab } from './SafetyTab';
@@ -26,58 +29,118 @@ import { ScenesTab } from './ScenesTab';
 import { AccountContent } from './AccountContent';
 import { AdminContent } from './AdminContent';
 import { AboutTab } from './AboutTab';
+import { SettingsGroup, SettingsRow } from './settings-list';
+
+const PersonalMemoryContent = lazy(() =>
+  import('./PersonalMemoryContent').then((module) => ({ default: module.PersonalMemoryContent })),
+);
 
 /**
- * The software's one and only settings panel.
- *
- * Before the merge every module had its own settings UI (Agent six tabs, Voice four,
- * Chat a single AI dialog); the same thing could be changed in three places, and
- * which one took effect depended on which module happened to be open. Now there is
- * only this one entry point, reached from the account menu at the bottom of the
- * sidebar.
- *
- * Navigation follows the way a configuration is used: account and general preferences,
- * model behavior, waveform and scene content, device boundaries, then data tools.
- * Module-owned pages join this order through their numeric claim rather than being
- * appended as a second group.
+ * One settings list with second-level pages; modules supply page contents. The overview
+ * keeps only the pages most people need; the rest sit behind one 高级设置 row. Every page
+ * keeps its own /settings/<id> route, so deep links and browser history still work.
  */
-
-const DEFERRED_TABS = [
-  { id: 'agent-waveforms', label: '波形', icon: AudioWaveform, order: 30 },
-  { id: 'agent-data', label: '数据', icon: Database, order: 60 },
-];
 
 const TABS = [
   { id: 'account', label: '账户', icon: UserRound, Component: null, order: 0 },
-  { id: 'appearance', label: '通用', icon: SlidersHorizontal, Component: GeneralTab, order: 10 },
-  { id: 'ai', label: 'AI', icon: Cpu, Component: AiTab, order: 20 },
-  { id: 'scenes', label: '场景', icon: LayoutTemplate, Component: ScenesTab, order: 40 },
-  { id: 'safety', label: '设备安全', icon: ShieldAlert, Component: SafetyTab, order: 50 },
-  { id: 'about', label: '关于', icon: Info, Component: AboutTab, order: 90 },
-  { id: 'admin', label: '管理', icon: ShieldCheck, Component: AdminContent, order: 100 },
+  { id: 'scenes', label: '角色与场景', icon: Drama, Component: ScenesTab, order: 10 },
+  { id: 'memory', label: '个人记忆', icon: Brain, Component: null, order: 15 },
+  { id: 'ai', label: 'AI', icon: Sparkles, Component: AiTab, order: 20 },
+  { id: 'safety', label: '设备与安全', icon: Zap, Component: null, order: 50 },
+  { id: 'appearance', label: '通用', icon: Settings2, Component: null, order: 80 },
+  { id: 'about', label: '关于', icon: Info, Component: null, order: 90 },
+  { id: 'admin', label: '管理', icon: Wrench, Component: AdminContent, order: 100 },
 ] as const;
 
+/** Pages opened from inside another page; their back arrow returns there. */
+const PARENT_PAGES: Readonly<Record<string, string>> = { memory: 'ai' };
+
+const OVERVIEW_GROUPS = [
+  { label: '', ids: ['appearance', 'safety'] },
+  { label: '陪伴', ids: ['scenes', 'ai'] },
+  { label: '其他', ids: ['about', 'admin'] },
+] as const satisfies readonly { label: string; ids: readonly string[] }[];
+
+const THEME_LABELS = { auto: '跟随系统', dark: '深色', light: '浅色' } as const;
+
+/** The current value each overview row shows, read from local state only (no requests). */
+function useOverviewValues(active: boolean): Record<string, string> {
+  const { mode } = useTheme();
+  const [sceneCount, setSceneCount] = useState(() => loadScenes().scenes.length);
+  useEffect(
+    () => (active ? subscribeScenes((library) => setSceneCount(library.scenes.length)) : undefined),
+    [active],
+  );
+  const managed = loadLlmConfig().providerId === 'managed';
+  return {
+    scenes: sceneCount ? `${sceneCount} 个` : '',
+    ai: managed ? '猫愿模型' : '自己的 API',
+    appearance: THEME_LABELS[mode as keyof typeof THEME_LABELS] ?? '',
+    about: `v${PRODUCT_VERSION}`,
+  };
+}
+
+/** The signed-in balance for the profile card; refreshed whenever the overview opens. */
+function useCreditBalance(accountId: string | null): number | null {
+  const [state, setState] = useState<{ accountId: string; available: number } | null>(null);
+  useEffect(() => {
+    if (!accountId) return;
+    let active = true;
+    void getCreditBalance()
+      .then((balance) => {
+        if (active) setState({ accountId, available: balance.available });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [accountId]);
+  return state && state.accountId === accountId ? state.available : null;
+}
+
+/** Settings of the open conversation: reached from its header only, never listed under 我的. */
+const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
+/** Module pages shown inside a built-in page instead of as their own entry. */
+const EMBEDDED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms', 'agent-data']);
+
 export function SettingsPanel({
-  initialTab = 'appearance',
+  initialTab = 'overview',
+  onNavigateTab,
   user,
   onUser,
   onClose,
   onLoadAgent,
 }: {
   /** Which page to land on when opened. AI entry points may target one module subsection. */
-  initialTab?: ShellSettingsTab;
+  initialTab?: string;
+  onNavigateTab: (tab: string) => void;
   user: AuthUser | null;
   onUser: (user: AuthUser | null) => void;
   onClose: () => void;
   onLoadAgent?: () => void;
 }) {
-  const initialAiSection: AiSettingsSection =
-    initialTab === 'ai-video' ? 'video' : initialTab === 'ai-voice' ? 'voice' : 'agent';
-  const [tab, setTab] = useState<string>(initialTab.startsWith('ai-') ? 'ai' : initialTab);
+  const initialAiSection: AiSettingsSection | undefined =
+    initialTab === 'ai-video' ? 'video' : undefined;
+  // 通知 now lives inside 通用; older links to /settings/notifications land there.
+  const tab = initialTab.startsWith('ai-')
+    ? 'ai'
+    : initialTab === 'notifications'
+      ? 'appearance'
+      : // 波形 lives inside 设备, 数据 inside 关于, and 高级设置 is gone.
+        initialTab === 'agent-waveforms'
+        ? 'safety'
+        : initialTab === 'agent-data'
+          ? 'about'
+          : initialTab === 'advanced'
+            ? 'overview'
+            : initialTab;
   // Pages declared by whichever modules are mounted. They are settings like
   // any other and belong in this panel, but they read module state the shell
   // does not have, so the module declares the page and the shell places it.
   const moduleClaims = useModuleSettingsClaims();
+  const subpage = useSettingsSubpageHeader();
+  const overviewValues = useOverviewValues(tab === 'overview');
+  const credit = useCreditBalance(tab === 'overview' ? (user?.id ?? null) : null);
   const builtinTabs = user?.role === 'admin' ? TABS : TABS.filter((item) => item.id !== 'admin');
   const navigationTabs = [
     ...builtinTabs.map((item) => ({
@@ -86,118 +149,166 @@ export function SettingsPanel({
       icon: item.icon,
       order: item.order,
     })),
-    ...DEFERRED_TABS.filter((item) => !moduleClaims.some((claim) => claim.id === item.id)),
-    ...moduleClaims,
+    ...moduleClaims.filter((claim) => !EMBEDDED_PAGE_IDS.has(claim.id)),
   ].sort((left, right) => left.order - right.order);
-  const builtinTab = builtinTabs.find((t) => t.id === tab);
-  const activeModuleClaim = navigationTabs.find((c) => c.id === tab);
-  // A module can unmount while its page is open — fall back rather than
-  // leaving the content area blank with a nav item selected.
-  const resolvedTab = builtinTab || activeModuleClaim ? tab : 'appearance';
+  const activeEntry = navigationTabs.find((item) => item.id === tab);
+  const resolvedTab = tab === 'overview' || activeEntry ? tab : 'overview';
   const Active = builtinTabs.find((t) => t.id === resolvedTab)?.Component;
-  const activeTabRef = useRef<HTMLButtonElement | null>(null);
-
+  const overviewItems = navigationTabs.filter(
+    (item) => item.id !== 'account' && !CONVERSATION_PAGE_IDS.has(item.id),
+  );
   useEffect(() => {
-    if (tab.startsWith('agent-') || tab === 'safety') onLoadAgent?.();
+    // 设备 embeds the waveform library and 关于 the data page; both come from Agent.
+    if (tab.startsWith('agent-') || tab === 'safety' || tab === 'about') onLoadAgent?.();
   }, [tab, onLoadAgent]);
 
-  useEffect(() => {
-    activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [resolvedTab]);
-
   return (
-    <Overlay onDismiss={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="设置"
-        className="flex h-[min(680px,calc(100dvh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-panel)] sm:flex-row"
-        // Section headings need this color to cover the card border. This is a dialog,
-        // laid over --bg-elevated; without declaring it, the heading paints with the
-        // default --bg and a darker block shows through in the dark theme.
-        style={{ '--settings-surface': 'var(--bg-elevated)' } as CSSProperties}
-      >
-        {/* On phones a single section picker replaces seven competing top-level
-            buttons. The current page stays visible without asking people to
-            understand the entire settings taxonomy before changing one thing. */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] p-2 sm:hidden">
-          <div className="min-w-0 flex-1">
-            <span className="sr-only">设置页面</span>
-            <SettingSelect
-              value={resolvedTab}
-              onValueChange={setTab}
-              options={navigationTabs.map((item) => ({ value: item.id, label: item.label }))}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="关闭设置"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <nav className="hidden shrink-0 gap-1 border-r border-[var(--surface-border)] p-2 sm:flex sm:w-[180px] sm:flex-col">
-          <h2 className="hidden px-2 pb-2 pt-1 text-sm font-semibold sm:block">设置</h2>
-          {navigationTabs.map((t) => (
-            <button
-              key={t.id}
-              ref={resolvedTab === t.id ? activeTabRef : undefined}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-current={resolvedTab === t.id ? 'page' : undefined}
-              className={
-                'flex shrink-0 items-center gap-2 rounded-[var(--radius-ctl)] px-3 py-2 text-sm transition-colors ' +
-                (resolvedTab === t.id
-                  ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
-                  : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]')
-              }
-            >
-              {t.icon ? <t.icon className="h-4 w-4 shrink-0" /> : null}
-              {t.label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="hidden shrink-0 items-center justify-end p-2 sm:flex">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="关闭设置"
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-soft)] hover:text-[var(--text)] sm:min-h-0 sm:min-w-0 sm:p-2"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          {/* The top padding is not optional: section headings ride the card border via
-              translateY(-50%), and get clipped in half when flush against the top edge
-              of the scroll container. */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
-            {resolvedTab === 'account' ? (
-              <AccountContent user={user} onUser={onUser} onDone={onClose} />
-            ) : resolvedTab === 'ai' ? (
-              <AiTab initialSection={initialAiSection} />
-            ) : Active ? (
-              <Active />
-            ) : null}
-            {/* Only the selected module page gets a portal target and mounts its content. */}
-            {resolvedTab.startsWith('agent-') &&
-              !moduleClaims.some((claim) => claim.id === resolvedTab) && (
-                <p role="status">正在加载设置内容…</p>
-              )}
-            {moduleClaims
-              .filter((claim) => claim.id === resolvedTab)
-              .map((claim) => (
-                <div key={claim.id} hidden={resolvedTab !== claim.id}>
-                  <ModuleSettingsSlot id={claim.id} />
-                </div>
-              ))}
-          </div>
+    <section
+      aria-label="设置"
+      className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--bg)] [--settings-surface:var(--bg)]"
+    >
+      <header className="flex shrink-0 items-center gap-3 border-b border-[var(--surface-border)] px-4 py-3">
+        <button
+          type="button"
+          onClick={() =>
+            subpage
+              ? subpage.onBack()
+              : resolvedTab === 'overview' || CONVERSATION_PAGE_IDS.has(resolvedTab)
+                ? onClose()
+                : onNavigateTab(PARENT_PAGES[resolvedTab] ?? 'overview')
+          }
+          aria-label={
+            subpage
+              ? '返回上一页'
+              : resolvedTab === 'overview'
+                ? '关闭设置'
+                : CONVERSATION_PAGE_IDS.has(resolvedTab)
+                  ? '返回聊天'
+                  : PARENT_PAGES[resolvedTab]
+                    ? '返回上一页'
+                    : '返回设置列表'
+          }
+          // On a phone 我的 is a top-level tab, so its list page has nothing to close.
+          className={`ui-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-soft)] ${resolvedTab === 'overview' && !subpage ? 'max-md:hidden' : ''}`}
+        >
+          {resolvedTab === 'overview' && !subpage ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <ChevronLeft className="h-5 w-5" />
+          )}
+        </button>
+        <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold md:text-lg">
+          {subpage?.title ?? (resolvedTab === 'overview' ? '我的' : (activeEntry?.label ?? '我的'))}
+        </h2>
+      </header>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 sm:px-5">
+        {/* Keyed on the page so each page arrives once: the list fades, a sub-page pushes in. */}
+        <div
+          key={resolvedTab}
+          className={resolvedTab === 'overview' ? 'ui-tab-fade' : 'ui-push-in'}
+        >
+          {resolvedTab === 'overview' ? (
+            <div className="flex flex-col gap-6">
+              <button
+                type="button"
+                onClick={() => onNavigateTab('account')}
+                className="flex w-full items-center gap-3 rounded-2xl bg-[var(--bg-elevated)] p-4 text-left transition-colors duration-150 hover:bg-[var(--bg-soft)] active:bg-[var(--bg-soft)] motion-reduce:transition-none"
+              >
+                <Avatar
+                  name={user?.displayName ?? null}
+                  username={user?.username}
+                  src={avatarSrc(user?.avatarUrl)}
+                  size={52}
+                />
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-[17px] font-semibold">
+                    {user?.displayName ?? '登录 / 注册'}
+                  </strong>
+                  <span className="block truncate text-[13px] text-[var(--text-faint)]">
+                    {user ? `@${user.username}` : '登录后同步聊天和个人内容'}
+                  </span>
+                </span>
+                {user && credit !== null ? (
+                  <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-[var(--text-soft)]">
+                    {credit} Credit
+                  </span>
+                ) : null}
+                <ChevronRight className="h-4 w-4 text-[var(--text-faint)]" aria-hidden />
+              </button>
+              {OVERVIEW_GROUPS.map((group) => {
+                const ids: readonly string[] = group.ids;
+                // The group's own order, not the pages' sort order.
+                const rows = ids.flatMap((id) => overviewItems.filter((item) => item.id === id));
+                if (rows.length === 0) return null;
+                return (
+                  <SettingsGroup key={group.ids[0]} label={group.label || undefined}>
+                    {rows.map((item) => (
+                      <SettingsRow
+                        key={item.id}
+                        icon={item.icon}
+                        label={item.label}
+                        value={overviewValues[item.id]}
+                        onClick={() => onNavigateTab(item.id)}
+                      />
+                    ))}
+                  </SettingsGroup>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {resolvedTab === 'account' ? (
+                <AccountContent user={user} onUser={onUser} onDone={onClose} />
+              ) : resolvedTab === 'memory' && user ? (
+                <Suspense fallback={<p role="status">正在读取个人记忆…</p>}>
+                  <PersonalMemoryContent key={user.id} />
+                </Suspense>
+              ) : resolvedTab === 'safety' ? (
+                <SafetyTab
+                  waveforms={
+                    moduleClaims.some((claim) => claim.id === 'agent-waveforms') ? (
+                      <ModuleSettingsSlot id="agent-waveforms" />
+                    ) : (
+                      <p role="status">正在加载波形…</p>
+                    )
+                  }
+                />
+              ) : resolvedTab === 'appearance' ? (
+                <GeneralTab key={user?.id ?? 'signed-out'} accountId={user?.id ?? null} />
+              ) : resolvedTab === 'about' ? (
+                <AboutTab
+                  data={
+                    moduleClaims.some((claim) => claim.id === 'agent-data') ? (
+                      <ModuleSettingsSlot id="agent-data" />
+                    ) : (
+                      <p role="status">正在加载数据…</p>
+                    )
+                  }
+                />
+              ) : resolvedTab === 'ai' ? (
+                <AiTab
+                  key={initialAiSection ?? 'main'}
+                  initialSection={initialAiSection}
+                  onOpenMemory={user ? () => onNavigateTab('memory') : undefined}
+                />
+              ) : Active ? (
+                <Active />
+              ) : null}
+              {resolvedTab.startsWith('agent-') &&
+                !moduleClaims.some((claim) => claim.id === resolvedTab) && (
+                  <p role="status">正在加载设置内容…</p>
+                )}
+              {moduleClaims
+                .filter((claim) => claim.id === resolvedTab)
+                .map((claim) => (
+                  <div key={claim.id}>
+                    <ModuleSettingsSlot id={claim.id} />
+                  </div>
+                ))}
+            </>
+          )}
         </div>
       </div>
-    </Overlay>
+    </section>
   );
 }

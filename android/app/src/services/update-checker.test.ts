@@ -22,7 +22,7 @@ interface FakeRelease {
   assets?: { name: string }[];
 }
 
-const apkAsset = (version: string) => ({ name: `0xnuller-v${version}.apk` });
+const apkAsset = (version: string) => ({ name: `maoyuan-v${version}.apk` });
 
 /** A single APK release, nothing else in the repo — the simplest case. */
 function fetchReturning(tagName: string | undefined, htmlUrl = 'https://example.com/release') {
@@ -36,23 +36,16 @@ function fetchReleases(releases: FakeRelease[]) {
 }
 
 describe('isNewerVersion', () => {
-  it('detects a newer patch version', () => {
-    expect(isNewerVersion('5.4.2', '5.4.1')).toBe(true);
-  });
-
-  it('detects a newer minor/major version', () => {
-    expect(isNewerVersion('6.0.0', '5.4.9')).toBe(true);
-    expect(isNewerVersion('5.5.0', '5.4.9')).toBe(true);
-  });
-
-  it('is false for an equal or older version', () => {
-    expect(isNewerVersion('5.4.1', '5.4.1')).toBe(false);
-    expect(isNewerVersion('5.4.0', '5.4.1')).toBe(false);
-  });
-
-  it('handles differing segment counts', () => {
-    expect(isNewerVersion('5.4', '5.4.0')).toBe(false);
-    expect(isNewerVersion('5.4.1', '5.4')).toBe(true);
+  it.each([
+    ['newer patch', '5.4.2', '5.4.1', true],
+    ['newer major', '6.0.0', '5.4.9', true],
+    ['newer minor', '5.5.0', '5.4.9', true],
+    ['equal', '5.4.1', '5.4.1', false],
+    ['older', '5.4.0', '5.4.1', false],
+    ['fewer segments, equal', '5.4', '5.4.0', false],
+    ['more segments, newer', '5.4.1', '5.4', true],
+  ])('%s: isNewerVersion(%s, %s) is %s', (_label, candidate, current, expected) => {
+    expect(isNewerVersion(candidate, current)).toBe(expected);
   });
 });
 
@@ -65,33 +58,25 @@ describe('TauriUpdateChecker', () => {
     vi.useRealTimers();
   });
 
-  it('reports hasUpdate when the release tag is newer than the running version', async () => {
+  it.each([
+    ['5.4.1', true],
+    ['5.4.2', false],
+  ])('running %s against release v5.4.2 reports hasUpdate=%s', async (current, hasUpdate) => {
     const checker = new TauriUpdateChecker({
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
-      getCurrentVersion: async () => '5.4.1',
+      getCurrentVersion: async () => current,
       fetchImpl: fetchReturning('v5.4.2'),
     });
 
     await checker['checkOnce']();
 
     const status = checker.getStatus();
-    expect(status.hasUpdate).toBe(true);
-    expect(status.latestVersion).toBe('5.4.2');
-    expect(status.releaseUrl).toBe('https://example.com/release');
-  });
-
-  it('does not report hasUpdate when already on the latest version', async () => {
-    const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/0xNuller',
-      storage: memoryStorage(),
-      getCurrentVersion: async () => '5.4.2',
-      fetchImpl: fetchReturning('v5.4.2'),
-    });
-
-    await checker['checkOnce']();
-
-    expect(checker.getStatus().hasUpdate).toBe(false);
+    expect(status.hasUpdate).toBe(hasUpdate);
+    if (hasUpdate) {
+      expect(status.latestVersion).toBe('5.4.2');
+      expect(status.releaseUrl).toBe('https://example.com/release');
+    }
   });
 
   it('dismiss() persists per-version and survives a fresh checker instance', async () => {
@@ -136,24 +121,19 @@ describe('TauriUpdateChecker', () => {
     expect(checker.getStatus().latestVersion).toBe('5.4.3');
   });
 
-  it('ignores a malformed response instead of throwing', async () => {
+  it.each([
+    ['a malformed response', () => fetchReturning(undefined)],
+    ['a network error', () => vi.fn().mockRejectedValue(new Error('offline'))],
+    [
+      'a non-array body',
+      () => vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: 'Not Found' }) }),
+    ],
+  ])('tolerates bad release responses: %s', async (_label, makeFetch) => {
     const checker = new TauriUpdateChecker({
       repo: '0xNullAI/0xNuller',
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
-      fetchImpl: fetchReturning(undefined),
-    });
-
-    await expect(checker['checkOnce']()).resolves.toBeUndefined();
-    expect(checker.getStatus().hasUpdate).toBe(false);
-  });
-
-  it('ignores a network error instead of throwing', async () => {
-    const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/0xNuller',
-      storage: memoryStorage(),
-      getCurrentVersion: async () => '5.4.1',
-      fetchImpl: vi.fn().mockRejectedValue(new Error('offline')),
+      fetchImpl: makeFetch(),
     });
 
     await expect(checker['checkOnce']()).resolves.toBeUndefined();
@@ -203,19 +183,19 @@ describe('TauriUpdateChecker', () => {
 });
 
 describe('versionFromTag', () => {
-  it('只认本应用的 tag 前缀', () => {
-    expect(versionFromTag('v5.5.2', 'v')).toBe('5.5.2');
-    // After the merge the same repo also cuts these tags. Misidentify any one of
-    // them and the user taps through and downloads something that is not the APK.
-    expect(versionFromTag('@dg-kit/core@1.14.0', 'v')).toBeNull();
-    expect(versionFromTag('android-v6.0.0', 'v')).toBeNull();
-    expect(versionFromTag('dg-mcp@0.3.1', 'v')).toBeNull();
-  });
-
-  it('前缀之后必须是纯数字点分版本', () => {
-    expect(versionFromTag('v5.5.2-beta', 'v')).toBeNull();
-    expect(versionFromTag('vnext', 'v')).toBeNull();
-    expect(versionFromTag('v', 'v')).toBeNull();
+  // After the merge the same repo also cuts kit/legacy/mcp tags. Misidentify any
+  // one of them and the user taps through and downloads something that is not
+  // the APK. After the prefix only a purely numeric dotted version counts.
+  it.each([
+    ['v5.5.2', '5.5.2'],
+    ['@dg-kit/core@1.14.0', null],
+    ['android-v6.0.0', null],
+    ['dg-mcp@0.3.1', null],
+    ['v5.5.2-beta', null],
+    ['vnext', null],
+    ['v', null],
+  ])('只认本应用前缀加纯数字版本：%s', (tag, expected) => {
+    expect(versionFromTag(tag, 'v')).toBe(expected);
   });
 });
 
@@ -303,19 +283,5 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
     // A draft's APK has not been uploaded yet, and a prerelease should not be
     // pushed to ordinary users.
     expect(checker.getStatus().latestVersion).toBe('5.6.0');
-  });
-
-  it('返回的不是数组时不炸', async () => {
-    const checker = new TauriUpdateChecker({
-      repo: '0xNullAI/0xNuller',
-      storage: memoryStorage(),
-      getCurrentVersion: async () => '5.5.2',
-      fetchImpl: vi
-        .fn()
-        .mockResolvedValue({ ok: true, json: async () => ({ message: 'Not Found' }) }),
-    });
-
-    await expect(checker['checkOnce']()).resolves.toBeUndefined();
-    expect(checker.getStatus().hasUpdate).toBe(false);
   });
 });

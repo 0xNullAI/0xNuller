@@ -8,3 +8,5 @@ import { createEmbeddedAgentClient } from '@dg-agent/client';
 ```
 
 适合 UI、测试或未来远程适配器复用；不包含具体模型和蓝牙实现。
+`setSessionScene(sessionId, sceneId)` 调整个人会话的可选环境场景；传入 `null` 清除场景，
+角色身份和私人关系仍由原会话保持。

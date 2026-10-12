@@ -1,0 +1,14 @@
+{
+  "name": "@0xnullai/ai-pricing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "托管 AI 的模型路由与 Credit 价格表：运行时从 Worker 密钥读取，仓库内不含任何价格。",
+  "exports": {
+    ".": "./src/index.ts",
+    "./example-price-table.json": "./src/example-price-table.json"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

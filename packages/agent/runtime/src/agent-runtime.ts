@@ -12,6 +12,8 @@ import type {
   SourceType,
   WaveformLibrary,
 } from '@dg-agent/core';
+import type { ContextualTools } from './contextual-tools.js';
+import { bindSessionCharacter } from './session-character.js';
 import type { OpossumState } from '@dg-kit/protocol';
 import {
   createEmptyDeviceState,
@@ -72,6 +74,12 @@ import {
   RuntimeTurnCoordinator,
   type BuildTurnInstructionsInput,
 } from './runtime-turn-coordinator.js';
+import {
+  RuntimeTaskRunLedger,
+  type RuntimeTaskRunReporter,
+  type RuntimeTaskRunSnapshot,
+  type RuntimeTaskRunStatus,
+} from './runtime-task-run.js';
 
 export interface AgentRuntimeOptions {
   device: DeviceClient;
@@ -85,12 +93,15 @@ export interface AgentRuntimeOptions {
   civetEdging?: CivetEdgingClient;
   llm: LlmClient;
   permission: PermissionService;
-  buildInstructions?: (input: BuildTurnInstructionsInput) => string;
+  buildInstructions?: (input: BuildTurnInstructionsInput) => string | Promise<string>;
   waveformLibrary?: WaveformLibrary;
   sessionStore?: SessionStore;
   sessionTraceStore?: SessionTraceStore;
+  taskRunReporter?: RuntimeTaskRunReporter;
+  onTaskRunUpdate?: (snapshot: RuntimeTaskRunSnapshot) => void;
   logger?: Logger;
   toolRegistry?: ToolRegistry;
+  contextualTools?: ContextualTools;
   policyEngine?: PolicyEngine;
   opossumPolicyEngine?: OpossumPolicyEngine;
   toolCallConfig?: ToolCallConfigInput;
@@ -110,6 +121,11 @@ export interface AgentRuntimeOptions {
 
 export interface SendUserMessageInput {
   sessionId: string;
+  /** Server-issued ID when taskRunReporter is configured; never reuse for a new request. */
+  runId?: string;
+  /** Optional first-turn identity for a personal web conversation; cannot replace an existing binding. */
+  characterId?: string;
+  relationshipId?: string;
   text: string;
   context: ActionContext;
   persistMessage?: boolean;
@@ -141,6 +157,7 @@ export class AgentRuntime {
   private readonly toolCallConfig: ToolCallConfig;
   private readonly toolExecutor: RuntimeToolExecutor;
   private readonly turnCoordinator: RuntimeTurnCoordinator;
+  private readonly taskRuns = new RuntimeTaskRunLedger();
   private readonly activeTurns = new Map<string, AbortController>();
   private readonly sessionGenerations = new Map<string, number>();
   private readonly pendingSystemWork = new Map<string, QueuedSystemWork[]>();
@@ -191,6 +208,7 @@ export class AgentRuntime {
       queue: this.queue,
       opossumQueue: this.opossumQueue,
       toolRegistry: this.toolRegistry,
+      contextualTools: options.contextualTools,
       policyEngine,
       opossumPolicyEngine,
       logger,
@@ -213,8 +231,10 @@ export class AgentRuntime {
       device: options.device,
       llm: options.llm,
       toolRegistry: this.toolRegistry,
+      contextualTools: options.contextualTools,
       toolExecutor: this.toolExecutor,
       toolCallConfig: this.toolCallConfig,
+      traceStore: this.traces,
       modelContextStrategy: options.modelContextStrategy,
       buildInstructions: options.buildInstructions,
       getInstructionDeviceState: () => this.getAuxDeviceStatesForInstructions(),
@@ -310,6 +330,8 @@ export class AgentRuntime {
    * one first.
    */
   async setSensorTriggersEnabled(sessionId: string, enabled: boolean): Promise<void> {
+    // Stopping an opt-in must not wait on the server-backed history store.
+    if (!enabled) this.teardownSensorTriggerEngine();
     const session = await this.ensureSession(sessionId);
     session.metadata = withSensorTriggersEnabled(session.metadata, enabled);
     session.updatedAt = Date.now();
@@ -364,18 +386,59 @@ export class AgentRuntime {
   }
 
   async listSessions(): Promise<SessionSnapshot[]> {
-    return this.sessions.list();
+    return this.sessions.listSummaries?.() ?? this.sessions.list();
+  }
+
+  async getSessionMessagesPage(sessionId: string, before?: number) {
+    if (this.sessions.messagesPage) return this.sessions.messagesPage(sessionId, before);
+    const session = await this.sessions.get(sessionId);
+    if (!session) return { items: [], nextBefore: null };
+    const end =
+      before === undefined
+        ? session.messages.length
+        : Math.min(before - 1, session.messages.length);
+    const start = Math.max(0, end - 20);
+    return {
+      items: session.messages.slice(start, end).map((message, index) => ({
+        ...message,
+        sequence: start + index + 1,
+      })),
+      nextBefore: start > 0 ? start + 1 : null,
+    };
+  }
+
+  async searchSessions(query: string): Promise<string[]> {
+    if (this.sessions.search) return this.sessions.search(query);
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return [];
+    return (await this.sessions.list())
+      .filter(
+        (session) =>
+          (typeof session.metadata?.sessionTitle === 'string' &&
+            session.metadata.sessionTitle.toLowerCase().includes(normalized)) ||
+          session.messages.some((message) => message.content.toLowerCase().includes(normalized)),
+      )
+      .map((session) => session.id);
   }
 
   async getSessionTrace(sessionId: string): Promise<RuntimeTraceEntry[]> {
     if (this.isSessionDeleted(sessionId)) {
       return [];
     }
-    const existing = await this.sessions.get(sessionId);
+    const existing = await (this.sessions.getRecent?.(sessionId) ?? this.sessions.get(sessionId));
     if (!existing) {
       return [];
     }
     return this.traces.list(sessionId);
+  }
+
+  /** Local diagnostic view; server TaskRun events remain authoritative. */
+  getTaskRun(runId: string): RuntimeTaskRunSnapshot | null {
+    return this.taskRuns.get(runId);
+  }
+
+  listTaskRuns(sessionId: string): RuntimeTaskRunSnapshot[] {
+    return this.taskRuns.list(sessionId);
   }
 
   async getSessionSnapshot(sessionId: string): Promise<SessionSnapshot> {
@@ -395,6 +458,20 @@ export class AgentRuntime {
     }
 
     return session;
+  }
+
+  /** UI-only bounded read; command execution and exports still read the full server session. */
+  async getSessionDisplaySnapshot(sessionId: string): Promise<SessionSnapshot> {
+    const recent = await this.sessions.getRecent?.(sessionId);
+    if (!recent) return this.getSessionSnapshot(sessionId);
+    return { ...recent, deviceState: await this.options.device.getState() };
+  }
+
+  async getSessionExportSnapshot(sessionId: string): Promise<SessionSnapshot> {
+    const snapshot = await (this.sessions.getCompleteByPages?.(sessionId) ??
+      this.sessions.get(sessionId));
+    if (!snapshot) throw new Error('会话不存在或已删除');
+    return snapshot;
   }
 
   /**
@@ -417,6 +494,29 @@ export class AgentRuntime {
 
     const normalized = title?.trim().slice(0, 60) ?? '';
     this.sessionTitleOverrides.set(sessionId, normalized || null);
+    session.updatedAt = Date.now();
+    await this.saveSessionIfAvailable(session);
+  }
+
+  /** A scene changes the environment of a personal conversation, never its character binding. */
+  async setSessionScene(sessionId: string, sceneId: string | null): Promise<void> {
+    if (sceneId !== null && !/^[A-Za-z0-9._:-]{1,200}$/.test(sceneId)) {
+      throw new Error('场景编号无效');
+    }
+    if (this.activeTurns.has(sessionId)) throw new Error('请等待当前回复结束后再切换场景');
+    const session = await this.ensureSession(sessionId);
+    if (this.activeTurns.has(sessionId)) throw new Error('请等待当前回复结束后再切换场景');
+    const metadata = session.metadata;
+    if (
+      metadata?.bridgeOrigin ||
+      metadata?.groupId ||
+      metadata?.roomId ||
+      metadata?.conversationType === 'group' ||
+      metadata?.conversationType === 'dm'
+    ) {
+      throw new Error('只有私人聊天可以切换场景');
+    }
+    session.metadata = { ...metadata, sceneId: sceneId ?? '' };
     session.updatedAt = Date.now();
     await this.saveSessionIfAvailable(session);
   }
@@ -444,6 +544,26 @@ export class AgentRuntime {
   }
 
   async emergencyStop(sessionId: string): Promise<void> {
+    this.releaseDeviceControl(sessionId);
+
+    const result = await this.stopDevicesBestEffort();
+    if (result) {
+      this.events.emit({
+        type: 'device-command-executed',
+        sessionId,
+        command: { type: 'emergencyStop' },
+        result,
+      });
+    }
+  }
+
+  /**
+   * Drop every piece of Agent work that could still reach a device, with no device write:
+   * stale continuations, in-flight turns, queued system work, timers, sensor triggers and the
+   * device link. Used for lease loss, where the lease owner already stopped every output and a
+   * stop issued here would bypass the fence and zero what the new holder starts.
+   */
+  releaseDeviceControl(sessionId: string): void {
     // Latch first: continuations created before this line stay stale even if
     // their provider or permission promise ignores AbortSignal.
     const affectedSessions = new Set([...this.sessionGenerations.keys(), sessionId]);
@@ -459,16 +579,6 @@ export class AgentRuntime {
     const linkRule = this.deviceLinkEngine?.getRule();
     if (linkRule?.enabled) {
       this.deviceLinkEngine?.setRule({ ...linkRule, enabled: false });
-    }
-
-    const result = await this.stopDevicesBestEffort();
-    if (result) {
-      this.events.emit({
-        type: 'device-command-executed',
-        sessionId,
-        command: { type: 'emergencyStop' },
-        result,
-      });
     }
   }
 
@@ -491,6 +601,15 @@ export class AgentRuntime {
     if (input.image && !this.capabilities.imageInput) {
       throw new Error('当前模型未明确支持图片输入，请切换到支持视觉的模型');
     }
+    if (this.options.taskRunReporter && !input.runId && input.context.sourceType === 'web') {
+      throw new Error('缺少服务器任务编号，不能开始 Agent 回复');
+    }
+    if (input.runId && !/^[A-Za-z0-9._:-]{8,128}$/.test(input.runId)) {
+      throw new Error('任务编号无效');
+    }
+    if (input.runId && this.taskRuns.get(input.runId)) {
+      throw new Error('任务编号重复，不能重放工具调用');
+    }
 
     if (this.isSessionDeleted(input.sessionId)) {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) {
@@ -511,12 +630,25 @@ export class AgentRuntime {
       throw new Error('当前会话已有回复正在进行中');
     }
 
-    const session = await this.ensureSession(input.sessionId);
+    const candidate =
+      input.context.sourceType === 'web' && !input.context.sourceChannelId
+        ? await this.sessions.getRuntimeWindow?.(input.sessionId)
+        : null;
+    const stableBinding =
+      typeof candidate?.metadata?.promptPresetId === 'string' &&
+      candidate.metadata.promptPresetId.length > 0 &&
+      !candidate.metadata.bridgeOrigin &&
+      !candidate.metadata.groupId &&
+      !candidate.metadata.roomId &&
+      !['group', 'dm'].includes(String(candidate.metadata.conversationType ?? '')) &&
+      (!input.relationshipId || candidate.metadata?.relationshipId === input.relationshipId);
+    const session = stableBinding ? candidate! : await this.ensureSession(input.sessionId);
     if (expectedGeneration !== this.getSessionGeneration(input.sessionId)) {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
       throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
     }
     session.metadata = mergeBridgeOriginMetadata(session.metadata, input.context);
+    bindSessionCharacter(session, input.context, input.characterId, input.relationshipId);
     const persistIncomingMessage = input.persistMessage ?? input.context.sourceType !== 'system';
     const incomingMessage = persistIncomingMessage ? createIncomingMessage(input) : null;
     const abortController = new AbortController();
@@ -531,9 +663,12 @@ export class AgentRuntime {
     let turnStartIndex = session.messages.length - 1;
     if (incomingMessage) {
       session.messages.push(incomingMessage);
-      turnStartIndex = session.messages.length - 1;
       session.updatedAt = Date.now();
       await this.saveSessionIfAvailable(session);
+      // A concurrent device may have appended messages before this turn while the
+      // server store rebased our accepted user message. Keep assistant deduplication
+      // anchored to the actual user message, not its former array position.
+      turnStartIndex = session.messages.findIndex((message) => message.id === incomingMessage.id);
 
       this.events.emit({
         type: 'user-message-accepted',
@@ -543,21 +678,84 @@ export class AgentRuntime {
       });
     }
 
+    const runId = input.runId ?? createLocalRunId();
+    const reporter = input.runId ? this.options.taskRunReporter : undefined;
+    const withoutServerRun = Boolean(this.options.taskRunReporter && !input.runId);
+    this.notifyTaskRun(
+      this.taskRuns.begin({
+        runId,
+        sessionId: session.id,
+        requestId: input.context.traceId,
+      }),
+    );
     this.activeTurns.set(session.id, abortController);
 
     try {
+      await reporter?.begin({
+        runId,
+        sessionId: session.id,
+        requestId: input.context.traceId,
+        sourceType: input.context.sourceType,
+      });
       const turnResult = await this.turnCoordinator.run({
         session,
         turn: input,
         turnStartIndex,
         ephemeralInput,
         abortSignal: abortController.signal,
+        runId,
+        allowTools: !withoutServerRun,
+        hooks: {
+          beforeToolCall: withoutServerRun
+            ? async () => {
+                throw new Error('没有服务器任务编号，不能执行工具');
+              }
+            : reporter
+              ? ({ callId, name }) =>
+                  reporter.beforeToolCall({
+                    runId,
+                    sessionId: session.id,
+                    callId,
+                    name,
+                  })
+              : undefined,
+          onToolCallStarted: ({ callId, name }) => {
+            this.notifyTaskRun(this.taskRuns.startCall(runId, callId, name));
+          },
+          recordToolReceipt: reporter
+            ? (receipt) =>
+                reporter.recordReceipt({
+                  runId,
+                  sessionId: session.id,
+                  callId: receipt.callId,
+                  name: receipt.name,
+                  status: receipt.status,
+                  provenance: 'client-reported',
+                })
+            : undefined,
+          onToolReceipt: (receipt) => {
+            this.notifyTaskRun(this.taskRuns.record(receipt));
+          },
+        },
       });
       throwIfAborted(abortController.signal);
 
+      let finalAssistantText = turnResult.finalAssistantText;
+      try {
+        await reporter?.finish({
+          runId,
+          sessionId: session.id,
+          status: turnResult.status,
+        });
+        this.notifyTaskRun(this.taskRuns.finish(runId, turnResult.status));
+      } catch {
+        this.notifyTaskRun(this.taskRuns.finish(runId, 'needs-review'));
+        finalAssistantText = '任务状态尚未确认。请核对工具记录和实际结果后再决定是否重试。';
+      }
+
       const assistantMessage = appendAssistantMessage(
         session,
-        { content: turnResult.finalAssistantText },
+        { content: finalAssistantText },
         turnStartIndex,
       );
       session.updatedAt = Date.now();
@@ -571,6 +769,12 @@ export class AgentRuntime {
         sourceType: input.context.sourceType,
       });
     } catch (error) {
+      await this.closeInterruptedTaskRun(
+        runId,
+        session.id,
+        abortController.signal.aborted || isAbortError(error) ? 'aborted' : 'failed',
+        reporter,
+      );
       if (abortController.signal.aborted || isAbortError(error)) {
         const abortedMessage = appendAssistantMessage(
           session,
@@ -591,24 +795,13 @@ export class AgentRuntime {
         throw new Error(REPLY_ABORTED_ERROR_MESSAGE, { cause: error });
       }
 
-      const assistantErrorMessage = appendAssistantMessage(
-        session,
-        { content: normalizeAssistantErrorMessage(error) },
-        turnStartIndex,
-      );
-      session.updatedAt = Date.now();
-      session.deviceState = await this.options.device.getState();
-      await this.saveSessionIfAvailable(session);
-
+      // Product rule: provider failures are page-only notices. The accepted user message
+      // stays in the record so the user can resend; the error text is never persisted.
+      const failedMessage = createMessage('assistant', normalizeAssistantErrorMessage(error));
       this.events.emit({
-        type: 'runtime-warning',
+        type: 'assistant-message-failed',
         sessionId: session.id,
-        message: assistantErrorMessage.content,
-      });
-      this.events.emit({
-        type: 'assistant-message-completed',
-        sessionId: session.id,
-        message: assistantErrorMessage,
+        message: failedMessage,
         sourceType: input.context.sourceType,
       });
     } finally {
@@ -898,6 +1091,31 @@ export class AgentRuntime {
   private isSessionDeleted(sessionId: string): boolean {
     return this.deletedSessionIds.has(sessionId);
   }
+
+  private notifyTaskRun(snapshot: RuntimeTaskRunSnapshot): void {
+    try {
+      this.options.onTaskRunUpdate?.(snapshot);
+    } catch {
+      // Observation cannot affect execution or the emergency stop path.
+    }
+  }
+
+  private async closeInterruptedTaskRun(
+    runId: string,
+    sessionId: string,
+    status: Extract<RuntimeTaskRunStatus, 'aborted' | 'failed'>,
+    reporter?: RuntimeTaskRunReporter,
+  ): Promise<void> {
+    if (this.taskRuns.get(runId)?.status !== 'running') return;
+    const snapshot = this.taskRuns.finish(runId, status);
+    this.notifyTaskRun(snapshot);
+    try {
+      if (snapshot.status === 'running') throw new Error('任务未结束');
+      await reporter?.finish({ runId, sessionId, status: snapshot.status });
+    } catch {
+      this.notifyTaskRun(this.taskRuns.markNeedsReview(runId));
+    }
+  }
 }
 
 type QueuedSystemWork =
@@ -918,7 +1136,18 @@ type QueuedSystemWork =
     };
 
 function createIncomingMessage(input: SendUserMessageInput): ConversationMessage {
-  return createMessage('user', input.text);
+  const message = createMessage('user', input.text);
+  // The server's requestId equals this message ID, so a recovered run can be
+  // traced back to the initiating message without storing tool data in the transcript.
+  if (input.runId) message.id = input.context.traceId;
+  return message;
+}
+
+function createLocalRunId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `local-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 function buildTimerTriggerPrompt(trigger: TimerFiredTrigger): string {

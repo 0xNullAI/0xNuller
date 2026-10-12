@@ -1,9 +1,5 @@
 import { DEFAULT_BRIDGE_SETTINGS } from '@dg-agent/bridge';
-import {
-  createDefaultProviderSettings,
-  normalizeProviderSettings,
-  type ProviderId,
-} from '@0xnullai/llm-providers';
+import { createDefaultProviderSettings, normalizeProviderSettings } from '@0xnullai/llm-providers';
 import {
   createDefaultToolCallConfig,
   DEFAULT_CIVET_PRESSURE_DELTA_KPA,
@@ -22,24 +18,19 @@ import type {
 } from './browser-settings-types.js';
 
 export const DEFAULT_VOICE_SETTINGS: BrowserVoiceSettings = {
-  mode: 'browser',
-  speaker: 'longxiaochun_v2',
   browserVoiceUri: '',
-  apiKey: '',
-  proxyUrl: '',
-  autoStopEnabled: true,
 };
 
+/**
+ * Older versions also stored a bring-your-own DashScope speech mode, key, proxy URL,
+ * speaker and auto-stop flag. Those fields are ignored here, so such settings load as
+ * plain browser speech.
+ */
 export function normalizeVoiceSettings(
   input: Partial<BrowserVoiceSettings> = {},
 ): BrowserVoiceSettings {
   return {
-    mode: input.mode === 'dashscope-proxy' ? 'dashscope-proxy' : 'browser',
-    speaker: input.speaker?.trim() || DEFAULT_VOICE_SETTINGS.speaker,
     browserVoiceUri: input.browserVoiceUri?.trim() ?? '',
-    apiKey: input.apiKey?.trim() ?? '',
-    proxyUrl: input.proxyUrl?.trim() ?? '',
-    autoStopEnabled: input.autoStopEnabled ?? true,
   };
 }
 
@@ -47,7 +38,7 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
   const toolCallConfig = createDefaultToolCallConfig();
   const provider = normalizeProviderSettings({
     ...createDefaultProviderSettings(),
-    providerId: (env.VITE_PROVIDER_ID ?? 'managed') as ProviderId,
+    providerId: env.VITE_PROVIDER_ID ?? 'managed',
     apiKey: env.VITE_OPENAI_API_KEY ?? '',
     baseUrl: env.VITE_OPENAI_BASE_URL ?? '',
     model: env.VITE_OPENAI_MODEL ?? '',

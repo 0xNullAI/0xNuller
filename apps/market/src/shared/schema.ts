@@ -1,3 +1,11 @@
+import { parseCharacterCard, type CharacterCard } from '@0xnullai/scenes/character-card';
+import {
+  MAX_CHARACTER_PROMPT_LENGTH,
+  parseCharacterDraft,
+  parseExternalCardArchive,
+  type CharacterDraft,
+  type ExternalCardArchive,
+} from '@0xnullai/scenes/character-draft';
 import { z } from 'zod';
 
 // Aligned with the data structures in DG-Agent / @dg-kit:
@@ -24,21 +32,95 @@ export const WaveformContentSchema = z.object({
  * annotated so clients can communicate the extra context cost before import.
  */
 export const STANDARD_SCENARIO_PROMPT_LENGTH = 12_000;
-export const MAX_SCENARIO_PROMPT_LENGTH = 100_000;
+export const MAX_SCENARIO_PROMPT_LENGTH = MAX_CHARACTER_PROMPT_LENGTH;
 export const EXTRA_LARGE_SCENARIO_SCALE = 'extra-large' as const;
+export const PromptKindSchema = z.enum(['character', 'scene']);
+export type PromptKind = z.infer<typeof PromptKindSchema>;
 
-export const ScenarioContentSchema = z.object({
-  prompt: z.string().min(1).max(MAX_SCENARIO_PROMPT_LENGTH),
-  scale: z.literal(EXTRA_LARGE_SCENARIO_SCALE).optional(),
+export const CharacterCardSchema = z.unknown().transform((value, context): CharacterCard => {
+  const card = parseCharacterCard(value);
+  if (!card) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: '角色卡格式无效或超出内容限制' });
+    return z.NEVER;
+  }
+  return card;
 });
 
-export function annotateScenarioContent(content: { prompt: string }): {
+export const ExternalCardArchiveSchema = z
+  .unknown()
+  .transform((value, context): ExternalCardArchive => {
+    const archive = parseExternalCardArchive(value);
+    if (!archive) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: '外部角色卡原件无效或超出 120 KB' });
+      return z.NEVER;
+    }
+    const assets = (archive.raw.data as Record<string, unknown>).assets;
+    if (
+      Array.isArray(assets) &&
+      assets.some(
+        (asset) =>
+          asset &&
+          typeof asset === 'object' &&
+          typeof (asset as Record<string, unknown>).uri === 'string' &&
+          (/^embeded:\/\//.test((asset as { uri: string }).uri) ||
+            /^__asset:/.test((asset as { uri: string }).uri)),
+      )
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '原始 JSON 引用了未公开的本地附件，请仅发布人物设定',
+      });
+      return z.NEVER;
+    }
+    return archive;
+  });
+
+export const ScenarioContentSchema = z
+  .object({
+    prompt: z.string().min(1).max(MAX_SCENARIO_PROMPT_LENGTH),
+    kind: PromptKindSchema.optional(),
+    scale: z.literal(EXTRA_LARGE_SCENARIO_SCALE).optional(),
+    characterCard: CharacterCardSchema.optional(),
+    // null is an explicit removal in owner edits; stored content omits this field.
+    sourceArchive: ExternalCardArchiveSchema.nullable().optional(),
+    portraitId: z.string().uuid().nullable().optional(),
+  })
+  .refine((content) => content.kind !== 'scene' || !content.characterCard, {
+    message: '场景不包含人物设定',
+  })
+  .refine((content) => content.kind !== 'character' || !!content.characterCard, {
+    message: '角色需要人物设定',
+  });
+
+/** Old prompt-only cards are scenes; old structured cards are characters. */
+export function promptKind(content: { kind?: PromptKind; characterCard?: unknown }): PromptKind {
+  return content.kind ?? (content.characterCard ? 'character' : 'scene');
+}
+
+export function annotateScenarioContent(content: {
   prompt: string;
+  kind?: PromptKind;
+  characterCard?: CharacterCard;
+  sourceArchive?: ExternalCardArchive | null;
+  portraitId?: string | null;
+}): {
+  prompt: string;
+  kind?: PromptKind;
+  characterCard?: CharacterCard;
+  sourceArchive?: ExternalCardArchive;
+  portraitId?: string;
   scale?: typeof EXTRA_LARGE_SCENARIO_SCALE;
 } {
-  return content.prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH
-    ? { prompt: content.prompt, scale: EXTRA_LARGE_SCENARIO_SCALE }
-    : { prompt: content.prompt };
+  return {
+    prompt: content.prompt,
+    ...(content.kind ? { kind: content.kind } : {}),
+    ...(content.characterCard ? { characterCard: content.characterCard } : {}),
+    ...(content.sourceArchive ? { sourceArchive: content.sourceArchive } : {}),
+    ...(content.portraitId ? { portraitId: content.portraitId } : {}),
+    ...(content.prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH
+      ? { scale: EXTRA_LARGE_SCENARIO_SCALE }
+      : {}),
+  };
 }
 
 export function isExtraLargeScenario(content: { prompt: string; scale?: string }): boolean {
@@ -47,31 +129,6 @@ export function isExtraLargeScenario(content: { prompt: string; scale?: string }
     content.prompt.length > STANDARD_SCENARIO_PROMPT_LENGTH
   );
 }
-
-// Multiplayer scene: setting + a set of roles + gameplay metadata (player count, how AI
-// participates).
-export const MultiSceneRoleSchema = z.object({
-  name: z.string().trim().min(1).max(40),
-  // Role description / persona: shown to members, and also used as the persona when this
-  // role is handed to an AI (for importing into DG-Chat).
-  description: z.string().trim().max(2000).optional(),
-  // Whether this role can be played by an AI.
-  aiPlayable: z.boolean().optional(),
-});
-
-export const MultiSceneContentSchema = z.object({
-  setting: z.string().trim().min(1).max(8000), // setting / background
-  roles: z.array(MultiSceneRoleSchema).min(1).max(12),
-  // Suggested player count.
-  playerCount: z
-    .object({
-      min: z.number().int().min(1).max(50),
-      max: z.number().int().min(1).max(50),
-    })
-    .optional(),
-  // How AI participates: none = humans only / solo = a single AI / multi = several AI roles.
-  aiMode: z.enum(['none', 'solo', 'multi']).optional(),
-});
 
 const baseFields = {
   name: z.string().trim().min(1).max(60),
@@ -92,12 +149,6 @@ export const UploadSchema = z.discriminatedUnion('type', [
     icon: z.string().trim().max(8).optional(),
     content: ScenarioContentSchema,
   }),
-  z.object({
-    type: z.literal('multi-scene'),
-    ...baseFields,
-    icon: z.string().trim().max(8).optional(),
-    content: MultiSceneContentSchema,
-  }),
 ]);
 
 // Batch upload: submit several items at once (at most 50). The transport requires an
@@ -110,6 +161,9 @@ export type BatchUploadPayload = z.infer<typeof BatchUploadSchema>;
 // Authentication happens at the transport layer through account ownership.
 export const ItemPatchSchema = z
   .object({
+    // Required: an edit made from a stale copy is refused instead of silently replacing a
+    // newer version (clients that cannot send it are no longer allowed to edit).
+    expectedRevision: z.number().int().positive(),
     name: z.string().trim().min(1).max(60).optional(),
     description: z.string().trim().max(500).optional(),
     author: z.string().trim().max(30).optional(),
@@ -118,22 +172,36 @@ export const ItemPatchSchema = z
     // Scene owners may update the actual script as well as its display metadata. The
     // Worker checks this value against the stored item type before writing it, so a
     // caller cannot turn a solo scene into a multiplayer scene (or edit waveforms here).
-    content: z.union([ScenarioContentSchema, MultiSceneContentSchema]).optional(),
+    content: ScenarioContentSchema.optional(),
   })
-  .refine((p) => Object.keys(p).length > 0, { message: '没有要修改的字段' });
+  .refine((p) => Object.keys(p).some((key) => key !== 'expectedRevision'), {
+    message: '没有要修改的字段',
+  });
 export type ItemPatch = z.infer<typeof ItemPatchSchema>;
+
+/** Private server draft for the public card editor. No relationship or memory fields. */
+export const CharacterDraftSchema = z.unknown().transform((value, context): CharacterDraft => {
+  const draft = parseCharacterDraft(value);
+  if (!draft) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: '角色草稿无效或超出限制' });
+    return z.NEVER;
+  }
+  return draft;
+});
+export type { CharacterDraft };
 
 export const ModerationPatchSchema = z.object({ hidden: z.boolean() }).strict();
 export type ModerationPatch = z.infer<typeof ModerationPatchSchema>;
 
-export type ItemType = 'waveform' | 'scenario' | 'multi-scene';
+export type ItemType = 'waveform' | 'scenario';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;
 export type ScenarioContent = z.infer<typeof ScenarioContentSchema>;
-export type MultiSceneContent = z.infer<typeof MultiSceneContentSchema>;
 export type UploadPayload = z.infer<typeof UploadSchema>;
 
 // The shape the list/detail endpoints return to the frontend.
 export interface MarketItem {
+  verifiedCreator?: { id: string; username: string; displayName: string };
+  recommendationReason?: string;
   id: string;
   type: ItemType;
   name: string;
@@ -141,12 +209,30 @@ export interface MarketItem {
   author?: string;
   icon?: string;
   tags: string[];
-  content: WaveformContent | ScenarioContent | MultiSceneContent;
+  content: WaveformContent | ScenarioContent;
   downloads: number;
   views: number;
   createdAt: number;
+  revision?: number;
 }
 
 export interface MarketAdminItem extends MarketItem {
   hidden: boolean;
+}
+
+export interface CharacterRevisionSummary {
+  revision: number;
+  name: string;
+  archivedAt: number | null;
+  current: boolean;
+}
+
+export interface CharacterRevisionSnapshot {
+  revision: number;
+  name: string;
+  description?: string;
+  icon?: string;
+  tags: string[];
+  content: ScenarioContent;
+  archivedAt: number | null;
 }

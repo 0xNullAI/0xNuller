@@ -7,12 +7,17 @@ import { allConnectedDevices, safetySessionById, subscribeSafetySessions } from 
 import { DEVICE_KIND_DISPLAY_NAME, isDevicePickerCancelled } from '@dg-kit/core';
 import type { DeviceSummary } from '@dg-kit/safety';
 import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
+import { DGLAB_SAFETY_SESSION_ID } from '@0xnullai/device-runtime';
 
 /**
  * The one device bar for the unified shell. It stays at the top of every module
  * that can connect devices, even before a device is attached; once anything is
- * connected it also survives navigation to non-device modules so stop and
- * disconnect never disappear.
+ * connected it also survives navigation to non-device modules so stop never
+ * disappears.
+ *
+ * Disconnecting is a 设备-page action only: the devices are shared by every
+ * module, so a ✕ in an AI chat or a game would drop the link for all of them.
+ * Elsewhere the bar shows the device and the stop button, not the ✕.
  *
  * Visibility therefore has two signals: the active module exposes a connect
  * capability, or at least one device is connected. Output state only changes the
@@ -26,6 +31,9 @@ import { BatteryIcon, stopAllDevices } from '@0xnullai/ui';
  */
 
 const POLL_MS = 1000;
+
+/** The 设备 module's lease id. Only there does the bar offer per-device disconnect. */
+const DEVICE_PAGE_MODULE_ID = 'control';
 
 function useConnectedDevices() {
   const [groups, setGroups] = useState(() => allConnectedDevices());
@@ -54,8 +62,10 @@ function kindLabel(device: DeviceSummary): string {
 /**
  * One device's row.
  *
- * `owner` is the module holding it, shown when several module sessions are
- * represented or when a background module owns the only attached device.
+ * `owner` is the session that reports it. The shared DG-Lab registry session
+ * gets no tag: its devices belong to the app, not to a module. Other sessions
+ * keep theirs when several sessions are represented or when a background
+ * module owns the only attached device.
  *
  * An outputting device is marked in words as well as by the dot. The dot alone
  * carries the single most important piece of state on this bar — whether
@@ -80,7 +90,7 @@ function DeviceChip({
   return (
     <div
       className={
-        'flex min-w-0 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-2 py-1 ' +
+        'flex h-9 min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 ' +
         (active === true
           ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
           : 'border-transparent bg-[var(--bg-soft)]')
@@ -88,9 +98,9 @@ function DeviceChip({
     >
       <span
         className={
-          'h-1.5 w-1.5 shrink-0 rounded-full ' +
+          'h-2 w-2 shrink-0 rounded-full ' +
           (active === true
-            ? 'bg-[var(--accent)]'
+            ? 'bg-[var(--accent)] motion-safe:animate-pulse'
             : activeKnown
               ? 'bg-[var(--success)]'
               : 'bg-[var(--text-faint)]')
@@ -99,7 +109,7 @@ function DeviceChip({
       />
       <span className="shrink-0 text-xs font-medium">{displayLabel}</span>
       {owner && (
-        <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-1.5 text-[10px] text-[var(--text-faint)]">
+        <span className="shrink-0 rounded-full bg-[var(--bg-elevated)] px-1.5 text-[10px] text-[var(--text-faint)]">
           {owner}
         </span>
       )}
@@ -127,7 +137,17 @@ function DeviceChip({
           {reading.unit ?? ''}
         </span>
       ))}
-      <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
+      {/* Words as well as the dot, so the output state never depends on colour alone.
+          Standby is the quiet default: visible to screen readers, not on screen. */}
+      <span
+        className={
+          active === true
+            ? 'shrink-0 text-[11px] font-medium text-[var(--accent-text)]'
+            : activeKnown
+              ? 'sr-only'
+              : 'shrink-0 text-[11px] text-[var(--text-faint)]'
+        }
+      >
         {active === true ? '输出中' : activeKnown ? '待机' : '状态未知'}
       </span>
       {typeof device.battery === 'number' && (
@@ -141,7 +161,7 @@ function DeviceChip({
           type="button"
           disabled={disconnecting}
           onClick={onDisconnect}
-          className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-strong)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          className="-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-strong)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
           aria-label={`断开${displayLabel}`}
           title={`断开${displayLabel}`}
         >
@@ -159,9 +179,11 @@ function DeviceChip({
 export function DeviceBar({
   activeSessionId = null,
   showConnect = true,
+  elementId = 'shl-device-bar',
 }: {
   activeSessionId?: string | null;
   showConnect?: boolean;
+  elementId?: string;
 }) {
   const groups = useConnectedDevices();
   const [stopping, setStopping] = useState(false);
@@ -192,10 +214,10 @@ export function DeviceBar({
 
   return (
     <div
-      id="shl-device-bar"
-      className="flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2.5 py-1"
+      id={elementId}
+      className="flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] bg-[var(--bg-elevated)] px-2 py-1"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* Stop goes at the far left (first in reading order). It is the primary reason
           this bar exists, not an accessory feature. */}
         {total > 0 && (
@@ -209,10 +231,11 @@ export function DeviceBar({
                 setStopping(false);
               }
             }}
-            className={`flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] border px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+            className={`ui-press sticky left-0 z-[1] flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
               hasActiveOutput
                 ? 'border-transparent bg-[var(--danger-button)] text-white hover:bg-[var(--danger-button-hover)] focus-visible:ring-[var(--danger)]'
-                : 'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus-visible:ring-[var(--accent)]'
+                : // Idle: a plain button with a red stop square, clearly clickable but quiet.
+                  'border-[var(--surface-border)] bg-[var(--bg-strong)] text-[var(--text)] hover:border-[var(--danger)] hover:bg-[var(--danger-soft)] focus-visible:ring-[var(--danger)]'
             }`}
             title={
               hasActiveOutput
@@ -220,12 +243,14 @@ export function DeviceBar({
                 : `将全部已连接设备归零（${total} 台设备）`
             }
           >
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <Square
+              className={`h-3.5 w-3.5 fill-current ${hasActiveOutput ? '' : 'text-[var(--danger)]'}`}
+            />
             {stopping ? '归零中…' : hasActiveOutput ? '停止' : '归零'}
           </button>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-nowrap items-center gap-1.5">
           {rows.map(({ group, device }) => {
             const ordinal = (kindSeen.get(device.kind) ?? 0) + 1;
             kindSeen.set(device.kind, ordinal);
@@ -234,7 +259,12 @@ export function DeviceBar({
               (kindTotals.get(device.kind) ?? 0) > 1 ? `${baseLabel} ${ordinal}` : baseLabel;
             const session = safetySessionById(group.sessionId);
             const disconnectKey = `${group.sessionId}:${device.id}`;
-            const canDisconnect = typeof session?.disconnect === 'function';
+            // Shared DG-Lab devices are disconnected from their card on the 设备 page, so
+            // the bar does not repeat that control; other device groups keep the ✕ there.
+            const canDisconnect =
+              activeSessionId === DEVICE_PAGE_MODULE_ID &&
+              group.sessionId !== DGLAB_SAFETY_SESSION_ID &&
+              typeof session?.disconnect === 'function';
             return (
               // Keyed by module + device id: two modules may legitimately report
               // the same device id, and one module may now report several
@@ -245,7 +275,11 @@ export function DeviceBar({
                 key={`${group.sessionId}:${device.id}`}
                 device={device}
                 owner={
-                  groups.length > 1 || group.sessionId !== activeSessionId ? group.label : null
+                  group.sessionId === DGLAB_SAFETY_SESSION_ID
+                    ? null
+                    : groups.length > 1 || group.sessionId !== activeSessionId
+                      ? group.label
+                      : null
                 }
                 displayLabel={displayLabel}
                 disconnecting={disconnectState.key === disconnectKey}
@@ -272,7 +306,7 @@ export function DeviceBar({
           })}
         </div>
         {disconnectState.error && (
-          <span role="alert" className="shrink-0 text-xs text-[var(--danger)]">
+          <span role="alert" className="shrink-0 whitespace-nowrap text-xs text-[var(--danger)]">
             {disconnectState.error}
           </span>
         )}
@@ -310,7 +344,7 @@ export function DeviceBar({
               });
             }
           }}
-          className="ml-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-ctl)] bg-[var(--accent)] px-2.5 py-1 text-xs font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+          className="ui-press ml-auto flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--accent)] px-3 text-[13px] font-semibold text-[var(--button-text)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
           title={total > 0 ? '连接其他设备' : '连接设备'}
         >
           {connecting ? (

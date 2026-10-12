@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22.19.0'
+          node-version: '26.11.1'
 
       - name: Require npm version preparation to be consumed
         run: npm run verify:changesets:consumed

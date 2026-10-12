@@ -24,6 +24,9 @@
     },
   ],
 
+  "r2_buckets": [{ "binding": "PORTRAITS", "bucket_name": "dg-market-character-portraits" }],
+  "triggers": { "crons": ["17 3 * * *"] },
+
   // 上传内容绑定当前 Auth 账户。
   "services": [
     {

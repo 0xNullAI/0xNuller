@@ -1,17 +1,27 @@
+import { requestProfileView, subscribeAuthChanges } from '@0xnullai/auth';
+import { CharacterReportAction } from './CharacterReports';
+import { FavoriteAction } from './FavoriteAction';
+import { parseCharacterCard, type CharacterCard } from '@0xnullai/scenes/character-card';
+import { CharacterCardFields } from '@0xnullai/scenes/character-editor';
 import { scriptLengthError } from '../script-length';
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Overlay } from '@0xnullai/ui';
-import type {
-  ItemPatch,
-  MarketItem,
-  ScenarioContent,
-  WaveformContent,
-  MultiSceneContent,
-} from '../../shared/schema';
-import { isExtraLargeScenario } from '../../shared/schema';
+import { ChevronLeft, MoreHorizontal, X } from 'lucide-react';
+import type { ItemPatch, MarketItem, ScenarioContent, WaveformContent } from '../../shared/schema';
+import { isExtraLargeScenario, promptKind } from '../../shared/schema';
 import { MAX_SCENARIO_PROMPT_LENGTH } from '../../shared/schema';
-import { deleteItem, fetchItemAccess, updateItem, markDownloaded, tipItem } from '../api';
+import {
+  characterPortraitUrl,
+  deleteItem,
+  fetchCreatorFollow,
+  fetchItemAccess,
+  saveCreatorFollow,
+  updateItem,
+  markDownloaded,
+  tipItem,
+  type CreatorFollowState,
+} from '../api';
 import { WaveformPreview } from './WaveformPreview';
 
 interface Props {
@@ -19,12 +29,9 @@ interface Props {
   onClose: () => void;
   onUpdated?: (item: MarketItem) => void;
   onDeleted?: (id: string) => void;
-}
-
-interface EditableRole {
-  name: string;
-  description: string;
-  aiPlayable: boolean;
+  onEditCharacter?: (item: MarketItem) => void;
+  onStartCharacter?: (item: MarketItem) => Promise<void>;
+  onImportScene?: (item: MarketItem) => Promise<void>;
 }
 
 function download(filename: string, text: string): void {
@@ -37,11 +44,20 @@ function download(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.Element {
+export function ItemDetail({
+  item,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onEditCharacter,
+  onStartCharacter,
+  onImportScene,
+}: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
   // Snapshot of the metadata currently on screen.
-  const [view, setView] = useState<MarketItem>(item);
+  const [viewOverride, setViewOverride] = useState<MarketItem | null>(null);
+  const view = viewOverride ?? item;
   const [access, setAccess] = useState({ canEdit: false, canDelete: false });
 
   // —— edit state ——
@@ -54,23 +70,27 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
   const [ePrompt, setEPrompt] = useState(
     item.type === 'scenario' ? (item.content as ScenarioContent).prompt : '',
   );
-  const initialMulti = item.type === 'multi-scene' ? (item.content as MultiSceneContent) : null;
-  const [eSetting, setESetting] = useState(initialMulti?.setting ?? '');
-  const [ePlayerMin, setEPlayerMin] = useState(String(initialMulti?.playerCount?.min ?? 2));
-  const [ePlayerMax, setEPlayerMax] = useState(String(initialMulti?.playerCount?.max ?? 4));
-  const [eAiMode, setEAiMode] = useState<NonNullable<MultiSceneContent['aiMode']>>(
-    initialMulti?.aiMode ?? 'none',
+  const [eCharacterCard, setECharacterCard] = useState<CharacterCard | undefined>(
+    item.type === 'scenario' ? (item.content as ScenarioContent).characterCard : undefined,
   );
-  const [eRoles, setERoles] = useState<EditableRole[]>(
-    initialMulti?.roles.map((role) => ({
-      name: role.name,
-      description: role.description ?? '',
-      aiPlayable: role.aiPlayable ?? false,
-    })) ?? [],
-  );
+  const publicCard =
+    view.type === 'scenario'
+      ? parseCharacterCard((view.content as ScenarioContent).characterCard)
+      : undefined;
+  const isCharacter =
+    view.type === 'scenario' && promptKind(view.content as ScenarioContent) === 'character';
   const [saving, setSaving] = useState(false);
   const [editErr, setEditErr] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState('');
+  const [importedScene, setImportedScene] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [follow, setFollow] = useState<CreatorFollowState | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -81,6 +101,33 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
       active = false;
     };
   }, [item.id]);
+
+  // Follow state is read here: the hero already shows @author, so only the
+  // follow toggle remains, in the ⋯ menu.
+  useEffect(() => {
+    let live = true;
+    fetchCreatorFollow(item.id)
+      .then((next) => live && setFollow(next))
+      .catch(() => live && setFollow(null));
+    const stop = subscribeAuthChanges(() => {
+      live = false;
+      setFollow(null);
+    });
+    return () => {
+      live = false;
+      stop();
+    };
+  }, [item.id]);
+
+  // Close the ⋯ menu on a press outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   const hasIcon = view.type !== 'waveform';
 
@@ -93,9 +140,7 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
           frames: (view.content as WaveformContent).frames,
           modality: (view.content as WaveformContent).modality ?? 'electrostimulation',
         }
-      : view.type === 'multi-scene'
-        ? { name: view.name, icon: view.icon, ...(view.content as MultiSceneContent) }
-        : { name: view.name, icon: view.icon, prompt: (view.content as ScenarioContent).prompt },
+      : { name: view.name, icon: view.icon, ...(view.content as ScenarioContent) },
     null,
     2,
   );
@@ -132,26 +177,42 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     }
   };
 
+  const handleStartCharacter = async () => {
+    if (!onStartCharacter || starting) return;
+    setStartError('');
+    setStarting(true);
+    try {
+      await onStartCharacter(view);
+    } catch (reason) {
+      setStartError(reason instanceof Error ? reason.message : '暂时无法开始聊天');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleImportScene = async () => {
+    if (!onImportScene || starting) return;
+    setStartError('');
+    setStarting(true);
+    try {
+      await onImportScene(view);
+      setImportedScene(true);
+    } catch (reason) {
+      setStartError(reason instanceof Error ? reason.message : '暂时无法导入场景');
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const startEdit = () => {
     setEName(view.name);
     setEAuthor(view.author ?? '');
     setEDesc(view.description ?? '');
     setEIcon(view.icon ?? '');
     setETags(view.tags.join(', '));
-    if (view.type === 'scenario') setEPrompt((view.content as ScenarioContent).prompt);
-    if (view.type === 'multi-scene') {
-      const content = view.content as MultiSceneContent;
-      setESetting(content.setting);
-      setEPlayerMin(String(content.playerCount?.min ?? 2));
-      setEPlayerMax(String(content.playerCount?.max ?? 4));
-      setEAiMode(content.aiMode ?? 'none');
-      setERoles(
-        content.roles.map((role) => ({
-          name: role.name,
-          description: role.description ?? '',
-          aiPlayable: role.aiPlayable ?? false,
-        })),
-      );
+    if (view.type === 'scenario') {
+      setEPrompt((view.content as ScenarioContent).prompt);
+      setECharacterCard((view.content as ScenarioContent).characterCard);
     }
     setEditErr('');
     setEditing(true);
@@ -163,8 +224,6 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     const lengthError = scriptLengthError({
       type: view.type,
       prompt: ePrompt,
-      setting: eSetting,
-      roles: eRoles,
     });
     if (lengthError) return setEditErr(lengthError);
 
@@ -176,31 +235,15 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
     let content: ItemPatch['content'];
     if (view.type === 'scenario') {
       if (!ePrompt.trim()) return setEditErr('剧本内容不能为空');
-      content = { prompt: ePrompt };
-    } else if (view.type === 'multi-scene') {
-      if (!eSetting.trim()) return setEditErr('世界观 / 背景不能为空');
-      const min = Number(ePlayerMin);
-      const max = Number(ePlayerMax);
-      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 50 || min > max) {
-        return setEditErr('推荐人数需为 1–50，且最少人数不能超过最多人数');
-      }
-      const roles = eRoles
-        .map((role) => ({
-          name: role.name.trim(),
-          ...(role.description.trim() ? { description: role.description.trim() } : {}),
-          ...(role.aiPlayable ? { aiPlayable: true } : {}),
-        }))
-        .filter((role) => role.name);
-      if (roles.length === 0) return setEditErr('至少需要一个角色');
       content = {
-        setting: eSetting.trim(),
-        playerCount: { min, max },
-        aiMode: eAiMode,
-        roles,
+        prompt: ePrompt,
+        kind: promptKind(view.content as ScenarioContent),
+        ...(isCharacter ? { characterCard: eCharacterCard } : {}),
       };
     }
 
     const patch: ItemPatch = {
+      expectedRevision: view.revision ?? 1,
       name: eName.trim(),
       author: eAuthor.trim(),
       description: eDesc.trim(),
@@ -220,8 +263,9 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
         icon: hasIcon ? eIcon.trim() || undefined : view.icon,
         tags,
         content: content ?? view.content,
+        revision: (view.revision ?? 1) + 1,
       };
-      setView(updated);
+      setViewOverride(updated);
       onUpdated?.(updated);
       setEditing(false);
     } catch (e) {
@@ -234,66 +278,241 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
   const handleDelete = async () => {
     if (!window.confirm('确定删除这条内容吗？')) return;
     setDeleting(true);
-    setEditErr('');
+    setActionError('');
     try {
       await deleteItem(item.id);
       onDeleted?.(item.id);
       onClose();
     } catch (error) {
-      setEditErr(error instanceof Error ? error.message : '删除失败');
+      setActionError(error instanceof Error ? error.message : '删除失败');
       setDeleting(false);
     }
   };
 
-  const updateRole = (index: number, patch: Partial<EditableRole>) =>
-    setERoles((roles) => roles.map((role, i) => (i === index ? { ...role, ...patch } : role)));
+  const handleFollow = async () => {
+    if (!follow?.creator || followBusy) return;
+    setFollowBusy(true);
+    setActionError('');
+    try {
+      await saveCreatorFollow(item.id, follow.creator.id, !follow.followed, follow.accountId);
+      setFollow({ ...follow, followed: !follow.followed });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '关注失败');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  // Every ⋯ item closes the menu first, then acts.
+  const fromMenu = (action: () => void) => () => {
+    setMenuOpen(false);
+    action();
+  };
 
   const pulse = view.type === 'waveform' ? (view.content as WaveformContent).pulse : undefined;
+  const primaryAction =
+    isCharacter && onStartCharacter ? (
+      <button
+        className="btn primary ui-press"
+        onClick={() => void handleStartCharacter()}
+        disabled={starting}
+      >
+        {starting ? '正在打开聊天…' : '开始聊天'}
+      </button>
+    ) : view.type === 'scenario' && !isCharacter && onImportScene ? (
+      <button
+        className="btn primary ui-press"
+        onClick={() => void handleImportScene()}
+        disabled={starting}
+      >
+        {starting ? '正在导入…' : importedScene ? '已导入场景' : '导入场景'}
+      </button>
+    ) : null;
+  const canFollow = Boolean(follow?.creator && follow.creator.id !== follow.accountId);
+  const editLabel =
+    view.type === 'scenario' && onEditCharacter ? `编辑${isCharacter ? '角色' : '场景'}` : '编辑';
+  const author = view.verifiedCreator ? (
+    <button
+      type="button"
+      className="market-detail-author"
+      onClick={() => requestProfileView(view.verifiedCreator!.username)}
+    >
+      @{view.verifiedCreator.username}
+    </button>
+  ) : (
+    view.author || '未认证作者'
+  );
 
   return (
-    <Overlay onDismiss={onClose} className="mkt-scope">
-      <div role="dialog" aria-modal="true" aria-labelledby="market-item-title" className="modal">
-        <header className="modal-head">
-          <h2 id="market-item-title">
-            {view.type === 'waveform'
-              ? '〰️ '
-              : `${view.icon || (view.type === 'multi-scene' ? '🎬' : '🎭')} `}
-            {view.name}
-          </h2>
-          <button type="button" className="icon-btn" aria-label="关闭条目详情" onClick={onClose}>
-            ✕
+    <Overlay onDismiss={onClose} className="mkt-scope market-detail-overlay">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-item-title"
+        className="modal market-detail"
+      >
+        {/* One bar: back (a phone pushes this screen) or close (a dialog on wide screens),
+            the title, and one ⋯ menu that holds every secondary action. */}
+        <header className="modal-head market-detail-bar">
+          <button
+            type="button"
+            className="icon-btn market-detail-back ui-press"
+            aria-label="关闭条目详情"
+            onClick={onClose}
+          >
+            <ChevronLeft className="market-detail-back-icon h-6 w-6" aria-hidden="true" />
+            <X className="market-detail-close-icon h-5 w-5" aria-hidden="true" />
           </button>
+          <h2 id="market-item-title">{view.name}</h2>
+          <div
+            ref={moreRef}
+            className="market-detail-more"
+            onKeyDown={(event) => {
+              // Escape closes only the menu; the Overlay would otherwise close the screen.
+              if (event.key === 'Escape' && menuOpen) {
+                event.stopPropagation();
+                setMenuOpen(false);
+              }
+            }}
+          >
+            <button
+              type="button"
+              className="icon-btn ui-press"
+              aria-label="更多操作"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+            </button>
+            {menuOpen && (
+              <div role="menu" aria-label="更多操作" className="market-detail-menu ui-menu-in">
+                {primaryAction && (
+                  <button type="button" role="menuitem" onClick={fromMenu(() => void handleCopy())}>
+                    复制 JSON
+                  </button>
+                )}
+                <button type="button" role="menuitem" onClick={fromMenu(handleDownload)}>
+                  下载 .json
+                </button>
+                {pulse && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() => download(`${view.name}.pulse`, pulse))}
+                  >
+                    下载 .pulse
+                  </button>
+                )}
+                {canFollow && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={followBusy}
+                    onClick={fromMenu(() => void handleFollow())}
+                  >
+                    {follow?.followed ? '取消关注作者' : '关注作者'}
+                  </button>
+                )}
+                {view.type === 'scenario' && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() => setReporting(true))}
+                  >
+                    举报
+                  </button>
+                )}
+                {!editing && access.canEdit && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={fromMenu(() =>
+                      view.type === 'scenario' && onEditCharacter
+                        ? onEditCharacter(view)
+                        : startEdit(),
+                    )}
+                  >
+                    {editLabel}
+                  </button>
+                )}
+                {!editing && access.canDelete && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="market-detail-menu-danger"
+                    disabled={deleting}
+                    onClick={fromMenu(() => void handleDelete())}
+                  >
+                    {deleting ? '删除中…' : '删除'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </header>
 
-        <p className="modal-meta">
-          {view.type === 'waveform'
-            ? '波形'
-            : view.type === 'multi-scene'
-              ? '多人场景'
-              : '单人场景'}{' '}
-          · {view.author ? `@${view.author}` : '匿名'} · 👁 {view.views} · ↓ {view.downloads}
-          {view.type === 'scenario' && <span className="agent-badge">DG Agent</span>}
-          {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent) && (
-            <span className="scale-badge">超大场景</span>
-          )}
-          {view.type === 'waveform' && (
-            <span className="agent-badge">
-              {(view.content as WaveformContent).modality === 'vibration' ? '震动' : '电击'}
-            </span>
-          )}
-        </p>
-
-        {view.description && <p className="modal-desc">{view.description}</p>}
-        <div className="mt-3 flex gap-2">
-          <button type="button" className="btn" onClick={() => void handleTip()}>
-            给作者打赏
-          </button>
-          <span className="text-xs text-[var(--text-faint)]">场景首次下载会给作者 +5 Credit</span>
+        <div className="market-detail-identity">
+          <span className="market-detail-art" aria-hidden="true">
+            {view.type === 'scenario' && (view.content as ScenarioContent).portraitId ? (
+              <img
+                className="market-detail-portrait"
+                src={characterPortraitUrl((view.content as ScenarioContent).portraitId!)}
+                alt=""
+              />
+            ) : view.type === 'waveform' ? (
+              '〰️'
+            ) : (
+              view.icon || '🎭'
+            )}
+          </span>
+          <div className="market-detail-heading">
+            <p className="market-detail-name">{view.name}</p>
+            <p className="modal-meta">
+              {view.type === 'waveform'
+                ? (view.content as WaveformContent).modality === 'vibration'
+                  ? '震动波形'
+                  : '电击波形'
+                : isCharacter
+                  ? '角色'
+                  : '场景'}
+              {view.type === 'scenario' && isExtraLargeScenario(view.content as ScenarioContent)
+                ? ' · 超大场景'
+                : ''}
+              {' · '}
+              {author}
+            </p>
+            <p className="modal-meta tabular-nums">
+              {view.views} 次浏览 · {view.downloads} 次下载
+            </p>
+          </div>
         </div>
+
+        <div className="market-detail-actions">
+          <div className="market-detail-fav">
+            <FavoriteAction key={view.id} itemId={view.id} />
+          </div>
+          <button
+            type="button"
+            className="btn market-detail-tip ui-press"
+            onClick={() => void handleTip()}
+          >
+            打赏
+          </button>
+          <span className="market-detail-tip-hint">每位用户首次下载，作者获得 5 Credit</span>
+        </div>
+
+        {view.description?.trim() && <p className="modal-desc">{view.description}</p>}
+
+        {reporting && view.type === 'scenario' && (
+          <div className="market-detail-report">
+            <CharacterReportAction itemId={view.id} defaultOpen />
+          </div>
+        )}
 
         {editing && (
           <div className="admin-edit">
-            <p className="admin-edit-title">✏️ 编辑内容</p>
+            <p className="admin-edit-title">编辑内容</p>
             <label className="field">
               <span>名称 *</span>
               <input value={eName} onChange={(e) => setEName(e.target.value)} maxLength={60} />
@@ -307,117 +526,17 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
                 <textarea rows={12} value={ePrompt} onChange={(e) => setEPrompt(e.target.value)} />
               </label>
             )}
-            {view.type === 'multi-scene' && (
-              <>
-                <label className="field">
-                  <span>世界观 / 背景 *</span>
-                  <textarea
-                    rows={7}
-                    value={eSetting}
-                    onChange={(e) => setESetting(e.target.value)}
-                  />
-                </label>
-                <div className="row">
-                  <label className="field">
-                    <span>推荐人数（最少）</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={ePlayerMin}
-                      onChange={(e) => setEPlayerMin(e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>推荐人数（最多）</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={ePlayerMax}
-                      onChange={(e) => setEPlayerMax(e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>AI 参与</span>
-                    <select
-                      value={eAiMode}
-                      onChange={(e) =>
-                        setEAiMode(e.target.value as NonNullable<MultiSceneContent['aiMode']>)
-                      }
-                    >
-                      <option value="none">纯人（无 AI）</option>
-                      <option value="solo">单个 AI</option>
-                      <option value="multi">多个 AI</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="field">
-                  <span>角色 * — 每人扮演一个</span>
-                  <div className="role-list">
-                    {eRoles.map((role, index) => (
-                      <div key={index} className="role-item">
-                        <div className="role-row">
-                          <input
-                            className="role-name"
-                            value={role.name}
-                            onChange={(e) => updateRole(index, { name: e.target.value })}
-                            maxLength={40}
-                            placeholder={`角色 ${index + 1}`}
-                          />
-                          <input
-                            className="role-desc"
-                            value={role.description}
-                            onChange={(e) => updateRole(index, { description: e.target.value })}
-                            placeholder="角色描述 / AI 人设"
-                          />
-                          <label className="role-ai">
-                            <input
-                              type="checkbox"
-                              checked={role.aiPlayable}
-                              onChange={(e) => updateRole(index, { aiPlayable: e.target.checked })}
-                            />
-                            AI
-                          </label>
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            aria-label={`删除角色 ${index + 1}`}
-                            onClick={() =>
-                              setERoles((roles) => roles.filter((_, i) => i !== index))
-                            }
-                            disabled={eRoles.length <= 1}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn add-role"
-                    onClick={() =>
-                      setERoles((roles) => [
-                        ...roles,
-                        { name: '', description: '', aiPlayable: false },
-                      ])
-                    }
-                    disabled={eRoles.length >= 12}
-                  >
-                    + 加角色
-                  </button>
-                </div>
-              </>
+            {isCharacter && (
+              <CharacterCardFields value={eCharacterCard} onChange={setECharacterCard} />
             )}
             <div className="row">
               <label className="field">
-                <span>昵称</span>
+                <span>作品署名（可选）</span>
                 <input
                   value={eAuthor}
                   onChange={(e) => setEAuthor(e.target.value)}
                   maxLength={30}
-                  placeholder="匿名"
+                  placeholder="发布账户仍会公开显示"
                 />
               </label>
               {hasIcon && (
@@ -457,76 +576,63 @@ export function ItemDetail({ item, onClose, onUpdated, onDeleted }: Props): JSX.
 
         {view.type === 'waveform' ? (
           <WaveformPreview frames={(view.content as WaveformContent).frames} height={96} />
-        ) : view.type === 'multi-scene' ? (
-          (() => {
-            const c = view.content as MultiSceneContent;
-            const aiLabel =
-              c.aiMode === 'solo' ? '单个 AI' : c.aiMode === 'multi' ? '多个 AI' : '纯人';
-            return (
-              <div className="scene-detail">
-                <pre className="prompt-box">{c.setting}</pre>
-                <div className="scene-meta">
-                  {c.playerCount && (
-                    <span>
-                      👥 建议 {c.playerCount.min}-{c.playerCount.max} 人
-                    </span>
-                  )}
-                  <span>🤖 {aiLabel}</span>
-                </div>
-                <div className="role-cards">
-                  {c.roles.map((r, i) => (
-                    <div key={i} className="role-card">
-                      <strong>
-                        {r.name}
-                        {r.aiPlayable && <span className="ai-tag">AI 可</span>}
-                      </strong>
-                      {r.description && <p>{r.description}</p>}
+        ) : (
+          <div className="scene-detail">
+            {publicCard && (
+              <div className="role-cards">
+                {(
+                  [
+                    ['人物背景', publicCard.description],
+                    ['性格', publicCard.personality],
+                    ['开场白', publicCard.greeting],
+                    ['对话示例', publicCard.exampleDialogue],
+                    ['原作者', publicCard.creator],
+                    ['使用许可', publicCard.license],
+                  ] as const
+                )
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <div key={label} className="role-card">
+                      <strong>{label}</strong>
+                      <p className="whitespace-pre-wrap">{value}</p>
                     </div>
                   ))}
-                </div>
               </div>
-            );
-          })()
-        ) : (
-          <pre className="prompt-box">{(view.content as ScenarioContent).prompt}</pre>
+            )}
+            <pre className="prompt-box">{(view.content as ScenarioContent).prompt}</pre>
+          </div>
         )}
 
-        {copyError && (
-          <p role="alert" className="error">
-            {copyError}
+        {[copyError, actionError, startError].filter(Boolean).map((message) => (
+          <p key={message} role="alert" className="error">
+            {message}
+          </p>
+        ))}
+        {/* The menu closes on copy, so its success needs its own line. */}
+        {copied && primaryAction && (
+          <p role="status" className="modal-hint">
+            已复制 JSON
           </p>
         )}
-        <div className="modal-actions">
-          <button className="btn primary" onClick={handleCopy}>
-            {copied ? '已复制 ✓' : '复制 JSON'}
-          </button>
-          <button className="btn" onClick={handleDownload}>
-            下载 .json
-          </button>
-          {pulse && (
-            <button className="btn" onClick={() => download(`${view.name}.pulse`, pulse)}>
-              下载 .pulse
-            </button>
-          )}
-          {!editing && access.canEdit && (
-            <button className="btn ghost" onClick={startEdit} title="编辑自己的内容">
-              ✏️ 编辑
-            </button>
-          )}
-          {!editing && access.canDelete && (
-            <button className="btn ghost" onClick={() => void handleDelete()} disabled={deleting}>
-              {deleting ? '删除中…' : '删除'}
+
+        <p className="modal-hint">
+          {view.type === 'scenario'
+            ? isCharacter
+              ? '聊天中的称呼、关系和记忆只属于你，作者更新卡片也不会改动。'
+              : importedScene
+                ? '已导入。在角色聊天里点名字 → 场景 即可选用。'
+                : '场景只是聊天发生的环境，不是角色，也没有记忆。'
+            : '在设备页的「波形」里点「从市场导入」即可使用。'}
+        </p>
+
+        {/* The one primary action. A phone pins it full width at the bottom. */}
+        <div className="market-detail-primary">
+          {primaryAction ?? (
+            <button className="btn primary ui-press" onClick={handleCopy}>
+              {copied ? '已复制 ✓' : '复制 JSON'}
             </button>
           )}
         </div>
-
-        <p className="modal-hint">
-          {view.type === 'multi-scene'
-            ? '在 Chat 房间『场景 → 从市场导入』即可使用。'
-            : view.type === 'scenario'
-              ? '在 Agent 点『从市场导入』即可使用；或复制 JSON 手动导入。'
-              : '在 Agent 的「波形库」面板点「从市场导入」即可直接使用；或复制 JSON 手动导入。'}
-        </p>
       </div>
     </Overlay>
   );

@@ -1,12 +1,20 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, LogOut, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
+import { pullChatRoomsPage } from '@0xnullai/sync';
 import {
   fetchLobbyRooms,
   subscribeLobby,
   type LobbyRoom,
   type LobbyStatus,
 } from '../lib/lobby-client';
-import { forgetGroup, GROUPS_CHANGED_EVENT, loadKnownGroups, syncKnownGroups } from '../lib/groups';
+import {
+  forgetGroup,
+  GROUPS_CHANGED_EVENT,
+  loadKnownGroups,
+  migrateLegacyKnownGroups,
+  type KnownGroup,
+} from '../lib/groups';
 
 /**
  * The room list in its **shell sidebar** form.
@@ -59,6 +67,15 @@ export function ShellRoomList({
   const [listRevision, setListRevision] = useState(0);
   const [pendingRoom, setPendingRoom] = useState<string | null>(null);
   const [directoryOpen, setDirectoryOpen] = useState(mode === 'directory');
+  const [account, setAccount] = useState(currentAuthUserId);
+  const [accountRevision, setAccountRevision] = useState(0);
+  const [knownPage, setKnownPage] = useState<KnownGroup[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [knownLoaded, setKnownLoaded] = useState(false);
+  const [knownError, setKnownError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestEpoch = useRef(0);
+  const visiblePageCount = useRef(1);
   const directoryId = useId();
 
   useEffect(() => {
@@ -70,12 +87,95 @@ export function ShellRoomList({
     const sub = subscribeLobby(setRooms, setStatus);
     const changed = () => setListRevision((value) => value + 1);
     window.addEventListener(GROUPS_CHANGED_EVENT, changed);
-    void syncKnownGroups();
     return () => {
       sub.close();
       window.removeEventListener(GROUPS_CHANGED_EVENT, changed);
     };
   }, []);
+
+  useEffect(
+    () =>
+      subscribeAuthChanges(() => {
+        requestEpoch.current++;
+        setAccount(currentAuthUserId());
+        setAccountRevision((value) => value + 1);
+        setKnownPage([]);
+        setNextCursor(null);
+        setKnownLoaded(false);
+        visiblePageCount.current = 1;
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!account) return;
+    const epoch = ++requestEpoch.current;
+    void (async () => {
+      await migrateLegacyKnownGroups();
+      if (epoch !== requestEpoch.current || currentAuthUserId() !== account) return;
+      setKnownError(false);
+      const groups: KnownGroup[] = [];
+      const seenCodes = new Set<string>();
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+      for (let index = 0; index < visiblePageCount.current; index++) {
+        const page = await pullChatRoomsPage(cursor);
+        if (epoch !== requestEpoch.current || currentAuthUserId() !== account) return;
+        if (
+          !page ||
+          (page.nextCursor && (seenCursors.has(page.nextCursor) || page.rooms.length === 0))
+        ) {
+          setKnownError(true);
+          return;
+        }
+        for (const room of page.rooms) {
+          if (seenCodes.has(room.code)) continue;
+          seenCodes.add(room.code);
+          groups.push({ code: room.code, name: room.name });
+        }
+        cursor = page.nextCursor;
+        if (!cursor) break;
+        seenCursors.add(cursor);
+      }
+      setKnownPage(groups);
+      setNextCursor(cursor);
+      setKnownLoaded(true);
+    })().catch(() => {
+      if (epoch === requestEpoch.current && currentAuthUserId() === account) setKnownError(true);
+    });
+  }, [account, accountRevision, listRevision]);
+
+  const loadMoreGroups = async () => {
+    if (!account || !nextCursor || loadingMore) return;
+    const epoch = requestEpoch.current;
+    const cursor = nextCursor;
+    setLoadingMore(true);
+    setKnownError(false);
+    try {
+      const page = await pullChatRoomsPage(cursor);
+      if (epoch !== requestEpoch.current || currentAuthUserId() !== account) return;
+      if (!page || (page.nextCursor && (page.nextCursor === cursor || page.rooms.length === 0))) {
+        setKnownError(true);
+        return;
+      }
+      setKnownPage((groups) => {
+        const seen = new Set(groups.map((group) => group.code));
+        const additions: KnownGroup[] = [];
+        for (const { code, name } of page.rooms) {
+          if (seen.has(code)) continue;
+          seen.add(code);
+          additions.push({ code, name });
+        }
+        return [...groups, ...additions];
+      });
+      setNextCursor(page.nextCursor);
+      visiblePageCount.current++;
+    } catch {
+      if (epoch === requestEpoch.current && currentAuthUserId() === account) setKnownError(true);
+    } finally {
+      if (epoch === requestEpoch.current) setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     if (!pendingRoom) return;
@@ -85,10 +185,15 @@ export function ShellRoomList({
 
   // Read on every render rather than once: a group is recorded the moment you join it, and
   // the sidebar is where you go back to it.
-  const knownGroups = loadKnownGroups();
+  const knownGroups = account ? knownPage : loadKnownGroups();
   const knownCodes = new Set(knownGroups.map((group) => group.code));
-  const ordered = buildVisibleRooms(knownGroups, rooms, mode);
-  const showingDirectory = mode === 'directory' || knownGroups.length === 0;
+  const ordered =
+    account && !knownLoaded && mode === 'memberships'
+      ? []
+      : buildVisibleRooms(knownGroups, rooms, mode);
+  const showingDirectory =
+    mode === 'directory' ||
+    ((account === null || knownLoaded) && knownGroups.length === 0 && !nextCursor);
   const showRooms = !showingDirectory || directoryOpen;
   void listRevision;
 
@@ -100,13 +205,13 @@ export function ShellRoomList({
         className="flex min-h-11 touch-manipulation items-center gap-2 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)] active:bg-[var(--accent-soft)]"
       >
         <Plus className="h-4 w-4 shrink-0" />
-        新建 / 加入房间
+        新建 / 加入群聊
       </button>
 
       {showingDirectory && rooms.length > 0 ? (
         <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2">
           <p className="min-w-0 text-[11px] text-[var(--text-faint)]">
-            {knownGroups.length === 0 && mode === 'memberships' ? '尚未加入房间' : '公开房间'}
+            {knownGroups.length === 0 && mode === 'memberships' ? '尚未加入群聊' : '公开群'}
           </p>
           <button
             type="button"
@@ -115,7 +220,7 @@ export function ShellRoomList({
             onClick={() => setDirectoryOpen((open) => !open)}
             className="flex shrink-0 items-center gap-1 rounded-[var(--radius-ctl)] px-1.5 py-1 text-[11px] text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]"
           >
-            {directoryOpen ? '隐藏' : '显示'}公开房间（{rooms.length}）
+            {directoryOpen ? '隐藏' : '显示'}公开群（{rooms.length}）
             <ChevronDown
               className={`h-3 w-3 transition-transform ${directoryOpen ? 'rotate-180' : ''}`}
             />
@@ -151,6 +256,9 @@ export function ShellRoomList({
               }}
               className="flex min-h-11 min-w-0 flex-1 touch-manipulation items-center gap-2 px-2 py-2 text-left active:bg-[var(--accent-soft)] disabled:opacity-70"
             >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+                <Users className="h-5 w-5" />
+              </span>
               <span className="min-w-0 flex-1 truncate">{room.name || room.code}</span>
               {pendingRoom === room.code && currentRoom !== room.code && (
                 <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--accent)]">
@@ -165,10 +273,11 @@ export function ShellRoomList({
             {knownCodes.has(room.code) || room.code === currentRoom ? (
               <button
                 type="button"
-                aria-label={`${room.code === currentRoom ? '退出' : '删除'}房间 ${room.name || room.code}`}
-                title={room.code === currentRoom ? '退出房间' : '从列表删除'}
+                aria-label={`${room.code === currentRoom ? '退出' : '删除'}群聊 ${room.name || room.code}`}
+                title={room.code === currentRoom ? '退出群聊' : '从列表删除'}
                 onClick={() => {
                   forgetGroup(room.code);
+                  setKnownPage((groups) => groups.filter((group) => group.code !== room.code));
                   setListRevision((value) => value + 1);
                   onDelete(room.code);
                 }}
@@ -185,10 +294,35 @@ export function ShellRoomList({
         ))}
       </div>
 
+      {account && mode === 'memberships' && nextCursor && (
+        <button
+          type="button"
+          onClick={() => void loadMoreGroups()}
+          disabled={loadingMore}
+          className="min-h-10 rounded-[var(--radius-ctl)] px-2 text-left text-sm text-[var(--accent)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
+        >
+          {loadingMore ? '正在加载群聊…' : knownError ? '重试加载群聊' : '加载更多群聊'}
+        </button>
+      )}
+      {account && mode === 'memberships' && !knownLoaded && !knownError && (
+        <p role="status" className="px-2 py-2 text-xs text-[var(--text-faint)]">
+          正在读取群聊…
+        </p>
+      )}
+      {account && mode === 'memberships' && knownError && (
+        <button
+          type="button"
+          onClick={() => setAccountRevision((value) => value + 1)}
+          className="px-2 py-2 text-left text-xs text-[var(--danger)]"
+        >
+          群聊列表读取失败，重试
+        </button>
+      )}
+
       {status === 'connecting' && rooms.length === 0 && (
         <p className="flex items-center gap-1.5 px-2 py-2 text-xs text-[var(--text-faint)]">
           <RefreshCw className="h-3 w-3 animate-spin" />
-          正在获取房间
+          正在获取群聊
         </p>
       )}
     </div>

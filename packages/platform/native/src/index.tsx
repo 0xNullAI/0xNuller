@@ -1,22 +1,18 @@
-import { createContext, useContext, useSyncExternalStore } from 'react';
+import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
-import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
+import {
+  createWebBluetoothDgLabTransport,
+  DgLabConnectionRegistry,
+} from '@0xnullai/device-runtime';
+import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
 /**
- * The single entry point where the native (Tauri) shell injects Bluetooth
- * capability into modules.
+ * The single entry point where a shell injects capabilities into modules.
  *
- * Web Bluetooth is unavailable on Android; plugin-blec is mandatory.
- * Pre-merge this seam had a different shape in each of the three shells —
- * Agent used `servicesOverrides` + `connectDeviceTauri`, Chat used
- * `deviceClientFactory` + `requestDeviceTauri`, Voice used `transport`.
- *
- * The three seam shapes are preserved verbatim; only the injection point
- * is unified. Not reshaping them is deliberate: Android has no hot update,
- * a botched injection interface mutes all three modules at once, and the
- * broken build lives on users' phones for a long time. Unifying the shapes
- * is low-reward, high-risk — revisit after several device-verified
- * releases.
+ * Devices: the shell builds one `DgLabConnectionRegistry` before render and passes it as
+ * `dglab`. Every module (Control, Agent, Voice, Video, Chat, Playground) reads it through
+ * `useDgLabRegistry()` and opens no BLE link of its own. There is no per-module device seam:
+ * before the shared registry each module had one, and the same Coyote could carry two adapters.
  *
  * Context instead of prop drilling: the shell lazy-loads modules by route,
  * so props would thread through ModuleSlot / Suspense / ErrorBoundary and
@@ -27,25 +23,17 @@ import type { EmbeddedDeviceRuntimeProvider } from '@0xnullai/device-runtime';
  */
 
 export interface NativeBridge {
-  /** Shell-owned optional embedded runtime shared by every product surface. */
-  deviceRuntime?: EmbeddedDeviceRuntimeProvider;
-  /** Agent's injection: service overrides + unified connect flow. Shape mirrors apps/agent AppProps. */
+  /**
+   * The one DG-Lab connection owner for the whole app instance, built by the shell before render.
+   * Modules read it through `useDgLabRegistry()`.
+   */
+  dglab?: DgLabConnectionRegistry;
+  /**
+   * Agent's non-device service flags (speech, bridge, update checker). Shape mirrors
+   * apps/agent `ServicesOverrides`.
+   */
   agent?: {
     servicesOverrides?: unknown;
-    connectDevice?: unknown;
-  };
-  /** Chat's injection: client factory + device picker. */
-  chat?: {
-    deviceClientFactory?: unknown;
-    requestDevice?: unknown;
-  };
-  /** Voice's injection: the whole transport. */
-  voice?: {
-    transport?: unknown;
-  };
-  /** Video's injection: creates the same control service with native BLE clients. */
-  video?: {
-    createControlService?: unknown;
   };
 }
 
@@ -63,7 +51,7 @@ export function NativeBridgeProvider({
 }: {
   bridge: NativeBridge;
   children: ReactNode;
-  /** Web also supplies the shared runtime through this seam without pretending to be Tauri. */
+  /** Web also supplies the shared registry through this seam without pretending to be Tauri. */
   native?: boolean;
 }) {
   return <Ctx.Provider value={{ bridge, native }}>{children}</Ctx.Provider>;
@@ -75,23 +63,27 @@ export function useNativeBridge(): NativeBridge {
 }
 
 /**
- * Canonical reactive view of the shell-owned generic-device opt-in.
+ * The shell's DG-Lab registry, or a lazily built Web Bluetooth one in a standalone module build.
  *
- * Surfaces must use this instead of treating an injected runtime as an enabled
- * feature. The provider publishes `false` only after its stop barrier succeeds,
- * so consumers keep their UI and bindings alive when disable fails.
+ * The fallback is a module-level singleton, so a standalone build still has exactly one owner per
+ * physical device however many components call this hook.
  */
-export function useEmbeddedDeviceRuntimeEnabled(): boolean {
-  const provider = useNativeBridge().deviceRuntime;
-  return useSyncExternalStore(
-    (listener) => provider?.subscribeEnabled(listener) ?? NOOP_UNSUBSCRIBE,
-    () => provider?.isEnabled() ?? false,
-    () => false,
-  );
+export function useDgLabRegistry(): DgLabConnectionRegistry {
+  return useNativeBridge().dglab ?? standaloneDgLabRegistry();
+}
+
+let standaloneRegistry: DgLabConnectionRegistry | null = null;
+
+function standaloneDgLabRegistry(): DgLabConnectionRegistry {
+  standaloneRegistry ??= new DgLabConnectionRegistry({
+    transport: createWebBluetoothDgLabTransport(),
+    limits: loadDeviceSafety,
+    subscribeLimits: (listener) => subscribeDeviceSafety(() => listener()),
+  });
+  return standaloneRegistry;
 }
 
 const EMPTY: NativeBridge = {};
-const NOOP_UNSUBSCRIBE = () => undefined;
 
 /** Whether the active shell is native rather than Web. */
 export function useIsNative(): boolean {

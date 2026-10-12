@@ -9,6 +9,8 @@ export * from './components/permission-modal';
 export * from './components/safety-notice';
 export * from './components/market-import-dialog';
 export * from './components/setting-toggle';
+export * from './components/segmented-control';
+export * from './components/switch';
 export * from './components/setting-label';
 export * from './components/setting-select';
 export * from './components/help-tip';
@@ -40,9 +42,16 @@ export * from './media-query';
 export * from './use-safety-session';
 export * from './shell-context';
 export * from './shell-nav';
+export * from './settings-subpage';
 export * from './module-actions';
 export * from './sidebar-sections';
 export * from './settings-sections';
 export * from './overlay';
 export * from './stop-all';
 export { StopFailureBanner } from './components/stop-failure-banner';
+
+export * from './components/conversation-layout';
+export * from './components/conversation-sequence';
+export * from './components/recorded-voice-preview';
+
+export * from './navigation-guard';

@@ -1,5 +1,6 @@
 import type { UnifiedOutputTarget } from '@0xnullai/device-runtime';
 import type { LlmClient, LlmImageInput, ToolCall, ToolDefinition } from '@dg-agent/core';
+import { guardUnverifiedActionClaim } from '@dg-agent/runtime';
 
 export type VideoAiAllowedTarget = UnifiedOutputTarget & {
   capA: number;
@@ -9,9 +10,13 @@ export type VideoAiAllowedTarget = UnifiedOutputTarget & {
 export interface VideoAiScene {
   name: string;
   prompt: string;
+  /** Prompt without the opening conversation snapshot, for fresh per-message memory retrieval. */
+  basePrompt?: string;
 }
 
 export interface VideoAiRoutingGrantInput {
+  /** Server-owned private conversation; required by managed visual billing. */
+  conversationId?: string;
   targets: readonly VideoAiAllowedTarget[];
   allowEnhanced: boolean;
   allowBurst: boolean;
@@ -56,6 +61,8 @@ export class VideoAiDeviceRouter {
   private llm: LlmClient | null = null;
   private targets: readonly UnifiedOutputTarget[] = [];
   private scene: VideoAiScene | null = null;
+  private authorizedScene: VideoAiScene | null = null;
+  private authorizedLlm: LlmClient | null = null;
 
   constructor(private readonly options: Options) {
     this.now = options.now ?? Date.now;
@@ -78,6 +85,10 @@ export class VideoAiDeviceRouter {
     const issuedAt = this.now();
     this.invalidate();
     this.ceilings.clear();
+    // A shared Market selection may change in another panel while this camera
+    // run is active. Keep every observation under the prompt authorized here.
+    this.authorizedScene = this.scene ? { ...this.scene } : null;
+    this.authorizedLlm = this.llm ?? this.options.getLlm();
     this.grant = {
       ...input,
       targets: input.targets.map((target) => ({ ...target })),
@@ -105,7 +116,7 @@ export class VideoAiDeviceRouter {
       throw new Error('Video 当前没有设备控制权');
     }
     await this.assertAllowlistStillLive(grant);
-    const llm = this.llm ?? this.options.getLlm();
+    const llm = this.authorizedLlm;
     if (!llm?.capabilities?.imageInput) throw new Error('当前模型未声明图片输入能力');
     if (this.activeInference) throw new Error('已有画面正在分析');
     const generation = this.generation;
@@ -115,9 +126,10 @@ export class VideoAiDeviceRouter {
     externalSignal?.addEventListener('abort', abort, { once: true });
     try {
       const prompt = formatAllowedTargets(grant.targets);
+      const sessionId = grant.conversationId ?? 'video-ai-routing-ephemeral';
       const result = await llm.runTurn({
         session: {
-          id: 'video-ai-routing-ephemeral',
+          id: sessionId,
           createdAt: grant.issuedAt,
           updatedAt: this.now(),
           messages: [],
@@ -134,11 +146,11 @@ export class VideoAiDeviceRouter {
         },
         message: prompt,
         context: {
-          sessionId: 'video-ai-routing-ephemeral',
+          sessionId,
           sourceType: 'web',
           traceId: `video-route-${generation}-${this.now()}`,
         },
-        instructions: buildVideoAiInstructions(this.scene),
+        instructions: buildVideoAiInstructions(this.authorizedScene),
         tools: [toolDefinition(grant)],
         image,
         abortSignal: controller.signal,
@@ -148,21 +160,40 @@ export class VideoAiDeviceRouter {
         throw new DOMException('Video observation aborted', 'AbortError');
       }
       await this.assertGrantCurrent(grant, generation);
-      for (const call of result.toolCalls ?? []) {
-        if (call.name !== 'video_device_control') continue;
-        await this.execute(call, grant, generation);
+      const calls = result.toolCalls ?? [];
+      try {
+        if (calls.some((call) => call.name !== 'video_device_control'))
+          throw new Error('Video 模型请求了未授权的工具');
+        for (const call of calls) await this.execute(call, grant, generation);
+      } catch (error) {
+        // Validation of a later call can fail after an earlier call started a
+        // physical output. Any invalid batch must revoke the whole grant.
+        if (!grant.revoked) await this.stop();
+        throw error;
       }
-      return result.assistantMessage.trim() || '画面状态已更新';
+      // The provider's pre-execution prose cannot describe the outcome of these calls.
+      if (calls.length) return `已执行 ${calls.length} 项授权设备动作；请以设备实时状态为准。`;
+      return guardUnverifiedActionClaim(result.assistantMessage.trim(), []) || '画面状态已更新';
     } finally {
       externalSignal?.removeEventListener('abort', abort);
       if (this.activeInference === controller) this.activeInference = null;
     }
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Revoke the grant and drop in-flight inference, with no device write. Lease loss uses this:
+   * the lease owners already stopped every output, and `stop()` here would bypass the lease
+   * fence and zero what the new holder starts.
+   */
+  revoke(): void {
     if (this.grant) this.grant.revoked = true;
     this.invalidate();
+    this.authorizedLlm = null;
     this.activeRoute = null;
+  }
+
+  async stop(): Promise<void> {
+    this.revoke();
     if (!this.stopInFlight) {
       const stopping = this.options.stopAll();
       this.stopInFlight = stopping;
@@ -207,7 +238,12 @@ export class VideoAiDeviceRouter {
           },
           grant,
         );
-        assertAcceptedExecutionResult(stopResult);
+        assertAcceptedExecutionResult(stopResult, {
+          ...args,
+          target: previousRoute.target,
+          action: 'stop',
+          channel: previousRoute.channel,
+        });
       } catch (error) {
         grant.revoked = true;
         this.invalidate();
@@ -234,8 +270,15 @@ export class VideoAiDeviceRouter {
       throw new Error('Video 未授权停止后增强');
     }
     await this.assertGrantCurrent(grant, generation);
-    const result = await this.options.invoke(args, grant);
-    assertAcceptedExecutionResult(result);
+    try {
+      const result = await this.options.invoke(args, grant);
+      assertAcceptedExecutionResult(result, args);
+    } catch (error) {
+      grant.revoked = true;
+      this.invalidate();
+      await this.options.stopAll();
+      throw error;
+    }
     await this.assertGrantCurrent(grant, generation);
     if (args.action === 'stop') {
       if (
@@ -290,19 +333,42 @@ export class VideoAiDeviceRouter {
   }
 }
 
-function assertAcceptedExecutionResult(result: unknown): void {
-  if (typeof result !== 'string') return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(result);
-  } catch {
+function assertAcceptedExecutionResult(result: unknown, action: VideoAiDeviceAction): void {
+  let parsed: unknown = result;
+  if (typeof result === 'string') {
+    try {
+      parsed = JSON.parse(result);
+    } catch {
+      throw new Error('设备动作结果未确认');
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new Error('设备动作结果未确认');
+  const value = parsed as Record<string, unknown>;
+  if (typeof value.error === 'string') throw new Error(value.error);
+  if (
+    value._meta &&
+    typeof value._meta === 'object' &&
+    (value._meta as Record<string, unknown>).kind === 'tool-denied'
+  )
+    throw new Error('设备拒绝了 Video 动作');
+  const command = value.command;
+  const types: Record<VideoAiDeviceAction['action'], readonly string[]> = {
+    start: ['start', 'vibrateStart'],
+    adjust: ['adjustStrength', 'vibrateAdjust'],
+    stop: ['stop', 'vibrateStop'],
+    burst: ['burst', 'vibrateBurst'],
+  };
+  if (
+    (value.ok === true || value.ok === 'clamped') &&
+    (action.target.kind !== 'coyote' || value.targetId === action.target.targetId) &&
+    command &&
+    typeof command === 'object' &&
+    !Array.isArray(command) &&
+    types[action.action].includes(String((command as Record<string, unknown>).type))
+  )
     return;
-  }
-  if (!parsed || typeof parsed !== 'object') return;
-  const value = parsed as { error?: unknown; _meta?: { kind?: unknown } };
-  if (typeof value.error === 'string' || value._meta?.kind === 'tool-denied') {
-    throw new Error(typeof value.error === 'string' ? value.error : '设备拒绝了 Video 动作');
-  }
+  throw new Error('设备动作结果未确认');
 }
 
 export function buildVideoAiInstructions(scene: VideoAiScene | null): string {
@@ -340,9 +406,6 @@ function parseAction(call: ToolCall, grant: VideoAiRoutingGrantSnapshot): VideoA
   if (!Number.isFinite(value) || !Number.isSafeInteger(durationMs)) throw new Error('无效设备参数');
   if ((action === 'start' || action === 'burst') && Number(value) < 0) {
     throw new Error('启动或脉冲强度不能为负数');
-  }
-  if (target.kind === 'embedded' && action !== 'start' && action !== 'stop') {
-    throw new Error('通用设备不支持该 Video 动作');
   }
   return {
     id: call.id,

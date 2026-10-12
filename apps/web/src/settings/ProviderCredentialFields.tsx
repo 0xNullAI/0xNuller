@@ -1,3 +1,4 @@
+import { SecretHint } from './SecretHint';
 import { Input } from '@0xnullai/ui';
 import type {
   ProviderDefinition,
@@ -8,17 +9,38 @@ import { ProviderFieldControls } from './ProviderFieldControls';
 
 export type ProviderCredentialConfig = ProviderSettings & { rememberApiKey: boolean };
 
+/** Custom endpoints never send images until the user says the model accepts them. */
+export function ProviderImageInputToggle<T extends ProviderCredentialConfig>({
+  config,
+  update,
+}: {
+  config: T;
+  update: (patch: Partial<T>) => void;
+}) {
+  if (config.providerId !== 'custom') return null;
+  return (
+    <label className="flex items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
+      <span>支持图片输入</span>
+      <input
+        type="checkbox"
+        checked={config.imageInput}
+        onChange={(event) => update({ imageInput: event.target.checked } as Partial<T>)}
+      />
+    </label>
+  );
+}
+
 export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
   config,
   definition,
   update,
-  showAdvanced = false,
 }: {
   config: T;
   definition: ProviderDefinition | undefined;
   update: (patch: Partial<T>) => void;
-  showAdvanced?: boolean;
 }) {
+  // Managed has no user-editable connection fields; only the custom endpoint does.
+  const showAdvanced = config.providerId === 'custom';
   const hasApiKey = definition?.fields.some((field) => field.key === 'apiKey') ?? false;
   return (
     <>
@@ -49,6 +71,7 @@ export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
             value={config.apiKey}
             onChange={(event) => update({ apiKey: event.target.value } as Partial<T>)}
           />
+          <SecretHint value={config.apiKey} />
         </label>
       )}
     </>

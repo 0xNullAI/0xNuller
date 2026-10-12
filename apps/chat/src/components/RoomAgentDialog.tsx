@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { Bot, Trash2 } from 'lucide-react';
 import { Overlay } from '@0xnullai/ui';
 import { loadScenes, subscribeScenes, type SavedScene } from '@0xnullai/scenes';
-import type { RoomAgent } from '../../worker/wire';
+import {
+  MAX_ROOM_AGENT_NAME,
+  MAX_ROOM_AGENT_PERSONA,
+  ROOM_AGENT_ID,
+  type NamedRoomAgent,
+  type RoomAgent,
+} from '../../worker/wire';
+
+const DEFAULT_ROOM_AGENT_NAME = '群 AI';
 
 /**
  * Add or edit the room's AI participant.
@@ -22,15 +30,32 @@ import type { RoomAgent } from '../../worker/wire';
  */
 export function RoomAgentDialog({
   agent,
+  agents,
+  onSaveAgents,
+  billingMode = 'host-byok',
+  onBillingModeChange,
   onSave,
   onClose,
 }: {
   agent: RoomAgent | null;
+  agents?: NamedRoomAgent[];
+  onSaveAgents?: (agents: NamedRoomAgent[]) => void;
+  billingMode?: 'host-byok' | 'managed';
+  onBillingModeChange?: (mode: 'host-byok' | 'managed') => void;
   onSave: (next: RoomAgent | null) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(agent?.name ?? '');
-  const [persona, setPersona] = useState(agent?.persona ?? '');
+  const selected = agents ? (agents[0] ?? null) : agent;
+  const save = (next: RoomAgent | null) => {
+    if (!agents || !onSaveAgents) {
+      onSave(next);
+      return;
+    }
+    onSaveAgents(next ? [{ ...next, id: agents[0]?.id ?? ROOM_AGENT_ID }] : []);
+  };
+  // A usable default so adding an AI is never blocked on a required empty field.
+  const [name, setName] = useState(selected?.name ?? DEFAULT_ROOM_AGENT_NAME);
+  const [persona, setPersona] = useState(selected?.persona ?? '');
   const [scenes, setScenes] = useState<SavedScene[]>([]);
 
   useEffect(() => {
@@ -43,6 +68,9 @@ export function RoomAgentDialog({
   }, []);
 
   const trimmedName = name.trim();
+  const nameTooLong = trimmedName.length > MAX_ROOM_AGENT_NAME;
+  const personaTooLong = persona.length > MAX_ROOM_AGENT_PERSONA;
+  const canSave = !!trimmedName && !nameTooLong && !personaTooLong;
 
   return (
     <Overlay onDismiss={onClose}>
@@ -55,16 +83,36 @@ export function RoomAgentDialog({
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-[var(--accent)]" />
           <h2 id="room-agent-title" className="text-base font-semibold">
-            房间 AI
+            群 AI
           </h2>
         </div>
 
+        <p className="text-xs text-[var(--text-soft)]">
+          每群仅有一位 AI，只有真人 @ 时回应；不会读取成员的个人记忆。
+        </p>
+        {onBillingModeChange && (
+          <label className="flex flex-col gap-1.5 text-xs text-[var(--text-soft)]">
+            群 AI 模式
+            <select
+              value={billingMode}
+              onChange={(event) =>
+                onBillingModeChange(event.target.value as 'host-byok' | 'managed')
+              }
+              className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm"
+            >
+              <option value="host-byok">房主自带密钥（支持设备工具）</option>
+              <option value="managed">平台托管（@ 发起人支付 Credit，仅文字）</option>
+            </select>
+            {billingMode === 'managed'
+              ? '每次 @ 群 AI 前由发起人账户预留 Credit，成功后按实际用量结算；此模式不调用设备工具。'
+              : '由房主浏览器的自带密钥调用模型；不会从其他成员扣 Credit。'}
+          </label>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-[var(--text-soft)]">名字</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            maxLength={40}
             placeholder="例如：小助手"
             className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
@@ -80,7 +128,8 @@ export function RoomAgentDialog({
                   type="button"
                   onClick={() => {
                     setPersona(scene.prompt);
-                    if (!trimmedName) setName(scene.name);
+                    if (!trimmedName || trimmedName === DEFAULT_ROOM_AGENT_NAME)
+                      setName(scene.name);
                   }}
                   className="rounded-[var(--radius-ctl)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
                 >
@@ -97,25 +146,31 @@ export function RoomAgentDialog({
           <textarea
             value={persona}
             onChange={(e) => setPersona(e.target.value)}
-            maxLength={4000}
             rows={6}
             placeholder="描述身份、语气和规则"
             className="resize-none rounded-[var(--radius-ctl)] border border-[var(--surface-border)] bg-[var(--bg-strong)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--accent)]"
           />
         </label>
 
+        {(nameTooLong || personaTooLong) && (
+          <p role="alert" className="text-sm text-[var(--danger)]">
+            当前群 AI 名字最多 {MAX_ROOM_AGENT_NAME} 个字符，人设最多 {MAX_ROOM_AGENT_PERSONA}
+            个字符。导入的完整内容已保留，请编辑缩短后保存；原场景不会更改。
+          </p>
+        )}
+
         <div className="flex items-center justify-between gap-2">
-          {agent ? (
+          {selected ? (
             <button
               type="button"
               onClick={() => {
-                onSave(null);
+                save(null);
                 onClose();
               }}
               className="flex items-center gap-1.5 rounded-[var(--radius-ctl)] px-3 py-2 text-sm text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
             >
               <Trash2 className="h-4 w-4" />
-              移出房间
+              移出群聊
             </button>
           ) : (
             <span />
@@ -131,14 +186,15 @@ export function RoomAgentDialog({
             </button>
             <button
               type="button"
-              disabled={!trimmedName}
+              disabled={!canSave}
               onClick={() => {
-                onSave({ name: trimmedName, persona });
+                if (!canSave) return;
+                save({ name: trimmedName, persona });
                 onClose();
               }}
               className="rounded-[var(--radius-ctl)] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--button-text)] transition-opacity disabled:opacity-40"
             >
-              {agent ? '保存' : '加入房间'}
+              {selected ? '保存' : '加入群聊'}
             </button>
           </div>
         </div>

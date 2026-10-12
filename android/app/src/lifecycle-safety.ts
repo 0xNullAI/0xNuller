@@ -16,9 +16,10 @@
  * This wrapper hooks the DeviceClient with browser + Tauri lifecycle
  * signals and fires `emergencyStop()` on every transition that takes the
  * app off-screen. It is a belt-and-braces: the JS side covers
- * `visibilitychange` / `pagehide` / `freeze`, and the Tauri Rust side
- * (lib.rs) emits a window event on Android's onPause for the cases where
- * the webview is suspended before JS gets a chance.
+ * `visibilitychange` / `pagehide` / `freeze`; MainActivity.onPause also
+ * dispatches `0xnullai:native-pause` before the WebView is paused, so the stop
+ * is issued even when the page events arrive late; and lib.rs emits
+ * `app://paused` when the app exits.
  */
 
 import type { DeviceClient } from '@dg-agent/core';
@@ -39,9 +40,10 @@ interface LifecycleListener {
  * `connectDevice` was added to `TauriBlecDeviceClient` after this wrapper
  * was written and wasn't added to the explicit list, so every Coyote
  * connection made through the unified picker failed with "当前环境不支持连接郊狼设备"
- * — `supportsConnectDevice()` in `connect-any-device-tauri.ts` checked the
- * wrapped client, found no `connectDevice`, and refused. Forwarding it here
- * (when present) closes that gap without giving up the explicit-list safety
+ * — the connect path checked the wrapped client, found no `connectDevice`,
+ * and refused. Forwarding it here (the shared registry's Tauri transport
+ * attaches every picked Coyote through it)
+ * when present closes that gap without giving up the explicit-list safety
  * this wrapper relies on elsewhere.
  */
 interface ConnectDeviceCapable {
@@ -53,6 +55,9 @@ function hasConnectDevice(value: unknown): value is ConnectDeviceCapable {
 }
 
 type Stopper = () => Promise<void>;
+
+/** Dispatched by MainActivity.onPause before the WebView is paused. */
+export const NATIVE_PAUSE_EVENT = '0xnullai:native-pause';
 
 function attachWebListeners(stop: Stopper): LifecycleListener {
   const onHidden = () => {
@@ -72,12 +77,14 @@ function attachWebListeners(stop: Stopper): LifecycleListener {
   document.addEventListener('visibilitychange', onHidden);
   window.addEventListener('pagehide', onPageHide);
   document.addEventListener('freeze', onFreeze);
+  window.addEventListener(NATIVE_PAUSE_EVENT, onPageHide);
 
   return {
     detach() {
       document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('freeze', onFreeze);
+      window.removeEventListener(NATIVE_PAUSE_EVENT, onPageHide);
     },
   };
 }
@@ -107,10 +114,21 @@ async function attachTauriListener(stop: Stopper): Promise<LifecycleListener> {
   }
 }
 
-/** Attach the native pause signal to the shell-owned embedded DeviceRuntime controller. */
-export async function attachAndroidDeviceRuntimeLifecycle(stop: () => void): Promise<() => void> {
-  const listener = await attachTauriListener(async () => stop());
-  return () => listener.detach();
+/**
+ * Attach every off-screen signal (web visibility/pagehide/freeze plus Tauri `app://paused`) to the
+ * shared DG-Lab registry's stop.
+ *
+ * The registry has no web listeners of its own, and it also owns Opossum links that
+ * `wrapWithLifecycleSafety` never covered.
+ */
+export async function attachAndroidDgLabLifecycle(stop: () => void): Promise<() => void> {
+  const stopper: Stopper = async () => stop();
+  const web = attachWebListeners(stopper);
+  const tauri = await attachTauriListener(stopper);
+  return () => {
+    web.detach();
+    tauri.detach();
+  };
 }
 
 /**

@@ -25,13 +25,13 @@ export default defineConfig({
       'workers/auth',
       'android/app',
 
-      // The two proxy Workers are plain JS with no config of their own. Their
-      // request-admission logic shares this lightweight Node project.
+      // The LLM proxy Worker is plain JS with no config of its own. Its
+      // request-admission logic runs in this lightweight Node project.
       {
         test: {
           name: 'worker-proxies',
           environment: 'node',
-          include: ['workers/{llm-proxy,speech-proxy}/**/*.{test,spec}.js'],
+          include: ['workers/llm-proxy/**/*.{test,spec}.js'],
         },
       },
 

@@ -17,25 +17,23 @@
     "@0xnullai/auth": "*",
     "@0xnullai/device-runtime": "0.1.0",
     "@0xnullai/llm-providers": "0.1.0",
+    "@0xnullai/market-client": "0.1.0",
     "@0xnullai/native": "0.1.0",
+    "@0xnullai/observability": "0.1.0",
     "@0xnullai/scenes": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
-    "@dg-agent/runtime": "0.1.0",
     "@dg-agent/agent-browser": "0.1.0",
-    "@dg-agent/providers-pi-http": "0.1.0",
-    "@dg-agent/storage-browser": "0.1.0",
-    "@dg-kit/core": "1.16.4",
-    "@dg-kit/safety": "1.16.4",
+    "@dg-kit/core": "1.16.5",
+    "@dg-kit/safety": "1.16.5",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "^19.2.5"
   },
   "exports": {
     "./Shell": "./src/Shell.tsx",
-    "./embedded-device-runtime": "./src/embedded-device-runtime.ts",
+    "./client-error-reporting": "./src/client-error-reporting.ts",
+    "./dglab-device-registry": "./src/dglab-device-registry.ts",
     "./shell.css": "./src/shell.css"
   },
   "devDependencies": {
