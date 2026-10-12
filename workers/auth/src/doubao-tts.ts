@@ -129,7 +129,8 @@ export async function synthesizeDoubaoSpeech(
           audio_params: { format: 'mp3', sample_rate: 24000 },
         },
       }),
-      redirect: 'error',
+      // Workers reject redirect 'error'; a 3xx stays !ok and fails below.
+      redirect: 'manual',
       signal: AbortSignal.timeout(45_000),
     });
   } catch {

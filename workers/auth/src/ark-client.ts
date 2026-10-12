@@ -71,7 +71,8 @@ async function post(
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'error',
+      // Workers reject redirect 'error'; a 3xx stays !ok and fails below.
+      redirect: 'manual',
     });
   } catch {
     // A timeout may have reached the provider after it started work.

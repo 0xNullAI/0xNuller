@@ -156,7 +156,7 @@ async function characterReference(env: MediaEnv, row: Row): Promise<string | nul
   try {
     const response = await env.MARKET.fetch(
       `https://market.internal/api/items/character-portraits/${found.character.portraitId}/content`,
-      { redirect: 'error', signal: AbortSignal.timeout(15_000) },
+      { redirect: 'manual', signal: AbortSignal.timeout(15_000) },
     );
     return response.ok ? dataUrl(await boundedResponse(response, PORTRAIT_LIMIT)) : null;
   } catch {
