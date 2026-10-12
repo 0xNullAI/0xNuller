@@ -105,7 +105,8 @@ if (expectedVersion) {
   for (const file of manifest.files) {
     const response = await fetch(
       `${base}/ota/android/${manifest.buildId}/${file.path.split('/').map(encodeURIComponent).join('/')}`,
-      { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) },
+      // Cloudflare serves …/index.html through a redirect to …/; the hash check covers content.
+      { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) },
     );
     assert(response.ok, `OTA ${file.path}: HTTP ${response.status}`);
     const bytes = Buffer.from(await response.arrayBuffer());
