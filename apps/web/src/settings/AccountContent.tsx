@@ -311,8 +311,8 @@ export function AccountContent({
                     aria-label="分享邀请链接"
                     onClick={() =>
                       void navigator.share({
-                        title: '加入 0xNullAI',
-                        text: '使用我的邀请链接注册 0xNullAI',
+                        title: '加入猫愿',
+                        text: '使用我的邀请链接注册猫愿',
                         url: inviteLink,
                       })
                     }
