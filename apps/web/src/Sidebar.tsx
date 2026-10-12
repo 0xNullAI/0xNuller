@@ -125,11 +125,13 @@ export function InboxColumn({
   onNavigate,
   onOpenAccount,
   onCreateRoom,
+  onCreateCharacter,
 }: {
   user: AuthUser | null;
   onNavigate: (moduleId: string | null) => void;
   onOpenAccount: () => void;
   onCreateRoom: () => void;
+  onCreateCharacter?: () => void;
 }) {
   const sections = useClaimedSidebarSections();
   return (
@@ -146,6 +148,7 @@ export function InboxColumn({
           onNavigate={onNavigate}
           onOpenAccount={onOpenAccount}
           onCreateRoom={onCreateRoom}
+          onCreateCharacter={onCreateCharacter}
         />
       </div>
     </aside>

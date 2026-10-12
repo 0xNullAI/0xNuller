@@ -421,7 +421,7 @@ it('账号切换时立即隐藏旧列表，并忽略旧账号迟到的响应', a
   state.list.mockResolvedValueOnce({ items: [] });
   state.chat.mockResolvedValueOnce([]);
   view.rerender(<UnifiedInbox user={user('bob')} {...props} />);
-  expect(await screen.findByText('暂无聊天')).toBeTruthy();
+  expect(await screen.findByRole('region', { name: '开始使用' })).toBeTruthy();
   expect(screen.queryByText('小星')).toBeNull();
 });
 it('loads AI summary pages and orders actual DM activity ahead of unknown group metadata', async () => {
@@ -706,6 +706,33 @@ it('shows only account entry when signed out and opens contacts from the signed-
   fireEvent.click(await screen.findByRole('button', { name: '新聊天' }));
   fireEvent.click(screen.getByRole('menuitem', { name: '找联系人聊天' }));
   expect(onNavigate).toHaveBeenCalledWith('people');
+});
+
+it('greets a new account with the first steps instead of an empty list', async () => {
+  state.list.mockResolvedValueOnce({ items: [] });
+  state.chat.mockResolvedValueOnce([]);
+  const onNavigate = vi.fn();
+  const onCreateCharacter = vi.fn();
+  render(
+    <UnifiedInbox
+      user={user('alice')}
+      onNavigate={onNavigate}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={vi.fn()}
+      onCreateCharacter={onCreateCharacter}
+      presentation="page"
+    />,
+  );
+  const guide = await screen.findByRole('region', { name: '开始使用' });
+  expect(guide.textContent).toContain('欢迎来到猫愿');
+  fireEvent.click(screen.getByRole('button', { name: /挑一个角色/ }));
+  expect(onNavigate).toHaveBeenLastCalledWith('market');
+  fireEvent.click(screen.getByRole('button', { name: /创建我的角色/ }));
+  expect(onCreateCharacter).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: /连接设备/ }));
+  expect(onNavigate).toHaveBeenLastCalledWith('control');
+  fireEvent.click(screen.getByRole('button', { name: /找朋友/ }));
+  expect(onNavigate).toHaveBeenLastCalledWith('people');
 });
 
 it('formats chat-list times the way messaging apps do', async () => {

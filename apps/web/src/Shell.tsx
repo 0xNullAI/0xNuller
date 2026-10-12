@@ -462,6 +462,7 @@ export function Shell() {
                   onNavigate={go}
                   onOpenAccount={() => openSettings('overview')}
                   onCreateRoom={() => navigateFromShell('/chat?create=1')}
+                  onCreateCharacter={() => navigateFromShell('/market?editor=new&kind=character')}
                 />
               </div>
             )}
@@ -525,6 +526,7 @@ export function Shell() {
                         onNavigate={go}
                         onOpenAccount={() => openSettings('account')}
                         onCreateRoom={() => navigate('/chat?create=1')}
+                        onCreateCharacter={() => navigate('/market?editor=new&kind=character')}
                       />
                     </div>
                   ) : null}
