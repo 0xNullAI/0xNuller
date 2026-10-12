@@ -1,7 +1,5 @@
 # 0xNuller Playground
 
-中文 | [English](README.en.md)
-
 把游戏事件映射为受安全策略约束的设备反馈。当前 6.0.0 版本内置贪吃蛇，也支持不连接设备的
 纯游戏模式。
 

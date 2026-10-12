@@ -41,6 +41,15 @@ import type { PrivateCharacterContainer } from '../api';
 import { importExternalCardFile } from '../external-card-file';
 import { listingTagsText } from '../character-listing-tags';
 
+/** A fill-in outline for people who have never written a character before. */
+const CHARACTER_SETTING_TEMPLATE = `【身份】名字、年龄（18 岁以上）、职业，和你是什么关系。
+【外貌与声音】一两句就够，比如穿着习惯、说话的声音。
+【性格】三个关键词，以及这些性格在小事上怎么表现。
+【说话方式】称呼你什么、句子长短、口头禅、会不会用表情。
+【喜好与雷点】喜欢聊什么、讨厌什么、哪些话题会让他／她不高兴。
+【相处方式】你们平时怎么互动，他／她会主动做什么，有哪些不会做的事。
+【开场】第一次见面时的场景和第一句话。`;
+
 interface Props {
   item?: MarketItem;
   initialKind?: PromptKind;
@@ -68,6 +77,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   const [kind, setKind] = useState<PromptKind>(
     source ? promptKind(source) : (initialKind ?? 'character'),
   );
+  const settingLabel = kind === 'character' ? '人物设定' : '场景设定';
   const [name, setName] = useState(item?.name ?? '');
   const [prompt, setPrompt] = useState(source?.prompt ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
@@ -105,6 +115,9 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   const [accountChanged, setAccountChanged] = useState(false);
   const [reloadDraft, setReloadDraft] = useState(0);
   const published = useRef(false);
+  // `busy` only disables the button after a re-render; a fast double tap lands before that and
+  // used to publish the same card twice.
+  const publishing = useRef(false);
   const [serverDraft, setServerDraft] = useState<CharacterDraft | null>(null);
   const [draftNotice, setDraftNotice] = useState('');
   const [versions, setVersions] = useState<CharacterRevisionSummary[]>([]);
@@ -649,11 +662,12 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   };
 
   const save = async () => {
+    if (publishing.current) return;
     if (drawingDirty) return setError('请先预览确认手绘头像，或取消绘制，再发布公开内容');
     const account = currentAuthUserId();
     if (!account) return setError('请先登录后保存公开内容');
     if (!name.trim()) return setError('请填写名称');
-    if (!prompt.trim()) return setError('请填写基础 Prompt');
+    if (!prompt.trim()) return setError(`请填写${settingLabel}`);
     if (prompt.length > MAX_SCENARIO_PROMPT_LENGTH)
       return setError(`Prompt 最多 ${MAX_SCENARIO_PROMPT_LENGTH} 字，编辑内容已保留`);
     if (kind === 'character' && !parseCharacterCard(card))
@@ -670,6 +684,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
       )
     )
       return;
+    publishing.current = true;
     setBusy(true);
     setError('');
     try {
@@ -727,6 +742,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '公开内容保存失败');
     } finally {
+      publishing.current = false;
       saver.resume();
       setBusy(false);
     }
@@ -799,20 +815,31 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
             />
           </label>
           <label className="field">
-            <span>基础 Prompt</span>
+            <span>{settingLabel}</span>
             <textarea
-              aria-label="基础 Prompt"
+              aria-label={settingLabel}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               rows={13}
               placeholder={
-                kind === 'character' ? '描述人物是谁、如何交流…' : '描述环境、规则和氛围…'
+                kind === 'character'
+                  ? '他／她是谁、什么性格、怎么和你说话。写得越具体，聊起来越像真人。'
+                  : '描述环境、规则和氛围…'
               }
             />
             <small>
               {prompt.length} / {MAX_SCENARIO_PROMPT_LENGTH} 字
             </small>
           </label>
+          {kind === 'character' && !prompt.trim() && (
+            <Button
+              variant="secondary"
+              className="w-fit"
+              onClick={() => setPrompt(CHARACTER_SETTING_TEMPLATE)}
+            >
+              按模板填写
+            </Button>
+          )}
           <label className="field">
             <span>{kind === 'character' ? '头像符号' : '场景图标'}</span>
             <input
@@ -1124,8 +1151,8 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
                 : '发布后，其他用户可以将这份环境设定用于聊天。')}
           </p>
           <div className="character-studio-prompt-preview">
-            <strong>基础 Prompt</strong>
-            <p>{prompt.trim() || '输入 Prompt 后在这里预览。'}</p>
+            <strong>{settingLabel}</strong>
+            <p>{prompt.trim() || `填写${settingLabel}后在这里预览。`}</p>
           </div>
           <small>公开卡只定义人物或场景，不包含任何人的专属记忆或设备权限。</small>
         </aside>

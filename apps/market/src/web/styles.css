@@ -1070,40 +1070,87 @@
     margin: 0;
   }
 
-  /* Legacy detail cards remain until the item-detail view is migrated. */
-  .scene-detail {
+  /* Character and scene detail: one readable column, long text folded. */
+  .market-detail-cover {
+    display: block;
+    width: 100%;
+    max-height: min(46vh, 360px);
+    object-fit: cover;
+    object-position: center 20%;
+    border-radius: var(--radius-md, 16px);
+  }
+  .market-detail-cover + .market-detail-identity .market-detail-art {
+    display: none;
+  }
+  .card-detail {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 20px;
   }
-  .role-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
+  .card-section h3 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-faint);
   }
-  .role-card {
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-sm);
-    padding: 10px 12px;
-    background: var(--bg-strong);
-    transition: border-color var(--dur) ease;
-  }
-  .role-card:hover {
-    border-color: var(--accent);
-  }
-  .role-card strong {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
+  .card-section p {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.7;
     color: var(--text);
   }
-  .role-card p {
-    margin: 4px 0 0;
-    font-size: 12px;
-    color: var(--text-soft);
-    line-height: 1.5;
+  .card-section-clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
+  .card-section-toggle {
+    margin-top: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 13px;
+    color: var(--accent-text, var(--accent));
+    cursor: pointer;
+  }
+  .card-dialogue {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .card-section .card-bubble {
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 16px 16px 16px 4px;
+    background: var(--bg-soft);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .card-section .card-bubble-self {
+    align-self: flex-end;
+    border-radius: 16px 16px 4px 16px;
+    background: var(--accent-soft);
+  }
+  .card-section .card-greeting {
+    max-width: 100%;
+  }
+  .card-full-prompt summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-faint);
+  }
+  .card-full-prompt .prompt-box {
+    margin-top: 8px;
+  }
+  .card-credit {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-faint);
+    overflow-wrap: anywhere;
+  }
+
   @media (max-width: 480px) {
     .app {
       padding: 12px 16px 32px;

@@ -1,7 +1,5 @@
 # 0xNuller Chat
 
-中文 | [English](README.en.md)
-
 基于 Cloudflare Durable Objects 的房间、公开大厅和私聊模块。成员明确授权后，房间还可以控制其
 共享的设备。Chat 要求登录且邮箱已验证；浏览器和 Android 使用 Auth 签发的短期 admission ticket，
 房间、公开目录和私聊会在 Worker 入口重新校验。

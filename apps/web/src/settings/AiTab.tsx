@@ -3,6 +3,9 @@ import { Input } from '@0xnullai/ui';
 import {
   createProviderSettings,
   CUSTOM_PLACEHOLDER_BASE_URL,
+  CUSTOM_PROVIDER_PRESETS,
+  customProviderPreset,
+  customProviderPresetFor,
   CUSTOM_PLACEHOLDER_MODEL,
   isLlmConfigured,
   loadLlmConfig,
@@ -142,6 +145,26 @@ function CustomModelGroup({
       />
       {custom && (
         <>
+          <SelectRow
+            label="服务商"
+            value={customProviderPresetFor(config.baseUrl) ?? 'other'}
+            onChange={(id) => {
+              const preset = CUSTOM_PROVIDER_PRESETS.find((item) => item.id === id);
+              update(
+                preset
+                  ? {
+                      baseUrl: preset.baseUrl,
+                      endpoint: 'endpoint' in preset ? preset.endpoint : 'chat/completions',
+                      model: CUSTOM_PLACEHOLDER_MODEL,
+                    }
+                  : { baseUrl: CUSTOM_PLACEHOLDER_BASE_URL },
+              );
+            }}
+            options={[
+              ...CUSTOM_PROVIDER_PRESETS.map(({ id, label }) => ({ value: id, label })),
+              { value: 'other', label: '其他（手动填写）' },
+            ]}
+          />
           <div className="flex flex-col gap-3 border-b border-[var(--surface-border)] px-4 py-3">
             <Field label="接口地址">
               <Input
@@ -228,29 +251,68 @@ function OpenAiModelField({
   config: LlmConfig;
   update: (patch: Partial<LlmConfig>) => void;
 }) {
-  const [models, setModels] = useState<string[] | null>(null);
-  const [status, setStatus] = useState('');
+  // Results belong to one address + key; changing either makes the old list and message stale.
+  const service = `${config.baseUrl}\u0000${config.apiKey}`;
+  const [result, setResult] = useState<{
+    service: string;
+    models: string[] | null;
+    status: string;
+  } | null>(null);
+  const current = result?.service === service ? result : null;
+  const models = current?.models ?? null;
+  const status = current?.status ?? '';
+  const preset = customProviderPreset(config.baseUrl);
+  const listable = !preset || !('listModels' in preset) || preset.listModels !== false;
+  const suggested = preset && 'models' in preset ? preset.models : [];
+  const ready =
+    listable &&
+    Boolean(config.apiKey.trim()) &&
+    Boolean(config.baseUrl.trim()) &&
+    config.baseUrl !== CUSTOM_PLACEHOLDER_BASE_URL;
 
   async function refresh() {
-    setStatus('正在加载模型…');
+    setResult({ service, models, status: '正在加载模型…' });
     try {
       const found = await discoverBrowserProviderModels(config);
-      setModels(found);
-      setStatus(found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入');
+      setResult({
+        service,
+        models: found,
+        status: found.length ? `已加载 ${found.length} 个模型` : '未返回模型，可继续手动输入',
+      });
     } catch (error) {
-      setModels(null);
-      setStatus(`加载失败：${error instanceof Error ? error.message : '未知错误'}`);
+      setResult({
+        service,
+        models: null,
+        status: `加载失败：${error instanceof Error ? error.message : '未知错误'}`,
+      });
     }
   }
 
+  // The list follows the service: load it once an address and key are both filled in.
+  useEffect(() => {
+    if (!ready) return;
+    const timer = window.setTimeout(() => void refresh(), 600);
+    return () => window.clearTimeout(timer);
+    // refresh reads the latest config; re-run only when the address or key changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, service]);
+
   async function test() {
-    setStatus('正在测试连接…');
+    setResult({ service, models, status: '正在测试连接…' });
     const started = performance.now();
     try {
       await testBrowserProviderConnection(config);
-      setStatus(`连接成功 · ${Math.round(performance.now() - started)} ms`);
+      setResult({
+        service,
+        models,
+        status: `连接成功 · ${Math.round(performance.now() - started)} ms`,
+      });
     } catch (error) {
-      setStatus(`连接失败：${error instanceof Error ? error.message : '未知错误'}`);
+      setResult({
+        service,
+        models,
+        status: `连接失败：${error instanceof Error ? error.message : '未知错误'}`,
+      });
     }
   }
 
@@ -259,16 +321,18 @@ function OpenAiModelField({
       <ModelCombobox
         value={config.model === CUSTOM_PLACEHOLDER_MODEL ? '' : config.model}
         onChange={(model) => update({ model })}
-        options={(models ?? []).map((model) => ({ id: model, label: model }))}
+        options={(models ?? suggested).map((model) => ({ id: model, label: model }))}
       />
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
-          onClick={() => void refresh()}
-        >
-          刷新模型列表
-        </button>
+        {listable && (
+          <button
+            type="button"
+            className="rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
+            onClick={() => void refresh()}
+          >
+            刷新模型列表
+          </button>
+        )}
         <button
           type="button"
           className="rounded-[var(--radius-ctl)] border px-3 py-2 text-xs"
@@ -277,9 +341,10 @@ function OpenAiModelField({
           测试连接
         </button>
       </div>
-      {status && (
+      {(status || !listable) && (
         <span role="status" className="text-xs text-[var(--text-faint)]">
-          {status}
+          {status ||
+            '这家服务商不支持在浏览器里读取模型列表，可从上面的常用模型里选，或填控制台里的模型 ID。'}
         </span>
       )}
     </div>

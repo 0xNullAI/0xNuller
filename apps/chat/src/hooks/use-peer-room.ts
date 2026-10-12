@@ -1,3 +1,4 @@
+import type { OpossumVibrationPatternName } from '@dg-kit/core';
 import type { GroupMembership } from '../../worker/wire';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { connectRoom, type RoomTransport, type TransportStatus } from '../lib/room-transport';
@@ -28,6 +29,17 @@ import {
   saveOwnerKey,
 } from '../lib/groups';
 import { currentAuthUserId, subscribeAuthChanges, dmTicket, getChatTicket } from '@0xnullai/auth';
+
+const OPOSSUM_PATTERNS: readonly OpossumVibrationPatternName[] = [
+  'constant',
+  'pulse',
+  'wave',
+  'ramp',
+  'heartbeat',
+];
+function isOpossumPattern(value: unknown): value is OpossumVibrationPatternName {
+  return OPOSSUM_PATTERNS.includes(value as OpossumVibrationPatternName);
+}
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -666,6 +678,8 @@ export function usePeerRoom(displayName: string) {
                 iv: data.iv as number | undefined,
                 color: data.color as number | undefined,
                 ms: data.ms as number | undefined,
+                // Only a known rhythm name; anything else stays undefined and is refused.
+                pattern: isOpossumPattern(data.pattern) ? data.pattern : undefined,
               },
               from,
             );

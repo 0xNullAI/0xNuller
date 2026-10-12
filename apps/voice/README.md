@@ -1,7 +1,5 @@
 # 0xNuller Voice
 
-中文 | [English](README.en.md)
-
 实时语音 AI 模块。模型负责语音对话和工具请求，设备命令由本地安全与权限层执行。
 
 - 统一主站：<https://0xnullai.com/voice>

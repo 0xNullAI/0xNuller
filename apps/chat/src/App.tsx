@@ -29,6 +29,7 @@ import { useWaveforms } from '@0xnullai/waveforms';
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { executeCommand, type CommandContext } from './lib/commands';
+import { CancelledFireHolds } from './lib/fire-cancel';
 import { selectChatInboxConversation, subscribeChatInboxSelection } from './inbox';
 import { initialChatTarget } from './lib/initial-chat-target';
 import { subscribeChatRouteChanges } from './lib/chat-route-changes';
@@ -178,6 +179,7 @@ export default function App() {
   const fireBoostsB = useRef<Map<string, { boost: number; ts: number }>>(new Map());
   const baselineARef = useRef(0);
   const baselineBRef = useRef(0);
+  const cancelledFire = useRef(new CancelledFireHolds());
   const [firingA, setFiringA] = useState(false);
   const [firingB, setFiringB] = useState(false);
 
@@ -419,6 +421,26 @@ export default function App() {
   }, []);
 
   /**
+   * A stop ends every fire hold for good: anyone still pressing 开火 must let go and press
+   * again, or their next heartbeat would lift the output straight back up.
+   */
+  const cancelHeldFire = useCallback(() => {
+    const now = Date.now();
+    cancelledFire.current.cancel('A', fireBoostsA.current.keys(), now);
+    cancelledFire.current.cancel('B', fireBoostsB.current.keys(), now);
+    fireBoostsA.current.clear();
+    fireBoostsB.current.clear();
+    baselineARef.current = 0;
+    baselineBRef.current = 0;
+    setFiringA(false);
+    setFiringB(false);
+  }, []);
+  const stopAllOutput = useCallback(() => {
+    cancelHeldFire();
+    deviceRef.current.stopAll();
+  }, [cancelHeldFire]);
+
+  /**
    * Everything Chat holds that the registry cannot see. Runs on both revoke
    * paths: the safety bus's onRevoke and the registry handle's onRevoked. Both
    * may fire for one lease change; every step is idempotent.
@@ -456,7 +478,7 @@ export default function App() {
       deviceRef.current.connected ||
       Boolean(deviceRef.current.opossum?.connected) ||
       Boolean(deviceRef.current.sensor?.connected),
-    stop: () => deviceRef.current.stopAll(),
+    stop: stopAllOutput,
     connect: () => deviceRef.current.connectDevice(),
     // The registry already stopped every output on the lease switch. Only drop
     // Chat's held state: a device stop here bypasses the fence and would zero
@@ -568,6 +590,7 @@ export default function App() {
       ) {
         return;
       }
+      if (cmd.action === 'stop') cancelHeldFire();
       if (roomAiCommand && cmd.action === 'stop') {
         deviceRef.current.stopCoyote(aiTarget!.id);
         return;
@@ -601,6 +624,7 @@ export default function App() {
         return;
       }
       if (cmd.action === 'fire_active' && cmd.c && cmd.v != null) {
+        if (cancelledFire.current.swallow(cmd.c, peerId, Date.now())) return;
         const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (map.size === 0) {
           // Empty → non-empty edge: snapshot the baseline
@@ -613,6 +637,7 @@ export default function App() {
         return;
       }
       if (cmd.action === 'fire_release' && cmd.c) {
+        cancelledFire.current.release(cmd.c, peerId);
         const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
         map.delete(peerId);
         callApplyFire(cmd.c);
@@ -699,7 +724,7 @@ export default function App() {
       };
       executeCommand(cmd, ctx);
     },
-    [allowAi, callApplyFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
+    [allowAi, callApplyFire, cancelHeldFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
   );
 
   const priorConversationConsent = useRef({ enabled: false, roomId: peerRoom.roomId });
@@ -710,13 +735,10 @@ export default function App() {
       roomId: peerRoom.roomId,
     };
     if (prior.enabled && (!conversationDeviceEnabled || prior.roomId !== peerRoom.roomId)) {
+      cancelHeldFire();
       if (hasDeviceLease('chat')) deviceRef.current.stopAll();
-      fireBoostsA.current.clear();
-      fireBoostsB.current.clear();
-      baselineARef.current = 0;
-      baselineBRef.current = 0;
     }
-  }, [conversationDeviceEnabled, peerRoom.roomId]);
+  }, [cancelHeldFire, conversationDeviceEnabled, peerRoom.roomId]);
 
   useEffect(() => {
     setCommandHandler(handleCommand);
@@ -939,6 +961,7 @@ export default function App() {
   useEffect(() => {
     const t = window.setInterval(() => {
       const now = Date.now();
+      cancelledFire.current.expire(now, 800);
       let dirtyA = false,
         dirtyB = false;
       fireBoostsA.current.forEach((v, k) => {
@@ -990,7 +1013,7 @@ export default function App() {
       allowAi={allowAi}
       setAllowAi={setAllowAi}
       peerRoom={peerRoom}
-      device={device}
+      device={{ ...device, stopAll: stopAllOutput }}
       waveforms={waveforms}
       queueA={queueA}
       queueB={queueB}

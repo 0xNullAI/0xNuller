@@ -105,8 +105,7 @@ export async function previewTurn(
 ): Promise<{ text: string; charged: number }> {
   const card = parseCharacterCard(snapshot.card);
   if (!card) throw new Error('详细设定无效或超出限制，请修正后再试聊；未发起收费请求');
-  if (!snapshot.name.trim() || !snapshot.prompt.trim())
-    throw new Error('请先填写名称和基础 Prompt');
+  if (!snapshot.name.trim() || !snapshot.prompt.trim()) throw new Error('请先填写名称和设定');
   if (
     snapshot.prompt.length > 32000 ||
     messages.length > 12 ||

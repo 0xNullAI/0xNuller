@@ -1,7 +1,5 @@
 # 0xNuller Control
 
-中文 | [English](README.en.md)
-
 直接控制已连接的 DG-Lab 设备，不经过房间、语音或 AI。Control 是首次连接设备和检查双通道
 输出的基础模块。
 

@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import {
+  Bluetooth,
   Bot,
   CheckCheck,
+  ChevronRight,
   Compass,
   MessageCircle,
   Search,
   SquarePen,
   UserRound,
+  UserRoundPlus,
   Users,
+  type LucideIcon,
 } from 'lucide-react';
 import { ModuleActions } from '@0xnullai/ui';
 import {
@@ -141,12 +145,15 @@ export function UnifiedInbox({
   onNavigate,
   onOpenAccount,
   onCreateRoom,
+  onCreateCharacter,
   presentation = 'sidebar',
 }: {
   user: AuthUser | null;
   onNavigate: (moduleId: string | null) => void;
   onOpenAccount: () => void;
   onCreateRoom: () => void;
+  /** Opens the character editor; without it the guide only points to 发现. */
+  onCreateCharacter?: () => void;
   presentation?: 'sidebar' | 'page';
 }) {
   const accountId = user?.id ?? null;
@@ -391,11 +398,6 @@ export function UnifiedInbox({
       if (epoch === authEpoch.current) setLoadingMore(false);
     }
   };
-  // Every AI chat starts with a chosen character; the menu lists them.
-  const startAi = () => {
-    if (!accountId) onOpenAccount();
-    else setNewChatOpen(true);
-  };
   const startCharacter = (characterId: string) => {
     setNewChatOpen(false);
     void openCharacterChat(characterId).then((opened) => {
@@ -532,7 +534,12 @@ export function UnifiedInbox({
                   : '还有群聊未加载'}
             </p>
           ) : (
-            <EmptyState text="暂无聊天" action="开始聊天" onAction={startAi} />
+            <WelcomeGuide
+              onDiscover={() => onNavigate('market')}
+              onCreateCharacter={onCreateCharacter}
+              onConnectDevice={() => onNavigate('control')}
+              onFindPeople={() => onNavigate('people')}
+            />
           ))}
         {visibleRows.map((row) => {
           const current = currentRowId === row.routeId;
@@ -676,6 +683,79 @@ function EmptyState({
         {action}
       </button>
     </div>
+  );
+}
+
+/**
+ * What a new account sees instead of an empty list. Every AI chat starts from a character,
+ * so the first step is choosing or writing one; devices and friends come after.
+ */
+function WelcomeGuide({
+  onDiscover,
+  onCreateCharacter,
+  onConnectDevice,
+  onFindPeople,
+}: {
+  onDiscover: () => void;
+  onCreateCharacter?: () => void;
+  onConnectDevice: () => void;
+  onFindPeople: () => void;
+}) {
+  const steps: { icon: LucideIcon; title: string; detail: string; onClick: () => void }[] = [
+    {
+      icon: Compass,
+      title: '挑一个角色',
+      detail: '在发现里看看大家创建的角色',
+      onClick: onDiscover,
+    },
+    ...(onCreateCharacter
+      ? [
+          {
+            icon: UserRoundPlus,
+            title: '创建我的角色',
+            detail: '写下名字和性格，几分钟就好',
+            onClick: onCreateCharacter,
+          },
+        ]
+      : []),
+    {
+      icon: Bluetooth,
+      title: '连接设备',
+      detail: '郊狼或负鼠，强度上限由你决定',
+      onClick: onConnectDevice,
+    },
+    { icon: Users, title: '找朋友', detail: '私聊和群聊，一起控制设备', onClick: onFindPeople },
+  ];
+  return (
+    <section aria-label="开始使用" className="px-4 py-8">
+      <span
+        aria-hidden
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]"
+      >
+        <MessageCircle className="h-5 w-5" />
+      </span>
+      <h2 className="mt-3 text-base font-semibold">欢迎来到猫愿</h2>
+      <p className="mt-1 text-sm text-[var(--text-soft)]">
+        先选一个 AI 角色开始聊天。角色会记住你们聊过的事，聊天中也可以连接设备一起玩。
+      </p>
+      <div className="mt-5 overflow-hidden rounded-2xl bg-[var(--bg-elevated)]">
+        {steps.map(({ icon: Icon, title, detail, onClick }) => (
+          <button
+            key={title}
+            type="button"
+            onClick={onClick}
+            className="ui-press-row flex w-full items-center gap-3 border-b-[0.5px] border-[var(--surface-border)] px-4 py-3 text-left last:border-b-0 hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+          >
+            <Icon aria-hidden className="h-5 w-5 shrink-0 text-[var(--accent-text)]" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{title}</span>
+              <span className="block truncate text-xs text-[var(--text-faint)]">{detail}</span>
+            </span>
+            <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
