@@ -40,7 +40,7 @@
     "@dg-kit/protocol": "^1.16.2",
     "@dg-kit/tools": "^1.16.2",
     "@dg-kit/waveforms": "^1.16.2",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@stoprocent/noble": "^2.3.0",
     "fflate": "^0.8.2",
     "zod": "^4.3.6"
