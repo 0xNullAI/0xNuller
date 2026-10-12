@@ -74,3 +74,37 @@ jobs:
       - name: Test repository
         if: github.event_name != 'pull_request'
         run: npm run test:full:prepared
+
+  android-native:
+    # The hot-update store decides what code installed apps run, so its tests gate every change
+    # to the native layer.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect native changes
+        id: native
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: |
+          if git diff --quiet "$BASE_SHA" HEAD -- android/app/src-tauri 2>/dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install Tauri host dependencies
+        if: steps.native.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.native.outputs.changed == 'true'
+      - name: Test the native layer
+        if: steps.native.outputs.changed == 'true'
+        run: |
+          # generate_context! embeds the UI at compile time; the tests only need a placeholder.
+          mkdir -p android/app/dist
+          test -f android/app/dist/index.html || echo '<!doctype html><html></html>' > android/app/dist/index.html
+          cargo test --locked --manifest-path android/app/src-tauri/Cargo.toml

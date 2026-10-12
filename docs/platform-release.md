@@ -24,25 +24,55 @@ Windows/macOS 安装器不再构建或发布。Web 与 Android 是同一个产�
 `main` commit：
 
 ```text
-根 package:             6.3.0
-Web version.json:       6.3.0 + main commit SHA
-Android versionName:    6.3.0
-Android versionCode:    6003000
-Git tag:                v6.3.0
-APK:                    maoyuan-v6.3.0.apk（另附同一文件 0xnuller-v6.3.0.apk 供旧版应用检测更新）
-Release 标题:           猫愿 6.3.0
+根 package:             7.1.0
+Web version.json:       7.1.0 + main commit SHA
+Android 热更新包:        https://0xnullai.com/ota/android/latest.json（7.1.0 + main commit SHA）
+Android versionName:    7.1.0（仅 APK 发布）
+Android versionCode:    7001000（仅 APK 发布）
+Git tag:                v7.1.0
+APK:                    maoyuan-v7.1.0.apk（另附同一文件 0xnuller-v7.1.0.apk 供旧版应用检测更新）
+Release 标题:           猫愿 7.1.0（仅 APK 发布）
 ```
+
+### 三档发布
+
+工作流自动判断，不需要手动选择：
+
+| 改动                                | 交付                                 | 用户                     |
+| ----------------------------------- | ------------------------------------ | ------------------------ |
+| 只有 Worker、价格、内容             | Workers + Web；热更新包内容不变      | 立即生效                 |
+| 界面与前端逻辑                      | Web + 签名热更新包 + `v<版本>` tag   | 后台下载，下次打开即新版 |
+| Rust、Kotlin 模板、插件、权限、图标 | 以上全部 + 签名 APK + GitHub Release | 提示下载安装包           |
+
+- **原生 API**：`android/app/src-tauri/src/ota.rs` 的 `NATIVE_API` 与 `android/native-api.json`
+  记录原生层指纹（`scripts/lib/native-fingerprint.mjs` 列出范围）。原生层相对最新 APK Release
+  有变化时必须提升 `NATIVE_API` 并执行 `node scripts/native-fingerprint.mjs --write`；Release Guard
+  与发布工作流都会拒绝未提升的改动。
+- **是否出 APK**：最新 GitHub Release 即 APK 基线。`NATIVE_API` 与基线相同则只发热更新包并只
+  创建 tag；不同（或手动运行时勾选 `force_apk`）则构建 APK 并创建 Release。只发热更新的版本
+  不出现在 GitHub Releases 页面，旧 APK 的更新提示也不会出现。
+- **版本号**：界面更新升修订号（7.1.1、7.1.2…），原生变化升次版本号（7.2.0）。
+- **热更新包**：`scripts/ota-bundle.mjs` 打包 `android/app/dist`（不含 source map），用 Secret
+  `OTA_SIGNING_KEY`（ed25519）签名，部署在 Web 的 `/ota/android/`。APK 只接受内置公钥签名、
+  原生 API 相同、版本更新的包，逐个文件校验 SHA-256；新包下次启动生效，连续三次启动未确认则
+  自动回滚且不再安装。
+- **撤回**：把有问题包的 build id（main commit SHA）加入 `android/ota-revoked.json` 并发布修复
+  版本。已装上的手机收到新 manifest 后立即退回上一版。APK 拒绝降级，回滚 Cloudflare 不会让
+  手机退回旧界面，修复必须是更高版本。
+- **密钥**：私钥只在 GitHub `production` 环境 Secret 与本地私有凭据目录；持有者可以向所有已
+  安装应用推送界面代码。更换密钥需要新 APK（提升 `NATIVE_API`）。
 
 `Release · 0xNuller` 在统一 `CI` 对同一 main SHA 成功后运行：
 
-1. 检查 `vX.Y.Z` 尚未发布。
-2. 构建 Web 和签名 Android APK。
-3. 验证 APK 包名、版本、签名、ABI、权限和源码 SHA。
-4. 部署产品 Workers 与 Web。
-5. 用 `/version.json` 核对线上产品版本和源码 SHA。
-6. 创建唯一 GitHub Release，附件为版本化 APK；源码归档由 GitHub 自动提供。
+1. 检查 `vX.Y.Z` tag 尚未存在。
+2. 以最新 APK Release 为基线判断本次是否出 APK。
+3. 构建 Web 与 Android 界面；需要时构建并验证签名 APK（包名、版本、签名、ABI、权限、源码 SHA）。
+4. 签名热更新包，放入 Web 构建。
+5. 部署产品 Workers 与 Web。
+6. 用 `/version.json` 核对线上版本和源码 SHA，并校验热更新包签名与每个文件。
+7. APK 发布创建唯一 GitHub Release；界面发布只创建 tag。
 
-产品版本未变化时工作流正常跳过，不能覆盖已有 APK 或 Release。
+产品版本未变化时工作流正常跳过，不能覆盖已有 APK、热更新包或 Release。
 
 ## DG-Kit npm 发布
 
@@ -91,6 +121,7 @@ GitHub Actions 保留两个独立入口：
 | Android alias Secret          | `ANDROID_RELEASE_KEY_ALIAS`      |
 | Android store password Secret | `ANDROID_RELEASE_STORE_PASSWORD` |
 | Android key password Secret   | `ANDROID_RELEASE_KEY_PASSWORD`   |
+| Android 热更新签名 Secret     | `OTA_SIGNING_KEY`                |
 
 工作流不再读取旧名称。测试和预览凭据应使用 `*_TEST_*` 或 `*_PREVIEW_*` 前缀，并且
 不能存放在 `production` / `npm-production` 环境中。

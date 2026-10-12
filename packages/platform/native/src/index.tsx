@@ -35,6 +35,13 @@ export interface NativeBridge {
   agent?: {
     servicesOverrides?: unknown;
   };
+  /** The installed app shell, for 关于. Absent on the Web. */
+  app?: {
+    /** `installedVersion` is the APK; `hotUpdate` says a downloaded UI is running. */
+    status(): Promise<{ installedVersion: string; hotUpdate: boolean }>;
+    /** Drops downloaded UIs and reloads into the one inside the APK. */
+    resetUi(): Promise<void>;
+  };
 }
 
 interface BridgeContextValue {

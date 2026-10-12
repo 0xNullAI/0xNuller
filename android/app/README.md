@@ -20,17 +20,25 @@ Before the merge this was three separately packaged APKs (Agent / Chat /
 Voice). A user had to install three apps, pair their device in each, and
 configure safety limits three times.
 
-**Android has no hot update.** Whatever ships here lives on people's phones
-for a long time, including after the Workers it talks to have moved on, so
-protocol changes have to stay backward compatible and the native injection
-seams are deliberately left in their original shape (see the comments in
-`@0xnullai/native`).
+**The UI hot-updates; the native layer does not.** Since 7.1.0 every release
+also publishes the Android UI as a signed bundle at
+`https://0xnullai.com/ota/android/latest.json`. `src-tauri/src/ota.rs` serves the
+newest verified bundle through Tauri's own asset protocol (same `tauri.localhost`
+origin, so local data stays), takes a new bundle at the next start or on
+「立即重启」, and rolls back a bundle that never confirms it rendered
+(`src/components/OtaConfirm.tsx`) after three starts. Only manifests signed by the
+key in `src-tauri/ota-public-key.txt` and built for the same `NATIVE_API` are
+accepted. Anything native — Rust, Kotlin templates, plugins, capabilities,
+icons — still needs an APK: bump `NATIVE_API` in `src-tauri/src/ota.rs` and run
+`node scripts/native-fingerprint.mjs --write`; CI refuses native changes without
+it. Old APKs keep running for a long time, so Worker protocol changes still have
+to stay backward compatible.
 
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-The user-facing `version` follows the product version (for example `7.0.3`), and
-`bundle.android.versionCode` is the aligned monotonic code (`7000003`: major·1000000 +
+The user-facing `version` follows the product version (for example `7.1.0`), and
+`bundle.android.versionCode` is the aligned monotonic code (`7001000`: major·1000000 +
 minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
 `5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
@@ -46,7 +54,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v7.0.3`, `猫愿 7.0.3`, `7.0.3`, and `7000003`.
+code all advance together: `v7.1.0`, `猫愿 7.1.0`, `7.1.0`, and `7001000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed `maoyuan-vX.Y.Z.apk` and Latest badge.
 
