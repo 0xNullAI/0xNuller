@@ -72,7 +72,15 @@ const providerSettingsSchema = z.object({
   imageInput: z.boolean(),
 });
 
-export const MANAGED_SERVICE_URL = 'https://llm.0xnullai.com';
+const viteEnv = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
+/**
+ * The managed model service. A dev server may point it at a local LLM Proxy through
+ * VITE_MANAGED_LLM_URL (docs/testing.md); production builds always use the public one.
+ */
+export const MANAGED_SERVICE_URL =
+  (viteEnv?.DEV === true && typeof viteEnv.VITE_MANAGED_LLM_URL === 'string'
+    ? viteEnv.VITE_MANAGED_LLM_URL
+    : '') || 'https://llm.0xnullai.com';
 
 /** Stable public model ids; the Worker maps every text id to one Ark model. */
 export const MANAGED_DEFAULT_MODEL = 'balanced';

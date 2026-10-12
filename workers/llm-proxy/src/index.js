@@ -1,3 +1,4 @@
+import { CONTENT_FILTER_REPLY } from './content-filter.js';
 import { tokenCredits, tokenReservation } from '@0xnullai/ai-pricing';
 import {
   completeWithFallback,
@@ -33,7 +34,6 @@ import { normalizeVisionResult, prepareVisionRequest, requestHash } from './visi
 
 const MAX_BODY_BYTES = 1024 * 1024;
 /** Shown instead of a moderated reply; the conversation continues normally. */
-export const CONTENT_FILTER_REPLY = '这个话题我没法聊，我们换个话题吧。';
 
 function allowedOrigins(env) {
   return new Set(

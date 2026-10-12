@@ -1,3 +1,4 @@
+import { MANAGED_SERVICE_URL } from '@0xnullai/llm-providers';
 import type { LlmClient, LlmTurnInput, LlmTurnResult } from '@dg-agent/core';
 import type { ToolCall } from '@dg-agent/core';
 import type { ProviderEndpoint } from '@0xnullai/llm-providers';
@@ -13,6 +14,17 @@ import {
   normalizeContent,
   normalizeOptionalContent,
 } from './serialization.js';
+
+/** The managed service, wherever this build points it (a dev server may use a local proxy). */
+function isManagedServiceUrl(baseUrl: string): boolean {
+  try {
+    return (
+      baseUrl.startsWith(MANAGED_SERVICE_URL) || new URL(baseUrl).hostname === 'llm.0xnullai.com'
+    );
+  } catch {
+    return false;
+  }
+}
 
 const configSchema = z.object({
   apiKey: z.string().min(1),
@@ -65,7 +77,7 @@ const responsesSchema = z.object({
 
 function accountProxyCredentials(baseUrl: string): RequestCredentials {
   try {
-    return new URL(baseUrl).hostname === 'llm.0xnullai.com' ? 'include' : 'omit';
+    return isManagedServiceUrl(baseUrl) ? 'include' : 'omit';
   } catch {
     return 'omit';
   }
@@ -139,7 +151,7 @@ export class OpenAiHttpLlmClient implements LlmClient {
   ): Promise<Record<string, string>> {
     const headers = await this.buildHeaders();
     try {
-      if (new URL(baseUrl).hostname === 'llm.0xnullai.com') {
+      if (isManagedServiceUrl(baseUrl)) {
         headers['Idempotency-Key'] = crypto.randomUUID();
         headers['X-0xNullAI-Usage-Kind'] = usageKind;
         if (this.config.attachPrivateConversation && conversationId) {

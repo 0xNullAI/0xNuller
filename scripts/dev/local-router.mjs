@@ -1,10 +1,11 @@
 // Local-only path router: one origin for the shell and every Worker, like production.
 import http from 'node:http';
 import net from 'node:net';
-const targets = { auth: 8787, market: 8788, chat: 8789, web: 5173, testModel: 8791 };
+const targets = { auth: 8787, market: 8788, chat: 8789, web: 5173, testModel: 8791, llm: 8792 };
 const pick = (url) => {
   // scripts/dev/test-model-proxy.mjs, when running.
   if (url.startsWith('/dev-llm/')) return targets.testModel;
+  if (url.startsWith('/llm/')) return targets.llm;
   if (url.startsWith('/api/items')) return targets.market;
   if (/^\/(ws\/|api\/(lobby|upload|media|groups|dm)\/)/.test(url)) return targets.chat;
   if (url.startsWith('/api/')) return targets.auth;
@@ -16,7 +17,8 @@ const server = http.createServer((req, res) => {
     {
       host: '127.0.0.1',
       port,
-      path: req.url,
+      // The managed model service lives at the root of its own host in production.
+      path: port === targets.llm ? req.url.slice('/llm'.length) : req.url,
       method: req.method,
       headers: { ...req.headers, host: `localhost:${port}` },
     },

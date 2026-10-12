@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parsePriceTable, tokenCredits, tokenReservation } from '@0xnullai/ai-pricing';
 import exampleTable from '../../../packages/platform/ai-pricing/src/example-price-table.json';
 import { ARK_CHAT_URL, MAX_OUTPUT_TOKENS } from './ark.js';
-import worker, { CONTENT_FILTER_REPLY } from './index.js';
+import worker, * as workerModule from './index.js';
+import { CONTENT_FILTER_REPLY } from './content-filter.js';
 import { VISION_MAX_INPUT_TOKENS, estimateInputTokens } from './routing.js';
 
 const table = parsePriceTable(exampleTable);
@@ -1339,4 +1340,11 @@ describe('managed private chat image Credit', () => {
     expect(env.AUTH.settleCredits.mock.calls[0][3]).toMatchObject({ imageBytes: 0 });
     expect(JSON.stringify(calls[0].body)).not.toContain('data:image');
   });
+});
+
+it('exports only handlers from the Worker entry, as the runtime requires', () => {
+  for (const [name, value] of Object.entries(workerModule)) {
+    if (name === 'default') continue;
+    expect(typeof value, name).toBe('function');
+  }
 });
