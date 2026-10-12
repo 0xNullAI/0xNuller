@@ -1,0 +1,30 @@
+// Worker-safe entry: no DOM APIs. The browser reporter lives at `./client-reporter`.
+export {
+  CLIENT_ERROR_KINDS,
+  CLIENT_ERROR_LIMITS,
+  CLIENT_ERROR_PLATFORMS,
+  clientErrorSignatureSource,
+  parseClientErrorReport,
+  redactSensitiveText,
+  sanitizeErrorMessage,
+  sanitizeRoute,
+  sanitizeStack,
+  stripUrlQueries,
+  topStackFrame,
+  type ClientErrorKind,
+  type ClientErrorPlatform,
+  type ClientErrorReport,
+} from './client-errors';
+export {
+  MAX_SERVER_ERROR_COUNT,
+  SERVER_ERROR_KINDS,
+  SERVER_ERROR_WORKERS,
+  parseServerErrorReport,
+  withServerErrorCounting,
+  type MonitoredHandler,
+  type ServerErrorCountingOptions,
+  type ServerErrorKind,
+  type ServerErrorReport,
+  type ServerErrorSink,
+  type ServerErrorWorker,
+} from './worker-errors';

@@ -1,4 +1,5 @@
 import { BillingReconciliationPanel } from './BillingReconciliationPanel';
+import { RuntimeHealthPanel } from './RuntimeHealthPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
 import { Button, Input, SettingSelect } from '@0xnullai/ui';
@@ -183,6 +184,7 @@ export function AdminContent() {
   return (
     <section aria-labelledby="admin-content-title">
       <BillingReconciliationPanel />
+      <RuntimeHealthPanel />
       {stats ? (
         <div className="mb-6">
           <h2 className="text-sm font-semibold">管理概览</h2>

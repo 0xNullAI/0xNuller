@@ -3,10 +3,11 @@
 import { parsePriceTable, realtimeReservation } from '@0xnullai/ai-pricing';
 import type { Env } from './env.js';
 import { isAllowedOrigin, parseVoiceTicket } from './managed-auth.js';
+import { withServerErrorCounting } from '@0xnullai/observability';
 
 export { ManagedVoiceSession } from './managed-session.js';
 
-export default {
+const voiceWorker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname !== '/api/realtime') return new Response('not found', { status: 404 });
@@ -14,6 +15,14 @@ export default {
   },
 };
 
+export default withServerErrorCounting(voiceWorker, {
+  worker: 'voice',
+  // Older test fakes and Auth deployments may lack the method; counting then just stops.
+  sink: (env: Env) =>
+    env.AUTH.recordServerErrors
+      ? { recordServerErrors: (report) => env.AUTH.recordServerErrors!(report) }
+      : undefined,
+});
 async function handleManagedRealtime(request: Request, env: Env): Promise<Response> {
   if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
     return new Response('expected a WebSocket upgrade', { status: 426 });

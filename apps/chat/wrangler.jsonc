@@ -24,7 +24,15 @@
   "workers_dev": false,
   "preview_urls": false,
 
-  "services": [{ "binding": "LLM", "service": "dg-llm-proxy" }],
+  "services": [
+    { "binding": "LLM", "service": "dg-llm-proxy" },
+    // 只暴露错误计数的 Auth 入口；不可用时监控失效但请求不受影响。
+    {
+      "binding": "AUTH_MONITOR",
+      "service": "0xnullai-auth",
+      "entrypoint": "AuthMonitoringService",
+    },
+  ],
 
   // 保持类名和 migration tag 稳定，以保留既有房间数据。
   "durable_objects": {

@@ -17,6 +17,7 @@ import {
   roomPathAllowsCode,
   type DmSummary,
 } from './dm';
+import { withServerErrorCounting, type ServerErrorSink } from '@0xnullai/observability';
 
 export interface Env extends Cloudflare.Env {
   /** Internal managed text service; the browser never receives a group billing ticket. */
@@ -61,7 +62,7 @@ function clientCorsHeaders(request: Request): Headers {
   return headers;
 }
 
-export default {
+const chatWorker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -273,3 +274,8 @@ export default {
 };
 
 export { RoomDO, LobbyDO, AccountRegistryDO, RoomIndexDO };
+
+export default withServerErrorCounting(chatWorker, {
+  worker: 'chat',
+  sink: (env: Env) => env.AUTH_MONITOR as unknown as ServerErrorSink | undefined,
+});

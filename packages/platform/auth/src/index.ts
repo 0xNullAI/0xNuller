@@ -460,6 +460,36 @@ export async function getAdminStats(): Promise<AdminStats> {
   return call<AdminStats>('/api/auth/admin/stats');
 }
 
+/** Sanitized runtime error counts for the admin 运行状况 view (last 24 hours). */
+export interface AdminRuntimeHealth {
+  generatedAt: number;
+  since: number;
+  server: Array<{
+    worker: string;
+    http5xx: number;
+    exceptions: number;
+    scheduled: number;
+    lastSeenAt: number;
+  }>;
+  clientTotal: number;
+  signatures: Array<{
+    signature: string;
+    kind: string;
+    message: string;
+    topFrame: string | null;
+    moduleId: string | null;
+    platform: string;
+    version: string;
+    count: number;
+    firstSeenAt: number;
+    lastSeenAt: number;
+  }>;
+}
+
+export async function getAdminRuntimeHealth(): Promise<AdminRuntimeHealth> {
+  return call<AdminRuntimeHealth>('/api/auth/admin/runtime-health');
+}
+
 export interface UserReport {
   id: string;
   reason: 'spam' | 'harassment' | 'impersonation' | 'unsafe' | 'other';

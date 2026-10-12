@@ -19,6 +19,7 @@
     "@0xnullai/llm-providers": "0.1.0",
     "@0xnullai/market-client": "0.1.0",
     "@0xnullai/native": "0.1.0",
+    "@0xnullai/observability": "0.1.0",
     "@0xnullai/scenes": "0.1.0",
     "@0xnullai/settings": "0.1.0",
     "@0xnullai/ui": "0.1.0",
@@ -31,6 +32,7 @@
   },
   "exports": {
     "./Shell": "./src/Shell.tsx",
+    "./client-error-reporting": "./src/client-error-reporting.ts",
     "./dglab-device-registry": "./src/dglab-device-registry.ts",
     "./shell.css": "./src/shell.css"
   },

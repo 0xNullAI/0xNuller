@@ -7,8 +7,10 @@ import './shell.css';
 import { Shell } from './Shell';
 import { createUnifiedShellDgLabRegistry } from './dglab-device-registry';
 import { loadLocale } from '@0xnullai/settings';
+import { installShellErrorReporting } from './client-error-reporting';
 
 document.documentElement.lang = loadLocale();
+installShellErrorReporting('web');
 
 // The one DG-Lab connection owner for this tab. Constructing it opens no picker and touches no
 // Bluetooth API; only a human connect action through a module does.

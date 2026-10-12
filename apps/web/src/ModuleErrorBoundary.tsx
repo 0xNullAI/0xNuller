@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { stopAllDevices } from '@0xnullai/ui';
+import { reportModuleError } from '@0xnullai/observability/client-reporter';
 
 /**
  * Keeps a module's crash contained inside that module.
@@ -59,6 +60,8 @@ export class ModuleErrorBoundary extends Component<Props, State> {
     };
     void stopAllDevices().then(update, () => update(false));
     console.error(`[shell] 模块 ${this.props.moduleId} 渲染失败`, error, info.componentStack);
+    // Sanitized, rate-limited and fail-silent; a no-op until the shell installs reporting.
+    reportModuleError(error, this.props.moduleId);
   }
 
   render(): ReactNode {
