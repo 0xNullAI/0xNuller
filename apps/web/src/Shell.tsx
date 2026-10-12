@@ -7,7 +7,6 @@ import {
   subscribeMediaQuery,
   ShellChromeProvider,
   type ShellSettingsTab,
-  type ShellSettingsContext,
   ModuleActionsProvider,
   useModuleActionsContainer,
   SidebarSectionsProvider,
@@ -153,15 +152,6 @@ function settingsPageFromRoute(pathname: string, search: string): string | null 
   return params.has('verify') || params.has('reset') ? 'account' : null;
 }
 
-function memoryChatFromSearch(search: string): { kind: 'dm' | 'group'; id: string } | undefined {
-  const params = new URLSearchParams(search);
-  const kind = params.get('kind');
-  const id = params.get('id');
-  if ((kind !== 'dm' && kind !== 'group') || !id || !/^[A-Za-z0-9._:-]{1,128}$/.test(id))
-    return undefined;
-  return { kind, id };
-}
-
 function profileUsernameFromPath(pathname: string): string | null {
   if (!pathname.startsWith('/u/')) return null;
   try {
@@ -222,8 +212,6 @@ export function Shell() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const settingsTab = settingsPageFromRoute(pathname, window.location.search);
-  const initialMemoryChat =
-    settingsTab === 'memory' ? memoryChatFromSearch(window.location.search) : undefined;
   const [settingsReturnPath, setSettingsReturnPath] = useState<string | null>(null);
   const authenticated = authChecked && user !== null;
   const visibleModuleId = !authenticated || mobileInbox || settingsTab ? null : activeId;
@@ -327,13 +315,9 @@ export function Shell() {
   // one of its own. What a module gets is the position of the entry point, not a
   // second settings UI.
   const openSettings = useCallback(
-    (tab: ShellSettingsTab = 'appearance', context?: ShellSettingsContext) => {
+    (tab: ShellSettingsTab = 'appearance') => {
       const origin = `${window.location.pathname}${window.location.search}`;
-      const conversation = tab === 'memory' ? context?.conversation : undefined;
-      const query = conversation
-        ? `?kind=${encodeURIComponent(conversation.kind)}&id=${encodeURIComponent(conversation.id)}`
-        : '';
-      if (navigate(`/settings/${tab}${query}`) && !origin.startsWith('/settings')) {
+      if (navigate(`/settings/${tab}`) && !origin.startsWith('/settings')) {
         setSettingsReturnPath(origin);
       }
     },
@@ -621,7 +605,6 @@ export function Shell() {
                     >
                       <SettingsPanel
                         initialTab={settingsTab}
-                        initialMemoryChat={initialMemoryChat}
                         onNavigateTab={(tab) => navigate(`/settings/${encodeURIComponent(tab)}`)}
                         onLoadAgent={() => ensureModuleOpened('agent')}
                         user={user}

@@ -86,7 +86,6 @@ export interface ChatAppViewProps {
   requireAccount: () => boolean;
   openDm: (request: DmRequest) => Promise<void>;
   openAiSettings: () => void;
-  openMemorySettings?: (kind: 'dm' | 'group', id: string) => void;
   sendMedia: (
     blob: Blob,
     kind: 'image' | 'audio',
@@ -139,7 +138,6 @@ export function ChatAppView({
   requireAccount,
   openDm,
   openAiSettings,
-  openMemorySettings,
   sendMedia,
   sendCommand,
 }: ChatAppViewProps) {
@@ -497,23 +495,6 @@ export function ChatAppView({
                     </button>
                   )}
                 </div>
-                {inShell &&
-                  signedIn &&
-                  openMemorySettings &&
-                  (peerRoom.isDm ? !!dmPeer?.id : !!peerRoom.roomId) && (
-                    <button
-                      type="button"
-                      className="border-b border-[var(--surface-border)] p-3 text-left text-sm text-[var(--accent)]"
-                      onClick={() =>
-                        openMemorySettings(
-                          peerRoom.isDm ? 'dm' : 'group',
-                          peerRoom.isDm ? dmPeer!.id : peerRoom.roomId!,
-                        )
-                      }
-                    >
-                      记忆共享
-                    </button>
-                  )}
                 {/* Two separate gates in one group: the first admits any command from this
                     conversation (humans and AI); the second additionally admits room-AI commands
                     and is a browser-wide preference, so it is not per conversation. */}

@@ -61,16 +61,6 @@ export {
   setAccountMemoryAccess,
   type AccountMemoryAccess,
 } from './account-memory-access';
-export {
-  listHumanMemoryConversations,
-  listHumanMemoryShares,
-  listReceivedHumanMemories,
-  setHumanMemoryShare,
-  type HumanMemoryConversation,
-  type HumanMemoryPageCursor,
-  type HumanMemoryShare,
-  type ReceivedHumanMemory,
-} from './human-memory-shares';
 
 export interface AuthUser {
   id: string;

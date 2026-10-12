@@ -4,23 +4,15 @@ import {
   exportPersonalMemories,
   listPersonalMemories,
   savePersonalMemory,
-  listHumanMemoryConversations,
-  listHumanMemoryShares,
-  listReceivedHumanMemories,
-  setHumanMemoryShare,
   currentAuthUserId,
   subscribeAuthChanges,
-  type HumanMemoryConversation,
-  type HumanMemoryShare,
-  type HumanMemoryPageCursor,
-  type ReceivedHumanMemory,
   type PersonalMemory,
   type PersonalMemoryKind,
 } from '@0xnullai/auth';
 import { Button, Input, SegmentedControl } from '@0xnullai/ui';
-import { Download, Plus, Trash2, Users } from 'lucide-react';
+import { Download, Plus, Trash2 } from 'lucide-react';
 import { AdvancedSubpage } from './SettingsAdvanced';
-import { SelectRow, SettingsGroup, SettingsPage, SettingsRow, SwitchRow } from './settings-list';
+import { SettingsGroup, SettingsPage, SettingsRow } from './settings-list';
 
 const LABELS: Record<PersonalMemoryKind, string> = {
   preference: '我的偏好',
@@ -37,18 +29,7 @@ const SHORT_LABELS: Record<PersonalMemoryKind, string> = {
 const TITLE_MAX = 100;
 const CONTENT_MAX = 4000;
 
-/** Relationship-scoped and AI-suggested memories cannot be shared into a human chat. */
-function shareable(item: PersonalMemory): boolean {
-  return item.scope !== 'relationship' && item.state !== 'suggested';
-}
-
-export function PersonalMemoryContent({
-  initialChat,
-}: {
-  initialChat?: { kind: 'dm' | 'group'; id: string };
-}) {
-  const initialKind = initialChat?.kind;
-  const initialId = initialChat?.id;
+export function PersonalMemoryContent() {
   const [items, setItems] = useState<PersonalMemory[] | null>(null);
   const [editing, setEditing] = useState<PersonalMemory | null>(null);
   const [draftId, setDraftId] = useState(() => crypto.randomUUID());
@@ -60,25 +41,10 @@ export function PersonalMemoryContent({
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [query, setQuery] = useState('');
-  /** list → one memory (new or existing) → back; received shows what others shared. */
-  const [page, setPage] = useState<'list' | 'edit' | 'chats'>(initialChat ? 'chats' : 'list');
+  /** list → one memory (new or existing) → back. */
+  const [page, setPage] = useState<'list' | 'edit'>('list');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [conversations, setConversations] = useState<HumanMemoryConversation[] | null>(null);
-  const [nextConversations, setNextConversations] = useState<HumanMemoryPageCursor | null>(null);
-  const [selectedKey, setSelectedKey] = useState('');
-  const [shares, setShares] = useState<Record<string, HumanMemoryShare> | null>(null);
-  const [received, setReceived] = useState<ReceivedHumanMemory[] | null>(null);
-  const [nextReceivedOffset, setNextReceivedOffset] = useState<number | null>(null);
-  const [loadedChatKey, setLoadedChatKey] = useState('');
-  const [chatRefresh, setChatRefresh] = useState(0);
-  const selectedChat = conversations?.find((chat) => `${chat.kind}:${chat.id}` === selectedKey);
-  const chatReady = !!selectedChat && loadedChatKey === selectedKey;
-  const selectionRef = useRef(selectedKey);
   const accountEpochRef = useRef(0);
-
-  useEffect(() => {
-    selectionRef.current = selectedKey;
-  }, [selectedKey]);
 
   useEffect(() => {
     let account = currentAuthUserId();
@@ -88,14 +54,6 @@ export function PersonalMemoryContent({
       accountEpochRef.current += 1;
       setBusy(false);
       setItems(null);
-      setConversations(null);
-      setNextConversations(null);
-      setSelectedKey('');
-      selectionRef.current = '';
-      setShares(null);
-      setReceived(null);
-      setNextReceivedOffset(null);
-      setLoadedChatKey('');
       setEditing(null);
       setTitle('');
       setContent('');
@@ -124,119 +82,6 @@ export function PersonalMemoryContent({
     };
   }, [refresh]);
 
-  useEffect(() => {
-    let active = true;
-    const epoch = accountEpochRef.current;
-    void listHumanMemoryConversations()
-      .then(({ conversations: next, next: cursor }) => {
-        if (!active || accountEpochRef.current !== epoch) return;
-        const initial =
-          initialKind && initialId
-            ? ({
-                kind: initialKind,
-                id: initialId,
-                name: initialId,
-              } satisfies HumanMemoryConversation)
-            : null;
-        const available =
-          initial && !next.some((chat) => chat.kind === initial.kind && chat.id === initial.id)
-            ? [initial, ...next]
-            : next;
-        setConversations(available);
-        setNextConversations(cursor);
-        setSelectedKey((key) => {
-          if (initial) return `${initial.kind}:${initial.id}`;
-          if (available.some((chat) => `${chat.kind}:${chat.id}` === key)) return key;
-          return available[0] ? `${available[0].kind}:${available[0].id}` : '';
-        });
-      })
-      .catch((cause: unknown) => {
-        if (active && accountEpochRef.current === epoch)
-          setError(cause instanceof Error ? cause.message : '读取聊天列表失败');
-      });
-    return () => {
-      active = false;
-    };
-  }, [refresh, initialKind, initialId]);
-
-  async function loadMoreConversations() {
-    if (!nextConversations || busy) return;
-    const epoch = accountEpochRef.current;
-    setBusy(true);
-    setError(null);
-    try {
-      const page = await listHumanMemoryConversations(nextConversations);
-      if (accountEpochRef.current !== epoch) return;
-      setConversations((current) => {
-        const found = new Set((current ?? []).map((chat) => `${chat.kind}:${chat.id}`));
-        return [
-          ...(current ?? []),
-          ...page.conversations.filter((chat) => !found.has(`${chat.kind}:${chat.id}`)),
-        ];
-      });
-      if (page.conversations[0])
-        setSelectedKey(
-          (key) => key || `${page.conversations[0]!.kind}:${page.conversations[0]!.id}`,
-        );
-      setNextConversations(page.next);
-    } catch (cause) {
-      if (accountEpochRef.current === epoch)
-        setError(cause instanceof Error ? cause.message : '加载更多聊天失败');
-    } finally {
-      if (accountEpochRef.current === epoch) setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!selectedChat) return;
-    let active = true;
-    const epoch = accountEpochRef.current;
-    const key = `${selectedChat.kind}:${selectedChat.id}`;
-    void Promise.all([listHumanMemoryShares(selectedChat), listReceivedHumanMemories(selectedChat)])
-      .then(([own, others]) => {
-        if (!active || accountEpochRef.current !== epoch) return;
-        setShares(Object.fromEntries(own.shares.map((grant) => [grant.memoryId, grant])));
-        setReceived(others.items);
-        setNextReceivedOffset(others.nextOffset);
-        setLoadedChatKey(key);
-      })
-      .catch((cause: unknown) => {
-        if (active && accountEpochRef.current === epoch)
-          setError(cause instanceof Error ? cause.message : '读取共享记忆失败');
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedChat, chatRefresh]);
-
-  async function loadMoreReceived() {
-    if (!selectedChat || !chatReady || nextReceivedOffset === null || busy) return;
-    const epoch = accountEpochRef.current;
-    const key = selectedKey;
-    setBusy(true);
-    setError(null);
-    try {
-      const page = await listReceivedHumanMemories(selectedChat, nextReceivedOffset);
-      if (accountEpochRef.current !== epoch || selectionRef.current !== key) return;
-      setReceived((current) => [...(current ?? []), ...page.items]);
-      setNextReceivedOffset(page.nextOffset);
-    } catch (cause) {
-      if (accountEpochRef.current === epoch)
-        setError(cause instanceof Error ? cause.message : '加载共享记忆失败');
-    } finally {
-      if (accountEpochRef.current === epoch) setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    const onFocus = () => {
-      setLoadedChatKey('');
-      setChatRefresh((value) => value + 1);
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, []);
-
   // Stable: the subpage header re-registers whenever its back handler changes.
   const clearEditor = useCallback(() => {
     setDraftId(crypto.randomUUID());
@@ -247,7 +92,6 @@ export function PersonalMemoryContent({
     setConfirmDelete(false);
     setPage('list');
   }, []);
-  const backToList = useCallback(() => setPage('list'), []);
 
   function startNew() {
     setDraftId(crypto.randomUUID());
@@ -285,8 +129,6 @@ export function PersonalMemoryContent({
       });
       if (accountEpochRef.current !== epoch) return;
       setItems((current) => [item, ...(current ?? []).filter((entry) => entry.id !== item.id)]);
-      setLoadedChatKey('');
-      setChatRefresh((value) => value + 1);
       clearEditor();
       setNotice('已保存');
     } catch (cause) {
@@ -306,37 +148,11 @@ export function PersonalMemoryContent({
       await deletePersonalMemory(item.id, item.version);
       if (accountEpochRef.current !== epoch) return;
       setItems((current) => current?.filter((entry) => entry.id !== item.id) ?? []);
-      setLoadedChatKey('');
-      setChatRefresh((value) => value + 1);
       if (editing?.id === item.id) clearEditor();
       setNotice('已删除');
     } catch (cause) {
       if (accountEpochRef.current === epoch)
         setError(cause instanceof Error ? cause.message : '删除失败');
-    } finally {
-      if (accountEpochRef.current === epoch) setBusy(false);
-    }
-  }
-
-  async function toggleShare(item: PersonalMemory) {
-    if (!selectedChat || !shares || !chatReady) return;
-    const epoch = accountEpochRef.current;
-    const key = selectedKey;
-    const previous = shares[item.id];
-    setBusy(true);
-    setError(null);
-    setNotice('');
-    try {
-      const { share } = await setHumanMemoryShare(selectedChat, item, {
-        enabled: !previous?.enabled,
-        version: previous?.version ?? 0,
-      });
-      if (accountEpochRef.current !== epoch || selectionRef.current !== key) return;
-      setShares((current) => (current ? { ...current, [item.id]: share } : current));
-      setNotice(share.enabled ? '已向这段聊天共享' : '已撤销共享');
-    } catch (cause) {
-      if (accountEpochRef.current === epoch)
-        setError(cause instanceof Error ? cause.message : '更新共享失败');
     } finally {
       if (accountEpochRef.current === epoch) setBusy(false);
     }
@@ -396,90 +212,7 @@ export function PersonalMemoryContent({
     </div>
   );
 
-  const chatPicker =
-    conversations && conversations.length > 0 ? (
-      <SelectRow
-        label="聊天"
-        value={selectedKey}
-        onChange={(key) => {
-          selectionRef.current = key;
-          setSelectedKey(key);
-        }}
-        options={conversations.map((chat) => ({
-          value: `${chat.kind}:${chat.id}`,
-          label: `${chat.kind === 'dm' ? '私聊' : '群聊'} · ${chat.name || chat.id}`,
-        }))}
-      />
-    ) : null;
-
-  const moreChats = nextConversations ? (
-    <SettingsRow label="加载更早的聊天" onClick={() => void loadMoreConversations()} />
-  ) : null;
-
-  if (page === 'chats')
-    return (
-      <AdvancedSubpage title="聊天中的共享" onBack={backToList}>
-        <SettingsPage>
-          {errorBanner}
-          {conversations === null ? (
-            <p className="px-4 text-xs text-[var(--text-faint)]">正在核验可用聊天…</p>
-          ) : conversations.length === 0 && !nextConversations ? (
-            <p className="px-4 text-xs text-[var(--text-faint)]">暂无可共享的真人聊天。</p>
-          ) : (
-            <SettingsGroup>
-              {chatPicker}
-              {moreChats}
-            </SettingsGroup>
-          )}
-          {selectedChat && items !== null && (
-            <SettingsGroup
-              label="我共享给这个聊天的"
-              footer="群里现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。"
-            >
-              {items.filter(shareable).length === 0 ? (
-                <SettingsRow label="没有可共享的记忆" />
-              ) : (
-                items
-                  .filter(shareable)
-                  .map((item) => (
-                    <SwitchRow
-                      key={item.id}
-                      label={item.title}
-                      checked={!!shares?.[item.id]?.enabled}
-                      disabled={busy || !chatReady || !shares}
-                      onCheckedChange={() => void toggleShare(item)}
-                    />
-                  ))
-              )}
-            </SettingsGroup>
-          )}
-          {selectedChat && (
-            <SettingsGroup label="对方共享给我的">
-              {!chatReady || received === null ? (
-                <SettingsRow label="正在读取…" />
-              ) : received.length === 0 ? (
-                <SettingsRow label="暂无收到的记忆" />
-              ) : (
-                received.map((entry) => (
-                  <SettingsRow
-                    key={`${entry.ownerId}:${entry.memory.id}`}
-                    label={entry.memory.title}
-                    detail={`${entry.ownerName} · ${entry.memory.content}`}
-                  />
-                ))
-              )}
-              {chatReady && nextReceivedOffset !== null && (
-                <SettingsRow label="加载更多" onClick={() => void loadMoreReceived()} />
-              )}
-            </SettingsGroup>
-          )}
-        </SettingsPage>
-      </AdvancedSubpage>
-    );
-
   if (page === 'edit' && items !== null) {
-    const canShare = editing !== null && shareable(editing);
-    const sharedHere = canShare && !!shares?.[editing.id]?.enabled;
     return (
       <AdvancedSubpage title={editing ? '编辑记忆' : '新记忆'} onBack={clearEditor}>
         <SettingsPage>
@@ -532,24 +265,6 @@ export function PersonalMemoryContent({
               {busy ? '处理中…' : editing ? '保存修改' : '添加记忆'}
             </Button>
           </form>
-
-          {canShare && conversations && (conversations.length > 0 || nextConversations) && (
-            <SettingsGroup
-              label="共享到真人聊天"
-              footer="群里现有和之后加入的成员都能看到；撤销后，对方已看过的内容无法收回。"
-            >
-              {chatPicker}
-              {moreChats}
-              {selectedChat && (
-                <SwitchRow
-                  label="共享给这个聊天"
-                  checked={sharedHere}
-                  disabled={busy || !chatReady || !shares}
-                  onCheckedChange={() => void toggleShare(editing)}
-                />
-              )}
-            </SettingsGroup>
-          )}
 
           {editing && (
             <SettingsGroup>
@@ -632,7 +347,6 @@ export function PersonalMemoryContent({
       )}
       {items !== null && (
         <SettingsGroup>
-          <SettingsRow icon={Users} label="聊天中的共享" onClick={() => setPage('chats')} />
           <SettingsRow
             icon={Download}
             label="导出全部记忆"

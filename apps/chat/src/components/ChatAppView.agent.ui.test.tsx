@@ -79,37 +79,11 @@ it('keeps the shell conversation on one chat surface and opens per-chat device a
   expect(access.closest('.hidden')).toBeTruthy();
 });
 
-it('opens memory sharing for the current verified human conversation', () => {
-  const openMemorySettings = vi.fn();
-  const props = {
-    ...({} as ChatAppViewProps),
-    signedIn: true,
-    inShell: true,
-    activeTab: 'control' as const,
-    openMemorySettings,
-    dmPeer: { id: 'bob', name: '小波', room: 'dm-room' },
-    peerRoom: {
-      roomId: 'dm-room',
-      isDm: true,
-      peers: [],
-      members: new Map(),
-      messages: [],
-    },
-    device: {},
-    waveforms: {},
-  } as unknown as ChatAppViewProps;
-  render(<ChatAppView {...props} />);
-  fireEvent.click(screen.getByRole('button', { name: '记忆共享' }));
-  expect(openMemorySettings).toHaveBeenCalledWith('dm', 'bob');
-});
-
-it('targets the active group and hides memory sharing when signed out', () => {
-  const openMemorySettings = vi.fn();
+it('offers no memory sharing entry in a human conversation', () => {
   const props = {
     inShell: true,
     signedIn: true,
     activeTab: 'control',
-    openMemorySettings,
     peerRoom: {
       roomId: 'group-room',
       isDm: false,
@@ -120,10 +94,7 @@ it('targets the active group and hides memory sharing when signed out', () => {
     device: {},
     waveforms: {},
   } as unknown as ChatAppViewProps;
-  const view = render(<ChatAppView {...props} />);
-  fireEvent.click(screen.getByRole('button', { name: '记忆共享' }));
-  expect(openMemorySettings).toHaveBeenCalledWith('group', 'group-room');
-  view.rerender(<ChatAppView {...props} signedIn={false} />);
+  render(<ChatAppView {...props} />);
   expect(screen.queryByRole('button', { name: '记忆共享' })).toBeNull();
 });
 

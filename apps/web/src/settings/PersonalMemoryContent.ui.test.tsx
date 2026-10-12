@@ -6,10 +6,6 @@ import {
   exportPersonalMemories,
   listPersonalMemories,
   savePersonalMemory,
-  listHumanMemoryConversations,
-  listHumanMemoryShares,
-  listReceivedHumanMemories,
-  setHumanMemoryShare,
   currentAuthUserId,
   subscribeAuthChanges,
 } from '@0xnullai/auth';
@@ -22,10 +18,6 @@ vi.mock('@0xnullai/auth', () => ({
   savePersonalMemory: vi.fn(),
   deletePersonalMemory: vi.fn(),
   exportPersonalMemories: vi.fn(),
-  listHumanMemoryConversations: vi.fn(),
-  listHumanMemoryShares: vi.fn(),
-  listReceivedHumanMemories: vi.fn(),
-  setHumanMemoryShare: vi.fn(),
   currentAuthUserId: vi.fn(() => authAccount),
   subscribeAuthChanges: vi.fn((listener) => {
     authListeners.add(listener);
@@ -55,47 +47,14 @@ beforeEach(() => {
     };
   });
   vi.mocked(listPersonalMemories).mockResolvedValue({ items: [memory], limit: 200 });
-  vi.mocked(listHumanMemoryConversations).mockResolvedValue({ conversations: [], next: null });
-  vi.mocked(listHumanMemoryShares).mockResolvedValue({ shares: [] });
-  vi.mocked(listReceivedHumanMemories).mockResolvedValue({ items: [], nextOffset: null });
 });
 
-it('shares only the chosen memory in the chosen human chat and can revoke it', async () => {
-  const chat = { kind: 'dm' as const, id: 'bob', name: '小波' };
-  vi.mocked(listHumanMemoryConversations).mockResolvedValue({ conversations: [chat], next: null });
-  vi.mocked(setHumanMemoryShare)
-    .mockResolvedValueOnce({ share: { memoryId: 'm1', enabled: true, version: 1, updatedAt: 2 } })
-    .mockResolvedValueOnce({ share: { memoryId: 'm1', enabled: false, version: 2, updatedAt: 3 } });
+it('offers no sharing into human chats', async () => {
   render(<PersonalMemoryContent />);
-  const share = () => screen.getByRole('switch', { name: '共享给这个聊天' });
-  fireEvent.click(await screen.findByRole('button', { name: /^小林/ }));
-  await screen.findByRole('switch', { name: '共享给这个聊天' });
-  expect(share().getAttribute('aria-checked')).toBe('false');
-  fireEvent.click(share());
-  await waitFor(() => expect(share().getAttribute('aria-checked')).toBe('true'));
-  expect(setHumanMemoryShare).toHaveBeenCalledWith(chat, memory, { enabled: true, version: 0 });
-  fireEvent.click(share());
-  await waitFor(() => expect(share().getAttribute('aria-checked')).toBe('false'));
-  expect(setHumanMemoryShare).toHaveBeenLastCalledWith(chat, memory, {
-    enabled: false,
-    version: 1,
-  });
-  expect(screen.getByText(/已看过的内容无法收回/)).toBeTruthy();
-});
-
-it('opens a deep-linked conversation even when it is older than the first list page', async () => {
-  const target = { kind: 'group' as const, id: 'old-room' };
-  const recent = { kind: 'dm' as const, id: 'bob', name: '小波' };
-  vi.mocked(listHumanMemoryConversations).mockResolvedValue({
-    conversations: [recent],
-    next: { dmOffset: null, groupOffset: 100 },
-  });
-  render(<PersonalMemoryContent initialChat={target} />);
-  await screen.findByRole('option', { name: '群聊 · old-room' });
-  await waitFor(() =>
-    expect(listHumanMemoryShares).toHaveBeenCalledWith({ ...target, name: target.id }),
-  );
-  expect((screen.getByLabelText('聊天') as HTMLSelectElement).value).toBe('group:old-room');
+  await screen.findByText('小林');
+  expect(screen.queryByRole('button', { name: '聊天中的共享' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /^小林/ }));
+  expect(screen.queryByText('共享到真人聊天')).toBeNull();
 });
 afterEach(cleanup);
 
@@ -162,59 +121,6 @@ it('ignores a late save after A→B→A and unlocks the new account editor', asy
   fireEvent.click(screen.getByRole('button', { name: '添加记忆' }));
   await screen.findByText('新账号记忆');
   expect(savePersonalMemory).toHaveBeenCalledTimes(2);
-});
-
-it('removes a displayed share on account change and ignores a late conversation result', async () => {
-  const aliceChat = { kind: 'dm' as const, id: 'peer-a', name: 'A 私聊' };
-  const bobChat = { kind: 'dm' as const, id: 'peer-b', name: 'B 私聊' };
-  let finishBob!: (value: { conversations: (typeof bobChat)[]; next: null }) => void;
-  vi.mocked(listHumanMemoryConversations)
-    .mockResolvedValueOnce({ conversations: [aliceChat], next: null })
-    .mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishBob = resolve;
-        }),
-    )
-    .mockResolvedValueOnce({ conversations: [aliceChat], next: null });
-  vi.mocked(listReceivedHumanMemories)
-    .mockResolvedValueOnce({
-      items: [
-        {
-          ownerId: 'peer-a',
-          ownerName: '旧共享者',
-          memory: {
-            id: 'shared',
-            kind: 'note',
-            title: '旧共享',
-            content: '旧账号内容',
-            version: 1,
-            updatedAt: 1,
-          },
-        },
-      ],
-      nextOffset: null,
-    })
-    .mockResolvedValue({ items: [], nextOffset: null });
-  render(<PersonalMemoryContent />);
-  fireEvent.click(await screen.findByRole('button', { name: '聊天中的共享' }));
-  await screen.findByText(/旧账号内容/);
-  await act(async () => {
-    authAccount = 'bob';
-    for (const listener of authListeners) listener({ id: 'bob' } as never);
-  });
-  expect(screen.queryByText(/旧账号内容/)).toBeNull();
-  await waitFor(() => expect(finishBob).toBeTypeOf('function'));
-  await act(async () => {
-    authAccount = 'alice';
-    for (const listener of authListeners) listener({ id: 'alice' } as never);
-    finishBob({ conversations: [bobChat], next: null });
-  });
-  // An account switch returns to the list; reopening the chats page shows only A's chats.
-  fireEvent.click(await screen.findByRole('button', { name: '聊天中的共享' }));
-  await screen.findByRole('option', { name: '私聊 · A 私聊' });
-  expect(screen.queryByRole('option', { name: '私聊 · B 私聊' })).toBeNull();
-  expect(screen.queryByText(/旧账号内容/)).toBeNull();
 });
 
 it('edits and deletes server memories using their current version', async () => {

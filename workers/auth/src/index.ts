@@ -19,7 +19,6 @@ import { handleAutoMemory, runAutoMemory } from './auto-memory';
 import { runConversationDigest } from './run-conversation-digest';
 import { handleConversationDigestPreference } from './conversation-digest-preference';
 import { handleAccountMemoryAccess } from './account-memory-access';
-import { handleHumanMemoryShares } from './human-memory-shares';
 import { handleBillingOrders } from './billing-orders';
 import { handleCharacterAppearance } from './character-appearance';
 import { handleCharacterDrafts } from './character-drafts';
@@ -1438,8 +1437,6 @@ const authWorker = {
       if (memoryFactsResponse) return memoryFactsResponse;
       const accountMemoryAccessResponse = await handleAccountMemoryAccess(request, env, cors);
       if (accountMemoryAccessResponse) return accountMemoryAccessResponse;
-      const humanMemoryResponse = await handleHumanMemoryShares(request, env, cors);
-      if (humanMemoryResponse) return humanMemoryResponse;
       const asrResponse = await handleVoiceAttachmentAsr(request, env, cors, {
         reserve: (userId, key, credits) =>
           reserveCredits(env, userId, {

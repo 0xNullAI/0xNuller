@@ -1006,7 +1006,6 @@ export default function App() {
       requireAccount={requireAccount}
       openDm={openDm}
       openAiSettings={() => openShellSettings('ai')}
-      openMemorySettings={(kind, id) => openShellSettings('memory', { conversation: { kind, id } })}
       sendMedia={sendMedia}
       sendCommand={sendCommand}
     />

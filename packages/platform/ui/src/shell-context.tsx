@@ -29,10 +29,6 @@ export type ShellSettingsTab =
   | 'safety'
   | 'agent-companion';
 
-export interface ShellSettingsContext {
-  conversation?: { kind: 'dm' | 'group'; id: string };
-}
-
 interface ShellChrome {
   inShell: boolean;
   active: boolean;
@@ -45,7 +41,7 @@ interface ShellChrome {
    * UIs that deserve a settings entry (e.g. Chat's host-configures-AI
    * button) keep their button — it just opens the same panel.
    */
-  openSettings: (tab?: ShellSettingsTab, context?: ShellSettingsContext) => void;
+  openSettings: (tab?: ShellSettingsTab) => void;
 }
 
 const ShellChromeContext = createContext<ShellChrome>({
@@ -63,7 +59,7 @@ export function ShellChromeProvider({
 }: {
   children: ReactNode;
   active?: boolean;
-  openSettings: (tab?: ShellSettingsTab, context?: ShellSettingsContext) => void;
+  openSettings: (tab?: ShellSettingsTab) => void;
   signedIn: boolean;
 }) {
   // Deliberately not memoized: the Shell rebuilds this object every
@@ -87,10 +83,7 @@ export function useShellSignedIn(): boolean {
 }
 
 /** Open the shell settings panel. A no-op outside the shell — the module's own panel still works there. */
-export function useOpenShellSettings(): (
-  tab?: ShellSettingsTab,
-  context?: ShellSettingsContext,
-) => void {
+export function useOpenShellSettings(): (tab?: ShellSettingsTab) => void {
   return useContext(ShellChromeContext).openSettings;
 }
 

@@ -105,7 +105,6 @@ const EMBEDDED_PAGE_IDS: ReadonlySet<string> = new Set(['agent-waveforms', 'agen
 
 export function SettingsPanel({
   initialTab = 'overview',
-  initialMemoryChat,
   onNavigateTab,
   user,
   onUser,
@@ -114,7 +113,6 @@ export function SettingsPanel({
 }: {
   /** Which page to land on when opened. AI entry points may target one module subsection. */
   initialTab?: string;
-  initialMemoryChat?: { kind: 'dm' | 'group'; id: string };
   onNavigateTab: (tab: string) => void;
   user: AuthUser | null;
   onUser: (user: AuthUser | null) => void;
@@ -263,7 +261,7 @@ export function SettingsPanel({
                 <AccountContent user={user} onUser={onUser} onDone={onClose} />
               ) : resolvedTab === 'memory' && user ? (
                 <Suspense fallback={<p role="status">正在读取个人记忆…</p>}>
-                  <PersonalMemoryContent key={user.id} initialChat={initialMemoryChat} />
+                  <PersonalMemoryContent key={user.id} />
                 </Suspense>
               ) : resolvedTab === 'safety' ? (
                 <SafetyTab
