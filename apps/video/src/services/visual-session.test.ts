@@ -22,6 +22,36 @@ afterEach(() => {
 });
 
 describe('VisualSession latest-frame loop', () => {
+  it('calls the global timers without itself as receiver, like browsers require', () => {
+    const realSet = globalThis.setTimeout;
+    const realClear = globalThis.clearTimeout;
+    // Browsers throw "Illegal invocation" when window timers run with another `this`.
+    function guard(this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    }
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(function (
+      this: unknown,
+      ...args: Parameters<typeof setTimeout>
+    ) {
+      guard.call(this);
+      return realSet(...args);
+    } as typeof setTimeout);
+    vi.spyOn(globalThis, 'clearTimeout').mockImplementation(function (
+      this: unknown,
+      timer?: Parameters<typeof clearTimeout>[0],
+    ) {
+      guard.call(this);
+      realClear(timer);
+    } as typeof clearTimeout);
+    const session = new VisualSession({
+      capture: vi.fn().mockResolvedValue(frame('only')),
+      interpret: vi.fn().mockResolvedValue('ok'),
+      onChange: () => undefined,
+    });
+    expect(() => session.start(10_000)).not.toThrow();
+    expect(() => session.stop()).not.toThrow();
+  });
+
   it('keeps one model request in flight and replaces stale queued frames', async () => {
     vi.useFakeTimers();
     const first = deferred<string>();

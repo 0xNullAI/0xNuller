@@ -87,8 +87,9 @@ export class VisualSession {
 
   constructor(private readonly options: VisualSessionOptions) {
     this.now = options.now ?? Date.now;
-    this.setTimer = options.setTimer ?? setTimeout;
-    this.clearTimer = options.clearTimer ?? clearTimeout;
+    // Browsers reject window timers called with another receiver ("Illegal invocation").
+    this.setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
+    this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
   }
 
   getSnapshot(): VisualSessionSnapshot {
