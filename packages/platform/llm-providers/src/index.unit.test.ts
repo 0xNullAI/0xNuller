@@ -81,3 +81,12 @@ describe('custom image input', () => {
     expect(isVideoLlmConfigured({ ...video, imageInput: true, apiKey: ' ' })).toBe(false);
   });
 });
+
+describe('自定义模型的服务商', () => {
+  it('recognises a preset address with or without a trailing slash', async () => {
+    const { customProviderPresetFor } = await import('./index');
+    expect(customProviderPresetFor('https://api.deepseek.com/v1/')).toBe('deepseek');
+    expect(customProviderPresetFor('https://ark.cn-beijing.volces.com/api/v3')).toBe('ark');
+    expect(customProviderPresetFor('https://example.org/v1')).toBeNull();
+  });
+});

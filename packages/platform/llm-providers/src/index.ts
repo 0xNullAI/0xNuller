@@ -114,6 +114,63 @@ export const CUSTOM_PLACEHOLDER_BASE_URL = 'https://api.example.com/v1';
 /** Stored when a custom endpoint has no model yet; shown as an empty field. */
 export const CUSTOM_PLACEHOLDER_MODEL = 'model-name';
 
+/**
+ * Common OpenAI-compatible services people bring their own key for. Choosing one only fills the
+ * address and interface; the model list then comes from the service itself.
+ */
+export const CUSTOM_PROVIDER_PRESETS = [
+  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
+  {
+    id: 'ark',
+    label: '火山方舟（豆包）',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    // Ark answers chat requests from browsers, but its model list refuses cross-origin reads.
+    listModels: false,
+    models: [
+      'deepseek-v4-1-flash-260910',
+      'doubao-seed-2-1-pro-260915',
+      'doubao-seed-2-1-lite-260915',
+      'doubao-seed-2-1-turbo-260628',
+      'doubao-seed-character-260628',
+      'glm-5-3-flash-260828',
+      'deepseek-v4-pro-ga-260813',
+    ],
+  },
+  {
+    id: 'bailian',
+    label: '阿里云百炼（通义千问）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  { id: 'moonshot', label: '月之暗面 Kimi', baseUrl: 'https://api.moonshot.cn/v1' },
+  { id: 'zhipu', label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  { id: 'siliconflow', label: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1' },
+  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
+  // OpenAI's current models call tools only through the Responses API.
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', endpoint: 'responses' },
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  baseUrl: string;
+  endpoint?: 'responses' | 'chat/completions';
+  /** False when the service's model list cannot be read from a browser. */
+  listModels?: boolean;
+  /** Suggested model ids, shown before (or instead of) the service's own list. */
+  models?: readonly string[];
+}[];
+export type CustomProviderPresetId = (typeof CUSTOM_PROVIDER_PRESETS)[number]['id'];
+
+/** The preset whose address this is, or null for any other endpoint. */
+export function customProviderPresetFor(baseUrl: string): CustomProviderPresetId | null {
+  return customProviderPreset(baseUrl)?.id ?? null;
+}
+
+export function customProviderPreset(
+  baseUrl: string,
+): (typeof CUSTOM_PROVIDER_PRESETS)[number] | undefined {
+  const normalized = baseUrl.trim().replace(/\/+$/, '').toLowerCase();
+  return CUSTOM_PROVIDER_PRESETS.find((preset) => preset.baseUrl === normalized);
+}
+
 export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   {
     id: 'managed',

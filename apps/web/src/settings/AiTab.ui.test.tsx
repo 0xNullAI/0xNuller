@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type * as LlmProviders from '@0xnullai/llm-providers';
+import { discoverBrowserProviderModels } from '@dg-agent/agent-browser/llm';
 import { AiTab } from './AiTab';
 
 const llm = vi.hoisted(() => ({
@@ -80,4 +81,57 @@ it('offers only the custom endpoint as an own-API option', () => {
   expect(llm.save).toHaveBeenCalledWith(
     expect.objectContaining({ providerId: 'custom', apiKey: '', imageInput: false }),
   );
+});
+
+it('fills a known service from the 服务商 list and loads its models once a key is there', async () => {
+  vi.mocked(discoverBrowserProviderModels).mockResolvedValue([
+    'deepseek-chat',
+    'deepseek-reasoner',
+  ]);
+  llm.config = {
+    providerId: 'custom',
+    apiKey: 'sk-test',
+    model: 'model-name',
+    baseUrl: 'https://api.deepseek.com/v1',
+    endpoint: 'chat/completions',
+    useStrict: false,
+    imageInput: false,
+    rememberApiKey: false,
+  };
+  render(<AiTab />);
+  fireEvent.click(screen.getByRole('button', { name: /^自定义模型与网络代理/ }));
+
+  const provider = screen.getByRole<HTMLSelectElement>('combobox', { name: '服务商' });
+  expect(provider.value).toBe('deepseek');
+  expect(await screen.findByText('已加载 2 个模型')).toBeTruthy();
+
+  fireEvent.change(provider, { target: { value: 'openai' } });
+  expect(llm.save).toHaveBeenLastCalledWith(
+    expect.objectContaining({ baseUrl: 'https://api.openai.com/v1', endpoint: 'responses' }),
+  );
+  fireEvent.change(provider, { target: { value: 'other' } });
+  await waitFor(() =>
+    expect(llm.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ baseUrl: 'https://api.example.com/v1' }),
+    ),
+  );
+});
+
+it('offers common Ark models instead of reading a list the browser cannot get', () => {
+  vi.mocked(discoverBrowserProviderModels).mockClear();
+  llm.config = {
+    providerId: 'custom',
+    apiKey: 'sk-test',
+    model: 'model-name',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    endpoint: 'chat/completions',
+    useStrict: false,
+    imageInput: false,
+    rememberApiKey: false,
+  };
+  render(<AiTab />);
+  fireEvent.click(screen.getByRole('button', { name: /^自定义模型与网络代理/ }));
+  expect(screen.queryByRole('button', { name: '刷新模型列表' })).toBeNull();
+  expect(screen.getByText(/不支持在浏览器里读取模型列表/)).toBeTruthy();
+  expect(discoverBrowserProviderModels).not.toHaveBeenCalled();
 });
