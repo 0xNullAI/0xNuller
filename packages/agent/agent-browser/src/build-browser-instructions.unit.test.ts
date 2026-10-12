@@ -116,3 +116,31 @@ it('does not silently apply a newly selected global scene to an existing unbound
   });
   expect(instructions).not.toContain('森林环境规则');
 });
+
+it('hosts a scene-only chat as the scene narrator instead of a generic assistant', () => {
+  const build = createBuildBrowserInstructions({
+    promptPresetId: 'night-market',
+    savedPromptPresets: [
+      { id: 'night-market', name: '晚孤市', kind: 'scene', prompt: '梦境夜市的环境与摊主' },
+    ],
+    maxStrengthA: 10,
+    maxStrengthB: 10,
+  });
+  const text = build({
+    session: {
+      id: 's',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+      deviceState: createEmptyDeviceState(),
+      metadata: { sceneId: 'night-market' },
+    },
+    context: { sessionId: 's', sourceType: 'web' as const, traceId: 't' },
+    isFirstIteration: true,
+    turnToolCalls: [],
+  });
+  expect(text).toContain('[场景主持]');
+  expect(text).toContain('梦境夜市的环境与摊主');
+  expect(text).not.toContain('你是一个友好的助手');
+  expect(text).not.toContain('保持当前角色身份');
+});

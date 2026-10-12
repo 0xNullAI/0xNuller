@@ -8,9 +8,9 @@ const MAX_SOURCE_BYTES = 8_000_000;
 const MAX_MODEL_BYTES = 250 * 1024;
 const MAX_EDGE = 768;
 
-/** Managed vision currently accepts only standalone observation requests, not chat history. */
+/** Managed chat sends the chosen image through its chat-vision binding; own APIs need image input on. */
 export function canUsePrivateImageInput(imageInput: boolean, providerId: string): boolean {
-  return imageInput && providerId !== 'managed';
+  return providerId === 'managed' || imageInput;
 }
 
 /** Read a server-authorized attachment and prepare one ephemeral vision input. */

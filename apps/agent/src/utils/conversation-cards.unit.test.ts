@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { createEmptyDeviceState, type SessionSnapshot } from '@dg-agent/core';
-import { resolveConversationCards, sceneNeedsCharacter } from './conversation-cards.js';
+import { resolveConversationCards } from './conversation-cards.js';
 
 const library = {
   selectedId: 'new-character',
@@ -49,22 +49,4 @@ it('treats an old prompt-only scene as an environment, never a character', () =>
     boundPresetId: 'forest',
   });
   expect(resolveConversationCards(session({ sceneId: '' }), 's', library).sceneId).toBe('');
-});
-
-it('requires a character before starting scene-only chat while retaining legacy message history', () => {
-  expect(sceneNeedsCharacter(session({ sceneId: 'forest' }), 's', '', 'forest')).toBe(true);
-  expect(sceneNeedsCharacter(null, 's', '', 'forest')).toBe(true);
-  expect(sceneNeedsCharacter(session({ sceneId: 'forest' }), 's', 'character', 'forest')).toBe(
-    false,
-  );
-  expect(
-    sceneNeedsCharacter(
-      session({ promptPresetId: 'forest' }, [
-        { id: 'm', role: 'user', content: '旧会话', createdAt: 1 },
-      ]),
-      's',
-      '',
-      'forest',
-    ),
-  ).toBe(false);
 });

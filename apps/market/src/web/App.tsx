@@ -27,6 +27,7 @@ import { CharacterStudio } from './components/CharacterStudio';
 import { marketEditorHref, marketEditorRoute } from './market-editor-route';
 import { startCharacterChat } from './start-character-chat';
 import { importSceneCard } from './import-scene-card';
+import { startSceneChat } from './start-scene-chat';
 import { appendBrowsePage, MARKET_PAGE_SIZE } from './browse-pages';
 import { filterPlacement } from './filter-placement';
 
@@ -34,6 +35,7 @@ type WaveformModality = 'electrostimulation' | 'vibration';
 type Category = PromptKind | 'waveform';
 type Studio = { kind: 'new'; cardKind: PromptKind } | { kind: 'edit'; item: MarketItem };
 const sortOptions = [
+  { value: 'trending', label: '综合排序' },
   { value: 'new', label: '最新发布' },
   { value: 'hot', label: '热门内容' },
   { value: 'views', label: '浏览最多' },
@@ -47,7 +49,7 @@ export function App(): JSX.Element {
   const [category, setCategory] = useState<Category>('character');
   const [waveformModality, setWaveformModality] = useState<WaveformModality>('electrostimulation');
   const [discovery, setDiscovery] = useState<'all' | 'favorites' | 'following'>('all');
-  const [sort, setSort] = useState<Sort>('new');
+  const [sort, setSort] = useState<Sort>('trending');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,7 +239,7 @@ export function App(): JSX.Element {
   const activeType: ItemType = category === 'waveform' ? 'waveform' : 'scenario';
   const activeFilterCount =
     Number(discovery !== 'all') +
-    Number(sort !== 'new') +
+    Number(sort !== 'trending') +
     Number(category === 'waveform' && waveformModality !== 'electrostimulation');
 
   const load = useCallback(() => {
@@ -627,7 +629,7 @@ export function App(): JSX.Element {
                         disabled={activeFilterCount === 0}
                         onClick={() => {
                           setDiscovery('all');
-                          setSort('new');
+                          setSort('trending');
                           setWaveformModality('electrostimulation');
                         }}
                       >
@@ -718,6 +720,21 @@ export function App(): JSX.Element {
             key={active.id}
             item={active}
             onImportScene={shellNav ? (item) => importSceneCard(item.id) : undefined}
+            onStartScene={
+              shellNav
+                ? async (item) => {
+                    const account = currentAuthUserId();
+                    if (!account) {
+                      openShellSettings('account');
+                      return;
+                    }
+                    await startSceneChat(item.id);
+                    if (currentAuthUserId() !== account)
+                      throw new Error('账号已切换，请重新打开公开内容');
+                    shellNav.navigate('agent');
+                  }
+                : undefined
+            }
             onStartCharacter={
               shellNav
                 ? async (item) => {

@@ -16,7 +16,11 @@ export function prepareVisionRequest(body, usageKind, conversationId, runId) {
     body.messages.length > (chat ? 128 : 2)
   )
     throw new Error('vision_messages_invalid');
-  if (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.length > 8))
+  // Chat turns carry the companion's full tool set (device, memory, scene); camera turns fewer.
+  if (
+    body.tools !== undefined &&
+    (!Array.isArray(body.tools) || body.tools.length > (chat ? 16 : 8))
+  )
     throw new Error('vision_tools_invalid');
   let imageBytes = 0;
   const messages = body.messages.map((message, index) => {

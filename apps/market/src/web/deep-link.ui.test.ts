@@ -114,7 +114,8 @@ it('角色、场景和波形使用同一分类行，筛选面板显示当前选�
   );
   fireEvent.click(screen.getByRole('button', { name: '筛选' }));
   expect(screen.getByRole('region', { name: '内容筛选' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '最新发布' }).getAttribute('aria-pressed')).toBe(
+  // 综合排序 is the default, so newest is not automatically the first thing shown.
+  expect(screen.getByRole('button', { name: '综合排序' }).getAttribute('aria-pressed')).toBe(
     'true',
   );
   fireEvent.click(screen.getByRole('button', { name: '热门内容' }));
@@ -125,7 +126,7 @@ it('角色、场景和波形使用同一分类行，筛选面板显示当前选�
     expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ sort: 'hot', kind: 'scene' })),
   );
   fireEvent.click(screen.getByRole('button', { name: '重置筛选' }));
-  expect(screen.getByRole('button', { name: '最新发布' }).getAttribute('aria-pressed')).toBe(
+  expect(screen.getByRole('button', { name: '综合排序' }).getAttribute('aria-pressed')).toBe(
     'true',
   );
   fireEvent.keyDown(document, { key: 'Escape' });

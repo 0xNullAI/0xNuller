@@ -257,6 +257,37 @@ describe('OpenAiHttpLlmClient', () => {
       });
     });
 
+    it('sends a managed chat turn with an image to chat-vision, naming its conversation', async () => {
+      let init: RequestInit | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async (_url: string, request: RequestInit) => {
+          init = request;
+          return { ok: true, json: async () => MOCK_CHAT_RESPONSE, body: null };
+        }),
+      );
+      const client = new OpenAiHttpLlmClient({
+        apiKey: 'managed',
+        baseUrl: 'https://llm.0xnullai.com/v1',
+        model: 'balanced',
+      });
+      expect(client.capabilities.imageInput).toBe(true);
+      await client.runTurn({
+        ...makeTurnInput(),
+        image: TEST_IMAGE,
+        onTextDelta: vi.fn(),
+        runId: 'run:chat:002',
+      });
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      expect(body.model).toBe('chat-vision');
+      expect(body.stream).toBeUndefined();
+      expect(init?.headers).toMatchObject({
+        'X-0xNullAI-Usage-Kind': 'agent',
+        'X-0xNullAI-Conversation-Id': 'test',
+        'X-0xNullAI-Run-Id': 'run:chat:002',
+      });
+    });
+
     it('serializes one image on the latest user message for Chat Completions', async () => {
       const captured = captureRequestBody();
       const client = new OpenAiHttpLlmClient({

@@ -33,6 +33,8 @@ interface Props {
   onEditCharacter?: (item: MarketItem) => void;
   onStartCharacter?: (item: MarketItem) => Promise<void>;
   onImportScene?: (item: MarketItem) => Promise<void>;
+  /** Opens a chat in this scene with no character; the AI hosts the place. */
+  onStartScene?: (item: MarketItem) => Promise<void>;
 }
 
 function download(filename: string, text: string): void {
@@ -53,6 +55,7 @@ export function ItemDetail({
   onEditCharacter,
   onStartCharacter,
   onImportScene,
+  onStartScene,
 }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
@@ -191,6 +194,19 @@ export function ItemDetail({
     }
   };
 
+  const handleStartScene = async () => {
+    if (!onStartScene || starting) return;
+    setStartError('');
+    setStarting(true);
+    try {
+      await onStartScene(view);
+    } catch (reason) {
+      setStartError(reason instanceof Error ? reason.message : '暂时无法开始聊天');
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const handleImportScene = async () => {
     if (!onImportScene || starting) return;
     setStartError('');
@@ -316,6 +332,14 @@ export function ItemDetail({
       <button
         className="btn primary ui-press"
         onClick={() => void handleStartCharacter()}
+        disabled={starting}
+      >
+        {starting ? '正在打开聊天…' : '开始聊天'}
+      </button>
+    ) : view.type === 'scenario' && !isCharacter && onStartScene ? (
+      <button
+        className="btn primary ui-press"
+        onClick={() => void handleStartScene()}
         disabled={starting}
       >
         {starting ? '正在打开聊天…' : '开始聊天'}
@@ -608,9 +632,11 @@ export function ItemDetail({
           {view.type === 'scenario'
             ? isCharacter
               ? '聊天中的称呼、关系和记忆只属于你，作者更新卡片也不会改动。'
-              : importedScene
-                ? '已导入。在角色聊天里点名字 → 场景 即可选用。'
-                : '场景只是聊天发生的环境，不是角色，也没有记忆。'
+              : onStartScene
+                ? '开始聊天时由 AI 主持这个场景；也可以在和角色聊天时点名字 → 场景选用它。场景没有记忆。'
+                : importedScene
+                  ? '已导入。在角色聊天里点名字 → 场景 即可选用。'
+                  : '场景只是聊天发生的环境，不是角色，也没有记忆。'
             : '在设备页的「波形」里点「从市场导入」即可使用。'}
         </p>
 

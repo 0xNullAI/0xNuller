@@ -184,7 +184,10 @@ const marketWorker = {
         const q = url.searchParams.get('q')?.trim() || undefined;
         const requestedSort = url.searchParams.get('sort');
         const sort =
-          requestedSort === 'hot' || requestedSort === 'views' || requestedSort === 'downloads'
+          requestedSort === 'trending' ||
+          requestedSort === 'hot' ||
+          requestedSort === 'views' ||
+          requestedSort === 'downloads'
             ? requestedSort
             : requestedSort === 'popular'
               ? 'downloads'
