@@ -51,6 +51,7 @@ beforeEach(async () => {
   env = {
     DB: db.DB,
     VOLC_ARK_API_KEY: 'test-only',
+    IMAGE_GENERATION_ENABLED: '1',
     AI_PRICE_TABLE: TEST_PRICE_TABLE,
     PHOTOS: {
       head: vi.fn(async (k: string) => objects.get(k) ?? null),
@@ -172,6 +173,12 @@ describe('private media jobs and unified credit ledger', () => {
   it('requires enabled capability and owned conversation; accepts only current quoted prices', async () => {
     expect((await call('job_00001', 'PUT', draft, 'bob')).status).toBe(400);
     expect((await call('job_00001', 'PUT', { ...draft, acceptedCredits: 1 })).status).toBe(409);
+    // Off until the owner opens it, even with a key and a price table.
+    delete env.IMAGE_GENERATION_ENABLED;
+    const closed = await call();
+    expect(closed.status).toBe(503);
+    expect(await closed.json()).toMatchObject({ error: '图片生成暂未开放' });
+    env.IMAGE_GENERATION_ENABLED = '1';
     delete env.VOLC_ARK_API_KEY;
     expect((await call()).status).toBe(503);
     env.VOLC_ARK_API_KEY = 'test-only';

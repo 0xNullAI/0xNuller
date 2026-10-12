@@ -11,6 +11,8 @@ export interface MediaEnv extends SessionEnv, ArkEnv {
   PHOTOS: R2Bucket;
   /** Public Market portraits, used as the reference image when no private portrait is set. */
   MARKET?: Fetcher;
+  /** Image generation is off until this is "1"; the owner opens it when the model is ready. */
+  IMAGE_GENERATION_ENABLED?: string;
 }
 interface Row {
   user_id: string;
@@ -171,8 +173,10 @@ function imageOffer(env: MediaEnv) {
     model: ark?.table.image.model ?? null,
     credits: priced ? credits : null,
     priceVersion: ark ? `ark-image:${ark.table.version}:${credits}` : 'unavailable',
-    enabled: Boolean(ark && env.PHOTOS && priced),
-    reason: !env.VOLC_ARK_API_KEY?.trim()
+    enabled: Boolean(env.IMAGE_GENERATION_ENABLED === '1' && ark && env.PHOTOS && priced),
+    reason: env.IMAGE_GENERATION_ENABLED !== '1'
+      ? '图片生成暂未开放'
+      : !env.VOLC_ARK_API_KEY?.trim()
       ? '管理员尚未配置媒体服务'
       : !priced
         ? '管理员尚未配置媒体价格'

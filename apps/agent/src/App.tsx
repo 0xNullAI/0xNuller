@@ -9,6 +9,7 @@ import {
   listAgentRuns,
   getAgentRun,
   finishAgentRun,
+  listMediaCapabilities,
   type AgentRunCall,
   type AgentRunStatus,
 } from '@0xnullai/auth';
@@ -265,6 +266,31 @@ export function App({ servicesOverrides }: AppProps = {}) {
   } = runtimeSession;
 
   const agentRouteActive = !shellNav || shellNav.activeId === 'agent';
+  // 生成图片 appears only while the server offers it; the owner can keep it closed.
+  const [imageGenerationOpen, setImageGenerationOpen] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const check = () => {
+      if (!currentAuthUserId()) {
+        setImageGenerationOpen(false);
+        return;
+      }
+      void listMediaCapabilities()
+        .then(({ items }) => {
+          if (active) setImageGenerationOpen(items.some((x) => x.kind === 'image' && x.enabled));
+        })
+        .catch(() => {
+          if (active) setImageGenerationOpen(false);
+        });
+    };
+    check();
+    const unsubscribe = subscribeAuthChanges(check);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     if (!agentRouteActive) return;
     let active = true;
@@ -1280,7 +1306,9 @@ export function App({ servicesOverrides }: AppProps = {}) {
               }}
               onVoiceCall={shellNav ? () => void switchConversationMode('voice') : undefined}
               onCamera={shellNav ? () => void switchConversationMode('video') : undefined}
-              onGenerateMedia={() => relationshipAccessRef.current?.openMedia()}
+              onGenerateMedia={
+                imageGenerationOpen ? () => relationshipAccessRef.current?.openMedia() : undefined
+              }
               imageInputSupported={canUsePrivateImageInput(
                 client.capabilities.imageInput,
                 settings.provider.providerId,
