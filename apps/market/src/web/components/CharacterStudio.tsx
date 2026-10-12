@@ -115,6 +115,9 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   const [accountChanged, setAccountChanged] = useState(false);
   const [reloadDraft, setReloadDraft] = useState(0);
   const published = useRef(false);
+  // `busy` only disables the button after a re-render; a fast double tap lands before that and
+  // used to publish the same card twice.
+  const publishing = useRef(false);
   const [serverDraft, setServerDraft] = useState<CharacterDraft | null>(null);
   const [draftNotice, setDraftNotice] = useState('');
   const [versions, setVersions] = useState<CharacterRevisionSummary[]>([]);
@@ -659,6 +662,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
   };
 
   const save = async () => {
+    if (publishing.current) return;
     if (drawingDirty) return setError('请先预览确认手绘头像，或取消绘制，再发布公开内容');
     const account = currentAuthUserId();
     if (!account) return setError('请先登录后保存公开内容');
@@ -680,6 +684,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
       )
     )
       return;
+    publishing.current = true;
     setBusy(true);
     setError('');
     try {
@@ -737,6 +742,7 @@ export function CharacterStudio({ item, initialKind, onClose, onSaved }: Props) 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '公开内容保存失败');
     } finally {
+      publishing.current = false;
       saver.resume();
       setBusy(false);
     }

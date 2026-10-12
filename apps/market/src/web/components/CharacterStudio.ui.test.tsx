@@ -80,6 +80,23 @@ it('offers a fill-in outline only while the character setting is empty', () => {
   expect(screen.queryByRole('button', { name: '按模板填写' })).toBeNull();
 });
 
+it('publishes once when 发布角色 is tapped twice before the page updates', async () => {
+  const saved = vi.fn();
+  render(<CharacterStudio onClose={() => {}} onSaved={saved} />);
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '姐姐' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '人物设定' }), {
+    target: { value: '开朗大方' },
+  });
+  const publish = screen.getByRole('button', { name: '发布角色' });
+  await waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+  act(() => {
+    publish.click();
+    publish.click();
+  });
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(api.upload).toHaveBeenCalledOnce();
+});
+
 it('creates a public character from only a name and prompt, without private fields', async () => {
   const saved = vi.fn();
   render(<CharacterStudio onClose={() => {}} onSaved={saved} />);
