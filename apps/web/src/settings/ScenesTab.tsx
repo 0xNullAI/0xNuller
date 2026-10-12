@@ -1,7 +1,6 @@
 import { savedPromptKind, type SavedScene } from '@0xnullai/scenes';
 import { SceneLibrary } from '@0xnullai/scenes/library';
-import { openSceneChat } from '@0xnullai/scenes/start-chat';
-import { openCharacterChat } from '../open-character-chat';
+import { openCharacterChat, openSceneChat } from '@0xnullai/scenes/start-chat';
 
 /** The shared account library; legacy built-in prompts are not offered here. */
 export function ScenesTab({ onOpenAgent }: { onOpenAgent?: () => void }) {

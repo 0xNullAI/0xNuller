@@ -28,6 +28,8 @@ import { marketEditorHref, marketEditorRoute } from './market-editor-route';
 import { startCharacterChat } from './start-character-chat';
 import { importSceneCard } from './import-scene-card';
 import { startSceneChat } from './start-scene-chat';
+import { savedPromptKind } from '@0xnullai/scenes';
+import { openCharacterChat, openSceneChat } from '@0xnullai/scenes/start-chat';
 import { appendBrowsePage, MARKET_PAGE_SIZE } from './browse-pages';
 import { filterPlacement } from './filter-placement';
 
@@ -739,6 +741,20 @@ export function App(): JSX.Element {
                     if (currentAuthUserId() !== account)
                       throw new Error('账号已切换，请重新打开公开内容');
                     shellNav.navigate('agent');
+                  }
+                : undefined
+            }
+            onStartExtracted={
+              shellNav
+                ? (card) => {
+                    // Extracted cards are private library cards, opened like any other.
+                    const open =
+                      savedPromptKind(card) === 'character'
+                        ? openCharacterChat(card.id)
+                        : openSceneChat(card.id);
+                    void open.then((opened) => {
+                      if (opened) shellNav.navigate('agent');
+                    });
                   }
                 : undefined
             }

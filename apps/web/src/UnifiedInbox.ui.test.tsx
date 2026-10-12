@@ -26,8 +26,10 @@ vi.mock('@0xnullai/scenes', async (importOriginal) => ({
   ...(await importOriginal<typeof ScenesModule>()),
   loadScenes: () => ({ scenes: state.scenes, selectedId: '' }),
 }));
-vi.mock('./open-character-chat', () => ({ openCharacterChat: state.openCharacter }));
-vi.mock('@0xnullai/scenes/start-chat', () => ({ openSceneChat: state.openScene }));
+vi.mock('@0xnullai/scenes/start-chat', () => ({
+  openCharacterChat: state.openCharacter,
+  openSceneChat: state.openScene,
+}));
 vi.mock('@0xnullai/auth/appearance-react', () => ({
   useCharacterPhoto: (photoId: string | null) => (photoId ? (state.photos[photoId] ?? null) : null),
 }));

@@ -1,8 +1,10 @@
-import { requestProfileView, subscribeAuthChanges } from '@0xnullai/auth';
+import { currentAuthUserId, requestProfileView, subscribeAuthChanges } from '@0xnullai/auth';
 import { CharacterReportAction } from './CharacterReports';
 import { FavoriteAction } from './FavoriteAction';
 import { parseCharacterCard, type CharacterCard } from '@0xnullai/scenes/character-card';
 import { CharacterCardFields } from '@0xnullai/scenes/character-editor';
+import { ScriptSplitterDialog } from '@0xnullai/scenes/script-splitter';
+import type { SavedScene } from '@0xnullai/scenes';
 import { scriptLengthError } from '../script-length';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -35,6 +37,11 @@ interface Props {
   onImportScene?: (item: MarketItem) => Promise<void>;
   /** Opens a chat in this scene with no character; the AI hosts the place. */
   onStartScene?: (item: MarketItem) => Promise<void>;
+  /**
+   * Enables 提取角色 (signed in, inside the shell): the community script becomes private cards
+   * in the user's library, and this opens a chat with one of them.
+   */
+  onStartExtracted?: (card: SavedScene) => void;
 }
 
 function download(filename: string, text: string): void {
@@ -56,6 +63,7 @@ export function ItemDetail({
   onStartCharacter,
   onImportScene,
   onStartScene,
+  onStartExtracted,
 }: Props): JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
@@ -94,6 +102,8 @@ export function ItemDetail({
   const [follow, setFollow] = useState<CreatorFollowState | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [signedIn, setSignedIn] = useState(() => Boolean(currentAuthUserId()));
+  const [extracting, setExtracting] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -116,6 +126,7 @@ export function ItemDetail({
     const stop = subscribeAuthChanges(() => {
       live = false;
       setFollow(null);
+      setSignedIn(Boolean(currentAuthUserId()));
     });
     return () => {
       live = false;
@@ -353,6 +364,10 @@ export function ItemDetail({
         {starting ? '正在导入…' : importedScene ? '已导入场景' : '导入场景'}
       </button>
     ) : null;
+  const canExtract = Boolean(onStartExtracted && signedIn && view.type === 'scenario');
+  const authorName = view.verifiedCreator
+    ? `@${view.verifiedCreator.username}`
+    : view.author?.trim() || '';
   const canFollow = Boolean(follow?.creator && follow.creator.id !== follow.accountId);
   const editLabel =
     view.type === 'scenario' && onEditCharacter ? `编辑${isCharacter ? '角色' : '场景'}` : '编辑';
@@ -642,6 +657,15 @@ export function ItemDetail({
 
         {/* The one primary action. A phone pins it full width at the bottom. */}
         <div className="market-detail-primary">
+          {canExtract && (
+            <button
+              type="button"
+              className="btn ui-press market-detail-extract"
+              onClick={() => setExtracting(true)}
+            >
+              提取角色
+            </button>
+          )}
           {primaryAction ?? (
             <button className="btn primary ui-press" onClick={handleCopy}>
               {copied ? '已复制 ✓' : '复制 JSON'}
@@ -649,6 +673,18 @@ export function ItemDetail({
           )}
         </div>
       </div>
+      {extracting && onStartExtracted && view.type === 'scenario' && (
+        <ScriptSplitterDialog
+          source={{
+            name: view.name,
+            prompt: (view.content as ScenarioContent).prompt,
+            author: authorName,
+            derivedFrom: { itemId: view.id, name: view.name },
+          }}
+          onClose={() => setExtracting(false)}
+          onStartChat={onStartExtracted}
+        />
+      )}
     </Overlay>
   );
 }

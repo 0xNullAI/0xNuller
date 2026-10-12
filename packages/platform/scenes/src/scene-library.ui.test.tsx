@@ -42,7 +42,15 @@ vi.mock('@0xnullai/ui', async (importOriginal) => ({
     </button>
   ),
 }));
+const splitter = vi.hoisted(() => ({ source: null as unknown }));
+vi.mock('./script-splitter-dialog.js', () => ({
+  ScriptSplitterDialog: ({ source }: { source: unknown }) => {
+    splitter.source = source;
+    return <div role="dialog">拆分对话框</div>;
+  },
+}));
 beforeEach(() => {
+  splitter.source = null;
   auth.account = 'alice';
   localStorage.clear();
   __resetSceneSyncForTests();
@@ -467,4 +475,45 @@ it('starts a chat with the chosen card through the host callback', () => {
   expect(onStartChat).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'market-a' }));
   fireEvent.click(screen.getByRole('button', { name: '和 小夜 聊天' }));
   expect(onStartChat).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'mine' }));
+});
+
+it('offers 拆分角色 only for long scripts and passes attribution for each source', async () => {
+  const long = '剧本'.repeat(1500);
+  saveScenes({
+    scenes: [
+      { id: 'short', name: '短卡', prompt: '人设', kind: 'character' as const },
+      { id: 'mine', name: '我的剧本', prompt: long, kind: 'scene' as const },
+      { id: 'market-pub', name: '公开剧本', prompt: long, kind: 'scene' as const },
+      {
+        id: 'adapted',
+        name: '林雾',
+        prompt: long,
+        kind: 'scene' as const,
+        derivedFrom: { itemId: 'pub', name: '雾港' },
+      },
+    ],
+    selectedId: '',
+    hiddenBuiltinIds: [],
+  });
+  market.fetchItem.mockResolvedValue({ id: 'pub', author: '作者甲' });
+  render(<SceneLibrary />);
+  expect(screen.getByText('私有 · 改编自《雾港》')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '拆分角色：短卡' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：我的剧本' }));
+  expect(splitter.source).toEqual({ name: '我的剧本', prompt: long, author: '我' });
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：公开剧本' }));
+  await waitFor(() =>
+    expect(splitter.source).toEqual({
+      name: '公开剧本',
+      prompt: long,
+      author: '作者甲',
+      derivedFrom: { itemId: 'pub', name: '公开剧本' },
+    }),
+  );
+  expect(market.fetchItem).toHaveBeenCalledWith('pub');
+
+  fireEvent.click(screen.getByRole('button', { name: '拆分角色：林雾' }));
+  expect(splitter.source).toMatchObject({ derivedFrom: { itemId: 'pub', name: '雾港' } });
 });

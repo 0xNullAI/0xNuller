@@ -7,8 +7,10 @@ const state = vi.hoisted(() => ({
   openCharacter: vi.fn(async () => true),
   openScene: vi.fn(async () => true),
 }));
-vi.mock('../open-character-chat', () => ({ openCharacterChat: state.openCharacter }));
-vi.mock('@0xnullai/scenes/start-chat', () => ({ openSceneChat: state.openScene }));
+vi.mock('@0xnullai/scenes/start-chat', () => ({
+  openCharacterChat: state.openCharacter,
+  openSceneChat: state.openScene,
+}));
 vi.mock('@0xnullai/scenes/library', () => ({
   SceneLibrary: ({ onStartChat }: { onStartChat?: (preset: SavedScene) => void }) =>
     onStartChat ? (

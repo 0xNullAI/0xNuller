@@ -787,3 +787,60 @@ it('rejects remote URLs, malformed IDs and portrait metadata on non-Market scene
   });
   expect(loadScenes().scenes[0]?.marketPortraitId).toBeUndefined();
 });
+
+describe('cards adapted from a public card', () => {
+  const derivedFrom = { itemId: 'item-1', name: '雾港' };
+
+  it('keeps derivedFrom through save, local reload, upload and download', async () => {
+    saveScenes({
+      ...emptyLibrary(),
+      scenes: [{ id: 'mine', name: '林雾', prompt: '设定', kind: 'character', derivedFrom }],
+    });
+    expect(loadScenes().scenes[0]?.derivedFrom).toEqual(derivedFrom);
+    expect(syncMocks.pushContent).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'mine',
+        payload: { prompt: '设定', kind: 'character', derivedFrom },
+      }),
+    ]);
+    localStorage.clear();
+    __resetSceneSyncForTests();
+    syncMocks.pullContent.mockResolvedValueOnce([
+      {
+        id: 'remote',
+        name: '老周',
+        payload: { prompt: '设定', kind: 'character', derivedFrom: { ...derivedFrom, extra: 1 } },
+        deleted: false,
+      },
+    ]);
+    await syncScenes();
+    expect(loadScenes().scenes[0]).toEqual({
+      id: 'remote',
+      name: '老周',
+      prompt: '设定',
+      kind: 'character',
+      derivedFrom,
+    });
+  });
+
+  it('drops malformed derivedFrom but keeps the card (older clients have none)', () => {
+    localStorage.setItem(
+      '0xnullai.scenes:alice',
+      JSON.stringify({
+        ...emptyLibrary(),
+        scenes: [
+          { id: 'a', name: 'A', prompt: 'p', derivedFrom: { itemId: '../x', name: 'X' } },
+          { id: 'b', name: 'B', prompt: 'p', derivedFrom: { itemId: 'ok', name: '  ' } },
+          { id: 'c', name: 'C', prompt: 'p', derivedFrom: 'item-1' },
+          { id: 'd', name: 'D', prompt: 'p' },
+        ],
+      }),
+    );
+    expect(loadScenes().scenes.map((scene) => [scene.id, scene.derivedFrom])).toEqual([
+      ['a', undefined],
+      ['b', undefined],
+      ['c', undefined],
+      ['d', undefined],
+    ]);
+  });
+});

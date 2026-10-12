@@ -30,8 +30,7 @@ import {
 import type { AuthUser } from '@0xnullai/auth';
 import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
 import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
-import { openSceneChat } from '@0xnullai/scenes/start-chat';
-import { openCharacterChat } from './open-character-chat';
+import { openCharacterChat, openSceneChat } from '@0xnullai/scenes/start-chat';
 interface InboxRow {
   id: string;
   routeId: string;

@@ -1,5 +1,6 @@
 import {
   currentAuthUserId,
+  ensureCharacterRelationship,
   listPrivateConversationSummaries,
   requestNewAgentInboxConversation,
   selectAgentInboxConversation,
@@ -29,6 +30,27 @@ export async function openSceneChat(sceneId: string): Promise<boolean> {
           (!entry.metadata.promptPresetId || entry.metadata.promptPresetId === sceneId),
       ),
     )
+    .catch(() => undefined);
+  if (currentAuthUserId() !== account) return false;
+  if (existing) selectAgentInboxConversation(existing.id);
+  else requestNewAgentInboxConversation();
+  return true;
+}
+
+/**
+ * Open the chat with a library character, like opening a contact: its latest
+ * conversation if there is one, otherwise a new one with that character. The
+ * private relationship is ensured first so the chat starts bound to it.
+ */
+export async function openCharacterChat(characterId: string): Promise<boolean> {
+  const account = currentAuthUserId();
+  if (!account) return false;
+  // A relationship the user deleted is not recreated here; the chat still opens.
+  await ensureCharacterRelationship(characterId).catch(() => undefined);
+  if (currentAuthUserId() !== account) return false;
+  updateScenes((library) => ({ ...library, selectedId: characterId }));
+  const existing = await listPrivateConversationSummaries({ limit: 50 })
+    .then((page) => page.items.find((entry) => entry.metadata.promptPresetId === characterId))
     .catch(() => undefined);
   if (currentAuthUserId() !== account) return false;
   if (existing) selectAgentInboxConversation(existing.id);

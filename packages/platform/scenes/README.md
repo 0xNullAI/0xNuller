@@ -22,7 +22,21 @@ import { loadScenes, updateScenes } from '@0xnullai/scenes';
 
 `SceneLibrary` 通过 `onStartChat` 回调提供每行的「聊天」；外壳决定打开方式。
 `./start-chat` 的 `openSceneChat(id)` 对任意个人库场景（私有或来自发现）选中该场景，重开最近的
-无角色场景会话，否则新建，不创建关系或记忆。
+无角色场景会话，否则新建，不创建关系或记忆；`openCharacterChat(id)` 像打开联系人一样打开角色
+（先确保私人关系，再重开最近会话或新建）。
+
+## 拆分角色 / 提取角色
+
+`./script-splitter` 的 `ScriptSplitterDialog` 用猫愿模型（托管 `balanced`，按 Credit 计费，
+与用户自选的聊天模型无关，需要登录）把超长剧本整理成一个场景和若干单独角色卡。个人列表对
+Prompt ≥ 3000 字的卡提供「拆分角色」，发现详情页对公开卡提供「提取角色」。网关单次输出上限
+2048 token，所以分步调用：先用全文生成大纲（场景简介／规则与 ≤12 个角色），用户勾选后再逐个
+生成角色。每次调用前显示「预计约 N Credit」（输入按约 1.5 字／token，价格来自 `/v1/models`），
+可随时停止；模型返回的 JSON 校验失败时不保存，已完成的角色可继续或只保存已完成部分。
+
+结果只写入个人库的私有卡（随机 ID），从不发布。角色卡记录 `creator`（原作者或「我」）与
+`license`；来源是他人的公开卡时另存 `SavedScene.derivedFrom = { itemId, name }`，随同步保留，
+列表显示「私有 · 改编自《X》」。纯逻辑（提示词、解析、估价、署名）在 `script-splitter.ts`。
 
 `SavedScene.characterCard` 是可选的原生 v1 公开元数据，包含简介、性格、开场、示例、标签、
 作者与许可；保存、读取和账户同步保留它，非法元数据不影响原有场景正文。它不保存私人记忆、

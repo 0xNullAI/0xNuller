@@ -17,7 +17,19 @@ import {
 } from './index.js';
 import type { CharacterCard } from './character-card.js';
 import { useScenes } from './use-scenes.js';
-import { Check, FileUp, MessageCircle, Pencil, Plus, RotateCcw, Store, Trash2 } from 'lucide-react';
+import { ScriptSplitterDialog } from './script-splitter-dialog.js';
+import { SPLIT_MIN_PROMPT_LENGTH, type ScriptSource } from './script-splitter.js';
+import {
+  Check,
+  FileUp,
+  MessageCircle,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Scissors,
+  Store,
+  Trash2,
+} from 'lucide-react';
 import {
   Button,
   Input,
@@ -93,6 +105,8 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
   const [editPrompt, setEditPrompt] = useState('');
   const [editCharacterCard, setEditCharacterCard] = useState<CharacterCard>();
   const [marketOpen, setMarketOpen] = useState(false);
+  const [splitSource, setSplitSource] = useState<ScriptSource | null>(null);
+  const [splitBusy, setSplitBusy] = useState<string | null>(null);
   const [marketUpdateBusy, setMarketUpdateBusy] = useState<string | null>(null);
   const [marketUpdateError, setMarketUpdateError] = useState('');
   const [marketUpdateNotice, setMarketUpdateNotice] = useState('');
@@ -114,6 +128,8 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
       setMarketUpdateBusy(null);
       setMarketUpdateError('');
       setMarketUpdateNotice('');
+      setSplitSource(null);
+      setSplitBusy(null);
     };
     window.addEventListener('0xnullai:auth-changed', reset);
     return () => window.removeEventListener('0xnullai:auth-changed', reset);
@@ -257,6 +273,39 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
     const notice = `已将 ${count} 张旧卡加入当前账号，正在同步`;
     setMarketUpdateNotice(notice);
     onNotify?.(notice);
+  }
+
+  /**
+   * The source of a split decides attribution. A card imported from 发现 or adapted from one is
+   * someone else's work; only the public author is fetched, the script stays the local copy.
+   */
+  async function startSplit(scene: SavedScene) {
+    const generation = accountGeneration.current;
+    const base = { name: scene.name, prompt: scene.prompt };
+    if (scene.derivedFrom) {
+      setSplitSource({
+        ...base,
+        author: scene.characterCard?.creator ?? '',
+        derivedFrom: scene.derivedFrom,
+      });
+      return;
+    }
+    if (!scene.id.startsWith('market-')) {
+      setSplitSource({ ...base, author: scene.characterCard?.creator || '我' });
+      return;
+    }
+    const itemId = scene.id.slice('market-'.length);
+    setSplitBusy(scene.id);
+    const author = await fetchMarketItem(itemId)
+      .then((item) => item.author?.trim() ?? '')
+      .catch(() => '');
+    if (generation !== accountGeneration.current) return;
+    setSplitBusy(null);
+    setSplitSource({
+      ...base,
+      author: author || scene.characterCard?.creator || '',
+      derivedFrom: { itemId, name: scene.name },
+    });
   }
 
   async function checkMarketUpdate(scene: SavedScene) {
@@ -499,7 +548,9 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
                         <span>
                           {preset.id.startsWith('market-')
                             ? `来自发现${preset.marketRevision ? ` · v${preset.marketRevision}` : ''}`
-                            : '私有'}
+                            : preset.derivedFrom
+                              ? `私有 · 改编自《${preset.derivedFrom.name}》`
+                              : '私有'}
                         </span>
                       </div>
                     </div>
@@ -514,6 +565,19 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
                       聊天
+                    </Button>
+                  )}
+                  {preset.prompt.length >= SPLIT_MIN_PROMPT_LENGTH && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 rounded-full text-[var(--text-faint)] hover:text-[var(--text)]"
+                      aria-label={`拆分角色：${preset.name}`}
+                      title="拆分角色"
+                      disabled={splitBusy === preset.id}
+                      onClick={() => void startSplit(preset)}
+                    >
+                      <Scissors className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   {preset.id.startsWith('market-') && (
@@ -588,6 +652,14 @@ export function SceneLibrary({ onNotify, onStartChat }: SceneLibraryProps) {
         type="scenario"
         onImport={importFromMarket}
       />
+      {splitSource && (
+        <ScriptSplitterDialog
+          source={splitSource}
+          onClose={() => setSplitSource(null)}
+          onStartChat={onStartChat}
+          onSaved={(cards) => onNotify?.(`已保存 ${cards.length} 张私有卡`)}
+        />
+      )}
     </div>
   );
 }
