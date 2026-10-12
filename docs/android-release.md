@@ -25,16 +25,16 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
 起点是 `6.0.0` / `6000000`，之后 `tauri.conf.json` 的 `version` 跟随产品版本，
-`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.0.0` →
-`7000000`）。两者和 GitHub Release tag 始终对齐。
+`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.0.1` →
+`7000001`）。两者和 GitHub Release tag 始终对齐。
 
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v7.0.0`，Release 标题和 APK 都显示 `猫愿 7.0.0`，APK 附件名为
-`maoyuan-v7.0.0.apk`。GitHub 自动生成的
+当前版本使用 tag `v7.0.1`，Release 标题和 APK 都显示 `猫愿 7.0.1`，APK 附件名为
+`maoyuan-v7.0.1.apk`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
@@ -82,8 +82,8 @@ npm run verify:android:apk -- "$APK"
 ```json
 {
   "package": "ai.nullai.dgagent",
-  "versionName": "7.0.0",
-  "versionCode": 7000000,
+  "versionName": "7.0.1",
+  "versionCode": 7000001,
   "label": "猫愿",
   "sourceCommit": "<当前 Git HEAD>"
 }
@@ -99,9 +99,9 @@ npm run verify:android:apk -- "$APK"
 然后：
 
 ```bash
-cp "$APK" maoyuan-v7.0.0.apk
-gh release create "v7.0.0" --repo 0xNullAI/0xNuller \
-  --title "猫愿 7.0.0" --notes-file docs/releases/7.0.0.md maoyuan-v7.0.0.apk
+cp "$APK" maoyuan-v7.0.1.apk
+gh release create "v7.0.1" --repo 0xNullAI/0xNuller \
+  --title "猫愿 7.0.1" --notes-file docs/releases/7.0.1.md maoyuan-v7.0.1.apk
 ```
 
 ## 发布之后
