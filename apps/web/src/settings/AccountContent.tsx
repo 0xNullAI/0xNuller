@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Coins, Copy, Gift, Laptop, LogOut, Mail, Share2, UserX } from 'lucide-react';
 import { SettingsGroup, SettingsRow } from './settings-list';
 import { Avatar, Button, Input } from '@0xnullai/ui';
-import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import {
   avatarSrc,
   deleteAccount,
@@ -30,34 +29,6 @@ import {
   type CreditBalance,
   type ReferralSummary,
 } from '@0xnullai/auth';
-
-function Agreement() {
-  return (
-    <details className="group mt-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] text-xs leading-relaxed text-[var(--text-soft)]">
-      <summary className="cursor-pointer list-none px-3 py-2.5 font-medium text-[var(--text)] marker:hidden">
-        使用须知
-        <span className="ml-2 font-normal text-[var(--text-faint)] group-open:hidden">
-          点击展开
-        </span>
-      </summary>
-      <div className="max-h-[220px] overflow-y-auto border-t border-[var(--surface-border)] px-3 pb-3">
-        {SAFETY_NOTICE_SECTIONS.map((section) => (
-          <div key={section.title} className="mt-3">
-            <p className="font-medium text-[var(--text)]">{section.title}</p>
-            <ul className="mt-1 space-y-1">
-              {section.items.map((item) => (
-                <li key={item} className="flex gap-1.5">
-                  <span aria-hidden>·</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-}
 
 export function AccountContent({
   user,
@@ -512,12 +483,8 @@ export function AccountContent({
         ) : null}
       </div>
 
-      {registerMode && (
-        <>
-          <Agreement />
-          <RegistrationConsent checked={agreed} onCheckedChange={setAgreed} />
-        </>
-      )}
+      {/* The 用户协议 carries the full safety notice, so sign-up shows only the consent. */}
+      {registerMode && <RegistrationConsent checked={agreed} onCheckedChange={setAgreed} />}
 
       {error && <p className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
       {notice && <p className="mt-3 text-xs text-[var(--success)]">{notice}</p>}

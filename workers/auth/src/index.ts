@@ -1500,7 +1500,7 @@ const authWorker = {
           .bind(ipHash, Date.now())
           .run();
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-        // Consent to the current 用户协议 and 隐私政策 is part of the account. A client that
+        // Consent to the current 用户协议 is part of the account. A client that
         // predates the consent box sends no version (or an older one) and must be updated first;
         // checked before anything else so that client gets this one clear answer.
         if (body.acceptedTerms !== LEGAL_TERMS_VERSION) {

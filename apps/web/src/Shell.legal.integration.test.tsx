@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import type * as AuthModule from '@0xnullai/auth';
 import { Shell } from './Shell';
 
@@ -18,30 +18,32 @@ afterEach(() => {
   auth.me.mockImplementation(() => Promise.resolve(null));
 });
 
-describe('公开的法律文档地址', () => {
-  it.each([
-    ['/legal/privacy', '隐私政策'],
-    ['/legal/terms', '用户协议'],
-  ])('未登录时 %s 直接显示文档而不是登录入口', async (path, title) => {
-    window.history.pushState(null, '', path);
+describe('公开的用户协议地址', () => {
+  it('未登录时 /legal/terms 直接显示协议而不是登录入口', async () => {
+    window.history.pushState(null, '', '/legal/terms');
     await act(async () => {
       render(<Shell />);
     });
-    const page = await screen.findByRole('main', { name: title });
+    const page = await screen.findByRole('main', { name: '用户协议' });
     expect(page.textContent).toContain('版本：');
-    expect(screen.getByRole('article', { name: title })).toBeTruthy();
+    expect(screen.getByRole('article', { name: '用户协议' })).toBeTruthy();
     expect(screen.queryByRole('main', { name: '账户登录' })).toBeNull();
   });
 
-  it('账户服务尚未应答时也能阅读，并可在两份文档之间切换', async () => {
+  it('账户服务尚未应答时也能阅读', async () => {
     auth.me.mockImplementation(() => new Promise(() => {}));
+    window.history.pushState(null, '', '/legal/terms');
+    await act(async () => {
+      render(<Shell />);
+    });
+    expect(await screen.findByRole('main', { name: '用户协议' })).toBeTruthy();
+  });
+
+  it('不再提供隐私政策页面', async () => {
     window.history.pushState(null, '', '/legal/privacy');
     await act(async () => {
       render(<Shell />);
     });
-    await screen.findByRole('main', { name: '隐私政策' });
-    fireEvent.click(screen.getByRole('button', { name: '用户协议' }));
-    expect(window.location.pathname).toBe('/legal/terms');
-    expect(await screen.findByRole('main', { name: '用户协议' })).toBeTruthy();
+    expect(screen.queryByRole('main', { name: '隐私政策' })).toBeNull();
   });
 });

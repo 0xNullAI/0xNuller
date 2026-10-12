@@ -2,34 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { SAFETY_NOTICE_SECTIONS } from '@dg-kit/safety';
 import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 import { parseLegalMarkdown } from './legal-markdown';
-import { legalDocumentFromPath, legalDocumentPath } from './legal-routes';
-import { PRIVACY_POLICY_MARKDOWN } from './privacy-policy';
+import { isLegalTermsPath } from './legal-routes';
 import { USER_AGREEMENT_MARKDOWN } from './user-agreement';
 
-describe('法律文档地址', () => {
-  it('只识别两个公开地址', () => {
-    expect(legalDocumentFromPath('/legal/privacy')).toBe('privacy');
-    expect(legalDocumentFromPath('/legal/terms/')).toBe('terms');
-    expect(legalDocumentFromPath('/LEGAL/Terms')).toBe('terms');
-    expect(legalDocumentFromPath('/legal')).toBeNull();
-    expect(legalDocumentFromPath('/legal/other')).toBeNull();
-    expect(legalDocumentFromPath('/settings/legal/terms')).toBeNull();
-    expect(legalDocumentPath('privacy')).toBe('/legal/privacy');
-  });
-});
-
-describe.each([['隐私政策', PRIVACY_POLICY_MARKDOWN]])('%s', (_name, source) => {
-  it('开头标明草稿与待法务审阅，并写明当前版本', () => {
-    const [first] = parseLegalMarkdown(source);
-    expect(first).toMatchObject({ kind: 'note' });
-    expect(first?.kind === 'note' && first.text).toContain('草稿 · 待法务审阅');
-    expect(source).toContain(`版本：${LEGAL_TERMS_VERSION}`);
-  });
-
-  it('只用占位符代替运营方信息', () => {
-    expect(source).toContain('【公司名称】');
-    expect(source).toContain('【联系邮箱】');
-    expect(source).toContain('【生效日期】');
+describe('用户协议地址', () => {
+  it('只识别 /legal/terms', () => {
+    expect(isLegalTermsPath('/legal/terms')).toBe(true);
+    expect(isLegalTermsPath('/legal/terms/')).toBe(true);
+    expect(isLegalTermsPath('/LEGAL/Terms')).toBe(true);
+    expect(isLegalTermsPath('/legal/privacy')).toBe(false);
+    expect(isLegalTermsPath('/legal')).toBe(false);
+    expect(isLegalTermsPath('/settings/legal/terms')).toBe(false);
   });
 });
 

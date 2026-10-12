@@ -26,7 +26,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const CONSENT = '我已年满 18 岁，并阅读同意《用户协议》和《隐私政策》';
+const CONSENT = '我已年满 18 岁，并阅读同意《用户协议》';
 
 function openRegistration() {
   render(<AccountContent user={null} onUser={() => {}} onDone={() => {}} />);
@@ -64,23 +64,19 @@ it('注册按钮在勾选年龄与协议同意前保持禁用，同意后提交�
 it('协议链接指向公开地址，点击后在应用内打开且保留已填写的表单', async () => {
   openRegistration();
   const terms = screen.getByRole('link', { name: '《用户协议》' });
-  const privacy = screen.getByRole('link', { name: '《隐私政策》' });
   expect(terms.getAttribute('href')).toBe('/legal/terms');
-  expect(privacy.getAttribute('href')).toBe('/legal/privacy');
+  expect(screen.queryByRole('link', { name: '《隐私政策》' })).toBeNull();
 
-  fireEvent.click(privacy);
+  fireEvent.click(terms);
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByRole('heading', { name: '隐私政策' })).toBeTruthy();
-  expect(within(dialog).getByRole('article', { name: '隐私政策' }).textContent).toContain(
-    '草稿 · 待法务审阅',
+  expect(within(dialog).getByRole('heading', { name: '用户协议' })).toBeTruthy();
+  expect(within(dialog).getByRole('article', { name: '用户协议' }).textContent).toContain(
+    '不是医疗器械',
   );
   // Reading the text must not tick the box on the reader's behalf.
   // (The modal hides the form from the accessibility tree while it is open.)
   const consent = screen.getByRole('checkbox', { name: CONSENT, hidden: true });
   expect((consent as HTMLInputElement).checked).toBe(false);
-
-  fireEvent.click(within(dialog).getByRole('button', { name: '用户协议' }));
-  expect(within(dialog).getByRole('article', { name: '用户协议' })).toBeTruthy();
 
   fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

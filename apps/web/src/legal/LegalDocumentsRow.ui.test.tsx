@@ -4,12 +4,10 @@ import { AboutTab } from '../settings/AboutTab';
 
 afterEach(cleanup);
 
-it('关于页的「隐私政策与用户协议」打开应用内阅读器', async () => {
+it('关于页的「用户协议」打开应用内阅读器', async () => {
   render(<AboutTab />);
-  fireEvent.click(screen.getByRole('button', { name: '隐私政策与用户协议' }));
+  fireEvent.click(screen.getByRole('button', { name: '用户协议' }));
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByRole('article', { name: '隐私政策' })).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole('button', { name: '用户协议' }));
   expect(within(dialog).getByRole('article', { name: '用户协议' }).textContent).toContain(
     '不是医疗器械',
   );

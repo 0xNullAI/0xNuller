@@ -89,7 +89,7 @@ describe('注册', () => {
     await run();
   });
 
-  it('要求同意当前版本的用户协议与隐私政策，并记录同意的版本', async () => {
+  it('要求同意当前版本的用户协议，并记录同意的版本', async () => {
     for (const acceptedTerms of [undefined, '', 'an-older-version', true]) {
       const { res, body } = await registerUser({ acceptedTerms });
       expect(res.status).toBe(400);

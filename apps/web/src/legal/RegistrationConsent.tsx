@@ -1,11 +1,11 @@
 import { useId, useState, type MouseEvent } from 'react';
 import { LegalDialog } from './LegalDialog';
-import { LEGAL_DOCUMENT_TITLES, legalDocumentPath, type LegalDocumentId } from './legal-routes';
+import { LEGAL_TERMS_PATH, LEGAL_TERMS_TITLE } from './legal-routes';
 
-const CONSENT_LABEL = '我已年满 18 岁，并阅读同意《用户协议》和《隐私政策》';
+const CONSENT_LABEL = '我已年满 18 岁，并阅读同意《用户协议》';
 
 /**
- * The required consent box under the sign-up form. The links are real addresses (they work
+ * The required consent box under the sign-up form. The link is a real address (it works
  * when opened in a new tab), but a plain click opens the in-app reader so the form keeps
  * what was typed.
  */
@@ -17,19 +17,19 @@ export function RegistrationConsent({
   onCheckedChange: (checked: boolean) => void;
 }) {
   const id = useId();
-  const [reading, setReading] = useState<LegalDocumentId | null>(null);
+  const [reading, setReading] = useState(false);
 
-  const link = (doc: LegalDocumentId) => (
+  const link = (
     <a
-      href={legalDocumentPath(doc)}
+      href={LEGAL_TERMS_PATH}
       className="text-[var(--accent)] underline underline-offset-2"
       onClick={(event: MouseEvent<HTMLAnchorElement>) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
         event.preventDefault();
-        setReading(doc);
+        setReading(true);
       }}
     >
-      《{LEGAL_DOCUMENT_TITLES[doc]}》
+      《{LEGAL_TERMS_TITLE}》
     </a>
   );
 
@@ -48,15 +48,9 @@ export function RegistrationConsent({
         <label htmlFor={id} className="cursor-pointer">
           我已年满 18 岁，并阅读同意
         </label>
-        {link('terms')}和{link('privacy')}
+        {link}
       </span>
-      <LegalDialog
-        open={reading !== null}
-        onOpenChange={(open) => {
-          if (!open) setReading(null);
-        }}
-        initial={reading ?? 'terms'}
-      />
+      <LegalDialog open={reading} onOpenChange={setReading} />
     </div>
   );
 }
