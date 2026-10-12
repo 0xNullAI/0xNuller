@@ -23,6 +23,7 @@ import {
   type CreatorFollowState,
 } from '../api';
 import { WaveformPreview } from './WaveformPreview';
+import { CardDetailBody } from './CardDetailBody';
 
 interface Props {
   item: MarketItem;
@@ -452,6 +453,13 @@ export function ItemDetail({
           </div>
         </header>
 
+        {view.type === 'scenario' && (view.content as ScenarioContent).portraitId && (
+          <img
+            className="market-detail-cover"
+            src={characterPortraitUrl((view.content as ScenarioContent).portraitId!)}
+            alt=""
+          />
+        )}
         <div className="market-detail-identity">
           <span className="market-detail-art" aria-hidden="true">
             {view.type === 'scenario' && (view.content as ScenarioContent).portraitId ? (
@@ -577,30 +585,11 @@ export function ItemDetail({
         {view.type === 'waveform' ? (
           <WaveformPreview frames={(view.content as WaveformContent).frames} height={96} />
         ) : (
-          <div className="scene-detail">
-            {publicCard && (
-              <div className="role-cards">
-                {(
-                  [
-                    ['人物背景', publicCard.description],
-                    ['性格', publicCard.personality],
-                    ['开场白', publicCard.greeting],
-                    ['对话示例', publicCard.exampleDialogue],
-                    ['原作者', publicCard.creator],
-                    ['使用许可', publicCard.license],
-                  ] as const
-                )
-                  .filter(([, value]) => value)
-                  .map(([label, value]) => (
-                    <div key={label} className="role-card">
-                      <strong>{label}</strong>
-                      <p className="whitespace-pre-wrap">{value}</p>
-                    </div>
-                  ))}
-              </div>
-            )}
-            <pre className="prompt-box">{(view.content as ScenarioContent).prompt}</pre>
-          </div>
+          <CardDetailBody
+            card={publicCard}
+            prompt={(view.content as ScenarioContent).prompt}
+            isCharacter={isCharacter}
+          />
         )}
 
         {[copyError, actionError, startError].filter(Boolean).map((message) => (
