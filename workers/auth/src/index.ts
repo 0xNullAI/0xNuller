@@ -1947,7 +1947,7 @@ const authWorker = {
           .toLowerCase();
         if (!username) return err('用户不存在', 404, cors);
         const target = await env.DB.prepare(
-          'SELECT id, username, display_name, email, email_verified, created_at FROM users WHERE username = ? AND banned_at IS NULL',
+          'SELECT id, username, display_name, email, email_verified_at, created_at FROM users WHERE username = ? AND banned_at IS NULL',
         )
           .bind(username)
           .first<Record<string, unknown>>();
@@ -1960,7 +1960,7 @@ const authWorker = {
               username: String(target.username),
               displayName: String(target.display_name ?? ''),
               email: target.email == null ? null : String(target.email),
-              emailVerified: Boolean(target.email_verified),
+              emailVerified: target.email_verified_at != null,
             },
             credit: balance,
             createdAt: Number(target.created_at),
