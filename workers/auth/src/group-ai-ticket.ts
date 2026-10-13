@@ -14,16 +14,29 @@ export interface GroupAiTicket {
   bodyHash: string;
   /** The owner's character; absent for a group AI migrated from before AIs had owners. */
   characterId?: string;
+  /** Model call within one turn; a turn that uses tools makes several, each billed alone. */
+  round?: number;
   reservationKey: string;
 }
+
+/** Most model calls one group AI turn may make. */
+export const MAX_GROUP_AI_ROUNDS = 4;
 
 export async function sha256Body(body: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function groupAiReservationKey(room: string, triggerId: string, roleId: string) {
-  return `group-ai:${await sha256Body(JSON.stringify([room, triggerId, roleId]))}`;
+/** Round 0 keeps the original key so a turn's first call bills exactly as before. */
+export async function groupAiReservationKey(
+  room: string,
+  triggerId: string,
+  roleId: string,
+  round = 0,
+) {
+  return `group-ai:${await sha256Body(
+    JSON.stringify(round ? [room, triggerId, roleId, round] : [room, triggerId, roleId]),
+  )}`;
 }
 
 export async function signGroupAiTicket(
@@ -32,7 +45,12 @@ export async function signGroupAiTicket(
   now = Date.now(),
 ): Promise<{ ticket: string; reservationKey: string }> {
   if (!validInput(input)) throw new Error('invalid group AI ticket input');
-  const reservationKey = await groupAiReservationKey(input.room, input.triggerId, input.roleId);
+  const reservationKey = await groupAiReservationKey(
+    input.room,
+    input.triggerId,
+    input.roleId,
+    input.round,
+  );
   return {
     reservationKey,
     ticket: await signDmTicket(secret, {
@@ -45,6 +63,7 @@ export async function signGroupAiTicket(
       modelId: input.modelId,
       bodyHash: input.bodyHash,
       ...(input.characterId ? { characterId: input.characterId } : {}),
+      ...(input.round ? { round: input.round } : {}),
       iat: now,
       exp: now + TICKET_MS,
     }),
@@ -68,12 +87,13 @@ export async function verifyGroupAiTicket(
     modelId: claims.modelId as GroupAiModelId,
     bodyHash: claims.bodyHash ?? '',
     ...(claims.characterId !== undefined ? { characterId: claims.characterId } : {}),
+    ...(claims.round !== undefined ? { round: claims.round } : {}),
   };
   if (
     !validInput(input) ||
     input.modelId !== expected.modelId ||
     input.bodyHash !== expected.bodyHash ||
-    (await groupAiReservationKey(input.room, input.triggerId, input.roleId)) !==
+    (await groupAiReservationKey(input.room, input.triggerId, input.roleId, input.round)) !==
       expected.reservationKey
   )
     return null;
@@ -89,7 +109,9 @@ function validInput(input: Omit<GroupAiTicket, 'reservationKey'>): boolean {
     /^[0-9a-f-]{36}$/.test(input.grantId) &&
     GROUP_AI_MODEL_IDS.includes(input.modelId) &&
     /^[0-9a-f]{64}$/.test(input.bodyHash) &&
-    (input.characterId === undefined || validCharacterId(input.characterId))
+    (input.characterId === undefined || validCharacterId(input.characterId)) &&
+    (input.round === undefined ||
+      (Number.isInteger(input.round) && input.round >= 0 && input.round < MAX_GROUP_AI_ROUNDS))
   );
 }
 

@@ -575,11 +575,13 @@ describe('平台模型请求', () => {
         model: 'balanced',
         stream: false,
         messages: [{ role: 'user', content: 'hi' }],
+        tools: [{ type: 'function', function: { name: 'stop_all' } }],
       }),
       env,
       context(),
     );
     expect(response.status).toBe(200);
+    expect(calls[0].body.tools).toHaveLength(1);
     expect(env.AUTH.reserveManagedTextCredits).not.toHaveBeenCalled();
     expect(env.AUTH.reserveManagedGroupTextCredits).toHaveBeenCalledWith(
       'server-signed-ticket',
@@ -624,11 +626,17 @@ describe('平台模型请求', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('rejects group streaming and tools before any reservation', async () => {
-    const env = environment();
-    const response = await worker.fetch(groupRequest({ messages: [], tools: [] }), env, context());
-    expect(response.status).toBe(400);
-    expect(env.AUTH.reserveManagedTextCredits).not.toHaveBeenCalled();
+  it('rejects group streaming and oversized tool lists before any reservation', async () => {
+    for (const body of [
+      { messages: [], stream: true },
+      { messages: [], tools: {} },
+      { messages: [], tools: Array.from({ length: 9 }, () => ({ type: 'function' })) },
+    ]) {
+      const env = environment();
+      const response = await worker.fetch(groupRequest(body), env, context());
+      expect(response.status).toBe(400);
+      expect(env.AUTH.reserveManagedTextCredits).not.toHaveBeenCalled();
+    }
   });
 
   it('拒绝客户端伪造的模型 id', async () => {

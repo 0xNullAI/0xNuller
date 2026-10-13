@@ -34,6 +34,8 @@ import { withServerErrorCounting } from '@0xnullai/observability';
  */
 
 const MAX_BODY_BYTES = 1024 * 1024;
+/** A group AI offers a handful of device tools; anything larger is not one the RoomDO built. */
+const MAX_GROUP_TOOLS = 8;
 /** Shown instead of a moderated reply; the conversation continues normally. */
 
 function allowedOrigins(env) {
@@ -435,7 +437,15 @@ const llmProxyWorker = {
     if (!key) return json(400, { error: '缺少 Idempotency-Key' }, cors);
     const groupTicket = request.headers.get('X-0xNullAI-Group-Ticket');
     if (vision && groupTicket) return json(400, { error: '群托管模型不支持图片输入' }, cors);
-    if (isGroup && (body.stream || body.tools || body.tool_choice || body.api_key || body.apiKey))
+    // The signed body hash proves the tools came from the Chat RoomDO, never from a browser.
+    if (
+      isGroup &&
+      (body.stream ||
+        body.api_key ||
+        body.apiKey ||
+        (body.tools !== undefined &&
+          (!Array.isArray(body.tools) || body.tools.length > MAX_GROUP_TOOLS)))
+    )
       return json(400, { error: '群托管模型仅接受非流式文字请求' }, cors);
 
     const { table } = config;
