@@ -8,6 +8,8 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
+import { resetCreditBalanceForTests } from './credit-balance';
+import { resetInboxStoreForTests } from './inbox-store';
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -178,6 +180,8 @@ afterEach(async () => {
   while (cleanups.length) cleanups.pop()!();
   await grantDeviceLease(null);
   cleanup();
+  resetCreditBalanceForTests();
+  resetInboxStoreForTests();
 });
 
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
@@ -428,6 +432,40 @@ describe('外壳与设备控制权', () => {
     });
     expect(await screen.findByRole('main', { name: '账户登录' })).toBeTruthy();
     expect(screen.queryByText('Chat 模块')).toBeNull();
+  });
+
+  it('退出登录后不保留上一个账户打开过的模块与余额', async () => {
+    authState.credit = 42;
+    window.history.pushState(null, '', '/control');
+    await act(async () => {
+      render(<Shell />);
+    });
+    expect(await screen.findByText('Control 模块')).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[title="42 Credit"]')).toBeTruthy());
+    await act(async () => {
+      window.history.pushState(null, '', '/agent');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByText('Agent 模块')).toBeTruthy();
+
+    authState.user = null;
+    act(() => {
+      for (const listener of authState.authListeners) listener(null);
+    });
+    expect(await screen.findByRole('main', { name: '账户登录' })).toBeTruthy();
+    const controlRenders = authState.moduleRenders.Control;
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '用户名' }), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'test-password' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    expect(await screen.findByText('Agent 模块')).toBeTruthy();
+    // Only the module this route needs comes back; Control is not booted again.
+    expect(screen.queryByText('Control 模块')).toBeNull();
+    expect(authState.moduleRenders.Control).toBe(controlRenders);
+    // The previous session's balance is gone the moment the next one starts.
+    expect(document.querySelector('[title="42 Credit"]')).toBeNull();
   });
 
   it.each([

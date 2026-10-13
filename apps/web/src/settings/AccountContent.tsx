@@ -6,11 +6,11 @@ import { CreditActivityPanel } from './CreditActivityPanel';
 import { useEffect, useRef, useState } from 'react';
 import { Check, Coins, Copy, Gift, Laptop, LogOut, Mail, Share2, UserX } from 'lucide-react';
 import { SettingsGroup, SettingsRow } from './settings-list';
+import { useCreditBalance } from '../credit-balance';
 import { Avatar, Button, Input } from '@0xnullai/ui';
 import {
   avatarSrc,
   deleteAccount,
-  getCreditBalance,
   getReferralSummary,
   listAccountSessions,
   login,
@@ -26,7 +26,6 @@ import {
   revokeOtherAccountSessions,
   type AccountSession,
   type AuthUser,
-  type CreditBalance,
   type ReferralSummary,
 } from '@0xnullai/auth';
 
@@ -50,10 +49,6 @@ export function AccountContent({
   const [agreed, setAgreed] = useState(false);
   const [referralCode, setReferralCode] = useState(initialReferralCode.toUpperCase());
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
-  const [creditState, setCreditState] = useState<{
-    accountId: string;
-    balance: CreditBalance;
-  } | null>(null);
   const [creditExpanded, setCreditExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inviteExpanded, setInviteExpanded] = useState(false);
@@ -89,29 +84,7 @@ export function AccountContent({
       .catch(() => setReferral(null));
   }, [user?.emailVerified]);
 
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    const refresh = () =>
-      void getCreditBalance()
-        .then((balance) => {
-          if (active) setCreditState({ accountId: user.id, balance });
-        })
-        .catch(() => {
-          if (active) setCreditState(null);
-        });
-    refresh();
-    const timer = window.setInterval(refresh, 15_000);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, [user]);
-  const credit = creditState && creditState.accountId === user?.id ? creditState.balance : null;
+  const credit = useCreditBalance(user?.id ?? null);
 
   const visibleReferral = user?.emailVerified ? referral : null;
 

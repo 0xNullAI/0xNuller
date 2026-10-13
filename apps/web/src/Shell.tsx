@@ -20,7 +20,6 @@ import {
 } from '@0xnullai/ui';
 import {
   me,
-  getCreditBalance,
   subscribeAuthChanges,
   subscribeAuthUserUpdates,
   subscribeProfileChanges,
@@ -31,6 +30,7 @@ import { MODULES, moduleIdFromPath } from './routes';
 import { pageAliasFromPath } from './page-aliases';
 import { isLegalTermsPath } from './legal/legal-routes';
 import { useUnreadMessages } from './unread-messages';
+import { useCreditBalance } from './credit-balance';
 import { InboxColumn, MobileTabBar, NavRail, type MobileTab } from './Sidebar';
 import { UnifiedInbox } from './UnifiedInbox';
 import { DeviceBar } from './DeviceBar';
@@ -94,7 +94,12 @@ function nextState(prev: RouteState, pathname: string): RouteState {
  *  updated in the same transition — a ref would mean writing a ref during render
  *  (unsafe under concurrent rendering), and keeping it in separate state written
  *  back from an effect would cost an extra cascading render. */
-function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: string) => void] {
+function useHistoryRoute(): [
+  RouteState,
+  (path: string) => boolean,
+  (moduleId: string) => void,
+  () => void,
+] {
   const [state, setState] = useState<RouteState>(() =>
     nextState(
       { pathname: '/', opened: [] },
@@ -131,7 +136,18 @@ function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: s
     );
   }, []);
 
-  return [state, navigate, ensureModuleOpened];
+  /** Forget every opened module except the one the current route needs. */
+  const resetOpened = useCallback(() => {
+    setState((prev) => {
+      const next = nextState({ pathname: prev.pathname, opened: [] }, prev.pathname);
+      return next.opened.length === prev.opened.length &&
+        next.opened.every((id, i) => id === prev.opened[i])
+        ? prev
+        : next;
+    });
+  }, []);
+
+  return [state, navigate, ensureModuleOpened, resetOpened];
 }
 
 const MOBILE_TAB_PATHS: Record<Exclude<MobileTab, 'me'>, string> = {
@@ -180,7 +196,7 @@ function useIsNarrow(): boolean {
 }
 
 export function Shell() {
-  const [{ pathname, opened }, navigate, ensureModuleOpened] = useHistoryRoute();
+  const [{ pathname, opened }, navigate, ensureModuleOpened, resetOpened] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
   const profileRoute = profileUsernameFromPath(pathname);
   const peopleRoute = pathname === '/people';
@@ -215,12 +231,17 @@ export function Shell() {
   const setUser = useCallback((next: AuthUser | null) => {
     setUserState((prev) => (sameAuthUser(prev, next) ? prev : next));
   }, []);
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const settingsTab = settingsPageFromRoute(pathname, window.location.search);
   const [settingsReturnPath, setSettingsReturnPath] = useState<string | null>(null);
   const authenticated = authChecked && user !== null;
+  // Signing out unmounts every module with the signed-in tree. Without this the list of
+  // opened modules outlived the account, and the next sign-in booted all of them at once
+  // for a person who had opened none.
+  useEffect(() => {
+    if (!user) resetOpened();
+  }, [user, resetOpened]);
   const visibleModuleId = !authenticated || mobileInbox || settingsTab ? null : activeId;
   const leaseModuleId = visibleModuleId;
   const showDesktopInbox =
@@ -298,22 +319,9 @@ export function Shell() {
     [],
   );
 
-  useEffect(() => {
-    if (!user) return;
-    const refresh = () =>
-      void getCreditBalance()
-        .then((balance) => setCreditBalance(balance.available))
-        .catch(() => setCreditBalance(null));
-    refresh();
-    const timer = window.setInterval(refresh, 15_000);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, [user]);
+  // One shared poller (see credit-balance), keyed to this account: a sign-out or a
+  // different account never shows the previous person's balance.
+  const creditBalance = useCreditBalance(user?.id ?? null)?.available ?? null;
 
   // Modules ask for a profile rather than rendering one; see profile-requests
   // in @0xnullai/auth. Subscribing here rather than inside a module is what
