@@ -196,35 +196,3 @@ export class SetIndicatorColorLlm implements LlmClient {
     };
   }
 }
-
-export class SensorToolLlm implements LlmClient {
-  readonly toolCountsBySource: Array<{ sourceType: string; toolCount: number }> = [];
-
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    this.toolCountsBySource.push({
-      sourceType: input.context.sourceType,
-      toolCount: input.tools.length,
-    });
-
-    if (input.context.sourceType === 'sensor') {
-      const hasToolOutput = input.conversation?.some(
-        (item) => item.kind === 'function_call_output',
-      );
-      if (!hasToolOutput) {
-        return {
-          assistantMessage: '感觉到了，稍微加强一点。',
-          toolCalls: [
-            {
-              id: 'tool-sensor-vibrate',
-              name: 'vibrate_start',
-              args: { channel: 'A', intensity: 5 },
-            },
-          ],
-        };
-      }
-      return { assistantMessage: '已经响应了传感器事件。' };
-    }
-
-    return { assistantMessage: '好的。' };
-  }
-}

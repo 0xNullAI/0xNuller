@@ -77,10 +77,3 @@ export function formatUiErrorMessage(error: unknown): string {
 export function isBluetoothChooserCancelledError(error: unknown): boolean {
   return isDevicePickerCancelled(error);
 }
-
-export function parseCommaSeparated(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}

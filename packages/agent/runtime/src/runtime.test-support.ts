@@ -1,6 +1,5 @@
 import type { DeviceClient, LlmClient, PermissionService, SessionStore } from '@dg-agent/core';
 import {
-  createMessage,
   createEmptyDeviceState,
   type DeviceCommand,
   type DeviceCommandResult,
@@ -147,82 +146,6 @@ export class CountingDeviceToolLlm implements LlmClient {
   }
 }
 
-export class TwoStepLlm implements LlmClient {
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    const hasToolOutput = input.conversation?.some((item) => item.kind === 'function_call_output');
-    if (!hasToolOutput) {
-      return {
-        assistantMessage: '准备启动 A',
-        toolCalls: [
-          {
-            id: 'tool-1',
-            name: 'shock_start',
-            args: {
-              channel: 'A',
-              strength: 30,
-              waveformId: 'pulse_mid',
-              loop: true,
-            },
-          },
-        ],
-      };
-    }
-
-    return {
-      assistantMessage: 'A 通道已经启动完毕。',
-    };
-  }
-}
-
-export class InspectingTwoStepLlm implements LlmClient {
-  readonly conversations: Array<
-    ReadonlyArray<NonNullable<Parameters<LlmClient['runTurn']>[0]['conversation']>[number]>
-  > = [];
-
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    this.conversations.push([...(input.conversation ?? [])]);
-
-    const hasToolOutput = input.conversation?.some((item) => item.kind === 'function_call_output');
-    if (!hasToolOutput) {
-      return {
-        assistantMessage: '准备启动 A',
-        toolCalls: [
-          {
-            id: 'tool-1',
-            name: 'shock_start',
-            args: {
-              channel: 'A',
-              strength: 30,
-              waveformId: 'pulse_mid',
-              loop: true,
-            },
-          },
-        ],
-      };
-    }
-
-    return {
-      assistantMessage: 'A 通道已经启动完毕。',
-    };
-  }
-}
-
-export class ContextProbeLlm implements LlmClient {
-  readonly conversations: string[][] = [];
-
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    this.conversations.push(
-      (input.conversation ?? []).flatMap((item) =>
-        item.kind === 'message' ? [`${item.role}:${item.content}`] : [],
-      ),
-    );
-
-    return {
-      assistantMessage: 'ok',
-    };
-  }
-}
-
 export class RepeatedAdjustLlm implements LlmClient {
   async runTurn() {
     return {
@@ -308,42 +231,6 @@ export class LongBurstLlm implements LlmClient {
   }
 }
 
-export class ThrowingDevice extends TestDevice {
-  override async execute(command: DeviceCommand): Promise<DeviceCommandResult> {
-    if (command.type === 'start') {
-      throw new Error('蓝牙写入失败。');
-    }
-    return super.execute(command);
-  }
-}
-
-export class DuplicateAssistantLlm implements LlmClient {
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    const hasToolOutput = input.conversation?.some((item) => item.kind === 'function_call_output');
-    if (!hasToolOutput) {
-      return {
-        assistantMessage: '先从很轻的强度开始。',
-        toolCalls: [
-          {
-            id: 'tool-1',
-            name: 'shock_start',
-            args: {
-              channel: 'A',
-              strength: 10,
-              waveformId: 'pulse_mid',
-              loop: true,
-            },
-          },
-        ],
-      };
-    }
-
-    return {
-      assistantMessage: '先从很轻的强度开始。',
-    };
-  }
-}
-
 export class TimerFollowUpLlm implements LlmClient {
   readonly toolCountsBySource: Array<{ sourceType: string; toolCount: number }> = [];
 
@@ -376,93 +263,6 @@ export class TimerFollowUpLlm implements LlmClient {
     return {
       assistantMessage: '我先等你反馈。',
     };
-  }
-}
-
-export class DeniedToolFollowUpLlm implements LlmClient {
-  readonly calls: Array<{ toolCount: number; message: string; syntheticDenySeen: boolean }> = [];
-
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    const syntheticDenySeen = Boolean(
-      input.conversation?.some(
-        (item) =>
-          item.kind === 'message' &&
-          item.role === 'user' &&
-          item.content.includes('[内部提醒] 刚才请求的工具'),
-      ),
-    );
-
-    this.calls.push({
-      toolCount: input.tools.length,
-      message: input.message,
-      syntheticDenySeen,
-    });
-
-    if (syntheticDenySeen || input.tools.length === 0) {
-      return {
-        assistantMessage: '这一步没有执行，因为你刚才拒绝了这次操作。',
-      };
-    }
-
-    return {
-      assistantMessage: '',
-      toolCalls: [
-        {
-          id: 'tool-denied-1',
-          name: 'shock_start',
-          args: {
-            channel: 'A',
-            strength: 10,
-            waveformId: 'pulse_mid',
-            loop: true,
-          },
-        },
-      ],
-    };
-  }
-}
-
-export class AbortableLlm implements LlmClient {
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    input.onTextDelta?.('thinking');
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, 1_000);
-      input.abortSignal?.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer);
-          const error = new Error('Aborted');
-          error.name = 'AbortError';
-          reject(error);
-        },
-        { once: true },
-      );
-    });
-
-    return {
-      assistantMessage: 'done',
-    };
-  }
-}
-
-export class VisionProbeLlm implements LlmClient {
-  readonly capabilities = { imageInput: true };
-  inputs: Array<Parameters<LlmClient['runTurn']>[0]> = [];
-
-  async runTurn(input: Parameters<LlmClient['runTurn']>[0]) {
-    this.inputs.push(input);
-    input.onRawRequest?.({ messages: [{ content: [{ type: 'image', data: input.image?.data }] }] });
-    return {
-      assistantMessage: '我看到了画面。',
-      rawResponse: { echoed: `data:${input.image?.mediaType};base64,${input.image?.data}` },
-    };
-  }
-}
-
-export class FailingLlm implements LlmClient {
-  async runTurn(): Promise<never> {
-    throw new Error('Provider HTTP error 401: unauthorized');
   }
 }
 
@@ -532,11 +332,4 @@ export interface TestSessionStoreEntry {
   }>;
   deviceState: DeviceState;
   metadata?: Record<string, unknown>;
-}
-
-export function createScriptedMessages(
-  entries: Array<['user' | 'assistant', string]>,
-  startedAt = Date.now(),
-) {
-  return entries.map(([role, content], index) => createMessage(role, content, startedAt + index));
 }
