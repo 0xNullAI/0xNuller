@@ -1,6 +1,6 @@
-import type { OpossumVibrationPatternName } from '@dg-kit/core';
 import type { GroupMembership } from '../../worker/wire';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { parseRemoteCommand, parseWaveformTransfer } from '../lib/remote-command';
 import { connectRoom, type RoomTransport, type TransportStatus } from '../lib/room-transport';
 import {
   parseRoomCoyoteTargets,
@@ -30,17 +30,6 @@ import {
   getChatTicket,
   getGroupAgentTicket,
 } from '@0xnullai/auth';
-
-const OPOSSUM_PATTERNS: readonly OpossumVibrationPatternName[] = [
-  'constant',
-  'pulse',
-  'wave',
-  'ramp',
-  'heartbeat',
-];
-function isOpossumPattern(value: unknown): value is OpossumVibrationPatternName {
-  return OPOSSUM_PATTERNS.includes(value as OpossumVibrationPatternName);
-}
 
 export type RoomStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -175,15 +164,35 @@ const selfId = generatePeerId();
 /** wire mentions ({peerId,n}) → ChatMention ({peerId,displayName}). */
 function mapMentions(m: unknown): ChatMention[] | undefined {
   if (!Array.isArray(m)) return undefined;
-  return (m as Array<{ peerId: string; n: string }>).map((x) => ({
-    peerId: x.peerId,
-    displayName: x.n,
-  }));
+  // History can hold frames from before the server checked them; never trust their shape.
+  return m.flatMap((x: unknown) => {
+    const mention = x as { peerId?: unknown; n?: unknown } | null;
+    return typeof mention?.peerId === 'string' && typeof mention.n === 'string'
+      ? [{ peerId: mention.peerId, displayName: mention.n }]
+      : [];
+  });
+}
+
+function sameMember(a: MemberState, b: MemberState): boolean {
+  for (const key of Object.keys(b) as (keyof MemberState)[]) if (a[key] !== b[key]) return false;
+  return true;
+}
+
+function wireText(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
 
 /** Resolve an R2 media reference into a fetchable URL (same-origin /api/media/:code/:id). */
 function buildMedia(room: string | null, m: WireMedia | undefined): ChatMedia | undefined {
-  if (!m || !room) return undefined;
+  if (
+    !m ||
+    !room ||
+    typeof m !== 'object' ||
+    (m.kind !== 'image' && m.kind !== 'audio') ||
+    typeof m.id !== 'string' ||
+    typeof m.mime !== 'string'
+  )
+    return undefined;
   return {
     kind: m.kind,
     objectId: m.id,
@@ -379,6 +388,8 @@ export function usePeerRoom(displayName: string) {
     setDmPeerUserId(null);
   }, [send]);
 
+  /** Counts joins, so a slow caller can tell that the user went somewhere else meanwhile. */
+  const joinsRef = useRef(0);
   const join = useCallback(
     (roomCode: string, options?: JoinOptions) => {
       if (transportRef.current) {
@@ -388,6 +399,7 @@ export function usePeerRoom(displayName: string) {
         // the sidebar — and the create dialog — a no-op once you were connected to anything.
         teardown();
       }
+      joinsRef.current++;
       setStatus('connecting');
       setError(null);
       roomIdRef.current = roomCode;
@@ -460,15 +472,18 @@ export function usePeerRoom(displayName: string) {
         }
         if (t === 'history') {
           const room = roomIdRef.current;
-          const list = (data.messages as Array<Record<string, unknown>>) ?? [];
+          const list = (Array.isArray(data.messages) ? data.messages : []).filter(
+            (m): m is Record<string, unknown> =>
+              !!m && typeof m === 'object' && typeof (m as { id?: unknown }).id === 'string',
+          );
           const page: ChatMessage[] = list.map((m) => ({
             id: m.id as string,
             serverConfirmed: true,
             fromSelf: isOwnMessage(m),
             senderId: (m._from as string) ?? '',
-            senderName: (m.n as string) ?? '',
-            text: (m.x as string) ?? '',
-            timestamp: (m.ts as number) ?? 0,
+            senderName: wireText(m.n) ?? '',
+            text: wireText(m.x) ?? '',
+            timestamp: typeof m.ts === 'number' ? m.ts : 0,
             media: buildMedia(room, m.m as WireMedia | undefined),
             mentions: mapMentions(m.mentions),
             replyTo: m.replyTo as WireReply | undefined,
@@ -508,6 +523,8 @@ export function usePeerRoom(displayName: string) {
 
         if (t === 'sys') {
           if (data.kind === 'closed') {
+            // A closed group never accepts this socket again; stop dialling it.
+            teardown();
             setError('群聊已解散');
             const code = roomIdRef.current;
             if (code) void closeOwnedGroup(code).finally(() => forgetGroup(code));
@@ -554,7 +571,7 @@ export function usePeerRoom(displayName: string) {
 
         switch (t) {
           case 'presence':
-            touchPeer(from, data.n as string | undefined);
+            touchPeer(from, wireText(data.n));
             break;
           case 'chat':
             if (from === selfId && typeof data.id === 'string') clearPendingSend(data.id);
@@ -564,9 +581,9 @@ export function usePeerRoom(displayName: string) {
                 serverConfirmed: true,
                 fromSelf: isOwnMessage(data),
                 senderId: from,
-                senderName: (data.n as string) ?? from.slice(0, 6),
-                text: (data.x as string) ?? '',
-                timestamp: (data.ts as number) ?? Date.now(),
+                senderName: wireText(data.n) ?? from.slice(0, 6),
+                text: wireText(data.x) ?? '',
+                timestamp: typeof data.ts === 'number' ? data.ts : Date.now(),
                 media: buildMedia(roomIdRef.current, data.m as WireMedia | undefined),
                 mentions: mapMentions(data.mentions),
                 replyTo: data.replyTo as WireReply | undefined,
@@ -605,28 +622,10 @@ export function usePeerRoom(displayName: string) {
             break;
           }
           case 'cmd': {
-            const outcome = onCommandRef.current?.(
-              {
-                action: data.a as CmdAction,
-                kind: data.kind as DeviceCommand['kind'],
-                // Absent on every command from a client that predates
-                // multi-device — which stays undefined here and so keeps
-                // meaning "the primary device of that kind".
-                deviceId: data.deviceId as string | undefined,
-                c: data.c as 'A' | 'B' | undefined,
-                v: data.v as number | undefined,
-                w: data.w as string | undefined,
-                d: data.d as string | undefined,
-                q: data.q as string[] | undefined,
-                mode: data.mode as DeviceCommand['mode'],
-                iv: data.iv as number | undefined,
-                color: data.color as number | undefined,
-                ms: data.ms as number | undefined,
-                // Only a known rhythm name; anything else stays undefined and is refused.
-                pattern: isOpossumPattern(data.pattern) ? data.pattern : undefined,
-              },
-              from,
-            );
+            const command = parseRemoteCommand(data);
+            const outcome = command
+              ? onCommandRef.current?.(command, from)
+              : { ok: false, message: '指令格式错误' };
             // A group AI waits for this device's own verdict; only the server sends `ai:` ids.
             if (from.startsWith('ai:') && typeof data.rid === 'string' && data.rid.length <= 64)
               send({
@@ -637,23 +636,16 @@ export function usePeerRoom(displayName: string) {
               });
             break;
           }
-          case 'wave':
-            onWaveformRef.current?.(
-              {
-                wid: data.wid as string,
-                wn: data.wn as string,
-                fr: data.fr as [number, number][],
-                modality: data.mo as 'electrostimulation' | 'vibration' | undefined,
-              },
-              from,
-            );
+          case 'wave': {
+            const transfer = parseWaveformTransfer(data);
+            if (transfer) onWaveformRef.current?.(transfer, from);
             break;
+          }
           case 'sf':
             touchPeer(from);
             setMembers((prev) => {
               const cur = prev.get(from) ?? emptyMember(from);
-              const next = new Map(prev);
-              next.set(from, {
+              const member: MemberState = {
                 ...cur,
                 strengthA: (data.sa as number) ?? cur.strengthA,
                 strengthB: (data.sb as number) ?? cur.strengthB,
@@ -674,7 +666,11 @@ export function usePeerRoom(displayName: string) {
                 sensorLastEvent: (data.se as string | null | undefined) ?? null,
                 sensorLastValue: (data.sv as number | null | undefined) ?? null,
                 sensorLastEventAt: (data.sea as number | null | undefined) ?? null,
-              });
+              };
+              // A heartbeat that changes nothing must not re-render the room.
+              if (prev.has(from) && sameMember(cur, member)) return prev;
+              const next = new Map(prev);
+              next.set(from, member);
               return next;
             });
             break;
@@ -1093,6 +1089,8 @@ export function usePeerRoom(displayName: string) {
     status,
     connected: status === 'connected',
     error,
+    dismissError: () => setError(null),
+    joinCount: () => joinsRef.current,
     roomId,
     peers,
     members: membersWithAi,

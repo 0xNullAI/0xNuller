@@ -166,9 +166,31 @@ export function ChatPanel({
   useLayoutEffect(() => {
     showEarlierRef.current = showEarlier;
   });
+  // Opening a conversation lands on its newest message at once. Until then the top of the list
+  // is briefly in view, and the reveal sentinel must not take that as the reader scrolling up.
+  const landed = useRef(false);
+  const [nearBottom, setNearBottom] = useState(true);
+  const nearBottomRef = useRef(true);
+  useLayoutEffect(() => {
+    if (landed.current || messages.length === 0) return;
+    const container = timelineElement();
+    if (container) container.scrollTop = container.scrollHeight;
+    landed.current = true;
+  });
+  useEffect(() => {
+    const container = timelineElement();
+    if (!container) return;
+    const track = () => {
+      const near = container.scrollHeight - container.scrollTop - container.clientHeight < 160;
+      nearBottomRef.current = near;
+      setNearBottom(near);
+    };
+    container.addEventListener('scroll', track, { passive: true });
+    return () => container.removeEventListener('scroll', track);
+  }, []);
   useEffect(() => {
     const sentinel = topSentinelRef.current;
-    if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+    if (!sentinel || !landed.current || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) showEarlierRef.current();
     });
@@ -293,9 +315,18 @@ export function ChatPanel({
   ]);
 
   const latestMessageId = timeline.at(-1)?.itemId;
+  const latestFromSelf = messages.at(-1)?.fromSelf === true;
+  const [unseenNewer, setUnseenNewer] = useState(false);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [latestMessageId]);
+    if (!latestMessageId) return;
+    // Follow new messages only for a reader at the bottom, or for one's own message; someone
+    // reading back is not pulled away, and sees a pill instead.
+    if (nearBottomRef.current || latestFromSelf) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setUnseenNewer(false);
+    } else setUnseenNewer(true);
+  }, [latestMessageId, latestFromSelf]);
+  const showUnseen = unseenNewer && !nearBottom;
 
   // Recording timer: the start time lives in a ref, the interval computes elapsed duration from it.
   useEffect(() => {
@@ -495,6 +526,18 @@ export function ChatPanel({
           );
         })}
         <div ref={bottomRef} />
+        {showUnseen && (
+          <button
+            type="button"
+            onClick={() => {
+              bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+              setUnseenNewer(false);
+            }}
+            className="ui-press sticky bottom-2 mx-auto rounded-full bg-[var(--accent)] px-3 py-1 text-xs text-[var(--button-text)] shadow-[var(--shadow-panel)]"
+          >
+            有新消息
+          </button>
+        )}
       </ConversationTimeline>
 
       {/* Input bar */}
@@ -675,8 +718,8 @@ export function ChatPanel({
                   handleSend();
                 }
               }}
+              // Typing stays open while media uploads; sending waits for it.
               placeholder={busy ? '发送中…' : '输入消息…'}
-              disabled={busy}
             />
             {draft.trim() ? (
               <button

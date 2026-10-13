@@ -328,6 +328,25 @@ export function ChatAppView({
             </button>
           )}
         </ConversationHeader>
+        {peerRoom.roomId && peerRoom.error ? (
+          <div
+            role="alert"
+            className="flex items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm"
+          >
+            <span className="min-w-0 flex-1">{peerRoom.error}</span>
+            <button
+              type="button"
+              onClick={peerRoom.dismissError}
+              className="shrink-0 text-xs text-[var(--text-soft)] hover:text-[var(--text)]"
+            >
+              知道了
+            </button>
+          </div>
+        ) : peerRoom.roomId && peerRoom.status !== 'connected' && peerRoom.status !== 'idle' ? (
+          <p role="status" className="px-4 py-1 text-center text-xs text-[var(--text-faint)]">
+            {peerRoom.status === 'error' ? '连接失败，正在重试…' : '正在连接…'}
+          </p>
+        ) : null}
         {searchOpen && peerRoom.roomId && (
           <ChatSearchDialog
             onSearch={peerRoom.searchMessages}

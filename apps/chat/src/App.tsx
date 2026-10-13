@@ -26,6 +26,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore
 import { usePeerRoom } from './hooks/use-peer-room';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { CancelledFireHolds } from './lib/fire-cancel';
+import { backgroundInterval } from './lib/background-interval';
 import { selectChatInboxConversation, subscribeChatInboxSelection } from './inbox';
 import { initialChatTarget } from './lib/initial-chat-target';
 import { subscribeChatRouteChanges } from './lib/chat-route-changes';
@@ -43,6 +44,9 @@ import type {
   WaveformTransfer,
 } from './lib/protocol';
 import { ChatAppView } from './components/ChatAppView';
+
+/** Custom waveforms beyond which shared ones are no longer accepted into the library. */
+const MAX_SHARED_LIBRARY = 200;
 
 type FirePolicy = 'sum' | 'max' | 'avg';
 
@@ -237,10 +241,17 @@ export default function App() {
     async (request: DmRequest) => {
       const account = currentAuthUserId();
       const generation = ++dmOpenGeneration.current;
+      // Opening a group while the ticket is minted wins: the late DM must not replace it.
+      const joins = peerRoom.joinCount();
       dmAdmission.current = null;
       setDmError(null);
       const ticket = await dmTicket(request.accountId);
-      if (!account || currentAuthUserId() !== account || generation !== dmOpenGeneration.current)
+      if (
+        !account ||
+        currentAuthUserId() !== account ||
+        generation !== dmOpenGeneration.current ||
+        peerRoom.joinCount() !== joins
+      )
         return;
       if (!ticket) {
         setDmError('无法开始私聊，需要双方互相关注');
@@ -544,6 +555,41 @@ export default function App() {
   const { addRemoteWaveform } = waveforms;
 
   /**
+   * End fire boosts whose holder stopped refreshing them. A normal release goes through
+   * fire_release and falls back immediately; this backstops a lost release (page closed,
+   * packet loss, crash). It runs off a worker timer, which a background tab does not throttle,
+   * and also on every incoming command and whenever the page becomes visible.
+   */
+  const expireFire = useCallback(() => {
+    const now = Date.now();
+    cancelledFire.current.expire(now, 800);
+    let dirtyA = false,
+      dirtyB = false;
+    fireBoostsA.current.forEach((v, k) => {
+      if (now - v.ts > 800) {
+        fireBoostsA.current.delete(k);
+        dirtyA = true;
+      }
+    });
+    fireBoostsB.current.forEach((v, k) => {
+      if (now - v.ts > 800) {
+        fireBoostsB.current.delete(k);
+        dirtyB = true;
+      }
+    });
+    if (dirtyA) callApplyFire('A');
+    if (dirtyB) callApplyFire('B');
+  }, [callApplyFire]);
+  useEffect(() => {
+    const stop = backgroundInterval(expireFire, 200);
+    document.addEventListener('visibilitychange', expireFire);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', expireFire);
+    };
+  }, [expireFire]);
+
+  /**
    * Carry out a command that already passed its sender's gates, against this device's own
    * limits. Returns the device's own description of what happened, if it has one.
    */
@@ -727,6 +773,7 @@ export default function App() {
   // Register the remote command handler
   const handleCommand = useCallback(
     (cmd: DeviceCommand, peerId: string): CommandOutcome | void => {
+      expireFire();
       // Only the server sends under an `ai:` id: no participant can choose one.
       if (peerId.startsWith('ai:')) return handleAgentCommand(cmd, peerId.slice(3));
       if (
@@ -752,7 +799,7 @@ export default function App() {
       }
       applyCommand(cmd, peerId);
     },
-    [applyCommand, handleAgentCommand, peerRoom.roomId, peerRoom.isDm],
+    [applyCommand, expireFire, handleAgentCommand, peerRoom.roomId, peerRoom.isDm],
   );
 
   const priorConversationConsent = useRef({ enabled: false, roomId: peerRoom.roomId });
@@ -808,6 +855,19 @@ export default function App() {
 
   const handleWaveform = useCallback(
     (transfer: WaveformTransfer, _peerId: string) => {
+      // A shared waveform writes into this account's library, so it needs the same consent as
+      // control, may never replace one already there, and the library has a ceiling.
+      if (
+        !chatConversationAllowsCommand(
+          currentAuthUserId(),
+          peerRoom.roomId,
+          peerRoom.isDm,
+          'change_wave',
+        ) ||
+        waveformsRef.current.getWaveform(transfer.wid) ||
+        waveformsRef.current.allWaveforms.filter((wave) => wave.custom).length >= MAX_SHARED_LIBRARY
+      )
+        return;
       addRemoteWaveform({
         id: transfer.wid,
         name: transfer.wn,
@@ -817,7 +877,7 @@ export default function App() {
         custom: true,
       });
     },
-    [addRemoteWaveform],
+    [addRemoteWaveform, peerRoom.roomId, peerRoom.isDm],
   );
 
   useEffect(() => {
@@ -965,32 +1025,6 @@ export default function App() {
 
   // Heartbeat expiry reaper: fire_active arrives every 300ms, so going more than 800ms
   // without a refresh counts as a release.
-  // A normal release goes through fire_release at QoS 1 and falls back immediately; any
-  // abnormal path (page closed / packet loss / crash) is backstopped here, reaching zero
-  // within ~1s at worst.
-  useEffect(() => {
-    const t = window.setInterval(() => {
-      const now = Date.now();
-      cancelledFire.current.expire(now, 800);
-      let dirtyA = false,
-        dirtyB = false;
-      fireBoostsA.current.forEach((v, k) => {
-        if (now - v.ts > 800) {
-          fireBoostsA.current.delete(k);
-          dirtyA = true;
-        }
-      });
-      fireBoostsB.current.forEach((v, k) => {
-        if (now - v.ts > 800) {
-          fireBoostsB.current.delete(k);
-          dirtyB = true;
-        }
-      });
-      if (dirtyA) callApplyFire('A');
-      if (dirtyB) callApplyFire('B');
-    }, 200);
-    return () => clearInterval(t);
-  }, [callApplyFire]);
 
   return (
     <ChatAppView

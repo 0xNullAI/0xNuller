@@ -6,6 +6,9 @@ function genId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 24);
 }
 
+/** Generous for an 8 MB file on a slow mobile link. */
+const UPLOAD_TIMEOUT_MS = 90_000;
+
 /** Upload a media blob to the room and return a reference that can be sent with a chat message. */
 export async function uploadMedia(
   code: string,
@@ -22,6 +25,8 @@ export async function uploadMedia(
       'X-Media-Token': mediaToken,
     },
     body: blob,
+    // A stalled upload must end in an error the user can retry, not a composer locked for good.
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`upload failed: ${res.status}`);
   return {
