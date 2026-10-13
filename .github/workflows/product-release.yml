@@ -95,6 +95,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_APK: ${{ inputs.force_apk == true }}
         run: |
+          set -o pipefail
           # GitHub Releases exist only for APK releases; the latest one is the native baseline.
           last=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
           if [ -n "$last" ]; then
@@ -143,6 +144,8 @@ jobs:
         if: steps.version.outputs.publish == 'true' && steps.native.outputs.apk == 'true'
         id: apk
         run: |
+          # Without pipefail, `| tee` below would hide a failed verification.
+          set -o pipefail
           apk='android/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk'
           npm run verify:android:apk -- "$apk" | tee apk-verification.json
           artifact="$RUNNER_TEMP/maoyuan-v${{ steps.version.outputs.version }}.apk"
@@ -162,6 +165,25 @@ jobs:
           node scripts/ota-bundle.mjs \
             --version="${{ steps.version.outputs.version }}" \
             --build-id="${{ steps.source.outputs.sha }}"
+
+      - name: Write the APK pointer for the update check
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The Android update check reads /ota/android/apk.json from our own domain first.
+          if [ '${{ steps.native.outputs.apk }}' = true ]; then
+            apk_version='${{ steps.version.outputs.version }}'
+            apk_file='${{ steps.apk.outputs.path }}'
+          else
+            # UI-only release: the latest APK release is still the current APK.
+            last=$(gh release view --json tagName -q .tagName)
+            apk_version="${last#v}"
+            gh release download "$last" -p "maoyuan-v${apk_version}.apk" -D "$RUNNER_TEMP/apk-baseline"
+            apk_file="$RUNNER_TEMP/apk-baseline/maoyuan-v${apk_version}.apk"
+          fi
+          node scripts/android-apk-pointer.mjs --version="$apk_version" \
+            --sha256="$(sha256sum "$apk_file" | cut -d' ' -f1)"
 
       - name: Reconfirm current main source
         if: steps.version.outputs.publish == 'true'
