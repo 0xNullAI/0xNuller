@@ -13,6 +13,7 @@ import {
   ModuleSettingsProvider,
   OverlayProvider,
   StopFailureBanner,
+  OverlayStopAnchor,
   useOverlayRoot,
   useModuleOverlayLayer,
   ShellNavProvider,
@@ -372,6 +373,7 @@ export function Shell() {
           <LegalPage onNavigate={navigateFromShell} />
         </Suspense>
         <StopFailureBanner />
+        <OverlayStopAnchor />
       </div>
     );
   }
@@ -406,6 +408,7 @@ export function Shell() {
           </div>
         </main>
         <StopFailureBanner />
+        <OverlayStopAnchor />
       </div>
     );
   }
@@ -639,6 +642,7 @@ export function Shell() {
             to stay reachable while a dialog is open, which is why it sits at
             the top of the z scale rather than in the overlay layer. */}
             <StopFailureBanner />
+            <OverlayStopAnchor />
           </div>
         </SidebarSectionsProvider>
       </ShellNavProvider>

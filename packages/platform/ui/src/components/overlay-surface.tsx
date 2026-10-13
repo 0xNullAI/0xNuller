@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode, type MouseEvent, type KeyboardEvent 
 import { createPortal } from 'react-dom';
 import { useOverlayContainer } from '../overlay';
 import { cn } from '../utils';
+import { useBlockingOverlay } from '../modal-presence';
 
 /**
  * Overlay surface: backdrop + centering + portal.
@@ -95,6 +96,8 @@ export function Overlay({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dismissRef = useRef(onDismiss);
   const dismissible = Boolean(onDismiss);
+  // The scrim covers the shell's device bar, so the shell raises its stop above it.
+  useBlockingOverlay();
 
   // No dep array: Escape can only arrive after a render has painted, so the
   // stack entry always calls through to the current handler without having

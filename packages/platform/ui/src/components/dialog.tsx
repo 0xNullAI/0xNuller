@@ -4,6 +4,7 @@ import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
 import { Z_OVERLAY, Z_OVERLAY_PANEL } from '../z-layers';
+import { isStopAnchorTarget, useBlockingOverlay } from '../modal-presence';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -37,11 +38,17 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, overlayClassName, ...props }, ref) => (
+>(({ className, children, overlayClassName, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay className={overlayClassName} />
+    <BlockingOverlayMarker />
     <DialogPrimitive.Content
       ref={ref}
+      onInteractOutside={(event) => {
+        // A press on the shell's stop control is not a request to close this dialog.
+        if (isStopAnchorTarget(event.target)) event.preventDefault();
+        onInteractOutside?.(event);
+      }}
       className={cn(
         `ui-dialog-content fixed left-1/2 top-1/2 ${Z_OVERLAY_PANEL} w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-lg)] border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-xl`,
         className,
@@ -57,6 +64,17 @@ const DialogContent = React.forwardRef<
   </DialogPortal>
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
+
+/**
+ * Counts the dialog as open while its portal is mounted, which is exactly while
+ * Radix keeps the page behind it locked. A null-rendering child rather than a
+ * hook in DialogContent, so the count follows the portal's presence (including
+ * close animations) and not the content component's lifetime.
+ */
+export function BlockingOverlayMarker() {
+  useBlockingOverlay();
+  return null;
+}
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex flex-col gap-1.5 text-left', className)} {...props} />
