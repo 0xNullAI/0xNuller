@@ -6,6 +6,8 @@ export const CHECKPOINT_MS = 10_000;
 // those durable records can still be acknowledged; new calls never use it.
 const LEGACY_CREDITS_PER_SEGMENT = 20;
 const LEGACY_SEGMENT_MS = 10_000;
+/** Failed looks before a release whose hold is still `missing` counts as done. */
+const MISSING_RELEASE_CONFIRMATIONS = 2;
 
 /** A late RPC can still commit; the reservation key makes the next retry safe. */
 export async function withBillingTimeout<T>(request: Promise<T>): Promise<T> {
@@ -44,7 +46,15 @@ function acknowledged(
   result: Awaited<ReturnType<Env['AUTH']['finalizeVoiceReservation']>>,
 ) {
   if (result.status === 'needs_review') return result.charged === null;
-  if (record.phase === 'release') return result.status === 'released' && result.charged === null;
+  if (record.phase === 'release')
+    return (
+      (result.status === 'released' && result.charged === null) ||
+      // No hold exists: the reserve RPC never committed. A late commit could still land just
+      // after the first look, so only believe it once it has stayed missing across retries.
+      (result.status === 'missing' &&
+        result.charged === null &&
+        (record.attempts ?? 0) >= MISSING_RELEASE_CONFIRMATIONS)
+    );
   if (record.usage) {
     // Auth prices usage with its own copy of the table; accept any charge within the hold,
     // or a release when nothing billable was reported.
@@ -106,13 +116,19 @@ export class VoiceBillingOutbox {
       await this.storage.delete(PREFIX + reservationKey);
     });
   }
-  flush(liveKey: () => string | null) {
+  /**
+   * Finalize due records. `busy` names reservations still owned by a call: the live one and
+   * any still draining usage after hang-up. Those are skipped, never settled early; every
+   * other record is still worked through, one per flush while a call is busy so compensation
+   * RPC latency cannot hold up its checkpoints or hard deadline.
+   */
+  flush(busy: () => ReadonlySet<string>) {
     return this.serial(async () => {
       const records = await this.storage.list<VoiceBillingRecord>({ prefix: PREFIX });
       let processed = 0;
       for (const [key, record] of records) {
-        // Compensation RPC latency must not delay a live call's hard deadline.
-        if (liveKey() !== null || processed >= 4) break;
+        if (processed >= (busy().size ? 1 : 4)) break;
+        if (busy().has(record.reservationKey)) continue;
         if ((record.nextAttemptAt ?? 0) > Date.now()) continue;
         processed++;
         // No matching live socket after restart: charge only durably observed usage
@@ -164,20 +180,19 @@ export class VoiceBillingOutbox {
           );
         }
       }
-      const remaining = await this.storage.list<VoiceBillingRecord>({ prefix: PREFIX });
-      if (remaining.size) {
-        const next =
-          liveKey() !== null
-            ? Date.now() + CHECKPOINT_MS
-            : Math.max(
-                Date.now() + 1,
-                Math.min(
-                  ...[...remaining.values()].map(
-                    (record) => record.nextAttemptAt ?? Date.now() + 1,
-                  ),
-                ),
-              );
-        await this.storage.setAlarm(next);
+      const remaining = [
+        ...(await this.storage.list<VoiceBillingRecord>({ prefix: PREFIX })).values(),
+      ];
+      if (remaining.length) {
+        // A busy record is not due until its call lets go of it; it only needs the regular
+        // checkpoint cadence, not an immediate re-run of this flush.
+        const due = Math.min(
+          ...remaining
+            .filter((record) => !busy().has(record.reservationKey))
+            .map((record) => record.nextAttemptAt ?? Date.now() + 1),
+        );
+        const next = busy().size ? Math.min(due, Date.now() + CHECKPOINT_MS) : due;
+        await this.storage.setAlarm(Math.max(Date.now() + 1, next));
       } else await this.storage.deleteAlarm();
     });
   }
