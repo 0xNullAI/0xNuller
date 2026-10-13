@@ -24,14 +24,14 @@ Windows/macOS 安装器不再构建或发布。Web 与 Android 是同一个产�
 `main` commit：
 
 ```text
-根 package:             7.2.0
-Web version.json:       7.2.0 + main commit SHA
-Android 热更新包:        https://0xnullai.com/ota/android/latest.json（7.2.0 + main commit SHA）
-Android versionName:    7.2.0（仅 APK 发布）
-Android versionCode:    7002000（仅 APK 发布）
-Git tag:                v7.2.0
-APK:                    maoyuan-v7.2.0.apk（另附同一文件 0xnuller-v7.2.0.apk 供旧版应用检测更新）
-Release 标题:           猫愿 7.2.0（仅 APK 发布）
+根 package:             7.3.0
+Web version.json:       7.3.0 + main commit SHA
+Android 热更新包:        https://0xnullai.com/ota/android/latest.json（7.3.0 + main commit SHA）
+Android versionName:    7.3.0（仅 APK 发布）
+Android versionCode:    7003000（仅 APK 发布）
+Git tag:                v7.3.0
+APK:                    maoyuan-v7.3.0.apk（另附同一文件 0xnuller-v7.3.0.apk 供旧版应用检测更新）
+Release 标题:           猫愿 7.3.0（仅 APK 发布）
 ```
 
 ### 三档发布
@@ -51,7 +51,7 @@ Release 标题:           猫愿 7.2.0（仅 APK 发布）
 - **是否出 APK**：最新 GitHub Release 即 APK 基线。`NATIVE_API` 与基线相同则只发热更新包并只
   创建 tag；不同（或手动运行时勾选 `force_apk`）则构建 APK 并创建 Release。只发热更新的版本
   不出现在 GitHub Releases 页面，旧 APK 的更新提示也不会出现。
-- **版本号**：界面更新升修订号（7.1.1、7.1.2…），原生变化升次版本号（7.2.0）。
+- **版本号**：界面更新升修订号（7.1.1、7.1.2…），原生变化升次版本号（7.3.0）。
 - **热更新包**：`scripts/ota-bundle.mjs` 打包 `android/app/dist`（不含 source map），用 Secret
   `OTA_SIGNING_KEY`（ed25519）签名，部署在 Web 的 `/ota/android/`。APK 只接受内置公钥签名、
   原生 API 相同、版本更新的包，逐个文件校验 SHA-256；新包下次启动生效，连续三次启动未确认则
