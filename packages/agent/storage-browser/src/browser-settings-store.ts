@@ -1,4 +1,10 @@
-import { loadDeviceSafety, saveDeviceSafety } from '@0xnullai/settings';
+import {
+  loadDeviceSafety,
+  readSecret,
+  removeSecret,
+  saveDeviceSafety,
+  writeSecret,
+} from '@0xnullai/settings';
 import {
   createProviderSettings,
   hasLlmConfig,
@@ -55,8 +61,14 @@ export class BrowserAppSettingsStore {
   /** Fallback for injected/non-browser stores where shared localStorage is unavailable. */
   private sessionPermissionModeOverride: 'allow-all' | null = null;
   private runtimeApiKeys: Partial<Record<ProviderId, string>> = {};
+  /**
+   * Remembered keys go through the shared secret seam (the device's encrypted store on Android)
+   * unless a test injected its own storage.
+   */
+  private readonly keysInSecretStore: boolean;
 
   constructor(options: BrowserAppSettingsStoreOptions = {}) {
+    this.keysInSecretStore = options.localStorageRef === undefined;
     this.localStorageRef =
       options.localStorageRef ??
       (typeof localStorage === 'undefined' ? undefined : (localStorage as unknown as StorageLike));
@@ -199,6 +211,8 @@ export class BrowserAppSettingsStore {
     // Safety settings are written back to the shared source of truth, no longer
     // into this module's blob.
     saveDeviceSafety({
+      // Not an Agent setting: keep whatever the shared settings page chose.
+      backgroundKeepMinutes: loadDeviceSafety().backgroundKeepMinutes,
       maxStrengthA: settings.maxStrengthA,
       maxStrengthB: settings.maxStrengthB,
       maxColdStartStrength: settings.maxColdStartStrength,
@@ -305,7 +319,7 @@ export class BrowserAppSettingsStore {
     saveDeviceSafety({ ...safety, permissionMode: 'confirm', permissionModeExpiresAt: undefined });
     this.runtimeApiKeys = {};
     this.localStorageRef?.removeItem(SETTINGS_KEY);
-    this.localStorageRef?.removeItem(API_KEYS_LOCAL);
+    this.writeStoredApiKeys(null);
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
     this.removeLegacyVoiceApiKey();
     return this.defaults;
@@ -411,7 +425,7 @@ export class BrowserAppSettingsStore {
   private readApiKeys(activeProviderId: ProviderId): Record<string, string | undefined> {
     if (Object.keys(this.runtimeApiKeys).length > 0) return this.runtimeApiKeys;
 
-    return this.parseApiKeyMap(this.localStorageRef?.getItem(API_KEYS_LOCAL), activeProviderId);
+    return this.parseApiKeyMap(this.readStoredApiKeys(), activeProviderId);
   }
 
   private persistApiKeys(providerConfigs: ProviderConfigMap, remember: boolean): void {
@@ -423,18 +437,30 @@ export class BrowserAppSettingsStore {
 
     if (remember) {
       this.runtimeApiKeys = {};
-      if (Object.keys(apiKeys).length > 0) {
-        this.localStorageRef?.setItem(API_KEYS_LOCAL, JSON.stringify(apiKeys));
-      } else {
-        this.localStorageRef?.removeItem(API_KEYS_LOCAL);
-      }
+      this.writeStoredApiKeys(Object.keys(apiKeys).length > 0 ? JSON.stringify(apiKeys) : null);
       this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
       return;
     }
 
     this.runtimeApiKeys = apiKeys;
-    this.localStorageRef?.removeItem(API_KEYS_LOCAL);
+    this.writeStoredApiKeys(null);
     this.sessionStorageRef?.removeItem(API_KEYS_SESSION);
+  }
+
+  private readStoredApiKeys(): string | null | undefined {
+    return this.keysInSecretStore
+      ? readSecret(API_KEYS_LOCAL)
+      : this.localStorageRef?.getItem(API_KEYS_LOCAL);
+  }
+
+  private writeStoredApiKeys(value: string | null): void {
+    if (this.keysInSecretStore) {
+      if (value === null) removeSecret(API_KEYS_LOCAL);
+      else writeSecret(API_KEYS_LOCAL, value);
+      return;
+    }
+    if (value === null) this.localStorageRef?.removeItem(API_KEYS_LOCAL);
+    else this.localStorageRef?.setItem(API_KEYS_LOCAL, value);
   }
 
   /** Bring-your-own-key users get text only; drop the old DashScope speech key. */

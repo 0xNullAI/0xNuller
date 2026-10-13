@@ -28,6 +28,9 @@ import { handleAgentWorkspace } from './agent-workspace';
 import { handleAgentRuns, runAgentRunMaintenance } from './agent-runs';
 import { handleCompanionLife } from './companion-life';
 import { handleCreditActivity } from './credit-activity';
+import { handleRedeemCodes, redeemRetentionStatement } from './redeem-codes';
+import { handleAdminLedger } from './admin-ledger';
+import { CREDIT_PRICE_VERSION } from '@0xnullai/auth/credit-tiers';
 import { handleMediaJobs, runMediaJobs } from './media-jobs';
 import { hashPassword } from './password';
 import { handleMemoryContext } from './memory-context';
@@ -184,7 +187,6 @@ const REFERRAL_REWARD_CREDITS = 500;
 // at email verification, so a registration flood without mailboxes earns nothing.
 const WELCOME_CREDITS = 100;
 const WELCOME_REFERENCE = 'welcome';
-const CREDIT_PRICE_VERSION = 'credits-2026-09';
 const REFERRAL_CODE = /^[A-Z0-9_-]{8,32}$/;
 const REPORT_REASONS = new Set(['spam', 'harassment', 'impersonation', 'unsafe', 'other']);
 const MAX_REPORT_DETAILS = 500;
@@ -1467,6 +1469,10 @@ const authWorker = {
       if (billingOrderResponse) return billingOrderResponse;
       const creditActivityResponse = await handleCreditActivity(request, env, cors);
       if (creditActivityResponse) return creditActivityResponse;
+      const redeemResponse = await handleRedeemCodes(request, env, cors, ipHash);
+      if (redeemResponse) return redeemResponse;
+      const adminLedgerResponse = await handleAdminLedger(request, env, cors);
+      if (adminLedgerResponse) return adminLedgerResponse;
       const mediaResponse = await handleMediaJobs(request, env, cors);
       if (mediaResponse) return mediaResponse;
       const workspaceResponse = await handleAgentWorkspace(request, env, cors);
@@ -1889,79 +1895,11 @@ const authWorker = {
         );
       }
 
+      // Manual top-ups were replaced by redeem keys (redeem-codes.ts); gifts stay below.
       if (path === '/api/auth/admin/credits/grant' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
-        const body = await readJson(request, { lenient: true });
-        const username =
-          typeof body.username === 'string'
-            ? body.username.trim().replace(/^@+/, '').toLowerCase()
-            : '';
-        const amountCny = Math.trunc(Number(body.amountCny));
-        const externalReference =
-          typeof body.externalReference === 'string' ? body.externalReference.trim() : '';
-        const packages = new Map([
-          [7, 1_000],
-          [35, 5_000],
-          [70, 10_000],
-          [140, 20_000],
-        ]);
-        const amountCredits = packages.get(amountCny);
-        if (!username || !amountCredits || !/^[A-Za-z0-9._:-]{4,128}$/.test(externalReference)) {
-          return err('充值用户、固定档位或外部流水号无效', 400, cors);
-        }
-        const target = await env.DB.prepare(
-          'SELECT id, username FROM users WHERE username = ? AND banned_at IS NULL',
-        )
-          .bind(username)
-          .first<{ id: string; username: string }>();
-        if (!target) return err('用户不存在', 404, cors);
-        const now = Date.now();
-        const daily = await env.DB.prepare(
-          `SELECT COALESCE(SUM(amount_credits), 0) AS credits
-             FROM admin_credit_audit WHERE operator_user_id = ? AND created_at >= ?`,
-        )
-          .bind(user.id, now - 24 * 60 * 60 * 1000)
-          .first<{ credits: number }>();
-        if (Number(daily?.credits ?? 0) + amountCredits > 200_000) {
-          return err('该管理员 24 小时人工入账已达上限', 429, cors);
-        }
-        const duplicate = await env.DB.prepare(
-          "SELECT 1 FROM credit_ledger WHERE kind = 'manual_purchase' AND reference_id = ?",
-        )
-          .bind(externalReference)
-          .first();
-        if (duplicate) return err('该外部流水已经入账', 409, cors);
-        try {
-          await env.DB.batch([
-            env.DB.prepare(
-              `INSERT INTO credit_ledger
-                (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
-               VALUES (?, ?, 'manual_purchase', ?, ?, ?, ?)`,
-            ).bind(
-              target.id,
-              amountCredits,
-              externalReference,
-              CREDIT_PRICE_VERSION,
-              JSON.stringify({ amountCny, operatorUserId: user.id }),
-              now,
-            ),
-            env.DB.prepare(
-              `INSERT INTO admin_credit_audit
-                (operator_user_id, target_user_id, action, amount_cny, amount_credits,
-                 external_reference, created_at)
-               VALUES (?, ?, 'manual_purchase', ?, ?, ?, ?)`,
-            ).bind(user.id, target.id, amountCny, amountCredits, externalReference, now),
-          ]);
-        } catch (cause) {
-          if (String(cause).includes('UNIQUE')) return err('该外部流水已经入账', 409, cors);
-          throw cause;
-        }
-        return json(
-          { ok: true, username: target.username, amountCny, amountCredits, createdAt: now },
-          201,
-          cors,
-        );
+        return err('人工充值已停用，请在管理页「卡密」里生成卡密', 410, cors);
       }
 
       const adminCreditUser = path.match(/^\/api\/auth\/admin\/credits\/users\/([^/]+)$/);
@@ -3287,7 +3225,7 @@ const authWorker = {
       if (path === '/api/auth/credit-red-packets' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        return err('充值内测中，请联系管理员 QQ 询问', 503, cors);
+        return err('口令红包已停用，购买 Credit 请使用卡密兑换', 503, cors);
       }
 
       if (path === '/api/auth/credit-red-packets' && request.method === 'GET') {
@@ -3772,6 +3710,7 @@ const authWorker = {
             now - REGISTER_WINDOW_MS,
           ),
           env.DB.prepare('DELETE FROM email_action_tokens WHERE expires_at < ?').bind(now),
+          redeemRetentionStatement(env, now),
           ...monitoringRetentionStatements(env, now),
         ]),
         runAuthMaintenance(env, now),

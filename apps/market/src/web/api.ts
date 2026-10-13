@@ -1,5 +1,5 @@
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
-import { apiBaseUrl } from '@0xnullai/settings';
+import { apiBaseUrl, AUTH_TOKEN_SECRET, readSecret } from '@0xnullai/settings';
 import type {
   CharacterDraft,
   CharacterRevisionSnapshot,
@@ -13,15 +13,9 @@ import type {
   UploadPayload,
 } from '../shared/schema';
 
-const TOKEN_KEY = '0xnullai.auth-token';
-
 function accountHeaders(): Record<string, string> {
-  try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch {
-    return {};
-  }
+  const token = readSecret(AUTH_TOKEN_SECRET);
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

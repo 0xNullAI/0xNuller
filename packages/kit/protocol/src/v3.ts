@@ -5,9 +5,13 @@ import {
   INACTIVE_FREQ,
   INACTIVE_INT,
   type WebBluetoothConnectionContext,
+  type NativeStopRecipe,
 } from './base.js';
 import { findV3FamilyBatteryChar, performV3FamilyConnectHandshake } from './gatt-utils.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
+
+/** How long a strength change waits for its B1 before later changes may go out (10 ticks). */
+const V3_ACK_TIMEOUT_MS = 1_000;
 
 export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
   protected writeChar: BluetoothRemoteGATTCharacteristicLike | null = null;
@@ -18,6 +22,7 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
   protected pendingStrA = 0;
   protected pendingStrB = 0;
   protected awaitingAck = false;
+  private awaitingAckSince = 0;
 
   async onConnected(context: WebBluetoothConnectionContext): Promise<void> {
     await this.resetConnectionState({ emit: false });
@@ -121,16 +126,21 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     await this.writeCharacteristicValue(this.writeChar, this.buildB0());
   }
 
+  nativeStopRecipe(): NativeStopRecipe | null {
+    if (!this.writeChar) return null;
+    return {
+      service: V3_PRIMARY_SERVICE,
+      characteristic: V3_WRITE_CHAR,
+      packet: this.buildImmediateAbsoluteStrengthPacket(0, 0),
+    };
+  }
+
   protected async writeEmergencyStopPacket(): Promise<void> {
     if (!this.writeChar) return;
-    try {
-      await this.writeCharacteristicValue(
-        this.writeChar,
-        this.buildImmediateAbsoluteStrengthPacket(0, 0),
-      );
-    } catch {
-      // ignore best effort
-    }
+    await this.writeCharacteristicValue(
+      this.writeChar,
+      this.buildImmediateAbsoluteStrengthPacket(0, 0),
+    );
   }
 
   private buildB0(): Uint8Array {
@@ -141,10 +151,18 @@ export class CoyoteV3ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     const strengthA = this.pendingStrA;
     const strengthB = this.pendingStrB;
 
+    // A lost B1 must not block every later strength change, a plain stop included. The
+    // unanswered packet is not resent: it may have been applied, and a relative change twice
+    // would overshoot. Only changes queued after it go out.
+    if (this.awaitingAck && Date.now() - this.awaitingAckSince > V3_ACK_TIMEOUT_MS) {
+      this.awaitingAck = false;
+      this.seq = 0;
+    }
     if (!this.awaitingAck && this.pendingMode !== 0) {
       this.seq = this.nextSeq();
       modeNibble = this.pendingMode;
       this.awaitingAck = true;
+      this.awaitingAckSince = Date.now();
       this.pendingMode = 0;
     }
 

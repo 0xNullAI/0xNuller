@@ -24,6 +24,8 @@ export interface VideoSetupPanelViewModel {
   managedQuote?: { maxReservationCredits: number; priceVersion: string } | null;
   managedQuotePending?: boolean;
   error: string | null;
+  /** The error is a refused camera permission; offer the App's system settings. */
+  errorOpensAppSettings?: boolean;
   ctaLabel: string;
   ctaDisabled: boolean;
 }
@@ -40,6 +42,7 @@ export interface VideoSetupPanelActions {
   setAllowBurst: (value: boolean) => void;
   setManagedReadAloud: (value: boolean) => void;
   activate: () => void;
+  openAppSettings?: () => void;
 }
 
 interface VideoSetupPanelProps {
@@ -212,9 +215,17 @@ export function VideoSetupPanel({
         </button>
       )}
       {view.error && (
-        <p role="alert" className="text-sm text-[var(--danger)]">
-          {view.error}
-        </p>
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 text-sm text-[var(--danger)]"
+        >
+          <p className="min-w-0 flex-1">{view.error}</p>
+          {view.errorOpensAppSettings && actions.openAppSettings && (
+            <Button size="sm" variant="secondary" onClick={actions.openAppSettings}>
+              去设置
+            </Button>
+          )}
+        </div>
       )}
 
       <Button onClick={actions.activate} disabled={view.ctaDisabled}>

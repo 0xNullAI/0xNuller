@@ -217,6 +217,10 @@ class UnavailableAgentClient implements AgentClient {
     return Promise.resolve();
   }
 
+  noteDeviceInterruption(): void {
+    // No runtime, so no reply to tell.
+  }
+
   sendUserMessage(): Promise<void> {
     return Promise.reject(new Error(this.message));
   }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { createTestDb } from './test-helpers';
 import { sha256Hex, type SessionEnv } from './session-domain';
 import {
+  __acceptNewBillingOrdersForTests,
   handleBillingOrders,
   applyVerifiedBillingEvent,
   type VerifiedBillingEvent,
@@ -13,6 +14,8 @@ beforeEach(async () => {
   db = createTestDb();
   env = { DB: db.DB } as SessionEnv;
   vi.spyOn(Date, 'now').mockReturnValue(now);
+  // These tests cover the paths orders created before redeem keys still take.
+  __acceptNewBillingOrdersForTests(true);
   for (const user of ['alice', 'bob', 'admin']) {
     await env.DB.prepare(
       'INSERT INTO users(id,username,display_name,password_hash,created_at,role) VALUES (?,?,?,?,1,?)',
@@ -27,6 +30,7 @@ beforeEach(async () => {
   }
 });
 afterEach(() => {
+  __acceptNewBillingOrdersForTests(false);
   db.close();
   vi.restoreAllMocks();
 });
@@ -67,6 +71,20 @@ const balance = async (user = 'alice') =>
 const count = async (table: string) =>
   (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n;
 describe('orders, verified payment events and reconciliation', () => {
+  it('opens no new orders since redeem keys replaced them, and retires the catalog', async () => {
+    __acceptNewBillingOrdersForTests(false);
+    expect((await call()).status).toBe(410);
+    expect((await call('/catalog', 'GET')).status).toBe(410);
+    expect(await count('billing_orders')).toBe(0);
+  });
+  it('keeps an order created before the switch readable and settleable', async () => {
+    expect((await call()).status).toBe(201);
+    __acceptNewBillingOrdersForTests(false);
+    expect((await call()).status).toBe(200);
+    expect((await call('/orders/order_001', 'GET')).status).toBe(200);
+    expect(await applyVerifiedBillingEvent(env, paid)).toEqual({ state: 'applied' });
+    expect(await balance()).toBe(1000);
+  });
   it('pins server prices and never funds an order or unsigned browser callback', async () => {
     expect((await call()).status).toBe(201);
     expect((await call()).status).toBe(200);

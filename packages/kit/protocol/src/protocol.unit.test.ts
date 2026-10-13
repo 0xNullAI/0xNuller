@@ -144,6 +144,57 @@ describe('CoyoteV3ProtocolAdapter', () => {
     expect(protocol.getState().strengthB).toBe(0);
   });
 
+  it('retries a failed stop write once, then reports a stop that never landed', async () => {
+    let failures = 0;
+    const writes: number[][] = [];
+    const characteristic = new MockCharacteristic(async (value) => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('gatt write failed');
+      }
+      writes.push([...value]);
+    });
+    const protocol = new CoyoteV3ProtocolAdapter();
+    const protocolInternal = protocol as unknown as {
+      state: ReturnType<typeof createEmptyDeviceState>;
+      writeChar: MockCharacteristic | null;
+    };
+    protocolInternal.state = { ...createEmptyDeviceState(), connected: true, strengthA: 10 };
+    protocolInternal.writeChar = characteristic;
+
+    failures = 1;
+    await expect(protocol.emergencyStop()).resolves.toBeUndefined();
+    expect(writes.at(-1)?.slice(0, 4)).toEqual([0xb0, 0x0f, 0, 0]);
+
+    failures = 2;
+    await expect(protocol.emergencyStop()).rejects.toThrow('急停指令未能送达设备');
+    expect(protocol.getState().strengthA).toBe(0);
+    (protocol as unknown as { stopTickLoop(): void }).stopTickLoop();
+  });
+
+  it('lets later strength changes out when a B1 never arrives, without resending the lost one', () => {
+    const protocol = new CoyoteV3ProtocolAdapter();
+    const internal = protocol as unknown as {
+      pendingMode: number;
+      pendingStrA: number;
+      awaitingAckSince: number;
+      buildB0(): Uint8Array;
+    };
+    internal.pendingMode = 0b0100;
+    internal.pendingStrA = 5;
+    expect(internal.buildB0()[1]! & 0x0f).toBe(0b0100);
+
+    internal.pendingMode = 0b1100;
+    internal.pendingStrA = 0;
+    expect(internal.buildB0()[1]! & 0x0f).toBe(0);
+
+    // The B1 for the first change never came; it is now older than the ack timeout.
+    internal.awaitingAckSince -= 1_500;
+    const next = internal.buildB0();
+    expect(next[1]! & 0x0f).toBe(0b1100);
+    expect(next[2]).toBe(0);
+  });
+
   it('ignores stale non-zero strength notifications after emergency stop', async () => {
     const characteristic = new MockCharacteristic(async () => undefined);
     const protocol = new CoyoteV3ProtocolAdapter();

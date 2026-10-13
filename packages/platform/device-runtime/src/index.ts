@@ -10,4 +10,5 @@ export * from './dglab/device-limits.js';
 export * from './dglab/holder-limits.js';
 export * from './dglab/physical-device.js';
 export * from './dglab/dglab-connection-registry.js';
+export * from './dglab/background-output.js';
 export * from './dglab/registry-clients.js';

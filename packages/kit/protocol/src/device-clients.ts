@@ -25,7 +25,7 @@ export interface OpossumClient {
   disconnect(): Promise<void>;
   getState(): Promise<OpossumState>;
   execute(command: OpossumCommand): Promise<OpossumCommandResult>;
-  /** Best-effort: drive both channels to zero. Used by a runtime-wide emergency stop. */
+  /** Drive both channels to zero; rejects when the stop never reached the device. */
   emergencyStop(): Promise<void>;
   setIndicatorColor(color: number): Promise<void>;
   onStateChanged(listener: (state: OpossumState) => void): () => void;

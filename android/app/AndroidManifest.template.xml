@@ -62,8 +62,16 @@
                   android:required="false" />
 
     <!--
-      <application> entries are managed by Tauri's manifest generator.
-      Do not duplicate them here.
+      Tauri's manifest generator owns the application element. The preparation
+      script copies only the backup attributes below onto it and writes the two
+      rule files into res/xml: the account token, remembered API keys and chat
+      data must not leave the device through cloud backup or device transfer
+      (Android 12+ ignores allowBackup for device-to-device transfer, hence the
+      explicit dataExtractionRules).
     -->
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules" />
 
 </manifest>

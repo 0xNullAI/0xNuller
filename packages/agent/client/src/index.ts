@@ -1,4 +1,5 @@
 import type {
+  DeviceInterruptionEvent,
   DeviceLinkRule,
   LlmCapabilities,
   RuntimeEvent,
@@ -44,7 +45,10 @@ export interface AgentClient {
    * write. The lease owner already stopped every output.
    */
   releaseDeviceControl(sessionId: string): Promise<void>;
-  abortCurrentReply(sessionId: string): Promise<void>;
+  /** `background`: the app left the foreground; the saved note says so instead of "manual". */
+  abortCurrentReply(sessionId: string, reason?: 'background'): Promise<void>;
+  /** Tell the next reply about a device change the AI did not make. See AgentRuntime. */
+  noteDeviceInterruption(sessionId: string, event: DeviceInterruptionEvent): void;
   /** Whether a reply for this session is running or still starting, whoever started it. */
   isReplyRunning?(sessionId: string): boolean;
   sendUserMessage(input: SendUserMessageInput): Promise<void>;
@@ -145,8 +149,12 @@ class EmbeddedAgentClient implements AgentClient {
     return Promise.resolve();
   }
 
-  abortCurrentReply(sessionId: string): Promise<void> {
-    return this.runtime.abortCurrentReply(sessionId);
+  abortCurrentReply(sessionId: string, reason?: 'background'): Promise<void> {
+    return this.runtime.abortCurrentReply(sessionId, reason);
+  }
+
+  noteDeviceInterruption(sessionId: string, event: DeviceInterruptionEvent): void {
+    this.runtime.noteDeviceInterruption(sessionId, event);
   }
 
   isReplyRunning(sessionId: string): boolean {

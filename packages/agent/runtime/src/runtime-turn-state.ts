@@ -1,6 +1,10 @@
 import type { LlmConversationItem } from '@dg-agent/core';
 import type { ModelContextStrategy, SessionSnapshot, ToolCall } from '@dg-agent/core';
-import { REPLY_ABORTED_NOTE, TOOL_LOOP_EXHAUSTED_MESSAGE } from './runtime-errors.js';
+import {
+  REPLY_ABORTED_IN_BACKGROUND_NOTE,
+  REPLY_ABORTED_NOTE,
+  TOOL_LOOP_EXHAUSTED_MESSAGE,
+} from './runtime-errors.js';
 import type { ToolCallConfig } from './tool-call-config.js';
 
 export interface TurnState {
@@ -263,7 +267,7 @@ function shouldSkipModelContextMessage(message: SessionSnapshot['messages'][numb
     return true;
   }
 
-  if (content === REPLY_ABORTED_NOTE) return true;
+  if (content === REPLY_ABORTED_NOTE || content === REPLY_ABORTED_IN_BACKGROUND_NOTE) return true;
   if (content === TOOL_LOOP_EXHAUSTED_MESSAGE) return true;
   if (content.startsWith('出错了：')) return true;
 

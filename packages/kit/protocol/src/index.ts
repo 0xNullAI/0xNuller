@@ -6,6 +6,7 @@ export {
   INACTIVE_INT,
   SILENT_WAVE_STEP,
   type ChannelWaveState,
+  type NativeStopRecipe,
   type Quad,
   type StateListener,
   type WaveStep,

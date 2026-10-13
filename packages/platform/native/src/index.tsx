@@ -6,6 +6,8 @@ import {
 } from '@0xnullai/device-runtime';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
+export * from './android-system';
+
 /**
  * The single entry point where a shell injects capabilities into modules.
  *

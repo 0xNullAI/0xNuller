@@ -1,4 +1,4 @@
-import { apiBaseUrl } from '@0xnullai/settings';
+import { apiBaseUrl, AUTH_TOKEN_SECRET, readSecret } from '@0xnullai/settings';
 
 /**
  * Account sync.
@@ -51,18 +51,9 @@ export interface SyncedContent {
   order?: number;
 }
 
-const TOKEN_KEY = '0xnullai.auth-token';
-
 function authHeaders(): Record<string, string> {
-  // Private browsing can reject the read; signed-out is the right reading of
-  // that, not a crash.
-  const token = (() => {
-    try {
-      return localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
-  })();
+  // An unreadable store reads as signed out, not a crash.
+  const token = readSecret(AUTH_TOKEN_SECRET);
   return {
     'content-type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

@@ -25,6 +25,7 @@ import {
 } from './aux-connect.js';
 import type { GattReadyRetryOptions } from './gatt-ready.js';
 import type { DeviceSelectionController } from './scan.js';
+import { armNativeStop, nativeStop } from './native-safety.js';
 
 export type { OpossumCommandResult } from '@dg-kit/protocol';
 
@@ -64,6 +65,7 @@ export class TauriBlecOpossumClient {
       this.device,
       this.handleGattDisconnected,
     );
+    await armNativeStop(this.device.id ?? '', this.adapter.nativeStopRecipe());
   }
 
   /**
@@ -85,6 +87,7 @@ export class TauriBlecOpossumClient {
       this.handleGattDisconnected,
       this.options,
     );
+    await armNativeStop(this.device.id ?? '', this.adapter.nativeStopRecipe());
   }
 
   async disconnect(): Promise<void> {
@@ -102,8 +105,14 @@ export class TauriBlecOpossumClient {
     return { state };
   }
 
+  /** Native stop first (it jumps queued writes); either one landing counts. */
   async emergencyStop(): Promise<void> {
-    await this.adapter.emergencyStop();
+    const native = await nativeStop(this.device?.id ?? null);
+    try {
+      await this.adapter.emergencyStop();
+    } catch (error) {
+      if (!native) throw error;
+    }
   }
 
   async setIndicatorColor(color: number): Promise<void> {

@@ -38,17 +38,19 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe('billing orders wallet', () => {
-  it('creates a server-quoted pending order without claiming a successful payment', async () => {
+  it('shows nothing for an account without orders, and offers no way to open a new one', async () => {
+    const { container } = render(<BillingOrdersPanel accountId="alice" />);
+    await waitFor(() => expect(api.listBillingOrders).toHaveBeenCalled());
+    await waitFor(() => expect(container.textContent).toBe(''));
+    expect(api.getBillingCatalog).not.toHaveBeenCalled();
+  });
+  it('lists an old order and still lets it be cancelled', async () => {
+    api.listBillingOrders.mockResolvedValue({ items: [order], nextCursor: null });
+    api.cancelBillingOrder.mockResolvedValue({ item: { ...order, status: 'cancelled' } });
     render(<BillingOrdersPanel accountId="alice" />);
-    await screen.findByText('在线支付尚未接通');
-    await waitFor(() =>
-      expect((screen.getByText('创建待确认订单') as HTMLButtonElement).disabled).toBe(false),
-    );
-    fireEvent.click(screen.getByText('创建待确认订单'));
-    await waitFor(() =>
-      expect(api.createBillingOrder).toHaveBeenCalledWith(expect.any(String), 'credit-1000', 'v1'),
-    );
-    await screen.findByText(/订单已创建，尚未扣款或增加Credit/);
+    fireEvent.click(await screen.findByText('取消订单'));
+    await waitFor(() => expect(api.cancelBillingOrder).toHaveBeenCalledWith(order));
+    expect(screen.queryByText('创建待确认订单')).toBeNull();
   });
   it('sends an owned paid order refund request with its current version and no automatic cash refund', async () => {
     api.listBillingOrders.mockResolvedValue({

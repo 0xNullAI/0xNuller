@@ -1,5 +1,6 @@
 import { SecretHint } from './SecretHint';
 import { Input } from '@0xnullai/ui';
+import { isUsableEndpointUrl, onlyHttpsEndpointsAllowed } from '@0xnullai/settings';
 import type {
   ProviderDefinition,
   ProviderEndpoint,
@@ -62,6 +63,7 @@ export function ProviderCredentialFields<T extends ProviderCredentialConfig>({
           }
         />
       ) : null}
+      {showAdvanced && <EndpointSchemeNote baseUrl={config.baseUrl} />}
 
       {hasApiKey && (
         <label className="flex flex-col gap-1.5">
@@ -99,5 +101,21 @@ export function ProviderRememberApiKey<T extends ProviderCredentialConfig>({
         onChange={(event) => update({ rememberApiKey: event.target.checked } as Partial<T>)}
       />
     </label>
+  );
+}
+
+/** The Android shell blocks plain http, so a custom endpoint there must be https. */
+function EndpointSchemeNote({ baseUrl }: { baseUrl: string }) {
+  if (!onlyHttpsEndpointsAllowed()) return null;
+  const blocked = baseUrl.trim().length > 0 && !isUsableEndpointUrl(baseUrl);
+  return (
+    <p
+      role={blocked ? 'alert' : undefined}
+      className={`text-xs ${blocked ? 'text-[var(--danger)]' : 'text-[var(--text-faint)]'}`}
+    >
+      {blocked
+        ? '安卓应用只能连接 https:// 开头的接口地址，请更换地址。'
+        : '安卓应用只能连接 https:// 开头的接口地址。'}
+    </p>
   );
 }

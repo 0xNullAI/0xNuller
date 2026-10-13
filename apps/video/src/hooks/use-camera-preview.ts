@@ -2,30 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LlmImageInput } from '@dg-agent/core';
 import { captureCameraFrame, type CameraFrameSettings } from '../services/camera-frame.js';
 import { FramePreviewUrl } from '../services/frame-preview-url.js';
+import {
+  canOpenAppSettings,
+  ensureAndroidMediaPermission,
+  explainMediaFailure,
+  MediaPermissionDeniedError,
+} from '@0xnullai/native';
 
 export type CameraFacingMode = 'user' | 'environment';
 export type CameraPreviewState = 'off' | 'starting' | 'on' | 'error';
-
-export interface AndroidCameraBridge {
-  hasCameraPermission(): boolean;
-  requestCameraPermission(): void;
-}
-
-export async function ensureAndroidCameraPermission(
-  bridge: AndroidCameraBridge,
-  isCurrent: () => boolean,
-  wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
-    new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
-): Promise<boolean> {
-  if (bridge.hasCameraPermission()) return true;
-  bridge.requestCameraPermission();
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (!isCurrent()) return false;
-    if (bridge.hasCameraPermission()) return true;
-    await wait(250);
-  }
-  throw new Error('未获得摄像头权限');
-}
 
 export function stopCameraStream(stream: MediaStream | null): void {
   for (const track of stream?.getTracks() ?? []) track.stop();
@@ -53,6 +38,8 @@ export function useCameraPreview(
   onStoppedRef.current = onStopped;
   const [state, setState] = useState<CameraPreviewState>('off');
   const [error, setError] = useState<string | null>(null);
+  /** The error is a refused permission that only the App's system settings can undo. */
+  const [needsAppSettings, setNeedsAppSettings] = useState(false);
 
   const stop = useCallback(() => {
     requestIdRef.current += 1;
@@ -64,12 +51,14 @@ export function useCameraPreview(
     previewUrlRef.current?.clear(processedPreviewRef.current);
     setState('off');
     setError(null);
+    setNeedsAppSettings(false);
   }, []);
 
   const start = useCallback(async () => {
     const environmentError = cameraEnvironmentError();
     if (environmentError) {
       setError(environmentError);
+      setNeedsAppSettings(false);
       setState('error');
       return;
     }
@@ -77,15 +66,14 @@ export function useCameraPreview(
     const requestId = ++requestIdRef.current;
     setState('starting');
     setError(null);
+    setNeedsAppSettings(false);
     let stream: MediaStream | null = null;
     try {
-      const android = (window as Window & { AndroidSystem?: AndroidCameraBridge }).AndroidSystem;
-      if (
-        android &&
-        !(await ensureAndroidCameraPermission(android, () => requestId === requestIdRef.current))
-      ) {
-        return;
-      }
+      // Android asks first and fails at once on a denial instead of waiting for a grant.
+      const permitted = await ensureAndroidMediaPermission('camera', {
+        isCurrent: () => requestId === requestIdRef.current,
+      });
+      if (!permitted) return;
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -122,7 +110,9 @@ export function useCameraPreview(
       if (streamRef.current === stream) streamRef.current = null;
       if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null;
       onStoppedRef.current?.();
-      setError(cause instanceof Error ? cause.message : '无法开启摄像头');
+      const explained = explainMediaFailure('camera', cause);
+      setError(explained instanceof Error ? explained.message : '无法开启摄像头');
+      setNeedsAppSettings(explained instanceof MediaPermissionDeniedError && canOpenAppSettings());
       setState('error');
     }
   }, [facingMode, stop]);
@@ -170,5 +160,14 @@ export function useCameraPreview(
     stop();
   }, [facingMode, stop]);
 
-  return { videoRef, processedPreviewRef, state, error, start, stop, capture };
+  return {
+    videoRef,
+    processedPreviewRef,
+    state,
+    error,
+    needsAppSettings,
+    start,
+    stop,
+    capture,
+  };
 }

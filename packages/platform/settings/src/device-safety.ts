@@ -55,6 +55,11 @@ export interface DeviceSafetySettings {
   permissionMode: BrowserPermissionMode;
   /** Expiry timestamp for `timed` mode. */
   permissionModeExpiresAt?: number;
+  /**
+   * Minutes output may keep running while the page is in the background; 0 stops at once. Only
+   * the values in `BACKGROUND_KEEP_MINUTES` are stored. See `background-output.ts`.
+   */
+  backgroundKeepMinutes: number;
 }
 
 type TurnLimitKey =
@@ -110,7 +115,11 @@ export const DEFAULT_DEVICE_SAFETY: DeviceSafetySettings = {
   ...DEVICE_SAFETY_TURN_LIMITS,
 
   permissionMode: 'confirm',
+  backgroundKeepMinutes: 0,
 };
+
+/** The background-keep durations a user can pick. Anything else is stored as 0 (stop). */
+export const BACKGROUND_KEEP_MINUTES: readonly number[] = Object.freeze([0, 5, 10, 30]);
 
 const KEY = '0xnullai.device-safety';
 const TIMED_PERMISSION_WINDOW_MS = 5 * 60 * 1000;
@@ -156,6 +165,7 @@ function coerce(raw: unknown): DeviceSafetySettings {
   if (typeof o.permissionModeExpiresAt === 'number') {
     out.permissionModeExpiresAt = o.permissionModeExpiresAt;
   }
+  if (!BACKGROUND_KEEP_MINUTES.includes(out.backgroundKeepMinutes)) out.backgroundKeepMinutes = 0;
   return withTurnLimits(out);
 }
 
@@ -301,6 +311,9 @@ export function saveDeviceSafety(next: DeviceSafetySettings): DeviceSafetySettin
   sessionPermissionModeOverride = next.permissionMode === 'allow-all' ? 'allow-all' : null;
   const effective: DeviceSafetySettings = {
     ...withTurnLimits(next),
+    backgroundKeepMinutes: BACKGROUND_KEEP_MINUTES.includes(next.backgroundKeepMinutes)
+      ? next.backgroundKeepMinutes
+      : 0,
     ...(next.permissionMode === 'timed' && !next.permissionModeExpiresAt
       ? { permissionModeExpiresAt: Date.now() + TIMED_PERMISSION_WINDOW_MS }
       : {}),

@@ -35,7 +35,7 @@ import {
   type VideoLlmConfig,
 } from '@0xnullai/llm-providers';
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
-import { useDgLabRegistry } from '@0xnullai/native';
+import { openAppSettings, useDgLabRegistry } from '@0xnullai/native';
 import { useScenes, usePublicMarketPortrait } from '@0xnullai/scenes/react';
 import { grantDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import {
@@ -338,6 +338,7 @@ export function App() {
     processedPreviewRef,
     state: cameraState,
     error: cameraError,
+    needsAppSettings: cameraNeedsAppSettings,
     start: startCamera,
     stop: stopCamera,
     capture: cameraCapture,
@@ -886,6 +887,7 @@ export function App() {
   }
 
   const error = localError ?? cameraError ?? visual.error;
+  const errorOpensAppSettings = !localError && Boolean(cameraError) && cameraNeedsAppSettings;
   const frame = visual.latestFrame;
   const activateSetup = () => {
     if (visionEnabled) {
@@ -996,7 +998,16 @@ export function App() {
               </Button>
             </div>
 
-            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            {error && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--danger)]">
+                <p className="min-w-0 flex-1">{error}</p>
+                {errorOpensAppSettings && (
+                  <Button size="sm" variant="secondary" onClick={() => openAppSettings()}>
+                    去设置
+                  </Button>
+                )}
+              </div>
+            )}
             {observations.at(-1) && (
               <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--surface-border)] bg-[var(--bg-strong)] p-3 text-sm leading-relaxed">
                 <p className="min-w-0 flex-1">{observations.at(-1)?.text}</p>
@@ -1137,6 +1148,7 @@ export function App() {
               managedQuote: config.providerId === 'managed' ? managedQuote : null,
               managedQuotePending: config.providerId === 'managed' && managedQuote === null,
               error,
+              errorOpensAppSettings,
               ctaLabel: visionEnabled
                 ? targetConnected
                   ? '开启设备互动'
@@ -1162,6 +1174,7 @@ export function App() {
                 setManagedReadAloud(value);
               },
               activate: activateSetup,
+              openAppSettings: () => openAppSettings(),
             }}
           />
         )}

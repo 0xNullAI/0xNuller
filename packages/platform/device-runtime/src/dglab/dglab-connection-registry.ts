@@ -75,6 +75,17 @@ export interface DgLabDeviceLimitEntry {
   effectiveLimits: DgLabChannelLimits;
 }
 
+/**
+ * What happened to output because the page left the foreground. `kept` means output is held at
+ * its current level until `until`; `stopped` means every output was stopped.
+ */
+export type DgLabBackgroundEvent =
+  | { type: 'kept'; at: number; until: number }
+  | { type: 'stopped'; at: number; reason: DgLabBackgroundStopReason }
+  | { type: 'foreground'; at: number };
+
+export type DgLabBackgroundStopReason = 'background' | 'background-timeout' | 'leave-page';
+
 export interface DgLabStopAllResult {
   attempted: number;
   failed: { id: string; error: unknown }[];
@@ -97,6 +108,8 @@ export interface DgLabModuleHandle {
   readings(id: string, listener: (reading: DgLabReading) => void): () => void;
   /** Called when this module loses the lease, right after every output stop was issued. */
   onRevoked(listener: () => void): () => void;
+  /** Background hold, background stop and return to the foreground, for every module. */
+  onBackground(listener: (event: DgLabBackgroundEvent) => void): () => void;
 }
 
 /**
@@ -115,6 +128,9 @@ export class DgLabConnectionRegistry {
   private readonly devices: PhysicalDgLabDevice[] = [];
   private readonly listeners = new Set<() => void>();
   private readonly revokedListeners = new Map<string, Set<() => void>>();
+  private readonly backgroundListeners = new Set<(event: DgLabBackgroundEvent) => void>();
+  /** While the page is in the background with output kept, nothing may start or raise output. */
+  private backgroundHeld = false;
   private readonly unregisterSession: () => void;
   private readonly unsubscribeLease: () => void;
   private lease: DeviceLeaseSnapshot = currentDeviceLeaseSnapshot();
@@ -302,6 +318,36 @@ export class DgLabConnectionRegistry {
     };
   }
 
+  /**
+   * The page went to the background and output may keep running until `until`. Output stays at
+   * its current level: from here on only commands that stop or lower output are admitted, so no
+   * module, AI or room peer can start or raise anything the user is not looking at.
+   */
+  holdForBackground(until: number, now = Date.now()): void {
+    this.backgroundHeld = true;
+    this.emitBackground({ type: 'kept', at: now, until });
+  }
+
+  /** Stop every output because the page left (or stayed too long in) the background. */
+  async stopForBackground(
+    reason: DgLabBackgroundStopReason,
+    now = Date.now(),
+  ): Promise<DgLabStopAllResult> {
+    const result = this.stopAll();
+    this.emitBackground({ type: 'stopped', at: now, reason });
+    return result;
+  }
+
+  /** The page is visible again: lift the background hold. */
+  resumeForeground(now = Date.now()): void {
+    this.backgroundHeld = false;
+    this.emitBackground({ type: 'foreground', at: now });
+  }
+
+  isHeldForBackground(): boolean {
+    return this.backgroundHeld;
+  }
+
   forModule(moduleId: string): DgLabModuleHandle {
     return {
       moduleId,
@@ -311,16 +357,19 @@ export class DgLabConnectionRegistry {
       disconnect: (id) => this.disconnect(id),
       execute: async (id, command) => {
         const device = this.requireDevice(id);
+        if (!lowersCoyote(command)) this.rejectWhileHeld();
         const fence = isCoyoteStop(command) ? null : this.admit(moduleId);
         return device.executeCoyote(command, fence);
       },
       executeOpossum: async (id, command) => {
         const device = this.requireDevice(id);
+        if (!lowersOpossum(command)) this.rejectWhileHeld();
         const fence = command.type === 'vibrateStop' ? null : this.admit(moduleId);
         return device.executeOpossum(command, fence);
       },
       setIndicatorColor: async (id, color) => {
         const device = this.requireDevice(id);
+        this.rejectWhileHeld();
         return device.setIndicatorColor(color, this.admit(moduleId));
       },
       emergencyStop: async (id) => {
@@ -340,6 +389,10 @@ export class DgLabConnectionRegistry {
         }
         set.add(listener);
         return () => set.delete(listener);
+      },
+      onBackground: (listener) => {
+        this.backgroundListeners.add(listener);
+        return () => this.backgroundListeners.delete(listener);
       },
     };
   }
@@ -457,6 +510,8 @@ export class DgLabConnectionRegistry {
    * write-time clamp rather than stopped by an unrelated settings change.
    */
   private enforceLimits(): Promise<void> {
+    // Every Coyote also carries its caps in the device itself; a failure leaves the holder clamp.
+    for (const device of this.devices) void device.syncHardwareLimits().catch(() => undefined);
     const over = this.devices.filter((device) => {
       const caps = outputCaps(device);
       if (!caps) return false;
@@ -495,6 +550,24 @@ export class DgLabConnectionRegistry {
       if (id && !used.has(id)) return id;
     }
     throw new Error('无法分配唯一设备目标身份');
+  }
+
+  private rejectWhileHeld(): void {
+    if (this.backgroundHeld)
+      throw new DgLabCommandRejectedError(
+        'background-hold',
+        '应用在后台保持输出期间，只能停止或降低输出',
+      );
+  }
+
+  private emitBackground(event: DgLabBackgroundEvent): void {
+    for (const listener of [...this.backgroundListeners]) {
+      try {
+        listener(event);
+      } catch {
+        // A listener cannot affect the stop or the hold.
+      }
+    }
   }
 
   private admit(moduleId: string): LeaseFence {
@@ -554,6 +627,15 @@ export class DgLabConnectionRegistry {
 
 function isCoyoteStop(command: DeviceCommand): boolean {
   return command.type === 'stop' || command.type === 'emergencyStop';
+}
+
+/** Commands still admitted under the background hold: they can only stop or lower output. */
+function lowersCoyote(command: DeviceCommand): boolean {
+  return isCoyoteStop(command) || (command.type === 'adjustStrength' && command.delta < 0);
+}
+
+function lowersOpossum(command: OpossumCommand): boolean {
+  return command.type === 'vibrateStop' || (command.type === 'vibrateAdjust' && command.delta < 0);
 }
 
 // A remembered device with no explicit cap adds no restriction beyond the global one.

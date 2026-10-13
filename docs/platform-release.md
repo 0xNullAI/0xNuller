@@ -24,14 +24,14 @@ Windows/macOS 安装器不再构建或发布。Web 与 Android 是同一个产�
 `main` commit：
 
 ```text
-根 package:             7.1.6
-Web version.json:       7.1.6 + main commit SHA
-Android 热更新包:        https://0xnullai.com/ota/android/latest.json（7.1.6 + main commit SHA）
-Android versionName:    7.1.0（仅 APK 发布）
-Android versionCode:    7001000（仅 APK 发布）
-Git tag:                v7.1.6
-APK:                    maoyuan-v7.1.0.apk（另附同一文件 0xnuller-v7.1.0.apk 供旧版应用检测更新）
-Release 标题:           猫愿 7.1.0（仅 APK 发布）
+根 package:             7.2.0
+Web version.json:       7.2.0 + main commit SHA
+Android 热更新包:        https://0xnullai.com/ota/android/latest.json（7.2.0 + main commit SHA）
+Android versionName:    7.2.0（仅 APK 发布）
+Android versionCode:    7002000（仅 APK 发布）
+Git tag:                v7.2.0
+APK:                    maoyuan-v7.2.0.apk（另附同一文件 0xnuller-v7.2.0.apk 供旧版应用检测更新）
+Release 标题:           猫愿 7.2.0（仅 APK 发布）
 ```
 
 ### 三档发布

@@ -110,6 +110,32 @@ export function withSensorTriggersEnabled(
  * Used only for the prompt's "[当前设备状态]" block — informational context
  * for the LLM, never re-derived into an automatic device action.
  */
+/**
+ * Something that changed the device outside the AI's own tool calls, between two replies.
+ * The runtime tells the model about these at the start of the next turn, so it neither claims
+ * output is still running nor quietly resumes an earlier plan.
+ */
+export type DeviceInterruptionKind =
+  /** The app went to the background and every output was stopped. */
+  | 'background-stopped'
+  /** The app went to the background and output was held at its level until `until`. */
+  | 'background-kept'
+  /** The background keep time ran out and every output was stopped. */
+  | 'background-timeout'
+  /** The user came back to the app. */
+  | 'returned'
+  /** The user pressed stop. */
+  | 'manual-stop'
+  /** The user switched to another module; that stopped every output. */
+  | 'module-switch';
+
+export interface DeviceInterruptionEvent {
+  kind: DeviceInterruptionKind;
+  at: number;
+  /** `background-kept` only: when the hold ends. */
+  until?: number;
+}
+
 export interface SensorLastReading {
   summary: string;
   firedAt: number;

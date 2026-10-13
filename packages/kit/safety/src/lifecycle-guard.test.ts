@@ -5,9 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DeviceLifecycleGuard } from './lifecycle-guard.js';
 
 /**
- * The merged guard keeps the stricter of the two it replaced: backgrounding
- * always stops output, with no setting to turn it off. Agent used to make
- * that configurable; Android ignored the setting anyway.
+ * Backgrounding stops output unless the caller explicitly opts into keeping it; leaving the
+ * page always stops.
  */
 
 const stops: (() => void)[] = [];
@@ -26,7 +25,7 @@ function hide() {
 }
 
 describe('设备生命周期安全网', () => {
-  it('切到后台就停止——没有「继续运行」这个选项', () => {
+  it('切到后台默认停止', () => {
     const onStop = vi.fn();
     guard(onStop);
 
@@ -62,5 +61,42 @@ describe('设备生命周期安全网', () => {
     window.dispatchEvent(new Event('pagehide'));
 
     expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it('调用方选择保留时，切到后台不停止，改为通知保留', () => {
+    const onStop = vi.fn();
+    const onBackgroundKept = vi.fn();
+    const g = new DeviceLifecycleGuard({ onStop, keepInBackground: () => true, onBackgroundKept });
+    stops.push(g.start());
+
+    hide();
+
+    expect(onStop).not.toHaveBeenCalled();
+    expect(onBackgroundKept).toHaveBeenCalledTimes(1);
+  });
+
+  it('保留策略读取失败时按停止处理', () => {
+    const onStop = vi.fn();
+    const g = new DeviceLifecycleGuard({
+      onStop,
+      keepInBackground: () => {
+        throw new Error('boom');
+      },
+    });
+    stops.push(g.start());
+
+    hide();
+
+    expect(onStop).toHaveBeenCalledWith('background-hidden');
+  });
+
+  it('即使选择保留，离开页面也一定停止', () => {
+    const onStop = vi.fn();
+    const g = new DeviceLifecycleGuard({ onStop, keepInBackground: () => true });
+    stops.push(g.start());
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(onStop).toHaveBeenCalledWith('leave-page');
   });
 });

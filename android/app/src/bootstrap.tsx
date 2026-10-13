@@ -54,6 +54,8 @@ const dglab = createUnifiedShellDgLabRegistry({
     permissionHelp: withBlePermissionHelp,
   }),
   attachNativeLifecycle: attachAndroidDgLabLifecycle,
+  // The WebView is suspended in the background, so nothing could end a kept output on time.
+  backgroundKeep: false,
 });
 
 const bridge = {

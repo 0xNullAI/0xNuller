@@ -1,4 +1,4 @@
-import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import { backgroundKeepMs, loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 import type { DeviceKind, DeviceLinkRule } from '@dg-kit/core';
 import { DeviceLifecycleGuard } from '@dg-kit/safety';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
@@ -337,7 +337,8 @@ export function useDevice({ moduleId, registry }: UseDeviceOptions) {
     return subscribeDeviceSafety(apply);
   }, [session, syncState]);
 
-  // Browser-level background (tab switch, screen lock) stops output if the setting says so.
+  // Browser-level background (tab switch, screen lock) stops output, unless the user chose to
+  // keep it for a while; then the shell's registry holds it and ends it on time.
   // Switching modules does not come through here; the lease revoke covers that path.
   useEffect(() => {
     const guard = new DeviceLifecycleGuard({
@@ -345,6 +346,7 @@ export function useDevice({ moduleId, registry }: UseDeviceOptions) {
         session.stopAllOutputs();
         syncState();
       },
+      keepInBackground: () => backgroundKeepMs() > 0,
     });
     return guard.start();
   }, [session, syncState]);

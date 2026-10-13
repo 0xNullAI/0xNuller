@@ -29,6 +29,8 @@ export interface OtaBundleInfo {
 }
 
 export interface OtaNativeStatus {
+  /** False when this run cannot install hot updates (no data dir or key); older APKs omit it. */
+  available?: boolean;
   nativeApi: number;
   embeddedVersion: string;
   active: OtaBundleInfo | null;
@@ -141,6 +143,9 @@ export class OtaUpdater {
     if (this.status.phase === 'ready' || this.status.phase === 'reload-required') return;
     this.setPhase('checking');
     try {
+      // Nothing to fetch when native hot updates are off for this run.
+      const native = await this.nativeStatus().catch(() => null);
+      if (native?.available === false) return this.setPhase('idle');
       const response = await this.fetchImpl(`${this.endpoint}/latest.json`, { cache: 'no-store' });
       if (!response.ok) return this.setPhase('idle');
       const latest = (await response.json()) as { manifest?: unknown; signature?: unknown };

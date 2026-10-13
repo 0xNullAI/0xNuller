@@ -1,6 +1,6 @@
 [package]
 name = "nuller-app"
-version = "7.1.6"
+version = "7.2.0"
 description = "0xNuller unified Android shell"
 authors = ["0xNullAI"]
 license = "MIT"
@@ -37,7 +37,7 @@ tauri-plugin-opener = "2"
 # the JS bindings now pass an `address` parameter the upstream 0.4 Rust
 # plugin doesn't understand). Interim measure until the fork is published to
 # crates.io or upstreamed.
-tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "6b6044d" }
+tauri-plugin-blec = { git = "https://github.com/0xNullAI/tauri-plugin-blec-multi.git", rev = "074a408" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # JNI exports for MainActivity lifecycle hooks; kept on the version btleplug 0.12 (via plugin-blec) links.

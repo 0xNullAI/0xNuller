@@ -1,4 +1,5 @@
 import { BillingOrdersPanel } from './BillingOrdersPanel';
+import { RedeemCodePanel } from './RedeemCodePanel';
 import { LEGAL_TERMS_VERSION } from '@0xnullai/auth/legal';
 import { RegistrationConsent } from '../legal/RegistrationConsent';
 import { publicPageUrl } from '@0xnullai/settings';
@@ -200,14 +201,15 @@ export function AccountContent({
           {creditExpanded ? (
             <div className="border-b border-[var(--surface-border)] px-4 pb-3 pl-12">
               <p className="text-xs leading-relaxed text-[var(--text-soft)]">
-                充值内测中，可以联系管理员 QQ 询问。
+                购买 Credit 后会拿到一个卡密，在下面兑换即可到账。
               </p>
               {credit?.reserved ? (
                 <p className="mt-2 text-xs text-[var(--text-faint)]">
                   正在使用：{credit.reserved} Credit
                 </p>
               ) : null}
-              <div className="mt-3">
+              <div className="mt-3 space-y-3">
+                <RedeemCodePanel key={user.id} />
                 <BillingOrdersPanel accountId={user.id} />
                 <CreditActivityPanel accountId={user.id} />
               </div>

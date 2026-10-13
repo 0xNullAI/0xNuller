@@ -7,7 +7,11 @@ import {
   V2_WAVE_A_CHAR,
   V2_WAVE_B_CHAR,
 } from './constants.js';
-import { BaseCoyoteProtocolAdapter, type WebBluetoothConnectionContext } from './base.js';
+import {
+  BaseCoyoteProtocolAdapter,
+  type NativeStopRecipe,
+  type WebBluetoothConnectionContext,
+} from './base.js';
 import type { BluetoothRemoteGATTCharacteristicLike } from './types.js';
 
 export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
@@ -165,15 +169,20 @@ export class CoyoteV2ProtocolAdapter extends BaseCoyoteProtocolAdapter {
     // already updated.
   }
 
+  nativeStopRecipe(): NativeStopRecipe | null {
+    if (!this.v2StrengthChar) return null;
+    return {
+      service: V2_PRIMARY_SERVICE,
+      characteristic: V2_STRENGTH_CHAR,
+      packet: this.encodeV2Strength(0, 0),
+    };
+  }
+
   protected async writeEmergencyStopPacket(): Promise<void> {
     if (!this.v2StrengthChar) return;
-    try {
-      await this.writeCharacteristicValue(this.v2StrengthChar, this.encodeV2Strength(0, 0), {
-        preferResponse: true,
-      });
-    } catch {
-      // ignore best effort
-    }
+    await this.writeCharacteristicValue(this.v2StrengthChar, this.encodeV2Strength(0, 0), {
+      preferResponse: true,
+    });
   }
 
   // V2 wire format is little-endian: the 3-byte packed values are sent

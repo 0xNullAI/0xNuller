@@ -259,20 +259,24 @@ describe('OpossumVibrateAdapter packet builders', () => {
     expect(writes.at(-1)).toEqual([0x50, 0, 0x01]);
   });
 
-  it('emergencyStop drives both channels to zero and swallows write failures', async () => {
-    // onConnected() itself now writes a button-reporting-enable 0x50 packet,
-    // so the mock must let that connect-time write through and only start
-    // failing once the test is ready to exercise emergencyStop's own
-    // failure-swallowing behavior.
-    let shouldFail = false;
+  it('emergencyStop retries a failed write once, then reports a stop that never landed', async () => {
+    // onConnected() itself writes a button-reporting-enable 0x50 packet, so the
+    // mock lets that connect-time write through and only fails afterwards.
+    let failures = 0;
     const failingWriteChar = new MockCharacteristic(() => {
-      if (shouldFail) throw new Error('gatt write failed');
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('gatt write failed');
+      }
     });
     const adapter = new OpossumVibrateAdapter();
     await connectAdapter(adapter, { writeChar: failingWriteChar });
 
-    shouldFail = true;
+    failures = 1;
     await expect(adapter.emergencyStop()).resolves.toBeUndefined();
+
+    failures = 2;
+    await expect(adapter.emergencyStop()).rejects.toThrow('急停指令未能送达设备');
   });
 });
 

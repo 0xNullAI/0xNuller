@@ -104,6 +104,52 @@ if (missingNodes.length > 0) {
   const insertion = missingNodes.map((node) => `    ${node.replace(/\n\s*/g, ' ')}`).join('\n');
   manifest = manifest.replace(/\n\s*<application\b/, `\n\n${insertion}\n\n    <application`);
 }
+// The template's comments mention <application>; only its real element carries attributes.
+const templateApplication =
+  manifestTemplate.replace(/<!--[\s\S]*?-->/g, '').match(/<application\b[^>]*>/)?.[0] ?? '';
+const applicationAttributes = [...templateApplication.matchAll(/(android:[A-Za-z]+)="([^"]*)"/g)];
+if (applicationAttributes.length === 0) {
+  throw new Error('Android manifest template is missing its application backup attributes');
+}
+manifest = manifest.replace(/<application\b[^>]*>/, (tag) => {
+  let next = tag;
+  for (const [, name, value] of applicationAttributes) {
+    const existing = new RegExp(`${name}="[^"]*"`);
+    next = existing.test(next)
+      ? next.replace(existing, `${name}="${value}"`)
+      : next.replace(/<application\b/, `<application\n        ${name}="${value}"`);
+  }
+  return next;
+});
+// Every app data domain stays on the device: no cloud backup, no device-to-device transfer.
+const backupDomains = [
+  'root',
+  'file',
+  'database',
+  'sharedpref',
+  'external',
+  'device_root',
+  'device_file',
+  'device_database',
+  'device_sharedpref',
+];
+const backupExcludes = (indent) =>
+  backupDomains.map((domain) => `${indent}<exclude domain="${domain}" path="." />`).join('\n');
+mkdirSync(join(resourcesPath, 'xml'), { recursive: true });
+writeFileSync(
+  join(resourcesPath, 'xml/backup_rules.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>\n<full-backup-content>\n${backupExcludes(
+    '    ',
+  )}\n</full-backup-content>\n`,
+);
+writeFileSync(
+  join(resourcesPath, 'xml/data_extraction_rules.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>\n<data-extraction-rules>\n    <cloud-backup>\n${backupExcludes(
+    '        ',
+  )}\n    </cloud-backup>\n    <device-transfer>\n${backupExcludes(
+    '        ',
+  )}\n    </device-transfer>\n</data-extraction-rules>\n`,
+);
 if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
   manifest = manifest.replace(
     /(<application\s*\n)/,
@@ -282,6 +328,18 @@ for (const required of [
 }
 if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
   throw new Error('Android manifest is missing the branded round launcher icon');
+}
+for (const required of [
+  'android:allowBackup="false"',
+  'android:fullBackupContent="@xml/backup_rules"',
+  'android:dataExtractionRules="@xml/data_extraction_rules"',
+]) {
+  if (!manifest.includes(required)) throw new Error(`Android manifest is missing ${required}`);
+}
+for (const required of ['xml/backup_rules.xml', 'xml/data_extraction_rules.xml']) {
+  if (!existsSync(join(resourcesPath, required))) {
+    throw new Error(`Android project is missing backup exclusion rules: ${required}`);
+  }
 }
 const mainActivity = readFileSync(mainActivityPath, 'utf8');
 for (const required of [

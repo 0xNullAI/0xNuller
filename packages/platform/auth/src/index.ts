@@ -37,7 +37,7 @@ export {
  * domain's cookies.
  */
 
-import { apiBaseUrl } from '@0xnullai/settings';
+import { apiBaseUrl, AUTH_TOKEN_SECRET, readSecret, writeSecret } from '@0xnullai/settings';
 export {
   listPersonalMemories,
   exportPersonalMemories,
@@ -79,8 +79,6 @@ export interface AuthUser {
 // string on the web (same-origin); the Tauri shell gets an absolute origin
 // from apiBaseUrl().
 
-/** Android stores the token here; empty on the web, which relies on cookies. */
-const TOKEN_KEY = '0xnullai.auth-token';
 let currentUserId: string | null = null;
 let currentUserRecord: string | null = null;
 const AUTH_CHANGED_EVENT = '0xnullai:auth-changed';
@@ -161,12 +159,9 @@ async function runBeforeLogout(listener: () => Promise<void> | void): Promise<vo
   }
 }
 
+/** Android keeps the token in its encrypted store; empty on the web, which relies on cookies. */
 function storedToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return readSecret(AUTH_TOKEN_SECRET);
 }
 
 /** Bearer carrier for native shells; browsers normally return an empty object and use cookies. */
@@ -176,13 +171,9 @@ export function authRequestHeaders(): Record<string, string> {
 }
 
 function setStoredToken(token: string | null): void {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // Private browsing may reject the write: the session still works (the
-    // in-memory state remains) but a refresh will require logging in again.
-  }
+  // Private browsing may reject the write: the session still works (the
+  // in-memory state remains) but a refresh will require logging in again.
+  writeSecret(AUTH_TOKEN_SECRET, token);
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -353,23 +344,6 @@ export async function getCreditLedger(options: { limit?: number; offset?: number
   if (options.offset) params.set('offset', String(options.offset));
   const query = params.toString();
   return call(`/api/auth/credits/ledger${query ? `?${query}` : ''}`);
-}
-
-export function grantCreditPackage(input: {
-  username: string;
-  amountCny: 7 | 35 | 70 | 140;
-  externalReference: string;
-}): Promise<{
-  ok: true;
-  username: string;
-  amountCny: number;
-  amountCredits: number;
-  createdAt: number;
-}> {
-  return call('/api/auth/admin/credits/grant', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
 }
 
 export function grantCreditGift(input: {
@@ -1074,6 +1048,7 @@ export {
   confirmBillingPayment,
 } from './billing-orders';
 export type { BillingOrder, BillingCatalog, BillingReconciliation } from './billing-orders';
+export * from './redeem-codes';
 
 export {
   getAutoMemorySettings,

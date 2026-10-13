@@ -62,6 +62,22 @@ function createActions(): VideoSetupPanelActions {
 afterEach(cleanup);
 
 describe('VideoSetupPanel', () => {
+  it('offers the App settings for a refused camera permission, and only then', () => {
+    const actions = { ...createActions(), openAppSettings: vi.fn() };
+    const { rerender } = render(
+      <VideoSetupPanel
+        view={{ ...baseView, error: '未获得摄像头权限。', errorOpensAppSettings: true }}
+        actions={actions}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '去设置' }));
+    expect(actions.openAppSettings).toHaveBeenCalledTimes(1);
+
+    rerender(<VideoSetupPanel view={{ ...baseView, error: '摄像头被占用' }} actions={actions} />);
+    expect(screen.getByRole('alert').textContent).toContain('摄像头被占用');
+    expect(screen.queryByRole('button', { name: '去设置' })).toBeNull();
+  });
+
   it('renders the prepared DG-Lab fields and reports user input through typed actions', () => {
     const actions = createActions();
     render(<VideoSetupPanel view={baseView} actions={actions} />);
