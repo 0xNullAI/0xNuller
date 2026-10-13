@@ -22,9 +22,9 @@
     "@dg-agent/runtime": "0.1.0",
     "@dg-agent/storage-browser": "0.1.0",
     "@dg-agent/waveforms": "0.1.0",
-    "@dg-kit/protocol": "^1.16.5",
-    "@dg-kit/safety": "1.16.5",
-    "@dg-kit/transport-webbluetooth": "^1.16.5",
+    "@dg-kit/protocol": "^1.16.6",
+    "@dg-kit/safety": "1.16.6",
+    "@dg-kit/transport-webbluetooth": "^1.16.6",
     "@0xnullai/scenes": "0.1.0"
   },
   "scripts": {
