@@ -29,7 +29,7 @@ apps/web                           android/app
 | 外壳  | `apps/web`、`android/app`                                                                 | 导航、模块装配、平台生命周期                                  | 协议规则、重复功能状态 |
 | 功能  | `apps/control`、`apps/agent`、`apps/voice`、`apps/chat`、`apps/market`、`apps/playground` | 页面、功能 hook、功能 Worker 入口                             | 可复用设备语义         |
 | 平台  | `packages/platform/*`                                                                     | 账号、权限、设置、同步、场景、共享设备会话/波形、Market 与 UI | BLE 数据包编码         |
-| Agent | `packages/agent/*`                                                                        | runtime、provider、存储、桥接、浏览器组合                     | React 页面、GATT 细节  |
+| Agent | `packages/agent/*`                                                                        | runtime、provider、存储、浏览器组合                           | React 页面、GATT 细节  |
 | Kit   | `packages/kit/*`                                                                          | 设备契约、安全、协议、工具、波形、传输                        | 产品导航、账号界面     |
 | 后端  | `workers/*`、`apps/*/worker`                                                              | 独立部署的 API 与 Durable Object                              | 浏览器本地状态         |
 
