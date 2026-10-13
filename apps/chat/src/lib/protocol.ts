@@ -143,6 +143,14 @@ export interface DeviceCommand {
   pattern?: OpossumVibrationPatternName;
 }
 
+/** What this device did with a command; only a group AI's command is answered with it. */
+export interface CommandOutcome {
+  ok: boolean;
+  message: string;
+}
+
+export type CommandHandler = (cmd: DeviceCommand, peerId: string) => CommandOutcome | void;
+
 export interface WaveformTransfer {
   /** waveform id */
   wid: string;
@@ -300,6 +308,8 @@ export interface StateSlow {
   currentIndexB: number;
   /** Whether this conversation may control this machine's device (off by default). */
   deviceAccess?: boolean;
+  /** Group AIs this account allows to control its device in this group. */
+  aiAccess?: string[];
   // —— Opossum connection state / battery (low frequency) ——
   opossumConnected?: boolean;
   opossumBattery?: number | null;

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { groupAiDeviceAccess } from '@0xnullai/settings';
 import { RoomAgentDialog } from './RoomAgentDialog';
 import { MAX_ROOM_AGENT_PERSONA, type WireRoomAgent } from '../../worker/wire';
 
@@ -35,7 +36,13 @@ function open(agents: WireRoomAgent[], canRemoveAny = false) {
     onClose: vi.fn(),
   };
   render(
-    <RoomAgentDialog agents={agents} selfAccountId="me" canRemoveAny={canRemoveAny} {...props} />,
+    <RoomAgentDialog
+      agents={agents}
+      groupId="g1"
+      selfAccountId="me"
+      canRemoveAny={canRemoveAny}
+      {...props}
+    />,
   );
   return props;
 }
@@ -75,4 +82,18 @@ it('lets the group owner remove anyone, and stops new AIs at the group limit', (
   expect(remove).toHaveLength(3);
   fireEvent.click(remove[1]!);
   expect(props.onRemove).toHaveBeenCalledWith('ai-b');
+});
+
+it('lets me allow each AI to control my device on its own, off by default', () => {
+  localStorage.clear();
+  open([agent('me', 'Me'), agent('bob', 'Bob')]);
+  const toggles = screen.getAllByRole('checkbox', { name: '允许它控制我的设备' });
+  expect(toggles).toHaveLength(2);
+  expect(toggles.map((toggle) => (toggle as HTMLInputElement).checked)).toEqual([false, false]);
+  fireEvent.click(toggles[1]!);
+  expect(groupAiDeviceAccess('me', 'g1', 'ai-bob')).toBe(true);
+  expect(groupAiDeviceAccess('me', 'g1', 'ai-me')).toBe(false);
+  expect((toggles[1] as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(toggles[1]!);
+  expect(groupAiDeviceAccess('me', 'g1', 'ai-bob')).toBe(false);
 });

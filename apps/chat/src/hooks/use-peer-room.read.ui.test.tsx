@@ -215,3 +215,35 @@ it('recognises its own messages in history by account, after a reload changed th
   );
   expect(result.current.messages.map((message) => message.fromSelf)).toEqual([true, false]);
 });
+
+it("answers a group AI's command with this device's own verdict, and nobody else's", () => {
+  const { result } = renderHook(() => usePeerRoom('Alice'));
+  act(() => result.current.join('group'));
+  const handler = vi.fn(() => ({ ok: false, message: '对方没有允许这个 AI 控制设备' }));
+  act(() => result.current.setCommandHandler(handler));
+  act(() =>
+    state.onMessage!({
+      t: 'cmd',
+      a: 'adjust_strength',
+      c: 'A',
+      v: 5,
+      rid: 'r1',
+      _from: 'ai:a1',
+    }),
+  );
+  expect(handler).toHaveBeenCalledWith(
+    expect.objectContaining({ action: 'adjust_strength', c: 'A', v: 5 }),
+    'ai:a1',
+  );
+  expect(state.send).toHaveBeenLastCalledWith({
+    t: 'cmd-ack',
+    rid: 'r1',
+    ok: false,
+    r: '对方没有允许这个 AI 控制设备',
+  });
+  state.send.mockClear();
+  act(() =>
+    state.onMessage!({ t: 'cmd', a: 'adjust_strength', c: 'A', v: 5, rid: 'r2', _from: 'bob' }),
+  );
+  expect(state.send).not.toHaveBeenCalledWith(expect.objectContaining({ t: 'cmd-ack' }));
+});

@@ -380,6 +380,7 @@ export function ChatAppView({
             {agentOpen && !peerRoom.isDm && (
               <RoomAgentDialog
                 agents={peerRoom.agents}
+                groupId={peerRoom.roomId}
                 selfAccountId={currentAuthUserId()}
                 canRemoveAny={peerRoom.canManageGroup}
                 onAdd={peerRoom.addMyAgent}

@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Bot, Trash2 } from 'lucide-react';
 import { Overlay } from '@0xnullai/ui';
 import { loadScenes, savedPromptKind, subscribeScenes, type SavedScene } from '@0xnullai/scenes';
 import { characterCardContext } from '@0xnullai/scenes/character-card';
+import {
+  groupAiDeviceAccess,
+  setGroupAiDeviceAccess,
+  subscribeDeviceConversationAccess,
+} from '@0xnullai/settings';
 import {
   MAX_GROUP_AGENTS,
   MAX_ROOM_AGENT_NAME,
@@ -33,6 +38,7 @@ function myCharacters(): SavedScene[] {
  */
 export function RoomAgentDialog({
   agents,
+  groupId,
   selfAccountId,
   canRemoveAny,
   onAdd,
@@ -41,6 +47,7 @@ export function RoomAgentDialog({
   onClose,
 }: {
   agents: WireRoomAgent[];
+  groupId: string | null;
   selfAccountId: string | null;
   canRemoveAny: boolean;
   onAdd: (character: { id: string; name: string; persona: string }) => Promise<boolean>;
@@ -76,6 +83,10 @@ export function RoomAgentDialog({
           每人可以把自己的一个角色带进群。任何成员都能 @ 它，回复使用带它进群那个人的
           Credit；不会读取任何人的私人记忆。
         </p>
+        <p className="text-xs text-[var(--text-soft)]">
+          AI 只能控制允许了它的人。允许后，群里任何人 @
+          它都可能让它调整你的设备，强度仍受你自己的上限限制，停止始终有效。
+        </p>
 
         {agents.length > 0 && (
           <ul className="flex flex-col divide-y divide-[var(--surface-border)] rounded-[var(--radius-md)] border border-[var(--surface-border)]">
@@ -83,6 +94,8 @@ export function RoomAgentDialog({
               <AgentRow
                 key={agent.id}
                 agent={agent}
+                groupId={groupId}
+                selfAccountId={selfAccountId}
                 isMine={agent.owner === selfAccountId}
                 canRemove={agent.owner === selfAccountId || canRemoveAny}
                 onSetDailyCap={onSetDailyCap}
@@ -156,12 +169,16 @@ export function RoomAgentDialog({
 
 function AgentRow({
   agent,
+  groupId,
+  selfAccountId,
   isMine,
   canRemove,
   onSetDailyCap,
   onRemove,
 }: {
   agent: WireRoomAgent;
+  groupId: string | null;
+  selfAccountId: string | null;
   isMine: boolean;
   canRemove: boolean;
   onSetDailyCap: (agentId: string, dailyCap: number | null) => void;
@@ -170,6 +187,11 @@ function AgentRow({
   const [cap, setCap] = useState(agent.dailyCap === null ? '' : String(agent.dailyCap));
   // Compare with what was last sent, not the prop: the server's echo may not have arrived yet.
   const sent = useRef(agent.dailyCap);
+  const allowed = useSyncExternalStore(
+    subscribeDeviceConversationAccess,
+    () => !!groupId && groupAiDeviceAccess(selfAccountId, groupId, agent.id),
+    () => false,
+  );
   const saveCap = () => {
     const trimmed = cap.trim();
     const next = trimmed === '' ? null : Number(trimmed);
@@ -199,6 +221,18 @@ function AgentRow({
           </button>
         )}
       </div>
+      {groupId && selfAccountId && (
+        <label className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
+          <input
+            type="checkbox"
+            checked={allowed}
+            onChange={(event) =>
+              setGroupAiDeviceAccess(selfAccountId, groupId, agent.id, event.target.checked)
+            }
+          />
+          允许它控制我的设备
+        </label>
+      )}
       {isMine && (
         <label className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
           每日 Credit 上限
