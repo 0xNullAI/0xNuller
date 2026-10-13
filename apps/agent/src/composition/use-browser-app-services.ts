@@ -1,6 +1,13 @@
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
 import { deviceConversationAccess } from '@0xnullai/settings';
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import {
   createBrowserServices,
   createRegistryAgentDevices,
@@ -45,6 +52,29 @@ export interface UseBrowserAppServicesOptions {
   nativeBluetooth?: boolean;
 }
 
+/**
+ * Settings that only drive this page's own UI. Nothing in the runtime, bridge, permission or
+ * speech services reads them, so changing one must not rebuild the runtime (which aborts the
+ * running reply and stops every output). Anything not listed here rebuilds — new settings fail
+ * safe by default.
+ */
+const UI_ONLY_SETTINGS = [
+  'showSafetyNoticeOnStartup',
+  'safetyStopOnLeave',
+  'rememberApiKey',
+  'modelLogEnabled',
+  'speechRecognitionEnabled',
+  'speechSynthesisEnabled',
+  'providerConfigs',
+] as const satisfies ReadonlyArray<keyof BrowserAppSettings>;
+
+/** Value identity of the settings the services are built from. */
+export function runtimeSettingsKey(settings: BrowserAppSettings): string {
+  const relevant: Partial<BrowserAppSettings> = { ...settings };
+  for (const key of UI_ONLY_SETTINGS) delete relevant[key];
+  return JSON.stringify(relevant);
+}
+
 export interface UseBrowserAppServicesResult extends BrowserServices {
   updateChecker: BrowserUpdateChecker;
   serviceInitWarnings: string[];
@@ -83,20 +113,29 @@ export function useBrowserAppServices(
   );
   const taskRunReporter = useMemo(() => createAgentTaskRunReporter(), []);
 
-  const { disableUpdateChecker: _disableUpdateChecker, ...browserServicesOverrides } =
-    servicesOverrides ?? {};
-  // The registry's transport is native BLE on Android, so the Web Bluetooth probe does not apply.
-  const deviceOverrides: Pick<BrowserServicesOptions, 'bluetoothAvailabilityOverride'> =
-    nativeBluetooth ? { bluetoothAvailabilityOverride: { supported: true } } : {};
-
   const [accountId, setAccountId] = useState(currentAuthUserId);
   useEffect(() => subscribeAuthChanges(() => setAccountId(currentAuthUserId())), []);
+
+  // Rebuilding the runtime disposes it, which aborts the running reply and stops every output.
+  // So settings count by value, not identity (the settings stores hand out fresh objects on
+  // every sync), and scenes are read through a getter at each turn instead of being a
+  // rebuild trigger at all.
+  const settingsKey = useMemo(() => runtimeSettingsKey(settings), [settings]);
+  const [runtimeSettings, setRuntimeSettings] = useState(settings);
+  if (runtimeSettingsKey(runtimeSettings) !== settingsKey) setRuntimeSettings(settings);
+  const scenesRef = useRef(scenes);
+  useEffect(() => {
+    scenesRef.current = scenes;
+  }, [scenes]);
+  const disableSpeech = servicesOverrides?.disableSpeech;
+  const disableBridge = servicesOverrides?.disableBridge;
+
   // Rebuild only the runtime on identity changes; shell-owned physical clients remain stable.
   const services = useMemo(
     () =>
       createBrowserServices({
-        settings,
-        scenes,
+        settings: runtimeSettings,
+        scenes: () => scenesRef.current,
         device,
         opossum,
         pawPrints,
@@ -115,30 +154,32 @@ export function useBrowserAppServices(
           new Promise<PermissionDecision>((resolve) => {
             setPendingPermission({ input, resolve });
           }),
-        ...browserServicesOverrides,
-        ...deviceOverrides,
+        ...(disableSpeech === undefined ? {} : { disableSpeech }),
+        ...(disableBridge === undefined ? {} : { disableBridge }),
+        // On Android the registry's transport is native BLE; the Web Bluetooth probe does not apply.
+        ...(nativeBluetooth ? { bluetoothAvailabilityOverride: { supported: true } } : {}),
       }),
+    // accountId is a deliberate trigger: each account gets a fresh runtime and session store.
     [
-      settings,
+      runtimeSettings,
       accountId,
       inShell,
-      scenes.selectedId,
-      scenes.saved,
       device,
       opossum,
       pawPrints,
       civetEdging,
       resolveBridgeSessionId,
       setPendingPermission,
-      servicesOverrides,
+      disableSpeech,
+      disableBridge,
       nativeBluetooth,
       taskRunReporter,
     ],
   );
 
   // Release the previous AgentRuntime (device listener, in-flight turns,
-  // scheduled timers) when settings cause a new services bundle to be built,
-  // so listeners on the shared device don't accumulate.
+  // scheduled timers) when a real settings or account change builds a new
+  // services bundle, so listeners on the shared device don't accumulate.
   useEffect(() => {
     return () => {
       services.client.dispose?.();

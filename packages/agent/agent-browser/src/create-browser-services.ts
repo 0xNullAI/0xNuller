@@ -27,7 +27,6 @@ import type {
   CivetEdgingClient,
   OpossumClient,
   PawPrintsClient,
-  SavedPromptPreset,
   DeviceExecutionGate,
   RuntimeTaskRunReporter,
 } from '@dg-agent/runtime';
@@ -37,7 +36,11 @@ import {
   type BrowserAppSettings,
 } from '@dg-agent/storage-browser';
 import { BrowserWaveformLibrary } from '@dg-agent/waveforms';
-import { createBrowserAgentClient, describeBrowserModes } from './create-browser-agent-client.js';
+import {
+  createBrowserAgentClient,
+  describeBrowserModes,
+  type BrowserSceneSource,
+} from './create-browser-agent-client.js';
 import {
   RegistryCoyoteClient,
   RegistryOpossumClient,
@@ -88,9 +91,10 @@ export interface BrowserServicesOptions {
    * library moved to the cross-module shared `@0xnullai/scenes`, so it no
    * longer lives in the same blob as the strength cap (one validation failure
    * anywhere in that blob would silently reset every safety setting). The
-   * caller reads it from the shared library and passes it in.
+   * caller reads it from the shared library and passes it in — preferably as a getter, so a
+   * scene edit never rebuilds the runtime.
    */
-  scenes: { selectedId: string; saved: SavedPromptPreset[] };
+  scenes: BrowserSceneSource;
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
   resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**

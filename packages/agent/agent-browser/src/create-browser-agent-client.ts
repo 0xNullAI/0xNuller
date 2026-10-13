@@ -30,6 +30,21 @@ import { loadPrivateConversationContext } from './private-context.js';
 import { supportsCharacterMemory } from './character-memory-eligibility.js';
 import { CoyoteTargetToolRegistry, createCoyoteTargetRouter } from './coyote-target-routing.js';
 
+export interface BrowserSceneSelection {
+  selectedId: string;
+  saved: SavedScene[];
+}
+
+/**
+ * The scene library, or a getter for it. A getter is read at each turn, so editing or syncing
+ * scenes never requires rebuilding the runtime (which would abort a running reply).
+ */
+export type BrowserSceneSource = BrowserSceneSelection | (() => BrowserSceneSelection);
+
+export function readSceneSource(source: BrowserSceneSource): BrowserSceneSelection {
+  return typeof source === 'function' ? source() : source;
+}
+
 export interface CreateBrowserAgentClientOptions {
   settings: BrowserAppSettings;
   /** Explicitly enable account-private relationship/memory only in the owner's personal Agent UI. */
@@ -38,7 +53,7 @@ export interface CreateBrowserAgentClientOptions {
    * Current scene (persona). Comes from the shared scene library, no longer
    * from the settings blob.
    */
-  scenes: { selectedId: string; saved: SavedScene[] };
+  scenes: BrowserSceneSource;
   device: DeviceClient;
   /** At most one connected auxiliary device of each kind, alongside Coyote. */
   opossum?: OpossumClient;
@@ -55,9 +70,10 @@ export interface CreateBrowserAgentClientOptions {
 }
 
 export function createBrowserAgentClient(options: CreateBrowserAgentClientOptions): AgentClient {
-  const { settings, scenes } = options;
+  const { settings } = options;
+  const scenes = () => readSceneSource(options.scenes);
   const characterForPrivateMemory = (presetId: string): boolean =>
-    supportsCharacterMemory(presetId, scenes.saved);
+    supportsCharacterMemory(presetId, scenes().saved);
   const llm = createBrowserLlmClient({
     provider: settings.provider,
     temperature: settings.temperature,
@@ -79,14 +95,17 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
   });
   const coyoteTargetRouter = createCoyoteTargetRouter(options.device);
   const toolRegistry = new CoyoteTargetToolRegistry(legacyToolRegistry, coyoteTargetRouter);
-  const buildBaseInstructions = createBuildBrowserInstructions({
-    promptPresetId: scenes.selectedId,
-    savedPromptPresets: scenes.saved,
-    maxStrengthA: settings.maxStrengthA,
-    maxStrengthB: settings.maxStrengthB,
-    maxOpossumIntensityA: settings.maxOpossumIntensityA,
-    maxOpossumIntensityB: settings.maxOpossumIntensityB,
-  });
+  const buildBaseInstructions: ReturnType<typeof createBuildBrowserInstructions> = (input) => {
+    const current = scenes();
+    return createBuildBrowserInstructions({
+      promptPresetId: current.selectedId,
+      savedPromptPresets: current.saved,
+      maxStrengthA: settings.maxStrengthA,
+      maxStrengthB: settings.maxStrengthB,
+      maxOpossumIntensityA: settings.maxOpossumIntensityA,
+      maxOpossumIntensityB: settings.maxOpossumIntensityB,
+    })(input);
+  };
 
   return createEmbeddedAgentClient({
     device: options.device,
@@ -102,7 +121,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
             characterForPrivateMemory(
               typeof session.metadata?.promptPresetId === 'string'
                 ? session.metadata.promptPresetId
-                : scenes.selectedId,
+                : scenes().selectedId,
             ),
         })
       : undefined,
@@ -136,7 +155,7 @@ export function createBrowserAgentClient(options: CreateBrowserAgentClientOption
         typeof input.session.metadata?.promptPresetId === 'string' &&
         input.session.metadata.promptPresetId
           ? input.session.metadata.promptPresetId
-          : scenes.selectedId;
+          : scenes().selectedId;
       const privateContext = await loadPrivateConversationContext({
         enabled: options.allowPersonalContext === true && characterForPrivateMemory(characterId),
         characterId,
