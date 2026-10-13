@@ -16,7 +16,7 @@ installShellErrorReporting('web');
 // Bluetooth API; only a human connect action through a module does.
 const dglab = createUnifiedShellDgLabRegistry({
   transport: createWebBluetoothDgLabTransport(),
-  backgroundKeep: true,
+  backgroundKeep: { maxMinutes: 30 },
 });
 
 // A tab opened before a deployment can still hold an index chunk that points

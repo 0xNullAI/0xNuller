@@ -25,6 +25,15 @@
       both at runtime, but Android denies any permission the manifest does not
       declare, so without these the microphone is always refused.
     * INTERNET — outbound LLM API calls.
+    * FOREGROUND_SERVICE / FOREGROUND_SERVICE_CONNECTED_DEVICE — the
+      DeviceOutputService below, which runs only while the user chose a
+      background keep and output is active, so Android does not freeze the app
+      before the keep ends.
+    * POST_NOTIFICATIONS — only for that service's local ongoing
+      「设备输出中」 notification (with 急停). There is no system push.
+    * WAKE_LOCK — a partial wake lock held only for the kept minutes, so the
+      native keep deadline and plugin-blec's write watchdog do not sleep
+      through them with the screen off.
     * uses-feature bluetooth_le required="false" — we want the app to
       install on emulators and devices without BLE, where it can still
       run the chat UI; runtime checks will surface "BLE unavailable".
@@ -35,6 +44,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -63,15 +76,20 @@
 
     <!--
       Tauri's manifest generator owns the application element. The preparation
-      script copies only the backup attributes below onto it and writes the two
-      rule files into res/xml: the account token, remembered API keys and chat
-      data must not leave the device through cloud backup or device transfer
-      (Android 12+ ignores allowBackup for device-to-device transfer, hence the
-      explicit dataExtractionRules).
+      script copies only the backup attributes below onto it, writes the two
+      rule files into res/xml (the account token, remembered API keys and chat
+      data must not leave the device through cloud backup or device transfer;
+      Android 12+ ignores allowBackup for device-to-device transfer, hence the
+      explicit dataExtractionRules), and copies each service element inside it.
     -->
     <application
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
-        android:dataExtractionRules="@xml/data_extraction_rules" />
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <service
+            android:name=".DeviceOutputService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
 
 </manifest>

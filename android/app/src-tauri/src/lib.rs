@@ -3,7 +3,6 @@ use std::sync::{Arc, OnceLock};
 use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
 use tauri::{Assets, Emitter, Manager, RunEvent, Runtime, State, WebviewWindowBuilder};
 
-#[cfg(target_os = "android")]
 mod android_lifecycle;
 mod ota;
 mod scan_coordinator;

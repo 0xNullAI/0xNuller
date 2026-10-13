@@ -20,6 +20,17 @@ export interface BackgroundOutputControllerOptions {
   onStopFailure?: () => void;
 }
 
+export interface BackgroundOutputController {
+  /**
+   * A stop decided outside the page: the native shell's pause, its notification 急停 or its own
+   * keep deadline. Ends a hold; while the page is still visible it stops without changing phase.
+   * `at` is when the stop happened; a stop the controller already issued since then is not
+   * reported again.
+   */
+  stop(reason: DgLabBackgroundStopReason, at?: number): void;
+  dispose(): void;
+}
+
 /**
  * The one owner of "the page left the foreground" for every DG-Lab output.
  *
@@ -30,27 +41,34 @@ export interface BackgroundOutputControllerOptions {
  */
 export function startBackgroundOutputController(
   options: BackgroundOutputControllerOptions,
-): () => void {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return () => undefined;
+): BackgroundOutputController {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return { stop: () => undefined, dispose: () => undefined };
+  }
   const now = options.now ?? Date.now;
   const timer = options.timer ?? workerTimer;
   let phase: 'foreground' | 'kept' | 'stopped' = 'foreground';
   let deadline = 0;
+  let lastStopAt = Number.NEGATIVE_INFINITY;
   let cancelTimer: (() => void) | null = null;
 
   const clearTimer = () => {
     cancelTimer?.();
     cancelTimer = null;
   };
-  const stop = (reason: DgLabBackgroundStopReason) => {
-    clearTimer();
-    phase = 'stopped';
-    void options.registry.stopForBackground(reason, now()).then(
+  const report = (reason: DgLabBackgroundStopReason) => {
+    lastStopAt = now();
+    void options.registry.stopForBackground(reason, lastStopAt).then(
       (result) => {
         if (result.failed.length > 0) options.onStopFailure?.();
       },
       () => options.onStopFailure?.(),
     );
+  };
+  const stop = (reason: DgLabBackgroundStopReason) => {
+    clearTimer();
+    phase = 'stopped';
+    report(reason);
   };
 
   const onVisibility = () => {
@@ -88,17 +106,32 @@ export function startBackgroundOutputController(
     if (phase === 'stopped') return;
     stop('background');
   };
+  const external = (reason: DgLabBackgroundStopReason, at?: number) => {
+    // Already stopped since then (for example the visible-again deadline check ran first).
+    if (at !== undefined && lastStopAt >= at && phase !== 'kept') return;
+    if (phase === 'foreground' && document.visibilityState !== 'hidden') {
+      // Still on screen: stop, and stay ready for the next hide.
+      clearTimer();
+      report(reason);
+      return;
+    }
+    // A later hide event must not start a hold the native shell already refused.
+    stop(reason);
+  };
 
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onLeave);
   window.addEventListener('beforeunload', onLeave);
   document.addEventListener('freeze', onFreeze);
-  return () => {
-    clearTimer();
-    document.removeEventListener('visibilitychange', onVisibility);
-    window.removeEventListener('pagehide', onLeave);
-    window.removeEventListener('beforeunload', onLeave);
-    document.removeEventListener('freeze', onFreeze);
+  return {
+    stop: external,
+    dispose: () => {
+      clearTimer();
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onLeave);
+      window.removeEventListener('beforeunload', onLeave);
+      document.removeEventListener('freeze', onFreeze);
+    },
   };
 }
 

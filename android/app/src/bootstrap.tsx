@@ -2,7 +2,11 @@ import './polyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Shell } from '@0xnullai/web/Shell';
-import { NativeBridgeProvider, type NativeBridge } from '@0xnullai/native';
+import {
+  installAndroidBackgroundKeep,
+  NativeBridgeProvider,
+  type NativeBridge,
+} from '@0xnullai/native';
 import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
 import { installShellErrorReporting } from '@0xnullai/web/client-error-reporting';
 import { prewarmDgLabDeviceScan } from '@dg-kit/transport-tauri-blec';
@@ -47,15 +51,17 @@ void prewarmDgLabDeviceScan().catch(() => undefined);
 
 // The one DG-Lab connection owner for the whole APK. Every off-screen signal stops all of its
 // Coyote and Opossum output, on top of the per-client lifecycle wrapper each Coyote keeps
-// (`wrapWithLifecycleSafety` inside the transport).
+// (`wrapWithLifecycleSafety` inside the transport) — unless the user chose a background keep and
+// the native foreground service decided at onPause to keep it.
 const dglab = createUnifiedShellDgLabRegistry({
   transport: createTauriDgLabTransport({
     connectHelp: withConnectPermissionHelp,
     permissionHelp: withBlePermissionHelp,
   }),
   attachNativeLifecycle: attachAndroidDgLabLifecycle,
-  // The WebView is suspended in the background, so nothing could end a kept output on time.
-  backgroundKeep: false,
+  // Only with the native keep service (native API 3) and the notification permission; it also
+  // tells that service whether keep is armed and any output is active. Otherwise: stop at once.
+  backgroundKeep: (registry) => installAndroidBackgroundKeep(registry),
 });
 
 const bridge = {

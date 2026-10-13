@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SafetyTab } from './SafetyTab';
 
@@ -27,12 +27,20 @@ const safety = vi.hoisted(() => ({
     backgroundKeepMinutes: 0,
   },
   update: vi.fn(),
-  keepSupported: true,
+  keepMax: 30,
+  keepReady: true,
+  hint: undefined as string | undefined,
+  prepare: vi.fn(async () => false),
 }));
 
 vi.mock('@0xnullai/settings', () => ({
-  BACKGROUND_KEEP_MINUTES: [0, 5, 10, 30],
-  isBackgroundKeepSupported: () => safety.keepSupported,
+  backgroundKeepOptions: () => [0, 5, 10, 30].filter((minutes) => minutes <= safety.keepMax),
+  backgroundKeepHint: () => safety.hint,
+  effectiveBackgroundKeepMinutes: () =>
+    safety.keepReady ? Math.min(safety.settings.backgroundKeepMinutes, safety.keepMax) : 0,
+  isBackgroundKeepReady: () => safety.keepReady,
+  isBackgroundKeepSupported: () => safety.keepMax > 0,
+  prepareBackgroundKeep: () => safety.prepare(),
   DEFAULT_DEVICE_SAFETY: safety.settings,
   loadDeviceSafety: () => ({ ...safety.settings }),
   subscribeDeviceSafety: () => () => undefined,
@@ -83,8 +91,18 @@ afterEach(() => {
   safety.update.mockClear();
   registry.setOwnLimits.mockClear();
   registry.forgetDeviceLimits.mockClear();
-  safety.keepSupported = true;
+  safety.keepMax = 30;
+  safety.keepReady = true;
+  safety.hint = undefined;
+  safety.settings.backgroundKeepMinutes = 0;
+  safety.prepare.mockReset();
+  safety.prepare.mockResolvedValue(false);
 });
+
+function keepOptions() {
+  const select = screen.getByLabelText('切到后台时') as HTMLSelectElement;
+  return [...select.options].map((option) => option.value);
+}
 
 it('shows shared limits, every device with its effective limit, and controls', () => {
   render(<SafetyTab />);
@@ -139,8 +157,57 @@ it('chooses how long output may keep running in the background, only where suppo
   );
   cleanup();
 
-  safety.keepSupported = false;
+  safety.keepMax = 0;
   render(<SafetyTab />);
   expect(screen.queryByLabelText('切到后台时')).toBeNull();
   expect(screen.getByText('切到后台时立即停止所有设备。')).toBeTruthy();
+});
+
+it('lists 5/10/30 on the web and only 5/10 where the platform caps it', () => {
+  render(<SafetyTab />);
+  expect(keepOptions()).toEqual(['0', '5', '10', '30']);
+  cleanup();
+
+  safety.keepMax = 10;
+  safety.hint = '安卓需要通知权限。';
+  safety.settings.backgroundKeepMinutes = 30;
+  render(<SafetyTab />);
+  expect(keepOptions()).toEqual(['0', '5', '10']);
+  // A 30-minute choice from another device shows (and applies) as this platform's cap.
+  expect((screen.getByLabelText('切到后台时') as HTMLSelectElement).value).toBe('10');
+  expect(screen.getByText(/安卓需要通知权限。/)).toBeTruthy();
+});
+
+it('asks for the notification permission first and keeps 0 when it is refused', async () => {
+  safety.keepMax = 10;
+  safety.keepReady = false;
+  render(<SafetyTab />);
+
+  fireEvent.change(screen.getByLabelText('切到后台时'), { target: { value: '5' } });
+
+  await waitFor(() => expect(screen.getByText(/未获得通知权限/)).toBeTruthy());
+  expect(safety.prepare).toHaveBeenCalledTimes(1);
+  expect(safety.update).toHaveBeenLastCalledWith(
+    expect.objectContaining({ backgroundKeepMinutes: 0 }),
+  );
+  expect((screen.getByLabelText('切到后台时') as HTMLSelectElement).value).toBe('0');
+});
+
+it('stores the keep once the permission is granted', async () => {
+  safety.keepMax = 10;
+  safety.keepReady = false;
+  safety.prepare.mockImplementation(async () => {
+    safety.keepReady = true;
+    return true;
+  });
+  render(<SafetyTab />);
+
+  fireEvent.change(screen.getByLabelText('切到后台时'), { target: { value: '10' } });
+
+  await waitFor(() =>
+    expect(safety.update).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundKeepMinutes: 10 }),
+    ),
+  );
+  expect(screen.queryByText(/未获得通知权限/)).toBeNull();
 });

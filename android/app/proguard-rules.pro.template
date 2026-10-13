@@ -3,3 +3,8 @@
 -keepclassmembers class ai.nullai.dgagent.MainActivity {
   native boolean requestNativeLifecycleSafety();
 }
+# The keep service and the activity stop output natively through this entry;
+# its class and method names form the JNI symbol the Rust library exports.
+-keep class ai.nullai.dgagent.NativeOutputSafety {
+  private static native boolean requestNativeOutputStop();
+}

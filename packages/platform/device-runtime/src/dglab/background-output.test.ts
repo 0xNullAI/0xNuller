@@ -34,10 +34,16 @@ function setup(keepMs: () => number) {
     resumeForeground: vi.fn(),
   } satisfies BackgroundOutputTarget;
   const onStopFailure = vi.fn();
-  detaches.push(
-    startBackgroundOutputController({ registry, keepMs, now: () => clock, timer, onStopFailure }),
-  );
+  const controller = startBackgroundOutputController({
+    registry,
+    keepMs,
+    now: () => clock,
+    timer,
+    onStopFailure,
+  });
+  detaches.push(controller.dispose);
   return {
+    controller,
     registry,
     timers,
     onStopFailure,
@@ -125,5 +131,52 @@ describe('后台输出控制', () => {
     await Promise.resolve();
 
     expect(onStopFailure).toHaveBeenCalled();
+  });
+
+  it('原生侧停止（到时、急停）结束保持并记录原因', () => {
+    const { controller, registry, timers } = setup(() => 60_000);
+
+    setVisibility('hidden');
+    controller.stop('background-timeout', 1_000);
+
+    expect(registry.stopForBackground).toHaveBeenCalledWith('background-timeout', 1_000);
+    expect(timers[0]!.cancelled).toBe(true);
+    setVisibility('visible');
+    expect(registry.resumeForeground).toHaveBeenCalled();
+  });
+
+  it('原生侧拒绝保留后，迟到的隐藏事件不再开始保持', () => {
+    const { controller, registry } = setup(() => 60_000);
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+
+    controller.stop('background');
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(registry.stopForBackground).toHaveBeenCalledTimes(1);
+    expect(registry.holdForBackground).not.toHaveBeenCalled();
+  });
+
+  it('前台收到原生急停：停止但仍按下次隐藏处理', () => {
+    const { controller, registry } = setup(() => 0);
+    setVisibility('visible');
+
+    controller.stop('background');
+    expect(registry.stopForBackground).toHaveBeenCalledWith('background', 1_000);
+
+    setVisibility('hidden');
+    expect(registry.stopForBackground).toHaveBeenCalledTimes(2);
+  });
+
+  it('同一次停止不重复记录', () => {
+    const { controller, registry, advance } = setup(() => 60_000);
+
+    setVisibility('hidden');
+    advance(90_000);
+    setVisibility('visible');
+    expect(registry.stopForBackground).toHaveBeenCalledWith('background-timeout', 91_000);
+
+    // The native deadline's own report of that same stop arrives after the page is back.
+    controller.stop('background-timeout', 61_000);
+    expect(registry.stopForBackground).toHaveBeenCalledTimes(1);
   });
 });

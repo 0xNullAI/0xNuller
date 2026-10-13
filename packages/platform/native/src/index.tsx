@@ -7,6 +7,7 @@ import {
 import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
 
 export * from './android-system';
+export * from './android-background-keep';
 
 /**
  * The single entry point where a shell injects capabilities into modules.
