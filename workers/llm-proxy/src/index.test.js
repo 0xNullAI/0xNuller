@@ -819,7 +819,37 @@ describe('managed response billing boundaries', () => {
     expect(env.AUTH.settleCredits).toHaveBeenCalledOnce();
     expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
   });
-  it('cancels a blocked upstream reader and retains an unmetered hold for review', async () => {
+  it('keeps reading after the browser leaves and settles the usage that arrives later', async () => {
+    let upstream;
+    const cancel = vi.fn();
+    const source = new ReadableStream({
+      start(c) {
+        upstream = c;
+        c.enqueue(new TextEncoder().encode(delta('partial')));
+      },
+      cancel,
+    });
+    stubArk(() => new Response(source));
+    const env = environment();
+    const ctx = context();
+    const result = await worker.fetch(request(streamingBody), env, ctx);
+    const reader = result.body.getReader();
+    await reader.read();
+    await reader.cancel();
+    expect(cancel).not.toHaveBeenCalled();
+    upstream.enqueue(new TextEncoder().encode(delta(' rest') + frame({ usage })));
+    await Promise.all(ctx.tasks);
+    expect(cancel).toHaveBeenCalled();
+    expect(env.AUTH.settleCredits).toHaveBeenCalledWith(
+      {},
+      'request:test:001',
+      tokenCredits(table.chat, usage),
+      expect.not.objectContaining({ estimated: true }),
+    );
+    expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
+  });
+  it('bills a bounded estimate when a stream stalls without usage after the browser leaves', async () => {
+    vi.useFakeTimers();
     const { response, cancel } = sseStream(['data: {"choices":[]}\n\n']);
     stubArk(response);
     const env = environment();
@@ -828,11 +858,39 @@ describe('managed response billing boundaries', () => {
     const reader = result.body.getReader();
     await reader.read();
     await reader.cancel();
+    await vi.advanceTimersByTimeAsync(19_000);
+    expect(cancel).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
     await Promise.all(ctx.tasks);
     expect(cancel).toHaveBeenCalled();
+    const reserved = tokenReservation(table.chat, estimateInputTokens(streamingBody), 1024);
+    const [, , charge, metadata] = env.AUTH.settleCredits.mock.calls[0];
+    expect(charge).toBeGreaterThan(0);
+    expect(charge).toBeLessThanOrEqual(reserved);
+    expect(metadata).toMatchObject({ estimated: true, usage: { completion_tokens: 1024 } });
     expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
-    expect(env.AUTH.finalizeManagedText).not.toHaveBeenCalled();
-    expect(env.AUTH.settleCredits).not.toHaveBeenCalled();
+  });
+  it('estimates only the output received when an upstream ends without usage after a disconnect', async () => {
+    let upstream;
+    const source = new ReadableStream({
+      start(c) {
+        upstream = c;
+        c.enqueue(new TextEncoder().encode(delta('hi')));
+      },
+    });
+    stubArk(() => new Response(source));
+    const env = environment();
+    const ctx = context();
+    const result = await worker.fetch(request(streamingBody), env, ctx);
+    const reader = result.body.getReader();
+    await reader.read();
+    await reader.cancel();
+    upstream.close();
+    await Promise.all(ctx.tasks);
+    const [, , , metadata] = env.AUTH.settleCredits.mock.calls[0];
+    expect(metadata.estimated).toBe(true);
+    expect(metadata.usage.completion_tokens).toBeLessThan(100);
+    expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
   });
   it('does not emit DONE on a failed settlement and never releases that ambiguous charge', async () => {
     const { response } = sseStream([frame({ usage }) + 'data: [DONE]\n\n']);
@@ -869,10 +927,18 @@ describe('managed cancellation and RPC deadline', () => {
     expect(env.AUTH.settleCredits).toHaveBeenCalledTimes(3);
     expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
   });
-  it('aborts a blocked upstream when the request signal is cancelled', async () => {
+  it('stops forwarding on a cancelled request signal but still bills the upstream usage', async () => {
     const controller = new AbortController();
-    const { response, cancel } = sseStream([delta('')]);
-    stubArk(response);
+    let upstream;
+    const cancel = vi.fn();
+    const source = new ReadableStream({
+      start(c) {
+        upstream = c;
+        c.enqueue(new TextEncoder().encode(delta('')));
+      },
+      cancel,
+    });
+    stubArk(() => new Response(source));
     const env = environment();
     const ctx = context();
     const original = request(streamingBody);
@@ -883,10 +949,37 @@ describe('managed cancellation and RPC deadline', () => {
     );
     controller.abort();
     await expect(result.text()).rejects.toThrow();
+    upstream.enqueue(new TextEncoder().encode(frame({ usage })));
     await Promise.all(ctx.tasks);
     expect(cancel).toHaveBeenCalled();
+    expect(env.AUTH.settleCredits).toHaveBeenCalledOnce();
     expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
-    expect(env.AUTH.finalizeManagedText).not.toHaveBeenCalled();
+  });
+  it('settles a non-stream reply whose browser left while the model was running', async () => {
+    const controller = new AbortController();
+    let answer;
+    stubArk(() => new Promise((resolve) => (answer = resolve)));
+    const env = environment();
+    const ctx = context();
+    const pending = worker.fetch(
+      new Request(request({ messages: [{ role: 'user', content: 'hi' }] }), {
+        signal: controller.signal,
+      }),
+      env,
+      ctx,
+    );
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+    controller.abort();
+    answer(completion('done')());
+    await pending;
+    await Promise.all(ctx.tasks);
+    expect(env.AUTH.settleCredits).toHaveBeenCalledWith(
+      {},
+      'request:test:001',
+      tokenCredits(table.chat, usage),
+      expect.anything(),
+    );
+    expect(env.AUTH.releaseCredits).not.toHaveBeenCalled();
   });
 });
 

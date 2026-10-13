@@ -84,8 +84,12 @@ workers.dev/Preview URL 由 `wrangler.toml` 管理。
 
 SSE 以事件边界解析，兼容分块 CRLF 和末尾无换行的 usage。每个 JSON 事件在交付前改写 `model` 为公开
 id；usage 在对应帧交付前写入 Auth checkpoint。`[DONE]` 只在 Auth 确认结算后发送，结算失败使流报错。
-`[DONE]` 是读取终点，之后的 usage 不参与结算。客户端取消会停止上游读取；已收到可信 usage 时结算该
-用量，没有可信 usage 时保留预留为 pending，由 Auth 后台标记待核对并释放冻结。
+`[DONE]` 是读取终点，之后的 usage 不参与结算。上游一旦开始生成就会产生费用，因此客户端断开只停止
+转发：Worker 继续读取上游（最多 20 秒，在断开后的 waitUntil 时限内），收到可信 usage 即按真实用量
+结算。窗口内仍拿不到 usage 时，按预留的保守估算结算：输入取预留时的估算 Token，输出取已收到的字节数
+（上游被截断时取输出上限），且不超过预留，账单元数据记录 `estimated: true`。客户端仍在连接、上游却
+没有报告 usage 时，预留保留为 pending，由 Auth 后台标记待核对并释放冻结。非流式请求同样不因客户端
+断开而中止上游调用，结果返回后照常结算。
 
 结算/释放校验 Auth 实际终态，最多同幂等键重试 3 次，每次 RPC 最多等待 3 秒。结算超时可能已经提交，
 因此始终重试 settle，绝不随后调用 release；非流式接口在未确认结算时不返回 `credit_charged`。
