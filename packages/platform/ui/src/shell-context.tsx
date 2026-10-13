@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, memo, useContext } from 'react';
 import type { ReactNode } from 'react';
 
 /**
@@ -91,3 +91,15 @@ export function useOpenShellSettings(): (tab?: ShellSettingsTab) => void {
 export function useModuleActive(): boolean {
   return useContext(ShellChromeContext).active;
 }
+
+/**
+ * Keeps showing the last rendered children while `paused`, skipping re-renders of a subtree
+ * nobody can see. Effects inside stay mounted, so connections and device logic keep running;
+ * a hidden module just stops re-laying-out its views for every state change behind it.
+ */
+export const PauseWhenHidden = memo(
+  function PauseWhenHidden({ children }: { paused: boolean; children: ReactNode }) {
+    return children;
+  },
+  (_prev, next) => next.paused,
+);

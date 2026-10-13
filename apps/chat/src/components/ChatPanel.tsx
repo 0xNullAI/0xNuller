@@ -6,34 +6,22 @@ import {
   ConversationTimeline,
   ConversationComposer,
   ConversationEmpty,
-  ConversationMessageRow,
-  ConversationTimeSeparator,
   RecordedVoicePreview,
-  conversationBubbleClass,
   conversationComposerButtonClass,
   conversationSequence,
   useConversationArrivals,
 } from '@0xnullai/ui';
-import { requestProfileView } from '@0xnullai/auth';
 import { adaptHumanChatTimeline } from '@0xnullai/conversation';
-import { Fragment, useState, useRef, useEffect } from 'react';
-import {
-  ArrowUp,
-  Image as ImageIcon,
-  Mic,
-  Plus,
-  X,
-  AtSign,
-  UserRound,
-  Reply,
-  Undo2,
-} from 'lucide-react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { ArrowUp, Image as ImageIcon, Mic, Plus, X, AtSign, UserRound } from 'lucide-react';
 import { RECALL_WINDOW_MS } from '../../worker/wire';
 import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
 import { PublicCharacterShareDialog } from './PublicCharacterShareDialog';
-import { publicCharacterLink } from '../lib/public-character-share';
-import { ProfileAvatar } from './ProfileAvatar';
+import { ChatMessageItem, type ChatMessageActions } from './ChatMessageItem';
+
+/** Bubbles laid out at a time; older ones appear in batches as the reader scrolls up. */
+const RENDER_BATCH = 50;
 
 interface ChatPanelProps {
   conversationId: string;
@@ -80,51 +68,6 @@ interface ChatPanelProps {
   jumpToMessageId?: string | null;
   /** The jump finished: `found` is false when history ran out first. */
   onJumpSettled?: (found: boolean) => void;
-}
-
-function mediaSource(url: string, privateMediaToken?: string | null): string | null {
-  if (privateMediaToken === undefined) return url;
-  return privateMediaToken ? `${url}?token=${encodeURIComponent(privateMediaToken)}` : null;
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Highlight @role-name/@nickname inside the text. Your own bubble has an accent background, so
- *  there the @ switches to underline + bold to stay readable. */
-function renderMessageText(
-  text: string,
-  mentions?: ChatMention[],
-  isSelf = false,
-): React.ReactNode {
-  const publicLink = publicCharacterLink(text);
-  if (publicLink)
-    return (
-      <a
-        href={publicLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block whitespace-pre-wrap underline underline-offset-2"
-      >
-        {text.split('\n')[0]} · 查看角色
-      </a>
-    );
-  const names = (mentions ?? []).map((m) => m.displayName).filter(Boolean);
-  if (names.length === 0) return text;
-  const re = new RegExp(`(@(?:${names.map(escapeRegExp).join('|')}))`, 'g');
-  const cls = isSelf
-    ? 'font-semibold underline underline-offset-2'
-    : 'font-medium text-[var(--accent)]';
-  return text.split(re).map((part, i) =>
-    part.startsWith('@') && names.includes(part.slice(1)) ? (
-      <span key={i} className={cls}>
-        {part}
-      </span>
-    ) : (
-      part
-    ),
-  );
 }
 
 export function ChatPanel({
@@ -176,6 +119,96 @@ export function ChatPanel({
   const pendingMentionsRef = useRef<ChatMention[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageElements = useRef(new Map<string, HTMLDivElement>());
+  // Render the newest messages first and reveal older ones in batches: a long conversation
+  // would otherwise lay out every bubble at once, and the whole app waits for it.
+  const [firstShownId, setFirstShownId] = useState<string | null>(null);
+  const anchorIndex = firstShownId ? messages.findIndex((msg) => msg.id === firstShownId) : -1;
+  const newestBatch = Math.max(0, messages.length - RENDER_BATCH);
+  // The newest batch always shows, even when history lands before the pinned message.
+  const start = anchorIndex >= 0 ? Math.min(anchorIndex, newestBatch) : newestBatch;
+  const shown = start > 0 ? messages.slice(start) : messages;
+  // Pin the window to a message so new arrivals and older pages never shift it, and widen it
+  // to a message someone jumps to. Both adjust state during render, before anything paints.
+  const jumpHidden = jumpToMessageId ? messages.findIndex((msg) => msg.id === jumpToMessageId) : -1;
+  const pinTo =
+    jumpHidden >= 0 && jumpHidden < start
+      ? messages[Math.max(0, jumpHidden - 10)]!.id
+      : (anchorIndex < 0 || anchorIndex > start) && messages.length > 0
+        ? messages[start]!.id
+        : null;
+  if (pinTo && pinTo !== firstShownId) setFirstShownId(pinTo);
+  const loadedIds = useMemo(() => new Set(messages.map((msg) => msg.id)), [messages]);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  const scrollAnchor = useRef<{ height: number; top: number } | null>(null);
+  const timelineElement = () =>
+    bottomRef.current?.closest<HTMLElement>('[data-conversation-timeline]') ?? null;
+  /** Reveal up to `index`, keeping what is on screen where it is. */
+  const revealFrom = (index: number) => {
+    const target = messages[Math.max(0, index)];
+    if (!target || target.id === firstShownId) return;
+    const container = timelineElement();
+    scrollAnchor.current = container
+      ? { height: container.scrollHeight, top: container.scrollTop }
+      : null;
+    setFirstShownId(target.id);
+  };
+  const showEarlier = () => {
+    if (start > 0) revealFrom(start - RENDER_BATCH);
+    else if (hasOlderHistory && !historyLoading) onLoadOlderHistory?.();
+  };
+  useLayoutEffect(() => {
+    const saved = scrollAnchor.current;
+    const container = timelineElement();
+    scrollAnchor.current = null;
+    if (saved && container) container.scrollTop = saved.top + container.scrollHeight - saved.height;
+  }, [start]);
+  const showEarlierRef = useRef(showEarlier);
+  useLayoutEffect(() => {
+    showEarlierRef.current = showEarlier;
+  });
+  useEffect(() => {
+    const sentinel = topSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) showEarlierRef.current();
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [start]);
+  const callbacks = useRef({ onRecallMessage, onRetryMessage, onDiscardMessage });
+  useLayoutEffect(() => {
+    callbacks.current = { onRecallMessage, onRetryMessage, onDiscardMessage };
+  });
+  const actions = useMemo<ChatMessageActions>(
+    () => ({
+      reply: (msg) => {
+        setReplyTo({
+          id: msg.id,
+          senderId: msg.senderId,
+          senderName: msg.senderName,
+          text: msg.text.slice(0, 500) || (msg.media?.kind === 'image' ? '[图片]' : '[语音]'),
+        });
+        inputRef.current?.focus();
+      },
+      recall: (id) => callbacks.current.onRecallMessage?.(id),
+      retry: (id) => {
+        callbacks.current.onRetryMessage?.(id);
+      },
+      discard: (id) => callbacks.current.onDiscardMessage?.(id),
+      openImage: (src) => setLightbox(src),
+      jumpTo: (id) => {
+        const source = messageElements.current.get(id);
+        source?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        source?.focus({ preventScroll: true });
+      },
+      register: (id, element) => {
+        if (element) messageElements.current.set(id, element);
+        else messageElements.current.delete(id);
+      },
+    }),
+    [],
+  );
+
   const timeline = adaptHumanChatTimeline({
     conversationId,
     messages,
@@ -236,6 +269,8 @@ export function ChatPanel({
 
   useEffect(() => {
     if (!jumpToMessageId) return;
+    // Still hidden: the render that reveals it runs this again.
+    if (pinTo) return;
     const element = messageElements.current.get(jumpToMessageId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -250,6 +285,7 @@ export function ChatPanel({
   }, [
     jumpToMessageId,
     messages,
+    pinTo,
     hasOlderHistory,
     historyLoading,
     onLoadOlderHistory,
@@ -412,14 +448,14 @@ export function ChatPanel({
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {/* Message list */}
       <ConversationTimeline>
-        {hasOlderHistory && (
+        {(start > 0 || hasOlderHistory) && (
           <button
             type="button"
-            disabled={historyLoading}
-            onClick={onLoadOlderHistory}
+            disabled={start === 0 && historyLoading}
+            onClick={showEarlier}
             className="ui-press mx-auto rounded-full px-4 py-1.5 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)] disabled:opacity-60"
           >
-            {historyLoading ? '读取中…' : '加载更早的消息'}
+            {start === 0 && historyLoading ? '读取中…' : '加载更早的消息'}
           </button>
         )}
         {readError && (
@@ -429,220 +465,33 @@ export function ChatPanel({
         )}
         {messages.length === 0 && <ConversationEmpty />}
 
-        {messages.map((msg, idx) => {
-          const item = timeline[idx]!;
-          const isSelf = msg.fromSelf;
+        {start > 0 && <div ref={topSentinelRef} aria-hidden className="h-px shrink-0" />}
+        {shown.map((msg, offset) => {
+          const idx = start + offset;
           const position = sequence[idx]!;
-          const grouped = position.continued;
-          const hasMedia = !!msg.media;
-
-          if (msg.recalled)
-            return (
-              <Fragment key={msg.id}>
-                {position.showTime && <ConversationTimeSeparator at={msg.timestamp} />}
-                <p className="py-1 text-center text-[11px] text-[var(--text-faint)]">
-                  {isSelf ? '你撤回了一条消息' : `${msg.senderName || '对方'} 撤回了一条消息`}
-                </p>
-              </Fragment>
-            );
-          const recallable =
-            !!onRecallMessage &&
-            isSelf &&
-            msg.serverConfirmed === true &&
-            now - msg.timestamp <= RECALL_WINDOW_MS;
-
           return (
-            <Fragment key={msg.id}>
-              {position.showTime && <ConversationTimeSeparator at={msg.timestamp} />}
-              <ConversationMessageRow
-                data-message-id={msg.id}
-                tabIndex={-1}
-                own={isSelf}
-                continued={grouped}
-                groupEnd={position.groupEnd}
-                arrived={arrivals.has(msg.id)}
-                avatar={
-                  isSelf ? undefined : (
-                    <ProfileAvatar
-                      name={msg.senderName || msg.senderId.slice(0, 6)}
-                      username={usernameByPeer.get(msg.senderId)}
-                      size={28}
-                    />
-                  )
-                }
-                ref={(element) => {
-                  if (element) messageElements.current.set(msg.id, element);
-                  else messageElements.current.delete(msg.id);
-                }}
-              >
-                {msg.replyTo && (
-                  <blockquote className="mb-1 rounded border-l-2 border-[var(--accent)] bg-[var(--bg-soft)] px-2 py-1 text-xs text-[var(--text-soft)]">
-                    {msg.replyTo.unavailable ? (
-                      '原消息已不可用'
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="block w-full text-left"
-                          disabled={!messages.some((source) => source.id === msg.replyTo?.id)}
-                          title={
-                            messages.some((source) => source.id === msg.replyTo?.id)
-                              ? '定位原消息'
-                              : '加载更早消息后可定位'
-                          }
-                          aria-label={`定位 ${msg.replyTo.senderName} 的原消息`}
-                          onClick={() => {
-                            const source = messageElements.current.get(msg.replyTo!.id);
-                            source?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            source?.focus({ preventScroll: true });
-                          }}
-                        >
-                          <strong>{msg.replyTo.senderName}</strong>
-                          <span className="block line-clamp-3 whitespace-pre-wrap">
-                            {msg.replyTo.text}
-                          </span>
-                        </button>
-                      </>
-                    )}
-                  </blockquote>
-                )}
-                {!isSelf && !grouped && (
-                  <div className="mb-0.5 flex min-w-0 items-center gap-1 px-1 text-xs text-[var(--text-faint)]">
-                    {usernameByPeer.get(msg.senderId) ? (
-                      <button
-                        type="button"
-                        className="truncate hover:text-[var(--accent)] hover:underline"
-                        onClick={() => requestProfileView(usernameByPeer.get(msg.senderId)!)}
-                      >
-                        {msg.senderName || msg.senderId.slice(0, 6)}
-                      </button>
-                    ) : (
-                      <span className="truncate">{msg.senderName || msg.senderId.slice(0, 6)}</span>
-                    )}
-                    {hintByPeer.get(msg.senderId) && (
-                      <span className="shrink-0">· {hintByPeer.get(msg.senderId)}</span>
-                    )}
-                  </div>
-                )}
-
-                <div
-                  className={`flex min-w-0 max-w-full items-end gap-1 ${isSelf ? 'flex-row-reverse' : ''}`}
-                >
-                  <div className={`flex min-w-0 flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
-                    {msg.media?.kind === 'image' &&
-                    mediaSource(msg.media.url, privateMediaToken) ? (
-                      <button
-                        onClick={() => setLightbox(mediaSource(msg.media!.url, privateMediaToken))}
-                        className="block overflow-hidden rounded-[18px] border border-[var(--surface-border)]"
-                      >
-                        <img
-                          src={mediaSource(msg.media.url, privateMediaToken)!}
-                          alt="图片"
-                          loading="lazy"
-                          className="max-h-60 max-w-full object-cover"
-                        />
-                      </button>
-                    ) : msg.media?.kind === 'audio' &&
-                      mediaSource(msg.media.url, privateMediaToken) ? (
-                      <div className={conversationBubbleClass(isSelf, false, grouped)}>
-                        <audio
-                          controls
-                          src={mediaSource(msg.media.url, privateMediaToken)!}
-                          className="max-w-[220px]"
-                        />
-                        {msg.media.durationMs != null && (
-                          <p
-                            className={`mt-0.5 text-[10px] ${isSelf ? 'text-[var(--button-text)]' : 'text-[var(--text-faint)]'}`}
-                          >
-                            语音 {formatDuration(msg.media.durationMs)}
-                          </p>
-                        )}
-                      </div>
-                    ) : msg.media && privateMediaToken === null ? (
-                      <span className="text-xs text-[var(--text-faint)]">连接后加载媒体</span>
-                    ) : null}
-
-                    {(!hasMedia || msg.text) && (
-                      <div
-                        className={
-                          `${hasMedia ? 'mt-1 ' : ''}` +
-                          conversationBubbleClass(
-                            isSelf,
-                            Boolean(selfId && msg.mentions?.some((m) => m.peerId === selfId)),
-                            grouped,
-                          ) +
-                          ' whitespace-pre-wrap'
-                        }
-                      >
-                        {renderMessageText(msg.text, msg.mentions, isSelf)}
-                      </div>
-                    )}
-                  </div>
-                  {msg.senderId !== 'system' && (
-                    <button
-                      type="button"
-                      aria-label={`回复 ${msg.senderName || '消息'}`}
-                      title="回复此消息"
-                      disabled={busy || !!recorder || !!pendingMedia}
-                      className="ui-press flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-faint)] opacity-60 hover:bg-[var(--bg-soft)] hover:opacity-100 disabled:opacity-30"
-                      onClick={() => {
-                        setReplyTo({
-                          id: msg.id,
-                          senderId: msg.senderId,
-                          senderName: msg.senderName,
-                          text:
-                            msg.text.slice(0, 500) ||
-                            (msg.media?.kind === 'image' ? '[图片]' : '[语音]'),
-                        });
-                        inputRef.current?.focus();
-                      }}
-                    >
-                      <Reply size={14} />
-                    </button>
-                  )}
-                  {recallable && (
-                    <button
-                      type="button"
-                      aria-label="撤回这条消息"
-                      title="撤回（发送后 2 分钟内）"
-                      className="ui-press flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-faint)] opacity-60 hover:bg-[var(--bg-soft)] hover:opacity-100"
-                      onClick={() => onRecallMessage(msg.id)}
-                    >
-                      <Undo2 size={14} />
-                    </button>
-                  )}
-                </div>
-                {item.status === 'pending' && msg.fromSelf && (
-                  <p className="mt-0.5 px-1 text-[11px] text-[var(--text-faint)]">发送中…</p>
-                )}
-                {item.status === 'failed' && msg.fromSelf && (
-                  <p
-                    role="alert"
-                    className="mt-0.5 px-1 text-right text-[11px] text-[var(--danger)]"
-                  >
-                    发送失败
-                    {onRetryMessage && (
-                      <button
-                        type="button"
-                        className="ml-2 underline"
-                        onClick={() => onRetryMessage(msg.id)}
-                      >
-                        重试
-                      </button>
-                    )}
-                    {onDiscardMessage && (
-                      <button
-                        type="button"
-                        className="ml-2 underline"
-                        onClick={() => onDiscardMessage(msg.id)}
-                      >
-                        放弃
-                      </button>
-                    )}
-                  </p>
-                )}
-              </ConversationMessageRow>
-            </Fragment>
+            <ChatMessageItem
+              key={msg.id}
+              msg={msg}
+              status={timeline[idx]!.status}
+              showTime={position.showTime}
+              continued={position.continued}
+              groupEnd={position.groupEnd}
+              arrived={arrivals.has(msg.id)}
+              recallable={
+                !!onRecallMessage &&
+                msg.fromSelf &&
+                msg.serverConfirmed === true &&
+                now - msg.timestamp <= RECALL_WINDOW_MS
+              }
+              username={usernameByPeer.get(msg.senderId)}
+              hint={hintByPeer.get(msg.senderId)}
+              mentionsSelf={Boolean(selfId && msg.mentions?.some((m) => m.peerId === selfId))}
+              privateMediaToken={privateMediaToken}
+              replyDisabled={busy || !!recorder || !!pendingMedia}
+              replySourceLoaded={!!msg.replyTo && loadedIds.has(msg.replyTo.id)}
+              actions={actions}
+            />
           );
         })}
         <div ref={bottomRef} />

@@ -556,3 +556,58 @@ it('names whose AI a group AI is beside its messages and in the @ list', () => {
   fireEvent.change(screen.getByRole('textbox'), { target: { value: '@小' } });
   expect(screen.getByRole('button', { name: /小猫\s*Bob的 AI/ })).toBeTruthy();
 });
+
+describe('长对话分批显示', () => {
+  const history = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `m${from + i}`,
+      fromSelf: false,
+      senderId: 'peer',
+      senderName: 'Peer',
+      text: `消息 ${from + i}`,
+      timestamp: 1_000 + from + i,
+      serverConfirmed: true,
+    }));
+  const shown = () =>
+    [...document.querySelectorAll('[data-message-id]')].map((row) =>
+      row.getAttribute('data-message-id'),
+    );
+
+  it('shows the newest batch, reveals older ones locally before asking the server', () => {
+    const loadOlder = vi.fn();
+    const props = {
+      conversationId: 'room',
+      onSend: vi.fn(),
+      onSendMedia: vi.fn(async () => undefined),
+      hasOlderHistory: true,
+      onLoadOlderHistory: loadOlder,
+    };
+    const view = render(<ChatPanel {...props} messages={history(120)} />);
+    expect(shown()).toHaveLength(50);
+    expect(shown()[0]).toBe('m70');
+    // A new message keeps the window where it was instead of pushing a bubble out.
+    view.rerender(<ChatPanel {...props} messages={[...history(120), ...history(1, 120)]} />);
+    expect(shown()).toHaveLength(51);
+    const earlier = screen.getByRole('button', { name: '加载更早的消息' });
+    fireEvent.click(earlier);
+    expect(shown()[0]).toBe('m20');
+    fireEvent.click(earlier);
+    expect(shown()[0]).toBe('m0');
+    expect(loadOlder).not.toHaveBeenCalled();
+    fireEvent.click(earlier);
+    expect(loadOlder).toHaveBeenCalledOnce();
+  });
+
+  it('reveals a hidden message someone jumps to', () => {
+    render(
+      <ChatPanel
+        conversationId="room"
+        onSend={vi.fn()}
+        onSendMedia={vi.fn(async () => undefined)}
+        messages={history(120)}
+        jumpToMessageId="m5"
+      />,
+    );
+    expect(shown()).toContain('m5');
+  });
+});
