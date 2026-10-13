@@ -21,7 +21,7 @@ function billingNote(body: Record<string, unknown>): string {
 
 function statusMessage(status: number, body: Record<string, unknown>): string {
   if (status === 401) return '请先登录后使用';
-  if (status === 402) return 'Credit 不足，请充值后再试';
+  if (status === 402) return 'Credit 不足，兑换卡密后再试';
   if (status === 413) return '剧本太长，请先精简后再试';
   if (status === 429) return '请求太频繁，请稍后再试';
   const detail = typeof body.error === 'string' && body.error.trim() ? body.error : '';

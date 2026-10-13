@@ -128,7 +128,7 @@ it('shows insufficient Credit and saves nothing', async () => {
   render(<ScriptSplitterDialog source={source} onClose={vi.fn()} />);
   fireEvent.click(await screen.findByRole('button', { name: '开始整理' }, { timeout: 2000 }));
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toBe('Credit 不足，请充值后再试'),
+    expect(screen.getByRole('alert').textContent).toBe('Credit 不足，兑换卡密后再试'),
   );
   expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
   expect(loadScenes().scenes).toEqual([]);

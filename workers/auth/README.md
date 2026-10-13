@@ -35,8 +35,9 @@ SHA-256 哈希保存；浏览器使用同源安全 Cookie，原生外壳使用 B
 用户反馈会先写入 D1，再尽力转发到维护邮箱；邮件临时失败不会丢失已保存内容。公开反馈接口按
 来源哈希限制为每小时最多 5 次，不保存原始 IP。
 
-管理面板将付费充值和 Credit 赠送分开记账。充值要求外部支付流水；赠送由系统生成唯一编号并要求
-填写原因，不计入充值收入。两类人工入账都记录操作管理员并受单笔和每日上限约束。
+Credit 只通过卡密售卖（见下文「卡密兑换（0074）」）；管理员的人工充值入口已停用
+（`POST /api/auth/admin/credits/grant` 返回 410）。赠送由系统生成唯一编号并要求填写原因，
+不计入售卖收入，记录操作管理员并受单笔和每日上限约束。
 
 ## 本地验证
 
@@ -379,7 +380,31 @@ account isolation while returning only IDs/revisions/timestamps, public session 
 most 160 characters of the latest user/assistant message. It does not materialize complete message
 arrays. Deleted rows return empty metadata/preview for cross-device Inbox removal.
 
+## 卡密兑换（0074）
+
+`0074_redeem_codes.sql` 只新增 `redeem_batches`、`redeem_codes`、`redeem_attempts` 和两条账本索引，
+不重建 `credit_ledger`。
+
+- 管理员 `POST /api/auth/admin/redeem-codes`（`amountCny`、`count` 1–100、可选 `note`）按
+  `@0xnullai/auth/credit-tiers` 的固定档位生成一批 64 位单次卡密（字母表去掉 0/O、1/I，320 位随机）。
+  档位为 ¥6/30/68/128/328/648，到账 1,000/5,000/12,000/23,000/60,000/120,000 Credit。明文只在这次响应里出现；库里只存 SHA-256 和末 4 位。
+- `GET /admin/redeem-codes/batches`（`before` 游标）、`/batches/:id`（只给末 4 位与兑换人）、
+  `/redemptions` 查看批次和兑换记录。没有整批作废。
+- 用户 `POST /api/auth/credits/redeem {code}`：输入忽略空格、横线和大小写。标记已用、写账本和
+  成功记录在同一个 D1 batch 里；账本行为 `manual_purchase`，`reference_id` 为 `redeem:<卡密编号>`，
+  沿用其唯一约束保证一张卡只给一个账号入账，并发兑换只成功一次。
+- 30 分钟内同一账号失败 5 次或同一 IP 失败 20 次即拒绝兑换（429），失败记录随时间窗口滑出后自动解锁；
+  每日 cron 清理一天前的记录。
+- 管理员账单视图 `GET /api/auth/admin/ledger`（`username`、`group`、`from`、`to`、`before`）跨账号列出
+  流水并按含义分组：redeem、purchase（旧充值）、gift、reward、tip、usage、refund、adjust；
+  `/admin/ledger/summary` 按中国时间自然日汇总，范围最长 92 天。
+
+上线顺序同其它 Auth migration：先只读预检与 D1 备份，再执行 `db:migrate:remote`，然后部署 Auth 与 Web。
+
 ## 充值订单与对账（0036）
+
+> 已停止接受新订单：`GET /billing/catalog` 与新建订单返回 410。已有订单仍可查看、取消、申请退款，
+> 管理员仍可确认收款或退款，以便处理迁移前留下的订单。
 
 新增 `0036_billing_orders.sql`，只新增订单、事件、支付关联和退款申请，不重建既有钱包账本。
 `GET /api/auth/billing/catalog` 返回沿用的4档人民币/Credit价格；`PUT /orders/:id` 使用

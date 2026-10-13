@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  getBillingCatalog,
   listBillingOrders,
-  createBillingOrder,
   cancelBillingOrder,
   requestBillingRefund,
-  type BillingCatalog,
   type BillingOrder,
 } from '@0xnullai/auth';
 import { Button } from '@0xnullai/ui';
@@ -17,14 +14,16 @@ export const BILLING_STATUSES: Record<string, string> = {
   refund_requested: '退款申请待人工处理',
   refunded: '已核实退款并扣回Credit',
 };
+/**
+ * Orders from before redeem keys. New ones can no longer be created; an account that has old
+ * orders can still see, cancel or ask to refund them. Renders nothing for an account without any.
+ */
 export function BillingOrdersPanel({ accountId }: { accountId: string }) {
   return <Orders key={accountId} />;
 }
 function Orders() {
-  const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
   const [orders, setOrders] = useState<BillingOrder[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
-  const [offer, setOffer] = useState('credit-1000');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -33,7 +32,6 @@ function Orders() {
   const [reason, setReason] = useState('');
   const alive = useRef(false);
   const lock = useRef(false);
-  const pending = useRef<string | null>(null);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -42,10 +40,9 @@ function Orders() {
   }, []);
   useEffect(() => {
     let active = true;
-    void Promise.all([getBillingCatalog(), listBillingOrders()])
-      .then(([c, o]) => {
+    void listBillingOrders()
+      .then((o) => {
         if (active) {
-          setCatalog(c);
           setOrders(o.items);
           setCursor(o.nextCursor);
         }
@@ -83,14 +80,6 @@ function Orders() {
       lock.current = false;
     }
   }
-  async function create() {
-    if (!catalog) return;
-    pending.current ??= crypto.randomUUID();
-    await change(async () => {
-      await createBillingOrder(pending.current!, offer, catalog.priceVersion);
-      pending.current = null;
-    }, '订单已创建，尚未扣款或增加Credit。请向管理员提供订单编号核实实际付款。');
-  }
   async function more() {
     if (!cursor || lock.current) return;
     lock.current = true;
@@ -111,33 +100,15 @@ function Orders() {
       if (alive.current) setBusy(false);
     }
   }
+  // Nothing to show: most accounts never had an order, and none can be opened any more.
+  if (!busy && !error && orders.length === 0) return null;
   return (
     <section
-      aria-label="充值订单"
+      aria-label="过往订单"
       className="space-y-3 border-b border-[var(--surface-border)] pb-3 text-xs"
     >
-      <h3 className="text-sm font-medium">充值订单</h3>
-      <p>{catalog?.message ?? '正在读取充值方式…'}</p>
+      <h3 className="text-sm font-medium">过往订单</h3>
       <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="订单充值档位"
-          value={offer}
-          disabled={busy}
-          onChange={(e) => {
-            setOffer(e.target.value);
-            pending.current = null;
-          }}
-          className="min-w-0 rounded border bg-[var(--bg)] p-2"
-        >
-          {catalog?.packages.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.credits} Credit · ¥{(p.amountMinor / 100).toFixed(2)}
-            </option>
-          ))}
-        </select>
-        <Button size="sm" disabled={busy || !catalog} onClick={() => void create()}>
-          创建待确认订单
-        </Button>
         <Button
           size="sm"
           variant="ghost"

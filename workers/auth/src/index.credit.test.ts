@@ -303,28 +303,19 @@ describe('Credit 账本与人工充值', () => {
     ).toMatchObject({ status: 'released', available: 50, reserved: 0, charged: null });
   });
 
-  it('只允许管理员按固定人民币档位幂等入账', async () => {
+  it('人工充值已停用：管理员也不能再直接入账，卡密是唯一的售卖方式', async () => {
     const admin = await registerUser();
     const buyer = await registerUser({ username: 'buyer', email: 'buyer@example.com' });
     await prepared("UPDATE users SET role = 'admin' WHERE id = ?", admin.body.user!.id).run();
     const input = { username: 'buyer', amountCny: 7, externalReference: 'alipay:test:001' };
 
-    const granted = await post('/api/auth/admin/credits/grant', input, {
-      token: admin.body.token,
-    });
-    expect(granted.status).toBe(201);
-    expect(await granted.json()).toMatchObject({ amountCny: 7, amountCredits: 1000 });
     expect(
       (await post('/api/auth/admin/credits/grant', input, { token: admin.body.token })).status,
-    ).toBe(409);
+    ).toBe(410);
     expect(
       (await post('/api/auth/admin/credits/grant', input, { token: buyer.body.token })).status,
     ).toBe(403);
-    expect(await creditBalance(env, buyer.body.user!.id)).toEqual({
-      total: 1000,
-      reserved: 0,
-      available: 1000,
-    });
+    expect((await creditBalance(env, buyer.body.user!.id)).total).toBe(0);
   });
 
   it('允许管理员无交易流水赠送 Credit，并生成独立审计编号', async () => {

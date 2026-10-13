@@ -1,9 +1,17 @@
+import { CREDIT_PRICE_VERSION } from '@0xnullai/auth/credit-tiers';
 import { currentUser, sha256Hex, type SessionEnv } from './session-domain';
 import { err, json, readBodyBounded } from './http';
 const PATH = '/api/auth/billing';
 const ADMIN = '/api/auth/admin/billing';
 const ID = /^[A-Za-z0-9._:-]{8,128}$/;
-const PRICE = 'credits-2026-09';
+const PRICE = CREDIT_PRICE_VERSION;
+const RETIRED = '充值已改为卡密兑换，请在「账户 → Credit」里输入卡密';
+/** Kept as a switch so the order tests still cover the paths existing orders take. */
+let ACCEPTING_NEW_ORDERS = false;
+/** Test-only: reopen order creation to exercise existing-order paths. */
+export function __acceptNewBillingOrdersForTests(accept: boolean): void {
+  ACCEPTING_NEW_ORDERS = accept;
+}
 const OFFERS = [
   { id: 'credit-1000', amountMinor: 700, credits: 1000 },
   { id: 'credit-5000', amountMinor: 3500, credits: 5000 },
@@ -284,19 +292,9 @@ export async function handleBillingOrders(
   )
     .bind(Date.now(), user.id, Date.now())
     .run();
-  if (path === `${PATH}/catalog` && request.method === 'GET')
-    return json(
-      {
-        currency: 'CNY',
-        priceVersion: PRICE,
-        onlinePaymentEnabled: false,
-        channel: 'manual',
-        message: '在线支付尚未接通。创建订单不会扣款或增加Credit，需管理员核实实际付款。',
-        packages: OFFERS,
-      },
-      200,
-      headers,
-    );
+  // Credit is now sold only as redeem keys (redeem-codes.ts). Orders already created stay
+  // readable, cancellable and refundable, and admins can still settle them; no new ones open.
+  if (path === `${PATH}/catalog` && request.method === 'GET') return err(RETIRED, 410, headers);
   if ((path === `${PATH}/orders` || path === `${ADMIN}/orders`) && request.method === 'GET') {
     const before = url.searchParams.get('before');
     if (before !== null && (!/^\d+$/.test(before) || !Number.isSafeInteger(Number(before))))
@@ -352,6 +350,7 @@ export async function handleBillingOrders(
       return order.package_id === offer.id
         ? json({ item: orderView(order) }, 200, headers)
         : err('订单编号已使用', 409, headers);
+    if (!ACCEPTING_NEW_ORDERS) return err(RETIRED, 410, headers);
     const created = await env.DB.prepare(
       `INSERT INTO billing_orders(id,user_id,package_id,amount_minor,currency,credits,price_version,status,created_at,expires_at,updated_at)
     SELECT ?,?,?,?,'CNY',?,?,'awaiting_payment',?,?,? WHERE (SELECT COUNT(*) FROM billing_orders WHERE user_id=? AND status='awaiting_payment' AND expires_at>?)<5 AND NOT EXISTS(SELECT 1 FROM account_deletions WHERE user_id=?) ON CONFLICT(id) DO NOTHING RETURNING *`,

@@ -111,7 +111,9 @@ function Activity() {
               ? '退款扣回'
               : entry.kind === 'admin_gift' && entry.referenceId === 'welcome'
                 ? '新用户体验额度'
-                : (LABELS[entry.kind] ?? '账本调整')}
+                : entry.kind === 'manual_purchase' && entry.referenceId.startsWith('redeem:')
+                  ? '卡密兑换'
+                  : (LABELS[entry.kind] ?? '账本调整')}
             {entry.kind === 'usage' ? ` · ${usage(entry.usageType)}` : ''}
           </span>
           <strong className="shrink-0 tabular-nums">

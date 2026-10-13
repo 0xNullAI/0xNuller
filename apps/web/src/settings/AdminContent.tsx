@@ -1,711 +1,106 @@
+import { useState, type KeyboardEvent } from 'react';
+import { readPreference, writePreference } from '@0xnullai/settings';
+import { AdminGiftPanel } from './AdminGiftPanel';
+import { AdminLedgerPanel } from './AdminLedgerPanel';
+import { AdminOperationsPanel } from './AdminOperationsPanel';
+import { AdminOverview } from './AdminOverview';
+import { AdminRedeemCodesPanel, type MintedCodes } from './AdminRedeemCodesPanel';
 import { BillingReconciliationPanel } from './BillingReconciliationPanel';
-import { RuntimeHealthPanel } from './RuntimeHealthPanel';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Search, Trash2 } from 'lucide-react';
-import { Button, Input, SettingSelect } from '@0xnullai/ui';
-import {
-  getAdminReports,
-  getAdminStats,
-  grantCreditGift,
-  lookupAdminCreditTarget,
-  grantCreditPackage,
-  listAdminCreditRedPackets,
-  approveAdminCreditRedPacket,
-  rejectAdminCreditRedPacket,
-  resolveAdminReport,
-  type AdminStats,
-  type UserReport,
-} from '@0xnullai/auth';
-import type { MarketAdminItem } from '../../../market/src/shared/schema';
-import {
-  deleteItem,
-  fetchAdminItems,
-  setItemHidden,
-  type AdminItemStatus,
-  type AdminItemType,
-} from '../../../market/src/web/api';
 
-const CATEGORIES: Array<{ id: AdminItemType; label: string }> = [
-  { id: 'waveform', label: '波形' },
-  { id: 'scenario', label: '场景' },
-];
+const ADMIN_TABS = [
+  ['overview', '概览'],
+  ['ledger', '账单'],
+  ['codes', '卡密'],
+  ['reconcile', '对账审核'],
+  ['gift', '赠送'],
+  ['ops', '内容与运行'],
+] as const;
 
-const FILTERS: Array<{ id: AdminItemStatus; label: string }> = [
-  { id: 'all', label: '全部' },
-  { id: 'visible', label: '公开' },
-  { id: 'hidden', label: '已隐藏' },
-];
+type AdminTab = (typeof ADMIN_TABS)[number][0];
 
-export function AdminContent() {
-  const [type, setType] = useState<AdminItemType>('waveform');
-  const [status, setStatus] = useState<AdminItemStatus>('all');
-  const [draft, setDraft] = useState('');
-  const [query, setQuery] = useState('');
-  const [items, setItems] = useState<MarketAdminItem[]>([]);
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [reports, setReports] = useState<UserReport[]>([]);
-  const [creditUsername, setCreditUsername] = useState('');
-  const [creditAmount, setCreditAmount] = useState<7 | 35 | 70 | 140>(7);
-  const [creditReference, setCreditReference] = useState('');
-  const [rechargeNotice, setRechargeNotice] = useState<string | null>(null);
-  const [giftNotice, setGiftNotice] = useState<string | null>(null);
-  const [giftUsername, setGiftUsername] = useState('');
-  const [giftAmount, setGiftAmount] = useState('1000');
-  const [giftReason, setGiftReason] = useState('');
-  const [creditTarget, setCreditTarget] = useState<Awaited<
-    ReturnType<typeof lookupAdminCreditTarget>
-  > | null>(null);
-  const [giftTarget, setGiftTarget] = useState<Awaited<
-    ReturnType<typeof lookupAdminCreditTarget>
-  > | null>(null);
-  const [creditCandidate, setCreditCandidate] = useState<Awaited<
-    ReturnType<typeof lookupAdminCreditTarget>
-  > | null>(null);
-  const [giftCandidate, setGiftCandidate] = useState<Awaited<
-    ReturnType<typeof lookupAdminCreditTarget>
-  > | null>(null);
-  const [creditSubmitting, setCreditSubmitting] = useState(false);
-  const [giftSubmitting, setGiftSubmitting] = useState(false);
-  const lookupSequence = useRef({ recharge: 0, gift: 0 });
+const TAB_PREFERENCE = 'dg-admin-tab';
 
-  async function lookupTarget(kind: 'recharge' | 'gift') {
-    const username = kind === 'recharge' ? creditUsername : giftUsername;
-    if (!username.trim()) return;
-    const sequence = ++lookupSequence.current[kind];
-    setError(null);
-    try {
-      const result = await lookupAdminCreditTarget(username);
-      if (sequence !== lookupSequence.current[kind]) return;
-      if (kind === 'recharge') setCreditCandidate(result);
-      else setGiftCandidate(result);
-    } catch (cause) {
-      if (sequence !== lookupSequence.current[kind]) return;
-      if (kind === 'recharge') setCreditCandidate(null);
-      else setGiftCandidate(null);
-      setError(cause instanceof Error ? cause.message : '找不到用户');
-    }
-  }
-  const [redPackets, setRedPackets] = useState<
-    Awaited<ReturnType<typeof listAdminCreditRedPackets>>['items']
-  >([]);
-
-  const requestPage = useCallback(
-    (offset = 0) => fetchAdminItems({ type, status, q: query || undefined, offset, limit: 20 }),
-    [query, status, type],
-  );
-
-  const load = useCallback(
-    async (offset = 0, append = false) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const page = await requestPage(offset);
-        setItems((current) => (append ? [...current, ...page.items] : page.items));
-        setNextOffset(page.nextOffset);
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : '加载失败');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [requestPage],
-  );
-
-  useEffect(() => {
-    let active = true;
-    void requestPage()
-      .then((page) => {
-        if (!active) return;
-        setItems(page.items);
-        setNextOffset(page.nextOffset);
-        setError(null);
-      })
-      .catch((cause: unknown) => {
-        if (!active) return;
-        setError(cause instanceof Error ? cause.message : '加载失败');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [requestPage]);
-
-  useEffect(() => {
-    void listAdminCreditRedPackets()
-      .then((result) => setRedPackets(result.items))
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    void getAdminStats()
-      .then(setStats)
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    void getAdminReports()
-      .then(setReports)
-      .catch(() => undefined);
-  }, []);
-
-  async function updateVisibility(item: MarketAdminItem) {
-    setBusyId(item.id);
-    setError(null);
-    try {
-      await setItemHidden(item.id, !item.hidden);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '操作失败');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function remove(item: MarketAdminItem) {
-    if (!window.confirm(`永久删除「${item.name}」？`)) return;
-    setBusyId(item.id);
-    setError(null);
-    try {
-      await deleteItem(item.id);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '删除失败');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  return (
-    <section aria-labelledby="admin-content-title">
-      <BillingReconciliationPanel />
-      <RuntimeHealthPanel />
-      {stats ? (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold">管理概览</h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {[
-              ['账户', stats.users],
-              ['已验证', stats.verifiedUsers],
-              ['活跃会话', stats.activeSessions],
-              ['24h 注册尝试', stats.registrationAttempts24h],
-              ['今日消费 Credit', stats.creditUsedToday],
-              ['今日充值 Credit', stats.creditPurchasedToday],
-              ['待处理举报', stats.openReports],
-            ].map(([label, value]) => (
-              <div
-                key={String(label)}
-                className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-3"
-              >
-                <div className="text-xs text-[var(--text-faint)]">{label}</div>
-                <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {reports.some((report) => report.status === 'open') ? (
-        <div className="mb-6 rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
-          <h2 className="text-sm font-semibold">用户举报</h2>
-          <div className="mt-2 space-y-2">
-            {reports
-              .filter((report) => report.status === 'open')
-              .map((report) => (
-                <div
-                  key={report.id}
-                  className="rounded-[var(--radius-xs)] bg-[var(--bg-soft)] p-2 text-xs"
-                >
-                  <div className="font-medium">
-                    @{report.reported_username} · {report.reason}
-                  </div>
-                  <div className="mt-0.5 text-[var(--text-faint)]">
-                    举报人 @{report.reporter_username}
-                  </div>
-                  {report.details ? (
-                    <p className="mt-1 text-[var(--text-soft)]">{report.details}</p>
-                  ) : null}
-                  <div className="mt-2 flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={async () => {
-                        await resolveAdminReport(report.id, 'dismissed');
-                        setReports((current) =>
-                          current.map((item) =>
-                            item.id === report.id ? { ...item, status: 'dismissed' } : item,
-                          ),
-                        );
-                      }}
-                    >
-                      忽略
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        await resolveAdminReport(report.id, 'reviewed');
-                        setReports((current) =>
-                          current.map((item) =>
-                            item.id === report.id ? { ...item, status: 'reviewed' } : item,
-                          ),
-                        );
-                      }}
-                    >
-                      标记已处理
-                    </Button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 id="admin-content-title" className="text-lg font-semibold">
-            内容管理
-          </h2>
-          <p className="mt-1 text-xs text-[var(--text-faint)]">Market</p>
-        </div>
-        <div
-          aria-label="内容分类"
-          className="flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] p-1"
-        >
-          {CATEGORIES.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              aria-pressed={type === category.id}
-              onClick={() => {
-                if (type === category.id) {
-                  void load();
-                  return;
-                }
-                setLoading(true);
-                setType(category.id);
-              }}
-              className={
-                'min-h-[36px] rounded-[calc(var(--radius-ctl)-4px)] px-3 text-xs font-medium transition-colors ' +
-                (type === category.id
-                  ? 'bg-[var(--accent-soft)] text-[var(--text)]'
-                  : 'text-[var(--text-soft)] hover:text-[var(--text)]')
-              }
-            >
-              {category.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-3 flex justify-end">
-        <div
-          aria-label="可见性"
-          className="flex rounded-[var(--radius-ctl)] border border-[var(--surface-border)] p-1"
-        >
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              aria-pressed={status === filter.id}
-              onClick={() => {
-                if (status === filter.id) {
-                  void load();
-                  return;
-                }
-                setLoading(true);
-                setStatus(filter.id);
-              }}
-              className={
-                'min-h-[36px] rounded-[calc(var(--radius-ctl)-4px)] px-3 text-xs font-medium transition-colors ' +
-                (status === filter.id
-                  ? 'bg-[var(--accent-soft)] text-[var(--text)]'
-                  : 'text-[var(--text-soft)] hover:text-[var(--text)]')
-              }
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <form
-        className="mt-4 flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const nextQuery = draft.trim();
-          if (nextQuery === query) {
-            void load();
-            return;
-          }
-          setLoading(true);
-          setQuery(nextQuery);
-        }}
-      >
-        <Input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="名称、作者"
-          aria-label="搜索内容"
-        />
-        <Button type="submit" variant="secondary" aria-label="搜索">
-          <Search className="h-4 w-4" />
-        </Button>
-      </form>
-
-      {error ? (
-        <p role="alert" className="mt-4 text-sm text-[var(--danger)]">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="mt-4 space-y-2">
-        {items.map((item) => (
-          <article
-            key={item.id}
-            className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-3"
-          >
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="truncate text-sm font-semibold">{item.name}</h3>
-                  {item.hidden ? (
-                    <span className="rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--danger)]">
-                      已隐藏
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-xs text-[var(--text-faint)]">
-                  {item.type} · {item.author ? `@${item.author}` : '未署名'}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <button
-                  type="button"
-                  disabled={busyId === item.id}
-                  onClick={() => void updateVisibility(item)}
-                  aria-label={item.hidden ? `恢复 ${item.name}` : `隐藏 ${item.name}`}
-                  className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-ctl)] text-[var(--text-soft)] hover:bg-[var(--accent-soft)] hover:text-[var(--text)] disabled:opacity-50"
-                >
-                  {item.hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                </button>
-                <button
-                  type="button"
-                  disabled={busyId === item.id}
-                  onClick={() => void remove(item)}
-                  aria-label={`删除 ${item.name}`}
-                  className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-ctl)] text-[var(--danger)] hover:bg-[var(--danger-soft)] disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      {!loading && items.length === 0 ? (
-        <p role="status" className="mt-8 text-center text-sm text-[var(--text-faint)]">
-          没有内容
-        </p>
-      ) : null}
-      {loading ? (
-        <p role="status" className="mt-6 text-center text-sm text-[var(--text-faint)]">
-          加载中…
-        </p>
-      ) : null}
-      {!loading && nextOffset !== null ? (
-        <Button
-          variant="secondary"
-          className="mt-4 w-full"
-          onClick={() => void load(nextOffset, true)}
-        >
-          加载更多
-        </Button>
-      ) : null}
-
-      <form
-        className="mt-8 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setError(null);
-          setRechargeNotice(null);
-          setGiftNotice(null);
-          setCreditSubmitting(true);
-          try {
-            const result = await grantCreditPackage({
-              username: creditUsername.trim(),
-              amountCny: creditAmount,
-              externalReference: creditReference.trim(),
-            });
-            setRechargeNotice(`已为 @${result.username} 增加 ${result.amountCredits} Credit`);
-            setCreditReference('');
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : '充值入账失败');
-          } finally {
-            setCreditSubmitting(false);
-          }
-        }}
-      >
-        <h2 className="text-sm font-semibold">人工充值</h2>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-          收到款项并核对流水后再入账。档位由系统换算，同一流水号只能使用一次。
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Input
-            value={creditUsername}
-            onChange={(event) => {
-              setCreditUsername(event.target.value);
-              setCreditTarget(null);
-              setCreditCandidate(null);
-              lookupSequence.current.recharge += 1;
-            }}
-            onBlur={() => void lookupTarget('recharge')}
-            placeholder="用户名"
-            aria-label="充值用户名"
-          />
-          <SettingSelect
-            value={String(creditAmount)}
-            onValueChange={(value) => setCreditAmount(Number(value) as typeof creditAmount)}
-            aria-label="充值档位"
-            options={[
-              { value: '7', label: '¥7 · 1,000 Credit' },
-              { value: '35', label: '¥35 · 5,000 Credit' },
-              { value: '70', label: '¥70 · 10,000 Credit' },
-              { value: '140', label: '¥140 · 20,000 Credit' },
-            ]}
-          />
-          <Input
-            value={creditReference}
-            onChange={(event) => setCreditReference(event.target.value)}
-            placeholder="支付宝流水号"
-            aria-label="外部流水号"
-          />
-          <Button
-            type="submit"
-            disabled={!creditTarget || !creditReference.trim() || creditSubmitting}
-          >
-            {creditSubmitting ? '入账中…' : '确认入账'}
-          </Button>
-        </div>
-        {creditCandidate && !creditTarget ? (
-          <TargetConfirmation
-            target={creditCandidate}
-            actionLabel="选择此账号"
-            onConfirm={() => setCreditTarget(creditCandidate)}
-          />
-        ) : null}
-        {creditTarget ? (
-          <TargetConfirmation
-            target={creditTarget}
-            amount={`${creditAmount} 元 / ${creditTarget.credit.available} → 入账后 ${creditTarget.credit.available + { 7: 1000, 35: 5000, 70: 10000, 140: 20000 }[creditAmount]} Credit`}
-            selected
-          />
-        ) : null}
-        {rechargeNotice ? (
-          <p role="status" className="mt-2 text-xs text-[var(--success)]">
-            {rechargeNotice}
-          </p>
-        ) : null}
-      </form>
-
-      <form
-        className="mt-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setError(null);
-          setGiftNotice(null);
-          setRechargeNotice(null);
-          setGiftSubmitting(true);
-          try {
-            const result = await grantCreditGift({
-              username: giftUsername.trim(),
-              amountCredits: Number(giftAmount),
-              reason: giftReason.trim(),
-            });
-            setGiftNotice(`已赠送 @${result.username} ${result.amountCredits} Credit`);
-            setGiftReason('');
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : '赠送入账失败');
-          } finally {
-            setGiftSubmitting(false);
-          }
-        }}
-      >
-        <h2 className="text-sm font-semibold">赠送 Credit</h2>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-faint)]">
-          用于活动赠送或直接赠与。系统自动生成唯一编号，不计入充值收入。
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Input
-            value={giftUsername}
-            onChange={(event) => {
-              setGiftUsername(event.target.value);
-              setGiftTarget(null);
-              setGiftCandidate(null);
-              lookupSequence.current.gift += 1;
-            }}
-            onBlur={() => void lookupTarget('gift')}
-            placeholder="用户名"
-            aria-label="赠送用户名"
-            required
-          />
-          <Input
-            value={giftAmount}
-            onChange={(event) => setGiftAmount(event.target.value)}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={20_000}
-            step={1}
-            placeholder="Credit 数量（1–20,000）"
-            aria-label="赠送 Credit 数量"
-            required
-          />
-          <Input
-            value={giftReason}
-            onChange={(event) => setGiftReason(event.target.value)}
-            maxLength={200}
-            minLength={2}
-            placeholder="赠送原因（必填）"
-            aria-label="赠送原因"
-            required
-          />
-          <Button
-            type="submit"
-            disabled={
-              giftSubmitting ||
-              giftReason.trim().length < 2 ||
-              !Number.isSafeInteger(Number(giftAmount)) ||
-              Number(giftAmount) < 1 ||
-              Number(giftAmount) > 20_000
-            }
-          >
-            {giftSubmitting ? '赠送中…' : '确认赠送'}
-          </Button>
-        </div>
-        <p className="mt-2 text-xs text-[var(--text-faint)]">
-          查询用于确认账号，不是赠送前置条件；无法查询时仍会由服务端按用户名校验。
-        </p>
-        {giftCandidate && !giftTarget ? (
-          <TargetConfirmation
-            target={giftCandidate}
-            actionLabel="选择此账号"
-            onConfirm={() => setGiftTarget(giftCandidate)}
-          />
-        ) : null}
-        {giftTarget ? (
-          <TargetConfirmation target={giftTarget} amount={`${giftAmount} Credit`} selected />
-        ) : null}
-        {giftNotice ? (
-          <p role="status" className="mt-2 text-xs text-[var(--success)]">
-            {giftNotice}
-          </p>
-        ) : null}
-      </form>
-
-      <section className="mt-4 rounded-[var(--radius-sm)] border border-[var(--surface-border)] bg-[var(--bg-soft)] p-4">
-        <h2 className="text-sm font-semibold">口令红包申请</h2>
-        <div className="mt-3 space-y-2">
-          {redPackets
-            .filter((item) => item.status === 'pending')
-            .map((item) => (
-              <div
-                key={item.id}
-                className="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3 text-sm"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    @{item.username} · {item.code}
-                  </span>
-                  <span className="text-xs text-[var(--text-faint)]">
-                    {new Date(item.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                {item.note ? (
-                  <p className="mt-1 text-xs text-[var(--text-soft)]">{item.note}</p>
-                ) : null}
-                <div className="mt-2 flex gap-2">
-                  <Input
-                    id={`red-packet-amount-${item.id}`}
-                    type="number"
-                    min={1}
-                    max={20000}
-                    defaultValue={1000}
-                    aria-label="红包 Credit 数量"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      const input = document.getElementById(
-                        `red-packet-amount-${item.id}`,
-                      ) as HTMLInputElement;
-                      await approveAdminCreditRedPacket(item.id, Number(input.value));
-                      setRedPackets((await listAdminCreditRedPackets()).items);
-                    }}
-                  >
-                    确认发送
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={async () => {
-                      const reason = window.prompt('请输入拒绝原因')?.trim();
-                      if (!reason) return;
-                      await rejectAdminCreditRedPacket(item.id, reason);
-                      setRedPackets((await listAdminCreditRedPackets()).items);
-                    }}
-                  >
-                    拒绝
-                  </Button>
-                </div>
-              </div>
-            ))}
-          {!redPackets.some((item) => item.status === 'pending') ? (
-            <p className="text-xs text-[var(--text-faint)]">暂无待处理申请</p>
-          ) : null}
-        </div>
-      </section>
-    </section>
-  );
+function initialTab(): AdminTab {
+  const saved = readPreference(TAB_PREFERENCE);
+  return ADMIN_TABS.some(([id]) => id === saved) ? (saved as AdminTab) : 'overview';
 }
 
-function TargetConfirmation({
-  target,
-  amount,
-  actionLabel,
-  onConfirm,
-  selected = false,
-}: {
-  target: Awaited<ReturnType<typeof lookupAdminCreditTarget>>;
-  amount?: string;
-  actionLabel?: string;
-  onConfirm?: () => void;
-  selected?: boolean;
-}) {
+export function AdminContent() {
+  const [tab, setTab] = useState<AdminTab>(initialTab);
+  // Shared so a username clicked elsewhere (redemptions) opens 账单 already filtered.
+  const [ledgerUser, setLedgerUser] = useState('');
+  // Held here so freshly minted keys survive switching sub-tabs; they are never stored.
+  const [minted, setMinted] = useState<MintedCodes | null>(null);
+
+  function select(next: AdminTab) {
+    setTab(next);
+    writePreference(TAB_PREFERENCE, next);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const index = ADMIN_TABS.findIndex(([id]) => id === tab);
+    const step = event.key === 'ArrowRight' ? 1 : -1;
+    const next = ADMIN_TABS[(index + step + ADMIN_TABS.length) % ADMIN_TABS.length]![0];
+    select(next);
+    document.getElementById(`admin-tab-${next}`)?.focus();
+  }
+
   return (
-    <div className="mt-3 rounded-[var(--radius-xs)] border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-xs">
-      <div className="font-semibold">{selected ? '已选择目标账号' : '已找到，请确认账号'}</div>
-      <div className="mt-1 grid gap-1 text-[var(--text-soft)] sm:grid-cols-2">
-        <span>用户名：@{target.user.username}</span>
-        <span>显示名：{target.user.displayName || '未设置'}</span>
-        <span className="break-all">账号 ID：{target.user.id}</span>
-        <span>邮箱：{target.user.email || '未设置'}</span>
-        <span>邮箱状态：{target.user.emailVerified ? '已验证' : '未验证'}</span>
-        <span>注册时间：{new Date(target.createdAt).toLocaleString()}</span>
-        <span>总余额：{target.credit.total} Credit</span>
-        <span>占用余额：{target.credit.reserved} Credit</span>
-        <span>当前余额：{target.credit.available} Credit</span>
-        {amount ? <span>本次：{amount}</span> : null}
+    <section aria-labelledby="admin-content-title" className="flex min-w-0 flex-col gap-4">
+      <h2 id="admin-content-title" className="sr-only">
+        管理
+      </h2>
+      <div
+        role="tablist"
+        aria-label="管理分区"
+        onKeyDown={onKeyDown}
+        className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
+      >
+        {ADMIN_TABS.map(([id, label]) => (
+          <button
+            key={id}
+            id={`admin-tab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls="admin-tab-panel"
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => select(id)}
+            className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-[var(--radius-ctl)] px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+              tab === id
+                ? 'bg-[var(--accent-soft)] text-[var(--text)]'
+                : 'text-[var(--text-soft)] hover:bg-[var(--bg-soft)] hover:text-[var(--text)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-      {onConfirm && actionLabel ? (
-        <Button type="button" size="sm" className="mt-3" onClick={onConfirm}>
-          {actionLabel}
-        </Button>
-      ) : null}
-    </div>
+      <div
+        id="admin-tab-panel"
+        role="tabpanel"
+        aria-labelledby={`admin-tab-${tab}`}
+        className="flex min-w-0 flex-col gap-4"
+      >
+        {tab === 'overview' ? <AdminOverview /> : null}
+        {tab === 'ledger' ? (
+          <AdminLedgerPanel username={ledgerUser} onUsernameChange={setLedgerUser} />
+        ) : null}
+        {tab === 'codes' ? (
+          <AdminRedeemCodesPanel
+            minted={minted}
+            onMinted={setMinted}
+            onShowUser={(username) => {
+              setLedgerUser(username);
+              select('ledger');
+            }}
+          />
+        ) : null}
+        {tab === 'reconcile' ? <BillingReconciliationPanel /> : null}
+        {tab === 'gift' ? <AdminGiftPanel /> : null}
+        {tab === 'ops' ? <AdminOperationsPanel /> : null}
+      </div>
+    </section>
   );
 }
