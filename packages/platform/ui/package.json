@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
   "description": "平台设计系统单一真源：设计令牌、主题、Radix 原子组件",
   "exports": {
     ".": "./src/index.ts",
