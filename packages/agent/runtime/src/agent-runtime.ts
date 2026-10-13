@@ -131,6 +131,11 @@ export interface SendUserMessageInput {
   persistMessage?: boolean;
   /** One ephemeral visual frame. This field is never copied into SessionSnapshot. */
   image?: LlmImageInput;
+  /**
+   * The caller's stop signal, live from the moment the user pressed send. Aborting it before the
+   * turn registers still prevents the turn from running or touching a device.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export type { TurnToolCallSummary } from './runtime-turn-state.js';
@@ -159,6 +164,11 @@ export class AgentRuntime {
   private readonly turnCoordinator: RuntimeTurnCoordinator;
   private readonly taskRuns = new RuntimeTaskRunLedger();
   private readonly activeTurns = new Map<string, AbortController>();
+  /**
+   * Turns accepted by sendUserMessage that have not reached activeTurns yet (session reads and the
+   * user-message save are still in flight). A stop in that window must still land.
+   */
+  private readonly startingTurns = new Map<string, Set<AbortController>>();
   private readonly sessionGenerations = new Map<string, number>();
   private readonly pendingSystemWork = new Map<string, QueuedSystemWork[]>();
   private readonly drainingSessions = new Set<string>();
@@ -290,6 +300,7 @@ export class AgentRuntime {
     for (const controller of this.activeTurns.values()) {
       controller.abort();
     }
+    this.abortStartingTurns();
     this.activeTurns.clear();
     this.pendingSystemWork.clear();
     // Keep the synchronous public API while still failing safe on teardown.
@@ -573,6 +584,7 @@ export class AgentRuntime {
     for (const controller of this.activeTurns.values()) {
       controller.abort();
     }
+    this.abortStartingTurns();
     this.pendingSystemWork.clear();
     this.toolExecutor.cancelScheduledTimers();
     this.teardownSensorTriggerEngine();
@@ -584,6 +596,22 @@ export class AgentRuntime {
 
   async abortCurrentReply(sessionId: string): Promise<void> {
     this.activeTurns.get(sessionId)?.abort();
+    this.abortStartingTurns(sessionId);
+  }
+
+  /** Whether a reply for this session is running or still starting. */
+  isReplyRunning(sessionId: string): boolean {
+    return this.activeTurns.has(sessionId) || (this.startingTurns.get(sessionId)?.size ?? 0) > 0;
+  }
+
+  private abortStartingTurns(sessionId?: string): void {
+    const sets =
+      sessionId === undefined
+        ? [...this.startingTurns.values()]
+        : [this.startingTurns.get(sessionId) ?? new Set<AbortController>()];
+    for (const controllers of sets) {
+      for (const controller of controllers) controller.abort();
+    }
   }
 
   async sendUserMessage(input: SendUserMessageInput): Promise<void> {
@@ -598,6 +626,31 @@ export class AgentRuntime {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
       throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
     }
+    if (input.abortSignal?.aborted) throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
+    // Registered before the first await: a stop pressed while the session is still being read or
+    // the user message saved is latched here instead of being lost.
+    const abortController = new AbortController();
+    const starting = this.startingTurns.get(input.sessionId) ?? new Set<AbortController>();
+    starting.add(abortController);
+    this.startingTurns.set(input.sessionId, starting);
+    const onCallerAbort = () => abortController.abort();
+    input.abortSignal?.addEventListener('abort', onCallerAbort, { once: true });
+    try {
+      await this.runUserTurn(input, expectedGeneration, abortController);
+    } finally {
+      input.abortSignal?.removeEventListener('abort', onCallerAbort);
+      starting.delete(abortController);
+      if (starting.size === 0 && this.startingTurns.get(input.sessionId) === starting) {
+        this.startingTurns.delete(input.sessionId);
+      }
+    }
+  }
+
+  private async runUserTurn(
+    input: SendUserMessageInput,
+    expectedGeneration: number,
+    abortController: AbortController,
+  ): Promise<void> {
     if (input.image && !this.capabilities.imageInput) {
       throw new Error('当前模型未明确支持图片输入，请切换到支持视觉的模型');
     }
@@ -647,11 +700,15 @@ export class AgentRuntime {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
       throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
     }
+    // Stopped before anything was written: nothing to record, nothing may run.
+    if (abortController.signal.aborted) {
+      if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
+      throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
+    }
     session.metadata = mergeBridgeOriginMetadata(session.metadata, input.context);
     bindSessionCharacter(session, input.context, input.characterId, input.relationshipId);
     const persistIncomingMessage = input.persistMessage ?? input.context.sourceType !== 'system';
     const incomingMessage = persistIncomingMessage ? createIncomingMessage(input) : null;
-    const abortController = new AbortController();
     const ephemeralInput = persistIncomingMessage
       ? null
       : ({

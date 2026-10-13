@@ -45,6 +45,8 @@ export interface AgentClient {
    */
   releaseDeviceControl(sessionId: string): Promise<void>;
   abortCurrentReply(sessionId: string): Promise<void>;
+  /** Whether a reply for this session is running or still starting, whoever started it. */
+  isReplyRunning?(sessionId: string): boolean;
   sendUserMessage(input: SendUserMessageInput): Promise<void>;
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
   /**
@@ -145,6 +147,10 @@ class EmbeddedAgentClient implements AgentClient {
 
   abortCurrentReply(sessionId: string): Promise<void> {
     return this.runtime.abortCurrentReply(sessionId);
+  }
+
+  isReplyRunning(sessionId: string): boolean {
+    return this.runtime.isReplyRunning(sessionId);
   }
 
   sendUserMessage(input: SendUserMessageInput): Promise<void> {
