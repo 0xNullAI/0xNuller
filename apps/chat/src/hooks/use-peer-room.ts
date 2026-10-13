@@ -7,6 +7,7 @@ import {
   type ChatMessage,
   type ChatMedia,
   type ChatMention,
+  type CommandHandler,
   type DeviceCommand,
   type MemberState,
   type CmdAction,
@@ -262,7 +263,7 @@ export function usePeerRoom(displayName: string) {
   const transportRef = useRef<RoomTransport | null>(null);
   const roomIdRef = useRef<string | null>(null);
   const joinOptsRef = useRef<JoinOptions>({});
-  const onCommandRef = useRef<((cmd: DeviceCommand, peerId: string) => void) | null>(null);
+  const onCommandRef = useRef<CommandHandler | null>(null);
   const onWaveformRef = useRef<((transfer: WaveformTransfer, peerId: string) => void) | null>(null);
   const presenceTimerRef = useRef<number | null>(null);
   const peerTimersRef = useRef<Map<string, number>>(new Map());
@@ -279,7 +280,7 @@ export function usePeerRoom(displayName: string) {
     timer: null,
   });
 
-  const setCommandHandler = useCallback((handler: (cmd: DeviceCommand, peerId: string) => void) => {
+  const setCommandHandler = useCallback((handler: CommandHandler) => {
     onCommandRef.current = handler;
   }, []);
 
@@ -603,8 +604,8 @@ export function usePeerRoom(displayName: string) {
             );
             break;
           }
-          case 'cmd':
-            onCommandRef.current?.(
+          case 'cmd': {
+            const outcome = onCommandRef.current?.(
               {
                 action: data.a as CmdAction,
                 kind: data.kind as DeviceCommand['kind'],
@@ -626,7 +627,16 @@ export function usePeerRoom(displayName: string) {
               },
               from,
             );
+            // A group AI waits for this device's own verdict; only the server sends `ai:` ids.
+            if (from.startsWith('ai:') && typeof data.rid === 'string' && data.rid.length <= 64)
+              send({
+                t: 'cmd-ack',
+                rid: data.rid,
+                ok: outcome?.ok === true,
+                r: outcome?.message ?? '对方设备没有处理',
+              });
             break;
+          }
           case 'wave':
             onWaveformRef.current?.(
               {
@@ -1010,6 +1020,9 @@ export function usePeerRoom(displayName: string) {
         ciA: s.currentIndexA,
         ciB: s.currentIndexB,
         da: s.deviceAccess,
+        // Always an array from this version on: it is what makes this member a possible
+        // group AI target at all, so older clients are never sent AI commands.
+        ag: s.aiAccess ?? [],
         oc: s.opossumConnected,
         obt: s.opossumBattery,
         sk: s.sensorKind,

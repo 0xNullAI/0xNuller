@@ -2,6 +2,7 @@ import { markGroupRead } from './group-inbox';
 import type { ChatReplyContext } from './lib/protocol';
 import {
   deviceConversationAccess,
+  groupAiDeviceAccess,
   setDeviceConversationAccess,
   subscribeDeviceConversationAccess,
   readPreference,
@@ -21,17 +22,26 @@ import {
 } from '@0xnullai/auth';
 import { useChannelRotation, useDevice } from '@0xnullai/device-runtime';
 import { useWaveforms } from '@0xnullai/waveforms';
-import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { usePeerRoom } from './hooks/use-peer-room';
 import { executeCommand, type CommandContext } from './lib/commands';
 import { CancelledFireHolds } from './lib/fire-cancel';
 import { selectChatInboxConversation, subscribeChatInboxSelection } from './inbox';
 import { initialChatTarget } from './lib/initial-chat-target';
 import { subscribeChatRouteChanges } from './lib/chat-route-changes';
-import { chatConversationAllowsCommand } from './lib/conversation-device-policy';
+import {
+  chatConversationAllowsCommand,
+  groupAiCommandRefusal,
+} from './lib/conversation-device-policy';
 import { markDmRead } from './inbox';
 import { sendRoomMedia } from './lib/send-room-media';
-import type { DeviceCommand, CmdAction, PlayMode, WaveformTransfer } from './lib/protocol';
+import type {
+  CommandOutcome,
+  DeviceCommand,
+  CmdAction,
+  PlayMode,
+  WaveformTransfer,
+} from './lib/protocol';
 import { ChatAppView } from './components/ChatAppView';
 
 type FirePolicy = 'sum' | 'max' | 'avg';
@@ -185,6 +195,21 @@ export default function App() {
       ),
     () => false,
   );
+  // The group's AIs this account lets control its device here, as a stable key for React.
+  const aiAccessKey = useSyncExternalStore(
+    subscribeDeviceConversationAccess,
+    () =>
+      peerRoom.isDm || !peerRoom.roomId
+        ? ''
+        : peerRoom.agents
+            .filter((agent) =>
+              groupAiDeviceAccess(currentAuthUserId(), peerRoom.roomId ?? '', agent.id),
+            )
+            .map((agent) => agent.id)
+            .join(','),
+    () => '',
+  );
+  const aiAccess = useMemo(() => (aiAccessKey ? aiAccessKey.split(',') : []), [aiAccessKey]);
 
   const activeRoomRef = useRef<{ roomId: string | null; mediaToken: string | null }>({
     roomId: null,
@@ -518,33 +543,12 @@ export default function App() {
   } = peerRoom;
   const { addRemoteWaveform } = waveforms;
 
-  // Register the remote command handler
-  const handleCommand = useCallback(
-    (cmd: DeviceCommand, peerId: string) => {
-      if (
-        !chatConversationAllowsCommand(
-          currentAuthUserId(),
-          peerRoom.roomId,
-          peerRoom.isDm,
-          cmd.action,
-        )
-      )
-        return;
-      // Group AIs run on the server and have no device tools; the server also refuses to
-      // relay a command under an AI's name. Anything that still claims to be one is dropped.
-      if (peerId.startsWith('ai:')) return;
-      // Hard-reject when we do not hold the device lease. **It has to be blocked here**
-      // rather than by only disabling UI buttons: commands from other people in the room
-      // arrive over the room relay and never touch the UI.
-      //
-      // Stop commands are the exception — handing off control must not take away other
-      // people's ability to stop your device.
-      if (
-        !hasDeviceLease('chat') &&
-        !['fire_release', 'stop', 'stop_wave', 'vibrate_stop'].includes(cmd.action)
-      ) {
-        return;
-      }
+  /**
+   * Carry out a command that already passed its sender's gates, against this device's own
+   * limits. Returns the device's own description of what happened, if it has one.
+   */
+  const applyCommand = useCallback(
+    (cmd: DeviceCommand, peerId: string): string => {
       if (cmd.action === 'stop') cancelHeldFire();
       // Queue intent: update the local authoritative state. broadcastStateSlow syncs it
       // out to everyone from an effect.
@@ -562,20 +566,20 @@ export default function App() {
           setQueueB(q);
           setCurrentIndexB(nextIdx);
         }
-        return;
+        return '';
       }
       if (cmd.action === 'set_play_mode' && cmd.c && cmd.mode) {
         if (cmd.c === 'A') setPlayModeA(cmd.mode);
         else setPlayModeB(cmd.mode);
-        return;
+        return '';
       }
       if (cmd.action === 'set_interval' && cmd.c && cmd.iv != null) {
         if (cmd.c === 'A') setIntervalASec(cmd.iv);
         else setIntervalBSec(cmd.iv);
-        return;
+        return '';
       }
       if (cmd.action === 'fire_active' && cmd.c && cmd.v != null) {
-        if (cancelledFire.current.swallow(cmd.c, peerId, Date.now())) return;
+        if (cancelledFire.current.swallow(cmd.c, peerId, Date.now())) return '';
         const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
         if (map.size === 0) {
           // Empty → non-empty edge: snapshot the baseline
@@ -585,14 +589,14 @@ export default function App() {
         }
         map.set(peerId, { boost: cmd.v, ts: Date.now() });
         callApplyFire(cmd.c);
-        return;
+        return '';
       }
       if (cmd.action === 'fire_release' && cmd.c) {
         cancelledFire.current.release(cmd.c, peerId);
         const map = cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current;
         map.delete(peerId);
         callApplyFire(cmd.c);
-        return;
+        return '';
       }
       // Strength delta: v = signed delta, the owner accumulates it and clamps. Safe under
       // concurrent controllers (every message is added on top).
@@ -612,7 +616,7 @@ export default function App() {
           const current = channel === 'A' ? dev.strengthA : dev.strengthB;
           dev.setStrength(channel, Math.max(0, Math.min(limit, current + delta)));
         }
-        return;
+        return '';
       }
       // Opossum strength delta: same semantics as adjust_strength, but applied to the
       // Opossum intensity, reusing the same limitA/limitB safety caps (v1 simplification:
@@ -623,7 +627,7 @@ export default function App() {
         const current =
           cmd.c === 'A' ? (dev.opossum?.intensityA ?? 0) : (dev.opossum?.intensityB ?? 0);
         dev.setOpossumIntensity(cmd.c, Math.max(0, Math.min(limit, current + cmd.v)));
-        return;
+        return '';
       }
 
       const ctx: CommandContext = {
@@ -642,9 +646,113 @@ export default function App() {
         },
         notify: notifyLocal,
       };
-      executeCommand(cmd, ctx);
+      return executeCommand(cmd, ctx);
     },
-    [callApplyFire, cancelHeldFire, notifyLocal, peerRoom.roomId, peerRoom.isDm],
+    [callApplyFire, cancelHeldFire, notifyLocal],
+  );
+
+  const agentIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    agentIdsRef.current = peerRoom.agents.map((agent) => agent.id);
+  }, [peerRoom.agents]);
+
+  /**
+   * A group AI's command, relayed by the server. This device decides for itself: that exact
+   * AI must be allowed here, the lease must be held (stops excepted), and the limits apply as
+   * for anyone. The answer goes back to the AI, so it says what really happened.
+   */
+  const handleAgentCommand = useCallback(
+    (cmd: DeviceCommand, agentId: string): CommandOutcome => {
+      const refusal = groupAiCommandRefusal(
+        currentAuthUserId(),
+        peerRoom.roomId,
+        peerRoom.isDm,
+        agentId,
+        agentIdsRef.current,
+        cmd.action,
+      );
+      if (refusal) return { ok: false, message: refusal };
+      const stopping = ['stop', 'stop_wave', 'vibrate_stop'].includes(cmd.action);
+      if (!hasDeviceLease('chat') && !stopping)
+        return { ok: false, message: '对方的设备当前没有在聊天中使用' };
+      const dev = deviceRef.current;
+      const from = `ai:${agentId}`;
+      switch (cmd.action) {
+        case 'adjust_strength': {
+          if (!dev.connected) return { ok: false, message: '对方没有连接郊狼' };
+          if (!cmd.c || cmd.v == null) return { ok: false, message: '参数缺失' };
+          const firing = (cmd.c === 'A' ? fireBoostsA.current : fireBoostsB.current).size > 0;
+          const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
+          const before = cmd.c === 'A' ? dev.strengthA : dev.strengthB;
+          applyCommand(cmd, from);
+          if (firing) return { ok: true, message: `${cmd.c} 通道基础强度已调整 ${cmd.v}` };
+          const after = Math.max(0, Math.min(limit, before + cmd.v));
+          return {
+            ok: true,
+            message: `${cmd.c} 通道强度 ${before} → ${after}（对方上限 ${limit}）`,
+          };
+        }
+        case 'vibrate_adjust': {
+          if (!dev.opossum?.connected) return { ok: false, message: '对方没有连接负鼠' };
+          if (!cmd.c || cmd.v == null) return { ok: false, message: '参数缺失' };
+          const limit = cmd.c === 'A' ? dev.limitA : dev.limitB;
+          const before = cmd.c === 'A' ? dev.opossum.intensityA : dev.opossum.intensityB;
+          applyCommand(cmd, from);
+          const after = Math.max(0, Math.min(limit, before + cmd.v));
+          return {
+            ok: true,
+            message: `振动 ${cmd.c} 通道 ${before} → ${after}（对方上限 ${limit}）`,
+          };
+        }
+        case 'change_wave':
+          if (!dev.connected) return { ok: false, message: '对方没有连接郊狼' };
+          if (!cmd.w || !waveformsRef.current.getWaveform(cmd.w))
+            return { ok: false, message: '对方没有这个波形' };
+          return { ok: true, message: applyCommand(cmd, from) };
+        case 'stop_wave':
+          if (!dev.connected) return { ok: false, message: '对方没有连接郊狼' };
+          return { ok: true, message: applyCommand(cmd, from) };
+        case 'vibrate_stop':
+          if (!dev.opossum?.connected) return { ok: false, message: '对方没有连接负鼠' };
+          return { ok: true, message: applyCommand(cmd, from) };
+        case 'stop':
+          return { ok: true, message: applyCommand(cmd, from) };
+        default:
+          return { ok: false, message: '不支持这个操作' };
+      }
+    },
+    [applyCommand, peerRoom.roomId, peerRoom.isDm],
+  );
+
+  // Register the remote command handler
+  const handleCommand = useCallback(
+    (cmd: DeviceCommand, peerId: string): CommandOutcome | void => {
+      // Only the server sends under an `ai:` id: no participant can choose one.
+      if (peerId.startsWith('ai:')) return handleAgentCommand(cmd, peerId.slice(3));
+      if (
+        !chatConversationAllowsCommand(
+          currentAuthUserId(),
+          peerRoom.roomId,
+          peerRoom.isDm,
+          cmd.action,
+        )
+      )
+        return;
+      // Hard-reject when we do not hold the device lease. **It has to be blocked here**
+      // rather than by only disabling UI buttons: commands from other people in the room
+      // arrive over the room relay and never touch the UI.
+      //
+      // Stop commands are the exception — handing off control must not take away other
+      // people's ability to stop your device.
+      if (
+        !hasDeviceLease('chat') &&
+        !['fire_release', 'stop', 'stop_wave', 'vibrate_stop'].includes(cmd.action)
+      ) {
+        return;
+      }
+      applyCommand(cmd, peerId);
+    },
+    [applyCommand, handleAgentCommand, peerRoom.roomId, peerRoom.isDm],
   );
 
   const priorConversationConsent = useRef({ enabled: false, roomId: peerRoom.roomId });
@@ -659,6 +767,17 @@ export default function App() {
       if (hasDeviceLease('chat')) deviceRef.current.stopAll();
     }
   }, [cancelHeldFire, conversationDeviceEnabled, peerRoom.roomId]);
+
+  // Withdrawing an AI's consent also ends what it started, as withdrawing a group's does.
+  const priorAiAccess = useRef({ ids: aiAccess, roomId: peerRoom.roomId });
+  useEffect(() => {
+    const prior = priorAiAccess.current;
+    priorAiAccess.current = { ids: aiAccess, roomId: peerRoom.roomId };
+    if (prior.roomId !== peerRoom.roomId) return;
+    const stillHere = new Set(peerRoom.agents.map((agent) => agent.id));
+    const revoked = prior.ids.some((id) => !aiAccess.includes(id) && stillHere.has(id));
+    if (revoked && hasDeviceLease('chat')) deviceRef.current.stopAll();
+  }, [aiAccess, peerRoom.agents, peerRoom.roomId]);
 
   useEffect(() => {
     setCommandHandler(handleCommand);
@@ -779,6 +898,7 @@ export default function App() {
         currentIndexA,
         currentIndexB,
         deviceAccess: conversationDeviceEnabled,
+        aiAccess,
         opossumConnected: device.opossum?.connected ?? false,
         opossumBattery: device.opossum?.battery ?? null,
         // Must resolve to explicit null (not undefined) when disconnected —
@@ -812,6 +932,7 @@ export default function App() {
     currentIndexA,
     currentIndexB,
     conversationDeviceEnabled,
+    aiAccess,
     device.opossum?.connected,
     device.opossum?.battery,
     device.sensor?.kind,

@@ -47,4 +47,30 @@ it('refuses text-only completions that claim a device or network action occurred
   expect(managedGroupAnswer(payload('我已经帮你控制设备并调整强度。'))).toBeNull();
   expect(managedGroupAnswer(payload('I just searched the web for you.'))).toBeNull();
   expect(managedGroupAnswer(payload('x'.repeat(4001)))).toBeNull();
+  // Once a device tool really succeeded, saying so is the truth.
+  expect(managedGroupAnswer(payload('我已经帮你调整强度了。'), true)).toBe(
+    '我已经帮你调整强度了。',
+  );
+});
+
+it('tells the model about its targets and tools only when it has a device turn', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE messages(id TEXT PRIMARY KEY,from_id TEXT,name TEXT,body TEXT)');
+    db.exec('CREATE TABLE message_sequences(sequence INTEGER PRIMARY KEY,message_id TEXT UNIQUE)');
+    db.prepare('INSERT INTO messages VALUES(?,?,?,?)').run('t', 'h', 'h', '{"x":"hi"}');
+    db.prepare('INSERT INTO message_sequences VALUES(?,?)').run(1, 't');
+    const sql = {
+      exec: (query: string, ...args: unknown[]) => ({
+        toArray: () => db.prepare(query).all(...(args as never[])),
+      }),
+    } as unknown as SqlStorage;
+    const agent = { id: 'a1', name: '助手', persona: '' };
+    expect(managedGroupPrompt(sql, 't', agent)?.tools).toBeUndefined();
+    const none = managedGroupPrompt(sql, 't', agent, []);
+    expect(none?.tools).toBeUndefined();
+    expect(JSON.stringify(none?.messages)).toContain('目前没有成员允许你控制设备');
+  } finally {
+    db.close();
+  }
 });

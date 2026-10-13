@@ -104,6 +104,8 @@ export interface DmTicketClaims {
   grantId?: string;
   /** The owner's character behind a group AI: 'group-agent', and 'group-ai' when known. */
   characterId?: string;
+  /** Model call within one group AI turn, only for 'group-ai'. */
+  round?: number;
   modelId?: string;
   bodyHash?: string;
   /** Account id the ticket was minted for. On a 'revoke' this is the account that caused it. */

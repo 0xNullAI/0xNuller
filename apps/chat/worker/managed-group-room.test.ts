@@ -68,7 +68,12 @@ function fixture(
   };
   const sockets: WebSocket[] = [];
   const tasks: Promise<unknown>[] = [];
-  const tickets: { payer: string; roleId: string; characterId?: string }[] = [];
+  const tickets: { payer: string; roleId: string; characterId?: string; round?: number }[] = [];
+  const bodies: {
+    messages: { role: string; content: string; tool_call_id?: string }[];
+    tools?: { function: { name: string } }[];
+    tool_choice?: string;
+  }[] = [];
   const llmFetch = vi.fn(async (request: Request) => {
     const body = await request.text();
     const ticket = request.headers.get('X-0xNullAI-Group-Ticket') ?? '';
@@ -79,8 +84,11 @@ function fixture(
       bodyHash: await sha256Body(body),
     });
     expect(claim).not.toBeNull();
-    expect(key).toBe(await groupAiReservationKey(ROOM, claim!.triggerId, claim!.roleId));
+    expect(key).toBe(
+      await groupAiReservationKey(ROOM, claim!.triggerId, claim!.roleId, claim!.round),
+    );
     tickets.push(claim!);
+    bodies.push(JSON.parse(body));
     return proxyResponse();
   });
   const registry = {
@@ -170,6 +178,7 @@ function fixture(
     room,
     tasks,
     tickets,
+    bodies,
     llmFetch,
     member,
     send,
@@ -384,6 +393,177 @@ it('refuses old host-run frames: nobody speaks or commands as an AI, and old set
     });
     expect(f.sent(bob).at(-1)).toMatchObject({ t: 'cmd', _from: 'alice-peer' });
     expect(f.sent(bob).at(-1)).not.toHaveProperty('as');
+  } finally {
+    f.db.close();
+  }
+});
+
+/** One model reply per call, in order; the last one repeats. */
+function replies(...payloads: Record<string, unknown>[]) {
+  let call = 0;
+  return () => Response.json(payloads[Math.min(call++, payloads.length - 1)]);
+}
+
+const toolCall = (name: string, args: Record<string, unknown>, id = 'c1') => ({
+  choices: [
+    {
+      message: {
+        content: '',
+        tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+      },
+    },
+  ],
+  credit_charged: 1,
+});
+
+/** A current client reporting a connected Coyote, and which AIs it lets control it. */
+const deviceReport = (allowed: string[] | undefined) => ({
+  t: 'ss',
+  n: 'Bob',
+  dc: true,
+  cy: [{ deviceId: 'd1', name: '郊狼' }],
+  cat: [{ id: 'w1', name: '呼吸', custom: false }],
+  oc: false,
+  ...(allowed ? { ag: allowed } : {}),
+});
+
+/** The target device answers each AI command the way the real client does. */
+function answerCommands(
+  f: ReturnType<typeof fixture>,
+  socket: WebSocket,
+  verdict: (frame: Record<string, unknown>) => { ok: boolean; r: string } | null,
+) {
+  vi.mocked(socket.send).mockImplementation((data) => {
+    const frame = JSON.parse(String(data)) as Record<string, unknown>;
+    const answer = frame.t === 'cmd' && typeof frame.rid === 'string' ? verdict(frame) : null;
+    if (answer)
+      setTimeout(() => void f.send(socket, { t: 'cmd-ack', rid: frame.rid, ...answer }), 0);
+  });
+}
+
+it('lets an AI control only a member who allowed it, clamped, and reports what the device did', async () => {
+  const f = fixture(
+    replies(toolCall('adjust_strength', { target: 't1', channel: 'A', delta: 50 }), {
+      choices: [{ message: { content: '好的，已经调整强度啦' } }],
+      credit_charged: 2,
+    }),
+  );
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    const carol = f.member('carol', 'Carol');
+    await f.bring(alice, 'alice');
+    const { id } = f.agents()[0]!;
+    await f.send(bob, deviceReport([id]));
+    await f.send(carol, deviceReport([]));
+    // Someone else answering Bob's command is ignored; only Bob's device decides.
+    answerCommands(f, bob, () => ({ ok: true, r: 'A 通道强度 0 → 10（对方上限 20）' }));
+    vi.mocked(carol.send).mockImplementation(() => {});
+    await f.mention(carol, id);
+    await Promise.all(f.tasks);
+
+    const commands = f.sent(bob).filter((data) => data.t === 'cmd');
+    expect(commands).toEqual([
+      expect.objectContaining({ a: 'adjust_strength', c: 'A', v: 10, _from: `ai:${id}` }),
+    ]);
+    expect(f.sent(carol).some((data) => data.t === 'cmd')).toBe(false);
+    expect(f.bodies[0]!.tools?.map((tool) => tool.function.name)).toContain('adjust_strength');
+    expect(JSON.stringify(f.bodies[0]!.messages)).toContain('t1：「Bob」');
+    expect(JSON.stringify(f.bodies[0]!.messages)).not.toContain('Carol」，郊狼');
+    expect(f.bodies[1]!.messages.at(-1)).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'c1',
+      content: '成功：A 通道强度 0 → 10（对方上限 20）',
+    });
+    // Each model call is its own reservation, all paid by the AI's owner.
+    expect(f.tickets.map((ticket) => [ticket.payer, ticket.round ?? 0])).toEqual([
+      ['alice', 0],
+      ['alice', 1],
+    ]);
+    expect(f.db.prepare('SELECT credits FROM room_agent_spend WHERE agent_id=?').get(id)).toEqual({
+      credits: 3,
+    });
+    const reply = f.db.prepare("SELECT body FROM messages WHERE from_id LIKE 'ai:%'").get() as {
+      body: string;
+    };
+    expect(JSON.parse(reply.body).x).toBe(
+      '好的，已经调整强度啦\n\n〔已操作〕把「Bob」的 A 通道调整了 +10',
+    );
+  } finally {
+    f.db.close();
+  }
+});
+
+it('offers no device tools without consent or to a client too old to report it', async () => {
+  const f = fixture();
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    const carol = f.member('carol', 'Carol');
+    await f.bring(alice, 'alice');
+    const { id } = f.agents()[0]!;
+    await f.send(bob, deviceReport(['someone-else']));
+    await f.send(carol, deviceReport(undefined));
+    await f.mention(bob, id);
+    await Promise.all(f.tasks);
+    expect(f.bodies[0]!.tools).toBeUndefined();
+    expect(JSON.stringify(f.bodies[0]!.messages)).toContain('目前没有成员允许你控制设备');
+  } finally {
+    f.db.close();
+  }
+});
+
+it('does not send once consent is withdrawn mid-turn, and never claims a refused action', async () => {
+  const f = fixture(
+    replies(
+      toolCall('set_wave', { target: 't1', channel: 'B', waveform: '呼吸' }),
+      toolCall('adjust_strength', { target: 't1', channel: 'A', delta: 3 }, 'c2'),
+      { choices: [{ message: { content: '已经帮你调整强度了' } }], credit_charged: 1 },
+    ),
+  );
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    await f.bring(alice, 'alice');
+    const { id } = f.agents()[0]!;
+    await f.send(bob, deviceReport([id]));
+    answerCommands(f, bob, (frame) => {
+      // The device refuses, then its owner withdraws consent before the next round.
+      setTimeout(() => void f.send(bob, deviceReport([])), 0);
+      return frame.a === 'change_wave' ? { ok: false, r: '对方的设备当前没有在聊天中使用' } : null;
+    });
+    await f.mention(bob, id);
+    await Promise.all(f.tasks);
+    expect(f.sent(bob).filter((data) => data.t === 'cmd')).toHaveLength(1);
+    expect(f.bodies[1]!.messages.at(-1)).toMatchObject({
+      content: '未执行：对方的设备当前没有在聊天中使用',
+    });
+    expect(f.bodies[2]!.messages.at(-1)).toMatchObject({ content: '未执行：对方已撤销授权或离开' });
+    // Nothing happened, so a reply claiming it did is withheld.
+    expect(f.aiReplies()).toBe(0);
+  } finally {
+    f.db.close();
+  }
+});
+
+it('ends after the last round with a text-only call, whatever the model keeps asking for', async () => {
+  const f = fixture(replies(toolCall('stop_all', { target: 't1' })));
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    await f.bring(alice, 'alice');
+    const { id } = f.agents()[0]!;
+    await f.send(bob, deviceReport([id]));
+    answerCommands(f, bob, () => ({ ok: true, r: '已停止所有输出' }));
+    await f.mention(bob, id);
+    await Promise.all(f.tasks);
+    expect(f.llmFetch).toHaveBeenCalledTimes(4);
+    expect(f.bodies.at(-1)!.tool_choice).toBe('none');
+    expect(f.sent(bob).filter((data) => data.t === 'cmd')).toHaveLength(3);
+    const reply = f.db.prepare("SELECT body FROM messages WHERE from_id LIKE 'ai:%'").get() as {
+      body: string;
+    };
+    expect(JSON.parse(reply.body).x).toContain('〔已操作〕停止了「Bob」的全部输出');
   } finally {
     f.db.close();
   }

@@ -37,8 +37,26 @@ import {
   wireRoomAgents,
   type RoomAgentRecord,
 } from './room-agents';
-import { managedGroupAnswer, managedGroupPrompt } from './managed-group-ai';
-import { sha256Body, signGroupAiTicket } from '../../../workers/auth/src/group-ai-ticket';
+import {
+  managedGroupAnswer,
+  managedGroupPrompt,
+  managedGroupToolCalls,
+  type GroupChatMessage,
+} from './managed-group-ai';
+import {
+  agentTargets,
+  MAX_TOOL_CALLS_PER_ROUND,
+  snapshotFromFast,
+  snapshotFromSlow,
+  toolCommand,
+  type AgentTarget,
+  type PeerSnapshot,
+} from './room-agent-tools';
+import {
+  MAX_GROUP_AI_ROUNDS,
+  sha256Body,
+  signGroupAiTicket,
+} from '../../../workers/auth/src/group-ai-ticket';
 // RoomDO: one instance per group (idFromName(roomCode)), and one per direct-message
 // conversation (idFromName(dmRoomCode(a, b)) — see dm.ts).
 // Responsibilities: WebSocket relay (replaces the public MQTT broker) + connection-level presence + chat history (SQLite) persistence and replay
@@ -89,6 +107,14 @@ interface Attachment {
   indexRegistered?: boolean;
 }
 
+/** How long a group AI waits for the target's device to confirm a command. */
+const AGENT_ACK_TIMEOUT_MS = 5_000;
+
+interface AgentCommandOutcome {
+  ok: boolean;
+  message: string;
+}
+
 /** Minimum interval (ms) between lobby keepalive reports from a public group. */
 const LOBBY_KEEPALIVE_MS = 20 * 1000;
 
@@ -123,6 +149,16 @@ export class RoomDO extends DurableObject<Env> {
     }
   }
   private roomAgentsReady = false;
+  /**
+   * Each member's latest device report, for choosing a group AI's targets. Memory only: a
+   * woken object relearns it from the next 5 s heartbeat, and until then offers no targets.
+   */
+  private peerSnapshots = new Map<string, PeerSnapshot>();
+  /** Device commands a group AI sent and is waiting on, by request id. */
+  private pendingAgentCommands = new Map<
+    string,
+    { peerId: string; settle: (outcome: AgentCommandOutcome) => void }
+  >();
   // Same treatment for the code. It is read on every frame now that it decides whether this
   // instance is a DM, and hibernation can wake the DO straight into webSocketMessage without
   // fetch() ever running again — so it cannot be a field set on connect.
@@ -743,12 +779,38 @@ export class RoomDO extends DurableObject<Env> {
         return;
       }
 
+      case 'cmd-ack': {
+        // Only the device the command went to may answer it.
+        const pending =
+          typeof msg.rid === 'string' ? this.pendingAgentCommands.get(msg.rid) : undefined;
+        if (!pending || pending.peerId !== att.peerId) return;
+        pending.settle({
+          ok: msg.ok === true,
+          message:
+            typeof msg.r === 'string' && msg.r.trim()
+              ? msg.r.trim().slice(0, 200)
+              : msg.ok === true
+                ? '已执行'
+                : '对方设备拒绝了这个操作',
+        });
+        return;
+      }
+
       case 'leave': {
         this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
         return;
       }
 
       default: {
+        if (!dm && att.accountId && (t === 'ss' || t === 'sf')) {
+          const prev = this.peerSnapshots.get(att.peerId);
+          const next =
+            t === 'ss'
+              ? snapshotFromSlow(prev, att.accountId, msg, Date.now())
+              : snapshotFromFast(prev, msg);
+          if (next) this.peerSnapshots.set(att.peerId, next);
+          else this.peerSnapshots.delete(att.peerId);
+        }
         // sf / ss / presence: broadcast to the rest of the room, injecting a trusted _from.
         this.broadcast({ ...msg, _from: att.peerId }, ws);
         // Piggyback the presence heartbeat as the lobby keepalive (throttled), so a group with people in it never shows as empty.
@@ -1031,6 +1093,9 @@ export class RoomDO extends DurableObject<Env> {
     const remaining = this.ctx.getWebSockets().filter((w) => w !== ws);
     if (att) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
+      this.peerSnapshots.delete(att.peerId);
+      for (const pending of [...this.pendingAgentCommands.values()])
+        if (pending.peerId === att.peerId) pending.settle({ ok: false, message: '对方已离开' });
     }
     if (remaining.length === 0) {
       // Keep the first empty instant stable across duplicate close/error callbacks.
@@ -1566,7 +1631,62 @@ export class RoomDO extends DurableObject<Env> {
     }
   }
 
-  /** The RoomDO alone builds the paid request; browsers never receive its signed billing ticket. */
+  /** Members whose fresh report allows this AI, still connected and still in the group. */
+  private agentTargetsFor(agentId: string): AgentTarget[] {
+    return agentTargets(this.peerSnapshots, agentId, Date.now(), (peerId, account) =>
+      this.ctx.getWebSockets().some((socket) => {
+        try {
+          const att = socket.deserializeAttachment() as Attachment | null;
+          return (
+            att?.peerId === peerId &&
+            att.accountId === account &&
+            !att.leaseClosed &&
+            (att.expiresAt === undefined || att.expiresAt > Date.now()) &&
+            activeGroupMember(this.sql, account, att.membershipVersion ?? -1)
+          );
+        } catch {
+          return false;
+        }
+      }),
+    );
+  }
+
+  /**
+   * Send one command to the target's device and wait for its own verdict. The device checks
+   * its consent, lease and limits; silence is reported as silence, never as success.
+   */
+  private sendAgentCommand(
+    agent: RoomAgentRecord,
+    target: AgentTarget,
+    command: Record<string, unknown>,
+  ): Promise<AgentCommandOutcome> {
+    const rid = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = setTimeout(
+        () => settle({ ok: false, message: '对方设备没有回应' }),
+        AGENT_ACK_TIMEOUT_MS,
+      );
+      const settle = (outcome: AgentCommandOutcome) => {
+        clearTimeout(timer);
+        this.pendingAgentCommands.delete(rid);
+        resolve(outcome);
+      };
+      this.pendingAgentCommands.set(rid, { peerId: target.peerId, settle });
+      this.sendTo(target.peerId, {
+        t: 'cmd',
+        to: target.peerId,
+        ...command,
+        rid,
+        _from: `ai:${agent.id}`,
+      });
+    });
+  }
+
+  /**
+   * The RoomDO alone builds the paid requests; browsers never receive a signed billing ticket.
+   * A turn is at most MAX_GROUP_AI_ROUNDS model calls, each reserved and settled on its own
+   * and each counted against the owner's daily cap; device tools run between them.
+   */
   private async runManagedGroupTurn(
     triggerId: string,
     agent: RoomAgentRecord,
@@ -1592,65 +1712,129 @@ export class RoomDO extends DurableObject<Env> {
       notice('暂时无法回复', '群 AI 服务暂不可用');
       return;
     }
-    const payload = managedGroupPrompt(this.sql, triggerId, agent);
-    if (!payload) return;
-    const body = JSON.stringify(payload);
-    const { ticket, reservationKey } = await signGroupAiTicket(this.env.DM_TICKET_SECRET, {
-      payer: owner,
-      room,
-      triggerId,
-      roleId: agent.id,
-      grantId,
-      modelId: payload.model,
-      bodyHash: await sha256Body(body),
-      ...(agent.characterId ? { characterId: agent.characterId } : {}),
-    });
-    // Recheck after ticket creation too: no paid request after a removal or persona change.
-    if (!(await current())) return;
-    let response: Response;
-    try {
-      response = await this.env.LLM.fetch(
-        new Request('https://llm.0xnullai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Idempotency-Key': reservationKey,
-            'X-0xNullAI-Group-Ticket': ticket,
-          },
-          body,
-        }),
-      );
-    } catch {
-      notice('暂时无法回复，请稍后再 @', '模型连接失败，请查看 Credit 账本');
+    const targets = this.agentTargetsFor(agent.id);
+    const base = managedGroupPrompt(this.sql, triggerId, agent, targets);
+    if (!base) return;
+    const messages: GroupChatMessage[] = [...base.messages];
+    const actions: string[] = [];
+    let answer: string | null = null;
+    // Set once the turn has ended early and already told whoever needs telling.
+    let stopped = false;
+    for (let round = 0; round < MAX_GROUP_AI_ROUNDS && !stopped; round++) {
+      if (round > 0 && agentOverDailyCap(this.sql, agent, Date.now())) {
+        notice('今日额度已用完', '今天的群 AI 额度已用完，后续操作没有继续');
+        stopped = true;
+        break;
+      }
+      const last = round === MAX_GROUP_AI_ROUNDS - 1;
+      const payload = {
+        ...base,
+        messages,
+        // The last call may only talk: it reports what the tools did, it cannot do more.
+        ...(base.tools && last ? { tool_choice: 'none' } : {}),
+      };
+      const body = JSON.stringify(payload);
+      const { ticket, reservationKey } = await signGroupAiTicket(this.env.DM_TICKET_SECRET, {
+        payer: owner,
+        room,
+        triggerId,
+        roleId: agent.id,
+        grantId,
+        modelId: payload.model,
+        bodyHash: await sha256Body(body),
+        ...(agent.characterId ? { characterId: agent.characterId } : {}),
+        ...(round ? { round } : {}),
+      });
+      // Recheck after ticket creation too: no paid request after a removal or persona change.
+      if (!(await current())) {
+        stopped = true;
+        break;
+      }
+      let response: Response;
+      try {
+        response = await this.env.LLM.fetch(
+          new Request('https://llm.0xnullai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Idempotency-Key': reservationKey,
+              'X-0xNullAI-Group-Ticket': ticket,
+            },
+            body,
+          }),
+        );
+      } catch {
+        notice('暂时无法回复，请稍后再 @', '模型连接失败，请查看 Credit 账本');
+        stopped = true;
+        break;
+      }
+      let result: { credit_charged?: unknown; billing_status?: unknown; choices?: unknown } | null;
+      try {
+        result = (await response.json()) as typeof result;
+      } catch {
+        result = null;
+      }
+      if (typeof result?.credit_charged === 'number')
+        recordAgentSpend(this.sql, agent.id, result.credit_charged, Date.now());
+      if (!response.ok || typeof result?.credit_charged !== 'number') {
+        notice(
+          '暂时无法回复',
+          response.status === 402
+            ? 'Credit 不足，没有回复'
+            : response.status === 401
+              ? '对应的角色已删除或账号不可用，请撤出这个 AI'
+              : result?.billing_status === 'pending' || result?.billing_status === 'unknown'
+                ? '账务待核对，请查看 Credit 账本'
+                : '暂时无法回复',
+        );
+        stopped = true;
+        break;
+      }
+      const calls = last ? [] : managedGroupToolCalls(result, MAX_TOOL_CALLS_PER_ROUND);
+      if (calls.length === 0 || !base.tools) {
+        answer = managedGroupAnswer(result, actions.length > 0);
+        break;
+      }
+      const said = (result.choices as { message?: { content?: unknown } }[] | undefined)?.[0]
+        ?.message?.content;
+      messages.push({
+        role: 'assistant',
+        content: typeof said === 'string' ? said : '',
+        tool_calls: calls,
+      });
+      for (const call of calls) {
+        let outcome: AgentCommandOutcome;
+        const planned = toolCommand(call, targets);
+        if (!planned.ok) outcome = { ok: false, message: planned.message };
+        else if (!(await current())) {
+          stopped = true;
+          outcome = { ok: false, message: '这次请求已失效' };
+        } else {
+          // Consent may have been withdrawn since the turn began; ask the live reports again.
+          const live = this.agentTargetsFor(agent.id).find(
+            (candidate) => candidate.peerId === planned.target.peerId,
+          );
+          outcome = live
+            ? await this.sendAgentCommand(agent, live, planned.command)
+            : { ok: false, message: '对方已撤销授权或离开' };
+          if (outcome.ok) actions.push(planned.summary);
+        }
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: `${outcome.ok ? '成功' : '未执行'}：${outcome.message}`,
+        });
+      }
+    }
+    // What really happened on someone's device is always published, even without a reply.
+    const record = actions.length ? `〔已操作〕${actions.join('；')}` : '';
+    const text = [answer, record].filter(Boolean).join('\n\n');
+    if (!text) {
+      if (!stopped)
+        notice('没有生成可发送的回复，可以换个说法再 @', '没有生成可发送的回复，本次已结算');
       return;
     }
-    let result: { credit_charged?: unknown; billing_status?: unknown; choices?: unknown } | null;
-    try {
-      result = (await response.json()) as typeof result;
-    } catch {
-      result = null;
-    }
-    if (typeof result?.credit_charged === 'number')
-      recordAgentSpend(this.sql, agent.id, result.credit_charged, Date.now());
-    if (!response.ok || typeof result?.credit_charged !== 'number') {
-      notice(
-        '暂时无法回复',
-        response.status === 402
-          ? 'Credit 不足，没有回复'
-          : response.status === 401
-            ? '对应的角色已删除或账号不可用，请撤出这个 AI'
-            : result?.billing_status === 'pending' || result?.billing_status === 'unknown'
-              ? '账务待核对，请查看 Credit 账本'
-              : '暂时无法回复',
-      );
-      return;
-    }
-    const answer = managedGroupAnswer(result);
-    if (!answer) {
-      notice('没有生成可发送的回复，可以换个说法再 @', '没有生成可发送的回复，本次已结算');
-      return;
-    }
-    if (!(await current())) {
+    if (!actions.length && !(await current())) {
       notice('已离开或设置已改变', '已离开或设置已改变，已结算的回复未发送');
       return;
     }
@@ -1658,7 +1842,7 @@ export class RoomDO extends DurableObject<Env> {
       id: crypto.randomUUID(),
       _from: `ai:${agent.id}`,
       n: agent.name,
-      x: answer,
+      x: text.slice(0, 4000),
       ts: Date.now(),
     };
     const accepted = this.ctx.storage.transactionSync(() => {
