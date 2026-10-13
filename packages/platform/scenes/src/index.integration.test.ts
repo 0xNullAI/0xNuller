@@ -844,3 +844,21 @@ describe('cards adapted from a public card', () => {
     ]);
   });
 });
+
+describe('account sync retries', () => {
+  it('waits after a failed sync instead of retrying on every read', async () => {
+    vi.useFakeTimers();
+    try {
+      await syncScenes();
+      loadScenes();
+      loadScenes();
+      await syncScenes();
+      expect(syncMocks.pullContent).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(31_000);
+      await syncScenes();
+      expect(syncMocks.pullContent).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

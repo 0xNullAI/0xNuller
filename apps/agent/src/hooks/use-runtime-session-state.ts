@@ -355,6 +355,14 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
 
     const unsubscribe = client.subscribe((event) => {
       if (generation !== accountGenerationRef.current) return;
+      // Device state is a reading, not a conversation event: keep it out of the event log,
+      // and re-render only when the reading actually changed.
+      if (event.type === 'device-state-changed') {
+        setLiveDeviceState((current) =>
+          sameShallow(current, event.state) ? current : event.state,
+        );
+        return;
+      }
       setEvents((current) => [event, ...current].slice(0, RECENT_EVENT_BUFFER));
 
       const isActiveSessionEvent = isActiveRuntimeSessionEvent(event, sessionId);
@@ -383,10 +391,6 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
           onRuntimeEventRef.current?.(event);
         }
         return;
-      }
-
-      if (event.type === 'device-state-changed') {
-        setLiveDeviceState(event.state);
       }
 
       if (event.type === 'device-command-executed') {
@@ -455,4 +459,12 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     refreshCurrentSession,
     loadOlderSessionMessages,
   };
+}
+
+function sameShallow<T extends object>(a: T, b: T): boolean {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys)
+    if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) return false;
+  return true;
 }

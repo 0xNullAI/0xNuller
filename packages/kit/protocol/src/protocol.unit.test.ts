@@ -728,3 +728,27 @@ describe('CoyoteProtocolAdapter facade', () => {
     ).rejects.toThrow(/paw-prints/);
   });
 });
+
+describe('state notifications', () => {
+  it('tells listeners only when a tick changes the state, not on every idle tick', async () => {
+    const characteristic = new MockCharacteristic(async () => {});
+    const protocol = new CoyoteV3ProtocolAdapter();
+    const internal = protocol as unknown as {
+      state: ReturnType<typeof createEmptyDeviceState>;
+      writeChar: MockCharacteristic | null;
+      onTick(): Promise<void>;
+    };
+    internal.state = { ...createEmptyDeviceState(), connected: true };
+    internal.writeChar = characteristic;
+    const seen: number[] = [];
+    protocol.subscribe((state) => seen.push(state.strengthA));
+    await internal.onTick();
+    await internal.onTick();
+    await internal.onTick();
+    expect(seen).toEqual([0]);
+    internal.state = { ...internal.state, strengthA: 5 };
+    await internal.onTick();
+    await internal.onTick();
+    expect(seen).toEqual([0, 5]);
+  });
+});

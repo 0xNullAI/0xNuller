@@ -25,7 +25,8 @@ export function useAuxDeviceState<TState extends { connected: boolean }>(
       if (!cancelled) setState(next);
     });
     const unsubscribe = client.onStateChanged((next) => {
-      if (!cancelled) setState(next);
+      // Disconnected clients report a fresh empty object on every Coyote tick.
+      if (!cancelled) setState((current) => (sameShallow(current, next) ? current : next));
     });
     return () => {
       cancelled = true;
@@ -34,4 +35,12 @@ export function useAuxDeviceState<TState extends { connected: boolean }>(
   }, [client]);
 
   return state;
+}
+
+function sameShallow<T extends object>(a: T, b: T): boolean {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys)
+    if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) return false;
+  return true;
 }

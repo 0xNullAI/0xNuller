@@ -15,9 +15,13 @@ import type { SceneLibrary } from './index';
 
 let cachedJson: string | null = null;
 let cachedLib: SceneLibrary | null = null;
+let cachedSource: SceneLibrary | null = null;
 
 function snapshot(): SceneLibrary {
   const lib = loadScenes();
+  // The store hands back the same object until the stored text changes.
+  if (lib === cachedSource && cachedLib) return cachedLib;
+  cachedSource = lib;
   const json = JSON.stringify(lib);
   if (json !== cachedJson || !cachedLib) {
     cachedJson = json;

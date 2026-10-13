@@ -316,7 +316,9 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
 
     try {
       await this.performTick();
-      if (!this.tickPaused) {
+      // A tick runs ten times a second whether or not anything moved. Telling every listener
+      // each time re-rendered whole apps for nothing; only a real change is news.
+      if (!this.tickPaused && !sameDeviceState(this.lastEmitted, this.state)) {
         this.emit();
       }
     } catch {
@@ -390,8 +392,11 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
     return writeCharacteristicValueShared(characteristic, value, options);
   }
 
+  private lastEmitted: DeviceState | null = null;
+
   protected emit(): void {
     const snapshot = this.getState();
+    this.lastEmitted = { ...snapshot };
     for (const listener of this.listeners) {
       listener(snapshot);
     }
@@ -418,4 +423,11 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
    * V3 sends a BF packet; V2 is a no-op (limits enforced via clamp at tick).
    */
   protected abstract writeLimitsToDevice(): Promise<void>;
+}
+
+function sameDeviceState(a: DeviceState | null, b: DeviceState): boolean {
+  if (!a) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof DeviceState)[]);
+  for (const key of keys) if (a[key] !== b[key]) return false;
+  return true;
 }
