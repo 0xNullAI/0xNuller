@@ -344,13 +344,15 @@ export async function reserveCredits(
       now - CREDIT_RESERVATION_TTL_MS,
     )
     .first<{ idempotency_key: string }>();
-  const row = await env.DB.prepare(
-    `SELECT user_id, usage_kind, model_id, reserved_credits, charged_credits, status
-       FROM credit_reservations WHERE idempotency_key = ?`,
-  )
-    .bind(input.idempotencyKey)
-    .first<Record<string, unknown>>();
-  const balance = await creditBalance(env, userId, now);
+  const [row, balance] = await Promise.all([
+    env.DB.prepare(
+      `SELECT user_id, usage_kind, model_id, reserved_credits, charged_credits, status
+         FROM credit_reservations WHERE idempotency_key = ?`,
+    )
+      .bind(input.idempotencyKey)
+      .first<Record<string, unknown>>(),
+    creditBalance(env, userId, now),
+  ]);
   if (
     !row ||
     row.user_id !== userId ||
@@ -3599,13 +3601,26 @@ const authWorker = {
         if (!target) return err('用户不存在', 404, cors);
 
         const isSelf = viewer.id === target.id;
-        if (!isSelf && (await blockedBetween(env, viewer.id, target.id))) {
-          return err('用户不存在', 404, cors);
-        }
+        // Independent reads go out together; nothing is returned before the block check.
+        const [blocked, row, [following, followedBy], [followerCount, followingCount]] =
+          await Promise.all([
+            isSelf ? false : blockedBetween(env, viewer.id, target.id),
+            env.DB.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
+              .bind(target.id)
+              .first<Record<string, unknown>>(),
+            isSelf
+              ? [false, false]
+              : Promise.all([
+                  follows(env, viewer.id, target.id),
+                  follows(env, target.id, viewer.id),
+                ]),
+            Promise.all([
+              countFollows(env, 'followee_id', target.id),
+              countFollows(env, 'follower_id', target.id),
+            ]),
+          ]);
+        if (blocked) return err('用户不存在', 404, cors);
 
-        const row = await env.DB.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
-          .bind(target.id)
-          .first<Record<string, unknown>>();
         const profile = row
           ? publicProfile(row)
           : {
@@ -3618,12 +3633,6 @@ const authWorker = {
               discoverable: true,
               visibility: 'public' as const,
             };
-        const [following, followedBy] = !isSelf
-          ? await Promise.all([
-              follows(env, viewer.id, target.id),
-              follows(env, target.id, viewer.id),
-            ])
-          : [false, false];
         const isFriend = following && followedBy;
 
         // The birth date never leaves its owner's own view. The profile editor
@@ -3632,11 +3641,6 @@ const authWorker = {
         // public is consent to the bio and the region, not to that. A promise
         // made in the UI has to be kept by the endpoint, or it is not a promise.
         const shown = isSelf ? profile : { ...profile, birthDate: null };
-
-        const [followerCount, followingCount] = await Promise.all([
-          countFollows(env, 'followee_id', target.id),
-          countFollows(env, 'follower_id', target.id),
-        ]);
 
         // Album photos retain their independent per-photo access policy.
         const photos = await visiblePhotos(env, target.id, isSelf, isFriend);

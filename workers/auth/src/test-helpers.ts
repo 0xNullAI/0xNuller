@@ -59,6 +59,19 @@ class Stmt {
     const { changes } = this.db.prepare(this.sql).run(...(this.args as never[]));
     return { success: true, meta: { changes: Number(changes) } };
   }
+
+  /** Like a D1 batch entry: rows for statements that return them, change counts otherwise. */
+  batchSync(): { success: true; results: unknown[]; meta: { changes: number } } {
+    const statement = this.db.prepare(this.sql);
+    if (statement.columns().length)
+      return {
+        success: true,
+        results: statement.all(...(this.args as never[])),
+        meta: { changes: 0 },
+      };
+    const { changes } = statement.run(...(this.args as never[]));
+    return { success: true, results: [], meta: { changes: Number(changes) } };
+  }
 }
 
 export function createTestDb(): { DB: unknown; close: () => void } {
@@ -88,7 +101,7 @@ export function createTestDb(): { DB: unknown; close: () => void } {
       batch: async (statements: Stmt[]) => {
         db.exec('BEGIN');
         try {
-          const results = statements.map((statement) => statement.runSync());
+          const results = statements.map((statement) => statement.batchSync());
           db.exec('COMMIT');
           return results;
         } catch (error) {

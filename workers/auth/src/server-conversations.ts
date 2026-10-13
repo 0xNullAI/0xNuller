@@ -746,47 +746,34 @@ export async function handleServerConversations(
       before < 1
     )
       return err('消息分页条件无效', 400, headers);
-    const owner = await env.DB.prepare(
-      `SELECT revision,last_sequence,
-        (SELECT COUNT(*) FROM server_conversation_messages WHERE user_id=? AND conversation_id=?) AS message_count
-       FROM server_conversations WHERE user_id=? AND id=? AND deleted_at IS NULL`,
-    )
-      .bind(user.id, id, user.id, id)
-      .first<{
-        revision: number;
-        last_sequence: number;
-        message_count: number;
-      }>();
+    // One batch is one round trip and one transaction, so the page and the revision it is
+    // reported against are a consistent snapshot without re-reading the header afterwards.
+    const [header, rows] = await env.DB.batch([
+      env.DB.prepare(
+        `SELECT revision,last_sequence,
+          (SELECT COUNT(*) FROM server_conversation_messages WHERE user_id=? AND conversation_id=?) AS message_count
+         FROM server_conversations WHERE user_id=? AND id=? AND deleted_at IS NULL`,
+      ).bind(user.id, id, user.id, id),
+      env.DB.prepare(
+        `SELECT id,role,content,created_at,kind,sequence FROM server_conversation_messages
+         WHERE user_id=? AND conversation_id=? AND sequence<?
+         ORDER BY sequence DESC LIMIT ?`,
+      ).bind(user.id, id, before, limit + 1),
+    ]);
+    const owner = (
+      header?.results as
+        { revision: number; last_sequence: number; message_count: number }[] | undefined
+    )?.[0];
     if (!owner) return err('会话不存在或已删除', 404, headers);
-    const rows = await env.DB.prepare(
-      `SELECT id,role,content,created_at,kind,sequence FROM server_conversation_messages
-       WHERE user_id=? AND conversation_id=? AND sequence<?
-       ORDER BY sequence DESC LIMIT ?`,
-    )
-      .bind(user.id, id, before, limit + 1)
-      .all<{
-        id: string;
-        role: string;
-        content: string;
-        created_at: number;
-        kind: string | null;
-        sequence: number;
-      }>();
-    const page = rows.results.slice(0, limit);
-    const latest = await env.DB.prepare(
-      `SELECT revision,last_sequence,
-        (SELECT COUNT(*) FROM server_conversation_messages WHERE user_id=? AND conversation_id=?) AS message_count
-       FROM server_conversations WHERE user_id=? AND id=? AND deleted_at IS NULL`,
-    )
-      .bind(user.id, id, user.id, id)
-      .first<typeof owner>();
-    if (
-      !latest ||
-      latest.revision !== owner.revision ||
-      latest.last_sequence !== owner.last_sequence ||
-      latest.message_count !== owner.message_count
-    )
-      return err('会话正在更新，请重新读取消息', 409, headers);
+    const messages = (rows?.results ?? []) as {
+      id: string;
+      role: string;
+      content: string;
+      created_at: number;
+      kind: string | null;
+      sequence: number;
+    }[];
+    const page = messages.slice(0, limit);
     return json(
       {
         items: page.reverse().map((message) => ({
@@ -797,7 +784,7 @@ export async function handleServerConversations(
           sequence: message.sequence,
           ...(message.kind === 'camera_observation' ? { kind: 'camera_observation' } : {}),
         })),
-        nextBefore: rows.results.length > limit ? (page[0]?.sequence ?? null) : null,
+        nextBefore: messages.length > limit ? (page[0]?.sequence ?? null) : null,
         revision: owner.revision,
         lastSequence: owner.last_sequence,
         messageCount: owner.message_count,
