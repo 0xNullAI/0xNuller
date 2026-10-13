@@ -37,8 +37,8 @@ to stay backward compatible.
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-The user-facing `version` follows the product version (for example `7.1.6`), and
-`bundle.android.versionCode` is the aligned monotonic code (`7001006`: major·1000000 +
+The user-facing `version` follows the product version (for example `7.2.0`), and
+`bundle.android.versionCode` is the aligned monotonic code (`7002000`: major·1000000 +
 minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
 `5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
@@ -54,7 +54,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v7.1.6`, `猫愿 7.1.6`, `7.1.6`, and `7001006`.
+code all advance together: `v7.2.0`, `猫愿 7.2.0`, `7.2.0`, and `7002000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed `maoyuan-vX.Y.Z.apk` and Latest badge.
 
@@ -189,9 +189,17 @@ Android Tauri is different: when the user swipes home / locks the screen, the ho
 - `document.visibilitychange` → state becomes `hidden` (Android WebView reliably emits this on host onPause)
 - `window.pagehide` (Tauri navigation / app teardown)
 - `document.freeze` (Chromium bfcache eviction)
-- Tauri `app://paused` event from `lib.rs` on `RunEvent::ExitRequested` (belt-and-braces)
+- Tauri `app://paused` event from `lib.rs`, emitted only on `RunEvent::ExitRequested` (app exit, not onPause)
 
 The wrapper is transparent: every method except `disconnect()` forwards unchanged. `disconnect()` additionally detaches the listeners so they don't leak across reconnects.
+
+None of those JS paths survive a frozen or killed page, so the native layer keeps its own floor:
+
+- **Device-side cap.** The registry writes each Coyote's effective limit into the device (BF soft limit) on connect, on reconnect and on every limit change, so the device refuses higher strength even from its own wheel or with no app running.
+- **Native stop.** After connecting, `@dg-kit/transport-tauri-blec` registers the device's stop packet (bytes from the protocol adapter) with plugin-blec (`set_safety_stop`). `MainActivity.onPause`/`onDestroy` then makes the plugin write it for every device ahead of any queued write, without waiting for the page. `emergencyStop()` uses the same preemptive write first.
+- **Write watchdog.** The tick writes every 100 ms while output runs; if no write reaches a device for 1.5 s, the plugin writes its stop packet once.
+
+A process the system kills outright gets no callback; the device-side cap is what still applies then.
 
 ## BLE scanner ownership
 
