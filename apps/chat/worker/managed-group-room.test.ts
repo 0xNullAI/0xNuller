@@ -615,3 +615,22 @@ it('clears the history for the member who asks, and only for them', async () => 
     f.db.close();
   }
 });
+
+it('keeps a burst of messages in the order they were sent', async () => {
+  const f = fixture();
+  try {
+    const alice = f.member('alice', 'Alice');
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    for (const id of ['m1', 'm2', 'm3']) await f.send(alice, { t: 'chat', id, x: id });
+    clock.mockRestore();
+    const rows = f.db.prepare('SELECT id,ts FROM messages ORDER BY ts,id').all() as {
+      id: string;
+      ts: number;
+    }[];
+    expect(rows.map((row) => row.id)).toEqual(['m1', 'm2', 'm3']);
+    expect(new Set(rows.map((row) => row.ts)).size).toBe(3);
+  } finally {
+    f.db.close();
+  }
+});

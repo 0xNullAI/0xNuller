@@ -492,7 +492,7 @@ export function ChatAppView({
                   </button>
                   <ConfirmButton
                     className={SETTINGS_ROW}
-                    armedClassName="text-[var(--danger)]"
+                    armedClassName="text-[var(--danger)]!"
                     onConfirm={() => {
                       peerRoom.clearHistory();
                       setActiveTab('chat');
