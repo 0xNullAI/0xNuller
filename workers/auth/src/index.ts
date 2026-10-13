@@ -231,7 +231,17 @@ export type MarketClaimResult = 'ok' | 'unauthorized' | 'conflict';
 export type MarketClaimProof = 'market-upload';
 export type MarketAccessResult = 'admin' | 'owner' | 'user' | 'unauthorized';
 export type MarketAccountAccessResult = 'admin' | 'user' | 'unauthorized';
-export type MarketRewardResult = 'ok' | 'unauthorized' | 'not_found' | 'duplicate' | 'invalid';
+/**
+ * `ok` and `capped` both mean a first download by an eligible account (only `ok` paid the author);
+ * Market counts a download only for those two.
+ */
+export type MarketRewardResult =
+  'ok' | 'capped' | 'unauthorized' | 'ineligible' | 'not_found' | 'duplicate' | 'invalid';
+/**
+ * Paid downloads per author per rolling day. Each reward needs a distinct verified account, but
+ * accounts are cheap; the cap bounds what a ring of them can mint for one author.
+ */
+const MARKET_DOWNLOAD_REWARDS_PER_AUTHOR_DAY = 100;
 export interface VoiceTicketQuotaResult extends CreditBalance {
   subject: string;
 }
@@ -809,32 +819,44 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
     credentials: MarketClaimCredentials,
     itemId: string,
   ): Promise<MarketRewardResult> {
+    // currentUser already excludes banned and deleted accounts.
     const user = await currentUser(requestFromClaimCredentials(credentials), this.env);
     if (!user) return 'unauthorized';
+    if (!user.email_verified_at) return 'ineligible';
     const claim = await this.env.DB.prepare(
-      `SELECT user_id AS author_id FROM market_claims WHERE item_id = ? AND verified_at IS NOT NULL LIMIT 1`,
+      `SELECT m.user_id AS author_id FROM market_claims m JOIN users u ON u.id = m.user_id
+       WHERE m.item_id = ? AND m.verified_at IS NOT NULL AND u.banned_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id) LIMIT 1`,
     )
       .bind(itemId)
       .first<{ author_id: string }>();
     if (!claim || claim.author_id === user.id) return claim ? 'invalid' : 'not_found';
+    const now = Date.now();
     const inserted = await this.env.DB.prepare(
       `INSERT OR IGNORE INTO market_download_rewards (item_id, downloader_user_id, author_user_id, created_at) VALUES (?, ?, ?, ?) RETURNING item_id`,
     )
-      .bind(itemId, user.id, claim.author_id, Date.now())
+      .bind(itemId, user.id, claim.author_id, now)
       .first();
     if (!inserted) return 'duplicate';
-    await this.env.DB.prepare(
-      `INSERT INTO credit_ledger (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at) VALUES (?, 5, 'market_download_reward', ?, ?, ?, ?)`,
+    // The cap is checked in the same statement as the payment so concurrent downloads cannot
+    // each see room under it.
+    const paid = await this.env.DB.prepare(
+      `INSERT INTO credit_ledger (user_id, amount_credits, kind, reference_id, price_version, metadata_json, created_at)
+       SELECT ?, 5, 'market_download_reward', ?, ?, ?, ?
+       WHERE (SELECT COUNT(*) FROM credit_ledger WHERE user_id = ? AND kind = 'market_download_reward' AND created_at > ?) < ?`,
     )
       .bind(
         claim.author_id,
         `${itemId}:${user.id}`,
         CREDIT_PRICE_VERSION,
         JSON.stringify({ itemId }),
-        Date.now(),
+        now,
+        claim.author_id,
+        now - 24 * 60 * 60 * 1000,
+        MARKET_DOWNLOAD_REWARDS_PER_AUTHOR_DAY,
       )
       .run();
-    return 'ok';
+    return paid.meta.changes > 0 ? 'ok' : 'capped';
   }
 
   async tipMarketItem(

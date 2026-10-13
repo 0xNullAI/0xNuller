@@ -21,6 +21,7 @@ import {
   getArchivedCharacterVersion,
   getItem,
   incrementDownloads,
+  isVisibleItem,
   incrementViews,
   insertItem,
   insertItems,
@@ -382,8 +383,12 @@ const marketWorker = {
       // POST /api/items/:id/download —— download counter
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
-        await incrementDownloads(env.DB, dlMatch[1]!);
-        await env.AUTH.rewardMarketDownload(credentialsFrom(request), dlMatch[1]!);
+        const id = dlMatch[1]!;
+        if (!(await isVisibleItem(env.DB, id))) return err('作品不存在', 404);
+        const reward = await env.AUTH.rewardMarketDownload(credentialsFrom(request), id);
+        // Auth records each eligible account's first download once; anonymous, repeated or
+        // self downloads succeed for the client but cannot inflate the public counter.
+        if (reward === 'ok' || reward === 'capped') await incrementDownloads(env.DB, id);
         return json({ ok: true });
       }
 

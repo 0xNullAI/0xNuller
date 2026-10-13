@@ -299,6 +299,15 @@ export async function insertItems(db: D1Database, items: InsertItem[]): Promise<
   await db.batch(items.map((item) => stmt.bind(...insertBinds(item))));
 }
 
+/** Whether a public browser could see this item; hidden and retired kinds earn nothing. */
+export async function isVisibleItem(db: D1Database, id: string): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT 1 FROM items WHERE id = ? AND hidden = 0 AND type IN ('scenario','waveform')`)
+    .bind(id)
+    .first();
+  return row !== null;
+}
+
 export async function incrementDownloads(db: D1Database, id: string): Promise<void> {
   await db.prepare('UPDATE items SET downloads = downloads + 1 WHERE id = ?').bind(id).run();
 }

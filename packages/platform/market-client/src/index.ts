@@ -124,8 +124,13 @@ export async function fetchCreatorMarketItems(
   );
 }
 
+/** Only a signed-in, verified account's first download counts, so send the session along. */
 export async function markMarketDownloaded(id: string): Promise<void> {
-  await fetch(`${marketBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${marketBaseUrl()}/api/items/${id}/download`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: authRequestHeaders(),
+  }).catch(() => {});
 }
 
 /** UUID-only reference; never accepts an arbitrary image URL. */

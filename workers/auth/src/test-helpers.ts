@@ -51,13 +51,13 @@ class Stmt {
     };
   }
 
-  async run(): Promise<{ success: true }> {
+  async run(): Promise<{ success: true; meta: { changes: number } }> {
     return this.runSync();
   }
 
-  runSync(): { success: true } {
-    this.db.prepare(this.sql).run(...(this.args as never[]));
-    return { success: true };
+  runSync(): { success: true; meta: { changes: number } } {
+    const { changes } = this.db.prepare(this.sql).run(...(this.args as never[]));
+    return { success: true, meta: { changes: Number(changes) } };
   }
 }
 
