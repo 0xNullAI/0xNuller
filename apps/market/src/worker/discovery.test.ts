@@ -221,6 +221,42 @@ it('follows a verified account rather than editable author and filters the follo
   ).toBe(200);
   expect(sql.prepare('SELECT COUNT(*) AS n FROM creator_follows').get()?.n).toBe(0);
 });
+it('loads a large following feed in bounded lookups within the D1 parameter limit', async () => {
+  const { sql, env, request } = setup();
+  const insert = sql.prepare(
+    "INSERT INTO items(id,type,name,content,created_at) VALUES (?,'scenario',?,'{}',?)",
+  );
+  const creator = { id: 'creator', username: 'real', displayName: '真实账户' };
+  const claims = Array.from({ length: 150 }, (_, n) => {
+    insert.run(`work-${n}`, `作品 ${n}`, 100 + n);
+    return { itemId: `work-${n}`, creator };
+  });
+  let statements = 0;
+  const prepare = env.DB.prepare.bind(env.DB);
+  const limited = {
+    ...env,
+    DB: {
+      prepare: (query: string) => {
+        const statement = prepare(query);
+        return {
+          ...statement,
+          bind: (...values: unknown[]) => {
+            if (values.length > 100) throw new Error('too many SQL variables');
+            statements += 1;
+            return statement.bind(...values);
+          },
+        };
+      },
+    } as unknown as D1Database,
+    AUTH: Object.assign(env.AUTH, { marketCreatorItems: async () => claims }),
+  };
+  const feed = await handleDiscovery(request('discovery?mode=following'), limited);
+  const data = (await feed?.json()) as { items: MarketItem[] };
+  expect(data.items).toHaveLength(150);
+  expect(data.items[0]?.id).toBe('work-0');
+  // One follow query plus two item chunks, never one query per followed work.
+  expect(statements).toBeLessThanOrEqual(3);
+});
 it('does not follow legacy cards without verified attribution or unavailable identity services', async () => {
   const { sql, env, request } = setup();
   expect(

@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { listItems } from './db';
@@ -61,4 +61,20 @@ it('综合排序 puts proven cards above brand-new empty ones, and lets age wear
   expect(ids).toEqual(['hot-yesterday', 'two-days-liked', 'fresh-empty', 'old-famous', 'old-dead']);
   // 最新发布 is still plain recency.
   expect((await listItems(db, { sort: 'new', limit: 10, offset: 0 }))[0]!.id).toBe('fresh-empty');
+});
+
+it('counts each candidate’s favorites through an item index instead of scanning them all', () => {
+  const sql = new DatabaseSync(':memory:');
+  databases.push(sql);
+  const dir = join(import.meta.dirname, '../../migrations');
+  for (const file of readdirSync(dir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort())
+    sql.exec(readFileSync(join(dir, file), 'utf8'));
+  const plan = sql
+    .prepare('EXPLAIN QUERY PLAN SELECT COUNT(*) FROM item_favorites f WHERE f.item_id = ?')
+    .all('item')
+    .map((row) => (row as { detail: string }).detail)
+    .join('\n');
+  expect(plan).toContain('idx_item_favorites_item');
 });
