@@ -2736,20 +2736,41 @@ const authWorker = {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const since = Math.max(0, Math.trunc(Number(url.searchParams.get('since') ?? '0') || 0));
+        // Newer clients page by the (updated_at, id) tuple, like /content. Older ones only send
+        // the numeric `since`, which skips rows sharing the last row's timestamp at a page break.
+        const rawCursor = url.searchParams.get('cursor');
+        const cursor = decodeContentCursor(rawCursor);
+        if (rawCursor && !cursor) return err('同步游标无效', 400, cors);
+        const afterUpdatedAt = cursor?.updatedAt ?? since;
         const rows = await env.DB.prepare(
           `SELECT id, payload, client_updated_at, updated_at, deleted_at
              FROM agent_sessions
-            WHERE user_id = ? AND updated_at > ?
+            WHERE user_id = ? AND (updated_at > ? OR (updated_at = ? AND ? IS NOT NULL AND id > ?))
             ORDER BY updated_at ASC, id ASC
             LIMIT ?`,
         )
-          .bind(user.id, since, AGENT_SESSION_PAGE_SIZE)
-          .all();
-        const resultRows = rows.results ?? [];
+          .bind(
+            user.id,
+            afterUpdatedAt,
+            afterUpdatedAt,
+            cursor?.id ?? null,
+            cursor?.id ?? '',
+            AGENT_SESSION_PAGE_SIZE,
+          )
+          .all<Record<string, unknown>>();
+        const hasMore = (rows.results ?? []).length === AGENT_SESSION_PAGE_SIZE;
+        let resultRows = rows.results ?? [];
+        // For a numeric-only client, end a full page before the last timestamp group so its
+        // `since` cannot split that group; the trimmed rows lead the next page instead.
+        if (!cursor && hasMore) {
+          const lastUpdatedAt = resultRows.at(-1)!.updated_at;
+          const kept = resultRows.filter((row) => row.updated_at !== lastUpdatedAt);
+          if (kept.length) resultRows = kept;
+        }
+        const last = resultRows.at(-1);
         return json(
           {
-            sessions: resultRows.map((raw) => {
-              const row = raw as Record<string, unknown>;
+            sessions: resultRows.map((row) => {
               return {
                 id: row.id,
                 session: row.deleted_at == null ? JSON.parse(String(row.payload)) : null,
@@ -2758,10 +2779,12 @@ const authWorker = {
                 deleted: row.deleted_at != null,
               };
             }),
-            hasMore: resultRows.length === AGENT_SESSION_PAGE_SIZE,
-            cursor: resultRows.length
-              ? Number((resultRows.at(-1) as Record<string, unknown>).updated_at)
-              : since,
+            hasMore,
+            cursor: last ? Number(last.updated_at) : afterUpdatedAt,
+            nextCursor:
+              hasMore && last
+                ? encodeContentCursor({ updatedAt: Number(last.updated_at), id: String(last.id) })
+                : null,
           },
           200,
           cors,

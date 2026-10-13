@@ -368,4 +368,45 @@ describe('Agent 会话同步', () => {
       expect.objectContaining({ deleted: true, clientUpdatedAt: 300 }),
     );
   });
+
+  type Page = { sessions: { id: string }[]; cursor: number; nextCursor: string | null };
+  const seedSessions = async (userId: string, stamps: number[]) => {
+    for (const [n, stamp] of stamps.entries())
+      await prepared(
+        'INSERT INTO agent_sessions(user_id,id,payload,client_updated_at,updated_at) VALUES (?,?,?,?,?)',
+        userId,
+        `s-${String(n).padStart(3, '0')}`,
+        '{}',
+        stamp,
+        stamp,
+      ).run();
+  };
+
+  it('does not skip sessions sharing a timestamp at a page break, by tuple cursor', async () => {
+    const alice = await seedUser('agent-alice');
+    await seedSessions(alice.id, Array(250).fill(5));
+    const first = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as Page;
+    expect(first.sessions).toHaveLength(200);
+    const second = (await (
+      await get(
+        `/api/auth/agent-sessions?since=${first.cursor}&cursor=${first.nextCursor}`,
+        alice.token,
+      )
+    ).json()) as Page;
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.sessions, ...second.sessions].map((s) => s.id)).size).toBe(250);
+  });
+
+  it('keeps numeric-only clients from splitting a timestamp group', async () => {
+    const alice = await seedUser('agent-alice');
+    await seedSessions(alice.id, [...Array(199).fill(1), 2, 2]);
+    const first = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as Page;
+    expect(first.sessions).toHaveLength(199);
+    expect(first.cursor).toBe(1);
+    const second = (await (
+      await get(`/api/auth/agent-sessions?since=${first.cursor}`, alice.token)
+    ).json()) as Page;
+    expect(second.sessions).toHaveLength(2);
+    expect((await get('/api/auth/agent-sessions?cursor=bad!', alice.token)).status).toBe(400);
+  });
 });
