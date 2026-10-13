@@ -121,22 +121,42 @@ export function ChatPanel({
   const messageElements = useRef(new Map<string, HTMLDivElement>());
   // Render the newest messages first and reveal older ones in batches: a long conversation
   // would otherwise lay out every bubble at once, and the whole app waits for it.
-  const [firstShownId, setFirstShownId] = useState<string | null>(null);
-  const anchorIndex = firstShownId ? messages.findIndex((msg) => msg.id === firstShownId) : -1;
+  // The window is pinned to message ids, so new arrivals and older pages never shift it. `last`
+  // is null while the window reaches the newest message; it is set only after a jump far back,
+  // so that one jump does not lay out everything between the target and now.
+  const [range, setRange] = useState<{ first: string | null; last: string | null }>({
+    first: null,
+    last: null,
+  });
+  const anchorIndex = range.first ? messages.findIndex((msg) => msg.id === range.first) : -1;
+  const lastIndex = range.last ? messages.findIndex((msg) => msg.id === range.last) : -1;
+  const detached = lastIndex >= 0 && lastIndex < messages.length - 1;
   const newestBatch = Math.max(0, messages.length - RENDER_BATCH);
   // The newest batch always shows, even when history lands before the pinned message.
-  const start = anchorIndex >= 0 ? Math.min(anchorIndex, newestBatch) : newestBatch;
-  const shown = start > 0 ? messages.slice(start) : messages;
-  // Pin the window to a message so new arrivals and older pages never shift it, and widen it
-  // to a message someone jumps to. Both adjust state during render, before anything paints.
-  const jumpHidden = jumpToMessageId ? messages.findIndex((msg) => msg.id === jumpToMessageId) : -1;
-  const pinTo =
-    jumpHidden >= 0 && jumpHidden < start
-      ? messages[Math.max(0, jumpHidden - 10)]!.id
-      : (anchorIndex < 0 || anchorIndex > start) && messages.length > 0
-        ? messages[start]!.id
-        : null;
-  if (pinTo && pinTo !== firstShownId) setFirstShownId(pinTo);
+  const start = detached
+    ? Math.max(0, anchorIndex)
+    : anchorIndex >= 0
+      ? Math.min(anchorIndex, newestBatch)
+      : newestBatch;
+  const end = detached ? lastIndex + 1 : messages.length;
+  const shown = start > 0 || end < messages.length ? messages.slice(start, end) : messages;
+  // Pin the window, and move it to a message someone jumps to. Both adjust state during
+  // render, before anything paints.
+  const jumpIndex = jumpToMessageId ? messages.findIndex((msg) => msg.id === jumpToMessageId) : -1;
+  const jumpHidden = jumpIndex >= 0 && (jumpIndex < start || jumpIndex >= end);
+  const nextRange = jumpHidden
+    ? {
+        first: messages[Math.max(0, jumpIndex - 10)]!.id,
+        last:
+          newestBatch - jumpIndex > 2 * RENDER_BATCH
+            ? messages[Math.min(messages.length - 1, jumpIndex + RENDER_BATCH)]!.id
+            : null,
+      }
+    : !detached && (anchorIndex < 0 || anchorIndex > start) && messages.length > 0
+      ? { first: messages[start]!.id, last: null }
+      : null;
+  if (nextRange && (nextRange.first !== range.first || nextRange.last !== range.last))
+    setRange(nextRange);
   const loadedIds = useMemo(() => new Set(messages.map((msg) => msg.id)), [messages]);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const scrollAnchor = useRef<{ height: number; top: number } | null>(null);
@@ -145,12 +165,12 @@ export function ChatPanel({
   /** Reveal up to `index`, keeping what is on screen where it is. */
   const revealFrom = (index: number) => {
     const target = messages[Math.max(0, index)];
-    if (!target || target.id === firstShownId) return;
+    if (!target || target.id === range.first) return;
     const container = timelineElement();
     scrollAnchor.current = container
       ? { height: container.scrollHeight, top: container.scrollTop }
       : null;
-    setFirstShownId(target.id);
+    setRange((current) => ({ ...current, first: target.id }));
   };
   const showEarlier = () => {
     if (start > 0) revealFrom(start - RENDER_BATCH);
@@ -292,7 +312,7 @@ export function ChatPanel({
   useEffect(() => {
     if (!jumpToMessageId) return;
     // Still hidden: the render that reveals it runs this again.
-    if (pinTo) return;
+    if (jumpHidden) return;
     const element = messageElements.current.get(jumpToMessageId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -307,7 +327,7 @@ export function ChatPanel({
   }, [
     jumpToMessageId,
     messages,
-    pinTo,
+    jumpHidden,
     hasOlderHistory,
     historyLoading,
     onLoadOlderHistory,
@@ -321,12 +341,27 @@ export function ChatPanel({
     if (!latestMessageId) return;
     // Follow new messages only for a reader at the bottom, or for one's own message; someone
     // reading back is not pulled away, and sees a pill instead.
-    if (nearBottomRef.current || latestFromSelf) {
+    if (!detached && (nearBottomRef.current || latestFromSelf)) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       setUnseenNewer(false);
     } else setUnseenNewer(true);
+    // `detached` is read for this arrival only; leaving it out keeps a jump from scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestMessageId, latestFromSelf]);
-  const showUnseen = unseenNewer && !nearBottom;
+  const showUnseen = unseenNewer && (!nearBottom || detached);
+  /** Back to the newest messages, straight there. */
+  const toNewest = () => {
+    landed.current = false;
+    setRange({ first: null, last: null });
+    setUnseenNewer(false);
+  };
+  const showLater = () => {
+    const next = lastIndex + RENDER_BATCH;
+    setRange((current) => ({
+      ...current,
+      last: next >= messages.length - 1 ? null : messages[next]!.id,
+    }));
+  };
 
   // Recording timer: the start time lives in a ref, the interval computes elapsed duration from it.
   useEffect(() => {
@@ -525,6 +560,24 @@ export function ChatPanel({
             />
           );
         })}
+        {detached && (
+          <div className="flex justify-center gap-2 py-2">
+            <button
+              type="button"
+              onClick={showLater}
+              className="ui-press rounded-full px-4 py-1.5 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+            >
+              显示后面的消息
+            </button>
+            <button
+              type="button"
+              onClick={toNewest}
+              className="ui-press rounded-full px-4 py-1.5 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)]"
+            >
+              回到最新消息
+            </button>
+          </div>
+        )}
         <div ref={bottomRef} />
         {showUnseen && (
           <button
@@ -532,6 +585,10 @@ export function ChatPanel({
             onClick={() => {
               // Straight there: a smooth scroll across many screens is slow and stalls in a
               // background tab.
+              if (detached) {
+                toNewest();
+                return;
+              }
               const container = timelineElement();
               if (container) container.scrollTop = container.scrollHeight;
               setUnseenNewer(false);

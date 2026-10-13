@@ -153,6 +153,15 @@ export class RoomDO extends DurableObject<Env> {
   }
   private roomAgentsReady = false;
   /**
+   * Messages are ordered by their timestamp, so two in the same millisecond could swap places
+   * between devices. Each new message gets a strictly later time than the one before.
+   */
+  private lastMessageTs = 0;
+  private nextMessageTs(): number {
+    this.lastMessageTs = Math.max(Date.now(), this.lastMessageTs + 1);
+    return this.lastMessageTs;
+  }
+  /**
    * Each member's latest device report, for choosing a group AI's targets. Memory only: a
    * woken object relearns it from the next 5 s heartbeat, and until then offers no targets.
    */
@@ -544,7 +553,7 @@ export class RoomDO extends DurableObject<Env> {
           replyTo: resolveMessageReply(this.sql, msg.replyToId),
           n: att.name,
           x: msg.x as string | undefined,
-          ts: Date.now(),
+          ts: this.nextMessageTs(),
         };
         const media = mediaRefShape(msg.m);
         const mentions = mentionsShape(msg.mentions);
@@ -594,7 +603,10 @@ export class RoomDO extends DurableObject<Env> {
         if (!att.accountId) return;
         if (!dm && !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)) return;
         const account = att.accountId;
-        const now = Date.now();
+        // Message times can run a little ahead of the clock (see nextMessageTs); the cut-off
+        // must cover every message already stored.
+        const newest = this.sql.exec('SELECT MAX(ts) AS ts FROM messages').toArray()[0]?.ts;
+        const now = Math.max(Date.now(), typeof newest === 'number' ? newest : 0);
         this.ensureDmReadState();
         this.ctx.storage.transactionSync(() => {
           clearHistoryFor(this.sql, account, now);
@@ -1941,7 +1953,7 @@ export class RoomDO extends DurableObject<Env> {
       _from: `ai:${agent.id}`,
       n: agent.name,
       x: text.slice(0, 4000),
-      ts: Date.now(),
+      ts: this.nextMessageTs(),
     };
     const accepted = this.ctx.storage.transactionSync(() => {
       if (

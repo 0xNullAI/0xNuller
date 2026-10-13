@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { ChatPanel } from './ChatPanel';
 
 const mediaMocks = vi.hoisted(() => ({ startRecording: vi.fn(), compressImage: vi.fn() }));
@@ -596,6 +597,32 @@ describe('长对话分批显示', () => {
     expect(loadOlder).not.toHaveBeenCalled();
     fireEvent.click(earlier);
     expect(loadOlder).toHaveBeenCalledOnce();
+  });
+
+  it('shows a bounded slice around a far jump target, with a way back to the newest', () => {
+    const messages = history(1000);
+    // As in ChatAppView: the jump request is cleared once the panel reports it settled.
+    function Jumping() {
+      const [jump, setJump] = useState<string | null>('m100');
+      return (
+        <ChatPanel
+          conversationId="room"
+          onSend={vi.fn()}
+          onSendMedia={vi.fn(async () => undefined)}
+          messages={messages}
+          jumpToMessageId={jump}
+          onJumpSettled={() => setJump(null)}
+        />
+      );
+    }
+    render(<Jumping />);
+    expect(shown()[0]).toBe('m90');
+    expect(shown().at(-1)).toBe('m150');
+    fireEvent.click(screen.getByRole('button', { name: '显示后面的消息' }));
+    expect(shown().at(-1)).toBe('m200');
+    fireEvent.click(screen.getByRole('button', { name: '回到最新消息' }));
+    expect(shown()).toHaveLength(50);
+    expect(shown().at(-1)).toBe('m999');
   });
 
   it('reveals a hidden message someone jumps to', () => {
