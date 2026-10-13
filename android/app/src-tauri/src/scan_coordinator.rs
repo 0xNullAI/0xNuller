@@ -149,7 +149,11 @@ pub(crate) fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
     #[cfg(target_os = "android")]
     crate::android_lifecycle::install_lifecycle_stop_handler({
         let coordinator = coordinator.clone();
-        move || request_dg_lifecycle_cleanup(coordinator.clone())
+        move || {
+            // Output first: it must not wait for the page, which Android is about to pause.
+            crate::android_lifecycle::request_native_output_stop();
+            request_dg_lifecycle_cleanup(coordinator.clone());
+        }
     });
 
     // The app's single invoke handler, which lists these commands, lives in lib.rs.

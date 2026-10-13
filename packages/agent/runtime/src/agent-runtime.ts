@@ -1,6 +1,7 @@
 import type {
   CoyoteTargetRouter,
   DeviceClient,
+  DeviceInterruptionEvent,
   LlmConversationItem,
   LlmClient,
   LlmImageInput,
@@ -40,9 +41,11 @@ import {
   isAbortError,
   normalizeAssistantErrorMessage,
   REPLY_ABORTED_ERROR_MESSAGE,
+  REPLY_ABORTED_IN_BACKGROUND_NOTE,
   REPLY_ABORTED_NOTE,
   throwIfAborted,
 } from './runtime-errors.js';
+import { DeviceInterruptionLog, describeDeviceInterruptions } from './device-interruption.js';
 import {
   RuntimeToolExecutor,
   type DeviceExecutionGate,
@@ -164,6 +167,9 @@ export class AgentRuntime {
   private readonly turnCoordinator: RuntimeTurnCoordinator;
   private readonly taskRuns = new RuntimeTaskRunLedger();
   private readonly activeTurns = new Map<string, AbortController>();
+  private readonly deviceInterruptions = new DeviceInterruptionLog();
+  /** Why the active reply was aborted, when it was not the user's own stop. */
+  private readonly abortNotes = new Map<string, string>();
   /**
    * Turns accepted by sendUserMessage that have not reached activeTurns yet (session reads and the
    * user-message save are still in flight). A stop in that window must still land.
@@ -535,6 +541,7 @@ export class AgentRuntime {
   async deleteSession(sessionId: string): Promise<void> {
     this.deletedSessionIds.add(sessionId);
     this.sessionTitleOverrides.delete(sessionId);
+    this.deviceInterruptions.clear(sessionId);
     await this.abortCurrentReply(sessionId);
     this.toolExecutor.cancelScheduledTimers(sessionId);
     this.pendingSystemWork.delete(sessionId);
@@ -594,9 +601,23 @@ export class AgentRuntime {
     }
   }
 
-  async abortCurrentReply(sessionId: string): Promise<void> {
+  /**
+   * `background` records why the reply ended, so the saved note does not say the user stopped it.
+   */
+  async abortCurrentReply(sessionId: string, reason?: 'background'): Promise<void> {
+    if (reason === 'background' && this.activeTurns.has(sessionId)) {
+      this.abortNotes.set(sessionId, REPLY_ABORTED_IN_BACKGROUND_NOTE);
+    }
     this.activeTurns.get(sessionId)?.abort();
     this.abortStartingTurns(sessionId);
+  }
+
+  /**
+   * Record a device change the AI did not make (a stop, a background hold, a module switch).
+   * The next reply in this session is told about it once, then it is dropped.
+   */
+  noteDeviceInterruption(sessionId: string, event: DeviceInterruptionEvent): void {
+    this.deviceInterruptions.note(sessionId, event);
   }
 
   /** Whether a reply for this session is running or still starting. */
@@ -745,6 +766,21 @@ export class AgentRuntime {
       }),
     );
     this.activeTurns.set(session.id, abortController);
+    this.abortNotes.delete(session.id);
+    // Read before the coordinator refreshes `session.deviceState`: the saved state is the device
+    // as the last reply left it.
+    const toldInterruptions = this.deviceInterruptions.peek(session.id);
+    let deviceNotice = '';
+    try {
+      deviceNotice = describeDeviceInterruptions(
+        toldInterruptions,
+        session.deviceState,
+        await this.options.device.getState(),
+        Date.now(),
+      );
+    } catch {
+      // The notice is context only; an unreadable device state is already shown as such.
+    }
 
     try {
       await reporter?.begin({
@@ -755,7 +791,7 @@ export class AgentRuntime {
       });
       const turnResult = await this.turnCoordinator.run({
         session,
-        turn: input,
+        turn: deviceNotice ? { ...input, deviceNotice } : input,
         turnStartIndex,
         ephemeralInput,
         abortSignal: abortController.signal,
@@ -817,6 +853,7 @@ export class AgentRuntime {
       session.updatedAt = Date.now();
       session.deviceState = await this.options.device.getState();
       await this.saveSessionIfAvailable(session);
+      this.deviceInterruptions.consume(session.id, toldInterruptions);
 
       this.events.emit({
         type: 'assistant-message-completed',
@@ -832,9 +869,11 @@ export class AgentRuntime {
         reporter,
       );
       if (abortController.signal.aborted || isAbortError(error)) {
+        const abortNote = this.abortNotes.get(session.id) ?? REPLY_ABORTED_NOTE;
+        this.abortNotes.delete(session.id);
         const abortedMessage = appendAssistantMessage(
           session,
-          { content: REPLY_ABORTED_NOTE },
+          { content: abortNote },
           turnStartIndex,
         );
         session.updatedAt = Date.now();

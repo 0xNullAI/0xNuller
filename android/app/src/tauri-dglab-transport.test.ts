@@ -103,6 +103,7 @@ beforeEach(async () => {
       permissionHelp: permissionHelp as never,
     }),
     attachNativeLifecycle: attachAndroidDgLabLifecycle,
+    backgroundKeep: false,
   });
   // Let the async Tauri listener registration finish.
   await tick();

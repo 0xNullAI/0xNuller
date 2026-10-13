@@ -14,7 +14,10 @@ installShellErrorReporting('web');
 
 // The one DG-Lab connection owner for this tab. Constructing it opens no picker and touches no
 // Bluetooth API; only a human connect action through a module does.
-const dglab = createUnifiedShellDgLabRegistry({ transport: createWebBluetoothDgLabTransport() });
+const dglab = createUnifiedShellDgLabRegistry({
+  transport: createWebBluetoothDgLabTransport(),
+  backgroundKeep: true,
+});
 
 // A tab opened before a deployment can still hold an index chunk that points
 // at the previous Agent/Voice/etc. hash. Never reload on the spot: that dropped a

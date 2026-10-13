@@ -1,5 +1,7 @@
 export const REPLY_ABORTED_ERROR_MESSAGE = '已停止当前回复';
 export const REPLY_ABORTED_NOTE = '✋ 已手动中止';
+/** Stored in place of `REPLY_ABORTED_NOTE` when the reply ended because the app was backgrounded. */
+export const REPLY_ABORTED_IN_BACKGROUND_NOTE = '⏸ 应用切到后台，已中止';
 export const TOOL_LOOP_EXHAUSTED_MESSAGE = '🛑 单轮对话交互轮数已达上限';
 
 export function isAbortError(error: unknown): boolean {
@@ -22,7 +24,8 @@ export function throwIfAborted(signal?: AbortSignal): void {
   throw error;
 }
 
-const CREDIT_EXHAUSTED_MESSAGE = 'Credit 不足，可以充值或在「我的 → AI → 高级」使用自己的 API。';
+const CREDIT_EXHAUSTED_MESSAGE =
+  'Credit 不足，可以在「我的 → 账户 → Credit」兑换卡密，或在「我的 → AI → 高级」使用自己的 API。';
 
 export function normalizeAssistantErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error ?? '未知错误');

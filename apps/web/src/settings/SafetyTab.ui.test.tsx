@@ -24,11 +24,15 @@ const safety = vi.hoisted(() => ({
     maxVibrateAdjustCallsPerTurn: 4,
     maxVibrateBurstCallsPerTurn: 2,
     permissionMode: 'confirm',
+    backgroundKeepMinutes: 0,
   },
   update: vi.fn(),
+  keepSupported: true,
 }));
 
 vi.mock('@0xnullai/settings', () => ({
+  BACKGROUND_KEEP_MINUTES: [0, 5, 10, 30],
+  isBackgroundKeepSupported: () => safety.keepSupported,
   DEFAULT_DEVICE_SAFETY: safety.settings,
   loadDeviceSafety: () => ({ ...safety.settings }),
   subscribeDeviceSafety: () => () => undefined,
@@ -79,6 +83,7 @@ afterEach(() => {
   safety.update.mockClear();
   registry.setOwnLimits.mockClear();
   registry.forgetDeviceLimits.mockClear();
+  safety.keepSupported = true;
 });
 
 it('shows shared limits, every device with its effective limit, and controls', () => {
@@ -122,4 +127,20 @@ it('keeps start, step and burst limits on one flat 高级 page', () => {
   expect(safety.update).toHaveBeenCalledWith(expect.objectContaining({ maxBurstDurationMs: 3000 }));
   fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
   expect(screen.getByRole('button', { name: '高级' })).toBeTruthy();
+});
+
+it('chooses how long output may keep running in the background, only where supported', () => {
+  render(<SafetyTab />);
+  const select = screen.getByLabelText('切到后台时') as HTMLSelectElement;
+  expect(select.value).toBe('0');
+  fireEvent.change(select, { target: { value: '10' } });
+  expect(safety.update).toHaveBeenCalledWith(
+    expect.objectContaining({ backgroundKeepMinutes: 10 }),
+  );
+  cleanup();
+
+  safety.keepSupported = false;
+  render(<SafetyTab />);
+  expect(screen.queryByLabelText('切到后台时')).toBeNull();
+  expect(screen.getByText('切到后台时立即停止所有设备。')).toBeTruthy();
 });

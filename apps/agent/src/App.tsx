@@ -40,6 +40,8 @@ import { useDgLabRegistry, useIsNative, useNativeBridge } from '@0xnullai/native
 import { savedPromptKind, withImportedMarketScene } from '@0xnullai/scenes';
 import { useScenes } from '@0xnullai/scenes/react';
 import { isSafetyNoticeAccepted, DeviceLifecycleGuard } from '@dg-kit/safety';
+import { backgroundKeepMs } from '@0xnullai/settings';
+import type { DeviceInterruptionKind } from '@dg-agent/core';
 import type { UpdateCheckerStatus } from './services/update-checker.js';
 import { BUILTIN_PROMPT_PRESETS, DEVICE_KIND_DISPLAY_NAME } from '@dg-agent/runtime';
 import {
@@ -349,6 +351,42 @@ export function App({ servicesOverrides }: AppProps = {}) {
   const pawPrintsState = useAuxDeviceState(pawPrints, createEmptySensorState());
   const civetEdgingState = useAuxDeviceState(civetEdging, createEmptySensorState());
 
+  // The next reply hears about device changes it did not make. Nothing to tell when no output
+  // device is attached: the model context then lists no device at all.
+  const noteDeviceInterruption = (
+    kind: DeviceInterruptionKind,
+    at = Date.now(),
+    until?: number,
+  ): void => {
+    if (!activeSessionId) return;
+    if (connectedCoyotes.length === 0 && !opossumState.connected) return;
+    client.noteDeviceInterruption(activeSessionId, { kind, at, ...(until ? { until } : {}) });
+  };
+  const onBackgroundEvent = useEffectEvent(
+    (event: Parameters<Parameters<typeof dglab.onBackground>[0]>[0]) => {
+      if (event.type === 'kept') {
+        noteDeviceInterruption('background-kept', event.at, event.until);
+      } else if (event.type === 'foreground') {
+        noteDeviceInterruption('returned', event.at);
+      } else if (event.reason === 'background-timeout') {
+        noteDeviceInterruption('background-timeout', event.at);
+        setStatusMessage('后台保持时间已到，已自动停止输出');
+      } else if (event.reason === 'background') {
+        noteDeviceInterruption('background-stopped', event.at);
+      }
+      // The registry already stopped every output. Drop Agent's own work too, even when this
+      // module's page events arrive late (Android's native pause comes through here first).
+      if (event.type === 'stopped' && activeSessionId) {
+        pendingSends.abort();
+        void client
+          .abortCurrentReply(activeSessionId, 'background')
+          .then(() => client.releaseDeviceControl(activeSessionId))
+          .catch(() => undefined);
+      }
+    },
+  );
+  useEffect(() => dglab.onBackground((event) => onBackgroundEvent(event)), [dglab]);
+
   const revokeAgentDeviceWork = async (): Promise<void> => {
     // Switching away from Agent also aborts the in-flight reply, not just the output —
     // a tool-call sequence still running would keep issuing commands in the background
@@ -357,6 +395,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
     // stop here bypasses the lease fence and would zero what the new holder starts.
     pendingSends.abort();
     if (!activeSessionId) return;
+    noteDeviceInterruption('module-switch');
     await client.abortCurrentReply(activeSessionId).catch(() => undefined);
     await client.releaseDeviceControl(activeSessionId).catch(() => undefined);
   };
@@ -378,7 +417,9 @@ export function App({ servicesOverrides }: AppProps = {}) {
     connect: () => connect(),
     stop: async () => {
       pendingSends.abort();
-      if (activeSessionId) await client.emergencyStop(activeSessionId);
+      if (!activeSessionId) return;
+      noteDeviceInterruption('manual-stop');
+      await client.emergencyStop(activeSessionId);
     },
     onRevoke: () => revokeAgentDeviceWork(),
     // The registry's own `dglab-devices` session lists (and, on 设备, disconnects) every
@@ -502,13 +543,27 @@ export function App({ servicesOverrides }: AppProps = {}) {
         pendingSends.abort();
 
         if (activeSessionId) {
-          await client.abortCurrentReply(activeSessionId);
+          await client.abortCurrentReply(activeSessionId, 'background');
           await client.emergencyStop(activeSessionId);
         }
 
         if (reason === 'background-hidden') {
           setStatusMessage('应用切到后台后，已自动停止当前输出');
         }
+      },
+      // Output kept in the background stays where it is: the AI pauses entirely (reply, timers,
+      // triggers, device link) and the shell's registry admits only stops until the user is back.
+      keepInBackground: () => backgroundKeepMs() > 0,
+      onBackgroundKept: () => {
+        denyPendingPermissionRequest('当前回复已在页面离开前台时终止');
+        stopAllVoiceActivity({ disableMode: true });
+        pendingSends.abort();
+        if (!activeSessionId) return;
+        void client
+          .abortCurrentReply(activeSessionId, 'background')
+          .then(() => client.releaseDeviceControl(activeSessionId))
+          .catch(() => undefined);
+        setStatusMessage('应用在后台，按设置保持当前输出，到时自动停止');
       },
     });
     return guard.start();
@@ -786,6 +841,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       denyPendingPermissionRequest('当前回复已通过紧急停止终止');
       stopAllVoiceActivity({ disableMode: true });
       pendingSends.abort();
+      noteDeviceInterruption('manual-stop');
       await client.abortCurrentReply(activeSessionId);
       await client.emergencyStop(activeSessionId);
       setStatusMessage('已发送紧急停止');

@@ -1,5 +1,14 @@
-import { DgLabConnectionRegistry, type DgLabTransport } from '@0xnullai/device-runtime';
-import { loadDeviceSafety, subscribeDeviceSafety } from '@0xnullai/settings';
+import {
+  DgLabConnectionRegistry,
+  startBackgroundOutputController,
+  type DgLabTransport,
+} from '@0xnullai/device-runtime';
+import {
+  backgroundKeepMs,
+  loadDeviceSafety,
+  setBackgroundKeepSupported,
+  subscribeDeviceSafety,
+} from '@0xnullai/settings';
 import { reportStopFailure } from '@0xnullai/ui';
 
 export interface UnifiedShellDgLabRegistryOptions {
@@ -9,6 +18,12 @@ export interface UnifiedShellDgLabRegistryOptions {
    * background tab keeps its timers, so the stop button stays reachable without it.
    */
   attachNativeLifecycle?: (stop: () => void) => void | (() => void) | Promise<void | (() => void)>;
+  /**
+   * Whether output may keep running in the background when the user chose a keep duration. Only
+   * a shell whose background timers keep firing may say yes; the native shell's WebView is
+   * suspended, so it always stops.
+   */
+  backgroundKeep: boolean;
 }
 
 const STOP_FAILURE_LABEL = 'DG-Lab 设备';
@@ -33,10 +48,18 @@ export function createUnifiedShellDgLabRegistry(
     subscribeLimits: (listener) => subscribeDeviceSafety(() => listener()),
   });
 
+  // Shell lifetime: the registry is never disposed while the app runs, so detaches are unused.
+  setBackgroundKeepSupported(options.backgroundKeep);
+  startBackgroundOutputController({
+    registry,
+    keepMs: backgroundKeepMs,
+    onStopFailure: () => reportStopFailure(STOP_FAILURE_LABEL),
+  });
+
   if (options.attachNativeLifecycle) {
-    // Shell lifetime: the registry is never disposed while the app runs, so the detach is unused.
+    // Reported as a background stop so modules (and the AI) learn why output ended.
     const stop = () => {
-      void registry.stopAll().then(
+      void registry.stopForBackground('background').then(
         (result) => {
           if (result.failed.length > 0) reportStopFailure(STOP_FAILURE_LABEL);
         },

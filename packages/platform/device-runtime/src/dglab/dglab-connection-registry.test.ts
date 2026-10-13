@@ -212,6 +212,65 @@ describe('DgLabConnectionRegistry', () => {
     expect(fake.coyotes[0]!.writes).toEqual([{ type: 'stop' }, { type: 'stop', channel: 'A' }]);
   });
 
+  it('while held for the background, admits only commands that stop or lower output', async () => {
+    const { fake, registry } = setup();
+    fake.pick('coyote', fakeDevice('47L121000'));
+    fake.pick('opossum', fakeDevice('47L127000'));
+    const coyote = await registry.connect();
+    const opossum = await registry.connect();
+    await grantDeviceLease('agent');
+    const agent = registry.forModule('agent');
+    await agent.execute(coyote.id, start(5));
+    const events: unknown[] = [];
+    agent.onBackground((event) => events.push(event));
+
+    registry.holdForBackground(10_000, 1_000);
+
+    await expect(agent.execute(coyote.id, start(8))).rejects.toMatchObject({
+      code: 'background-hold',
+    });
+    await expect(
+      agent.execute(coyote.id, { type: 'adjustStrength', channel: 'A', delta: 2 }),
+    ).rejects.toMatchObject({ code: 'background-hold' });
+    await expect(
+      agent.execute(coyote.id, { type: 'burst', channel: 'A', strength: 9, durationMs: 1_000 }),
+    ).rejects.toMatchObject({ code: 'background-hold' });
+    await expect(
+      agent.executeOpossum(opossum.id, { type: 'vibrateStart', channel: 'A', intensity: 5 }),
+    ).rejects.toMatchObject({ code: 'background-hold' });
+    await agent.execute(coyote.id, { type: 'adjustStrength', channel: 'A', delta: -2 });
+    await agent.execute(coyote.id, { type: 'stop', channel: 'A' });
+    await agent.executeOpossum(opossum.id, { type: 'vibrateAdjust', channel: 'A', delta: -1 });
+
+    registry.resumeForeground(2_000);
+    await agent.execute(coyote.id, start(5));
+
+    expect(fake.coyotes[0]!.writes.map((command) => command.type)).toEqual([
+      'start',
+      'adjustStrength',
+      'stop',
+      'start',
+    ]);
+    expect(events).toEqual([
+      { type: 'kept', at: 1_000, until: 10_000 },
+      { type: 'foreground', at: 2_000 },
+    ]);
+  });
+
+  it('a background stop stops every output and tells every module why', async () => {
+    const { fake, registry } = setup();
+    fake.pick('coyote', fakeDevice('47L121000'));
+    await registry.connect();
+    const events: unknown[] = [];
+    registry.forModule('chat').onBackground((event) => events.push(event));
+    const stopsBefore = fake.coyotes[0]!.stops;
+
+    await registry.stopForBackground('background-timeout', 5_000);
+
+    expect(fake.coyotes[0]!.stops).toBe(stopsBefore + 1);
+    expect(events).toEqual([{ type: 'stopped', at: 5_000, reason: 'background-timeout' }]);
+  });
+
   it('writes a raw 200 from a module as the device-safety cap', async () => {
     const { fake, registry } = setup();
     fake.pick('coyote', fakeDevice('47L121000'));

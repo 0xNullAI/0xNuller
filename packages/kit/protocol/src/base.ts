@@ -48,6 +48,19 @@ export interface WebBluetoothProtocolAdapter {
    * Limits also clamp current strength downward if reduced.
    */
   setLimits(limitA: number, limitB: number): Promise<void>;
+  /** See `NativeStopRecipe`. Null while not connected. */
+  nativeStopRecipe?(): NativeStopRecipe | null;
+}
+
+/**
+ * The write that zeroes a device's output, for a native layer that must stop it without this
+ * page: an app-lifecycle hook, a watchdog, a notification button. The bytes come from the
+ * protocol adapter, so the native side never encodes a protocol of its own.
+ */
+export interface NativeStopRecipe {
+  service: string;
+  characteristic: string;
+  packet: Uint8Array;
 }
 
 /**
@@ -224,12 +237,26 @@ export abstract class BaseCoyoteProtocolAdapter implements WebBluetoothProtocolA
     this.state.strengthB = 0;
     this.resetEmergencyStopState();
 
-    await this.writeEmergencyStopPacket();
+    // Retried once, then reported: a stop that never reached the device must not look like one
+    // that did. The tick restarts either way, so the zeroed state keeps being offered.
+    let failure: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await this.writeEmergencyStopPacket();
+        failure = null;
+        break;
+      } catch (error) {
+        failure = error;
+      }
+    }
     this.emit();
 
     this.tickPaused = false;
     if (this.state.connected) {
       this.startTickLoop();
+    }
+    if (failure !== null) {
+      throw new Error('急停指令未能送达设备', { cause: failure });
     }
   }
 

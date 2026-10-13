@@ -84,6 +84,8 @@ export interface RuntimeTurnInput {
   text: string;
   context: ActionContext;
   image?: LlmImageInput;
+  /** What changed on the device since the last reply; appended to every iteration's instructions. */
+  deviceNotice?: string;
 }
 
 export interface RuntimeTurnCoordinatorOptions {
@@ -525,14 +527,17 @@ export class RuntimeTurnCoordinator {
     turnState: TurnState,
     isFirstIteration: boolean,
   ): Promise<string> {
-    if (!this.options.buildInstructions) return '';
-    return this.options.buildInstructions({
-      session,
-      context: turn.context,
-      isFirstIteration,
-      turnToolCalls: collectTurnToolCalls(turnState),
-      ...(await this.options.getInstructionDeviceState()),
-    });
+    const built = this.options.buildInstructions
+      ? await this.options.buildInstructions({
+          session,
+          context: turn.context,
+          isFirstIteration,
+          turnToolCalls: collectTurnToolCalls(turnState),
+          ...(await this.options.getInstructionDeviceState()),
+        })
+      : '';
+    if (!turn.deviceNotice) return built;
+    return built ? `${built}\n\n${turn.deviceNotice}` : turn.deviceNotice;
   }
 }
 

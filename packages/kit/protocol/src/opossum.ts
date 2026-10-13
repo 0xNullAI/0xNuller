@@ -36,7 +36,8 @@
  * tick loop) is unchanged, it just actually works now.
  */
 import type { Channel, OpossumCommand, OpossumVibrationPatternName } from '@dg-kit/core';
-import type { WebBluetoothConnectionContext } from './base.js';
+import type { NativeStopRecipe, WebBluetoothConnectionContext } from './base.js';
+import { V3_PRIMARY_SERVICE, V3_WRITE_CHAR } from './constants.js';
 import {
   clampIndicatorColor,
   clampNumber,
@@ -450,7 +451,17 @@ export class OpossumVibrateAdapter {
     await this.write(packet);
   }
 
-  /** Best-effort safety call: drive both channels to zero, ignore failures. */
+  /** See `NativeStopRecipe`: an absolute zero for both channels. Null while not connected. */
+  nativeStopRecipe(): NativeStopRecipe | null {
+    if (!this.writeChar) return null;
+    return {
+      service: V3_PRIMARY_SERVICE,
+      characteristic: V3_WRITE_CHAR,
+      packet: new Uint8Array([0xb3, 0, 0]),
+    };
+  }
+
+  /** Drive both channels to zero; retried once, and a stop that never landed is reported. */
   async emergencyStop(): Promise<void> {
     // A pending burst restore firing after the stop would re-raise the
     // channel to its pre-burst intensity — cancel first, same as Coyote.
@@ -459,7 +470,11 @@ export class OpossumVibrateAdapter {
     try {
       await this.setIntensity(0, 0);
     } catch {
-      // ignore best effort
+      try {
+        await this.setIntensity(0, 0);
+      } catch (error) {
+        throw new Error('急停指令未能送达设备', { cause: error });
+      }
     }
   }
 

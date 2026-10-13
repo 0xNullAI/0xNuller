@@ -19,7 +19,10 @@
  * `visibilitychange` / `pagehide` / `freeze`; MainActivity.onPause also
  * dispatches `0xnullai:native-pause` before the WebView is paused, so the stop
  * is issued even when the page events arrive late; and lib.rs emits
- * `app://paused` when the app exits.
+ * `app://paused` when the app exits. Independently of all of this, onPause
+ * also makes plugin-blec write each device's registered stop packet natively
+ * (see `@dg-kit/transport-tauri-blec`'s native-safety), which does not need
+ * this page to run at all.
  */
 
 import type { DeviceClient } from '@dg-agent/core';
@@ -90,8 +93,8 @@ function attachWebListeners(stop: Stopper): LifecycleListener {
 }
 
 /**
- * Subscribe to a Tauri `app://paused` event emitted by lib.rs on the
- * Android onPause lifecycle. Returns a no-op listener if the @tauri-apps
+ * Subscribe to the Tauri `app://paused` event lib.rs emits when the app
+ * exits (`RunEvent::ExitRequested`; Tauri has no stable onPause event). Returns a no-op listener if the @tauri-apps
  * runtime is not present (e.g. browser preview build).
  */
 async function attachTauriListener(stop: Stopper): Promise<LifecycleListener> {

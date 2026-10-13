@@ -17,7 +17,33 @@ pub(crate) fn install_lifecycle_stop_handler(handler: impl Fn() + Send + Sync + 
     }
 }
 
-/// Schedules plugin-blec scanner cleanup before Android suspends the WebView.
+/// Writes every connected device's registered stop packet through plugin-blec, ahead of any
+/// queued write, without waiting for the page. The page registered those packets after each
+/// connect (`set_safety_stop`); a device it never registered is left to the page's own stop.
+// Only Android lifecycle hooks call this; host builds compile it for tests.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn request_native_output_stop() {
+    tauri::async_runtime::spawn(async {
+        let handler = match tauri_plugin_blec::get_handler() {
+            Ok(handler) => handler,
+            Err(error) => {
+                log::error!("plugin-blec native output stop unavailable: {error}");
+                return;
+            }
+        };
+        match handler.safety_stop_all().await {
+            Ok(outcomes) => {
+                for outcome in outcomes.iter().filter(|outcome| !outcome.ok) {
+                    log::error!("native output stop failed for one device: {:?}", outcome.error);
+                }
+            }
+            Err(error) => log::error!("native output stop failed: {error}"),
+        }
+    });
+}
+
+/// Stops output natively and schedules plugin-blec scanner cleanup before Android suspends the
+/// WebView.
 ///
 /// The callback never blocks Android's main thread. A failed scanner stop
 /// retains ownership so a later scan cannot start over uncertain radio state.

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createEmptyDeviceState,
   type DeviceCommand,
@@ -6,6 +6,7 @@ import {
   type OpossumCommand,
 } from '@dg-kit/core';
 import {
+  CoyoteProtocolAdapter,
   createEmptyOpossumState,
   type BluetoothDeviceLike,
   type BluetoothRemoteGATTServerLike,
@@ -200,6 +201,39 @@ afterEach(async () => {
   globalListeners.clear();
   await grantDeviceLease(null);
   localStorage.clear();
+});
+
+describe('per-device limits in the Coyote itself', () => {
+  it('writes the effective caps into the device on connect and on every limit change', async () => {
+    const setLimits = vi.spyOn(CoyoteProtocolAdapter.prototype, 'setLimits');
+    const { fake, registry } = setup();
+    fake.pick('coyote', bleDevice('47L121000', 'addr-1'));
+    const { id } = await registry.connect();
+    expect(setLimits).toHaveBeenLastCalledWith(50, 50);
+
+    await registry.setOwnLimits(id, { a: 20 });
+    await vi.waitFor(() => expect(setLimits).toHaveBeenLastCalledWith(20, 50));
+
+    // An unchanged cap is not written again.
+    const calls = setLimits.mock.calls.length;
+    await registry.setOwnLimits(id, { a: 20 });
+    expect(setLimits.mock.calls.length).toBe(calls);
+    setLimits.mockRestore();
+  });
+
+  it('keeps the connection when the device refuses the limit write', async () => {
+    const setLimits = vi
+      .spyOn(CoyoteProtocolAdapter.prototype, 'setLimits')
+      .mockRejectedValue(new Error('gatt busy'));
+    const { fake, registry } = setup();
+    fake.pick('coyote', bleDevice('47L121000', 'addr-1'));
+
+    const snapshot = await registry.connect();
+
+    expect(snapshot.connected).toBe(true);
+    expect(setLimits.mock.calls.length).toBeGreaterThanOrEqual(3);
+    setLimits.mockRestore();
+  });
 });
 
 describe('per-device limits: holder clamp on every write path', () => {

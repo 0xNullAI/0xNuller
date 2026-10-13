@@ -42,7 +42,8 @@ export type DgLabRejectCode =
   | 'unknown-device'
   | 'wrong-kind'
   | 'disconnected'
-  | 'limit-denied';
+  | 'limit-denied'
+  | 'background-hold';
 
 /** A write the holder refused. Nothing reached the device. */
 export class DgLabCommandRejectedError extends Error {
@@ -100,7 +101,7 @@ const SKIPPED: unique symbol = Symbol('skipped-after-priority-interrupt');
 const STOPPED: unique symbol = Symbol('stopped');
 
 type Clients =
-  | { kind: 'coyote'; client: DgLabCoyoteClient }
+  | { kind: 'coyote'; client: DgLabCoyoteClient; protocol: CoyoteProtocolAdapter }
   | { kind: 'opossum'; client: DgLabOpossumClient }
   | { kind: DgLabSensorKind; client: DgLabSensorClient };
 
@@ -121,6 +122,8 @@ export class PhysicalDgLabDevice {
   private readonly unsubscribeState: () => void;
   private state: DeviceState | OpossumState | SensorState;
   private wasConnected = false;
+  /** The caps last written into the Coyote itself; null until written on this link. */
+  private hardwareCaps: DgLabChannelLimits | null = null;
 
   constructor(
     id: string,
@@ -185,7 +188,35 @@ export class PhysicalDgLabDevice {
     this.wasConnected = this.state.connected;
     // A V3 Coyote retains its last output across a BLE drop; never resume it implicitly.
     await this.emergencyStop();
+    this.hardwareCaps = null;
+    // The holder clamp already applies; a failed write is retried on the next limit change.
+    await this.syncHardwareLimits().catch(() => undefined);
     this.deps.onChange();
+  }
+
+  /**
+   * Write this Coyote's caps into the device itself (its BF soft limit). The device then refuses
+   * anything higher on its own — from its physical wheel, or when nothing in the app runs any
+   * more — instead of the cap living only in this page. Retried because the write can collide
+   * with the tick; the holder clamp keeps applying meanwhile.
+   */
+  async syncHardwareLimits(): Promise<void> {
+    if (this.clients.kind !== 'coyote' || !this.state.connected) return;
+    const caps = holderChannelLimits(this.deps.limits(), 'coyote');
+    const applied = this.hardwareCaps;
+    if (applied && applied.a === caps.a && applied.b === caps.b) return;
+    let failure: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await this.clients.protocol.setLimits(caps.a, caps.b);
+        this.hardwareCaps = caps;
+        return;
+      } catch (error) {
+        failure = error;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    throw new Error('设备硬件上限未能写入', { cause: failure });
   }
 
   async executeCoyote(
@@ -317,8 +348,15 @@ export class PhysicalDgLabDevice {
       const reconnected = state.connected && !this.wasConnected;
       this.wasConnected = state.connected;
       this.state = state;
-      // A transport-level silent reconnect is also a new link: zero it before anyone writes.
-      if (reconnected) void this.emergencyStop().catch(() => undefined);
+      // A transport-level silent reconnect is also a new link: zero it before anyone writes,
+      // then write the caps into the device again.
+      if (reconnected) {
+        this.hardwareCaps = null;
+        void this.emergencyStop()
+          .catch(() => undefined)
+          .then(() => this.syncHardwareLimits())
+          .catch(() => undefined);
+      }
       this.deps.onChange();
     };
     const { clients } = this;
@@ -331,7 +369,8 @@ export class PhysicalDgLabDevice {
 function createClients(kind: DeviceKind, transport: DgLabTransport): Clients {
   if (kind === 'coyote') {
     // One adapter per physical device: it owns this device's tick loop and stop path.
-    return { kind, client: transport.createCoyoteClient(new CoyoteProtocolAdapter()) };
+    const protocol = new CoyoteProtocolAdapter();
+    return { kind, client: transport.createCoyoteClient(protocol), protocol };
   }
   if (kind === 'opossum') return { kind, client: transport.createOpossumClient() };
   return { kind, client: transport.createSensorClient(kind) };

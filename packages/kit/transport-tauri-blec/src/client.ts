@@ -9,6 +9,7 @@ import { runWithGattReadyRetry, type GattReadyRetryOptions } from './gatt-ready.
 import { resolvePluginBlec } from './plugin-blec.js';
 import { scanAndSelectDevice, type DeviceSelectionController } from './scan.js';
 import { DEVICE_PICKER_CANCELLED_MESSAGE } from '@dg-kit/core';
+import { armNativeStop, nativeStop } from './native-safety.js';
 
 export type { DeviceSelectionController, DiscoveredDevice } from './scan.js';
 
@@ -238,6 +239,7 @@ export class TauriBlecDeviceClient implements DeviceClient {
       device.gatt?.disconnect();
     };
     device.addEventListener('gattserverdisconnected', this.handlePassthroughDisconnect);
+    await armNativeStop(address, this.options.protocol.nativeStopRecipe?.());
   }
 
   private readonly handlePassthroughDisconnect = (): void => {
@@ -296,6 +298,7 @@ export class TauriBlecDeviceClient implements DeviceClient {
       await api.disconnect(address).catch(() => undefined);
       throw error;
     }
+    await armNativeStop(address, this.options.protocol.nativeStopRecipe?.());
   }
 
   /**
@@ -486,8 +489,17 @@ export class TauriBlecDeviceClient implements DeviceClient {
     return this.options.protocol.execute(command);
   }
 
+  /**
+   * The plugin's stop goes first: it jumps every queued write, so the page's own stop (which
+   * waits for the in-flight tick) is not stuck behind a slow write. Either one landing counts.
+   */
   async emergencyStop(): Promise<void> {
-    await this.options.protocol.emergencyStop();
+    const native = this.connected ? await nativeStop(this.lastAddress) : false;
+    try {
+      await this.options.protocol.emergencyStop();
+    } catch (error) {
+      if (!native) throw error;
+    }
   }
 
   async getState(): Promise<DeviceState> {

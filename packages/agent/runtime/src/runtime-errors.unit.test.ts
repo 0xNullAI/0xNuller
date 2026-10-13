@@ -20,7 +20,7 @@ describe('normalizeAssistantErrorMessage', () => {
     'points to top-up or an own API when Credit is exhausted: %s',
     (raw) => {
       expect(normalizeAssistantErrorMessage(new Error(raw))).toBe(
-        'Credit 不足，可以充值或在「我的 → AI → 高级」使用自己的 API。',
+        'Credit 不足，可以在「我的 → 账户 → Credit」兑换卡密，或在「我的 → AI → 高级」使用自己的 API。',
       );
     },
   );

@@ -47,3 +47,4 @@ export {
   type TauriBlecAuxSensorClientOptions,
   type TauriBlecSensorClientOptions,
 } from './sensor-client.js';
+export { armNativeStop, nativeStop, NATIVE_WATCHDOG_MS } from './native-safety.js';

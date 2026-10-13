@@ -1,20 +1,11 @@
 /**
  * Stops device output when the page goes away or into the background.
  *
- * There used to be two of these — DG-Agent's `BrowserSafetyGuard` and
- * DG-Voice's `CallSafetyGuard`, near-identical down to the in-flight guard
- * and the listener set. They differed in exactly one way: Agent made
- * "keep running while backgrounded" a user setting, Voice always stopped.
- *
- * This keeps Voice's behavior, for everyone. Screen off or tab away means
- * stop, unconditionally, and there is no option to turn that off — which is
- * also why the two can now be one class without the earlier worry that a
- * wrong default would quietly ship "keeps firing while backgrounded" to a
- * module whose author never chose it.
- *
- * Android already worked this way regardless of the setting (see the shell's
- * lifecycle safety), so the setting was already a lie on the platform where
- * it mattered most.
+ * Leaving the page always stops. Going to the background stops too, unless the caller passes
+ * `keepInBackground` and it returns true at that moment; then `onBackgroundKept` runs instead
+ * and the caller owns what "kept" means (the product shell holds output and times it out).
+ * A caller that passes nothing keeps the strict behavior, so no module ever ships "keeps
+ * firing while backgrounded" without choosing it.
  */
 
 export type LifecycleStopReason = 'leave-page' | 'background-hidden';
@@ -22,6 +13,10 @@ export type LifecycleStopReason = 'leave-page' | 'background-hidden';
 export interface DeviceLifecycleGuardOptions {
   /** Called to stop output. Must be idempotent — the guard may fire more than once. */
   onStop: (reason: LifecycleStopReason) => void | Promise<void>;
+  /** Asked when the page hides. True keeps output running; omitted or false stops. */
+  keepInBackground?: () => boolean;
+  /** Called instead of `onStop` when the page hides and `keepInBackground` returned true. */
+  onBackgroundKept?: () => void;
 }
 
 export class DeviceLifecycleGuard {
@@ -29,9 +24,13 @@ export class DeviceLifecycleGuard {
   // and the Android shell, and that syntax fails their build with TS1294
   // while typecheck stays green.
   private readonly onStop: DeviceLifecycleGuardOptions['onStop'];
+  private readonly keepInBackground: () => boolean;
+  private readonly onBackgroundKept: () => void;
 
   constructor(options: DeviceLifecycleGuardOptions) {
     this.onStop = options.onStop;
+    this.keepInBackground = options.keepInBackground ?? (() => false);
+    this.onBackgroundKept = options.onBackgroundKept ?? (() => undefined);
   }
 
   /** Begin watching. Returns the unsubscribe. */
@@ -52,7 +51,15 @@ export class DeviceLifecycleGuard {
 
     const onLeave = () => stop('leave-page');
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') stop('background-hidden');
+      if (document.visibilityState !== 'hidden') return;
+      let keep = false;
+      try {
+        keep = this.keepInBackground();
+      } catch {
+        // A failing policy read must fail closed.
+      }
+      if (keep) this.onBackgroundKept();
+      else stop('background-hidden');
     };
 
     // Both leave events: pagehide is the reliable one on mobile Safari, and

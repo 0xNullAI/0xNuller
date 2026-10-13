@@ -4,6 +4,7 @@ import {
   type StateListener,
   type WebBluetoothConnectionContext,
   type WebBluetoothProtocolAdapter,
+  type NativeStopRecipe,
 } from './base.js';
 import { CoyoteV2ProtocolAdapter } from './v2.js';
 import { CoyoteV3ProtocolAdapter } from './v3.js';
@@ -80,6 +81,10 @@ export class CoyoteProtocolAdapter implements WebBluetoothProtocolAdapter {
 
   async setLimits(limitA: number, limitB: number): Promise<void> {
     await this.activeProtocol.setLimits(limitA, limitB);
+  }
+
+  nativeStopRecipe(): NativeStopRecipe | null {
+    return this.activeProtocol.nativeStopRecipe?.() ?? null;
   }
 
   private createProtocol(context: WebBluetoothConnectionContext): WebBluetoothProtocolAdapter {

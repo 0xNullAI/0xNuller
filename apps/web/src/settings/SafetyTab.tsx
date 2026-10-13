@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AudioWaveform, Radio, SlidersHorizontal, Waves, Zap } from 'lucide-react';
 import {
+  BACKGROUND_KEEP_MINUTES,
   DEFAULT_DEVICE_SAFETY,
+  isBackgroundKeepSupported,
   loadDeviceSafety,
   subscribeDeviceSafety,
   updateDeviceSafety,
@@ -212,7 +214,25 @@ export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
         )}
       </SettingsGroup>
 
-      <SettingsGroup label="控制">
+      <SettingsGroup
+        label="控制"
+        footer={
+          isBackgroundKeepSupported()
+            ? '后台保持期间，设备维持当时的输出，只能停止或降低；AI 暂停，到时自动停止。关闭或刷新页面、语音通话和视频始终立即停止。'
+            : '切到后台时立即停止所有设备。'
+        }
+      >
+        {isBackgroundKeepSupported() ? (
+          <SelectRow
+            label="切到后台时"
+            value={String(settings.backgroundKeepMinutes)}
+            onChange={(value) => patch({ backgroundKeepMinutes: Number(value) })}
+            options={BACKGROUND_KEEP_MINUTES.map((minutes) => ({
+              value: String(minutes),
+              label: minutes === 0 ? '立即停止（推荐）' : `保持当前输出 ${minutes} 分钟`,
+            }))}
+          />
+        ) : null}
         <SelectRow
           label="设备指令确认"
           value={settings.permissionMode}
