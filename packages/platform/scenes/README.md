@@ -21,8 +21,8 @@ import { loadScenes, updateScenes } from '@0xnullai/scenes';
 没有可用卡时当前选择为空，旧版选中的内置 ID 自动回退到首张已保存卡或空值，不删除旧卡或聊天记录。
 
 `SceneLibrary` 通过 `onStartChat` 回调提供每行的「聊天」；外壳决定打开方式。
-`./start-chat` 的 `openSceneChat(id)` 对任意个人库场景（私有或来自发现）选中该场景，重开最近的
-无角色场景会话，否则新建，不创建关系或记忆；`openCharacterChat(id)` 像打开联系人一样打开角色
+`./start-chat` 的 `openSceneChat(id)` 对任意个人库场景（私有或来自发现）选中该场景并新开一局
+无角色场景会话（同一场景可以玩多次，旧的仍在消息列表里），不创建关系或记忆；`openCharacterChat(id)` 像打开联系人一样打开角色
 （先确保私人关系，再重开最近会话或新建）。
 
 ## 拆分角色 / 提取角色
