@@ -89,7 +89,7 @@ describe('private character relationships', () => {
     expect((await call('/relationship', 'DELETE', { version: 1 }, 'bob')).status).toBe(409);
     expect((await call('/relationship', 'PUT', draft, 'bob')).status).toBe(201);
     await env.DB.prepare('UPDATE users SET banned_at = 1 WHERE id = ?').bind('bob').run();
-    expect((await call('/relationship', 'GET', undefined, 'bob')).status).toBe(403);
+    expect((await call('/relationship', 'GET', undefined, 'bob')).status).toBe(401);
   });
 
   it('keeps one active relationship per character and uses CAS without changing its character', async () => {

@@ -252,6 +252,29 @@ describe('登录', () => {
     expect(wrongPass.status).toBe(noUser.status);
   });
 
+  it('封禁结束已有会话，且只向持有正确密码者说明封禁原因', async () => {
+    const { body } = await registerUser();
+    const token = (body as { token: string }).token;
+    expect((await worker.fetch(req('/api/auth/credits/balance', { token }), env)).status).toBe(200);
+    await prepared(
+      "UPDATE users SET banned_at = 1, ban_reason = 'secret-reason' WHERE username = ?",
+      GOOD.username,
+    ).run();
+    expect((await worker.fetch(req('/api/auth/credits/balance', { token }), env)).status).toBe(401);
+    expect(await (await worker.fetch(req('/api/auth/me', { token }), env)).json()).toEqual({
+      user: null,
+    });
+
+    const wrongPass = await post('/api/auth/login', { ...GOOD, password: 'wrong-but-long-enough' });
+    const noUser = await post('/api/auth/login', { username: 'bob', password: 'whatever-long' });
+    expect(wrongPass.status).toBe(401);
+    expect(await wrongPass.text()).toBe(await noUser.text());
+
+    const right = await post('/api/auth/login', GOOD);
+    expect(right.status).toBe(403);
+    expect(await right.text()).toContain('secret-reason');
+  });
+
   it('同一用户名连续失败到上限后限流', async () => {
     await registerUser();
     for (let i = 0; i < 8; i++) {
