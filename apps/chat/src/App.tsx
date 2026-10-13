@@ -1011,6 +1011,7 @@ export default function App() {
     setCurrentIndexA,
     deviceRef,
     waveformsRef,
+    currentIndexA,
   );
   useChannelRotation(
     'B',
@@ -1021,6 +1022,7 @@ export default function App() {
     setCurrentIndexB,
     deviceRef,
     waveformsRef,
+    currentIndexB,
   );
 
   // Heartbeat expiry reaper: fire_active arrives every 300ms, so going more than 800ms
