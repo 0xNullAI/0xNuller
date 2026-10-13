@@ -22,12 +22,16 @@ export function readHistoryPage(
   sql: SqlStorage,
   before?: HistoryCursor,
   pageSize = HISTORY_PAGE_SIZE,
+  /** Messages at or before this time were cleared by the reader (see history-clears). */
+  clearedAt = 0,
 ) {
   const rows = sql
     .exec(
       `SELECT m.id,m.from_id,m.name,m.body,m.ts,s.sender_account FROM messages m
        LEFT JOIN message_sequences s ON s.message_id=m.id
-       ${before ? 'WHERE m.ts < ? OR (m.ts = ? AND m.id < ?)' : ''} ORDER BY m.ts DESC,m.id DESC LIMIT ?`,
+       WHERE m.ts > ? ${before ? 'AND (m.ts < ? OR (m.ts = ? AND m.id < ?))' : ''}
+       ORDER BY m.ts DESC,m.id DESC LIMIT ?`,
+      clearedAt,
       ...(before ? [before.ts, before.ts, before.id] : []),
       pageSize + 1,
     )
@@ -88,14 +92,20 @@ export function parseSearchQuery(value: unknown): string | null {
  * excluded because their body no longer holds text; lower() folds ASCII case only,
  * which is all Chinese text needs.
  */
-export function searchHistory(sql: SqlStorage, query: string, limit = SEARCH_RESULT_LIMIT) {
+export function searchHistory(
+  sql: SqlStorage,
+  query: string,
+  limit = SEARCH_RESULT_LIMIT,
+  clearedAt = 0,
+) {
   const rows = sql
     .exec(
       `SELECT m.id,m.from_id,m.name,m.ts,s.sender_account,json_extract(m.body,'$.x') AS x
        FROM messages m LEFT JOIN message_sequences s ON s.message_id=m.id
-       WHERE json_extract(m.body,'$.recalled') IS NULL
+       WHERE m.ts > ? AND json_extract(m.body,'$.recalled') IS NULL
          AND instr(lower(json_extract(m.body,'$.x')), lower(?)) > 0
        ORDER BY m.ts DESC,m.id DESC LIMIT ?`,
+      clearedAt,
       query,
       limit,
     )

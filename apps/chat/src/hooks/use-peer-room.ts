@@ -439,6 +439,16 @@ export function usePeerRoom(displayName: string) {
       function handleMessage(data: Record<string, unknown>) {
         const t = data.t as string;
 
+        if (t === 'history-cleared') {
+          // This account cleared the conversation (here or on another device): keep only what
+          // arrived after, and unsent local messages.
+          const at = typeof data.at === 'number' ? data.at : Date.now();
+          setMessages((previous) =>
+            previous.filter((message) => !message.serverConfirmed || message.timestamp > at),
+          );
+          setHistoryBefore(null);
+          return;
+        }
         if (t === 'search-result') {
           const search = searchesRef.current.get(String(data.requestId));
           if (!search) return;
@@ -1130,6 +1140,8 @@ export function usePeerRoom(displayName: string) {
     discardMessage,
     /** Ask the server to withdraw one of this account's messages (RECALL_WINDOW_MS). */
     recallMessage: (id: string) => send({ t: 'recall', id }),
+    /** Clear this conversation for this account only; others keep their history. */
+    clearHistory: () => send({ t: 'clear-history' }),
     sendCommand,
     sendWaveform,
     broadcastStateFast,

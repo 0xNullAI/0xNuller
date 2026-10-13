@@ -2,12 +2,22 @@ import { GroupMembershipDialog } from './GroupMembershipDialog';
 import type { ChatReplyContext } from '../lib/protocol';
 import {
   ConversationHeader,
+  ConfirmButton,
   ConversationTitle,
   PauseWhenHidden,
   useModuleActive,
   useShellNav,
 } from '@0xnullai/ui';
-import { ArrowLeft, Bot, ChevronRight, LogOut, Search, Settings2, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bot,
+  ChevronRight,
+  LogOut,
+  Search,
+  Settings2,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { currentAuthUserId } from '@0xnullai/auth';
 import type { WireRoomAgent } from '../../worker/wire';
 import { useState, type Dispatch, type SetStateAction } from 'react';
@@ -480,6 +490,23 @@ export function ChatAppView({
                     <span className="flex-1">搜索聊天记录</span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-faint)]" />
                   </button>
+                  <ConfirmButton
+                    className={SETTINGS_ROW}
+                    armedClassName="text-[var(--danger)]"
+                    onConfirm={() => {
+                      peerRoom.clearHistory();
+                      setActiveTab('chat');
+                    }}
+                    confirmLabel={
+                      <>
+                        <Trash2 className="h-5 w-5 shrink-0" />
+                        <span className="flex-1">再点一次确认清空（仅对你自己）</span>
+                      </>
+                    }
+                  >
+                    <Trash2 className="h-5 w-5 shrink-0 text-[var(--text-soft)]" />
+                    <span className="flex-1">清空聊天记录</span>
+                  </ConfirmButton>
                   {inShell && !peerRoom.isDm && (
                     <button
                       type="button"

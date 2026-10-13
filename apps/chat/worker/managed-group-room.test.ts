@@ -592,3 +592,26 @@ it("never lets a member attach, or by recalling delete, another member's media",
     f.db.close();
   }
 });
+
+it('clears the history for the member who asks, and only for them', async () => {
+  const f = fixture();
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    await f.send(bob, { t: 'chat', id: 'old', x: '以前的话' });
+    await f.send(alice, { t: 'clear-history' });
+    expect(f.sent(alice).at(-1)).toMatchObject({ t: 'history-cleared' });
+    expect(f.sent(bob).some((frame) => frame.t === 'history-cleared')).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await f.send(bob, { t: 'chat', id: 'new', x: '之后的话' });
+    const ids = (frame: { messages: { id: string }[] }) => frame.messages.map((m) => m.id);
+    await f.send(alice, { t: 'search', q: '的话', requestId: 'r1' });
+    expect(ids(f.sent(alice).at(-1))).toEqual(['new']);
+    await f.send(bob, { t: 'search', q: '的话', requestId: 'r2' });
+    expect(ids(f.sent(bob).at(-1)).sort()).toEqual(['new', 'old']);
+    const aliceInbox = await f.room.groupInboxSummary(ROOM, 'alice');
+    expect(aliceInbox).toMatchObject({ preview: '之后的话' });
+  } finally {
+    f.db.close();
+  }
+});
