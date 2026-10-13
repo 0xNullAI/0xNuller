@@ -25,15 +25,15 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
 起点是 `6.0.0` / `6000000`，之后 `tauri.conf.json` 的 `version` 跟随产品版本，
-`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.1.4` →
-`7001004`）。两者和 GitHub Release tag 始终对齐。
+`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.1.5` →
+`7001005`）。两者和 GitHub Release tag 始终对齐。
 
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v7.1.4`，只发热更新包，不出 APK；最新安装包仍是 `v7.1.0`，其 Release 标题和 APK 都显示
+当前版本使用 tag `v7.1.5`，只发热更新包，不出 APK；最新安装包仍是 `v7.1.0`，其 Release 标题和 APK 都显示
 `猫愿 7.1.0`，APK 附件名为 `maoyuan-v7.1.0.apk`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
