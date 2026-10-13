@@ -96,6 +96,15 @@ type Env = Omit<Cloudflare.Env, 'AUTH'> & {
   PORTRAITS: R2Bucket;
 };
 
+/** Far past any real catalog; keeps a bound value an ordinary SQLite integer. */
+const MAX_PAGE_OFFSET = 1_000_000;
+
+/** Lenient paging: junk falls back, fractions truncate and anything else clamps into range. */
+function pageInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const value = Math.trunc(Number(raw));
+  return Math.min(max, Math.max(min, value || fallback));
+}
+
 // Compatible clients on other origins can browse and import the public catalog.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -193,8 +202,8 @@ const marketWorker = {
             : requestedSort === 'popular'
               ? 'downloads'
               : 'new';
-        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
-        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const limit = pageInt(url.searchParams.get('limit'), 30, 1, 50);
+        const offset = pageInt(url.searchParams.get('offset'), 0, 0, MAX_PAGE_OFFSET);
         const params: ListParams = {
           type,
           promptKind: selectedKind,
@@ -284,8 +293,8 @@ const marketWorker = {
         const status =
           requestedStatus === 'hidden' || requestedStatus === 'visible' ? requestedStatus : 'all';
         const q = url.searchParams.get('q')?.trim() || undefined;
-        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
-        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const limit = pageInt(url.searchParams.get('limit'), 20, 1, 50);
+        const offset = pageInt(url.searchParams.get('offset'), 0, 0, MAX_PAGE_OFFSET);
         const items = await listAdminItems(env.DB, { type, status, q, limit, offset });
         return json({ items, nextOffset: items.length === limit ? offset + limit : null });
       }

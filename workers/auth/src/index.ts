@@ -80,7 +80,7 @@ import {
   decodeChatRoomCursor,
   encodeChatRoomCursor,
 } from './chat-room-cursor';
-import { corsHeaders, err, json, readBodyBounded } from './http';
+import { RequestError, corsHeaders, err, json, readBodyBounded, readJson } from './http';
 import { readToken, sessionCookie } from './session-credentials';
 import {
   cleanupPendingPhoto,
@@ -218,6 +218,8 @@ const SYNC_NAMESPACES = new Set(['llm', 'device-safety', 'proxy', 'ui']);
 const MAX_SETTINGS_BYTES = 256 * 1024;
 const MAX_CONTENT_PAYLOAD_BYTES = 512 * 1024;
 const MAX_AGENT_SESSION_BYTES = 2 * 1024 * 1024;
+/** Whole sync batch body; each item keeps its own cap above. Bounds the JSON parsed in memory. */
+const MAX_SYNC_BATCH_BYTES = 16 * 1024 * 1024;
 const AGENT_SESSION_PAGE_SIZE = 200;
 const CHAT_ROOM_CODE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_CHAT_ROOM_NAME = 80;
@@ -1534,7 +1536,7 @@ const authWorker = {
         )
           .bind(ipHash, Date.now())
           .run();
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         // Consent to the current 用户协议 is part of the account. A client that
         // predates the consent box sends no version (or an older one) and must be updated first;
         // checked before anything else so that client gets this one clear answer.
@@ -1677,7 +1679,7 @@ const authWorker = {
       }
 
       if (path === '/api/auth/email/verification/confirm' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const actionToken = typeof body.token === 'string' ? body.token : '';
         if (!actionToken) return err('验证链接无效', 400, cors);
         const tokenHash = await sha256Hex(actionToken);
@@ -1782,7 +1784,7 @@ const authWorker = {
       }
 
       if (path === '/api/auth/password/forgot' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
         if (email && EMAIL_PATTERN.test(email)) {
           const user = await env.DB.prepare('SELECT id, email FROM users WHERE lower(email) = ?')
@@ -1816,7 +1818,7 @@ const authWorker = {
       }
 
       if (path === '/api/auth/password/reset' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const actionToken = typeof body.token === 'string' ? body.token : '';
         const password = typeof body.password === 'string' ? body.password : '';
         if (password.length < MIN_PASSWORD_LEN) return err('密码至少 8 位', 400, cors);
@@ -1888,7 +1890,7 @@ const authWorker = {
       if (path === '/api/auth/admin/credits/grant' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const username =
           typeof body.username === 'string'
             ? body.username.trim().replace(/^@+/, '').toLowerCase()
@@ -1996,7 +1998,7 @@ const authWorker = {
       if (path === '/api/auth/admin/credits/gift' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const username =
           typeof body.username === 'string'
             ? body.username.trim().replace(/^@+/, '').toLowerCase()
@@ -2093,7 +2095,7 @@ const authWorker = {
         if (!env.DM_TICKET_SECRET) return err('Chat 尚未启用', 503, cors);
         let body: { room?: unknown; characterId?: unknown };
         try {
-          body = (await request.json()) as typeof body;
+          body = await readJson<typeof body>(request);
         } catch {
           return err('请求无效', 400, cors);
         }
@@ -2186,7 +2188,7 @@ const authWorker = {
         const user = await currentUser(request, env);
         if (!user || user.role !== 'admin') return err('无管理权限', 403, cors);
         const id = decodeURIComponent(path.slice('/api/auth/admin/reports/'.length));
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const status = body.status;
         if (status !== 'reviewed' && status !== 'dismissed') return err('处理状态无效', 400, cors);
         await env.DB.prepare('UPDATE user_reports SET status = ?, reviewed_at = ? WHERE id = ?')
@@ -2272,7 +2274,7 @@ const authWorker = {
       if (path === '/api/auth/profile' && request.method === 'PUT') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json()) as Record<string, unknown>;
+        const body = await readJson(request);
 
         const birthDate = typeof body.birthDate === 'string' ? body.birthDate.trim() : '';
         if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
@@ -2493,7 +2495,7 @@ const authWorker = {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         const id = decodeURIComponent(path.slice('/api/auth/photos/'.length));
-        const body = (await request.json()) as Record<string, unknown>;
+        const body = await readJson(request);
         if (
           body.visibility !== 'public' &&
           body.visibility !== 'friends' &&
@@ -2602,7 +2604,7 @@ const authWorker = {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
         if (!user.email_verified_at) return err('请先验证邮箱后使用 Chat', 403, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const code = typeof body.code === 'string' ? body.code.trim() : '';
         const name =
           typeof body.name === 'string' ? body.name.trim().slice(0, MAX_CHAT_ROOM_NAME) : '';
@@ -2633,7 +2635,7 @@ const authWorker = {
         const code = decodeURIComponent(
           path.slice('/api/auth/chat-rooms/'.length, -'/close'.length),
         );
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const ownerKey = typeof body.ownerKey === 'string' ? body.ownerKey : '';
         const owner = await env.DB.prepare(
           'SELECT 1 FROM user_chat_rooms WHERE user_id = ? AND code = ? AND owner_key = ?',
@@ -2694,7 +2696,9 @@ const authWorker = {
         if (!user) return err('未登录', 401, cors);
         const namespace = decodeURIComponent(path.slice('/api/auth/settings/'.length));
         if (!SYNC_NAMESPACES.has(namespace)) return err('同步命名空间不存在', 404, cors);
-        const body = (await request.json()) as { payload?: unknown; version?: number };
+        const body = await readJson<{ payload?: unknown; version?: number }>(request, {
+          maxBytes: MAX_SETTINGS_BYTES * 2,
+        });
         if (body.payload === undefined) return err('缺少 payload', 400, cors);
         const encodedPayload = JSON.stringify(body.payload);
         if (new TextEncoder().encode(encodedPayload).byteLength > MAX_SETTINGS_BYTES) {
@@ -2767,14 +2771,14 @@ const authWorker = {
       if (path === '/api/auth/agent-sessions' && request.method === 'PUT') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json()) as {
+        const body = await readJson<{
           sessions?: {
             id: string;
             session?: unknown;
             clientUpdatedAt?: number;
             deleted?: boolean;
           }[];
-        };
+        }>(request, { maxBytes: MAX_SYNC_BATCH_BYTES });
         const sessions = Array.isArray(body.sessions) ? body.sessions.slice(0, 100) : [];
         if (sessions.length === 0) return json({ ok: true, written: 0 }, 200, cors);
         for (const item of sessions) {
@@ -2887,7 +2891,7 @@ const authWorker = {
       if (path === '/api/auth/content' && request.method === 'PUT') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json()) as {
+        const body = await readJson<{
           items?: {
             id: string;
             kind: string;
@@ -2897,7 +2901,7 @@ const authWorker = {
             hidden?: boolean;
             order?: number;
           }[];
-        };
+        }>(request, { maxBytes: MAX_SYNC_BATCH_BYTES });
         const items = Array.isArray(body.items) ? body.items.slice(0, 200) : [];
         if (items.length === 0) return json({ ok: true, written: 0 }, 200, cors);
 
@@ -2985,10 +2989,10 @@ const authWorker = {
       if (contentPreferencesMatch && request.method === 'PUT') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json()) as {
+        const body = await readJson<{
           selectedId?: unknown;
           hiddenBuiltinIds?: unknown;
-        };
+        }>(request);
         const hidden = Array.isArray(body.hiddenBuiltinIds)
           ? [
               ...new Set(
@@ -3044,7 +3048,7 @@ const authWorker = {
       if (path === '/api/auth/follow' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const targetId = typeof body.userId === 'string' ? body.userId : '';
         if (!targetId) return err('缺少 userId', 400, cors);
         if (targetId === user.id) return err('不能关注自己', 400, cors);
@@ -3186,7 +3190,7 @@ const authWorker = {
       if (path === '/api/auth/block' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const targetId = typeof body.userId === 'string' ? body.userId : '';
         if (!targetId) return err('缺少 userId', 400, cors);
         if (targetId === user.id) return err('不能拉黑自己', 400, cors);
@@ -3232,7 +3236,7 @@ const authWorker = {
       if (path === '/api/auth/report' && request.method === 'POST') {
         const user = await currentUser(request, env);
         if (!user) return err('未登录', 401, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const targetId = typeof body.userId === 'string' ? body.userId : '';
         const reason = typeof body.reason === 'string' ? body.reason : '';
         const details = typeof body.details === 'string' ? body.details.trim() : '';
@@ -3243,22 +3247,15 @@ const authWorker = {
           .bind(targetId)
           .first();
         if (!target) return err('用户不存在', 404, cors);
-        const existing = await env.DB.prepare(
-          `SELECT 1 FROM user_reports
-            WHERE reporter_user_id = ? AND reported_user_id = ? AND status = 'open'`,
-        )
-          .bind(user.id, targetId)
-          .first();
-        if (existing) {
-          return json({ ok: true, duplicate: true }, 200, cors);
-        }
-        await env.DB.prepare(
+        // The open-pair unique index decides, so two concurrent reports cannot race into a 500.
+        const inserted = await env.DB.prepare(
           `INSERT INTO user_reports
            (id, reporter_user_id, reported_user_id, reason, details, status, created_at)
-           VALUES (?, ?, ?, ?, ?, 'open', ?)`,
+           VALUES (?, ?, ?, ?, ?, 'open', ?) ON CONFLICT DO NOTHING`,
         )
           .bind(crypto.randomUUID(), user.id, targetId, reason, details || null, Date.now())
           .run();
+        if (!inserted.meta.changes) return json({ ok: true, duplicate: true }, 200, cors);
         return json({ ok: true, duplicate: false }, 201, cors);
       }
 
@@ -3328,7 +3325,7 @@ const authWorker = {
       if (redPacketApprove && request.method === 'POST') {
         const admin = await currentUser(request, env);
         if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const amountCredits = Number(body.amountCredits);
         if (!Number.isSafeInteger(amountCredits) || amountCredits < 1 || amountCredits > 20_000)
           return err('Credit 数量无效', 400, cors);
@@ -3361,7 +3358,7 @@ const authWorker = {
       if (redPacketReject && request.method === 'POST') {
         const admin = await currentUser(request, env);
         if (!admin || admin.role !== 'admin') return err('无管理权限', 403, cors);
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
         if (reason.length < 2 || reason.length > 200) return err('拒绝原因无效', 400, cors);
         const result = await env.DB.prepare(
@@ -3374,7 +3371,7 @@ const authWorker = {
       }
 
       if (path === '/api/auth/feedback' && request.method === 'POST') {
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         const contact = typeof body.contact === 'string' ? body.contact.trim() : '';
         if (!message) return err('反馈内容不能为空', 400, cors);
@@ -3430,7 +3427,7 @@ const authWorker = {
         const secret = env.DM_TICKET_SECRET;
         if (!secret) return err('私聊尚未启用', 503, cors);
 
-        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const body = await readJson(request, { lenient: true });
         const targetId = typeof body.userId === 'string' ? body.userId : '';
         if (!targetId) return err('缺少 userId', 400, cors);
         if (targetId === user.id) return err('不能和自己私聊', 400, cors);
@@ -3669,6 +3666,9 @@ const authWorker = {
 
       return err('接口不存在', 404, cors);
     } catch (error) {
+      // Malformed or oversized bodies and undecodable path segments are the client's mistake.
+      if (error instanceof RequestError) return err(error.message, error.status, cors);
+      if (error instanceof URIError) return err('请求路径无效', 400, cors);
       console.error(
         JSON.stringify({
           level: 'error',
