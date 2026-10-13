@@ -31,6 +31,9 @@ import { withServerErrorCounting } from '@0xnullai/observability';
  * @property {string} [VOLC_ARK_API_KEY] Secret: Ark API key.
  * @property {object} AUTH Service binding to Auth's `AuthOwnershipService`.
  * @property {{ limit(input: { key: string }): Promise<{ success: boolean }> }} RATE_LIMITER
+ *   Strict limit per known account (or group payer).
+ * @property {{ limit(input: { key: string }): Promise<{ success: boolean }> }} IP_RATE_LIMITER
+ *   Loose per-IP limit for traffic whose account is not known yet.
  */
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -99,13 +102,11 @@ function credentials(request) {
   };
 }
 
-async function withinRateLimit(env, request, verifiedGroupPayer) {
-  if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== 'function') return false;
-  const key = verifiedGroupPayer
-    ? `group-payer:${verifiedGroupPayer}`
-    : request.headers.get('CF-Connecting-IP') || 'unknown';
+/** Paid upstream traffic fails closed when a limiter is missing or unavailable. */
+async function withinRateLimit(limiter, key) {
+  if (!limiter || typeof limiter.limit !== 'function') return false;
   try {
-    return (await env.RATE_LIMITER.limit({ key })).success;
+    return (await limiter.limit({ key })).success;
   } catch {
     return false;
   }
@@ -457,7 +458,15 @@ const llmProxyWorker = {
     const config = managedConfig(env);
     if (!config) return json(503, { error: MANAGED_OFF }, cors);
     const isGroup = request.headers.has('X-0xNullAI-Group-Ticket');
-    if (!isGroup && !(await withinRateLimit(env, request)))
+    // Before anyone is known only a loose per-IP bound applies: carrier-grade NAT puts many
+    // users behind one address. The real per-account limit follows the reservation below.
+    if (
+      !isGroup &&
+      !(await withinRateLimit(
+        env.IP_RATE_LIMITER,
+        `ip:${request.headers.get('CF-Connecting-IP') || 'unknown'}`,
+      ))
+    )
       return json(429, { error: '请求过于频繁' }, cors);
 
     let body;
@@ -540,7 +549,7 @@ const llmProxyWorker = {
       }
       if (verified === 'unauthorized' || !verified?.payer)
         return json(401, { error: '群账务身份无效' }, cors);
-      if (!(await withinRateLimit(env, request, verified.payer)))
+      if (!(await withinRateLimit(env.RATE_LIMITER, `group-payer:${verified.payer}`)))
         return json(429, { error: '请求过于频繁' }, cors);
     }
     const conversationId = request.headers.get('X-0xNullAI-Conversation-Id');
@@ -616,6 +625,7 @@ const llmProxyWorker = {
     // A capability refers only to this persisted reservation and survives browser session expiry.
     // Never expose it in responses or persist browser credentials.
     const billingService = env.AUTH;
+    const rateLimiter = env.RATE_LIMITER;
     let heartbeat;
     const capability = reservation.capability;
     const checkpoint = async (charge, metadata) => {
@@ -652,6 +662,20 @@ const llmProxyWorker = {
     if (request.signal.aborted) {
       const billing_status = await releaseAfterFailure(env, auth, key);
       return json(499, { error: '请求已取消', billing_status }, cors);
+    }
+    // Auth has now named the account, so the account (not its shared IP) gets the strict limit.
+    // Nothing has run yet, so a refused request releases its untouched hold.
+    if (
+      !isGroup &&
+      !(await withinRateLimit(
+        rateLimiter,
+        reservation.subject
+          ? `account:${reservation.subject}`
+          : request.headers.get('CF-Connecting-IP') || 'unknown',
+      ))
+    ) {
+      const billing_status = await releaseAfterFailure(env, auth, key);
+      return json(429, { error: '请求过于频繁', billing_status }, cors);
     }
 
     const stream = Boolean(body.stream) && !vision;

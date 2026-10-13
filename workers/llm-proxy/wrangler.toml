@@ -32,9 +32,19 @@ head_sampling_rate = 1
 # Browser origins. Native shells use Bearer sessions and do not send Origin.
 ALLOWED_ORIGINS = "https://0xnullai.com,https://www.0xnullai.com,http://tauri.localhost"
 
-# Paid upstream traffic fails closed when the global limiter is unavailable.
+# Paid upstream traffic fails closed when a limiter is unavailable.
+# Strict limit per signed-in account (or group payer), applied once Auth has named it. It keeps
+# the limit the per-IP key used to have; only the key changed.
 [[unsafe.bindings]]
 name = "RATE_LIMITER"
 type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 20, period = 60 }
+
+# Loose per-IP bound before the account is known. Chinese carriers put many users behind one
+# carrier-grade NAT address, so this only stops a single source from flooding Auth.
+[[unsafe.bindings]]
+name = "IP_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }

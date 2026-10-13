@@ -16,6 +16,7 @@ function environment(overrides = {}) {
     AI_PRICE_TABLE: JSON.stringify(exampleTable),
     VOLC_ARK_API_KEY: 'test-ark-key',
     RATE_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
+    IP_RATE_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
     AUTH: {
       creditBalance: vi.fn().mockResolvedValue({ total: 1000, reserved: 0, available: 1000 }),
       reserveCredits: vi.fn().mockResolvedValue({
@@ -36,7 +37,7 @@ function environment(overrides = {}) {
   env.AUTH.reserveManagedTextCredits = vi.fn(async (...args) => {
     const result = await env.AUTH.reserveCredits(...args);
     return result && typeof result === 'object'
-      ? { ...result, capability: 'test-capability' }
+      ? { ...result, capability: 'test-capability', subject: 'account-1' }
       : result;
   });
   env.AUTH.authorizeManagedGroupText = vi.fn().mockResolvedValue({ payer: 'alice' });
@@ -612,6 +613,30 @@ describe('平台模型请求', () => {
       .mockResolvedValue({ allowed: false, status: 'insufficient' });
     const response = await worker.fetch(groupRequest({ messages: [] }), env, context());
     expect(response.status).toBe(402);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('applies only a loose per-IP bound before the account is known', async () => {
+    const { fetch } = stubArk(completion('never'));
+    const env = environment();
+    env.IP_RATE_LIMITER.limit.mockResolvedValue({ success: false });
+    const input = request({ messages: [] });
+    input.headers.set('CF-Connecting-IP', '203.0.113.9');
+    const response = await worker.fetch(input, env, context());
+    expect(response.status).toBe(429);
+    expect(env.IP_RATE_LIMITER.limit).toHaveBeenCalledWith({ key: 'ip:203.0.113.9' });
+    expect(env.AUTH.reserveManagedTextCredits).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('limits a known account, not its shared IP, and releases the untouched hold', async () => {
+    const { fetch } = stubArk(completion('never'));
+    const env = environment();
+    env.RATE_LIMITER.limit.mockResolvedValue({ success: false });
+    const response = await worker.fetch(request({ messages: [] }), env, context());
+    expect(response.status).toBe(429);
+    expect(env.RATE_LIMITER.limit).toHaveBeenCalledWith({ key: 'account:account-1' });
+    expect(env.AUTH.releaseCredits).toHaveBeenCalledOnce();
     expect(fetch).not.toHaveBeenCalled();
   });
 

@@ -8,6 +8,10 @@ Key 不经过本 Worker，也不消耗 Credit。
 生产脚本沿用 `dg-llm-proxy`。自定义域、日志、Auth 服务绑定、来源白名单、全局限流和关闭的
 workers.dev/Preview URL 由 `wrangler.toml` 管理。
 
+限流分两层，均在限流器不可用时拒绝请求：账户未知前只有宽松的按 IP 限流（`IP_RATE_LIMITER`），因为
+国内运营商的 CGNAT 会让大量用户共用一个出口 IP；Auth 预留确认账户后按账户严格限流（`RATE_LIMITER`，
+群 AI 按付费成员），超限时释放尚未使用的预留并返回 429。
+
 ## 配置
 
 | 名称                 | 类型   | 说明                                                                               |

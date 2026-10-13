@@ -572,7 +572,8 @@ export class AuthOwnershipService extends WorkerEntrypoint<Env> {
       user.id,
       vision ? input.bodyHash : undefined,
     );
-    return { ...result, capability };
+    // The proxy rate-limits per account (not per shared IP) with this; it never leaves the proxy.
+    return { ...result, capability, subject: user.id };
   }
   /** Chat-only signed turn: the account that brought the AI into the group pays. */
   async authorizeManagedGroupText(
