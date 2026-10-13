@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
 import type { AgentClient } from '@dg-agent/client';
 import { getObservedConversationSequence } from '@dg-agent/storage-browser';
@@ -6,7 +13,6 @@ import {
   createEmptyDeviceState,
   type DeviceState,
   type RuntimeEvent,
-  type RuntimeTraceEntry,
   type SessionSnapshot,
 } from '@dg-agent/core';
 import { buildLiveTraceFeedItemFromEvent, type TraceFeedItem } from '../utils/trace-feed.js';
@@ -15,6 +21,10 @@ import { buildLiveTraceFeedItemFromEvent, type TraceFeedItem } from '../utils/tr
 // don't matter and would only inflate memory. Cap matches the previous
 // implementation but the array is no longer persisted across reloads.
 const RECENT_EVENT_BUFFER = 200;
+
+// Device action notes stay with their conversation until it is left; a long session
+// must not grow them without bound.
+const LIVE_TRACE_LIMIT = 200;
 
 const LEGACY_EVENT_LOG_KEY = 'dg-agent.event-log';
 
@@ -50,6 +60,15 @@ export function shouldClearStreamingForEvent(event: RuntimeEvent): boolean {
   return event.type === 'session-updated' || isTurnEndEvent(event);
 }
 
+/** Events that only happen while a reply for that session is running. */
+export function isReplyActivityEvent(event: RuntimeEvent): boolean {
+  return (
+    event.type === 'user-message-accepted' ||
+    event.type === 'assistant-message-delta' ||
+    event.type.startsWith('tool-call-')
+  );
+}
+
 export function shouldRefreshSessionForEvent(event: RuntimeEvent): boolean {
   return (
     event.type === 'user-message-accepted' ||
@@ -80,7 +99,12 @@ export function markServerDisplaySnapshot(snapshot: SessionSnapshot): SessionSna
   };
 }
 
-/** Keep already viewed pages while a fresh bounded server window arrives. */
+/**
+ * Keep already viewed pages while a fresh bounded server window arrives. The fresh window is
+ * authoritative and keeps its server order; rows it does not contain (older pages, or a user
+ * message the server has not echoed yet) are merged in by time instead of being stacked in
+ * front of it.
+ */
 export function mergeDisplaySnapshot(
   previous: SessionSnapshot | null,
   next: SessionSnapshot,
@@ -88,14 +112,19 @@ export function mergeDisplaySnapshot(
   if (!previous || previous.id !== next.id || !previous.historyWindow || !next.historyWindow)
     return next;
   const freshIds = new Set(next.messages.map((message) => message.id));
+  const kept = previous.messages.filter((message) => !freshIds.has(message.id));
+  const messages: SessionSnapshot['messages'] = [];
+  let k = 0;
+  for (const message of next.messages) {
+    while (k < kept.length && kept[k]!.createdAt < message.createdAt) messages.push(kept[k++]!);
+    messages.push(message);
+  }
+  while (k < kept.length) messages.push(kept[k++]!);
   const previousBefore = previous.historyWindow.nextBefore;
   const nextBefore = next.historyWindow.nextBefore;
   return {
     ...next,
-    messages: [
-      ...previous.messages.filter((message) => !freshIds.has(message.id)),
-      ...next.messages,
-    ],
+    messages,
     historyWindow: {
       nextBefore:
         previousBefore === null || nextBefore === null
@@ -112,21 +141,33 @@ export function hasNewerServerMessages(remote: unknown, local: number | null): b
 
 export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
   const { client, enabled, onRuntimeEvent } = options;
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
+  // Mirrors activeSessionId synchronously, so a read that finishes after the user moved to
+  // another conversation can tell and is dropped instead of showing the wrong conversation.
+  const activeSessionIdRef = useRef<string | null>(null);
+  const setActiveSessionId = useCallback<Dispatch<SetStateAction<string | null>>>((value) => {
+    const next = typeof value === 'function' ? value(activeSessionIdRef.current) : value;
+    activeSessionIdRef.current = next;
+    setActiveSessionIdState(next);
+  }, []);
   const [events, setEvents] = useState<RuntimeEvent[]>(() => {
     dropLegacyEventLog();
     return [];
   });
   const [session, setSession] = useState<SessionSnapshot | null>(null);
-  const [sessionTrace, setSessionTrace] = useState<RuntimeTraceEntry[]>([]);
   const [savedSessions, setSavedSessions] = useState<SessionSnapshot[]>([]);
   const [liveDeviceState, setLiveDeviceState] = useState<DeviceState>(createEmptyDeviceState());
   const [replyBusy, setReplyBusy] = useState(false);
+  // Conversations with a reply running, whoever started it (this page, a bridge, a sensor or a
+  // timer), so the stop button follows the conversation on screen.
+  const runningRepliesRef = useRef(new Set<string>());
   const [streamingAssistantText, setStreamingAssistantText] = useState('');
   // Page-only notice for the last failed reply; it is never part of the session record.
   const [failedReply, setFailedReply] = useState<{ sessionId: string; text: string } | null>(null);
   const [liveTraceItems, setLiveTraceItems] = useState<TraceFeedItem[]>([]);
   const onRuntimeEventRef = useRef(onRuntimeEvent);
+  // One counter for every display read: only the newest read may land, so a slow older read
+  // can never overwrite a newer one or interleave its rows.
   const syncRequestIdRef = useRef(0);
   const accountGenerationRef = useRef(0);
   const accountIdRef = useRef(currentAuthUserId());
@@ -155,31 +196,76 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     setStreamingAssistantText('');
   }, []);
 
+  const savedSessionsReadRef = useRef<CoalescedRead | null>(null);
   const refreshSavedSessions = useCallback(async (): Promise<void> => {
     const generation = accountGenerationRef.current;
-    const sessions = await client.listSessions();
-    if (generation === accountGenerationRef.current) setSavedSessions(sessions);
+    await coalesce(savedSessionsReadRef, async () => {
+      const sessions = await client.listSessions();
+      if (generation === accountGenerationRef.current) setSavedSessions(sessions);
+    });
   }, [client]);
 
-  const refreshCurrentSession = useCallback(
-    async (sessionId = activeSessionId): Promise<void> => {
-      if (!sessionId) return;
-
+  const sessionReadRef = useRef<CoalescedSessionRead | null>(null);
+  /**
+   * Re-read the open conversation. Reads that overlap join the one in flight (which then runs
+   * once more), so a burst of events costs at most two reads; the navigation list is only read
+   * when asked, since most events of the open conversation do not change it.
+   */
+  const readSession = useCallback(
+    async (sessionId: string, withList: boolean): Promise<void> => {
+      if (sessionId !== activeSessionIdRef.current) return;
+      const inFlight = sessionReadRef.current;
+      if (inFlight && inFlight.sessionId === sessionId) {
+        inFlight.again = true;
+        inFlight.withList ||= withList;
+        return inFlight.promise;
+      }
       const generation = accountGenerationRef.current;
-      const [currentSession, currentTrace, sessions] = await Promise.all([
-        client.getSessionDisplaySnapshot(sessionId),
-        client.getSessionTrace(sessionId),
-        client.listSessions(),
-      ]);
-      if (generation !== accountGenerationRef.current) return;
-      setSession((previous) =>
-        mergeDisplaySnapshot(previous, markServerDisplaySnapshot(currentSession)),
-      );
-      setSessionTrace(currentTrace);
-      setSavedSessions(sessions);
-      setLiveDeviceState(currentSession.deviceState);
+      const read: CoalescedSessionRead = {
+        sessionId,
+        again: false,
+        withList,
+        promise: Promise.resolve(),
+      };
+      read.promise = (async () => {
+        try {
+          do {
+            read.again = false;
+            const listNow = read.withList;
+            read.withList = false;
+            const requestId = ++syncRequestIdRef.current;
+            const [currentSession, sessions] = await Promise.all([
+              client.getSessionDisplaySnapshot(sessionId),
+              listNow ? client.listSessions() : null,
+            ]);
+            if (
+              generation !== accountGenerationRef.current ||
+              requestId !== syncRequestIdRef.current ||
+              sessionId !== activeSessionIdRef.current
+            )
+              return;
+            setSession((previous) =>
+              mergeDisplaySnapshot(previous, markServerDisplaySnapshot(currentSession)),
+            );
+            if (sessions) setSavedSessions(sessions);
+            setLiveDeviceState(currentSession.deviceState);
+          } while (read.again);
+        } finally {
+          if (sessionReadRef.current === read) sessionReadRef.current = null;
+        }
+      })();
+      sessionReadRef.current = read;
+      return read.promise;
     },
-    [activeSessionId, client],
+    [client],
+  );
+
+  const refreshCurrentSession = useCallback(
+    async (sessionId = activeSessionIdRef.current): Promise<void> => {
+      if (!sessionId) return;
+      await readSession(sessionId, true);
+    },
+    [readSession],
   );
 
   const loadOlderSessionMessages = useCallback(
@@ -277,7 +363,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     return () => {
       active = false;
     };
-  }, [client, enabled, reportError]);
+  }, [client, enabled, reportError, setActiveSessionId]);
 
   // The Agent module can stay mounted behind another tab while the account is
   // changed in the shell. Re-read the account-partitioned store immediately so
@@ -294,11 +380,11 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
       void client.emergencyStop(activeSessionId ?? 'account-change').catch(reportError);
       setActiveSessionId(null);
       setSession(null);
-      setSessionTrace([]);
       setSavedSessions([]);
       setEvents([]);
       setLiveTraceItems([]);
       setStreamingAssistantText('');
+      runningRepliesRef.current.clear();
       setReplyBusy(false);
       void client
         .listSessions()
@@ -307,16 +393,13 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
           setSavedSessions(sessions);
           const firstId = sessions[0]?.id ?? null;
           setActiveSessionId(firstId ?? `session-${Date.now().toString(36)}`);
-          if (!firstId) {
-            setSession(null);
-            setSessionTrace([]);
-          }
+          if (!firstId) setSession(null);
         })
         .catch((error) => {
           if (generation === accountGenerationRef.current) reportError(error);
         });
     });
-  }, [client, enabled, activeSessionId, reportError]);
+  }, [client, enabled, activeSessionId, reportError, setActiveSessionId]);
 
   useEffect(() => {
     if (!enabled || !activeSessionId) return;
@@ -324,45 +407,40 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     let active = true;
     const sessionId = activeSessionId;
     const generation = accountGenerationRef.current;
-    setReplyBusy(false);
+    // A reply already running here (started by a bridge, sensor or timer) keeps its stop
+    // button; device notes from the conversation just left do not follow.
+    setReplyBusy(
+      runningRepliesRef.current.has(sessionId) || client.isReplyRunning?.(sessionId) === true,
+    );
+    setLiveTraceItems([]);
 
-    async function syncCurrentSession(): Promise<void> {
-      const requestId = ++syncRequestIdRef.current;
-      const [currentSession, currentTrace, sessions] = await Promise.all([
-        client.getSessionDisplaySnapshot(sessionId),
-        client.getSessionTrace(sessionId),
-        client.listSessions(),
-      ]);
+    const syncCurrentSession = (withList: boolean) => readSession(sessionId, withList);
 
-      if (
-        !active ||
-        generation !== accountGenerationRef.current ||
-        requestId !== syncRequestIdRef.current
-      )
-        return;
-
-      setSession((previous) =>
-        mergeDisplaySnapshot(previous, markServerDisplaySnapshot(currentSession)),
-      );
-      setSessionTrace(currentTrace);
-      setSavedSessions(sessions);
-      setLiveDeviceState(currentSession.deviceState);
-    }
-
-    void syncCurrentSession().catch((error) => {
+    void syncCurrentSession(true).catch((error) => {
       if (active && generation === accountGenerationRef.current) reportError(error);
     });
 
     const unsubscribe = client.subscribe((event) => {
       if (generation !== accountGenerationRef.current) return;
+      // Device state is a reading, not a conversation event: keep it out of the event log,
+      // and re-render only when the reading actually changed.
+      if (event.type === 'device-state-changed') {
+        setLiveDeviceState((current) =>
+          sameShallow(current, event.state) ? current : event.state,
+        );
+        return;
+      }
       setEvents((current) => [event, ...current].slice(0, RECENT_EVENT_BUFFER));
 
       const isActiveSessionEvent = isActiveRuntimeSessionEvent(event, sessionId);
+      if ('sessionId' in event && event.sessionId) {
+        if (isReplyActivityEvent(event)) runningRepliesRef.current.add(event.sessionId);
+        if (isTurnEndEvent(event)) runningRepliesRef.current.delete(event.sessionId);
+      }
 
       if (isActiveSessionEvent && event.type === 'user-message-accepted') {
         setFailedReply(null);
         setReplyBusy(true);
-        setLiveTraceItems([]);
         // The runtime has already persisted this exact message before emitting.
         // Render it from the event immediately instead of waiting for an IndexedDB
         // round trip; the subsequent snapshot refresh remains authoritative.
@@ -372,7 +450,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
       if (isActiveSessionEvent) {
         const liveItem = buildLiveTraceFeedItemFromEvent(event);
         if (liveItem) {
-          setLiveTraceItems((current) => [...current, liveItem]);
+          setLiveTraceItems((current) => [...current, liveItem].slice(-LIVE_TRACE_LIMIT));
         }
       }
 
@@ -385,12 +463,12 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
         return;
       }
 
-      if (event.type === 'device-state-changed') {
-        setLiveDeviceState(event.state);
-      }
-
       if (event.type === 'device-command-executed') {
         setLiveDeviceState(event.result.state);
+      }
+
+      if (isActiveSessionEvent && isReplyActivityEvent(event)) {
+        setReplyBusy(true);
       }
 
       if (isActiveSessionEvent && isTurnEndEvent(event)) {
@@ -415,14 +493,10 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
 
       if (shouldRefreshSessionForEvent(event)) {
         if (isActiveSessionEvent) {
-          const isTurnEnd = isTurnEndEvent(event);
-          void syncCurrentSession()
-            .then(() => {
-              if (isTurnEnd) setLiveTraceItems([]);
-            })
-            .catch((error) => {
-              if (active && generation === accountGenerationRef.current) reportError(error);
-            });
+          // Only the end of a turn changes the navigation list (title, order, preview).
+          void syncCurrentSession(isTurnEndEvent(event)).catch((error) => {
+            if (active && generation === accountGenerationRef.current) reportError(error);
+          });
         } else {
           void refreshSavedSessions().catch(reportError);
         }
@@ -433,7 +507,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
       active = false;
       unsubscribe();
     };
-  }, [activeSessionId, client, enabled, refreshSavedSessions, reportError]);
+  }, [activeSessionId, client, enabled, readSession, refreshSavedSessions, reportError]);
 
   return {
     activeSessionId,
@@ -441,7 +515,6 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     events,
     clearEvents,
     session,
-    sessionTrace,
     setSession,
     savedSessions,
     setSavedSessions,
@@ -455,4 +528,46 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     refreshCurrentSession,
     loadOlderSessionMessages,
   };
+}
+
+function sameShallow<T extends object>(a: T, b: T): boolean {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys)
+    if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) return false;
+  return true;
+}
+
+interface CoalescedRead {
+  again: boolean;
+  promise: Promise<void>;
+}
+
+interface CoalescedSessionRead extends CoalescedRead {
+  sessionId: string;
+  withList: boolean;
+}
+
+/** Run `read`, or, while one is in flight, ask it to run once more and share its promise. */
+function coalesce(
+  ref: { current: CoalescedRead | null },
+  read: () => Promise<void>,
+): Promise<void> {
+  if (ref.current) {
+    ref.current.again = true;
+    return ref.current.promise;
+  }
+  const entry: CoalescedRead = { again: false, promise: Promise.resolve() };
+  entry.promise = (async () => {
+    try {
+      do {
+        entry.again = false;
+        await read();
+      } while (entry.again);
+    } finally {
+      if (ref.current === entry) ref.current = null;
+    }
+  })();
+  ref.current = entry;
+  return entry.promise;
 }

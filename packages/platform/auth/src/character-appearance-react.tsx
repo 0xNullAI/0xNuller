@@ -10,6 +10,7 @@ import {
   getCharacterAppearance,
   type CharacterAppearance,
 } from './character-appearance';
+import { acquireCharacterPhoto, readSharedCharacterAppearance } from './character-asset-cache';
 
 /** Private asset bytes are page-memory only; changing accounts clears even an in-flight fetch. */
 export function useCharacterPhoto(photoId: string | null): string | null {
@@ -31,38 +32,31 @@ export function useCharacterPhoto(photoId: string | null): string | null {
   useEffect(() => {
     if (!photoId || !account) return;
     let valid = true;
-    let objectUrl: string | undefined;
-    const controller = new AbortController();
-    const unsubscribe = subscribeAuthChanges(() => {
-      if (currentAuthUserId() !== account) {
-        valid = false;
-        controller.abort();
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-      }
-    });
-    void (async () => {
+    // Every avatar of a conversation shows the same photo: one read and one object URL serve
+    // them all, released (and revoked) by the cache, which also drops it on account change.
+    const lease = acquireCharacterPhoto(account, photoId, async (signal) => {
       const path = characterPhotoPath(photoId);
       const response = await fetch(`${apiBaseUrl()}${path}`, {
         credentials: 'include',
         cache: 'no-store',
-        signal: controller.signal,
+        signal,
         headers: { ...authRequestHeaders(), 'X-Account-Id': account },
       });
       if (
         !response.ok ||
         !/^image\/(png|jpeg|webp)$/.test(response.headers.get('content-type') ?? '')
       )
-        return;
+        return null;
       const blob = await response.blob();
-      if (!valid || currentAuthUserId() !== account || blob.size > 10_000_000) return;
-      objectUrl = URL.createObjectURL(blob);
-      setSource({ account, photoId, url: objectUrl });
-    })().catch(() => undefined);
+      if (currentAuthUserId() !== account || blob.size > 10_000_000) return null;
+      return blob;
+    });
+    void lease.url.then((url) => {
+      if (valid && url && currentAuthUserId() === account) setSource({ account, photoId, url });
+    });
     return () => {
       valid = false;
-      unsubscribe();
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      lease.release();
     };
   }, [photoId, account]);
   return source?.account === currentAuthUserId() && source?.photoId === photoId ? source.url : null;
@@ -82,9 +76,10 @@ export function useCharacterAppearance(
   }, []);
   const key = accountId && relationshipId ? `${accountId}:${relationshipId}` : '';
   useEffect(() => {
-    if (!key || !relationshipId) return;
+    if (!key || !relationshipId || !accountId) return;
     let valid = true;
-    void getCharacterAppearance(relationshipId)
+    // Shared across every avatar of the conversation; a saved appearance clears it.
+    void readSharedCharacterAppearance(accountId, relationshipId)
       .then((appearance) => {
         if (valid) setValue({ key, appearance });
       })
@@ -92,7 +87,7 @@ export function useCharacterAppearance(
     return () => {
       valid = false;
     };
-  }, [key, relationshipId, revision]);
+  }, [accountId, key, relationshipId, revision]);
   return key && value?.key === key ? value.appearance : null;
 }
 

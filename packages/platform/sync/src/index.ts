@@ -261,12 +261,22 @@ export async function forgetChatRoom(code: string): Promise<boolean> {
   return res?.ok === true;
 }
 
-export async function pullAgentSessions(since = 0): Promise<{
+/**
+ * One page of agent sessions changed after `since`. Pass the previous page's `nextCursor` to
+ * continue: it pages by (updated_at, id), so rows sharing a timestamp are never skipped.
+ */
+export async function pullAgentSessions(
+  since = 0,
+  cursor?: string | null,
+): Promise<{
   sessions: SyncedAgentSession[];
   cursor: number;
+  nextCursor?: string | null;
   hasMore: boolean;
 } | null> {
-  return call(`/api/auth/agent-sessions?since=${Math.max(0, Math.trunc(since))}`);
+  const query = new URLSearchParams({ since: String(Math.max(0, Math.trunc(since))) });
+  if (cursor) query.set('cursor', cursor);
+  return call(`/api/auth/agent-sessions?${query}`);
 }
 
 export async function pushAgentSessions(

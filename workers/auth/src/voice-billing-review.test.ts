@@ -67,7 +67,7 @@ it('requires live admin and pinned account for both reads and writes', async () 
   expect((await call(undefined, '', 'admin', 'alice')).status).toBe(403);
   expect((await call(undefined, '', 'missing')).status).toBe(401);
   await env.DB.prepare("UPDATE users SET banned_at=1 WHERE id='admin'").run();
-  expect((await call(note)).status).toBe(403);
+  expect((await call(note)).status).toBe(401);
 });
 it('filters exact owner and inclusive time without exposing unrelated records; never caches', async () => {
   await seed('voice:bob:001', 'bob', 150);

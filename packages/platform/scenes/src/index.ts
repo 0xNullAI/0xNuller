@@ -88,6 +88,8 @@ const listeners = new Set<(lib: SceneLibrary) => void>();
 let syncPromise: Promise<void> | null = null;
 let synced = false;
 let syncGeneration = 0;
+let syncRetryAt = 0;
+const SYNC_RETRY_MS = 30_000;
 let observedAccount = currentAuthUserId();
 let localRevision = 0;
 let preferenceRevision = 0;
@@ -351,6 +353,8 @@ export function syncScenes(): Promise<void> {
   if (!account || !key) return Promise.resolve();
   if (synced) return Promise.resolve();
   if (syncPromise) return syncPromise;
+  // Readers call this on every render; after a failure, wait instead of retrying in a loop.
+  if (Date.now() < syncRetryAt) return Promise.resolve();
   const generation = syncGeneration;
   const startingRevision = localRevision;
   const task = (async () => {
@@ -358,7 +362,11 @@ export function syncScenes(): Promise<void> {
       pullContent('scene'),
       pullContentPreferences('scene'),
     ]);
-    if (!remote || generation !== syncGeneration || currentAuthUserId() !== account) return;
+    if (!remote) {
+      syncRetryAt = Date.now() + SYNC_RETRY_MS;
+      return;
+    }
+    if (generation !== syncGeneration || currentAuthUserId() !== account) return;
     synced = true;
     const local = loadScenesWithoutSync(account);
     const byId = new Map(local.scenes.map((scene) => [scene.id, scene]));
@@ -428,6 +436,7 @@ if (typeof window !== 'undefined')
     if (nextAccount === observedAccount) return;
     observedAccount = nextAccount;
     syncGeneration += 1;
+    syncRetryAt = 0;
     synced = false;
     syncPromise = null;
     localRevision = 0;
@@ -438,11 +447,21 @@ if (typeof window !== 'undefined')
     void syncScenes();
   });
 
+/**
+ * Parsing and validating the library is the slow part, and readers call this on every render.
+ * Re-parse only when the stored text changes; the cached object also keeps snapshots stable.
+ */
+let parsedCache: { key: string; raw: string | null; library: SceneLibrary } | null = null;
+
 function loadScenesWithoutSync(account = currentAuthUserId()): SceneLibrary {
   const key = accountKey(account);
   if (!key || typeof localStorage === 'undefined') return emptyLibrary();
   try {
-    return parseStoredLibrary(localStorage.getItem(key)) ?? emptyLibrary();
+    const raw = localStorage.getItem(key);
+    if (parsedCache?.key === key && parsedCache.raw === raw) return parsedCache.library;
+    const library = parseStoredLibrary(raw) ?? emptyLibrary();
+    parsedCache = { key, raw, library };
+    return library;
   } catch {
     return emptyLibrary();
   }
@@ -661,4 +680,6 @@ export function __resetSceneSyncForTests(): void {
   localRevision = 0;
   preferenceRevision = 0;
   sceneRevisions.clear();
+  syncRetryAt = 0;
+  parsedCache = null;
 }

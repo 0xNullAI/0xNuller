@@ -80,3 +80,35 @@ it('hides a creator’s claimed works from a viewer blocked in either direction'
     .run();
   expect(await publicMarketCreatorItems(sql, ['creator'], 'viewer')).toEqual([]);
 });
+
+it('looks up a full follow list within the D1 bound-parameter limit, newest claim first', async () => {
+  const creators = Array.from({ length: 150 }, (_, n) => `creator-${n}`);
+  for (const [n, id] of creators.entries()) {
+    await sql
+      .prepare(
+        "INSERT INTO users(id,username,display_name,password_hash,created_at) VALUES (?,?,?,'x',1)",
+      )
+      .bind(id, id, id)
+      .run();
+    await sql
+      .prepare(
+        "INSERT INTO market_claims(item_id,user_id,claimed_at,verified_at,proof_method) VALUES (?,?,?,1,'market-upload')",
+      )
+      .bind(`work-${n}`, id, 10 + n)
+      .run();
+  }
+  const limited = {
+    prepare: (query: string) => {
+      const statement = sql.prepare(query);
+      return {
+        bind: (...values: unknown[]) => {
+          if (values.length > 100) throw new Error('too many SQL variables');
+          return statement.bind(...values);
+        },
+      };
+    },
+  } as unknown as D1Database;
+  const items = await publicMarketCreatorItems(limited, creators, 'viewer');
+  expect(items).toHaveLength(150);
+  expect(items[0]).toMatchObject({ itemId: 'work-149', creator: { id: 'creator-149' } });
+});

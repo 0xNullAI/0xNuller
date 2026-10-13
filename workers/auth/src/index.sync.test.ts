@@ -126,7 +126,7 @@ describe('Chat 房间账户同步', () => {
     expect(invalid.status).toBe(400);
   });
 
-  it('房主密钥跨平台恢复管理权，且关闭会清除所有成员记录', async () => {
+  it('房主密钥跨平台恢复管理权，关闭移除房主自己的书签', async () => {
     const owner = (await registerUser()).body;
     const member = (await registerUser({ username: 'bob', email: 'bob@example.com' })).body;
     await verifyRegisteredUser(owner);
@@ -164,11 +164,44 @@ describe('Chat 房间账户同步', () => {
       env,
     );
     expect(closed.status).toBe(200);
-    const memberList = await worker.fetch(
-      req('/api/auth/chat-rooms', { token: member.token }),
+    const ownerList = await worker.fetch(req('/api/auth/chat-rooms', { token: owner.token }), env);
+    expect(await ownerList.json()).toEqual({ rooms: [] });
+  });
+
+  it('关闭只移除自己的书签，伪造的房主密钥不能清空其他成员的列表', async () => {
+    const owner = (await registerUser()).body;
+    const attacker = (await registerUser({ username: 'mallory', email: 'm@example.com' })).body;
+    await verifyRegisteredUser(owner);
+    await verifyRegisteredUser(attacker);
+    for (const [token, ownerKey] of [
+      [owner.token, 'owner-secret'],
+      [attacker.token, 'forged'],
+    ] as const) {
+      await worker.fetch(
+        req('/api/auth/chat-rooms', {
+          method: 'PUT',
+          token,
+          body: JSON.stringify({ code: 'shared-room', name: '共享房间', ownerKey }),
+        }),
+        env,
+      );
+    }
+    const closed = await worker.fetch(
+      req('/api/auth/chat-rooms/shared-room/close', {
+        method: 'POST',
+        token: attacker.token,
+        body: JSON.stringify({ ownerKey: 'forged' }),
+      }),
       env,
     );
-    expect(await memberList.json()).toEqual({ rooms: [] });
+    expect(closed.status).toBe(200);
+    const ownerList = await worker.fetch(req('/api/auth/chat-rooms', { token: owner.token }), env);
+    expect(await ownerList.json()).toMatchObject({ rooms: [{ code: 'shared-room' }] });
+    const attackerList = await worker.fetch(
+      req('/api/auth/chat-rooms', { token: attacker.token }),
+      env,
+    );
+    expect(await attackerList.json()).toEqual({ rooms: [] });
   });
 
   it('邮箱未验证时服务端拒绝房间同步和 Chat 票据', async () => {
@@ -334,5 +367,46 @@ describe('Agent 会话同步', () => {
     expect(result.sessions[0]).toEqual(
       expect.objectContaining({ deleted: true, clientUpdatedAt: 300 }),
     );
+  });
+
+  type Page = { sessions: { id: string }[]; cursor: number; nextCursor: string | null };
+  const seedSessions = async (userId: string, stamps: number[]) => {
+    for (const [n, stamp] of stamps.entries())
+      await prepared(
+        'INSERT INTO agent_sessions(user_id,id,payload,client_updated_at,updated_at) VALUES (?,?,?,?,?)',
+        userId,
+        `s-${String(n).padStart(3, '0')}`,
+        '{}',
+        stamp,
+        stamp,
+      ).run();
+  };
+
+  it('does not skip sessions sharing a timestamp at a page break, by tuple cursor', async () => {
+    const alice = await seedUser('agent-alice');
+    await seedSessions(alice.id, Array(250).fill(5));
+    const first = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as Page;
+    expect(first.sessions).toHaveLength(200);
+    const second = (await (
+      await get(
+        `/api/auth/agent-sessions?since=${first.cursor}&cursor=${first.nextCursor}`,
+        alice.token,
+      )
+    ).json()) as Page;
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.sessions, ...second.sessions].map((s) => s.id)).size).toBe(250);
+  });
+
+  it('keeps numeric-only clients from splitting a timestamp group', async () => {
+    const alice = await seedUser('agent-alice');
+    await seedSessions(alice.id, [...Array(199).fill(1), 2, 2]);
+    const first = (await (await get('/api/auth/agent-sessions', alice.token)).json()) as Page;
+    expect(first.sessions).toHaveLength(199);
+    expect(first.cursor).toBe(1);
+    const second = (await (
+      await get(`/api/auth/agent-sessions?since=${first.cursor}`, alice.token)
+    ).json()) as Page;
+    expect(second.sessions).toHaveLength(2);
+    expect((await get('/api/auth/agent-sessions?cursor=bad!', alice.token)).status).toBe(400);
   });
 });

@@ -720,14 +720,19 @@ function AccountContacts({
 
 const WIDE_QUERY = '(min-width: 768px)';
 
+// Module-level so useSyncExternalStore sees the same subscribe function every render;
+// an inline arrow made it unsubscribe and resubscribe the media listener each render.
+function subscribeWide(listener: () => void): () => void {
+  return typeof window.matchMedia === 'function'
+    ? subscribeMediaQuery(window.matchMedia(WIDE_QUERY), listener)
+    : () => undefined;
+}
+
+function isWideNow(): boolean {
+  return typeof window.matchMedia !== 'function' || window.matchMedia(WIDE_QUERY).matches;
+}
+
 /** Matches the md breakpoint the layout uses; without matchMedia (tests) it counts as wide. */
 function useIsWide(): boolean {
-  return useSyncExternalStore(
-    (listener) =>
-      typeof window.matchMedia === 'function'
-        ? subscribeMediaQuery(window.matchMedia(WIDE_QUERY), listener)
-        : () => undefined,
-    () => typeof window.matchMedia !== 'function' || window.matchMedia(WIDE_QUERY).matches,
-    () => true,
-  );
+  return useSyncExternalStore(subscribeWide, isWideNow, () => true);
 }

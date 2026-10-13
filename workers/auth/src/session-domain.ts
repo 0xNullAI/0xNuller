@@ -51,12 +51,16 @@ export function sessionUser(user: UserRow, emailAvailable = false) {
   };
 }
 
+/**
+ * The signed-in account, or null. A ban ends every existing session here, centrally: a route that
+ * forgot its own banned_at check must never let a session minted before the ban keep working.
+ */
 export async function currentUser(request: Request, env: SessionEnv): Promise<UserRow | null> {
   const token = readToken(request);
   if (!token) return null;
   const row = await env.DB.prepare(
     `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ? AND s.expires_at > ?
+     WHERE s.token_hash = ? AND s.expires_at > ? AND u.banned_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM account_deletions d WHERE d.user_id = u.id)`,
   )
     .bind(await sha256Hex(token), Date.now())
@@ -107,13 +111,14 @@ export async function login(
     await record(false);
     return err('用户名或密码错误', 401, cors);
   }
-  if (user.banned_at) {
-    return err(`账号已被封禁：${user.ban_reason ?? '未说明原因'}`, 403, cors);
-  }
 
   const { ok, needsUpgrade } = await verifyPassword(password, user.password_hash);
   await record(ok);
   if (!ok) return err('用户名或密码错误', 401, cors);
+  // Only after the password: without it, a ban (and its reason) is nobody else's business.
+  if (user.banned_at) {
+    return err(`账号已被封禁：${user.ban_reason ?? '未说明原因'}`, 403, cors);
+  }
   if (needsUpgrade) {
     await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
       .bind(await hashPassword(password), user.id)

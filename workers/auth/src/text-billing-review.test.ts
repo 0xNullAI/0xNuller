@@ -60,7 +60,7 @@ it('requires an active administrator and pinned account on reads and notes', asy
   expect((await call(undefined, 'admin', 'alice')).status).toBe(403);
   expect((await call(undefined, 'unknown')).status).toBe(401);
   await env.DB.prepare("UPDATE users SET banned_at=1 WHERE id='admin'").run();
-  expect((await call(note)).status).toBe(403);
+  expect((await call(note)).status).toBe(401);
 });
 it('returns a private projection with no capability or raw metadata', async () => {
   const response = await call();

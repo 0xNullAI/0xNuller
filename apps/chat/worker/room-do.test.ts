@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Env } from './index';
 import { ROOM_IDLE_MS } from './wire';
+import type * as MediaOwnership from './media-ownership';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class {
@@ -13,6 +14,11 @@ vi.mock('cloudflare:workers', () => ({
     }
   },
 }));
+vi.mock('./media-ownership', async (importOriginal) => {
+  const actual = await importOriginal<typeof MediaOwnership>();
+  return { ...actual, claimMedia: vi.fn(actual.claimMedia) };
+});
+const { claimMedia } = await import('./media-ownership');
 const { RoomDO } = await import('./room-do');
 
 function room(code = 'test-room', idleSince = Date.now() - ROOM_IDLE_MS) {
@@ -306,6 +312,8 @@ it.each(['image', 'audio'])(
   async (kind) => {
     const r = room();
     r.values.set('persistentHistory', true);
+    // This case is about quoting; media ownership has its own test.
+    vi.mocked(claimMedia).mockReturnValueOnce(true);
     const sender = {
       deserializeAttachment: () => ({ peerId: 'sender', name: 'Sender' }),
       send: vi.fn(),
@@ -691,4 +699,26 @@ it('群主退群或注销后释放群主身份，下一位重新进群的成员�
   r.values.set('ownerAccountId', 'owner-account');
   await r.instance.revokeGroupAccount('group', 'owner-account', 'deletion-1');
   expect(r.values.get('ownerAccountId')).toBeUndefined();
+});
+it('lets the same account take its own peer id back from a half-open socket', async () => {
+  const r = room('active-group', Date.now());
+  const stale = {
+    deserializeAttachment: () => ({ peerId: 'mine', accountId: 'alice' }),
+    serializeAttachment: vi.fn(),
+    close: vi.fn(),
+  } as unknown as WebSocket;
+  r.sockets.push(stale);
+  const request = (account: string) =>
+    new Request('https://room.test/?code=active-group&id=mine', {
+      headers: {
+        Upgrade: 'websocket',
+        'X-Ticket-Expires-At': String(Date.now() + 60_000),
+        'X-Chat-Account': account,
+      },
+    });
+  expect((await r.instance.fetch(request('mallory'))).status).toBe(409);
+  expect(stale.close).not.toHaveBeenCalled();
+  // Node has no WebSocketPair; reaching it means admission passed the identity check.
+  await expect(r.instance.fetch(request('alice'))).rejects.toThrow(/WebSocketPair/);
+  expect(stale.close).toHaveBeenCalledWith(1000, 'replaced by a new connection');
 });

@@ -287,25 +287,50 @@ describe('durable Voice billing lifecycle', () => {
     });
   });
 
-  it('does not let recovery work delay a live call or finalize its new reservation', async () => {
+  it('keeps finalizing earlier calls one at a time during a live call, never the live one', async () => {
     const f = setup();
-    f.records.set('billing:old', {
+    for (const key of ['old-1', 'old-2'])
+      f.records.set(`billing:${key}`, {
+        subject: 'alice',
+        reservationKey: key,
+        phase: 'release',
+        durationMs: 0,
+      });
+    await f.session.fetch(f.request());
+    await f.session.alarm();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledTimes(1);
+    await f.session.alarm();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledTimes(2);
+    await f.session.alarm();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(f.env.AUTH.finalizeVoiceReservation).mock.calls.map(([, key]) => key)).toEqual(
+      ['old-1', 'old-2'],
+    );
+    expect([...f.records.values()]).toEqual([expect.objectContaining({ phase: 'active' })]);
+  });
+
+  it('stops retrying a release whose hold stays missing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const f = setup();
+    f.records.set('billing:never', {
       subject: 'alice',
-      reservationKey: 'old-key',
+      reservationKey: 'never',
       phase: 'release',
       durationMs: 0,
     });
-    await f.session.fetch(f.request());
-    await f.session.alarm();
-    expect(f.env.AUTH.finalizeVoiceReservation).not.toHaveBeenCalled();
-    f.server.emit('close');
-    const next = f.session.fetch(f.request());
-    await next;
-    await f.drain();
-    expect(f.env.AUTH.finalizeVoiceReservation).not.toHaveBeenCalled();
-    expect(
-      [...f.records.values()].filter((value) => (value as { phase: string }).phase === 'active'),
-    ).toHaveLength(1);
+    vi.mocked(f.env.AUTH.finalizeVoiceReservation).mockResolvedValue({
+      status: 'missing',
+      charged: null,
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(f.records.size).toBe(1);
+      vi.setSystemTime(1_000 + attempt * 600_000);
+      await f.session.alarm();
+    }
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledTimes(3);
+    expect(f.records.size).toBe(0);
+    expect(f.alarm()).toBeNull();
   });
 });
 
@@ -625,6 +650,30 @@ describe('Doubao realtime call through the Worker', () => {
       'alice',
       expect.any(String),
       expect.objectContaining({ rounds: 1, missingRounds: 0 }),
+    );
+  });
+
+  it('does not let an alarm settle a call that is still draining usage after hang-up', async () => {
+    vi.useFakeTimers();
+    const f = await connected();
+    f.upstream.message({
+      type: 'response.output_audio.started',
+      question_id: 'q1',
+      response_id: 'r1',
+    });
+    f.server.emit('close');
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.session.alarm();
+    expect(f.env.AUTH.finalizeVoiceReservation).not.toHaveBeenCalled();
+    f.upstream.message(roundUsage());
+    f.upstream.message({ type: 'session.closed' });
+    await vi.advanceTimersByTimeAsync(0);
+    await f.drain();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledOnce();
+    expect(f.env.AUTH.finalizeVoiceReservation).toHaveBeenCalledWith(
+      'alice',
+      expect.any(String),
+      expect.objectContaining({ action: 'settle', rounds: 1, missingRounds: 0 }),
     );
   });
 

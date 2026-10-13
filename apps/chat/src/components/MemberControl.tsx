@@ -268,19 +268,24 @@ export function MemberControl({
     if (Date.now() - lastLocalAtB.current > 1500) setLocalStrengthB(strengthB);
   }, [strengthB]);
 
+  // The values the buttons last produced, read synchronously: a held button repeats faster
+  // than React re-renders, and the command must not be sent from inside a state updater
+  // (React may run one twice).
+  const localRef = useRef({ A: strengthA, B: strengthB });
+  useEffect(() => {
+    localRef.current = { A: localStrengthA, B: localStrengthB };
+  }, [localStrengthA, localStrengthB]);
   const adjustStrength = useCallback(
     (channel: 'A' | 'B', delta: number) => {
       const max = channel === 'A' ? limitA : limitB;
-      const setter = channel === 'A' ? setLocalStrengthA : setLocalStrengthB;
-      const stamp = channel === 'A' ? lastLocalAtA : lastLocalAtB;
-      setter((prev) => {
-        const next = Math.max(0, Math.min(max, prev + delta));
-        const sent = next - prev; // the delta actually sent (already clamped by the local limit)
-        if (sent === 0) return prev;
-        stamp.current = Date.now();
-        onSendCommand(peerId, 'adjust_strength', { c: channel, v: sent });
-        return next;
-      });
+      const prev = localRef.current[channel];
+      const next = Math.max(0, Math.min(max, prev + delta));
+      const sent = next - prev; // the delta actually sent (already clamped by the local limit)
+      if (sent === 0) return;
+      localRef.current = { ...localRef.current, [channel]: next };
+      (channel === 'A' ? lastLocalAtA : lastLocalAtB).current = Date.now();
+      onSendCommand(peerId, 'adjust_strength', { c: channel, v: sent });
+      (channel === 'A' ? setLocalStrengthA : setLocalStrengthB)(next);
     },
     [peerId, onSendCommand, limitA, limitB],
   );

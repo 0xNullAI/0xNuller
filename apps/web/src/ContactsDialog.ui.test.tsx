@@ -161,6 +161,40 @@ it('hides old contacts immediately when the signed-in account changes', async ()
   expect(await screen.findByText('暂无好友，互相关注后会显示在这里')).toBeTruthy();
 });
 
+it('subscribes to the width breakpoint once rather than on every render', async () => {
+  const original = window.matchMedia;
+  let subscribes = 0;
+  let unsubscribes = 0;
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: (query: string) =>
+      ({
+        matches: true,
+        media: query,
+        addEventListener: () => {
+          subscribes++;
+        },
+        removeEventListener: () => {
+          unsubscribes++;
+        },
+      }) as unknown as MediaQueryList,
+  });
+  try {
+    const view = render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
+    expect(await screen.findByText('@friend')).toBeTruthy();
+    const settled = subscribes;
+    for (let i = 0; i < 3; i++)
+      view.rerender(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索联系人' }), {
+      target: { value: '好' },
+    });
+    expect(subscribes).toBe(settled);
+    expect(unsubscribes).toBe(0);
+  } finally {
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: original });
+  }
+});
+
 it('keeps only 好友 / 关注 / 粉丝 as tabs and opens discovery and the block list as pushed screens', async () => {
   render(<ContactsDialog user={user} presentation="page" onClose={vi.fn()} />);
   expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([

@@ -37,6 +37,8 @@ import {
   wireRoomAgents,
   type RoomAgentRecord,
 } from './room-agents';
+import { mediaRefShape, mentionsShape, stateFrameShape } from './frame-shape';
+import { claimMedia, mediaStillReferenced, recordMediaUpload } from './media-ownership';
 import {
   managedGroupAnswer,
   managedGroupPrompt,
@@ -221,10 +223,10 @@ export class RoomDO extends DurableObject<Env> {
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
       return new Response('admission expired', { status: 401 });
     if (!isDmRoomCode(code) && (await this.ctx.storage.get<boolean>('closed')) === true) {
-      return new Response('room closed', { status: 410 });
+      return endedSocket({ t: 'sys', kind: 'closed' }, 'room closed');
     }
     if (!isDmRoomCode(code) && (await this.recycleIdleRoom(Date.now()))) {
-      return new Response('room expired', { status: 410 });
+      return endedSocket({ t: 'sys', kind: 'closed' }, 'room expired');
     }
     // Second half of a DM's admission check. The Worker verified the ticket's signature and
     // that the account service issued it; only this object knows whether the conversation has
@@ -244,7 +246,7 @@ export class RoomDO extends DurableObject<Env> {
         return new Response('account unavailable', { status: 403 });
       const membership = account ? groupMembership(this.sql, account) : null;
       if (membership && ['removed', 'banned'].includes(membership.state))
-        return new Response('membership revoked', { status: 403 });
+        return endedSocket({ t: 'sys', kind: 'membership-revoked' }, 'membership revoked');
     }
     const peerId = url.searchParams.get('id') || crypto.randomUUID();
     if (
@@ -273,12 +275,30 @@ export class RoomDO extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + ROOM_GRACE_MS);
     // The client proposes a peer ID, but a second live socket must never be able to
     // impersonate the elected host or another participant by reusing it.
+    // The same account may take its own peer id back: after a network switch the old socket
+    // can stay half-open until its lease runs out, and the client would be locked out meanwhile.
+    const connectingAccount =
+      request.headers.get(isDmRoomCode(code) ? 'X-DM-Account' : 'X-Chat-Account') ?? undefined;
     for (const existing of this.ctx.getWebSockets()) {
+      let held: Attachment | null;
       try {
-        if ((existing.deserializeAttachment() as Attachment | null)?.peerId === peerId)
-          return new Response('peer identity already connected', { status: 409 });
+        held = existing.deserializeAttachment() as Attachment | null;
       } catch {
-        /* stale socket without a usable attachment */
+        continue; // stale socket without a usable attachment
+      }
+      if (held?.peerId !== peerId) continue;
+      if (!connectingAccount || held.accountId !== connectingAccount)
+        return new Response('peer identity already connected', { status: 409 });
+      try {
+        existing.close(1000, 'replaced by a new connection');
+      } catch {
+        /* already closing */
+      }
+      held.leaseClosed = true;
+      try {
+        existing.serializeAttachment(held);
+      } catch {
+        /* closed sockets may refuse; the lease check still treats it as gone */
       }
     }
     const pair = new WebSocketPair();
@@ -496,12 +516,20 @@ export class RoomDO extends DurableObject<Env> {
           replyTo: resolveMessageReply(this.sql, msg.replyToId),
           n: att.name,
           x: msg.x as string | undefined,
-          m: msg.m as WireChat['m'],
-          mentions: msg.mentions as WireChat['mentions'],
           ts: Date.now(),
         };
+        const media = mediaRefShape(msg.m);
+        const mentions = mentionsShape(msg.mentions);
+        if (media === null) return;
+        if (media) chat.m = media;
+        if (mentions) chat.mentions = mentions;
         if (typeof chat.x !== 'undefined' && (typeof chat.x !== 'string' || chat.x.length > 32000))
           return;
+        // Media is attached only by the account that uploaded it, to one message.
+        if (media && !claimMedia(this.sql, media.id, att.accountId, chat.id)) {
+          this.echoStoredMessage(ws, chat.id, fromId);
+          return;
+        }
         if (
           !dm &&
           att.accountId &&
@@ -542,7 +570,8 @@ export class RoomDO extends DurableObject<Env> {
         );
         if (!recalled) return;
         this.broadcast({ t: 'recall', id: msg.id as string });
-        if (recalled.mediaId) {
+        // Another message may still show the same object; the orphan sweep handles the rest.
+        if (recalled.mediaId && !mediaStillReferenced(this.sql, recalled.mediaId)) {
           const code = await this.code();
           const removal = deleteRoomMedia(this.env, code, [recalled.mediaId]).catch(
             () => undefined,
@@ -802,6 +831,10 @@ export class RoomDO extends DurableObject<Env> {
       }
 
       default: {
+        // Only presence and device state reach everyone through here, each rebuilt from the
+        // fields clients read; anything else has its own case or is dropped.
+        if (t !== 'presence' && t !== 'ss' && t !== 'sf') return;
+        msg = stateFrameShape(t, msg);
         if (!dm && att.accountId && (t === 'ss' || t === 'sf')) {
           const prev = this.peerSnapshots.get(att.peerId);
           const next =
@@ -855,8 +888,13 @@ export class RoomDO extends DurableObject<Env> {
   // -- Direct messages (RPC, called by the Worker) --
 
   /** Ensure an upload with no following chat frame still gets an orphan sweep. */
-  async noteMediaUpload(code: string, token: string): Promise<void> {
+  async noteMediaUpload(code: string, token: string, id?: string): Promise<void> {
     if (!(await this.authorizeMediaUpload(code, token))) throw new Error('media token expired');
+    const uploader = this.ctx
+      .getWebSockets()
+      .map((ws) => ws.deserializeAttachment() as Attachment | null)
+      .find((att) => att?.mediaToken && mediaTokenEqual(att.mediaToken, token))?.accountId;
+    if (id && uploader) recordMediaUpload(this.sql, id, uploader, Date.now());
     const stored = await this.code();
     if (stored && stored !== code) throw new Error('room code mismatch');
     if (!stored) {
@@ -1091,7 +1129,17 @@ export class RoomDO extends DurableObject<Env> {
       att = undefined;
     }
     const remaining = this.ctx.getWebSockets().filter((w) => w !== ws);
-    if (att) {
+    // A socket replaced by the same peer's new connection leaves nobody behind.
+    const replaced =
+      !!att &&
+      remaining.some((socket) => {
+        try {
+          return (socket.deserializeAttachment() as Attachment | null)?.peerId === att.peerId;
+        } catch {
+          return false;
+        }
+      });
+    if (att && !replaced) {
       this.broadcast({ t: 'sys', kind: 'left', peerId: att.peerId }, ws);
       this.peerSnapshots.delete(att.peerId);
       for (const pending of [...this.pendingAgentCommands.values()])
@@ -1892,6 +1940,20 @@ export class RoomDO extends DurableObject<Env> {
       body: JSON.stringify({ code, name, count, listed }),
     });
   }
+}
+
+/**
+ * A browser cannot read the status of a refused WebSocket upgrade, so a plain 403/410 looked
+ * like a network error and the client retried forever. Accept, say why, and close: the same
+ * notices a live socket gets, which every client version already stops reconnecting on.
+ */
+function endedSocket(frame: object, reason: string): Response {
+  const pair = new WebSocketPair();
+  const server = pair[1];
+  server.accept();
+  server.send(JSON.stringify(frame));
+  server.close(1008, reason);
+  return new Response(null, { status: 101, webSocket: pair[0] });
 }
 
 /** The R2 object a stored message body references, if any. */

@@ -358,6 +358,33 @@ describe('Credit 账本与人工充值', () => {
     });
   });
 
+  it('管理员按用户名查询账户 Credit 与邮箱验证状态', async () => {
+    const admin = await registerUser();
+    const target = await registerUser({ username: 'lookup', email: 'lookup@example.com' });
+    await prepared("UPDATE users SET role = 'admin' WHERE id = ?", admin.body.user!.id).run();
+    await prepared(
+      'UPDATE users SET email_verified_at = 1 WHERE id = ?',
+      target.body.user!.id,
+    ).run();
+    const response = await worker.fetch(
+      req('/api/auth/admin/credits/users/@Lookup', { token: admin.body.token }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      user: { id: target.body.user!.id, username: 'lookup', emailVerified: true },
+      credit: { available: 0 },
+    });
+    expect(
+      (
+        await worker.fetch(
+          req('/api/auth/admin/credits/users/lookup', { token: target.body.token }),
+          env,
+        )
+      ).status,
+    ).toBe(403);
+  });
+
   it('拒绝非管理员赠送以及超出单笔上限的赠送', async () => {
     const user = await registerUser();
     expect(

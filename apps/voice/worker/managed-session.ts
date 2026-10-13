@@ -33,6 +33,10 @@ export function holdMinutes(route: RealtimeRoute, reservedCredits: number): numb
 export class ManagedVoiceSession {
   private active = false;
   private ownedKey: string | null = null;
+  /** Calls that hung up but are still waiting for late usage; recovery must not settle them. */
+  private draining = new Set<string>();
+  private busyKeys = (): ReadonlySet<string> =>
+    this.ownedKey === null ? this.draining : new Set([...this.draining, this.ownedKey]);
   private live: {
     subject: string;
     reservationKey: string;
@@ -97,7 +101,7 @@ export class ManagedVoiceSession {
       clearCurrent();
       try {
         await this.billing.save(intent('release'));
-        await this.billing.flush(() => this.ownedKey);
+        await this.billing.flush(this.busyKeys);
       } catch (error) {
         logFailure(error);
       }
@@ -216,36 +220,43 @@ export class ManagedVoiceSession {
     const shutdown = (reason: ShutdownReason) => {
       if (finished) return finishTask ?? Promise.resolve();
       finished = true;
+      // Still this call's until its final intent is durable, even after it stops being live.
+      if (established) this.draining.add(reservationKey);
       clearCurrent();
       // The browser is gone or must go now; it gets nothing more from this call.
       safeClose(server);
       const endedAt = Math.min(Date.now(), live.deadline);
       const durationMs = Math.max(1, endedAt - startedAt);
       finishTask = (async () => {
-        if (established) {
-          // Durable first: if the object dies while draining, recovery bills reported
-          // usage and treats the still-open rounds as missing.
-          await this.billing.save(intent('active', { durationMs, ...usageFacts() }));
-          if (!upstreamClosed && reason !== 'upstream' && bridge.ready) {
-            // Rounds that already spoke report usage seconds later; muting keeps the
-            // provider from timing out on missing audio while we wait for them.
-            safeSend(upstream!, JSON.stringify({ type: 'input_audio_mute.commit' }));
-            await waitFor(() => upstreamClosed || bridge.pendingRounds === 0, USAGE_GRACE_MS);
-            if (!upstreamClosed) {
-              safeSend(upstream!, JSON.stringify({ type: 'session.close' }));
-              await waitFor(() => upstreamClosed || sessionClosed, CLOSE_ACK_MS);
+        try {
+          if (established) {
+            // Durable first: if the object dies while draining, recovery bills reported
+            // usage and treats the still-open rounds as missing.
+            await this.billing.save(intent('active', { durationMs, ...usageFacts() }));
+            if (!upstreamClosed && reason !== 'upstream' && bridge.ready) {
+              // Rounds that already spoke report usage seconds later; muting keeps the
+              // provider from timing out on missing audio while we wait for them.
+              safeSend(upstream!, JSON.stringify({ type: 'input_audio_mute.commit' }));
+              await waitFor(() => upstreamClosed || bridge.pendingRounds === 0, USAGE_GRACE_MS);
+              if (!upstreamClosed) {
+                safeSend(upstream!, JSON.stringify({ type: 'session.close' }));
+                await waitFor(() => upstreamClosed || sessionClosed, CLOSE_ACK_MS);
+              }
             }
           }
+          safeClose(upstream);
+          bridge.closeRounds();
+          finalQueued = true;
+          await this.billing.save(
+            established
+              ? intent('settle', { durationMs, ...usageFacts(), openRounds: 0 })
+              : intent('release'),
+          );
+        } finally {
+          // Saved or not, the durable record now stands for this call on its own.
+          this.draining.delete(reservationKey);
         }
-        safeClose(upstream);
-        bridge.closeRounds();
-        finalQueued = true;
-        await this.billing.save(
-          established
-            ? intent('settle', { durationMs, ...usageFacts(), openRounds: 0 })
-            : intent('release'),
-        );
-        await this.billing.flush(() => this.ownedKey);
+        await this.billing.flush(this.busyKeys);
       })();
       this.state.waitUntil(finishTask.catch(logFailure));
       return finishTask;
@@ -339,7 +350,7 @@ export class ManagedVoiceSession {
       await this.state.storage.setAlarm(Date.now() + CHECKPOINT_MS);
       return;
     }
-    await this.billing.flush(() => this.ownedKey);
+    await this.billing.flush(this.busyKeys);
     if (this.live)
       await this.state.storage.setAlarm(Math.min(this.live.deadline, Date.now() + CHECKPOINT_MS));
   }

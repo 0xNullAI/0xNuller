@@ -175,6 +175,24 @@ it.each([
   expect(items.map((item) => item.id)).toEqual(expected);
 });
 
+it('pages leniently on fractional or absurd limit/offset instead of failing the query', async () => {
+  const { db } = setup();
+  const env = {
+    DB: db,
+    MARKET_IP_PEPPER: 'test-secret',
+    AUTH: { marketCreatorsForItems: async () => [] },
+  } as never;
+  const page = (query: string) =>
+    worker.fetch(new Request(`https://market.test/api/items?sort=new&${query}`), env);
+  const fractional = await page('limit=2.5&offset=1.7');
+  expect(fractional.status).toBe(200);
+  const body = (await fractional.json()) as { items: Array<{ id: string }> };
+  expect(body.items.map((item) => item.id)).toEqual(['legacy-scene', 'legacy-character']);
+  const absurd = await page('limit=abc&offset=1e400');
+  expect(absurd.status).toBe(200);
+  expect(((await absurd.json()) as { items: unknown[] }).items).toEqual([]);
+});
+
 it('live engagement cursors identify mutable ordering while legacy offset stays supported', async () => {
   const { db } = setup();
   const env = {

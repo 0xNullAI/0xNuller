@@ -116,12 +116,42 @@ it('resolves only public UUID portraits and reads anonymously with missing-image
   expect(fetch).toHaveBeenCalledWith(`/api/items/character-portraits/${id}/content`, {
     credentials: 'omit',
     cache: 'no-store',
-    signal: undefined,
   });
+  const missing = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
   fetch.mockResolvedValueOnce(new Response(null, { status: 404 }));
-  expect(await fetchPublicMarketPortrait(id)).toBeNull();
+  expect(await fetchPublicMarketPortrait(missing)).toBeNull();
   fetch.mockResolvedValueOnce(
     new Response('<html/>', { headers: { 'Content-Type': 'text/html' } }),
   );
-  expect(await fetchPublicMarketPortrait(id)).toBeNull();
+  expect(await fetchPublicMarketPortrait(missing)).toBeNull();
+});
+
+it('shares one portrait read among every avatar and keeps the image for the session', async () => {
+  const { fetchPublicMarketPortrait } = await import('./index.js');
+  const id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const fetch = vi.fn(
+    async () =>
+      new Response(new TextEncoder().encode('png'), {
+        headers: { 'Content-Type': 'image/png' },
+      }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const [a, b, c] = await Promise.all([
+    fetchPublicMarketPortrait(id),
+    fetchPublicMarketPortrait(id),
+    fetchPublicMarketPortrait(id),
+  ]);
+  expect(a).toBe(b);
+  expect(b).toBe(c);
+  expect(await fetchPublicMarketPortrait(id)).toBe(a);
+  expect(fetch).toHaveBeenCalledOnce();
+
+  // One avatar unmounting cancels its own wait, not the read the others share.
+  const other = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  const controller = new AbortController();
+  const cancelled = fetchPublicMarketPortrait(other, controller.signal);
+  const kept = fetchPublicMarketPortrait(other);
+  controller.abort();
+  await expect(cancelled).rejects.toBeDefined();
+  expect((await kept)?.type).toBe('image/png');
 });

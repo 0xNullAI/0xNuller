@@ -9,7 +9,10 @@ const TOMBSTONE_PREFIX = 'deleted:';
 const SYNC_DEBOUNCE_MS = 800;
 
 export interface AgentSessionRemote {
-  list(since?: number): Promise<{
+  list(
+    since?: number,
+    cursor?: string | null,
+  ): Promise<{
     sessions: Array<{
       id: string;
       session: unknown | null;
@@ -18,6 +21,8 @@ export interface AgentSessionRemote {
       deleted: boolean;
     }>;
     cursor: number;
+    /** Tuple cursor for the next page; servers that predate it omit it. */
+    nextCursor?: string | null;
     hasMore: boolean;
   }>;
   save(sessions: Parameters<typeof pushAgentSessions>[0]): Promise<boolean | void>;
@@ -54,8 +59,8 @@ export class BrowserSessionStore implements SessionStore {
   constructor(options: BrowserSessionStoreOptions = {}) {
     this.store = createStore(options.dbName ?? 'dg-agent', options.storeName ?? 'sessions');
     this.remote = options.remote ?? {
-      list: async (since) => {
-        const page = await pullAgentSessions(since);
+      list: async (since, cursor) => {
+        const page = await pullAgentSessions(since, cursor);
         if (!page) throw new Error('Agent session sync unavailable');
         return page;
       },
@@ -115,9 +120,10 @@ export class BrowserSessionStore implements SessionStore {
     await this.migrateLegacySessions();
     if (!this.accountId()) return;
     let cursor = 0;
+    let nextCursor: string | null = null;
     let hasMore = true;
     while (hasMore) {
-      const page = await this.remote.list(cursor);
+      const page = await this.remote.list(cursor, nextCursor);
       for (const remote of page.sessions) {
         const local = await get<SessionSnapshot>(this.key(remote.id), this.store);
         const deletedAt = (await get<number>(this.tombstoneKey(remote.id), this.store)) ?? 0;
@@ -135,6 +141,7 @@ export class BrowserSessionStore implements SessionStore {
         }
       }
       cursor = page.cursor;
+      nextCursor = page.nextCursor ?? null;
       hasMore = page.hasMore;
     }
 

@@ -54,6 +54,7 @@ import { CameraWorkbench } from './components/CameraWorkbench.js';
 import { CharacterArExperience } from './components/CharacterArExperience.js';
 import { VideoSetupPanel } from './components/VideoSetupPanel.js';
 import { useCameraPreview, type CameraFacingMode } from './hooks/use-camera-preview.js';
+import { useStopWhenModuleHidden } from './hooks/use-stop-when-module-hidden.js';
 import { useVideoDictation } from './hooks/use-video-dictation.js';
 import { useVideoSpeechPlayback } from './hooks/use-video-speech-playback.js';
 import { DEFAULT_CAMERA_FRAME_SETTINGS } from './services/camera-frame.js';
@@ -177,21 +178,6 @@ function toVideoSafety() {
     maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
     burstRequiresActiveChannel: safety.burstRequiresActiveChannel,
   };
-}
-
-function useStopWhenModuleHidden(stop: () => void) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const root = rootRef.current;
-    const slot = root?.closest('[aria-hidden]');
-    if (!slot) return;
-    const observer = new MutationObserver(() => {
-      if (slot.getAttribute('aria-hidden') === 'true') stop();
-    });
-    observer.observe(slot, { attributes: true, attributeFilter: ['aria-hidden', 'hidden'] });
-    return () => observer.disconnect();
-  }, [stop]);
-  return rootRef;
 }
 
 export function App() {
@@ -592,7 +578,7 @@ export function App() {
     },
     [abortDictation, stopSpeechPlayback, companionObserverSlot, session, stopCamera],
   );
-  const rootRef = useStopWhenModuleHidden(() => stopEverything('hidden'));
+  useStopWhenModuleHidden(() => stopEverything('hidden'));
 
   useEffect(() => {
     const effectEpoch = ++lifecycleEffectRef.current;
@@ -916,7 +902,7 @@ export function App() {
   };
 
   return (
-    <div ref={rootRef} className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
+    <div className="h-full min-h-0 overflow-y-auto bg-[var(--bg)] text-[var(--text)]">
       <div className="mx-auto min-h-full w-full max-w-[960px] p-4 md:p-6">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-sm">视频陪伴与设备互动</span>

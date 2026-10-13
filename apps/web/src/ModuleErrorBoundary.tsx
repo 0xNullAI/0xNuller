@@ -2,6 +2,7 @@ import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { stopAllDevices } from '@0xnullai/ui';
 import { reportModuleError } from '@0xnullai/observability/client-reporter';
+import { stopThenReload } from './app-update';
 
 /**
  * Keeps a module's crash contained inside that module.
@@ -99,16 +100,11 @@ export class ModuleErrorBoundary extends Component<Props, State> {
             if (staleModule) {
               const attempt = ++this.stopAttempt;
               this.setState({ stopStatus: 'pending' });
-              void stopAllDevices().then(
-                (stopped) => {
-                  if (attempt !== this.stopAttempt) return;
+              // The shared stop-then-reload path: reload only once every device stopped.
+              void stopThenReload().then((stopped) => {
+                if (attempt === this.stopAttempt)
                   this.setState({ stopStatus: stopped ? 'confirmed' : 'failed' });
-                  if (stopped) window.location.reload();
-                },
-                () => {
-                  if (attempt === this.stopAttempt) this.setState({ stopStatus: 'failed' });
-                },
-              );
+              });
             } else {
               this.stopAttempt++;
               this.setState({ error: null, stopStatus: 'pending' });

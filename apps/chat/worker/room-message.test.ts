@@ -13,6 +13,7 @@ vi.mock('cloudflare:workers', () => ({
     }
   },
 }));
+import { recordMediaUpload } from './media-ownership';
 const { RoomDO } = await import('./room-do');
 const dmCode = `dm:${'a'.repeat(64)}`;
 
@@ -118,6 +119,7 @@ it('lets the sender recall their own message within two minutes and erases it ev
   const f = fixture('group');
   try {
     const media = { kind: 'image', id: 'img-1', mime: 'image/png', size: 10 };
+    recordMediaUpload((f.room as unknown as { sql: SqlStorage }).sql, 'img-1', 'alice', now);
     await f.room.webSocketMessage(
       f.socket,
       JSON.stringify({ t: 'chat', id: 'pic', x: '看这张图', m: media }),

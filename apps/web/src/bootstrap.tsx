@@ -1,4 +1,4 @@
-import { recoverPreloadFailure } from './preload-recovery';
+import { markAppUpdated } from './app-update';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createWebBluetoothDgLabTransport } from '@0xnullai/device-runtime';
@@ -17,17 +17,11 @@ installShellErrorReporting('web');
 const dglab = createUnifiedShellDgLabRegistry({ transport: createWebBluetoothDgLabTransport() });
 
 // A tab opened before a deployment can still hold an index chunk that points
-// at the previous Agent/Voice/etc. hash. Vite reports that exact case before
-// React can recover its cached lazy() rejection. Refresh once and let the new
-// index resolve the current module; throttle it so an actual offline/network
-// failure never turns into a reload loop.
-window.addEventListener('vite:preloadError', (event) => {
-  recoverPreloadFailure(event, {
-    storage: () => sessionStorage,
-    reload: () => window.location.reload(),
-    now: Date.now,
-  });
-});
+// at the previous Agent/Voice/etc. hash. Never reload on the spot: that dropped a
+// running call or device session without stopping anything. Record it; the shell
+// offers a reload that stops devices first (see app-update). The failed import still
+// rejects into the page's ModuleErrorBoundary, which stops devices on catch.
+window.addEventListener('vite:preloadError', markAppUpdated);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

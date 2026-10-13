@@ -91,7 +91,7 @@ describe('private character appearance', () => {
       item: { photoId: null, version: 2 },
     });
     await env.DB.prepare('UPDATE users SET banned_at = 1 WHERE id = ?').bind('alice').run();
-    expect((await call('/relation')).status).toBe(403);
+    expect((await call('/relation')).status).toBe(401);
     await env.DB.prepare('UPDATE users SET banned_at = NULL WHERE id = ?').bind('alice').run();
     await env.DB.prepare('UPDATE character_relationships SET deleted_at = 1').run();
     expect((await call('/relation')).status).toBe(404);

@@ -54,6 +54,9 @@ function rowToAdminItem(row: ItemRow): MarketAdminItem {
   };
 }
 
+/** Leaves room under D1's 100-parameter limit for the rest of the statement. */
+const D1_MAX_IN_IDS = 90;
+
 const TRENDING_BASE = 2;
 const TRENDING_OFFSET_HOURS = 12;
 const TRENDING_GRAVITY = 1.2;
@@ -141,14 +144,27 @@ export async function visibleItemsByIds(db: D1Database, ids: string[]): Promise<
   const unique = [...new Set(ids)];
   if (!unique.length) return [];
   if (unique.length > 200 || unique.some((id) => !/^[\w-]{1,128}$/.test(id))) return [];
-  const rows = await db
-    .prepare(
-      `SELECT ${ITEM_COLUMNS} FROM items WHERE hidden=0 AND type IN ('scenario','waveform')
-     AND id IN (${unique.map(() => '?').join(',')}) ORDER BY created_at DESC,id DESC`,
+  // D1 binds at most 100 parameters per statement, so look the ids up in bounded chunks.
+  const chunks: string[][] = [];
+  for (let offset = 0; offset < unique.length; offset += D1_MAX_IN_IDS)
+    chunks.push(unique.slice(offset, offset + D1_MAX_IN_IDS));
+  const rows = (
+    await Promise.all(
+      chunks.map(async (chunk) => {
+        const { results } = await db
+          .prepare(
+            `SELECT ${ITEM_COLUMNS} FROM items WHERE hidden=0 AND type IN ('scenario','waveform')
+           AND id IN (${chunk.map(() => '?').join(',')})`,
+          )
+          .bind(...chunk)
+          .all<ItemRow>();
+        return results ?? [];
+      }),
     )
-    .bind(...unique)
-    .all<ItemRow>();
-  return (rows.results ?? []).map((row) => rowToItem(row));
+  ).flat();
+  return rows
+    .sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
+    .map((row) => rowToItem(row));
 }
 
 export type AdminItemType = 'waveform' | 'scenario';
@@ -297,6 +313,15 @@ export async function insertItems(db: D1Database, items: InsertItem[]): Promise<
   if (items.length === 0) return;
   const stmt = db.prepare(INSERT_SQL);
   await db.batch(items.map((item) => stmt.bind(...insertBinds(item))));
+}
+
+/** Whether a public browser could see this item; hidden and retired kinds earn nothing. */
+export async function isVisibleItem(db: D1Database, id: string): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT 1 FROM items WHERE id = ? AND hidden = 0 AND type IN ('scenario','waveform')`)
+    .bind(id)
+    .first();
+  return row !== null;
 }
 
 export async function incrementDownloads(db: D1Database, id: string): Promise<void> {

@@ -49,6 +49,8 @@ export * from './settings-sections';
 export * from './overlay';
 export * from './stop-all';
 export { StopFailureBanner } from './components/stop-failure-banner';
+export * from './modal-presence';
+export { OverlayStopAnchor } from './components/overlay-stop-anchor';
 
 export * from './components/conversation-layout';
 export * from './components/conversation-sequence';

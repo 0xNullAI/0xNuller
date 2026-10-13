@@ -4,6 +4,8 @@ import { useOverlayContainer } from '../overlay';
 import { X } from 'lucide-react';
 import { cn } from '../utils';
 import { Z_OVERLAY, Z_OVERLAY_PANEL } from '../z-layers';
+import { isStopAnchorTarget } from '../modal-presence';
+import { BlockingOverlayMarker } from './dialog';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
@@ -41,12 +43,18 @@ interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof Dialog
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
+>(({ side = 'right', className, children, onInteractOutside, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
+    <BlockingOverlayMarker />
     <DialogPrimitive.Content
       ref={ref}
       data-side={side}
+      onInteractOutside={(event) => {
+        // A press on the shell's stop control is not a request to close this sheet.
+        if (isStopAnchorTarget(event.target)) event.preventDefault();
+        onInteractOutside?.(event);
+      }}
       className={cn('ui-sheet-content', sheetVariants[side], className)}
       {...props}
     >

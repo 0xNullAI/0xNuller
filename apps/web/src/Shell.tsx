@@ -1,6 +1,6 @@
 import { allowGuardedNavigation, installHistoryNavigationGuard } from '@0xnullai/ui';
 import { PersistenceNotice } from './PersistenceNotice';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import {
   useTheme,
@@ -13,14 +13,15 @@ import {
   ModuleSettingsProvider,
   OverlayProvider,
   StopFailureBanner,
+  OverlayStopAnchor,
   useOverlayRoot,
   useModuleOverlayLayer,
   ShellNavProvider,
 } from '@0xnullai/ui';
 import {
   me,
-  getCreditBalance,
   subscribeAuthChanges,
+  subscribeAuthUserUpdates,
   subscribeProfileChanges,
   subscribeProfileRequests,
   type AuthUser,
@@ -29,6 +30,7 @@ import { MODULES, moduleIdFromPath } from './routes';
 import { pageAliasFromPath } from './page-aliases';
 import { isLegalTermsPath } from './legal/legal-routes';
 import { useUnreadMessages } from './unread-messages';
+import { useCreditBalance } from './credit-balance';
 import { InboxColumn, MobileTabBar, NavRail, type MobileTab } from './Sidebar';
 import { UnifiedInbox } from './UnifiedInbox';
 import { DeviceBar } from './DeviceBar';
@@ -49,6 +51,7 @@ const LegalPage = lazy(() =>
   import('./legal/LegalPage').then((module) => ({ default: module.LegalPage })),
 );
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
+import { AppUpdateBanner } from './AppUpdateBanner';
 import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
@@ -92,7 +95,12 @@ function nextState(prev: RouteState, pathname: string): RouteState {
  *  updated in the same transition — a ref would mean writing a ref during render
  *  (unsafe under concurrent rendering), and keeping it in separate state written
  *  back from an effect would cost an extra cascading render. */
-function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: string) => void] {
+function useHistoryRoute(): [
+  RouteState,
+  (path: string) => boolean,
+  (moduleId: string) => void,
+  () => void,
+] {
   const [state, setState] = useState<RouteState>(() =>
     nextState(
       { pathname: '/', opened: [] },
@@ -129,7 +137,18 @@ function useHistoryRoute(): [RouteState, (path: string) => boolean, (moduleId: s
     );
   }, []);
 
-  return [state, navigate, ensureModuleOpened];
+  /** Forget every opened module except the one the current route needs. */
+  const resetOpened = useCallback(() => {
+    setState((prev) => {
+      const next = nextState({ pathname: prev.pathname, opened: [] }, prev.pathname);
+      return next.opened.length === prev.opened.length &&
+        next.opened.every((id, i) => id === prev.opened[i])
+        ? prev
+        : next;
+    });
+  }, []);
+
+  return [state, navigate, ensureModuleOpened, resetOpened];
 }
 
 const MOBILE_TAB_PATHS: Record<Exclude<MobileTab, 'me'>, string> = {
@@ -178,7 +197,7 @@ function useIsNarrow(): boolean {
 }
 
 export function Shell() {
-  const [{ pathname, opened }, navigate, ensureModuleOpened] = useHistoryRoute();
+  const [{ pathname, opened }, navigate, ensureModuleOpened, resetOpened] = useHistoryRoute();
   const activeId = moduleIdFromPath(pathname);
   const profileRoute = profileUsernameFromPath(pathname);
   const peopleRoute = pathname === '/people';
@@ -207,13 +226,23 @@ export function Shell() {
   // modules see the same value.
   useTheme();
 
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [user, setUserState] = useState<AuthUser | null>(null);
+  // me() hands back a fresh object on every call. Keep the previous one when nothing in it
+  // changed, so a re-read of the same account does not re-run every effect keyed on `user`.
+  const setUser = useCallback((next: AuthUser | null) => {
+    setUserState((prev) => (sameAuthUser(prev, next) ? prev : next));
+  }, []);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const settingsTab = settingsPageFromRoute(pathname, window.location.search);
   const [settingsReturnPath, setSettingsReturnPath] = useState<string | null>(null);
   const authenticated = authChecked && user !== null;
+  // Signing out unmounts every module with the signed-in tree. Without this the list of
+  // opened modules outlived the account, and the next sign-in booted all of them at once
+  // for a person who had opened none.
+  useEffect(() => {
+    if (!user) resetOpened();
+  }, [user, resetOpened]);
   const visibleModuleId = !authenticated || mobileInbox || settingsTab ? null : activeId;
   const leaseModuleId = visibleModuleId;
   const showDesktopInbox =
@@ -243,7 +272,7 @@ export function Shell() {
         setAuthChecked(true);
       })
       .catch(() => setAuthUnavailable(true));
-  }, []);
+  }, [setUser]);
 
   useEffect(loadAuth, [loadAuth]);
 
@@ -270,7 +299,7 @@ export function Shell() {
           .then(setUser)
           .catch(() => undefined);
       }),
-    [],
+    [setUser],
   );
 
   // An expired or revoked session (a 401 on any account request) signs this tab out.
@@ -279,25 +308,21 @@ export function Shell() {
       subscribeAuthChanges((current) => {
         if (!current) setUser(null);
       }),
+    [setUser],
+  );
+
+  // Another surface re-read this account (verified the email, changed the avatar): show it.
+  useEffect(
+    () =>
+      subscribeAuthUserUpdates((updated) => {
+        setUserState((prev) => (prev?.id === updated.id ? updated : prev));
+      }),
     [],
   );
 
-  useEffect(() => {
-    if (!user) return;
-    const refresh = () =>
-      void getCreditBalance()
-        .then((balance) => setCreditBalance(balance.available))
-        .catch(() => setCreditBalance(null));
-    refresh();
-    const timer = window.setInterval(refresh, 15_000);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, [user]);
+  // One shared poller (see credit-balance), keyed to this account: a sign-out or a
+  // different account never shows the previous person's balance.
+  const creditBalance = useCreditBalance(user?.id ?? null)?.available ?? null;
 
   // Modules ask for a profile rather than rendering one; see profile-requests
   // in @0xnullai/auth. Subscribing here rather than inside a module is what
@@ -368,10 +393,14 @@ export function Shell() {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--text)]">
         <DeviceBar activeSessionId={null} showConnect={false} />
-        <Suspense fallback={<PageLoading label="文档" />}>
-          <LegalPage onNavigate={navigateFromShell} />
-        </Suspense>
+        <ModuleErrorBoundary moduleId="legal" label="文档">
+          <Suspense fallback={<PageLoading label="文档" />}>
+            <LegalPage onNavigate={navigateFromShell} />
+          </Suspense>
+        </ModuleErrorBoundary>
         <StopFailureBanner />
+        <OverlayStopAnchor />
+        <AppUpdateBanner />
       </div>
     );
   }
@@ -384,9 +413,11 @@ export function Shell() {
           <div className="w-full max-w-sm rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]">
             <div className="mb-6 text-lg font-semibold">猫愿</div>
             {authChecked ? (
-              <Suspense fallback={<PageLoading label="账户" />}>
-                <AccountContent user={null} onUser={setUser} onDone={() => undefined} />
-              </Suspense>
+              <ModuleErrorBoundary moduleId="account" label="账户">
+                <Suspense fallback={<PageLoading label="账户" />}>
+                  <AccountContent user={null} onUser={setUser} onDone={() => undefined} />
+                </Suspense>
+              </ModuleErrorBoundary>
             ) : authUnavailable ? (
               <div role="alert" className="space-y-3 text-sm text-[var(--text-soft)]">
                 <p>账户服务暂时无法连接。</p>
@@ -406,6 +437,8 @@ export function Shell() {
           </div>
         </main>
         <StopFailureBanner />
+        <OverlayStopAnchor />
+        <AppUpdateBanner />
       </div>
     );
   }
@@ -532,30 +565,34 @@ export function Shell() {
                   ) : null}
                   {peopleRoute ? (
                     <div className="ui-tab-fade h-full min-h-0">
-                      <Suspense fallback={<PageLoading label="交友" />}>
-                        <ContactsDialog
-                          user={user}
-                          presentation="page"
-                          onClose={() => navigate('/')}
-                        />
-                      </Suspense>
+                      <ModuleErrorBoundary moduleId="people" label="联系人">
+                        <Suspense fallback={<PageLoading label="交友" />}>
+                          <ContactsDialog
+                            user={user}
+                            presentation="page"
+                            onClose={() => navigate('/')}
+                          />
+                        </Suspense>
+                      </ModuleErrorBoundary>
                     </div>
                   ) : null}
                 </ModuleActionsProvider>
                 {profileRoute ? (
-                  <Suspense fallback={<PageLoading label="个人主页" />}>
-                    <ProfileDialog
-                      username={profileRoute}
-                      viewer={user}
-                      presentation="page"
-                      onOpenMarketItem={(id) => {
-                        if (navigate(`/market?item=${encodeURIComponent(id)}`))
-                          window.dispatchEvent(new PopStateEvent('popstate'));
-                      }}
-                      shellBack={narrow}
-                      onClose={closeProfile}
-                    />
-                  </Suspense>
+                  <ModuleErrorBoundary moduleId="profile" label="个人主页">
+                    <Suspense fallback={<PageLoading label="个人主页" />}>
+                      <ProfileDialog
+                        username={profileRoute}
+                        viewer={user}
+                        presentation="page"
+                        onOpenMarketItem={(id) => {
+                          if (navigate(`/market?item=${encodeURIComponent(id)}`))
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                        }}
+                        shellBack={narrow}
+                        onClose={closeProfile}
+                      />
+                    </Suspense>
+                  </ModuleErrorBoundary>
                 ) : null}
                 {opened.map((id) => {
                   const mod = MODULES.find((m) => m.id === id);
@@ -639,11 +676,19 @@ export function Shell() {
             to stay reachable while a dialog is open, which is why it sits at
             the top of the z scale rather than in the overlay layer. */}
             <StopFailureBanner />
+            <OverlayStopAnchor />
+            <AppUpdateBanner />
           </div>
         </SidebarSectionsProvider>
       </ShellNavProvider>
     </ModuleSettingsProvider>
   );
+}
+
+function sameAuthUser(a: AuthUser | null, b: AuthUser | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function PageLoading({ label }: { label: string }) {
@@ -679,8 +724,13 @@ function EmailVerificationGate({ onOpenAccount }: { onOpenAccount: () => void })
  * attribute on the module container no longer reaches it. Observed symptom: open a
  * dialog in Chat, then switch to Market, and Chat's dialog still floats above
  * Market, squeezed into a narrow column.
+ *
+ * Memoized: every opened module lives under the shell, so without it a credit
+ * balance tick or an unread count re-rendered all of them. Its props are all
+ * stable between unrelated shell renders (openSettings is a callback, mod comes
+ * from the static MODULES table).
  */
-function ModuleSlot({
+const ModuleSlot = memo(function ModuleSlot({
   mod,
   active,
   motion,
@@ -738,4 +788,4 @@ function ModuleSlot({
       </ModuleActionsProvider>
     </ShellChromeProvider>
   );
-}
+});

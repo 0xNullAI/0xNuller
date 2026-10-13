@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ModuleSettingsSection, registerNavigationGuard } from '@0xnullai/ui';
 import {
   grantDeviceLease,
@@ -8,6 +8,8 @@ import {
   type DeviceSummary,
 } from '@dg-kit/safety';
 import { Shell } from './Shell';
+import { resetCreditBalanceForTests } from './credit-balance';
+import { resetInboxStoreForTests } from './inbox-store';
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -19,6 +21,8 @@ const authState = vi.hoisted(() => ({
   },
   meFailure: null as Error | null,
   authListeners: new Set<(user: unknown) => void>(),
+  credit: 0,
+  moduleRenders: {} as Record<string, number>,
 }));
 
 /**
@@ -53,17 +57,20 @@ vi.mock('./routes', async () => {
   const stub = (label: string, settings = false) =>
     lazy(() =>
       Promise.resolve({
-        default: () => (
-          <>
-            <ConversationBack />
-            <div>{label} 模块</div>
-            {settings && (
-              <ModuleSettingsSection id="agent-waveforms" label="波形" order={30}>
-                波形内容
-              </ModuleSettingsSection>
-            )}
-          </>
-        ),
+        default: () => {
+          authState.moduleRenders[label] = (authState.moduleRenders[label] ?? 0) + 1;
+          return (
+            <>
+              <ConversationBack />
+              <div>{label} 模块</div>
+              {settings && (
+                <ModuleSettingsSection id="agent-waveforms" label="波形" order={30}>
+                  波形内容
+                </ModuleSettingsSection>
+              )}
+            </>
+          );
+        },
       }),
     );
   return {
@@ -108,7 +115,10 @@ vi.mock('@0xnullai/auth', () => ({
       rewardedCount: 0,
       pendingCount: 0,
     }),
-  getCreditBalance: () => Promise.resolve({ total: 0, reserved: 0, available: 0 }),
+  getCreditBalance: () => {
+    const available = authState.credit;
+    return Promise.resolve({ total: available, reserved: 0, available });
+  },
   getCreditLedger: () => Promise.resolve({ entries: [], nextOffset: null }),
   me: () =>
     authState.meFailure ? Promise.reject(authState.meFailure) : Promise.resolve(authState.user),
@@ -126,6 +136,7 @@ vi.mock('@0xnullai/auth', () => ({
   // profile, so an unsubscribe that does nothing is the whole stub.
   subscribeProfileRequests: () => () => undefined,
   subscribeProfileChanges: () => () => undefined,
+  subscribeAuthUserUpdates: () => () => undefined,
   subscribeAuthChanges: (listener: (user: unknown) => void) => {
     authState.authListeners.add(listener);
     return () => authState.authListeners.delete(listener);
@@ -159,6 +170,8 @@ beforeEach(async () => {
   };
   authState.meFailure = null;
   authState.authListeners.clear();
+  authState.credit = 0;
+  authState.moduleRenders = {};
   window.history.pushState(null, '', '/agent');
   await grantDeviceLease(null);
 });
@@ -167,6 +180,8 @@ afterEach(async () => {
   while (cleanups.length) cleanups.pop()!();
   await grantDeviceLease(null);
   cleanup();
+  resetCreditBalanceForTests();
+  resetInboxStoreForTests();
 });
 
 const COYOTE: DeviceSummary = { id: 'c', kind: 'coyote', name: '47L1', connected: true };
@@ -419,6 +434,40 @@ describe('外壳与设备控制权', () => {
     expect(screen.queryByText('Chat 模块')).toBeNull();
   });
 
+  it('退出登录后不保留上一个账户打开过的模块与余额', async () => {
+    authState.credit = 42;
+    window.history.pushState(null, '', '/control');
+    await act(async () => {
+      render(<Shell />);
+    });
+    expect(await screen.findByText('Control 模块')).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[title="42 Credit"]')).toBeTruthy());
+    await act(async () => {
+      window.history.pushState(null, '', '/agent');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByText('Agent 模块')).toBeTruthy();
+
+    authState.user = null;
+    act(() => {
+      for (const listener of authState.authListeners) listener(null);
+    });
+    expect(await screen.findByRole('main', { name: '账户登录' })).toBeTruthy();
+    const controlRenders = authState.moduleRenders.Control;
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '用户名' }), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'test-password' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    expect(await screen.findByText('Agent 模块')).toBeTruthy();
+    // Only the module this route needs comes back; Control is not booted again.
+    expect(screen.queryByText('Control 模块')).toBeNull();
+    expect(authState.moduleRenders.Control).toBe(controlRenders);
+    // The previous session's balance is gone the moment the next one starts.
+    expect(document.querySelector('[title="42 Credit"]')).toBeNull();
+  });
+
   it.each([
     { emailVerified: false, mountsChat: false },
     { emailVerified: true, mountsChat: true },
@@ -534,6 +583,20 @@ describe('外壳与设备控制权', () => {
     // part of a module and it disappears once you go back home — while the device is
     // still attached to someone, which is exactly when the zero-output safety action is needed.
     expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
+  });
+
+  it('外壳自身刷新（余额变化）不会重新渲染已打开的模块', async () => {
+    await act(async () => {
+      render(<Shell />);
+    });
+    expect(screen.getByText('Agent 模块')).toBeTruthy();
+    const before = authState.moduleRenders.Agent;
+    authState.credit = 42;
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(document.querySelector('[title="42 Credit"]')).toBeTruthy());
+    expect(authState.moduleRenders.Agent).toBe(before);
   });
 
   it('设备栏与全局安全按钮不随模块切换消失——设备还连着', async () => {

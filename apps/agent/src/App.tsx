@@ -66,6 +66,7 @@ import {
 } from './composition/use-browser-app-services.js';
 import { useAuxDeviceState } from './hooks/use-aux-device-state.js';
 import { useModelLog } from './hooks/use-model-log.js';
+import { throwIfSendAborted, usePendingSends } from './hooks/use-pending-sends.js';
 import { useRuntimeSessionState } from './hooks/use-runtime-session-state.js';
 import { useVisibleConversationRead } from './hooks/use-visible-conversation-read.js';
 import { useSettingsManager } from './hooks/use-settings-manager.js';
@@ -80,7 +81,6 @@ import {
   isSessionListEntry,
   isBluetoothChooserCancelledError,
 } from './utils/ui-formatters.js';
-import { buildTraceFeed } from './utils/trace-feed.js';
 import {
   clearAgentConversationLink,
   linkedAgentConversationId,
@@ -136,7 +136,9 @@ export function App({ servicesOverrides }: AppProps = {}) {
   } = useSettingsManager();
 
   const [pendingPermission, setPendingPermission] = useState<PendingPermissionRequest | null>(null);
-  const [pendingSend, setPendingSend] = useState(false);
+  // Per conversation: a reply starting in one conversation never locks another, and a stop
+  // pressed before the runtime registered the turn still lands.
+  const { pendingSends, pendingIds: pendingSendIds } = usePendingSends();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [runReview, setRunReview] = useState<{
@@ -251,8 +253,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     events,
     clearEvents,
     session,
-    sessionTrace,
-    setSession,
     savedSessions,
     setSavedSessions,
     liveDeviceState,
@@ -350,7 +350,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
     };
   }, [agentRouteActive, client, setActiveSessionId, setErrorMessage]);
 
-  const busy = pendingSend || replyBusy;
+  const busy = (activeSessionId !== null && pendingSendIds.has(activeSessionId)) || replyBusy;
   const deviceState = liveDeviceState ?? createEmptyDeviceState();
   const connectedCoyotes = connectedCoyoteStates(device, deviceState);
   const activeCoyoteId = supportsCoyoteSelection(device) ? device.deviceId : null;
@@ -364,6 +364,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
     // while the user believes they already left this module. The registry has already
     // stopped every output on the switch, so this drops Agent's own work only: a device
     // stop here bypasses the lease fence and would zero what the new holder starts.
+    pendingSends.abort();
     if (!activeSessionId) return;
     await client.abortCurrentReply(activeSessionId).catch(() => undefined);
     await client.releaseDeviceControl(activeSessionId).catch(() => undefined);
@@ -385,6 +386,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       civetEdgingState.connected,
     connect: () => connect(),
     stop: async () => {
+      pendingSends.abort();
       if (activeSessionId) await client.emergencyStop(activeSessionId);
     },
     onRevoke: () => revokeAgentDeviceWork(),
@@ -440,11 +442,9 @@ export function App({ servicesOverrides }: AppProps = {}) {
     }),
     ...serviceInitWarnings,
   ];
-  const historicalTraceFeed = buildTraceFeed(sessionTrace);
-  const traceFeed =
-    liveTraceItems.length > 0
-      ? [...historicalTraceFeed, ...liveTraceItems].sort((a, b) => a.createdAt - b.createdAt)
-      : historicalTraceFeed;
+  // Device action notes of the open conversation, oldest first; the trace store is transient,
+  // so there is no saved history to merge in.
+  const traceFeed = liveTraceItems;
 
   const { visibleErrorItems, visibleWarnings, visibleEventToasts } = useToastManager({
     errorMessage,
@@ -551,6 +551,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       onStop: async (reason) => {
         denyPendingPermissionRequest('当前回复已在页面离开前台时终止');
         stopAllVoiceActivity({ disableMode: true });
+        pendingSends.abort();
 
         if (activeSessionId) {
           await client.abortCurrentReply(activeSessionId);
@@ -567,6 +568,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
     activeSessionId,
     client,
     denyPendingPermissionRequest,
+    pendingSends,
     safetyNoticeAccepted,
     stopAllVoiceActivity,
   ]);
@@ -695,46 +697,62 @@ export function App({ servicesOverrides }: AppProps = {}) {
     async (message: string, image?: LlmImageInput): Promise<'sent' | 'aborted' | 'failed'> => {
       if (!message.trim() || !activeSessionId) return 'failed';
 
+      const sessionId = activeSessionId;
+      // Live from the press: a stop during the network steps below must keep the turn from
+      // ever starting, not just abort a turn the runtime has already registered.
+      const controller = pendingSends.begin(sessionId);
+      const { signal } = controller;
       let allocatedRunId: string | null = null;
-      setPendingSend(true);
+      let handedToRuntime = false;
       try {
         setErrorMessage(null);
         stopSpeechPlayback();
 
         if (conversationSceneId && !hasExplicitConversationScene) {
-          await client.setSessionScene(activeSessionId, conversationSceneId);
+          await client.setSessionScene(sessionId, conversationSceneId);
         }
+        throwIfSendAborted(signal);
 
         // Persist the empty server conversation before allocating the authoritative run.
-        await client.getSessionDisplaySnapshot(activeSessionId);
+        await client.getSessionDisplaySnapshot(sessionId);
+        throwIfSendAborted(signal);
         const requestId = `web-${crypto.randomUUID()}`;
-        const { item: run, claimed } = await startAgentRun(activeSessionId, requestId);
+        const { item: run, claimed } = await startAgentRun(sessionId, requestId);
         if (!claimed || run.status !== 'active') throw new Error('服务器任务已存在，请刷新后重试');
         allocatedRunId = run.id;
+        throwIfSendAborted(signal);
 
+        handedToRuntime = true;
         await client.sendUserMessage({
-          sessionId: activeSessionId,
+          sessionId,
           runId: run.id,
           text: message,
           image,
           characterId: conversationCharacterId,
+          abortSignal: signal,
           context: {
-            sessionId: activeSessionId,
+            sessionId,
             sourceType: 'web',
             traceId: requestId,
           },
         });
         allocatedRunId = null;
 
+        // The turn's end event already re-reads the conversation.
         setStatusMessage('消息已发送');
-        await refreshCurrentSession(activeSessionId);
-        void refreshRunReview(activeSessionId);
+        void refreshRunReview(sessionId);
         return 'sent';
       } catch (error) {
+        // A run stopped before the runtime saw it executed nothing, so it is cancelled
+        // outright; after hand-over its outcome is unknown and needs review.
         if (allocatedRunId)
-          void finishAgentRun(activeSessionId, allocatedRunId, 'needs_review')
+          void finishAgentRun(
+            sessionId,
+            allocatedRunId,
+            handedToRuntime ? 'needs_review' : 'cancelled',
+          )
             .catch(() => undefined)
-            .finally(() => void refreshRunReview(activeSessionId));
+            .finally(() => void refreshRunReview(sessionId));
         if (isReplyAbortError(error)) {
           setStatusMessage('已停止当前回复');
           return 'aborted';
@@ -742,7 +760,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
         setErrorMessage(formatUiErrorMessage(error));
         return 'failed';
       } finally {
-        setPendingSend(false);
+        pendingSends.end(sessionId, controller);
       }
     },
     [
@@ -751,7 +769,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       conversationCharacterId,
       conversationSceneId,
       hasExplicitConversationScene,
-      refreshCurrentSession,
+      pendingSends,
       refreshRunReview,
       stopSpeechPlayback,
     ],
@@ -784,11 +802,13 @@ export function App({ servicesOverrides }: AppProps = {}) {
     const unsubscribeAuth = subscribeAuthChanges(() => {
       accountChanged = true;
     });
+    // Reading the image is part of the send: the conversation shows busy and stop cancels it.
+    const reading = pendingSends.begin(conversationId);
     try {
-      setPendingSend(true);
       setErrorMessage(null);
       const image = await readPrivateImageForModel(accountId, conversationId, attachment);
       if (
+        reading.signal.aborted ||
         accountChanged ||
         currentAuthUserId() !== accountId ||
         activeSessionIdRef.current !== conversationId ||
@@ -806,7 +826,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
         setErrorMessage(formatUiErrorMessage(error));
     } finally {
       unsubscribeAuth();
-      setPendingSend(false);
+      pendingSends.end(conversationId, reading);
     }
   }
 
@@ -817,6 +837,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       setErrorMessage(null);
       denyPendingPermissionRequest('当前回复已通过紧急停止终止');
       stopAllVoiceActivity({ disableMode: true });
+      pendingSends.abort();
       await client.abortCurrentReply(activeSessionId);
       await client.emergencyStop(activeSessionId);
       setStatusMessage('已发送紧急停止');
@@ -833,6 +854,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       setErrorMessage(null);
       denyPendingPermissionRequest();
       stopSpeechPlayback();
+      pendingSends.abort(activeSessionId);
       await client.abortCurrentReply(activeSessionId);
       clearStreamingAssistantText();
       setStatusMessage('已停止当前回复');
@@ -857,6 +879,7 @@ export function App({ servicesOverrides }: AppProps = {}) {
       try {
         denyPendingPermissionRequest('已因新建会话终止当前回复');
         stopAllVoiceActivity({ disableMode: true });
+        pendingSends.abort(activeSessionId);
         await client.abortCurrentReply(activeSessionId);
       } catch (error) {
         if (!isReplyAbortError(error)) {
@@ -880,12 +903,11 @@ export function App({ servicesOverrides }: AppProps = {}) {
     setErrorMessage(null);
     setStatusMessage('已创建新会话');
     setSidebarOpen(false);
-
-    await refreshCurrentSession(nextSessionId);
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
     try {
+      pendingSends.abort(sessionId);
       await client.deleteSession(sessionId);
       const remaining = await client.listSessions();
       setSavedSessions(remaining);
@@ -898,7 +920,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
         clearStreamingAssistantText();
         stopAllVoiceActivity({ disableMode: false });
         clearEvents();
-        setSession(await client.getSessionDisplaySnapshot(nextSessionId));
       }
 
       setStatusMessage('会话已删除');
@@ -910,11 +931,8 @@ export function App({ servicesOverrides }: AppProps = {}) {
   async function renameSession(sessionId: string, title: string | null): Promise<void> {
     try {
       await client.renameSession(sessionId, title);
-      const sessions = await client.listSessions();
-      setSavedSessions(sessions);
-      if (sessionId === activeSessionId) {
-        setSession(await client.getSessionDisplaySnapshot(sessionId));
-      }
+      if (sessionId === activeSessionId) await refreshCurrentSession(sessionId);
+      else setSavedSessions(await client.listSessions());
       setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
     } catch (error) {
       setErrorMessage(formatUiErrorMessage(error));
@@ -996,6 +1014,13 @@ export function App({ servicesOverrides }: AppProps = {}) {
     }
     flushSettingsDraft();
     setEditingWaveform(null);
+    // The reply of the conversation being left stops with it: once it is off screen its stop
+    // button is gone, so it must not keep running (and reaching devices) in the background.
+    if (activeSessionId) {
+      denyPendingPermissionRequest('已因切换会话终止当前回复');
+      pendingSends.abort(activeSessionId);
+      void client.abortCurrentReply(activeSessionId).catch(() => undefined);
+    }
     resetPermissionGrants();
     replaceAgentConversationLink(sessionId);
     setActiveSessionId(sessionId);

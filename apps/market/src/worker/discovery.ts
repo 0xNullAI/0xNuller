@@ -262,22 +262,28 @@ export async function handleDiscovery(
         (follows.results ?? []).map((row) => row.creator_id),
         account,
       );
-      const items = await Promise.all(
-        claims.map(async ({ itemId, creator }) => {
-          const item = await getItem(env.DB, itemId);
-          return item
-            ? {
+      // One bounded lookup for every claimed item instead of a query per item.
+      const visible = new Map(
+        (
+          await visibleItemsByIds(
+            env.DB,
+            claims.map(({ itemId }) => itemId),
+          )
+        ).map((item) => [item.id, item]),
+      );
+      const items = claims.flatMap(({ itemId, creator }) => {
+        const item = visible.get(itemId);
+        return item
+          ? [
+              {
                 ...item,
                 verifiedCreator: creator,
                 recommendationReason: `你关注的作者：${creator.displayName || creator.username}`,
-              }
-            : null;
-        }),
-      );
-      return json({
-        items: items.filter((item): item is NonNullable<typeof item> => !!item).filter(matchesKind),
-        accountId: account,
+              },
+            ]
+          : [];
       });
+      return json({ items: items.filter(matchesKind), accountId: account });
     }
     if (request.method !== 'GET') return json({ error: '不支持的方法' }, 405);
     const favorites = await favoriteItems(env.DB, account);

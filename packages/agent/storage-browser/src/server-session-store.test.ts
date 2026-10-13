@@ -268,7 +268,9 @@ describe('server-only session storage', () => {
       },
     ]);
     expect(await h.store.search('memory')).toEqual(['s']);
-    expect(h.request.mock.calls.some(([url]) => String(url).includes('?summary=1'))).toBe(true);
+    expect(h.request.mock.calls.some(([url]) => String(url).includes('?summary=1&limit=100'))).toBe(
+      true,
+    );
     expect(h.request.mock.calls.some(([url]) => String(url).includes('/search?q=memory'))).toBe(
       true,
     );

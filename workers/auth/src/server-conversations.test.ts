@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, afterEach, describe, it, expect } from 'vitest';
 import { handleServerConversations } from './server-conversations';
@@ -857,6 +857,38 @@ describe('server conversations', () => {
     expect(await (await call('/s')).json()).toMatchObject({
       session: { metadata: { ...character, sceneId: '' } },
     });
+  });
+
+  it('imports legacy sessions on the first page only, not on every later page', async () => {
+    await env.DB.prepare(
+      'INSERT INTO agent_sessions(user_id,id,payload,client_updated_at,updated_at) VALUES (?,?,?,?,?)',
+    )
+      .bind('alice', 'broken', 'not json', 1, 1)
+      .run();
+    const later = await call(`?cursor=${encodeURIComponent(JSON.stringify([0, '']))}`);
+    expect(await later.json()).toMatchObject({ migrationErrors: [] });
+    expect(await (await call()).json()).toMatchObject({ migrationErrors: [{ id: 'broken' }] });
+  });
+
+  it('serves the recent inbox from its matching index instead of sorting every conversation', () => {
+    const sql = new DatabaseSync(':memory:');
+    const dir = join(import.meta.dirname, '../migrations');
+    for (const file of readdirSync(dir)
+      .filter((name) => name.endsWith('.sql'))
+      .sort())
+      sql.exec(readFileSync(join(dir, file), 'utf8'));
+    const plan = sql
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT id FROM server_conversations WHERE user_id = ? AND deleted_at IS NULL
+         AND (COALESCE(last_message_at,0) < ? OR (COALESCE(last_message_at,0) = ? AND id > ?))
+         ORDER BY COALESCE(last_message_at,0) DESC,id ASC LIMIT ?`,
+      )
+      .all('alice', 1, 1, '', 5)
+      .map((row) => (row as { detail: string }).detail)
+      .join('\n');
+    sql.close();
+    expect(plan).toContain('idx_conversation_inbox_recent');
+    expect(plan).not.toContain('TEMP B-TREE');
   });
 
   it('reports a malformed legacy row without hiding valid sessions and does not reimport a deleted ID', async () => {

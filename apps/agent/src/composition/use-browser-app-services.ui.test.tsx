@@ -10,6 +10,7 @@ import type { DgLabModuleHandle } from '@dg-agent/agent-browser';
 const { createBrowserServices, createRegistryAgentDevices } = vi.hoisted(() => ({
   createBrowserServices: vi.fn(
     (_options?: {
+      scenes?: unknown;
       device?: unknown;
       opossum?: unknown;
       bluetoothAvailabilityOverride?: unknown;
@@ -44,7 +45,11 @@ vi.mock('@dg-agent/agent-browser', () => ({
   createRegistryAgentDevices,
 }));
 
-import { useBrowserAppServices, type ServicesOverrides } from './use-browser-app-services';
+import {
+  runtimeSettingsKey,
+  useBrowserAppServices,
+  type ServicesOverrides,
+} from './use-browser-app-services';
 
 const servicesOverrides: ServicesOverrides = { disableUpdateChecker: true };
 const dglab = { moduleId: 'agent' } as unknown as DgLabModuleHandle;
@@ -77,6 +82,58 @@ describe('useBrowserAppServices', () => {
     expect(createBrowserServices).toHaveBeenCalledTimes(1);
     rerender({ scenes: { selectedId: 'default', saved } });
     expect(createBrowserServices).toHaveBeenCalledTimes(1);
+  });
+
+  it('feeds scene edits to the live runtime instead of rebuilding it', () => {
+    const { rerender } = renderHook(
+      ({ scenes }) =>
+        useBrowserAppServices({
+          settings,
+          scenes,
+          setPendingPermission,
+          resolveBridgeSessionId,
+          servicesOverrides,
+          dglab,
+        }),
+      { initialProps: { scenes: { selectedId: 'default', saved } } },
+    );
+    const edited: SavedScene[] = [{ id: 'new', name: '新', prompt: 'p' } as SavedScene];
+    rerender({ scenes: { selectedId: 'new', saved: edited } });
+    expect(createBrowserServices).toHaveBeenCalledTimes(1);
+    const source = createBrowserServices.mock.calls[0]?.[0]?.scenes as () => unknown;
+    expect(source()).toEqual({ selectedId: 'new', saved: edited });
+  });
+
+  it('rebuilds only when a setting the runtime reads changes value', () => {
+    const base = { maxStrengthA: 50, modelLogEnabled: false } as unknown as BrowserAppSettings;
+    const { rerender, result } = renderHook(
+      ({ current }) =>
+        useBrowserAppServices({
+          settings: current,
+          scenes: { selectedId: 'default', saved },
+          setPendingPermission,
+          resolveBridgeSessionId,
+          servicesOverrides,
+          dglab,
+        }),
+      { initialProps: { current: base } },
+    );
+    const firstClient = result.current.client;
+    // A sync that hands out an equal copy, and a UI-only toggle, keep the running runtime.
+    rerender({ current: { ...base } });
+    rerender({ current: { ...base, modelLogEnabled: true } });
+    expect(createBrowserServices).toHaveBeenCalledTimes(1);
+    expect(firstClient.dispose).not.toHaveBeenCalled();
+    // A changed limit must reach the safety chain, so it rebuilds.
+    rerender({ current: { ...base, maxStrengthA: 40 } });
+    expect(createBrowserServices).toHaveBeenCalledTimes(2);
+    expect(firstClient.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('keys settings by value and ignores UI-only fields', () => {
+    const a = { maxStrengthA: 1, speechSynthesisEnabled: true } as unknown as BrowserAppSettings;
+    expect(runtimeSettingsKey(a)).toBe(runtimeSettingsKey({ ...a, speechSynthesisEnabled: false }));
+    expect(runtimeSettingsKey(a)).not.toBe(runtimeSettingsKey({ ...a, maxStrengthA: 2 }));
   });
 });
 

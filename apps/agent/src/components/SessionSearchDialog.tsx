@@ -1,4 +1,11 @@
-import { Z_OVERLAY, Z_OVERLAY_PANEL, cn, useOverlayContainer } from '@0xnullai/ui';
+import {
+  Z_OVERLAY,
+  Z_OVERLAY_PANEL,
+  cn,
+  isStopAnchorTarget,
+  useBlockingOverlay,
+  useOverlayContainer,
+} from '@0xnullai/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { SessionSnapshot } from '@dg-agent/core';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -85,6 +92,10 @@ export function SessionSearchDialog({
     }
   }
 
+  // While open, the shell raises its stop control above this dialog; a press there is not
+  // "outside", so stopping a device does not also close the search.
+  useBlockingOverlay(open);
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal container={useOverlayContainer()}>
@@ -98,6 +109,9 @@ export function SessionSearchDialog({
             inputRef.current?.focus();
           }}
           onKeyDown={handleKeyDown}
+          onInteractOutside={(event) => {
+            if (isStopAnchorTarget(event.target)) event.preventDefault();
+          }}
         >
           <DialogPrimitive.Title className="sr-only">搜索历史对话</DialogPrimitive.Title>
 

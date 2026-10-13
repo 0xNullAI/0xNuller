@@ -28,8 +28,9 @@ export function useSettingsManager(): UseSettingsManagerResult {
   useEffect(
     () =>
       settingsStore.subscribeModelBehavior((behavior) => {
-        setSettings((current) => ({ ...current, ...behavior }));
-        setSettingsDraft((current) => ({ ...current, ...behavior }));
+        // Keep the same object when nothing changed: a fresh one re-renders the whole app.
+        setSettings((current) => withModelBehavior(current, behavior));
+        setSettingsDraft((current) => withModelBehavior(current, behavior));
       }),
     [settingsStore],
   );
@@ -92,4 +93,15 @@ export function useSettingsManager(): UseSettingsManagerResult {
     resetSettings,
     flushSettingsDraft,
   };
+}
+
+/** Apply a model-behavior update, returning `current` itself when every value already matches. */
+export function withModelBehavior(
+  current: BrowserAppSettings,
+  behavior: Partial<BrowserAppSettings>,
+): BrowserAppSettings {
+  const changed = (Object.keys(behavior) as Array<keyof BrowserAppSettings>).some(
+    (key) => JSON.stringify(current[key]) !== JSON.stringify(behavior[key]),
+  );
+  return changed ? { ...current, ...behavior } : current;
 }

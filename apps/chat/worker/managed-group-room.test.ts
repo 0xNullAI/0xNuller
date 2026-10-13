@@ -126,6 +126,7 @@ function fixture(
       membershipVersion: 1,
       indexRegistered: true,
       name,
+      mediaToken: `${account}-media-token`.padEnd(64, '0'),
       expiresAt: Date.now() + 60_000,
     };
     const socket = {
@@ -564,6 +565,29 @@ it('ends after the last round with a text-only call, whatever the model keeps as
       body: string;
     };
     expect(JSON.parse(reply.body).x).toContain('〔已操作〕停止了「Bob」的全部输出');
+  } finally {
+    f.db.close();
+  }
+});
+
+it("never lets a member attach, or by recalling delete, another member's media", async () => {
+  const f = fixture();
+  try {
+    const alice = f.member('alice', 'Alice');
+    const bob = f.member('bob', 'Bob');
+    await f.room.noteMediaUpload(ROOM, 'alice-media-token'.padEnd(64, '0'), 'pic1');
+    const media = { kind: 'image', id: 'pic1', mime: 'image/jpeg', size: 10 };
+    await f.send(bob, { t: 'chat', id: 'steal', x: '', m: media });
+    await f.send(alice, { t: 'chat', id: 'mine', x: '', m: media });
+    await f.send(alice, { t: 'chat', id: 'again', x: '', m: media });
+    const ids = (f.db.prepare('SELECT id FROM messages ORDER BY ts').all() as { id: string }[]).map(
+      (row) => row.id,
+    );
+    expect(ids).toEqual(['mine']);
+    // A crash-inducing mention is reduced to nothing rather than stored.
+    await f.send(bob, { t: 'chat', id: 'odd', x: 'hi', mentions: [null] });
+    const body = f.db.prepare("SELECT body FROM messages WHERE id='odd'").get() as { body: string };
+    expect(JSON.parse(body.body).mentions).toBeUndefined();
   } finally {
     f.db.close();
   }

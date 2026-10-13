@@ -21,6 +21,7 @@ import {
   getArchivedCharacterVersion,
   getItem,
   incrementDownloads,
+  isVisibleItem,
   incrementViews,
   insertItem,
   insertItems,
@@ -94,6 +95,15 @@ type Env = Omit<Cloudflare.Env, 'AUTH'> & {
   AUTH: MarketAuthService;
   PORTRAITS: R2Bucket;
 };
+
+/** Far past any real catalog; keeps a bound value an ordinary SQLite integer. */
+const MAX_PAGE_OFFSET = 1_000_000;
+
+/** Lenient paging: junk falls back, fractions truncate and anything else clamps into range. */
+function pageInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const value = Math.trunc(Number(raw));
+  return Math.min(max, Math.max(min, value || fallback));
+}
 
 // Compatible clients on other origins can browse and import the public catalog.
 const CORS = {
@@ -192,8 +202,8 @@ const marketWorker = {
             : requestedSort === 'popular'
               ? 'downloads'
               : 'new';
-        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 30));
-        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const limit = pageInt(url.searchParams.get('limit'), 30, 1, 50);
+        const offset = pageInt(url.searchParams.get('offset'), 0, 0, MAX_PAGE_OFFSET);
         const params: ListParams = {
           type,
           promptKind: selectedKind,
@@ -283,8 +293,8 @@ const marketWorker = {
         const status =
           requestedStatus === 'hidden' || requestedStatus === 'visible' ? requestedStatus : 'all';
         const q = url.searchParams.get('q')?.trim() || undefined;
-        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
-        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const limit = pageInt(url.searchParams.get('limit'), 20, 1, 50);
+        const offset = pageInt(url.searchParams.get('offset'), 0, 0, MAX_PAGE_OFFSET);
         const items = await listAdminItems(env.DB, { type, status, q, limit, offset });
         return json({ items, nextOffset: items.length === limit ? offset + limit : null });
       }
@@ -382,8 +392,12 @@ const marketWorker = {
       // POST /api/items/:id/download —— download counter
       const dlMatch = pathname.match(/^\/api\/items\/([\w-]+)\/download$/);
       if (dlMatch && request.method === 'POST') {
-        await incrementDownloads(env.DB, dlMatch[1]!);
-        await env.AUTH.rewardMarketDownload(credentialsFrom(request), dlMatch[1]!);
+        const id = dlMatch[1]!;
+        if (!(await isVisibleItem(env.DB, id))) return err('作品不存在', 404);
+        const reward = await env.AUTH.rewardMarketDownload(credentialsFrom(request), id);
+        // Auth records each eligible account's first download once; anonymous, repeated or
+        // self downloads succeed for the client but cannot inflate the public counter.
+        if (reward === 'ok' || reward === 'capped') await incrementDownloads(env.DB, id);
         return json({ ok: true });
       }
 

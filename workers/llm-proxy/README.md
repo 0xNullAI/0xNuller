@@ -8,6 +8,10 @@ Key 不经过本 Worker，也不消耗 Credit。
 生产脚本沿用 `dg-llm-proxy`。自定义域、日志、Auth 服务绑定、来源白名单、全局限流和关闭的
 workers.dev/Preview URL 由 `wrangler.toml` 管理。
 
+限流分两层，均在限流器不可用时拒绝请求：账户未知前只有宽松的按 IP 限流（`IP_RATE_LIMITER`），因为
+国内运营商的 CGNAT 会让大量用户共用一个出口 IP；Auth 预留确认账户后按账户严格限流（`RATE_LIMITER`，
+群 AI 按付费成员），超限时释放尚未使用的预留并返回 429。
+
 ## 配置
 
 | 名称                 | 类型   | 说明                                                                               |
@@ -84,8 +88,12 @@ workers.dev/Preview URL 由 `wrangler.toml` 管理。
 
 SSE 以事件边界解析，兼容分块 CRLF 和末尾无换行的 usage。每个 JSON 事件在交付前改写 `model` 为公开
 id；usage 在对应帧交付前写入 Auth checkpoint。`[DONE]` 只在 Auth 确认结算后发送，结算失败使流报错。
-`[DONE]` 是读取终点，之后的 usage 不参与结算。客户端取消会停止上游读取；已收到可信 usage 时结算该
-用量，没有可信 usage 时保留预留为 pending，由 Auth 后台标记待核对并释放冻结。
+`[DONE]` 是读取终点，之后的 usage 不参与结算。上游一旦开始生成就会产生费用，因此客户端断开只停止
+转发：Worker 继续读取上游（最多 20 秒，在断开后的 waitUntil 时限内），收到可信 usage 即按真实用量
+结算。窗口内仍拿不到 usage 时，按预留的保守估算结算：输入取预留时的估算 Token，输出取已收到的字节数
+（上游被截断时取输出上限），且不超过预留，账单元数据记录 `estimated: true`。客户端仍在连接、上游却
+没有报告 usage 时，预留保留为 pending，由 Auth 后台标记待核对并释放冻结。非流式请求同样不因客户端
+断开而中止上游调用，结果返回后照常结算。
 
 结算/释放校验 Auth 实际终态，最多同幂等键重试 3 次，每次 RPC 最多等待 3 秒。结算超时可能已经提交，
 因此始终重试 settle，绝不随后调用 release；非流式接口在未确认结算时不返回 `credit_charged`。

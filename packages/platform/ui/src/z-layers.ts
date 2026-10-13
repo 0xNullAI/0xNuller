@@ -29,7 +29,11 @@ export const Z_SHELL_PANEL = 'z-[var(--z-shell-panel)]';
 /** Menus owned by shell chrome. */
 export const Z_SHELL_POPOVER = 'z-[var(--z-shell-popover)]';
 
-/** Backdrop / scrim. Dialogs intentionally outrank all shell chrome. */
+/**
+ * Backdrop / scrim. Dialogs intentionally outrank all shell chrome — except
+ * stop: while a modal is open the shell raises OverlayStopAnchor at
+ * `--z-stop`, above every layer here.
+ */
 export const Z_OVERLAY = 'z-[var(--z-module-overlay)]';
 
 /** The panel that sits on the backdrop. Must always outrank Z_OVERLAY. */

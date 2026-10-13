@@ -31,6 +31,9 @@ import { withServerErrorCounting } from '@0xnullai/observability';
  * @property {string} [VOLC_ARK_API_KEY] Secret: Ark API key.
  * @property {object} AUTH Service binding to Auth's `AuthOwnershipService`.
  * @property {{ limit(input: { key: string }): Promise<{ success: boolean }> }} RATE_LIMITER
+ *   Strict limit per known account (or group payer).
+ * @property {{ limit(input: { key: string }): Promise<{ success: boolean }> }} IP_RATE_LIMITER
+ *   Loose per-IP limit for traffic whose account is not known yet.
  */
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -99,13 +102,11 @@ function credentials(request) {
   };
 }
 
-async function withinRateLimit(env, request, verifiedGroupPayer) {
-  if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== 'function') return false;
-  const key = verifiedGroupPayer
-    ? `group-payer:${verifiedGroupPayer}`
-    : request.headers.get('CF-Connecting-IP') || 'unknown';
+/** Paid upstream traffic fails closed when a limiter is missing or unavailable. */
+async function withinRateLimit(limiter, key) {
+  if (!limiter || typeof limiter.limit !== 'function') return false;
   try {
-    return (await env.RATE_LIMITER.limit({ key })).success;
+    return (await limiter.limit({ key })).success;
   } catch {
     return false;
   }
@@ -212,8 +213,11 @@ function rewriteStreamEvent(event, outcome, modelId) {
       delta &&
       ((typeof delta.content === 'string' && delta.content) ||
         (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
-    )
+    ) {
       outcome.output = true;
+      // Byte count over-estimates tokens, so an estimated charge never undercounts output.
+      outcome.outputBytes += new TextEncoder().encode(JSON.stringify(delta)).byteLength;
+    }
     if (typeof choice.finish_reason === 'string') outcome.finishReason = choice.finish_reason;
     if (choice.finish_reason === 'content_filter') {
       outcome.contentFiltered = true;
@@ -224,11 +228,31 @@ function rewriteStreamEvent(event, outcome, modelId) {
   }
 }
 
+/**
+ * After the browser leaves, keep reading upstream (without forwarding) for at most this long so
+ * its usage frame can still be billed. It stays inside the runtime's post-disconnect waitUntil
+ * allowance; past it the upstream is cancelled and an estimated charge is settled instead.
+ */
+const DISCONNECTED_DRAIN_MS = 20_000;
+const MISSING_USAGE = 'upstream stream did not report valid usage';
+
+/**
+ * Usage for a reply whose browser left before the upstream reported real usage. The input side
+ * is the reservation's own conservative estimate; output counts the bytes actually received, or
+ * the whole output cap when the upstream was cut off while it may still have been generating.
+ */
+function estimatedUsage({ inputTokens, maxTokens }, outcome, finished) {
+  return {
+    prompt_tokens: inputTokens,
+    completion_tokens: finished ? Math.min(maxTokens, outcome.outputBytes) : maxTokens,
+  };
+}
+
 async function relayAndSettle(
   upstreamBody,
-  { auth, key, route, settlement },
+  { auth, key, route, settlement, credits, inputTokens, maxTokens },
   env,
-  signal,
+  { signal, clientSignal },
   finishHeartbeat,
 ) {
   const reader = upstreamBody.getReader();
@@ -239,13 +263,34 @@ async function relayAndSettle(
   let buffer = '';
   let usage = null;
   let terminal = false;
-  const outcome = { output: false, finishReason: null, contentFiltered: false };
+  const outcome = { output: false, outputBytes: 0, finishReason: null, contentFiltered: false };
   let downstreamClosed = false;
-  // Consumer cancellation must also unblock a reader waiting on an upstream chunk.
-  void writer.closed.catch(() => {
+  let drainTimer;
+  let drainExpired = false;
+  let completed = false;
+  // A browser that leaves only stops forwarding. The inference upstream keeps running and is
+  // paid for, so keep reading (bounded) until its usage arrives, then settle that.
+  const disconnect = () => {
+    if (downstreamClosed || completed) return;
     downstreamClosed = true;
-    void reader.cancel().catch(() => {});
-  });
+    void writer.abort(new Error('request_cancelled')).catch(() => {});
+    if (usage) {
+      void reader.cancel().catch(() => {});
+      return;
+    }
+    drainTimer = setTimeout(() => {
+      drainExpired = true;
+      void reader.cancel().catch(() => {});
+    }, DISCONNECTED_DRAIN_MS);
+  };
+  // A failed write is the browser leaving, not an upstream failure.
+  const forward = async (bytes) => {
+    if (!downstreamClosed) await writer.write(bytes).catch(disconnect);
+  };
+  void writer.closed.catch(disconnect);
+  clientSignal?.addEventListener('abort', disconnect, { once: true });
+  if (clientSignal?.aborted) disconnect();
+  // A lost billing lease is different: Auth no longer accepts usage, so stop at once.
   const abort = () => {
     downstreamClosed = true;
     void reader.cancel().catch(() => {});
@@ -293,7 +338,7 @@ async function relayAndSettle(
           buffer += decoder.decode();
           if (buffer.trim()) {
             const encoded = await consume(buffer);
-            if (encoded && !downstreamClosed) await writer.write(encoded);
+            if (encoded) await forward(encoded);
           }
           break;
         }
@@ -307,20 +352,48 @@ async function relayAndSettle(
           const encoded = await consume(frame);
           if (encoded) frames.push(encoded);
         }
-        if (terminal) void reader.cancel().catch(() => {});
+        // Once nobody is listening, the recorded usage is all that is left to read for.
+        const finished = terminal || (downstreamClosed && usage);
+        if (finished) void reader.cancel().catch(() => {});
         for (const frame of frames) {
-          if (!downstreamClosed) await writer.write(frame);
+          await forward(frame);
         }
-        if (terminal) break;
+        if (finished) break;
       }
-      if (!usage) throw new Error('upstream stream did not report valid usage');
+      if (!usage) throw new Error(MISSING_USAGE);
     } catch (error) {
       transportError = error;
       void reader.cancel().catch(() => {});
     } finally {
+      completed = true;
+      clearTimeout(drainTimer);
+      clientSignal?.removeEventListener('abort', disconnect);
       reader.releaseLock();
-      finishHeartbeat();
     }
+    let charge = usage ? tokenCredits(route, usage) : null;
+    let metadata = usage ? usageMetadata(usage, settlement, outcome) : null;
+    if (!usage && downstreamClosed && !signal?.aborted) {
+      // The browser left and no usage arrived in the drain window. The reply had started, so
+      // the inference was paid for: bill a conservative estimate rather than letting recovery
+      // release the hold. A lost lease (signal) is skipped because Auth refuses it anyway.
+      const estimate = estimatedUsage(
+        { inputTokens, maxTokens },
+        outcome,
+        !drainExpired && transportError?.message === MISSING_USAGE,
+      );
+      const estimatedCharge = Math.min(credits, tokenCredits(route, estimate));
+      const estimatedMetadata = {
+        ...usageMetadata(estimate, settlement, outcome),
+        estimated: true,
+      };
+      try {
+        await env.AUTH.checkpoint(estimatedCharge, estimatedMetadata);
+        [usage, charge, metadata] = [estimate, estimatedCharge, estimatedMetadata];
+      } catch {
+        console.error('Managed estimated usage not acknowledged');
+      }
+    }
+    finishHeartbeat();
     try {
       if (!usage) {
         // The upstream may already have performed paid inference. Without
@@ -328,14 +401,7 @@ async function relayAndSettle(
         await writer.abort(transportError ?? new Error('missing_valid_usage')).catch(() => {});
         return;
       }
-      await finalizeBilling(
-        env,
-        auth,
-        key,
-        'settle',
-        tokenCredits(route, usage),
-        usageMetadata(usage, settlement, outcome),
-      );
+      await finalizeBilling(env, auth, key, 'settle', charge, metadata);
       if (transportError) {
         await writer.abort(transportError).catch(() => {});
         return;
@@ -392,7 +458,15 @@ const llmProxyWorker = {
     const config = managedConfig(env);
     if (!config) return json(503, { error: MANAGED_OFF }, cors);
     const isGroup = request.headers.has('X-0xNullAI-Group-Ticket');
-    if (!isGroup && !(await withinRateLimit(env, request)))
+    // Before anyone is known only a loose per-IP bound applies: carrier-grade NAT puts many
+    // users behind one address. The real per-account limit follows the reservation below.
+    if (
+      !isGroup &&
+      !(await withinRateLimit(
+        env.IP_RATE_LIMITER,
+        `ip:${request.headers.get('CF-Connecting-IP') || 'unknown'}`,
+      ))
+    )
       return json(429, { error: '请求过于频繁' }, cors);
 
     let body;
@@ -475,7 +549,7 @@ const llmProxyWorker = {
       }
       if (verified === 'unauthorized' || !verified?.payer)
         return json(401, { error: '群账务身份无效' }, cors);
-      if (!(await withinRateLimit(env, request, verified.payer)))
+      if (!(await withinRateLimit(env.RATE_LIMITER, `group-payer:${verified.payer}`)))
         return json(429, { error: '请求过于频繁' }, cors);
     }
     const conversationId = request.headers.get('X-0xNullAI-Conversation-Id');
@@ -551,6 +625,7 @@ const llmProxyWorker = {
     // A capability refers only to this persisted reservation and survives browser session expiry.
     // Never expose it in responses or persist browser credentials.
     const billingService = env.AUTH;
+    const rateLimiter = env.RATE_LIMITER;
     let heartbeat;
     const capability = reservation.capability;
     const checkpoint = async (charge, metadata) => {
@@ -588,6 +663,20 @@ const llmProxyWorker = {
       const billing_status = await releaseAfterFailure(env, auth, key);
       return json(499, { error: '请求已取消', billing_status }, cors);
     }
+    // Auth has now named the account, so the account (not its shared IP) gets the strict limit.
+    // Nothing has run yet, so a refused request releases its untouched hold.
+    if (
+      !isGroup &&
+      !(await withinRateLimit(
+        rateLimiter,
+        reservation.subject
+          ? `account:${reservation.subject}`
+          : request.headers.get('CF-Connecting-IP') || 'unknown',
+      ))
+    ) {
+      const billing_status = await releaseAfterFailure(env, auth, key);
+      return json(429, { error: '请求过于频繁', billing_status }, cors);
+    }
 
     const stream = Boolean(body.stream) && !vision;
     const group = reservation.groupContext;
@@ -609,8 +698,12 @@ const llmProxyWorker = {
         : undefined,
     };
 
-    heartbeat = billingHeartbeat(billingService, key, capability, request.signal);
+    heartbeat = billingHeartbeat(billingService, key, capability);
     let streamOwnsHeartbeat = false;
+    // Once the provider is called it runs (and is paid for) whether or not the browser stays.
+    // Keep this handler alive past a disconnect so the result still reaches settlement.
+    let finishGeneration;
+    ctx.waitUntil(new Promise((resolve) => (finishGeneration = resolve)));
     try {
       let result;
       try {
@@ -623,7 +716,7 @@ const llmProxyWorker = {
           ),
         );
       } catch {
-        // Cancelled or heartbeat lost mid-call: the provider may have run, so keep the hold.
+        // Heartbeat lost mid-call: the provider may have run, so keep the hold.
         return json(
           503,
           heartbeat.failed
@@ -658,9 +751,9 @@ const llmProxyWorker = {
       if (stream) {
         const relay = await relayAndSettle(
           result.stream,
-          { auth, key, route, settlement },
+          { auth, key, route, settlement, credits, inputTokens, maxTokens },
           env,
-          heartbeat.signal,
+          { signal: heartbeat.signal, clientSignal: request.signal },
           () => heartbeat.stop(),
         );
         streamOwnsHeartbeat = true;
@@ -763,6 +856,7 @@ const llmProxyWorker = {
         cors,
       );
     } finally {
+      finishGeneration();
       if (!streamOwnsHeartbeat) heartbeat.stop();
     }
   },

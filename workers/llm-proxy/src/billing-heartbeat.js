@@ -1,12 +1,13 @@
-/** Keep recovery's inactivity lease alive without extending the wallet reservation TTL. */
-export function billingHeartbeat(service, key, capability, requestSignal) {
+/**
+ * Keep recovery's inactivity lease alive without extending the wallet reservation TTL.
+ * Only a lost lease aborts the signal: a browser that disconnects mid-call does not stop
+ * paid inference upstream, so the work it started must still run to its usage and settle.
+ */
+export function billingHeartbeat(service, key, capability) {
   const controller = new AbortController();
   let failed = false;
   let stopped = false;
   let rpcTimer;
-  const abort = () => controller.abort();
-  requestSignal.addEventListener('abort', abort, { once: true });
-  if (requestSignal.aborted) abort();
   const timer = setInterval(async () => {
     try {
       const result = await Promise.race([
@@ -48,7 +49,6 @@ export function billingHeartbeat(service, key, capability, requestSignal) {
     stop() {
       stopped = true;
       clearInterval(timer);
-      requestSignal.removeEventListener('abort', abort);
     },
   };
 }

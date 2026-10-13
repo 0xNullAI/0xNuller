@@ -12,6 +12,7 @@
 import { apiBaseUrl } from '@0xnullai/settings';
 import { authRequestHeaders, currentAuthUserId } from '@0xnullai/auth';
 import type { WaveformModality } from '@dg-kit/core';
+import { sharedPortraitRead } from './portrait-cache.js';
 
 export type { WaveformModality } from '@dg-kit/core';
 
@@ -123,8 +124,13 @@ export async function fetchCreatorMarketItems(
   );
 }
 
+/** Only a signed-in, verified account's first download counts, so send the session along. */
 export async function markMarketDownloaded(id: string): Promise<void> {
-  await fetch(`${marketBaseUrl()}/api/items/${id}/download`, { method: 'POST' }).catch(() => {});
+  await fetch(`${marketBaseUrl()}/api/items/${id}/download`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: authRequestHeaders(),
+  }).catch(() => {});
 }
 
 /** UUID-only reference; never accepts an arbitrary image URL. */
@@ -139,22 +145,24 @@ export function marketPortraitUrl(value: unknown): string | null {
   return id ? `${marketBaseUrl()}/api/items/character-portraits/${id}/content` : null;
 }
 /** Anonymous read deliberately excludes the author's private preview privilege.
- * null means use the local emoji/default avatar. Abort remains cancellation. */
+ * null means use the local emoji/default avatar. Abort remains cancellation (of this caller's
+ * wait; the read itself is shared by every avatar showing the same portrait). */
 export async function fetchPublicMarketPortrait(
   value: unknown,
   signal?: AbortSignal,
 ): Promise<Blob | null> {
   const url = marketPortraitUrl(value);
   if (!url) return null;
-  try {
-    const response = await fetch(url, { credentials: 'omit', cache: 'no-store', signal });
-    if (!response.ok) return null;
-    const type = response.headers.get('Content-Type')?.split(';')[0]?.trim();
-    if (!type || !['image/png', 'image/jpeg', 'image/webp'].includes(type)) return null;
-    const blob = await response.blob();
-    return blob.size > 0 && blob.size <= 4 * 1024 * 1024 ? blob : null;
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return null;
-  }
+  return sharedPortraitRead(url, signal, async () => {
+    try {
+      const response = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+      if (!response.ok) return null;
+      const type = response.headers.get('Content-Type')?.split(';')[0]?.trim();
+      if (!type || !['image/png', 'image/jpeg', 'image/webp'].includes(type)) return null;
+      const blob = await response.blob();
+      return blob.size > 0 && blob.size <= 4 * 1024 * 1024 ? blob : null;
+    } catch {
+      return null;
+    }
+  });
 }

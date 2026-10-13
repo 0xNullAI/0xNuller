@@ -17,7 +17,8 @@ import {
   useModuleSettingsClaims,
   useSettingsSubpageHeader,
 } from '@0xnullai/ui';
-import { avatarSrc, getCreditBalance, type AuthUser } from '@0xnullai/auth';
+import { avatarSrc, type AuthUser } from '@0xnullai/auth';
+import { useCreditBalance } from '../credit-balance';
 import { Avatar, useTheme } from '@0xnullai/ui';
 import { loadLlmConfig } from '@0xnullai/llm-providers';
 import { loadScenes, subscribeScenes } from '@0xnullai/scenes';
@@ -80,24 +81,6 @@ function useOverviewValues(active: boolean): Record<string, string> {
   };
 }
 
-/** The signed-in balance for the profile card; refreshed whenever the overview opens. */
-function useCreditBalance(accountId: string | null): number | null {
-  const [state, setState] = useState<{ accountId: string; available: number } | null>(null);
-  useEffect(() => {
-    if (!accountId) return;
-    let active = true;
-    void getCreditBalance()
-      .then((balance) => {
-        if (active) setState({ accountId, available: balance.available });
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [accountId]);
-  return state && state.accountId === accountId ? state.available : null;
-}
-
 /** Settings of the open conversation: reached from its header only, never listed under 我的. */
 const CONVERSATION_PAGE_IDS: ReadonlySet<string> = new Set(['agent-companion']);
 /** Module pages shown inside a built-in page instead of as their own entry. */
@@ -143,7 +126,7 @@ export function SettingsPanel({
   const moduleClaims = useModuleSettingsClaims();
   const subpage = useSettingsSubpageHeader();
   const overviewValues = useOverviewValues(tab === 'overview');
-  const credit = useCreditBalance(tab === 'overview' ? (user?.id ?? null) : null);
+  const credit = useCreditBalance(user?.id ?? null)?.available ?? null;
   const builtinTabs = user?.role === 'admin' ? TABS : TABS.filter((item) => item.id !== 'admin');
   const navigationTabs = [
     ...builtinTabs.map((item) => ({

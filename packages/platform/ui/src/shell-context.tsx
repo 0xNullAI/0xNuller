@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, memo, useContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
 /**
@@ -62,15 +62,14 @@ export function ShellChromeProvider({
   openSettings: (tab?: ShellSettingsTab) => void;
   signedIn: boolean;
 }) {
-  // Deliberately not memoized: the Shell rebuilds this object every
-  // render, but the consumers are a handful of buttons — and memoization
-  // introduces a "did openSettings change" dependency where a mistake
-  // means a button that does nothing.
-  return (
-    <ShellChromeContext.Provider value={{ inShell: true, signedIn, openSettings, active }}>
-      {children}
-    </ShellChromeContext.Provider>
+  // Memoized so a shell re-render (a credit tick, an unread count) does not re-render
+  // every consumer in every opened module. The Shell passes a stable openSettings, so
+  // the value only changes when sign-in or visibility actually does.
+  const value = useMemo(
+    () => ({ inShell: true, signedIn, openSettings, active }),
+    [signedIn, openSettings, active],
   );
+  return <ShellChromeContext.Provider value={value}>{children}</ShellChromeContext.Provider>;
 }
 
 export function useInShell(): boolean {
@@ -91,3 +90,15 @@ export function useOpenShellSettings(): (tab?: ShellSettingsTab) => void {
 export function useModuleActive(): boolean {
   return useContext(ShellChromeContext).active;
 }
+
+/**
+ * Keeps showing the last rendered children while `paused`, skipping re-renders of a subtree
+ * nobody can see. Effects inside stay mounted, so connections and device logic keep running;
+ * a hidden module just stops re-laying-out its views for every state change behind it.
+ */
+export const PauseWhenHidden = memo(
+  function PauseWhenHidden({ children }: { paused: boolean; children: ReactNode }) {
+    return children;
+  },
+  (_prev, next) => next.paused,
+);

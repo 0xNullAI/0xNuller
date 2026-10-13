@@ -1,6 +1,12 @@
 import { GroupMembershipDialog } from './GroupMembershipDialog';
 import type { ChatReplyContext } from '../lib/protocol';
-import { ConversationHeader, ConversationTitle, useShellNav } from '@0xnullai/ui';
+import {
+  ConversationHeader,
+  ConversationTitle,
+  PauseWhenHidden,
+  useModuleActive,
+  useShellNav,
+} from '@0xnullai/ui';
 import { ArrowLeft, Bot, ChevronRight, LogOut, Search, Settings2, Users } from 'lucide-react';
 import { currentAuthUserId } from '@0xnullai/auth';
 import type { WireRoomAgent } from '../../worker/wire';
@@ -142,6 +148,8 @@ export function ChatAppView({
   sendMedia,
   sendCommand,
 }: ChatAppViewProps) {
+  // Behind another module the room keeps running; only its views stop re-rendering.
+  const moduleActive = useModuleActive();
   const shellNav = useShellNav();
   const [membersOpen, setMembersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -320,6 +328,25 @@ export function ChatAppView({
             </button>
           )}
         </ConversationHeader>
+        {peerRoom.roomId && peerRoom.error ? (
+          <div
+            role="alert"
+            className="flex items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--bg-soft)] px-4 py-2 text-sm"
+          >
+            <span className="min-w-0 flex-1">{peerRoom.error}</span>
+            <button
+              type="button"
+              onClick={peerRoom.dismissError}
+              className="shrink-0 text-xs text-[var(--text-soft)] hover:text-[var(--text)]"
+            >
+              知道了
+            </button>
+          </div>
+        ) : peerRoom.roomId && peerRoom.status !== 'connected' && peerRoom.status !== 'idle' ? (
+          <p role="status" className="px-4 py-1 text-center text-xs text-[var(--text-faint)]">
+            {peerRoom.status === 'error' ? '连接失败，正在重试…' : '正在连接…'}
+          </p>
+        ) : null}
         {searchOpen && peerRoom.roomId && (
           <ChatSearchDialog
             onSearch={peerRoom.searchMessages}
@@ -392,47 +419,50 @@ export function ChatAppView({
 
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden ">
               <div className={`${activeTab !== 'chat' ? 'hidden' : 'flex'} min-h-0 flex-col`}>
-                <ChatPanel
-                  key={peerRoom.roomId}
-                  conversationId={peerRoom.roomId}
-                  messages={peerRoom.messages}
-                  privateMediaToken={peerRoom.isDm ? peerRoom.mediaUploadToken : undefined}
-                  onMessageVisible={
-                    activeTab === 'chat'
-                      ? peerRoom.isDm
-                        ? onDmMessageVisible
-                        : onGroupMessageVisible
-                      : undefined
-                  }
-                  hasOlderHistory={peerRoom.hasOlderHistory}
-                  historyLoading={peerRoom.historyLoading}
-                  onLoadOlderHistory={peerRoom.loadOlderHistory}
-                  onSend={(text, mentions, replyTo) =>
-                    peerRoom.sendMessage(text, undefined, mentions, replyTo)
-                  }
-                  onRetryMessage={peerRoom.retryMessage}
-                  onDiscardMessage={peerRoom.discardMessage}
-                  onRecallMessage={peerRoom.recallMessage}
-                  jumpToMessageId={jumpToMessageId}
-                  onJumpSettled={() => setJumpToMessageId(null)}
-                  onSendMedia={sendMedia}
-                  members={[
-                    { peerId: peerRoom.selfId, name: displayName, username },
-                    ...peerRoom.peers.map((peerId) => ({
-                      peerId,
-                      name: peerRoom.members.get(peerId)?.displayName || peerId.slice(0, 6),
-                      username: peerRoom.members.get(peerId)?.username ?? null,
-                    })),
-                    ...[...peerRoom.members.values()]
-                      .filter((member) => member.isAi)
-                      .map((member) => ({
-                        peerId: member.peerId,
-                        name: member.displayName,
-                        hint: member.aiOwnerName ? `${member.aiOwnerName}的 AI` : 'AI',
+                {/* Not paused for the control tab: read tracking must switch off there at once. */}
+                <PauseWhenHidden paused={!moduleActive}>
+                  <ChatPanel
+                    key={peerRoom.roomId}
+                    conversationId={peerRoom.roomId}
+                    messages={peerRoom.messages}
+                    privateMediaToken={peerRoom.isDm ? peerRoom.mediaUploadToken : undefined}
+                    onMessageVisible={
+                      activeTab === 'chat'
+                        ? peerRoom.isDm
+                          ? onDmMessageVisible
+                          : onGroupMessageVisible
+                        : undefined
+                    }
+                    hasOlderHistory={peerRoom.hasOlderHistory}
+                    historyLoading={peerRoom.historyLoading}
+                    onLoadOlderHistory={peerRoom.loadOlderHistory}
+                    onSend={(text, mentions, replyTo) =>
+                      peerRoom.sendMessage(text, undefined, mentions, replyTo)
+                    }
+                    onRetryMessage={peerRoom.retryMessage}
+                    onDiscardMessage={peerRoom.discardMessage}
+                    onRecallMessage={peerRoom.recallMessage}
+                    jumpToMessageId={jumpToMessageId}
+                    onJumpSettled={() => setJumpToMessageId(null)}
+                    onSendMedia={sendMedia}
+                    members={[
+                      { peerId: peerRoom.selfId, name: displayName, username },
+                      ...peerRoom.peers.map((peerId) => ({
+                        peerId,
+                        name: peerRoom.members.get(peerId)?.displayName || peerId.slice(0, 6),
+                        username: peerRoom.members.get(peerId)?.username ?? null,
                       })),
-                  ]}
-                  selfId={peerRoom.selfId}
-                />
+                      ...[...peerRoom.members.values()]
+                        .filter((member) => member.isAi)
+                        .map((member) => ({
+                          peerId: member.peerId,
+                          name: member.displayName,
+                          hint: member.aiOwnerName ? `${member.aiOwnerName}的 AI` : 'AI',
+                        })),
+                    ]}
+                    selfId={peerRoom.selfId}
+                  />
+                </PauseWhenHidden>
               </div>
               <div
                 className={`${activeTab !== 'control' ? 'hidden' : 'flex'} min-h-0 flex-col border-l border-[var(--surface-border)]`}
@@ -513,61 +543,63 @@ export function ChatAppView({
                     </span>
                   </label>
                 </div>
-                <ControlPanel
-                  key={peerRoom.roomId ?? 'no-room'}
-                  members={peerRoom.members}
-                  peers={peerRoom.peers}
-                  onSendCommand={sendCommand}
-                  onSendWaveform={peerRoom.sendWaveform}
-                  roomId={peerRoom.roomId}
-                  waveforms={waveforms.allWaveforms}
-                  onImportWaveform={waveforms.importFile}
-                  onImportMarketWaveform={waveforms.addMarketWaveform}
-                  onRemoveWaveform={waveforms.removeWaveform}
-                  selfState={
-                    {
-                      peerId: 'self',
-                      displayName,
-                      username,
-                      deviceConnected: device.connected,
-                      strengthA: device.strengthA,
-                      strengthB: device.strengthB,
-                      waveA: device.waveIdA,
-                      waveB: device.waveIdB,
-                      battery: device.battery,
-                      queueA,
-                      queueB,
-                      playModeA,
-                      playModeB,
-                      intervalA: intervalASec,
-                      intervalB: intervalBSec,
-                      currentIndexA,
-                      currentIndexB,
-                      firingA,
-                      firingB,
-                      opossumConnected: device.opossum?.connected ?? false,
-                      opossumIntensityA: device.opossum?.intensityA ?? 0,
-                      opossumIntensityB: device.opossum?.intensityB ?? 0,
-                      opossumBattery: device.opossum?.battery ?? null,
-                      opossumLastButtons: device.opossum?.lastButtons ?? null,
-                      sensorKind: device.sensor?.kind,
-                      sensorConnected: device.sensor?.connected ?? false,
-                      sensorBattery: device.sensor?.battery ?? null,
-                      sensorLastEvent: device.sensor?.lastEvent ?? null,
-                      sensorLastValue: device.sensor?.lastValue ?? null,
-                      sensorLastEventAt: device.sensor?.lastEventAt ?? null,
-                    } satisfies MemberState
-                  }
-                  selfLimitA={device.limitA}
-                  selfLimitB={device.limitB}
-                  isPublic={peerRoom.isPublic}
-                  canManage={peerRoom.canManageGroup}
-                  onSetPublic={peerRoom.setGroupPublic}
-                  roomName={peerRoom.groupName}
-                  onRename={peerRoom.renameGroup}
-                  onCloseRoom={peerRoom.closeGroup}
-                  isDm={peerRoom.isDm}
-                />
+                <PauseWhenHidden paused={!moduleActive || activeTab !== 'control'}>
+                  <ControlPanel
+                    key={peerRoom.roomId ?? 'no-room'}
+                    members={peerRoom.members}
+                    peers={peerRoom.peers}
+                    onSendCommand={sendCommand}
+                    onSendWaveform={peerRoom.sendWaveform}
+                    roomId={peerRoom.roomId}
+                    waveforms={waveforms.allWaveforms}
+                    onImportWaveform={waveforms.importFile}
+                    onImportMarketWaveform={waveforms.addMarketWaveform}
+                    onRemoveWaveform={waveforms.removeWaveform}
+                    selfState={
+                      {
+                        peerId: 'self',
+                        displayName,
+                        username,
+                        deviceConnected: device.connected,
+                        strengthA: device.strengthA,
+                        strengthB: device.strengthB,
+                        waveA: device.waveIdA,
+                        waveB: device.waveIdB,
+                        battery: device.battery,
+                        queueA,
+                        queueB,
+                        playModeA,
+                        playModeB,
+                        intervalA: intervalASec,
+                        intervalB: intervalBSec,
+                        currentIndexA,
+                        currentIndexB,
+                        firingA,
+                        firingB,
+                        opossumConnected: device.opossum?.connected ?? false,
+                        opossumIntensityA: device.opossum?.intensityA ?? 0,
+                        opossumIntensityB: device.opossum?.intensityB ?? 0,
+                        opossumBattery: device.opossum?.battery ?? null,
+                        opossumLastButtons: device.opossum?.lastButtons ?? null,
+                        sensorKind: device.sensor?.kind,
+                        sensorConnected: device.sensor?.connected ?? false,
+                        sensorBattery: device.sensor?.battery ?? null,
+                        sensorLastEvent: device.sensor?.lastEvent ?? null,
+                        sensorLastValue: device.sensor?.lastValue ?? null,
+                        sensorLastEventAt: device.sensor?.lastEventAt ?? null,
+                      } satisfies MemberState
+                    }
+                    selfLimitA={device.limitA}
+                    selfLimitB={device.limitB}
+                    isPublic={peerRoom.isPublic}
+                    canManage={peerRoom.canManageGroup}
+                    onSetPublic={peerRoom.setGroupPublic}
+                    roomName={peerRoom.groupName}
+                    onRename={peerRoom.renameGroup}
+                    onCloseRoom={peerRoom.closeGroup}
+                    isDm={peerRoom.isDm}
+                  />
+                </PauseWhenHidden>
               </div>
             </div>
           </>

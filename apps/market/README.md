@@ -52,7 +52,9 @@ Prompt 粘贴保留完整文本；超过 100000 字符时明确拒绝保存，
 角色与场景共用 `scenario` 内容类型和基础 Prompt；角色的 `content.kind=character` 与 `content.characterCard` 保存公开人设，场景的 `content.kind=scene` 只保存环境规则。已发布卡片不能更改类型，转换需另建卡片。
 发布、批量上传、所有者编辑、复制 JSON 与导入保留这些字段；旧 prompt-only 场景继续可浏览和编辑，但不再作为角色直接开始聊天。角色／场景浏览使用 `GET /api/items?type=scenario&kind=character|scene`；旧 `character=1` API 仍兼容已有客户端。隐藏与账户权限不变。
 卡片与本地场景使用同一校验器和字段编辑器，私人称呼、关系、记忆不属于公开 payload。
-创作者仍通过已有下载奖励与打赏获得站内 Credit，不提供现金提现。
+创作者仍通过已有下载奖励与打赏获得站内 Credit，不提供现金提现。下载奖励只发给已验证邮箱、未封禁的
+其他账户对可见作品的首次下载，每位作者每 24 小时有发放上限；公开下载数也只在这样的首次下载时加一，
+匿名或重复请求不改变计数。
 
 公开角色头像可在编辑器上传 JPEG、PNG、WebP（最多 4 MB），存入独立 Market R2 bucket，
 角色内容只保存不可变 `portraitId`。未发布素材仅上传账户可预览；素材只随可见角色当前版公开，
