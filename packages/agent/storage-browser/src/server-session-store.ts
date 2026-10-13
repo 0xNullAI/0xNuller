@@ -409,7 +409,7 @@ export class ServerSessionStore implements SessionStore {
     do {
       const page = (await this.call(
         identity,
-        `?summary=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        `?summary=1&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       )) as unknown as {
         items: Summary[];
         nextCursor: string | null;

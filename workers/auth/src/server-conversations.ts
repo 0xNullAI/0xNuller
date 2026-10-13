@@ -273,7 +273,8 @@ export async function handleServerConversations(
     } catch {
       return err('分页游标无效', 400, headers);
     }
-    const migrationErrors = await importLegacy(env, user.id);
+    // The legacy import scans every old session; the first page runs it, later pages need not.
+    const migrationErrors = url.searchParams.has('cursor') ? [] : await importLegacy(env, user.id);
     if (url.searchParams.get('summary') === '1') {
       const summaries = await env.DB.prepare(
         `SELECT id,created_at,metadata,revision,updated_at,deleted_at,last_sequence,read_sequence,last_message_at,
