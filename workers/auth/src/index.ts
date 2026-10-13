@@ -2618,7 +2618,12 @@ const authWorker = {
           .bind(user.id, code, ownerKey)
           .first();
         if (!owner || !ownerKey) return err('无权关闭房间', 403, cors);
-        await env.DB.prepare('DELETE FROM user_chat_rooms WHERE code = ?').bind(code).run();
+        // The stored owner key is whatever this account once uploaded, so it proves nothing about
+        // the room. Only the Chat RoomDO knows the real owner and it closes the room itself; other
+        // members' bookmarks then stop resolving there and each client forgets its own on `closed`.
+        await env.DB.prepare('DELETE FROM user_chat_rooms WHERE user_id = ? AND code = ?')
+          .bind(user.id, code)
+          .run();
         return json({ ok: true }, 200, cors);
       }
 

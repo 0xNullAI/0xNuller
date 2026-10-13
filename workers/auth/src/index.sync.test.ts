@@ -126,7 +126,7 @@ describe('Chat 房间账户同步', () => {
     expect(invalid.status).toBe(400);
   });
 
-  it('房主密钥跨平台恢复管理权，且关闭会清除所有成员记录', async () => {
+  it('房主密钥跨平台恢复管理权，关闭移除房主自己的书签', async () => {
     const owner = (await registerUser()).body;
     const member = (await registerUser({ username: 'bob', email: 'bob@example.com' })).body;
     await verifyRegisteredUser(owner);
@@ -164,11 +164,44 @@ describe('Chat 房间账户同步', () => {
       env,
     );
     expect(closed.status).toBe(200);
-    const memberList = await worker.fetch(
-      req('/api/auth/chat-rooms', { token: member.token }),
+    const ownerList = await worker.fetch(req('/api/auth/chat-rooms', { token: owner.token }), env);
+    expect(await ownerList.json()).toEqual({ rooms: [] });
+  });
+
+  it('关闭只移除自己的书签，伪造的房主密钥不能清空其他成员的列表', async () => {
+    const owner = (await registerUser()).body;
+    const attacker = (await registerUser({ username: 'mallory', email: 'm@example.com' })).body;
+    await verifyRegisteredUser(owner);
+    await verifyRegisteredUser(attacker);
+    for (const [token, ownerKey] of [
+      [owner.token, 'owner-secret'],
+      [attacker.token, 'forged'],
+    ] as const) {
+      await worker.fetch(
+        req('/api/auth/chat-rooms', {
+          method: 'PUT',
+          token,
+          body: JSON.stringify({ code: 'shared-room', name: '共享房间', ownerKey }),
+        }),
+        env,
+      );
+    }
+    const closed = await worker.fetch(
+      req('/api/auth/chat-rooms/shared-room/close', {
+        method: 'POST',
+        token: attacker.token,
+        body: JSON.stringify({ ownerKey: 'forged' }),
+      }),
       env,
     );
-    expect(await memberList.json()).toEqual({ rooms: [] });
+    expect(closed.status).toBe(200);
+    const ownerList = await worker.fetch(req('/api/auth/chat-rooms', { token: owner.token }), env);
+    expect(await ownerList.json()).toMatchObject({ rooms: [{ code: 'shared-room' }] });
+    const attackerList = await worker.fetch(
+      req('/api/auth/chat-rooms', { token: attacker.token }),
+      env,
+    );
+    expect(await attackerList.json()).toEqual({ rooms: [] });
   });
 
   it('邮箱未验证时服务端拒绝房间同步和 Chat 票据', async () => {
