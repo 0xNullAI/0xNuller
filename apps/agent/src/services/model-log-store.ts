@@ -68,29 +68,6 @@ function boundTurn(turn: ModelLogTurn): ModelLogTurn {
   };
 }
 
-/** Migration happens only when diagnostics are enabled, never on ordinary startup. */
-export function readLegacyModelLogs(): ModelLogTurn[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const value: unknown = JSON.parse(raw);
-    if (!Array.isArray(value)) return [];
-    return boundModelLogs(
-      value
-        .filter(
-          (item): item is ModelLogTurn =>
-            !!item &&
-            typeof item.id === 'string' &&
-            typeof item.sessionId === 'string' &&
-            typeof item.startedAt === 'number',
-        )
-        .map(boundTurn),
-    );
-  } catch {
-    return [];
-  }
-}
-
 export function clearModelLogs(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);

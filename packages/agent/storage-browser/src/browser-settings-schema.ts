@@ -14,6 +14,8 @@ const persistedProviderSchema = z.object({
 
 export type PersistedProviderSettings = z.infer<typeof persistedProviderSchema>;
 
+// A plain (stripping) object: keys of removed features, such as the old QQ/Telegram
+// `bridge` block with its tokens, load without error and are dropped on the next save.
 export const settingsSchema = z.object({
   version: z.literal(1),
   showSafetyNoticeOnStartup: z.boolean().optional(),
@@ -61,26 +63,6 @@ export const settingsSchema = z.object({
   voice: z
     .object({
       browserVoiceUri: z.string().optional(),
-    })
-    .optional(),
-  bridge: z
-    .object({
-      enabled: z.boolean(),
-      qq: z.object({
-        enabled: z.boolean(),
-        wsUrl: z.string(),
-        accessToken: z.string().optional(),
-        allowUsers: z.array(z.string()),
-        allowGroups: z.array(z.string()),
-        permissionMode: z.enum(['confirm', 'allow-all']),
-      }),
-      telegram: z.object({
-        enabled: z.boolean(),
-        botToken: z.string(),
-        proxyUrl: z.string(),
-        allowUsers: z.array(z.string()),
-        permissionMode: z.enum(['confirm', 'allow-all']),
-      }),
     })
     .optional(),
   provider: persistedProviderSchema.optional(),

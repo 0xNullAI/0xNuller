@@ -58,11 +58,11 @@ it('keeps scene conversations free of character memory even when a tool name is 
   ).rejects.toThrow('场景没有专属关系');
   expect(api.getMemoryContext).not.toHaveBeenCalled();
 });
-it('hides tools and rejects invocation in bridge/group sources even when the name is guessed', async () => {
+it('hides tools and rejects invocation in external/group sources even when the name is guessed', async () => {
   const tools = createPrivateAgentTools();
   const input = make();
   await tools.listDefinitions(input);
-  for (const sourceType of ['qq', 'telegram', 'system'] as const) {
+  for (const sourceType of ['system', 'sensor', 'api', 'cli'] as const) {
     const shared = { ...input, context: { ...input.context, sourceType } };
     expect(await tools.listDefinitions(shared)).toEqual([]);
     await expect(
@@ -71,6 +71,12 @@ it('hides tools and rejects invocation in bridge/group sources even when the nam
   }
   input.session.metadata = { groupId: 'group' };
   expect(await tools.listDefinitions(input)).toEqual([]);
+  // Sessions stored by the removed QQ/Telegram bridge never become private web conversations.
+  input.session.metadata = { bridgeOrigin: { platform: 'telegram', userId: '42' } };
+  expect(await tools.listDefinitions(input)).toEqual([]);
+  await expect(
+    tools.resolve({ ...input, toolCall: { id: 'c', name: 'file_list', args: {} } }),
+  ).rejects.toThrow('私人会话');
   expect(api.listConversationFiles).not.toHaveBeenCalled();
 });
 it('bounds file reading and never executes file content', async () => {

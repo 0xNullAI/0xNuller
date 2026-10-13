@@ -176,7 +176,7 @@ it('shows the stop for a reply already running in the conversation switched to',
   );
   expect(result.current.replyBusy).toBe(false);
 
-  // A bridge reply already registered by the runtime counts too.
+  // A reply already registered by the runtime counts too.
   running.add('a');
   act(() => result.current.setActiveSessionId('a'));
   expect(result.current.replyBusy).toBe(true);

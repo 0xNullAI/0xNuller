@@ -27,12 +27,14 @@ it('delegates the private account context and persists only a newly selected bin
   });
   expect(input.session.metadata?.relationshipId).toBe('r');
 });
-it('never invokes private retrieval for public, bridge, sensor, group, DM or disabled executions', async () => {
-  for (const sourceType of ['qq', 'telegram', 'system', 'sensor', 'api', 'cli'] as const)
+it('never invokes private retrieval for public, legacy external, sensor, group, DM or disabled executions', async () => {
+  for (const sourceType of ['system', 'sensor', 'api', 'cli'] as const)
     expect(
       await loadPrivateConversationContext({ ...input, context: { ...input.context, sourceType } }),
     ).toBe('');
   for (const metadata of [
+    // Sessions stored by the removed QQ/Telegram bridge stay external.
+    { bridgeOrigin: { platform: 'qq', userId: '10001' } },
     { bridgeOrigin: {} },
     { groupId: 'g' },
     { roomId: 'g' },

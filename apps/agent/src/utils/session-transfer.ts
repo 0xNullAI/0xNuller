@@ -24,7 +24,7 @@ import { getSessionTitle } from './ui-formatters.js';
  * DG-Agent does not capture per-call telemetry (token usage, per-operation
  * spans), so this is the GenAI *message* vocabulary rather than a full OTLP
  * record. Anything outside that vocabulary — original message ids, timestamps,
- * reasoning text, device state, bridge metadata — lives under the `_dg`
+ * reasoning text, device state, session metadata — lives under the `_dg`
  * extension so a DG-Agent → DG-Agent round-trip stays lossless. On import we
  * prefer `_dg` and fall back to reconstructing from the standard messages, so
  * a plain GenAI-shaped file (no `_dg`) still imports.

@@ -23,7 +23,7 @@ import type {
 // Agent-only types (not shared with DG-MCP / DG-Chat)
 // ============================================================================
 
-export type SourceType = 'web' | 'qq' | 'telegram' | 'cli' | 'api' | 'system' | 'sensor';
+export type SourceType = 'web' | 'cli' | 'api' | 'system' | 'sensor';
 export type MessageRole = 'system' | 'user' | 'assistant';
 export type ModelContextStrategy = 'last-user-turn' | 'last-five-user-turns' | 'full-history';
 
@@ -70,13 +70,16 @@ export interface SessionMessagePage {
 /** Optional user-assigned title stored with the session itself. */
 export const SESSION_TITLE_METADATA_KEY = 'sessionTitle';
 
-export interface BridgeOriginMetadata {
-  platform: 'qq' | 'telegram';
-  userId: string;
-  userName?: string;
-}
+/**
+ * Sessions created by the removed QQ/Telegram bridge carry this key in stored
+ * metadata. They are external conversations, so they must never be treated
+ * as the user's own private web conversation (private memory/context).
+ */
+const LEGACY_EXTERNAL_ORIGIN_METADATA_KEY = 'bridgeOrigin';
 
-export const BRIDGE_ORIGIN_METADATA_KEY = 'bridgeOrigin';
+export function hasLegacyExternalOrigin(metadata: Record<string, unknown> | undefined): boolean {
+  return metadata?.[LEGACY_EXTERNAL_ORIGIN_METADATA_KEY] != null;
+}
 
 /**
  * Opt-in gate for the Sensor Trigger Engine (packages/runtime's
@@ -85,8 +88,8 @@ export const BRIDGE_ORIGIN_METADATA_KEY = 'bridgeOrigin';
  * turn this on per session, mirroring the "explicit consent, default off"
  * pattern used elsewhere in this app (e.g. permissions-browser's timed
  * grants). Stored on `session.metadata` rather than a global setting because
- * "let sensor events interrupt the AI" is a per-conversation decision, same
- * as bridge origin metadata above.
+ * "let sensor events interrupt the AI" is a per-conversation decision, like the
+ * session title.
  */
 export const SENSOR_TRIGGERS_METADATA_KEY = 'sensorTriggersEnabled';
 
@@ -103,7 +106,7 @@ export function withSensorTriggersEnabled(
 
 /**
  * Most recent surfaced Sensor Trigger Engine event per sensor kind, kept on
- * `session.metadata` so it survives reload the same way `bridgeOrigin` does.
+ * `session.metadata` so it survives reload with the session.
  * Used only for the prompt's "[当前设备状态]" block — informational context
  * for the LLM, never re-derived into an automatic device action.
  */
@@ -138,53 +141,6 @@ export function withSensorLastReading(
   return {
     ...(metadata ?? {}),
     [SENSOR_LAST_READINGS_METADATA_KEY]: { ...map, [kind]: reading },
-  };
-}
-
-export function getBridgeOriginMetadata(
-  metadata: Record<string, unknown> | undefined,
-): BridgeOriginMetadata | null {
-  const value = metadata?.[BRIDGE_ORIGIN_METADATA_KEY];
-  if (!value || typeof value !== 'object') return null;
-
-  const record = value as Record<string, unknown>;
-  const platform = record.platform;
-  const userId = record.userId;
-  const userName = record.userName;
-
-  if (
-    (platform !== 'qq' && platform !== 'telegram') ||
-    typeof userId !== 'string' ||
-    userId.trim() === ''
-  ) {
-    return null;
-  }
-
-  return {
-    platform,
-    userId,
-    userName: typeof userName === 'string' && userName.trim() ? userName : undefined,
-  };
-}
-
-export function mergeBridgeOriginMetadata(
-  metadata: Record<string, unknown> | undefined,
-  context: Pick<ActionContext, 'sourceType' | 'sourceUserId' | 'sourceUserName'>,
-): Record<string, unknown> | undefined {
-  if (
-    (context.sourceType !== 'qq' && context.sourceType !== 'telegram') ||
-    !context.sourceUserId?.trim()
-  ) {
-    return metadata;
-  }
-
-  return {
-    ...(metadata ?? {}),
-    [BRIDGE_ORIGIN_METADATA_KEY]: {
-      platform: context.sourceType,
-      userId: context.sourceUserId,
-      userName: context.sourceUserName?.trim() || undefined,
-    } satisfies BridgeOriginMetadata,
   };
 }
 

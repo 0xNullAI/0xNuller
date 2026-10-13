@@ -56,7 +56,6 @@ const dglab = { moduleId: 'agent' } as unknown as DgLabModuleHandle;
 const settings = {} as BrowserAppSettings;
 const saved: SavedScene[] = [];
 const setPendingPermission = vi.fn();
-const resolveBridgeSessionId = () => null;
 
 describe('useBrowserAppServices', () => {
   beforeEach(() => {
@@ -72,7 +71,6 @@ describe('useBrowserAppServices', () => {
           settings,
           scenes,
           setPendingPermission,
-          resolveBridgeSessionId,
           servicesOverrides,
           dglab,
         }),
@@ -91,7 +89,6 @@ describe('useBrowserAppServices', () => {
           settings,
           scenes,
           setPendingPermission,
-          resolveBridgeSessionId,
           servicesOverrides,
           dglab,
         }),
@@ -112,7 +109,6 @@ describe('useBrowserAppServices', () => {
           settings: current,
           scenes: { selectedId: 'default', saved },
           setPendingPermission,
-          resolveBridgeSessionId,
           servicesOverrides,
           dglab,
         }),
@@ -146,7 +142,6 @@ it('requires an exact account and AI conversation grant at the final device gate
       settings,
       scenes: { selectedId: 'default', saved },
       setPendingPermission,
-      resolveBridgeSessionId,
       servicesOverrides,
       dglab,
     }),
@@ -175,7 +170,6 @@ it('does not treat the mobile inbox null lease as an active Agent lease', async 
       settings,
       scenes: { selectedId: 'default', saved },
       setPendingPermission,
-      resolveBridgeSessionId,
       servicesOverrides,
       dglab,
     }),
@@ -194,7 +188,6 @@ it('rebuilds account runtime while preserving physical devices and ignores same-
       settings,
       scenes: { selectedId: 'default', saved },
       setPendingPermission,
-      resolveBridgeSessionId,
       servicesOverrides,
       dglab,
     }),
@@ -222,7 +215,6 @@ it('takes every device client from the shared registry', () => {
       settings,
       scenes: { selectedId: 'default', saved },
       setPendingPermission,
-      resolveBridgeSessionId,
       servicesOverrides,
       dglab: handle,
       nativeBluetooth: true,

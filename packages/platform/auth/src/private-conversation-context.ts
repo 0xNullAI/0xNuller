@@ -27,7 +27,7 @@ export interface PrivateCompanionContext {
   text: string;
   relationshipId?: string;
 }
-/** Only call from an explicitly private account conversation; public rooms and bridges must not call this. */
+/** Only call from an explicitly private account conversation; public rooms and external sources must not call this. */
 export async function loadPrivateCompanionContext(
   input: PrivateCompanionContextInput,
 ): Promise<PrivateCompanionContext> {

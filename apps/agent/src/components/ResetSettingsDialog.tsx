@@ -24,7 +24,7 @@ export function ResetSettingsDialog({ open, onOpenChange, onConfirm }: ResetSett
         <DialogHeader className="gap-1 pr-10">
           <DialogTitle className="text-base font-semibold">恢复默认设置？</DialogTitle>
           <DialogDescription className="text-[13px] leading-5">
-            这会重置当前模型、场景、安全、桥接和语音识别/合成配置。确认后会立即生效。
+            这会重置当前模型、场景、安全和语音识别/合成配置。确认后会立即生效。
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-5 gap-2">

@@ -26,7 +26,7 @@ export const SAFETY_NOTICE_SECTIONS: readonly SafetyNoticeSection[] = [
   {
     title: '开始前确认',
     items: [
-      '本项目会驱动设备输出波形，浏览器、蓝牙、网络与桥接链路都可能出现异常或延迟。',
+      '本项目会驱动设备输出波形，浏览器、蓝牙与网络链路都可能出现异常或延迟。',
       '使用时请保持清醒，并确保你可以随时通过物理方式断开设备或停止输出。',
       '本项目不是医疗产品，也不能替代专业判断或风险评估。',
     ],
@@ -64,7 +64,7 @@ export interface SafetyCallout {
 export const SAFETY_CALLOUTS: Record<string, SafetyCallout> = {
   agent: {
     title: 'AI 不是安全控制器。',
-    body: '模型可能误判，浏览器、蓝牙或桥接链路也可能卡顿、重试、断连或产生非预期行为。请始终把“立刻停止输出”和“立刻断开设备”放在最高优先级。',
+    body: '模型可能误判，浏览器、蓝牙或网络链路也可能卡顿、重试、断连或产生非预期行为。请始终把“立刻停止输出”和“立刻断开设备”放在最高优先级。',
   },
   chat: {
     title: '远程控制具有不确定性。',

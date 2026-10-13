@@ -191,7 +191,6 @@ export const CharacterDraftSchema = z.unknown().transform((value, context): Char
 export type { CharacterDraft };
 
 export const ModerationPatchSchema = z.object({ hidden: z.boolean() }).strict();
-export type ModerationPatch = z.infer<typeof ModerationPatchSchema>;
 
 export type ItemType = 'waveform' | 'scenario';
 export type WaveformContent = z.infer<typeof WaveformContentSchema>;

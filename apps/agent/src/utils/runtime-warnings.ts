@@ -13,8 +13,6 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 export interface BuildWarningsOptions {
-  /** Suppress QQ/Telegram bridge config warnings (Tauri shell ships without bridges). */
-  suppressBridge?: boolean;
   /** Suppress speech recognition/synthesis warnings (Tauri shell ships without speech). */
   suppressSpeech?: boolean;
 }
@@ -63,43 +61,6 @@ export function buildWarnings(
 
   if (settings.maxStrengthA > 100 || settings.maxStrengthB > 100) {
     warnings.push('A 或 B 通道的强度上限超过了 100，请再次确认安全阈值');
-  }
-
-  if (
-    !options.suppressBridge &&
-    settings.bridge.enabled &&
-    settings.bridge.qq.enabled &&
-    !settings.bridge.qq.wsUrl.trim()
-  ) {
-    warnings.push('已启用 QQ 桥接，但 QQ WebSocket 地址为空');
-  }
-
-  if (
-    !options.suppressBridge &&
-    settings.bridge.enabled &&
-    settings.bridge.qq.enabled &&
-    settings.bridge.qq.allowUsers.length === 0 &&
-    settings.bridge.qq.allowGroups.length === 0
-  ) {
-    warnings.push('已启用 QQ 桥接，但还没有配置允许的用户或群组');
-  }
-
-  if (
-    !options.suppressBridge &&
-    settings.bridge.enabled &&
-    settings.bridge.telegram.enabled &&
-    !settings.bridge.telegram.botToken.trim()
-  ) {
-    warnings.push('已启用 Telegram 桥接，但 Bot Token 为空');
-  }
-
-  if (
-    !options.suppressBridge &&
-    settings.bridge.enabled &&
-    settings.bridge.telegram.enabled &&
-    settings.bridge.telegram.allowUsers.length === 0
-  ) {
-    warnings.push('已启用 Telegram 桥接，但还没有配置允许的用户');
   }
 
   if (

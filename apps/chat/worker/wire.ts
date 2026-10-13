@@ -4,34 +4,6 @@
 // This file is pure types + constants with no runtime dependencies, so it can be shared by
 // the Worker and (by reference) the frontend.
 
-/** Message types inside a room. */
-export type WireType =
-  | 'hello' // client→DO, first frame on join: declares nickname / whether public / room name
-  | 'chat' // chat message (persisted into history, with an optional media reference)
-  | 'sf' // state.fast: strength/waveform/firing, broadcast
-  | 'ss' // state.slow: name/battery/queue/catalog, broadcast
-  | 'presence' // nickname heartbeat (lightweight, broadcast)
-  | 'cmd' // device command, directed (to=peerId)
-  | 'wave' // waveform transfer, directed (to=peerId)
-  | 'leave' // voluntary leave
-  | 'agent-error' // DO→client: rejected agent configuration; persisted configuration is unchanged
-  | 'agent' // room agent: the host sets/clears it (client→DO); current agent + host broadcast (DO→client)
-  | 'agent-billing' // owner selects explicit host BYOK or member-paid managed mode
-  | 'agent-run-status' // DO→payer: a managed group turn could not complete
-  | 'group' // group settings: the owner changes them (client→DO); current settings (DO→client)
-  | 'media-auth' // DO→client: capability for uploads while this WebSocket remains connected
-  // The roleplay feature is gone, but pre-removal Android builds still send these two.
-  // They stay listed here permanently so RoomDO keeps an explicit no-op case for them
-  // rather than letting them fall through to the relay-everything default.
-  | 'scene' // legacy roleplay, dropped by the DO
-  | 'role' // legacy roleplay, dropped by the DO
-  | 'history-before' // client→DO: request an older bounded page
-  | 'search' // client→DO: text search over retained history
-  | 'search-result' // DO→client: newest-first matches for one search request
-  | 'recall' // client→DO: withdraw one's own message; DO→client: { id } was recalled
-  | 'history' // DO→client: replay for a newly joined peer
-  | 'sys'; // DO→client: connection-level presence (joined/left)
-
 /** Media reference (image/audio). The blob lives in R2; the message only carries the reference. */
 export interface MediaRef {
   kind: 'image' | 'audio';
@@ -176,30 +148,6 @@ export function validGroupName(value: unknown): value is string {
     value.trim().length >= MIN_GROUP_NAME &&
     value.trim().length <= MAX_GROUP_NAME
   );
-}
-
-/** Envelope sent from the client to the DO (apart from hello, business fields are flat at the top level). */
-export interface WireInbound {
-  t: WireType;
-  /** Target peerId for a directed message (cmd/wave). */
-  to?: string;
-  /** Arbitrary business fields (chat's x/m, sf/ss state fields, cmd's a/c/v, ...). */
-  [k: string]: unknown;
-}
-
-/** sys frame sent from the DO to the client. */
-export interface WireSys {
-  t: 'sys';
-  kind: 'joined' | 'left' | 'owner-assigned' | 'closed' | 'membership-revoked';
-  peerId?: string;
-}
-
-/** history frame sent from the DO to the client. */
-export interface WireHistory {
-  t: 'history';
-  messages: WireChat[];
-  older?: boolean;
-  before?: { ts: number; id: string } | null;
 }
 
 /** Fixed name of the singleton lobby DO. */
