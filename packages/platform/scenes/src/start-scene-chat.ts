@@ -8,11 +8,12 @@ import {
 import { loadScenes, savedPromptKind, updateScenes } from './index.js';
 
 /**
- * Open a chat in a library scene with no character: the AI narrates the place and plays its
- * cast. Works for private scenes and ones imported from 发现 alike. The scene is selected, then
- * its latest scene-only conversation reopens, otherwise a new one starts (Agent treats a new
- * chat whose selection is a scene as scene-only). A scene has no relationship or memory, so
- * nothing here creates one. Returns false when the scene is gone or the account changed.
+ * Start a chat in a library scene with no character: the AI narrates the place and plays its
+ * cast. Works for private scenes and ones imported from 发现 alike. A scene is a story one may
+ * play again, so every start is a new play-through; earlier ones stay in the message list. The
+ * scene is selected and a new conversation requested (Agent treats a new chat whose selection
+ * is a scene as scene-only). A scene has no relationship or memory, so nothing here creates
+ * one. Returns false when the scene is gone or the account changed.
  */
 export async function openSceneChat(sceneId: string): Promise<boolean> {
   const account = currentAuthUserId();
@@ -21,19 +22,8 @@ export async function openSceneChat(sceneId: string): Promise<boolean> {
   if (!scene || savedPromptKind(scene) !== 'scene') return false;
   if (updateScenes((library) => ({ ...library, selectedId: sceneId })).selectedId !== sceneId)
     return false;
-  // Like a character, a scene reopens its latest scene-only chat instead of piling up new ones.
-  const existing = await listPrivateConversationSummaries({ limit: 50 })
-    .then((page) =>
-      page.items.find(
-        (entry) =>
-          entry.metadata.sceneId === sceneId &&
-          (!entry.metadata.promptPresetId || entry.metadata.promptPresetId === sceneId),
-      ),
-    )
-    .catch(() => undefined);
   if (currentAuthUserId() !== account) return false;
-  if (existing) selectAgentInboxConversation(existing.id);
-  else requestNewAgentInboxConversation();
+  requestNewAgentInboxConversation();
   return true;
 }
 

@@ -46,26 +46,22 @@ it('selects a private scene and opens a new scene-only chat', async () => {
   expect(state.open).toHaveBeenCalledOnce();
 });
 
-it('reopens the latest chat in that scene with no character, not a character chat in it', async () => {
+it('starts a new play-through even when the scene was played before', async () => {
   state.list.mockResolvedValue({
-    items: [
-      { id: 'with-character', metadata: { sceneId: 'private-rain', promptPresetId: 'xiaoye' } },
-      { id: 'scene-only', metadata: { sceneId: 'private-rain' } },
-    ],
+    items: [{ id: 'scene-only', metadata: { sceneId: 'private-rain' } }],
   });
   await openSceneChat('private-rain');
-  expect(state.select).toHaveBeenCalledWith('scene-only');
-  expect(state.open).not.toHaveBeenCalled();
+  await openSceneChat('private-rain');
+  expect(state.select).not.toHaveBeenCalled();
+  expect(state.open).toHaveBeenCalledTimes(2);
 });
 
-it('opens nothing for a character, a missing card, or a changed account', async () => {
+it('opens nothing for a character, a missing card, or a signed-out account', async () => {
   await expect(openSceneChat('xiaoye')).resolves.toBe(false);
   await expect(openSceneChat('gone')).resolves.toBe(false);
-  state.list.mockImplementationOnce(async () => {
-    state.account = 'bob';
-    return { items: [] };
-  });
+  state.account = null;
   await expect(openSceneChat('private-rain')).resolves.toBe(false);
+  state.account = 'alice';
   expect(state.open).not.toHaveBeenCalled();
   expect(state.select).not.toHaveBeenCalled();
 });

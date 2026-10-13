@@ -23,6 +23,7 @@ export * from './components/output-capability-list';
 export * from './components/popover';
 export * from './components/badge';
 export * from './components/button';
+export * from './components/confirm-button';
 export * from './components/card';
 export * from './components/checkbox';
 export * from './components/dialog';

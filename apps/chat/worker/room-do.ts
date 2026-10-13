@@ -38,6 +38,7 @@ import {
   type RoomAgentRecord,
 } from './room-agents';
 import { mediaRefShape, mentionsShape, stateFrameShape } from './frame-shape';
+import { clearHistoryFor, historyClearedAt, latestVisibleMessage } from './history-clears';
 import { claimMedia, mediaStillReferenced, recordMediaUpload } from './media-ownership';
 import {
   managedGroupAnswer,
@@ -380,6 +381,7 @@ export class RoomDO extends DurableObject<Env> {
       case 'agent-claim-result':
       case 'agent-run-status':
       case 'search-result':
+      case 'history-cleared':
         // Server-only envelopes must never be relayed from another participant.
         return;
       case 'renew': {
@@ -405,7 +407,12 @@ export class RoomDO extends DurableObject<Env> {
           this.sendAuthorized(
             ws,
             JSON.stringify(
-              readHistoryPage(this.sql, undefined, msg.historyPaging === true ? 100 : 1000),
+              readHistoryPage(
+                this.sql,
+                undefined,
+                msg.historyPaging === true ? 100 : 1000,
+                historyClearedAt(this.sql, att.accountId),
+              ),
             ),
           );
           this.broadcast({ t: 'sys', kind: 'joined', peerId: att.peerId }, ws);
@@ -455,7 +462,12 @@ export class RoomDO extends DurableObject<Env> {
         this.sendAuthorized(
           ws,
           JSON.stringify(
-            readHistoryPage(this.sql, undefined, msg.historyPaging === true ? 100 : 1000),
+            readHistoryPage(
+              this.sql,
+              undefined,
+              msg.historyPaging === true ? 100 : 1000,
+              historyClearedAt(this.sql, att.accountId),
+            ),
           ),
         );
         this.sendAuthorized(ws, JSON.stringify(await this.agentFrame()));
@@ -472,7 +484,18 @@ export class RoomDO extends DurableObject<Env> {
 
       case 'history-before': {
         const before = parseHistoryCursor(msg.before);
-        if (before) this.sendAuthorized(ws, JSON.stringify(readHistoryPage(this.sql, before)));
+        if (before)
+          this.sendAuthorized(
+            ws,
+            JSON.stringify(
+              readHistoryPage(
+                this.sql,
+                before,
+                undefined,
+                historyClearedAt(this.sql, att.accountId),
+              ),
+            ),
+          );
         return;
       }
       case 'search': {
@@ -488,7 +511,12 @@ export class RoomDO extends DurableObject<Env> {
           JSON.stringify({
             t: 'search-result',
             requestId: msg.requestId,
-            messages: searchHistory(this.sql, query),
+            messages: searchHistory(
+              this.sql,
+              query,
+              undefined,
+              historyClearedAt(this.sql, att.accountId),
+            ),
           }),
         );
         return;
@@ -558,6 +586,32 @@ export class RoomDO extends DurableObject<Env> {
           ...(att.accountId ? { _account: att.accountId } : {}),
         });
         if (!dm && att.accountId) await this.startAgentTurn(chat, att.accountId);
+        return;
+      }
+
+      case 'clear-history': {
+        // Clears this account's view only; everyone else keeps the conversation as it is.
+        if (!att.accountId) return;
+        if (!dm && !activeGroupMember(this.sql, att.accountId, att.membershipVersion ?? -1)) return;
+        const account = att.accountId;
+        const now = Date.now();
+        this.ensureDmReadState();
+        this.ctx.storage.transactionSync(() => {
+          clearHistoryFor(this.sql, account, now);
+          const last = this.sql
+            .exec('SELECT MAX(sequence) AS s FROM message_sequences')
+            .toArray()[0]?.s;
+          if (typeof last === 'number') advanceDmRead(this.sql, account, last);
+        });
+        // Every device of this account empties its view at once.
+        for (const socket of this.ctx.getWebSockets()) {
+          try {
+            if ((socket.deserializeAttachment() as Attachment | null)?.accountId === account)
+              this.sendAuthorized(socket, JSON.stringify({ t: 'history-cleared', at: now }));
+          } catch {
+            /* closing socket */
+          }
+        }
         return;
       }
 
@@ -968,9 +1022,7 @@ export class RoomDO extends DurableObject<Env> {
     const stored = await this.ctx.storage.get<string>('code');
     if (stored && stored !== room) return null;
     this.ensureDmReadState();
-    const row = this.sql
-      .exec('SELECT body,ts FROM messages ORDER BY ts DESC,id DESC LIMIT 1')
-      .toArray()[0];
+    const row = latestVisibleMessage(this.sql, account);
     const read = account
       ? dmReadState(this.sql, account)
       : { unread: null, lastSequence: 0, readSequence: null };
@@ -1033,9 +1085,7 @@ export class RoomDO extends DurableObject<Env> {
     const membership = activeGroupMember(this.sql, account);
     if (!membership) return null;
     this.ensureDmReadState();
-    const row = this.sql
-      .exec('SELECT body,ts FROM messages ORDER BY ts DESC,id DESC LIMIT 1')
-      .toArray()[0];
+    const row = latestVisibleMessage(this.sql, account);
     const body = row
       ? (JSON.parse(row.body as string) as { x?: string; m?: { kind?: string } })
       : null;

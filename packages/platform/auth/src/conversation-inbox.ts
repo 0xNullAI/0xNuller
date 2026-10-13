@@ -127,3 +127,49 @@ export async function markPrivateConversationRead(id: string, sequence: number):
     unsubscribe();
   }
 }
+
+/** Fired after an AI conversation is deleted; `detail` is its id. */
+export const CONVERSATION_DELETED_EVENT = '0xnullai:conversation-deleted';
+
+/**
+ * Delete one of this account's AI conversations and all its messages. The delete is bound to
+ * the revision last seen, as every write is; if the conversation moved on meanwhile (a reply
+ * landed), it re-reads the revision once and deletes that. Agent hears the event and leaves the
+ * conversation, stopping any reply still running in it.
+ */
+export async function deletePrivateConversation(id: string): Promise<void> {
+  const account = currentAuthUserId();
+  if (!account) throw new Error('请先登录');
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id)) throw new Error('会话编号无效');
+  const url = `${apiBaseUrl()}/api/auth/conversations/${encodeURIComponent(id)}`;
+  const headers = { ...authRequestHeaders(), 'X-Account-Id': account };
+  const current = async (): Promise<number | null> => {
+    const response = await fetch(`${url}?window=20`, {
+      credentials: 'include',
+      cache: 'no-store',
+      headers,
+    });
+    if (response.status === 404 || response.status === 410) return null;
+    if (!response.ok) throw new Error('会话暂不可用，请稍后再试');
+    const item = (await response.json()) as { revision?: unknown; deleted?: unknown };
+    return item.deleted === true || typeof item.revision !== 'number' ? null : item.revision;
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const revision = await current();
+    if (currentAuthUserId() !== account) throw new Error('账户已切换');
+    if (revision === null) break;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: revision }),
+    });
+    if (response.ok || response.status === 404) break;
+    if (response.status !== 409 || attempt === 1) throw new Error('删除失败，请稍后再试');
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(CONVERSATION_DELETED_EVENT, { detail: id }));
+    window.dispatchEvent(new Event('0xnullai:conversation-updated'));
+  }
+}

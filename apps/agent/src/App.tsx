@@ -1,5 +1,6 @@
 import {
   currentAuthUserId,
+  CONVERSATION_DELETED_EVENT,
   consumeAgentInboxSelection,
   subscribeAuthChanges,
   subscribeAgentInboxSelection,
@@ -1031,6 +1032,29 @@ export function App({ servicesOverrides }: AppProps = {}) {
     setStatusMessage('已切换到所选会话');
     setSidebarOpen(false);
   }
+
+  // A conversation deleted from the inbox: its reply stops, and if it is open, a new one takes
+  // its place, so nothing keeps writing to (or acting for) a conversation that is gone.
+  const leaveDeletedSession = useEffectEvent((sessionId: string) => {
+    pendingSends.abort(sessionId);
+    void client.abortCurrentReply(sessionId).catch(() => undefined);
+    if (sessionId === activeSessionId) {
+      denyPendingPermissionRequest('会话已删除，当前回复已终止');
+      void createNewSession();
+    } else
+      void client
+        .listSessions()
+        .then(setSavedSessions)
+        .catch(() => undefined);
+  });
+  useEffect(() => {
+    const onDeleted = (event: Event) => {
+      const id = (event as CustomEvent<unknown>).detail;
+      if (typeof id === 'string') leaveDeletedSession(id);
+    };
+    window.addEventListener(CONVERSATION_DELETED_EVENT, onDeleted);
+    return () => window.removeEventListener(CONVERSATION_DELETED_EVENT, onDeleted);
+  }, []);
 
   const consumeInboxSelection = useEffectEvent(() => {
     const selection = consumeAgentInboxSelection();

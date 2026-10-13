@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   scenes: [] as { id: string; name: string; prompt: string; kind?: string }[],
   openCharacter: vi.fn(async () => true),
   openScene: vi.fn(async () => true),
+  remove: vi.fn(async () => {}),
 }));
 vi.mock('@0xnullai/scenes', async (importOriginal) => ({
   ...(await importOriginal<typeof ScenesModule>()),
@@ -45,6 +46,7 @@ vi.mock('@0xnullai/auth', () => ({
   },
   listPrivateConversationSummaries: state.list,
   markPrivateConversationRead: state.read,
+  deletePrivateConversation: state.remove,
   selectAgentInboxConversation: state.selectAi,
   requestNewAgentInboxConversation: state.newAi,
 }));
@@ -985,4 +987,24 @@ it('slows background polling while the page is hidden and catches up when shown'
     visibility.mockRestore();
     vi.useRealTimers();
   }
+});
+
+it('deletes an AI conversation only after a long press (or right-click) and a confirmation', async () => {
+  render(
+    <UnifiedInbox
+      user={user('alice')}
+      onNavigate={vi.fn()}
+      onOpenAccount={vi.fn()}
+      onCreateRoom={vi.fn()}
+    />,
+  );
+  const row = (await screen.findByText('小星')).closest('button')!;
+  fireEvent.contextMenu(row);
+  fireEvent.click(screen.getByRole('button', { name: /删除对话/ }));
+  expect(state.remove).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+  expect(state.remove).toHaveBeenCalledWith('ai-1');
+  // Human conversations are cleared inside the chat, never deleted from the list.
+  fireEvent.contextMenu((await screen.findByText('朋友们')).closest('button')!);
+  expect(screen.queryByRole('button', { name: '确认删除' })).toBeNull();
 });
