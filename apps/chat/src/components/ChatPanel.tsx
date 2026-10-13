@@ -530,7 +530,10 @@ export function ChatPanel({
           <button
             type="button"
             onClick={() => {
-              bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+              // Straight there: a smooth scroll across many screens is slow and stalls in a
+              // background tab.
+              const container = timelineElement();
+              if (container) container.scrollTop = container.scrollHeight;
               setUnseenNewer(false);
             }}
             className="ui-press sticky bottom-2 mx-auto rounded-full bg-[var(--accent)] px-3 py-1 text-xs text-[var(--button-text)] shadow-[var(--shadow-panel)]"
