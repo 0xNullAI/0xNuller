@@ -243,6 +243,7 @@ export default function App() {
     playbackA.setIndex,
     deviceRef,
     waveformsRef,
+    playbackA.index,
   );
   useChannelRotation(
     'B',
@@ -253,6 +254,7 @@ export default function App() {
     playbackB.setIndex,
     deviceRef,
     waveformsRef,
+    playbackB.index,
   );
 
   /**
