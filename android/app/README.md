@@ -37,8 +37,8 @@ to stay backward compatible.
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-The user-facing `version` follows the product version (for example `7.1.3`), and
-`bundle.android.versionCode` is the aligned monotonic code (`7001003`: major·1000000 +
+The user-facing `version` follows the product version (for example `7.1.4`), and
+`bundle.android.versionCode` is the aligned monotonic code (`7001004`: major·1000000 +
 minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
 `5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
@@ -54,7 +54,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v7.1.3`, `猫愿 7.1.3`, `7.1.3`, and `7001003`.
+code all advance together: `v7.1.4`, `猫愿 7.1.4`, `7.1.4`, and `7001004`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed `maoyuan-vX.Y.Z.apk` and Latest badge.
 
