@@ -1,6 +1,6 @@
 import { allowGuardedNavigation, installHistoryNavigationGuard } from '@0xnullai/ui';
 import { PersistenceNotice } from './PersistenceNotice';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import {
   useTheme,
@@ -704,8 +704,13 @@ function EmailVerificationGate({ onOpenAccount }: { onOpenAccount: () => void })
  * attribute on the module container no longer reaches it. Observed symptom: open a
  * dialog in Chat, then switch to Market, and Chat's dialog still floats above
  * Market, squeezed into a narrow column.
+ *
+ * Memoized: every opened module lives under the shell, so without it a credit
+ * balance tick or an unread count re-rendered all of them. Its props are all
+ * stable between unrelated shell renders (openSettings is a callback, mod comes
+ * from the static MODULES table).
  */
-function ModuleSlot({
+const ModuleSlot = memo(function ModuleSlot({
   mod,
   active,
   motion,
@@ -763,4 +768,4 @@ function ModuleSlot({
       </ModuleActionsProvider>
     </ShellChromeProvider>
   );
-}
+});

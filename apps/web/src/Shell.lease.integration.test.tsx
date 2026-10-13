@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ModuleSettingsSection, registerNavigationGuard } from '@0xnullai/ui';
 import {
   grantDeviceLease,
@@ -19,6 +19,8 @@ const authState = vi.hoisted(() => ({
   },
   meFailure: null as Error | null,
   authListeners: new Set<(user: unknown) => void>(),
+  credit: 0,
+  moduleRenders: {} as Record<string, number>,
 }));
 
 /**
@@ -53,17 +55,20 @@ vi.mock('./routes', async () => {
   const stub = (label: string, settings = false) =>
     lazy(() =>
       Promise.resolve({
-        default: () => (
-          <>
-            <ConversationBack />
-            <div>{label} 模块</div>
-            {settings && (
-              <ModuleSettingsSection id="agent-waveforms" label="波形" order={30}>
-                波形内容
-              </ModuleSettingsSection>
-            )}
-          </>
-        ),
+        default: () => {
+          authState.moduleRenders[label] = (authState.moduleRenders[label] ?? 0) + 1;
+          return (
+            <>
+              <ConversationBack />
+              <div>{label} 模块</div>
+              {settings && (
+                <ModuleSettingsSection id="agent-waveforms" label="波形" order={30}>
+                  波形内容
+                </ModuleSettingsSection>
+              )}
+            </>
+          );
+        },
       }),
     );
   return {
@@ -108,7 +113,10 @@ vi.mock('@0xnullai/auth', () => ({
       rewardedCount: 0,
       pendingCount: 0,
     }),
-  getCreditBalance: () => Promise.resolve({ total: 0, reserved: 0, available: 0 }),
+  getCreditBalance: () => {
+    const available = authState.credit;
+    return Promise.resolve({ total: available, reserved: 0, available });
+  },
   getCreditLedger: () => Promise.resolve({ entries: [], nextOffset: null }),
   me: () =>
     authState.meFailure ? Promise.reject(authState.meFailure) : Promise.resolve(authState.user),
@@ -160,6 +168,8 @@ beforeEach(async () => {
   };
   authState.meFailure = null;
   authState.authListeners.clear();
+  authState.credit = 0;
+  authState.moduleRenders = {};
   window.history.pushState(null, '', '/agent');
   await grantDeviceLease(null);
 });
@@ -535,6 +545,20 @@ describe('外壳与设备控制权', () => {
     // part of a module and it disappears once you go back home — while the device is
     // still attached to someone, which is exactly when the zero-output safety action is needed.
     expect(screen.getByRole('button', { name: /归零/ })).toBeTruthy();
+  });
+
+  it('外壳自身刷新（余额变化）不会重新渲染已打开的模块', async () => {
+    await act(async () => {
+      render(<Shell />);
+    });
+    expect(screen.getByText('Agent 模块')).toBeTruthy();
+    const before = authState.moduleRenders.Agent;
+    authState.credit = 42;
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(document.querySelector('[title="42 Credit"]')).toBeTruthy());
+    expect(authState.moduleRenders.Agent).toBe(before);
   });
 
   it('设备栏与全局安全按钮不随模块切换消失——设备还连着', async () => {
