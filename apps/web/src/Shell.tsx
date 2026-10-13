@@ -51,6 +51,7 @@ const LegalPage = lazy(() =>
   import('./legal/LegalPage').then((module) => ({ default: module.LegalPage })),
 );
 import { ModuleErrorBoundary } from './ModuleErrorBoundary';
+import { AppUpdateBanner } from './AppUpdateBanner';
 import { grantDeviceLease } from '@dg-kit/safety';
 
 /**
@@ -392,11 +393,14 @@ export function Shell() {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--text)]">
         <DeviceBar activeSessionId={null} showConnect={false} />
-        <Suspense fallback={<PageLoading label="文档" />}>
-          <LegalPage onNavigate={navigateFromShell} />
-        </Suspense>
+        <ModuleErrorBoundary moduleId="legal" label="文档">
+          <Suspense fallback={<PageLoading label="文档" />}>
+            <LegalPage onNavigate={navigateFromShell} />
+          </Suspense>
+        </ModuleErrorBoundary>
         <StopFailureBanner />
         <OverlayStopAnchor />
+        <AppUpdateBanner />
       </div>
     );
   }
@@ -409,9 +413,11 @@ export function Shell() {
           <div className="w-full max-w-sm rounded-2xl border border-[var(--surface-border)] bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-panel)]">
             <div className="mb-6 text-lg font-semibold">猫愿</div>
             {authChecked ? (
-              <Suspense fallback={<PageLoading label="账户" />}>
-                <AccountContent user={null} onUser={setUser} onDone={() => undefined} />
-              </Suspense>
+              <ModuleErrorBoundary moduleId="account" label="账户">
+                <Suspense fallback={<PageLoading label="账户" />}>
+                  <AccountContent user={null} onUser={setUser} onDone={() => undefined} />
+                </Suspense>
+              </ModuleErrorBoundary>
             ) : authUnavailable ? (
               <div role="alert" className="space-y-3 text-sm text-[var(--text-soft)]">
                 <p>账户服务暂时无法连接。</p>
@@ -432,6 +438,7 @@ export function Shell() {
         </main>
         <StopFailureBanner />
         <OverlayStopAnchor />
+        <AppUpdateBanner />
       </div>
     );
   }
@@ -558,30 +565,34 @@ export function Shell() {
                   ) : null}
                   {peopleRoute ? (
                     <div className="ui-tab-fade h-full min-h-0">
-                      <Suspense fallback={<PageLoading label="交友" />}>
-                        <ContactsDialog
-                          user={user}
-                          presentation="page"
-                          onClose={() => navigate('/')}
-                        />
-                      </Suspense>
+                      <ModuleErrorBoundary moduleId="people" label="联系人">
+                        <Suspense fallback={<PageLoading label="交友" />}>
+                          <ContactsDialog
+                            user={user}
+                            presentation="page"
+                            onClose={() => navigate('/')}
+                          />
+                        </Suspense>
+                      </ModuleErrorBoundary>
                     </div>
                   ) : null}
                 </ModuleActionsProvider>
                 {profileRoute ? (
-                  <Suspense fallback={<PageLoading label="个人主页" />}>
-                    <ProfileDialog
-                      username={profileRoute}
-                      viewer={user}
-                      presentation="page"
-                      onOpenMarketItem={(id) => {
-                        if (navigate(`/market?item=${encodeURIComponent(id)}`))
-                          window.dispatchEvent(new PopStateEvent('popstate'));
-                      }}
-                      shellBack={narrow}
-                      onClose={closeProfile}
-                    />
-                  </Suspense>
+                  <ModuleErrorBoundary moduleId="profile" label="个人主页">
+                    <Suspense fallback={<PageLoading label="个人主页" />}>
+                      <ProfileDialog
+                        username={profileRoute}
+                        viewer={user}
+                        presentation="page"
+                        onOpenMarketItem={(id) => {
+                          if (navigate(`/market?item=${encodeURIComponent(id)}`))
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                        }}
+                        shellBack={narrow}
+                        onClose={closeProfile}
+                      />
+                    </Suspense>
+                  </ModuleErrorBoundary>
                 ) : null}
                 {opened.map((id) => {
                   const mod = MODULES.find((m) => m.id === id);
@@ -666,6 +677,7 @@ export function Shell() {
             the top of the z scale rather than in the overlay layer. */}
             <StopFailureBanner />
             <OverlayStopAnchor />
+            <AppUpdateBanner />
           </div>
         </SidebarSectionsProvider>
       </ShellNavProvider>
