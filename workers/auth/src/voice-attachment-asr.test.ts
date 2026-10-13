@@ -222,6 +222,24 @@ describe('saved voice ASR billing', () => {
     expect(((await (await request())!.json()) as { job: { state: string } }).job.state).toBe(
       'failed',
     );
+
+    // Nothing was charged, so a fresh attempt runs under a new wallet key and succeeds.
+    const { fetcher } = provider();
+    const accepted = {
+      consent: true,
+      acceptedMaxCredits: offer.maxCredits,
+      priceVersion: offer.priceVersion,
+    };
+    const retried = await request('POST', accepted);
+    expect(retried?.status).toBe(200);
+    expect(((await retried!.json()) as { job: { state: string } }).job.state).toBe('succeeded');
+    const reservations = await env.DB.prepare(
+      "SELECT status FROM credit_reservations WHERE model_id='voice-asr' ORDER BY created_at,status",
+    ).all<{ status: string }>();
+    expect(reservations.results.map((row) => row.status).sort()).toEqual(['released', 'settled']);
+    // A finished job is never re-run.
+    expect((await request('POST', accepted))?.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it('retains ambiguous provider outcomes for review without fake text or charge', async () => {

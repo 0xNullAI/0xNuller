@@ -139,7 +139,10 @@ export async function handleVoiceAttachmentAsr(
   )
     return err('请重新确认语音识别价格', 409, headers);
   const previous = await readJob(env, user.id, conversationId, attachmentId);
-  if (previous) return json({ job: publicJob(previous) }, 200, headers);
+  // A `failed` job was a certain failure whose hold was released with nothing charged, so the
+  // user may try again. Every other state stands: never replay a possibly paid request.
+  if (previous && previous.state !== 'failed')
+    return json({ job: publicJob(previous) }, 200, headers);
   // Measure (and, for WebM, rewrap) the clip before holding Credit, so an over-long or
   // unreadable recording is refused without a reservation or a provider call.
   let clip: OggOpusClip;
@@ -156,7 +159,11 @@ export async function handleVoiceAttachmentAsr(
   if (clip.durationMs > MAX_CLIP_SECONDS * 1000)
     return err(`录音超过 ${MAX_CLIP_SECONDS / 60} 分钟，无法识别`, 413, headers);
 
-  const key = `asr:${await sha256Hex(`${user.id}\0${conversationId}\0${attachmentId}`)}`;
+  // A retry needs its own wallet key: the failed attempt's reservation is already released.
+  // Deriving it from that key keeps two concurrent retries on one key, so only one runs.
+  const key = previous
+    ? `asr:${await sha256Hex(`${previous.reservation_key}\0retry`)}`
+    : `asr:${await sha256Hex(`${user.id}\0${conversationId}\0${attachmentId}`)}`;
   const reserved = await billing.reserve(user.id, key, offer.maxCredits);
   if (!reserved.allowed)
     return err(
@@ -175,7 +182,12 @@ export async function handleVoiceAttachmentAsr(
           ON c.user_id=a.user_id AND c.id=a.conversation_id
           WHERE a.user_id=? AND a.conversation_id=? AND a.id=? AND a.status='ready'
             AND a.kind='voice' AND c.deleted_at IS NULL)
-       ON CONFLICT(user_id,conversation_id,attachment_id) DO NOTHING RETURNING reservation_key`,
+       ON CONFLICT(user_id,conversation_id,attachment_id) DO UPDATE SET
+         reservation_key=excluded.reservation_key,state='running',max_credits=excluded.max_credits,
+         price_version=excluded.price_version,charged_credits=NULL,seconds=NULL,transcript=NULL,
+         started_at=excluded.started_at,updated_at=excluded.updated_at
+       WHERE voice_attachment_asr_jobs.state='failed' AND voice_attachment_asr_jobs.reservation_key=?
+       RETURNING reservation_key`,
     )
       .bind(
         user.id,
@@ -189,6 +201,7 @@ export async function handleVoiceAttachmentAsr(
         user.id,
         conversationId,
         attachmentId,
+        previous?.reservation_key ?? null,
       )
       .first<{ reservation_key: string }>();
   } catch {
