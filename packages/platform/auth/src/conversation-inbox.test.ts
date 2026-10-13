@@ -15,6 +15,8 @@ import {
   subscribeAgentInboxSelection,
   listPrivateConversationSummaries,
   markPrivateConversationRead,
+  deletePrivateConversation,
+  CONVERSATION_DELETED_EVENT,
 } from './conversation-inbox';
 afterEach(() => {
   consumeAgentInboxSelection();
@@ -73,4 +75,33 @@ it('pins read acknowledgement and rejects late account changes', async () => {
     return new Response('{}');
   });
   await expect(markPrivateConversationRead('s', 4)).rejects.toThrow('账户已切换');
+});
+
+it('deletes at the current revision, retries once when a reply moved it, and announces it', async () => {
+  let revision = 3;
+  const calls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        const expected = (JSON.parse(String(init.body)) as { expectedRevision: number })
+          .expectedRevision;
+        calls.push(`delete@${expected}`);
+        // A reply lands between the read and the first delete.
+        if (calls.filter((call) => call.startsWith('delete')).length === 1) {
+          revision = 4;
+          return new Response('{}', { status: 409 });
+        }
+        return new Response('{}', { status: expected === revision ? 200 : 409 });
+      }
+      calls.push('read');
+      return Response.json({ revision, deleted: false });
+    }),
+  );
+  const heard = vi.fn();
+  window.addEventListener(CONVERSATION_DELETED_EVENT, heard);
+  await deletePrivateConversation('c1');
+  window.removeEventListener(CONVERSATION_DELETED_EVENT, heard);
+  expect(calls).toEqual(['read', 'delete@3', 'read', 'delete@4']);
+  expect((heard.mock.calls[0]![0] as CustomEvent).detail).toBe('c1');
 });

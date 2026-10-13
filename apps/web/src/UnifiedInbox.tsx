@@ -9,14 +9,16 @@ import {
   MessageCircle,
   Search,
   SquarePen,
+  Trash2,
   UserRound,
   UserRoundPlus,
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { ModuleActions } from '@0xnullai/ui';
+import { ConfirmButton, ModuleActions } from '@0xnullai/ui';
 import {
   currentAuthUserId,
+  deletePrivateConversation,
   markPrivateConversationRead,
   subscribeAuthChanges,
   selectAgentInboxConversation,
@@ -46,6 +48,8 @@ interface InboxRow {
   avatarPhotoId?: string | null;
   activate: () => void;
   markRead?: () => Promise<void>;
+  /** Permanently delete this conversation for the account; AI conversations only. */
+  remove?: () => Promise<void>;
 }
 
 /** Chat-list time: clock time today, 昨天, month and day this year, full date before. */
@@ -102,6 +106,10 @@ function privateInboxRow(
     timeBasis: '最近消息接收时间',
     unread: item.unread ?? null,
     avatarPhotoId: item.avatarPhotoId ?? null,
+    remove: async () => {
+      if (currentAuthUserId() !== accountId) return;
+      await deletePrivateConversation(id);
+    },
     ...(typeof item.lastSequence === 'number' && item.lastSequence > 0 && item.unread !== 0
       ? {
           markRead: async () => {
@@ -248,6 +256,7 @@ export function UnifiedInbox({
   const [query, setQuery] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
+  const [actionRowId, setActionRowId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ accountId: string; message: string } | null>(
     null,
   );
@@ -448,11 +457,20 @@ export function UnifiedInbox({
           return (
             <div
               key={row.id}
-              className={`relative min-w-0 ${fresh?.has(row.id) ? 'ui-fade-up' : ''}`}
+              className={`group relative min-w-0 ${fresh?.has(row.id) ? 'ui-fade-up' : ''}`}
             >
               <button
                 type="button"
                 onClick={row.activate}
+                // Right-click, or a long press on a phone, opens the row's actions.
+                onContextMenu={
+                  row.remove
+                    ? (event) => {
+                        event.preventDefault();
+                        setActionRowId(row.id);
+                      }
+                    : undefined
+                }
                 aria-current={current ? 'page' : undefined}
                 className={`ui-press-row flex min-h-[72px] w-full min-w-0 items-center gap-3 pl-4 text-left hover:bg-[var(--bg-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] ${current ? 'bg-[var(--accent-soft)]' : ''}`}
               >
@@ -487,6 +505,45 @@ export function UnifiedInbox({
                   </span>
                 </span>
               </button>
+              {row.remove && actionRowId === row.id ? (
+                <div className="absolute inset-y-0 right-0 flex items-center gap-1 bg-[var(--bg-elevated)] pl-3 pr-3 shadow-[-12px_0_12px_var(--bg-elevated)]">
+                  <button
+                    type="button"
+                    onClick={() => setActionRowId(null)}
+                    className="ui-press min-h-9 rounded-full px-3 text-sm text-[var(--text-soft)] hover:bg-[var(--bg-soft)]"
+                  >
+                    取消
+                  </button>
+                  <ConfirmButton
+                    className="ui-press flex min-h-9 items-center gap-1 rounded-full px-3 text-sm text-[var(--danger)] hover:bg-[var(--danger-soft)]"
+                    confirmLabel="确认删除"
+                    onConfirm={() => {
+                      const owner = accountId;
+                      setActionRowId(null);
+                      void row.remove!()
+                        .then(refresh)
+                        .catch(() => {
+                          if (owner && currentAuthUserId() === owner)
+                            setActionError({ accountId: owner, message: '删除失败，请重试。' });
+                        });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                    删除对话
+                  </ConfirmButton>
+                </div>
+              ) : row.remove ? (
+                // Pointer devices also get a quiet trash icon on hover.
+                <button
+                  type="button"
+                  aria-label={`删除对话 ${row.title}`}
+                  title="删除对话"
+                  onClick={() => setActionRowId(row.id)}
+                  className="ui-press absolute right-14 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-faint)] opacity-0 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:flex"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              ) : null}
               {row.markRead && (
                 // A sibling of the row: a button inside a button is invalid markup.
                 <button
