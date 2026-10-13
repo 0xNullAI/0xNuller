@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bluetooth,
   Bot,
@@ -19,14 +19,17 @@ import {
   currentAuthUserId,
   markPrivateConversationRead,
   subscribeAuthChanges,
-  listPrivateConversationSummaries,
   selectAgentInboxConversation,
+  type PrivateConversationSummary,
 } from '@0xnullai/auth';
+import { selectChatInboxConversation, type ChatInboxEntry } from '../../chat/src/inbox';
 import {
-  loadChatInboxDisplayWithStatus,
-  selectChatInboxConversation,
-  type ChatInboxEntry,
-} from '../../chat/src/inbox';
+  loadMoreAiConversations,
+  loadMoreGroups,
+  refreshInbox,
+  useInbox,
+  type InboxSnapshot,
+} from './inbox-store';
 import type { AuthUser } from '@0xnullai/auth';
 import { useCharacterPhoto } from '@0xnullai/auth/appearance-react';
 import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
@@ -77,7 +80,7 @@ export function currentInboxRowId(pathname: string, search: string): string | nu
   return route?.id ? `${route.kind}:${route.id}` : null;
 }
 function privateInboxRow(
-  item: Awaited<ReturnType<typeof listPrivateConversationSummaries>>['items'][number],
+  item: PrivateConversationSummary,
   accountId: string,
   onNavigate: (moduleId: string | null) => void,
 ): InboxRow {
@@ -114,6 +117,82 @@ function privateInboxRow(
     },
   };
 }
+/** Marks a row whose source could not be re-verified: no time, no count, no read action. */
+function unconfirmedRow(row: InboxRow): InboxRow {
+  return {
+    ...row,
+    updatedAt: 0,
+    unread: null,
+    preview: `${row.kind === 'group' ? '群聊' : '聊天'}暂未重新验证，请重试`,
+    markRead: undefined,
+  };
+}
+
+function humanInboxRow(
+  item: ChatInboxEntry,
+  accountId: string,
+  onNavigate: (moduleId: string | null) => void,
+): InboxRow {
+  return {
+    id: item.id,
+    // A DM row is keyed by its private room, while its URL names the
+    // peer account. They must not be compared as though they match.
+    routeId:
+      item.selection.kind === 'dm'
+        ? `dm:${item.selection.peer.accountId ?? ''}`
+        : `group:${item.selection.code}`,
+    kind: item.kind,
+    title: item.title,
+    preview: item.preview ?? (item.kind === 'dm' ? '私人聊天' : '群聊'),
+    updatedAt: item.updatedAt,
+    unread: item.unread,
+    markRead: item.markRead,
+    activate: () => {
+      if (currentAuthUserId() !== accountId) return;
+      selectChatInboxConversation(item.selection);
+      onNavigate(
+        item.selection.kind === 'group'
+          ? `chat?room=${encodeURIComponent(item.selection.code)}`
+          : `chat?dm=${encodeURIComponent(item.selection.peer.accountId)}`,
+      );
+    },
+  };
+}
+
+/** One list from both sources, newest first. */
+function inboxRows(
+  inbox: InboxSnapshot,
+  accountId: string,
+  onNavigate: (moduleId: string | null) => void,
+): InboxRow[] {
+  const rows: InboxRow[] = [];
+  for (const item of inbox.ai.items) {
+    // A conversation with no messages yet is not listed, as in other messaging apps;
+    // it appears once something is said in it.
+    if (item.deleted || item.lastSequence === 0) continue;
+    const row = privateInboxRow(item, accountId, onNavigate);
+    rows.push(inbox.ai.failed ? unconfirmedRow(row) : row);
+  }
+  for (const item of inbox.human.entries) {
+    const row = humanInboxRow(item, accountId, onNavigate);
+    rows.push(inbox.human.staleIds.has(item.id) ? unconfirmedRow(row) : row);
+  }
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+}
+
+/** What could not be read, once both sources have answered. */
+function inboxError(inbox: InboxSnapshot): string {
+  const missing: string[] = [];
+  if (inbox.ai.failed) missing.push('AI 聊天');
+  if (inbox.human.failed) missing.push('真人聊天');
+  else {
+    if (inbox.human.partialError) missing.push(inbox.human.partialError);
+    if (inbox.human.entries.some((item) => item.summaryStatus === 'failed'))
+      missing.push('部分群聊摘要');
+  }
+  return missing.length ? `部分聊天尚未读取：${missing.join('、')}。可重新加载。` : '';
+}
+
 /** The character's private portrait when one loads; otherwise the title's first letter. */
 function InboxAvatar({
   title,
@@ -165,200 +244,39 @@ export function UnifiedInbox({
   // Chat (private and group) requires a verified email; asking anyway only
   // turns that rule into a misleading "list unavailable, retry" error.
   const humanChatLocked = user?.emailVerified === false;
-  const [result, setResult] = useState<{
-    accountId: string;
-    rows: InboxRow[];
-    error: string;
-    aiNextCursor: string | null;
-    groupNextCursor: string | null;
-    groupPageFailed: boolean;
-    /** Rows that arrived on a refresh after the first load; only these animate in. */
-    fresh: ReadonlySet<string>;
-  } | null>(null);
-  const authEpoch = useRef(0);
-  const loadedAiPages = useRef<{ accountId: string | null; count: number }>({
-    accountId: null,
-    count: 1,
-  });
-  const [revision, setRevision] = useState(0);
+  const inbox = useInbox(accountId, humanChatLocked);
   const [query, setQuery] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadingMoreGroups, setLoadingMoreGroups] = useState(false);
-  const [groupPages, setGroupPages] = useState(1);
-  const refresh = useCallback(() => setRevision((v) => v + 1), []);
-  useEffect(() => {
-    if (!accountId) return;
-    if (loadedAiPages.current.accountId !== accountId)
-      loadedAiPages.current = { accountId, count: 1 };
-    let active = true;
-    const epoch = authEpoch.current;
-    const pageCount = loadedAiPages.current.count;
-    Promise.allSettled([
-      (async () => {
-        const items: Awaited<ReturnType<typeof listPrivateConversationSummaries>>['items'] = [];
-        const seen = new Set<string>();
-        let cursor: string | undefined;
-        for (let page = 0; page < pageCount; page++) {
-          if (!active || epoch !== authEpoch.current || currentAuthUserId() !== accountId)
-            return { items: [], nextCursor: null };
-          const result = await listPrivateConversationSummaries({
-            limit: 100,
-            ...(cursor ? { cursor } : {}),
-          });
-          for (const item of result.items) {
-            if (seen.has(item.id)) continue;
-            seen.add(item.id);
-            items.push(item);
-          }
-          if (!result.nextCursor) return { items, nextCursor: null };
-          cursor = result.nextCursor;
-        }
-        return { items, nextCursor: cursor ?? null };
-      })(),
-      humanChatLocked
-        ? Promise.resolve({
-            entries: [],
-            partialError: null,
-            nextGroupCursor: null,
-            groupPageFailed: false,
-            dmLoadFailed: false,
-          })
-        : loadChatInboxDisplayWithStatus(groupPages),
-    ])
-      .then(([ai, human]) => {
-        if (!active || epoch !== authEpoch.current || currentAuthUserId() !== accountId) return;
-        const results: InboxRow[] = [];
-        if (ai.status === 'fulfilled')
-          for (const item of ai.value.items) {
-            // A conversation with no messages yet is not listed, as in other messaging apps;
-            // it appears once something is said in it.
-            if (item.deleted || item.lastSequence === 0) continue;
-            results.push(privateInboxRow(item, accountId, onNavigate));
-          }
-        if (human.status === 'fulfilled')
-          for (const item of human.value.entries as ChatInboxEntry[]) {
-            results.push({
-              id: item.id,
-              // A DM row is keyed by its private room, while its URL names the
-              // peer account. They must not be compared as though they match.
-              routeId:
-                item.selection.kind === 'dm'
-                  ? `dm:${item.selection.peer.accountId ?? ''}`
-                  : `group:${item.selection.code}`,
-              kind: item.kind,
-              title: item.title,
-              preview: item.preview ?? (item.kind === 'dm' ? '私人聊天' : '群聊'),
-              updatedAt: item.updatedAt,
-              unread: item.unread,
-              markRead: item.markRead,
-              activate: () => {
-                if (currentAuthUserId() !== accountId) return;
-                selectChatInboxConversation(item.selection);
-                onNavigate(
-                  item.selection.kind === 'group'
-                    ? `chat?room=${encodeURIComponent(item.selection.code)}`
-                    : `chat?dm=${encodeURIComponent(item.selection.peer.accountId)}`,
-                );
-              },
-            });
-          }
-        results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-        const missing: string[] = [];
-        if (ai.status === 'rejected') missing.push('AI 聊天');
-        if (human.status === 'rejected') missing.push('真人聊天');
-        else {
-          if (human.value.partialError) missing.push(human.value.partialError);
-          if (human.value.entries.some((item) => item.summaryStatus === 'failed'))
-            missing.push('部分群聊摘要');
-        }
-        const groupPageFailed = human.status === 'rejected' || Boolean(human.value.groupPageFailed);
-        const dmLoadFailed = human.status === 'rejected' || Boolean(human.value.dmLoadFailed);
-        const aiLoadFailed = ai.status === 'rejected';
-        setResult((previous) => {
-          if (
-            previous?.accountId === accountId &&
-            (groupPageFailed || dmLoadFailed || aiLoadFailed)
-          ) {
-            const seen = new Set(results.map((row) => row.id));
-            for (const row of previous.rows) {
-              const failed =
-                row.kind === 'group'
-                  ? groupPageFailed
-                  : row.kind === 'dm'
-                    ? dmLoadFailed
-                    : aiLoadFailed;
-              if (!failed || seen.has(row.id)) continue;
-              results.push({
-                ...row,
-                updatedAt: 0,
-                unread: null,
-                preview: `${row.kind === 'group' ? '群聊' : '聊天'}暂未重新验证，请重试`,
-                markRead: undefined,
-              });
-            }
-            results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-          }
-          const known =
-            previous?.accountId === accountId ? new Set(previous.rows.map((row) => row.id)) : null;
-          return {
-            accountId,
-            rows: results,
-            fresh: new Set(
-              known ? results.filter((row) => !known.has(row.id)).map((r) => r.id) : [],
-            ),
-            error: missing.length ? `部分聊天尚未读取：${missing.join('、')}。可重新加载。` : '',
-            aiNextCursor: ai.status === 'fulfilled' ? ai.value.nextCursor : null,
-            groupNextCursor:
-              human.status === 'fulfilled' ? (human.value.nextGroupCursor ?? null) : null,
-            groupPageFailed,
-          };
-        });
-      })
-      .finally(() => {
-        if (active && epoch === authEpoch.current) setLoadingMoreGroups(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [accountId, revision, onNavigate, groupPages, humanChatLocked]);
-  useEffect(() => {
-    let pending: number | null = null;
-    const scheduleRefresh = () => {
-      if (pending !== null) window.clearTimeout(pending);
-      pending = window.setTimeout(() => {
-        pending = null;
-        refresh();
-      }, 300);
-    };
-    const timer = window.setInterval(scheduleRefresh, 30_000);
-    window.addEventListener('focus', scheduleRefresh);
-    window.addEventListener('0xnullai:conversation-updated', scheduleRefresh);
-    const unsubscribe = subscribeAuthChanges(() => {
-      authEpoch.current += 1;
-      setResult(null);
-      setQuery('');
-      setUnreadOnly(false);
-      setNewChatOpen(false);
-      setLoadingMore(false);
-      setLoadingMoreGroups(false);
-      setGroupPages(1);
-      loadedAiPages.current = { accountId: null, count: 1 };
-      refresh();
-    });
-    return () => {
-      if (pending !== null) window.clearTimeout(pending);
-      window.clearInterval(timer);
-      window.removeEventListener('focus', scheduleRefresh);
-      window.removeEventListener('0xnullai:conversation-updated', scheduleRefresh);
-      unsubscribe();
-    };
-  }, [refresh]);
-  const rows = accountId === result?.accountId ? result.rows : [];
-  const error = accountId === result?.accountId ? result.error : '';
-  const loading = Boolean(accountId && result?.accountId !== accountId);
-  const moreGroups = accountId === result?.accountId ? result.groupNextCursor : null;
+  const [actionError, setActionError] = useState<{ accountId: string; message: string } | null>(
+    null,
+  );
+  const refresh = useCallback(() => {
+    setActionError(null);
+    void refreshInbox();
+  }, []);
+  // Local view state belongs to one account: a different person must not inherit a search.
+  useEffect(
+    () =>
+      subscribeAuthChanges(() => {
+        setQuery('');
+        setUnreadOnly(false);
+        setNewChatOpen(false);
+        setActionError(null);
+      }),
+    [],
+  );
+  const rows = useMemo(
+    () => (accountId ? inboxRows(inbox, accountId, onNavigate) : []),
+    [inbox, accountId, onNavigate],
+  );
+  const settled = inbox.ai.settled && inbox.human.settled;
+  // Show whatever has arrived; the skeleton only stands in for a list with nothing yet.
+  const loading = Boolean(accountId) && !settled && rows.length === 0;
+  const error =
+    (actionError?.accountId === accountId ? actionError.message : '') ||
+    (settled ? inboxError(inbox) : '');
+  const moreGroups = inbox.human.nextGroupCursor;
   const needle = query.trim().toLocaleLowerCase();
   const visibleRows = rows.filter(
     (row) =>
@@ -366,42 +284,12 @@ export function UnifiedInbox({
       (!needle || `${row.title} ${row.preview}`.toLocaleLowerCase().includes(needle)),
   );
   const currentRowId = currentInboxRowId(window.location.pathname, window.location.search);
-  const loadMoreAi = async () => {
-    const cursor = result?.accountId === accountId ? result.aiNextCursor : null;
-    if (!accountId || !cursor || loadingMore) return;
-    const source = result;
-    const epoch = authEpoch.current;
-    setLoadingMore(true);
-    try {
-      const page = await listPrivateConversationSummaries({ limit: 100, cursor });
-      if (epoch !== authEpoch.current || currentAuthUserId() !== accountId) return;
-      if (loadedAiPages.current.accountId === accountId) loadedAiPages.current.count += 1;
-      setResult((current) => {
-        if (!current || current !== source) return current;
-        const seen = new Set(current.rows.map((row) => row.id));
-        const nextRows = [...current.rows];
-        for (const item of page.items) {
-          if (item.deleted || seen.has(`ai:${item.id}`)) continue;
-          seen.add(`ai:${item.id}`);
-          nextRows.push(privateInboxRow(item, accountId, onNavigate));
-        }
-        nextRows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-        return {
-          ...current,
-          rows: nextRows,
-          aiNextCursor: page.nextCursor && page.nextCursor !== cursor ? page.nextCursor : null,
-        };
-      });
-    } catch {
-      if (epoch === authEpoch.current && currentAuthUserId() === accountId)
-        setResult((current) =>
-          current && current === source
-            ? { ...current, error: '更多 AI 聊天读取失败，请重试。' }
-            : current,
-        );
-    } finally {
-      if (epoch === authEpoch.current) setLoadingMore(false);
-    }
+  const loadMoreAi = () => {
+    if (!accountId) return;
+    void loadMoreAiConversations().catch(() => {
+      if (currentAuthUserId() === accountId)
+        setActionError({ accountId, message: '更多 AI 聊天读取失败，请重试。' });
+    });
   };
   const startCharacter = (characterId: string) => {
     setNewChatOpen(false);
@@ -441,7 +329,7 @@ export function UnifiedInbox({
     />
   ) : null;
   const page = presentation === 'page';
-  const fresh = accountId === result?.accountId ? result.fresh : null;
+  const fresh = inbox.fresh;
   return (
     <section
       aria-label="所有聊天"
@@ -607,14 +495,12 @@ export function UnifiedInbox({
                   aria-label={`${row.title}标为已读`}
                   title="标为已读"
                   onClick={() => {
-                    const epoch = authEpoch.current;
+                    const owner = accountId;
                     void row.markRead!()
                       .then(refresh)
                       .catch(() => {
-                        if (epoch === authEpoch.current)
-                          setResult((value) =>
-                            value ? { ...value, error: '标为已读失败，请重试。' } : value,
-                          );
+                        if (owner && currentAuthUserId() === owner)
+                          setActionError({ accountId: owner, message: '标为已读失败，请重试。' });
                       });
                   }}
                 >
@@ -628,30 +514,26 @@ export function UnifiedInbox({
             </div>
           );
         })}
-        {accountId === result?.accountId && result.aiNextCursor && (
+        {inbox.ai.nextCursor && (
           <button
             type="button"
-            onClick={() => void loadMoreAi()}
-            disabled={loadingMore}
+            onClick={loadMoreAi}
+            disabled={inbox.loadingMoreAi}
             className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
           >
-            {loadingMore ? '正在加载…' : '加载更多 AI 聊天'}
+            {inbox.loadingMoreAi ? '正在加载…' : '加载更多 AI 聊天'}
           </button>
         )}
-        {accountId === result?.accountId && moreGroups && (
+        {moreGroups && (
           <button
             type="button"
-            onClick={() => {
-              setLoadingMoreGroups(true);
-              if (result.groupPageFailed) refresh();
-              else setGroupPages((count) => count + 1);
-            }}
-            disabled={loadingMoreGroups}
+            onClick={() => void loadMoreGroups()}
+            disabled={inbox.loadingMoreGroups}
             className="ui-press mx-4 my-3 min-h-10 rounded-full px-3 text-sm text-[var(--accent-text)] hover:bg-[var(--bg-soft)]"
           >
-            {loadingMoreGroups
+            {inbox.loadingMoreGroups
               ? '正在加载群聊…'
-              : result.groupPageFailed
+              : inbox.human.groupPageFailed
                 ? '重试加载群聊'
                 : '加载更多群聊'}
           </button>

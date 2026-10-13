@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@0xnullai/auth';
 import type * as ScenesModule from '@0xnullai/scenes';
 import { UnifiedInbox, currentInboxRowId } from './UnifiedInbox';
+import { resetInboxStoreForTests } from './inbox-store';
+import { useUnreadMessages } from './unread-messages';
 
 const state = vi.hoisted(() => ({
   account: 'alice' as string | null,
@@ -16,7 +18,7 @@ const state = vi.hoisted(() => ({
   selectAi: vi.fn(),
   newAi: vi.fn(),
   selectChat: vi.fn(),
-  authChanged: null as (() => void) | null,
+  authListeners: new Set<() => void>(),
   photos: {} as Record<string, string>,
   scenes: [] as { id: string; name: string; prompt: string; kind?: string }[],
   openCharacter: vi.fn(async () => true),
@@ -36,9 +38,9 @@ vi.mock('@0xnullai/auth/appearance-react', () => ({
 vi.mock('@0xnullai/auth', () => ({
   currentAuthUserId: () => state.account,
   subscribeAuthChanges: (listener: () => void) => {
-    state.authChanged = listener;
+    state.authListeners.add(listener);
     return () => {
-      state.authChanged = null;
+      state.authListeners.delete(listener);
     };
   },
   listPrivateConversationSummaries: state.list,
@@ -207,7 +209,11 @@ it('keeps private and AI conversations available after transient source failures
   expect(screen.queryByRole('button', { name: '好友标为已读' })).toBeNull();
   expect(markRead).not.toHaveBeenCalled();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The inbox store outlives a mounted list on purpose; tests start from nothing.
+  resetInboxStoreForTests();
+});
 
 it('identifies the open AI, private, or group conversation from its route', () => {
   expect(currentInboxRowId('/agent', '?conversation=ai-1')).toBe('ai:ai-1');
@@ -561,7 +567,7 @@ it('clears already rendered private rows immediately on an auth event before par
   await screen.findByText('小星');
   await act(async () => {
     state.account = 'bob';
-    state.authChanged?.();
+    for (const listener of state.authListeners) listener();
   });
   expect(screen.queryByText('小星')).toBeNull();
   expect(screen.queryByText('朋友们')).toBeNull();
@@ -892,4 +898,91 @@ it('asks an unverified account to verify instead of reporting the chat list as b
   expect(onOpenAccount).toHaveBeenCalledOnce();
   expect(state.chat).not.toHaveBeenCalled();
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+const inboxProps = { onNavigate: vi.fn(), onOpenAccount: vi.fn(), onCreateRoom: vi.fn() };
+
+it('shows AI rows as soon as they arrive instead of waiting for the human chats', async () => {
+  state.chat.mockImplementation(() => new Promise(() => undefined));
+  render(<UnifiedInbox user={user('alice')} {...inboxProps} />);
+  expect(await screen.findByText('小星')).toBeTruthy();
+  // The human source is still out; it is neither reported missing nor shown as empty.
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByRole('region', { name: '开始使用' })).toBeNull();
+});
+
+it('shows the cached list at once when the inbox mounts again and refreshes behind it', async () => {
+  const first = render(<UnifiedInbox user={user('alice')} {...inboxProps} />);
+  expect(await screen.findByText('朋友们')).toBeTruthy();
+  first.unmount();
+  const calls = state.list.mock.calls.length;
+
+  render(<UnifiedInbox user={user('alice')} {...inboxProps} />);
+  // Synchronously, before any request could have answered.
+  expect(screen.getByText('小星')).toBeTruthy();
+  expect(screen.getByText('朋友们')).toBeTruthy();
+  // Just loaded: no immediate reload either.
+  expect(state.list.mock.calls.length).toBe(calls);
+});
+
+it('feeds the unread badge and the list from one request per source', async () => {
+  function Badge() {
+    return <output aria-label="未读">{useUnreadMessages(user('alice'))}</output>;
+  }
+  render(
+    <>
+      <Badge />
+      <UnifiedInbox user={user('alice')} {...inboxProps} />
+    </>,
+  );
+  expect(await screen.findByText('朋友们')).toBeTruthy();
+  expect(screen.getByRole('status', { name: '未读' }).textContent).toBe('2');
+  expect(state.list).toHaveBeenCalledTimes(1);
+  expect(state.chat).toHaveBeenCalledTimes(1);
+});
+
+it('never asks the human-chat endpoints for the badge of an unverified account', async () => {
+  function Badge() {
+    return (
+      <output aria-label="未读">
+        {useUnreadMessages({ ...user('alice'), emailVerified: false })}
+      </output>
+    );
+  }
+  render(<Badge />);
+  await act(async () => {});
+  expect(state.list).toHaveBeenCalledTimes(1);
+  expect(state.chat).not.toHaveBeenCalled();
+});
+
+it('slows background polling while the page is hidden and catches up when shown', async () => {
+  vi.useFakeTimers();
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  try {
+    render(<UnifiedInbox user={user('alice')} {...inboxProps} />);
+    await act(async () => {});
+    expect(state.list).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(state.list).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(state.list).toHaveBeenCalledTimes(2);
+
+    visibility.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(state.list).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(state.list).toHaveBeenCalledTimes(4);
+  } finally {
+    visibility.mockRestore();
+    vi.useRealTimers();
+  }
 });

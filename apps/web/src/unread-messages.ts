@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
-import { currentAuthUserId, listPrivateConversationSummaries, type AuthUser } from '@0xnullai/auth';
+import { useEffect, useRef, useState } from 'react';
+import type { AuthUser } from '@0xnullai/auth';
 import { webNotificationsEnabled } from '@0xnullai/settings';
-import { loadChatInboxDisplayWithStatus } from '../../chat/src/inbox';
+import { useInbox, type InboxSnapshot } from './inbox-store';
 
-const POLL_MS = 30_000;
-const CONVERSATION_SEQUENCES_EVENT = '0xnullai:conversation-sequences';
 const BASE_TITLE = '猫愿';
 
 /** Sum of known unread counts; unknown (null) counts are not guessed. */
@@ -39,30 +37,21 @@ export function shouldNotify(input: {
   );
 }
 
-async function loadUnreadTotal(): Promise<number | null> {
-  const [ai, human] = await Promise.allSettled([
-    listPrivateConversationSummaries({ limit: 100 }),
-    loadChatInboxDisplayWithStatus(1),
-  ]);
-  if (ai.status === 'fulfilled') {
-    // Lets an open AI conversation pick up messages written elsewhere (a scheduled AI
-    // message, another device) without a separate poll.
-    const sequences: Record<string, number> = {};
-    for (const item of ai.value.items)
-      if (!item.deleted && typeof item.lastSequence === 'number')
-        sequences[item.id] = item.lastSequence;
-    window.dispatchEvent(
-      new CustomEvent(CONVERSATION_SEQUENCES_EVENT, {
-        detail: { accountId: currentAuthUserId(), sequences },
-      }),
-    );
-  }
-  if (ai.status === 'rejected' && human.status === 'rejected') return null;
+/**
+ * Unread total from the shared inbox, or null while it is unknown (nothing answered yet,
+ * or every source failed). Rows the last refresh could not re-verify are not counted.
+ */
+export function inboxUnreadTotal(inbox: InboxSnapshot): number | null {
+  const aiKnown = inbox.ai.settled && !inbox.ai.failed;
+  const humanKnown = inbox.human.settled && !inbox.human.failed;
+  if (!aiKnown && !humanKnown) return null;
   return totalUnread([
-    ...(ai.status === 'fulfilled'
-      ? ai.value.items.filter((item) => !item.deleted).map((item) => item.unread)
+    ...(aiKnown ? inbox.ai.items.filter((item) => !item.deleted).map((item) => item.unread) : []),
+    ...(humanKnown
+      ? inbox.human.entries
+          .filter((entry) => !inbox.human.staleIds.has(entry.id))
+          .map((entry) => entry.unread)
       : []),
-    ...(human.status === 'fulfilled' ? human.value.entries.map((entry) => entry.unread) : []),
   ]);
 }
 
@@ -70,64 +59,48 @@ async function loadUnreadTotal(): Promise<number | null> {
  * Unread messages across AI, direct and group conversations, kept current on every page
  * (not only while a conversation list is on screen). Updates the tab title and, when
  * enabled, raises a browser notification while the page is in the background.
+ *
+ * Reads the same store as the inbox list, so the two never poll the same endpoints twice.
  */
 export function useUnreadMessages(user: AuthUser | null): number {
   const accountId = user?.id ?? null;
-  const [total, setTotal] = useState(0);
+  const inbox = useInbox(accountId, user?.emailVerified === false);
+  const known = inboxUnreadTotal(inbox);
+  // An unknown total (a failed poll) keeps the last known one for this account.
+  const [last, setLast] = useState<{ accountId: string | null; total: number }>({
+    accountId: null,
+    total: 0,
+  });
+  if (accountId && known !== null && (last.accountId !== accountId || last.total !== known))
+    setLast({ accountId, total: known });
+  const total = last.accountId === accountId ? last.total : 0;
 
+  const notified = useRef<{ accountId: string | null; total: number | null }>({
+    accountId: null,
+    total: null,
+  });
   useEffect(() => {
-    if (!accountId) {
-      setTotal(0);
+    if (!accountId || known === null) return;
+    const before = notified.current.accountId === accountId ? notified.current.total : null;
+    notified.current = { accountId, total: known };
+    const permission =
+      typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+    if (
+      !shouldNotify({
+        previous: before,
+        current: known,
+        hidden: document.visibilityState !== 'visible',
+        enabled: webNotificationsEnabled(accountId),
+        permission,
+      })
+    )
       return;
+    try {
+      new Notification(BASE_TITLE, { body: `有 ${known - (before ?? 0)} 条新消息`, tag: 'unread' });
+    } catch {
+      // Some browsers only allow notifications from a service worker; the title still updates.
     }
-    let active = true;
-    let previous: number | null = null;
-    let pending: number | null = null;
-    const refresh = async () => {
-      const next = await loadUnreadTotal().catch(() => null);
-      if (!active || next === null || currentAuthUserId() !== accountId) return;
-      const permission =
-        typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
-      if (
-        shouldNotify({
-          previous,
-          current: next,
-          hidden: document.visibilityState !== 'visible',
-          enabled: webNotificationsEnabled(accountId),
-          permission,
-        })
-      ) {
-        try {
-          new Notification(BASE_TITLE, {
-            body: `有 ${next - (previous ?? 0)} 条新消息`,
-            tag: 'unread',
-          });
-        } catch {
-          // Some browsers only allow notifications from a service worker; the title still updates.
-        }
-      }
-      previous = next;
-      setTotal(next);
-    };
-    const schedule = () => {
-      if (pending !== null) window.clearTimeout(pending);
-      pending = window.setTimeout(() => {
-        pending = null;
-        void refresh();
-      }, 300);
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    window.addEventListener('focus', schedule);
-    window.addEventListener('0xnullai:conversation-updated', schedule);
-    return () => {
-      active = false;
-      if (pending !== null) window.clearTimeout(pending);
-      window.clearInterval(timer);
-      window.removeEventListener('focus', schedule);
-      window.removeEventListener('0xnullai:conversation-updated', schedule);
-    };
-  }, [accountId]);
+  }, [accountId, known]);
 
   useEffect(() => {
     document.title = unreadTitle(total);
