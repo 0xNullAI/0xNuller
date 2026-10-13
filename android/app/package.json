@@ -19,14 +19,14 @@
     "@0xnullai/ui": "0.1.0",
     "@0xnullai/web": "*",
     "@dg-agent/core": "0.1.0",
-    "@dg-kit/protocol": "^1.16.5",
-    "@dg-kit/transport-tauri-blec": "^1.16.5",
+    "@dg-kit/protocol": "^1.16.6",
+    "@dg-kit/transport-tauri-blec": "^1.16.6",
     "@mnlphlp/plugin-blec": "git+https://github.com/0xNullAI/tauri-plugin-blec-multi.git#main",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "@dg-kit/safety": "1.16.5"
+    "@dg-kit/safety": "1.16.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
