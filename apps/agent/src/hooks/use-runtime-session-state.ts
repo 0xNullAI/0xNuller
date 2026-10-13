@@ -158,7 +158,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
   const [savedSessions, setSavedSessions] = useState<SessionSnapshot[]>([]);
   const [liveDeviceState, setLiveDeviceState] = useState<DeviceState>(createEmptyDeviceState());
   const [replyBusy, setReplyBusy] = useState(false);
-  // Conversations with a reply running, whoever started it (this page, a bridge, a sensor or a
+  // Conversations with a reply running, whoever started it (this page, a sensor or a
   // timer), so the stop button follows the conversation on screen.
   const runningRepliesRef = useRef(new Set<string>());
   const [streamingAssistantText, setStreamingAssistantText] = useState('');
@@ -407,7 +407,7 @@ export function useRuntimeSessionState(options: UseRuntimeSessionStateOptions) {
     let active = true;
     const sessionId = activeSessionId;
     const generation = accountGenerationRef.current;
-    // A reply already running here (started by a bridge, sensor or timer) keeps its stop
+    // A reply already running here (started by a sensor or timer) keeps its stop
     // button; device notes from the conversation just left do not follow.
     setReplyBusy(
       runningRepliesRef.current.has(sessionId) || client.isReplyRunning?.(sessionId) === true,

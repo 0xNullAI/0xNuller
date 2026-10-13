@@ -6,13 +6,6 @@ import {
   createSpeechSynthesizer,
   getBrowserSpeechCapabilities,
 } from '@dg-agent/audio-browser';
-import {
-  BridgeAdapterRegistry,
-  BridgeManager,
-  BridgePermissionService,
-  createBrowserBridgeAdapters,
-  type MessageOrigin,
-} from '@dg-agent/bridge';
 import type { AgentClient } from '@dg-agent/client';
 import type {
   DeviceClient,
@@ -96,7 +89,6 @@ export interface BrowserServicesOptions {
    */
   scenes: BrowserSceneSource;
   onPermissionRequest: (input: PermissionRequestInput) => Promise<PermissionDecision>;
-  resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   /**
    * Device clients over the app's shared DG-Lab registry (`createRegistryAgentDevices`). The
    * caller builds them once and holds them stable across settings-driven service rebuilds; they
@@ -117,12 +109,6 @@ export interface BrowserServicesOptions {
    */
   disableSpeech?: boolean;
   /**
-   * If true, the BridgeManager is constructed without any adapters, so QQ /
-   * Telegram bridges are silently disabled. Used by shells that intentionally
-   * ship without bridge integrations.
-   */
-  disableBridge?: boolean;
-  /**
    * Replaces the Web Bluetooth probe. A shell whose registry brings a native BLE transport sets
    * it, so the UI does not warn that this WebView lacks Web Bluetooth.
    */
@@ -135,7 +121,6 @@ export interface BrowserServices {
   opossum: OpossumClient;
   pawPrints: PawPrintsClient;
   civetEdging: CivetEdgingClient;
-  bridgeManager: BridgeManager;
   waveformLibrary: BrowserWaveformLibrary;
   speechRecognition: ReturnType<typeof createSpeechRecognitionController>;
   speechSynthesizer: ReturnType<typeof createSpeechSynthesizer>;
@@ -249,14 +234,13 @@ function formatInitError(prefix: string, error: unknown): string {
 }
 
 export function createBrowserServices(options: BrowserServicesOptions): BrowserServices {
-  const { settings, scenes, onPermissionRequest, resolveBridgeSessionId } = options;
+  const { settings, scenes, onPermissionRequest } = options;
 
   const warnings: string[] = [];
 
   const sessionStore = new ServerSessionStore();
   const sessionTraceStore = new TransientSessionTraceStore();
   const waveformLibrary = new BrowserWaveformLibrary();
-  const bridgeRegistry = new BridgeAdapterRegistry();
   const { device, opossum, pawPrints, civetEdging } = options;
 
   const speechRecognition = options.disableSpeech
@@ -274,7 +258,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     ? NULL_SPEECH_CAPABILITIES
     : getBrowserSpeechCapabilities();
 
-  const localPermissionService = new BrowserPermissionService({
+  const permissionService = new BrowserPermissionService({
     mode: settings.permissionMode,
     timedGrantExpiresAt: settings.permissionModeExpiresAt,
     requestFn: (input) =>
@@ -284,11 +268,6 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
         summary: input.summary,
         args: input.args,
       }),
-  });
-  const bridgePermissionService = new BridgePermissionService({
-    settings: settings.bridge,
-    fallback: localPermissionService,
-    registry: bridgeRegistry,
   });
 
   let client: AgentClient;
@@ -304,7 +283,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
       sessionStore,
       sessionTraceStore,
       waveformLibrary,
-      permissionService: bridgePermissionService,
+      permissionService,
       deviceExecutionGate: options.deviceExecutionGate,
       taskRunReporter: options.taskRunReporter,
     });
@@ -312,33 +291,6 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     const message = formatInitError('模型服务初始化失败', error);
     warnings.push(message);
     client = new UnavailableAgentClient(message);
-  }
-
-  let bridgeManager: BridgeManager;
-  if (options.disableBridge) {
-    bridgeManager = new BridgeManager({
-      client,
-      registry: bridgeRegistry,
-      adapters: [],
-      resolveTargetSessionId: resolveBridgeSessionId,
-    });
-  } else {
-    try {
-      bridgeManager = new BridgeManager({
-        client,
-        registry: bridgeRegistry,
-        adapters: createBrowserBridgeAdapters(settings.bridge),
-        resolveTargetSessionId: resolveBridgeSessionId,
-      });
-    } catch (error) {
-      warnings.push(formatInitError('桥接服务初始化失败', error));
-      bridgeManager = new BridgeManager({
-        client,
-        registry: bridgeRegistry,
-        adapters: [],
-        resolveTargetSessionId: resolveBridgeSessionId,
-      });
-    }
   }
 
   const disposeClient = client.dispose?.bind(client);
@@ -353,7 +305,6 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     opossum,
     pawPrints,
     civetEdging,
-    bridgeManager,
     waveformLibrary,
     speechRecognition,
     speechSynthesizer,
@@ -361,7 +312,7 @@ export function createBrowserServices(options: BrowserServicesOptions): BrowserS
     modes: describeBrowserModes(settings, {
       bluetoothAvailabilityOverride: options.bluetoothAvailabilityOverride,
     }),
-    resetPermissionGrants: () => bridgePermissionService.clearGrants(),
+    resetPermissionGrants: () => permissionService.clearGrants(),
     warnings,
   };
 }

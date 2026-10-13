@@ -1,4 +1,4 @@
-import type { ActionContext, SessionSnapshot } from '@dg-agent/core';
+import { hasLegacyExternalOrigin, type ActionContext, type SessionSnapshot } from '@dg-agent/core';
 import { loadPrivateCompanionContext } from '@0xnullai/auth';
 
 interface PrivateContextInput {
@@ -8,14 +8,14 @@ interface PrivateContextInput {
   session: Pick<SessionSnapshot, 'metadata'> & Partial<Pick<SessionSnapshot, 'messages'>>;
 }
 
-/** Explicitly opt-in for the account holder's own web conversation; never bridge/group execution. */
+/** Explicitly opt-in for the account holder's own web conversation; never external, room or group execution. */
 export async function loadPrivateConversationContext(input: PrivateContextInput): Promise<string> {
   const metadata = input.session.metadata;
   if (
     !input.enabled ||
     input.context.sourceType !== 'web' ||
     input.context.sourceChannelId ||
-    metadata?.bridgeOrigin ||
+    hasLegacyExternalOrigin(metadata) ||
     metadata?.groupId ||
     metadata?.roomId ||
     metadata?.conversationType === 'group' ||

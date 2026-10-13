@@ -159,7 +159,7 @@ Shell (@0xnullai/web) + seven modules, reused via vite alias
   ↓
 NativeBridgeProvider (@0xnullai/native) — the one injection point
   ↓ dglab: one DgLabConnectionRegistry for every module
-  ↓   (Agent also gets non-device flags: no speech, bridge or update check)
+  ↓   (Agent also gets non-device flags: no speech or update check)
 createTauriDgLabTransport — one shared chooser (requestDeviceTauri)
   ↓
 wrapWithLifecycleSafety  ← Android safety net (see below)

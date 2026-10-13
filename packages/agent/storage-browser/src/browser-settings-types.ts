@@ -1,4 +1,3 @@
-import type { BridgeSettings } from '@dg-agent/bridge';
 import type { ModelContextStrategy } from '@dg-agent/core';
 import type { BrowserPermissionMode } from '@0xnullai/permissions';
 import type { ProviderId, ProviderSettings } from '@0xnullai/llm-providers';
@@ -60,7 +59,6 @@ export interface BrowserAppSettings {
   speechSynthesisEnabled: boolean;
   speechRecognitionLanguage: string;
   speechSynthesisLanguage: string;
-  bridge: BridgeSettings;
   provider: ProviderSettings;
   providerConfigs: ProviderConfigMap;
   voice: BrowserVoiceSettings;

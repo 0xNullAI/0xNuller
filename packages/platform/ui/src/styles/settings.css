@@ -401,20 +401,7 @@
   column-gap: clamp(1.25rem, 5vw, 5.5rem);
 }
 
-.settings-workspace .bridge-config-grid > label {
-  display: grid;
-  grid-template-columns: minmax(160px, 0.32fr) minmax(280px, 0.68fr);
-  align-items: center;
-  column-gap: clamp(1.25rem, 5vw, 5.5rem);
-}
-
 .settings-inline-field > :last-child {
-  justify-self: end;
-  max-width: 440px;
-  width: 100%;
-}
-
-.settings-workspace .bridge-config-grid > label > :last-child {
   justify-self: end;
   max-width: 440px;
   width: 100%;

@@ -15,7 +15,6 @@ import {
   type AgentRunStatus,
 } from '@0xnullai/auth';
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
-import { type MessageOrigin } from '@dg-agent/bridge';
 import {
   createEmptyDeviceState,
   createEmptySensorState,
@@ -98,8 +97,8 @@ import type { SessionSnapshot } from '@dg-agent/core';
 
 export interface AppProps {
   /**
-   * Optional non-device service flags. The Tauri Android shell disables speech, the bridge
-   * and the update checker through `NativeBridge.agent.servicesOverrides`.
+   * Optional non-device service flags. The Tauri Android shell disables speech and the
+   * update checker through `NativeBridge.agent.servicesOverrides`.
    */
   servicesOverrides?: ServicesOverrides;
 }
@@ -118,13 +117,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     servicesOverrides) as typeof servicesOverrides;
   const activeSessionIdRef = useRef<string | null>(null);
   const imageConversationEpochRef = useRef(0);
-  const bridgeSessionResolverRef = useRef<
-    (origin: MessageOrigin) => Promise<string | null> | string | null
-  >(() => activeSessionIdRef.current);
-  const resolveBridgeSessionId = useCallback(
-    (origin: MessageOrigin) => bridgeSessionResolverRef.current(origin),
-    [],
-  );
 
   const {
     settingsDraft,
@@ -189,7 +181,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     speechCapabilities,
     client,
     modes,
-    bridgeManager,
     serviceInitWarnings,
     resetPermissionGrants,
     device,
@@ -198,7 +189,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     civetEdging,
   } = useBrowserAppServices({
     inShell,
-    resolveBridgeSessionId,
     settings,
     scenes: { selectedId: sceneLib.selectedId, saved: sceneLib.scenes },
     setPendingPermission,
@@ -438,7 +428,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
   );
   const warnings = [
     ...buildWarnings(settings, modes, speechCapabilities, {
-      suppressBridge: nativeOverrides?.disableBridge,
       suppressSpeech: nativeOverrides?.disableSpeech,
     }),
     ...serviceInitWarnings,
@@ -457,21 +446,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     activeSessionIdRef.current = activeSessionId;
     imageConversationEpochRef.current += 1;
   }, [activeSessionId]);
-
-  useEffect(() => {
-    bridgeSessionResolverRef.current = async (_origin) => {
-      const currentSessionId = activeSessionIdRef.current;
-      if (currentSessionId) {
-        return currentSessionId;
-      }
-
-      const nextSessionId = createSessionId();
-      activeSessionIdRef.current = nextSessionId;
-      setActiveSessionId(nextSessionId);
-      await refreshCurrentSession(nextSessionId);
-      return nextSessionId;
-    };
-  }, [refreshCurrentSession, setActiveSessionId]);
 
   const {
     voiceMode,
@@ -509,33 +483,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
       updateChecker.stop();
     };
   }, [updateChecker]);
-
-  useEffect(() => {
-    if (!safetyNoticeAccepted || !settings.bridge.enabled) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        await bridgeManager.start();
-        if (cancelled) return;
-        const status = bridgeManager.getStatus();
-        if (status.adapters.length === 0) {
-          setStatusMessage('桥接已启用，但当前没有可用的桥接通道');
-          return;
-        }
-        setStatusMessage('桥接已启动');
-      } catch (error) {
-        if (!cancelled) {
-          setErrorMessage(formatUiErrorMessage(error));
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      void bridgeManager.stop();
-    };
-  }, [bridgeManager, safetyNoticeAccepted, settings.bridge.enabled]);
 
   const denyPendingPermissionRequest = useCallback(
     (reason = '当前回复已停止'): void => {

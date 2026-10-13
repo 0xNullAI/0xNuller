@@ -29,7 +29,7 @@ export interface NativeBridge {
    */
   dglab?: DgLabConnectionRegistry;
   /**
-   * Agent's non-device service flags (speech, bridge, update checker). Shape mirrors
+   * Agent's non-device service flags (speech, update checker). Shape mirrors
    * apps/agent `ServicesOverrides`.
    */
   agent?: {

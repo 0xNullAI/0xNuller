@@ -1,4 +1,4 @@
-import type { ActionContext, SessionSnapshot } from '@dg-agent/core';
+import { hasLegacyExternalOrigin, type ActionContext, type SessionSnapshot } from '@dg-agent/core';
 
 /** A personal conversation keeps its first character identity when global selection changes. */
 export function bindSessionCharacter(
@@ -11,7 +11,7 @@ export function bindSessionCharacter(
   if (
     context.sourceType !== 'web' ||
     context.sourceChannelId ||
-    metadata?.bridgeOrigin ||
+    hasLegacyExternalOrigin(metadata) ||
     metadata?.groupId ||
     metadata?.roomId ||
     metadata?.conversationType === 'group' ||

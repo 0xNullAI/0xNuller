@@ -19,7 +19,7 @@ import {
   createEmptyDeviceState,
   createMessage,
   isSensorTriggersEnabled,
-  mergeBridgeOriginMetadata,
+  hasLegacyExternalOrigin,
   SESSION_TITLE_METADATA_KEY,
   withSensorLastReading,
   withSensorTriggersEnabled,
@@ -519,7 +519,7 @@ export class AgentRuntime {
     if (this.activeTurns.has(sessionId)) throw new Error('请等待当前回复结束后再切换场景');
     const metadata = session.metadata;
     if (
-      metadata?.bridgeOrigin ||
+      hasLegacyExternalOrigin(metadata) ||
       metadata?.groupId ||
       metadata?.roomId ||
       metadata?.conversationType === 'group' ||
@@ -690,7 +690,7 @@ export class AgentRuntime {
     const stableBinding =
       typeof candidate?.metadata?.promptPresetId === 'string' &&
       candidate.metadata.promptPresetId.length > 0 &&
-      !candidate.metadata.bridgeOrigin &&
+      !hasLegacyExternalOrigin(candidate.metadata) &&
       !candidate.metadata.groupId &&
       !candidate.metadata.roomId &&
       !['group', 'dm'].includes(String(candidate.metadata.conversationType ?? '')) &&
@@ -705,7 +705,6 @@ export class AgentRuntime {
       if (isInternallyTriggeredSourceType(input.context.sourceType)) return;
       throw new Error(REPLY_ABORTED_ERROR_MESSAGE);
     }
-    session.metadata = mergeBridgeOriginMetadata(session.metadata, input.context);
     bindSessionCharacter(session, input.context, input.characterId, input.relationshipId);
     const persistIncomingMessage = input.persistMessage ?? input.context.sourceType !== 'system';
     const incomingMessage = persistIncomingMessage ? createIncomingMessage(input) : null;

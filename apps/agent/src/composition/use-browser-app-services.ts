@@ -9,7 +9,6 @@ import {
   type DgLabModuleHandle,
   type PermissionRequestInput,
 } from '@dg-agent/agent-browser';
-import type { MessageOrigin } from '@dg-agent/bridge';
 import type { PermissionDecision } from '@dg-agent/core';
 import { currentDeviceLease, hasDeviceLease } from '@dg-kit/safety';
 import type { BrowserAppSettings } from '@dg-agent/storage-browser';
@@ -26,7 +25,7 @@ export interface PendingPermissionRequest {
  * Non-device service flags a non-browser shell (Tauri Android) may supply. Web omits them.
  * Device clients always come from the shared DG-Lab registry, never from an override.
  */
-export type ServicesOverrides = Pick<BrowserServicesOptions, 'disableSpeech' | 'disableBridge'> & {
+export type ServicesOverrides = Pick<BrowserServicesOptions, 'disableSpeech'> & {
   /** Skip the update-checker poll loop (no version.json on non-web shells). */
   disableUpdateChecker?: boolean;
 };
@@ -37,7 +36,6 @@ export interface UseBrowserAppServicesOptions {
   /** The current scene (persona). Comes from the shared scene library. */
   scenes: { selectedId: string; saved: SavedScene[] };
   setPendingPermission: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
-  resolveBridgeSessionId: (origin: MessageOrigin) => string | null | Promise<string | null>;
   servicesOverrides?: ServicesOverrides;
   /** Agent's handle on the app's one DG-Lab registry. Every device client comes from it. */
   dglab: DgLabModuleHandle;
@@ -46,8 +44,8 @@ export interface UseBrowserAppServicesOptions {
 }
 
 /**
- * Settings that only drive this page's own UI. Nothing in the runtime, bridge, permission or
- * speech services reads them, so changing one must not rebuild the runtime (which aborts the
+ * Settings that only drive this page's own UI. Nothing in the runtime, permission or speech
+ * services reads them, so changing one must not rebuild the runtime (which aborts the
  * running reply and stops every output). Anything not listed here rebuilds — new settings fail
  * safe by default.
  */
@@ -77,7 +75,6 @@ export function useBrowserAppServices(
   options: UseBrowserAppServicesOptions,
 ): UseBrowserAppServicesResult {
   const {
-    resolveBridgeSessionId,
     settings,
     scenes,
     setPendingPermission,
@@ -121,7 +118,6 @@ export function useBrowserAppServices(
     scenesRef.current = scenes;
   }, [scenes]);
   const disableSpeech = servicesOverrides?.disableSpeech;
-  const disableBridge = servicesOverrides?.disableBridge;
 
   // Rebuild only the runtime on identity changes; shell-owned physical clients remain stable.
   const services = useMemo(
@@ -142,13 +138,11 @@ export function useBrowserAppServices(
           (context.sourceType === 'sensor' ||
             deviceConversationAccess(currentAuthUserId(), 'ai', sessionId)),
         taskRunReporter,
-        resolveBridgeSessionId,
         onPermissionRequest: (input) =>
           new Promise<PermissionDecision>((resolve) => {
             setPendingPermission({ input, resolve });
           }),
         ...(disableSpeech === undefined ? {} : { disableSpeech }),
-        ...(disableBridge === undefined ? {} : { disableBridge }),
         // On Android the registry's transport is native BLE; the Web Bluetooth probe does not apply.
         ...(nativeBluetooth ? { bluetoothAvailabilityOverride: { supported: true } } : {}),
       }),
@@ -161,10 +155,8 @@ export function useBrowserAppServices(
       opossum,
       pawPrints,
       civetEdging,
-      resolveBridgeSessionId,
       setPendingPermission,
       disableSpeech,
-      disableBridge,
       nativeBluetooth,
       taskRunReporter,
     ],

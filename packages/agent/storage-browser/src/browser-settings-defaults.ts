@@ -1,4 +1,3 @@
-import { DEFAULT_BRIDGE_SETTINGS } from '@dg-agent/bridge';
 import { createDefaultProviderSettings, normalizeProviderSettings } from '@0xnullai/llm-providers';
 import {
   createDefaultToolCallConfig,
@@ -82,7 +81,6 @@ export function defaultBrowserAppSettings(env: BrowserAppEnvLike = {}): BrowserA
     speechSynthesisEnabled: false,
     speechRecognitionLanguage: 'zh-CN',
     speechSynthesisLanguage: 'zh-CN',
-    bridge: DEFAULT_BRIDGE_SETTINGS,
     provider,
     providerConfigs: {
       [provider.providerId]: provider,

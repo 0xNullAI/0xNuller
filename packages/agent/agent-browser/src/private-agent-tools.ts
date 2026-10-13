@@ -1,4 +1,4 @@
-import type { SessionSnapshot, ToolDefinition } from '@dg-agent/core';
+import { hasLegacyExternalOrigin, type SessionSnapshot, type ToolDefinition } from '@dg-agent/core';
 import type { ContextualTools, ContextualToolInput } from '@dg-agent/runtime';
 import {
   currentAuthUserId,
@@ -121,7 +121,7 @@ function personal(input: ContextualToolInput): boolean {
   return (
     input.context.sourceType === 'web' &&
     !input.context.sourceChannelId &&
-    !m?.bridgeOrigin &&
+    !hasLegacyExternalOrigin(m) &&
     !m?.roomId &&
     !m?.groupId &&
     m?.conversationType !== 'group' &&

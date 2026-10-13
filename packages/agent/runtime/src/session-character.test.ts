@@ -76,9 +76,9 @@ it('persists the first personal character and refuses later global selection or 
   expect((await client.getSessionSnapshot('s')).metadata?.relationshipId).toBe('right');
   client.dispose();
 });
-it('does not establish personal bindings for bridge or channel messages', async () => {
+it('does not establish personal bindings for non-web or channel messages', async () => {
   const client = runtime();
-  for (const sourceType of ['qq', 'telegram', 'web'] as SourceType[]) {
+  for (const sourceType of ['api', 'cli', 'web'] as SourceType[]) {
     const sessionId = sourceType;
     await client.sendUserMessage({
       sessionId,
@@ -159,7 +159,19 @@ it('rejects scene changes to non-personal conversations and malformed IDs', asyn
       deviceState: { ...(await client.getSessionSnapshot('s')).deviceState },
       metadata: { conversationType: 'group' },
     },
+    {
+      // Stored by the removed QQ/Telegram bridge: still an external conversation.
+      id: 'legacy-external',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+      deviceState: { ...(await client.getSessionSnapshot('s')).deviceState },
+      metadata: { bridgeOrigin: { platform: 'qq', userId: '10001' } },
+    },
   ]);
   await expect(client.setSessionScene('group', 'market-forest')).rejects.toThrow('只有私人聊天');
+  await expect(client.setSessionScene('legacy-external', 'market-forest')).rejects.toThrow(
+    '只有私人聊天',
+  );
   client.dispose();
 });

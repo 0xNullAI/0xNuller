@@ -130,18 +130,6 @@ export class BrowserAppSettingsStore {
       maxVibrateBurstCallsPerTurn: safety.maxVibrateBurstCallsPerTurn,
       permissionMode: effectivePermissionState.permissionMode,
       permissionModeExpiresAt: effectivePermissionState.permissionModeExpiresAt,
-      bridge: {
-        ...this.defaults.bridge,
-        ...(persisted?.bridge ?? {}),
-        qq: {
-          ...this.defaults.bridge.qq,
-          ...(persisted?.bridge?.qq ?? {}),
-        },
-        telegram: {
-          ...this.defaults.bridge.telegram,
-          ...(persisted?.bridge?.telegram ?? {}),
-        },
-      },
       provider: activeProvider,
       providerConfigs,
       voice: normalizeVoiceSettings({
@@ -269,7 +257,6 @@ export class BrowserAppSettingsStore {
       speechSynthesisEnabled: settings.speechSynthesisEnabled,
       speechRecognitionLanguage: settings.speechRecognitionLanguage,
       speechSynthesisLanguage: settings.speechSynthesisLanguage,
-      bridge: settings.bridge,
       provider: {
         providerId: settings.provider.providerId,
         baseUrl: settings.provider.baseUrl,

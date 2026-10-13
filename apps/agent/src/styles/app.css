@@ -149,94 +149,6 @@
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.bridge-connector-list {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.bridge-connector-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0.85rem;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-ctl);
-  transition:
-    background-color var(--dur) ease,
-    border-color var(--dur) ease;
-}
-
-.bridge-connector-row:hover,
-.bridge-connector-row.active {
-  border-color: var(--surface-border-strong);
-  background: var(--bg-soft);
-}
-
-.bridge-connector-main {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.75rem;
-  text-align: left;
-}
-
-.bridge-connector-icon {
-  display: inline-flex;
-  width: 2rem;
-  height: 2rem;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-}
-
-.bridge-connector-row.active .bridge-connector-icon,
-.bridge-connector-row.enabled .bridge-connector-icon {
-  color: var(--accent);
-}
-
-.bridge-connector-copy {
-  display: grid;
-  min-width: 0;
-  gap: 0.15rem;
-}
-
-.bridge-connector-copy > span {
-  color: var(--text);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.bridge-connector-copy small {
-  color: var(--text-faint);
-  font-size: 0.75rem;
-  line-height: 1.35;
-}
-
-.bridge-connector-status {
-  color: var(--text-faint);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-
-.bridge-connector-status.enabled {
-  color: var(--accent);
-}
-
-.bridge-connector-switch.enabled {
-  background: var(--accent);
-}
-
-.bridge-connector-switch.enabled span {
-  transform: translateX(1rem);
-}
-
-.bridge-config-grid {
-  display: grid;
-  gap: 0.85rem;
-}
-
 .settings .saved-prompt-item {
   border-radius: var(--radius-sm);
 }
@@ -280,8 +192,7 @@
 
   .settings-workspace
     .settings-row-card
-    > label:not(.checkbox-row):not(.custom-checkbox):not(.setting-toggle-row),
-  .settings-workspace .bridge-config-grid > label {
+    > label:not(.checkbox-row):not(.custom-checkbox):not(.setting-toggle-row) {
     grid-template-columns: 1fr;
     gap: 0.48rem;
   }
@@ -290,8 +201,7 @@
   .settings-workspace
     .settings-row-card
     > label:not(.checkbox-row):not(.custom-checkbox):not(.setting-toggle-row)
-    > :last-child,
-  .settings-workspace .bridge-config-grid > label > :last-child {
+    > :last-child {
     justify-self: stretch;
     max-width: none;
   }
@@ -299,14 +209,6 @@
   .settings-workspace .settings-inline-field-control {
     justify-self: stretch;
     width: 100% !important;
-  }
-
-  .bridge-connector-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .bridge-connector-status {
-    display: none;
   }
 
   .settings-workspace-content {

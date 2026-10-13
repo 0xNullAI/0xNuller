@@ -65,11 +65,10 @@ const bridge = {
     },
     resetUi: () => otaUpdater.reset(),
   },
-  // Non-device Agent flags only: no speech, bridge or version.json on the native shell.
+  // Non-device Agent flags only: no speech or version.json on the native shell.
   agent: {
     servicesOverrides: {
       disableSpeech: true,
-      disableBridge: true,
       disableUpdateChecker: true,
     },
   },
