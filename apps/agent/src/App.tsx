@@ -81,7 +81,6 @@ import {
   isSessionListEntry,
   isBluetoothChooserCancelledError,
 } from './utils/ui-formatters.js';
-import { buildTraceFeed } from './utils/trace-feed.js';
 import {
   clearAgentConversationLink,
   linkedAgentConversationId,
@@ -254,8 +253,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     events,
     clearEvents,
     session,
-    sessionTrace,
-    setSession,
     savedSessions,
     setSavedSessions,
     liveDeviceState,
@@ -445,11 +442,9 @@ export function App({ servicesOverrides }: AppProps = {}) {
     }),
     ...serviceInitWarnings,
   ];
-  const historicalTraceFeed = buildTraceFeed(sessionTrace);
-  const traceFeed =
-    liveTraceItems.length > 0
-      ? [...historicalTraceFeed, ...liveTraceItems].sort((a, b) => a.createdAt - b.createdAt)
-      : historicalTraceFeed;
+  // Device action notes of the open conversation, oldest first; the trace store is transient,
+  // so there is no saved history to merge in.
+  const traceFeed = liveTraceItems;
 
   const { visibleErrorItems, visibleWarnings, visibleEventToasts } = useToastManager({
     errorMessage,
@@ -743,8 +738,8 @@ export function App({ servicesOverrides }: AppProps = {}) {
         });
         allocatedRunId = null;
 
+        // The turn's end event already re-reads the conversation.
         setStatusMessage('消息已发送');
-        await refreshCurrentSession(sessionId);
         void refreshRunReview(sessionId);
         return 'sent';
       } catch (error) {
@@ -775,7 +770,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
       conversationSceneId,
       hasExplicitConversationScene,
       pendingSends,
-      refreshCurrentSession,
       refreshRunReview,
       stopSpeechPlayback,
     ],
@@ -909,8 +903,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
     setErrorMessage(null);
     setStatusMessage('已创建新会话');
     setSidebarOpen(false);
-
-    await refreshCurrentSession(nextSessionId);
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
@@ -928,7 +920,6 @@ export function App({ servicesOverrides }: AppProps = {}) {
         clearStreamingAssistantText();
         stopAllVoiceActivity({ disableMode: false });
         clearEvents();
-        setSession(await client.getSessionDisplaySnapshot(nextSessionId));
       }
 
       setStatusMessage('会话已删除');
@@ -940,11 +931,8 @@ export function App({ servicesOverrides }: AppProps = {}) {
   async function renameSession(sessionId: string, title: string | null): Promise<void> {
     try {
       await client.renameSession(sessionId, title);
-      const sessions = await client.listSessions();
-      setSavedSessions(sessions);
-      if (sessionId === activeSessionId) {
-        setSession(await client.getSessionDisplaySnapshot(sessionId));
-      }
+      if (sessionId === activeSessionId) await refreshCurrentSession(sessionId);
+      else setSavedSessions(await client.listSessions());
       setStatusMessage(title ? '对话已重命名' : '已恢复自动标题');
     } catch (error) {
       setErrorMessage(formatUiErrorMessage(error));
