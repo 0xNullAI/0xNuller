@@ -1,13 +1,6 @@
 import { currentAuthUserId, subscribeAuthChanges } from '@0xnullai/auth';
 import { deviceConversationAccess } from '@0xnullai/settings';
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   createBrowserServices,
   createRegistryAgentDevices,
