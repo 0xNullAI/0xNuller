@@ -4,6 +4,7 @@ import type { BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
 import { DGLAB_SAFETY_SESSION_ID, type DgLabConnectionRegistry } from '@0xnullai/device-runtime';
 import { createUnifiedShellDgLabRegistry } from '@0xnullai/web/dglab-device-registry';
 import { safetySessionById } from '@dg-kit/safety';
+import { installAndroidBackgroundKeep } from '@0xnullai/native';
 
 /**
  * The Android composition of the shared DG-Lab registry, with plugin-blec replaced by a fake at
@@ -103,7 +104,7 @@ beforeEach(async () => {
       permissionHelp: permissionHelp as never,
     }),
     attachNativeLifecycle: attachAndroidDgLabLifecycle,
-    backgroundKeep: false,
+    backgroundKeep: { maxMinutes: 0 },
   });
   // Let the async Tauri listener registration finish.
   await tick();
@@ -159,5 +160,93 @@ describe('Tauri DG-Lab transport', () => {
     await tick();
 
     expect(stopAll).toHaveBeenCalled();
+  });
+});
+
+describe('Android background keep through the native service', () => {
+  let kept: DgLabConnectionRegistry;
+  let until: number;
+  const bridge = {
+    getBackgroundKeepCapability: () => 1,
+    getNotificationPermissionStatus: () => 'granted',
+    requestNotificationPermission: () => undefined,
+    setBackgroundKeep: vi.fn(() => true),
+    getBackgroundKeepUntil: () => until,
+  };
+
+  beforeEach(async () => {
+    until = 0;
+    localStorage.clear();
+    // The shared device-safety store; missing fields fall back to their defaults.
+    localStorage.setItem('0xnullai.device-safety', JSON.stringify({ backgroundKeepMinutes: 5 }));
+    (window as unknown as { AndroidSystem?: unknown }).AndroidSystem = bridge;
+    kept = createUnifiedShellDgLabRegistry({
+      transport: createTauriDgLabTransport({
+        connectHelp: connectHelp as never,
+        permissionHelp: permissionHelp as never,
+      }),
+      attachNativeLifecycle: attachAndroidDgLabLifecycle,
+      backgroundKeep: (target) => installAndroidBackgroundKeep(target),
+    });
+    await tick();
+    await kept.connect();
+  });
+
+  afterEach(async () => {
+    await kept.dispose();
+    delete (window as unknown as { AndroidSystem?: unknown }).AndroidSystem;
+    localStorage.clear();
+  });
+
+  function hideWithNativeDecision(keep: boolean) {
+    until = keep ? Date.now() + 5 * 60_000 : 0;
+    window.dispatchEvent(
+      new CustomEvent('0xnullai:native-pause', { detail: { kept: keep, until, at: Date.now() } }),
+    );
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  it('holds output when the native side kept it, and the per-client wrapper agrees', async () => {
+    const [client] = ble.FakeTauriBlecDeviceClient.instances.slice(-1);
+    client!.calls.length = 0;
+    const stopAll = vi.spyOn(kept, 'stopAll');
+
+    hideWithNativeDecision(true);
+    await tick();
+
+    expect(kept.isHeldForBackground()).toBe(true);
+    expect(stopAll).not.toHaveBeenCalled();
+    expect(client!.calls).not.toContain('emergencyStop');
+  });
+
+  it('stops at once when the native side did not keep', async () => {
+    const stopAll = vi.spyOn(kept, 'stopAll');
+
+    hideWithNativeDecision(false);
+    await tick();
+
+    expect(kept.isHeldForBackground()).toBe(false);
+    expect(stopAll).toHaveBeenCalled();
+    expect(bridge.setBackgroundKeep).toHaveBeenLastCalledWith(false, 0, false);
+  });
+
+  it('records the native deadline as a background-timeout stop', async () => {
+    const events: unknown[] = [];
+    kept.forModule('test').onBackground((event) => events.push(event));
+    const stopForBackground = vi.spyOn(kept, 'stopForBackground');
+
+    hideWithNativeDecision(true);
+    window.dispatchEvent(
+      new CustomEvent('0xnullai:native-output-stopped', {
+        detail: { reason: 'timeout', at: Date.now() },
+      }),
+    );
+    await tick();
+
+    expect(stopForBackground).toHaveBeenCalledWith('background-timeout', expect.any(Number));
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'stopped', reason: 'background-timeout' }),
+    );
   });
 });

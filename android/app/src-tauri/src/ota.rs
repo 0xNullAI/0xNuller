@@ -30,7 +30,7 @@ use std::sync::{Mutex, RwLock};
 /// Bumped whenever the Rust, Kotlin, plugin or permission surface the page
 /// relies on changes. A bundle runs only on the exact native API it was built
 /// for; `scripts/native-fingerprint.mjs` keeps this honest in CI.
-pub const NATIVE_API: u32 = 2;
+pub const NATIVE_API: u32 = 3;
 
 /// The release public key (raw 32 bytes, base64). The private half lives only
 /// in the release pipeline's secrets.

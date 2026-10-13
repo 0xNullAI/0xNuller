@@ -37,8 +37,8 @@ to stay backward compatible.
 ## Versioning and app identity
 
 Both Android versions live in **one checked-in file**: `src-tauri/tauri.conf.json`.
-The user-facing `version` follows the product version (for example `7.2.0`), and
-`bundle.android.versionCode` is the aligned monotonic code (`7002000`: major·1000000 +
+The user-facing `version` follows the product version (for example `7.3.0`), and
+`bundle.android.versionCode` is the aligned monotonic code (`7003000`: major·1000000 +
 minor·1000 + patch). 0xNuller started at `6.0.0` / `6000000`, above DG-Agent 5.5.2's
 `5005002`. Tauri writes both into `gen/android/app/tauri.properties` **at build time**.
 
@@ -54,7 +54,7 @@ get a second icon instead of an upgrade, with none of their settings, and no
 way to migrate the data. The name is cosmetic; the identifier is not.
 
 The GitHub source/product tag, release title, APK `versionName`, and internal
-code all advance together: `v7.2.0`, `猫愿 7.2.0`, `7.2.0`, and `7002000`.
+code all advance together: `v7.3.0`, `猫愿 7.3.0`, `7.3.0`, and `7003000`.
 There is one GitHub Release on that tag; GitHub supplies the source archives and
 the workflow attaches the signed `maoyuan-vX.Y.Z.apk` and Latest badge.
 
@@ -139,8 +139,10 @@ npm run android:dev   # tauri android dev — installs on a connected device
 ## Notifications
 
 There is no system push. Most users' phones have no Google services, so FCM was removed: the APK
-has no Firebase dependency, notification permission, push service, or notification channels. New
-messages show as in-app unread counts. Android builds released before the removal may still call
+has no Firebase dependency or push service. New messages show as in-app unread counts. The only
+notification is local: since native API 3 the APK asks for `POST_NOTIFICATIONS` solely for the
+ongoing 「设备输出中」 notification of the background keep service (one low-importance channel,
+「设备输出」; see Lifecycle safety), and only when the user picks a background keep duration. Android builds released before the removal may still call
 `/api/auth/push/registrations`; Auth answers 410 (register) or 404 (revoke), which those builds
 handle without retrying. `android:prepare` also strips the old Firebase service, resources, manifest
 entries, and Gradle dependencies from a reused generated project.
@@ -184,7 +186,7 @@ Coyote V3 is state-retentive: once a strength is commanded, the device keeps run
 
 Android Tauri is different: when the user swipes home / locks the screen, the host activity hits `onPause` and the WebView is suspended. JS timers stop. The device keeps running at the last commanded strength until the BLE link eventually drops, which can take a long time.
 
-[`src/lifecycle-safety.ts`](./src/lifecycle-safety.ts) wraps the `TauriBlecDeviceClient` so any backgrounding signal fires `emergencyStop()` before the WebView is suspended. Signals covered:
+[`src/lifecycle-safety.ts`](./src/lifecycle-safety.ts) wraps the `TauriBlecDeviceClient` so any backgrounding signal fires `emergencyStop()` before the WebView is suspended — unless the user's background keep holds output (below). Signals covered:
 
 - `document.visibilitychange` → state becomes `hidden` (Android WebView reliably emits this on host onPause)
 - `window.pagehide` (Tauri navigation / app teardown)
@@ -196,10 +198,40 @@ The wrapper is transparent: every method except `disconnect()` forwards unchange
 None of those JS paths survive a frozen or killed page, so the native layer keeps its own floor:
 
 - **Device-side cap.** The registry writes each Coyote's effective limit into the device (BF soft limit) on connect, on reconnect and on every limit change, so the device refuses higher strength even from its own wheel or with no app running.
-- **Native stop.** After connecting, `@dg-kit/transport-tauri-blec` registers the device's stop packet (bytes from the protocol adapter) with plugin-blec (`set_safety_stop`). `MainActivity.onPause`/`onDestroy` then makes the plugin write it for every device ahead of any queued write, without waiting for the page. `emergencyStop()` uses the same preemptive write first.
+- **Native stop.** After connecting, `@dg-kit/transport-tauri-blec` registers the device's stop packet (bytes from the protocol adapter) with plugin-blec (`set_safety_stop`). `MainActivity.onPause` (unless a background keep holds output, below) and `onDestroy` then make the plugin write it for every device ahead of any queued write, without waiting for the page. `emergencyStop()` uses the same preemptive write first.
 - **Write watchdog.** The tick writes every 100 ms while output runs; if no write reaches a device for 1.5 s, the plugin writes its stop packet once.
 
 A process the system kills outright gets no callback; the device-side cap is what still applies then.
+
+#### Background keep (native API 3)
+
+「设备与安全 → 切到后台时」 offers 5 or 10 minutes on Android (the web offers 5/10/30). Keeping is
+fail-closed: unless **every** precondition holds at `onPause`, the behaviour above applies unchanged.
+
+- **Preconditions.** The APK has the keep bridge (`AndroidSystem.getBackgroundKeepCapability() ≥ 1`),
+  notifications are allowed (`POST_NOTIFICATIONS` on Android 13+, app notifications and the
+  「设备输出」 channel on), the user chose 5 or 10 minutes, some Coyote/Opossum output is nonzero, the
+  `connectedDevice` foreground service `DeviceOutputService` is already running (it is only ever
+  started while the activity is in the foreground, never at `onPause`), and a partial wake lock for
+  the kept minutes was acquired. Choosing a duration without the permission asks for it; a refusal
+  stores 「立即停止」.
+- **Who decides.** The page reports its state through `AndroidSystem.setBackgroundKeep(enabled, keepMs,
+outputActive)` whenever the setting, the permission or "any output active" changes
+  (`installAndroidBackgroundKeep` in `@0xnullai/native`). `MainActivity.onPause` alone decides and
+  records the deadline before telling the page (`0xnullai:native-pause` with `{kept, until, at}`). The
+  page's `backgroundKeepMs()` reads that same record (`getBackgroundKeepUntil()`), so the shell's
+  hold, every module guard and both lifecycle wrappers reach one answer. If the pause event and the
+  shared answer ever disagree, the page stops and disarms the service, which then stops natively.
+- **While kept.** Scanning still stops. The notification reads 「后台保持中 · 剩余 mm:ss」 with
+  「急停」; the registry admits only commands that stop or lower output; Agent pauses its AI work.
+- **What still stops.** The native deadline (a main-thread tick against elapsed real time), 急停,
+  removing the task, an unplanned service destroy and `Activity.onDestroy` all stop output natively
+  through the dedicated JNI entry `NativeOutputSafety.requestNativeOutputStop` → Rust
+  `request_native_output_stop()` (plugin-blec `safety_stop_all()`), without the WebView, and then
+  dispatch `0xnullai:native-output-stopped` (`{reason, at}`); the page records it as
+  `background-timeout` (deadline) or `background` (everything else). `pagehide`, `freeze` and the Tauri
+  exit event always stop. Returning to the app cancels the deadline. The 1.5 s write watchdog stays:
+  if the throttled page stops ticking, the plugin stops the device.
 
 ## BLE scanner ownership
 
@@ -207,8 +239,8 @@ A process the system kills outright gets no callback; the device-side cap is wha
 Android's single scanner callback. Each scan claims a generation-scoped lease through
 `dg_blec_claim_scanner`, releases it through `dg_blec_release_scanner` only after confirmed
 stop/cleanup, and retains it when scanner state is uncertain. `MainActivity.onPause`/`onDestroy` call
-`requestNativeLifecycleSafety`, which stops the active scan before releasing its lease. Output stops
-are handled by the JS lifecycle wrappers above.
+`requestNativeLifecycleSafety`, which stops the active scan before releasing its lease, kept or not.
+Output stops have their own JNI entry (`requestNativeOutputStop`, see Lifecycle safety).
 
 ## WebView requirements
 

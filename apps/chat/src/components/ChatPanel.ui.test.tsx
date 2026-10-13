@@ -638,3 +638,39 @@ describe('长对话分批显示', () => {
     expect(shown()).toContain('m5');
   });
 });
+
+describe('语音消息的麦克风权限', () => {
+  afterEach(() => {
+    delete (window as { AndroidSystem?: unknown }).AndroidSystem;
+  });
+
+  it('安卓上麦克风被拒绝时说明原因并提供「去设置」，其他错误不显示', async () => {
+    const openAppSettings = vi.fn();
+    (window as { AndroidSystem?: unknown }).AndroidSystem = {
+      getMediaPermissionStatus: () => 'blocked',
+      openAppSettings,
+    };
+    mediaMocks.startRecording.mockRejectedValue(new DOMException('denied', 'NotAllowedError'));
+    render(
+      <ChatPanel
+        conversationId="test-room"
+        messages={[]}
+        onSend={vi.fn()}
+        onSendMedia={vi.fn(async () => undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '发送语音' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('麦克风权限已被拒绝');
+    fireEvent.click(screen.getByRole('button', { name: '去设置' }));
+    expect(openAppSettings).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭发送错误' }));
+    (window as { AndroidSystem?: unknown }).AndroidSystem = undefined;
+    mediaMocks.startRecording.mockRejectedValue(new Error('no device'));
+    fireEvent.click(screen.getByRole('button', { name: '发送语音' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('无法访问麦克风');
+    expect(screen.queryByRole('button', { name: '去设置' })).toBeNull();
+  });
+});

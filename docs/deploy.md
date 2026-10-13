@@ -39,9 +39,11 @@ npm run verify:data
 npm run check:routes
 ```
 
-生产数据库迁移与产品发布分开管理。GitHub 发布任务不会查询或修改 D1；需要升级数据库时，
-由具有 Cloudflare 数据权限的维护者先取得可验证的备份，再按“数据迁移”单独执行。不要修改
-已经发布的 migration，也不要用 `schema.sql` 代替 Wrangler migrations。
+发布工作流在部署 Auth 之前会自动执行 Auth 的 D1 migration（`0xnullai-auth`）；Market 的
+migration（`dg-market`）不在工作流里，仍需维护者按“数据迁移”单独执行。因此含 Auth migration 的
+发布，必须在 `dev → main` 发布 PR 合并**之前**完成只读预检（`wrangler d1 migrations list --remote`
+只应列出本次新增的 migration）并取得可验证的恢复点（D1 Time Travel 书签，或完整导出；完整导出
+期间会阻塞线上请求）。不要修改已经发布的 migration，也不要用 `schema.sql` 代替 Wrangler migrations。
 
 ## 部署顺序
 

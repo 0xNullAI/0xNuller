@@ -90,14 +90,30 @@ checks.push(['voice', voice.durationMs]);
 
 // The Android hot-update bundle: signed by the key the APK trusts, for this release, complete.
 if (expectedVersion) {
-  const latest = await request('/ota/android/latest.json', 200);
   const publicKey = releasePublicKey(
     readFileSync(new URL('../android/app/src-tauri/ota-public-key.txt', import.meta.url), 'utf8'),
   );
-  const manifest = verifyLatest(json('/ota/android/latest.json', latest.body), publicKey);
-  assert(
-    manifest.version === expectedVersion,
-    `OTA is ${manifest.version}, expected ${expectedVersion}`,
+  // The edge can keep serving the previous manifest for a moment after the deploy, as with
+  // /version.json above.
+  const { manifest, durationMs: otaDurationMs } = await retry(
+    async () => {
+      const latest = await request('/ota/android/latest.json', 200);
+      const verified = verifyLatest(json('/ota/android/latest.json', latest.body), publicKey);
+      assert(
+        verified.version === expectedVersion,
+        `OTA is ${verified.version}, expected ${expectedVersion}`,
+      );
+      return { manifest: verified, durationMs: latest.durationMs };
+    },
+    {
+      attempts: versionAttempts,
+      delayMs: versionRetryDelayMs,
+      onRetry(error, attempt, attempts) {
+        console.warn(
+          `OTA manifest not ready (${attempt}/${attempts}): ${error instanceof Error ? error.message : error}`,
+        );
+      },
+    },
   );
   if (expectedBuildId) {
     assert(manifest.buildId === expectedBuildId, `OTA build is ${manifest.buildId}`);
@@ -112,7 +128,7 @@ if (expectedVersion) {
     const bytes = Buffer.from(await response.arrayBuffer());
     assert(sha256Hex(bytes) === file.sha256, `OTA ${file.path} does not match its manifest hash`);
   }
-  checks.push(['ota', latest.durationMs]);
+  checks.push(['ota', otaDurationMs]);
 }
 
 for (const [service, durationMs] of checks) {

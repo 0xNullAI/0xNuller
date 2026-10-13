@@ -23,6 +23,11 @@ const requiredPermissions = [
   'android.permission.BLUETOOTH_ADMIN',
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
+  // The background keep service and its local 「设备输出中」 notification (no push).
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE',
+  'android.permission.POST_NOTIFICATIONS',
+  'android.permission.WAKE_LOCK',
 ];
 
 function fail(message) {
@@ -154,8 +159,10 @@ if (label !== tauri.productName)
   fail(`application label is ${label}, expected ${tauri.productName}`);
 if (minSdk !== 26) fail(`minSdk is ${minSdk}, expected 26`);
 if (!/^native-code: .*'arm64-v8a'/m.test(badging)) fail('APK does not contain arm64-v8a');
-if (!badging.includes("uses-feature: name='android.hardware.bluetooth_le'")) {
-  fail('APK does not declare android.hardware.bluetooth_le');
+// Declared but not required, so the app still installs on a phone without BLE (the template's
+// intent; aapt prints a non-required feature as `uses-feature-not-required`).
+if (!badging.includes("uses-feature-not-required: name='android.hardware.bluetooth_le'")) {
+  fail('APK must declare android.hardware.bluetooth_le as not required');
 }
 for (const permission of requiredPermissions) {
   if (!badging.includes(`uses-permission: name='${permission}'`)) {

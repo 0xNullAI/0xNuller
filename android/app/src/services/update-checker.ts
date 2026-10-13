@@ -29,6 +29,12 @@ export interface TauriUpdateCheckerOptions {
    * indefinitely, with no error anywhere to signal that something went wrong.
    */
   tagPrefix?: string;
+  /**
+   * The pointer the release workflow publishes on our own domain
+   * (`scripts/android-apk-pointer.mjs`). Read first, so the check does not depend on
+   * api.github.com being reachable; GitHub is the fallback. Null skips it.
+   */
+  pointerUrl?: string | null;
   pollIntervalMs?: number;
   firstCheckDelayMs?: number;
   storage?: UpdateStorage;
@@ -37,6 +43,9 @@ export interface TauriUpdateCheckerOptions {
 }
 
 const DISMISSED_KEY = 'dg-agent-android-update-dismissed-version';
+const DEFAULT_POINTER_URL = 'https://0xnullai.com/ota/android/apk.json';
+/** The pointer may only send users to this repository's releases. */
+const RELEASE_PAGE_PREFIX = 'https://github.com/0xNullAI/0xNuller/releases/';
 const DEFAULT_TAG_PREFIX = 'v';
 const APK_ASSET_PREFIX = 'maoyuan-v';
 
@@ -79,8 +88,9 @@ export function isNewerVersion(remote: string, current: string): boolean {
 }
 
 /**
- * Polls GitHub's `releases/latest` API and compares its tag against the
- * running APK's own versionName (via Tauri's `getVersion()`). This app is
+ * Reads the APK pointer on our own domain (falling back to GitHub's releases
+ * API) and compares its version against the running APK's own versionName
+ * (via Tauri's `getVersion()`). This app is
  * side-loaded (no Play Store), so there's no silent-update path — the most
  * this can do is surface a dismissible prompt pointing at the release page,
  * where the user downloads + installs the new APK themselves through
@@ -162,6 +172,15 @@ export class TauriUpdateChecker {
         this.currentVersion = await getCurrentVersion();
       }
 
+      const pointed = await this.readPointer(fetchImpl);
+      if (pointed) {
+        this.latestVersion = pointed.version;
+        this.releaseUrl = pointed.releaseUrl;
+        this.dismissed = this.storage.getItem(DISMISSED_KEY) === pointed.version;
+        this.emit();
+        return;
+      }
+
       // The list rather than `releases/latest`: this same repo also publishes
       // @dg-kit/* and the platform version, so "the newest release" is often
       // not the APK.
@@ -208,6 +227,26 @@ export class TauriUpdateChecker {
       // ignore transient update-check failures — same policy as the web
       // update checker (services/update-checker.ts): a failed poll just
       // retries on the next interval instead of surfacing an error.
+    }
+  }
+
+  /** The published pointer, or null when it is unavailable or not trustworthy. */
+  private async readPointer(
+    fetchImpl: typeof fetch,
+  ): Promise<{ version: string; releaseUrl: string } | null> {
+    const url =
+      this.options.pointerUrl === undefined ? DEFAULT_POINTER_URL : this.options.pointerUrl;
+    if (!url) return null;
+    try {
+      const response = await fetchImpl(url, { cache: 'no-store' });
+      if (!response.ok) return null;
+      const body = (await response.json()) as { version?: unknown; releaseUrl?: unknown };
+      if (typeof body.version !== 'string' || !VERSION_RE.test(body.version)) return null;
+      if (typeof body.releaseUrl !== 'string' || !body.releaseUrl.startsWith(RELEASE_PAGE_PREFIX))
+        return null;
+      return { version: body.version, releaseUrl: body.releaseUrl };
+    } catch {
+      return null;
     }
   }
 

@@ -19,6 +19,12 @@ import type { ChatMessage, ChatMention } from '../lib/protocol';
 import { compressImage, startRecording, formatDuration, type Recorder } from '../lib/media';
 import { PublicCharacterShareDialog } from './PublicCharacterShareDialog';
 import { ChatMessageItem, type ChatMessageActions } from './ChatMessageItem';
+import {
+  MediaPermissionDeniedError,
+  canOpenAppSettings,
+  explainMediaFailure,
+  openAppSettings,
+} from '@0xnullai/native';
 
 /** Bubbles laid out at a time; older ones appear in batches as the reader scrolls up. */
 const RENDER_BATCH = 50;
@@ -108,7 +114,13 @@ export function ChatPanel({
   const [recElapsed, setRecElapsed] = useState(0);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaError, setMediaErrorState] = useState<string | null>(null);
+  /** The error is a refused microphone the user can only allow in the App's system settings. */
+  const [mediaErrorOpensSettings, setMediaErrorOpensSettings] = useState(false);
+  const setMediaError = (message: string | null, opensSettings = false) => {
+    setMediaErrorState(message);
+    setMediaErrorOpensSettings(opensSettings);
+  };
   const [pendingMedia, setPendingMedia] = useState<{
     blob: Blob;
     kind: 'image' | 'audio';
@@ -452,7 +464,12 @@ export function ChatPanel({
       setRecorder(rec);
     } catch (err) {
       console.error('[Chat] mic access failed', err);
-      setMediaError('无法访问麦克风，请检查权限设置');
+      const explained = explainMediaFailure('microphone', err);
+      if (explained instanceof MediaPermissionDeniedError) {
+        setMediaError(explained.message, canOpenAppSettings());
+      } else {
+        setMediaError('无法访问麦克风，请检查权限设置');
+      }
     } finally {
       if (generation === recordingGenerationRef.current) setBusy(false);
     }
@@ -653,7 +670,16 @@ export function ChatPanel({
             role="alert"
             className="mb-2 flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1.5 text-sm text-[var(--danger)]"
           >
-            <span>{mediaError}</span>
+            <span className="min-w-0 flex-1">{mediaError}</span>
+            {mediaErrorOpensSettings && (
+              <button
+                type="button"
+                onClick={() => openAppSettings()}
+                className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-2 py-0.5 text-xs text-[var(--text)] hover:bg-[var(--bg-strong)]"
+              >
+                去设置
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setMediaError(null)}

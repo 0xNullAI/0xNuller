@@ -23,10 +23,28 @@
  * also makes plugin-blec write each device's registered stop packet natively
  * (see `@dg-kit/transport-tauri-blec`'s native-safety), which does not need
  * this page to run at all.
+ *
+ * The one exception is a background keep the user chose: then the native
+ * foreground service decides at onPause whether output is kept (`{kept: true}`
+ * in the pause event, and the same answer through `outputKeptInBackground`),
+ * and these listeners leave a kept hide alone. Leaving or freezing the page,
+ * the Tauri exit event and every native stop (deadline, notification 急停,
+ * teardown) still stop.
  */
 
 import type { DeviceClient } from '@dg-agent/core';
+import type { DgLabBackgroundStopReason } from '@0xnullai/device-runtime';
 import type { BluetoothDeviceLike, BluetoothRemoteGATTServerLike } from '@dg-kit/protocol';
+import {
+  disarmAndroidBackgroundKeep,
+  NATIVE_OUTPUT_STOPPED_EVENT,
+  NATIVE_PAUSE_EVENT,
+  outputKeptInBackground,
+  readNativeOutputStopped,
+  readNativePause,
+  type NativeOutputStoppedDetail,
+  type NativePauseDetail,
+} from '@0xnullai/native';
 
 interface LifecycleListener {
   detach(): void;
@@ -59,37 +77,66 @@ function hasConnectDevice(value: unknown): value is ConnectDeviceCapable {
 
 type Stopper = () => Promise<void>;
 
-/** Dispatched by MainActivity.onPause before the WebView is paused. */
-export const NATIVE_PAUSE_EVENT = '0xnullai:native-pause';
+export interface LifecycleSafetyOptions {
+  /**
+   * The keep decision at a hide or pause event. Defaults to the one shared decision
+   * (`outputKeptInBackground`, which on Android is the native onPause decision); tests inject it.
+   */
+  keepInBackground?: () => boolean;
+}
 
-function attachWebListeners(stop: Stopper): LifecycleListener {
+function keptNow(keepInBackground: () => boolean): boolean {
+  try {
+    return keepInBackground();
+  } catch {
+    // A failing policy read must fail closed.
+    return false;
+  }
+}
+
+interface LifecycleHandlers {
+  /** The page hid, or the native layer paused: may be kept. */
+  hidden(pause?: NativePauseDetail): void;
+  /** The page is leaving or freezing: always stops. */
+  leave(): void;
+  /** The native layer already stopped output; record it. */
+  nativeStopped(detail: NativeOutputStoppedDetail): void;
+}
+
+function attachWebListeners(handlers: LifecycleHandlers): LifecycleListener {
   const onHidden = () => {
-    if (document.visibilityState === 'hidden') {
-      void stop();
-    }
+    if (document.visibilityState === 'hidden') handlers.hidden();
   };
   // pagehide covers iOS Safari / Tauri WebView teardown that doesn't fire
   // visibilitychange. freeze covers Chromium's bfcache eviction.
-  const onPageHide = () => {
-    void stop();
-  };
-  const onFreeze = () => {
-    void stop();
-  };
+  const onLeave = () => handlers.leave();
+  const onNativePause = (event: Event) => handlers.hidden(readNativePause(event));
+  const onNativeStopped = (event: Event) => handlers.nativeStopped(readNativeOutputStopped(event));
 
   document.addEventListener('visibilitychange', onHidden);
-  window.addEventListener('pagehide', onPageHide);
-  document.addEventListener('freeze', onFreeze);
-  window.addEventListener(NATIVE_PAUSE_EVENT, onPageHide);
+  window.addEventListener('pagehide', onLeave);
+  document.addEventListener('freeze', onLeave);
+  window.addEventListener(NATIVE_PAUSE_EVENT, onNativePause);
+  window.addEventListener(NATIVE_OUTPUT_STOPPED_EVENT, onNativeStopped);
 
   return {
     detach() {
       document.removeEventListener('visibilitychange', onHidden);
-      window.removeEventListener('pagehide', onPageHide);
-      document.removeEventListener('freeze', onFreeze);
-      window.removeEventListener(NATIVE_PAUSE_EVENT, onPageHide);
+      window.removeEventListener('pagehide', onLeave);
+      document.removeEventListener('freeze', onLeave);
+      window.removeEventListener(NATIVE_PAUSE_EVENT, onNativePause);
+      window.removeEventListener(NATIVE_OUTPUT_STOPPED_EVENT, onNativeStopped);
     },
   };
+}
+
+/**
+ * Whether a hide or pause keeps output. A native pause keeps only when the native layer said so
+ * *and* the shared decision agrees; if the two would ever disagree, it stops.
+ */
+function keepsOutput(keepInBackground: () => boolean, pause?: NativePauseDetail): boolean {
+  if (pause && !pause.kept) return false;
+  return keptNow(keepInBackground);
 }
 
 /**
@@ -117,17 +164,36 @@ async function attachTauriListener(stop: Stopper): Promise<LifecycleListener> {
   }
 }
 
+/** The registry-level stop: through the shell's background controller, with why and when. */
+export type DgLabLifecycleStop = (
+  reason?: Extract<DgLabBackgroundStopReason, 'background' | 'background-timeout'>,
+  at?: number,
+) => void;
+
 /**
- * Attach every off-screen signal (web visibility/pagehide/freeze plus Tauri `app://paused`) to the
- * shared DG-Lab registry's stop.
+ * Attach every off-screen signal (web visibility/pagehide/freeze, the native pause and native
+ * stops, plus Tauri `app://paused`) to the shared DG-Lab registry's stop.
  *
  * The registry has no web listeners of its own, and it also owns Opossum links that
- * `wrapWithLifecycleSafety` never covered.
+ * `wrapWithLifecycleSafety` never covered. Every stop the page decides also disarms the native
+ * keep service, so the native side cannot keep what the page stopped.
  */
-export async function attachAndroidDgLabLifecycle(stop: () => void): Promise<() => void> {
-  const stopper: Stopper = async () => stop();
-  const web = attachWebListeners(stopper);
-  const tauri = await attachTauriListener(stopper);
+export async function attachAndroidDgLabLifecycle(
+  stop: DgLabLifecycleStop,
+  { keepInBackground = outputKeptInBackground }: LifecycleSafetyOptions = {},
+): Promise<() => void> {
+  const stopHere = (at?: number) => {
+    stop('background', at);
+    disarmAndroidBackgroundKeep();
+  };
+  const web = attachWebListeners({
+    hidden: (pause) => {
+      if (!keepsOutput(keepInBackground, pause)) stopHere(pause?.at);
+    },
+    leave: () => stopHere(),
+    nativeStopped: ({ reason, at }) => stop(reason, at),
+  });
+  const tauri = await attachTauriListener(async () => stopHere());
   return () => {
     web.detach();
     tauri.detach();
@@ -142,6 +208,7 @@ export async function attachAndroidDgLabLifecycle(stop: () => void): Promise<() 
  */
 export function wrapWithLifecycleSafety(
   client: DeviceClient,
+  { keepInBackground = outputKeptInBackground }: LifecycleSafetyOptions = {},
 ): DeviceClient & Partial<ConnectDeviceCapable> {
   // Track the underlying client's connected state. Without this guard,
   // every lifecycle transition fires `client.emergencyStop()` — a no-op
@@ -169,7 +236,15 @@ export function wrapWithLifecycleSafety(
     }
   };
 
-  const webListener = attachWebListeners(stop);
+  // Same decision as the registry-level listeners: kept output is left to the registry's hold;
+  // leaving, freezing and a native stop always stop this client too.
+  const webListener = attachWebListeners({
+    hidden: (pause) => {
+      if (!keepsOutput(keepInBackground, pause)) void stop();
+    },
+    leave: () => void stop(),
+    nativeStopped: () => void stop(),
+  });
   let tauriListener: LifecycleListener | null = null;
   void attachTauriListener(stop).then((l) => {
     tauriListener = l;

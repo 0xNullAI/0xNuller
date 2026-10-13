@@ -25,25 +25,33 @@ export DG_AGENT_KEYSTORE=~/.dg-keystores/dg-agent-release.jks
 
 0xNuller 继承 DG-Agent 的 Android 更新身份，并直接推进一个大版本。
 起点是 `6.0.0` / `6000000`，之后 `tauri.conf.json` 的 `version` 跟随产品版本，
-`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.2.0` →
-`7002000`）。两者和 GitHub Release tag 始终对齐。
+`bundle.android.versionCode` 按“主版本·1000000 + 次版本·1000 + 修订号”对齐（如 `7.3.0` →
+`7003000`）。两者和 GitHub Release tag 始终对齐。
 
 存量 DG-Agent 5.5.2 的内部代码是 `5005002`，所以 `6000000` 能被 Android 识别为
 原地升级，不需要为重置版本号引入额外映射层。
 
 ### 3. 源码与产品统一使用 `v<版本号>`
 
-当前版本使用 tag `v7.2.0`，原生层有变化（`NATIVE_API` 2），因此同时发布 APK：Release 标题和 APK 都显示
-`猫愿 7.2.0`，APK 附件名为 `maoyuan-v7.2.0.apk`。GitHub 自动生成的
+当前版本使用 tag `v7.3.0`，原生层有变化（`NATIVE_API` 3），因此同时发布 APK：Release 标题和 APK 都显示
+`猫愿 7.3.0`，APK 附件名为 `maoyuan-v7.3.0.apk`。GitHub 自动生成的
 源码归档与签名 APK 放在同一个 Release 中。
 
 npm 包发布不创建 GitHub Release。带 APK 的 `v<版本号>` 是唯一产品 Release，并始终标记为
-Latest；Android 更新检查器按 `v` 前缀过滤，并确认 Release 内确实存在 APK。
+Latest。Android 更新检查器先读本站的 `https://0xnullai.com/ota/android/apk.json`（发布工作流每次
+都用 `scripts/android-apk-pointer.mjs` 写入最新 APK 的版本、下载地址和 SHA-256，只允许指向本仓库
+Release），读不到或内容不可信时再查 GitHub API，按 `v` 前缀过滤并确认 Release 内确实存在 APK。
+安装包本身仍从 GitHub Release 下载。
 
 对应实现与测试在 `android/app/src/services/update-checker.ts`。
 
-APK 不含系统推送：没有 Firebase 依赖、通知权限或推送服务，新消息只以站内未读呈现（见
+APK 不含系统推送：没有 Firebase 依赖或推送服务，新消息只以站内未读呈现（见
 [`android/app/README.md`](../android/app/README.md)）。发布说明不能宣称有系统推送。
+
+通知权限（`POST_NOTIFICATIONS`）只用于一条本地通知：用户在「设备与安全 → 切到后台时」选择
+保持 5 或 10 分钟、且有设备在输出时，`connectedDevice` 前台服务显示「设备输出中」/「后台保持中 ·
+剩余 mm:ss」和「急停」。同一功能还需要 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_CONNECTED_DEVICE`
+与 `WAKE_LOCK`（只在保持的几分钟内持有）。没有授权或任一条件不满足时，切到后台仍立即停止。
 
 ## 顺序
 
@@ -68,7 +76,7 @@ npm run android:build -- --apk --target aarch64
 ## 上传前必须验的产物
 
 自动门禁会从 Android SDK 中选择最新的 build-tools，同时核对包名、版本、versionCode、
-应用名、minSdk、arm64 ABI、BLE/旧版定位、摄像头、麦克风与通知权限、APK v2 签名、旧 DG-Agent
+应用名、minSdk、arm64 ABI、BLE/旧版定位、摄像头、麦克风、本地输出通知与前台服务权限、APK v2 签名、旧 DG-Agent
 证书指纹，以及
 APK 内嵌的源码 commit 是否等于当前 Git HEAD。release 构建只接受干净工作树：
 
@@ -111,6 +119,9 @@ APK 装到真机上，确认这几件——它们都只有真设备能验：
 - **蓝牙**：连上郊狼，四种设备都试一遍（郊狼 / 负鼠 / 爪印 / 灵猫）
 - **锁屏**：正在输出时锁屏，设备必须停下。WebView 被挂起后定时器全停，而郊狼是
   状态保持的——漏了这个，设备会一直输出到用户回到应用或者蓝牙自己掉线
+- **后台保持**：选「保持当前输出 5 分钟」并授权通知后输出、锁屏：通知显示剩余时间，
+  到时设备停下；保持期间点通知里的「急停」立即停下；拒绝通知权限时设置回到「立即停止」
+  且锁屏立即停下。部分厂商系统会自行结束前台服务，这时也必须停下
 - **登录**与**托管语音**：两者的 origin 白名单都要含 `http://tauri.localhost`，
   漏了的话界面只显示「连接失败」
 - **更新提示**：把 `tauri.conf.json` 的版本临时调低重新装一个，看提示是否出现且

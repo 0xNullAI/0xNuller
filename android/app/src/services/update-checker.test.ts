@@ -147,6 +147,8 @@ describe('TauriUpdateChecker', () => {
       storage: memoryStorage(),
       getCurrentVersion: async () => '5.4.1',
       fetchImpl,
+      // Scheduling only: one request per check.
+      pointerUrl: null,
       firstCheckDelayMs: 1_000,
       pollIntervalMs: 10_000,
     });
@@ -283,5 +285,54 @@ describe('合并后的单仓库里挑出 APK 发布', () => {
     // A draft's APK has not been uploaded yet, and a prerelease should not be
     // pushed to ordinary users.
     expect(checker.getStatus().latestVersion).toBe('5.6.0');
+  });
+});
+
+describe('APK pointer on our own domain', () => {
+  const POINTER = 'https://0xnullai.com/ota/android/apk.json';
+  const page = 'https://github.com/0xNullAI/0xNuller/releases/tag/v7.2.0';
+
+  function routes(pointer: unknown, pointerOk = true) {
+    return vi.fn(async (url: string) =>
+      url === POINTER
+        ? { ok: pointerOk, json: async () => pointer }
+        : {
+            ok: true,
+            json: async () => [{ tag_name: 'v7.1.0', html_url: 'gh', assets: [apkAsset('7.1.0')] }],
+          },
+    );
+  }
+
+  it('reads the pointer first and does not call GitHub', async () => {
+    const fetchImpl = routes({ version: '7.2.0', releaseUrl: page });
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '7.1.0',
+      fetchImpl: fetchImpl as never,
+    });
+    await checker['checkOnce']();
+
+    expect(checker.getStatus()).toMatchObject({
+      hasUpdate: true,
+      latestVersion: '7.2.0',
+      releaseUrl: page,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['unreachable', { version: '7.2.0', releaseUrl: page }, false],
+    ['a malformed version', { version: 'v7.2', releaseUrl: page }, true],
+    ['a release page elsewhere', { version: '7.2.0', releaseUrl: 'https://evil.test/apk' }, true],
+  ])('falls back to GitHub when the pointer is %s', async (_label, pointer, ok) => {
+    const checker = new TauriUpdateChecker({
+      repo: '0xNullAI/0xNuller',
+      storage: memoryStorage(),
+      getCurrentVersion: async () => '7.0.0',
+      fetchImpl: routes(pointer, ok) as never,
+    });
+    await checker['checkOnce']();
+    expect(checker.getStatus().latestVersion).toBe('7.1.0');
   });
 });

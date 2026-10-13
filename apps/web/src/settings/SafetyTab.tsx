@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AudioWaveform, Radio, SlidersHorizontal, Waves, Zap } from 'lucide-react';
 import {
-  BACKGROUND_KEEP_MINUTES,
+  backgroundKeepHint,
+  backgroundKeepOptions,
   DEFAULT_DEVICE_SAFETY,
+  effectiveBackgroundKeepMinutes,
+  isBackgroundKeepReady,
   isBackgroundKeepSupported,
   loadDeviceSafety,
+  prepareBackgroundKeep,
   subscribeDeviceSafety,
   updateDeviceSafety,
   type DeviceSafetySettings,
@@ -29,6 +33,7 @@ type Page = 'main' | 'advanced' | 'waveforms' | 'sensors' | { device: string };
 export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
   const [settings, setSettings] = useState<DeviceSafetySettings>(loadDeviceSafety);
   const [page, setPage] = useState<Page>('main');
+  const [keepNotice, setKeepNotice] = useState<string | null>(null);
   const back = useCallback(() => setPage('main'), []);
   const registry = useDgLabRegistry();
   const devices = useDgLabDeviceLimits(registry);
@@ -36,6 +41,18 @@ export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
 
   function patch(p: Partial<DeviceSafetySettings>) {
     setSettings(updateDeviceSafety((prev) => ({ ...prev, ...p })));
+  }
+
+  // A keep the platform cannot honour yet (Android: no notification permission) asks first;
+  // a refusal stores "stop at once" so the setting never claims more than happens.
+  async function chooseBackgroundKeep(minutes: number) {
+    if (minutes > 0 && !isBackgroundKeepReady() && !(await prepareBackgroundKeep())) {
+      setKeepNotice('未获得通知权限，切到后台时仍会立即停止。');
+      patch({ backgroundKeepMinutes: 0 });
+      return;
+    }
+    setKeepNotice(null);
+    patch({ backgroundKeepMinutes: minutes });
   }
 
   if (page === 'waveforms')
@@ -218,16 +235,22 @@ export function SafetyTab({ waveforms }: { waveforms?: ReactNode }) {
         label="控制"
         footer={
           isBackgroundKeepSupported()
-            ? '后台保持期间，设备维持当时的输出，只能停止或降低；AI 暂停，到时自动停止。关闭或刷新页面、语音通话和视频始终立即停止。'
+            ? [
+                '后台保持期间，设备维持当时的输出，只能停止或降低；AI 暂停，到时自动停止。关闭或刷新页面、语音通话和视频始终立即停止。',
+                backgroundKeepHint(),
+                keepNotice,
+              ]
+                .filter(Boolean)
+                .join('')
             : '切到后台时立即停止所有设备。'
         }
       >
         {isBackgroundKeepSupported() ? (
           <SelectRow
             label="切到后台时"
-            value={String(settings.backgroundKeepMinutes)}
-            onChange={(value) => patch({ backgroundKeepMinutes: Number(value) })}
-            options={BACKGROUND_KEEP_MINUTES.map((minutes) => ({
+            value={String(effectiveBackgroundKeepMinutes())}
+            onChange={(value) => void chooseBackgroundKeep(Number(value))}
+            options={backgroundKeepOptions().map((minutes) => ({
               value: String(minutes),
               label: minutes === 0 ? '立即停止（推荐）' : `保持当前输出 ${minutes} 分钟`,
             }))}

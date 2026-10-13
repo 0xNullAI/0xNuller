@@ -156,14 +156,33 @@ if (!manifest.includes('android:roundIcon="@mipmap/ic_launcher_round"')) {
     '$1        android:roundIcon="@mipmap/ic_launcher_round"\n',
   );
 }
-// Strip what earlier preparations added for FCM from a reused generated manifest.
+// Strip what earlier preparations added for FCM from a reused generated manifest. The
+// notification permission stays: since native API 3 it serves only the local device-output
+// notification of the background keep service (there is still no push).
 manifest = manifest
-  .replace(
-    /\n\s*<uses-permission android:name="android\.permission\.POST_NOTIFICATIONS"\s*\/>/g,
-    '',
-  )
   .replace(/\n\s*<meta-data android:name="firebase_messaging_[a-z_]+"[^>]*\/>/g, '')
   .replace(/\n\s*<service android:name="\.PushMessagingService"[\s\S]*?<\/service>/g, '');
+// Each <service> of the template replaces a same-named one inside the generated <application>.
+const templateServices =
+  manifestTemplate
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .match(/<service\b[\s\S]*?(?:\/>|<\/service>)/g) ?? [];
+for (const service of templateServices) {
+  const name = attribute(service, 'android:name');
+  if (!name) throw new Error('Android manifest template has a service without android:name');
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  manifest = manifest.replace(
+    new RegExp(
+      `\\n\\s*<service\\b[^>]*android:name="${escaped}"[^>]*?(?:\\/>|>[\\s\\S]*?<\\/service>)`,
+      'g',
+    ),
+    '',
+  );
+  if (!manifest.includes('</application>')) {
+    throw new Error('generated Android manifest has no closing application tag');
+  }
+  manifest = manifest.replace('</application>', `    ${service.trim()}\n    </application>`);
+}
 writeFileSync(manifestPath, manifest);
 
 // `tauri android init` leaves Android Studio's green robot launchers in the
@@ -305,6 +324,12 @@ for (const required of [
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE',
+  'android.permission.POST_NOTIFICATIONS',
+  'android.permission.WAKE_LOCK',
+  'android:name=".DeviceOutputService"',
+  'android:foregroundServiceType="connectedDevice"',
 ]) {
   if (!manifest.includes(required)) throw new Error(`Android manifest is missing ${required}`);
 }
@@ -349,12 +374,14 @@ for (const required of [
   'maxOf(insets.bottom, imeInsets.bottom)',
   'webView.addJavascriptInterface(AndroidSystemBridge()',
   'requestNativeLifecycleSafety()',
+  'requestNativeOutputStop()',
+  'class DeviceOutputService',
 ]) {
   if (!mainActivity.includes(required)) {
     throw new Error(`Android MainActivity is missing native inset handling: ${required}`);
   }
 }
-for (const forbidden of ['POST_NOTIFICATIONS', 'firebase', 'PushMessagingService']) {
+for (const forbidden of ['firebase', 'PushMessagingService']) {
   if (manifest.includes(forbidden))
     throw new Error(`Android manifest still contains removed push setup: ${forbidden}`);
 }
@@ -364,10 +391,15 @@ for (const required of ['THIRD_PARTY_NOTICES.md', 'btleplug-0.12.0-LICENSE.md'])
   }
 }
 const proguard = readFileSync(proguardPath, 'utf8');
-if (!proguard.includes('native boolean requestNativeLifecycleSafety()')) {
-  throw new Error('Android project is missing the MainActivity JNI Proguard rule');
+for (const required of [
+  'native boolean requestNativeLifecycleSafety()',
+  'native boolean requestNativeOutputStop()',
+]) {
+  if (!proguard.includes(required)) {
+    throw new Error(`Android project is missing a JNI Proguard rule: ${required}`);
+  }
 }
 
 console.log(
-  `Android project prepared: 0xNuller launcher icons, BLE permissions, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
+  `Android project prepared: 0xNuller launcher icons, BLE permissions, device-output keep service, native system-bar insets, minSdk 26, fail-closed release signing, source ${sourceCommit}`,
 );
